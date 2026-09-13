@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+    InfoCard,
+    InfoCardEmpty,
+    InfoCardError,
+    InfoCardHead,
+    InfoCardIcon,
+    InfoCardInput,
+    InfoCardPreview,
+    InfoCardSection,
+    InfoCardText,
+    InfoCardTitle,
+} from "@/app/element/info-card";
+import {
     ensureSessionNote,
     getSessionNoteSnapshot,
     saveSessionNote,
@@ -19,6 +31,8 @@ import {
     sessionTagsLabel,
 } from "@/app/view/aisessions/session-tags";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
+import { createBlock } from "@/app/store/global";
+import { resolveMetadataAIMode } from "@/app/view/term/agent-ai-config";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
 import {
@@ -27,11 +41,14 @@ import {
     subscribeAgentRuntimeMetadata,
 } from "@/app/agent-status/agent-runtime-metadata-store";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
+import { cn } from "@/util/util";
 import { useAtomValueSafe } from "@/util/util";
 import { resolveAgentSessionId } from "@/app/view/term/agent-session";
 import * as React from "react";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
+type MetadataStatus = "idle" | "loading" | "ready" | "error";
 const NoteAutoSaveDelayMs = 3000;
 
 function agentSessionConnection(blockData: Block | null): string | undefined {
@@ -219,6 +236,8 @@ function useSessionNote(blockId: string, blockData: Block | null) {
 
     return {
         sessionId,
+        connection,
+        service,
         summary,
         noteDraft,
         setNoteDraft,
@@ -250,6 +269,8 @@ export type AgentHoverCardProps = {
 
 const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardProps) => {
     const {
+        connection,
+        service,
         summary,
         noteDraft,
         setNoteDraft,
@@ -263,10 +284,47 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
         title,
         previewText,
     } = useSessionNote(blockId, blockData);
+    const sessionId = React.useMemo(() => agentSessionIdFromBlockData(blockData), [blockData]);
+    const [metadataStatus, setMetadataStatus] = React.useState<MetadataStatus>("idle");
+    const [metadataError, setMetadataError] = React.useState("");
+    const [metadataNote, setMetadataNote] = React.useState("");
+    const [metadataTags, setMetadataTags] = React.useState<string[]>([]);
+    const generateMetadata = React.useCallback(async () => {
+        if (sessionId === "") return;
+        const cfg = resolveMetadataAIMode();
+        if (cfg.available === false) {
+            setMetadataError(cfg.reason);
+            setMetadataStatus("error");
+            return;
+        }
+        setMetadataStatus("loading");
+        setMetadataError("");
+        try {
+            const result = await service.GenerateMetadata({ id: sessionId, connection: connection || undefined, aiMode: cfg.mode });
+            setMetadataNote(result.suggestion.note);
+            setMetadataTags(result.suggestion.tags);
+            setMetadataStatus("ready");
+        } catch (error) {
+            setMetadataError(error instanceof Error ? error.message : String(error));
+            setMetadataStatus("error");
+        }
+    }, [connection, service, sessionId]);
+    const applyMetadata = React.useCallback(async () => {
+        if (summary == null || metadataStatus !== "ready") return;
+        const result = await saveSessionNote(service, sessionId, connection, metadataNote.trim(), metadataTags);
+        if (result.status === "ok") {
+            setMetadataStatus("idle");
+        } else {
+            setMetadataError(result.error);
+            setMetadataStatus("error");
+        }
+    }, [connection, metadataNote, metadataStatus, metadataTags, service, sessionId, summary]);
+    const openAIConfig = React.useCallback(() => {
+        void createBlock({ meta: { view: "waveconfig", file: "waveai.json" } }, false, true);
+    }, []);
 
     // 模型 + 状态信息（来自 block meta、AgentStatusStore 与 AgentRuntimeMetadataStore）
     const agentStatus = useAgentStatusForCard(blockId);
-    const sessionId = React.useMemo(() => agentSessionIdFromBlockData(blockData), [blockData]);
     const rawProvider =
         agentStatus?.provider != null && agentStatus.provider.trim() !== ""
             ? agentStatus.provider
@@ -291,6 +349,20 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
     const model = liveModel || requestedModel;
     const modelLoading = runtimeEntry?.loading ?? false;
     const statusPres = agentStatus != null ? agentStatusPresentation(agentStatus) : null;
+    const statusState = agentStatus?.state ?? "unknown";
+    // 状态色：原型 agent-id-card 的映射，用现成主题 token。
+    const statusAccent =
+        statusState === "working"
+            ? "var(--agent-working-color)"
+            : statusState === "done"
+              ? "var(--agent-done-color)"
+              : statusState === "blocked" || statusState === "rate-limited"
+                ? "var(--warning-color, #f59e0b)"
+                : statusState === "error"
+                  ? "var(--error-color)"
+                  : "var(--secondary-text-color)";
+    const isThinking = agentStatus != null && statusState === "working" && agentStatus.phase === "thinking";
+    const agentLogo = getAgentLogoByProvider(rawProvider === "" ? "agent" : rawProvider);
     const showMetaRow =
         (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
 
@@ -312,36 +384,71 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                 : "fa-tag";
 
     return (
-        <div className="agent-hover-card">
+        <InfoCard
+            className="agent-card"
+            style={{ "--info-card-accent": statusAccent } as React.CSSProperties}
+        >
             {/* 模型 + 状态 section */}
             {showMetaRow && (
-                <div className="agent-hover-card-section">
-                    <div className="agent-hover-card-head">
-                        <i className="fa-sharp fa-solid fa-microchip agent-hover-card-icon" />
-                        <span className="agent-hover-card-title">{provider}</span>
-                        <span className="agent-hover-card-model">
+                <InfoCardSection>
+                    <div className="agent-card-head">
+                        {agentLogo != null ? (
+                            <span
+                                className="agent-card-logo"
+                                style={
+                                    agentLogo.iconColor != null
+                                        ? { color: agentLogo.iconColor }
+                                        : undefined
+                                }
+                            >
+                                {agentLogo.icon}
+                            </span>
+                        ) : (
+                            <InfoCardIcon icon="fa-sharp fa-solid fa-microchip" />
+                        )}
+                        <span className="agent-card-provider">{provider}</span>
+                        <span className="agent-card-model">
                             {model || (modelLoading ? "获取中…" : "未指定")}
                         </span>
                     </div>
                     {statusPres != null && (
-                        <div className="agent-hover-card-status">
-                            <i className={`fa-sharp fa-solid ${statusPres.icon}`} />
-                            <span>{statusPres.label}</span>
+                        <div className="agent-card-status-row">
+                            <span
+                                className={cn("agent-card-status-dot", {
+                                    "is-working": statusState === "working",
+                                    "is-thinking": isThinking,
+                                })}
+                            />
+                            <span className="agent-card-status-label">{statusPres.label}</span>
                         </div>
                     )}
-                </div>
+                </InfoCardSection>
             )}
             {/* Note section */}
             {summary != null && (
-                <div className="agent-hover-card-section">
-                    <div className="agent-hover-card-head">
-                        <i className={`fa-sharp fa-solid agent-hover-card-icon ${statusIcon}`} />
-                        <span className="agent-hover-card-title">{title}</span>
+                <InfoCardSection>
+                    <div className="flex items-center justify-between gap-2">
+                        <InfoCardHead>
+                            <InfoCardIcon icon={`fa-sharp fa-solid ${statusIcon}`} />
+                            <InfoCardTitle>{title}</InfoCardTitle>
+                        </InfoCardHead>
+                        <button
+                            type="button"
+                            className="cursor-pointer rounded px-1.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                            title="Generate note and tags with AI"
+                            aria-label="Generate note and tags with AI"
+                            disabled={metadataStatus === "loading" || sessionId === ""}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                void generateMetadata();
+                            }}
+                        >
+                            <i className={cn("fa-sharp fa-solid", metadataStatus === "loading" ? "fa-spinner animate-spin" : "fa-wand-magic-sparkles")} />
+                        </button>
                     </div>
                     {isEditing ? (
-                        <textarea
+                        <InfoCardInput
                             ref={inputRef}
-                            className="agent-hover-card-input"
                             value={noteDraft}
                             rows={4}
                             placeholder="Note"
@@ -359,9 +466,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                             }}
                         />
                     ) : (
-                        <button
-                            type="button"
-                            className="agent-hover-card-preview"
+                        <InfoCardPreview
                             onClick={() => {
                                 setIsEditing(true);
                                 window.setTimeout(() => {
@@ -371,16 +476,83 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                             }}
                         >
                             {trimmedDraft === "" ? (
-                                <span className="agent-hover-card-empty">Click to add a note...</span>
+                                <InfoCardEmpty>Click to add a note...</InfoCardEmpty>
                             ) : (
-                                <span className="agent-hover-card-text">{previewText}</span>
+                                <InfoCardText>{previewText}</InfoCardText>
                             )}
-                        </button>
+                        </InfoCardPreview>
                     )}
-                    {noteError ? <div className="agent-hover-card-error">{noteError}</div> : null}
+                    {metadataStatus === "loading" ? (
+                        <div className="text-xs text-secondary">Generating note and tags…</div>
+                    ) : null}
+                    {metadataStatus === "ready" ? (
+                        <div className="space-y-2 rounded border border-border bg-surface-soft p-2">
+                            <textarea
+                                className="min-h-[60px] w-full resize-none rounded border border-border bg-transparent px-2 py-1 text-xs outline-none focus:border-accent"
+                                value={metadataNote}
+                                aria-label="AI generated note"
+                                onChange={(event) => setMetadataNote(event.target.value)}
+                            />
+                            <div className="flex flex-wrap gap-1">
+                                {metadataTags.map((tag) => (
+                                    <span key={tag} className="rounded border border-border px-1.5 py-0.5 text-[10px] text-secondary">#{tag}</span>
+                                ))}
+                            </div>
+                            <div className="flex justify-end gap-1.5">
+                                <button type="button" className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover" onClick={() => setMetadataStatus("idle")}>Dismiss</button>
+                                <button type="button" className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover" onClick={() => void generateMetadata()}>Regenerate</button>
+                                <button type="button" className="cursor-pointer rounded bg-action px-2 py-1 text-[10px] text-actiontext hover:bg-actionhover" onClick={() => void applyMetadata()}>Apply</button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {metadataStatus === "error" && metadataError ? (
+                        <div className="space-y-1.5">
+                            <InfoCardError>{metadataError}</InfoCardError>
+                            <button
+                                type="button"
+                                className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover hover:text-primary"
+                                onClick={openAIConfig}
+                            >
+                                Open AI settings
+                            </button>
+                        </div>
+                    ) : null}
+                    {/* Tags chips（有则显示） */}
+                    {(summary?.tags?.length ?? 0) > 0 && (
+                        <div className="agent-card-tags">
+                            {summary.tags.map((tag, idx) => (
+                                <span key={idx} className="agent-card-tag">
+                                    {tag}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {noteError ? <InfoCardError>{noteError}</InfoCardError> : null}
+                </InfoCardSection>
+            )}
+            {/* Session ID 底行（复制） */}
+            {sessionId !== "" && (
+                <div className="agent-card-session-id">
+                    <span className="agent-card-session-id-text" title={sessionId}>
+                        {sessionId}
+                    </span>
+                    <button
+                        type="button"
+                        className="agent-card-copy-btn"
+                        title="Copy session id"
+                        aria-label="Copy session id"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard?.writeText(sessionId).catch(() => {});
+                        }}
+                    >
+                        <svg viewBox="0 0 24 24">
+                            <path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z" />
+                        </svg>
+                    </button>
                 </div>
             )}
-        </div>
+        </InfoCard>
     );
 });
 

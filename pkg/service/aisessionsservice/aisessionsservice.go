@@ -117,6 +117,17 @@ type AISessionsSummaryRequest struct {
 	Refresh    bool   `json:"refresh,omitempty"`
 }
 
+type AISessionsGenerateMetadataRequest struct {
+	ID         string `json:"id"`
+	Connection string `json:"connection,omitempty"`
+	AIMode     string `json:"aiMode,omitempty"`
+}
+
+type AISessionsGenerateMetadataResponse struct {
+	Summary    aisessions.SessionSummary      `json:"summary"`
+	Suggestion aisessions.MetadataSuggestion `json:"suggestion"`
+}
+
 type AISessionsRestoreContextRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
@@ -763,6 +774,41 @@ func (svc *AISessionsService) NoteAndTags(ctx context.Context, request *AISessio
 		return nil, err
 	}
 	return &summary, nil
+}
+
+func (svc *AISessionsService) GenerateMetadata_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "generate a proposed AI note and tags for a session without saving",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI metadata suggestion plus the current session summary",
+	}
+}
+func (svc *AISessionsService) GenerateMetadata(ctx context.Context, request *AISessionsGenerateMetadataRequest) (*AISessionsGenerateMetadataResponse, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := manager.Load(ctx, request.ID, aisessions.LoadOptions{})
+	if err != nil {
+		return nil, err
+	}
+	genReq := aisessions.MetadataGenerateRequest{
+		SessionKey:   detail.Summary.Key,
+		Source:       detail.Summary.Source,
+		ProjectPath:  detail.Summary.ProjectPath,
+		Messages:     detail.Messages,
+		ExistingNote: detail.Summary.Note,
+		ExistingTags: detail.Summary.Tags,
+		AIMode:       request.AIMode,
+	}
+	suggestion, err := aisessions.GenerateSessionMetadata(ctx, genReq)
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsGenerateMetadataResponse{Summary: detail.Summary, Suggestion: suggestion}, nil
 }
 
 func (svc *AISessionsService) RenameTag_Meta() tsgenmeta.MethodMeta {
