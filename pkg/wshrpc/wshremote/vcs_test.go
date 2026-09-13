@@ -378,3 +378,104 @@ func TestLoadGitCommitFilesScopesToPath(t *testing.T) {
 		t.Fatalf("unexpected scoped file: %#v", files[0])
 	}
 }
+
+func TestRemoteVcsCreateBranchCreatesAndChecksOut(t *testing.T) {
+	root := t.TempDir()
+	runGitForTest(t, root, "init")
+	runGitForTest(t, root, "config", "user.name", "Test User")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitForTest(t, root, "add", ".")
+	runGitForTest(t, root, "commit", "-qm", "initial")
+
+	impl := &ServerImpl{}
+	result, err := impl.RemoteVcsCreateBranchCommand(context.Background(), wshrpc.CommandRemoteVcsCreateBranchData{
+		RepoType: "git", RepoPath: root, Branch: "feature/new",
+	})
+	if err != nil || result.Error != "" {
+		t.Fatalf("create failed: err=%v result=%+v", err, result)
+	}
+	if result.Branch != "feature/new" {
+		t.Fatalf("expected feature/new, got %q", result.Branch)
+	}
+	current, err := exec.Command("git", "-C", root, "branch", "--show-current").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(current)) != "feature/new" {
+		t.Fatalf("expected checked out feature/new, got %q", current)
+	}
+}
+
+func TestRemoteVcsCreateBranchRejectsExistingAndInvalid(t *testing.T) {
+	root := t.TempDir()
+	runGitForTest(t, root, "init")
+	runGitForTest(t, root, "config", "user.name", "Test User")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitForTest(t, root, "add", ".")
+	runGitForTest(t, root, "commit", "-qm", "initial")
+	runGitForTest(t, root, "branch", "existing")
+
+	impl := &ServerImpl{}
+	dup, err := impl.RemoteVcsCreateBranchCommand(context.Background(), wshrpc.CommandRemoteVcsCreateBranchData{
+		RepoType: "git", RepoPath: root, Branch: "existing",
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if dup.Error == "" || !strings.Contains(dup.Error, "already exists") {
+		t.Fatalf("expected already-exists error, got %+v", dup)
+	}
+
+	bad, err := impl.RemoteVcsCreateBranchCommand(context.Background(), wshrpc.CommandRemoteVcsCreateBranchData{
+		RepoType: "git", RepoPath: root, Branch: "../escape",
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if bad.Error == "" || !strings.Contains(bad.Error, "invalid") {
+		t.Fatalf("expected invalid-name error, got %+v", bad)
+	}
+}
+
+func TestRemoteVcsDeleteBranchDeletesNonCurrentBranch(t *testing.T) {
+	root := t.TempDir()
+	runGitForTest(t, root, "init")
+	runGitForTest(t, root, "config", "user.name", "Test User")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitForTest(t, root, "add", ".")
+	runGitForTest(t, root, "commit", "-qm", "initial")
+	runGitForTest(t, root, "branch", "todelete")
+
+	impl := &ServerImpl{}
+	result, err := impl.RemoteVcsDeleteBranchCommand(context.Background(), wshrpc.CommandRemoteVcsDeleteBranchData{
+		RepoType: "git", RepoPath: root, Branch: "todelete",
+	})
+	if err != nil || result.Error != "" {
+		t.Fatalf("delete failed: err=%v result=%+v", err, result)
+	}
+	out := runGitForTest(t, root, "branch", "--list", "todelete")
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("expected branch deleted, got %q", out)
+	}
+
+	// Deleting the current branch must fail.
+	curlBranch := strings.TrimSpace(runGitForTest(t, root, "rev-parse", "--abbrev-ref", "HEAD"))
+	current, err := impl.RemoteVcsDeleteBranchCommand(context.Background(), wshrpc.CommandRemoteVcsDeleteBranchData{
+		RepoType: "git", RepoPath: root, Branch: curlBranch,
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if current.Error == "" || !strings.Contains(current.Error, "current") {
+		t.Fatalf("expected current-branch error, got %+v", current)
+	}
+}

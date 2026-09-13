@@ -30,9 +30,11 @@ function statusCodeLabel(code: string): string {
 export function VcsHistoryTab({
     repo,
     connection,
+    onShowFileDiff,
 }: {
     repo: VcsRepositoryInfo;
     connection: string;
+    onShowFileDiff?: (filePath: string, revision: string) => void;
 }) {
     const env = useWaveEnv<VcsUiEnv>();
     const route = React.useMemo(() => {
@@ -246,12 +248,21 @@ export function VcsHistoryTab({
                                                     {files.map((file, fileIdx) => (
                                                         <div
                                                             key={`${revision}-${file.path}-${fileIdx}`}
-                                                            className="flex items-center gap-2 border-b border-border px-2 py-1 text-[11px] last:border-b-0"
+                                                            className="group flex items-center gap-2 border-b border-border px-2 py-1 text-[11px] last:border-b-0"
                                                         >
                                                             <span className="font-mono text-secondary min-w-[20px]">
                                                                 {statusCodeLabel(file.code)}
                                                             </span>
                                                             <span className="truncate flex-1">{file.path}</span>
+                                                            {onShowFileDiff != null && (
+                                                                <button
+                                                                    className="text-[10px] text-accent hover:underline cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    title={`View diff of ${file.path}`}
+                                                                    onClick={() => onShowFileDiff(file.path, revision)}
+                                                                >
+                                                                    View Diff
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
