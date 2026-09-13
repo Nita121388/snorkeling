@@ -1,16 +1,15 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
-import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
 import { getWaveObjectAtom, makeORef } from "@/app/store/wos";
+import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
+import { BlockInfoCard } from "@/app/block/block-info-card";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { ObjectService } from "@/store/services";
 import { makeIconClass } from "@/util/util";
 import clsx from "clsx";
 import { type Atom, useAtomValue } from "jotai";
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
     deleteMinimizedGroup,
     getMinimizedBlockIds,
@@ -86,10 +85,6 @@ function sanitizeIconName(raw: string | undefined | null): string {
 
 // ── view type → icon: canonical mapping from blockutil (same one block headers use);
 // blockViewToIcon returns "square" as its own fallback, which we treat as "unmapped".
-// Views that blockViewToIcon doesn't cover yet get extras here.
-const ExtraViewIconMap: Record<string, string> = {
-    agent: "robot",
-};
 
 // TUI agent blocks are actually terminal blocks (view: "term") that auto-run an
 // agent command — the agent identity is marked by the agent:autoresume meta flag,
@@ -103,7 +98,7 @@ function resolveViewIcon(view: string, meta?: Record<string, unknown>): string |
     if (!view) return null;
     const mapped = blockViewToIcon(view);
     if (mapped && mapped !== "square") return mapped;
-    return ExtraViewIconMap[view] ?? null;
+    return null;
 }
 
 // ── file extension → FA icon ──
@@ -265,72 +260,25 @@ function SidebarIconItem({
 }) {
     const blockData = useAtomValue(useMemo(() => getWaveObjectAtom<Block>(makeORef("block", item.blockId)), [item.blockId]));
     const iconClass = item.icon ? makeIconClass(item.icon, false) : null;
-    const isAgent = isAgentTerminalMeta(blockData?.meta);
-    const itemRef = useRef<HTMLDivElement>(null);
-    const hideTimerRef = useRef<number | null>(null);
-    const [isHovered, setIsHovered] = useState(false);
-    const [isCardHovered, setIsCardHovered] = useState(false);
-    const [cardPos, setCardPos] = useState<{ top: number; left: number } | null>(null);
-    const cancelHide = useCallback(() => {
-        if (hideTimerRef.current != null) {
-            window.clearTimeout(hideTimerRef.current);
-            hideTimerRef.current = null;
-        }
-    }, []);
-    const refreshCardPos = useCallback(() => {
-        const rect = itemRef.current?.getBoundingClientRect();
-        if (rect) {
-            setCardPos({ top: rect.top, left: rect.right + 8 });
-        }
-    }, []);
-    useEffect(() => () => cancelHide(), [cancelHide]);
-    const showCard = isAgent && (isHovered || isCardHovered) && cardPos != null;
+    const hover = useInfoCardHover({ placement: "right" });
+    // 除 Agent 外的其它 Block 也走同一套 InfoCard 分派：Note 有卡片，其余返回 null（fallback 原生 tooltip）。
+    const cardContent = useMemo(
+        () => BlockInfoCard({ blockId: item.blockId, blockData: blockData ?? null, onOpen: () => onRestore(item.blockId) }),
+        [item.blockId, blockData, onRestore]
+    );
 
     return (
         <>
             <div
-                ref={itemRef}
+                {...hover.targetProps}
                 className="block-sidebar-item"
                 title={item.title}
                 onClick={() => onRestore(item.blockId)}
                 onContextMenu={(e) => onContextMenu(e, item)}
-                onMouseEnter={() => {
-                    cancelHide();
-                    setIsHovered(true);
-                    refreshCardPos();
-                }}
-                onMouseLeave={() => {
-                    cancelHide();
-                    hideTimerRef.current = window.setTimeout(() => {
-                        setIsHovered(false);
-                        setIsCardHovered(false);
-                    }, 300);
-                }}
             >
                 {iconClass ? <i className={iconClass} /> : <span className="block-sidebar-item-fallback" />}
             </div>
-            {showCard &&
-                createPortal(
-                    <div
-                        className="agent-hover-card-wrapper"
-                        style={{ position: "fixed", top: cardPos.top, left: cardPos.left, zIndex: 200 }}
-                        onMouseEnter={() => {
-                            cancelHide();
-                            refreshCardPos();
-                            setIsCardHovered(true);
-                        }}
-                        onMouseLeave={() => {
-                            cancelHide();
-                            hideTimerRef.current = window.setTimeout(() => {
-                                setIsHovered(false);
-                                setIsCardHovered(false);
-                            }, 300);
-                        }}
-                    >
-                        <AgentHoverCard blockId={item.blockId} blockData={blockData ?? null} mode="gui" />
-                    </div>,
-                    document.body
-                )}
+            {cardContent != null && <InfoCardPortal hover={hover}>{cardContent}</InfoCardPortal>}
         </>
     );
 }

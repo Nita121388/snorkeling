@@ -15,18 +15,18 @@ import {
     SubBlockProps,
 } from "@/app/block/blocktypes";
 import { BlockLockMetaKey, buildInlineTabContextMenu } from "@/app/block/inlinetab-contextmenu";
+import { BlockInfoCard } from "@/app/block/block-info-card";
 import { Tooltip } from "@/app/element/tooltip";
+import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getBlockDirtyAtom } from "@/app/view/preview/preview-dirty-state";
-import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import type { LayoutNode } from "@/layout/index";
@@ -47,7 +47,6 @@ import clsx from "clsx";
 import type { Atom } from "jotai";
 import { atom, useAtomValue } from "jotai";
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useDrag, useDrop } from "react-dnd";
 import { minimizeGroupToFloat } from "./block-minimize";
 import {
@@ -184,23 +183,8 @@ const InlineTabLabel = memo(
         // (广告/跑马灯效果), 宽度上限由 --inline-tab-active-max-width (block 宽度百分比) 决定.
         const scrollWrapRef = useRef<HTMLDivElement>(null);
         const [isMarquee, setIsMarquee] = useState(false);
-        const [isHovered, setIsHovered] = useState(false);
-        const [isCardHovered, setIsCardHovered] = useState(false);
-        // 悬浮卡片坐标（屏幕坐标，Portal 到 body 时用 fixed 定位）
-        const [cardPos, setCardPos] = useState<{ top: number; left: number } | null>(null);
-        const refreshCardPos = useCallback(() => {
-            const rect = tabRef.current?.getBoundingClientRect();
-            if (rect) {
-                setCardPos({ top: rect.bottom + 2, left: rect.left });
-            }
-        }, []);
-        const hideCardTimerRef = useRef<number | null>(null);
-        const cancelPendingHideCard = useCallback(() => {
-            if (hideCardTimerRef.current != null) {
-                window.clearTimeout(hideCardTimerRef.current);
-                hideCardTimerRef.current = null;
-            }
-        }, []);
+        // Note/Agent 悬浮卡交互状态（目标元素 ref 复用 tabRef，tabRef 同时供 DnD 使用）
+        const cardHover = useInfoCardHover({ placement: "bottom", targetRef: tabRef });
         const isLocked = ((blockData?.meta ?? {}) as Record<string, unknown>)[BlockLockMetaKey] === true;
         const dirtyAtom = useMemo(() => getBlockDirtyAtom(blockId), [blockId]);
         const isDirty = useAtomValue(dirtyAtom);
@@ -448,17 +432,22 @@ const InlineTabLabel = memo(
             ]
         );
 
-        const isAgentBlock = isAgentTerminalMeta(blockData?.meta);
-        const isNoteBlock = blockData?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
         const isGuiChat = blockData?.meta?.["aisessions:newchat"] === true;
         const hoverCardMode = isGuiChat ? "gui" : "tui";
         // Note/Agent Block 折叠为 tab 后，悬浮激活/非激活标签均显示对应卡片
-        const showHoverCard = (isAgentBlock || isNoteBlock) && (isHovered || isCardHovered);
+        // BlockInfoCard 返回 null 时自动不渲染（原生 tooltip 继续生效）
+        const cardContent = BlockInfoCard({
+            blockId,
+            blockData: blockData ?? null,
+            mode: hoverCardMode,
+            onOpen: onActivate,
+        });
 
         return (
             <>
                 <div
                     ref={tabRef}
+                    data-blockid={blockId}
                     onContextMenu={handleContextMenu}
                     className={clsx("inline-tab-block-tab", {
                         active: isActive,
@@ -466,19 +455,7 @@ const InlineTabLabel = memo(
                         marquee: isMarquee,
                         "drop-target": isOver,
                     })}
-                    onMouseEnter={() => {
-                        cancelPendingHideCard();
-                        setIsHovered(true);
-                        refreshCardPos();
-                    }}
-                    onMouseLeave={() => {
-                        cancelPendingHideCard();
-                        hideCardTimerRef.current = window.setTimeout(() => {
-                            hideCardTimerRef.current = null;
-                            setIsHovered(false);
-                            setIsCardHovered(false);
-                        }, 300);
-                    }}
+                    {...cardHover.targetProps}
                 >
                     <div className="inline-tab-block-tab-main-wrapper" ref={scrollWrapRef}>
                         <Tooltip
@@ -578,52 +555,7 @@ const InlineTabLabel = memo(
                     </button>
                 </div>
                 {/* Note/Agent hover card - Portal 到 body 避免被 tabs 容器 overflow 裁剪；激活/非激活标签均显示 */}
-                {showHoverCard && cardPos &&
-                    createPortal(
-                        <div
-                            className="agent-hover-card-wrapper"
-                            style={{
-                                position: "fixed",
-                                top: cardPos.top,
-                                left: cardPos.left,
-                                zIndex: 200,
-                            }}
-                            onMouseEnter={() => {
-                                cancelPendingHideCard();
-                                refreshCardPos();
-                                setIsCardHovered(true);
-                            }}
-                            onMouseLeave={() => {
-                                cancelPendingHideCard();
-                                hideCardTimerRef.current = window.setTimeout(() => {
-                                    hideCardTimerRef.current = null;
-                                    setIsCardHovered(false);
-                                    setIsHovered(false);
-                                }, 300);
-                            }}
-                        >
-                            {isNoteBlock ? (
-                                <div className="agent-hover-card">
-                                    <div className="agent-hover-card-head">
-                                        <i className="fa-sharp fa-solid fa-note-sticky agent-hover-card-icon" />
-                                        <span className="agent-hover-card-title">Note</span>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="agent-hover-card-preview"
-                                        onClick={onActivate}
-                                    >
-                                        <span className="agent-hover-card-text">
-                                            {(blockData?.meta?.file as string) || blockData?.oid || ""}
-                                        </span>
-                                    </button>
-                                </div>
-                            ) : (
-                                <AgentHoverCard blockId={blockId} blockData={blockData ?? null} mode={hoverCardMode} />
-                            )}
-                        </div>,
-                        document.body
-                    )}
+                {cardContent != null && <InfoCardPortal hover={cardHover}>{cardContent}</InfoCardPortal>}
             </>
         );
     }
@@ -722,6 +654,9 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const fallbackTabStripRef = useRef<HTMLDivElement>(null);
     const tabStripRef = nodeModel.dragHandleRef ?? fallbackTabStripRef;
     const activeBlockDragHandleRef = useRef<HTMLDivElement>(null);
+    // tabs 行容器(折叠量测用) + 标签重命名 key (标题变长/变短时重新判定折叠)
+    const tabsElRef = useRef<HTMLDivElement>(null);
+    const tabTitlesKey = useMemo(() => JSON.stringify(layoutData.blockTabTitles ?? {}), [layoutData.blockTabTitles]);
     const activeLayoutDataAtom = useMemo(() => atom<TabLayoutData>(layoutData), [layoutData]);
     const activeNodeModel = useMemo(
         () => ({
@@ -800,7 +735,51 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const inlineTabActiveMaxPct = useAtomValue(
         waveEnv.getSettingsKeyAtom("block:inlinetabactivemaxwidthpct")
     );
-    const inlineTabActiveMaxWidthPct = Math.min(100, Math.max(10, inlineTabActiveMaxPct ?? 45));
+    const inlineTabActiveMaxWidthPct = Math.min(100, Math.max(10, inlineTabActiveMaxPct ?? 60));
+
+    // 空间不足时的自动折叠(方案 B 第二步):
+    // - 激活 Tab 永不折叠; 非激活 Tab 按「离激活距离越远越先折叠」隐藏进下拉菜单。
+    // - 只观察 tabs 行容器的宽度变化(不观察每个 Tab, 避免 show/hide 触发 RO 自激振荡)。
+    // - 每一次 recompute 都是单次原子判定(scrollWidth/clientWidth 同步即时), 无残留态。
+    useEffect(() => {
+        const el = tabsElRef.current;
+        if (!el || blockIds.length <= 1) return;
+        const activeIdx = blockIds.indexOf(activeBlockId);
+        const recompute = () => {
+            const order = Array.from(el.querySelectorAll<HTMLElement>(".inline-tab-block-tab"))
+                .map((node) => {
+                    const id = node.getAttribute("data-blockid");
+                    const idx = id != null ? blockIds.indexOf(id) : -1;
+                    return { node, id, idx, dist: idx >= 0 ? Math.abs(idx - activeIdx) : -1 };
+                })
+                .filter((x) => x.id != null && x.id !== activeBlockId && x.idx >= 0);
+            if (order.length === 0) return;
+            const isHidden = (n: HTMLElement) => n.style.display === "none";
+            // 折叠: 溢出时从离激活最远的非激活 Tab 开始逐个隐藏
+            const farFirst = [...order].sort((a, b) => b.dist - a.dist || b.idx - a.idx);
+            for (const c of farFirst) {
+                if (el.scrollWidth <= el.clientWidth) break;
+                if (isHidden(c.node)) continue;
+                c.node.style.display = "none";
+            }
+            // 还原: 无溢出时从离激活最近的已折叠 Tab 开始逐个恢复
+            const nearFirst = [...order].sort((a, b) => a.dist - b.dist || a.idx - b.idx);
+            for (const c of nearFirst) {
+                if (el.scrollWidth > el.clientWidth) break;
+                if (!isHidden(c.node)) continue;
+                c.node.style.display = "";
+                if (el.scrollWidth > el.clientWidth) {
+                    c.node.style.display = "none";
+                    break;
+                }
+            }
+        };
+        recompute();
+        const ro = new ResizeObserver(recompute);
+        ro.observe(el);
+        return () => ro.disconnect();
+        // 注意: 不要把 blockIds 数组本身加入 deps (每次渲染都是新引用); 用 blockIdsKey 字符串即可。
+    }, [blockIdsKey, activeBlockId, tabTitlesKey]);
 
     const handleTabStripKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -925,7 +904,7 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                     aria-orientation="horizontal"
                     onKeyDown={handleTabStripKeyDown}
                 >
-                    <div className="inline-tab-block-tabs">
+                    <div ref={tabsElRef} className="inline-tab-block-tabs">
                         <button
                             type="button"
                             className="inline-tab-block-group-handle"

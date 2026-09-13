@@ -1,0 +1,398 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// InfoCard 视觉规范。
+// 从 frontend/app/view/term/term.scss 的 .agent-hover-card-* 原样平移，规则值不变，
+// 只把类名前缀换成 info-card-*；未被任何组件使用的 .agent-hover-card-outline-* 死样式已删掉。
+
+.info-card-portal {
+    pointer-events: auto;
+}
+
+.info-card-section {
+    padding: 0 0 4px 0;
+}
+
+.info-card-section:last-child {
+    padding-bottom: 0;
+}
+
+.info-card {
+    min-width: 200px;
+    max-width: 400px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--block-bg-color);
+    color: var(--main-text-color);
+    font-size: 12px;
+    padding: 6px 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.info-card-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.info-card-icon {
+    font-size: 10px;
+    color: var(--accent-color);
+    flex-shrink: 0;
+}
+
+.info-card-title {
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.info-card-meta {
+    margin-left: auto;
+    max-width: 220px;
+    overflow: hidden;
+    color: var(--main-text-color);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.info-card-preview {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--main-text-color);
+    font-size: 12px;
+    padding: 4px 6px;
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--accent-color);
+        background: var(--hover-bg-color);
+    }
+}
+
+.info-card-empty {
+    color: var(--secondary-text-color);
+    font-style: italic;
+}
+
+.info-card-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.info-card-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+}
+
+.info-card-status .info-card-status-icon {
+    color: var(--accent-color);
+    font-size: 10px;
+}
+
+.info-card-input {
+    width: 100%;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    background: var(--form-element-bg-color);
+    color: var(--form-element-text-color);
+    font-size: 12px;
+    padding: 4px 6px;
+    resize: vertical;
+
+    &:focus {
+        outline: none;
+    }
+
+    &::placeholder {
+        color: var(--secondary-text-color);
+    }
+}
+
+.info-card-error {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--error-color);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Agent Card 变体 — 左侧状态色条 + 状态圆点 + logo 行
+   ═══════════════════════════════════════════════════════════════════════
+   CSS 变量由 AgentHoverCard 通过 style prop 注入：
+     --info-card-accent:  当前 agent 状态色（working 蓝 / done 绿 / …）
+
+   仅当 .info-card 同时有 .agent-card 类时生效，不影响其它 InfoCard 场景。
+   ─────────────────────────────────────────────────────────────────── */
+
+.info-card.agent-card {
+    border-left: 3px solid var(--info-card-accent, var(--secondary-text-color));
+    padding-left: 12px;
+    border-radius: 8px;
+}
+
+/* ── Provider logo 行 ── */
+.agent-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.agent-card-logo {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.agent-card-logo svg {
+    width: 100%;
+    height: 100%;
+}
+
+.agent-card-provider {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--main-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-card-model {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── 状态行：圆点 + label ── */
+.agent-card-status-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    margin-bottom: 6px;
+}
+
+.agent-card-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--info-card-accent, var(--secondary-text-color));
+    transition: background 0.2s ease;
+}
+
+.agent-card-status-dot.is-working {
+    animation: agent-card-pulse 1.6s ease-in-out infinite;
+}
+
+.agent-card-status-dot.is-thinking {
+    animation-duration: 0.9s;
+}
+
+@keyframes agent-card-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--info-card-accent) 55%, transparent);
+    }
+    50% {
+        box-shadow: 0 0 0 4px transparent;
+    }
+}
+
+.agent-card-status-label {
+    color: var(--main-text-color);
+    font-weight: 500;
+}
+
+/* ── Tags 行 ── */
+.agent-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+.agent-card-tag {
+    display: inline-block;
+    padding: 0 6px;
+    font-size: 10px;
+    line-height: 16px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--info-card-accent, var(--accent-color)) 12%, transparent);
+    color: var(--info-card-accent, var(--accent-color));
+    border: 1px solid color-mix(in srgb, var(--info-card-accent, var(--accent-color)) 25%, transparent);
+}
+
+/* ── Session ID 底行 ── */
+.agent-card-session-id {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+}
+
+.agent-card-session-id-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-card-copy-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    padding: 0;
+}
+
+.agent-card-copy-btn:hover {
+    background: var(--hover-bg-color);
+    color: var(--main-text-color);
+}
+
+.agent-card-copy-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Tab Card 变体 — workspace 图标 + Tab 全名 + flag + block 计数 + agent 清单
+   ═══════════════════════════════════════════════════════════════════════
+   仅当 .info-card 同时有 .tab-card 类时生效，不影响其它 InfoCard 场景。
+   ─────────────────────────────────────────────────────────────────── */
+
+.info-card.tab-card {
+    border-radius: 8px;
+}
+
+/* ── 身份区：workspace 图标 + 全名 + flag ── */
+.tab-card-workspace-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.tab-card-flag {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    margin-left: 6px;
+}
+
+/* ── 内容构成：block 类型计数 ── */
+.tab-card-blocks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
+.tab-card-block-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+
+    i {
+        font-size: 12px;
+        color: var(--main-text-color);
+    }
+}
+
+/* ── Agent 状态清单 ── */
+.tab-card-agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tab-card-agent-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.tab-card-agent-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+
+    &.is-working {
+        animation: agent-card-pulse 1.6s ease-in-out infinite;
+    }
+
+    &.is-thinking {
+        animation-duration: 0.9s;
+    }
+}
+
+.tab-card-agent-logo {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+        width: 100%;
+        height: 100%;
+    }
+}
+
+.tab-card-agent-provider {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--main-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tab-card-agent-state {
+    margin-left: auto;
+    font-size: 11px;
+    flex-shrink: 0;
+}

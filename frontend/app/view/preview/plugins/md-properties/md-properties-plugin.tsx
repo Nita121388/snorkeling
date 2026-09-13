@@ -16,19 +16,30 @@
 //   顶部 Save / Cmd+S 落盘，支持 Revert）。
 // - 无 frontmatter / 解析失败 → 原样 MarkdownPreview，零改动回退。
 
-import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
-import { loadable } from "jotai/utils";
-import { globalStore } from "@/app/store/jotaiStore";
-import { useAtomValue } from "jotai";
-import { useCallback, useMemo } from "react";
-import { registerPreviewPlugin, type PreviewPlugin } from "@/app/view/preview/preview-plugin-registry";
-import type { PreviewModel } from "@/app/view/preview/preview-model";
-import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
-import { parseFrontmatterBlock, replaceFrontmatter, stringifyFrontmatterData, buildPropertyEntries } from "./frontmatter-block";
-import { deleteProperty, setProperty, type PropertyEditValue } from "./frontmatter-edit";
 import { reorderFrontmatterProperties } from "@/app/element/markdown-transform/doc-meta";
+import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
+import { globalStore } from "@/app/store/jotaiStore";
+import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
+import type { PreviewModel } from "@/app/view/preview/preview-model";
+import { registerPreviewPlugin, type PreviewPlugin } from "@/app/view/preview/preview-plugin-registry";
+import { extractFirstH1, resolveNoteTitle } from "@/app/view/preview/title-util";
+import { useAtomValue } from "jotai";
+import { loadable } from "jotai/utils";
+import { useCallback, useMemo } from "react";
+import { DocTitle } from "./doc-title";
+import {
+    buildPropertyEntries,
+    parseFrontmatterBlock,
+    replaceFrontmatter,
+    stringifyFrontmatterData,
+} from "./frontmatter-block";
+import { deleteProperty, setProperty, type PropertyEditValue } from "./frontmatter-edit";
 import { isMdPropertiesMatch } from "./md-properties-match";
-import { ObsidianPropertiesCard, getObsidianPropsCollapsed, setObsidianPropsCollapsed } from "./obsidian-properties-card";
+import {
+    ObsidianPropertiesCard,
+    getObsidianPropsCollapsed,
+    setObsidianPropsCollapsed,
+} from "./obsidian-properties-card";
 
 const pluginId = "md-properties";
 
@@ -49,6 +60,14 @@ function MdPropertiesView({ model, parentRef }: { model: PreviewModel; parentRef
     const textLoadable = useAtomValue(loadable(model.fileContent));
     const text = textLoadable.state === "hasData" ? textLoadable.data : undefined;
     const frontmatterBlock = useMemo(() => (text ? parseFrontmatterBlock(text) : null), [text]);
+    // 兜底标题：正文有 H1 时靠 markdown 自身显示；没有 H1 时用文件名回退补一个干净标题。
+    const statFilePathLoadable = useAtomValue(loadable(model.statFilePath));
+    const filePath = statFilePathLoadable.state === "hasData" ? statFilePathLoadable.data : undefined;
+    const hasH1 = useMemo(() => extractFirstH1(text) != null, [text]);
+    const docTitle = useMemo(() => {
+        if (hasH1 || filePath == null) return null;
+        return resolveNoteTitle(text, filePath);
+    }, [hasH1, text, filePath]);
     // 折叠状态持久化 key：同一预览块（同一文件）重挂后恢复折叠/展开，与标题折叠的
     // markdownCollapsedHeadings 同模式（key = blockId）。
     const collapseKey = model.blockId;
@@ -145,18 +164,28 @@ function MdPropertiesView({ model, parentRef }: { model: PreviewModel; parentRef
         [handleDataChange, handleReorder, collapseKey]
     );
 
-    if (frontmatterBlock == null) {
-        // 无 frontmatter 或解析失败 → 原样 markdown 渲染
-        return <MarkdownPreview model={model} parentRef={parentRef} />;
-    }
+    const preview =
+        frontmatterBlock == null ? (
+            // 无 frontmatter 或解析失败 → 原样 markdown 渲染
+            <MarkdownPreview model={model} parentRef={parentRef} />
+        ) : (
+            <MarkdownPreview
+                model={model}
+                parentRef={parentRef}
+                frontmatterBlock={{ ...frontmatterBlock, blockKey: FrontmatterBlockKey }}
+                waveBlockRenderers={waveBlockRenderers}
+            />
+        );
 
+    if (docTitle == null) {
+        return preview;
+    }
+    // 无 H1 → 标题区固定在正文/属性卡上方，正文区滚动。
     return (
-        <MarkdownPreview
-            model={model}
-            parentRef={parentRef}
-            frontmatterBlock={{ ...frontmatterBlock, blockKey: FrontmatterBlockKey }}
-            waveBlockRenderers={waveBlockRenderers}
-        />
+        <div className="flex flex-col h-full">
+            <DocTitle title={docTitle} />
+            <div className="flex-1 overflow-auto">{preview}</div>
+        </div>
     );
 }
 

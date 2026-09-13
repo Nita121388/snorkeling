@@ -964,6 +964,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                                     id={tabId}
                                     hidden={false}
                                     showDivider={showDivider}
+                                    workspaceId={workspace?.oid}
                                     onSelect={() => handleSelectTab(tabId)}
                                     active={isActive}
                                     onDragStart={(event) => handleDragStart(event, tabId, tabRefs.current[tabIndex])}

@@ -22,87 +22,57 @@ export type TabBackgroundEnv = WaveEnvSubset<{
 export const colorRegex = /^((#[0-9a-f]{6,8})|([a-z]+))$/;
 export const NumActiveConnColors = 8;
 
+/**
+ * Canonical view → { name, icon } mapping for all built-in block views.
+ *
+ * This is the single source of truth for the static/default icon and name of
+ * each view. It MUST stay in sync with `BuiltinViewModels` in `builtinviews.ts`
+ * — every built-in view registered there should have an entry here, otherwise
+ * blocks using that view resolve a generic "square"/cube icon when the view
+ * model isn't instantiated (e.g. minimized blocks in the BlockBar). Keeping a
+ * single table here fixes the old two-hardcoded-lists drift that silently
+ * dropped icons for views added after the original whitelist.
+ *
+ * Views whose icon/name is dynamic at runtime (e.g. tsunami reads app meta,
+ * sysinfo reads the selected plot type) use a sensible static default here;
+ * when the view model is instantiated, `viewModel.viewIcon/viewName` wins.
+ */
+const ViewMetaMap: Record<string, { name: string; icon: string }> = {
+    // original whitelist (values unchanged)
+    term: { name: "Terminal", icon: "terminal" },
+    preview: { name: "Preview", icon: "file" },
+    web: { name: "Web", icon: "globe" },
+    waveai: { name: "WaveAI", icon: "sparkles" },
+    help: { name: "Help", icon: "circle-question" },
+    tips: { name: "Tips", icon: "lightbulb" },
+    processviewer: { name: "Processes", icon: "microchip" },
+    sessionoverview: { name: "Overview", icon: "list-tree" },
+    vcs: { name: "Version Control", icon: "code-branch" },
+    vcscommits: { name: "Repo Commits", icon: "clock-rotate-left" },
+    vcsdiff: { name: "File Diff", icon: "file-code" },
+    vcshistory: { name: "File History", icon: "clock-rotate-left" },
+    // built-in views added after the original list (keep in sync with builtinviews.ts)
+    cpuplot: { name: "CPU", icon: "chart-line" },
+    sysinfo: { name: "SysInfo", icon: "chart-line" },
+    vdom: { name: "VDOM", icon: "bolt" },
+    launcher: { name: "Launcher", icon: "shapes" },
+    tsunami: { name: "WaveApp", icon: "cube" },
+    aifilediff: { name: "AI File Diff", icon: "file-lines" },
+    waveconfig: { name: "WaveConfig", icon: "gear" },
+    scheduledtasks: { name: "Scheduled Tasks", icon: "clock" },
+    aisessions: { name: "AI Sessions", icon: "comments" },
+    agent: { name: "Agent", icon: "robot" },
+};
+
 export function blockViewToIcon(view: string): string {
-    if (view == "term") {
-        return "terminal";
-    }
-    if (view == "preview") {
-        return "file";
-    }
-    if (view == "web") {
-        return "globe";
-    }
-    if (view == "waveai") {
-        return "sparkles";
-    }
-    if (view == "help") {
-        return "circle-question";
-    }
-    if (view == "tips") {
-        return "lightbulb";
-    }
-    if (view == "processviewer") {
-        return "microchip";
-    }
-    if (view == "sessionoverview") {
-        return "list-tree";
-    }
-    if (view == "vcs") {
-        return "code-branch";
-    }
-    if (view == "vcscommits") {
-        return "clock-rotate-left";
-    }
-    if (view == "vcsdiff") {
-        return "file-code";
-    }
-    if (view == "vcshistory") {
-        return "clock-rotate-left";
-    }
-    return "square";
+    return ViewMetaMap[view]?.icon ?? "square";
 }
 
 export function blockViewToName(view: string): string {
     if (util.isBlank(view)) {
         return "(No View)";
     }
-    if (view == "term") {
-        return "Terminal";
-    }
-    if (view == "preview") {
-        return "Preview";
-    }
-    if (view == "web") {
-        return "Web";
-    }
-    if (view == "waveai") {
-        return "WaveAI";
-    }
-    if (view == "help") {
-        return "Help";
-    }
-    if (view == "tips") {
-        return "Tips";
-    }
-    if (view == "processviewer") {
-        return "Processes";
-    }
-    if (view == "sessionoverview") {
-        return "Overview";
-    }
-    if (view == "vcs") {
-        return "Version Control";
-    }
-    if (view == "vcscommits") {
-        return "Repo Commits";
-    }
-    if (view == "vcsdiff") {
-        return "File Diff";
-    }
-    if (view == "vcshistory") {
-        return "File History";
-    }
-    return view;
+    return ViewMetaMap[view]?.name ?? view;
 }
 
 export function processTitleString(titleString: string): React.ReactNode[] {

@@ -27,6 +27,7 @@ const sweepInterval = 1 * time.Minute
 type Manager struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
+	aliases  map[string]string
 	idle     time.Duration
 	started  bool
 }
@@ -35,6 +36,7 @@ type Manager struct {
 func NewManager() *Manager {
 	return &Manager{
 		sessions: map[string]*Session{},
+		aliases:  map[string]string{},
 		idle:     DefaultIdleTimeout,
 	}
 }
@@ -70,14 +72,30 @@ func (m *Manager) Ensure(ctx context.Context, provider Provider, opts StartOptio
 	}
 	key := sessionKey(provider.Source(), opts.SessionID)
 	if opts.SessionID == "" {
-		// New chat: generate a unique transient key so each request gets its own subprocess.
-		key = sessionKey(provider.Source(), "new:"+uuid.NewString())
+		// Reuse one subprocess while the GUI is waiting for pi to assign its session ID.
+		transientID := opts.ClientKey
+		if transientID == "" {
+			transientID = "new:" + uuid.NewString()
+		}
+		key = sessionKey(provider.Source(), transientID)
+	}
+	requestedKey := key
+	if alias, ok := m.aliases[key]; ok {
+		key = alias
 	}
 	if s, ok := m.sessions[key]; ok {
 		m.mu.Unlock()
-		return s, false, key, nil
+		if s.State() != StateClosed {
+			return s, false, requestedKey, nil
+		}
+		m.mu.Lock()
+		if m.sessions[key] == s {
+			delete(m.sessions, key)
+		}
+		m.mu.Unlock()
+	} else {
+		m.mu.Unlock()
 	}
-	m.mu.Unlock()
 
 	s, err := provider.Start(ctx, opts)
 	if err != nil {
@@ -88,7 +106,7 @@ func (m *Manager) Ensure(ctx context.Context, provider Provider, opts StartOptio
 	if existing, ok := m.sessions[key]; ok {
 		m.mu.Unlock()
 		_ = s.Close()
-		return existing, false, key, nil
+		return existing, false, requestedKey, nil
 	}
 	m.sessions[key] = s
 	m.mu.Unlock()
@@ -112,6 +130,7 @@ func (m *Manager) PromoteSession(source, oldKey string, realSessionID string, se
 	if m.sessions[oldKey] == session {
 		delete(m.sessions, oldKey)
 	}
+	m.aliases[oldKey] = realKey
 	// Don't overwrite an existing real-key entry
 	if _, exists := m.sessions[realKey]; !exists {
 		m.sessions[realKey] = session
@@ -141,6 +160,7 @@ func (m *Manager) CloseAll() {
 	m.mu.Lock()
 	sessions := m.sessions
 	m.sessions = map[string]*Session{}
+	m.aliases = map[string]string{}
 	m.mu.Unlock()
 	for _, s := range sessions {
 		_ = s.Close()
@@ -167,7 +187,7 @@ func (m *Manager) sweepOnce() {
 	m.mu.Lock()
 	var toClose []*Session
 	for key, s := range m.sessions {
-		if now.Sub(s.LastUsed()) > m.idle {
+		if s.State() == StateClosed || now.Sub(s.LastUsed()) > m.idle {
 			toClose = append(toClose, s)
 			delete(m.sessions, key)
 		}
