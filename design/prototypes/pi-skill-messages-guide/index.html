@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pi 启动提示解读 · Skill 去重 &amp; YAML 解析</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="dark">
+<div class="page">
+
+  <!-- ============ 头部 ============ -->
+  <header class="hero">
+    <div class="hero-eyebrow">pi 终端 · 启动信息解读</div>
+    <h1>每次启动时刷的这两类提示，<span class="hl">不是故障</span>，是 pi 在加载 skill</h1>
+    <p class="subtitle">一类是 <b>同名 skill 去重</b>（项目优先，正常跳过），一类是 <b>某个 skill 的 YAML 解析报错</b>（真问题，需修）。下面逐个拆解。</p>
+    <div class="hero-meta">
+      <span class="chip chip-ok">① Skill conflicts · 正常</span>
+      <span class="chip chip-warn">② YAML 解析报错 · 需修</span>
+      <span class="chip chip-plain">镜像源：pi 终端启动日志</span>
+    </div>
+  </header>
+
+  <!-- ============ 模拟终端 ============ -->
+  <section class="term-wrap">
+    <div class="term">
+      <div class="term-bar">
+        <span class="t-dot r"></span><span class="t-dot y"></span><span class="t-dot g"></span>
+        <span class="term-title">pi · skill load</span>
+      </div>
+      <div class="term-body">
+        <div class="log log-ok">
+          <span class="lg-flag">✓</span>
+          <span class="lg-msg">Skill <code>gitnexus-exploring</code> (project)</span>
+          <span class="lg-tag tag-green">auto (project)</span>
+        </div>
+        <div class="log log-dim">
+          <span class="lg-flag">✗</span>
+          <span class="lg-msg">Skill <code>gitnexus-exploring</code> (user)</span>
+          <span class="lg-tag tag-grey">skipped</span>
+        </div>
+        <div class="log log-dim">
+          <span class="lg-flag">✗</span>
+          <span class="lg-msg">Skill <code>gitnexus-impact-analysis</code> (user)</span>
+          <span class="lg-tag tag-grey">skipped</span>
+        </div>
+        <div class="log log-err">
+          <span class="lg-flag">⚠</span>
+          <span class="lg-msg">Nested mappings are not allowed in compact mappings</span>
+          <span class="lg-tag tag-red">YAML @ line 2</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ① Skill conflicts ============ -->
+  <section class="card card-ok" id="conflict">
+    <div class="card-head">
+      <span class="num">①</span>
+      <div class="head-txt">
+        <h2>Skill conflicts —— 同名 skill 装了两份</h2>
+        <p class="verdict verdict-ok">结论：<b>正常去重</b>，忽略即可，不冲突不报错。</p>
+      </div>
+    </div>
+
+    <p class="desc">同一套 GitNexus skill 同时存在两份——一份在项目里，一份在你的用户全局目录。pi 的策略是 <b>auto（项目优先）</b>：项目那份生效（<span class="ok">✓</span>），用户那份被跳过（<span class="dim">✗</span>）。</p>
+
+    <div class="paths">
+      <div class="path-card">
+        <div class="path-kind">项目级 <span class="badge badge-ok">生效 ✓</span></div>
+        <code class="path">E:\code\snorkeling\.agents\skills\gitnexus\…</code>
+      </div>
+      <div class="path-card">
+        <div class="path-kind">用户级 <span class="badge badge-dim">被跳过 ✗</span></div>
+        <code class="path">~\.agents\skills\gitnexus-…</code>
+        <code class="path sub">即 C:\Users\chemclin\.agents\skills\…</code>
+      </div>
+    </div>
+
+    <details class="note">
+      <summary>长期隐患 · 为什么值得顺手清理</summary>
+      <div class="note-body">
+        <p>这两份是同名 skill 的重复副本。若它们内容不一致，容易造成<b>「改了全局那份却没生效」的困惑</b>（因为项目那份优先级更高）。建议<b>二选一保留</b>，删掉不用的那份。</p>
+        <button class="copy-btn" data-copy="E:\code\snorkeling\.agents\skills\gitnexus">复制项目 skill 路径</button>
+      </div>
+    </details>
+  </section>
+
+  <!-- ============ ② YAML parse error ============ -->
+  <section class="card card-err" id="yaml">
+    <div class="card-head">
+      <span class="num">②</span>
+      <div class="head-txt">
+        <h2>YAML 解析报错 —— snorkeling-release\SKILL.md 的唯一真问题</h2>
+        <p class="verdict verdict-err">结论：<b>description 值未加引号</b>，含 <code>流程: </code> 冒号子串被当成嵌套映射，导致该 skill 加载失败/元信息识别异常。</p>
+      </div>
+    </div>
+
+    <div class="errbox">
+      <div class="errbox-title">报错原文</div>
+      <pre class="errline">Nested mappings are not allowed in compact mappings at <b>line 2, column 14</b></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="cb-head">
+        <span>SKILL.md · frontmatter（第 2 行）</span>
+        <button class="copy-btn" data-copy-line="description">复制该行</button>
+      </div>
+      <pre class="code"><span class="ln">1</span> ---
+<span class="ln">2</span> description: 发布 Snorkeling (WaveTerm fork) 新版本。用于用户提到"发布新版本/…"。<span class="bad bad-colon">流程: </span>bump package.json prerelease 号 → …
+<span class="ln">3</span> ---</pre>
+      <div class="legend"><span class="bad-mark">■</span> <code>流程: </code>（冒号 + 空格）是罪魁祸首 —— YAML 把它当成想再开一层的嵌套映射</div>
+    </div>
+
+    <!-- 根因步骤 -->
+    <div class="cause">
+      <h3>为什么报错</h3>
+      <ol class="steps">
+        <li><code>description:</code> 的值是一个<b>超长未加引号的裸字符串</b>。</li>
+        <li>字符串中间混入 <code>流程: </code>（冒号+空格）这类子串。</li>
+        <li>YAML 解析器把 <code>流程: </code> 视作<b>新的 key: value 嵌套映射</b>。</li>
+        <li>但当前是紧凑映射上下文、又无正确缩进，于是抛 <b>Nested mappings</b> 错误。</li>
+        <li>后果：frontmatter 未正确解析，<b>skill 加载失败或 name/description 识别异常</b>。</li>
+      </ol>
+    </div>
+
+    <!-- 修复对比 -->
+    <div class="fix">
+      <h3>修复方式（任选其一）</h3>
+      <div class="fix-grid">
+        <div class="fix-col bad-col">
+          <div class="fix-label">❌ 现在（裸字符串）</div>
+          <pre class="code">description: …用于用户提到"发布…"。流程: bump …</pre>
+        </div>
+        <div class="fix-col good-col">
+          <div class="fix-label">✅ 修复 · 单引号包裹</div>
+          <pre class="code">description: '…用于用户提到"发布…"。流程: bump …'</pre>
+        </div>
+      </div>
+      <p class="fix-tip">用<b>单引号</b>最稳：值里含中文双引号 <code>""</code> 与 ASCII <code>"</code>，单引号可整体包裹不转义；也可改用 YAML 块标量 <code>|-</code>。</p>
+      <button class="copy-btn primary" data-copy="description: '发布 Snorkeling (WaveTerm fork) 新版本。用于用户提到"发布新版本/release/发版/上 tag/打 tag/publish new version/发布到 release"。流程: bump package.json prerelease 号 → 查远端号未被占 → commit → push → 打 annotated tag → push tag 触发 GitHub Actions 自动三平台构建 + softprops 创建正式 GitHub Release。本 skill 不发 S3/Snap/WinGet (那是上游 waveterm 的发版流域, 不适用本 fork)。'">复制修复后的整行 description</button>
+    </div>
+  </section>
+
+  <!-- ============ 速查表 ============ -->
+  <section class="card card-plain">
+    <h2 class="no-num">一图速查</h2>
+    <table class="tbl">
+      <thead>
+        <tr><th>提示</th><th>是什么</th><th>要不要管</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>Skill … skipped</code></td><td>同名 skill 去重，项目优先</td><td class="ok">不用管</td></tr>
+        <tr><td><code>Nested mappings are not allowed…</code></td><td>某 skill 的 YAML 解析失败</td><td class="warn">需修 frontmatter</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="foot">
+    <p>设计原型 · pi 终端启动信息解读 · 非应用内 UI，仅供理解与排查参考</p>
+  </footer>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
