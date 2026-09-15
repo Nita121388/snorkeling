@@ -1341,7 +1341,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         : "";
 
     return (
-        <div ref={rootRef} className="flex h-full w-full min-h-0 flex-col bg-block text-primary">
+        <div ref={rootRef} className="flex h-full w-full min-h-0 flex-col bg-block-solid text-primary">
             {error && detail == null && activeSession?.key !== NewSessionKey ? (
                 <div className="shrink-0 border-b border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
                     {error}

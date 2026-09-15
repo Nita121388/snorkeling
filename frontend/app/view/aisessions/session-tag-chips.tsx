@@ -52,10 +52,7 @@ function SessionTagChips({
                             }
                         }}
                     >
-                        <span className="truncate">
-                            <span className="opacity-50">#</span>
-                            {tag}
-                        </span>
+                        <span className="truncate">{tag}</span>
                         {count != null ? <span className="text-[10px] opacity-70">{count}</span> : null}
                         {removable ? (
                             <i className="fa-sharp fa-solid fa-xmark text-[9px] opacity-60" />

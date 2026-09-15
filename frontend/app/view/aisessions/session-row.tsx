@@ -205,7 +205,7 @@ export function SessionRow({
     return (
         <div
             className={cn(
-                "group relative cursor-pointer border-b border-border px-3 py-2 text-sm hover:bg-hoverbg",
+                "group relative cursor-pointer border-b border-border bg-block-solid px-3 py-2 text-sm hover:bg-hoverbg",
                 selected &&
                     "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
@@ -319,7 +319,6 @@ export function SessionRow({
                                         key={tag}
                                         className="shrink-0 rounded-md border border-border bg-accent/10 px-2 py-0.5 text-[11px] leading-none text-accent"
                                     >
-                                        <span className="opacity-50">#</span>
                                         {tag}
                                     </span>
                                 ))}
