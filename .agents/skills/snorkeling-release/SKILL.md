@@ -1,6 +1,6 @@
 ---
 name: snorkeling-release
-description: 发布 Snorkeling (WaveTerm fork) 新版本。用于用户提到"发布新版本/release/发版/上 tag/打 tag/publish new version/发布到 release"。流程: bump package.json prerelease 号 → 查远端号未被占 → commit → push → 打 annotated tag → push tag 触发 GitHub Actions 自动三平台构建 + softprops 创建正式 GitHub Release。本 skill 不发 S3/Snap/WinGet (那是上游 waveterm 的发版流域, 不适用本 fork)。
+description: '发布 Snorkeling (WaveTerm fork) 新版本。用于用户提到"发布新版本/release/发版/上 tag/打 tag/publish new version/发布到 release"。流程: bump package.json prerelease 号 → 查远端号未被占 → commit → push → 打 annotated tag → push tag 触发 GitHub Actions 自动三平台构建 + softprops 创建正式 GitHub Release。本 skill 不发 S3/Snap/WinGet (那是上游 waveterm 的发版流域, 不适用本 fork)。'
 ---
 
 # Snorkeling Release
