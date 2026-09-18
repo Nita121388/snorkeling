@@ -344,7 +344,21 @@ export class TermViewModel implements ViewModel {
             return true;
         });
         this.filterOutNowsh = jotai.atom(false);
-        this.termBPMAtom = getOverrideConfigAtom(blockId, "term:allowbracketedpaste");
+        // 方案A: 对 pi agent 终端块强制启用 bracketed paste mode。
+        // Pi TUI 依赖 bracketed paste 标记(\x1b[200~/\x1b[201~)来正确处理多行粘贴；
+        // 若 BPM 关闭，粘贴的 \r 会被误判为 Enter 触发提交，导致长文本被截断。
+        // 参见 pi-tui issue #7321: Multi-line paste broken without bracketed paste.
+        const rawBPAtom = getOverrideConfigAtom(blockId, "term:allowbracketedpaste");
+        this.termBPMAtom = jotai.atom((get) => {
+            const blockMeta = get(this.blockAtom)?.meta;
+            const provider = typeof blockMeta?.["agent:provider"] === "string"
+                ? blockMeta["agent:provider"].trim().toLowerCase()
+                : "";
+            if (provider === "pi") {
+                return true; // pi agent block: always enable bracketed paste
+            }
+            return get(rawBPAtom) ?? true;
+        }) as jotai.Atom<boolean>;
         this.termThemeNameAtom = useBlockAtom(blockId, "termthemeatom", () => {
             return jotai.atom<string>((get) => {
                 return (
