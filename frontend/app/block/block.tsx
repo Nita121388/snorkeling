@@ -656,6 +656,9 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const activeBlockDragHandleRef = useRef<HTMLDivElement>(null);
     // tabs 行容器(折叠量测用) + 标签重命名 key (标题变长/变短时重新判定折叠)
     const tabsElRef = useRef<HTMLDivElement>(null);
+    const morePillRef = useRef<HTMLDivElement>(null);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [hiddenCount, setHiddenCount] = useState(0);
     const tabTitlesKey = useMemo(() => JSON.stringify(layoutData.blockTabTitles ?? {}), [layoutData.blockTabTitles]);
     const activeLayoutDataAtom = useMemo(() => atom<TabLayoutData>(layoutData), [layoutData]);
     const activeNodeModel = useMemo(
@@ -737,43 +740,45 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     );
     const inlineTabActiveMaxWidthPct = Math.min(100, Math.max(10, inlineTabActiveMaxPct ?? 60));
 
-    // 空间不足时的自动折叠(方案 B 第二步):
-    // - 激活 Tab 永不折叠; 非激活 Tab 按「离激活距离越远越先折叠」隐藏进下拉菜单。
-    // - 只观察 tabs 行容器的宽度变化(不观察每个 Tab, 避免 show/hide 触发 RO 自激振荡)。
-    // - 每一次 recompute 都是单次原子判定(scrollWidth/clientWidth 同步即时), 无残留态。
+    // 空间不足时的自动折叠 (Plan A: 溢出 → 当前 Tab + 更多药丸):
+    // - 溢出时: 仅保留当前激活 Tab 可见, 其余非激活 Tab 全部收进「更多」药丸。
+    // - 非溢出时: 所有 Tab 正常展示, 药丸隐藏。
+    // - 两阶段测量: 先隐藏药丸测量自然溢出 → 若溢出则收起非激活 Tab + 显示药丸。
+    // - RO 只观察容器宽度变化, 不观察每个 Tab, 避免 show/hide 触发自激振荡。
     useEffect(() => {
         const el = tabsElRef.current;
+        const pill = morePillRef.current;
         if (!el || blockIds.length <= 1) return;
-        const activeIdx = blockIds.indexOf(activeBlockId);
+
         const recompute = () => {
-            const order = Array.from(el.querySelectorAll<HTMLElement>(".inline-tab-block-tab"))
-                .map((node) => {
-                    const id = node.getAttribute("data-blockid");
-                    const idx = id != null ? blockIds.indexOf(id) : -1;
-                    return { node, id, idx, dist: idx >= 0 ? Math.abs(idx - activeIdx) : -1 };
-                })
-                .filter((x) => x.id != null && x.id !== activeBlockId && x.idx >= 0);
-            if (order.length === 0) return;
-            const isHidden = (n: HTMLElement) => n.style.display === "none";
-            // 折叠: 溢出时从离激活最远的非激活 Tab 开始逐个隐藏
-            const farFirst = [...order].sort((a, b) => b.dist - a.dist || b.idx - a.idx);
-            for (const c of farFirst) {
-                if (el.scrollWidth <= el.clientWidth) break;
-                if (isHidden(c.node)) continue;
-                c.node.style.display = "none";
+            const allTabs = Array.from(el.querySelectorAll<HTMLElement>(".inline-tab-block-tab"));
+            const nonActiveTabs = allTabs.filter((n) => {
+                const id = n.getAttribute("data-blockid");
+                return id != null && id !== activeBlockId;
+            });
+
+            // Phase 1: 显示所有 Tab, 隐藏药丸 → 测量自然溢出
+            for (const t of nonActiveTabs) t.style.display = "";
+            if (pill) pill.style.display = "none";
+
+            if (el.scrollWidth <= el.clientWidth) {
+                // 无溢出: 所有 Tab 可见, 药丸隐藏
+                setHiddenCount(0);
+                setMenuOpen(false); // 溢出消失时关闭已打开的下拉
+                return;
             }
-            // 还原: 无溢出时从离激活最近的已折叠 Tab 开始逐个恢复
-            const nearFirst = [...order].sort((a, b) => a.dist - b.dist || a.idx - b.idx);
-            for (const c of nearFirst) {
-                if (el.scrollWidth > el.clientWidth) break;
-                if (!isHidden(c.node)) continue;
-                c.node.style.display = "";
-                if (el.scrollWidth > el.clientWidth) {
-                    c.node.style.display = "none";
-                    break;
-                }
+
+            // Phase 2: 溢出 → 收起所有非激活 Tab, 显示药丸
+            for (const t of nonActiveTabs) t.style.display = "none";
+            const count = nonActiveTabs.length;
+            if (pill) {
+                pill.style.display = "";
+                const countEl = pill.querySelector<HTMLElement>(".more-count");
+                if (countEl) countEl.textContent = String(count);
             }
+            setHiddenCount(count);
         };
+
         recompute();
         const ro = new ResizeObserver(recompute);
         ro.observe(el);
@@ -943,6 +948,26 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                                 onRename={(title) => layoutModel?.setInlineTabTitle(nodeModel.nodeId, blockId, title)}
                             />
                         ))}
+                        {blockIds.length > 1 && (
+                            <div
+                                ref={morePillRef}
+                                className="inline-tab-block-more-btn"
+                                style={hiddenCount === 0 ? { display: "none" } : undefined}
+                                title={hiddenCount > 0 ? `${hiddenCount} more tabs` : "All tabs visible"}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setMenuOpen((o) => !o)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        setMenuOpen((o) => !o);
+                                    }
+                                }}
+                            >
+                                <i className={makeIconClass("ellipsis", true)} />
+                                <span className="more-count">{hiddenCount}</span>
+                            </div>
+                        )}
                     </div>
                     <div className="inline-tab-block-addzone">
                         <InlineTabGroupAddButton
@@ -954,8 +979,9 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                             <InlineTabDropdownMenu
                                 tabs={tabsInfo}
                                 activeTabId={activeBlockId}
-                                nodeId={nodeModel.nodeId}
-                                tabId={tabModel.tabId}
+                                anchorRef={morePillRef}
+                                isOpen={menuOpen}
+                                onOpenChange={setMenuOpen}
                                 onSelect={(blockId) => layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, blockId)}
                             />
                         )}
