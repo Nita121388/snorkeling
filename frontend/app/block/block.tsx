@@ -740,11 +740,12 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     );
     const inlineTabActiveMaxWidthPct = Math.min(100, Math.max(10, inlineTabActiveMaxPct ?? 60));
 
-    // 空间不足时的自动折叠 (Plan A: 溢出 → 当前 Tab + 更多药丸):
-    // - 溢出时: 仅保留当前激活 Tab 可见, 其余非激活 Tab 全部收进「更多」药丸。
-    // - 非溢出时: 所有 Tab 正常展示, 药丸隐藏。
-    // - 两阶段测量: 先隐藏药丸测量自然溢出 → 若溢出则收起非激活 Tab + 显示药丸。
-    // - RO 只观察容器宽度变化, 不观察每个 Tab, 避免 show/hide 触发自激振荡。
+    // 空间不足时的渐进自动折叠 (能展示全则展示全, 放不下的进「更多」药丸):
+    // - 无溢出时: 所有 Tab 按完整自然宽度展示, 药丸隐藏。
+    // - 溢出时: 激活 Tab 永远完整可见; 从最右侧非激活 Tab 起逐条收起进药丸,
+    //   直到全部放得下。非激活 Tab flex-shrink:0 不再被均分挤压成半截。
+    // - 测量: 先显示全部隐藏药丸量自然溢出 → 溢出则显示药丸并逐条收。
+    //   RO 只观察容器宽度变化, 不观察每个 Tab, 避免 show/hide 触发自激振荡。
     useEffect(() => {
         const el = tabsElRef.current;
         const pill = morePillRef.current;
@@ -768,13 +769,30 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                 return;
             }
 
-            // Phase 2: 溢出 → 收起所有非激活 Tab, 显示药丸
-            for (const t of nonActiveTabs) t.style.display = "none";
-            const count = nonActiveTabs.length;
+            // Phase 2: 渐进式溢出折叠 (能展示全的展示全, 放不下的进药丸):
+            // - 激活 Tab 永远保留完整可见; 药丸显示吃进右侧预留空间.
+            // - 从最右侧非激活 Tab 起逐条往左收: 只有整条放不下才隐藏进「更多」,
+            //   放得下的保持完整自然宽度 (tab 已 flex-shrink:0 不再被挤压成半截).
+            // - 药丸本身在 .tabs 容器内, 故「先显示药丸再逐条收」时直接比较
+            //   scrollWidth/clientWidth 即可把药丸宽度自然计入, 测量稳定无振荡.
+            let count = 0;
             if (pill) {
                 pill.style.display = "";
                 const countEl = pill.querySelector<HTMLElement>(".more-count");
-                if (countEl) countEl.textContent = String(count);
+                while (el.scrollWidth > el.clientWidth && count < nonActiveTabs.length) {
+                    // 取当前仍可见的最右侧非激活 Tab
+                    let target: HTMLElement | null = null;
+                    for (let i = nonActiveTabs.length - 1; i >= 0; i--) {
+                        if (nonActiveTabs[i].style.display !== "none") {
+                            target = nonActiveTabs[i];
+                            break;
+                        }
+                    }
+                    if (!target) break;
+                    target.style.display = "none";
+                    count++;
+                    if (countEl) countEl.textContent = String(count);
+                }
             }
             setHiddenCount(count);
         };

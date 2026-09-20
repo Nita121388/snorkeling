@@ -117,6 +117,7 @@ import { TableToolbar, type TableOp } from "@/app/element/block-editor/component
 import { TableBlock, TableEditContext, type TableEditContextValue, type TableCellFocus } from "@/app/element/block-editor/components/table-block";
 import { DocEmojiHeader } from "@/app/element/block-editor/components/doc-emoji-header";
 import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
+import { type WysiwygEditorHandle } from "./wysiwyg-editor";
 import {
     MarkdownContentBlockType,
     editImageSyntaxInFullText,
@@ -2141,17 +2142,30 @@ const Markdown = ({
             if (lineAttr == null) {
                 return null;
             }
-            const line = Number(lineAttr);
+            let line = Number(lineAttr);
             if (!Number.isFinite(line) || line < 1) {
                 return null;
             }
-            const tag = target.tagName;
             let blockKind: InlineEditBlockKind | null = null;
+            const tag = target.tagName;
+            // Promote a click inside a <blockquote> to the blockquote element (kind "quote").
+            // The blockquote carries its own data-source-line (from our component); its inner
+            // paragraphs are the editable content. Quote content is prefixed with "> " on commit.
+            if (tag !== "BLOCKQUOTE" && target.closest?.("blockquote[data-source-line]") != null) {
+                const bq = target.closest<HTMLElement>("blockquote[data-source-line]");
+                if (bq != null && bq.dataset.sourceLine != null) {
+                    target = bq;
+                    line = Number(bq.dataset.sourceLine);
+                    blockKind = "quote";
+                }
+            }
             // Spacers render through the same `p` component as paragraphs but carry the
             // `blank-spacer` class (see remark/blank-line-spacers). A blank line is not prose —
             // editing it should target the blank source line(s), not open a paragraph textarea.
             if (target.classList.contains("blank-spacer")) {
                 blockKind = "blank";
+            } else if (tag === "BLOCKQUOTE") {
+                blockKind = "quote";
             } else if (tag === "HR") {
                 blockKind = "hr";
             } else if (tag === "P" || target.classList.contains("paragraph")) {
@@ -2426,9 +2440,22 @@ const Markdown = ({
             if (!onInlineEditCommit) {
                 return;
             }
-            // Already editing — let the overlay/textarea own clicks while a session is open
-            // (e.g. clicking another block while the textarea is focused commits on blur first).
+            // Already editing — check if the click targets a DIFFERENT block.
+            // If so, commit the current session and open on the new block
+            // (one-click block switch, same as the textarea mode's blur-then-focus).
             if (inlineEdit.editSession != null) {
+                const currentLine = inlineEdit.editSession.startLine;
+                const resolved = resolveEditTargetFromEvent(e);
+                if (resolved == null || resolved.line === currentLine) {
+                    // Same block or no target: let the overlay own this click.
+                    return;
+                }
+                // Different block: commit current, then focus the new one.
+                e.preventDefault();
+                e.stopPropagation();
+                const caretOffset = computeRenderedOffset(e.clientX, e.clientY, resolved.target);
+                inlineEdit.commit();
+                focusEditedLine(resolved.line, undefined, false, undefined, undefined, resolved.blockKind, caretOffset ?? undefined);
                 return;
             }
             if (e.button !== 0) {
@@ -2945,11 +2972,19 @@ const Markdown = ({
     // - Code / table / heading blocks fall through to the default behavior (line break).
     const handleEnterSplit = useCallback(() => {
         const session = inlineEdit.editSession;
-        const ta = inlineEdit.textareaRef.current;
-        if (session == null || ta == null) {
+        if (session == null) {
             return;
         }
-        const pos = ta.selectionStart;
+        // WYSIWYG list (方案 08): the contentEditable owns list semantics — Enter creates a
+        // new <li> natively, Backspace merges items. Intercepting here would fight the
+        // browser's native list behavior; serialize everything on commit instead.
+        if (session.wysiwyg && session.blockKind === "list") {
+            return;
+        }
+        const ta = inlineEdit.textareaRef.current;
+        const pos = session.wysiwyg
+            ? (inlineEdit.wysiwygRef.current?.getCaretMarkdown() ?? 0)
+            : ta?.selectionStart ?? 0;
         const draft = inlineEdit.draftText;
 
         // --- List: add a new item within the same list (same editor stays open) -----------
@@ -2967,8 +3002,9 @@ const Markdown = ({
             return;
         }
 
-        // --- Paragraph / blank row: split into two blocks ---------------------------------
-        if (session.blockKind === "p" || session.blockKind === "blank") {
+        // --- Paragraph / blank row / WYSIWYG heading: split into two blocks -----------
+        if (session.blockKind === "p" || session.blockKind === "blank" ||
+            (session.wysiwyg && (session.blockKind === "h" || session.blockKind === "quote"))) {
             const { text: newFull, newLine } = splitBlockAtCaretText(
                 text,
                 session.startLine,
@@ -3060,6 +3096,8 @@ const Markdown = ({
                 return "table";
             case "HR":
                 return "hr";
+            case "BLOCKQUOTE":
+                return "quote";
             case "OL":
             case "UL":
             case "LI":
@@ -3866,6 +3904,9 @@ const Markdown = ({
         if (kind === "table") {
             return "table";
         }
+        if (kind === "quote" || kind === "callout") {
+            return "quote";
+        }
         return "p";
     }, []);
 
@@ -3954,10 +3995,36 @@ const Markdown = ({
             if (session == null || slashState == null) {
                 return;
             }
-            
-            // New approach: set format prefix and dynamic placeholder
-            // instead of immediately executing the slash command
             const formatInfo = getSlashFormatInfo(cmd);
+            
+            // WYSIWYG (方案 08): convert block kind live via the editor, then clear the
+            // slash trigger text from the DOM. No ghost placeholder needed — the block
+            // immediately shows the new kind's typography.
+            if (session.wysiwyg && formatInfo != null && inlineEdit.wysiwygRef.current != null) {
+                const editor = inlineEdit.wysiwygRef.current;
+                // Apply the live kind conversion first (keeps the block typography in sync
+                // even when the conversion changes the DOM structure, e.g. → list).
+                const liveMap: Record<string, string> = {
+                    "heading-1": "heading1", "heading-2": "heading2", "heading-3": "heading3",
+                    "heading-4": "heading4", "heading-5": "heading5", "heading-6": "heading6",
+                    "bulleted-list": "bulleted", "numbered-list": "numbered",
+                    "todo-list": "todo", "quote": "quote", "text": "text",
+                };
+                const targetKind = liveMap[cmd.id];
+                // Delete the slash trigger text (line start → caret) BEFORE converting, so
+                // the conversion seeds from the remaining content (not the trigger text).
+                editor.deleteCaretLinePrefix();
+                if (targetKind != null) {
+                    const level = targetKind.startsWith("heading")
+                        ? parseInt(targetKind.slice("heading".length), 10)
+                        : undefined;
+                    editor.applyLiveKind(targetKind as BlockKind, level);
+                }
+                setSlashState(null);
+                return;
+            }
+            // Legacy textarea approach: set format prefix and dynamic placeholder
+            // instead of immediately executing the slash command
             if (formatInfo != null) {
                 // Set the draft to the format prefix
                 inlineEdit.setDraftText(formatInfo.prefix);
@@ -4025,6 +4092,16 @@ const Markdown = ({
             if (session == null) {
                 return;
             }
+            // WYSIWYG (方案 08): convert the block kind live via the editor — no need to
+            // round-trip through the source; the editor serializes with the new kind.
+            if (session.wysiwyg && inlineEdit.wysiwygRef.current != null) {
+                const editor = inlineEdit.wysiwygRef.current;
+                const level = to.startsWith("heading")
+                    ? parseInt(to.slice("heading".length), 10)
+                    : undefined;
+                editor.applyLiveKind(to, level);
+                return;
+            }
             const result = transformSessionBlock(text, session, inlineEdit.draftText, to);
             if (result == null) {
                 return;
@@ -4043,8 +4120,19 @@ const Markdown = ({
 
     const handleInlineStyle = useCallback(
         (style: InlineStyleId) => {
+            const session = inlineEdit.editSession;
+            if (session == null) return;
+            // WYSIWYG: apply style directly to the contentEditable DOM via execCommand,
+            // then re-serialize to sync the mirror draftText.
+            if (session.wysiwyg && inlineEdit.wysiwygRef.current != null) {
+                inlineEdit.wysiwygRef.current.applyInlineStyle(
+                    style as "bold" | "italic" | "strike" | "code"
+                );
+                return;
+            }
+            // Textarea path: apply style to the markdown draftText.
             const ta = inlineEdit.textareaRef.current;
-            if (ta == null || inlineEdit.editSession == null) {
+            if (ta == null) {
                 return;
             }
             const next = applyInlineStyle(inlineEdit.draftText, ta.selectionStart, ta.selectionEnd, style);
@@ -5051,6 +5139,9 @@ const Markdown = ({
             hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
                 <hr {...props} {...srcLineAttrs(props)} />
             ),
+            blockquote: (props: React.HTMLAttributes<HTMLQuoteElement>) => (
+                <blockquote {...props} {...srcLineAttrs(props)} />
+            ),
             table: (props: React.HTMLAttributes<HTMLTableElement>) => (
                 isBlockEditorFeatureEnabled("tablecell") ? (
                     <TableBlock
@@ -5317,6 +5408,7 @@ const Markdown = ({
                 "markdown",
                 className,
                 onInlineEditCommit != null && "markdown-editable",
+                onInlineEditCommit != null && inlineEdit.editSession != null && "is-inline-editing",
                 presentationMode && "markdown-presentation"
             )}
             style={mergedStyle}
@@ -5436,6 +5528,11 @@ const Markdown = ({
                             draftText={inlineEdit.draftText}
                             textareaRef={inlineEdit.textareaRef}
                             codeEditorRef={inlineEdit.codeEditorRef}
+                            wysiwygRef={inlineEdit.wysiwygRef}
+                            wysiwygHtml={inlineEdit.editSession?.wysiwyg ? inlineEdit.editSession.wysiwygHtml : undefined}
+                            wysiwygHeadingLevel={inlineEdit.editSession?.wysiwyg ? inlineEdit.editSession.wysiwygHeadingLevel : undefined}
+                            wysiwygListMarker={inlineEdit.editSession?.wysiwyg ? inlineEdit.editSession.wysiwygListMarker : undefined}
+                            wysiwygSessionKey={inlineEdit.editSession?.wysiwyg ? `${inlineEdit.editSession.blockKind}:${inlineEdit.editSession.startLine}:${inlineEdit.editSession.endLine}` : undefined}
                             onTextChange={(v, caret) => {
                                 inlineEdit.setDraftText(v);
                                 trackEditorTriggers(v, caret);
@@ -5564,7 +5661,7 @@ const Markdown = ({
                             />,
                             document.body
                         )}
-                    {onInlineEditCommit && insertPos != null &&
+                    {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
                         ReactDOM.createPortal(
                             <>
                                 {/* C: 4-dot grip — gutter left of the block, top-left. Click selects the block + opens the block menu;

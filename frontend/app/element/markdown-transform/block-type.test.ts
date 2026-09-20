@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import {
     applyTypingPatternAtLine,
     detectBlockKind,
+    detectLiveTypingMarker,
     matchTypingPattern,
     rewriteDraftFirstLine,
     splitTableCells,
@@ -299,5 +300,77 @@ describe("splitTableCells (pipe-escape aware)", () => {
     test("double backslash before a pipe does NOT escape it", () => {
         // `a\\|b` = literal backslash followed by a real delimiter.
         expect(splitTableCells("| a \\\\ | b |")).toEqual(["a \\\\", "b"]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// detectLiveTypingMarker
+// ---------------------------------------------------------------------------
+
+describe("detectLiveTypingMarker", () => {
+    test("empty string → null", () => {
+        expect(detectLiveTypingMarker("")).toBe(null);
+    });
+
+    test("heading markers", () => {
+        expect(detectLiveTypingMarker("# ")).toEqual({ kind: "heading1", marker: "# " });
+        expect(detectLiveTypingMarker("## ")).toEqual({ kind: "heading2", marker: "## " });
+        expect(detectLiveTypingMarker("###### ")).toEqual({ kind: "heading6", marker: "###### " });
+    });
+
+    test("heading without space → no trigger", () => {
+        expect(detectLiveTypingMarker("#")).toBe(null);
+        expect(detectLiveTypingMarker("## ")).toEqual({ kind: "heading2", marker: "## " });
+    });
+
+    test("quote marker", () => {
+        expect(detectLiveTypingMarker("> ")).toEqual({ kind: "quote", marker: "> " });
+    });
+
+    test("bullet markers", () => {
+        expect(detectLiveTypingMarker("- ")).toEqual({ kind: "bulleted", marker: "- " });
+        expect(detectLiveTypingMarker("* ")).toEqual({ kind: "bulleted", marker: "* " });
+        expect(detectLiveTypingMarker("+ ")).toEqual({ kind: "bulleted", marker: "+ " });
+    });
+
+    test("ordered markers", () => {
+        expect(detectLiveTypingMarker("1. ")).toEqual({ kind: "numbered", marker: "1. " });
+        expect(detectLiveTypingMarker("1) ")).toEqual({ kind: "numbered", marker: "1) " });
+        expect(detectLiveTypingMarker("5. ")).toEqual({ kind: "numbered", marker: "5. " });
+    });
+
+    test("task list markers", () => {
+        expect(detectLiveTypingMarker("- [ ] ")).toEqual({ kind: "todo", marker: "- [ ] " });
+        expect(detectLiveTypingMarker("- [x] ")).toEqual({ kind: "todo", marker: "- [x] " });
+        expect(detectLiveTypingMarker("* [X] ")).toEqual({ kind: "todo", marker: "* [x] " });
+    });
+
+    test("indented text → no trigger (M1 column 0 only)", () => {
+        expect(detectLiveTypingMarker("  # ")).toBe(null);
+        expect(detectLiveTypingMarker("\t> ")).toBe(null);
+    });
+
+    test("content after marker → no trigger", () => {
+        expect(detectLiveTypingMarker("# hello")).toBe(null);
+        expect(detectLiveTypingMarker("- item")).toBe(null);
+        expect(detectLiveTypingMarker("> text")).toBe(null);
+    });
+
+    test("full-width heading", () => {
+        expect(detectLiveTypingMarker("＃ ")).toEqual({ kind: "heading1", marker: "# " });
+    });
+
+    test("full-width bullet", () => {
+        expect(detectLiveTypingMarker("＊ ")).toEqual({ kind: "bulleted", marker: "- " });
+        expect(detectLiveTypingMarker("＋ ")).toEqual({ kind: "bulleted", marker: "- " });
+    });
+
+    test("tables NOT live-triggered (commit-time only)", () => {
+        expect(detectLiveTypingMarker("| ")).toBe(null);
+    });
+
+    test("code fences NOT live-triggered", () => {
+        expect(detectLiveTypingMarker("```js ")).toBe(null);
+        expect(detectLiveTypingMarker("```")).toBe(null);
     });
 });

@@ -569,6 +569,71 @@ export function matchTypingPattern(line: string): TypingPatternMatch | null {
 }
 
 /**
+ * Live typing trigger (方案 08): detect when the text from line start up to the caret
+ * forms a COMPLETE block marker (e.g. `# `, `> `, `- `, `1. `, `- [ ] `) at the start
+ * of a line, with no non-marker content yet. This is the condition where a WYSIWYG
+ * editor should live-convert the block (strip the marker, change the block kind) the
+ * moment the user finishes typing the trailing space.
+ *
+ * Returns the canonical marker string + target block kind when matched, null otherwise.
+ * Only matches at column 0 (no indent) for M1 — indented markers are left to commit-time.
+ *
+ * `textBeforeCaret` must be the substring of the FIRST line from its start to the
+ * current caret position (i.e. `draftText.slice(lineStart, caret)`).
+ */
+export type LiveMarkerResult = {
+    kind: BlockKind;
+    /** Canonical marker string, e.g. "# ", "- ", "- [ ] ". Strip this many chars from the DOM. */
+    marker: string;
+};
+
+export function detectLiveTypingMarker(textBeforeCaret: string): LiveMarkerResult | null {
+    if (textBeforeCaret.length === 0 || textBeforeCaret.startsWith(" ") || textBeforeCaret.startsWith("\t")) {
+        return null; // empty or indented — no trigger
+    }
+
+    // Full-width → half-width normalization for the marker chars.
+    const normalized = [...textBeforeCaret]
+        .map((ch) => normalizeTriggerChar(ch))
+        .join("");
+
+    // Heading: "# " … "###### " (allow trailing space OR tab, but only space for canonical)
+    let m = normalized.match(/^(#{1,6})[ ]+$/);
+    if (m != null) {
+        const level = m[1].length;
+        return { kind: `heading${level}` as BlockKind, marker: m[1] + " " };
+    }
+
+    // Quote: "> "
+    if (normalized === "> ") {
+        return { kind: "quote", marker: "> " };
+    }
+
+    // Task list: "- [ ] " / "* [x] " / "+ [X] "
+    m = normalized.match(/([-*+])[ ]+\[([ xX])][ ]+$/);
+    if (m != null) {
+        const bullet = normalizeTypedBullet(textBeforeCaret[0]);
+        const checkbox = m[2] === "x" || m[2] === "X" ? "[x] " : "[ ] ";
+        return { kind: "todo", marker: `${bullet} ${checkbox}` };
+    }
+
+    // Bullet list: "- " / "* " / "+ "
+    m = normalized.match(/([-*+])[ ]+$/);
+    if (m != null) {
+        const bullet = normalizeTypedBullet(textBeforeCaret[0]);
+        return { kind: "bulleted", marker: `${bullet} ` };
+    }
+
+    // Ordered list: "1. " / "1) "
+    m = normalized.match(/(\d{1,9}[.)])[ ]+$/);
+    if (m != null) {
+        return { kind: "numbered", marker: `${m[1]} ` };
+    }
+
+    return null;
+}
+
+/**
  * Inline-edit commit helper (方案 02 §2.1): inspect the FIRST line of a draft that a
  * paragraph/blank editor is about to commit; when it matches a typing pattern, return
  * the draft with that line canonicalized (full-width → half-width, fence auto-close,

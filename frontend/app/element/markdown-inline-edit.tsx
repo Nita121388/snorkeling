@@ -4,6 +4,7 @@
 import { inlineEditingActiveAtom } from "@/app/view/preview/preview-shared-draft";
 import { globalStore } from "@/store/jotaiStore";
 import { rewriteDraftFirstLine } from "@/app/element/markdown-transform/block-type";
+import { WysiwygEditor, type WysiwygEditorHandle } from "./wysiwyg-editor";
 import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -148,7 +149,12 @@ function captureBlockTypography(blockEl: HTMLElement): React.CSSProperties {
  *   3) optional CSS in markdown.scss keyed on `.inline-edit-overlay[data-block-kind="..."]`
  *      if the textarea should match the rendered block's typography (e.g. `code` → monospace).
  */
-export type InlineEditBlockKind = "p" | "h" | "list" | "table" | "code" | "blank" | "hr";
+export type InlineEditBlockKind = "p" | "h" | "list" | "quote" | "table" | "code" | "blank" | "hr";
+
+// Blocks that can participate in WYSIWYG contentEditable editing (方案 08).
+// Table and code have their own dedicated WYSIWYG editors (TableBlock /
+// ContentEditableCodeEditor); these prose kinds get the generic WYSIWYG editor.
+export type WysiwygEligibleKind = "p" | "h" | "list" | "quote" | "blank";
 
 export type InlineEditSession = {
     blockKind: InlineEditBlockKind;
@@ -191,6 +197,27 @@ export type InlineEditSession = {
      * whole insert instead of just closing the editor.
      */
     insertRevert?: () => void;
+    /**
+     * WYSIWYG editing (方案 08): when set, the overlay renders the block's RENDERED HTML
+     * in a contentEditable editor instead of a raw-markdown textarea. The editor mirrors
+     * its serialized markdown into draftText on every input so the text-based command
+     * machinery (slash palette, inline styles, Enter split) keeps working unchanged.
+     */
+    wysiwyg?: boolean;
+    /**
+     * Rendered HTML clone seeded into the WYSIWYG editor (no block markers: a heading
+     * renders as its title text, a list as its <li>s, a quote as its inner content).
+     * Captured from the anchored block's DOM at beginEdit time.
+     */
+    wysiwygHtml?: string;
+    /** Heading level (1-6) for WYSIWYG heading blocks, read from the rendered class is-N. */
+    wysiwygHeadingLevel?: number;
+    /**
+     * Preserved original list marker for WYSIWYG list blocks: the bullet char
+     * ("-" | "*" | "+") or the ordered counter head ("1." | "1)"). Kept so commit
+     * serialization re-emits the author's marker style, keeping git diffs minimal.
+     */
+    wysiwygListMarker?: string;
     /**
      * Placeholder-row session: the editor sits on a single blank row that was already
      * pre-inserted into the document (the immediate "click insert / Enter split" feedback
@@ -286,8 +313,65 @@ export function replaceSourceRange(
     return [...before, ...replacement, ...after].join(eol);
 }
 
+// ---------------------------------------------------------------------------
+// WYSIWYG eligibility & seed HTML capture (方案 08)
+// ---------------------------------------------------------------------------
+
+const WYSIWYG_KINDS: ReadonlySet<InlineEditBlockKind> = new Set([
+    "p", "h", "list", "quote", "blank",
+]);
+
+/**
+ * Determine whether a block qualifies for WYSIWYG contentEditable editing and
+ * return the seed HTML + metadata that the editor needs to render the block
+ * correctly. Returns null when the block must fall back to the textarea path.
+ *
+ * Exclusion rules (data-fidelity guard — never corrupt the source):
+ *   - Blocks containing `<img>` (resolved srcs don't round-trip)
+ *   - Blocks containing `<a>` (internal hrefs — wave-wiki / file — are transformed;
+ *     links keep their dedicated hover-tooltip edit form)
+ *   - Callout containers (`.markdown-alert`) — the title emoji prefix would be
+ *     injected back into source on commit
+ */
+function captureWysiwygInfo(
+    blockKind: InlineEditBlockKind,
+    targetEl: HTMLElement,
+    sourceText: string,
+): { html: string; headingLevel?: number; listMarker?: string } | null {
+    if (!isBlockEditorFeatureEnabled("wysiwyg") || !WYSIWYG_KINDS.has(blockKind)) {
+        return null;
+    }
+    // Eligibility: no images, no links, no callout chrome.
+    const html = blockKind === "h"
+        ? targetEl.querySelector(".heading-title")?.innerHTML ?? targetEl.innerHTML
+        : blockKind === "list"
+            ? targetEl.outerHTML // <ul>/<ol> outerHTML preserves list structure for the serializer
+            : blockKind === "blank"
+                ? ""
+                : targetEl.innerHTML;
+    if (/<img\b/i.test(html) || /<a\b/i.test(html)) {
+        return null; // images & links round-trip lossy — fall back to textarea
+    }
+    // Heading level from rendered class is-N.
+    let headingLevel: number | undefined;
+    if (blockKind === "h") {
+        const m = targetEl.className.match(/\bis-(\d)\b/);
+        if (m != null) headingLevel = parseInt(m[1], 10);
+    }
+    // List marker from original source (preserve author's choice of - / * / 1. etc).
+    let listMarker: string | undefined;
+    if (blockKind === "list") {
+        const lines = sourceText.split(/\r?\n/);
+        const first = lines[0] ?? "";
+        const markerMatch = first.match(/^\s*([-*+]|\d{1,9}[.)])/);
+        if (markerMatch != null) {
+            listMarker = markerMatch[1];
+        }
+    }
+    return { html, headingLevel, listMarker };
+}
+
 type UseInlineEditArgs = {
-    /** Full original markdown text — the same value ReactMarkdown renders (NOT transformedText). */
     fullText: string;
     /** Called with the new full text on every successful commit; never on cancel. */
     onCommit: (newFullText: string) => void;
@@ -329,6 +413,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     dismiss: () => void;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     codeEditorRef: React.RefObject<CodeEditorHandle | null>;
+    wysiwygRef: React.RefObject<WysiwygEditorHandle | null>;
     overlayRect: { top: number; left: number; width: number; height: number } | null;
 } {
     const [editSession, setEditSession] = useState<InlineEditSession | null>(null);
@@ -348,6 +433,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     }, []);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const codeEditorRef = useRef<CodeEditorHandle | null>(null);
+    const wysiwygRef = useRef<WysiwygEditorHandle | null>(null);
     // The element rendered in the live markdown tree we mirror with the textarea. We keep a
     // React-side rect derived from the DOM element so we can reposition on scroll / resize;
     // we do NOT keep the element in state because reading getBoundingClientRect during render
@@ -605,6 +691,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     ? Math.min(Math.trunc(endLineRaw), lines.length)
                     : safeLine;
             const initialContent = lines.slice(safeLine - 1, endLine).join("\n");
+            const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent);
             const session: InlineEditSession = {
                 blockKind,
                 startLine: safeLine,
@@ -617,6 +704,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 placeholder: placeholder === "inline" ? true : placeholder || undefined,
                 placeholderInline: placeholder === "inline",
                 placeholderKeepOnEmpty: keepOnEmpty || undefined,
+                wysiwyg: wysiwygInfo != null,
+                wysiwygHtml: wysiwygInfo?.html,
+                wysiwygHeadingLevel: wysiwygInfo?.headingLevel,
+                wysiwygListMarker: wysiwygInfo?.listMarker,
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
@@ -787,6 +878,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         dismiss,
         textareaRef,
         codeEditorRef,
+        wysiwygRef,
         overlayRect,
     };
 }
@@ -798,6 +890,21 @@ type InlineEditOverlayProps = {
     draftText: string;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     codeEditorRef: React.RefObject<CodeEditorHandle | null>;
+    /** WYSIWYG editor handle (方案 08) — present when the session edits prose WYSIWYG. */
+    wysiwygRef?: React.RefObject<WysiwygEditorHandle | null>;
+    /** Rendered HTML seed for the WYSIWYG editor (no block markers). */
+    wysiwygHtml?: string;
+    /** Heading level (1-6) for WYSIWYG heading blocks. */
+    wysiwygHeadingLevel?: number;
+    /** Preserved original list marker for WYSIWYG list blocks. */
+    wysiwygListMarker?: string;
+    /**
+     * Stable key for the current edit session (e.g. "kind|startLine"). Forcing a
+     * remount when it changes guarantees the WysiwygEditor never displays a PREVIOUS
+     * block's content: switching from block A to block B re-creates the editor so
+     * its internal liveKind/headingLevel/DOM seed all reset to block B.
+     */
+    wysiwygSessionKey?: string;
     onTextChange: (v: string, caret: number) => void;
     onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
     onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
@@ -862,6 +969,11 @@ export function InlineEditOverlay({
     formatTypography,
     codeLanguage,
     onExecuteCode,
+    wysiwygRef,
+    wysiwygHtml,
+    wysiwygHeadingLevel,
+    wysiwygListMarker,
+    wysiwygSessionKey,
 }: InlineEditOverlayProps) {
     if (overlayRect == null || blockKind == null) {
         return null;
@@ -878,7 +990,7 @@ export function InlineEditOverlay({
     return createPortal(
         <div
             className="inline-edit-overlay"
-            data-block-kind={blockKind}
+            data-block-kind={wysiwygRef != null && wysiwygHtml != null ? "wysiwyg" : blockKind}
             style={{
                 position: "fixed",
                 top: `${overlayRect.top}px`,
@@ -920,6 +1032,23 @@ export function InlineEditOverlay({
                         onExecute={onExecuteCode}
                     />
                 </pre>
+            ) : wysiwygRef != null && wysiwygHtml != null ? (
+                <WysiwygEditor
+                    key={wysiwygSessionKey ?? "wysiwyg"}
+                    ref={wysiwygRef}
+                    initialHtml={wysiwygHtml}
+                    blockKind={blockKind as WysiwygEligibleKind}
+                    headingLevel={wysiwygHeadingLevel}
+                    listMarker={wysiwygListMarker}
+                    typography={typography}
+                    placeholder={placeholder}
+                    onInput={(md, caretMd) => {
+                        onTextChange(md, caretMd);
+                        onCaretChange?.(caretMd, caretMd);
+                    }}
+                    onKeyDown={onKeyDown as (e: React.KeyboardEvent<HTMLElement>) => void}
+                    onBlur={(content) => onBlur(content)}
+                />
             ) : (
                 <>
                     <textarea
@@ -1379,6 +1508,8 @@ export function placeholderForBlockKind(kind: InlineEditBlockKind | null | undef
             return "List item";
         case "h":
             return "Heading";
+        case "quote":
+            return "Quote";
         case "code":
             return "Code";
         default:

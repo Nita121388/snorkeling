@@ -4,19 +4,17 @@
 // Agent TUI 右侧 Message 刻度轨：复用 GUI 的 SessionOutlineRail。
 // TUI 不滚动 terminal；点击 tick 只固定显示该用户消息的 ToolTip。
 
-import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { getCachedUserOutline, loadUserOutline } from "@/app/store/outline-cache";
-import { ensureSessionNote } from "@/app/store/session-note-cache";
 import { AISessionsServiceType } from "@/app/store/services";
+import { ensureSessionNote } from "@/app/store/session-note-cache";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { type OutlinePrompt, SessionOutlineRail } from "@/app/view/session-outline-rail";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "@/app/view/term/agent-session";
 import { logAgentSessionEvent } from "@/app/view/term/session-debug";
 import type { TermWrap } from "@/app/view/term/termwrap";
-import { type OutlinePrompt, SessionOutlineRail } from "@/app/view/session-outline-rail";
 import { WOS } from "@/store/global";
-import { fireAndForget, useAtomValueSafe } from "@/util/util";
-import { cn } from "@/util/util";
+import { cn, fireAndForget, useAtomValueSafe } from "@/util/util";
 import * as React from "react";
 
 const OutlinePreviewMaxLength = 400;
@@ -46,7 +44,10 @@ function userOutlinePreview(text: string): string {
 }
 
 /** TUI 会话 sessionId 解析：meta → shell lastcmd → scrollback。 */
-export function useTerminalAgentSessionId(blockData: Block | null, termWrap: TermWrap | null): string {
+export function useTerminalAgentSessionId(
+    blockData: Block | null,
+    termWrap: TermWrap | null
+): { sessionId: string; isAgent: boolean } {
     const shellLastCommand = useAtomValueSafe<string | null>(termWrap?.lastCommandAtom);
     const fallbackShellLastCommand = React.useMemo(() => {
         if (shellLastCommand || !termWrap) return shellLastCommand;
@@ -54,10 +55,10 @@ export function useTerminalAgentSessionId(blockData: Block | null, termWrap: Ter
         return command !== "" ? command : null;
     }, [shellLastCommand, termWrap]);
     const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
-    return React.useMemo(
-        () => resolveAgentSessionId(meta, fallbackShellLastCommand).sessionId,
-        [fallbackShellLastCommand, meta]
-    );
+    return React.useMemo(() => {
+        const resolution = resolveAgentSessionId(meta, fallbackShellLastCommand);
+        return { sessionId: resolution.sessionId, isAgent: resolution.isAgent };
+    }, [fallbackShellLastCommand, meta]);
 }
 
 /**
@@ -67,7 +68,8 @@ export function useTerminalAgentSessionId(blockData: Block | null, termWrap: Ter
  */
 const TermAgentMessageRail = React.memo(({ blockId, blockData, termWrap }: TermAgentMessageRailProps) => {
     const service = React.useMemo(() => new AISessionsServiceType(), []);
-    const sessionId = useTerminalAgentSessionId(blockData, termWrap);
+    const agentSession = useTerminalAgentSessionId(blockData, termWrap);
+    const { sessionId, isAgent } = agentSession;
     const connection = agentSessionConnection(blockData);
     const [outline, setOutline] = React.useState<AISessionsUserOutlineResponse | null>(null);
 
@@ -111,7 +113,10 @@ const TermAgentMessageRail = React.memo(({ blockId, blockData, termWrap }: TermA
         });
     }, [blockId, persistedSessionId, sessionId]);
 
-    if (sessionId === "") return null;
+    // 新建 Agent 在首条消息落盘前还没有 sessionId；仍保留空 rail，
+    // 避免新会话与恢复会话的布局/挂载路径不同。拿到 sessionId 后，
+    // 上面的 effect 会立即加载 outline 并回写 block meta。
+    if (!isAgent && sessionId === "") return null;
 
     const userMessages = (outline?.messages ?? []).filter(
         (message) => message.role === "user" && message.text?.trim() !== ""

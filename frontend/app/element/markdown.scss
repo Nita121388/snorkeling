@@ -781,6 +781,83 @@
     }
 }
 
+// ===============================================================================
+// WYSIWYG contentEditable overlay (方案 08) — mirrors rendered block styles
+// inside the fixed-position portal so the editor reads as "the same text, now
+// editable" (zero layout shift).
+//
+// The root is always a <div data-block-kind="wysiwyg"> (or a list <ul>/<ol>
+// inside it). Typography is inherited from the overlay and the snapshot in
+// `typography` props; these rules provide the heading / quote / list mirrors.
+// ===============================================================================
+
+.wysiwyg-editor {
+    width: 100%;
+    min-height: 1em;
+    box-sizing: border-box;
+    border: 0;
+    outline: none;
+    background: transparent;
+    cursor: text;
+    // Inherit the block's font from the overlay parent (captureBlockTypography snapshot).
+    font: inherit;
+    color: var(--main-text-color, inherit);
+    // Match prose: word-wrap and indentation consistent with the rendered tree.
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+// Heading levels — mirror the rendered `.heading.is-N` typography.
+.wysiwyg-editor.wysiwyg-heading.is-1 { font-size: 2em; font-weight: 700; line-height: 1.3; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35em; margin-bottom: 0.4em; }
+.wysiwyg-editor.wysiwyg-heading.is-2 { font-size: 1.5em; font-weight: 700; line-height: 1.3; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35em; margin-bottom: 0.4em; }
+.wysiwyg-editor.wysiwyg-heading.is-3 { font-size: 1.25em; font-weight: 600; line-height: 1.3; }
+.wysiwyg-editor.wysiwyg-heading.is-4 { font-size: 1.125em; font-weight: 600; line-height: 1.3; }
+.wysiwyg-editor.wysiwyg-heading.is-5 { font-size: 1em; font-weight: 600; line-height: 1.3; }
+.wysiwyg-editor.wysiwyg-heading.is-6 { font-size: 0.9em; font-weight: 600; line-height: 1.3; }
+
+// Quote — mirror blockquote style.
+.wysiwyg-editor.wysiwyg-quote {
+    margin: 0.571em 0.714em;
+    border-left: 3px solid var(--wolai-quote-border-color, rgba(0, 0, 0, 0.12));
+    border-radius: 0 4px 4px 0;
+    background-color: var(--panel-bg-color);
+    padding: 0.714em 1em;
+    line-height: 1.6;
+    color: var(--wolai-editor-color, rgba(0, 0, 0, 0.85));
+}
+
+// Paragraph placeholder — shown when the WYSIWYG editor is empty.
+.wysiwyg-editor:empty::before {
+    content: attr(data-placeholder);
+    color: color-mix(in srgb, var(--main-text-color, #999) 35%, transparent);
+    pointer-events: none;
+}
+
+// List items inside the WYSIWYG editor — inherit ul/ol defaults from the browser;
+// these rules just align spacing and marker color with the rendered tree.
+.wysiwyg-editor.wysiwyg-list ul,
+.wysiwyg-editor.wysiwyg-list ol {
+    list-style-position: outside;
+    margin: 0.357em 0 0.857em 1.5em;
+    padding-left: 0.25em;
+}
+.wysiwyg-editor.wysiwyg-list li {
+    padding-left: 0.143em;
+    margin: 0.214em 0;
+    line-height: 1.5;
+}
+.wysiwyg-editor.wysiwyg-list li::marker {
+    color: var(--secondary-text-color);
+    font-weight: 600;
+}
+.wysiwyg-editor.wysiwyg-list ul { list-style-type: disc; }
+.wysiwyg-editor.wysiwyg-list ol { list-style-type: decimal; }
+
+// Code blocks — the WYSIWYG editor reuses ContentEditableCodeEditor which handles its own
+// styling via .codeblock (see above). No additional WYSIWYG rules needed for code.
+
+// --- End WYSIWYG block-editor mirror rules ---------------------------------------
+
 // Link action tooltip + link edit form — share the flyout skin of the app's menus
 // (flyoutmenu.scss): --overlay-bg-color backdrop, 4px panel radius / 2px item radius,
 // 0 8px 24px modal shadow, ghost icon buttons with accent hover fill.
@@ -1252,20 +1329,29 @@
 // === Editable-context affordances (Note surface, items ④/⑤) ============================
 // Only when the caller opted into inline editing (.markdown-editable). Both rules keep the
 // block's box untouched (no layout shift): hover paints a faint tint, the active block adds
-// an INSET accent stripe (box-shadow, not border, so width/height stay identical).
 .markdown.markdown-editable [data-source-line] {
     border-radius: 3px;
     transition: background-color 140ms ease;
 }
 
-// Innermost hovered block only: without :has, nested blocks (li inside ul) would stack tints.
+// Hover affordance (阅读态提示): the innermost hovered block gains a faint accent tint so
+// users see "this block is editable". Reading-only decoration — suppressed during an edit
+// session (see .is-inline-editing below) so the editor is indistinguishable from reading.
 .markdown.markdown-editable [data-source-line]:not(.inline-edit-hidden):hover:not(:has([data-source-line]:hover)) {
     background-color: color-mix(in srgb, var(--accent-color, #32afff) 4%, transparent);
 }
 
-.markdown.markdown-editable [data-source-line].inline-edit-active {
-    box-shadow: inset 3px 0 0 0 var(--accent-color, #32afff);
-    background-color: color-mix(in srgb, var(--accent-color, #32afff) 4%, transparent);
+// WYSIWYG 编辑 = 所见即所得：编辑会话打开后，块不再显示任何编辑态装饰
+// （左侧 accent 竖条 / 背景 tint / hover 提示）。页面看起来与阅读时完全一致，只有光标。
+.markdown.markdown-editable .inline-edit-active {
+    // The block is hidden (visibility:hidden) while its overlay editor is mounted, so the
+    // stripe/background would be invisible anyway; keep the rule as a no-op state marker.
+    box-shadow: none;
+    background-color: transparent;
+}
+
+.markdown.markdown-editable.is-inline-editing [data-source-line]:not(.inline-edit-hidden):hover:not(:has([data-source-line]:hover)) {
+    background-color: transparent;
 }
 
 // Loose lists (blank lines between items) — restore the visual spacing the blank lines
