@@ -221,36 +221,6 @@ function RemoteCommitList({ title, commits }: { title: string; commits: VcsCommi
     );
 }
 
-function OperationNotice({ notice, onDismiss }: { notice?: VcsOperationNotice; onDismiss: () => void }) {
-    const message = notice?.message?.trim() ?? "";
-    if (isBlank(message)) return null;
-    const firstLine = message.split(/\r?\n/).find((line) => !isBlank(line)) ?? message;
-    const summary = firstLine.length > 180 ? `${firstLine.slice(0, 177)}...` : firstLine;
-    const hasDetails = message !== summary;
-    return (
-        <div className={`mb-2 rounded border border-white/10 bg-black/25 px-2 py-1.5 text-xs ${notice?.isError ? "text-warning" : "text-secondary"}`}>
-            <div className="flex items-start gap-2">
-                <div className="min-w-0 flex-1 whitespace-pre-wrap">{summary}</div>
-                <button className="iconbutton !h-[18px] !w-[18px] shrink-0 cursor-pointer" title="Dismiss" onClick={onDismiss}>
-                    <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
-                </button>
-            </div>
-            {hasDetails && (
-                <details className="mt-1">
-                    <summary className="cursor-pointer text-[11px] text-muted">Details</summary>
-                    <pre className="mt-1 max-h-[180px] overflow-auto whitespace-pre-wrap rounded bg-black/20 p-2 text-[11px]">{message}</pre>
-                </details>
-            )}
-        </div>
-    );
-}
-
-type VcsOperationNotice = {
-    id: number;
-    message: string;
-    isError: boolean;
-};
-
 export function VcsChangesTab({
     repo,
     selectedFiles,
@@ -259,8 +229,7 @@ export function VcsChangesTab({
     setCommitMessage,
     onCommit,
     commitRunning,
-    operationNotice,
-    onDismissNotice,
+    syncAction,
     onFileHistory,
     onShowFileDiff,
     sectionState,
@@ -277,8 +246,7 @@ export function VcsChangesTab({
     setCommitMessage: (next: string) => void;
     onCommit: () => void;
     commitRunning: boolean;
-    operationNotice?: VcsOperationNotice;
-    onDismissNotice: () => void;
+    syncAction?: VcsSyncAction;
     onFileHistory: (filePath: string) => void;
     onShowFileDiff: (filePath: string) => void;
     sectionState: RepoSectionState;
@@ -333,7 +301,6 @@ export function VcsChangesTab({
 
     return (
         <div className="flex-1 overflow-auto p-2">
-            <OperationNotice notice={operationNotice} onDismiss={onDismissNotice} />
             {repo.statuserr && <div className="text-xs text-warning mb-2">Status warning: {repo.statuserr}</div>}
             <RepoFileFilterBar
                 filterState={fileFilterState}
@@ -395,9 +362,21 @@ export function VcsChangesTab({
                         noBorder={true}
                         actions={
                             <>
-                                <RemoteActionButton label="Fetch" disabled={syncRunning} onClick={() => onSyncAction("fetch")} />
-                                <RemoteActionButton label="Pull" disabled={syncRunning || behind <= 0} onClick={() => onSyncAction("pull")} />
-                                <RemoteActionButton label="Push" disabled={syncRunning || ahead <= 0} onClick={() => onSyncAction("push")} />
+                                <RemoteActionButton
+                                    label={syncRunning && syncAction === "fetch" ? "Fetching…" : "Fetch"}
+                                    disabled={syncRunning}
+                                    onClick={() => onSyncAction("fetch")}
+                                />
+                                <RemoteActionButton
+                                    label={syncRunning && syncAction === "pull" ? "Pulling…" : "Pull"}
+                                    disabled={syncRunning || behind <= 0}
+                                    onClick={() => onSyncAction("pull")}
+                                />
+                                <RemoteActionButton
+                                    label={syncRunning && syncAction === "push" ? "Pushing…" : "Push"}
+                                    disabled={syncRunning || ahead <= 0}
+                                    onClick={() => onSyncAction("push")}
+                                />
                             </>
                         }
                     />
@@ -423,7 +402,13 @@ export function VcsChangesTab({
                         isOpen={remoteSectionOpen}
                         onToggle={() => setSectionOpen("remote", !remoteSectionOpen)}
                         noBorder={true}
-                        actions={<RemoteActionButton label="Update" disabled={syncRunning} onClick={() => onSyncAction("update" as any)} />}
+                        actions={
+                            <RemoteActionButton
+                                label={syncRunning && syncAction === "update" ? "Updating…" : "Update"}
+                                disabled={syncRunning}
+                                onClick={() => onSyncAction("update" as any)}
+                            />
+                        }
                     />
                     {remoteSectionOpen && (
                         <div className="mt-1 overflow-x-auto rounded">

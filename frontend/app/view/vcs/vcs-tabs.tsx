@@ -4,6 +4,7 @@
 import React from "react";
 
 type View = "changes" | "branches" | "pipelines" | "history";
+type VcsSyncAction = "fetch" | "pull" | "push" | "update";
 
 const VIEWS: { id: View; label: string; icon: string }[] = [
     { id: "changes", label: "Changes", icon: "fa-file-pen" },
@@ -95,11 +96,13 @@ export function VcsRepoHeader({
     onSync,
     onRefresh,
     syncRunning,
+    syncAction,
 }: {
     repo: VcsRepositoryInfo;
     onSync: () => void;
     onRefresh: () => void;
     syncRunning: boolean;
+    syncAction?: VcsSyncAction;
 }) {
     const isGit = repo.repotype === "git";
     const remote = repo.remote;
@@ -136,12 +139,19 @@ export function VcsRepoHeader({
                 </>
             )}
             <button
-                className="rounded border border-border px-2 py-[3px] text-[11px] text-secondary hover:bg-hoverbg cursor-pointer disabled:text-muted disabled:cursor-default disabled:hover:bg-transparent shrink-0"
+                className="rounded border border-border px-2 py-[3px] text-[11px] text-secondary hover:bg-hoverbg cursor-pointer disabled:text-muted disabled:cursor-default disabled:hover:bg-transparent shrink-0 inline-flex items-center gap-1.5"
                 title="Pull"
                 disabled={syncRunning || !isGit}
                 onClick={onSync}
             >
-                Pull
+                {syncRunning && syncAction === "pull" ? (
+                    <>
+                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
+                        <span>Pulling…</span>
+                    </>
+                ) : (
+                    "Pull"
+                )}
             </button>
             <button
                 className="iconbutton !h-[20px] !w-[20px] cursor-pointer"

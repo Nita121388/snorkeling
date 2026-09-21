@@ -26,20 +26,24 @@ const VcsMutationRpcTimeoutMs = 150000;
 type VcsUiEnv = WaveEnv;
 
 type RepoStringMap = Record<string, string>;
-type RepoBoolMap = Record<string, boolean>;
 type RepoFilesMap = Record<string, string[]>;
 type RepoSectionKey = "changes" | "untracked" | "remote";
 type RepoSectionState = Record<RepoSectionKey, boolean>;
 type RepoSectionsMap = Record<string, RepoSectionState>;
 type VcsSyncAction = "fetch" | "pull" | "push" | "update";
+type VcsOperationAction = VcsSyncAction | "commit";
+type VcsOperationState = "running" | "success" | "error";
+type VcsOperationInfo = {
+    id: number;
+    action: VcsOperationAction;
+    state: VcsOperationState;
+    source?: "header" | "changes" | "commit";
+    message?: string;
+    details?: string;
+};
+type RepoOperationMap = Record<string, VcsOperationInfo>;
 // RepoFileFilterState is imported from vcs-changes-tab.tsx
 type RepoFileFiltersMap = Record<string, RepoFileFilterState>;
-type VcsOperationNotice = {
-    id: number;
-    message: string;
-    isError: boolean;
-};
-type RepoNoticeMap = Record<string, VcsOperationNotice>;
 
 function isBlankStr(val: string): boolean {
     return val == null || val.trim() === "";
@@ -83,6 +87,122 @@ function getSyncFailureLabel(action: VcsSyncAction): string {
         case "pull":
         default: return "Pull failed.";
     }
+}
+
+// Present tense verb shown while an operation is running.
+const VcsOperationVerb: Record<VcsOperationAction, string> = {
+    pull: "Pulling…",
+    push: "Pushing…",
+    fetch: "Fetching…",
+    update: "Updating…",
+    commit: "Committing…",
+};
+
+// Short noun label used in success/failure summaries.
+const VcsOperationLabel: Record<VcsOperationAction, string> = {
+    pull: "Pull",
+    push: "Push",
+    fetch: "Fetch",
+    update: "Update",
+    commit: "Commit",
+};
+
+function firstMeaningfulLine(text: string): string {
+    const firstLine = text.split(/\r?\n/).find((line) => !isBlank(line)) ?? text;
+    return firstLine.length > 240 ? `${firstLine.slice(0, 237)}...` : firstLine;
+}
+
+function OperationDetails({ details }: { details: string }) {
+    return (
+        <details className="mt-1">
+            <summary className="cursor-pointer text-[11px] text-muted">Details</summary>
+            <pre className="mt-1 max-h-[180px] overflow-auto whitespace-pre-wrap rounded bg-black/20 p-2 text-[11px]">
+                {details}
+            </pre>
+        </details>
+    );
+}
+
+/**
+ * Shared operation progress card rendered in VcsView below the tab bar.
+ * Because it lives in the shared area, it is visible on all four tabs
+ * (Changes / Branches / Pipelines / History) regardless of which is active.
+ */
+function VcsProgressCard({
+    operation,
+    onDismiss,
+}: {
+    operation?: VcsOperationInfo;
+    onDismiss: () => void;
+}) {
+    // Keep the latest dismiss callback without resetting the auto-dismiss timer.
+    const dismissRef = React.useRef(onDismiss);
+    React.useEffect(() => {
+        dismissRef.current = onDismiss;
+    });
+
+    // Success cards auto-dismiss after 8s; running/error cards persist.
+    React.useEffect(() => {
+        if (operation?.state !== "success") return;
+        const timer = window.setTimeout(() => dismissRef.current(), 8000);
+        return () => window.clearTimeout(timer);
+    }, [operation?.id, operation?.state]);
+
+    if (!operation) return null;
+
+    const action = operation.action;
+    const details = operation.details?.trim() ?? "";
+    const message = operation.message?.trim() ?? "";
+    const summary = isBlank(message) ? "" : firstMeaningfulLine(message);
+    const hasDetails = details !== "" && details !== summary;
+    const dismissBtn = (
+        <button
+            className="iconbutton !h-[18px] !w-[18px] shrink-0 cursor-pointer"
+            title="Dismiss"
+            onClick={onDismiss}
+        >
+            <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
+        </button>
+    );
+
+    let body: React.ReactNode;
+    let boxClass = "";
+    if (operation.state === "running") {
+        boxClass = "mb-2 rounded border border-border/70 bg-panel/60 px-2 py-1.5 text-xs text-secondary";
+        body = (
+            <div className="flex items-center gap-2">
+                <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px] text-accent shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{VcsOperationVerb[action]}</span>
+                {dismissBtn}
+            </div>
+        );
+    } else if (operation.state === "success") {
+        boxClass = "mb-2 rounded border border-white/10 bg-black/25 px-2 py-1.5 text-xs text-secondary";
+        body = (
+            <div className="flex items-start gap-2">
+                <i className="fa-sharp fa-solid fa-circle-check text-[11px] text-emerald-400 shrink-0 mt-[1px]" />
+                <div className="min-w-0 flex-1">
+                    <div className="whitespace-pre-wrap">{summary || `${VcsOperationLabel[action]} completed.`}</div>
+                    {hasDetails && <OperationDetails details={details} />}
+                </div>
+                {dismissBtn}
+            </div>
+        );
+    } else {
+        boxClass = "mb-2 rounded border border-warning/40 bg-warning/8 px-2 py-1.5 text-xs text-warning";
+        body = (
+            <div className="flex items-start gap-2">
+                <i className="fa-sharp fa-solid fa-triangle-exclamation text-[11px] shrink-0 mt-[1px]" />
+                <div className="min-w-0 flex-1">
+                    <div className="whitespace-pre-wrap">{summary || `${VcsOperationLabel[action]} failed.`}</div>
+                    {hasDetails && <OperationDetails details={details} />}
+                </div>
+                {dismissBtn}
+            </div>
+        );
+    }
+
+    return <div className={boxClass}>{body}</div>;
 }
 
 export class VcsViewModel implements ViewModel {
@@ -173,15 +293,13 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const [activeRepoId, setActiveRepoId] = React.useState<string>("");
     const [selectedFilesByRepo, setSelectedFilesByRepo] = React.useState<RepoFilesMap>({});
     const [commitMessageByRepo, setCommitMessageByRepo] = React.useState<RepoStringMap>({});
-    const [commitRunningByRepo, setCommitRunningByRepo] = React.useState<RepoBoolMap>({});
-    const [syncRunningByRepo, setSyncRunningByRepo] = React.useState<RepoBoolMap>({});
-    const [operationNoticeByRepo, setOperationNoticeByRepo] = React.useState<RepoNoticeMap>({});
+    const [operationByRepo, setOperationByRepo] = React.useState<RepoOperationMap>({});
     const [sectionStateByRepo, setSectionStateByRepo] = React.useState<RepoSectionsMap>({});
     const [fileFilterByRepo, setFileFilterByRepo] = React.useState<RepoFileFiltersMap>({});
     const [currentView, setCurrentView] = React.useState<View>("changes");
 
-    const clearOperationNotice = React.useCallback((repoId: string) => {
-        setOperationNoticeByRepo((prev) => {
+    const clearOperation = React.useCallback((repoId: string) => {
+        setOperationByRepo((prev) => {
             if (prev[repoId] == null) return prev;
             const next = { ...prev };
             delete next[repoId];
@@ -189,14 +307,36 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
         });
     }, []);
 
-    const setOperationNotice = React.useCallback((repoId: string, message: string, isError: boolean) => {
-        const notice: VcsOperationNotice = {
-            id: Date.now() + Math.random(),
-            message,
-            isError,
-        };
-        setOperationNoticeByRepo((prev) => ({ ...prev, [repoId]: notice }));
-    }, []);
+    const startOperation = React.useCallback(
+        (repoId: string, action: VcsOperationAction, source: "header" | "changes" | "commit") => {
+            const info: VcsOperationInfo = {
+                id: Date.now() + Math.random(),
+                action,
+                state: "running",
+                source,
+            };
+            setOperationByRepo((prev) => ({ ...prev, [repoId]: info }));
+            return info.id;
+        },
+        []
+    );
+
+    const completeOperation = React.useCallback(
+        (repoId: string, id: number, state: "success" | "error", message?: string, details?: string) => {
+            setOperationByRepo((prev) => {
+                const existing = prev[repoId];
+                if (existing == null || existing.id !== id) return prev;
+                const next: VcsOperationInfo = {
+                    ...existing,
+                    state,
+                    message,
+                    details,
+                };
+                return { ...prev, [repoId]: next };
+            });
+        },
+        []
+    );
 
     const route = React.useMemo(() => {
         if (isBlankStr(connection ?? "")) return null;
@@ -268,7 +408,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
 
     const refreshRepo = async (repoId?: string) => {
         if (!isBlankStr(repoId ?? "")) {
-            clearOperationNotice(repoId);
+            clearOperation(repoId);
         }
         await loadRepositories();
     };
@@ -277,15 +417,30 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
         const selectedFiles = selectedFilesByRepo[repo.repoid] ?? [];
         const commitMessage = (commitMessageByRepo[repo.repoid] ?? "").trim();
         if (selectedFiles.length === 0) {
-            setOperationNotice(repo.repoid, "Please select at least one file.", true);
+            setOperationByRepo((prev) => ({
+                ...prev,
+                [repo.repoid]: {
+                    id: Date.now() + Math.random(),
+                    action: "commit",
+                    state: "error",
+                    message: "Please select at least one file.",
+                },
+            }));
             return;
         }
         if (isBlankStr(commitMessage)) {
-            setOperationNotice(repo.repoid, "Please enter a commit message.", true);
+            setOperationByRepo((prev) => ({
+                ...prev,
+                [repo.repoid]: {
+                    id: Date.now() + Math.random(),
+                    action: "commit",
+                    state: "error",
+                    message: "Please enter a commit message.",
+                },
+            }));
             return;
         }
-        setCommitRunningByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
-        clearOperationNotice(repo.repoid);
+        const opId = startOperation(repo.repoid, "commit", "commit");
         try {
             const response = await env.rpc.RemoteVcsCommitCommand(
                 TabRpcClient,
@@ -298,25 +453,23 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 { route, timeout: VcsMutationRpcTimeoutMs }
             );
             if (response.success) {
-                setOperationNotice(repo.repoid, response.output || "Commit completed.", false);
+                const output = response.output || "Commit completed.";
+                completeOperation(repo.repoid, opId, "success", output, output);
                 setSelectedFilesByRepo((prev) => ({ ...prev, [repo.repoid]: [] }));
                 await loadRepositories();
             } else {
                 const resultMsg = response.error || response.output || "Commit failed.";
-                setOperationNotice(repo.repoid, resultMsg, true);
+                completeOperation(repo.repoid, opId, "error", resultMsg, resultMsg);
             }
         } catch (e) {
-            setOperationNotice(repo.repoid, String(e), true);
-        } finally {
-            setCommitRunningByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
+            completeOperation(repo.repoid, opId, "error", String(e), String(e));
         }
     };
 
     const handleSync = async (repo: VcsRepositoryInfo, action?: VcsSyncAction) => {
         const syncAction = action ?? getDefaultSyncAction(repo);
         setActiveRepoId(repo.repoid);
-        setSyncRunningByRepo((prev) => ({ ...prev, [repo.repoid]: true }));
-        clearOperationNotice(repo.repoid);
+        const opId = startOperation(repo.repoid, syncAction, action ? "changes" : "header");
         let shouldRefresh = false;
         try {
             const response = await env.rpc.RemoteVcsSyncCommand(
@@ -329,19 +482,15 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 { route, timeout: VcsMutationRpcTimeoutMs }
             );
             if (response.success) {
-                setOperationNotice(repo.repoid, response.output || getSyncCompletionLabel(syncAction), false);
+                const output = response.output || getSyncCompletionLabel(syncAction);
+                completeOperation(repo.repoid, opId, "success", output, output);
                 shouldRefresh = true;
             } else {
-                setOperationNotice(
-                    repo.repoid,
-                    response.error || response.output || getSyncFailureLabel(syncAction),
-                    true
-                );
+                const resultMsg = response.error || response.output || getSyncFailureLabel(syncAction);
+                completeOperation(repo.repoid, opId, "error", resultMsg, resultMsg);
             }
         } catch (e) {
-            setOperationNotice(repo.repoid, String(e), true);
-        } finally {
-            setSyncRunningByRepo((prev) => ({ ...prev, [repo.repoid]: false }));
+            completeOperation(repo.repoid, opId, "error", String(e), String(e));
         }
         if (shouldRefresh) {
             await loadRepositories();
@@ -431,8 +580,10 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     }
 
     const activeRepo = repos.find((r) => r.repoid === activeRepoId) ?? repos[0];
-    const busySync = activeRepo ? !!syncRunningByRepo[activeRepo.repoid] : false;
-    const busyCommit = activeRepo ? !!commitRunningByRepo[activeRepo.repoid] : false;
+    const activeOp = activeRepo ? operationByRepo[activeRepo.repoid] : null;
+    const busySync = !!activeOp && activeOp.state === "running" && activeOp.action !== "commit";
+    const busyCommit = !!activeOp && activeOp.state === "running" && activeOp.action === "commit";
+    const runningSyncAction = busySync && activeOp ? (activeOp.action as VcsSyncAction) : null;
 
     return (
         <div className="h-full w-full overflow-hidden flex flex-col">
@@ -449,7 +600,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                         activeRepoId={activeRepo.repoid}
                         onSelect={(repoId) => {
                             setActiveRepoId(repoId);
-                            clearOperationNotice(repoId);
+                            clearOperation(repoId);
                         }}
                     />
 
@@ -459,6 +610,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                         onSync={() => handleSync(activeRepo)}
                         onRefresh={() => refreshRepo(activeRepo.repoid)}
                         syncRunning={busySync}
+                        syncAction={runningSyncAction}
                     />
 
                     {/* Tab bar */}
@@ -468,6 +620,9 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                         onViewChange={setCurrentView}
                         busy={busySync}
                     />
+
+                    {/* Shared operation progress card, visible across all tabs */}
+                    <VcsProgressCard operation={activeOp} onDismiss={() => clearOperation(activeRepo.repoid)} />
 
                     {/* Tab content */}
                     <div className="flex-1 min-h-0 overflow-hidden">
@@ -480,8 +635,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                 setCommitMessage={(next) => setCommitMessageByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))}
                                 onCommit={() => handleCommit(activeRepo)}
                                 commitRunning={busyCommit}
-                                operationNotice={operationNoticeByRepo[activeRepo.repoid]}
-                                onDismissNotice={() => clearOperationNotice(activeRepo.repoid)}
+                                syncAction={runningSyncAction}
                                 onFileHistory={(filePath) => openHistoryBlock(activeRepo, filePath)}
                                 onShowFileDiff={(filePath) => openDiffBlock(activeRepo, filePath)}
                                 sectionState={sectionStateByRepo[activeRepo.repoid] ?? makeDefaultSectionState()}
