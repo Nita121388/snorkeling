@@ -87,6 +87,9 @@ export interface TreeViewProps {
     editingNodeId?: string | null;
     onRenameCommit?: (id: string, newLabel: string) => void;
     onRenameCancel?: (id: string) => void;
+    /** Called whenever the set of expanded directory ids changes (user expand/collapse,
+     *  collapseAll/expandAll, or reveal). Receives the latest full expanded set. */
+    onExpandedChange?: (expandedIds: Set<string>) => void;
 }
 
 export interface TreeViewExpandAllResult {
@@ -100,6 +103,8 @@ export interface TreeViewRef {
     refresh: (id?: string) => void;
     collapseAll: () => void;
     expandAll: () => Promise<TreeViewExpandAllResult>;
+    /** Returns a copy of the current set of expanded directory ids. */
+    getExpandedIds: () => Set<string>;
 }
 
 const DefaultRowHeight = 24;
@@ -412,6 +417,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         editingNodeId,
         onRenameCommit,
         onRenameCancel,
+        onExpandedChange,
     } = props;
     const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(() => normalizeInitialNodes(initialNodes));
     const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(defaultExpandedIds ?? []));
@@ -467,6 +473,22 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
 
     useEffect(() => {
         expandedIdsRef.current = expandedIds;
+    }, [expandedIds]);
+
+    // Report expanded-set changes to the caller (used e.g. by the Files explorer to
+    // persist the user's expand/collapse choices). Initial mount is skipped so we do
+    // not write back the freshly-initialized default state.
+    const onExpandedChangeRef = useRef(onExpandedChange);
+    useEffect(() => {
+        onExpandedChangeRef.current = onExpandedChange;
+    }, [onExpandedChange]);
+    const mountedExpandedRef = useRef(false);
+    useEffect(() => {
+        if (!mountedExpandedRef.current) {
+            mountedExpandedRef.current = true;
+            return;
+        }
+        onExpandedChangeRef.current?.(expandedIds);
     }, [expandedIds]);
 
     useEffect(() => {
@@ -604,6 +626,8 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
             return next;
         });
     }, []);
+
+    const getExpandedIds = React.useCallback(() => new Set(expandedIdsRef.current), []);
 
     const loadChildren = React.useCallback(
         async (id: string, force = false) => {
@@ -774,8 +798,9 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
             refresh: refreshDirectory,
             collapseAll,
             expandAll,
+            getExpandedIds,
         }),
-        [collapseAll, expandAll, idToIndex, refreshDirectory, revealId, virtualizer]
+        [collapseAll, expandAll, getExpandedIds, idToIndex, refreshDirectory, revealId, virtualizer]
     );
 
     useEffect(() => {

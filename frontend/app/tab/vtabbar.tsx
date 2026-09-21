@@ -1,6 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+    getTabAgentStatusDotsAtom,
+    getTabsWithUnreadDotsAtom,
+    useAcquireWorkspaceBlockStatuses,
+} from "@/app/agent-status/agent-status-tab-aggregate";
 import { Tooltip } from "@/app/element/tooltip";
 import { SessionOverviewButton } from "@/app/session-overview/session-overview";
 import {
@@ -8,11 +13,6 @@ import {
     mergeVisibleTabIdsWithSessionOverview,
 } from "@/app/session-overview/session-overview-model";
 import { getTabBadgeAtom } from "@/app/store/badge";
-import {
-    getTabAgentStatusDotsAtom,
-    getTabsWithUnreadDotsAtom,
-    useAcquireWorkspaceBlockStatuses,
-} from "@/app/agent-status/agent-status-tab-aggregate";
 import { confirmCloseTabIfHasContent, confirmCurrentTabClose } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { getTabModelByTabId } from "@/app/store/tab-model";
@@ -23,12 +23,8 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-    markTabOpenedThisLaunch,
-    openedThisLaunchTabIdsAtom,
-    wasTabOpenedThisLaunch,
-} from "./tab-open-state";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -101,6 +97,8 @@ interface VTabBarProps {
     workspace: Workspace;
     className?: string;
     headerHovered?: boolean;
+    /** 当前悬浮的 tabId (用于内容区预挂载, 消除切到隐藏 tab 的黑屏). */
+    onHoveredTabChange?: (tabId: string | null) => void;
 }
 
 interface VTabWrapperProps {
@@ -211,7 +209,7 @@ function VTabWrapper({
     );
 }
 
-export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
+export function VTabBar({ workspace, className, headerHovered, onHoveredTabChange }: VTabBarProps) {
     const env = useWaveEnv<VTabBarEnv>();
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
@@ -238,6 +236,9 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
     const [isNewTabHovered, setIsNewTabHovered] = useState(false);
     const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     const dragSourceRef = useRef<string | null>(null);
+    // FLIP 平稳换位: 记录上一次布局中每个 tab 的 top 位置, 顺序变化时用 translateY
+    // 从旧位置滑到新位置, 消除"点开新 tab 硬跳到顶部"的跳动.
+    const flipPrevPositionsRef = useRef<Map<string, number> | null>(null);
     const didResetHoverForDragRef = useRef(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const scrollAnimFrameRef = useRef<number | null>(null);
@@ -376,6 +377,46 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
         return [...visibleGroup, ...hiddenGroup];
     }, [orderedTabIds, activeTabId, openedThisLaunchTabIds, tabsWithUnreadDots]);
 
+    // FLIP: 当 renderOrderedTabIds / 悬停状态变化导致布局重排后, 把每个 tab 从它的
+    // 上—个 top 位置平滑滑动到新位置. 只在非拖拽时启用, 首次挂载不播动画.
+    useLayoutEffect(() => {
+        const container = scrollContainerRef.current;
+        if (container == null || dragTabId != null) {
+            return;
+        }
+        const els = container.querySelectorAll<HTMLElement>("[data-tabid]");
+        const next = new Map<string, number>();
+        els.forEach((el) => {
+            const id = el.dataset.tabid;
+            if (id != null) {
+                next.set(id, el.offsetTop);
+            }
+        });
+        const prev = flipPrevPositionsRef.current;
+        if (prev != null) {
+            next.forEach((top, id) => {
+                const prevTop = prev.get(id);
+                if (prevTop == null || prevTop === top) {
+                    return;
+                }
+                const el = container.querySelector<HTMLElement>(`[data-tabid="${CSS.escape(id)}"]`);
+                if (el == null) {
+                    return;
+                }
+                el.style.transform = `translateY(${prevTop - top}px)`;
+                // 强制 reflow, 让浏览器拿到"旧位置"作为过渡起点
+                void el.offsetHeight;
+                el.style.transform = "";
+            });
+        }
+        flipPrevPositionsRef.current = next;
+    }, [renderOrderedTabIds, isTabBarHovered, headerHovered, dragTabId]);
+
+    // 向上层汇报当前悬浮的 tab, 便于内容区提前挂载该 tab (消除切换黑屏).
+    useEffect(() => {
+        onHoveredTabChange?.(hoveredTabId);
+    }, [hoveredTabId, onHoveredTabChange]);
+
     const reorder = (targetIndex: number) => {
         const sourceTabId = dragSourceRef.current;
         if (sourceTabId == null) {
@@ -457,7 +498,12 @@ export function VTabBar({ workspace, className, headerHovered }: VTabBarProps) {
                     const wasOpened = wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
                     const hasUnreadDots = tabsWithUnreadDots.has(tabId);
                     const isHidden =
-                        !isActive && !isTabBarHovered && !headerHovered && !wasOpened && dragTabId == null && !hasUnreadDots;
+                        !isActive &&
+                        !isTabBarHovered &&
+                        !headerHovered &&
+                        !wasOpened &&
+                        dragTabId == null &&
+                        !hasUnreadDots;
                     if (isHidden) {
                         return (
                             <div key={tabId}>

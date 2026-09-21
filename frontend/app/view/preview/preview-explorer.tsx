@@ -3,7 +3,9 @@
 
 import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import { ContextMenuModel } from "@/app/store/contextmenu";
+import { WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
+import { ObjectService } from "@/app/store/services";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TreeNodeData, TreeView, TreeViewRef } from "@/app/treeview/treeview";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -44,6 +46,10 @@ const TreeFetchLimit = 1024;
 const TreeMaxEntries = 500;
 const TreeExpandAllMaxDepth = 8;
 const TreeExpandAllMaxDirectories = 500;
+// 目录树展开状态持久化: 用户展开/收起的目录集合存进 block meta, 避免切标签/重新打开时
+// 展开状态丢失(被重置回默认折叠) 或 被 reveal 定位强制覆盖。
+const PreviewExpandedDirsMetaKey = "preview:expandeddirs";
+const PersistExpandedDirsDelayMs = 500;
 const SearchMinLength = 2;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
@@ -162,7 +168,70 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         [directoryIconColor, rootPath]
     );
     const rootIds = useMemo(() => [rootPath], [rootPath]);
-    const defaultExpandedIds = useMemo(() => [rootPath], [rootPath]);
+    const persistedExpandedDirs = useMemo(() => {
+        const raw = (blockData?.meta as Record<string, unknown> | undefined)?.[PreviewExpandedDirsMetaKey];
+        return Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : [];
+    }, [blockData?.meta]);
+    const defaultExpandedIds = useMemo(
+        () => (persistedExpandedDirs.length > 0 ? [rootPath, ...persistedExpandedDirs] : [rootPath]),
+        [rootPath, persistedExpandedDirs]
+    );
+
+    // 防抖把当前展开的目录集合写回 block meta (整表替换, 需带上已有 meta 其它键)。
+    const persistExpandedDirs = useCallback(
+        (expanded: Set<string>) => {
+            const dirs = Array.from(expanded).sort();
+            const current = (blockData?.meta as Record<string, unknown> | undefined)?.[PreviewExpandedDirsMetaKey];
+            const isSame =
+                Array.isArray(current) &&
+                current.length === dirs.length &&
+                current.every((p, i) => p === dirs[i]);
+            if (isSame) {
+                return;
+            }
+            const nextMeta = {
+                ...(blockData?.meta ?? {}),
+                [PreviewExpandedDirsMetaKey]: dirs,
+            };
+            fireAndForget(() =>
+                ObjectService.UpdateObjectMeta(WOS.makeORef("block", model.blockId), nextMeta)
+            );
+        },
+        [blockData?.meta, model.blockId]
+    );
+    const persistExpandedDirsRef = useRef(persistExpandedDirs);
+    useEffect(() => {
+        persistExpandedDirsRef.current = persistExpandedDirs;
+    }, [persistExpandedDirs]);
+    const persistTimerRef = useRef<number | null>(null);
+    const persistPendingRef = useRef<Set<string> | null>(null);
+    const onExpandedChange = useCallback((expanded: Set<string>) => {
+        persistPendingRef.current = new Set(expanded);
+        if (persistTimerRef.current != null) {
+            return;
+        }
+        persistTimerRef.current = window.setTimeout(() => {
+            persistTimerRef.current = null;
+            const pending = persistPendingRef.current;
+            persistPendingRef.current = null;
+            if (pending != null) {
+                persistExpandedDirsRef.current(pending);
+            }
+        }, PersistExpandedDirsDelayMs);
+    }, []);
+    useEffect(() => {
+        return () => {
+            if (persistTimerRef.current != null) {
+                window.clearTimeout(persistTimerRef.current);
+                persistTimerRef.current = null;
+            }
+            // 卸载时把未落盘的展开状态立即刷掉, 避免切标签丢失。
+            if (persistPendingRef.current != null) {
+                persistExpandedDirsRef.current(persistPendingRef.current);
+                persistPendingRef.current = null;
+            }
+        };
+    }, []);
     const groupedContentResults = useMemo(
         () => groupContentSearchMatches(contentSearchResults),
         [contentSearchResults]
@@ -994,6 +1063,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         fetchDir={fetchDir}
                         refreshKey={treeRefreshKey}
                         defaultExpandedIds={defaultExpandedIds}
+                        onExpandedChange={onExpandedChange}
                         selectedId={currentPath}
                         height="100%"
                         width="100%"

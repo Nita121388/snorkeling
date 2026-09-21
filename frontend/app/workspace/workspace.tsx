@@ -13,7 +13,7 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { atoms, getApi, getSettingsKeyAtom } from "@/store/global";
 import { isMacOS } from "@/util/platformutil";
 import { useAtomValue } from "jotai";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
     ImperativePanelGroupHandle,
     ImperativePanelHandle,
@@ -63,6 +63,31 @@ const WorkspaceElem = memo(() => {
     // Used to expand hidden (not-opened-today) Types on header hover instead of
     // requiring a hover over each specific Type.
     const [isHeaderHovered, setIsHeaderHovered] = useState(false);
+
+    // 内容区保活/预挂载: 提前挂载"当前激活 + 悬浮(即将点击) + 最近用过的"几个 tab 的
+    // 内容 (非激活用 visibility:hidden 隐藏但保持真实尺寸, 便于 tile 布局正确测量),
+    // 这样切到这些 tab 时直接显示已挂载内容, 消除"切到隐藏 tab 先黑屏再加载"的闪黑.
+    const PreloadTabCap = 3;
+    const [preloadTabIds, setPreloadTabIds] = useState<string[]>([]);
+    useEffect(() => {
+        setPreloadTabIds((prev) => {
+            const next = prev.filter((id) => id !== tabId);
+            next.unshift(tabId);
+            return next.slice(0, PreloadTabCap);
+        });
+    }, [tabId]);
+    const handleHoveredTabChange = useCallback((hoveredTabId: string | null) => {
+        if (!hoveredTabId) {
+            return;
+        }
+        setPreloadTabIds((prev) => {
+            const next = prev.filter((id) => id !== hoveredTabId);
+            next.unshift(hoveredTabId);
+            return next.slice(0, PreloadTabCap);
+        });
+    }, []);
+    const renderPreloadTabIds =
+        tabId === "" ? [] : [tabId, ...preloadTabIds.filter((id) => id !== tabId)].slice(0, PreloadTabCap);
 
     // showLeftTabBar is passed as a seed value only; subsequent changes are handled by setShowLeftTabBar below.
     // Do NOT add showLeftTabBar as a dep here — re-registering refs on config changes would redundantly re-run commitLayouts.
@@ -150,7 +175,13 @@ const WorkspaceElem = memo(() => {
                                         onMouseEnter={() => setIsHeaderHovered(true)}
                                         onMouseLeave={() => setIsHeaderHovered(false)}
                                     >
-                                        {showLeftTabBar && <VTabBar workspace={ws} headerHovered={isHeaderHovered} />}
+                                        {showLeftTabBar && (
+                                            <VTabBar
+                                                workspace={ws}
+                                                headerHovered={isHeaderHovered}
+                                                onHoveredTabChange={handleHoveredTabChange}
+                                            />
+                                        )}
                                     </div>
                                 </Panel>
                                 <PanelResizeHandle className={innerHandleClass} />
@@ -175,8 +206,24 @@ const WorkspaceElem = memo(() => {
                             {tabId === "" ? (
                                 <CenteredDiv>No Active Tab</CenteredDiv>
                             ) : (
-                                <div className="flex flex-row h-full min-w-0 w-full">
-                                    <TabContent key={tabId} tabId={tabId} noTopPadding={showLeftTabBar && isMacOS()} />
+                                <div className="flex flex-row h-full min-w-0 w-full overflow-hidden">
+                                    <div className="relative flex-1 min-w-0 h-full min-h-0">
+                                        {renderPreloadTabIds.map((preTabId) => {
+                                            const isActive = preTabId === tabId;
+                                            return (
+                                                <div
+                                                    key={preTabId}
+                                                    className="absolute inset-0"
+                                                    style={{ visibility: isActive ? "visible" : "hidden" }}
+                                                >
+                                                    <TabContent
+                                                        tabId={preTabId}
+                                                        noTopPadding={showLeftTabBar && isMacOS()}
+                                                    />
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                     <Widgets />
                                 </div>
                             )}
