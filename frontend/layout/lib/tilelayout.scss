@@ -22,6 +22,15 @@
         min-width: 4rem;
     }
 
+    // overlay 与 placeholder 在非拖拽时被 translate 到屏幕外 (top:10000 + 大偏移).
+    // 用 absolute 会撑大 .tile-layout 的可滚动高度, 浏览器在布局变化时为保住
+    // 锚点把 scrollTop 调成非零, 导致 block 顶栏被滚出 overflow:hidden 的可见区.
+    // 改为 fixed, 脱离文档流, 不再贡献滚动高度.
+    .overlay-container,
+    .placeholder-container {
+        position: fixed;
+    }
+
     .display-container {
         z-index: var(--zindex-layout-display-container);
     }
@@ -99,8 +108,9 @@
         }
 
         .tile-preview-container {
-            position: absolute;
-            top: 10000px;
+            position: fixed;
+            top: 0;
+            left: -10000px;
             white-space: nowrap !important;
             user-select: none;
             -webkit-user-select: none;

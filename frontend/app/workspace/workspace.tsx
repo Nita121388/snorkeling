@@ -213,7 +213,7 @@ const WorkspaceElem = memo(() => {
                                             return (
                                                 <div
                                                     key={preTabId}
-                                                    className="absolute inset-0"
+                                                    className="absolute inset-0 flex flex-col"
                                                     style={{ visibility: isActive ? "visible" : "hidden" }}
                                                 >
                                                     <TabContent
