@@ -307,7 +307,10 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
         };
     }, [hoveredIndex, pinnedSeq, prompts, onJump]);
 
-    if (prompts.length < 2) return null;
+    // 轨从「第一条用户消息」起就渲染（>=1），而不是等到第二条。
+    // 旧阈值 <2 会让「刚发出一条消息」的新建会话完全不显示消息轨，
+    // 而恢复的老会话通常 >=2 条消息一直显示 —— 两者在 TUI 右侧中间出现可见的不一致。
+    if (prompts.length < 1) return null;
     const attentionIndex = hoveredIndex;
 
     return (

@@ -1786,6 +1786,21 @@
     .hljs-deletion {
         color: var(--code-token-meta, var(--secondary-text-color));
     }
+
+    // Diff 行必须覆盖普通语法高亮 token，避免 addition/deletion 被字符串或 meta 颜色覆盖。
+    &.diff {
+        .hljs-addition,
+        .hljs-addition * {
+            color: var(--codeblock-diff-add-text, #166534) !important;
+            background-color: var(--codeblock-diff-add-bg, #dcfce7) !important;
+        }
+
+        .hljs-deletion,
+        .hljs-deletion * {
+            color: var(--codeblock-diff-del-text, #9f1239) !important;
+            background-color: var(--codeblock-diff-del-bg, #ffe4e6) !important;
+        }
+    }
 }
 
 // Table typography: fixed layout + word-break keep edited cells from blowing the column
