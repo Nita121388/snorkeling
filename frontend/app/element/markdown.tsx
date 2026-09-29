@@ -5558,7 +5558,19 @@ const Markdown = ({
                             ghostPlaceholder={dynamicPlaceholder ?? undefined}
                             formatTypography={formatTypography ?? undefined}
                             codeLanguage={editCodeLanguage}
-                            onExecuteCode={onClickExecute}
+                            onApplyLanguage={
+                                editSessionKind === "code" && inlineEdit.editSession?.startLine != null
+                                    ? (nextLang) => {
+                                          setEditCodeLanguage(nextLang);
+                                          const next = setCodeBlockLanguage(
+                                              text,
+                                              inlineEdit.editSession!.startLine,
+                                              nextLang
+                                          );
+                                          if (next != null) handleInlineEditCommit(next);
+                                      }
+                                    : undefined
+                            }
                         />
                     )}
                     {slashState != null && slashAnchor != null && inlineEdit.editSession != null && (

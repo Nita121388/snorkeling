@@ -727,6 +727,18 @@
 
     &[data-block-kind="code"] pre.codeblock .codeblock-header > * { pointer-events: auto; }
 
+    &[data-block-kind="code"] pre.codeblock .codeblock-edit-header .codeblock-lang-select {
+        height: 20px;
+        padding: 0 5px;
+        border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+        border-radius: 4px;
+        background: var(--codeblock-bg-color, #f7f7f4);
+        color: color-mix(in srgb, var(--main-text-color, #888) 72%, transparent);
+        font: 10px var(--mono-font, monospace);
+        text-transform: uppercase;
+        cursor: pointer;
+    }
+
     &[data-block-kind="code"] pre.codeblock .codeblock-ops {
         visibility: visible;
         display: flex;
@@ -761,6 +773,17 @@
     &[data-block-kind="code"] pre.codeblock .hljs-class .hljs-title { color: var(--code-token-type, currentColor); }
     &[data-block-kind="code"] pre.codeblock .hljs-meta,
     &[data-block-kind="code"] pre.codeblock .hljs-deletion { color: var(--code-token-meta, var(--secondary-text-color)); }
+
+    &[data-block-kind="code"] pre.codeblock > code.language-diff {
+        .hljs-addition, .hljs-addition * {
+            color: var(--codeblock-diff-add-text, #166534) !important;
+            background-color: var(--codeblock-diff-add-bg, #dcfce7) !important;
+        }
+        .hljs-deletion, .hljs-deletion * {
+            color: var(--codeblock-diff-del-text, #9f1239) !important;
+            background-color: var(--codeblock-diff-del-bg, #ffe4e6) !important;
+        }
+    }
 
     &[data-block-kind="code"] .inline-edit-textarea {
         font-family: var(--markdown-code-font, var(--mono-font, monospace));
@@ -1787,8 +1810,9 @@
         color: var(--code-token-meta, var(--secondary-text-color));
     }
 
-    // Diff 行必须覆盖普通语法高亮 token，避免 addition/deletion 被字符串或 meta 颜色覆盖。
-    &.diff {
+    // Diff 使用 language-diff class 挂在 code 元素上，而不是 pre.codeblock 上。
+    // 必须覆盖 highlight.js 的 addition/deletion 颜色及其嵌套 token。
+    > code.language-diff {
         .hljs-addition,
         .hljs-addition * {
             color: var(--codeblock-diff-add-text, #166534) !important;

@@ -371,6 +371,32 @@ function captureWysiwygInfo(
     return { html, headingLevel, listMarker };
 }
 
+function stripCodeFence(source: string): string {
+    const lines = source.split(/\r?\n/);
+    if (lines.length < 2 || !/^\s{0,3}(`{3,}|~{3,})/.test(lines[0] ?? "")) return source;
+    const marker = (lines[0].match(/^\s{0,3}(`{3,}|~{3,})/) ?? [])[1];
+    if (marker == null || !new RegExp(`^\\s{0,3}${marker[0]}{${marker.length},}\\s*$`).test(lines.at(-1) ?? "")) return source;
+    return lines.slice(1, -1).join("\n");
+}
+
+function stripListMarker(source: string): string {
+    return source.replace(/^(\s*)(?:\d{1,9}[.)]|[-+*])\s+/, "$1");
+}
+
+function wrapListMarker(source: string, original: string): string {
+    const match = original.match(/^(\s*)(\d{1,9}[.)]|[-+*])(\s+)/);
+    if (match == null) return source;
+    return `${match[1]}${match[2]}${match[3]}${source}`;
+}
+
+function wrapCodeFence(source: string, original: string): string {
+    const lines = original.split(/\r?\n/);
+    const opener = lines[0] ?? "```";
+    const closer = lines.at(-1) ?? "```";
+    if (!/^\s{0,3}(`{3,}|~{3,})/.test(opener) || !/^\s{0,3}(`{3,}|~{3,})\s*$/.test(closer)) return source;
+    return `${opener}\n${source}\n${closer}`;
+}
+
 type UseInlineEditArgs = {
     fullText: string;
     /** Called with the new full text on every successful commit; never on cancel. */
@@ -513,7 +539,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             }
         }
         const next = {
-            top: targetRect.top,
+            // Electron can scroll the body while the Markdown viewport is scrolled. A fixed
+            // portal under body is offset by that scroll in Chromium, so compensate here to
+            // keep the editor aligned with the source block.
+            top: targetRect.top + document.body.scrollTop,
             left,
             width,
             height: targetRect.height,
@@ -540,6 +569,15 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             `measure scrollTop=${viewport.scrollTop.toFixed(2)} tRectTop=${targetRect.top.toFixed(2)} tRectLeft=${targetRect.left.toFixed(2)} tRectW=${targetRect.width.toFixed(2)} tRectH=${targetRect.height.toFixed(2)} next(t=${next.top.toFixed(2)},l=${next.left.toFixed(2)},w=${next.width.toFixed(2)},h=${next.height.toFixed(2)}) skipped=${skipped} kind=${editSession?.blockKind ?? "?"} line=${editSession?.startLine ?? "?"}`
         );
     }, [editSession, getViewportEl]);
+
+    // Hiding the original list item can change ordered-list marker layout and move the target
+    // during the same render. Measure once more after the portal overlay is mounted so list
+    // editors do not retain the pre-hide rectangle.
+    useLayoutEffect(() => {
+        if (editSession == null || overlayRect == null) return;
+        const raf = requestAnimationFrame(() => measureOverlay());
+        return () => cancelAnimationFrame(raf);
+    }, [editSession, overlayRect, measureOverlay]);
 
     useLayoutEffect(() => {
         if (editSession == null) {
@@ -690,7 +728,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 Number.isFinite(endLineRaw) && endLineRaw >= safeLine
                     ? Math.min(Math.trunc(endLineRaw), lines.length)
                     : safeLine;
-            const initialContent = lines.slice(safeLine - 1, endLine).join("\n");
+            const sourceContent = lines.slice(safeLine - 1, endLine).join("\n");
+            const initialContent = blockKind === "code"
+                ? stripCodeFence(sourceContent)
+                : blockKind === "list" ? stripListMarker(sourceContent) : sourceContent;
             const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent);
             const session: InlineEditSession = {
                 blockKind,
@@ -843,7 +884,11 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 draftLines
             ).join("\n");
         } else {
-            newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, committedDraft);
+            const originalSource = fullTextRef.current.split(/\r?\n/).slice(current.startLine - 1, current.endLine).join("\n");
+            const sourceDraft = current.blockKind === "code"
+                ? wrapCodeFence(committedDraft, originalSource)
+                : current.blockKind === "list" ? wrapListMarker(committedDraft, originalSource) : committedDraft;
+            newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, sourceDraft);
         }
         onCommit(newFull);
     }, [editSession, draftText, onCommit]);
@@ -926,27 +971,28 @@ type InlineEditOverlayProps = {
     formatTypography?: React.CSSProperties;
     /** Code block being edited: language for the isomorphic top bar + syntax highlight. */
     codeLanguage?: string | null;
-    /** Code block execute handler (forwarded from CodeBlock's onClickExecute) so the edit header's button works. */
-    onExecuteCode?: (command: string) => void;
+    /** Code block language change handler. */
+    onApplyLanguage?: (lang: string | null) => void;
 };
 
 /**
  * 代码块编辑态顶栏。pre 被 inline-edit-hidden 后内部的 .codeblock-header 也跟着隐藏，
  * 所以在 overlay 里重建一个与预览态同构的顶栏（语言标签 + 复制/执行按钮），保持视觉一致。
  */
-function CodeBlockEditHeader({ language, getContent, onExecute }: { language?: string | null; getContent: () => string; onExecute?: (command: string) => void }) {
-    const copy = () => void navigator.clipboard.writeText(getContent());
+const CodeLanguages = ["text", "diff", "javascript", "typescript", "tsx", "python", "json", "html", "css", "bash", "shell", "go", "rust", "sql", "yaml", "markdown"];
+
+function CodeBlockEditHeader({ language, onApplyLanguage }: { language?: string | null; onApplyLanguage?: (lang: string | null) => void }) {
+    if (onApplyLanguage == null) return null;
     return (
-        <div
-            className="codeblock-header"
-            // 顶栏按钮不抢焦点：mousedown preventDefault 阻止 button 取得焦点，避免编辑器 blur→commit→关闭。
-            onMouseDown={(e) => e.preventDefault()}
-        >
-            {language != null && <span className="codeblock-lang-badge is-static">{language}</span>}
-            <div className="codeblock-ops">
-                <CopyButton title="Copy" onClick={copy} />
-                {onExecute && <IconButton decl={{ elemtype: "iconbutton", icon: "regular@square-terminal", title: "Execute", click: () => onExecute(getContent()) }} />}
-            </div>
+        <div className="codeblock-header codeblock-edit-header" onMouseDown={(e) => e.stopPropagation()}>
+            <select
+                className="codeblock-lang-select"
+                value={language ?? "text"}
+                aria-label="Code language"
+                onChange={(e) => onApplyLanguage(e.target.value === "text" ? null : e.target.value)}
+            >
+                {CodeLanguages.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
         </div>
     );
 }
@@ -968,7 +1014,7 @@ export function InlineEditOverlay({
     ghostPlaceholder,
     formatTypography,
     codeLanguage,
-    onExecuteCode,
+    onApplyLanguage,
     wysiwygRef,
     wysiwygHtml,
     wysiwygHeadingLevel,
@@ -1026,11 +1072,7 @@ export function InlineEditOverlay({
                         onInput={(text, caret) => onTextChange(text, caret)}
                         onBlur={() => onBlur(codeEditorRef.current?.getContent())}
                     />
-                    <CodeBlockEditHeader
-                        language={codeLanguage}
-                        getContent={() => codeEditorRef.current?.getContent() ?? ""}
-                        onExecute={onExecuteCode}
-                    />
+                    <CodeBlockEditHeader language={codeLanguage} onApplyLanguage={onApplyLanguage} />
                 </pre>
             ) : wysiwygRef != null && wysiwygHtml != null ? (
                 <WysiwygEditor
