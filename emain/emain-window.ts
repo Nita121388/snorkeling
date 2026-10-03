@@ -453,6 +453,9 @@ export class WaveBrowserWindow extends BaseWindow {
         );
         tabView.webContents.send("wave-init", initOpts);
         await this.awaitWithDevTimeout(tabView.waveReadyPromise, "waveReadyPromise", tabView.waveTabId);
+        // The fullscreen listener is registered during wave initialization. Sending
+        // the event before wave-init/wave-ready can be lost for a newly created tab.
+        tabView.webContents.send("fullscreen-change", this.isFullScreen());
         console.log("wave-ready init time", Date.now() - startTime + "ms");
     }
 
@@ -490,6 +493,10 @@ export class WaveBrowserWindow extends BaseWindow {
         }
         this.activeTabView = tabView;
         this.allLoadedTabViews.set(tabView.waveTabId, tabView);
+        // A tab view can be activated after the window entered fullscreen. Fullscreen
+        // events are sent only to the active view, so synchronize the current window
+        // state when switching to any tab view.
+        tabView.webContents.send("fullscreen-change", this.isFullScreen());
         if (!tabInitialized) {
             console.log("initializing a new tab", primaryStartupTab ? "(primary startup)" : "");
             await this.initializeTab(tabView, primaryStartupTab);

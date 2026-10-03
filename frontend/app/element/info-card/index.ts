@@ -19,3 +19,9 @@ export {
 } from "./info-card";
 export { InfoCardPortal, useInfoCardHover } from "./info-card-hover";
 export type { InfoCardHoverState, InfoCardPlacement } from "./info-card-hover";
+export {
+    claimInfoCard,
+    isInfoCardClaimedBy,
+    releaseInfoCard,
+    subscribeInfoCard,
+} from "./info-card-global";

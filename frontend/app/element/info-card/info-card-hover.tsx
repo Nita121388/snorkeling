@@ -10,6 +10,12 @@
 
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    claimInfoCard,
+    isInfoCardClaimedBy,
+    releaseInfoCard,
+    subscribeInfoCard,
+} from "./info-card-global";
 
 export type InfoCardPlacement = "right" | "bottom";
 
@@ -48,6 +54,8 @@ export function useInfoCardHover(opts?: {
     const [isCardHovered, setIsCardHovered] = useState(false);
     const [cardPos, setCardPos] = useState<{ top: number; left: number } | null>(null);
 
+    // 本实例在全局独占管理器中的唯一 token, 用于被顶掉判定。
+    const claimTokenRef = useRef<symbol>(Symbol("info-card-hover"));
     const internalRef = useRef<HTMLDivElement | null>(null);
     const targetRef = opts?.targetRef ?? internalRef;
     const hideTimerRef = useRef<number | null>(null);
@@ -81,9 +89,30 @@ export function useInfoCardHover(opts?: {
         }, hideDelayMs);
     }, [cancelHide, hideDelayMs]);
 
+    // 被全局独占管理器顶掉时, 立即强制关闭自身(跳过隐藏延迟)。
+    useEffect(
+        () =>
+            subscribeInfoCard(() => {
+                if (!isInfoCardClaimedBy(claimTokenRef.current)) {
+                    cancelHide();
+                    setIsHovered(false);
+                    setIsCardHovered(false);
+                }
+            }),
+        [cancelHide]
+    );
+
+    // 完全关闭后释放占用, 避免 stale token 阻塞后续判断。
+    useEffect(() => {
+        if (!(isHovered || isCardHovered)) {
+            releaseInfoCard(claimTokenRef.current);
+        }
+    }, [isHovered, isCardHovered]);
+
     useEffect(
         () => () => {
             cancelHide();
+            releaseInfoCard(claimTokenRef.current);
         },
         [cancelHide]
     );
@@ -93,24 +122,27 @@ export function useInfoCardHover(opts?: {
             ref: targetRef,
             onMouseEnter: () => {
                 cancelHide();
+                claimInfoCard(claimTokenRef.current);
                 setIsHovered(true);
                 refreshCardPos();
             },
             onMouseLeave: scheduleHide,
         }),
-        [cancelHide, refreshCardPos, scheduleHide]
+        [cancelHide, claimInfoCard, refreshCardPos, scheduleHide]
     );
 
     const cardProps = useMemo(
         () => ({
             onMouseEnter: () => {
                 cancelHide();
+                claimInfoCard(claimTokenRef.current);
                 setIsCardHovered(true);
             },
             onMouseLeave: scheduleHide,
             onFocusCapture: () => {
                 cardFocusRef.current = true;
                 cancelHide();
+                claimInfoCard(claimTokenRef.current);
                 setIsCardHovered(true);
                 setIsHovered(true);
             },
@@ -121,7 +153,7 @@ export function useInfoCardHover(opts?: {
                 cardFocusRef.current = false;
             },
         }),
-        [cancelHide, scheduleHide]
+        [cancelHide, scheduleHide, claimInfoCard]
     );
 
     return useMemo(

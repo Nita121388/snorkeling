@@ -108,6 +108,27 @@ export interface TreeViewRef {
 }
 
 const DefaultRowHeight = 24;
+const DirectoryLoadTimeoutMs = 15_000;
+// Minimum fetch duration before a `Loading…` row is painted. Fast local fetches finish
+// well inside this window and expand instantly without flashing a loading frame.
+// 300ms covers most directory listings; slow/remote dirs still show a spinner afterwards.
+const LoadingVisualDelayMs = 300;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+        promise.then(
+            (value) => {
+                window.clearTimeout(timeoutId);
+                resolve(value);
+            },
+            (error) => {
+                window.clearTimeout(timeoutId);
+                reject(error);
+            }
+        );
+    });
+}
 const DefaultIndentWidth = 12;
 const DefaultOverscan = 10;
 const DefaultMaxExpandAllDepth = 8;
@@ -429,9 +450,13 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     const idToIndexRef = useRef<Map<string, number>>(new Map());
     const pendingScrollIdRef = useRef<string | null>(null);
     const loadingIdsRef = useRef<Set<string>>(new Set());
+    // Timer that flips a directory to `childrenStatus: loading` if its fetch takes long
+    // enough. Fast local fetches finish before the timer fires and never render a
+    // `Loading…` row, so clicking an unexpanded local folder expands instantly instead
+    // of flashing a loading frame.
+    const loadingTimersRef = useRef<Map<string, number>>(new Map());
     const lastRefreshKeyRef = useRef(refreshKey);
     const rootIdsKey = rootIds.join("\u0000");
-    const defaultExpandedIdsKey = (defaultExpandedIds ?? []).join("\u0000");
 
     // Marquee (rubber-band) selection state
     const [marqueeActive, setMarqueeActive] = useState(false);
@@ -475,6 +500,15 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         expandedIdsRef.current = expandedIds;
     }, [expandedIds]);
 
+    useEffect(() => {
+        // Clear any pending loading-visual timers on unmount so a late timer cannot
+        // touch state after the tree is gone.
+        return () => {
+            loadingTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+            loadingTimersRef.current.clear();
+        };
+    }, []);
+
     // Report expanded-set changes to the caller (used e.g. by the Files explorer to
     // persist the user's expand/collapse choices). Initial mount is skipped so we do
     // not write back the freshly-initialized default state.
@@ -492,12 +526,47 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     }, [expandedIds]);
 
     useEffect(() => {
-        setNodesById(normalizeInitialNodes(initialNodes));
+        const nextInitialNodes = normalizeInitialNodes(initialNodes);
+        setNodesById((prev) => {
+            // `initialNodes` is recreated when display config changes. Do not throw away
+            // already fetched children in that case; doing so briefly puts expanded
+            // directories back into `loading` and makes the Files block flash.
+            // `initialNodes` only ever contains the root node(s), so check that every
+            // initial id is already present (i.e. we are still on the same root) rather
+            // than comparing total map sizes, which always differ once children load.
+            const allInitialIdsPresent = Array.from(nextInitialNodes.keys()).every((id) => prev.has(id));
+            if (!allInitialIdsPresent) {
+                nodesByIdRef.current = nextInitialNodes;
+                return nextInitialNodes;
+            }
+
+            const next = new Map(prev);
+            nextInitialNodes.forEach((initialNode, id) => {
+                const existing = next.get(id);
+                if (existing == null) {
+                    next.set(id, initialNode);
+                    return;
+                }
+                next.set(id, {
+                    ...existing,
+                    ...initialNode,
+                    childrenIds: existing.childrenIds,
+                    childrenStatus: existing.childrenStatus,
+                });
+            });
+            nodesByIdRef.current = next;
+            return next;
+        });
     }, [initialNodes]);
 
     useEffect(() => {
+        // Reset expansion only when the root changes (new folder / connection). Do NOT
+        // follow `defaultExpandedIdsKey`: it is fed back from our own persisted block meta
+        // (`preview:expandeddirs`), so following it re-applies the same set over itself on
+        // every expand/collapse → state churn that makes the tree flash/reload. Initial
+        // expansion comes from the useState initializer below using `defaultExpandedIds`.
         setExpandedIds(new Set(defaultExpandedIds ?? []));
-    }, [defaultExpandedIdsKey, rootIdsKey]);
+    }, [rootIdsKey]);
 
     useEffect(() => {
         setSelectedId(propSelectedId ?? rootIds[0]);
@@ -647,7 +716,10 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
             }
             loadingIdsRef.current.add(id);
             const keepCurrentChildrenOnError = force && status !== "unloaded" && status !== "error";
-            if (status === "unloaded" || status === "error") {
+            // Delay the `loading` visual: fast local fetches resolve before this timer fires
+            // and the tree jumps straight to the children without ever painting Loading….
+            const markLoading = () => {
+                loadingTimersRef.current.delete(id);
                 updateNodesById((prev) => {
                     const source = prev.get(id);
                     if (source == null) {
@@ -657,9 +729,16 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                     next.set(id, { ...source, childrenStatus: "loading" });
                     return next;
                 });
+            };
+            if (status === "unloaded" || status === "error") {
+                loadingTimersRef.current.set(id, window.setTimeout(markLoading, LoadingVisualDelayMs));
             }
             try {
-                const result = await fetchDir(id, maxDirEntries);
+                const result = await withTimeout(
+                    fetchDir(id, maxDirEntries),
+                    DirectoryLoadTimeoutMs,
+                    `Timed out loading directory: ${id}`
+                );
                 updateNodesById((prev) => mergeFetchedTreeChildren(prev, id, result, maxDirEntries));
             } catch (error) {
                 updateNodesById((prev) => {
@@ -677,6 +756,11 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                 });
             } finally {
                 loadingIdsRef.current.delete(id);
+                const timer = loadingTimersRef.current.get(id);
+                if (timer != null) {
+                    window.clearTimeout(timer);
+                    loadingTimersRef.current.delete(id);
+                }
             }
         },
         [fetchDir, maxDirEntries, updateNodesById]

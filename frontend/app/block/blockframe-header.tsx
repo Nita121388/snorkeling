@@ -11,6 +11,12 @@ import {
 import { BlockInfoCard } from "@/app/block/block-info-card";
 import { ConnectionButton } from "@/app/block/connectionbutton";
 import { DurableSessionFlyover } from "@/app/block/durable-session-flyover";
+import {
+    claimInfoCard,
+    isInfoCardClaimedBy,
+    releaseInfoCard,
+    subscribeInfoCard,
+} from "@/app/element/info-card";
 import { getBlockBadgeAtom } from "@/app/store/badge";
 import {
     createBlockSplitHorizontally,
@@ -556,6 +562,8 @@ const BlockFrame_Header = ({
     viewIconUnion = metaFrameIcon ?? viewIconUnion;
     const [isHovered, setIsHovered] = React.useState(false);
     const [isCardHovered, setIsCardHovered] = React.useState(false);
+    // 本 header 在全局独占悬浮卡管理器中的唯一 token。
+    const claimTokenRef = React.useRef<symbol>(Symbol("blockframe-header-card"));
     const hideHoverTimerRef = React.useRef<number | null>(null);
     const hideCardTimerRef = React.useRef<number | null>(null);
     const cardFocusRef = React.useRef(false);
@@ -577,6 +585,22 @@ const BlockFrame_Header = ({
         cancelPendingHideCard();
     }, [cancelPendingHideHover, cancelPendingHideCard]);
 
+    // 被全局独占管理器顶掉时, 立即关闭本 header 的卡片与高亮(跳过隐藏延迟)。
+    React.useEffect(() => {
+        const unsubscribe = subscribeInfoCard(() => {
+            if (!isInfoCardClaimedBy(claimTokenRef.current)) {
+                cancelPendingHideHover();
+                cancelPendingHideCard();
+                setIsHovered(false);
+                setIsCardHovered(false);
+            }
+        });
+        return () => {
+            unsubscribe();
+            releaseInfoCard(claimTokenRef.current);
+        };
+    }, [cancelPendingHideHover, cancelPendingHideCard]);
+
     React.useEffect(() => {
         if (magnified && !preview && !prevMagifiedState.current) {
             waveEnv.rpc.ActivityCommand(TabRpcClient, { nummagnify: 1 });
@@ -594,6 +618,7 @@ const BlockFrame_Header = ({
             ref={dragHandleRef}
             onPointerEnter={() => {
                 cancelPendingHideHover();
+                claimInfoCard(claimTokenRef.current);
                 setIsHovered(true);
             }}
             onPointerLeave={() => {
@@ -660,11 +685,13 @@ const BlockFrame_Header = ({
                     }}
                     onMouseEnter={() => {
                         cancelPendingHideCard();
+                        claimInfoCard(claimTokenRef.current);
                         setIsCardHovered(true);
                     }}
                     onFocusCapture={() => {
                         cardFocusRef.current = true;
                         cancelPendingHideCard();
+                        claimInfoCard(claimTokenRef.current);
                         setIsCardHovered(true);
                         setIsHovered(true);
                     }}

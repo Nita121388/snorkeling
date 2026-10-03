@@ -3,9 +3,7 @@
 
 import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import { ContextMenuModel } from "@/app/store/contextmenu";
-import { WOS } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
-import { ObjectService } from "@/app/store/services";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TreeNodeData, TreeView, TreeViewRef } from "@/app/treeview/treeview";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -46,10 +44,36 @@ const TreeFetchLimit = 1024;
 const TreeMaxEntries = 500;
 const TreeExpandAllMaxDepth = 8;
 const TreeExpandAllMaxDirectories = 500;
-// 目录树展开状态持久化: 用户展开/收起的目录集合存进 block meta, 避免切标签/重新打开时
-// 展开状态丢失(被重置回默认折叠) 或 被 reveal 定位强制覆盖。
+// 目录树展开状态持久化: 用户展开/收起的目录集合存进 localStorage (按 block+root), 避免切标签/重新打开时
+// 展开状态丢失. 不用 block meta 存: 每次展开/收起写 meta 会让 blockData 对象更新, 触发 PreviewModel
+// 的 statFile async atom 重新 fetch 并 suspend, 导致整个 Files Block 闪一次 Loading.
 const PreviewExpandedDirsMetaKey = "preview:expandeddirs";
 const PersistExpandedDirsDelayMs = 500;
+function makeExpandedDirsStorageKey(blockId: string, rootPath: string): string {
+    return `preview:expandeddirs:${blockId}:${rootPath}`;
+}
+function loadPersistedExpandedDirs(blockId: string, rootPath: string, fallbackRaw: unknown): string[] {
+    try {
+        const stored = window.localStorage.getItem(makeExpandedDirsStorageKey(blockId, rootPath));
+        if (stored != null) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+                return parsed.filter((p): p is string => typeof p === "string");
+            }
+        }
+    } catch {
+        // ignore storage errors
+    }
+    // fallback: legacy block meta value (read-only; we no longer write it)
+    return Array.isArray(fallbackRaw) ? fallbackRaw.filter((p): p is string => typeof p === "string") : [];
+}
+function storePersistedExpandedDirs(blockId: string, rootPath: string, dirs: string[]): void {
+    try {
+        window.localStorage.setItem(makeExpandedDirsStorageKey(blockId, rootPath), JSON.stringify(dirs));
+    } catch {
+        // ignore storage errors (private mode etc.)
+    }
+}
 const SearchMinLength = 2;
 const SearchLimit = 500;
 const SearchMaxFileSize = 1024 * 1024;
@@ -168,36 +192,31 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         [directoryIconColor, rootPath]
     );
     const rootIds = useMemo(() => [rootPath], [rootPath]);
-    const persistedExpandedDirs = useMemo(() => {
-        const raw = (blockData?.meta as Record<string, unknown> | undefined)?.[PreviewExpandedDirsMetaKey];
-        return Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : [];
-    }, [blockData?.meta]);
+    const persistedExpandedDirs = useMemo(
+        () =>
+            loadPersistedExpandedDirs(model.blockId, rootPath, (blockData?.meta as Record<string, unknown> | undefined)?.[PreviewExpandedDirsMetaKey]),
+        [blockData?.meta, model.blockId, rootPath]
+    );
     const defaultExpandedIds = useMemo(
         () => (persistedExpandedDirs.length > 0 ? [rootPath, ...persistedExpandedDirs] : [rootPath]),
         [rootPath, persistedExpandedDirs]
     );
 
-    // 防抖把当前展开的目录集合写回 block meta (整表替换, 需带上已有 meta 其它键)。
+    // 防抖把当前展开的目录集合写进 localStorage (整表替换). 不写 block meta:
+    // meta 写回会让 blockData 对象变化 → statFile async atom 重新 fetch → 整块闪 Loading.
     const persistExpandedDirs = useCallback(
         (expanded: Set<string>) => {
             const dirs = Array.from(expanded).sort();
-            const current = (blockData?.meta as Record<string, unknown> | undefined)?.[PreviewExpandedDirsMetaKey];
+            const current = persistedExpandedDirs;
             const isSame =
-                Array.isArray(current) &&
                 current.length === dirs.length &&
                 current.every((p, i) => p === dirs[i]);
             if (isSame) {
                 return;
             }
-            const nextMeta = {
-                ...(blockData?.meta ?? {}),
-                [PreviewExpandedDirsMetaKey]: dirs,
-            };
-            fireAndForget(() =>
-                ObjectService.UpdateObjectMeta(WOS.makeORef("block", model.blockId), nextMeta)
-            );
+            storePersistedExpandedDirs(model.blockId, rootPath, dirs);
         },
-        [blockData?.meta, model.blockId]
+        [model.blockId, persistedExpandedDirs, rootPath]
     );
     const persistExpandedDirsRef = useRef(persistExpandedDirs);
     useEffect(() => {

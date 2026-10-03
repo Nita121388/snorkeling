@@ -48,6 +48,8 @@
                 width: 0.857em;
                 height: 0.857em;
                 flex: 0 0 0.857em;
+                /* 左侧留白：与标题内 gap 一致，避免按钮紧贴标题行最左 */
+                margin-left: 0.286em;
                 padding: 0;
                 display: inline-flex;
                 align-items: center;
@@ -307,10 +309,10 @@
 
             // Emoji picker button - hidden by default, show on hover
             .markdown-alert-emoji-btn {
-                position: absolute;
-                left: 0.5em;
-                top: 50%;
-                transform: translateY(-50%);
+                position: relative;
+                left: auto;
+                top: auto;
+                transform: none;
                 width: 1.8em;
                 height: 1.8em;
                 display: flex;
@@ -321,8 +323,9 @@
                 background: transparent;
                 color: var(--secondary-text-color);
                 cursor: pointer;
-                opacity: 0;
+                opacity: 1;
                 transition: opacity 0.15s ease;
+                flex: 0 0 1.8em;
                 font-size: 1.1em;
                 padding: 0;
 
@@ -332,8 +335,12 @@
                 }
             }
 
-            &:hover .markdown-alert-emoji-btn {
-                opacity: 1;
+            .markdown-alert-emoji-btn.is-empty {
+                color: transparent;
+            }
+
+            &:hover .markdown-alert-emoji-btn.is-empty {
+                color: var(--secondary-text-color);
             }
 
             > :last-child {
@@ -1860,6 +1867,7 @@
 
 .markdown-doc-emoji-badge {
     position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1870,7 +1878,7 @@
     padding: 0;
     border: 2px solid transparent;
     border-radius: 14px;
-    background: transparent;
+    background: var(--main-bg-color, var(--panel-bg-color, #fff));
     font-size: 32px;
     font-family: "Twemoji Country Flags", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
     line-height: 1;
@@ -1919,13 +1927,14 @@
 }
 
 // Divider line between emoji badge and first heading
-// Only render when a doc emoji badge is present (sibling or parent :has)
+// Only render when a doc emoji is SET (not the empty "add" state). Sibling or parent :has.
 // position:absolute keeps it out of the flex flow so the heading text isn't pushed right.
-.markdown-doc-emoji-badge ~ .markdown-render-root .heading:first-of-type::before,
-:has(.markdown-doc-emoji-badge) .markdown-render-root .heading:first-of-type::before {
+// top:-28px aligns the line with the 56px-tall badge's vertical center (56/2).
+.markdown-doc-emoji-badge:not(.is-empty) ~ .markdown-render-root .heading:first-of-type::before,
+:has(.markdown-doc-emoji-badge:not(.is-empty)) .markdown-render-root .heading:first-of-type::before {
     content: "";
     position: absolute;
-    top: -13px;
+    top: -28px;
     left: 0;
     width: 100%;
     height: 1px;

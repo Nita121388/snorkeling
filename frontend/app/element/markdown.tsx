@@ -31,55 +31,64 @@
 // branch (cursor falls to the last line so the user can keep writing).
 // =============================================================================
 
+import { ensureBuiltinBlockEditorCommands } from "@/app/element/block-editor/commands/builtin";
+import { DocEmojiHeader } from "@/app/element/block-editor/components/doc-emoji-header";
+import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
+import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
+import { SlashPalette } from "@/app/element/block-editor/components/slash-palette";
+import {
+    TableBlock,
+    TableEditContext,
+    type TableCellFocus,
+    type TableEditContextValue,
+} from "@/app/element/block-editor/components/table-block";
+import { TableToolbar, type TableOp } from "@/app/element/block-editor/components/table-toolbar";
+import { execSlashCommand, lineStartOffset, transformSessionBlock } from "@/app/element/block-editor/exec";
+import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
+import {
+    filterSlashCommands,
+    isBlockActionEnabled,
+    listBlockActions,
+    listInlineStyles,
+    listSlashCommands,
+    runBlockAction,
+    type BlockCtx,
+    type OpenPickerResult,
+    type SlashCommandSpec,
+    type TextReplaceResult,
+} from "@/app/element/block-editor/registry";
 import { CopyButton } from "@/app/element/copybutton";
 import { ImageLightbox } from "@/app/element/image-lightbox";
+import { computeCollapsedHiddenFlags, findCollapsedScrollPinIndex } from "@/app/element/markdown-collapse";
 import {
-    computeCollapsedHiddenFlags,
-    findCollapsedScrollPinIndex,
-} from "@/app/element/markdown-collapse";
-import {
+    deleteBlockRange,
+    expandBlockSelection,
+    inlineEditDebug,
     InlineEditOverlay,
     isSelectingRange,
     makeInlineEditKeydown,
-    deleteBlockRange,
+    makeListItemInsertMarker,
+    moveBlockRange,
     placeholderForBlockKind,
     replaceSourceRange,
     spliceInsertBlock,
     splitBlockAtCaretText,
-    inlineEditDebug,
-    makeListItemInsertMarker,
     splitListItemDraft,
-    moveBlockRange,
-    expandBlockSelection,
     useInlineEdit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
-import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
+import { replaceLinkInSource, wikiTargetFromHref, type LinkEditRequest } from "@/app/element/markdown-link-edit";
 import {
     getPreviousOrderedListContinuation,
     normalizeOrderedListNumbering,
     renumberOrderedListBlockAtLine,
     setOrderedListMarkerNumberAtLine,
 } from "@/app/element/markdown-ordered-list";
-import {
-    replaceLinkInSource,
-    wikiTargetFromHref,
-    type LinkEditRequest,
-} from "@/app/element/markdown-link-edit";
+import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
 import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
 import { applyTypingPatternAtLine, detectBlockKind, type BlockKind } from "@/app/element/markdown-transform/block-type";
-import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
-import { applyInlineStyle, hasInlineStyle, type InlineStyleId } from "@/app/element/markdown-transform/inline-style";
 import { setCodeBlockLanguage } from "@/app/element/markdown-transform/code-block";
-import {
-    caretToTableCoord,
-    deleteTableColumn,
-    deleteTableRow,
-    getColumnAlign,
-    insertTableColumn,
-    insertTableRow,
-    setColumnAlign,
-} from "@/app/element/markdown-transform/table";
+import { getFrontmatterEmoji, setFrontmatterEmoji } from "@/app/element/markdown-transform/doc-meta";
 import {
     buildEmojiPickerItems,
     emojiPickerEntries,
@@ -90,37 +99,20 @@ import {
     type EmojiCatalog,
     type EmojiEntry,
 } from "@/app/element/markdown-transform/emoji";
-import { getFrontmatterEmoji, setFrontmatterEmoji } from "@/app/element/markdown-transform/doc-meta";
-import { ensureBuiltinBlockEditorCommands } from "@/app/element/block-editor/commands/builtin";
+import { applyInlineStyle, hasInlineStyle, type InlineStyleId } from "@/app/element/markdown-transform/inline-style";
 import {
-    execSlashCommand,
-    lineStartOffset,
-    transformSessionBlock,
-} from "@/app/element/block-editor/exec";
+    caretToTableCoord,
+    deleteTableColumn,
+    deleteTableRow,
+    getColumnAlign,
+    insertTableColumn,
+    insertTableRow,
+    setColumnAlign,
+} from "@/app/element/markdown-transform/table";
+import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
 import {
-    filterSlashCommands,
-    isBlockActionEnabled,
-    listBlockActions,
-    listInlineStyles,
-    listSlashCommands,
-    normalizeSlashCommandResult,
-    runBlockAction,
-    type BlockCtx,
-    type OpenPickerResult,
-    type SlashCommandSpec,
-    type TextReplaceResult,
-} from "@/app/element/block-editor/registry";
-import { SlashPalette } from "@/app/element/block-editor/components/slash-palette";
-import { FloatingToolbar } from "@/app/element/block-editor/components/floating-toolbar";
-import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
-import { TableToolbar, type TableOp } from "@/app/element/block-editor/components/table-toolbar";
-import { TableBlock, TableEditContext, type TableEditContextValue, type TableCellFocus } from "@/app/element/block-editor/components/table-block";
-import { DocEmojiHeader } from "@/app/element/block-editor/components/doc-emoji-header";
-import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
-import { type WysiwygEditorHandle } from "./wysiwyg-editor";
-import {
-    MarkdownContentBlockType,
     editImageSyntaxInFullText,
+    MarkdownContentBlockType,
     parseImageSizeSuffix,
     removeImageSizeInLine,
     removeImageSyntaxInLine,
@@ -133,17 +125,12 @@ import {
 } from "@/app/element/markdown-util";
 import { makeRemarkPlugins } from "@/app/element/remark";
 import remarkFrontmatterToWaveBlock from "@/app/element/remark/frontmatter-to-waveblock";
-export { linkifyMarkdownFileReferences } from "@/app/element/remark";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
-import { boundNumber, cn, useAtomValueSafe } from "@/util/util";
+import { arrayToBase64, boundNumber, cn, useAtomValueSafe } from "@/util/util";
+import { formatRemoteUri } from "@/util/waveutil";
 import clsx from "clsx";
 import { atom, Atom, useAtomValue } from "jotai";
 import { loadable } from "jotai/utils";
-import ReactDOM from "react-dom";
-
-// Stable no-op atom used when callers omit `textAtom` — keeps the `useAtomValue(loadable(...))`
-// call unconditional so the Rules of Hooks remain satisfied below.
-const NullStringAtom = atom<string | null>(null);
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import {
     Children,
@@ -158,27 +145,30 @@ import {
     useRef,
     useState,
 } from "react";
+import ReactDOM from "react-dom";
 import ReactMarkdown, { Components, defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
-import { openLink } from "../store/global";
 import { ContextMenuModel } from "../store/contextmenu";
+import { openLink } from "../store/global";
 import { RpcApi } from "../store/wshclientapi";
 import { TabRpcClient } from "../store/wshrpcutil";
-import { formatRemoteUri } from "@/util/waveutil";
-import { arrayToBase64, stringToBase64 } from "@/util/util";
 import {
-    makeMarkdownWikiLinkHref,
     normalizeLinkedFilePath,
     openFileLinkInPreview,
     parseMarkdownFileLineReference,
     parseMarkdownWikiLink,
 } from "../view/preview/file-link-navigation";
 import { IconButton } from "./iconbutton";
-import { buildCopyContextText } from "./selection-copy-overlay";
 import "./markdown.scss";
+import { buildCopyContextText } from "./selection-copy-overlay";
+export { linkifyMarkdownFileReferences } from "@/app/element/remark";
+
+// Stable no-op atom used when callers omit `textAtom` — keeps the `useAtomValue(loadable(...))`
+// call unconditional so the Rules of Hooks remain satisfied below.
+const NullStringAtom = atom<string | null>(null);
 
 // Block-editor (方案 06): register built-in capabilities (M1 Turn-into ▸, later slash /
 // inline styles) into the L1.5 registry exactly once for this module instance.
@@ -240,8 +230,7 @@ const Link = ({
         const href = props.href ?? "";
         const forceNewBlock = shouldOpenMarkdownLinkInNewBlock(e);
         const onOpenPath = resolveOpts?.openLink
-            ? (path: string, lineNumber: number | null) =>
-                  resolveOpts.openLink(path, { lineNumber, forceNewBlock })
+            ? (path: string, lineNumber: number | null) => resolveOpts.openLink(path, { lineNumber, forceNewBlock })
             : undefined;
         e.preventDefault();
         if (href.startsWith("#")) {
@@ -282,9 +271,7 @@ const Link = ({
             title={typeof props.href === "string" ? props.href : undefined}
             onClick={onClick}
             className="text-accent hover:underline"
-            onMouseEnter={
-                onHoverIn != null ? (e) => onHoverIn(e.currentTarget, nodeOffsets) : undefined
-            }
+            onMouseEnter={onHoverIn != null ? (e) => onHoverIn(e.currentTarget, nodeOffsets) : undefined}
             onMouseLeave={onHoverOut}
         >
             {props.children}
@@ -543,9 +530,10 @@ export function splitOrderedListItemChildren(children: React.ReactNode): {
     const hasBody = splitAfter.some((child) => getTextContent(child).trim().length > 0);
     if (!hasBody) {
         // br 之后是空：整段做 summary。
-        const summaryChildren = wrapper != null
-            ? [cloneWithChildren(wrapper, inlineChildren.slice(0, breakIndex))]
-            : inlineChildren.slice(0, breakIndex);
+        const summaryChildren =
+            wrapper != null
+                ? [cloneWithChildren(wrapper, inlineChildren.slice(0, breakIndex))]
+                : inlineChildren.slice(0, breakIndex);
         return {
             summaryChildren: trimBlankTextNodes(summaryChildren),
             bodyChildren: [],
@@ -573,12 +561,8 @@ export function splitOrderedListItemChildren(children: React.ReactNode): {
     //     只覆盖第一个 <p> 里的内容；<li> 顶层兄弟（如子列表 <ul>）由 childArray.slice(1) 补回。
     //   - tight list（wrapper == null）：inlineChildren = childArray 本身，
     //     <br/> 之后的 after 已经包含所有顶层节点（含子列表 <ul>），再 concat(childArray.slice(1)) 会重复。
-    const bodyBase = bodyHead.concat(
-        wrapper != null ? [cloneWithChildren(wrapper, afterForSummary)] : afterForSummary
-    );
-    const bodyChildren = trimBlankTextNodes(
-        wrapper != null ? bodyBase.concat(childArray.slice(1)) : bodyBase
-    );
+    const bodyBase = bodyHead.concat(wrapper != null ? [cloneWithChildren(wrapper, afterForSummary)] : afterForSummary);
+    const bodyChildren = trimBlankTextNodes(wrapper != null ? bodyBase.concat(childArray.slice(1)) : bodyBase);
     return {
         summaryChildren: trimBlankTextNodes(summaryChildren),
         bodyChildren,
@@ -704,7 +688,14 @@ type MarkdownLinkTooltipProps = {
     rootRef?: React.RefObject<HTMLDivElement | null>;
 };
 
-function MarkdownLinkTooltip({ anchor, onOpen, onEdit, onMouseEnter, onMouseLeave, rootRef }: MarkdownLinkTooltipProps) {
+function MarkdownLinkTooltip({
+    anchor,
+    onOpen,
+    onEdit,
+    onMouseEnter,
+    onMouseLeave,
+    rootRef,
+}: MarkdownLinkTooltipProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const wrapRef = rootRef ?? innerRef;
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -1052,7 +1043,14 @@ function isShellLike(language?: string | null): boolean {
 // 长代码块折叠阈值（行）。折叠只做 CSS 裁剪，DOM 文本不变 → inline-edit 行坐标安全。
 const CodeBlockCollapseLineThreshold = 30;
 
-const CodeBlock = ({ children, onClickExecute, sourceLine, sourceLineEnd, language, onApplyLanguage }: CodeBlockProps) => {
+const CodeBlock = ({
+    children,
+    onClickExecute,
+    sourceLine,
+    sourceLineEnd,
+    language,
+    onApplyLanguage,
+}: CodeBlockProps) => {
     const [editingLang, setEditingLang] = useState(false);
     const [langDraft, setLangDraft] = useState("");
     const [expanded, setExpanded] = useState(false);
@@ -1647,8 +1645,11 @@ const MarkdownImg = ({
                 )}
                 {copied && <span className="markdown-img-copied">Path copied</span>}
                 {copiedFull && <span className="markdown-img-copied">Full path copied</span>}
-                {lightboxOpen && <ImageLightbox src={resolvedSrc} alt={props.alt} onClose={() => setLightboxOpen(false)} />}
-                {pathInputOpen && inputPos != null &&
+                {lightboxOpen && (
+                    <ImageLightbox src={resolvedSrc} alt={props.alt} onClose={() => setLightboxOpen(false)} />
+                )}
+                {pathInputOpen &&
+                    inputPos != null &&
                     ReactDOM.createPortal(
                         <div className="markdown-img-path-input" style={{ top: inputPos.top, left: inputPos.left }}>
                             <input
@@ -1858,15 +1859,11 @@ const Markdown = ({
     const [focusedHeadingId, setFocusedHeadingId] = useState<string>(null);
     // Controlled seeding: when a caller persists collapse across remounts it passes a snapshot
     // captured at unmount as the initial here, plus an onChange callback to write back live.
-    const [collapsedHeadings, setCollapsedHeadings] = useState<Set<string>>(
-        () => collapsedHeadingsProp ?? new Set()
-    );
+    const [collapsedHeadings, setCollapsedHeadings] = useState<Set<string>>(() => collapsedHeadingsProp ?? new Set());
     const [collapsedOrderedListItems, setCollapsedOrderedListItems] = useState<Set<string>>(
         () => collapsedOrderedListItemsProp ?? new Set()
     );
-    const [collapsedTables, setCollapsedTables] = useState<Set<string>>(
-        () => collapsedTablesProp ?? new Set()
-    );
+    const [collapsedTables, setCollapsedTables] = useState<Set<string>>(() => collapsedTablesProp ?? new Set());
 
     // === Presentation mode ================================================================
     const [presentationZoom, setPresentationZoom] = useState(100);
@@ -1978,9 +1975,9 @@ const Markdown = ({
     // but useInlineEdit needs onCommit — a declaration cycle. The stable callback delegates to
     // an impl ref assigned right after the hook returns; the impl closes over the current
     // inlineEdit.editSession each render.
-    const handleInlineEditCommitImplRef = useRef<(newFullText: string, opts?: { renumberOrderedListFromLine?: number }) => void>(
-        () => {}
-    );
+    const handleInlineEditCommitImplRef = useRef<
+        (newFullText: string, opts?: { renumberOrderedListFromLine?: number }) => void
+    >(() => {});
     const handleInlineEditCommit = useCallback(
         (newFullText: string, opts?: { renumberOrderedListFromLine?: number }) => {
             handleInlineEditCommitImplRef.current(newFullText, opts);
@@ -2055,8 +2052,7 @@ const Markdown = ({
         // list block, renumber that block so SOURCE numbering matches what remark renders
         // (CommonMark silently renumbers, leaving stale wrong numbers like 1,2,2 in the file).
         // Scoped to one block + fence-aware; a no-op for edits outside any list.
-        const renumberAnchorLine =
-            opts?.renumberOrderedListFromLine ?? inlineEdit.editSession?.startLine ?? null;
+        const renumberAnchorLine = opts?.renumberOrderedListFromLine ?? inlineEdit.editSession?.startLine ?? null;
         if (renumberAnchorLine != null) {
             nextText = renumberOrderedListBlockAtLine(nextText, renumberAnchorLine)?.text ?? nextText;
         }
@@ -2091,18 +2087,24 @@ const Markdown = ({
         },
         [text, handleInlineEditCommit]
     );
-    const resolveGroupContinuation = useCallback((line: number) => getPreviousOrderedListContinuation(text, line), [text]);
+    const resolveGroupContinuation = useCallback(
+        (line: number) => getPreviousOrderedListContinuation(text, line),
+        [text]
+    );
 
     // === TableBlock context: stable commit channel for WYSIWYG cell editing ==========
     // getFullText reads from a ref so it's always fresh even across remounts.
     const textRef = useRef(text);
     textRef.current = text;
     const pendingCellFocusRef = useRef<TableCellFocus | null>(null);
-    const tableEditContext = useMemo<TableEditContextValue>(() => ({
-        getFullText: () => textRef.current,
-        commitFullText: handleInlineEditCommit,
-        pendingFocusRef: pendingCellFocusRef,
-    }), [handleInlineEditCommit]);
+    const tableEditContext = useMemo<TableEditContextValue>(
+        () => ({
+            getFullText: () => textRef.current,
+            commitFullText: handleInlineEditCommit,
+            pendingFocusRef: pendingCellFocusRef,
+        }),
+        [handleInlineEditCommit]
+    );
 
     // === Inline-edit: target resolution + click/dblclick handlers =======================
 
@@ -2213,7 +2215,9 @@ const Markdown = ({
 
     // Event-shaped wrapper so the click/dblclick handlers keep their signature.
     const resolveEditTargetFromEvent = useCallback(
-        (e: React.MouseEvent<HTMLDivElement>): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null =>
+        (
+            e: React.MouseEvent<HTMLDivElement>
+        ): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null =>
             resolveEditTargetFromEl(e.target as HTMLElement | null),
         [resolveEditTargetFromEl]
     );
@@ -2321,30 +2325,28 @@ const Markdown = ({
     // Instead of dropping the user into a source textarea, the tooltip's 编辑 opens a small
     // form with 显示名 + 链接地址 (or a single 目标 field for [[wiki]] links). The rewrite is
     // an exact-span splice of `[label](url)` / `[[target]]` — the user never sees markdown.
-    const [linkEditTarget, setLinkEditTarget] = useState<(LinkEditRequest & { anchor: HTMLAnchorElement }) | null>(null);
-
-    const openLinkEditor = useCallback(
-        (el: HTMLAnchorElement) => {
-            const href = el.getAttribute("href") ?? "";
-            const isWiki = href.startsWith("wave-wiki:");
-            const offsets = linkNodeOffsetsRef.current.get(el);
-            const blockEl = el.closest<HTMLElement>("[data-source-line]");
-            const blockStartLine = Number(blockEl?.dataset?.sourceLine);
-            const blockEndLine = Number(blockEl?.dataset?.sourceLineEnd);
-            setLinkEditTarget({
-                anchor: el,
-                mode: isWiki ? "wiki" : "markdown",
-                href: isWiki ? wikiTargetFromHref(href, href) : href,
-                label: el.textContent ?? "",
-                startOffset: offsets?.start,
-                endOffset: offsets?.end,
-                blockStartLine: Number.isFinite(blockStartLine) && blockStartLine > 0 ? blockStartLine : undefined,
-                blockEndLine:
-                    Number.isFinite(blockEndLine) && blockEndLine >= blockStartLine ? blockEndLine : undefined,
-            });
-        },
-        [ ]
+    const [linkEditTarget, setLinkEditTarget] = useState<(LinkEditRequest & { anchor: HTMLAnchorElement }) | null>(
+        null
     );
+
+    const openLinkEditor = useCallback((el: HTMLAnchorElement) => {
+        const href = el.getAttribute("href") ?? "";
+        const isWiki = href.startsWith("wave-wiki:");
+        const offsets = linkNodeOffsetsRef.current.get(el);
+        const blockEl = el.closest<HTMLElement>("[data-source-line]");
+        const blockStartLine = Number(blockEl?.dataset?.sourceLine);
+        const blockEndLine = Number(blockEl?.dataset?.sourceLineEnd);
+        setLinkEditTarget({
+            anchor: el,
+            mode: isWiki ? "wiki" : "markdown",
+            href: isWiki ? wikiTargetFromHref(href, href) : href,
+            label: el.textContent ?? "",
+            startOffset: offsets?.start,
+            endOffset: offsets?.end,
+            blockStartLine: Number.isFinite(blockStartLine) && blockStartLine > 0 ? blockStartLine : undefined,
+            blockEndLine: Number.isFinite(blockEndLine) && blockEndLine >= blockStartLine ? blockEndLine : undefined,
+        });
+    }, []);
 
     const applyLinkEdit = useCallback(
         (target: LinkEditRequest, newLabel: string, newUrl: string) => {
@@ -2418,7 +2420,10 @@ const Markdown = ({
     // of inline markdown markers (**bold**, [link](...), `code`) on styled lines — the caret
     // lands nearby and the user nudges it. Upgrade path: map through the markdown AST so
     // rendered offset → source offset is exact.
-    const beginEditAtPoint = (e: React.MouseEvent, resolved: { target: HTMLElement; line: number; blockKind: InlineEditBlockKind }) => {
+    const beginEditAtPoint = (
+        e: React.MouseEvent,
+        resolved: { target: HTMLElement; line: number; blockKind: InlineEditBlockKind }
+    ) => {
         const caret = computeRenderedOffset(e.clientX, e.clientY, resolved.target);
         inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target, caret ?? undefined);
     };
@@ -2455,7 +2460,15 @@ const Markdown = ({
                 e.stopPropagation();
                 const caretOffset = computeRenderedOffset(e.clientX, e.clientY, resolved.target);
                 inlineEdit.commit();
-                focusEditedLine(resolved.line, undefined, false, undefined, undefined, resolved.blockKind, caretOffset ?? undefined);
+                focusEditedLine(
+                    resolved.line,
+                    undefined,
+                    false,
+                    undefined,
+                    undefined,
+                    resolved.blockKind,
+                    caretOffset ?? undefined
+                );
                 return;
             }
             if (e.button !== 0) {
@@ -2468,7 +2481,9 @@ const Markdown = ({
             // Defensive: even without defaultPrevented, never enter edit when the press landed
             // on an interactive element. Headings' chevron button calls stopPropagation so its
             // clicks never reach here, but <a> only calls preventDefault — belt-and-braces.
-            const interactive = (e.target as HTMLElement | null)?.closest<HTMLElement>("a, button, .heading-collapse-button, input, textarea, [contenteditable]");
+            const interactive = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+                "a, button, .heading-collapse-button, input, textarea, [contenteditable]"
+            );
             if (interactive != null) {
                 return;
             }
@@ -2517,14 +2532,13 @@ const Markdown = ({
                 // block AND inside the content's horizontal extent. Gaps between blocks and side
                 // gutters are no-ops so the caret never jumps to the end unexpectedly.
                 const isTrailingBlank =
-                    e.clientY > lastRect.bottom &&
-                    e.clientX >= rootRect.left &&
-                    e.clientX <= rootRect.right;
+                    e.clientY > lastRect.bottom && e.clientX >= rootRect.left && e.clientX <= rootRect.right;
                 if (!isTrailingBlank) {
                     return;
                 }
                 const startLine = lastLine;
-                const endLineRaw = lastEl.dataset.sourceLineEnd != null ? Number(lastEl.dataset.sourceLineEnd) : startLine;
+                const endLineRaw =
+                    lastEl.dataset.sourceLineEnd != null ? Number(lastEl.dataset.sourceLineEnd) : startLine;
                 const endLine = Number.isFinite(endLineRaw) && endLineRaw >= startLine ? endLineRaw : startLine;
                 const isParagraph = lastEl.tagName === "P" || lastEl.classList.contains("paragraph");
                 const isBlankSpacer = lastEl.classList.contains("blank-spacer");
@@ -2547,7 +2561,12 @@ const Markdown = ({
                 e.preventDefault();
                 e.stopPropagation();
                 handleInlineEditCommit(spliced.join("\n"));
-                focusEditedLine(insertAtLine, () => handleInlineEditCommit(originalText), inlineMode ? "inline" : true, prefillMarker);
+                focusEditedLine(
+                    insertAtLine,
+                    () => handleInlineEditCommit(originalText),
+                    inlineMode ? "inline" : true,
+                    prefillMarker
+                );
                 return;
             }
             e.preventDefault();
@@ -2557,7 +2576,15 @@ const Markdown = ({
             // gestures complement each other.
             beginEditAtPoint(e, resolved);
         },
-        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent, beginEditAtPoint, getViewportEl, text, handleInlineEditCommit]
+        [
+            inlineEdit,
+            onInlineEditCommit,
+            resolveEditTargetFromEvent,
+            beginEditAtPoint,
+            getViewportEl,
+            text,
+            handleInlineEditCommit,
+        ]
     );
 
     // === Block grip / insert / drag-reorder / selection ==================================
@@ -2596,58 +2623,62 @@ const Markdown = ({
         [resolveInsertAnchorEl]
     );
 
-    const handleInlineEditMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-        if (e.button !== 0) {
-            return;
-        }
-        mousedownSelectionRef.current = typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
-
-        // Ctrl/Cmd + drag → select a RANGE of blocks. This must NOT start a native text selection,
-        // so we preventDefault and own the gesture. Plain (no-modifier) drags fall through to the
-        // browser's native text selection untouched. Disabled while the inline editor is open.
-        if ((e.ctrlKey || e.metaKey) && inlineEdit.editSession == null) {
-            const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]:not(img)");
-            if (target == null) {
-                return; // not pressed on a block (e.g. padding / gutter) → let default happen
-            }
-            const blockEl = resolveBlockAnchorEl(Number(target.dataset.sourceLine)) ?? target;
-            if (blockEl == null) {
+    const handleInlineEditMouseDown = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            if (e.button !== 0) {
                 return;
             }
-            const bs = Number(blockEl.dataset.sourceLine);
-            const be = blockEl.dataset.sourceLineEnd != null ? Number(blockEl.dataset.sourceLineEnd) : bs;
-            e.preventDefault();
-            setSelectedBlock(null); // single-select highlight yields to the range select
-            setSelectedRange({ startLine: bs, endLine: be });
-            const anchorLine = bs;
-            const onMove = (ev: MouseEvent) => {
-                if (!(ev.ctrlKey || ev.metaKey)) {
-                    cleanup();
+            mousedownSelectionRef.current =
+                typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
+
+            // Ctrl/Cmd + drag → select a RANGE of blocks. This must NOT start a native text selection,
+            // so we preventDefault and own the gesture. Plain (no-modifier) drags fall through to the
+            // browser's native text selection untouched. Disabled while the inline editor is open.
+            if ((e.ctrlKey || e.metaKey) && inlineEdit.editSession == null) {
+                const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]:not(img)");
+                if (target == null) {
+                    return; // not pressed on a block (e.g. padding / gutter) → let default happen
+                }
+                const blockEl = resolveBlockAnchorEl(Number(target.dataset.sourceLine)) ?? target;
+                if (blockEl == null) {
                     return;
                 }
-                const el = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest?.(
-                    "[data-source-line]"
-                ) as HTMLElement | null;
-                if (el == null) {
-                    return; // pointer over a gap / gutter → keep the current range
-                }
-                const cur = resolveBlockAnchorEl(Number(el.dataset.sourceLine)) ?? el;
-                if (cur == null) {
-                    return;
-                }
-                const cbs = Number(cur.dataset.sourceLine);
-                const cbe = cur.dataset.sourceLineEnd != null ? Number(cur.dataset.sourceLineEnd) : cbs;
-                setSelectedRange(expandBlockSelection(anchorLine, cbs, cbe));
-            };
-            const onUp = () => cleanup();
-            const cleanup = () => {
-                window.removeEventListener("mousemove", onMove);
-                window.removeEventListener("mouseup", onUp);
-            };
-            window.addEventListener("mousemove", onMove);
-            window.addEventListener("mouseup", onUp);
-        }
-    }, [inlineEdit.editSession, resolveBlockAnchorEl]);
+                const bs = Number(blockEl.dataset.sourceLine);
+                const be = blockEl.dataset.sourceLineEnd != null ? Number(blockEl.dataset.sourceLineEnd) : bs;
+                e.preventDefault();
+                setSelectedBlock(null); // single-select highlight yields to the range select
+                setSelectedRange({ startLine: bs, endLine: be });
+                const anchorLine = bs;
+                const onMove = (ev: MouseEvent) => {
+                    if (!(ev.ctrlKey || ev.metaKey)) {
+                        cleanup();
+                        return;
+                    }
+                    const el = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest?.(
+                        "[data-source-line]"
+                    ) as HTMLElement | null;
+                    if (el == null) {
+                        return; // pointer over a gap / gutter → keep the current range
+                    }
+                    const cur = resolveBlockAnchorEl(Number(el.dataset.sourceLine)) ?? el;
+                    if (cur == null) {
+                        return;
+                    }
+                    const cbs = Number(cur.dataset.sourceLine);
+                    const cbe = cur.dataset.sourceLineEnd != null ? Number(cur.dataset.sourceLineEnd) : cbs;
+                    setSelectedRange(expandBlockSelection(anchorLine, cbs, cbe));
+                };
+                const onUp = () => cleanup();
+                const cleanup = () => {
+                    window.removeEventListener("mousemove", onMove);
+                    window.removeEventListener("mouseup", onUp);
+                };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+            }
+        },
+        [inlineEdit.editSession, resolveBlockAnchorEl]
+    );
 
     // ---- Block-edge insert buttons --------------------------------------------------
     // Hovering an editable block shows a small ↑/↓ pair at its left edge; clicking one
@@ -2739,7 +2770,10 @@ const Markdown = ({
     // Clicking the grip C marks its block as selected (a highlight overlay + right-click
     // menu with Copy / Duplicate / Delete. Block-scoped, driven by start/end line of the
     // hovered block, and resolved live so it follows re-renders.
-    const [selectedBlock, setSelectedBlock] = useState<{ line: number; rect: { top: number; left: number; width: number; height: number } } | null>(null);
+    const [selectedBlock, setSelectedBlock] = useState<{
+        line: number;
+        rect: { top: number; left: number; width: number; height: number };
+    } | null>(null);
     // live DOM ref for the selected block element, re-resolved from [data-source-line] so the
     // highlight overlay tracks re-renders / line edits.
     const selectedLineRef = useRef<number | null>(null);
@@ -2750,7 +2784,11 @@ const Markdown = ({
     // drop). It lives in a ref (not state) so starting a drag doesn't churn the render. dropTarget
     // is state because the drop indicator line must re-render as the pointer moves between blocks.
     const dragSourceRef = useRef<{ startLine: number; endLine: number } | null>(null);
-    const [dropTarget, setDropTarget] = useState<{ line: number; mode: "before" | "after"; rect: { top: number; left: number; width: number } } | null>(null);
+    const [dropTarget, setDropTarget] = useState<{
+        line: number;
+        mode: "before" | "after";
+        rect: { top: number; left: number; width: number };
+    } | null>(null);
 
     // --- Ctrl/Cmd + drag multi-block selection ----------------------------------------
     // A CONTIGUOUS range of source lines [startLine..endLine] the user selected by Ctrl/Cmd-
@@ -2761,7 +2799,12 @@ const Markdown = ({
     const [selectedRange, setSelectedRange] = useState<{ startLine: number; endLine: number } | null>(null);
     const selectedRangeRef = useRef<{ startLine: number; endLine: number } | null>(null);
     selectedRangeRef.current = selectedRange;
-    const [selectedRangeRect, setSelectedRangeRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+    const [selectedRangeRect, setSelectedRangeRect] = useState<{
+        top: number;
+        left: number;
+        width: number;
+        height: number;
+    } | null>(null);
 
     // Measure the currently selected block element (re-resolving from its line) so the
     // highlight overlay follows re-renders and scrolls. Kept in step with insertAnchor's own
@@ -2772,7 +2815,8 @@ const Markdown = ({
             return;
         }
         const viewport = getViewportEl();
-        const el = viewport && viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${line}"]`);
+        const el =
+            viewport && viewport.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${line}"]`);
         if (el == null) {
             setSelectedBlock(null); // block no longer exists (deleted / file changed)
             return;
@@ -2871,7 +2915,11 @@ const Markdown = ({
     // Escape clears any block selection (unless the inline editor is open — it owns Escape).
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && (selectedLineRef.current != null || selectedRangeRef.current != null) && inlineEdit.editSession == null) {
+            if (
+                e.key === "Escape" &&
+                (selectedLineRef.current != null || selectedRangeRef.current != null) &&
+                inlineEdit.editSession == null
+            ) {
                 setSelectedBlock(null);
                 setSelectedRange(null);
             }
@@ -2891,7 +2939,15 @@ const Markdown = ({
     // retry for a few frames, never anchor on a list element, and retry when beginEdit bails
     // (its latest-text check rejects rows that don't exist yet).
     const focusEditedLine = useCallback(
-        (newLine: number, revert?: () => void, placeholder?: boolean | "inline", prefill?: string, keepOnEmpty?: boolean, blockKind: InlineEditBlockKind = "p", caretOffset?: number) => {
+        (
+            newLine: number,
+            revert?: () => void,
+            placeholder?: boolean | "inline",
+            prefill?: string,
+            keepOnEmpty?: boolean,
+            blockKind: InlineEditBlockKind = "p",
+            caretOffset?: number
+        ) => {
             let attempts = 0;
             // Safety net for exhausted retries: the caller committed an insert/split but we
             // could never open its follow-up editor (re-render landed too late, viewport gone,
@@ -2914,9 +2970,8 @@ const Markdown = ({
                 attempts++;
                 const viewport = getViewportEl();
                 const el =
-                    viewport?.querySelector<HTMLElement>(
-                        `.markdown-render-root [data-source-line="${newLine}"]`
-                    ) ?? null;
+                    viewport?.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${newLine}"]`) ??
+                    null;
                 if (el == null || el.closest("img") != null) {
                     if (attempts < 10) requestAnimationFrame(tryOpen);
                     else giveUp();
@@ -2984,7 +3039,7 @@ const Markdown = ({
         const ta = inlineEdit.textareaRef.current;
         const pos = session.wysiwyg
             ? (inlineEdit.wysiwygRef.current?.getCaretMarkdown() ?? 0)
-            : ta?.selectionStart ?? 0;
+            : (ta?.selectionStart ?? 0);
         const draft = inlineEdit.draftText;
 
         // --- List: add a new item within the same list (same editor stays open) -----------
@@ -3003,8 +3058,11 @@ const Markdown = ({
         }
 
         // --- Paragraph / blank row / WYSIWYG heading: split into two blocks -----------
-        if (session.blockKind === "p" || session.blockKind === "blank" ||
-            (session.wysiwyg && (session.blockKind === "h" || session.blockKind === "quote"))) {
+        if (
+            session.blockKind === "p" ||
+            session.blockKind === "blank" ||
+            (session.wysiwyg && (session.blockKind === "h" || session.blockKind === "quote"))
+        ) {
             const { text: newFull, newLine } = splitBlockAtCaretText(
                 text,
                 session.startLine,
@@ -3017,7 +3075,9 @@ const Markdown = ({
             // in the SAME commit so the block transforms on re-render; lineDelta keeps the
             // follow-up editor anchored to the true new row when lines were added (e.g. the
             // fence auto-close).
-            const typed = isBlockEditorFeatureEnabled("blockeditor") ? applyTypingPatternAtLine(newFull, session.startLine) : null;
+            const typed = isBlockEditorFeatureEnabled("blockeditor")
+                ? applyTypingPatternAtLine(newFull, session.startLine)
+                : null;
             const finalText = typed?.text ?? newFull;
             const targetLine = newLine + (typed?.lineDelta ?? 0);
             const revert = () => {
@@ -3128,9 +3188,7 @@ const Markdown = ({
         const revert = () => handleInlineEditCommit(text);
         handleInlineEditCommit(newFull);
         const viewport = getViewportEl();
-        const prevEl = viewport?.querySelector<HTMLElement>(
-            `.markdown-render-root [data-source-line="${prevLine}"]`
-        );
+        const prevEl = viewport?.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${prevLine}"]`);
         focusEditedLine(prevLine, revert, true, undefined, undefined, blockKindFromElement(prevEl));
     }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine, getPreviousBlockLine, getViewportEl]);
 
@@ -3333,7 +3391,13 @@ const Markdown = ({
             }
 
             const duplicateBlock = () => {
-                const newFull = spliceInsertBlock(lines, startLineRaw, endLine, "after", blockSource.split(/\r\n|\n/)).join("\n");
+                const newFull = spliceInsertBlock(
+                    lines,
+                    startLineRaw,
+                    endLine,
+                    "after",
+                    blockSource.split(/\r\n|\n/)
+                ).join("\n");
                 handleInlineEditCommit(newFull, renumberOpts);
             };
             const deleteBlock = () => {
@@ -3363,7 +3427,16 @@ const Markdown = ({
                 },
             });
         },
-        [resolveBlockAnchorEl, text, handleInlineEditCommit, copyContextPath, pointerOnGripActionsRef, cancelPendingAnchorSwitch, handleGroupStartChange, resolveGroupContinuation]
+        [
+            resolveBlockAnchorEl,
+            text,
+            handleInlineEditCommit,
+            copyContextPath,
+            pointerOnGripActionsRef,
+            cancelPendingAnchorSwitch,
+            handleGroupStartChange,
+            resolveGroupContinuation,
+        ]
     );
 
     // --- Block drag-and-drop handlers ---------------------------------------------------
@@ -3491,7 +3564,8 @@ const Markdown = ({
             // Renumber based on the MOVED content (source block), not the drop target — so an ordered
             // list block keeps consecutive numbers after the move.
             const srcEl = resolveDragBlock(src.startLine);
-            const isSourceList = srcEl != null && (srcEl.tagName === "LI" || srcEl.tagName === "OL" || srcEl.tagName === "UL");
+            const isSourceList =
+                srcEl != null && (srcEl.tagName === "LI" || srcEl.tagName === "OL" || srcEl.tagName === "UL");
             const renumberOpts = isSourceList ? { renumberOrderedListFromLine: newStartLine } : undefined;
             handleInlineEditCommit(movedText, renumberOpts);
             // Re-select the moved block(s) so the highlight follows them to the new position. The commit
@@ -3585,19 +3659,21 @@ const Markdown = ({
                 const hovered = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]");
                 if (
                     hovered != null &&
-                    (hovered.classList.contains("inline-edit-hidden") || hovered.closest(".inline-edit-overlay") != null)
+                    (hovered.classList.contains("inline-edit-hidden") ||
+                        hovered.closest(".inline-edit-overlay") != null)
                 ) {
                     return;
                 }
             }
             // tablecell ON: suppress block grip on tables (handled by TableBlock's own handles).
-            if (isBlockEditorFeatureEnabled("tablecell") && (e.target as HTMLElement)?.closest(".table-wrapper") != null) {
+            if (
+                isBlockEditorFeatureEnabled("tablecell") &&
+                (e.target as HTMLElement)?.closest(".table-wrapper") != null
+            ) {
                 setInsertAnchor(null);
                 return;
             }
-            const target = (e.target as HTMLElement | null)?.closest<HTMLElement>(
-                "[data-source-line]:not(img)"
-            );
+            const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-source-line]:not(img)");
             if (target == null || target.closest("img") != null) {
                 // Non-block target (padding, gutter, spacers). Deliberately do NOT clear the
                 // anchor here: the pointer moving from the block text toward the gutter grip
@@ -3614,7 +3690,10 @@ const Markdown = ({
             cancelHideInsert();
             // Action column (grip dots / +/- buttons): freeze the anchor entirely — never
             // switch blocks while the user is reaching for or holding the buttons.
-            if ((e.target as HTMLElement | null)?.closest(".markdown-block-grip-dots, .markdown-block-grip-action") != null) {
+            if (
+                (e.target as HTMLElement | null)?.closest(".markdown-block-grip-dots, .markdown-block-grip-action") !=
+                null
+            ) {
                 cancelPendingAnchorSwitch();
                 return;
             }
@@ -3739,13 +3818,25 @@ const Markdown = ({
             const spliced = [...sourceLines];
             spliced.splice(insertIdx, 0, prefillMarker ?? "");
             handleInlineEditCommit(spliced.join("\n"));
-            focusEditedLine(insertAtLine, () => handleInlineEditCommit(originalText), inlineMode ? "inline" : true, prefillMarker);
+            focusEditedLine(
+                insertAtLine,
+                () => handleInlineEditCommit(originalText),
+                inlineMode ? "inline" : true,
+                prefillMarker
+            );
 
             setInsertAnchor(null);
             setInsertPos(null);
             setGripOpen(false);
         },
-        [pointerOnGripActionsRef, cancelPendingAnchorSwitch, handleInlineEditCommit, resolveBlockAnchorEl, text, focusEditedLine]
+        [
+            pointerOnGripActionsRef,
+            cancelPendingAnchorSwitch,
+            handleInlineEditCommit,
+            resolveBlockAnchorEl,
+            text,
+            focusEditedLine,
+        ]
     );
 
     const inlineEditKeyDown = useMemo(
@@ -3764,8 +3855,12 @@ const Markdown = ({
     // === Block editor M3: emoji picker ("::" double-colon trigger, lazy emojibase catalog) ==========
     // Detection is trigger-layer based (全/半角等价); every command executes through
     // block-editor/exec.ts so ONE gesture = ONE handleInlineEditCommit diff.
-    const [slashState, setSlashState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
-    const [emojiState, setEmojiState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(null);
+    const [slashState, setSlashState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(
+        null
+    );
+    const [emojiState, setEmojiState] = useState<{ query: string; triggerStart: number; activeIndex: number } | null>(
+        null
+    );
     const [emojiCatalog, setEmojiCatalog] = useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog());
     const [inlineSelection, setInlineSelection] = useState<{ start: number; end: number } | null>(null);
     const [dynamicPlaceholder, setDynamicPlaceholder] = useState<string | null>(null);
@@ -3942,7 +4037,8 @@ const Markdown = ({
             const typo = inlineEdit.editSession?.typography;
             const lhRaw = parseFloat(String(typo?.lineHeight ?? ""));
             const fsRaw = parseFloat(String(typo?.fontSize ?? ""));
-            const lineHeight = Number.isFinite(lhRaw) && lhRaw > 4 ? lhRaw : (Number.isFinite(fsRaw) ? fsRaw : 14) * 1.5;
+            const lineHeight =
+                Number.isFinite(lhRaw) && lhRaw > 4 ? lhRaw : (Number.isFinite(fsRaw) ? fsRaw : 14) * 1.5;
             const caret = inlineEdit.textareaRef.current?.selectionStart ?? inlineEdit.draftText.length;
             const caretRow = inlineEdit.draftText.slice(0, caret).split("\n").length - 1;
             const approxHeight = 300;
@@ -3966,28 +4062,76 @@ const Markdown = ({
     );
 
     // Helper to get format prefix and placeholder for slash commands
-    const getSlashFormatInfo = useCallback((cmd: SlashCommandSpec): { prefix: string; placeholder: string; typography: React.CSSProperties } | null => {
-        const baseTypography = inlineEdit.editSession?.typography ?? {};
-        switch (cmd.id) {
-            case "heading-1": return { prefix: "# ", placeholder: "Heading 1", typography: { ...baseTypography, fontSize: "2em", fontWeight: 700 } };
-            case "heading-2": return { prefix: "## ", placeholder: "Heading 2", typography: { ...baseTypography, fontSize: "1.5em", fontWeight: 700 } };
-            case "heading-3": return { prefix: "### ", placeholder: "Heading 3", typography: { ...baseTypography, fontSize: "1.25em" } };
-            case "heading-4": return { prefix: "#### ", placeholder: "Heading 4", typography: { ...baseTypography, fontSize: "1.125em" } };
-            case "heading-5": return { prefix: "##### ", placeholder: "Heading 5", typography: { ...baseTypography, fontSize: "1em" } };
-            case "heading-6": return { prefix: "###### ", placeholder: "Heading 6", typography: { ...baseTypography, fontSize: "0.9em" } };
-            case "bulleted-list": return { prefix: "- ", placeholder: "List item", typography: baseTypography };
-            case "numbered-list": return { prefix: "1. ", placeholder: "List item", typography: baseTypography };
-            case "todo-list": return { prefix: "- [ ] ", placeholder: "To-do", typography: baseTypography };
-            case "quote": return { prefix: "> ", placeholder: "Quote", typography: baseTypography };
-            case "callout-note": return { prefix: "> [!note] ", placeholder: "Note", typography: baseTypography };
-            case "callout-warning": return { prefix: "> [!warning] ", placeholder: "Warning", typography: baseTypography };
-            case "callout-tip": return { prefix: "> [!tip] ", placeholder: "Tip", typography: baseTypography };
-            case "code-block": return { prefix: "```\n", placeholder: "Code", typography: { ...baseTypography, fontFamily: "monospace" } };
-            case "table": return { prefix: "| ", placeholder: "Table", typography: baseTypography };
-            case "text": return { prefix: "", placeholder: "Type '/' for commands", typography: baseTypography };
-            default: return null;
-        }
-    }, [inlineEdit.editSession?.typography]);
+    const getSlashFormatInfo = useCallback(
+        (cmd: SlashCommandSpec): { prefix: string; placeholder: string; typography: React.CSSProperties } | null => {
+            const baseTypography = inlineEdit.editSession?.typography ?? {};
+            switch (cmd.id) {
+                case "heading-1":
+                    return {
+                        prefix: "# ",
+                        placeholder: "Heading 1",
+                        typography: { ...baseTypography, fontSize: "2em", fontWeight: 700 },
+                    };
+                case "heading-2":
+                    return {
+                        prefix: "## ",
+                        placeholder: "Heading 2",
+                        typography: { ...baseTypography, fontSize: "1.5em", fontWeight: 700 },
+                    };
+                case "heading-3":
+                    return {
+                        prefix: "### ",
+                        placeholder: "Heading 3",
+                        typography: { ...baseTypography, fontSize: "1.25em" },
+                    };
+                case "heading-4":
+                    return {
+                        prefix: "#### ",
+                        placeholder: "Heading 4",
+                        typography: { ...baseTypography, fontSize: "1.125em" },
+                    };
+                case "heading-5":
+                    return {
+                        prefix: "##### ",
+                        placeholder: "Heading 5",
+                        typography: { ...baseTypography, fontSize: "1em" },
+                    };
+                case "heading-6":
+                    return {
+                        prefix: "###### ",
+                        placeholder: "Heading 6",
+                        typography: { ...baseTypography, fontSize: "0.9em" },
+                    };
+                case "bulleted-list":
+                    return { prefix: "- ", placeholder: "List item", typography: baseTypography };
+                case "numbered-list":
+                    return { prefix: "1. ", placeholder: "List item", typography: baseTypography };
+                case "todo-list":
+                    return { prefix: "- [ ] ", placeholder: "To-do", typography: baseTypography };
+                case "quote":
+                    return { prefix: "> ", placeholder: "Quote", typography: baseTypography };
+                case "callout-note":
+                    return { prefix: "> [!note] ", placeholder: "Note", typography: baseTypography };
+                case "callout-warning":
+                    return { prefix: "> [!warning] ", placeholder: "Warning", typography: baseTypography };
+                case "callout-tip":
+                    return { prefix: "> [!tip] ", placeholder: "Tip", typography: baseTypography };
+                case "code-block":
+                    return {
+                        prefix: "```\n",
+                        placeholder: "Code",
+                        typography: { ...baseTypography, fontFamily: "monospace" },
+                    };
+                case "table":
+                    return { prefix: "| ", placeholder: "Table", typography: baseTypography };
+                case "text":
+                    return { prefix: "", placeholder: "Type '/' for commands", typography: baseTypography };
+                default:
+                    return null;
+            }
+        },
+        [inlineEdit.editSession?.typography]
+    );
 
     const handleSlashPick = useCallback(
         (cmd: SlashCommandSpec) => {
@@ -3996,7 +4140,7 @@ const Markdown = ({
                 return;
             }
             const formatInfo = getSlashFormatInfo(cmd);
-            
+
             // WYSIWYG (方案 08): convert block kind live via the editor, then clear the
             // slash trigger text from the DOM. No ghost placeholder needed — the block
             // immediately shows the new kind's typography.
@@ -4005,10 +4149,17 @@ const Markdown = ({
                 // Apply the live kind conversion first (keeps the block typography in sync
                 // even when the conversion changes the DOM structure, e.g. → list).
                 const liveMap: Record<string, string> = {
-                    "heading-1": "heading1", "heading-2": "heading2", "heading-3": "heading3",
-                    "heading-4": "heading4", "heading-5": "heading5", "heading-6": "heading6",
-                    "bulleted-list": "bulleted", "numbered-list": "numbered",
-                    "todo-list": "todo", "quote": "quote", "text": "text",
+                    "heading-1": "heading1",
+                    "heading-2": "heading2",
+                    "heading-3": "heading3",
+                    "heading-4": "heading4",
+                    "heading-5": "heading5",
+                    "heading-6": "heading6",
+                    "bulleted-list": "bulleted",
+                    "numbered-list": "numbered",
+                    "todo-list": "todo",
+                    quote: "quote",
+                    text: "text",
                 };
                 const targetKind = liveMap[cmd.id];
                 // Delete the slash trigger text (line start → caret) BEFORE converting, so
@@ -4043,7 +4194,7 @@ const Markdown = ({
                 });
                 return;
             }
-            
+
             // Fallback: execute the slash command as before
             const caret = inlineEdit.textareaRef.current?.selectionStart ?? inlineEdit.draftText.length;
             const result = execSlashCommand(
@@ -4066,7 +4217,9 @@ const Markdown = ({
                         const tr = result.textReplace as TextReplaceResult & { text: string };
                         handleInlineEditCommit(
                             tr.text,
-                            session.blockKind === "list" ? { renumberOrderedListFromLine: session.startLine } : undefined
+                            session.blockKind === "list"
+                                ? { renumberOrderedListFromLine: session.startLine }
+                                : undefined
                         );
                         // Don't dismiss yet; the picker will overlay for the next keystroke.
                     }
@@ -4096,9 +4249,7 @@ const Markdown = ({
             // round-trip through the source; the editor serializes with the new kind.
             if (session.wysiwyg && inlineEdit.wysiwygRef.current != null) {
                 const editor = inlineEdit.wysiwygRef.current;
-                const level = to.startsWith("heading")
-                    ? parseInt(to.slice("heading".length), 10)
-                    : undefined;
+                const level = to.startsWith("heading") ? parseInt(to.slice("heading".length), 10) : undefined;
                 editor.applyLiveKind(to, level);
                 return;
             }
@@ -4125,9 +4276,7 @@ const Markdown = ({
             // WYSIWYG: apply style directly to the contentEditable DOM via execCommand,
             // then re-serialize to sync the mirror draftText.
             if (session.wysiwyg && inlineEdit.wysiwygRef.current != null) {
-                inlineEdit.wysiwygRef.current.applyInlineStyle(
-                    style as "bold" | "italic" | "strike" | "code"
-                );
+                inlineEdit.wysiwygRef.current.applyInlineStyle(style as "bold" | "italic" | "strike" | "code");
                 return;
             }
             // Textarea path: apply style to the markdown draftText.
@@ -4315,8 +4464,10 @@ const Markdown = ({
     const [docEmojiQuery, setDocEmojiQuery] = useState("");
     const [docEmojiActive, setDocEmojiActive] = useState(0);
     const docEmojiBadgeRef = useRef<HTMLButtonElement | null>(null);
-    const docEmoji = useMemo(() => (isBlockEditorFeatureEnabled("docemoji") ? getFrontmatterEmoji(text) : null), [text]);
-
+    const docEmoji = useMemo(
+        () => (isBlockEditorFeatureEnabled("docemoji") ? getFrontmatterEmoji(text) : null),
+        [text]
+    );
     const toggleDocEmojiPicker = useCallback(() => {
         if (docEmojiOpen) {
             setDocEmojiOpen(false);
@@ -4336,7 +4487,10 @@ const Markdown = ({
     }, [docEmojiOpen]);
 
     const docEmojiItems = useMemo(
-        () => (emojiCatalog == null || !docEmojiOpen ? [] : buildEmojiPickerItems(emojiCatalog, docEmojiQuery, getRecentEmojis())),
+        () =>
+            emojiCatalog == null || !docEmojiOpen
+                ? []
+                : buildEmojiPickerItems(emojiCatalog, docEmojiQuery, getRecentEmojis()),
         [emojiCatalog, docEmojiOpen, docEmojiQuery]
     );
     const docEmojiPickables = useMemo(() => emojiPickerEntries(docEmojiItems), [docEmojiItems]);
@@ -4351,7 +4505,6 @@ const Markdown = ({
         },
         [text, handleInlineEditCommit]
     );
-
 
     const handleEditorKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -4431,7 +4584,8 @@ const Markdown = ({
                 }
                 if (e.key === "Enter") {
                     e.preventDefault();
-                    const entry = slashEmojiPickables[Math.min(slashEmojiState.activeIndex, slashEmojiPickables.length - 1)];
+                    const entry =
+                        slashEmojiPickables[Math.min(slashEmojiState.activeIndex, slashEmojiPickables.length - 1)];
                     if (entry != null) {
                         handleSlashEmojiPick(entry);
                     }
@@ -4468,18 +4622,17 @@ const Markdown = ({
                 }
                 // Block-type transforms: ⌘0 text, ⌘1..6 headings, ⌘⇧7/8/9 numbered/bulleted/todo.
                 if (sessKind != null && sessKind !== "code" && sessKind !== "table") {
-                    const digitMap: Record<string, BlockKind> =
-                        e.shiftKey
-                            ? { Digit7: "numbered", Digit8: "bulleted", Digit9: "todo" }
-                            : {
-                                  Digit0: "text",
-                                  Digit1: "heading1",
-                                  Digit2: "heading2",
-                                  Digit3: "heading3",
-                                  Digit4: "heading4",
-                                  Digit5: "heading5",
-                                  Digit6: "heading6",
-                              };
+                    const digitMap: Record<string, BlockKind> = e.shiftKey
+                        ? { Digit7: "numbered", Digit8: "bulleted", Digit9: "todo" }
+                        : {
+                              Digit0: "text",
+                              Digit1: "heading1",
+                              Digit2: "heading2",
+                              Digit3: "heading3",
+                              Digit4: "heading4",
+                              Digit5: "heading5",
+                              Digit6: "heading6",
+                          };
                     const to = digitMap[e.code];
                     if (to != null) {
                         e.preventDefault();
@@ -4491,7 +4644,22 @@ const Markdown = ({
             }
             inlineEditKeyDown(e);
         },
-        [slashState, slashItems, handleSlashPick, emojiState, emojiPickables, handleEmojiPick, slashEmojiState, slashEmojiPickables, handleSlashEmojiPick, handleSlashEmojiClose, handleInlineStyle, handleSessionBlockTransform, inlineEdit, inlineEditKeyDown]
+        [
+            slashState,
+            slashItems,
+            handleSlashPick,
+            emojiState,
+            emojiPickables,
+            handleEmojiPick,
+            slashEmojiState,
+            slashEmojiPickables,
+            handleSlashEmojiPick,
+            handleSlashEmojiClose,
+            handleInlineStyle,
+            handleSessionBlockTransform,
+            inlineEdit,
+            inlineEditKeyDown,
+        ]
     );
 
     const toolbarAnchor = useMemo(() => {
@@ -4506,7 +4674,6 @@ const Markdown = ({
         const left = Math.max(8, Math.min(window.innerWidth - 340, rect.left + rect.width / 2 - 170));
         return { top, left };
     }, [inlineEdit.overlayRect]);
-
 
     const toolbarBlockItems = useMemo(() => {
         const session = inlineEdit.editSession;
@@ -4578,8 +4745,9 @@ const Markdown = ({
         let pinIndex: number | null = null;
         let pinOldTop = 0;
         if (isUserToggle) {
-            const preToggleBottoms = Array.from(root.children, (elem) =>
-                (elem as HTMLElement).getBoundingClientRect().bottom
+            const preToggleBottoms = Array.from(
+                root.children,
+                (elem) => (elem as HTMLElement).getBoundingClientRect().bottom
             );
             pinIndex = findCollapsedScrollPinIndex(flags, preToggleBottoms, viewportTop);
             if (pinIndex != null) {
@@ -5136,13 +5304,11 @@ const Markdown = ({
                     onToggle={toggleHeadingCollapse}
                 />
             ),
-            hr: (props: React.HTMLAttributes<HTMLHRElement>) => (
-                <hr {...props} {...srcLineAttrs(props)} />
-            ),
+            hr: (props: React.HTMLAttributes<HTMLHRElement>) => <hr {...props} {...srcLineAttrs(props)} />,
             blockquote: (props: React.HTMLAttributes<HTMLQuoteElement>) => (
                 <blockquote {...props} {...srcLineAttrs(props)} />
             ),
-            table: (props: React.HTMLAttributes<HTMLTableElement>) => (
+            table: (props: React.HTMLAttributes<HTMLTableElement>) =>
                 isBlockEditorFeatureEnabled("tablecell") ? (
                     <TableBlock
                         props={props}
@@ -5155,8 +5321,7 @@ const Markdown = ({
                         collapsed={collapsedTables.has(String(getSourceLine(props)))}
                         onToggle={() => toggleTableCollapse(String(getSourceLine(props)))}
                     />
-                )
-            ),
+                ),
             ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
                 <MarkdownOrderedList props={props} collapsible={collapsibleOrderedLists} />
             ),
@@ -5304,11 +5469,7 @@ const Markdown = ({
                             // ['className', 'hljs-number', 'hljs-title', 'hljs-variable']
                         ],
                         waveblock: [["blockkey"]],
-                        div: [
-                            ...(defaultSchema.attributes?.div || []),
-                            ["className", /^markdown-alert/],
-                            "dir",
-                        ],
+                        div: [...(defaultSchema.attributes?.div || []), ["className", /^markdown-alert/], "dir"],
                         button: [
                             ["className", /^markdown-alert/],
                             "type",
@@ -5403,371 +5564,417 @@ const Markdown = ({
     }
     return (
         <TableEditContext.Provider value={tableEditContext}>
-        <div
-            className={clsx(
-                "markdown",
-                className,
-                onInlineEditCommit != null && "markdown-editable",
-                onInlineEditCommit != null && inlineEdit.editSession != null && "is-inline-editing",
-                presentationMode && "markdown-presentation"
-            )}
-            style={mergedStyle}
-            data-copy-context-path={copyContextPath || undefined}
-            onWheel={presentationMode ? handlePresentationWheel : undefined}
-        >
-            {docEmojiOpen && docEmojiAnchor != null && emojiCatalog != null && (
-                <>
-                    <div className="markdown-emoji-backdrop" onMouseDown={() => setDocEmojiOpen(false)} />
-                    <EmojiPicker
-                        anchor={docEmojiAnchor}
-                        placement="bottom"
-                        mode="document"
-                        catalog={emojiCatalog}
-                        query={docEmojiQuery}
-                        onQueryChange={(q) => {
-                            setDocEmojiQuery(q);
-                            setDocEmojiActive(0);
-                        }}
-                        activeIndex={Math.min(docEmojiActive, Math.max(0, docEmojiPickables.length - 1))}
-                        onActiveChange={setDocEmojiActive}
-                        onPick={(entry) => {
-                            recordRecentEmoji(entry.char);
-                            applyDocEmoji(entry.char);
-                        }}
-                        onClose={() => setDocEmojiOpen(false)}
-                        allowRemove={docEmoji != null}
-                        onRemove={() => applyDocEmoji(null)}
-                    />
-                </>
-            )}
-            {scrollable ? (
-                <OverlayScrollbarsComponent
-                    ref={contentsOsRef}
-                    className={cn("content", contentClassName, shouldHideForInitialScroll && "invisible")}
-                    options={{ scrollbars: { autoHide: "leave" } }}
-                    events={{
-                        initialized: () =>
-                            requestAnimationFrame(() => {
-                                applyScrollTarget("initialized");
-                                // OSB 挂载前（osInstance 未 ready）的渲染里折叠可见性无从落脚，
-                                // 这里补一次强制同步，堵住「首次打开折叠内容不隐藏」的边界。
-                                updateCollapsedHeadingVisibility();
-                            }),
-                        scroll: handleMarkdownScroll,
-                    }}
-                    // Capture-phase dblclick so we beat CollapsibleHeading's own dblclick toggle
-                    // and any native selection side effects. The handler no-ops unless the
-                    // parent wired onInlineEditCommit (i.e. opt-in to inline editing).
-                    onDoubleClickCapture={handleInlineEditDblClick}
-                    // Mousedown (capture) records the pre-press selection so the bubble-phase
-                    // click handler can tell drag-select from pure click.
-                    onMouseDownCapture={handleInlineEditMouseDown}
-                    // Bubble-phase click — single-click-to-edit. Runs after <Link> and chevron
-                    // button onClick, so e.defaultPrevented / e.target.closest(...) guard
-                    // interactive children, and a grown live selection guards drag-select.
-                    onClick={handleInlineEditClick}
-                    onMouseOver={handleRootMouseOver}
-                    onMouseLeave={handleRootMouseLeave}
-                    onDragOver={handleBlockDragOver}
-                    onDragLeave={handleBlockDragLeave}
-                    onDrop={handleBlockDrop}
-                >
-                    {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
-                        <DocEmojiHeader
-                            emoji={docEmoji}
-                            buttonRef={docEmojiBadgeRef}
-                            open={docEmojiOpen}
-                            onToggle={toggleDocEmojiPicker}
-                        />
-                    )}
-                    {scrollableMarkdownTree}
-                    {onInlineEditCommit != null && linkTooltipAnchor != null &&
-                        ReactDOM.createPortal(
-                            <MarkdownLinkTooltip
-                                anchor={linkTooltipAnchor}
-                                onOpen={() => {
-                                    const el = linkTooltipAnchor;
-                                    closeLinkTooltip();
-                                    // Reuse the anchor's own click path → identical behavior to a
-                                    // plain user click (in-preview navigation for internal links,
-                                    // browser open for externals).
-                                    el.click();
-                                }}
-                                onEdit={() => {
-                                    const el = linkTooltipAnchor;
-                                    closeLinkTooltip();
-                                    openLinkEditor(el);
-                                }}
-                                rootRef={linkTooltipElRef}
-                                onMouseEnter={stopLinkTooltipSafeZoneWatch}
-                                onMouseLeave={startLinkTooltipSafeZoneWatch}
-                            />,
-                            document.body
-                        )}
-                    {onInlineEditCommit != null && linkEditTarget != null &&
-                        ReactDOM.createPortal(
-                            <MarkdownLinkEditor
-                                anchor={linkEditTarget.anchor}
-                                mode={linkEditTarget.mode}
-                                initialLabel={linkEditTarget.label}
-                                initialUrl={linkEditTarget.href}
-                                onSave={(label, url) => {
-                                    const target = linkEditTarget;
-                                    setLinkEditTarget(null);
-                                    applyLinkEdit(target, label, url);
-                                }}
-                                onCancel={() => setLinkEditTarget(null)}
-                            />,
-                            document.body
-                        )}
-                    {onInlineEditCommit && (
-                        <InlineEditOverlay
-                            overlayRect={inlineEdit.overlayRect}
-                            blockKind={inlineEdit.editSession?.blockKind ?? null}
-                            typography={inlineEdit.editSession?.typography}
-                            draftText={inlineEdit.draftText}
-                            textareaRef={inlineEdit.textareaRef}
-                            codeEditorRef={inlineEdit.codeEditorRef}
-                            wysiwygRef={inlineEdit.wysiwygRef}
-                            wysiwygHtml={inlineEdit.editSession?.wysiwyg ? inlineEdit.editSession.wysiwygHtml : undefined}
-                            wysiwygHeadingLevel={inlineEdit.editSession?.wysiwyg ? inlineEdit.editSession.wysiwygHeadingLevel : undefined}
-                            wysiwygListMarker={inlineEdit.editSession?.wysiwyg ? inlineEdit.editSession.wysiwygListMarker : undefined}
-                            wysiwygSessionKey={inlineEdit.editSession?.wysiwyg ? `${inlineEdit.editSession.blockKind}:${inlineEdit.editSession.startLine}:${inlineEdit.editSession.endLine}` : undefined}
-                            onTextChange={(v, caret) => {
-                                inlineEdit.setDraftText(v);
-                                trackEditorTriggers(v, caret);
-                                // Clear ghost placeholder when user starts typing content
-                                if (formatPrefix != null && v !== formatPrefix) {
-                                    setFormatPrefix(null);
-                                    setDynamicPlaceholder(null);
-                                    // Keep formatTypography so the style persists while typing
-                                }
-                            }}
-                            onKeyDown={handleEditorKeyDown}
-                            onPaste={handleEditorPaste}
-                            onBlur={inlineEdit.commit}
-                            placeholder={dynamicPlaceholder ?? placeholderForBlockKind(inlineEdit.editSession?.blockKind)}
-                            onCaretChange={(caret, selEnd) => {
-                                trackEditorTriggers(inlineEdit.draftText, caret);
-                                setInlineSelection(selEnd > caret ? { start: caret, end: selEnd } : null);
-                                if (editSessionKind === "table") {
-                                    setTableCaret(caretToTableCoord(inlineEdit.draftText, caret));
-                                }
-                            }}
-                            formatPrefix={formatPrefix ?? undefined}
-                            ghostPlaceholder={dynamicPlaceholder ?? undefined}
-                            formatTypography={formatTypography ?? undefined}
-                            codeLanguage={editCodeLanguage}
-                            onApplyLanguage={
-                                editSessionKind === "code" && inlineEdit.editSession?.startLine != null
-                                    ? (nextLang) => {
-                                          setEditCodeLanguage(nextLang);
-                                          const next = setCodeBlockLanguage(
-                                              text,
-                                              inlineEdit.editSession!.startLine,
-                                              nextLang
-                                          );
-                                          if (next != null) handleInlineEditCommit(next);
-                                      }
-                                    : undefined
-                            }
-                        />
-                    )}
-                    {slashState != null && slashAnchor != null && inlineEdit.editSession != null && (
-                        <SlashPalette
-                            anchor={slashAnchor.anchor}
-                            placement={slashAnchor.placement}
-                            items={slashItems}
-                            activeIndex={Math.min(slashState.activeIndex, Math.max(0, slashItems.length - 1))}
-                            onHover={(i) => setSlashState((s) => (s == null ? s : { ...s, activeIndex: i }))}
-                            onPick={handleSlashPick}
-                        />
-                    )}
-                    {emojiState != null && emojiAnchor != null && emojiCatalog != null && inlineEdit.editSession != null && (
+            <div
+                className={clsx(
+                    "markdown",
+                    className,
+                    onInlineEditCommit != null && "markdown-editable",
+                    onInlineEditCommit != null && inlineEdit.editSession != null && "is-inline-editing",
+                    presentationMode && "markdown-presentation"
+                )}
+                style={mergedStyle}
+                data-copy-context-path={copyContextPath || undefined}
+                onWheel={presentationMode ? handlePresentationWheel : undefined}
+            >
+                {docEmojiOpen && docEmojiAnchor != null && emojiCatalog != null && (
+                    <>
+                        <div className="markdown-emoji-backdrop" onMouseDown={() => setDocEmojiOpen(false)} />
                         <EmojiPicker
-                            anchor={emojiAnchor.anchor}
-                            placement={emojiAnchor.placement}
-                            mode="inline"
-                            catalog={emojiCatalog}
-                            query={emojiState.query}
-                            activeIndex={Math.min(emojiState.activeIndex, Math.max(0, emojiPickables.length - 1))}
-                            onActiveChange={(i) => setEmojiState((s) => (s == null ? s : { ...s, activeIndex: i }))}
-                            onPick={handleEmojiPick}
-                            onClose={() => setEmojiState(null)}
-                        />
-                    )}
-                    {slashEmojiState.open && slashEmojiState.anchor != null && slashEmojiState.catalog != null && inlineEdit.editSession != null && (
-                        <EmojiPicker
-                            anchor={slashEmojiState.anchor}
+                            anchor={docEmojiAnchor}
                             placement="bottom"
-                            mode="inline"
-                            catalog={slashEmojiState.catalog}
-                            query={slashEmojiState.query}
-                            activeIndex={Math.min(slashEmojiState.activeIndex, Math.max(0, slashEmojiPickables.length - 1))}
-                            onQueryChange={(q) => setSlashEmojiState((s) => ({ ...s, query: q, activeIndex: 0 }))}
-                            onActiveChange={(i) => setSlashEmojiState((s) => ({ ...s, activeIndex: i }))}
-                            onPick={handleSlashEmojiPick}
-                            onClose={handleSlashEmojiClose}
+                            mode="document"
+                            catalog={emojiCatalog}
+                            query={docEmojiQuery}
+                            onQueryChange={(q) => {
+                                setDocEmojiQuery(q);
+                                setDocEmojiActive(0);
+                            }}
+                            activeIndex={Math.min(docEmojiActive, Math.max(0, docEmojiPickables.length - 1))}
+                            onActiveChange={setDocEmojiActive}
+                            onPick={(entry) => {
+                                recordRecentEmoji(entry.char);
+                                applyDocEmoji(entry.char);
+                            }}
+                            onClose={() => setDocEmojiOpen(false)}
+                            allowRemove={docEmoji != null}
+                            onRemove={() => applyDocEmoji(null)}
                         />
-                    )}
-                    {editSessionKind === "table" && toolbarAnchor != null && isBlockEditorFeatureEnabled("table") && (
-                        <TableToolbar
-                            anchor={toolbarAnchor}
-                            contextValid={tableCaret != null}
-                            currentAlign={tableCaretAlign}
-                            onOp={handleTableOp}
-                        />
-                    )}
-                    {inlineSelection != null &&
-                        inlineEdit.editSession != null &&
-                        inlineEdit.editSession.blockKind !== "code" &&
-                        isBlockEditorFeatureEnabled("toolbar") &&
-                        toolbarAnchor != null && (
-                            <FloatingToolbar
-                                anchor={toolbarAnchor}
-                                blockLabel={currentBlockLabel}
-                                blockItems={toolbarBlockItems}
-                                styles={listInlineStyles().map((s) => ({
-                                    id: s.id as InlineStyleId,
-                                    label: s.label,
-                                    hint: s.hint,
-                                    active: hasInlineStyle(
-                                        inlineEdit.draftText,
-                                        inlineSelection.start,
-                                        inlineSelection.end,
-                                        s.id as InlineStyleId
-                                    ),
-                                }))}
-                                onBlockType={(id) => {
-                                    const action = listBlockActions().find((a) => a.id === id);
-                                    if (action?.targetKind != null) {
-                                        handleSessionBlockTransform(action.targetKind);
-                                    }
-                                }}
-                                onStyle={handleInlineStyle}
+                    </>
+                )}
+                {scrollable ? (
+                    <OverlayScrollbarsComponent
+                        ref={contentsOsRef}
+                        className={cn("content", contentClassName, shouldHideForInitialScroll && "invisible")}
+                        options={{ scrollbars: { autoHide: "leave" } }}
+                        events={{
+                            initialized: () =>
+                                requestAnimationFrame(() => {
+                                    applyScrollTarget("initialized");
+                                    // OSB 挂载前（osInstance 未 ready）的渲染里折叠可见性无从落脚，
+                                    // 这里补一次强制同步，堵住「首次打开折叠内容不隐藏」的边界。
+                                    updateCollapsedHeadingVisibility();
+                                }),
+                            scroll: handleMarkdownScroll,
+                        }}
+                        // Capture-phase dblclick so we beat CollapsibleHeading's own dblclick toggle
+                        // and any native selection side effects. The handler no-ops unless the
+                        // parent wired onInlineEditCommit (i.e. opt-in to inline editing).
+                        onDoubleClickCapture={handleInlineEditDblClick}
+                        // Mousedown (capture) records the pre-press selection so the bubble-phase
+                        // click handler can tell drag-select from pure click.
+                        onMouseDownCapture={handleInlineEditMouseDown}
+                        // Bubble-phase click — single-click-to-edit. Runs after <Link> and chevron
+                        // button onClick, so e.defaultPrevented / e.target.closest(...) guard
+                        // interactive children, and a grown live selection guards drag-select.
+                        onClick={handleInlineEditClick}
+                        onMouseOver={handleRootMouseOver}
+                        onMouseLeave={handleRootMouseLeave}
+                        onDragOver={handleBlockDragOver}
+                        onDragLeave={handleBlockDragLeave}
+                        onDrop={handleBlockDrop}
+                    >
+                        {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
+                            <DocEmojiHeader
+                                emoji={docEmoji}
+                                buttonRef={docEmojiBadgeRef}
+                                open={docEmojiOpen}
+                                onToggle={toggleDocEmojiPicker}
                             />
                         )}
-                    {onInlineEditCommit && selectedBlock != null && inlineEdit.editSession == null &&
-                        ReactDOM.createPortal(
-                            <div
-                                className="markdown-block-selected"
-                                style={{
-                                    top: selectedBlock.rect.top,
-                                    left: selectedBlock.rect.left,
-                                    width: selectedBlock.rect.width,
-                                    height: selectedBlock.rect.height,
+                        {scrollableMarkdownTree}
+                        {onInlineEditCommit != null &&
+                            linkTooltipAnchor != null &&
+                            ReactDOM.createPortal(
+                                <MarkdownLinkTooltip
+                                    anchor={linkTooltipAnchor}
+                                    onOpen={() => {
+                                        const el = linkTooltipAnchor;
+                                        closeLinkTooltip();
+                                        // Reuse the anchor's own click path → identical behavior to a
+                                        // plain user click (in-preview navigation for internal links,
+                                        // browser open for externals).
+                                        el.click();
+                                    }}
+                                    onEdit={() => {
+                                        const el = linkTooltipAnchor;
+                                        closeLinkTooltip();
+                                        openLinkEditor(el);
+                                    }}
+                                    rootRef={linkTooltipElRef}
+                                    onMouseEnter={stopLinkTooltipSafeZoneWatch}
+                                    onMouseLeave={startLinkTooltipSafeZoneWatch}
+                                />,
+                                document.body
+                            )}
+                        {onInlineEditCommit != null &&
+                            linkEditTarget != null &&
+                            ReactDOM.createPortal(
+                                <MarkdownLinkEditor
+                                    anchor={linkEditTarget.anchor}
+                                    mode={linkEditTarget.mode}
+                                    initialLabel={linkEditTarget.label}
+                                    initialUrl={linkEditTarget.href}
+                                    onSave={(label, url) => {
+                                        const target = linkEditTarget;
+                                        setLinkEditTarget(null);
+                                        applyLinkEdit(target, label, url);
+                                    }}
+                                    onCancel={() => setLinkEditTarget(null)}
+                                />,
+                                document.body
+                            )}
+                        {onInlineEditCommit && (
+                            <InlineEditOverlay
+                                overlayRect={inlineEdit.overlayRect}
+                                blockKind={inlineEdit.editSession?.blockKind ?? null}
+                                typography={inlineEdit.editSession?.typography}
+                                draftText={inlineEdit.draftText}
+                                textareaRef={inlineEdit.textareaRef}
+                                codeEditorRef={inlineEdit.codeEditorRef}
+                                wysiwygRef={inlineEdit.wysiwygRef}
+                                wysiwygHtml={
+                                    inlineEdit.editSession?.wysiwyg ? inlineEdit.editSession.wysiwygHtml : undefined
+                                }
+                                wysiwygHeadingLevel={
+                                    inlineEdit.editSession?.wysiwyg
+                                        ? inlineEdit.editSession.wysiwygHeadingLevel
+                                        : undefined
+                                }
+                                wysiwygListMarker={
+                                    inlineEdit.editSession?.wysiwyg
+                                        ? inlineEdit.editSession.wysiwygListMarker
+                                        : undefined
+                                }
+                                wysiwygSessionKey={
+                                    inlineEdit.editSession?.wysiwyg
+                                        ? `${inlineEdit.editSession.blockKind}:${inlineEdit.editSession.startLine}:${inlineEdit.editSession.endLine}`
+                                        : undefined
+                                }
+                                onTextChange={(v, caret) => {
+                                    inlineEdit.setDraftText(v);
+                                    trackEditorTriggers(v, caret);
+                                    // Clear ghost placeholder when user starts typing content
+                                    if (formatPrefix != null && v !== formatPrefix) {
+                                        setFormatPrefix(null);
+                                        setDynamicPlaceholder(null);
+                                        // Keep formatTypography so the style persists while typing
+                                    }
                                 }}
-                            />,
-                            document.body
-                        )}
-                    {onInlineEditCommit && selectedRange != null && selectedRangeRect != null && inlineEdit.editSession == null &&
-                        ReactDOM.createPortal(
-                            <div
-                                className="markdown-block-selected markdown-block-range-selected"
-                                style={{
-                                    top: selectedRangeRect.top,
-                                    left: selectedRangeRect.left,
-                                    width: selectedRangeRect.width,
-                                    height: selectedRangeRect.height,
+                                onKeyDown={handleEditorKeyDown}
+                                onPaste={handleEditorPaste}
+                                onBlur={inlineEdit.commit}
+                                placeholder={
+                                    dynamicPlaceholder ?? placeholderForBlockKind(inlineEdit.editSession?.blockKind)
+                                }
+                                onCaretChange={(caret, selEnd) => {
+                                    trackEditorTriggers(inlineEdit.draftText, caret);
+                                    setInlineSelection(selEnd > caret ? { start: caret, end: selEnd } : null);
+                                    if (editSessionKind === "table") {
+                                        setTableCaret(caretToTableCoord(inlineEdit.draftText, caret));
+                                    }
                                 }}
-                            />,
-                            document.body
+                                formatPrefix={formatPrefix ?? undefined}
+                                ghostPlaceholder={dynamicPlaceholder ?? undefined}
+                                formatTypography={formatTypography ?? undefined}
+                                codeLanguage={editCodeLanguage}
+                                onApplyLanguage={
+                                    editSessionKind === "code" && inlineEdit.editSession?.startLine != null
+                                        ? (nextLang) => {
+                                              setEditCodeLanguage(nextLang);
+                                              const next = setCodeBlockLanguage(
+                                                  text,
+                                                  inlineEdit.editSession!.startLine,
+                                                  nextLang
+                                              );
+                                              if (next != null) handleInlineEditCommit(next);
+                                          }
+                                        : undefined
+                                }
+                            />
                         )}
-                    {onInlineEditCommit && insertPos != null && inlineEdit.editSession == null &&
-                        ReactDOM.createPortal(
-                            <>
-                                {/* C: 4-dot grip — gutter left of the block, top-left. Click selects the block + opens the block menu;
-                                    press and drag reorders the block (handleBlockDragStart). */}
+                        {slashState != null && slashAnchor != null && inlineEdit.editSession != null && (
+                            <SlashPalette
+                                anchor={slashAnchor.anchor}
+                                placement={slashAnchor.placement}
+                                items={slashItems}
+                                activeIndex={Math.min(slashState.activeIndex, Math.max(0, slashItems.length - 1))}
+                                onHover={(i) => setSlashState((s) => (s == null ? s : { ...s, activeIndex: i }))}
+                                onPick={handleSlashPick}
+                            />
+                        )}
+                        {emojiState != null &&
+                            emojiAnchor != null &&
+                            emojiCatalog != null &&
+                            inlineEdit.editSession != null && (
+                                <EmojiPicker
+                                    anchor={emojiAnchor.anchor}
+                                    placement={emojiAnchor.placement}
+                                    mode="inline"
+                                    catalog={emojiCatalog}
+                                    query={emojiState.query}
+                                    activeIndex={Math.min(
+                                        emojiState.activeIndex,
+                                        Math.max(0, emojiPickables.length - 1)
+                                    )}
+                                    onActiveChange={(i) =>
+                                        setEmojiState((s) => (s == null ? s : { ...s, activeIndex: i }))
+                                    }
+                                    onPick={handleEmojiPick}
+                                    onClose={() => setEmojiState(null)}
+                                />
+                            )}
+                        {slashEmojiState.open &&
+                            slashEmojiState.anchor != null &&
+                            slashEmojiState.catalog != null &&
+                            inlineEdit.editSession != null && (
+                                <EmojiPicker
+                                    anchor={slashEmojiState.anchor}
+                                    placement="bottom"
+                                    mode="inline"
+                                    catalog={slashEmojiState.catalog}
+                                    query={slashEmojiState.query}
+                                    activeIndex={Math.min(
+                                        slashEmojiState.activeIndex,
+                                        Math.max(0, slashEmojiPickables.length - 1)
+                                    )}
+                                    onQueryChange={(q) =>
+                                        setSlashEmojiState((s) => ({ ...s, query: q, activeIndex: 0 }))
+                                    }
+                                    onActiveChange={(i) => setSlashEmojiState((s) => ({ ...s, activeIndex: i }))}
+                                    onPick={handleSlashEmojiPick}
+                                    onClose={handleSlashEmojiClose}
+                                />
+                            )}
+                        {editSessionKind === "table" &&
+                            toolbarAnchor != null &&
+                            isBlockEditorFeatureEnabled("table") && (
+                                <TableToolbar
+                                    anchor={toolbarAnchor}
+                                    contextValid={tableCaret != null}
+                                    currentAlign={tableCaretAlign}
+                                    onOp={handleTableOp}
+                                />
+                            )}
+                        {inlineSelection != null &&
+                            inlineEdit.editSession != null &&
+                            inlineEdit.editSession.blockKind !== "code" &&
+                            isBlockEditorFeatureEnabled("toolbar") &&
+                            toolbarAnchor != null && (
+                                <FloatingToolbar
+                                    anchor={toolbarAnchor}
+                                    blockLabel={currentBlockLabel}
+                                    blockItems={toolbarBlockItems}
+                                    styles={listInlineStyles().map((s) => ({
+                                        id: s.id as InlineStyleId,
+                                        label: s.label,
+                                        hint: s.hint,
+                                        active: hasInlineStyle(
+                                            inlineEdit.draftText,
+                                            inlineSelection.start,
+                                            inlineSelection.end,
+                                            s.id as InlineStyleId
+                                        ),
+                                    }))}
+                                    onBlockType={(id) => {
+                                        const action = listBlockActions().find((a) => a.id === id);
+                                        if (action?.targetKind != null) {
+                                            handleSessionBlockTransform(action.targetKind);
+                                        }
+                                    }}
+                                    onStyle={handleInlineStyle}
+                                />
+                            )}
+                        {onInlineEditCommit &&
+                            selectedBlock != null &&
+                            inlineEdit.editSession == null &&
+                            ReactDOM.createPortal(
                                 <div
-                                    className="markdown-block-grip-dots"
-                                    style={{ top: insertPos.top, left: insertPos.left }}
-                                    draggable
-                                    onMouseEnter={handleGripEnter}
-                                    onMouseLeave={handleGripLeave}
-                                    onClick={handleGripMenuClick}
-                                    onDragStart={handleBlockDragStart}
-                                    onDragEnd={handleBlockDragEnd}
-                                    role="button"
-                                    aria-label="Block actions — drag to reorder"
-                                    title="Block actions — drag to reorder"
-                                >
-                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
-                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
-                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
-                                    <i className="markdown-block-grip-dot" aria-hidden="true" />
-                                </div>
-                                {/* A: insert above — same column, just above the grip. */}
-                                <button
-                                    className={
-                                        "markdown-block-grip-action" +
-                                        (gripOpen ? "" : " markdown-block-grip-action-hidden")
-                                    }
-                                    title="Insert block above"
-                                    aria-label="Insert block above"
-                                    style={{ top: insertPos.top - 33, left: insertPos.left }}
-                                    onMouseEnter={handleGripEnter}
-                                    onMouseLeave={handleGripLeave}
-                                    onClick={() => handleInsertClick("before")}
-                                >
-                                    <i className="fa-sharp fa-solid fa-plus" />
-                                </button>
-                                {/* B: insert below — same column, just below the grip. */}
-                                <button
-                                    className={
-                                        "markdown-block-grip-action" +
-                                        (gripOpen ? "" : " markdown-block-grip-action-hidden")
-                                    }
-                                    title="Insert block below"
-                                    aria-label="Insert block below"
-                                    style={{ top: insertPos.top + 15, left: insertPos.left }}
-                                    onMouseEnter={handleGripEnter}
-                                    onMouseLeave={handleGripLeave}
-                                    onClick={() => handleInsertClick("after")}
-                                >
-                                    <i className="fa-sharp fa-solid fa-plus" />
-                                </button>
-                            </>,
-                            document.body
+                                    className="markdown-block-selected"
+                                    style={{
+                                        top: selectedBlock.rect.top,
+                                        left: selectedBlock.rect.left,
+                                        width: selectedBlock.rect.width,
+                                        height: selectedBlock.rect.height,
+                                    }}
+                                />,
+                                document.body
+                            )}
+                        {onInlineEditCommit &&
+                            selectedRange != null &&
+                            selectedRangeRect != null &&
+                            inlineEdit.editSession == null &&
+                            ReactDOM.createPortal(
+                                <div
+                                    className="markdown-block-selected markdown-block-range-selected"
+                                    style={{
+                                        top: selectedRangeRect.top,
+                                        left: selectedRangeRect.left,
+                                        width: selectedRangeRect.width,
+                                        height: selectedRangeRect.height,
+                                    }}
+                                />,
+                                document.body
+                            )}
+                        {onInlineEditCommit &&
+                            insertPos != null &&
+                            inlineEdit.editSession == null &&
+                            ReactDOM.createPortal(
+                                <>
+                                    {/* C: 4-dot grip — gutter left of the block, top-left. Click selects the block + opens the block menu;
+                                    press and drag reorders the block (handleBlockDragStart). */}
+                                    <div
+                                        className="markdown-block-grip-dots"
+                                        style={{ top: insertPos.top, left: insertPos.left }}
+                                        draggable
+                                        onMouseEnter={handleGripEnter}
+                                        onMouseLeave={handleGripLeave}
+                                        onClick={handleGripMenuClick}
+                                        onDragStart={handleBlockDragStart}
+                                        onDragEnd={handleBlockDragEnd}
+                                        role="button"
+                                        aria-label="Block actions — drag to reorder"
+                                        title="Block actions — drag to reorder"
+                                    >
+                                        <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                        <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                        <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                        <i className="markdown-block-grip-dot" aria-hidden="true" />
+                                    </div>
+                                    {/* A: insert above — same column, just above the grip. */}
+                                    <button
+                                        className={
+                                            "markdown-block-grip-action" +
+                                            (gripOpen ? "" : " markdown-block-grip-action-hidden")
+                                        }
+                                        title="Insert block above"
+                                        aria-label="Insert block above"
+                                        style={{ top: insertPos.top - 33, left: insertPos.left }}
+                                        onMouseEnter={handleGripEnter}
+                                        onMouseLeave={handleGripLeave}
+                                        onClick={() => handleInsertClick("before")}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-plus" />
+                                    </button>
+                                    {/* B: insert below — same column, just below the grip. */}
+                                    <button
+                                        className={
+                                            "markdown-block-grip-action" +
+                                            (gripOpen ? "" : " markdown-block-grip-action-hidden")
+                                        }
+                                        title="Insert block below"
+                                        aria-label="Insert block below"
+                                        style={{ top: insertPos.top + 15, left: insertPos.left }}
+                                        onMouseEnter={handleGripEnter}
+                                        onMouseLeave={handleGripLeave}
+                                        onClick={() => handleInsertClick("after")}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-plus" />
+                                    </button>
+                                </>,
+                                document.body
+                            )}
+                        {dropTarget != null &&
+                            inlineEdit.editSession == null &&
+                            ReactDOM.createPortal(
+                                <div
+                                    className="markdown-block-drop-indicator"
+                                    style={{
+                                        top: dropTarget.rect.top,
+                                        left: dropTarget.rect.left,
+                                        width: dropTarget.rect.width,
+                                    }}
+                                />,
+                                document.body
+                            )}
+                    </OverlayScrollbarsComponent>
+                ) : (
+                    <div className={cn("content non-scrollable", contentClassName)}>
+                        {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
+                            <DocEmojiHeader
+                                emoji={docEmoji}
+                                buttonRef={docEmojiBadgeRef}
+                                open={docEmojiOpen}
+                                onToggle={toggleDocEmojiPicker}
+                            />
                         )}
-                    {dropTarget != null && inlineEdit.editSession == null &&
-                        ReactDOM.createPortal(
-                            <div
-                                className="markdown-block-drop-indicator"
-                                style={{ top: dropTarget.rect.top, left: dropTarget.rect.left, width: dropTarget.rect.width }}
-                            />,
-                            document.body
-                        )}
-                </OverlayScrollbarsComponent>
-            ) : (
-                <div className={cn("content non-scrollable", contentClassName)}>
-                    {onInlineEditCommit != null && isBlockEditorFeatureEnabled("docemoji") && (
-                        <DocEmojiHeader
-                            emoji={docEmoji}
-                            buttonRef={docEmojiBadgeRef}
-                            open={docEmojiOpen}
-                            onToggle={toggleDocEmojiPicker}
+                        {nonScrollableMarkdownTree}
+                    </div>
+                )}
+                {showToc && (
+                    <div className="toc">
+                        <MarkdownOutline
+                            items={tocItems}
+                            placement="sidebar"
+                            resizeAxes={{ width: true }}
+                            resizeStorageKey="snorkeling.markdownOutline.preview.size"
+                            onSelectItem={handleSelectTocItem}
                         />
-                    )}
-                    {nonScrollableMarkdownTree}
-                </div>
-            )}
-            {showToc && (
-                <div className="toc">
-                    <MarkdownOutline
-                        items={tocItems}
-                        placement="sidebar"
-                        resizeAxes={{ width: true }}
-                        resizeStorageKey="snorkeling.markdownOutline.preview.size"
-                        onSelectItem={handleSelectTocItem}
-                    />
-                </div>
-            )}
-            {presentationMode && showZoomIndicator && (
-                <div className="markdown-zoom-indicator">
-                    {presentationZoom}%
-                </div>
-            )}
-        </div>
+                    </div>
+                )}
+                {presentationMode && showZoomIndicator && (
+                    <div className="markdown-zoom-indicator">{presentationZoom}%</div>
+                )}
+            </div>
         </TableEditContext.Provider>
     );
 };
