@@ -536,10 +536,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         const viewportRect = viewport.getBoundingClientRect();
         width = Math.max(0, Math.min(width, viewportRect.right - targetRect.left));
         const next = {
-            // Electron can scroll the body while the Markdown viewport is scrolled. A fixed
-            // portal under body is offset by that scroll in Chromium, so compensate here to
-            // keep the editor aligned with the source block.
-            top: targetRect.top + document.body.scrollTop,
+            top: targetRect.top,
             left,
             width,
             height: targetRect.height,
