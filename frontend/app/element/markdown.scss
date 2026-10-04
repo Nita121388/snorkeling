@@ -281,9 +281,9 @@
         // --- GitHub-style Alerts / Callouts ---
         .markdown-alert {
             margin: 0.571em 0.714em;
-            padding: 0.714em 1em 0.714em 2.8em;
+            padding: 0.85em 1em 0.9em 2.5em;
             border-radius: 4px 6px 6px 4px;
-            border-left: 3px solid var(--border-color);
+            border-left: 2px solid var(--border-color);
             background-color: var(--panel-bg-color);
             font-size: 1em;
             line-height: 1.6;
@@ -302,8 +302,9 @@
                 display: flex;
                 align-items: center;
                 gap: 0.5em;
-                margin: 0 0 0.4em;
-                font-weight: 600;
+                margin: 0 0 0.5em;
+                font-weight: 650;
+                line-height: 1.45;
                 font-size: 1em;
             }
 
@@ -335,11 +336,18 @@
                 }
             }
 
-            .markdown-alert-emoji-btn.is-empty {
+            .markdown-alert-emoji-btn:empty {
                 color: transparent;
+                background: transparent;
+
+                &::after {
+                    content: "+";
+                    font-size: 0.9em;
+                    line-height: 1;
+                }
             }
 
-            &:hover .markdown-alert-emoji-btn.is-empty {
+            &:hover .markdown-alert-emoji-btn:empty {
                 color: var(--secondary-text-color);
             }
 
@@ -371,7 +379,8 @@
         }
         .markdown-alert-quote {
             border-left-color: var(--wolai-quote-border-color, rgba(0, 0, 0, 0.12));
-            background-color: var(--panel-bg-color);
+            background-color: transparent;
+            color: var(--secondary-text-color);
         }
 
         // reset.scss zeroes margins on every element, so a bare <hr> renders as a 1px line
@@ -465,7 +474,9 @@
         // padding-only height (~16px vs ~33px for cells with text). Inject a
         // zero-width space via ::after so the line-height applies and all rows
         // render at a consistent height.
-        td:empty::after { content: "\200B"; }
+        td:empty::after {
+            content: "\200B";
+        }
 
         th {
             background-color: var(--panel-bg-color);
@@ -532,7 +543,9 @@
                 align-items: center;
                 gap: 0.286em;
                 opacity: 0;
-                transition: opacity 120ms ease, visibility 120ms ease;
+                transition:
+                    opacity 120ms ease,
+                    visibility 120ms ease;
             }
 
             // 命令类语言的执行按钮常驻：本项目是终端，命令块一键执行是核心场景（对齐/强于 Wolai）
@@ -657,9 +670,16 @@
     z-index: 9999;
     box-sizing: border-box;
     pointer-events: auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    contain: layout paint;
 
     .inline-edit-textarea {
+        display: block;
         width: 100%;
+        min-width: 0;
+        max-width: 100%;
         min-height: 1.5em;
         box-sizing: border-box;
         // Match the rendered paragraph: same font, size, line-height, color so typing
@@ -677,7 +697,29 @@
         padding: 0;
         resize: none;
         overflow: hidden;
+        overflow-wrap: anywhere;
+        word-break: break-word;
         outline: none;
+    }
+
+    .wysiwyg-editor,
+    .wysiwyg-editor > *,
+    .wysiwyg-editor li,
+    .wysiwyg-editor p,
+    .wysiwyg-editor h1,
+    .wysiwyg-editor h2,
+    .wysiwyg-editor h3,
+    .wysiwyg-editor h4,
+    .wysiwyg-editor h5,
+    .wysiwyg-editor h6 {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-left: 0;
+        margin-right: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
 
     // Per-kind typography: keep typing continuous with the rendered block. Each kind mirrors
@@ -732,7 +774,9 @@
         z-index: 1;
     }
 
-    &[data-block-kind="code"] pre.codeblock .codeblock-header > * { pointer-events: auto; }
+    &[data-block-kind="code"] pre.codeblock .codeblock-header > * {
+        pointer-events: auto;
+    }
 
     &[data-block-kind="code"] pre.codeblock .codeblock-edit-header .codeblock-lang-select {
         height: 20px;
@@ -755,38 +799,56 @@
 
     // The overlay is portaled outside .markdown, so mirror the preview token selectors here.
     &[data-block-kind="code"] pre.codeblock .hljs-comment,
-    &[data-block-kind="code"] pre.codeblock .hljs-quote { color: var(--code-token-comment, var(--secondary-text-color)); }
+    &[data-block-kind="code"] pre.codeblock .hljs-quote {
+        color: var(--code-token-comment, var(--secondary-text-color));
+    }
     &[data-block-kind="code"] pre.codeblock .hljs-keyword,
     &[data-block-kind="code"] pre.codeblock .hljs-selector-tag,
     &[data-block-kind="code"] pre.codeblock .hljs-literal,
-    &[data-block-kind="code"] pre.codeblock .hljs-doctag { color: var(--code-token-keyword, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-doctag {
+        color: var(--code-token-keyword, currentColor);
+    }
     &[data-block-kind="code"] pre.codeblock .hljs-string,
     &[data-block-kind="code"] pre.codeblock .hljs-regexp,
     &[data-block-kind="code"] pre.codeblock .hljs-addition,
-    &[data-block-kind="code"] pre.codeblock .hljs-meta .hljs-string { color: var(--code-token-string, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-meta .hljs-string {
+        color: var(--code-token-string, currentColor);
+    }
     &[data-block-kind="code"] pre.codeblock .hljs-number,
     &[data-block-kind="code"] pre.codeblock .hljs-symbol,
-    &[data-block-kind="code"] pre.codeblock .hljs-bullet { color: var(--code-token-number, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-bullet {
+        color: var(--code-token-number, currentColor);
+    }
     &[data-block-kind="code"] pre.codeblock .hljs-title,
     &[data-block-kind="code"] pre.codeblock .hljs-title.function_,
     &[data-block-kind="code"] pre.codeblock .hljs-section,
-    &[data-block-kind="code"] pre.codeblock .hljs-name { color: var(--code-token-function, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-name {
+        color: var(--code-token-function, currentColor);
+    }
     &[data-block-kind="code"] pre.codeblock .hljs-attr,
     &[data-block-kind="code"] pre.codeblock .hljs-attribute,
     &[data-block-kind="code"] pre.codeblock .hljs-variable,
-    &[data-block-kind="code"] pre.codeblock .hljs-template-variable { color: var(--code-token-attr, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-template-variable {
+        color: var(--code-token-attr, currentColor);
+    }
     &[data-block-kind="code"] pre.codeblock .hljs-type,
     &[data-block-kind="code"] pre.codeblock .hljs-built_in,
-    &[data-block-kind="code"] pre.codeblock .hljs-class .hljs-title { color: var(--code-token-type, currentColor); }
+    &[data-block-kind="code"] pre.codeblock .hljs-class .hljs-title {
+        color: var(--code-token-type, currentColor);
+    }
     &[data-block-kind="code"] pre.codeblock .hljs-meta,
-    &[data-block-kind="code"] pre.codeblock .hljs-deletion { color: var(--code-token-meta, var(--secondary-text-color)); }
+    &[data-block-kind="code"] pre.codeblock .hljs-deletion {
+        color: var(--code-token-meta, var(--secondary-text-color));
+    }
 
     &[data-block-kind="code"] pre.codeblock > code.language-diff {
-        .hljs-addition, .hljs-addition * {
+        .hljs-addition,
+        .hljs-addition * {
             color: var(--codeblock-diff-add-text, #166534) !important;
             background-color: var(--codeblock-diff-add-bg, #dcfce7) !important;
         }
-        .hljs-deletion, .hljs-deletion * {
+        .hljs-deletion,
+        .hljs-deletion * {
             color: var(--codeblock-diff-del-text, #9f1239) !important;
             background-color: var(--codeblock-diff-del-bg, #ffe4e6) !important;
         }
@@ -822,13 +884,17 @@
 // ===============================================================================
 
 .wysiwyg-editor {
+    display: block;
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     min-height: 1em;
     box-sizing: border-box;
     border: 0;
     outline: none;
     background: transparent;
     cursor: text;
+    overflow: hidden;
     // Inherit the block's font from the overlay parent (captureBlockTypography snapshot).
     font: inherit;
     color: var(--main-text-color, inherit);
@@ -838,12 +904,42 @@
 }
 
 // Heading levels — mirror the rendered `.heading.is-N` typography.
-.wysiwyg-editor.wysiwyg-heading.is-1 { font-size: 2em; font-weight: 700; line-height: 1.3; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35em; margin-bottom: 0.4em; }
-.wysiwyg-editor.wysiwyg-heading.is-2 { font-size: 1.5em; font-weight: 700; line-height: 1.3; border-bottom: 1px solid var(--border-color); padding-bottom: 0.35em; margin-bottom: 0.4em; }
-.wysiwyg-editor.wysiwyg-heading.is-3 { font-size: 1.25em; font-weight: 600; line-height: 1.3; }
-.wysiwyg-editor.wysiwyg-heading.is-4 { font-size: 1.125em; font-weight: 600; line-height: 1.3; }
-.wysiwyg-editor.wysiwyg-heading.is-5 { font-size: 1em; font-weight: 600; line-height: 1.3; }
-.wysiwyg-editor.wysiwyg-heading.is-6 { font-size: 0.9em; font-weight: 600; line-height: 1.3; }
+.wysiwyg-editor.wysiwyg-heading.is-1 {
+    font-size: 2em;
+    font-weight: 700;
+    line-height: 1.3;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.35em;
+    margin-bottom: 0.4em;
+}
+.wysiwyg-editor.wysiwyg-heading.is-2 {
+    font-size: 1.5em;
+    font-weight: 700;
+    line-height: 1.3;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.35em;
+    margin-bottom: 0.4em;
+}
+.wysiwyg-editor.wysiwyg-heading.is-3 {
+    font-size: 1.25em;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.wysiwyg-editor.wysiwyg-heading.is-4 {
+    font-size: 1.125em;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.wysiwyg-editor.wysiwyg-heading.is-5 {
+    font-size: 1em;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.wysiwyg-editor.wysiwyg-heading.is-6 {
+    font-size: 0.9em;
+    font-weight: 600;
+    line-height: 1.3;
+}
 
 // Quote — mirror blockquote style.
 .wysiwyg-editor.wysiwyg-quote {
@@ -880,8 +976,12 @@
     color: var(--secondary-text-color);
     font-weight: 600;
 }
-.wysiwyg-editor.wysiwyg-list ul { list-style-type: disc; }
-.wysiwyg-editor.wysiwyg-list ol { list-style-type: decimal; }
+.wysiwyg-editor.wysiwyg-list ul {
+    list-style-type: disc;
+}
+.wysiwyg-editor.wysiwyg-list ol {
+    list-style-type: decimal;
+}
 
 // Code blocks — the WYSIWYG editor reuses ContentEditableCodeEditor which handles its own
 // styling via .codeblock (see above). No additional WYSIWYG rules needed for code.
@@ -1173,7 +1273,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    transition:
+        color 0.15s,
+        border-color 0.15s,
+        background 0.15s;
 
     &:hover {
         color: var(--main-text-color, #ccc);
@@ -1325,7 +1428,11 @@
     border-radius: 4px;
     background: color-mix(in srgb, var(--accent-color, #32afff) 8%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color, #32afff) 15%, transparent);
-    transition: top 80ms ease, left 80ms ease, width 80ms ease, height 80ms ease;
+    transition:
+        top 80ms ease,
+        left 80ms ease,
+        width 80ms ease,
+        height 80ms ease;
 }
 
 // Multi-block range selection (Ctrl/Cmd + drag): a stronger accent fill so a range reads as a
@@ -1345,7 +1452,10 @@
     border-radius: 1px;
     background: var(--accent-color, #32afff);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color, #32afff) 30%, transparent);
-    transition: top 80ms ease, left 80ms ease, width 80ms ease;
+    transition:
+        top 80ms ease,
+        left 80ms ease,
+        width 80ms ease;
 }
 
 // Inline-editable task checkboxes (GFM task lists) — pointer affordance for the
@@ -1380,7 +1490,8 @@
     background-color: transparent;
 }
 
-.markdown.markdown-editable.is-inline-editing [data-source-line]:not(.inline-edit-hidden):hover:not(:has([data-source-line]:hover)) {
+.markdown.markdown-editable.is-inline-editing
+    [data-source-line]:not(.inline-edit-hidden):hover:not(:has([data-source-line]:hover)) {
     background-color: transparent;
 }
 
@@ -1952,8 +2063,6 @@
     padding-bottom: 0;
 }
 
-
-
 // Click-away backdrop for the document emoji picker (transparent, sits under it).
 .markdown-emoji-backdrop {
     position: fixed;
@@ -1974,6 +2083,9 @@
 
 .table-wrapper.tb-wrapper {
     position: relative;
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
     user-select: none;
 
     &.tb-editing {
@@ -2030,7 +2142,7 @@
     z-index: 10000;
     touch-action: none;
     transition: opacity 0.1s;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 
     &:hover {
         opacity: 1;

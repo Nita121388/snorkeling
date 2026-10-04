@@ -2387,6 +2387,7 @@ const Markdown = ({
     // mousedown on the render root so it's in place before any mousemove-driven selection
     // changes the global selection.
     const mousedownSelectionRef = useRef<string>("");
+    const inlineEditSwitchingRef = useRef(false);
 
     // Maps the click's clientX/Y to a character offset within the clicked block's rendered
     // text. Uses Chromium's caretRangeFromPoint (the renderer is Electron), then walks the
@@ -2443,6 +2444,12 @@ const Markdown = ({
     const handleInlineEditClick = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
             if (!onInlineEditCommit) {
+                return;
+            }
+            if (inlineEditSwitchingRef.current) {
+                inlineEditSwitchingRef.current = false;
+                e.preventDefault();
+                e.stopPropagation();
                 return;
             }
             // Already editing — check if the click targets a DIFFERENT block.
@@ -3017,6 +3024,51 @@ const Markdown = ({
             requestAnimationFrame(() => requestAnimationFrame(tryOpen));
         },
         [getViewportEl, inlineEdit]
+    );
+
+    const handleInlineEditPointerDown = useCallback(
+        (e: React.PointerEvent<HTMLDivElement>) => {
+            if (e.button !== 0 || inlineEdit.editSession == null) {
+                return;
+            }
+            const interactive = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+                "a, button, input, textarea, [contenteditable]"
+            );
+            if (interactive != null) {
+                return;
+            }
+            const resolved = resolveEditTargetFromEl(e.target as HTMLElement | null);
+            if (resolved == null || resolved.line === inlineEdit.editSession.startLine) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            inlineEditSwitchingRef.current = true;
+            const caretOffset = computeRenderedOffset(e.clientX, e.clientY, resolved.target);
+            inlineEdit.commit();
+            const opened = inlineEdit.beginEdit(
+                resolved.blockKind,
+                resolved.line,
+                resolved.target,
+                caretOffset ?? undefined
+            );
+            if (opened) {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (resolved.blockKind === "code") {
+                            inlineEdit.codeEditorRef.current?.focus({ start: caretOffset ?? 0 });
+                            return;
+                        }
+                        if (inlineEdit.wysiwygRef.current != null) {
+                            inlineEdit.wysiwygRef.current.focus(caretOffset ?? 0);
+                            return;
+                        }
+                        inlineEdit.textareaRef.current?.focus({ preventScroll: true });
+                    });
+                });
+            }
+        },
+        [inlineEdit, resolveEditTargetFromEl]
     );
 
     // --- Enter / split-at-caret ---------------------------------------------------
@@ -4463,11 +4515,49 @@ const Markdown = ({
     const [docEmojiAnchor, setDocEmojiAnchor] = useState<{ top: number; left: number } | null>(null);
     const [docEmojiQuery, setDocEmojiQuery] = useState("");
     const [docEmojiActive, setDocEmojiActive] = useState(0);
+    const [calloutEmoji, setCalloutEmoji] = useState<{
+        line: number;
+        current: string | null;
+        anchor: { top: number; left: number };
+    } | null>(null);
+    const calloutEmojiButtonRef = useRef<HTMLButtonElement | null>(null);
     const docEmojiBadgeRef = useRef<HTMLButtonElement | null>(null);
     const docEmoji = useMemo(
         () => (isBlockEditorFeatureEnabled("docemoji") ? getFrontmatterEmoji(text) : null),
         [text]
     );
+    const openCalloutEmojiPicker = useCallback((button: HTMLButtonElement) => {
+        const rect = button.getBoundingClientRect();
+        const line = Number(button.dataset.alertLine);
+        if (!Number.isFinite(line)) return;
+        if (getLoadedEmojiCatalog() == null) {
+            void loadEmojiCatalog().then(setEmojiCatalog);
+        }
+        setCalloutEmoji({
+            line,
+            current: button.dataset.alertEmoji || null,
+            anchor: { top: rect.bottom + 4, left: rect.left },
+        });
+        calloutEmojiButtonRef.current = button;
+    }, []);
+
+    const applyCalloutEmoji = useCallback(
+        (emoji: string | null) => {
+            if (calloutEmoji == null) return;
+            const lines = text.split(/\r?\n/);
+            const index = calloutEmoji.line - 1;
+            if (index < 0 || index >= lines.length) return;
+            const line = lines[index];
+            const marker = line.match(/^(\s*>\s*(?:\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*)?)/i);
+            if (!marker) return;
+            const rest = line.slice(marker[0].length).replace(/^\p{Extended_Pictographic}(?:\uFE0F|\u20E3)?\s*/u, "");
+            lines[index] = `${marker[1]}${emoji ? `${emoji} ` : ""}${rest}`;
+            handleInlineEditCommit(lines.join("\n"));
+            setCalloutEmoji(null);
+        },
+        [calloutEmoji, handleInlineEditCommit, text]
+    );
+
     const toggleDocEmojiPicker = useCallback(() => {
         if (docEmojiOpen) {
             setDocEmojiOpen(false);
@@ -5244,6 +5334,36 @@ const Markdown = ({
             return String(children || "");
         };
         const components: Partial<Components> = {
+            span: (props: React.HTMLAttributes<HTMLSpanElement>) => {
+                if (!String(props.className ?? "").includes("markdown-alert-emoji-btn")) return <span {...props} />;
+                const buttonProps = props as React.HTMLAttributes<HTMLButtonElement>;
+                return (
+                    <button
+                        {...buttonProps}
+                        type="button"
+                        ref={calloutEmojiButtonRef}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openCalloutEmojiPicker(e.currentTarget);
+                        }}
+                    />
+                );
+            },
+            button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => {
+                if (!String(props.className ?? "").includes("markdown-alert-emoji-btn")) return <button {...props} />;
+                return (
+                    <button
+                        {...props}
+                        ref={calloutEmojiButtonRef}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openCalloutEmojiPicker(e.currentTarget);
+                        }}
+                    />
+                );
+            },
             a: (props: React.HTMLAttributes<HTMLAnchorElement>) => (
                 <Link
                     props={props}
@@ -5405,6 +5525,7 @@ const Markdown = ({
         handleTaskCheckboxToggle,
         handleLinkHoverIn,
         handleLinkHoverOut,
+        openCalloutEmojiPicker,
         contentBlocksMap,
         waveBlockRenderers,
     ]);
@@ -5462,6 +5583,7 @@ const Markdown = ({
                             // Allow all class names starting with `hljs-`.
                             ["className", /^hljs-./],
                             ["className", /^markdown-alert/],
+                            ["className", "markdown-alert-emoji-btn", "is-empty"],
                             ["srcset"],
                             ["media"],
                             ["type"],
@@ -5472,8 +5594,12 @@ const Markdown = ({
                         div: [...(defaultSchema.attributes?.div || []), ["className", /^markdown-alert/], "dir"],
                         button: [
                             ["className", /^markdown-alert/],
+                            ["className", "is-empty"],
                             "type",
-                            ["dataAlertType"],
+                            "ariaLabel",
+                            "dataAlertType",
+                            "dataAlertLine",
+                            "dataAlertEmoji",
                         ],
                         // remarkLooseListSpacing tags loose lists with data-loose so CSS can
                         // restore the blank-line spacing between items.
@@ -5576,6 +5702,28 @@ const Markdown = ({
                 data-copy-context-path={copyContextPath || undefined}
                 onWheel={presentationMode ? handlePresentationWheel : undefined}
             >
+                {calloutEmoji != null && emojiCatalog != null && (
+                    <>
+                        <div className="markdown-emoji-backdrop" onMouseDown={() => setCalloutEmoji(null)} />
+                        <EmojiPicker
+                            anchor={calloutEmoji.anchor}
+                            placement="bottom"
+                            mode="document"
+                            catalog={emojiCatalog}
+                            query=""
+                            onQueryChange={() => {}}
+                            activeIndex={0}
+                            onActiveChange={() => {}}
+                            onPick={(entry) => {
+                                recordRecentEmoji(entry.char);
+                                applyCalloutEmoji(entry.char);
+                            }}
+                            onClose={() => setCalloutEmoji(null)}
+                            allowRemove={calloutEmoji.current != null}
+                            onRemove={() => applyCalloutEmoji(null)}
+                        />
+                    </>
+                )}
                 {docEmojiOpen && docEmojiAnchor != null && emojiCatalog != null && (
                     <>
                         <div className="markdown-emoji-backdrop" onMouseDown={() => setDocEmojiOpen(false)} />
@@ -5620,6 +5768,7 @@ const Markdown = ({
                         // and any native selection side effects. The handler no-ops unless the
                         // parent wired onInlineEditCommit (i.e. opt-in to inline editing).
                         onDoubleClickCapture={handleInlineEditDblClick}
+                        onPointerDownCapture={handleInlineEditPointerDown}
                         // Mousedown (capture) records the pre-press selection so the bubble-phase
                         // click handler can tell drag-select from pure click.
                         onMouseDownCapture={handleInlineEditMouseDown}

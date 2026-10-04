@@ -87,11 +87,14 @@ const SENTINEL = "\uE000";
  * the whole root, find the sentinel in the output, remove it, and return
  * the index — i.e. the exact markdown-space offset of the original caret.
  */
-function sentinelMarkdownCaret(root: Element, ctx: {
-    kind: WysiwygBlockKind;
-    headingLevel?: number;
-    listMarker?: string;
-}): number | null {
+function sentinelMarkdownCaret(
+    root: Element,
+    ctx: {
+        kind: WysiwygBlockKind;
+        headingLevel?: number;
+        listMarker?: string;
+    }
+): number | null {
     const sel = window.getSelection();
     if (sel == null || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) {
         return null;
@@ -113,9 +116,12 @@ function sentinelMarkdownCaret(root: Element, ctx: {
 
 function tagForKind(kind: WysiwygBlockKind): string {
     switch (kind) {
-        case "list": return "ul";
-        case "quote": return "blockquote";
-        default: return "div";
+        case "list":
+            return "ul";
+        case "quote":
+            return "blockquote";
+        default:
+            return "div";
     }
 }
 
@@ -143,183 +149,193 @@ function cssClassForKind(kind: WysiwygBlockKind, level?: number): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>(
-    function WysiwygEditor(
-        {
-            initialHtml,
-            blockKind,
-            headingLevel: initialHeadingLevel = 1,
-            listMarker: initialListMarker = "-",
-            typography,
-            placeholder,
-            onInput,
-            onBlur,
-            onKeyDown,
-        },
-        ref,
-    ) {
-        const rootRef = useRef<HTMLDivElement>(null);
-        const [liveKind, setLiveKind] = useState<WysiwygBlockKind>(blockKind);
-        const [headingLevel, setHeadingLevel] = useState(initialHeadingLevel);
-        const liveKindRef = useRef(liveKind);
-        liveKindRef.current = liveKind;
-        const headingLevelRef = useRef(headingLevel);
-        headingLevelRef.current = headingLevel;
-        const listMarkerRef = useRef(initialListMarker);
-        const initializedRef = useRef(false);
+export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>(function WysiwygEditor(
+    {
+        initialHtml,
+        blockKind,
+        headingLevel: initialHeadingLevel = 1,
+        listMarker: initialListMarker = "-",
+        typography,
+        placeholder,
+        onInput,
+        onBlur,
+        onKeyDown,
+    },
+    ref
+) {
+    const rootRef = useRef<HTMLDivElement>(null);
+    const [liveKind, setLiveKind] = useState<WysiwygBlockKind>(blockKind);
+    const [headingLevel, setHeadingLevel] = useState(initialHeadingLevel);
+    const liveKindRef = useRef(liveKind);
+    liveKindRef.current = liveKind;
+    const headingLevelRef = useRef(headingLevel);
+    headingLevelRef.current = headingLevel;
+    const listMarkerRef = useRef(initialListMarker);
+    const initializedRef = useRef(false);
 
-        // --- Commit context (used by serialize) ---
-        const commitCtx = useCallback(() => ({
+    // --- Commit context (used by serialize) ---
+    const commitCtx = useCallback(
+        () => ({
             kind: liveKindRef.current,
             headingLevel: headingLevelRef.current,
             listMarker: listMarkerRef.current,
-        }), []);
+        }),
+        []
+    );
 
-        // --- Mirror: serialize DOM → markdown on every input, push to parent ---
-        const syncMirror = useCallback(() => {
-            const root = rootRef.current;
-            if (root == null) return "";
-            const md = serializeBlockDomToMarkdown(root, commitCtx());
-            const caret = sentinelMarkdownCaret(root, commitCtx()) ?? md.length;
-            onInput(md, caret);
-            return md;
-        }, [commitCtx, onInput]);
+    // --- Mirror: serialize DOM → markdown on every input, push to parent ---
+    const syncMirror = useCallback(() => {
+        const root = rootRef.current;
+        if (root == null) return "";
+        const md = serializeBlockDomToMarkdown(root, commitCtx());
+        const caret = sentinelMarkdownCaret(root, commitCtx()) ?? md.length;
+        onInput(md, caret);
+        return md;
+    }, [commitCtx, onInput]);
 
-        // --- Typing-trigger detection on input ---
-        const detectTypingTrigger = useCallback(() => {
-            const root = rootRef.current;
-            if (root == null) return;
+    // --- Typing-trigger detection on input ---
+    const detectTypingTrigger = useCallback(() => {
+        const root = rootRef.current;
+        if (root == null) return;
 
-            const sel = window.getSelection();
-            if (sel == null || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) return;
+        const sel = window.getSelection();
+        if (sel == null || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) return;
 
-            // Get text before caret on the first line.
-            const range = sel.getRangeAt(0).cloneRange();
-            range.selectNodeContents(root);
-            range.setEnd(sel.anchorNode!, sel.anchorOffset);
-            const beforeCaret = range.toString();
-            const nlIdx = beforeCaret.indexOf("\n");
-            const firstLine = nlIdx >= 0 ? beforeCaret.slice(0, nlIdx) : beforeCaret;
+        // Get text before caret on the first line.
+        const range = sel.getRangeAt(0).cloneRange();
+        range.selectNodeContents(root);
+        range.setEnd(sel.anchorNode!, sel.anchorOffset);
+        const beforeCaret = range.toString();
+        const nlIdx = beforeCaret.indexOf("\n");
+        const firstLine = nlIdx >= 0 ? beforeCaret.slice(0, nlIdx) : beforeCaret;
 
-            const trigger = detectLiveTypingMarker(firstLine);
-            if (trigger == null) return;
+        const trigger = detectLiveTypingMarker(firstLine);
+        if (trigger == null) return;
 
-            // --- Live conversion ---
-            // Strip the marker chars from the DOM text.
-            const textNode = root.firstChild;
-            if (textNode == null || textNode.nodeType !== 3) return;
+        // --- Live conversion ---
+        // Strip the marker chars from the DOM text.
+        const textNode = root.firstChild;
+        if (textNode == null || textNode.nodeType !== 3) return;
 
-            const fullText = textNode.textContent ?? "";
-            if (!fullText.startsWith(firstLine)) return; // safety
+        const fullText = textNode.textContent ?? "";
+        if (!fullText.startsWith(firstLine)) return; // safety
 
-            const markerLen = trigger.marker.length;
-            const remainder = fullText.slice(markerLen);
+        const markerLen = trigger.marker.length;
+        const remainder = fullText.slice(markerLen);
 
-            // Update DOM text to remove the marker.
-            textNode.textContent = remainder;
+        // Update DOM text to remove the marker.
+        textNode.textContent = remainder;
 
-            // Convert block kind.
-            const newKind: WysiwygBlockKind =
-                trigger.kind === "quote" ? "quote"
-                : trigger.kind.startsWith("heading") ? "h"
-                : trigger.kind === "bulleted" || trigger.kind === "numbered" || trigger.kind === "todo" ? "list"
-                : liveKindRef.current;
+        // Convert block kind.
+        const newKind: WysiwygBlockKind =
+            trigger.kind === "quote"
+                ? "quote"
+                : trigger.kind.startsWith("heading")
+                  ? "h"
+                  : trigger.kind === "bulleted" || trigger.kind === "numbered" || trigger.kind === "todo"
+                    ? "list"
+                    : liveKindRef.current;
 
-            // For list conversion: wrap content in <ul> / <ol> or add checkbox.
-            if (newKind === "list" && liveKindRef.current !== "list") {
-                const isOrdered = trigger.kind === "numbered";
-                const isTodo = trigger.kind === "todo";
-                const marker = trigger.kind === "numbered" ? "1. " : trigger.kind === "todo" ? "" : trigger.marker;
+        // For list conversion: wrap content in <ul> / <ol> or add checkbox.
+        if (newKind === "list" && liveKindRef.current !== "list") {
+            const isOrdered = trigger.kind === "numbered";
+            const isTodo = trigger.kind === "todo";
+            const marker = trigger.kind === "numbered" ? "1. " : trigger.kind === "todo" ? "" : trigger.marker;
 
-                // Create a list element.
-                const listEl = document.createElement(isOrdered ? "ol" : "ul");
-                const li = document.createElement("li");
-                if (isTodo) {
-                    const cb = document.createElement("input");
-                    cb.type = "checkbox";
-                    li.appendChild(cb);
-                }
-                li.appendChild(textNode.cloneNode(true));
-                // Replace root content.
-                root.innerHTML = "";
-                listEl.appendChild(li);
-                root.appendChild(listEl);
-
-                // Style for WYSIWYG list.
-                listEl.contentEditable = "true";
-                (root as HTMLDivElement).removeAttribute("contentEditable");
-
-                // Store marker.
-                listMarkerRef.current = marker;
-
-                // Re-focus: end of first text node.
-                const finalText = li.lastChild as Text;
-                if (finalText != null) {
-                    const sel2 = window.getSelection();
-                    if (sel2 != null) {
-                        const r = document.createRange();
-                        r.setStart(finalText, finalText.length);
-                        r.collapse(true);
-                        sel2.removeAllRanges();
-                        sel2.addRange(r);
-                    }
-                }
-            } else if (newKind === "h" && liveKindRef.current !== "h") {
-                // Heading: just re-style, no DOM surgery needed.
-                // Heading level comes from the trigger marker.
-                const level = trigger.kind.startsWith("heading")
-                    ? parseInt(trigger.kind.slice("heading".length), 10) || 1
-                    : 1;
-                setHeadingLevel(level);
-                headingLevelRef.current = level;
-            } else if (newKind === "quote" && liveKindRef.current !== "quote") {
-                // Quote: just re-style, the div stays as-is.
+            // Create a list element.
+            const listEl = document.createElement(isOrdered ? "ol" : "ul");
+            const li = document.createElement("li");
+            if (isTodo) {
+                const cb = document.createElement("input");
+                cb.type = "checkbox";
+                li.appendChild(cb);
             }
+            li.appendChild(textNode.cloneNode(true));
+            // Replace root content.
+            root.innerHTML = "";
+            listEl.appendChild(li);
+            root.appendChild(listEl);
 
-            if (newKind !== liveKindRef.current) {
-                setLiveKind(newKind);
-                liveKindRef.current = newKind;
+            // Style for WYSIWYG list.
+            listEl.contentEditable = "true";
+            (root as HTMLDivElement).removeAttribute("contentEditable");
+
+            // Store marker.
+            listMarkerRef.current = marker;
+
+            // Re-focus: end of first text node.
+            const finalText = li.lastChild as Text;
+            if (finalText != null) {
+                const sel2 = window.getSelection();
+                if (sel2 != null) {
+                    const r = document.createRange();
+                    r.setStart(finalText, finalText.length);
+                    r.collapse(true);
+                    sel2.removeAllRanges();
+                    sel2.addRange(r);
+                }
             }
+        } else if (newKind === "h" && liveKindRef.current !== "h") {
+            // Heading: just re-style, no DOM surgery needed.
+            // Heading level comes from the trigger marker.
+            const level = trigger.kind.startsWith("heading")
+                ? parseInt(trigger.kind.slice("heading".length), 10) || 1
+                : 1;
+            setHeadingLevel(level);
+            headingLevelRef.current = level;
+        } else if (newKind === "quote" && liveKindRef.current !== "quote") {
+            // Quote: just re-style, the div stays as-is.
+        }
 
-            // Sync the mirror after DOM surgery.
-            syncMirror();
-        }, [syncMirror]);
+        if (newKind !== liveKindRef.current) {
+            setLiveKind(newKind);
+            liveKindRef.current = newKind;
+        }
 
-        // --- Initial mount + block switch: seed the contentEditable ---
-        // Uses initialHtml/blockKind as deps so switching from block A to block B
-        // (same WysiwygEditor instance reused by React) correctly reseeds the DOM
-        // instead of showing block A's stale content.
-        useLayoutEffect(() => {
-            const root = rootRef.current;
-            if (root == null) return;
-            initializedRef.current = true;
-            // Keep liveKind in sync with the session's blockKind (editing A→B may
-            // reuse the same instance; the parent also forces a key-remount as a
-            // belt-and-braces guarantee, but this handles non-key reuse as well).
-            setLiveKind(blockKind);
-            liveKindRef.current = blockKind;
-            setHeadingLevel(initialHeadingLevel);
-            headingLevelRef.current = initialHeadingLevel;
-            listMarkerRef.current = initialListMarker;
-            root.innerHTML = initialHtml || (blockKind === "list" ? "<ul><li></li></ul>" : "");
-        }, [initialHtml, blockKind, initialHeadingLevel, initialListMarker]);
+        // Sync the mirror after DOM surgery.
+        syncMirror();
+    }, [syncMirror]);
 
-        // --- Input handler ---
-        const handleInput = useCallback(() => {
-            detectTypingTrigger();
-            syncMirror();
-        }, [detectTypingTrigger, syncMirror]);
+    // --- Initial mount + block switch: seed the contentEditable ---
+    // Uses initialHtml/blockKind as deps so switching from block A to block B
+    // (same WysiwygEditor instance reused by React) correctly reseeds the DOM
+    // instead of showing block A's stale content.
+    useLayoutEffect(() => {
+        const root = rootRef.current;
+        if (root == null) return;
+        initializedRef.current = true;
+        // Keep liveKind in sync with the session's blockKind (editing A→B may
+        // reuse the same instance; the parent also forces a key-remount as a
+        // belt-and-braces guarantee, but this handles non-key reuse as well).
+        setLiveKind(blockKind);
+        liveKindRef.current = blockKind;
+        setHeadingLevel(initialHeadingLevel);
+        headingLevelRef.current = initialHeadingLevel;
+        listMarkerRef.current = initialListMarker;
+        root.innerHTML = initialHtml || (blockKind === "list" ? "<ul><li></li></ul>" : "");
+    }, [initialHtml, blockKind, initialHeadingLevel, initialListMarker]);
 
-        // --- Blur ---
-        const handleBlur = useCallback((e: React.FocusEvent) => {
+    // --- Input handler ---
+    const handleInput = useCallback(() => {
+        detectTypingTrigger();
+        syncMirror();
+    }, [detectTypingTrigger, syncMirror]);
+
+    // --- Blur ---
+    const handleBlur = useCallback(
+        (e: React.FocusEvent) => {
             // Don't commit if focus moves inside the overlay (e.g. clicking another cell/button).
             if (e.relatedTarget != null && rootRef.current?.contains(e.relatedTarget as Node)) return;
             const md = serializeBlockDomToMarkdown(rootRef.current!, commitCtx());
-            requestAnimationFrame(() => onBlur(md));
-        }, [commitCtx, onBlur]);
+            onBlur(md);
+        },
+        [commitCtx, onBlur]
+    );
 
-        // --- Imperative handle ---
-        useImperativeHandle(ref, () => ({
+    // --- Imperative handle ---
+    useImperativeHandle(
+        ref,
+        () => ({
             focus(offset?: number) {
                 const root = rootRef.current;
                 if (root == null) return;
@@ -353,15 +369,11 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
             },
 
             getMarkdown() {
-                return rootRef.current != null
-                    ? serializeBlockDomToMarkdown(rootRef.current, commitCtx())
-                    : "";
+                return rootRef.current != null ? serializeBlockDomToMarkdown(rootRef.current, commitCtx()) : "";
             },
 
             getCaretMarkdown() {
-                return rootRef.current != null
-                    ? (sentinelMarkdownCaret(rootRef.current, commitCtx()) ?? 0)
-                    : 0;
+                return rootRef.current != null ? (sentinelMarkdownCaret(rootRef.current, commitCtx()) ?? 0) : 0;
             },
 
             getText() {
@@ -373,9 +385,15 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 if (root == null) return;
                 root.focus();
                 switch (style) {
-                    case "bold": document.execCommand("bold", false); break;
-                    case "italic": document.execCommand("italic", false); break;
-                    case "strike": document.execCommand("strikeThrough", false); break;
+                    case "bold":
+                        document.execCommand("bold", false);
+                        break;
+                    case "italic":
+                        document.execCommand("italic", false);
+                        break;
+                    case "strike":
+                        document.execCommand("strikeThrough", false);
+                        break;
                     case "code": {
                         // Wrap selection in <code> tag.
                         const sel = window.getSelection();
@@ -401,7 +419,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 if (sel != null && sel.rangeCount > 0) {
                     const node = sel.anchorNode;
                     if (node != null) {
-                        const el = node.nodeType === 1 ? node as HTMLElement : node.parentElement;
+                        const el = node.nodeType === 1 ? (node as HTMLElement) : node.parentElement;
                         if (el?.closest("code")) styles.add("code");
                     }
                 }
@@ -451,7 +469,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
 
                         setLiveKind("list");
                         liveKindRef.current = "list";
-                        listMarkerRef.current = isOrdered ? "1." : (kind === "todo" ? "- " : "- ");
+                        listMarkerRef.current = isOrdered ? "1." : kind === "todo" ? "- " : "- ";
                     }
                 } else if (kind === "quote") {
                     setLiveKind("quote");
@@ -472,8 +490,12 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 syncMirror();
             },
 
-            getLiveKind() { return liveKindRef.current; },
-            getHeadingLevel() { return headingLevelRef.current; },
+            getLiveKind() {
+                return liveKindRef.current;
+            },
+            getHeadingLevel() {
+                return headingLevelRef.current;
+            },
 
             deleteCaretLinePrefix() {
                 const root = rootRef.current;
@@ -523,33 +545,32 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 walkRange.deleteContents();
                 root.normalize();
             },
-        }), [commitCtx, syncMirror]);
+        }),
+        [commitCtx, syncMirror]
+    );
 
-        // --- Render ---
-        const Tag = liveKind === "list"
-            ? ("div" as const)
-            : ("div" as const);
+    // --- Render ---
+    const Tag = liveKind === "list" ? ("div" as const) : ("div" as const);
 
-        return (
-            <Tag
-                ref={rootRef}
-                className={cssClassForKind(liveKind, headingLevel)}
-                data-block-kind="wysiwyg"
-                {...dataAttrForKind(liveKind, headingLevel)}
-                contentEditable="true"
-                suppressContentEditableWarning
-                style={{ ...typography, whiteSpace: "pre-wrap" }}
-                data-placeholder={placeholder}
-                onInput={handleInput}
-                onBlur={handleBlur}
-                onKeyDown={onKeyDown}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-            />
-        );
-    },
-);
+    return (
+        <Tag
+            ref={rootRef}
+            className={cssClassForKind(liveKind, headingLevel)}
+            data-block-kind="wysiwyg"
+            {...dataAttrForKind(liveKind, headingLevel)}
+            contentEditable="true"
+            suppressContentEditableWarning
+            style={{ ...typography, whiteSpace: "pre-wrap" }}
+            data-placeholder={placeholder}
+            onInput={handleInput}
+            onBlur={handleBlur}
+            onKeyDown={onKeyDown}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+        />
+    );
+});
 
 // ---------------------------------------------------------------------------
 // Helpers

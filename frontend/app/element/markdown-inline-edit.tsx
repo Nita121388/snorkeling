@@ -1,18 +1,16 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
+import { rewriteDraftFirstLine } from "@/app/element/markdown-transform/block-type";
 import { inlineEditingActiveAtom } from "@/app/view/preview/preview-shared-draft";
 import { globalStore } from "@/store/jotaiStore";
-import { rewriteDraftFirstLine } from "@/app/element/markdown-transform/block-type";
-import { WysiwygEditor, type WysiwygEditorHandle } from "./wysiwyg-editor";
-import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CopyButton } from "@/app/element/copybutton";
-import { IconButton } from "./iconbutton";
-import ContentEditableCodeEditor from "./content-editable-code-editor";
 import type { CodeEditorHandle } from "./content-editable-code-editor";
+import ContentEditableCodeEditor from "./content-editable-code-editor";
+import { WysiwygEditor, type WysiwygEditorHandle } from "./wysiwyg-editor";
 
 // ---------------------------------------------------------------------------
 // Inline-edit debug log. Enable by setting `localStorage.snorkelingInlineEditDebug = "1"` in
@@ -25,7 +23,7 @@ import type { CodeEditorHandle } from "./content-editable-code-editor";
 type InlineEditLogEntry = { t: number; seq: number; msg: string; details: Record<string, unknown> };
 
 function isInlineEditDebugEnabled(): boolean {
-    return typeof window !== "undefined" && (window.localStorage?.getItem("snorkelingInlineEditDebug") === "1");
+    return typeof window !== "undefined" && window.localStorage?.getItem("snorkelingInlineEditDebug") === "1";
 }
 
 const INLINE_EDIT_LOG_BUF: InlineEditLogEntry[] = [];
@@ -159,7 +157,7 @@ export type WysiwygEligibleKind = "p" | "h" | "list" | "quote" | "blank";
 export type InlineEditSession = {
     blockKind: InlineEditBlockKind;
     /** 1-based, inclusive, original text coordinate (NOT transformedText). */
-    startLine: number;    /**
+    startLine: number; /**
      * 1-based, inclusive. Equal to startLine for single-line blocks (h without trailing
      * soft-break). Paragraphs (and soft-broken headings) render one visual block across multiple
      * source lines once remarkSoftBreaks merges them — this endLine brackets that range so the
@@ -290,12 +288,7 @@ export function isSelectingRange(sel: { type?: string; rangeCount: number } | nu
  * If newSegment is the empty string, the range is deleted (no empty line left behind unless
  * newSegment itself contains empty lines — caller's responsibility).
  */
-export function replaceSourceRange(
-    text: string,
-    startLine: number,
-    endLine: number,
-    newSegment: string
-): string {
+export function replaceSourceRange(text: string, startLine: number, endLine: number, newSegment: string): string {
     const lines = text.split(/\r\n|\n/);
     const safeStart = Math.min(Math.max(1, Math.trunc(startLine)), lines.length || 1);
     const safeEnd = Math.max(safeStart, Math.min(Math.trunc(endLine), lines.length));
@@ -317,9 +310,7 @@ export function replaceSourceRange(
 // WYSIWYG eligibility & seed HTML capture (方案 08)
 // ---------------------------------------------------------------------------
 
-const WYSIWYG_KINDS: ReadonlySet<InlineEditBlockKind> = new Set([
-    "p", "h", "list", "quote", "blank",
-]);
+const WYSIWYG_KINDS: ReadonlySet<InlineEditBlockKind> = new Set(["p", "h", "list", "quote", "blank"]);
 
 /**
  * Determine whether a block qualifies for WYSIWYG contentEditable editing and
@@ -336,17 +327,18 @@ const WYSIWYG_KINDS: ReadonlySet<InlineEditBlockKind> = new Set([
 function captureWysiwygInfo(
     blockKind: InlineEditBlockKind,
     targetEl: HTMLElement,
-    sourceText: string,
+    sourceText: string
 ): { html: string; headingLevel?: number; listMarker?: string } | null {
     if (!isBlockEditorFeatureEnabled("wysiwyg") || !WYSIWYG_KINDS.has(blockKind)) {
         return null;
     }
     // Eligibility: no images, no links, no callout chrome.
-    const html = blockKind === "h"
-        ? targetEl.querySelector(".heading-title")?.innerHTML ?? targetEl.innerHTML
-        : blockKind === "list"
-            ? targetEl.outerHTML // <ul>/<ol> outerHTML preserves list structure for the serializer
-            : blockKind === "blank"
+    const html =
+        blockKind === "h"
+            ? (targetEl.querySelector(".heading-title")?.innerHTML ?? targetEl.innerHTML)
+            : blockKind === "list"
+              ? targetEl.outerHTML // <ul>/<ol> outerHTML preserves list structure for the serializer
+              : blockKind === "blank"
                 ? ""
                 : targetEl.innerHTML;
     if (/<img\b/i.test(html) || /<a\b/i.test(html)) {
@@ -375,7 +367,8 @@ function stripCodeFence(source: string): string {
     const lines = source.split(/\r?\n/);
     if (lines.length < 2 || !/^\s{0,3}(`{3,}|~{3,})/.test(lines[0] ?? "")) return source;
     const marker = (lines[0].match(/^\s{0,3}(`{3,}|~{3,})/) ?? [])[1];
-    if (marker == null || !new RegExp(`^\\s{0,3}${marker[0]}{${marker.length},}\\s*$`).test(lines.at(-1) ?? "")) return source;
+    if (marker == null || !new RegExp(`^\\s{0,3}${marker[0]}{${marker.length},}\\s*$`).test(lines.at(-1) ?? ""))
+        return source;
     return lines.slice(1, -1).join("\n");
 }
 
@@ -464,7 +457,9 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     // React-side rect derived from the DOM element so we can reposition on scroll / resize;
     // we do NOT keep the element in state because reading getBoundingClientRect during render
     // breaks SSR and causes layout thrash.
-    const [overlayRect, setOverlayRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+    const [overlayRect, setOverlayRect] = useState<{ top: number; left: number; width: number; height: number } | null>(
+        null
+    );
     const focusedSessionRef = useRef<InlineEditSession | null>(null);
     const [, setEditingFlag] = useAtom(inlineEditingActiveAtom);
 
@@ -533,11 +528,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             const renderRect = renderRoot.getBoundingClientRect();
             // 只给“明显窄”的块（列表项、表格单元格）向右扩展到内容区右边缘，保留“打字
             // 连续”的手感；段落/标题/引用/代码块严格用渲染块宽度，宽度一变折行位置就变。
-            const shouldExtend = targetRect.width < renderRect.width * 0.6;
+            const shouldExtend = editSession.blockKind === "list" && targetRect.width < renderRect.width * 0.6;
             if (shouldExtend) {
-                width = Math.max(targetRect.width, renderRect.right - targetRect.left);
+                width = renderRect.right - targetRect.left;
             }
         }
+        const viewportRect = viewport.getBoundingClientRect();
+        width = Math.max(0, Math.min(width, viewportRect.right - targetRect.left));
         const next = {
             // Electron can scroll the body while the Markdown viewport is scrolled. A fixed
             // portal under body is offset by that scroll in Chromium, so compensate here to
@@ -653,7 +650,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
     useLayoutEffect(() => {
         const isCode = editSession?.blockKind === "code";
         const ta = textareaRef.current;
-        if ((!isCode && ta == null) || (isCode && codeEditorRef.current == null) || editSession == null || overlayRect == null || focusedSessionRef.current === editSession) {
+        if (
+            (!isCode && ta == null) ||
+            (isCode && codeEditorRef.current == null) ||
+            editSession == null ||
+            overlayRect == null ||
+            focusedSessionRef.current === editSession
+        ) {
             return;
         }
         focusedSessionRef.current = editSession;
@@ -662,7 +665,9 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // Code blocks use contenteditable: caret at the clicked spot when known, else at end
             // (dblclick is the "edit this whole block" gesture; contenteditable select-all is
             // impractical — it would select across token spans).
-            codeEditorRef.current?.focus(editSession.caretOffset != null ? { start: editSession.caretOffset } : undefined);
+            codeEditorRef.current?.focus(
+                editSession.caretOffset != null ? { start: editSession.caretOffset } : undefined
+            );
         } else if (ta != null) {
             // preventScroll stops the browser from auto-scrolling the textarea into the viewport,
             // which on a tall block (list/table/code whose overlay exceeds the viewport height) sets
@@ -729,9 +734,12 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     ? Math.min(Math.trunc(endLineRaw), lines.length)
                     : safeLine;
             const sourceContent = lines.slice(safeLine - 1, endLine).join("\n");
-            const initialContent = blockKind === "code"
-                ? stripCodeFence(sourceContent)
-                : blockKind === "list" ? stripListMarker(sourceContent) : sourceContent;
+            const initialContent =
+                blockKind === "code"
+                    ? stripCodeFence(sourceContent)
+                    : blockKind === "list"
+                      ? stripListMarker(sourceContent)
+                      : sourceContent;
             const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent);
             const session: InlineEditSession = {
                 blockKind,
@@ -799,99 +807,113 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         []
     );
 
-    const commit = useCallback((content?: string) => {
-        // Read editSession from closure (callback identity updates with session since it's in the
-        // dep array). The previous implementation called onCommit *inside* the setEditSession
-        // updater — that schedules an external jotai store write (globalStore.set(model.newFileContent))
-        // from within a React state updater, which React does not let through cleanly: the
-        // downstream async fileContentAtom subscribing to record.stateAtom misses the invalidate
-        // and ReactMarkdown keeps rendering the pre-edit text until something else (a Save, a tab
-        // blur) bumps the fileKey atom. Pulling the commit side effect out of the updater — and
-        // closing over the current session — fixes the live-preview-after-blur refresh path.
-        const current = editSession;
-        if (current == null) {
-            return;
-        }
-        inlineEditDebug("commit", {
-            kind: current.blockKind,
-            startLine: current.startLine,
-            insertMode: current.insertMode,
-            draftLen: draftText.length,
-            initialLen: current.initialContent.length,
-            changed: draftText !== current.initialContent,
-        });
-        setEditSession(null);
-        setDraftText("");
-        // 方案 02 §2.1 typing transform: a paragraph/blank editor whose first draft line
-        // matches a typing pattern ("# ", "> ", "- [ ] ", fence, "| a |", incl. full-width
-        // ＃／＞／＊／···) commits the CANONICAL rewritten line — the source stays clean
-        // markdown and the block transforms on re-render, all inside this one commit.
-        // Master switch off (方案 06 §5) → the draft commits verbatim, no transform.
-        // For code blocks (contenteditable), draftText may be stale — the caller passes the
-        // actual editor content via the `content` parameter.
-        const committedDraft =
-            content ?? (
-                (current.blockKind === "p" || current.blockKind === "blank") && isBlockEditorFeatureEnabled("blockeditor")
-                    ? rewriteDraftFirstLine(draftText) ?? draftText
-                    : draftText
-            );
-        if (current.placeholder) {
-            // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
-            // blank row for us to type into). Typed something → replace the row; block-level
-            // inserts re-add separator blanks as needed (commitPlaceholderBlock, netting one
-            // new block), inline <p> inserts just replace with NO blank (the paragraph's own
-            // separator blanks still bracket it → a flush soft-broken new line). Nothing
-            // typed → the pre-insert must not survive: revert the document to its pre-insert
-            // state so the click leaves zero trace — UNLESS this is an Enter-split follow-up
-            // row: the same gesture already committed real content above, and reverting here
-            // would erase it so the next Save writes the erased text to disk ("typed a line,
-            // Enter, then Save → content disappears").
-            if (draftText.trim().length === 0) {
-                if (!current.placeholderKeepOnEmpty) {
-                    current.insertRevert?.();
-                }
+    const commit = useCallback(
+        (content?: string) => {
+            // Read editSession from closure (callback identity updates with session since it's in the
+            // dep array). The previous implementation called onCommit *inside* the setEditSession
+            // updater — that schedules an external jotai store write (globalStore.set(model.newFileContent))
+            // from within a React state updater, which React does not let through cleanly: the
+            // downstream async fileContentAtom subscribing to record.stateAtom misses the invalidate
+            // and ReactMarkdown keeps rendering the pre-edit text until something else (a Save, a tab
+            // blur) bumps the fileKey atom. Pulling the commit side effect out of the updater — and
+            // closing over the current session — fixes the live-preview-after-blur refresh path.
+            const current = editSession;
+            if (current == null) {
                 return;
             }
-            onCommit(
-                current.placeholderInline
-                    ? replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, committedDraft)
-                    : commitPlaceholderBlock(fullTextRef.current, current.startLine, current.endLine, committedDraft)
-            );
-            return;
-        }
-        if (draftText === current.initialContent && current.insertMode == null) {
-            // No-op commit: nothing to write. Don't touch the shared draft atom — keeps the dirty
-            // flag honest. (Insert sessions always write: their initialContent is empty and a
-            // non-empty draft is the whole point, an empty draft is skipped below.)
-            return;
-        }
-        if (draftText.trim().length === 0 && current.insertMode != null) {
-            // Inserted a blank line then committed nothing: drop the empty draft, no-op.
-            return;
-        }
-        let newFull: string;
-        if (current.insertMode != null) {
-            // Insert the draft as a new block before/after the anchor line. Draft lines are
-            // inserted verbatim (blank lines inside the draft stay blank); we bracket the block
-            // with a blank line so it renders as its own paragraph.
-            const lines = fullTextRef.current.split(/\r\n|\n/);
-            const draftLines = committedDraft.split(/\r\n|\n/);
-            newFull = spliceInsertBlock(
-                lines,
-                current.startLine,
-                current.endLine,
-                current.insertMode,
-                draftLines
-            ).join("\n");
-        } else {
-            const originalSource = fullTextRef.current.split(/\r?\n/).slice(current.startLine - 1, current.endLine).join("\n");
-            const sourceDraft = current.blockKind === "code"
-                ? wrapCodeFence(committedDraft, originalSource)
-                : current.blockKind === "list" ? wrapListMarker(committedDraft, originalSource) : committedDraft;
-            newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, sourceDraft);
-        }
-        onCommit(newFull);
-    }, [editSession, draftText, onCommit]);
+            inlineEditDebug("commit", {
+                kind: current.blockKind,
+                startLine: current.startLine,
+                insertMode: current.insertMode,
+                draftLen: draftText.length,
+                initialLen: current.initialContent.length,
+                changed: draftText !== current.initialContent,
+            });
+            setEditSession(null);
+            setDraftText("");
+            // 方案 02 §2.1 typing transform: a paragraph/blank editor whose first draft line
+            // matches a typing pattern ("# ", "> ", "- [ ] ", fence, "| a |", incl. full-width
+            // ＃／＞／＊／···) commits the CANONICAL rewritten line — the source stays clean
+            // markdown and the block transforms on re-render, all inside this one commit.
+            // Master switch off (方案 06 §5) → the draft commits verbatim, no transform.
+            // For code blocks (contenteditable), draftText may be stale — the caller passes the
+            // actual editor content via the `content` parameter.
+            const committedDraft =
+                content ??
+                ((current.blockKind === "p" || current.blockKind === "blank") &&
+                isBlockEditorFeatureEnabled("blockeditor")
+                    ? (rewriteDraftFirstLine(draftText) ?? draftText)
+                    : draftText);
+            if (current.placeholder) {
+                // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
+                // blank row for us to type into). Typed something → replace the row; block-level
+                // inserts re-add separator blanks as needed (commitPlaceholderBlock, netting one
+                // new block), inline <p> inserts just replace with NO blank (the paragraph's own
+                // separator blanks still bracket it → a flush soft-broken new line). Nothing
+                // typed → the pre-insert must not survive: revert the document to its pre-insert
+                // state so the click leaves zero trace — UNLESS this is an Enter-split follow-up
+                // row: the same gesture already committed real content above, and reverting here
+                // would erase it so the next Save writes the erased text to disk ("typed a line,
+                // Enter, then Save → content disappears").
+                if (draftText.trim().length === 0) {
+                    if (!current.placeholderKeepOnEmpty) {
+                        current.insertRevert?.();
+                    }
+                    return;
+                }
+                onCommit(
+                    current.placeholderInline
+                        ? replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, committedDraft)
+                        : commitPlaceholderBlock(
+                              fullTextRef.current,
+                              current.startLine,
+                              current.endLine,
+                              committedDraft
+                          )
+                );
+                return;
+            }
+            if (draftText === current.initialContent && current.insertMode == null) {
+                // No-op commit: nothing to write. Don't touch the shared draft atom — keeps the dirty
+                // flag honest. (Insert sessions always write: their initialContent is empty and a
+                // non-empty draft is the whole point, an empty draft is skipped below.)
+                return;
+            }
+            if (draftText.trim().length === 0 && current.insertMode != null) {
+                // Inserted a blank line then committed nothing: drop the empty draft, no-op.
+                return;
+            }
+            let newFull: string;
+            if (current.insertMode != null) {
+                // Insert the draft as a new block before/after the anchor line. Draft lines are
+                // inserted verbatim (blank lines inside the draft stay blank); we bracket the block
+                // with a blank line so it renders as its own paragraph.
+                const lines = fullTextRef.current.split(/\r\n|\n/);
+                const draftLines = committedDraft.split(/\r\n|\n/);
+                newFull = spliceInsertBlock(
+                    lines,
+                    current.startLine,
+                    current.endLine,
+                    current.insertMode,
+                    draftLines
+                ).join("\n");
+            } else {
+                const originalSource = fullTextRef.current
+                    .split(/\r?\n/)
+                    .slice(current.startLine - 1, current.endLine)
+                    .join("\n");
+                const sourceDraft =
+                    current.blockKind === "code"
+                        ? wrapCodeFence(committedDraft, originalSource)
+                        : current.blockKind === "list"
+                          ? wrapListMarker(committedDraft, originalSource)
+                          : committedDraft;
+                newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, sourceDraft);
+            }
+            onCommit(newFull);
+        },
+        [editSession, draftText, onCommit]
+    );
 
     const cancel = useCallback(() => {
         // If this editor was opened by an immediate-insert flow (click A/B or Enter split),
@@ -979,9 +1001,32 @@ type InlineEditOverlayProps = {
  * 代码块编辑态顶栏。pre 被 inline-edit-hidden 后内部的 .codeblock-header 也跟着隐藏，
  * 所以在 overlay 里重建一个与预览态同构的顶栏（语言标签 + 复制/执行按钮），保持视觉一致。
  */
-const CodeLanguages = ["text", "diff", "javascript", "typescript", "tsx", "python", "json", "html", "css", "bash", "shell", "go", "rust", "sql", "yaml", "markdown"];
+const CodeLanguages = [
+    "text",
+    "diff",
+    "javascript",
+    "typescript",
+    "tsx",
+    "python",
+    "json",
+    "html",
+    "css",
+    "bash",
+    "shell",
+    "go",
+    "rust",
+    "sql",
+    "yaml",
+    "markdown",
+];
 
-function CodeBlockEditHeader({ language, onApplyLanguage }: { language?: string | null; onApplyLanguage?: (lang: string | null) => void }) {
+function CodeBlockEditHeader({
+    language,
+    onApplyLanguage,
+}: {
+    language?: string | null;
+    onApplyLanguage?: (lang: string | null) => void;
+}) {
     if (onApplyLanguage == null) return null;
     return (
         <div className="codeblock-header codeblock-edit-header" onMouseDown={(e) => e.stopPropagation()}>
@@ -991,7 +1036,11 @@ function CodeBlockEditHeader({ language, onApplyLanguage }: { language?: string 
                 aria-label="Code language"
                 onChange={(e) => onApplyLanguage(e.target.value === "text" ? null : e.target.value)}
             >
-                {CodeLanguages.map((item) => <option key={item} value={item}>{item}</option>)}
+                {CodeLanguages.map((item) => (
+                    <option key={item} value={item}>
+                        {item}
+                    </option>
+                ))}
             </select>
         </div>
     );
@@ -1021,6 +1070,24 @@ export function InlineEditOverlay({
     wysiwygListMarker,
     wysiwygSessionKey,
 }: InlineEditOverlayProps) {
+    useLayoutEffect(() => {
+        if (overlayRect == null || blockKind == null) {
+            return;
+        }
+        const raf = requestAnimationFrame(() => {
+            if (wysiwygRef?.current != null) {
+                wysiwygRef.current.focus();
+                return;
+            }
+            if (blockKind === "code") {
+                codeEditorRef.current?.focus();
+                return;
+            }
+            textareaRef.current?.focus({ preventScroll: true });
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [blockKind, overlayRect, wysiwygSessionKey, wysiwygRef, codeEditorRef, textareaRef]);
+
     if (overlayRect == null || blockKind == null) {
         return null;
     }
@@ -1042,7 +1109,10 @@ export function InlineEditOverlay({
                 top: `${overlayRect.top}px`,
                 left: `${overlayRect.left}px`,
                 width: `${overlayRect.width}px`,
-                minHeight: `${overlayRect.height}px`,
+                height: `${overlayRect.height}px`,
+                maxWidth: `${overlayRect.width}px`,
+                boxSizing: "border-box",
+                overflow: "hidden",
             }}
             // Prevent the overlay from catching the markdown root's own dblclick/click handlers.
             onMouseDown={(e) => e.stopPropagation()}
@@ -1136,7 +1206,8 @@ export function InlineEditOverlay({
                             }}
                             aria-hidden="true"
                         >
-                            {formatPrefix}<span style={{ color: "var(--text-placeholder, #aaa)" }}>{ghostPlaceholder}</span>
+                            {formatPrefix}
+                            <span style={{ color: "var(--text-placeholder, #aaa)" }}>{ghostPlaceholder}</span>
                         </span>
                     )}
                 </>
@@ -1184,7 +1255,10 @@ export function makeInlineEditKeydown(opts: {
         if ((e.key === "Backspace" || e.key === "Delete") && !isCmd && !e.shiftKey && opts.onNavigateUp != null) {
             const ta = e.currentTarget;
             const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
-            if (!native.isComposing && ((ta as HTMLTextAreaElement).value ?? (ta as HTMLElement).textContent ?? "").length === 0) {
+            if (
+                !native.isComposing &&
+                ((ta as HTMLTextAreaElement).value ?? (ta as HTMLElement).textContent ?? "").length === 0
+            ) {
                 e.preventDefault();
                 opts.onNavigateUp();
                 return;
@@ -1436,12 +1510,8 @@ export function splitListItemDraft(draft: string, pos: number): { text: string; 
         return { text: `${draft.slice(0, pos)}\n${draft.slice(pos)}`, newPos: pos + 1 };
     }
 
-    const prefix = ordered
-        ? `${ordered[1]}${ordered[2]}${ordered[3]} `
-        : `${bullet![1]}${bullet![2]} `;
-    const incrementedPrefix = ordered
-        ? `${ordered[1]}${parseInt(ordered[2], 10) + 1}${ordered[3]} `
-        : prefix;
+    const prefix = ordered ? `${ordered[1]}${ordered[2]}${ordered[3]} ` : `${bullet![1]}${bullet![2]} `;
+    const incrementedPrefix = ordered ? `${ordered[1]}${parseInt(ordered[2], 10) + 1}${ordered[3]} ` : prefix;
 
     if (pos === lineStart) {
         // Line start: new empty sibling ABOVE, current line untouched (no content copy).
