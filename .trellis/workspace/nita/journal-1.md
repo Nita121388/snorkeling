@@ -27,5 +27,28 @@
 ### 关键设计
 - 共享辅助放 `shared.ts`（纯函数，不 import markdown.tsx，避免循环）。
 - registry 用 MarkdownRenderContext 传 host 回调，使 memo 语义不变。
+
+## 2026-10-05 — P1: 编辑内核（统一 undo 栈 + AST 块模型 MVP）
+
+- Task: `.trellis/tasks/10-05-p1-edit-core`（已 archive）
+
+### 做了什么
+- **P1-A 统一 undo/redo 栈**：新建 `use-editor-history.ts`（HistoryStack 纯类 + useEditorHistory 薄壳）。
+  接入 markdown.tsx 的 handleInlineEditCommit 收敛点（所有编辑都过这一个漏斗）。
+  keydown 加 Cmd+Z / Cmd+Shift+Z / Cmd+Y。normalize 走 skipHistory 不入栈。
+- **P1-B AST 块模型 MVP**：新建 `markdown-transform/tree.ts`（buildBlockTree + Block + 稳定 id）。
+  复用 block-type 的 findBlockRangeAtLine，内置 hr 识别。
+
+### trellis-check 发现并修复
+1. undo 链 bug：lastAppliedTextRef 未在 undo 回填路径更新 → 「撤销后再次编辑」before 取过期文本。
+2. hr 缺口：block-type 无 hr，`***` 会被当 text 跨行并入段。tree.ts 内置 HrLineRe+clipAtHr 修复。
+
+### 验证
+- element 37 文件 / 490 测试全绿（469 基线 + 21 新）；tsc 新文件零错误。
+
+### 关键设计
+- undo 基准挂在「单一提交通道」（handleInlineCommit），不分散到各编辑器。
+- undo 粒度 = 单次 commit 一步（块级，对标思源/我来）。
+- undo/redo 走 applyText 独立通道（不 arm autosave，可整体 Revert），与 draft/saved 双态正交。
 ---
 

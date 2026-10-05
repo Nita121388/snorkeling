@@ -36,6 +36,24 @@ Questions to answer:
 
 ---
 
+## Pattern: 统一 undo/redo 栈（useEditorHistory）
+
+所有 Markdown 编辑（行内编辑、task checkbox、表格 cell、code 语言、列表重编号…）都已收敛到
+单一提交通道 `handleInlineEditCommit`。undo 基准挂在**该收敛点**，而不是分散到各编辑器。
+
+- `HistoryStack` 是**纯逻辑**（无 React/DOM，可单测），记录 `{ before, after }` 全文本快照；
+  `useEditorHistory` 只是薄壳（useRef 持实例 + rev 驱动 canUndo/canRedo 重渲染）。
+- **粒度**：按「单次提交通道调用」为一步（块级 undo，对标思源/我来）。每次提交都是
+  「给定 text + 锚点行算出 nextText」，故只需全文本快照，无需 diff。
+- **undo/redo 回填走独立 applyText 通道**（P1 = 仅更新 draft atom、不 arm autosave，可整体
+  Revert）；与 preview-model 的 draft/saved 双态正交。
+- **before 用「最后一次实际应用文本」ref**（lastAppliedTextRef）而非闭包 text——async atom
+  round-trip 下闭包可能滞后一帧，且「撤销后再次编辑」时 must 同步该 ref，否则 undo 链被污染。
+  - undo/redo 应用文本后，lastAppliedTextRef = 应用后的文本（与 commit 路径对称）。
+- 程序性变换（normalize 等）用 `skipHistory` 不入 undo 栈。
+
+**快捷键**：Cmd/Ctrl+Z → undo，Cmd/Ctrl+Shift+Z / Cmd+Y → redo；仅编辑生效时。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下

@@ -109,6 +109,7 @@ import {
 import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
 import { MarkdownContentBlockType, transformBlocks } from "@/app/element/markdown-util";
 import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip } from "./markdown-render";
+import { useEditorHistory } from "./use-editor-history";
 import { makeRemarkPlugins } from "@/app/element/remark";
 import remarkFrontmatterToWaveBlock from "@/app/element/remark/frontmatter-to-waveblock";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
@@ -277,6 +278,17 @@ export function computeListInsertAnchor(
 }
 
 const MarkdownAnchorSwitchDelayMs = 180;
+
+/**
+ * 编辑内核（P1-A）统一提交通道的可选参数。
+ * - `renumberOrderedListFromLine`：提交时把该行所在有序列表块重新编号，使源码与渲染一致。
+ * - `skipHistory`：该次提交不入 undo 栈（用于程序性 normalize 等非用户显式手势）。
+ */
+type EditorCommitOptions = {
+    renumberOrderedListFromLine?: number;
+    skipHistory?: boolean;
+};
+
 // === Markdown component + inline-edit logic (render helpers are above) =================
 
 type MarkdownProps = {
@@ -576,14 +588,11 @@ const Markdown = ({
     // an impl ref assigned right after the hook returns; the impl closes over the current
     // inlineEdit.editSession each render.
     const handleInlineEditCommitImplRef = useRef<
-        (newFullText: string, opts?: { renumberOrderedListFromLine?: number }) => void
+        (newFullText: string, opts?: EditorCommitOptions) => void
     >(() => {});
-    const handleInlineEditCommit = useCallback(
-        (newFullText: string, opts?: { renumberOrderedListFromLine?: number }) => {
-            handleInlineEditCommitImplRef.current(newFullText, opts);
-        },
-        []
-    );
+    const handleInlineEditCommit = useCallback((newFullText: string, opts?: EditorCommitOptions) => {
+        handleInlineEditCommitImplRef.current(newFullText, opts);
+    }, []);
 
     // === Autosave (feature ②) ===============================================================
     // Trailing-edge debounce: each block commit (⌘Enter / blur) re-arms a 1.5s timer that
@@ -632,7 +641,7 @@ const Markdown = ({
         didNormalizeListNumberingRef.current = true;
         const normalized = normalizeOrderedListNumbering(text);
         if (normalized != null) {
-            handleInlineEditCommit(normalized.text);
+            handleInlineEditCommit(normalized.text, { skipHistory: true });
         }
     }, [text, onInlineEditCommit, handleInlineEditCommit]);
 
@@ -643,10 +652,41 @@ const Markdown = ({
         resetKey: onInlineEditCommit,
     });
 
+    // === 统一 undo/redo 栈 (P1-A) ==========================================================
+    // 所有编辑最终都进入 handleInlineEditCommitImplRef.current（唯一写 draft atom 的收敛点）。
+    // 在此记录一步 { before, after }；undo/redo 走 applyTextForHistory——仅更新 draft atom、
+    // 不 arm autosave，使撤销后的草稿可被整体 Revert（与 preview-model 的 draft/saved 双态正交）。
+    // lastAppliedTextRef 持「最后一次实际应用文本」作为 before，保证连续编辑时 undo 链条无缝隙
+    // （async atom round-trip 下闭包 text 可能滞后一帧，故不直接用闭包 text）。
+    const lastAppliedTextRef = useRef(text);
+    const applyTextForHistory = useCallback(
+        (t: string) => {
+            // 撤销后不再把 pending 自动落盘触发：undo 语义是“草稿层回退，可整体 Revert”。
+            if (inlineEditAutosaveTimerRef.current != null) {
+                window.clearTimeout(inlineEditAutosaveTimerRef.current);
+                inlineEditAutosaveTimerRef.current = null;
+            }
+            onInlineEditCommit?.(t);
+            // 关键：undo/redo 应用文本后，lastAppliedTextRef 必须同步更新。否则在「撤销若干步后
+            // 再编辑」的场景里，下一次 commit 的 before 会取到撤销前的过期文本，破坏 undo 链条
+            // （撤销后应回到当前草稿态，而非中间态）。与 handleInlineEditCommitImplRef 里的
+            // lastAppliedTextRef.current = nextText 保持对称。
+            lastAppliedTextRef.current = t;
+        },
+        [onInlineEditCommit]
+    );
+    const editorHistory = useEditorHistory({
+        applyText: applyTextForHistory,
+        resetKey: onInlineEditCommit ?? null,
+    });
+    const editorHistoryRef = useRef(editorHistory);
+    editorHistoryRef.current = editorHistory;
+
     handleInlineEditCommitImplRef.current = (newFullText, opts) => {
         if (!onInlineEditCommit) {
             return;
         }
+        const beforeText = lastAppliedTextRef.current;
         let nextText = newFullText;
         // After ANY inline edit, if the edited line resolves inside (or adjacent to) an ordered
         // list block, renumber that block so SOURCE numbering matches what remark renders
@@ -656,7 +696,11 @@ const Markdown = ({
         if (renumberAnchorLine != null) {
             nextText = renumberOrderedListBlockAtLine(nextText, renumberAnchorLine)?.text ?? nextText;
         }
+        if (!opts?.skipHistory) {
+            editorHistoryRef.current.record(beforeText, nextText);
+        }
         onInlineEditCommit(nextText);
+        lastAppliedTextRef.current = nextText;
         scheduleInlineEditAutosave();
     };
 
@@ -3292,6 +3336,27 @@ const Markdown = ({
             if (isMod && !e.altKey) {
                 const sessKind = inlineEdit.editSession?.blockKind;
                 const key = e.key.toLowerCase();
+                // 统一 undo/redo（P1-A）：Cmd/Ctrl+Z 撤销、Cmd/Ctrl+Shift+Z / Cmd+Y 重做。
+                // 仅在有编辑能力（onInlineEditCommit 存在）时生效；源码编辑器（monaco）原生 undo
+                // 由 monaco 自己管，两者不同时活跃，不冲突。
+                if (!e.shiftKey && key === "z") {
+                    if (editorHistory.undo()) {
+                        e.preventDefault();
+                    }
+                    return;
+                }
+                if (e.shiftKey && key === "z") {
+                    if (editorHistory.redo()) {
+                        e.preventDefault();
+                    }
+                    return;
+                }
+                if (!e.shiftKey && key === "y") {
+                    if (editorHistory.redo()) {
+                        e.preventDefault();
+                    }
+                    return;
+                }
                 // Inline styles (not inside code sessions — a code fork isn't prose).
                 if (sessKind !== "code") {
                     if (!e.shiftKey && (key === "b" || key === "i" || key === "k")) {
@@ -3349,6 +3414,7 @@ const Markdown = ({
             handleSessionBlockTransform,
             inlineEdit,
             inlineEditKeyDown,
+            editorHistory,
         ]
     );
 
