@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { buildBlockTree } from "../markdown-transform/tree";
+import { buildBlockTree, type Block } from "../markdown-transform/tree";
 import { createEditController, lineRangeToCharOffset } from "./editor-controller";
 
 describe("lineRangeToCharOffset — 块坐标 → 绝对字符偏移", () => {
@@ -87,6 +87,21 @@ describe("createEditController — 编辑控制器（P2-A1）", () => {
         expect(block).toBeDefined();
         const res = ctl.apply({ type: "set-code-lang", block: block!, lang: "ts" }, { text });
         expect(res?.text).toBe("```ts\nconst a = 1;\n```");
+    });
+
+    it("set-code-lang：代码块不在首行（模拟 markdown.tsx 的 1-based 会话行号 → 0-based Block）", () => {
+        // 代码块前有 2 行文字；代码块起始 0-based 行 2（1-based 会话行号 3）。
+        const text = "intro line\nsecond line\n```js\nconst x = 2;\n```";
+        const blocks = buildBlockTree(text.split("\n"));
+        const block = blocks.find((b) => b.kind === "code")!;
+        expect(block.startLine).toBe(2); // 0-based
+
+        // markdown.tsx onApplyLanguage 把 1-based 会话行号（3）转 0-based（startLine-1=2）
+        const line1 = 3; // 1-based 会话行号（editSession.startLine）
+        const line0 = line1 - 1; // → 0-based Block.startLine
+        const converted: Block = { ...block, startLine: line0, endLine: line0 };
+        const res = ctl.apply({ type: "set-code-lang", block: converted, lang: "ts" }, { text });
+        expect(res?.text).toBe("intro line\nsecond line\n```ts\nconst x = 2;\n```");
     });
 
     it("renumber-list：有序列表重编号", () => {

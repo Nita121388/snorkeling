@@ -75,5 +75,22 @@
 ### 关键设计
 - block-model/ 与 markdown-render/ 分工：前者是块模型的语义视图/编辑控制器（P2-B 消费），
   后者是生产渲染器组件。
+
+## 2026-10-05 — P2-B1: 编辑提交收敛最小闭环（code 语言）
+
+- Task: `.trellis/tasks/10-05-p2-b-converge-edits`（已 archive）
+
+### 做了什么
+- markdown.tsx 的 onApplyLanguage 改为走 P2-A 编辑控制器（set-code-lang intent）。
+- 打通「真实编辑 → 控制器 → 文本变换 → undo 栈」最小闭环，作为 prose/list 收敛模板。
+- 模块级单例 editorController = createEditController()。
+
+### 关键点
+- based 语义核实：session.startLine 1-based → Block.startLine-1 0-based → 控制器 +1 还原
+  1-based → setCodeBlockLanguage idx = startLine-1，与现状等价无 off-by-one。
+- 新增非首行代码块换算测试锁定该转换。
+
+### 验证
+- element 39 文件 / 509 测试全绿（508 基线 + 1 新增）；tsc 无新增错误。
 ---
 

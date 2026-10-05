@@ -84,7 +84,6 @@ import {
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
 import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
 import { applyTypingPatternAtLine, detectBlockKind, type BlockKind } from "@/app/element/markdown-transform/block-type";
-import { setCodeBlockLanguage } from "@/app/element/markdown-transform/code-block";
 import { getFrontmatterEmoji, setFrontmatterEmoji } from "@/app/element/markdown-transform/doc-meta";
 import {
     buildEmojiPickerItems,
@@ -110,6 +109,8 @@ import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
 import { MarkdownContentBlockType, transformBlocks } from "@/app/element/markdown-util";
 import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip } from "./markdown-render";
 import { useEditorHistory } from "./use-editor-history";
+import { createEditController } from "./block-model";
+import type { Block } from "./markdown-transform/tree";
 import { makeRemarkPlugins } from "@/app/element/remark";
 import remarkFrontmatterToWaveBlock from "@/app/element/remark/frontmatter-to-waveblock";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
@@ -288,6 +289,11 @@ type EditorCommitOptions = {
     renumberOrderedListFromLine?: number;
     skipHistory?: boolean;
 };
+
+// P2-B1：编辑提交收敛到 AST 的统一控制器实例（无状态，纯函数工厂，模块级单例）。
+// code 语言的 onApplyLanguage 经它走 set-code-lang intent → 文本变换 → handleInlineEditCommit
+// （进 undo 栈）。作为后续 prose/list 收敛的模板。
+const editorController = createEditController();
 
 // === Markdown component + inline-edit logic (render helpers are above) =================
 
@@ -4396,12 +4402,25 @@ const Markdown = ({
                                     editSessionKind === "code" && inlineEdit.editSession?.startLine != null
                                         ? (nextLang) => {
                                               setEditCodeLanguage(nextLang);
-                                              const next = setCodeBlockLanguage(
-                                                  text,
-                                                  inlineEdit.editSession!.startLine,
-                                                  nextLang
+                                              // P2-B1：语言提交经编辑控制器（set-code-lang
+                                              // intent）→ 文本变换 → handleInlineEditCommit（进 undo 栈）。
+                                              // editSession.startLine 是 1-based；控制器期望 0-based
+                                              // Block.startLine（内部 +1 还原 1-based），故传 startLine-1。
+                                              const line0 = inlineEdit.editSession!.startLine - 1;
+                                              const block: Block = {
+                                                  id: `code:${line0}`,
+                                                  kind: "code",
+                                                  startLine: line0,
+                                                  endLine: line0,
+                                                  depth: 0,
+                                                  text: inlineEdit.editSession?.initialContent ?? "",
+                                                  children: [],
+                                              };
+                                              const res = editorController.apply(
+                                                  { type: "set-code-lang", block, lang: nextLang },
+                                                  { text }
                                               );
-                                              if (next != null) handleInlineEditCommit(next);
+                                              if (res != null) handleInlineEditCommit(res.text);
                                           }
                                         : undefined
                                 }

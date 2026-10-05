@@ -54,6 +54,22 @@ Questions to answer:
 
 **快捷键**：Cmd/Ctrl+Z → undo，Cmd/Ctrl+Shift+Z / Cmd+Y → redo；仅编辑生效时。
 
+## Pattern: 编辑提交收敛到编辑控制器（block-model）
+
+WYSIWYG 重构 P2 的目标是把「线上编辑提交」从 DOM 反序列化切换到基于块模型 + 文本变换。
+收敛的模板（P2-B1 code 语言已落地）：
+
+- **编辑器持有控制器单例**：`const editorController = createEditController();`（模块级，纯函数工厂无状态）。
+- **提交走 intent**：`editorController.apply({ type: "<op>", block, ... }, { text }) → { text, caret }`，
+  控制器内部映射到现有 markdown-transform 纯函数（transformBlockType / setCodeBlockLanguage / 等）。
+- **结果仍走 handleInlineEditCommit**（P1 undo 栈 + autosave 不变）。
+
+**based 语义（成败关键，勿改）**：
+- `editSession.startLine`（会话）是 **1-based**（`safeLine = max(1, trunc(line))`）。
+- `Block.startLine`（块模型）是 **0-based**。
+- 收敛时调用方把 1-based 会话行号**转成 0-based Block.startLine**（`-1`）；控制器内部再
+  `line1 = block.startLine + 1` 还原 1-based 给纯函数。**两处转换必须对称，否则 off-by-one**。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下
