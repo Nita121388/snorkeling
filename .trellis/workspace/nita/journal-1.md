@@ -50,5 +50,30 @@
 - undo 基准挂在「单一提交通道」（handleInlineCommit），不分散到各编辑器。
 - undo 粒度 = 单次 commit 一步（块级，对标思源/我来）。
 - undo/redo 走 applyText 独立通道（不 arm autosave，可整体 Revert），与 draft/saved 双态正交。
+
+## 2026-10-05 — P2-A: 编辑控制器 + 块模型渲染适配器
+
+- Task: `.trellis/tasks/10-05-p2-ast-converge`（已 archive）
+
+### 做了什么
+- 新建 `frontend/app/element/block-model/`：
+  - `editor-controller.ts`：createEditController + BlockEditIntent + lineRangeToCharOffset。
+    intent（turn-into/inline-style/toggle-task/set-code-lang/renumber-list）→ 现有 markdown-transform
+    纯函数 → {text,caret}。纯函数薄壳，无 DOM/React。
+  - `render-adapter.tsx`：Block → ReactMarkdown 行内渲染（语义视图，flag 关闭）。
+- 双轨并存：现有 wysiwyg-editor/dom-to-markdown 路径零改动，行为零回归。
+
+### trellis-check 审查
+- 通过，无缺陷。记录 P2-B 前瞻风险 3 条：
+  - R1 列表项 turn-into 作用域塌缩（坐标逐项 vs 变换整组）。
+  - R2 扁平列表渲染多 <ul>（语义视图骨架，P2-B 用生产渲染器）。
+  - R3 inline-style 偏移口径（相对 block.text 源码含 markers）——已写入 BlockEditIntent jsdoc。
+
+### 验证
+- element 39 文件 / 508 测试全绿（490 基线 + 18 新）；tsc 新文件零错误。
+
+### 关键设计
+- block-model/ 与 markdown-render/ 分工：前者是块模型的语义视图/编辑控制器（P2-B 消费），
+  后者是生产渲染器组件。
 ---
 

@@ -55,7 +55,16 @@ frontend/app/element/
     ├── code-block.ts       # 代码围栏识别
     ├── table.ts            # 表格块识别
     └── …
+└── block-model/            # P2-A 块模型语义视图 + 编辑控制器（与 markdown-render 分工）
+    ├── editor-controller.ts # BlockEditIntent → markdown-transform 纯函数 → {text,caret}
+    ├── render-adapter.tsx   # Block → ReactMarkdown 行内渲染（语义视图，flag 关闭）
+    └── index.ts             # 统一 re-export
 ```
+
+## block-model/ vs markdown-render/ 分工
+- `markdown-render/`：ReactMarkdown 的渲染器组件（**生产渲染**走它，P0 已 registry 化）。
+- `block-model/`：块模型坐标之上的**语义视图（Block→renderable）** + **编辑控制器（intent→文本变换）**，
+  供 P2-B 编辑路径收敛消费。两目录互补不重叠。
 
 ## 块渲染器拆分规则（P0 约定）
 
