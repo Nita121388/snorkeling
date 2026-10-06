@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from "vitest";
+import { editorController } from "./block-model/editor-controller-instance";
+import type { Block } from "./markdown-transform/tree";
 import {
     commitPlaceholderBlock,
     deleteBlockRange,
     expandBlockSelection,
+    inlineKindToTreeKind,
     isSelectingRange,
     makeInlineEditKeydown,
     moveBlockRange,
@@ -541,3 +544,115 @@ describe("moveBlockRange (drag-and-drop reorder)", () => {
     });
 });
 
+
+describe("list WYSIWYG 提交 → replace-content（P2-B3：修复重复 marker + 收敛到块模型控制器）", () => {
+    // 复刻 markdown-inline-edit.tsx commit() 的 list 分支（P2-B3）：
+    // - WYSIWYG + 非空：committedDraft（DOM 序列化产物，已含每行 marker）→ 控制器
+    //   replace-content 整体替换（1-based 会话行号 → 0-based Block）→ 绝不二次包 marker。
+    // - 空内容：committedDraft.length > 0 guard 不满足 → 回落 else（wrapListMarker），
+    //   与 P2-B3 前行为一致（清空列表保留 marker 骨架，不做行删除）。
+    // - 非 wysiwyg（textarea）：draft 是用户手输无 marker → else 的 wrapListMarker 补 marker。
+    const wrapListMarker = (source: string, original: string): string => {
+        const match = original.match(/^(\s*)(\d{1,9}[.)]|[-+*])(\s+)/);
+        if (match == null) return source;
+        return `${match[1]}${match[2]}${match[3]}${source}`;
+    };
+
+    // 与 commit() 完全同构的 list 提交流程（wysiwyg 分支 + else 兜底）。
+    const commitList = (
+        text: string,
+        startLine1: number,
+        endLine1: number,
+        committedDraft: string,
+        wysiwyg: boolean
+    ): string => {
+        const originalSource = text.split(/\r?\n/).slice(startLine1 - 1, endLine1).join("\n");
+        if (wysiwyg && committedDraft.length > 0) {
+            const sl0 = startLine1 - 1;
+            const el0 = endLine1 - 1;
+            const block: Block = {
+                id: `prose:${sl0}:${el0}`,
+                kind: inlineKindToTreeKind("list", committedDraft),
+                startLine: sl0,
+                endLine: el0,
+                depth: 0,
+                text: "",
+                children: [],
+            };
+            const res = editorController.apply(
+                { type: "replace-content", block, content: committedDraft },
+                { text }
+            );
+            if (res != null) return res.text;
+        }
+        return replaceSourceRange(text, startLine1, endLine1, wrapListMarker(committedDraft, originalSource));
+    };
+
+    it("单项列表项：改 apple→APRICOT，源码为 `- APRICOT`（不再 `- - APRICOT` 重复 marker）", () => {
+        // committedDraft 来自 DOM 序列化（serializeListDomToMarkdown，已含 marker）
+        expect(commitList("- apple", 1, 1, "- APRICOT", true)).toBe("- APRICOT");
+        expect(commitList("- apple", 1, 1, "- APRICOT", true)).not.toBe("- - APRICOT");
+    });
+
+    it("整组列表（2 项，改第二项）：替换后整组保持，无重复 marker", () => {
+        const text = "- apple\n- banana";
+        // 单项作用域（会话 startLine=endLine=2）
+        expect(commitList(text, 2, 2, "- PEAR", true)).toBe("- apple\n- PEAR");
+        // 整组作用域（嵌套/全选时会话覆盖 1..2）
+        expect(commitList(text, 1, 2, "- APPLE\n- PEAR", true)).toBe("- APPLE\n- PEAR");
+    });
+
+    it("有序列表：marker 保持 `1.`/`2.`", () => {
+        const text = "1. first\n2. second";
+        expect(commitList(text, 1, 1, "1. FIRST", true)).toBe("1. FIRST\n2. second");
+        expect(commitList(text, 1, 2, "1. FIRST\n2. SECOND", true)).toBe("1. FIRST\n2. SECOND");
+    });
+
+    it("任务列表：`- [ ] task` → 改内容后 `- [ ] newtask`", () => {
+        expect(commitList("- [ ] task", 1, 1, "- [ ] newtask", true)).toBe("- [ ] newtask");
+        expect(commitList("- [x] done", 1, 1, "- [ ] redo", true)).toBe("- [ ] redo");
+    });
+
+    it("任务列表边界：正文含 `[x]` 文本不误判为 todo（kind 推断锚定 marker 后）", () => {
+        // `- see [x] note` 的 `[x]` 在 marker 后隔了正文，不是 checkbox → kind 应为 bulleted
+        // （inlineKindToTreeKind 不因正文误判 todo；kind 不参与 replace-content 坐标，仅语义）
+        expect(inlineKindToTreeKind("list", "- see [x] note")).toBe("bulleted");
+        expect(inlineKindToTreeKind("list", "- [x] note")).toBe("todo");
+        expect(inlineKindToTreeKind("list", "1. [ ] item")).toBe("todo");
+        expect(inlineKindToTreeKind("list", "1. plain")).toBe("numbered");
+        expect(inlineKindToTreeKind("list", "* star")).toBe("bulleted");
+    });
+
+    it("嵌套列表：整组替换（endLine > startLine）不丢嵌套结构", () => {
+        const text = "- parent\n  - child\n- tail";
+        // 父项含子列表 → 会话提升到整组 ul（1..2），DOM 序列化产物保留缩进
+        expect(commitList(text, 1, 2, "- PARENT\n  - CHILD", true)).toBe("- PARENT\n  - CHILD\n- tail");
+    });
+
+    it("空内容（清空列表）：guard 不满足 → 回落 else，行为与 P2-B3 前一致", () => {
+        // committedDraft.length === 0 → 不进入 replace-content；回落原 else 路径
+        //（wrapListMarker("") 保留 marker 骨架），与现状完全一致。
+        expect(commitList("- apple", 1, 1, "", true)).toBe("- ");
+        // 对照：else 路径（textarea 语义）的同一输入输出相同
+        expect(commitList("- apple", 1, 1, "", false)).toBe("- ");
+    });
+
+    it("textarea（非 wysiwyg）路径回归：手输无 marker draft 仍走 wrapListMarker 补 marker", () => {
+        // textarea 的 committedDraft = 用户手输内容（无 marker）
+        expect(commitList("- apple", 1, 1, "newitem", false)).toBe("- newitem");
+        // 有序列表 textarea 路径：沿用原 marker 风格
+        expect(commitList("3. three", 1, 1, "three-point-five", false)).toBe("3. three-point-five");
+        // 无 marker 的原始行（非列表上下文）：wrapListMarker 直接返回 draft
+        expect(commitList("plain", 1, 1, "changed", false)).toBe("changed");
+    });
+
+    it("中段块：列表前有内容、列表后紧跟下一块 → 替换不吞换行/后续块", () => {
+        const text = "intro\n\n- apple\n\nnext block";
+        // 列表在 3..3，前后都有内容
+        expect(commitList(text, 3, 3, "- APRICOT", true)).toBe("intro\n\n- APRICOT\n\nnext block");
+        // 整组 2 项（3..4）同样不吞前后块
+        expect(commitList("intro\n\n- apple\n- pear\n\nnext block", 3, 4, "- APPLE\n- PEAR", true)).toBe(
+            "intro\n\n- APPLE\n- PEAR\n\nnext block"
+        );
+    });
+});

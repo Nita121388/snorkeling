@@ -169,6 +169,16 @@ export function inlineKindToTreeKind(
         }
         case "quote":
             return "quote";
+        case "list": {
+            // wysiwyg 的 "list" 不区分 bulleted/numbered/todo，从 committedDraft
+            // （DOM 序列化产物，首行即含 marker）首行可靠推断具体 kind。
+            // todo 判定锚定 marker 后的 `[ xX]`（与 block-type ListItemLineRe 语义一致，
+            // 避免 `- see [x] note` 这类正文含 checkbox 文本误判为任务项）。
+            const first = content.split("\n", 1)[0] ?? "";
+            if (/^(\s*)(?:[-+*]|\d{1,9}[.)])([ \t]+\[[ xX]\])/.test(first)) return "todo";
+            if (/^\s*\d{1,9}[.)]/.test(first)) return "numbered";
+            return "bulleted";
+        }
         default:
             // "p" → "text"；"blank" → "text"（空块语义）；其余不会走到此处
             return "text";
@@ -921,13 +931,15 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     draftLines
                 ).join("\n");
             } else if (
-                // P2-B2：WYSIWYG prose（p/h/quote/blank）提交定位收敛到块模型控制器。
-                // drafted content 来自 DOM 反序列化（serializeBlockDomToMarkdown），已是完整块
-                // markdown（h 带 #、quote 带 >）；这里把「裸行号 replaceSourceRange」改为
-                // 控制器 replace-content intent（块坐标 → lineRangeToCharOffset → 文本变换），
-                // 统一到块模型 + P1 undo 栈模式。行为与现状等价，textarea/list/table/code 不动。
-                // 空内容提交（清空段落）除外：replaceSourceRange 的空 segment 语义是「删除整行
-                // 不留空行」，而控制器的字符范围替换会留下空行（见 editor-controller.test.ts
+                // P2-B2/P2-B3：WYSIWYG prose + list（p/h/quote/blank/list）提交定位收敛到
+                // 块模型控制器。drafted content 来自 DOM 反序列化（serializeBlockDomToMarkdown），
+                // 已是完整块 markdown（h 带 #、quote 带 >、list 每行带 marker）；这里把「裸行号
+                // replaceSourceRange」改为控制器 replace-content intent（块坐标 →
+                // lineRangeToCharOffset → 文本变换），统一到块模型 + P1 undo 栈模式。
+                // 行为与现状等价，textarea/list 之外的块不动。P2-B3 关键：list 的 committedDraft
+                // 已含每行 marker，整体替换即正确（不再走 else 的 wrapListMarker 重复包 marker）。
+                // 空内容提交（清空段落/列表）除外：replaceSourceRange 的空 segment 语义是「删除
+                // 整行不留空行」，而控制器的字符范围替换会留下空行（见 editor-controller.test.ts
                 // 空内容用例）——此处 committedDraft.length > 0 让空内容回落原 replaceSourceRange，
                 // 保证清空段落 = 删除该行，与现状完全一致。
                 current.wysiwyg &&
@@ -935,7 +947,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 (current.blockKind === "p" ||
                     current.blockKind === "h" ||
                     current.blockKind === "quote" ||
-                    current.blockKind === "blank")
+                    current.blockKind === "blank" ||
+                    current.blockKind === "list")
             ) {
                 // 1-based 会话行号 → 0-based Block（控制器内部依赖块坐标，基于语义复刻 P2-B1）。
                 const sl0 = current.startLine - 1;

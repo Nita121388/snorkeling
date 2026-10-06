@@ -113,3 +113,26 @@
 ### 验证
 - element 39 文件 / 517 测试全绿（509 基线 + 8 个 replace-content 用例）；tsc 零新增（68 基线不变）。
 - trellis-check 复验：阻断项（空内容差异）已修复，验收标准 1-5 全部 PASS。
+## 2026-10-06 P2-B3：列表块（bulleted/numbered/todo）提交收敛到块模型控制器
+
+### 勘察发现（关键）
+- 现状 WYSIWYG list 提交存在**重复 marker bug**：DOM 序列化产物（serializeListDomToMarkdown）
+  已含每行 marker，但 commit else 分支又 wrapListMarker 包一层 → `- - apple`（vitest jsdom 实测）。
+  textarea 路径（手输无 marker）的 wrapListMarker 是对的，只有 WYSIWYG list 路径错了。
+- 列表会话作用域：resolveEditTargetFromEl 对普通 li 是单项，含嵌套子列表提升到整组 ul/ol。
+
+### 交付
+- 复用 P2-B2 的 replace-content intent（不新增 intent）：commit() wysiwyg 分支条件加入 "list"，
+  整体替换 committedDraft（已含 marker）→ 修复重复 marker bug；共享单例不变。
+- inlineKindToTreeKind 增加 list 分支：todo/numbered/bulleted 推断（todo 正则锚定 marker 位置，
+  与 ListItemLineRe 语义一致，防正文 [x] 误判）。
+- else 分支 wrapListMarker 保留（只服务 textarea 路径）；空内容 guard 与 P2-B2 一致（回落删行）。
+- 测试 +9：单项/整组/有序/任务/嵌套/空内容/textarea 回归/中段块/todo 边界正则。
+
+### 验证
+- element 39 文件 / 526 测试全绿（517 基线 + 9）；tsc 68 基线不变零新增。
+- trellis-check 复验：6 条验收标准全部 PASS；非阻塞建议（正则锚定）已落实并补边界测试。
+
+### 待处理
+- R1（turn-into 组级塌缩）不在 blur 提交路径内，P2-B 后续如需处理另开任务。
+- R2/R3 仍待后续阶段。

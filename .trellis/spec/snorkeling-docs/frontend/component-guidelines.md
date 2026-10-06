@@ -92,6 +92,20 @@ editorController.apply(
 - **CRLF 已知差异**：`lineRangeToCharOffset` 按 `\n` 切，`\r` 归属块行内容，替换段内不重写 EOL，
   与 replaceSourceRange 的 dominant-EOL 重 join 有边界差异；wave 保存一律 `\n`，非生产场景。
 
+**列表块收敛（P2-B3）**：list 的 WYSIWYG 提交复用同一 `replace-content` intent（语义与 prose
+blur 提交一致——整体替换块内容），无需新 intent：
+
+- **kind 映射**：wysiwyg 的 blockKind "list" 不区分 bulleted/numbered/todo，`inlineKindToTreeKind`
+  从 committedDraft（DOM 序列化产物，首行即含 marker）首行推断：marker 后紧跟 `[ xX]` → todo、
+  `^\s*\d{1,9}[.)]` → numbered、否则 bulleted。todo 正则必须锚定 marker 位置（与 block-type
+  `ListItemLineRe` 语义一致），避免正文含 `[x]` 文本误判。
+- **重复 marker 陷阱（成败关键）**：WYSIWYG 的 DOM 序列化产物（serializeListDomToMarkdown）
+  **已含每行 marker**，提交必须整体替换，**不得再 wrapListMarker 包一层**（现状 bug：`- - apple`）。
+  wrapListMarker 只用于 textarea 路径（draftText 为用户手输无 marker，需要补 marker 才能落盘）。
+- **组级 vs 单项定位**：列表会话 startLine/endLine 由 resolveEditTargetFromEl 给出（普通 li 单项、
+  含嵌套子列表提升到整组 ul/ol）；replace-content 的块坐标沿用会话行号 -1（0-based），天然支持
+  两种作用域。R1（transformBlockType 组级塌缩）不在 blur 提交路径内，另属 turn-into 问题。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下
