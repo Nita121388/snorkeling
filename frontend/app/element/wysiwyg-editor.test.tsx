@@ -83,12 +83,12 @@ describe("convertClosedInlineAtCaret (P3 F5 DOM 手术核心)", () => {
         expect(convertClosedInlineAtCaret(nonText, 5, pair)).toBeNull();
     });
 
-    it("文本次数不匹配（跨节点/中间改动）→ null", () => {
+    it("anchor 内文本与配对不匹配（caret 偏移错位）→ null", () => {
         const pair: ClosedInlinePair = { marker: "**", inner: "bold", innerStart: 2 };
         const { anchor, parent } = makeAnchor("**bold**");
-        // 故意给错误 caret（模拟跨节点：anchor 内文本与 beforeCaret 不一致）
-        const el = convertClosedInlineAtCaret(anchor, 3, pair);
-        expect(el).toBeNull();
+        // anchor 文本是完整配对，但 caretOffset=3 使 startInNode 切出的片段不是
+        // `**bold**`（如 `d**`）→ 文本校验失败 → null（模拟跨节点/中间被改动）。
+        expect(convertClosedInlineAtCaret(anchor, 3, pair)).toBeNull();
         expect(parent.childNodes.length).toBe(1); // anchor 未被破坏
     });
 
