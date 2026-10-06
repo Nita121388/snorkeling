@@ -1999,8 +1999,11 @@ const Markdown = ({
                 mode = "before"; // 移到下一块之前 → 等价于整体下移
             }
             inlineEdit.cancel?.();
-            const { text: movedText, newStartLine } = moveBlockRange(text, start, end, tgt, mode);
-            if (movedText === text) {
+            // 编辑中的 draft（未 blur/Enter 提交）必须先折入源文本再移动，否则 cancel
+            // 会丢弃用户刚输入的内容（P3 复核 P1-2）。折入后以新文本为 moveBlockRange 基底。
+            const baseText = replaceSourceRange(text, start, end, inlineEdit.draftText);
+            const { text: movedText, newStartLine } = moveBlockRange(baseText, start, end, tgt, mode);
+            if (movedText === baseText) {
                 return;
             }
             handleInlineEditCommit(movedText);

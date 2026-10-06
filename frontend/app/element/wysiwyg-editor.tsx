@@ -45,17 +45,19 @@ const INLINE_MARKER_TAGS: Record<string, string> = {
 
 /**
  * 在文本节点 `anchor` 中把 caret 前的闭合行内配对转成对应行内元素（`**bold**` → `<strong>`）。
- * 返回新创建的替换元素（成功时，位于 `parent` 中紧随前文节点之后），或 null（未满足条件：
+ * 返回 `{ el, parent }`（成功时 el 位于 parent 中紧随前文节点之后），或 null（未满足条件：
  * anchor 非文本节点 / 配对不完整 / 文本不匹配——调用方据此静默跳过）。
  *
  * 组件层（applyClosedInlineFormatting）负责读取 caret、组合态守卫与光标重定位；
  * 这里的 DOM 结构变换本身不含 selection 依赖，可在 jsdom 中直接验证。
+ * parent 在 removeChild(anchor) 之前捕获并随返回值带出——调用方若事后读
+ * anchor.parentNode 会是 null（死代码，P3 复核 P1-1）。
  */
 export function convertClosedInlineAtCaret(
     anchor: Node,
     caretOffset: number,
     pair: ClosedInlinePair
-): HTMLElement | null {
+): { el: HTMLElement; parent: Node } | null {
     if (anchor.nodeType !== 3) {
         return null;
     }
@@ -89,7 +91,7 @@ export function convertClosedInlineAtCaret(
         parent.insertBefore(n, anchor);
     }
     parent.removeChild(anchor);
-    return el;
+    return { el, parent };
 }
 
 export type WysiwygEditorHandle = {
@@ -466,15 +468,16 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
             return;
         }
         const caretOffset = sel.anchorOffset;
-        const el = convertClosedInlineAtCaret(anchor, caretOffset, pair);
-        if (el == null) {
+        const result = convertClosedInlineAtCaret(anchor, caretOffset, pair);
+        if (result == null) {
             return; // 防御性跳过（anchor 非文本 / 配对不完整 / 跨节点不匹配）
         }
+        const { el, parent } = result;
         // 光标移动到元素后：用父容器定位（不依赖 nextSibling——配对在段落末尾时
         // el.nextSibling 为 null，selection 会悬在已移除节点上，后续击键可能丢字）。
-        const parent = anchor.parentNode;
+        // parent 由 helper 在 removeChild 前捕获返回（事后读 anchor.parentNode 为 null）。
         const sel2 = window.getSelection();
-        if (sel2 != null && parent != null) {
+        if (sel2 != null) {
             const idx = Array.from(parent.childNodes).indexOf(el);
             const r = document.createRange();
             r.setStart(parent, Math.min(idx + 1, parent.childNodes.length));
@@ -690,6 +693,10 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                         root.innerHTML = "";
                         root.appendChild(listEl);
                         (root as HTMLElement).removeAttribute("contentEditable");
+                        // 列表元素自己接管可编辑（root 退出 contenteditable 后，ul/ol 必须
+                        // 显式开启，否则转换后继续输入无效——与打字触发路径 detectTypingTrigger
+                        // 的 listEl.contentEditable = "true" 对称，P3 复核 P1-3）。
+                        listEl.contentEditable = "true";
 
                         setLiveKind("list");
                         liveKindRef.current = "list";

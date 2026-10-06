@@ -21,11 +21,11 @@ function apply(textBeforeCaret: string, anchorText: string, caretOffset: number)
         return null;
     }
     const { anchor, parent } = makeAnchor(anchorText);
-    const el = convertClosedInlineAtCaret(anchor, caretOffset, pair);
-    if (el == null) {
+    const result = convertClosedInlineAtCaret(anchor, caretOffset, pair);
+    if (result == null) {
         return null;
     }
-    return { el, parent, html: parent.innerHTML };
+    return { el: result.el, parent: result.parent as HTMLElement, html: (result.parent as HTMLElement).innerHTML };
 }
 
 describe("convertClosedInlineAtCaret (P3 F5 DOM 手术核心)", () => {
@@ -34,6 +34,9 @@ describe("convertClosedInlineAtCaret (P3 F5 DOM 手术核心)", () => {
         const r = apply(full, full, full.length);
         expect(r).not.toBeNull();
         expect(r!.html).toBe("<strong>bold</strong>");
+        // helper 返回 parent（removeChild 后 anchor.parentNode 为 null 的修法），
+        // 调用方可据此重定位光标（P3 复核 P1-1 回归测试）。
+        expect(r!.parent.contains(r!.el)).toBe(true);
     });
 
     it("前文保留：`hello **bold**` → hello <strong>bold</strong>", () => {
