@@ -132,6 +132,34 @@ normalize）与快捷键拦截都会打断候选态。P3 建立的守卫模式�
 selection 即选中文字范围），而非块顶——多行块选中文案时工具栏跟随选区。选区异常时回落
 块顶锚定。
 
+## Pattern: 行内格式闭合配对 live 转换（P3 F5）
+
+WYSIWYG 的「所见即所得」打字手感：输入 `**bold**` 光标到末尾即变粗体，而非提交后才变。
+克制方案（不做全量 markdown 扫描器）：
+
+- **纯函数检测**（block-type.ts `detectClosedInlinePair`）：caret 前文本匹配已闭合配对
+  `**bold**` / `*em*` / `` `code` `` / `~~del~~`（`$` 锚定 + 内容行无换行 + 单 `*` 不误伤
+  `**`）。返回 `{ marker, inner, innerStart }`。
+- **最小 DOM 手术**（WysiwygEditor `applyClosedInlineFormatting`）：配对必须完整落在 anchor
+  文本节点内（用户连续输入同一节点）；构造 前文 + `<strong|em|code|del>` 内容 + 后文 替换；
+  光标用**父容器索引定位**（不依赖 nextSibling——配对在段落末尾时 nextSibling 为 null）。
+- **防御**：组合中不执行（compositionActiveRef）；跨节点/内容不匹配/节点非文本 → 静默跳过；
+  handleInput 与 compositionend 后各调一次（幂等）。
+- 序列化闭环：STRONG/EM/DEL/CODE → `**`/`*`/`~~`/` 由 dom-to-markdown 的 wrap() 保证。
+
+## Pattern: 拖拽嵌套（P3 F7）
+
+块拖拽除 before/after 重排外支持**嵌套**（拖入列表项成为子项，思源标志性手势）：
+
+- **纯函数**（`moveBlockRange` inside 模式）：被拖块插入目标项之后，整体缩进到
+  `insideIndent`（目标缩进 + 2），块内相对缩进保留（子列表层级不变）。不添分隔空行。
+- **判定**（dragover/drop）：悬停元素是 LI 且指针在左 25% 嵌套区 → inside。**用 hovered LI
+  自身定位**（不 promote 到父列表），否则含嵌套子列表的 LI 会错位到第一项。
+- **指示**：inside 渲染包裹目标项的虚线框（`.markdown-block-drop-target`），before/after 保留
+  横线指示。
+- **坐标模型**：insert/move/delete 是**跨块范围操作**，不走 block-model 的单块坐标 intent
+  （G10 决策不做——强塞会扭曲单块模型；保持纯函数 + 统一提交通道 handleInlineEditCommit）。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下

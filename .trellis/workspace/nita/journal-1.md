@@ -167,3 +167,10 @@
 - spec：component-guidelines 补充 Pattern「IME 合成守卫（P3）」+「选区工具栏锚定（P3 F10）」。
 - 终审结论：全部 P0/P1 已修；剩余 deferred（F5 live inline 重型工程 / F7 拖拽嵌套 / G10
   架构收敛）作为独立后续任务。
+- 第四批（b559d68e / 209765a6 / e973be6d）：F7 拖拽嵌套（moveBlockRange inside + 左 25%
+  嵌套区 + 虚线框）、F5 行内闭合配对 live 转换（detectClosedInlinePair + 最小 DOM 手术）、
+  check 修复（光标父容器定位、inside 用 LI 自身不 promote）。→ 562 测试。
+- G10 决策不做：insert/move/delete 是跨块范围操作，不走单块坐标 intent；已是纯函数 +
+  统一提交通道，强塞会扭曲块模型。
+- spec：补充 Pattern「行内格式闭合配对 live 转换（P3 F5）」+「拖拽嵌套（P3 F7）」。
+- 最终终审双评审进行中（产品/开发重新打分，判定是否达 98）。
