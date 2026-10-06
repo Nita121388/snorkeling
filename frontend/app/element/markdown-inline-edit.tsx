@@ -426,6 +426,43 @@ function wrapCodeFence(source: string, original: string): string {
     return `${opener}\n${source}\n${closer}`;
 }
 
+const ListIndentStep = 2; // markdown 列表嵌套用 2 空格缩进（与 serializeListDomToMarkdown 一致）
+
+/**
+ * 对 [startLine..endLine]（1-based, inclusive）的列表行做 Tab/Shift+Tab 缩进（P3 F9/G9）。
+ * 只处理列表项 marker 行（`- ` / `1. ` / `- [ ] `，允许已有缩进），其余行（列表内续行）
+ * 保持不动——markdown 的缩进层级由 marker 行的行首缩进决定。
+ *
+ * - dir=1（Tab）：每个 marker 行行首加 ListIndentStep 空格 → 嵌套加深。
+ * - dir=-1（Shift+Tab）：每个 marker 行去掉最多 ListIndentStep 空格 → 嵌套变浅；
+ *   已在 0 缩进（顶层项）时不变。
+ * 返回新全文（行数不变，仅缩进变化）。
+ */
+export function indentListRange(text: string, startLine: number, endLine: number, dir: 1 | -1): string {
+    const lines = text.split(/\r?\n/);
+    const safeStart = Math.min(Math.max(1, Math.trunc(startLine)), lines.length || 1);
+    const safeEnd = Math.max(safeStart, Math.min(Math.trunc(endLine), lines.length));
+    const ListItemLineRe = /^(\s*)([-+*]|\d{1,9}[.)])([ \t]+\[[ xX]\])?[ \t]+/;
+    const next = lines.map((line, i) => {
+        const oneBased = i + 1;
+        if (oneBased < safeStart || oneBased > safeEnd) {
+            return line;
+        }
+        const m = line.match(ListItemLineRe);
+        if (m == null) {
+            return line; // 非列表项行：不动
+        }
+        const indent = m[1] ?? "";
+        if (dir === 1) {
+            return `${indent}${" ".repeat(ListIndentStep)}${line.slice(indent.length)}`;
+        }
+        // dir === -1：去掉最多 ListIndentStep 个行首空格
+        const remove = Math.min(indent.length, ListIndentStep);
+        return line.slice(remove);
+    });
+    return next.join("\n");
+}
+
 type UseInlineEditArgs = {
     fullText: string;
     /** Called with the new full text on every successful commit; never on cancel. */
@@ -1241,6 +1278,16 @@ export function InlineEditOverlay({
                     onKeyDown={onKeyDown as (e: React.KeyboardEvent<HTMLElement>) => void}
                     onBlur={(content) => onBlur(content)}
                     onPaste={onPaste as ((e: React.ClipboardEvent<HTMLElement>) => void) | undefined}
+                    onSelectionChange={(sel) => {
+                        // WYSIWYG 选区 → overlay 的 onCaretChange(caret, selEnd)：折叠选区
+                        // selEnd===caret → 父层不显示工具栏；非折叠 → sel={start,end}。
+                        if (sel != null) {
+                            onCaretChange?.(sel.start, sel.end);
+                        } else {
+                            const caret = wysiwygRef.current?.getCaretMarkdown() ?? 0;
+                            onCaretChange?.(caret, caret);
+                        }
+                    }}
                 />
             ) : (
                 <>
@@ -1329,6 +1376,18 @@ export function makeInlineEditKeydown(opts: {
      *  empty item merges/removes it natively). Without this, the shared keydown would call
      *  onNavigateUp → cancel and close the editor, leaving the empty item behind. */
     allowNativeBackspaceOnEmpty?: () => boolean;
+    /** Called when ArrowUp is pressed with the caret at the block's FIRST line start (cross-block
+     *  navigation, P3 F6/G8). */
+    onNavigatePrev?: () => void;
+    /** Called when ArrowDown is pressed with the caret at the block's LAST line end (cross-block
+     *  navigation, P3 F6/G8). */
+    onNavigateNext?: () => void;
+    /** Current caret offset within the draft (textarea selectionStart / WYSIWYG markdown caret). */
+    getCaretPos?: () => number;
+    /** Total draft length in the same coordinate as getCaretPos. */
+    getTextLen?: () => number;
+    /** Called on Tab/Shift+Tab in a list session so the caller can indent/outdent (P3 F9/G9). */
+    onIndentList?: (dir: 1 | -1) => void;
 }) {
     return (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === "Escape") {
@@ -1357,6 +1416,29 @@ export function makeInlineEditKeydown(opts: {
                 }
                 e.preventDefault();
                 opts.onNavigateUp();
+                return;
+            }
+        }
+        // 跨块方向键导航（P3 F6/G8）：光标在块首时按 ↑ → 上一块；光标在块尾时按 ↓ → 下一块。
+        // 组合中（输入法候选态）不拦截，让浏览器原生处理。仅当调用方 wire 了导航回调。
+        const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
+        const caretPos = opts.getCaretPos?.() ?? 0;
+        const textLen = opts.getTextLen?.() ?? 0;
+        if (!native.isComposing) {
+            if (e.key === "ArrowUp" && caretPos === 0 && opts.onNavigatePrev != null) {
+                e.preventDefault();
+                opts.onNavigatePrev();
+                return;
+            }
+            if (e.key === "ArrowDown" && caretPos >= textLen && opts.onNavigateNext != null) {
+                e.preventDefault();
+                opts.onNavigateNext();
+                return;
+            }
+            // 列表 Tab/Shift+Tab 缩进（P3 F9/G9）：仅当调用方 wire 了 onIndentList。
+            if (e.key === "Tab" && opts.onIndentList != null) {
+                e.preventDefault();
+                opts.onIndentList(e.shiftKey ? -1 : 1);
                 return;
             }
         }

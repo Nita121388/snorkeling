@@ -8,6 +8,7 @@ import {
     commitPlaceholderBlock,
     deleteBlockRange,
     expandBlockSelection,
+    indentListRange,
     inlineKindToTreeKind,
     isSelectingRange,
     makeInlineEditKeydown,
@@ -350,6 +351,38 @@ describe("commitPlaceholderBlock (placeholder row → real block)", () => {
     });
 });
 
+describe("indentListRange (P3 F9/G9: list Tab/Shift+Tab)", () => {
+    it("Tab 缩进列表项（行首 +2 空格）", () => {
+        const text = "- one\n- two\n- three";
+        expect(indentListRange(text, 1, 2, 1)).toBe("  - one\n  - two\n- three");
+    });
+
+    it("Shift+Tab 反缩进（去掉 2 空格）", () => {
+        const text = "  - one\n  - two\n- three";
+        expect(indentListRange(text, 1, 1, -1)).toBe("- one\n  - two\n- three");
+    });
+
+    it("顶层项 Shift+Tab 不变（已是 0 缩进）", () => {
+        const text = "- one\n- two";
+        expect(indentListRange(text, 1, 1, -1)).toBe(text);
+    });
+
+    it("有序列表缩进保持 marker", () => {
+        const text = "1. first\n2. second";
+        expect(indentListRange(text, 1, 2, 1)).toBe("  1. first\n  2. second");
+    });
+
+    it("任务列表缩进保持 checkbox", () => {
+        const text = "- [ ] task";
+        expect(indentListRange(text, 1, 1, 1)).toBe("  - [ ] task");
+    });
+
+    it("非列表行不动（列表内续行）", () => {
+        const text = "- one\n  continuation\n- two";
+        expect(indentListRange(text, 1, 1, 1)).toBe("  - one\n  continuation\n- two");
+    });
+});
+
 describe("makeInlineEditKeydown — Enter split vs native passthrough (P3 G1)", () => {
     type KeyEv = Parameters<ReturnType<typeof makeInlineEditKeydown>>[0];
     const makeKeyEvent = (opts: {
@@ -418,6 +451,95 @@ describe("makeInlineEditKeydown — Enter split vs native passthrough (P3 G1)", 
         const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onSplitCaret });
         handler(makeKeyEvent({ key: "Enter", shift: true }));
         expect(onSplitCaret).not.toHaveBeenCalled();
+    });
+
+    it("ArrowUp at caret 0 navigates to the previous block (P3 F6/G8)", () => {
+        const onNavigatePrev = vi.fn();
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onNavigatePrev,
+            getCaretPos: () => 0,
+            getTextLen: () => 10,
+        });
+        const ev = makeKeyEvent({ key: "ArrowUp" });
+        handler(ev);
+        expect(onNavigatePrev).toHaveBeenCalledTimes(1);
+        expect(ev.preventDefault).toHaveBeenCalled();
+    });
+
+    it("ArrowUp mid-text does NOT cross-block navigate (native caret move)", () => {
+        const onNavigatePrev = vi.fn();
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onNavigatePrev,
+            getCaretPos: () => 3,
+            getTextLen: () => 10,
+        });
+        handler(makeKeyEvent({ key: "ArrowUp" }));
+        expect(onNavigatePrev).not.toHaveBeenCalled();
+    });
+
+    it("ArrowDown at text end navigates to the next block (P3 F6/G8)", () => {
+        const onNavigateNext = vi.fn();
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onNavigateNext,
+            getCaretPos: () => 10,
+            getTextLen: () => 10,
+        });
+        const ev = makeKeyEvent({ key: "ArrowDown" });
+        handler(ev);
+        expect(onNavigateNext).toHaveBeenCalledTimes(1);
+        expect(ev.preventDefault).toHaveBeenCalled();
+    });
+
+    it("ArrowDown mid-text does NOT cross-block navigate", () => {
+        const onNavigateNext = vi.fn();
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onNavigateNext,
+            getCaretPos: () => 4,
+            getTextLen: () => 10,
+        });
+        handler(makeKeyEvent({ key: "ArrowDown" }));
+        expect(onNavigateNext).not.toHaveBeenCalled();
+    });
+
+    it("ArrowUp/Down while IME composing pass through (no cross-block nav)", () => {
+        const onNavigatePrev = vi.fn();
+        const onNavigateNext = vi.fn();
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onNavigatePrev,
+            onNavigateNext,
+            getCaretPos: () => 0,
+            getTextLen: () => 0,
+        });
+        handler(makeKeyEvent({ key: "ArrowUp", composing: true }));
+        handler(makeKeyEvent({ key: "ArrowDown", composing: true }));
+        expect(onNavigatePrev).not.toHaveBeenCalled();
+        expect(onNavigateNext).not.toHaveBeenCalled();
+    });
+
+    it("Tab forwards onIndentList(+1), Shift+Tab forwards onIndentList(-1) (P3 F9)", () => {
+        const onIndentList = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onIndentList });
+        handler(makeKeyEvent({ key: "Tab" }));
+        expect(onIndentList).toHaveBeenCalledWith(1);
+        handler(makeKeyEvent({ key: "Tab", shift: true }));
+        expect(onIndentList).toHaveBeenCalledWith(-1);
+    });
+
+    it("Tab without onIndentList passes through (native focus move)", () => {
+        const ev = makeKeyEvent({ key: "Tab" });
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn() });
+        handler(ev);
+        expect(ev.preventDefault).not.toHaveBeenCalled();
     });
 });
 

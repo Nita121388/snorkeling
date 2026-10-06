@@ -60,6 +60,7 @@ import { computeCollapsedHiddenFlags, findCollapsedScrollPinIndex } from "@/app/
 import {
     deleteBlockRange,
     expandBlockSelection,
+    indentListRange,
     inlineEditDebug,
     InlineEditOverlay,
     isSelectingRange,
@@ -1881,6 +1882,24 @@ const Markdown = ({
         [getViewportEl]
     );
 
+    const getNextBlockLine = useCallback(
+        (startLine: number): number | null => {
+            const viewport = getViewportEl();
+            const root = viewport?.querySelector<HTMLElement>(".markdown-render-root");
+            if (root == null) return null;
+            // Smallest rendered block start line strictly after `startLine` (跨块向下导航，P3 F6/G8)。
+            let next: number | null = null;
+            root.querySelectorAll<HTMLElement>("[data-source-line]").forEach((b) => {
+                const line = Number(b.dataset.sourceLine);
+                if (Number.isFinite(line) && line > startLine && (next == null || line < next)) {
+                    next = line;
+                }
+            });
+            return next;
+        },
+        [getViewportEl]
+    );
+
     const blockKindFromElement = (el: HTMLElement | null): InlineEditBlockKind => {
         if (el == null) return "p";
         switch (el.tagName) {
@@ -1933,6 +1952,72 @@ const Markdown = ({
         const prevEl = viewport?.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${prevLine}"]`);
         focusEditedLine(prevLine, revert, true, undefined, undefined, blockKindFromElement(prevEl));
     }, [inlineEdit, text, handleInlineEditCommit, focusEditedLine, getPreviousBlockLine, getViewportEl]);
+
+    // 跨块向上导航（P3 F6/G8）：光标在块首按 ↑ → 提交当前块并打开上一块编辑器。
+    // 与 handleNavigateUp（空稿退格合并）语义不同：这里不删除内容，仅移动编辑焦点。
+    const handleNavigateUpCrossBlock = useCallback(() => {
+        const session = inlineEdit.editSession;
+        if (session == null) {
+            return;
+        }
+        const prevLine = getPreviousBlockLine(session.startLine);
+        if (prevLine == null) {
+            return; // 已是第一块：无动作
+        }
+        const viewport = getViewportEl();
+        const prevEl = viewport?.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${prevLine}"]`);
+        inlineEdit.commit();
+        focusEditedLine(prevLine, undefined, false, undefined, undefined, blockKindFromElement(prevEl));
+    }, [inlineEdit, getPreviousBlockLine, focusEditedLine, getViewportEl]);
+
+    // 列表 Tab/Shift+Tab 缩进（P3 F9/G9）：仅列表会话；对会话行范围做 2 空格缩进/反缩进
+    // 后提交（走 handleInlineEditCommit → P1 undo 栈）。WYSIWYG 列表不拦截（contentEditable
+    // 无列表缩进语义，交由原生；当前 Tab 在列表会话处由下方分支转发到此处，wysiwyg list 走
+    // allowNativeEnter 相似逻辑——这里对 wysiwyg list 直接跳过，保持原生行为）。
+    const handleIndentList = useCallback(
+        (dir: 1 | -1) => {
+            const session = inlineEdit.editSession;
+            if (session == null || session.blockKind !== "list") {
+                return;
+            }
+            if (session.wysiwyg) {
+                return; // WYSIWYG list：原生 Tab 语义不定义，跳过（不吞键也不变形）
+            }
+            const newFull = indentListRange(text, session.startLine, session.endLine, dir);
+            if (newFull === text) {
+                return; // 无变化（如顶层项 Shift+Tab）：不写 undo 栈
+            }
+            handleInlineEditCommit(newFull);
+            // 保持编辑会话打开（焦点留在 textarea，光标不动）
+            requestAnimationFrame(() => {
+                const el = inlineEdit.textareaRef.current;
+                if (el != null) {
+                    el.focus({ preventScroll: true });
+                    const pos = el.selectionStart ?? 0;
+                    el.setSelectionRange(pos, pos);
+                }
+            });
+        },
+        [inlineEdit, text, handleInlineEditCommit]
+    );
+
+    // 跨块向下导航（P3 F6/G8）：光标在块末尾按 ↓ → 打开下一块编辑器并聚焦到行首。
+    // 与 handleNavigateUp 对称：后者在空稿退格/块首 ↑ 时并入上一块，这里在块尾 ↓ 时
+    // 直接移动到下一块（不删除当前块）。
+    const handleNavigateDown = useCallback(() => {
+        const session = inlineEdit.editSession;
+        if (session == null) {
+            return;
+        }
+        const nextLine = getNextBlockLine(session.endLine);
+        if (nextLine == null) {
+            return; // 已是最后一块：无动作（保留当前编辑）
+        }
+        const viewport = getViewportEl();
+        const nextEl = viewport?.querySelector<HTMLElement>(`.markdown-render-root [data-source-line="${nextLine}"]`);
+        inlineEdit.commit();
+        focusEditedLine(nextLine, undefined, false, undefined, undefined, blockKindFromElement(nextEl));
+    }, [inlineEdit, getNextBlockLine, focusEditedLine, getViewportEl]);
 
     // --- Paste image → save to assets/ + insert ![..](assets/..) + render ----------------------
     // Mirrors Obsidian: pasting an image while editing a block saves it to a sibling `assets`
@@ -2590,8 +2675,20 @@ const Markdown = ({
                 allowNativeBackspaceOnEmpty: () =>
                     inlineEdit.editSession?.wysiwyg === true &&
                     inlineEdit.editSession.blockKind === "list",
+                // 跨块方向键导航（P3 F6/G8）
+                onNavigatePrev: handleNavigateUpCrossBlock,
+                onNavigateNext: handleNavigateDown,
+                onIndentList: handleIndentList,
+                getCaretPos: () =>
+                    inlineEdit.editSession?.wysiwyg === true
+                        ? (inlineEdit.wysiwygRef.current?.getCaretMarkdown() ?? 0)
+                        : (inlineEdit.textareaRef.current?.selectionStart ?? 0),
+                getTextLen: () =>
+                    inlineEdit.editSession?.wysiwyg === true
+                        ? (inlineEdit.wysiwygRef.current?.getMarkdown().length ?? 0)
+                        : (inlineEdit.textareaRef.current?.value.length ?? 0),
             }),
-        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit, handleNavigateUp]
+        [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit, handleNavigateUp, handleNavigateUpCrossBlock, handleNavigateDown, handleIndentList]
     );
 
     // === Block editor M2: slash palette + floating toolbar + inline-style shortcuts ===
@@ -3077,10 +3174,23 @@ const Markdown = ({
 
     const handleEmojiPick = useCallback(
         (entry: EmojiEntry) => {
-            const ta = inlineEdit.textareaRef.current;
             if (emojiState == null) {
                 return;
             }
+            const w = inlineEdit.wysiwygRef.current;
+            const isWysiwyg = inlineEdit.editSession?.wysiwyg === true && w != null;
+            if (isWysiwyg) {
+                // WYSIWYG 路径（P3 G6）：DOM 是事实源。删掉 caret 前的 `::query` 触发前缀
+                // 再插入 emoji（触发前缀长度 = 2 个冒号 + query），然后 syncMirror 让
+                // draftText 跟上，blur 提交以 DOM 序列化为准 → emoji 不再丢失。
+                const prefixLen = 2 + emojiState.query.length;
+                w.deleteCharsBeforeCaret(prefixLen);
+                w.insertTextAtCaret(entry.char);
+                recordRecentEmoji(entry.char);
+                setEmojiState(null);
+                return;
+            }
+            const ta = inlineEdit.textareaRef.current;
             // Replace "::query" (double-colon trigger .. caret) with the emoji, caret after it.
             const draft = inlineEdit.draftText;
             const caret = ta?.selectionStart ?? emojiState.triggerStart + 2 + emojiState.query.length;
@@ -3112,8 +3222,20 @@ const Markdown = ({
 
     const handleSlashEmojiPick = useCallback(
         (entry: EmojiEntry) => {
+            if (!slashEmojiState.open) {
+                return;
+            }
+            const w = inlineEdit.wysiwygRef.current;
+            const isWysiwyg = inlineEdit.editSession?.wysiwyg === true && w != null;
+            if (isWysiwyg) {
+                // WYSIWYG 路径（P3 G6）：DOM 是事实源，直接在 caret 插入 emoji。
+                w.insertTextAtCaret(entry.char);
+                recordRecentEmoji(entry.char);
+                setSlashEmojiState((s) => ({ ...s, open: false, query: "", activeIndex: 0 }));
+                return;
+            }
             const ta = inlineEdit.textareaRef.current;
-            if (!slashEmojiState.open || ta == null) {
+            if (ta == null) {
                 return;
             }
             // Insert the emoji at the current caret position (no trigger text to strip).

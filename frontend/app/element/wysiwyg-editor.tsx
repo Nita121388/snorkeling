@@ -33,6 +33,8 @@ export type WysiwygEditorHandle = {
     getMarkdown(): string;
     /** Get the caret offset in MARKDOWN space (via sentinel serialization). */
     getCaretMarkdown(): number;
+    /** Get the selection range in MARKDOWN space, null when collapsed (P3 G4). */
+    getSelectionRange(): { start: number; end: number } | null;
     /** Get the plain visible text content (no markdown markers). */
     getText(): string;
     /** Wrap the current selection with an inline style (execCommand-based). */
@@ -41,6 +43,8 @@ export type WysiwygEditorHandle = {
     getActiveInlineStyles(): Set<string>;
     /** Insert plain text at the caret (used by paste-image / emoji DOM insert paths). */
     insertTextAtCaret(text: string): void;
+    /** Delete `count` characters immediately before the caret (used to strip `::query` triggers). */
+    deleteCharsBeforeCaret(count: number): void;
     /** Live-convert the block to a new kind (called by slash/toolbar commands). */
     applyLiveKind(kind: BlockKind, headingLevel?: number): void;
     /**
@@ -78,6 +82,8 @@ export type WysiwygEditorProps = {
     onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
     /** Called on paste (parent handles image upload to assets / text passthrough). */
     onPaste?: (e: React.ClipboardEvent<HTMLElement>) => void;
+    /** Called on selection change with the markdown-space range (P3 G4: floating toolbar). */
+    onSelectionChange?: (sel: { start: number; end: number } | null) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -85,6 +91,8 @@ export type WysiwygEditorProps = {
 // ---------------------------------------------------------------------------
 
 const SENTINEL = "\uE000";
+const SENTINEL_START = "\uE001";
+const SENTINEL_END = "\uE002";
 
 /**
  * Insert a sentinel character at the current selection in `root`, serialize
@@ -112,6 +120,44 @@ function sentinelMarkdownCaret(
     root.normalize();
     // Merge any adjacent text nodes the insertion may have split.
     return idx >= 0 ? idx : null;
+}
+
+/**
+ * DOM 选区 → markdown 空间的 `{start, end}` 偏移（P3 G4：让 FloatingToolbar 在 WYSIWYG
+ * 下也能拿到选区）。与 sentinelMarkdownCaret 同法：选区两端各插一个哨兵，序列化后读出
+ * 两个索引。与 caret 版不同：折叠选区返回 null（非选区 → 无工具栏）。
+ */
+function sentinelMarkdownSelection(
+    root: Element,
+    ctx: {
+        kind: WysiwygBlockKind;
+        headingLevel?: number;
+        listMarker?: string;
+    }
+): { start: number; end: number } | null {
+    const sel = window.getSelection();
+    if (sel == null || sel.rangeCount === 0 || sel.isCollapsed || !root.contains(sel.anchorNode)) {
+        return null;
+    }
+    const range = sel.getRangeAt(0);
+    const startNode = document.createTextNode(SENTINEL_START);
+    const endNode = document.createTextNode(SENTINEL_END);
+    const rStart = range.cloneRange();
+    rStart.collapse(true);
+    rStart.insertNode(startNode);
+    const rEnd = range.cloneRange();
+    rEnd.collapse(false);
+    rEnd.insertNode(endNode);
+    const md = serializeBlockDomToMarkdown(root, ctx);
+    const iStart = md.indexOf(SENTINEL_START);
+    const iEnd = md.indexOf(SENTINEL_END);
+    startNode.parentNode?.removeChild(startNode);
+    endNode.parentNode?.removeChild(endNode);
+    root.normalize();
+    if (iStart < 0 || iEnd < 0) {
+        return null;
+    }
+    return { start: Math.min(iStart, iEnd), end: Math.max(iStart, iEnd) };
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +211,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         onBlur,
         onKeyDown,
         onPaste,
+        onSelectionChange,
     },
     ref
 ) {
@@ -411,6 +458,12 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 return rootRef.current != null ? (sentinelMarkdownCaret(rootRef.current, commitCtx()) ?? 0) : 0;
             },
 
+            getSelectionRange() {
+                return rootRef.current != null
+                    ? sentinelMarkdownSelection(rootRef.current, commitCtx())
+                    : null;
+            },
+
             getText() {
                 return rootRef.current?.textContent ?? "";
             },
@@ -430,12 +483,18 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                         document.execCommand("strikeThrough", false);
                         break;
                     case "code": {
-                        // Wrap selection in <code> tag.
+                        // Wrap selection in <code> tag. 选区跨非文本节点（如跨 <strong>）时
+                        // surroundContents 会抛 InvalidStateError（P3 G12），catch 后回退到
+                        // 原样（不崩溃，用户可重试或手动输入反引号）。
                         const sel = window.getSelection();
                         if (sel != null && !sel.isCollapsed) {
                             const range = sel.getRangeAt(0);
                             const code = document.createElement("code");
-                            range.surroundContents(code);
+                            try {
+                                range.surroundContents(code);
+                            } catch {
+                                // 跨节点选区无法整体包裹：忽略（保留 DOM 原样）。
+                            }
                         }
                         break;
                     }
@@ -610,9 +669,79 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 // 粘贴/emoji 插入后同步镜像（draftText 跟上），并触发 typing-trigger 转换。
                 syncMirror();
             },
+
+            deleteCharsBeforeCaret(count) {
+                const root = rootRef.current;
+                if (root == null || count <= 0) return;
+                const sel = window.getSelection();
+                if (sel == null || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) return;
+                const anchor = sel.anchorNode;
+                const caretOffset = sel.anchorOffset;
+                // 计算 caret 前的 DOM 文本总偏移（含当前文本节点内偏移）。
+                const fullRange = document.createRange();
+                fullRange.selectNodeContents(root);
+                fullRange.setEnd(anchor!, caretOffset);
+                const beforeCaret = fullRange.toString();
+                if (beforeCaret.length < count) {
+                    return; // 前缀不足：不动（触发前缀必然在 caret 前）
+                }
+                const delStart = beforeCaret.length - count;
+                // 用文本节点坐标删除 [delStart, beforeCaret.length)。
+                const walkRange = document.createRange();
+                let pos = 0;
+                const textNodes: { node: Text; start: number; end: number }[] = [];
+                const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                let node: Node | null;
+                while ((node = tw.nextNode()) != null) {
+                    const len = (node.textContent ?? "").length;
+                    textNodes.push({ node: node as Text, start: pos, end: pos + len });
+                    pos += len;
+                }
+                let startNode: Text | null = null;
+                let startOffset = 0;
+                for (const tn of textNodes) {
+                    if (tn.end > delStart) {
+                        startNode = tn.node;
+                        startOffset = delStart - tn.start;
+                        break;
+                    }
+                }
+                if (startNode == null) return;
+                walkRange.setStart(startNode, Math.max(0, startOffset));
+                walkRange.setEnd(anchor!, caretOffset);
+                walkRange.deleteContents();
+                root.normalize();
+                syncMirror();
+            },
         }),
         [commitCtx, syncMirror]
     );
+
+    // --- Selection reporting (P3 G4): WYSIWYG 下的选区 → markdown 空间范围，供 FloatingToolbar
+    // 显示/锚定。document selectionchange 是全局的，但这里只在自己仍挂载且焦点在 root 内时上报。
+    // IME 组合中不上报（选区可能处于候选中间态）。
+    const selectionReportRef = useRef(onSelectionChange);
+    selectionReportRef.current = onSelectionChange;
+    useLayoutEffect(() => {
+        const handleSelectionChange = () => {
+            if (compositionActiveRef.current || rootRef.current == null) {
+                return;
+            }
+            const sel = window.getSelection();
+            const inside =
+                sel != null &&
+                sel.rangeCount > 0 &&
+                rootRef.current.contains(sel.anchorNode) &&
+                rootRef.current.contains(sel.focusNode);
+            if (!inside) {
+                selectionReportRef.current?.(null);
+                return;
+            }
+            selectionReportRef.current?.(sentinelMarkdownSelection(rootRef.current, commitCtx()));
+        };
+        document.addEventListener("selectionchange", handleSelectionChange);
+        return () => document.removeEventListener("selectionchange", handleSelectionChange);
+    }, [commitCtx]);
 
     // --- Render ---
     const Tag = liveKind === "list" ? ("div" as const) : ("div" as const);
