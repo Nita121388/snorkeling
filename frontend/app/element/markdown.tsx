@@ -3598,6 +3598,25 @@ const Markdown = ({
     );
 
     const toolbarAnchor = useMemo(() => {
+        // P3 F10：锚定「选区 rect」而非块顶——思源/我来均锚选区中心上方。textarea 与
+        // WYSIWYG 都在编辑中，当前 DOM selection 就是被选中的文字范围。
+        const sel = window.getSelection();
+        if (sel != null && !sel.isCollapsed && sel.rangeCount > 0) {
+            try {
+                const rect = sel.getRangeAt(0).getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    let top = rect.top - 40;
+                    if (top < 8) {
+                        top = rect.bottom + 6;
+                    }
+                    const left = Math.max(8, Math.min(window.innerWidth - 340, rect.left + rect.width / 2 - 170));
+                    return { top, left };
+                }
+            } catch {
+                // getBoundingClientRect 异常（选区被清理）：回落块顶锚定。
+            }
+        }
+        // 回落：锚 overlay（块）顶部（旧行为）
         const rect = inlineEdit.overlayRect;
         if (rect == null) {
             return null;
@@ -3608,7 +3627,7 @@ const Markdown = ({
         }
         const left = Math.max(8, Math.min(window.innerWidth - 340, rect.left + rect.width / 2 - 170));
         return { top, left };
-    }, [inlineEdit.overlayRect]);
+    }, [inlineEdit.overlayRect, inlineSelection]);
 
     const toolbarBlockItems = useMemo(() => {
         const session = inlineEdit.editSession;

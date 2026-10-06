@@ -37,6 +37,21 @@ prd.md 补充。核心差距：WYSIWYG 旗舰路径功能自洽 + IME 组合。
 - G10（交互收敛到 controller intent：insert/move/delete block）：P2，4 分；架构一致性提升，
   非用户可见，优先级低。
 
+### 终审（2026-10-06）
+产品评审 **90.5**（代码 95/设计 93/体验 88/竞争力 86）；开发评审 **82.5**（代码 88/设计 84/
+体验 78/竞争力 80）。未达 98；共识差距按影响：F10 工具栏锚选区（最直观）→ F5 live 格式
+转换 → F7 拖拽嵌套 → WYSIWYG list Tab 死键 → G10 收敛 → selectionchange 性能 →
+WYSIWYG 单测空白 → 组合中切块陈旧提交/串块风险（P1）。
+
+### 第三批（commit 2d4b2650，终审发现项修复，已完成）
+- WYSIWYG 列表 Tab 死键：handleIndentList wysiwyg 分支改走 applyListIndent（execCommand
+  indent/outdent → 原生嵌套 → 序列化重输出缩进 marker）。
+- 性能（P2-4）：makeInlineEditKeydown caret/textLen 惰性求值（仅方向键/Tab 时计算，
+  普通键击不再 2 次全量序列化）。
+- P1 串块风险：commit() wysiwyg 会话 content 缺失时优先 DOM 序列化 getMarkdown()，
+  不再用组合前陈旧 draftText（消除切块丢字/串块覆写）。
+- 回归测试 +1；39 文件 / 547 测试全绿；tsc 68 基线不变。
+
 ## 目标
 
 交互质感打磨（对标思源/我来）。评审差距分析 → IME 守卫先行 → 差距清单逐项实施 → 终审打分 ≥98。
