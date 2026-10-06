@@ -223,6 +223,46 @@ const InlineEditAutosaveDebounceMs = 1500;
 
 const LinkTooltipSafeZonePadPx = 8;
 
+/**
+ * 把粘贴的图片 blob 写入文件所在目录的兄弟 `assets/`（按需建目录），返回相对路径
+ * （如 `assets/image-20261006-143022-123.png`）。写盘失败返回 null（调用方应放行原生粘贴，
+ * 不落脏数据）。textarea 与 WYSIWYG 粘贴路径共用（P3 F3/G5）。
+ */
+async function savePastedImageToAssets(
+    blob: Blob,
+    baseDir: string,
+    connName: string
+): Promise<string | null> {
+    const ext = blob.type === "image/jpeg" ? "jpg" : blob.type.replace("image/", "").split("+")[0] || "png";
+    const date = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp =
+        `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
+        `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+    const rand = Math.floor(Math.random() * 900 + 100);
+    const fileName = `image-${stamp}-${rand}.${ext}`;
+    const relPath = `assets/${fileName}`;
+
+    try {
+        // 1) ensure the sibling assets/ directory exists
+        const baseUri = formatRemoteUri(baseDir, connName);
+        await RpcApi.FileMkdirCommand(TabRpcClient, {
+            info: { path: `${baseUri}/assets`, mimetype: "directory" },
+        });
+        // 2) write the image bytes
+        const buf = await blob.arrayBuffer();
+        const data64 = arrayToBase64(new Uint8Array(buf));
+        await RpcApi.FileWriteCommand(TabRpcClient, {
+            info: { path: `${baseUri}/${relPath}`, mimetype: blob.type },
+            data64,
+        });
+    } catch (err) {
+        console.error("[markdown] paste-image write failed", err);
+        return null;
+    }
+    return relPath;
+}
+
 /** True when (x, y) is inside `rect` expanded by `pad` px on every side. */
 function pointInExpandedRect(x: number, y: number, rect: DOMRect, pad: number): boolean {
     return x >= rect.left - pad && x <= rect.right + pad && y >= rect.top - pad && y <= rect.bottom + pad;
@@ -1901,11 +1941,10 @@ const Markdown = ({
     // markdown line goes through the shared draft (so Save/Revert still apply to the text).
     // Pure-text pastes are untouched (handler returns undefined → native paste proceeds).
     const handleEditorPaste = useCallback(
-        async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        async (e: React.ClipboardEvent<HTMLElement>) => {
             const session = inlineEdit.editSession;
-            const ta = inlineEdit.textareaRef.current;
             const baseDir = resolveOpts?.baseDir;
-            if (session == null || ta == null || baseDir == null) {
+            if (session == null || baseDir == null) {
                 return; // not editing / no file dir to write into → native paste
             }
             // Find an image item in the clipboard (png/jpg/gif/webp). If none, fall through.
@@ -1921,38 +1960,31 @@ const Markdown = ({
             e.preventDefault();
             e.stopPropagation();
 
-            const ext = blob.type === "image/jpeg" ? "jpg" : blob.type.replace("image/", "").split("+")[0] || "png";
-            const date = new Date();
-            const pad = (n: number) => String(n).padStart(2, "0");
-            const stamp =
-                `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
-                `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
-            const rand = Math.floor(Math.random() * 900 + 100);
-            const fileName = `image-${stamp}-${rand}.${ext}`;
-            const relPath = `assets/${fileName}`;
+            // 写盘（textarea 与 WYSIWYG 共用）：assets/ 建目录 → 写文件 → 返回相对路径。
+            const relPath = await savePastedImageToAssets(blob, baseDir, resolveOpts?.connName ?? "local");
+            if (relPath == null) {
+                return; // 写盘失败：不落脏数据，放行原生（用户可手动保存）
+            }
+            const imgMarkdown = `![图片](${relPath})`;
 
-            try {
-                // 1) ensure the sibling assets/ directory exists
-                const baseUri = formatRemoteUri(baseDir, resolveOpts?.connName ?? "local");
-                await RpcApi.FileMkdirCommand(TabRpcClient, {
-                    info: { path: `${baseUri}/assets`, mimetype: "directory" },
-                });
-                // 2) write the image bytes
-                const buf = await blob.arrayBuffer();
-                const data64 = arrayToBase64(new Uint8Array(buf));
-                await RpcApi.FileWriteCommand(TabRpcClient, {
-                    info: { path: `${baseUri}/${relPath}`, mimetype: blob.type },
-                    data64,
-                });
-            } catch (err) {
-                console.error("[markdown] paste-image write failed", err);
+            // WYSIWYG 路径（P3 F3/G5）：在 contentEditable DOM 的 caret 处插入图片 markdown
+            // 文本并 syncMirror（draftText 跟上）；blur 提交以 DOM 序列化为准，图片引用自然
+            // 落盘。不再有 blob: URL 污染源码的问题。
+            if (session.wysiwyg) {
+                const w = inlineEdit.wysiwygRef.current;
+                if (w != null) {
+                    w.insertTextAtCaret(imgMarkdown);
+                }
                 return;
             }
 
-            // 3) insert `![图片](assets/xxx.png)` at the caret and commit
+            // textarea 路径：insert `![图片](assets/xxx.png)` at the caret and commit
+            const ta = inlineEdit.textareaRef.current;
+            if (ta == null) {
+                return;
+            }
             const caretPos = ta.selectionStart;
             const draft = inlineEdit.draftText;
-            const imgMarkdown = `![图片](${relPath})`;
             const newDraft = draft.slice(0, caretPos) + imgMarkdown + draft.slice(caretPos);
             const newFull = replaceSourceRange(text, session.startLine, session.endLine, newDraft);
             handleInlineEditCommit(newFull);
@@ -2549,6 +2581,15 @@ const Markdown = ({
                 save: onInlineEditSave,
                 onSplitCaret: handleEnterSplit,
                 onNavigateUp: handleNavigateUp,
+                // WYSIWYG list: let the contentEditable handle Enter natively (create a new
+                // <li>). handleEnterSplit returns early for that case, so without this flag
+                // the shared keydown would preventDefault and Enter would be a dead key.
+                allowNativeEnter: () =>
+                    inlineEdit.editSession?.wysiwyg === true &&
+                    inlineEdit.editSession.blockKind === "list",
+                allowNativeBackspaceOnEmpty: () =>
+                    inlineEdit.editSession?.wysiwyg === true &&
+                    inlineEdit.editSession.blockKind === "list",
             }),
         [inlineEdit.commit, inlineEdit.cancel, onInlineEditSave, handleEnterSplit, handleNavigateUp]
     );
@@ -3248,6 +3289,13 @@ const Markdown = ({
 
     const handleEditorKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            // IME 组合中（中文/日文输入法候选态）Enter/方向键只用于选候选词，任何面板
+            // 快捷键/导航都必须放行给浏览器原生组合，不得拦截。P3 修复（F1/G3）：三个面板
+            // 分支（slash / emoji / slashEmoji）在入口统一守卫，避免组合确认词被吞并触发命令。
+            const nativeKey = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
+            if (nativeKey.isComposing) {
+                return;
+            }
             // Palette navigation swallows the keys before the edit keymap sees them.
             if (slashState != null && slashItems.length > 0) {
                 if (e.key === "ArrowDown" || e.key === "ArrowUp") {

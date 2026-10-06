@@ -82,6 +82,36 @@ describe("makeInlineEditKeydown — merge-up on an emptied line", () => {
         expect(onNavigateUp).not.toHaveBeenCalled();
     });
 
+    it("does NOT navigate up when allowNativeBackspaceOnEmpty flips true (WYSIWYG list)", () => {
+        // P3 F4：WYSIWYG list 的空项退格应放行浏览器原生（合并/删除项），不触发
+        // onNavigateUp（否则编辑器直接关闭、空项残留、焦点丢失）。
+        const onNavigateUp = vi.fn();
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onNavigateUp,
+            allowNativeBackspaceOnEmpty: () => true,
+        });
+        handler(makeKeyEvent({ key: "Backspace", value: "" }));
+        expect(onNavigateUp).not.toHaveBeenCalled();
+        // 且不 preventDefault（放行原生）
+        const ev = makeKeyEvent({ key: "Backspace", value: "" });
+        handler(ev);
+        expect(ev.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("still forwards Backspace when allowNativeBackspaceOnEmpty flips false (non-list)", () => {
+        const onNavigateUp = vi.fn();
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onNavigateUp,
+            allowNativeBackspaceOnEmpty: () => false,
+        });
+        handler(makeKeyEvent({ key: "Backspace", value: "" }));
+        expect(onNavigateUp).toHaveBeenCalledTimes(1);
+    });
+
     it("does NOT navigate up with Cmd/Ctrl held (system delete, not merge-up)", () => {
         const onNavigateUp = vi.fn();
         const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onNavigateUp });
@@ -317,6 +347,77 @@ describe("commitPlaceholderBlock (placeholder row → real block)", () => {
         expect(commitPlaceholderBlock("title\n\n\nbody", 3, 3, "new")).toBe(
             "title\n\nnew\n\nbody"
         );
+    });
+});
+
+describe("makeInlineEditKeydown — Enter split vs native passthrough (P3 G1)", () => {
+    type KeyEv = Parameters<ReturnType<typeof makeInlineEditKeydown>>[0];
+    const makeKeyEvent = (opts: {
+        key: string;
+        composing?: boolean;
+        meta?: boolean;
+        ctrl?: boolean;
+        shift?: boolean;
+    }): KeyEv =>
+        ({
+            key: opts.key,
+            metaKey: opts.meta ?? false,
+            ctrlKey: opts.ctrl ?? false,
+            shiftKey: opts.shift ?? false,
+            currentTarget: { value: "" } as HTMLTextAreaElement,
+            nativeEvent: { isComposing: opts.composing ?? false } as KeyboardEvent,
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+        } as unknown as KeyEv);
+
+    it("bare Enter calls onSplitCaret (paragraph split)", () => {
+        const onSplitCaret = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onSplitCaret });
+        handler(makeKeyEvent({ key: "Enter" }));
+        expect(onSplitCaret).toHaveBeenCalledTimes(1);
+    });
+
+    it("IME-composing Enter does NOT split (candidate confirm passes through)", () => {
+        const onSplitCaret = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onSplitCaret });
+        handler(makeKeyEvent({ key: "Enter", composing: true }));
+        expect(onSplitCaret).not.toHaveBeenCalled();
+    });
+
+    it("allowNativeEnter flips true → bare Enter neither splits nor preventDefaults (WYSIWYG list)", () => {
+        // P3 G1：WYSIWYG list 的 Enter 应放行浏览器原生（创建新 <li>）。共享 keydown 若不
+        // 放行会在 onSplitCaret（handleEnterSplit 对 wysiwyg list 提前 return）前 preventDefault，
+        // 原生建 li 被吞 → Enter 死键。
+        const onSplitCaret = vi.fn();
+        const ev = makeKeyEvent({ key: "Enter" });
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onSplitCaret,
+            allowNativeEnter: () => true,
+        });
+        handler(ev);
+        expect(onSplitCaret).not.toHaveBeenCalled();
+        expect(ev.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("allowNativeEnter flips false → bare Enter still splits (non-list)", () => {
+        const onSplitCaret = vi.fn();
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onSplitCaret,
+            allowNativeEnter: () => false,
+        });
+        handler(makeKeyEvent({ key: "Enter" }));
+        expect(onSplitCaret).toHaveBeenCalledTimes(1);
+    });
+
+    it("Shift+Enter never splits (native soft line break)", () => {
+        const onSplitCaret = vi.fn();
+        const handler = makeInlineEditKeydown({ commit: vi.fn(), cancel: vi.fn(), onSplitCaret });
+        handler(makeKeyEvent({ key: "Enter", shift: true }));
+        expect(onSplitCaret).not.toHaveBeenCalled();
     });
 });
 

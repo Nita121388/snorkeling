@@ -39,6 +39,8 @@ export type WysiwygEditorHandle = {
     applyInlineStyle(style: "bold" | "italic" | "strike" | "code"): void;
     /** Which inline styles are active at the caret. */
     getActiveInlineStyles(): Set<string>;
+    /** Insert plain text at the caret (used by paste-image / emoji DOM insert paths). */
+    insertTextAtCaret(text: string): void;
     /** Live-convert the block to a new kind (called by slash/toolbar commands). */
     applyLiveKind(kind: BlockKind, headingLevel?: number): void;
     /**
@@ -74,6 +76,8 @@ export type WysiwygEditorProps = {
     onBlur: (content: string) => void;
     /** Called on keydown (parent handles Enter-split, Esc, mod shortcuts). */
     onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
+    /** Called on paste (parent handles image upload to assets / text passthrough). */
+    onPaste?: (e: React.ClipboardEvent<HTMLElement>) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -160,6 +164,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         onInput,
         onBlur,
         onKeyDown,
+        onPaste,
     },
     ref
 ) {
@@ -172,6 +177,10 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
     headingLevelRef.current = headingLevel;
     const listMarkerRef = useRef(initialListMarker);
     const initializedRef = useRef(false);
+    // IME composition 活跃标记（P3 F2）：组合期间禁止任何 DOM 手术（sentinel 插/删节点、
+    // detectTypingTrigger 的 live-kind 转换、normalize），这些会打断中文/日文输入法的候选
+    // 状态；所有序列化/转换推迟到 compositionend 之后统一做一次。
+    const compositionActiveRef = useRef(false);
 
     // --- Commit context (used by serialize) ---
     const commitCtx = useCallback(
@@ -317,6 +326,26 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
 
     // --- Input handler ---
     const handleInput = useCallback(() => {
+        // IME 组合中（compositionstart..compositionend）：DOM 处于候选中间态，任何序列化/
+        // DOM 手术都会打断输入法状态。跳过 detectTypingTrigger（live-kind 转换会改写 root
+        // 文本）与 syncMirror（sentinelMarkdownCaret 会在组合文本节点上插/删哨兵并 normalize）。
+        // compositionend 后再统一 sync 一次，draftText 即可拿到完整落盘文本。
+        if (compositionActiveRef.current) {
+            return;
+        }
+        detectTypingTrigger();
+        syncMirror();
+    }, [detectTypingTrigger, syncMirror]);
+
+    // --- IME composition 生命周期（P3 F2）---
+    const handleCompositionStart = useCallback(() => {
+        compositionActiveRef.current = true;
+    }, []);
+
+    const handleCompositionEnd = useCallback(() => {
+        compositionActiveRef.current = false;
+        // 组合落盘：把最终文本同步给父层（draftText），并执行 typing-trigger 转换
+        // （组合中可能已输入完整 marker 如 `# ` 后才结束组合——转换只该在落盘后发生一次）。
         detectTypingTrigger();
         syncMirror();
     }, [detectTypingTrigger, syncMirror]);
@@ -326,6 +355,12 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         (e: React.FocusEvent) => {
             // Don't commit if focus moves inside the overlay (e.g. clicking another cell/button).
             if (e.relatedTarget != null && rootRef.current?.contains(e.relatedTarget as Node)) return;
+            // IME 组合未落盘时 blur：不提交中间态文本（会丢最后一个候选词）。
+            // 通常 compositionend 先于 blur 发生（事件序列本身保证），此处仅作兜底：
+            // 若仍处于组合中，跳过提交，等 compositionend 的 sync 把最终文本写入 draftText。
+            if (compositionActiveRef.current) {
+                return;
+            }
             const md = serializeBlockDomToMarkdown(rootRef.current!, commitCtx());
             onBlur(md);
         },
@@ -545,6 +580,36 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 walkRange.deleteContents();
                 root.normalize();
             },
+
+            insertTextAtCaret(text) {
+                const root = rootRef.current;
+                if (root == null) return;
+                root.focus();
+                const sel = window.getSelection();
+                if (sel == null || sel.rangeCount === 0) {
+                    // No selection: append at the end.
+                    const r = document.createRange();
+                    r.selectNodeContents(root);
+                    r.collapse(false);
+                    sel?.removeAllRanges();
+                    sel?.addRange(r);
+                }
+                const sel2 = window.getSelection();
+                if (sel2 == null || sel2.rangeCount === 0) return;
+                const range = sel2.getRangeAt(0);
+                range.deleteContents();
+                const textNode = document.createTextNode(text);
+                range.insertNode(textNode);
+                // Move caret after the inserted text.
+                const after = document.createRange();
+                after.setStart(textNode, text.length);
+                after.collapse(true);
+                sel2.removeAllRanges();
+                sel2.addRange(after);
+                root.normalize();
+                // 粘贴/emoji 插入后同步镜像（draftText 跟上），并触发 typing-trigger 转换。
+                syncMirror();
+            },
         }),
         [commitCtx, syncMirror]
     );
@@ -564,7 +629,10 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
             data-placeholder={placeholder}
             onInput={handleInput}
             onBlur={handleBlur}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"

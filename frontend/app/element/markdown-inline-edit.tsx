@@ -1054,7 +1054,7 @@ type InlineEditOverlayProps = {
     wysiwygSessionKey?: string;
     onTextChange: (v: string, caret: number) => void;
     onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
-    onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+    onPaste?: (e: React.ClipboardEvent<HTMLElement>) => void;
     onBlur: (content?: string) => void;
     /** Block-appropriate placeholder (方案 03 §2) — shown only while the draft is empty. */
     placeholder?: string;
@@ -1240,6 +1240,7 @@ export function InlineEditOverlay({
                     }}
                     onKeyDown={onKeyDown as (e: React.KeyboardEvent<HTMLElement>) => void}
                     onBlur={(content) => onBlur(content)}
+                    onPaste={onPaste as ((e: React.ClipboardEvent<HTMLElement>) => void) | undefined}
                 />
             ) : (
                 <>
@@ -1319,6 +1320,15 @@ export function makeInlineEditKeydown(opts: {
     /** Called when Backspace/Delete is pressed on an EMPTY draft so the caller can merge the
      *  cursor up into the previous block (standard text-editor behavior on a blank line). */
     onNavigateUp?: () => void;
+    /** When true, a bare Enter is left to the browser (no preventDefault, no split): used for
+     *  WYSIWYG list sessions where the contentEditable owns list semantics (Enter creates a
+     *  new <li> natively). IME-composing Enter still never splits (candidates consume it). */
+    allowNativeEnter?: () => boolean;
+    /** When true, an EMPTY-draft Backspace/Delete is left to the browser (no merge-up): used for
+     *  WYSIWYG list sessions where the contentEditable owns list semantics (Backspace on an
+     *  empty item merges/removes it natively). Without this, the shared keydown would call
+     *  onNavigateUp → cancel and close the editor, leaving the empty item behind. */
+    allowNativeBackspaceOnEmpty?: () => boolean;
 }) {
     return (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === "Escape") {
@@ -1339,6 +1349,12 @@ export function makeInlineEditKeydown(opts: {
                 !native.isComposing &&
                 ((ta as HTMLTextAreaElement).value ?? (ta as HTMLElement).textContent ?? "").length === 0
             ) {
+                // WYSIWYG list: let the contentEditable handle Backspace natively (merge/remove the
+                // empty item). Without this the shared keydown would call onNavigateUp → the caller
+                // closes the editor, leaving a dangling empty item and losing focus.
+                if (opts.allowNativeBackspaceOnEmpty != null && opts.allowNativeBackspaceOnEmpty()) {
+                    return;
+                }
                 e.preventDefault();
                 opts.onNavigateUp();
                 return;
@@ -1350,6 +1366,12 @@ export function makeInlineEditKeydown(opts: {
         if (e.key === "Enter" && !isCmd && !e.shiftKey && opts.onSplitCaret != null) {
             const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
             if (!native.isComposing) {
+                // WYSIWYG list: the contentEditable owns list semantics (Enter creates a new
+                // <li> natively). Leave the key to the browser instead of preventDefault+split,
+                // otherwise the native list-item creation is swallowed and Enter is a dead key.
+                if (opts.allowNativeEnter != null && opts.allowNativeEnter()) {
+                    return;
+                }
                 e.preventDefault();
                 opts.onSplitCaret();
                 return;
