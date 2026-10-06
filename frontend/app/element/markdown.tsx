@@ -109,7 +109,7 @@ import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
 import { MarkdownContentBlockType, transformBlocks } from "@/app/element/markdown-util";
 import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip } from "./markdown-render";
 import { useEditorHistory } from "./use-editor-history";
-import { createEditController } from "./block-model";
+import { editorController } from "./block-model/editor-controller-instance";
 import type { Block } from "./markdown-transform/tree";
 import { makeRemarkPlugins } from "@/app/element/remark";
 import remarkFrontmatterToWaveBlock from "@/app/element/remark/frontmatter-to-waveblock";
@@ -290,10 +290,10 @@ type EditorCommitOptions = {
     skipHistory?: boolean;
 };
 
-// P2-B1：编辑提交收敛到 AST 的统一控制器实例（无状态，纯函数工厂，模块级单例）。
-// code 语言的 onApplyLanguage 经它走 set-code-lang intent → 文本变换 → handleInlineEditCommit
-// （进 undo 栈）。作为后续 prose/list 收敛的模板。
-const editorController = createEditController();
+// P2-B1：编辑提交收敛到 AST 的统一控制器实例来自 block-model/editor-controller-instance
+// （模块级共享单例，无状态，纯函数工厂）。code 语言的 onApplyLanguage 经它走 set-code-lang
+// intent → 文本变换 → handleInlineEditCommit（进 undo 栈）。prose 收敛（P2-B2）在
+// markdown-inline-edit commit 复用同一实例。作为后续 prose/list 收敛的模板。
 
 // === Markdown component + inline-edit logic (render helpers are above) =================
 

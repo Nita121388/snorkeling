@@ -56,9 +56,10 @@ frontend/app/element/
     ├── table.ts            # 表格块识别
     └── …
 └── block-model/            # P2-A 块模型语义视图 + 编辑控制器（与 markdown-render 分工）
-    ├── editor-controller.ts # BlockEditIntent → markdown-transform 纯函数 → {text,caret}
+    ├── editor-controller.ts       # BlockEditIntent → markdown-transform 纯函数 → {text,caret}
+    ├── editor-controller-instance.ts # 模块级共享单例（P2-B2；index.ts 不转发，避免依赖环）
     ├── render-adapter.tsx   # Block → ReactMarkdown 行内渲染（语义视图，flag 关闭）
-    └── index.ts             # 统一 re-export
+    └── index.ts             # 统一 re-export（不含单例）
 ```
 
 ## block-model/ vs markdown-render/ 分工

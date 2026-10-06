@@ -70,6 +70,28 @@ WYSIWYG 重构 P2 的目标是把「线上编辑提交」从 DOM 反序列化切
 - 收敛时调用方把 1-based 会话行号**转成 0-based Block.startLine**（`-1`）；控制器内部再
   `line1 = block.startLine + 1` 还原 1-based 给纯函数。**两处转换必须对称，否则 off-by-one**。
 
+**整体替换（P2-B2 prose 提交）**：prose（p/h/quote/blank）的 WYSIWYG 提交是「整体替换块内容」
+（内容来自 DOM 反序列化，已是完整块 markdown），不是确定性变换，用独立 `replace-content` intent：
+
+```ts
+editorController.apply(
+  { type: "replace-content", block, content: committedDraft },
+  { text: fullTextRef.current }
+) // → { text, caret }；控制器用 lineRangeToCharOffset(block.startLine, block.endLine) 定位绝对偏移
+```
+
+- **块 kind 映射**：wysiwyg 的 `InlineEditBlockKind`（p/h/quote/blank）不是块模型的合法 kind；
+  用 `inlineKindToTreeKind(kind, content)` 映射（h 从 committedDraft 的 `#` 前缀推断 heading 级别，
+  quote→quote，p/blank→text）。`replace-content` 仅依赖块坐标，kind 只作数据模型语义。
+- **控制器单例下沉共享**：收敛点分散在 markdown.tsx（code 语言）与 markdown-inline-edit（prose 提交）
+  两处，共用 `block-model/editor-controller-instance.ts` 的模块级单例；`block-model/index.ts` 不转发
+  导出单例（避免依赖环）。
+- **空内容提交差异（已知契约）**：`replace-content` 是字符范围替换，空 content 会留下块尾空行
+  （`"line1\n\nline3"`）；而 `replaceSourceRange` 的空 segment 语义是删整行不留空行。
+  调用方以 `committedDraft.length > 0` 保证空内容回落原 `replaceSourceRange`（清空段落=删行）。
+- **CRLF 已知差异**：`lineRangeToCharOffset` 按 `\n` 切，`\r` 归属块行内容，替换段内不重写 EOL，
+  与 replaceSourceRange 的 dominant-EOL 重 join 有边界差异；wave 保存一律 `\n`，非生产场景。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下

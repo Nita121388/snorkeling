@@ -8,6 +8,8 @@ import { globalStore } from "@/store/jotaiStore";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { editorController } from "./block-model/editor-controller-instance";
+import type { Block } from "./markdown-transform/tree";
 import type { CodeEditorHandle } from "./content-editable-code-editor";
 import ContentEditableCodeEditor from "./content-editable-code-editor";
 import { WysiwygEditor, type WysiwygEditorHandle } from "./wysiwyg-editor";
@@ -148,6 +150,30 @@ function captureBlockTypography(blockEl: HTMLElement): React.CSSProperties {
  *      if the textarea should match the rendered block's typography (e.g. `code` → monospace).
  */
 export type InlineEditBlockKind = "p" | "h" | "list" | "quote" | "table" | "code" | "blank" | "hr";
+
+/**
+ * wysiwyg 的 InlineEditBlockKind → 块模型 TreeBlockKind 映射（P2-B2 收敛用）。
+ * wysiwyg 侧 "p"/"h"/"blank" 不是树模型的合法 kind（树模型用 "text"/"headingN"），
+ * 且控制器 replace-content 仅依赖块坐标（startLine/endLine），kind 只作数据模型语义；
+ * 此处从 committedDraft（完整块 markdown）的 `#` 前缀可靠推断 heading 级别，
+ * quote 直接映射，blank/p 归并为 text（空块语义）。
+ */
+export function inlineKindToTreeKind(
+    kind: InlineEditBlockKind,
+    content: string
+): Block["kind"] {
+    switch (kind) {
+        case "h": {
+            const m = content.match(/^ {0,3}(#{1,6})(?:[ \t]+|$)/);
+            return m ? (`heading${m[1].length}` as Block["kind"]) : "text";
+        }
+        case "quote":
+            return "quote";
+        default:
+            // "p" → "text"；"blank" → "text"（空块语义）；其余不会走到此处
+            return "text";
+    }
+}
 
 // Blocks that can participate in WYSIWYG contentEditable editing (方案 08).
 // Table and code have their own dedicated WYSIWYG editors (TableBlock /
@@ -894,6 +920,50 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     current.insertMode,
                     draftLines
                 ).join("\n");
+            } else if (
+                // P2-B2：WYSIWYG prose（p/h/quote/blank）提交定位收敛到块模型控制器。
+                // drafted content 来自 DOM 反序列化（serializeBlockDomToMarkdown），已是完整块
+                // markdown（h 带 #、quote 带 >）；这里把「裸行号 replaceSourceRange」改为
+                // 控制器 replace-content intent（块坐标 → lineRangeToCharOffset → 文本变换），
+                // 统一到块模型 + P1 undo 栈模式。行为与现状等价，textarea/list/table/code 不动。
+                // 空内容提交（清空段落）除外：replaceSourceRange 的空 segment 语义是「删除整行
+                // 不留空行」，而控制器的字符范围替换会留下空行（见 editor-controller.test.ts
+                // 空内容用例）——此处 committedDraft.length > 0 让空内容回落原 replaceSourceRange，
+                // 保证清空段落 = 删除该行，与现状完全一致。
+                current.wysiwyg &&
+                committedDraft.length > 0 &&
+                (current.blockKind === "p" ||
+                    current.blockKind === "h" ||
+                    current.blockKind === "quote" ||
+                    current.blockKind === "blank")
+            ) {
+                // 1-based 会话行号 → 0-based Block（控制器内部依赖块坐标，基于语义复刻 P2-B1）。
+                const sl0 = current.startLine - 1;
+                const el0 = current.endLine - 1;
+                const block: Block = {
+                    id: `prose:${sl0}:${el0}`,
+                    kind: inlineKindToTreeKind(current.blockKind, committedDraft),
+                    startLine: sl0,
+                    endLine: el0,
+                    depth: 0,
+                    text: current.initialContent ?? "",
+                    children: [],
+                };
+                const res = editorController.apply(
+                    { type: "replace-content", block, content: committedDraft },
+                    { text: fullTextRef.current }
+                );
+                if (res != null) {
+                    onCommit(res.text);
+                    return;
+                }
+                // 理论不失败（坐标合法即成功）；兜底 fallthrough 到原 replaceSourceRange。
+                newFull = replaceSourceRange(
+                    fullTextRef.current,
+                    current.startLine,
+                    current.endLine,
+                    committedDraft
+                );
             } else {
                 const originalSource = fullTextRef.current
                     .split(/\r?\n/)

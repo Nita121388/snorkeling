@@ -94,3 +94,22 @@
 - element 39 文件 / 509 测试全绿（508 基线 + 1 新增）；tsc 无新增错误。
 ---
 
+## 2026-10-05 P2-B2：prose 块（p/h/quote/blank）提交收敛到块模型控制器
+
+### 交付
+- `BlockEditIntent` 新增 `replace-content`（整体替换块内容，非确定性变换，独立 intent）。
+- 控制器分支用 `lineRangeToCharOffset(block.startLine, block.endLine)` 定位绝对偏移做 slice 替换，
+  返回 `{text, caret}`；LF 文件与 replaceSourceRange 严格等价（wave 保存一律 \n）。
+- 单例下沉：新建 `block-model/editor-controller-instance.ts`（模块级共享，index.ts 不转发避免依赖环），
+  markdown.tsx（code 语言）与 markdown-inline-edit（prose 提交）共用同一实例。
+- `markdown-inline-edit.tsx` commit() 新增 wysiwyg-prose 分支：`current.wysiwyg && committedDraft.length > 0
+  && p/h/quote/blank` → 构造 0-based Block（`inlineKindToTreeKind` 映射 kind：h 从 `#` 前缀推断级别、
+  quote→quote、p/blank→text）→ apply replace-content → onCommit → handleInlineEditCommit（P1 undo 栈）；
+  res==null 兜底 fallthrough 原 replaceSourceRange；textarea/list/table/code 零改动。
+- 空内容契约：控制器空 content 留块尾空行（字符替换语义），与 replaceSourceRange 删整行不同；
+  guard `committedDraft.length > 0` 保证空内容回落原路径（清空段落=删行，与现状严格等价）。
+- CRLF 已知差异：按 \n 切坐标，\r 归属块行，边界 EOL 不重写；非生产场景，测试/注释注明。
+
+### 验证
+- element 39 文件 / 517 测试全绿（509 基线 + 8 个 replace-content 用例）；tsc 零新增（68 基线不变）。
+- trellis-check 复验：阻断项（空内容差异）已修复，验收标准 1-5 全部 PASS。

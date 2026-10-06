@@ -39,7 +39,8 @@ export type BlockEditIntent =
     | { type: "inline-style"; block: Block; style: InlineStyleId; start: number; end: number }
     | { type: "toggle-task"; block: Block }
     | { type: "set-code-lang"; block: Block; lang: string | null }
-    | { type: "renumber-list"; block: Block };
+    | { type: "renumber-list"; block: Block }
+    | { type: "replace-content"; block: Block; content: string };
 
 export interface EditControllerResult {
     text: string;
@@ -133,6 +134,18 @@ export function createEditController(): EditController {
                         return null;
                     }
                     return { text: result.text };
+                }
+                case "replace-content": {
+                    // 整体替换块内容（prose WYSIWYG 提交）：用块坐标定位绝对字符偏移，
+                    // 把 [start..end] 范围替换为 intent.content。
+                    //
+                    // 坐标体系：lineRangeToCharOffset 按 \n 切（与 inline-style 共享的同一坐标
+                    // 体系），故本分支对 LF 文件与 replaceSourceRange 严格等价（wave 保存一律 \n）。
+                    // CRLF 文件会有已知的边界 EOL 差异（\r 归属块行、\n 是分隔符），非生产场景，
+                    // 见 editor-controller.test.ts 的 CRLF 用例注明。
+                    const { start, end } = lineRangeToCharOffset(text, block.startLine, block.endLine);
+                    const next = text.slice(0, start) + intent.content + text.slice(end);
+                    return { text: next, caret: start + intent.content.length };
                 }
                 default:
                     return null;
