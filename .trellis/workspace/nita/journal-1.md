@@ -174,3 +174,9 @@
   统一提交通道，强塞会扭曲块模型。
 - spec：补充 Pattern「行内格式闭合配对 live 转换（P3 F5）」+「拖拽嵌套（P3 F7）」。
 - 最终终审双评审进行中（产品/开发重新打分，判定是否达 98）。
+- 收尾复核（产品/开发）发现三个 P1：F5 光标死代码（helper removeChild 后读 parentNode
+  null，改返回 {el,parent}）、键盘块移动丢草稿（先折入 draftText 再 move）、applyLiveKind
+  列表转换不可编辑（补 listEl.contentEditable）。提交 8aeacd30；572 测试全绿。
+- spec 完善：IME 守卫 / 选区工具栏 / 行内闭合 live 转换 / 拖拽嵌套 Pattern 均已入库。
+- 评分演进：71.5/79 → 90.75/88.5。P3 完成：全部 P0/P1 + 主要 P2，剩余即时预览/图片
+  内联渲染为边际打磨。

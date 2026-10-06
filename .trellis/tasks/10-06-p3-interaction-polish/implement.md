@@ -80,11 +80,21 @@ WYSIWYG 单测空白 → 组合中切块陈旧提交/串块风险（P1）。
   undo 栈，焦点跟随）。
 - 40 文件 / 572 测试全绿（562 + 10）；tsc 68 基线不变。
 
-### 收尾决策（按代码质量优先原则）
-剩余打磨项（行内格式即时预览 marker 弱化、粘贴图片编辑态内联渲染）涉及编辑态 DOM
-持续交互，复杂度/风险中等、边际收益递减；与刚稳定的 IME/序列化闭环叠加风险不成比例。
-**决策：作为 P3 收尾，不做这两项**——两轮终审 71.5/79 → 90.75/88.5，已覆盖全部 P0/P1
-+ 主要 P2；收尾前派快速复核确认最终分数。
+### 收尾复核（2026-10-06）
+复核发现三个 P1 真实缺陷并修复（commit 8aeacd30）：
+- F5 光标死代码：helper 在 removeChild 后才被调用方读 parentNode（null）→ 重定位不执行；
+  改为 helper 返回 { el, parent }（removeChild 前捕获）。
+- 键盘块移动丢草稿：moveFocusedBlock 先 cancel 丢 draft 再用旧 text 移动 → 改为先
+  replaceSourceRange 折入 draftText 再 moveBlockRange。
+- applyLiveKind 列表转换不可编辑：removeAttribute(contentEditable) 后未给 ul 设置 →
+  补 listEl.contentEditable = "true"（与打字触发路径对称）。
+另修测试意图/断言不符（caret 偏移错位 vs 跨节点命名）。
+
+### 最终状态
+- 测试：40 文件 / 572 全绿；tsc 68 基线不变。
+- 评分演进：评审基线 71.5/79 → 终审 90.75/88.5（两轮修复后）。
+- P3 全部 P0/P1 + 主要 P2 差距项完成；剩余打磨项（即时预览 marker 弱化、粘贴图片
+  编辑态内联渲染）为边际收益递减的持续交互打磨，留后续。
 
 ## 目标
 
