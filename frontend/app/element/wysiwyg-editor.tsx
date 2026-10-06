@@ -19,7 +19,7 @@
  */
 
 import React, { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
-import { detectLiveTypingMarker, type BlockKind } from "./markdown-transform/block-type";
+import { detectLiveTypingMarker, detectClosedInlinePair, type BlockKind } from "./markdown-transform/block-type";
 import { serializeBlockDomToMarkdown, type WysiwygBlockKind } from "./markdown-transform/dom-to-markdown";
 
 // ---------------------------------------------------------------------------
@@ -374,6 +374,79 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         root.innerHTML = initialHtml || (blockKind === "list" ? "<ul><li></li></ul>" : "");
     }, [initialHtml, blockKind, initialHeadingLevel, initialListMarker]);
 
+    // --- Inline-format closing (P3 F5) ---
+    // 用户输入到闭合 marker（`**bold**` 光标在末尾）时，把配对转成对应行内元素（所见即所得）。
+    // 最小侵入：仅在配对完整、同文本节点、非组合态、且转换成功时执行；任何异常（跨节点、
+    // execCommand 不可用）都静默跳过，不打断输入。
+    const applyClosedInlineFormatting = useCallback(() => {
+        const root = rootRef.current;
+        if (root == null || compositionActiveRef.current) {
+            return;
+        }
+        const sel = window.getSelection();
+        if (sel == null || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) {
+            return;
+        }
+        const range = sel.getRangeAt(0).cloneRange();
+        range.selectNodeContents(root);
+        range.setEnd(sel.anchorNode!, sel.anchorOffset);
+        const beforeCaret = range.toString();
+        const pair = detectClosedInlinePair(beforeCaret);
+        if (pair == null) {
+            return;
+        }
+        // 配对必须完整落在当前 anchor 文本节点内（用户刚连续输入 → 同一文本节点）。
+        const anchor = sel.anchorNode;
+        if (anchor == null || anchor.nodeType !== 3) {
+            return;
+        }
+        const text = anchor.textContent ?? "";
+        const caretOffset = sel.anchorOffset;
+        // 在 anchor 文本节点内定位配对起始：从 caret 往前数 marker+inner+marker 长度。
+        const pairLen = pair.marker.length * 2 + pair.inner.length;
+        const startInNode = caretOffset - pairLen;
+        if (startInNode < 0) {
+            return;
+        }
+        const nodeText = text.slice(startInNode, caretOffset);
+        if (nodeText !== `${pair.marker}${pair.inner}${pair.marker}`) {
+            return; // 文本内容不匹配（跨节点或中间有改动）→ 防御性跳过
+        }
+        // 构造：前文节点 + <el>inner</el> + 后文节点，替换原 anchor。
+        const before = text.slice(0, startInNode);
+        const afterText = text.slice(caretOffset);
+        const elTag =
+            pair.marker === "**" ? "strong" : pair.marker === "*" ? "em" : pair.marker === "~~" ? "del" : "code";
+        const el = document.createElement(elTag);
+        el.textContent = pair.inner;
+        const nodes: Node[] = [];
+        if (before.length > 0) {
+            nodes.push(document.createTextNode(before));
+        }
+        nodes.push(el);
+        if (afterText.length > 0) {
+            nodes.push(document.createTextNode(afterText));
+        }
+        const parent = anchor.parentNode;
+        if (parent == null) {
+            return;
+        }
+        for (const n of nodes) {
+            parent.insertBefore(n, anchor);
+        }
+        parent.removeChild(anchor);
+        // 光标移动到元素后。
+        const sel2 = window.getSelection();
+        if (sel2 != null && el.nextSibling != null) {
+            const r = document.createRange();
+            r.setStart(el.nextSibling, 0);
+            r.collapse(true);
+            sel2.removeAllRanges();
+            sel2.addRange(r);
+        }
+        syncMirror();
+    }, [syncMirror]);
+
     // --- Input handler ---
     const handleInput = useCallback(() => {
         // IME 组合中（compositionstart..compositionend）：DOM 处于候选中间态，任何序列化/
@@ -384,8 +457,9 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
             return;
         }
         detectTypingTrigger();
+        applyClosedInlineFormatting();
         syncMirror();
-    }, [detectTypingTrigger, syncMirror]);
+    }, [detectTypingTrigger, applyClosedInlineFormatting, syncMirror]);
 
     // --- IME composition 生命周期（P3 F2）---
     const handleCompositionStart = useCallback(() => {
@@ -397,8 +471,9 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         // 组合落盘：把最终文本同步给父层（draftText），并执行 typing-trigger 转换
         // （组合中可能已输入完整 marker 如 `# ` 后才结束组合——转换只该在落盘后发生一次）。
         detectTypingTrigger();
+        applyClosedInlineFormatting();
         syncMirror();
-    }, [detectTypingTrigger, syncMirror]);
+    }, [detectTypingTrigger, applyClosedInlineFormatting, syncMirror]);
 
     // --- Blur ---
     const handleBlur = useCallback(

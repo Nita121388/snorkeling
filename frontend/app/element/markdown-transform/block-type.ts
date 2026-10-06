@@ -633,6 +633,50 @@ export function detectLiveTypingMarker(textBeforeCaret: string): LiveMarkerResul
     return null;
 }
 
+/** 行内格式闭合配对（P3 F5 live inline conversion）。 */
+export type ClosedInlinePair = {
+    /** 行内标记：`**`/`*`/`` ` ``/`~~`。 */
+    marker: string;
+    /** 内容行（不含 marker），用于转对应行内元素。 */
+    inner: string;
+    /** 内容行在 beforeCaret 中的 0-based 偏移（marker 之后）。 */
+    innerStart: number;
+};
+
+/**
+ * 检测 caret 前**已闭合**的行内格式配对（P3 F5）：当用户刚输入到闭合 marker（如
+ * `**bold**` 光标在末尾）时，把该配对转成对应行内元素。仅闭合检测，不做实时预览——
+ * 保守方案：DOM 手术只在配对完整且落在同一行时触发，避免打断中文 IME/光标。
+ *
+ * - `**bold**` → bold（`**`），`*em*` → italic（`*`），`` `code` `` → code，
+ *   `~~del~~` → strike（`~~`）。
+ * - `**` 必须成对，单 `*` 不误伤 `**`（lookbehind/lookaround）。
+ * - 内容行不允许包含对应 marker 或换行（避免跨范围误匹配）。
+ * - 返回 null 表示无闭合配对（不转换）。
+ */
+export function detectClosedInlinePair(textBeforeCaret: string): ClosedInlinePair | null {
+    // 逐个标记从后往前找最新闭合对（先匹配长 marker `**`/`~~` 再短 `*`/`` ` ``）。
+    const candidates: { marker: string; re: RegExp }[] = [
+        { marker: "**", re: /\*\*([^*]+)\*\*$/ },
+        { marker: "~~", re: /~~([^~]+)~~$/ },
+        { marker: "`", re: /`([^`]+)`$/ },
+        { marker: "*", re: /(?<!\*)\*([^*]+)\*(?!\*)$/ },
+    ];
+    for (const c of candidates) {
+        const m = textBeforeCaret.match(c.re);
+        if (m == null || m.index == null) {
+            continue;
+        }
+        const inner = m[1];
+        // 内容行不允许换行（否则跨段落误匹配）。
+        if (inner.includes("\n") || inner.trim() === "") {
+            continue;
+        }
+        return { marker: c.marker, inner, innerStart: m.index + c.marker.length };
+    }
+    return null;
+}
+
 /**
  * Inline-edit commit helper (方案 02 §2.1): inspect the FIRST line of a draft that a
  * paragraph/blank editor is about to commit; when it matches a typing pattern, return

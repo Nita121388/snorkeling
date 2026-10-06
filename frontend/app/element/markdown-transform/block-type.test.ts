@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import {
     applyTypingPatternAtLine,
     detectBlockKind,
+    detectClosedInlinePair,
     detectLiveTypingMarker,
     matchTypingPattern,
     rewriteDraftFirstLine,
@@ -372,5 +373,64 @@ describe("detectLiveTypingMarker", () => {
     test("code fences NOT live-triggered", () => {
         expect(detectLiveTypingMarker("```js ")).toBe(null);
         expect(detectLiveTypingMarker("```")).toBe(null);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// detectClosedInlinePair (P3 F5)
+// ---------------------------------------------------------------------------
+
+describe("detectClosedInlinePair", () => {
+    test("closed `**bold**` → bold pair", () => {
+        expect(detectClosedInlinePair("**bold**")).toEqual({ marker: "**", inner: "bold", innerStart: 2 });
+    });
+
+    test("preceded by text: caret at end after `**bold**`", () => {
+        const pair = detectClosedInlinePair("hello **bold**");
+        expect(pair?.marker).toBe("**");
+        expect(pair?.inner).toBe("bold");
+        expect(pair?.innerStart).toBe(8);
+    });
+
+    test("closed `*em*` → italic (single star, not bold)", () => {
+        expect(detectClosedInlinePair("*em*")).toEqual({ marker: "*", inner: "em", innerStart: 1 });
+    });
+
+    test("closed `` `code` `` → code", () => {
+        expect(detectClosedInlinePair("`code`")).toEqual({ marker: "`", inner: "code", innerStart: 1 });
+    });
+
+    test("closed `~~del~~` → strike", () => {
+        expect(detectClosedInlinePair("~~del~~")).toEqual({ marker: "~~", inner: "del", innerStart: 2 });
+    });
+
+    test("unclosed marker → null (mid-typing `**bol`) ", () => {
+        expect(detectClosedInlinePair("**bol")).toBe(null);
+        expect(detectClosedInlinePair("*em")).toBe(null);
+        expect(detectClosedInlinePair("`cod")).toBe(null);
+    });
+
+    test("single `*` does NOT match bold pair", () => {
+        // "**bold**" ends with `**`, the single-star regex must not also fire
+        expect(detectClosedInlinePair("**bold**")?.marker).toBe("**");
+    });
+
+    test("empty inner → null (`****`)", () => {
+        expect(detectClosedInlinePair("****")).toBe(null);
+        expect(detectClosedInlinePair("``")).toBe(null);
+    });
+
+    test("cross-line inner → null (no multi-line match)", () => {
+        expect(detectClosedInlinePair("**bold\nmore**")).toBe(null);
+    });
+
+    test("whitespace-only inner → null (`** **`)", () => {
+        expect(detectClosedInlinePair("** **")).toBe(null);
+    });
+
+    test("picks the LAST closed pair when multiple exist", () => {
+        const pair = detectClosedInlinePair("**one** and `two`");
+        expect(pair?.marker).toBe("`");
+        expect(pair?.inner).toBe("two");
     });
 });
