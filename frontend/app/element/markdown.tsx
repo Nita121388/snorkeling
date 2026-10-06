@@ -2325,6 +2325,11 @@ const Markdown = ({
                 setDropTarget(null);
                 return;
             }
+            // inside 候选：悬停元素是 LI（普通项或含嵌套子列表的项）时，用 LI 自身
+            // 定位（不 promote 到父列表），保证拖入成为「被悬停那一项」的子项。
+            // before/after 仍按整块（resolveBlockAnchorEl 提升）定位（P3 F7 check 发现 3）。
+            const hoveredIsLi = hoveredEl.tagName === "LI";
+            const insideCandidate = hoveredIsLi && !(src.startLine <= Number(hoveredEl.dataset.sourceLine) && Number(hoveredEl.dataset.sourceLine) <= src.endLine);
             const blockEl = resolveDragBlock(Number(hoveredEl.dataset.sourceLine)) ?? hoveredEl;
             const line = Number(blockEl.dataset.sourceLine);
             // Dropping onto the source block itself is a no-op (can't move a block onto itself).
@@ -2332,20 +2337,21 @@ const Markdown = ({
                 setDropTarget(null);
                 return;
             }
-            const rect = blockEl.getBoundingClientRect();
-            const mid = rect.top + rect.height / 2;
+            // inside 候选还须排除掉到自己源范围（含源 LI 提升后的整列表）。
+            const targetRect = (insideCandidate ? hoveredEl : blockEl).getBoundingClientRect();
+            const mid = targetRect.top + targetRect.height / 2;
             // P3 F7 拖拽嵌套：悬停目标是列表项（li）且指针位于其左侧 1/4 区（嵌套深度区）
             // → inside 模式（拖入成为子项）。整块（ul/ol）hover 不能嵌套——只对 li 生效。
-            const isListItem = hoveredEl.tagName === "LI";
-            const xInNestZone = e.clientX <= rect.left + rect.width * 0.25;
+            const xInNestZone = e.clientX <= targetRect.left + targetRect.width * 0.25;
             let mode: "before" | "after" | "inside" = e.clientY < mid ? "before" : "after";
-            if (isListItem && xInNestZone && !(mode === "before" && line === src.startLine - 1)) {
+            if (hoveredIsLi && xInNestZone && !(mode === "before" && line === src.startLine - 1)) {
                 mode = "inside";
             }
             e.preventDefault(); // mark the element as a valid drop target
             e.dataTransfer.dropEffect = "move";
+            const rect = mode === "inside" ? targetRect : blockEl.getBoundingClientRect();
             setDropTarget({
-                line,
+                line: mode === "inside" ? Number(hoveredEl.dataset.sourceLine) : line,
                 mode,
                 rect:
                     mode === "inside"
@@ -2378,14 +2384,22 @@ const Markdown = ({
             if (hovered == null) {
                 return;
             }
-            const blockEl = resolveDragBlock(Number(hovered.dataset.sourceLine)) ?? hovered;
-            const tgtLine = Number(blockEl.dataset.sourceLine);
+            const hoveredIsLi = hovered.tagName === "LI";
+            const hoveredLine = Number(hovered.dataset.sourceLine);
+            // inside 候选：悬停元素是 LI（普通项或含嵌套子列表的项）时用 LI 自身定位
+            // （不 promote 到父列表，与 dragover 一致）；before/after 用整块（P3 F7 check 发现 3）。
+            const insideCandidate =
+                hoveredIsLi && Number.isFinite(hoveredLine) && !(hoveredLine >= src.startLine && hoveredLine <= src.endLine);
+            const blockEl = resolveDragBlock(hoveredLine ?? Number(hovered.dataset.sourceLine)) ?? hovered;
+            const blockLine = Number(blockEl.dataset.sourceLine);
+            // inside 目标行用 hovered LI 自身；before/after 用整块。
+            const tgtLine = insideCandidate ? hoveredLine : blockLine;
             if (tgtLine >= src.startLine && tgtLine <= src.endLine) {
                 return; // dropped on self
             }
-            const rect = blockEl.getBoundingClientRect();
+            const targetEl = insideCandidate ? hovered : blockEl;
+            const rect = targetEl.getBoundingClientRect();
             const mid = rect.top + rect.height / 2;
-            const hoveredIsLi = hovered.tagName === "LI";
             const xInNestZone = e.clientX <= rect.left + rect.width * 0.25;
             let mode: "before" | "after" | "inside" = e.clientY < mid ? "before" : "after";
             if (hoveredIsLi && xInNestZone && !(mode === "before" && tgtLine === src.startLine - 1)) {

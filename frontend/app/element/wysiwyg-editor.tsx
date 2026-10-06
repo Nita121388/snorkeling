@@ -427,7 +427,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         if (afterText.length > 0) {
             nodes.push(document.createTextNode(afterText));
         }
-        const parent = anchor.parentNode;
+                const parent = anchor.parentNode;
         if (parent == null) {
             return;
         }
@@ -435,11 +435,13 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
             parent.insertBefore(n, anchor);
         }
         parent.removeChild(anchor);
-        // 光标移动到元素后。
+        // 光标移动到元素后：用父容器定位（不依赖 nextSibling——配对在段落末尾时
+        // el.nextSibling 为 null，selection 会悬在已移除节点上，后续击键可能丢字）。
         const sel2 = window.getSelection();
-        if (sel2 != null && el.nextSibling != null) {
+        if (sel2 != null) {
+            const idx = Array.from(parent.childNodes).indexOf(el);
             const r = document.createRange();
-            r.setStart(el.nextSibling, 0);
+            r.setStart(parent, Math.min(idx + 1, parent.childNodes.length));
             r.collapse(true);
             sel2.removeAllRanges();
             sel2.addRange(r);
