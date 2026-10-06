@@ -541,6 +541,25 @@ describe("makeInlineEditKeydown — Enter split vs native passthrough (P3 G1)", 
         handler(ev);
         expect(ev.preventDefault).not.toHaveBeenCalled();
     });
+
+    it("惰性求值：非导航键不调用 getCaretPos/getTextLen（P3 终审 P2-4 性能）", () => {
+        // 每次击键全量序列化（WYSIWYG getCaretMarkdown/getMarkdown）有卡顿风险，
+        // 故 caret/textLen 只在方向键/Tab 时惰性求值。
+        const getCaretPos = vi.fn(() => 0);
+        const getTextLen = vi.fn(() => 0);
+        const handler = makeInlineEditKeydown({
+            commit: vi.fn(),
+            cancel: vi.fn(),
+            onNavigatePrev: vi.fn(),
+            getCaretPos,
+            getTextLen,
+        });
+        handler(makeKeyEvent({ key: "a" }));
+        expect(getCaretPos).not.toHaveBeenCalled();
+        expect(getTextLen).not.toHaveBeenCalled();
+        handler(makeKeyEvent({ key: "ArrowUp" }));
+        expect(getCaretPos).toHaveBeenCalled();
+    });
 });
 
 describe("splitBlockAtCaretText (Enter splits the paragraph at caret)", () => {

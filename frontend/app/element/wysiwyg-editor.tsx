@@ -45,6 +45,9 @@ export type WysiwygEditorHandle = {
     insertTextAtCaret(text: string): void;
     /** Delete `count` characters immediately before the caret (used to strip `::query` triggers). */
     deleteCharsBeforeCaret(count: number): void;
+    /** Indent/outdent the current list item via the contentEditable's native list semantics
+     *  (P3 F9/G9: WYSIWYG list Tab/Shift+Tab). Serialization re-emits nested markers. */
+    applyListIndent(dir: 1 | -1): void;
     /** Live-convert the block to a new kind (called by slash/toolbar commands). */
     applyLiveKind(kind: BlockKind, headingLevel?: number): void;
     /**
@@ -500,6 +503,20 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                     }
                 }
                 // Sync mirror after style change.
+                syncMirror();
+            },
+
+            applyListIndent(dir) {
+                const root = rootRef.current;
+                if (root == null) return;
+                root.focus();
+                // contentEditable 原生列表语义：indent/outdent 由浏览器管理嵌套层级，
+                // serializeListDomToMarkdown 会按嵌套结构重新输出缩进 marker —— 正确的闭环。
+                // 组合中不做（候选态下 execCommand 会扰乱输入法）。
+                if (compositionActiveRef.current) {
+                    return;
+                }
+                document.execCommand(dir === 1 ? "indent" : "outdent", false);
                 syncMirror();
             },
 

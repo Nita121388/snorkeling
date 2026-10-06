@@ -1981,7 +1981,10 @@ const Markdown = ({
                 return;
             }
             if (session.wysiwyg) {
-                return; // WYSIWYG list：原生 Tab 语义不定义，跳过（不吞键也不变形）
+                // WYSIWYG list：contentEditable 原生缩进（execCommand indent/outdent → 嵌套
+                // 层级变化 → 序列化重新输出缩进 marker）。组合中 applyListIndent 内部守卫。
+                inlineEdit.wysiwygRef.current?.applyListIndent(dir);
+                return;
             }
             const newFull = indentListRange(text, session.startLine, session.endLine, dir);
             if (newFull === text) {

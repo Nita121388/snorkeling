@@ -910,10 +910,17 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // actual editor content via the `content` parameter.
             const committedDraft =
                 content ??
-                ((current.blockKind === "p" || current.blockKind === "blank") &&
-                isBlockEditorFeatureEnabled("blockeditor")
-                    ? (rewriteDraftFirstLine(draftText) ?? draftText)
-                    : draftText);
+                (current.wysiwyg
+                    ? // WYSIWYG：DOM 是事实源。组合中 syncMirror 被 compositionActiveRef 跳过 →
+                      // draftText 可能滞后（组合前文本）；切块路径（pointerdown commit 无 content）
+                      // 若用陈旧 draftText 会丢组合中未落盘的字符，且 compositionend 的 syncMirror
+                      // 会串块覆写新会话的 draftText（P3 终审 P1）。故 content 缺失时优先从 DOM
+                      // 序列化取当前完整文本（含组合中内容）。
+                      (wysiwygRef.current?.getMarkdown() ?? draftText)
+                    : (current.blockKind === "p" || current.blockKind === "blank") &&
+                        isBlockEditorFeatureEnabled("blockeditor")
+                      ? (rewriteDraftFirstLine(draftText) ?? draftText)
+                      : draftText);
             if (current.placeholder) {
                 // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
                 // blank row for us to type into). Typed something → replace the row; block-level
@@ -1421,19 +1428,25 @@ export function makeInlineEditKeydown(opts: {
         }
         // 跨块方向键导航（P3 F6/G8）：光标在块首时按 ↑ → 上一块；光标在块尾时按 ↓ → 下一块。
         // 组合中（输入法候选态）不拦截，让浏览器原生处理。仅当调用方 wire 了导航回调。
+        // 惰性求值 caret/textLen：只在导航键时算（每次击键全量序列化有卡顿风险，P3 终审 P2-4）。
         const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
-        const caretPos = opts.getCaretPos?.() ?? 0;
-        const textLen = opts.getTextLen?.() ?? 0;
-        if (!native.isComposing) {
-            if (e.key === "ArrowUp" && caretPos === 0 && opts.onNavigatePrev != null) {
-                e.preventDefault();
-                opts.onNavigatePrev();
-                return;
-            }
-            if (e.key === "ArrowDown" && caretPos >= textLen && opts.onNavigateNext != null) {
-                e.preventDefault();
-                opts.onNavigateNext();
-                return;
+        if (!native.isComposing && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Tab")) {
+            if (
+                (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+                (opts.onNavigatePrev != null || opts.onNavigateNext != null)
+            ) {
+                const caretPos = opts.getCaretPos?.() ?? 0;
+                const textLen = opts.getTextLen?.() ?? 0;
+                if (e.key === "ArrowUp" && caretPos === 0 && opts.onNavigatePrev != null) {
+                    e.preventDefault();
+                    opts.onNavigatePrev();
+                    return;
+                }
+                if (e.key === "ArrowDown" && caretPos >= textLen && opts.onNavigateNext != null) {
+                    e.preventDefault();
+                    opts.onNavigateNext();
+                    return;
+                }
             }
             // 列表 Tab/Shift+Tab 缩进（P3 F9/G9）：仅当调用方 wire 了 onIndentList。
             if (e.key === "Tab" && opts.onIndentList != null) {
