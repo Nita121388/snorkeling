@@ -761,6 +761,36 @@ describe("moveBlockRange (drag-and-drop reorder)", () => {
         expect(newStartLine).toBe(3);
     });
 
+    it("inside: 拖入成为目标项子项（整块缩进到目标+2）", () => {
+        // "- tail" 拖入 "- one" 的 inside 区 → 成为其子项（缩进 2 空格）
+        const doc = "- one\n- tail";
+        const { text, newStartLine } = moveBlockRange(doc, 2, 2, 1, "inside", 2);
+        expect(text).toBe("- one\n  - tail");
+        expect(newStartLine).toBe(2);
+    });
+
+    it("inside: 嵌套列表拖入保留相对缩进（子列表层级不变）", () => {
+        // "- p2\n    - sub"（sub 相对 p2 缩进 4）拖入 "- p1" 的 inside 对齐到 2：
+        //   p2 → 2 空格；sub 保持相对距离 4 → 2+4=6（仍是 p2 的子项，视觉嵌套不变）
+        const doc = "- p1\n- p2\n    - sub";
+        const { text } = moveBlockRange(doc, 2, 3, 1, "inside", 2);
+        expect(text).toBe("- p1\n  - p2\n      - sub");
+    });
+
+    it("inside: 目标项已有缩进时子项继承其层级+2", () => {
+        // "- p\n  - c" 中 "- tail" 拖入 "  - c"（缩进 2）→ 缩进到 4
+        const doc = "- p\n  - c\n- tail";
+        const { text } = moveBlockRange(doc, 3, 3, 2, "inside", 4);
+        expect(text).toBe("- p\n  - c\n    - tail");
+    });
+
+    it("inside: 拖入非列表项（段落）→ 无缩进（与 after 一致）", () => {
+        // 段落下无缩进语义：inside 传 0 → 等效 after + 无缩进
+        const doc = "hello\n\nworld";
+        const { text } = moveBlockRange(doc, 3, 3, 1, "inside", 0);
+        expect(text).toBe("hello\nworld");
+    });
+
     it("moves a contiguous multi-block range (e.g. a Ctrl-selected span) as one unit", () => {
         // Blocks B (line3) + C (line5) are the dragged range [3..5]; drop after D (line7).
         const doc = "# title\n\nB\n\nC\n\nD";

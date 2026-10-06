@@ -1484,8 +1484,8 @@ const Markdown = ({
     const dragSourceRef = useRef<{ startLine: number; endLine: number } | null>(null);
     const [dropTarget, setDropTarget] = useState<{
         line: number;
-        mode: "before" | "after";
-        rect: { top: number; left: number; width: number };
+        mode: "before" | "after" | "inside";
+        rect: { top: number; left: number; width: number; height?: number };
     } | null>(null);
 
     // --- Ctrl/Cmd + drag multi-block selection ----------------------------------------
@@ -2320,12 +2320,12 @@ const Markdown = ({
             if (src == null) {
                 return; // not a block drag in progress
             }
-            const hovered = (e.target as HTMLElement).closest("[data-source-line]") as HTMLElement | null;
-            if (hovered == null) {
+            const hoveredEl = (e.target as HTMLElement).closest("[data-source-line]") as HTMLElement | null;
+            if (hoveredEl == null) {
                 setDropTarget(null);
                 return;
             }
-            const blockEl = resolveDragBlock(Number(hovered.dataset.sourceLine)) ?? hovered;
+            const blockEl = resolveDragBlock(Number(hoveredEl.dataset.sourceLine)) ?? hoveredEl;
             const line = Number(blockEl.dataset.sourceLine);
             // Dropping onto the source block itself is a no-op (can't move a block onto itself).
             if (line >= src.startLine && line <= src.endLine) {
@@ -2334,13 +2334,23 @@ const Markdown = ({
             }
             const rect = blockEl.getBoundingClientRect();
             const mid = rect.top + rect.height / 2;
-            const mode: "before" | "after" = e.clientY < mid ? "before" : "after";
+            // P3 F7 拖拽嵌套：悬停目标是列表项（li）且指针位于其左侧 1/4 区（嵌套深度区）
+            // → inside 模式（拖入成为子项）。整块（ul/ol）hover 不能嵌套——只对 li 生效。
+            const isListItem = hoveredEl.tagName === "LI";
+            const xInNestZone = e.clientX <= rect.left + rect.width * 0.25;
+            let mode: "before" | "after" | "inside" = e.clientY < mid ? "before" : "after";
+            if (isListItem && xInNestZone && !(mode === "before" && line === src.startLine - 1)) {
+                mode = "inside";
+            }
             e.preventDefault(); // mark the element as a valid drop target
             e.dataTransfer.dropEffect = "move";
             setDropTarget({
                 line,
                 mode,
-                rect: { top: mode === "before" ? rect.top : rect.bottom, left: rect.left, width: rect.width },
+                rect:
+                    mode === "inside"
+                        ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+                        : { top: mode === "before" ? rect.top : rect.bottom, left: rect.left, width: rect.width },
             });
         },
         [resolveBlockAnchorEl]
@@ -2375,11 +2385,29 @@ const Markdown = ({
             }
             const rect = blockEl.getBoundingClientRect();
             const mid = rect.top + rect.height / 2;
-            const mode: "before" | "after" = e.clientY < mid ? "before" : "after";
+            const hoveredIsLi = hovered.tagName === "LI";
+            const xInNestZone = e.clientX <= rect.left + rect.width * 0.25;
+            let mode: "before" | "after" | "inside" = e.clientY < mid ? "before" : "after";
+            if (hoveredIsLi && xInNestZone && !(mode === "before" && tgtLine === src.startLine - 1)) {
+                mode = "inside";
+            }
             e.preventDefault();
             // src is the full dragged range (a multi-block selection, or a single block). moveBlockRange
             // already handles a contiguous [srcStart..srcEnd], so dragging N selected blocks is free.
-            const { text: movedText, newStartLine } = moveBlockRange(text, src.startLine, src.endLine, tgtLine, mode);
+            // inside（P3 F7 嵌套）：目标行缩进 + ListIndentStep（2 空格）为子项层级。
+            let insideIndent: number | undefined;
+            if (mode === "inside") {
+                const tgtText = (text.split(/\r?\n/)[tgtLine - 1] ?? "").match(/^ */)?.[0].length ?? 0;
+                insideIndent = tgtText + 2;
+            }
+            const { text: movedText, newStartLine } = moveBlockRange(
+                text,
+                src.startLine,
+                src.endLine,
+                tgtLine,
+                mode,
+                insideIndent
+            );
             if (movedText === text) {
                 return; // no-op (defensive)
             }
@@ -4803,12 +4831,25 @@ const Markdown = ({
                             inlineEdit.editSession == null &&
                             ReactDOM.createPortal(
                                 <div
-                                    className="markdown-block-drop-indicator"
-                                    style={{
-                                        top: dropTarget.rect.top,
-                                        left: dropTarget.rect.left,
-                                        width: dropTarget.rect.width,
-                                    }}
+                                    className={
+                                        dropTarget.mode === "inside"
+                                            ? "markdown-block-drop-target"
+                                            : "markdown-block-drop-indicator"
+                                    }
+                                    style={
+                                        dropTarget.mode === "inside"
+                                            ? {
+                                                  top: dropTarget.rect.top,
+                                                  left: dropTarget.rect.left,
+                                                  width: dropTarget.rect.width,
+                                                  height: dropTarget.rect.height,
+                                              }
+                                            : {
+                                                  top: dropTarget.rect.top,
+                                                  left: dropTarget.rect.left,
+                                                  width: dropTarget.rect.width,
+                                              }
+                                    }
                                 />,
                                 document.body
                             )}

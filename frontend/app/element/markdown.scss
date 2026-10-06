@@ -1458,6 +1458,21 @@
         width 80ms ease;
 }
 
+// P3 F7 拖拽嵌套指示：inside 模式包裹目标列表项（虚线框），提示拖入为子项。
+.markdown-block-drop-target {
+    position: fixed;
+    z-index: 200;
+    pointer-events: none;
+    border: 2px dashed var(--accent-color, #32afff);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--accent-color, #32afff) 12%, transparent);
+    transition:
+        top 80ms ease,
+        left 80ms ease,
+        width 80ms ease,
+        height 80ms ease;
+}
+
 // Inline-editable task checkboxes (GFM task lists) — pointer affordance for the
 // click-to-toggle wiring in markdown.tsx (MarkdownTaskCheckbox). Disabled checkboxes in
 // read-only contexts keep the browser default cursor.

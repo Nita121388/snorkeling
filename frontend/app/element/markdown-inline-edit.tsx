@@ -1557,7 +1557,9 @@ export function moveBlockRange(
     srcStart: number,
     srcEnd: number,
     tgtLine: number,
-    mode: "before" | "after"
+    mode: "before" | "after" | "inside",
+    /** 缩进目标层级（inside 模式）：被拖块每行缩进到该空格数（嵌套为子项）。 */
+    insideIndent?: number
 ): MoveBlockResult {
     const lines = fullText.split(/\r\n|\n/);
     const n = lines.length || 1;
@@ -1578,6 +1580,31 @@ export function moveBlockRange(
     // 2) Re-index the target against the post-deletion array.
     const height = e - s + 1;
     const tgtIdx = tgt < s ? tgt - 1 : tgt - 1 - height; // 0-based line index in afterLines
+
+    // inside 模式（P3 F7 拖拽嵌套）：把被拖块插入到目标块之后，并整块缩进到
+    // insideIndent（嵌套为目标块的子项）。不添加分隔空行（子项紧跟父项）。
+    // 缩进对齐：块内各行保留相对缩进（子列表层级不变），块整体对齐到 indent。
+    if (mode === "inside") {
+        const insertIdx = Math.max(0, Math.min(afterLines.length, tgtIdx + 1));
+        const indent = Math.max(0, insideIndent ?? 2);
+        const markerIndent = Math.min(
+            ...block.filter((l) => l.trim() !== "").map((l) => l.match(/^ */)?.[0].length ?? 0)
+        );
+        const blockIndented = block.map((line) => {
+            if (line.trim() === "") return line;
+            const cur = line.match(/^ */)?.[0].length ?? 0;
+            return " ".repeat(indent + (cur - markerIndent)) + line.slice(cur);
+        });
+        const out: string[] = [];
+        out.push(...afterLines.slice(0, insertIdx));
+        out.push(...blockIndented);
+        out.push(...afterLines.slice(insertIdx));
+        while (out.length > 0 && out[0] === "") out.shift();
+        while (out.length > 0 && out[out.length - 1] === "") out.pop();
+        const newStartLine = insertIdx + 1;
+        return { text: out.join("\n"), newStartLine };
+    }
+
     const insertIdx = mode === "before" ? Math.max(0, tgtIdx) : Math.min(afterLines.length, tgtIdx + 1);
 
     // 3) Splice back in, adding a separator blank only where both neighbors are content.
