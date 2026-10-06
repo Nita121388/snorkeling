@@ -1970,6 +1970,56 @@ const Markdown = ({
         focusEditedLine(prevLine, undefined, false, undefined, undefined, blockKindFromElement(prevEl));
     }, [inlineEdit, getPreviousBlockLine, focusEditedLine, getViewportEl]);
 
+    // Cmd/Ctrl+Shift+↑/↓：当前块上移/下移一行（思源标配的键盘块编排，P3 终审 96-98 缺口）。
+    // 复用 moveBlockRange（拖拽重排同款纯函数）+ handleInlineEditCommit（undo 栈）。
+    // 移动后重新选中该块并打开其编辑器（焦点跟随），对标拖拽后的行为。
+    const moveFocusedBlock = useCallback(
+        (dir: -1 | 1) => {
+            const session = inlineEdit.editSession;
+            if (session == null) {
+                return;
+            }
+            const start = session.startLine;
+            const end = session.endLine;
+            let tgt: number;
+            let mode: "before" | "after";
+            if (dir === -1) {
+                const prev = getPreviousBlockLine(start);
+                if (prev == null) {
+                    return; // 已在顶部
+                }
+                tgt = prev;
+                mode = "after"; // 移到上一块之后（当前块紧贴其下）→ 等价于整体上移
+            } else {
+                const next = getNextBlockLine(end);
+                if (next == null) {
+                    return; // 已在底部
+                }
+                tgt = next;
+                mode = "before"; // 移到下一块之前 → 等价于整体下移
+            }
+            inlineEdit.cancel?.();
+            const { text: movedText, newStartLine } = moveBlockRange(text, start, end, tgt, mode);
+            if (movedText === text) {
+                return;
+            }
+            handleInlineEditCommit(movedText);
+            const viewport = getViewportEl();
+            const el = viewport?.querySelector<HTMLElement>(
+                `.markdown-render-root [data-source-line="${newStartLine}"]`
+            );
+            if (el != null) {
+                setSelectedRange({ startLine: newStartLine, endLine: newStartLine + (end - start) });
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        focusEditedLine(newStartLine, undefined, false, undefined, undefined, blockKindFromElement(el));
+                    });
+                });
+            }
+        },
+        [inlineEdit, text, handleInlineEditCommit, moveBlockRange, getPreviousBlockLine, getNextBlockLine, focusEditedLine, getViewportEl]
+    );
+
     // 列表 Tab/Shift+Tab 缩进（P3 F9/G9）：仅列表会话；对会话行范围做 2 空格缩进/反缩进
     // 后提交（走 handleInlineEditCommit → P1 undo 栈）。WYSIWYG 列表不拦截（contentEditable
     // 无列表缩进语义，交由原生；当前 Tab 在列表会话处由下方分支转发到此处，wysiwyg list 走
@@ -3578,6 +3628,19 @@ const Markdown = ({
                     }
                     return;
                 }
+                // 键盘块编排（P3 终审 96-98 缺口）：Cmd/Ctrl+Shift+↑/↓ 整块上移/下移。
+                // 需编辑会话 + 非 code/table（这些有自己的导航语义）。
+                if (
+                    e.shiftKey &&
+                    (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+                    inlineEdit.editSession != null &&
+                    inlineEdit.editSession.blockKind !== "code" &&
+                    inlineEdit.editSession.blockKind !== "table"
+                ) {
+                    e.preventDefault();
+                    moveFocusedBlock(e.key === "ArrowUp" ? -1 : 1);
+                    return;
+                }
                 // Inline styles (not inside code sessions — a code fork isn't prose).
                 if (sessKind !== "code") {
                     if (!e.shiftKey && (key === "b" || key === "i" || key === "k")) {
@@ -3633,6 +3696,7 @@ const Markdown = ({
             handleSlashEmojiClose,
             handleInlineStyle,
             handleSessionBlockTransform,
+            moveFocusedBlock,
             inlineEdit,
             inlineEditKeyDown,
             editorHistory,
