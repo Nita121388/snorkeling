@@ -433,4 +433,8 @@ describe("detectClosedInlinePair", () => {
         expect(pair?.marker).toBe("`");
         expect(pair?.inner).toBe("two");
     });
+
+    test("`***bold***` 混合配对 → null（避免 `**` 候选吞斜体）", () => {
+        expect(detectClosedInlinePair("***bold***")).toBe(null);
+    });
 });

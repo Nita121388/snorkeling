@@ -655,6 +655,11 @@ export type ClosedInlinePair = {
  * - 返回 null 表示无闭合配对（不转换）。
  */
 export function detectClosedInlinePair(textBeforeCaret: string): ClosedInlinePair | null {
+    // `***bold***` 是 bold+italic 混合（思源语义）；当前只支持单格式闭合，先排除
+    // 避免 `**` 候选命中 inner="bold" 转成纯 <strong> 丢失斜体（P3 F5 边界）。
+    if (/^\*{3,}/.test(textBeforeCaret.trimStart()) || /\*{3,}$/.test(textBeforeCaret)) {
+        return null;
+    }
     // 逐个标记从后往前找最新闭合对（先匹配长 marker `**`/`~~` 再短 `*`/`` ` ``）。
     const candidates: { marker: string; re: RegExp }[] = [
         { marker: "**", re: /\*\*([^*]+)\*\*$/ },

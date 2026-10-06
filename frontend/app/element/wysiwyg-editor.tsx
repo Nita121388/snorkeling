@@ -19,12 +19,78 @@
  */
 
 import React, { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
-import { detectLiveTypingMarker, detectClosedInlinePair, type BlockKind } from "./markdown-transform/block-type";
+import {
+    detectLiveTypingMarker,
+    detectClosedInlinePair,
+    type BlockKind,
+    type ClosedInlinePair,
+} from "./markdown-transform/block-type";
 import { serializeBlockDomToMarkdown, type WysiwygBlockKind } from "./markdown-transform/dom-to-markdown";
 
 // ---------------------------------------------------------------------------
 // Public handle — consumed by markdown.tsx via ref.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Closed-inline DOM surgery (P3 F5) — extracted as a pure-ish DOM helper so it can be
+// unit-tested in jsdom without a real Selection/caret.
+// ---------------------------------------------------------------------------
+
+const INLINE_MARKER_TAGS: Record<string, string> = {
+    "**": "strong",
+    "*": "em",
+    "~~": "del",
+    "`": "code",
+};
+
+/**
+ * 在文本节点 `anchor` 中把 caret 前的闭合行内配对转成对应行内元素（`**bold**` → `<strong>`）。
+ * 返回新创建的替换元素（成功时，位于 `parent` 中紧随前文节点之后），或 null（未满足条件：
+ * anchor 非文本节点 / 配对不完整 / 文本不匹配——调用方据此静默跳过）。
+ *
+ * 组件层（applyClosedInlineFormatting）负责读取 caret、组合态守卫与光标重定位；
+ * 这里的 DOM 结构变换本身不含 selection 依赖，可在 jsdom 中直接验证。
+ */
+export function convertClosedInlineAtCaret(
+    anchor: Node,
+    caretOffset: number,
+    pair: ClosedInlinePair
+): HTMLElement | null {
+    if (anchor.nodeType !== 3) {
+        return null;
+    }
+    const text = anchor.textContent ?? "";
+    const pairLen = pair.marker.length * 2 + pair.inner.length;
+    const startInNode = caretOffset - pairLen;
+    if (startInNode < 0) {
+        return null;
+    }
+    // 配对必须完整落在 anchor 节点内（不匹配 → 跨节点/中间被改动 → 静默跳过）。
+    if (text.slice(startInNode, caretOffset) !== `${pair.marker}${pair.inner}${pair.marker}`) {
+        return null;
+    }
+    const before = text.slice(0, startInNode);
+    const afterText = text.slice(caretOffset);
+    const el = document.createElement(INLINE_MARKER_TAGS[pair.marker] ?? "strong");
+    el.textContent = pair.inner;
+    const nodes: Node[] = [];
+    if (before.length > 0) {
+        nodes.push(document.createTextNode(before));
+    }
+    nodes.push(el);
+    if (afterText.length > 0) {
+        nodes.push(document.createTextNode(afterText));
+    }
+    const parent = anchor.parentNode;
+    if (parent == null) {
+        return null;
+    }
+    for (const n of nodes) {
+        parent.insertBefore(n, anchor);
+    }
+    parent.removeChild(anchor);
+    return el;
+}
 
 export type WysiwygEditorHandle = {
     /** Place the caret in the editor (rendered-text offset, clamped to content). */
@@ -395,50 +461,20 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         if (pair == null) {
             return;
         }
-        // 配对必须完整落在当前 anchor 文本节点内（用户刚连续输入 → 同一文本节点）。
         const anchor = sel.anchorNode;
-        if (anchor == null || anchor.nodeType !== 3) {
+        if (anchor == null) {
             return;
         }
-        const text = anchor.textContent ?? "";
         const caretOffset = sel.anchorOffset;
-        // 在 anchor 文本节点内定位配对起始：从 caret 往前数 marker+inner+marker 长度。
-        const pairLen = pair.marker.length * 2 + pair.inner.length;
-        const startInNode = caretOffset - pairLen;
-        if (startInNode < 0) {
-            return;
+        const el = convertClosedInlineAtCaret(anchor, caretOffset, pair);
+        if (el == null) {
+            return; // 防御性跳过（anchor 非文本 / 配对不完整 / 跨节点不匹配）
         }
-        const nodeText = text.slice(startInNode, caretOffset);
-        if (nodeText !== `${pair.marker}${pair.inner}${pair.marker}`) {
-            return; // 文本内容不匹配（跨节点或中间有改动）→ 防御性跳过
-        }
-        // 构造：前文节点 + <el>inner</el> + 后文节点，替换原 anchor。
-        const before = text.slice(0, startInNode);
-        const afterText = text.slice(caretOffset);
-        const elTag =
-            pair.marker === "**" ? "strong" : pair.marker === "*" ? "em" : pair.marker === "~~" ? "del" : "code";
-        const el = document.createElement(elTag);
-        el.textContent = pair.inner;
-        const nodes: Node[] = [];
-        if (before.length > 0) {
-            nodes.push(document.createTextNode(before));
-        }
-        nodes.push(el);
-        if (afterText.length > 0) {
-            nodes.push(document.createTextNode(afterText));
-        }
-                const parent = anchor.parentNode;
-        if (parent == null) {
-            return;
-        }
-        for (const n of nodes) {
-            parent.insertBefore(n, anchor);
-        }
-        parent.removeChild(anchor);
         // 光标移动到元素后：用父容器定位（不依赖 nextSibling——配对在段落末尾时
         // el.nextSibling 为 null，selection 会悬在已移除节点上，后续击键可能丢字）。
+        const parent = anchor.parentNode;
         const sel2 = window.getSelection();
-        if (sel2 != null) {
+        if (sel2 != null && parent != null) {
             const idx = Array.from(parent.childNodes).indexOf(el);
             const r = document.createRange();
             r.setStart(parent, Math.min(idx + 1, parent.childNodes.length));
@@ -838,7 +874,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
     }, [commitCtx]);
 
     // --- Render ---
-    const Tag = liveKind === "list" ? ("div" as const) : ("div" as const);
+    const Tag = "div" as const;
 
     return (
         <Tag
