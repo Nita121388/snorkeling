@@ -136,3 +136,34 @@
 ### 待处理
 - R1（turn-into 组级塌缩）不在 blur 提交路径内，P2-B 后续如需处理另开任务。
 - R2/R3 仍待后续阶段。
+## 2026-10-06 P3：交互质感打磨（评审差距清单 + 两批修复）
+
+### 评审差距分析
+- 产品评审 71.5 分（代码 84/设计 72/体验 62/竞争力 68）；开发评审 79 分（代码 86/设计 82/体验
+  73/竞争力 74）。差距清单 14 项（F1-F12 产品 / G1-G12 开发，合并去重后 13 项）。
+- 核心差距：WYSIWYG 旗舰路径功能自洽 + IME 组合。P0 项 F1（面板无 isComposing 守卫）。
+
+### 第一批「稳」（d97adad8）
+- F1/G3 面板 IME 守卫、F2/G2/F11 WysiwygEditor composition 生命周期、G1 WYSIWYG 列表 Enter
+  放行原生、F4 空项退格放行原生、F3/G5 WYSIWYG 粘贴图片（savePastedImageToAssets + onPaste
+  + insertTextAtCaret）。+7 测试 → 533 全绿。
+
+### 第二批「顺」（b3bca1ba）
+- G4 选区工具栏（sentinelMarkdownSelection + document selectionchange + getSelectionRange）、
+  G6 WYSIWYG emoji（deleteCharsBeforeCaret + insertTextAtCaret）、F6/G8 跨块方向键（getNextLine
+  + handleNavigateUpCrossBlock/Down）、F9/G9 列表 Tab 缩进（indentListRange 纯函数）、
+  G12 surroundContents try/catch。+13 测试 → 546 全绿。
+
+### Deferred（按代码质量/设计标准原则）
+- F5 live inline conversion（重型，需编辑器内核级扫描器，与 IME 稳定叠加风险高）。
+- F7 拖拽嵌套/ghost（moveBlockRange 扩展复杂度高）；F10 工具栏锚定选区 rect（影响 2 分）；
+  G10 插入/拖拽/删除收敛到 controller intent（架构一致性，非用户可见）。
+
+### 待办
+- 终审双评审重新打分（进行中），决定是否需补 F5/F7/G10。
+- 第三批（2d4b2650）：WYSIWYG 列表 Tab（applyListIndent execCommand）、惰性求值性能、
+  P1 串块风险（commit wysiwyg 优先 getMarkdown）→ 547 测试。
+- F10（e725eb41）：工具栏锚定选区 rect（getBoundingClientRect），回落块顶。
+- spec：component-guidelines 补充 Pattern「IME 合成守卫（P3）」+「选区工具栏锚定（P3 F10）」。
+- 终审结论：全部 P0/P1 已修；剩余 deferred（F5 live inline 重型工程 / F7 拖拽嵌套 / G10
+  架构收敛）作为独立后续任务。

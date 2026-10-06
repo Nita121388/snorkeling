@@ -106,6 +106,32 @@ blur 提交一致——整体替换块内容），无需新 intent：
   含嵌套子列表提升到整组 ul/ol）；replace-content 的块坐标沿用会话行号 -1（0-based），天然支持
   两种作用域。R1（transformBlockType 组级塌缩）不在 blur 提交路径内，另属 turn-into 问题。
 
+## Pattern: IME 合成守卫（P3）
+
+中文/日文输入法 composition 期间，任何 DOM 手术（sentinel 插/删节点、live-kind 转换、
+normalize）与快捷键拦截都会打断候选态。P3 建立的守卫模式：
+
+- **面板/快捷键入口统一守卫**：`handleEditorKeyDown` 入口 `if (e.nativeEvent.isComposing) return;`
+  一次性覆盖 slash/emoji/slashEmoji 三面板 + mod 快捷键 + 导航——组合中 Enter/方向键只确认候选词。
+- **编辑器生命周期守卫**：WysiwygEditor 持 `compositionActiveRef`（onCompositionStart/End），
+  `handleInput` 组合中跳过 detectTypingTrigger + syncMirror（避免哨兵 DOM 手术打断组合）；
+  `handleBlur` 组合中不提交；`compositionend` 后统一补一次 sync。
+- **DOM 是事实源**：WYSIWYG 提交/同步一律以 DOM 序列化（getMarkdown）为准，draftText 只是镜像。
+  组合中 syncMirror 被跳过后 draftText 会滞后——因此 commit() 对 wysiwyg 会话在 content 缺失
+  时优先 `getMarkdown()`（消除切块时用陈旧 draftText 的丢字/串块风险）。
+- **原生语义放行**：WYSIWYG 列表的 Enter（建 li）、空项 Backspace（合并）、Tab（缩进）都交给
+  contentEditable 原生处理（allowNativeEnter / allowNativeBackspaceOnEmpty / applyListIndent
+  的 execCommand），共享 keydown 不得 preventDefault 吞掉原生行为。
+- **选区上报**：WYSIWYG 下 `document selectionchange` → sentinelMarkdownSelection（两端哨兵）
+  上报 markdown 空间选区 → FloatingToolbar；折叠选区不插哨兵；组合中不上报。
+- **性能**：caret/textLen 等序列化计算惰性求值（仅导航键需要），普通键击不得每次全量序列化。
+
+## Pattern: 选区工具栏锚定（P3 F10）
+
+工具栏锚定当前 DOM selection 的 `getBoundingClientRect()`（textarea 与 WYSIWYG 都在编辑中，
+selection 即选中文字范围），而非块顶——多行块选中文案时工具栏跟随选区。选区异常时回落
+块顶锚定。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下
