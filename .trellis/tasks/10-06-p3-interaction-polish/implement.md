@@ -31,11 +31,16 @@ prd.md 补充。核心差距：WYSIWYG 旗舰路径功能自洽 + IME 组合。
 - 回归测试 +13；39 文件 / 546 测试全绿；tsc 68 基线不变。
 
 ### 第二批剩余（deferred 评估）
-- F5（live inline conversion + 字面量转义）：重型工程（需编辑器内核级 markdown 扫描器），
-  与刚稳定的 IME 守卫叠加风险高；按「代码质量/设计标准」原则标记 deferred，留作独立任务。
-- F7/G7（拖拽嵌套 + ghost 预览）：P2，5-6 分；需 dropTarget inside 模式 + 嵌套缩进指示。
-- G10（交互收敛到 controller intent：insert/move/delete block）：P2，4 分；架构一致性提升，
-  非用户可见，优先级低。
+- F5（live inline conversion + 字面量转义）：已在本轮完成（见下方「第四批」）。
+- F7/G7（拖拽嵌套 + ghost 预览）：已在本轮完成（见下方「第四批」）。
+- G10（交互收敛到 controller intent：insert/move/delete block）—— **决策：不做**。
+  理由（代码质量/设计标准原则）：
+  1. insert/move/delete 已是纯函数 + 统一提交通道（spliceInsertBlock / moveBlockRange /
+     deleteBlockRange → handleInlineEditCommit → P1 undo 栈），行为与架构目标一致；
+  2. 这些是**跨块范围操作**（一次拖动 N 块、一次删一整列表），而 Block 模型是**单块坐标**
+     （startLine/endLine + 意图）——强塞 intent 会扭曲 P2 建立的块模型契约；
+  3. intent 包装无功能收益，只增加一层间接与测试面，降低而非提升代码质量。
+  如未来需要（如嵌套列表的 AST 级操作），应先扩展块模型支持范围操作，而非包一层 intent。
 
 ### 终审（2026-10-06）
 产品评审 **90.5**（代码 95/设计 93/体验 88/竞争力 86）；开发评审 **82.5**（代码 88/设计 84/
@@ -51,6 +56,15 @@ WYSIWYG 单测空白 → 组合中切块陈旧提交/串块风险（P1）。
 - P1 串块风险：commit() wysiwyg 会话 content 缺失时优先 DOM 序列化 getMarkdown()，
   不再用组合前陈旧 draftText（消除切块丢字/串块覆写）。
 - 回归测试 +1；39 文件 / 547 测试全绿；tsc 68 基线不变。
+
+### 第四批（F7 b559d68e + F5 209765a6 + 修复 e973be6d，已完成）
+- F7：moveBlockRange 新增 inside 模式（拖拽嵌套，缩进对齐保留相对层级）+ 左 25%
+  嵌套区判定 + 虚线框指示；check 修复：inside 候选用 hovered LI 自身（不 promote），
+  修含子列表 LI 拖入目标错位。+4 测试。
+- F5：detectClosedInlinePair 纯函数 + applyClosedInlineFormatting（输入 **bold** 光标
+  到末尾即转 <strong> 等，同文本节点最小 DOM 手术，防御性跳过 + IME 守卫）；
+  check 修复：光标用父容器定位（不依赖 nextSibling）。+11 测试（纯函数）。
+- 39 文件 / 562 测试全绿（547 + 15）；tsc 68 基线不变。
 
 ## 目标
 
