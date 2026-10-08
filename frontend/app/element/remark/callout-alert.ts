@@ -36,7 +36,10 @@ export const remarkCalloutAlert: Plugin<[], Root> = () => (tree: any) => {
         const emojiMatch = afterMarker.match(leadingEmojiRegex);
         const emoji = emojiMatch?.[1] ?? null;
         const prefix = new RegExp(
-            `^${marker ? alertRegex.source.slice(1, -1) : ""}${emoji ? leadingEmojiRegex.source.slice(1, -1) : ""}`,
+            // slice(1) only strips the leading "^" — it must KEEP the trailing "\s*" so the
+            // marker is also stripped when the title line has nothing after it (`> [!note]`).
+            // slice(1, -1) used to truncate "\s*" to "\s", requiring whitespace that may not exist.
+            `^${marker ? alertRegex.source.slice(1) : ""}${emoji ? leadingEmojiRegex.source.slice(1) : ""}`,
             "iu"
         );
         const titleChildren = first?.children ? cloneInlineChildren(first.children, prefix) : [];
@@ -61,7 +64,21 @@ export const remarkCalloutAlert: Plugin<[], Root> = () => (tree: any) => {
         const title = isTitle
             ? {
                   type: "paragraph",
-                  children: [button, ...titleChildren],
+                  // Wrap the inline content in ONE span so the flex title has exactly two
+                  // items (emoji button + text container). Without the wrapper, every inline
+                  // element (strong/em/a) becomes its own flex item, collapses to minimum
+                  // content width, and CJK text wraps one glyph per line (vertical columns).
+                  children: [
+                      button,
+                      {
+                          type: "paragraph",
+                          children: titleChildren,
+                          data: {
+                              hName: "span",
+                              hProperties: { className: "markdown-alert-title-text" },
+                          },
+                      },
+                  ],
                   data: { hName: "p", hProperties: { className: "markdown-alert-title" } },
               }
             : null;

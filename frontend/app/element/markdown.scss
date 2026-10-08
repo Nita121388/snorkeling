@@ -308,6 +308,14 @@
                 font-size: 1em;
             }
 
+            // 标题文本容器（唯一非按钮 flex item）：内部走正常文本流，避免每个 inline
+            // 元素成为独立 flex item 被压成竖排单字列（CJK）。min-width:0 允许其在窄父
+            // 容器下收缩而不溢出。
+            .markdown-alert-title-text {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
             // Emoji picker button - hidden by default, show on hover
             .markdown-alert-emoji-btn {
                 position: relative;
