@@ -251,6 +251,28 @@ export function serializeBlockDomToMarkdown(rootEl: Element, ctx: BlockDomCtx): 
         return inner.length > 0 ? `${prefix} ${inner}` : prefix;
     }
     if (ctx.kind === "quote") {
+        // A quote whose editor root holds SEVERAL block children (paragraphs produced by the
+        // renderer, or <div>s the browser inserts on Enter) must re-emit the bare ">" separator
+        // between them. Collapsing them into consecutive "> text" lines makes the re-parsed
+        // source ONE paragraph with a soft break — which merges every body paragraph into the
+        // callout title span / first quote line. That is a content change, not cosmetics.
+        const blockChildren = Array.from(rootEl.children).filter(
+            (child) => child.tagName === "P" || child.tagName === "DIV"
+        );
+        if (blockChildren.length > 1) {
+            return blockChildren
+                .map((child) => {
+                    const blockInner = serializeInlineChildren(child, opts).replace(
+                        new RegExp(opts.brToken + "+$"),
+                        ""
+                    );
+                    return blockInner
+                        .split(opts.brToken)
+                        .map((line) => (line.length === 0 ? ">" : `> ${line}`))
+                        .join("\n");
+                })
+                .join("\n>\n");
+        }
         let inner = serializeInlineChildren(rootEl, opts);
         inner = inner.replace(new RegExp(opts.brToken + "+$"), "");
         inner = inner.replace(new RegExp(opts.brToken, "g"), "\n");

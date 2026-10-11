@@ -680,8 +680,18 @@
     pointer-events: auto;
     min-width: 0;
     max-width: 100%;
-    overflow: hidden;
-    contain: layout paint;
+    // D2: content must be fully visible while editing (list Enter, prose wrap). A fixed height +
+    // overflow:hidden used to clip the growing editor; the overlay now grows with its content and
+    // handles viewport overflow itself (inline maxHeight + overflowY). `contain: layout` (no paint)
+    // keeps internal layout from leaking out without clipping paint.
+    overflow: visible;
+    contain: layout;
+
+    // D2: the anchored block stays `visibility: hidden` (layout box preserved), so a taller overlay
+    // covers the content below it — fill it with the content background so text doesn't show through.
+    &[data-block-kind="wysiwyg"] {
+        background: var(--content-bg-color, var(--main-bg-color, transparent));
+    }
 
     .inline-edit-textarea {
         display: block;

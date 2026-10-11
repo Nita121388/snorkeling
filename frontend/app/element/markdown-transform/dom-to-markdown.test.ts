@@ -170,6 +170,28 @@ describe("serializeBlockDomToMarkdown — quote", () => {
             "> before\n>\n> after"
         );
     });
+
+    test("block children keep the bare > separator (multi-paragraph quote)", () => {
+        // Renderer-produced paragraphs. Without the separator the re-parsed source becomes ONE
+        // paragraph with a soft break, merging every body paragraph into the first line.
+        const el = makeEl("<p>first</p><p>second</p>");
+        expect(serializeBlockDomToMarkdown(el, { kind: "quote" })).toBe("> first\n>\n> second");
+    });
+
+    test("block children: <br> inside a block stays a single newline, not a separator", () => {
+        const el = makeEl("<p>title<br>soft</p><p>body</p>");
+        expect(serializeBlockDomToMarkdown(el, { kind: "quote" })).toBe("> title\n> soft\n>\n> body");
+    });
+
+    test("browser-inserted <div> blocks are treated like paragraphs", () => {
+        const el = makeEl("<p>a</p><div>b</div>");
+        expect(serializeBlockDomToMarkdown(el, { kind: "quote" })).toBe("> a\n>\n> b");
+    });
+
+    test("single block child stays on the inline path", () => {
+        const el = makeEl("<p>only</p>");
+        expect(serializeBlockDomToMarkdown(el, { kind: "quote" })).toBe("> only");
+    });
 });
 
 describe("serializeListDomToMarkdown", () => {

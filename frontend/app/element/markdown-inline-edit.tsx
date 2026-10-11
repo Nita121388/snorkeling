@@ -360,7 +360,76 @@ const WYSIWYG_KINDS: ReadonlySet<InlineEditBlockKind> = new Set(["p", "h", "list
  *   - Callout containers (`.markdown-alert`) — the title emoji prefix would be
  *     injected back into source on commit
  */
-function captureWysiwygInfo(
+/** Block-level tags; a whitespace-only text node beside one of these is inter-element
+ *  formatting, never content. */
+const SEED_BLOCK_TAGS = new Set([
+    "ADDRESS",
+    "ARTICLE",
+    "ASIDE",
+    "BLOCKQUOTE",
+    "DETAILS",
+    "DIV",
+    "DL",
+    "FIELDSET",
+    "FIGCAPTION",
+    "FIGURE",
+    "FOOTER",
+    "FORM",
+    "H1",
+    "H2",
+    "H3",
+    "H4",
+    "H5",
+    "H6",
+    "HEADER",
+    "HR",
+    "LI",
+    "MAIN",
+    "NAV",
+    "OL",
+    "P",
+    "PRE",
+    "SECTION",
+    "TABLE",
+    "UL",
+]);
+
+/**
+ * Strip inter-element whitespace from a WYSIWYG seed.
+ *
+ * The rendered tree collapses whitespace (`white-space: normal`), but the editor inherits
+ * `pre-wrap` from `[contenteditable]` — so a whitespace-only text node sitting between block
+ * elements suddenly occupies a full line box. mdast-util-to-hast injects exactly such a `\n`
+ * between the items of a LOOSE list, which made a loose list look double-spaced (and the block
+ * grow ~2x) the moment it was clicked. The editor must not see them at all.
+ */
+function stripInsignificantWhitespace(html: string): string {
+    if (html === "" || !/>\s+</.test(html)) {
+        return html;
+    }
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const walk = (parent: Node) => {
+        const kids = Array.from(parent.childNodes);
+        for (const child of kids) {
+            if (child.nodeType === 1) {
+                walk(child);
+            }
+        }
+        if (!kids.some((n) => n.nodeType === 1 && SEED_BLOCK_TAGS.has((n as Element).tagName))) {
+            return; // no block sibling → whitespace here is real inline content
+        }
+        for (const node of kids) {
+            if (node.nodeType === 3 && (node.textContent ?? "").trim() === "") {
+                node.remove();
+            }
+        }
+    };
+    walk(template.content);
+    return template.innerHTML;
+}
+
+export function captureWysiwygInfo(
     blockKind: InlineEditBlockKind,
     targetEl: HTMLElement,
     sourceText: string
@@ -368,7 +437,6 @@ function captureWysiwygInfo(
     if (!isBlockEditorFeatureEnabled("wysiwyg") || !WYSIWYG_KINDS.has(blockKind)) {
         return null;
     }
-    // Eligibility: no images, no links, no callout chrome.
     const html =
         blockKind === "h"
             ? (targetEl.querySelector(".heading-title")?.innerHTML ?? targetEl.innerHTML)
@@ -377,7 +445,8 @@ function captureWysiwygInfo(
               : blockKind === "blank"
                 ? ""
                 : targetEl.innerHTML;
-    if (/<img\b/i.test(html) || /<a\b/i.test(html)) {
+    const strippedHtml = stripInsignificantWhitespace(html);
+    if (/<img\b/i.test(strippedHtml) || /<a\b/i.test(strippedHtml)) {
         return null; // images & links round-trip lossy — fall back to textarea
     }
     // Heading level from rendered class is-N.
@@ -396,7 +465,7 @@ function captureWysiwygInfo(
             listMarker = markerMatch[1];
         }
     }
-    return { html, headingLevel, listMarker };
+    return { html: strippedHtml, headingLevel, listMarker };
 }
 
 function stripCodeFence(source: string): string {
@@ -424,6 +493,23 @@ function wrapCodeFence(source: string, original: string): string {
     const closer = lines.at(-1) ?? "```";
     if (!/^\s{0,3}(`{3,}|~{3,})/.test(opener) || !/^\s{0,3}(`{3,}|~{3,})\s*$/.test(closer)) return source;
     return `${opener}\n${source}\n${closer}`;
+}
+
+/**
+ * Does this markdown amount to the EMPTY SHELL of a quote?
+ *
+ * The quote serializer turns an empty editor root into a bare ">" (and a multi-block empty root
+ * into a run of them). Such a draft is never a user's intent — it means the editor DOM was empty —
+ * so committing it must never overwrite a quote that had content. Exported for tests.
+ */
+export function isEmptyQuoteShellDraft(markdown: string): boolean {
+    if (markdown.trim() === "") {
+        return false; // "" is a legitimately cleared prose block, not a quote shell
+    }
+    return markdown.split("\n").every((line) => {
+        const trimmed = line.trim();
+        return trimmed === ">" || trimmed === "";
+    });
 }
 
 const ListIndentStep = 2; // markdown 列表嵌套用 2 空格缩进（与 serializeListDomToMarkdown 一致）
@@ -612,6 +698,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             top: targetRect.top,
             left,
             width,
+            // NOTE (D2): this is the overlay's MIN height, not a fixed height. The rendered block's
+            // box is the anchor, but the editor must grow with its content (list Enter adds items,
+            // prose wraps) — the overlay renders `minHeight: height; height: auto` so nothing the
+            // user types is clipped. The field name stays `height` to avoid a wide rename.
             height: targetRect.height,
         };
         // Skip the state write when the rect is unchanged so re-measure churn (scroll events,
@@ -909,8 +999,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // For code blocks (contenteditable), draftText may be stale — the caller passes the
             // actual editor content via the `content` parameter.
             const committedDraft =
-                content ??
-                (current.wysiwyg
+                content ??                (current.wysiwyg
                     ? // WYSIWYG：DOM 是事实源。组合中 syncMirror 被 compositionActiveRef 跳过 →
                       // draftText 可能滞后（组合前文本）；切块路径（pointerdown commit 无 content）
                       // 若用陈旧 draftText 会丢组合中未落盘的字符，且 compositionend 的 syncMirror
@@ -950,7 +1039,17 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 );
                 return;
             }
-            if (draftText === current.initialContent && current.insertMode == null) {
+            const unchangedDraft = draftText === current.initialContent;
+            // SAFETY NET: a quote whose editor DOM is empty serializes to a lone ">" (or a run of
+            // bare ">" lines). Writing that over a quote that HAD content deletes the user's text —
+            // a failure mode with no recovery. Never treat an empty quote shell as an edit;
+            // deleting a whole quote remains possible from the source editor.
+            const isEmptyQuoteShell =
+                current.wysiwyg &&
+                current.blockKind === "quote" &&
+                isEmptyQuoteShellDraft(committedDraft) &&
+                current.initialContent.trim() !== "";
+            if ((unchangedDraft || isEmptyQuoteShell) && current.insertMode == null) {
                 // No-op commit: nothing to write. Don't touch the shared draft atom — keeps the dirty
                 // flag honest. (Insert sessions always write: their initialContent is empty and a
                 // non-empty draft is the whole point, an empty draft is skipped below.)
@@ -1233,10 +1332,20 @@ export function InlineEditOverlay({
                 top: `${overlayRect.top}px`,
                 left: `${overlayRect.left}px`,
                 width: `${overlayRect.width}px`,
-                height: `${overlayRect.height}px`,
+                // Fixed height clipped growing content (D2). minHeight anchors the box to the
+                // rendered block; height:auto lets it grow; maxHeight + overflowY keeps a very tall
+                // editor inside the viewport while remaining scrollable.
+                minHeight: `${overlayRect.height}px`,
+                height: "auto",
+                // `max()` matters: for a block whose top sits below the viewport the plain
+                // `calc(100vh - top)` goes NEGATIVE, and a clamped-to-zero max-height pins the
+                // editor back to the rendered block's height — recreating the clipping this
+                // min/auto pair exists to fix. The floor keeps at least a few lines reachable.
+                maxHeight: `max(160px, calc(100vh - ${overlayRect.top}px - 8px))`,
+                overflowY: "auto",
+                overflowX: "hidden",
                 maxWidth: `${overlayRect.width}px`,
                 boxSizing: "border-box",
-                overflow: "hidden",
             }}
             // Prevent the overlay from catching the markdown root's own dblclick/click handlers.
             onMouseDown={(e) => e.stopPropagation()}
