@@ -23,6 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { StructuralOp } from "./markdown-transform/structural-ops";
 
 export const MAX_HISTORY = 200;
 
@@ -52,6 +53,12 @@ export interface EditorHistoryEntry {
     after: string;
     /** step3 S3：块级逆操作数据（可选，纯附加数据，不改变撤销/重做行为）。 */
     op?: EditorHistoryOp;
+    /**
+     * 阶段 4：结构操作的可独立求逆数据（move/delete/duplicate）。
+     * 与 `op` 一样只是随快照存下的数据，不改变 undo/redo 行为（现行撤销仍走全文快照）；
+     * 有了它，将来可做「语义化撤销 / 操作日志」而无需 diff 全文。
+     */
+    structuralOp?: StructuralOp;
 }
 
 /**
@@ -62,12 +69,20 @@ export class HistoryStack {
     private redoStack: EditorHistoryEntry[] = [];
 
     /** 记录一步 undo 条目，并清空 redo 分支。before===after 时视为 no-op，不入栈。
-     *  `op` 是块级逆操作数据（step3 S3）：只随条目存下，不参与行为。 */
-    record(before: string, after: string, op?: EditorHistoryOp): void {
+     *  `op` 是块级逆操作数据（step3 S3），`structuralOp` 是结构操作逆数据（阶段 4）：
+     *  都只随条目存下，不参与行为。 */
+    record(before: string, after: string, op?: EditorHistoryOp, structuralOp?: StructuralOp): void {
         if (before === after) {
             return;
         }
-        this.undoStack.push(op == null ? { before, after } : { before, after, op });
+        const entry: EditorHistoryEntry = { before, after };
+        if (op != null) {
+            entry.op = op;
+        }
+        if (structuralOp != null) {
+            entry.structuralOp = structuralOp;
+        }
+        this.undoStack.push(entry);
         if (this.undoStack.length > MAX_HISTORY) {
             this.undoStack.shift();
         }
@@ -124,7 +139,7 @@ export interface UseEditorHistoryArgs {
 
 export interface EditorHistoryHandle {
     /** 在编辑收敛点调用：记录一步 undo 条目（薄壳，转发到 HistoryStack）。 */
-    record: (before: string, after: string, op?: EditorHistoryOp) => void;
+    record: (before: string, after: string, op?: EditorHistoryOp, structuralOp?: StructuralOp) => void;
     /** 有可撤销则回填 before 并返回 true，否则 false。 */
     undo: () => boolean;
     /** 有可重做则回填 after 并返回 true，否则 false。 */
@@ -161,8 +176,8 @@ export function useEditorHistory(args: UseEditorHistoryArgs): EditorHistoryHandl
     }, [resetKey, bump]);
 
     const record = useCallback(
-        (before: string, after: string, op?: EditorHistoryOp) => {
-            stackRef.current?.record(before, after, op);
+        (before: string, after: string, op?: EditorHistoryOp, structuralOp?: StructuralOp) => {
+            stackRef.current?.record(before, after, op, structuralOp);
             bump();
         },
         [bump]

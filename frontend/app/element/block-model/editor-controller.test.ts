@@ -3,7 +3,9 @@
 
 import { describe, expect, it } from "vitest";
 import { buildBlockTree, type Block } from "../markdown-transform/tree";
-import { createEditController, lineRangeToCharOffset } from "./editor-controller";
+import { createEditController, lineRangeToCharOffset, makeBlockRef } from "./editor-controller";
+import { invertStructuralOp } from "../markdown-transform/structural-ops";
+import { moveBlockRange } from "../markdown-inline-edit";
 
 describe("lineRangeToCharOffset — 块坐标 → 绝对字符偏移", () => {
     it("单行范围", () => {
@@ -228,5 +230,129 @@ describe("createEditController — replace-content（prose WYSIWYG 提交收敛�
         expect(res?.text).toBe("line1\n\nline3");
         // 明确不等价于 replaceSourceRange 的行删除语义（由调用方 guard 隔开）
         expect(res?.text).not.toBe(refReplace(text, 2, 2, ""));
+    });
+});
+
+describe("createEditController — 结构意图（阶段 4 M1）", () => {
+    const ctl = createEditController();
+
+    it("move-block：委派 moveBlockRange，返回文本 + 可求逆的 op", () => {
+        const text = "A\n\nB\n\nC";
+        // B 是 0-based 块 2..2（1-based 3..3）
+        const block = makeBlockRef("blk-b", 3, 3);
+        const res = ctl.apply({ type: "move-block", block, targetLine: 5, mode: "after" }, { text });
+        expect(res).not.toBeNull();
+        expect(res!.text).toBe("A\n\nC\n\nB");
+        expect(res!.op?.type).toBe("move");
+        expect(invertStructuralOp(res!.op!)(res!.text)).toBe(text);
+    });
+
+    it("move-block：多块范围上移也可逆", () => {
+        const text = "A\n\nB\n\nC\n\nD";
+        const block = makeBlockRef("blk-cd", 5, 7);
+        const res = ctl.apply({ type: "move-block", block, targetLine: 1, mode: "before" }, { text });
+        expect(res!.text).toBe("C\n\nD\n\nA\n\nB");
+        expect(invertStructuralOp(res!.op!)(res!.text)).toBe(text);
+    });
+
+    it("move-block：原地放下（no-op）返回 null，调用方不入 undo 栈", () => {
+        const text = "A\n\nB\n\nC";
+        const block = makeBlockRef("blk-a", 1, 1);
+        const res = ctl.apply({ type: "move-block", block, targetLine: 1, mode: "before" }, { text });
+        expect(res).toBeNull();
+    });
+
+    it("delete-block：删除整块且不留双空行，op 可求逆", () => {
+        const text = "A\n\nB\n\nC";
+        const block = makeBlockRef("blk-b", 3, 3);
+        const res = ctl.apply({ type: "delete-block", block }, { text });
+        expect(res!.text).toBe("A\n\nC");
+        expect(res!.op?.type).toBe("delete");
+        expect(invertStructuralOp(res!.op!)(res!.text)).toBe(text);
+    });
+
+    it("delete-block：首块边界（不留开头空行）", () => {
+        const text = "A\n\nB\n\nC";
+        const block = makeBlockRef("blk-a", 1, 1);
+        const res = ctl.apply({ type: "delete-block", block }, { text });
+        expect(res!.text).toBe("B\n\nC");
+        // 删掉首块后光标落到（新的）首块起始 = 偏移 0
+        expect(res!.caret).toBe(0);
+        expect(invertStructuralOp(res!.op!)(res!.text)).toBe(text);
+    });
+
+    it("delete-block：末块边界（光标落到文档末尾）", () => {
+        const text = "A\n\nB\n\nC";
+        const block = makeBlockRef("blk-c", 5, 5);
+        const res = ctl.apply({ type: "delete-block", block }, { text });
+        expect(res!.text).toBe("A\n\nB");
+        expect(res!.caret).toBe("A\n\nB".length);
+        expect(invertStructuralOp(res!.op!)(res!.text)).toBe(text);
+    });
+
+    it("delete-block：多块范围（含分隔空行一并折叠）", () => {
+        const text = "A\n\nB\n\nC\n\nD";
+        const block = makeBlockRef("blk-bc", 3, 5);
+        const res = ctl.apply({ type: "delete-block", block }, { text });
+        expect(res!.text).toBe("A\n\nD");
+        expect(invertStructuralOp(res!.op!)(res!.text)).toBe(text);
+    });
+
+    it("duplicate-block：副本紧随其后且内容一致，op 可求逆", () => {
+        const text = "A\n\nB\n\nC";
+        const block = makeBlockRef("blk-b", 3, 3);
+        const res = ctl.apply({ type: "duplicate-block", block }, { text });
+        expect(res!.text).toBe("A\n\nB\n\nB\n\nC");
+        expect(res!.op?.type).toBe("duplicate");
+        expect(invertStructuralOp(res!.op!)(res!.text)).toBe(text);
+    });
+
+    it("duplicate-block：光标落在副本起始（连续复制得到 A A A）", () => {
+        const text = "A";
+        const block = makeBlockRef("blk-a", 1, 1);
+        const first = ctl.apply({ type: "duplicate-block", block }, { text });
+        expect(first!.text).toBe("A\n\nA");
+        // 副本在 1-based 行 3 ⇒ 光标偏移 = 3（"A\n\n" 之后）
+        expect(first!.caret).toBe(3);
+        // 对副本再复制一次：副本紧随其后
+        const block2 = makeBlockRef("blk-a2", 3, 3);
+        const second = ctl.apply({ type: "duplicate-block", block: block2 }, { text: first!.text });
+        expect(second!.text).toBe("A\n\nA\n\nA");
+    });
+
+    it("内容类意图不携带 op（返回契约区分）", () => {
+        const text = "hello world";
+        const block = buildBlockTree(text.split("\n"))[0];
+        const res = ctl.apply({ type: "turn-into", block, to: "heading1" }, { text });
+        expect(res!.op).toBeUndefined();
+    });
+
+    it("结构意图对 CRLF 文本保持与既有纯函数一致", () => {
+        // 既有纯函数按 /\r\n|\n/ 切行、join("\n") 输出（CRLF 会被归一为 LF），
+        // 控制器委派它们 ⇒ 同一行为（非生产场景，wave 一律 \n）。
+        const crlf = "A\r\n\r\nB\r\n\r\nC";
+        const block = makeBlockRef("blk-b", 3, 3);
+        const res = ctl.apply({ type: "delete-block", block }, { text: crlf });
+        expect(res!.text).toBe("A\n\nC");
+    });
+
+    it("M2 回归：统一意图与旧直调 moveBlockRange 逐字节一致（P3 键盘/拖拽重排用例输入）", () => {
+        // markdown.tsx 的 moveFocusedBlock / 拖拽 drop 现经 move-block 意图；这条用例锁定
+        // 「与旧实现逐字节相同」，防止未来在控制器里引入额外归一化。
+        const cases: { doc: string; s: number; e: number; tgt: number; mode: "before" | "after" }[] = [
+            { doc: "# title\n\nB\n\nC\n\nD", s: 3, e: 5, tgt: 7, mode: "after" },
+            { doc: "A\n\nB\n\nC\n\nD", s: 5, e: 7, tgt: 1, mode: "before" },
+            { doc: "hello\n\nworld", s: 3, e: 3, tgt: 1, mode: "before" },
+            { doc: "A\n\nB\n\nC", s: 3, e: 3, tgt: 1, mode: "before" },
+            { doc: "A\n\nB\n\nC", s: 1, e: 1, tgt: 5, mode: "after" },
+        ];
+        for (const c of cases) {
+            const direct = moveBlockRange(c.doc, c.s, c.e, c.tgt, c.mode);
+            const res = ctl.apply(
+                { type: "move-block", block: makeBlockRef(undefined, c.s, c.e), targetLine: c.tgt, mode: c.mode },
+                { text: c.doc }
+            );
+            expect(res!.text).toBe(direct.text);
+        }
     });
 });

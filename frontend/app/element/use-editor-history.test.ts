@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { HistoryStack, MAX_HISTORY, type EditorHistoryOp } from "./use-editor-history";
+import type { StructuralOp } from "./markdown-transform/structural-ops";
 
 describe("HistoryStack — 统一 undo/redo 栈（P1-A 核心）", () => {
     it("记录一步后可以撤销/重做，文本正确回填", () => {
@@ -133,5 +134,20 @@ describe("HistoryStack — step3 S3 块级逆操作记账（数据层，行为�
         h.record("AA\n\nB", "AA\n\nBB", opB);
         expect(h.popUndo()?.op?.blockId).toBe("blk-b");
         expect(h.popUndo()?.op?.blockId).toBe("blk-a");
+    });
+
+    it("阶段 4：structuralOp 与快照一起入栈，undo/redo 行为不变", () => {
+        const h = new HistoryStack();
+        const sOp: StructuralOp = { type: "delete", blockId: "blk-b", range: { start: 3, end: 3 }, content: "B" };
+        // 第 3 参为块级内容 op（step3），第 4 参为结构 op（阶段 4）；两者可同时缺省。
+        h.record("A\n\nB\n\nC", "A\n\nC", undefined, sOp);
+        const entry = h.popUndo();
+        expect(entry?.structuralOp).toEqual(sOp);
+        expect(entry?.before).toBe("A\n\nB\n\nC");
+        expect(entry?.after).toBe("A\n\nC");
+        // 旧调用方不传 structuralOp → 字段不存在（可选，不破契约）
+        const h2 = new HistoryStack();
+        h2.record("a", "b");
+        expect("structuralOp" in (h2.popUndo() as object)).toBe(false);
     });
 });
