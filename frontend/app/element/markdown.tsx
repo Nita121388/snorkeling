@@ -66,10 +66,11 @@ import {
     isSelectingRange,
     makeInlineEditKeydown,
     makeListItemInsertMarker,
+    MarkdownRenderRootSelector,
     moveBlockRange,
     placeholderForBlockKind,
+    relocateByBlockId,
     replaceSourceRange,
-    spliceInsertBlock,
     splitBlockAtCaretText,
     splitListItemDraft,
     useInlineEdit,
@@ -111,6 +112,8 @@ import { MarkdownContentBlockType, transformBlocks } from "@/app/element/markdow
 import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip } from "./markdown-render";
 import { useEditorHistory, type EditorHistoryOp } from "./use-editor-history";
 import { editorController } from "./block-model/editor-controller-instance";
+import { makeBlockRef } from "./block-model/editor-controller";
+import type { StructuralOp } from "./markdown-transform/structural-ops";
 import type { Block } from "./markdown-transform/tree";
 import { makeRemarkPlugins } from "@/app/element/remark";
 import remarkFrontmatterToWaveBlock from "@/app/element/remark/frontmatter-to-waveblock";
@@ -329,6 +332,12 @@ type EditorCommitOptions = {
      * 仅为阶段 4 的块级结构操作准备精确逆操作数据；不参与任何现有行为。
      */
     blockOp?: EditorHistoryOp;
+    /**
+     * 阶段 4：结构操作（move/delete/duplicate）的可独立求逆数据，来自
+     * `editorController.apply({type:"move-block"|"delete-block"|"duplicate-block"})` 的返回。
+     * 同样只随快照存下，不改变 undo/redo 行为。
+     */
+    structuralOp?: StructuralOp;
 };
 
 // P2-B1：编辑提交收敛到 AST 的统一控制器实例来自 block-model/editor-controller-instance
@@ -862,7 +871,7 @@ const Markdown = ({
             nextText = renumberOrderedListBlockAtLine(nextText, renumberAnchorLine)?.text ?? nextText;
         }
         if (!opts?.skipHistory) {
-            editorHistoryRef.current.record(beforeText, nextText, opts?.blockOp);
+            editorHistoryRef.current.record(beforeText, nextText, opts?.blockOp, opts?.structuralOp);
         }
         onInlineEditCommit(nextText);
         lastAppliedTextRef.current = nextText;
@@ -2025,11 +2034,22 @@ const Markdown = ({
             // 编辑中的 draft（未 blur/Enter 提交）必须先折入源文本再移动，否则 cancel
             // 会丢弃用户刚输入的内容（P3 复核 P1-2）。折入后以新文本为 moveBlockRange 基底。
             const baseText = replaceSourceRange(text, start, end, inlineEdit.draftText);
-            const { text: movedText, newStartLine } = moveBlockRange(baseText, start, end, tgt, mode);
-            if (movedText === baseText) {
-                return;
+            // 阶段 4 M2：改走统一结构意图（委派既有 moveBlockRange），并带上可求逆的 op。
+            // 人行为不变：同一输入下文本与旧直调逐字节一致（见 markdown-structural-ops 回归用例）。
+            const res = editorController.apply(
+                {
+                    type: "move-block",
+                    block: makeBlockRef(session.blockId, start, end),
+                    targetLine: tgt,
+                    mode,
+                },
+                { text: baseText }
+            );
+            if (res == null) {
+                return; // no-op：不入 undo 栈
             }
-            handleInlineEditCommit(movedText);
+            handleInlineEditCommit(res.text, { structuralOp: res.op });
+            const newStartLine = res.op?.type === "move" ? res.op.to.start : start;
             const viewport = getViewportEl();
             const el = viewport?.querySelector<HTMLElement>(
                 `.markdown-render-root [data-source-line="${newStartLine}"]`
@@ -2043,8 +2063,170 @@ const Markdown = ({
                 });
             }
         },
-        [inlineEdit, text, handleInlineEditCommit, moveBlockRange, getPreviousBlockLine, getNextBlockLine, focusEditedLine, getViewportEl]
+        [
+            inlineEdit,
+            text,
+            handleInlineEditCommit,
+            getPreviousBlockLine,
+            getNextBlockLine,
+            focusEditedLine,
+            getViewportEl,
+        ]
     );
+
+    // ---------------------------------------------------------------------------------
+    // 阶段 4 M3：块级删除 / 复制（Cmd/Ctrl+Shift+K / Cmd/Ctrl+Shift+D）。
+    //
+    // R4 目标解析：优先用「编辑会话的块身份」按 data-block-id 重定位到**当前**行号；
+    // 无会话时退到显式选中的块（块菜单 / Ctrl+drag 选择）——同样从 DOM 读取当前的
+    // data-source-line / data-source-line-end。绝不使用可能陈旧的行号。
+    // ---------------------------------------------------------------------------------
+    const resolveStructuralTarget = useCallback((): {
+        startLine: number;
+        endLine: number;
+        blockId?: string;
+    } | null => {
+        const root = getViewportEl()?.querySelector<HTMLElement>(MarkdownRenderRootSelector) ?? null;
+        const fromEl = (el: HTMLElement | null): { startLine: number; endLine: number; blockId?: string } | null => {
+            if (el == null) return null;
+            const s = Number(el.dataset.sourceLine);
+            if (!Number.isFinite(s) || s < 1) return null;
+            const eRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : s;
+            return {
+                startLine: s,
+                endLine: Number.isFinite(eRaw) && eRaw >= s ? eRaw : s,
+                blockId: el.dataset.blockId ?? undefined,
+            };
+        };
+        const session = inlineEdit.editSession;
+        if (session != null) {
+            const relocated = relocateByBlockId(root, session.blockId);
+            return relocated != null
+                ? { ...relocated, blockId: session.blockId }
+                : { startLine: session.startLine, endLine: session.endLine, blockId: session.blockId };
+        }
+        const range = selectedRangeRef.current;
+        if (range != null) {
+            // 多块选择（Ctrl+drag）：直接用范围自身（它本来就是从 DOM 的 data-source-line /
+            // -end 采集的当前行号），只借元素取块身份——不能用首块的单块范围覆盖整段选择。
+            const el = root?.querySelector<HTMLElement>(`[data-source-line="${range.startLine}"]`) ?? null;
+            return { startLine: range.startLine, endLine: range.endLine, blockId: el?.dataset.blockId ?? undefined };
+        }
+        const line = selectedLineRef.current;
+        if (line != null) {
+            return fromEl(resolveBlockAnchorEl(line));
+        }
+        return null;
+    }, [inlineEdit.editSession, getViewportEl, resolveBlockAnchorEl]);
+
+    /** 提交后把编辑焦点落到指定块行（重渲染异步，重试几帧）。 */
+    const focusBlockLineAfterCommit = useCallback(
+        (line: number | null) => {
+            if (line == null) {
+                return;
+            }
+            let attempts = 0;
+            const retry = () => {
+                attempts++;
+                const viewport = getViewportEl();
+                const el = viewport?.querySelector<HTMLElement>(
+                    `.markdown-render-root [data-source-line="${line}"]`
+                );
+                if (el != null) {
+                    setSelectedRange({
+                        startLine: line,
+                        endLine: Number(el.dataset.sourceLineEnd ?? line) || line,
+                    });
+                    focusEditedLine(line, undefined, false, undefined, undefined, blockKindFromElement(el));
+                } else if (attempts < 10) {
+                    requestAnimationFrame(retry);
+                }
+            };
+            requestAnimationFrame(() => requestAnimationFrame(retry));
+        },
+        [getViewportEl, focusEditedLine]
+    );
+
+    // 整块删除：委派 delete-block 意图（内部用 deleteBlockRange），op 随 undo 快照记账。
+    const deleteFocusedBlock = useCallback(() => {
+        const target = resolveStructuralTarget();
+        if (target == null) {
+            return;
+        }
+        if (inlineEdit.editSession != null) {
+            inlineEdit.cancel?.();
+        }
+        const res = editorController.apply(
+            { type: "delete-block", block: makeBlockRef(target.blockId, target.startLine, target.endLine) },
+            { text }
+        );
+        if (res == null) {
+            return;
+        }
+        handleInlineEditCommit(res.text, { structuralOp: res.op });
+        setSelectedBlock(null);
+        setSelectedRange(null);
+        // 焦点：删除位置处的「下一块」；删的是末块则回上一块。
+        const afterLines = res.text === "" ? [] : res.text.split("\n");
+        const nextLine = target.startLine <= afterLines.length ? target.startLine : Math.max(1, target.startLine - 2);
+        focusBlockLineAfterCommit(nextLine);
+    }, [resolveStructuralTarget, inlineEdit, text, handleInlineEditCommit, focusBlockLineAfterCommit]);
+
+    // 整块复制：副本紧随其后（中间隔一个空行）；编辑中的 draft 先折入源文本再复制。
+    const duplicateFocusedBlock = useCallback(() => {
+        const target = resolveStructuralTarget();
+        if (target == null) {
+            return;
+        }
+        const wasEditing = inlineEdit.editSession != null;
+        const baseText = wasEditing
+            ? replaceSourceRange(text, target.startLine, target.endLine, inlineEdit.draftText)
+            : text;
+        if (wasEditing) {
+            inlineEdit.cancel?.();
+        }
+        const res = editorController.apply(
+            { type: "duplicate-block", block: makeBlockRef(target.blockId, target.startLine, target.endLine) },
+            { text: baseText }
+        );
+        if (res == null) {
+            return;
+        }
+        handleInlineEditCommit(res.text, { structuralOp: res.op });
+        setSelectedBlock(null);
+        // 光标留在副本（对标思源/Obsidian：重复后继续编辑副本）。
+        const copyLine = res.op?.type === "duplicate" ? res.op.copyRange.start : null;
+        focusBlockLineAfterCommit(copyLine);
+    }, [resolveStructuralTarget, inlineEdit, text, handleInlineEditCommit, focusBlockLineAfterCommit]);
+
+    // 无编辑会话时同一组快捷键也可用（需先显式选中块：块菜单选择 / Ctrl+drag 范围）。
+    // 只在「确有块级选择」时生效，避免在源码编辑器 / 普通浏览里误触；
+    // 编辑会话打开时由 handleEditorKeyDown（textarea/WYSIWYG）接管，二者不重叠。
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (inlineEdit.editSession != null) {
+                return;
+            }
+            if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) {
+                return;
+            }
+            if (selectedLineRef.current == null && selectedRangeRef.current == null) {
+                return;
+            }
+            const key = e.key.toLowerCase();
+            if (key === "k") {
+                e.preventDefault();
+                e.stopPropagation();
+                deleteFocusedBlock();
+            } else if (key === "d") {
+                e.preventDefault();
+                e.stopPropagation();
+                duplicateFocusedBlock();
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [inlineEdit.editSession, deleteFocusedBlock, duplicateFocusedBlock]);
 
     // 列表 Tab/Shift+Tab 缩进（P3 F9/G9；WYSIWYG 路径于方案 10 step2 F3 改为自持结构操作）：
     // 仅列表会话。非 WYSIWYG（textarea）对会话行范围做 2 空格缩进/反缩进后提交（走
@@ -2289,19 +2471,30 @@ const Markdown = ({
             }
 
             const duplicateBlock = () => {
-                const newFull = spliceInsertBlock(
-                    lines,
-                    startLineRaw,
-                    endLine,
-                    "after",
-                    blockSource.split(/\r\n|\n/)
-                ).join("\n");
-                handleInlineEditCommit(newFull, renumberOpts);
+                // 阶段 4：与快捷键同一入口（统一结构意图 + 可逆 op）。文本变换仍委派既有
+                // spliceInsertBlock（控制器内部），逐字节不变。
+                const res = editorController.apply(
+                    {
+                        type: "duplicate-block",
+                        block: makeBlockRef(el.dataset.blockId ?? undefined, startLineRaw, endLine),
+                    },
+                    { text }
+                );
+                if (res == null) {
+                    return;
+                }
+                handleInlineEditCommit(res.text, { ...renumberOpts, structuralOp: res.op });
             };
             const deleteBlock = () => {
-                const newFull = deleteBlockRange(text, startLineRaw, endLine);
-                handleInlineEditCommit(newFull, renumberOpts);
+                const res = editorController.apply(
+                    { type: "delete-block", block: makeBlockRef(el.dataset.blockId ?? undefined, startLineRaw, endLine) },
+                    { text }
+                );
                 setSelectedBlock(null);
+                if (res == null) {
+                    return;
+                }
+                handleInlineEditCommit(res.text, { ...renumberOpts, structuralOp: res.op });
             };
 
             const menu: ContextMenuItem[] = [
@@ -2490,24 +2683,45 @@ const Markdown = ({
                 const tgtText = (text.split(/\r?\n/)[tgtLine - 1] ?? "").match(/^ */)?.[0].length ?? 0;
                 insideIndent = tgtText + 2;
             }
-            const { text: movedText, newStartLine } = moveBlockRange(
-                text,
-                src.startLine,
-                src.endLine,
-                tgtLine,
-                mode,
-                insideIndent
-            );
-            if (movedText === text) {
-                return; // no-op (defensive)
+            // 阶段 4 M2：before/after 重排改走统一结构意图（委派既有 moveBlockRange，行为不变）；
+            // `inside`（拖入列表 = 跨层嵌套）是 design「明确不做」的类型专属结构行为，仍直调
+            // 既有纯函数，逐字节不变。
+            let movedText: string;
+            let newStartLine: number;
+            let structuralOp: StructuralOp | undefined;
+            if (mode === "inside") {
+                const r = moveBlockRange(text, src.startLine, src.endLine, tgtLine, mode, insideIndent);
+                if (r.text === text) {
+                    return; // no-op (defensive)
+                }
+                movedText = r.text;
+                newStartLine = r.newStartLine;
+            } else {
+                const res = editorController.apply(
+                    {
+                        type: "move-block",
+                        block: makeBlockRef(undefined, src.startLine, src.endLine),
+                        targetLine: tgtLine,
+                        mode,
+                    },
+                    { text }
+                );
+                if (res == null) {
+                    return; // no-op (defensive)
+                }
+                movedText = res.text;
+                structuralOp = res.op;
+                newStartLine = res.op?.type === "move" ? res.op.to.start : src.startLine;
             }
             // Renumber based on the MOVED content (source block), not the drop target — so an ordered
             // list block keeps consecutive numbers after the move.
             const srcEl = resolveDragBlock(src.startLine);
             const isSourceList =
                 srcEl != null && (srcEl.tagName === "LI" || srcEl.tagName === "OL" || srcEl.tagName === "UL");
-            const renumberOpts = isSourceList ? { renumberOrderedListFromLine: newStartLine } : undefined;
-            handleInlineEditCommit(movedText, renumberOpts);
+            handleInlineEditCommit(movedText, {
+                ...(isSourceList ? { renumberOrderedListFromLine: newStartLine } : {}),
+                structuralOp,
+            });
             // Re-select the moved block(s) so the highlight follows them to the new position. The commit
             // re-renders through an async atom, so resolve the element after a couple of frames.
             const movedHeight = src.endLine - src.startLine;
@@ -3667,6 +3881,20 @@ const Markdown = ({
                     moveFocusedBlock(e.key === "ArrowUp" ? -1 : 1);
                     return;
                 }
+                // 阶段 4 M3：块级删除 / 复制（先于 inline-style 分支，避免 shift+k 被当 link）。
+                // Cmd/Ctrl+Shift+D 在浏览器里是默认书签手势 → 必须 preventDefault。
+                if (e.shiftKey && key === "k") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    deleteFocusedBlock();
+                    return;
+                }
+                if (e.shiftKey && key === "d") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    duplicateFocusedBlock();
+                    return;
+                }
                 // Inline styles (not inside code sessions — a code fork isn't prose).
                 if (sessKind !== "code") {
                     if (!e.shiftKey && (key === "b" || key === "i" || key === "k")) {
@@ -3723,6 +3951,8 @@ const Markdown = ({
             handleInlineStyle,
             handleSessionBlockTransform,
             moveFocusedBlock,
+            deleteFocusedBlock,
+            duplicateFocusedBlock,
             inlineEdit,
             inlineEditKeyDown,
             editorHistory,
