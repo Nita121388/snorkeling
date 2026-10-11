@@ -17,6 +17,8 @@ function usage() {
         "  elements [--limit N]  Print visible interactive elements with coordinates",
         "  style <query>         Print geometry and computed style for matching elements",
         "  click <x> <y>         Click viewport coordinates using CDP mouse events",
+        "  key <name>            Dispatch a real key press (Enter|Tab|Shift+Tab|Backspace|Delete|Escape|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End)",
+        "  type <text>           Type real characters into the focused element (per-char key events)",
         "  screenshot [path]     Save a PNG screenshot",
         "  eval <js>             Run JavaScript in the renderer and print JSON result",
         "",
@@ -381,6 +383,64 @@ async function commandClick(client, args) {
     console.log(`clicked ${x},${y}`);
 }
 
+// Named keys for `key`. CDP needs the DOM key/code plus the legacy Windows virtual key code,
+// otherwise Chromium's editing commands (Enter splitting a list item, Tab indenting, Backspace
+// merging) do not fire — a synthetic KeyboardEvent from `eval` cannot trigger them at all.
+const NamedKeys = {
+    enter: { key: "Enter", code: "Enter", keyCode: 13 },
+    tab: { key: "Tab", code: "Tab", keyCode: 9 },
+    "shift+tab": { key: "Tab", code: "Tab", keyCode: 9, modifiers: 8 },
+    backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
+    delete: { key: "Delete", code: "Delete", keyCode: 46 },
+    escape: { key: "Escape", code: "Escape", keyCode: 27 },
+    arrowup: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+    arrowdown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+    arrowleft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+    arrowright: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+    home: { key: "Home", code: "Home", keyCode: 36 },
+    end: { key: "End", code: "End", keyCode: 35 },
+};
+
+async function dispatchKey(client, name, text) {
+    const spec = NamedKeys[String(name).toLowerCase().replace(/\s+/g, "")];
+    const params = spec
+        ? { key: spec.key, code: spec.code, windowsVirtualKeyCode: spec.keyCode, nativeVirtualKeyCode: spec.keyCode, modifiers: spec.modifiers ?? 0 }
+        : { key: text ?? String(name), code: "", windowsVirtualKeyCode: (text ?? String(name)).toUpperCase().charCodeAt(0), nativeVirtualKeyCode: 0 };
+    // Chromium performs the default EDITING action (splitting a list item, inserting a line break)
+    // only for a `keyDown` carrying `text`. Enter must therefore be sent as "\r" — a bare
+    // `rawKeyDown` delivers the event to JS but the editor never mutates the DOM.
+    let payloadText = text;
+    if (payloadText == null && spec?.key === "Enter") {
+        payloadText = "\r";
+    }
+    if (payloadText != null) {
+        params.text = payloadText;
+        params.unmodifiedText = payloadText;
+    }
+    await client.send("Input.dispatchKeyEvent", { type: payloadText != null ? "keyDown" : "rawKeyDown", ...params });
+    await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: params.key, code: params.code, windowsVirtualKeyCode: params.windowsVirtualKeyCode, nativeVirtualKeyCode: params.nativeVirtualKeyCode, modifiers: params.modifiers ?? 0 });
+}
+
+async function commandKey(client, args) {
+    const name = args[0];
+    if (!name) {
+        throw new Error(`key requires a key name (${Object.keys(NamedKeys).join("|")})`);
+    }
+    await dispatchKey(client, name);
+    console.log(`pressed ${name}`);
+}
+
+async function commandType(client, args) {
+    const text = args.join(" ");
+    if (text === "") {
+        throw new Error("type requires text");
+    }
+    for (const ch of text) {
+        await dispatchKey(client, ch, ch);
+    }
+    console.log(`typed ${JSON.stringify(text)}`);
+}
+
 async function commandScreenshot(client, args) {
     const outputPath = args[0] || DefaultScreenshotPath;
     const result = await client.send("Page.captureScreenshot", {
@@ -417,6 +477,10 @@ async function main() {
             await commandStyle(client, opts.args);
         } else if (opts.command === "click") {
             await commandClick(client, opts.args);
+        } else if (opts.command === "key") {
+            await commandKey(client, opts.args);
+        } else if (opts.command === "type") {
+            await commandType(client, opts.args);
         } else if (opts.command === "screenshot") {
             await commandScreenshot(client, opts.args);
         } else if (opts.command === "eval") {
