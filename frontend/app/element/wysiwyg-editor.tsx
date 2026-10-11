@@ -26,6 +26,14 @@ import {
     type ClosedInlinePair,
 } from "./markdown-transform/block-type";
 import { serializeBlockDomToMarkdown, type WysiwygBlockKind } from "./markdown-transform/dom-to-markdown";
+import {
+    focusByAnchor,
+    indentListItem,
+    liFromSelection,
+    normalizeListDom,
+    outdentListItem,
+    plantCaretAnchor,
+} from "./markdown-transform/list-dom";
 
 // ---------------------------------------------------------------------------
 // Public handle — consumed by markdown.tsx via ref.
@@ -113,8 +121,9 @@ export type WysiwygEditorHandle = {
     insertTextAtCaret(text: string): void;
     /** Delete `count` characters immediately before the caret (used to strip `::query` triggers). */
     deleteCharsBeforeCaret(count: number): void;
-    /** Indent/outdent the current list item via the contentEditable's native list semantics
-     *  (P3 F9/G9: WYSIWYG list Tab/Shift+Tab). Serialization re-emits nested markers. */
+    /** Indent/outdent the current list item with an explicit DOM move (方案 10 step2 F3:
+     *  self-owned structure operation — no `document.execCommand`). Nested lists end up inside
+     *  the previous sibling `<li>` (canonical structure); serialization re-emits nested markers. */
     applyListIndent(dir: 1 | -1): void;
     /** Live-convert the block to a new kind (called by slash/toolbar commands). */
     applyLiveKind(kind: BlockKind, headingLevel?: number): void;
@@ -440,6 +449,9 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         headingLevelRef.current = initialHeadingLevel;
         listMarkerRef.current = initialListMarker;
         root.innerHTML = initialHtml || (blockKind === "list" ? "<ul><li></li></ul>" : "");
+        // F2：种子落地后立即规范化（防御外部/渲染器 HTML 里的非规范列表结构：
+        // 嵌套 ul 直接挂在 ul 下会让序列化丢掉整棵子树）。
+        normalizeListDom(root);
     }, [initialHtml, blockKind, initialHeadingLevel, initialListMarker]);
 
     // --- Inline-format closing (P3 F5) ---
@@ -496,6 +508,15 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         // compositionend 后再统一 sync 一次，draftText 即可拿到完整落盘文本。
         if (compositionActiveRef.current) {
             return;
+        }
+        // F2 结构规范化：原生 Enter（换行/新建 <li>）、Backspace（合并/删除项）、粘贴、以及
+        // 浏览器其它默认编辑动作都只在 `input` 事件之后才产生最终 DOM。`input` 是最稳的钩子
+        // （`beforeinput` 早于变更、`keyup` 漏掉非键盘路径），因此在这里统一把非规范列表结构
+        // （嵌套 ul/ol 直接挂在 ul/ol 下）收敛回「只能挂在 li 之下」。否则下一次结构操作会基于
+        // 坏结构继续劣化，且老序列化器会静默丢内容。幂等且无列表时几乎零开销。
+        const rootEl = rootRef.current;
+        if (rootEl != null) {
+            normalizeListDom(rootEl);
         }
         detectTypingTrigger();
         applyClosedInlineFormatting();
@@ -626,13 +647,28 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 const root = rootRef.current;
                 if (root == null) return;
                 root.focus();
-                // contentEditable 原生列表语义：indent/outdent 由浏览器管理嵌套层级，
-                // serializeListDomToMarkdown 会按嵌套结构重新输出缩进 marker —— 正确的闭环。
-                // 组合中不做（候选态下 execCommand 会扰乱输入法）。
+                // 组合中不做（候选态下改 DOM 会扰乱输入法）。
                 if (compositionActiveRef.current) {
                     return;
                 }
-                document.execCommand(dir === 1 ? "indent" : "outdent", false);
+                // F3 结构操作自持：不再用 `document.execCommand("indent"/"outdent")` —— 浏览器
+                // indent 会产出「嵌套 ul 直接挂在 ul 下」的非规范结构，且序列化会丢掉整棵子树
+                // （实测：Tab 后提交，源码少一项）。改为显式搬移 li：
+                //   Tab      → 成为紧邻前一个兄弟 li 的子列表项（无前项则 no-op）
+                //   Shift+Tab → 从父列表移出，插到「父 li」之后（顶层项则 no-op）
+                const li = liFromSelection(root);
+                if (li == null) {
+                    return; // 光标不在列表项内
+                }
+                // F4：结构变更前用 <wbr> 锚住光标（搬移/规范化后 Range 会失效/漂移）。
+                plantCaretAnchor(root);
+                const changed = dir === 1 ? indentListItem(li) : outdentListItem(li);
+                if (changed) {
+                    // F2：自持操作产出规范结构，这里再防御性规范化一次（幂等）。
+                    normalizeListDom(root);
+                }
+                // F4：按锚点重建 collapsed Range 并 focus（无论是否改动都要移除锚点）。
+                focusByAnchor(root);
                 syncMirror();
             },
 

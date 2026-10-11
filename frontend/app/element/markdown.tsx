@@ -2027,10 +2027,10 @@ const Markdown = ({
         [inlineEdit, text, handleInlineEditCommit, moveBlockRange, getPreviousBlockLine, getNextBlockLine, focusEditedLine, getViewportEl]
     );
 
-    // 列表 Tab/Shift+Tab 缩进（P3 F9/G9）：仅列表会话；对会话行范围做 2 空格缩进/反缩进
-    // 后提交（走 handleInlineEditCommit → P1 undo 栈）。WYSIWYG 列表不拦截（contentEditable
-    // 无列表缩进语义，交由原生；当前 Tab 在列表会话处由下方分支转发到此处，wysiwyg list 走
-    // allowNativeEnter 相似逻辑——这里对 wysiwyg list 直接跳过，保持原生行为）。
+    // 列表 Tab/Shift+Tab 缩进（P3 F9/G9；WYSIWYG 路径于方案 10 step2 F3 改为自持结构操作）：
+    // 仅列表会话。非 WYSIWYG（textarea）对会话行范围做 2 空格缩进/反缩进后提交（走
+    // handleInlineEditCommit → P1 undo 栈）。WYSIWYG list 把 Tab 交给 applyListIndent
+    // （显式搬移 li，不再用 execCommand，也不再依赖 contentEditable 原生缩进）。
     const handleIndentList = useCallback(
         (dir: 1 | -1) => {
             const session = inlineEdit.editSession;
@@ -2038,8 +2038,8 @@ const Markdown = ({
                 return;
             }
             if (session.wysiwyg) {
-                // WYSIWYG list：contentEditable 原生缩进（execCommand indent/outdent → 嵌套
-                // 层级变化 → 序列化重新输出缩进 marker）。组合中 applyListIndent 内部守卫。
+                // WYSIWYG list：自持结构操作（applyListIndent 显式搬移 li → 规范结构 → 序列化
+                // 重新输出 2 空格/层的缩进 marker；<wbr> 锚定光标不丢）。组合中内部守卫。
                 inlineEdit.wysiwygRef.current?.applyListIndent(dir);
                 return;
             }
