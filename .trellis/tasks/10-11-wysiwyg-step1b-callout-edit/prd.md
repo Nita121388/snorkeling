@@ -2,7 +2,18 @@
 
 父任务：`10-11-wysiwyg-overhaul`
 
-## 状态：挂起（blocked-by 未知触发条件）
+## 状态：前置条件 #1 已满足（2026-10-11），可开工
+
+**空编辑器根的触发条件已定位到代码级并修掉**（提交 `9e8489b8` + 4 个回归测试）：
+
+- 机制：`beginEdit` 的 `targetEl` 与 `blockKind` 不保证同源；当 `targetEl` 不是该块的内容载体时
+  种子为空，而 `""` 仍通过 `wysiwygHtml != null` → `WysiwygEditor` 以 `initialHtml=""` 挂载 →
+  失焦提交把序列化出的裸 `>` 写到那个块上。
+- 修复：`captureWysiwygInfo` 拒收「种子空 html」**和**「种子 html 非空但零文本」的异常会话
+  → 回落 textarea。**callout 标题恰好是「html 非空、零文本」的形状**（`<button>` + 空 span），
+  所以这道防线正是 callout 原地编辑能安全重启的前提。
+
+原挂起说明保留在下方，供追溯。
 
 本任务原本是 `10-11-wysiwyg-step1-stopgap` 的 D3/D4，已实现并通过单元测试，
 但在**真实应用**验证时造成了数据损坏，因此撤出（代码已回退，见 step1 的范围变更记录）。

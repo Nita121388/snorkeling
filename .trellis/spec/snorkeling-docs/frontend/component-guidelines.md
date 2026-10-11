@@ -246,6 +246,46 @@ react-markdown 往每个元素的 props 里注入 `node` 对象。写 `<li {...p
 - 例外：`WaveBlock` 这类纯组件不落到 DOM，可保持 `{...props}`
 - 验证方式：渲染后断言不存在 `[node]` 元素且全页无 `[object Object]`
 
+## Pattern: sanitize schema 的同名属性只能定义一次（必读，曾致静默失效）
+
+`hast-util-sanitize` 的 `findDefinition`（`node_modules/hast-util-sanitize/lib/index.js:744`）
+对**同一个 tag 上的同名属性只取第一条定义**，后面的条目整条被忽略 ——
+多条 `["className", …]` **不取并集，只有第一条生效**。
+
+后果实例：span 曾写
+
+```js
+["className", /^hljs-./],                        // ← 只有这条生效
+["className", /^markdown-alert/],
+["className", "markdown-alert-emoji-btn", "is-empty"],
+```
+
+于是 10-08 用来修竖排的 `span.markdown-alert-title-text` 被静默剥成 `class=""`，
+CSS 从未生效（沙箱实测：span `flex` 仍是 `0 1 auto`、`min-width: auto`）。
+
+**规则**：
+- 同一 tag 的同一属性名**只出现一次**，放宽时把允许值**并进已有那一条**。
+- schema 由 `frontend/app/element/markdown-sanitize-schema.ts` 导出，
+  **测试必须 import 真实 schema**，不得再写「镜像 schema」（顺序漂移正是漏掉此 bug 的原因）。
+
+## Pattern: callout / 引用块是一等块（R1–R4）
+
+- **块身份**：`remarkCalloutAlert` 产出 `<calloutalert class="markdown-alert markdown-alert-{type}">`
+  并**保留原 blockquote 的 `position`**（start+end）→ 渲染器用 `srcLineAttrs(props)` 注入
+  `data-source-line`/`-end`。没有 position 就没有块身份（点标题毫无反应）。
+- **CSS**：自定义 tag 默认 inline，`.markdown-alert` 必须显式 `display: block`。
+- **点击目标**：`resolveEditTargetFromElement` 必须**最前面**识别
+  `calloutalert[data-source-line], .markdown-alert[data-source-line]` → 整块 `blockKind: "quote"`。
+  放在 `closest("[data-source-line]")` 之后就会先命中正文 `<p>`（kind `"p"`），
+  只编辑一行**并写掉该行的 `> ` 前缀**。
+- **干净种子**（`calloutSeedHtml`）：必须去掉装饰性的 emoji `<button>`（`<button>` 走序列化
+  default 分支会被 unwrap、把 emoji 泄漏进正文），标题段降为普通首段。
+- **标记保真**（`captureCalloutPrefix` / `applyCalloutPrefix`）：从源码首行取 `[!TYPE]` +
+  emoji 的**原文**（保大小写），提交时回写到序列化首行 `> ` 之后；前缀为空（普通引用）
+  **不得凭空新增** `[!quote]`。回写必须在 `commit()` 的空壳守卫**之后** —— 守卫靠回写前的
+  裸 `>` 才能认出空壳。
+- 编辑 emoji 选择器复用同一套前缀正则语义（`markdown.tsx` 的 `applyCalloutEmoji`）。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下
@@ -315,6 +355,25 @@ react-markdown 往每个元素的 props 里注入 `node` 对象。写 `<li {...p
 **Fix / Prevention**: 见「结构自持 + 规范化」。任何序列化器都必须对
 “不在预期位置的子节点”有**兜底输出**，宁可输出得难看也不能丢。
 
+
+### 在 sanitize schema 里对同一个属性写多条定义
+
+**Symptom**: 某个 class 加进 schema 后样式/行为完全没变化，DOM 上看到 `class=""`。
+
+**Cause**: `findDefinition` 只取第一条同名属性定义，后续条目整条被忽略（不取并集）。
+
+**Fix / Prevention**: 见「sanitize schema 的同名属性只能定义一次」；测试 import 真实 schema。
+
+### 把「紧邻 `<br>` 的换行」当成内容
+
+**Symptom**: 引用块/callout 提交后凭空多出一条裸 `>` 空行，一行软换行内容被拆成两个段落。
+
+**Cause**: 渲染器在软换行前后插 `\n`（`<p>a<br>\nb</p>`）。渲染态 `normal` 下不可见，
+编辑器却是 `pre-wrap`，它成了第二个真实换行。**字符串层**不处理就没有机会了 ——
+`innerHTML` 重新解析时相邻文本节点会被合并（`"\nb"`），DOM 层再也认不出那是个独立空白节点。
+
+**Fix / Prevention**: 种子归一化在字符串层做（`normalizeBreaksAroundNewlines`），
+只动紧贴 `<br>` 的那一个换行。
 ### UI 交互验证时忽略渲染进程可见性
 
 **Symptom**: CDP `click` / `key` 完全无效——DOM 上连 `mousedown` 都收不到，

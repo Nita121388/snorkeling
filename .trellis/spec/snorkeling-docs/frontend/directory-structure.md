@@ -62,6 +62,15 @@ frontend/app/element/
     └── index.ts             # 统一 re-export（不含单例）
 ```
 
+## markdown 渲染管线相关文件（R1–R4 新增）
+
+- `markdown-sanitize-schema.ts`：markdown 渲染的 sanitize schema 工厂
+  （`makeMarkdownSanitizeSchema` / `FilePathHrefProtocols`）。**从 markdown.tsx 抽出，
+  唯一理由是让测试能 import 真实 schema** —— 见 component-guidelines 的
+  「sanitize schema 的同名属性只能定义一次」。
+- `markdown-render/calloutalert.tsx`：`<calloutalert>` 渲染器（registry key `calloutalert`），
+  透传 `domProps` + `srcLineAttrs`。
+
 ## block-model/ vs markdown-render/ 分工
 - `markdown-render/`：ReactMarkdown 的渲染器组件（**生产渲染**走它，P0 已 registry 化）。
 - `block-model/`：块模型坐标之上的**语义视图（Block→renderable）** + **编辑控制器（intent→文本变换）**，
