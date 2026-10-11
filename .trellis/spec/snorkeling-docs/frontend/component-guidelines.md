@@ -160,6 +160,67 @@ WYSIWYG 的「所见即所得」打字手感：输入 `**bold**` 光标到末尾
 - **坐标模型**：insert/move/delete 是**跨块范围操作**，不走 block-model 的单块坐标 intent
   （G10 决策不做——强塞会扭曲单块模型；保持纯函数 + 统一提交通道 handleInlineEditCommit）。
 
+## Pattern: 列表是「整表编辑」，不是「按项编辑」（step1 D1/F3）
+
+渲染态每个 `<ul>` 与 `<li>` 都带 `data-source-line`，`closest()` 永远命中最近的 `LI`。
+因此点击解析必须**无条件把 LI 提升到所属 `UL/OL`**（`resolveEditTargetFromElement`）：
+
+- 裸 `<li>` 作编辑种子是非法 HTML，其盒子与渲染态 `<ul><li>` 不同 → 列表进编辑「位置偏移」
+- `UL` 带 `data-source-line-end`，编辑行范围才覆盖整表（提交不丢项）
+- 取舍：放弃「按项编辑」粒度，与 Obsidian Live Preview / 思源一致
+
+**嵌套保真（F3）**：点内层项会提升到**内层** `ul`，而序列化从 depth 0 起算、区间替换不重缩进，
+所以提交前必须补回源码首行的缩进（`captureWysiwygInfo` 捕获 → `indentListDraft` 应用）；
+否则内层列表会被提升为顶层。
+
+## Pattern: 内联编辑器的尺寸与种子契约（step1 D2/F4/F5/F6）
+
+**尺寸**：overlay 是 `position: fixed` 的定位盒，**绝不能用固定 height 承载可增长内容**——
+原块是 `visibility: hidden`（保留布局盒），编辑器一变高就被 `overflow:hidden` 裁掉且不可达（「显示不全」）。
+契约：`minHeight` = 目标矩形高，`height: auto`，`maxHeight` 用**同一** `min()`/`max()` 边界，`overflowY: auto`；
+CSS `min-height` 在算法上**压过** `max-height`，所以 `minHeight` 必须写成
+`min(块高, max(160px, calc(100vh - top - 8px)))`，否则块本身高于视口时 `maxHeight` 失效。
+
+**种子空白**：渲染态 `white-space: normal` 会折叠块间空白，而编辑器继承 `[contenteditable]` 的 `pre-wrap`
+→ 松散列表里 `mdast-util-to-hast` 注入的 `"\n"`（以及 blockquote 包装的首尾换行）
+每个都占一整行。`captureWysiwygInfo` 必须过一遍 `stripInsignificantWhitespace()`（非空即遍历，
+早退正则容易漏掉首尾空白），且只在「有块级兄弟节点」时删空白，以免误删行内空格。
+
+**光标落点**：`WysiwygEditorHandle.focus(offset?)` 支持渲染态文本偏移（列表分支走 `placeCaretByTextOffset`）。
+overlay 必须把会话的 `caretOffset` 透传给它，否则点列表第 N 项时光标落到表头/段尾。
+
+## Pattern: 提交前的结构性空壳守卫（数据安全，必读）
+
+**背景**：WYSIWYG 提交取自 DOM 序列化，而**空的编辑器根**序列化出来正是该块类型的「空壳」
+（`p` → `""`、`h` → `"##"`、`list` → `"- "`、`quote` → `">"`）。若它与 `initialContent` 不等，
+就会被判定为「用户已修改」而写盘——曾在真实笔记上把整段引用覆盖成 `>`（不可恢复）。
+
+**契约**（`markdown-inline-edit.tsx` 的 `commit()`）：
+
+1. 空壳守卫（`isEmptyBlockShellDraft`）必须放在**所有分支之前**。尤其 `placeholder` 分支：
+   `handleNavigateUp` 会以 `placeholder=true` 打开**上一个既有非空块**，
+   零输入失焦就会用空壳覆写它——这是最容易漏的一条路径。
+2. 判别按 kind 从严/从宽：`h/list/p` 的空壳正是「合法清空」留下的样子 → 两侧
+   （DOM 序列化 vs 镜像 `draftText`）**同时**为空壳即视为合法清空；只有
+   「镜像仍有内容而 DOM 塌成空壳」（= 种子从未落地）才拦。`quote` 的空壳是非空的 `>`
+   且清空整段引用罕见 → 从严拦下（丢内容不可恢复，拦下只是不便）。
+3. `placeholder` 分支内再补一条 no-op：「`draftText === initialContent` 且原文非空」→ 不重写既有块。
+   必须放在「空稿 revert 预插入行」**之后**，否则预插入行会残留。
+4. 任何守卫都**不得**阻止合法清空：`unchangedDraft`（`draftText === initialContent`）用于
+   「未落种子/未编辑」；结构性空壳用于「种子从未承载内容」。
+
+**Prevention**：任何「DOM 是事实源」的提交路径，都必须能回答「用户到底编辑了没有」。
+仅靠「序列化结果 != 原文」是不够的——空壳恰好不等于原文。
+
+## Pattern: 渲染器不得把 react-markdown 的 `node` 透传到 DOM（step1 D5）
+
+react-markdown 往每个元素的 props 里注入 `node` 对象。写 `<li {...props} />` 会让 React 把它
+序列化成 `node="[object Object]"`，并被克隆进 WYSIWYG 种子。
+
+- 一律用 `domProps(props)`（`markdown-render/shared.ts`）展开，`srcLineAttrs(props)` 仍传**未剥离**的 props 取行号
+- 例外：`WaveBlock` 这类纯组件不落到 DOM，可保持 `{...props}`
+- 验证方式：渲染后断言不存在 `[node]` 元素且全页无 `[object Object]`
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下
@@ -190,6 +251,31 @@ WYSIWYG 的「所见即所得」打字手感：输入 `**bold**` 光标到末尾
 
 ## Common Mistakes
 
-<!-- Component-related mistakes your team has made -->
+### 用「渲染结果 != 原文」当作「用户改过」
 
-(To be filled by the team)
+**Symptom**: 用户什么都没做，引用块内容被覆盖成 `>`（真实笔记，不可恢复）。
+
+**Cause**: WYSIWYG 提交取自 DOM 序列化；空编辑器根 → 空壳，与 `initialContent` 不等
+→ 判定为已修改 → 写盘。
+
+**Fix / Prevention**: 见上「提交前的结构性空壳守卫」。任何写盘路径都要能区分
+「未编辑」「合法清空」「种子未落地」三种状态。
+
+### 在 contentEditable 里直接 spawn 浏览器认识的语义列表
+
+**Symptom**: 列表进编辑后缩进/位置偏移、项被浏览器拆并、提交后丢项。
+
+**Cause**: `<li>` 是浏览器认识的标签，contentEditable 会规范化它（拆并 li、移走文本节点、注入 `<br>`）；
+另外裸 `<li>` 当种子（无 `<ul>` 包裹）本身也不合法。
+
+**Fix / Prevention**: 种子必须是完整 `<ul>/<ol>`；渲染态不要让 `<li>` 独占块身份（提升到列表元素）。
+长期方案见 `方案/Block-Editor 笔记编辑体验升级/07-彻底改造-对标思源-块身份与逐类型覆盖.md`
+（列表改 div 块载体，彻底绕开浏览器规范化）。
+
+### 断言 `<ul>/<ol>` 的子元素时忽略空白文本节点
+
+**Symptom**: 松散列表进编辑后行距翻倍、块高度约 2×。
+
+**Cause**: 渲染态 `white-space: normal` 折叠块间空白，编辑器却是 `pre-wrap`。
+
+**Fix / Prevention**: 提交/种子路径统一过 `stripInsignificantWhitespace()`。

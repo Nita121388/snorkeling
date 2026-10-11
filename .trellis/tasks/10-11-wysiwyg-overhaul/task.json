@@ -1,0 +1,31 @@
+{
+  "id": "wysiwyg-overhaul",
+  "name": "wysiwyg-overhaul",
+  "title": "WYSIWYG 彻底改造：块身份、列表载体与逐类型覆盖",
+  "description": "L2 目标：让段落/标题/列表/引用/callout 干净原地编辑（不裁不漂不丢身份）；并为 L3 结构操作、L4/L5 逐类型覆盖打地基。三步=止血→列表 div 化+caret 锚定→块身份+块级提交。方案见 Obsidian: 方案/Block-Editor 笔记编辑体验升级/07-彻底改造-对标思源-块身份与逐类型覆盖.md",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-11",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-11-wysiwyg-step1-stopgap",
+    "10-11-wysiwyg-step2-list-div",
+    "10-11-wysiwyg-step3-block-identity",
+    "10-11-wysiwyg-step1b-callout-edit"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
