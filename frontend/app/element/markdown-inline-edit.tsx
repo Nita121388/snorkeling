@@ -458,6 +458,34 @@ export function captureWysiwygInfo(
                 ? ""
                 : targetEl.innerHTML;
     const strippedHtml = stripInsignificantWhitespace(html);
+    // 空编辑器根防线（step1 数据事故的前置条件，也是 step1b 解挂的门槛）。
+    //
+    // 种子为空、但源码里这个块**并非空壳**时，说明 `targetEl` 不是这个块的内容载体。
+    // beginEdit 的 `el` 与 `blockKind` **不保证同源**：focusEditedLine 用
+    // `blockKindFromElement(prevEl)` 得到 kind，却把同一个 el 交给 beginEdit 当种子——
+    // 引用块内的空白占位段（`>` 空行渲染成 .blank-spacer）、已被清空的元素都会走到这里。
+    //
+    // 危害链条：`""` 仍能通过调用方的 `wysiwygHtml != null` 判断 → WysiwygEditor 以
+    // initialHtml="" 挂载 → `root.innerHTML = ""` → 失焦提交时 DOM 序列化成裸 `>`
+    // （quote 的合法空壳），覆盖掉原本有内容的引用块，且不可恢复。
+    //
+    // 回落 textarea：它的种子取源码 `initialContent`，永远与块内容一致；最坏情况只是
+    // 把 `>` 之类的标记符号暴露出来，代价远低于丢内容。
+    if (strippedHtml === "" && !isEmptyBlockShellDraft(blockKind, sourceText)) {
+        return null;
+    }
+    // 同一条防线的另一个形状：** html 非空、但一个文本都没有**。
+    // 典型：callout 标题 `\<p class="markdown-alert-title"><button …></button><span
+    // class="markdown-alert-title-text"></span></p>` —— 全是装饰元素、零文本。
+    // 这种种子同样给出「看起来空」的编辑器根，提交时一样序列化成空壳；
+    // 只看 html 是否为空是拦不住的。判据：种子文本为空而源码并非空壳 → 拒绝。
+    // （前面 `strippedHtml === ""` 的检查被此条覆盖，保留只为把意图写清楚。）
+    const seedProbe = document.createElement("template");
+    seedProbe.innerHTML = strippedHtml;
+    const seedText = (seedProbe.content.textContent ?? "").trim();
+    if (seedText === "" && !isEmptyBlockShellDraft(blockKind, sourceText)) {
+        return null;
+    }
     if (/<img\b/i.test(strippedHtml) || /<a\b/i.test(strippedHtml)) {
         return null; // images & links round-trip lossy — fall back to textarea
     }

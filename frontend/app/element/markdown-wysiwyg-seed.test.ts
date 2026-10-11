@@ -142,3 +142,88 @@ describe("isEmptyBlockShellDraft — per-kind data-loss guard", () => {
         expect(isEmptyBlockShellDraft("list", "- item\n- ")).toBe(false);
     });
 });
+
+// ---------------------------------------------------------------------------
+// 空编辑器根的充要条件 = 「会话声明有内容，但种子为空」。这是 step1 事故（提交裸 ">" 覆盖
+// 整段引用）的前置条件，也是 step1b（callout 原地编辑）解挂的门槛。
+//
+// 机制：beginEdit 的 `targetEl` 与 `blockKind` **不保证同源** ——
+// focusEditedLine 用 `blockKindFromElement(prevEl)` 得到 kind，却把同一个 el 交给
+// beginEdit 当种子。于是当 el 是「空元素」（引用块内的空段、已被清空的元素、
+// 空白占位 p）时，quote 会话会拿到 html: ""。
+// 而 `""` 仍能通过 `wysiwygHtml != null` 判断 → WysiwygEditor 以 initialHtml=""
+// 挂载 → `root.innerHTML = ""` → 失焦提交时 DOM 序列化成裸 ">"（quote 的合法空壳），
+// 覆盖掉原本有内容的引用块。
+// ---------------------------------------------------------------------------
+describe("captureWysiwygInfo — 空种子不得开 WYSIWYG（空编辑器根防线）", () => {
+    it("机理：空元素 + 有内容的 quote 会话 → 修复前会返回空种子", () => {
+        // 引用块内的空白占位段（`>` 空行渲染成 .blank-spacer），调到 quote 会话上
+        const el = mount('<p class="blank-spacer" data-source-line="7"></p>');
+        expect(el.innerHTML).toBe("");
+        const info = captureWysiwygInfo("quote", el, "> 正文第一行\n> 正文第二行");
+        // 修复前：{ html: "" } —— 空种子；修复后：null（回落 textarea，绝不拿空根开编辑）
+        expect(info).toBeNull();
+        // 并记录这条链的末端：空根序列化出的裸 ">" 正是 isEmptyQuoteShellDraft 认得的空壳
+        // （注：空字符串不是空壳 —— 那是「什么都没写」，由 unchangedDraft 分支负责）。
+        expect(isEmptyQuoteShellDraft(">")).toBe(true);
+        expect(isEmptyQuoteShellDraft(">\n>")).toBe(true);
+        expect(isEmptyQuoteShellDraft("")).toBe(false);
+    });
+
+    it("空种子 + 源码有内容 → 一律回落 textarea（各 kind）", () => {
+        // 各 kind 的种子来源不同（h → .heading-title、list → outerHTML、其余 → innerHTML），
+        // 所以这里用「确实是空的、且形状是渲染器真正会产出的」元素。
+        const p = mount('<div class="paragraph" data-source-line="3"></div>');
+        expect(captureWysiwygInfo("p", p, "有内容的段落")).toBeNull();
+        const heading = mount(
+            '<div class="heading is-3" data-source-line="4"><span class="heading-title"></span></div>'
+        );
+        expect(captureWysiwygInfo("h", heading, "### 有内容的标题")).toBeNull();
+        // 列表：种子取 outerHTML，所以空 <ul> 的 html 是非空的（`<ul …></ul>`），但它**零文本**
+        // —— 同样是「el 不是内容载体」的异常，同样拒绝（这正是加「看文本而不是只看 html」
+        // 这一条的价值）。
+        const ul = mount('<ul data-source-line="5"></ul>');
+        expect(ul.outerHTML).not.toBe("");
+        expect(captureWysiwygInfo("list", ul, "- 有内容的列表项")).toBeNull();
+        // 有内容的列表照常开放
+        const real = mount('<ul data-source-line="5"><li data-source-line="5">项</li></ul>');
+        expect(captureWysiwygInfo("list", real, "- 项")!.html).toContain("项");
+    });
+
+    it("html 非空但零文本同样拒绝（callout 标题形状：只有装饰元素）", () => {
+        // 真实 callout 标题渲染：<p class="markdown-alert-title"><button …></button>
+        //   <span class="markdown-alert-title-text"></span></p>
+        // 种子 html 不空（有 button/span 标签），但一个文本都没有 → 编辑器根看起来是空的。
+        // 只看 html 是否为空拦不住，必须看**文本**。
+        const title = mount(
+            '<p class="markdown-alert-title" data-source-line="2">' +
+                '<button class="markdown-alert-emoji-btn is-empty" type="button"></button>' +
+                '<span class="markdown-alert-title-text"></span></p>'
+        );
+        expect(title.innerHTML).not.toBe("");
+        expect(captureWysiwygInfo("p", title, "[!IMPORTANT] 标题正文")).toBeNull();
+        // 有文本的标题照常开放 WYSIWYG
+        const real = mount(
+            '<p class="markdown-alert-title" data-source-line="2">' +
+                '<button class="markdown-alert-emoji-btn" type="button">🔥</button>' +
+                '<span class="markdown-alert-title-text">标题正文</span></p>'
+        );
+        const info = captureWysiwygInfo("quote", real, "> [!IMPORTANT] 🔥 标题正文");
+        expect(info).not.toBeNull();
+        expect(info!.html).toContain("标题正文");
+    });
+
+    it("源码本身就是空壳 → 空种子是合法的（新建/清空后继续输入）", () => {
+        // 空标题：源码 `###` 没有文字，DOM 也是空 —— 允许开 WYSIWYG（否则会回落 textarea
+        // 把 `###` 暴露给用户）。
+        const heading = mount('<div class="heading is-3" data-source-line="1"><span class="heading-title"></span></div>');
+        const hInfo = captureWysiwygInfo("h", heading, "###");
+        expect(hInfo).not.toBeNull();
+        expect(hInfo!.html).toBe("");
+        // 空段落 / 空白行同理
+        const blank = mount('<p class="blank-spacer" data-source-line="2"></p>');
+        const bInfo = captureWysiwygInfo("blank", blank, "");
+        expect(bInfo).not.toBeNull();
+        expect(bInfo!.html).toBe("");
+    });
+});
