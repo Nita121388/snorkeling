@@ -4,6 +4,7 @@
 import { useContext } from "react";
 import clsx from "clsx";
 import {
+    domProps,
     getOrderedListItemId,
     getSourceLine,
     OrderedListContext,
@@ -19,13 +20,13 @@ export const MarkdownOrderedList = ({
     collapsible: boolean;
 }) => (
     <OrderedListContext.Provider value={collapsible}>
-        <ol {...props} {...srcLineAttrs(props)} />
+        <ol {...domProps(props)} {...srcLineAttrs(props)} />
     </OrderedListContext.Provider>
 );
 
 export const MarkdownUnorderedList = (props: React.HTMLAttributes<HTMLUListElement>) => (
     <OrderedListContext.Provider value={false}>
-        <ul {...props} {...srcLineAttrs(props)} />
+        <ul {...domProps(props)} {...srcLineAttrs(props)} />
     </OrderedListContext.Provider>
 );
 
@@ -43,11 +44,11 @@ export const CollapsibleOrderedListItem = ({
     const { summaryChildren, bodyChildren } = splitOrderedListItemChildren(props.children);
     const canCollapse = bodyChildren.length > 0 && itemId.length > 0;
     if (!canCollapse) {
-        return <li {...props} {...srcLineAttrs(props)} />;
+        return <li {...domProps(props)} {...srcLineAttrs(props)} />;
     }
     return (
         <li
-            {...props}
+            {...domProps(props)}
             {...srcLineAttrs(props)}
             className={clsx(props.className, "ordered-list-collapsible", { collapsed })}
         >
@@ -85,7 +86,7 @@ export const MarkdownListItem = ({
     if (orderedListCollapsible) {
         return <CollapsibleOrderedListItem props={props} collapsed={collapsed} onToggle={onToggle} />;
     }
-    return <li {...props} {...srcLineAttrs(props)} />;
+    return <li {...domProps(props)} {...srcLineAttrs(props)} />;
 };
 
 // Clickable task-list checkbox (Note surface). The parent <li> carries data-source-line;

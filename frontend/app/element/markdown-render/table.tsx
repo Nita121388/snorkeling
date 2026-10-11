@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import clsx from "clsx";
-import { srcLineAttrs } from "./shared";
+import { domProps, srcLineAttrs } from "./shared";
 
 export const CollapsibleTable = ({
     props,
@@ -28,7 +28,7 @@ export const CollapsibleTable = ({
             >
                 <i className={clsx("fa-sharp fa-solid", collapsed ? "fa-chevron-right" : "fa-chevron-down")} />
             </button>
-            <table {...props} />
+            <table {...domProps(props)} />
         </div>
     );
 };

@@ -27,6 +27,9 @@ import {
     type TableAlign,
 } from "../../markdown-transform/table";
 import { tableCellDomToMarkdown } from "../../markdown-transform/table-cell";
+// Strip react-markdown's `node` object before spreading onto real DOM elements: React would
+// serialize it as `node="[object Object]"` (and the clone-based WYSIWYG seed would inherit it).
+import { domProps } from "../../markdown-render/shared";
 import { isBlockEditorFeatureEnabled } from "../flags";
 
 // ---------------------------------------------------------------------------
@@ -565,12 +568,12 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
         if (Number.isInteger(endLine) && endLine >= tableLine) srcLineAttrs["data-source-line-end"] = endLine;
     }
 
-    const tableEl = <table {...props} ref={tableRef as any} />;
+    const tableEl = <table {...domProps(props)} ref={tableRef as any} />;
 
     // Non-editable: just CollapsibleTable behavior
     if (!editable) {
         return (
-            <div className={clsx("table-wrapper", collapsed && "collapsed")} {...props} style={props.style}>
+            <div className={clsx("table-wrapper", collapsed && "collapsed")} {...domProps(props)} style={props.style}>
                 <button
                     type="button"
                     className="table-collapse-button"

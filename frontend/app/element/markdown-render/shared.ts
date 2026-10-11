@@ -62,6 +62,17 @@ export function srcLineAttrs(props: any): Record<string, number> {
 
 export const OrderedListContext = createContext(false);
 
+/**
+ * Strip react-markdown's injected `node` object from element props before spreading them onto a
+ * real DOM element. React would otherwise serialize that object as `node="[object Object]"` (and
+ * clone it into the WYSIWYG seed DOM). `srcLineAttrs(props)` still receives the UNSTRIPPED props
+ * because it reads the source-line position out of `props.node`.
+ */
+export function domProps<T extends Record<string, any>>(props: T): Omit<T, "node"> {
+    const { node: _node, ...rest } = props;
+    return rest;
+}
+
 export function getTextContent(children: React.ReactNode): string {
     if (typeof children === "string" || typeof children === "number") {
         return String(children);

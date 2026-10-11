@@ -28,7 +28,7 @@ import { CodeBlock } from "./code-block";
 import { MarkdownImg, MarkdownSource } from "./image";
 import { Link } from "./link";
 import { WaveBlock } from "./waveblock";
-import { getOrderedListItemId, getSourceLine, getSourceLineEnd, getTextContent, srcLineAttrs } from "./shared";
+import { domProps, getOrderedListItemId, getSourceLine, getSourceLineEnd, getTextContent, srcLineAttrs } from "./shared";
 
 // ---------------------------------------------------------------------------
 // Context: everything a block renderer may need from the host Markdown instance.
@@ -227,6 +227,8 @@ export function registerBuiltinRenderers(): void {
     registerMarkdownRenderer({
         key: "waveblock",
         render: (props: any, ctx) => (
+            // WaveBlock is a plain component (not a DOM element) and reads only blockkey, so the
+            // react-markdown node object never reaches the DOM here.
             <WaveBlock {...props} blockmap={ctx.contentBlocksMap} renderers={ctx.waveBlockRenderers} />
         ),
     });
@@ -247,27 +249,29 @@ export function registerBuiltinRenderers(): void {
     registerMarkdownRenderer({
         key: "p",
         render: (props: React.HTMLAttributes<HTMLParagraphElement>, ctx) => (
-            <div className="paragraph" {...props} {...srcLineAttrs(props)} />
+            <div className="paragraph" {...domProps(props)} {...srcLineAttrs(props)} />
         ),
     });
     registerMarkdownRenderer({
         key: "hr",
-        render: (props: React.HTMLAttributes<HTMLHRElement>, ctx) => <hr {...props} {...srcLineAttrs(props)} />,
+        render: (props: React.HTMLAttributes<HTMLHRElement>, ctx) => (
+            <hr {...domProps(props)} {...srcLineAttrs(props)} />
+        ),
     });
     registerMarkdownRenderer({
         key: "blockquote",
         render: (props: React.HTMLAttributes<HTMLQuoteElement>, ctx) => (
-            <blockquote {...props} {...srcLineAttrs(props)} />
+            <blockquote {...domProps(props)} {...srcLineAttrs(props)} />
         ),
     });
     registerMarkdownRenderer({
         key: "span",
         render: (props: React.HTMLAttributes<HTMLSpanElement>, ctx) => {
-            if (!String(props.className ?? "").includes("markdown-alert-emoji-btn")) return <span {...props} />;
+            if (!String(props.className ?? "").includes("markdown-alert-emoji-btn")) return <span {...domProps(props)} />;
             const buttonProps = props as React.HTMLAttributes<HTMLButtonElement>;
             return (
                 <button
-                    {...buttonProps}
+                    {...domProps(buttonProps)}
                     type="button"
                     ref={ctx.calloutEmojiButtonRef}
                     onClick={(e) => {
@@ -282,10 +286,10 @@ export function registerBuiltinRenderers(): void {
     registerMarkdownRenderer({
         key: "button",
         render: (props: React.ButtonHTMLAttributes<HTMLButtonElement>, ctx) => {
-            if (!String(props.className ?? "").includes("markdown-alert-emoji-btn")) return <button {...props} />;
+            if (!String(props.className ?? "").includes("markdown-alert-emoji-btn")) return <button {...domProps(props)} />;
             return (
                 <button
-                    {...props}
+                    {...domProps(props)}
                     ref={ctx.calloutEmojiButtonRef}
                     onClick={(e) => {
                         e.preventDefault();

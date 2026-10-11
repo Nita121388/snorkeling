@@ -17,6 +17,7 @@ import {
 import { ImageLightbox } from "@/app/element/image-lightbox";
 import { ContextMenuModel } from "../../store/contextmenu";
 import { cn } from "@/util/util";
+import { domProps } from "./shared";
 
 // MarkdownResolveOpts is a global type (frontend/types/custom.d.ts).
 
@@ -397,7 +398,7 @@ export const MarkdownImg = ({
                 >
                     <img
                         ref={imgRef}
-                        {...props}
+                        {...domProps(props)}
                         src={resolvedSrc}
                         srcSet={resolvedSrcSet}
                         className={cn(props.className, "markdown-img-clickable")}
