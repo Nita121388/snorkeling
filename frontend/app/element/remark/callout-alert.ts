@@ -86,7 +86,16 @@ export const remarkCalloutAlert: Plugin<[], Root> = () => (tree: any) => {
         parent.children[index] = {
             type: "paragraph",
             children,
-            data: { hName: "div", hProperties: { className: `markdown-alert markdown-alert-${alertType}` } },
+            // R1 块身份：保留源码 position（start + end），renderer 的 `srcLineAttrs` 靠它
+            // 产出 data-source-line / -end，整块才可能成为行内编辑目标。不带 position 的
+            // 话每个 callout 都是“无坐标”节点，点哪都只能命中正文 <p>（并写掉 `> ` 前缀）。
+            position: node.position,
+            data: {
+                // 自定义 tag（沿用 waveblock / mermaidblock 惯例），把 callout 提升为
+                // 一等块：renderer-registry 按 key 注册渲染器、sanitize 需要放行该 tag。
+                hName: "calloutalert",
+                hProperties: { className: `markdown-alert markdown-alert-${alertType}` },
+            },
         };
     }
 };

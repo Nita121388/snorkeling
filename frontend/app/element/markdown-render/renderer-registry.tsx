@@ -20,6 +20,7 @@ import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import { TableBlock } from "@/app/element/block-editor/components/table-block";
 import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
 import { setCodeBlockLanguage } from "@/app/element/markdown-transform/code-block";
+import { CalloutAlert } from "./calloutalert";
 import { CollapsibleHeading } from "./heading";
 import { MarkdownListItem, MarkdownOrderedList, MarkdownTaskCheckbox, MarkdownUnorderedList } from "./list";
 import { CollapsibleTable } from "./table";
@@ -263,6 +264,13 @@ export function registerBuiltinRenderers(): void {
         render: (props: React.HTMLAttributes<HTMLQuoteElement>, ctx) => (
             <blockquote {...domProps(props)} {...srcLineAttrs(props)} />
         ),
+    });
+    registerMarkdownRenderer({
+        // remarkCalloutAlert (R1) turns every blockquote into this custom element and keeps
+        // the source position so srcLineAttrs can emit data-source-line / -end. Unknown tags
+        // are blocked by rehype-sanitize unless allow-listed (see markdown.tsx tagNames).
+        key: "calloutalert",
+        render: (props: any) => <CalloutAlert {...props} />,
     });
     registerMarkdownRenderer({
         key: "span",

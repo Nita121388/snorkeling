@@ -16,6 +16,7 @@ export {
     type MarkdownRendererSpec,
 } from "./renderer-registry";
 
+export { CalloutAlert } from "./calloutalert";
 export { CollapsibleHeading, type HeadingProps } from "./heading";
 export {
     CollapsibleOrderedListItem,

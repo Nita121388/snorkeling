@@ -18,11 +18,19 @@ function transform(md: string) {
     return result;
 }
 
-function getAlertTitle(tree: Root): any | null {
-    // 顶层 paragraph[data.hName=div.markdown-alert] 下的 title[p.markdown-alert-title]
-    const alert: any = (tree as any).children.find(
-        (n: any) => n?.data?.hName === "div" && String(n?.data?.hProperties?.className ?? "").includes("markdown-alert")
+function getAlert(tree: Root): any | null {
+    // 顶层 paragraph[data.hName=calloutalert.markdown-alert]（R1 块身份）
+    return (
+        (tree as any).children.find(
+            (n: any) =>
+                n?.data?.hName === "calloutalert" &&
+                String(n?.data?.hProperties?.className ?? "").includes("markdown-alert")
+        ) ?? null
     );
+}
+
+function getAlertTitle(tree: Root): any | null {
+    const alert = getAlert(tree);
     if (alert == null) {
         return null;
     }
@@ -31,6 +39,33 @@ function getAlertTitle(tree: Root): any | null {
             n?.data?.hName === "p" && String(n?.data?.hProperties?.className ?? "").includes("markdown-alert-title")
     );
 }
+
+describe("remarkCalloutAlert — R1 块身份（calloutalert + position）", () => {
+    it("替换节点的 hName 为 calloutalert（沿用 waveblock 惯例）", () => {
+        const tree = transform("> [!note] 标题");
+        const alert = getAlert(tree);
+        expect(alert).not.toBeNull();
+        expect(alert.data.hName).toBe("calloutalert");
+        // blockquote 自身也被替换掉，不再残留 <blockquote>
+        expect((tree as any).children.some((n: any) => n?.data?.hName === "div")).toBe(false);
+    });
+
+    it("保留 blockquote 的 position（start + end 都在）", () => {
+        const tree = transform("> [!note] 标题\n>\n> 正文");
+        const alert = getAlert(tree);
+        expect(alert.position?.start?.line).toBe(1);
+        // end 覆盖整个 callout（多行正文一格编辑范围）
+        expect(alert.position?.end?.line).toBe(3);
+    });
+
+    it("普通引用同样拿到 position（无标记也必须是可编辑块）", () => {
+        const tree = transform("> 纯引用");
+        const alert = getAlert(tree);
+        expect(alert.data.hProperties.className).toContain("markdown-alert-quote");
+        expect(alert.position?.start?.line).toBe(1);
+        expect(alert.position?.end?.line).toBe(1);
+    });
+});
 
 describe("remarkCalloutAlert — title 结构（flex 单容器契约）", () => {
     it("第一行含多个 inline 元素时：title = [button, span.markdown-alert-title-text]", () => {
@@ -73,10 +108,7 @@ describe("remarkCalloutAlert — title 结构（flex 单容器契约）", () => 
 
     it("正文（第二行起）不受影响：title 与后续段落分离", () => {
         const tree = transform("> [!note] 标题行**粗**\n>\n> 正文第一段");
-        const alert: any = (tree as any).children.find(
-            (n: any) =>
-                n?.data?.hName === "div" && String(n?.data?.hProperties?.className ?? "").includes("markdown-alert")
-        );
+        const alert = getAlert(tree);
         expect(alert).not.toBeNull();
         // children = [title, ...rest]
         expect(alert.children.length).toBeGreaterThan(1);

@@ -280,6 +280,10 @@
 
         // --- GitHub-style Alerts / Callouts ---
         .markdown-alert {
+            // R1: the callout is now a custom element <calloutalert>. Unknown custom tags
+            // default to `display: inline`, which collapses its block children into an inline
+            // run (the 10-08 vertical-text bug's shape). Pin it to block explicitly.
+            display: block;
             margin: 0.571em 0.714em;
             padding: 0.85em 1em 0.9em 2.5em;
             border-radius: 4px 6px 6px 4px;
