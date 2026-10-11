@@ -61,3 +61,23 @@ step1 原含 callout 原地编辑（D3/D4），实现后**在真实笔记上造�
 - 风险集中在 step2（列表载体更换）与 step3（提交模型更换），两者都涉及面广
 - 缓解：保持双轨（新路径默认 flag 关闭）、每步独立 commit + archive、每步都有回归测试
 - 回滚点：每个子任务一个 commit；父任务不聚合提交
+
+---
+
+## 完成记录（2026-10-11）—— 4 个子任务全部完成并推送
+
+| 子任务 | 成果 | 提交 |
+|---|---|---|
+| `10-11-wysiwyg-step1-stopgap` | 列表整表编辑（命中 UL/OL）、overlay 高度可增长、属性清洁（`domProps`）、数据丢失守卫（结构空壳 + 指向循环、按 kind 判别宽严） | 已归档 |
+| `10-11-wysiwyg-step1b-callout-edit` | 空编辑器根防线（种子≠源码载体 → 回落 textarea）+ callout 一等块（`calloutalert` + position + 干净种子 + `[!TYPE]`/emoji 保真）+ 顺带修两个静默 bug（sanitize `className` 同名属性只取第一条；紧邻 `<br>` 的格式化换行） | 已归档 |
+| `10-11-wysiwyg-step2-list-div` | 范围修正（**不做** div 块化，证据见其 prd）：列表结构自持（Tab/Shift+Tab 去 `execCommand`）+ `normalizeListDom` + 序列化兜底（游离子列表绝不丢弃）+ `<wbr>` 光标锚定 | 已归档 |
+| `10-11-wysiwyg-step3-block-identity` | 块身份 `data-block-id`（内容寻址、确定性、重复块消歧）+ 提交前重定位（含「内容唯一匹配」退化）+ 陈旧检测（宁可丢一次编辑）+ 块级逆操作记账 | 已归档 |
+
+**总目标分层进度**：L1 ✅、L2（五类块干净原地编辑：p / h / list / quote / **callout**）✅、L3（块身份）✅、
+L4（结构操作统一模型）⏳、L5（逐类型覆盖）⏳。
+
+**门禁**：48 文件 / 711 用例全绿；tsc 68（基线不变，全部为既有错误）。
+
+**阶段 4/5 按计划另建子任务**（本父任务归档）。已具备的前提：块身份、
+`EditorHistoryOp` 块级逆操作数据、逐类型覆盖矩阵（见方案 07 文档）。
+
