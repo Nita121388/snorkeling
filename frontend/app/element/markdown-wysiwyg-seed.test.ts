@@ -9,7 +9,16 @@
 // injects exactly such a "\n" between the items of a LOOSE list — the editor must not see it.
 
 import { describe, expect, it } from "vitest";
-import { captureWysiwygInfo, indentListDraft, isEmptyBlockShellDraft, isEmptyQuoteShellDraft } from "./markdown-inline-edit";
+import {
+    applyCalloutPrefix,
+    calloutSeedHtml,
+    captureCalloutPrefix,
+    captureWysiwygInfo,
+    indentListDraft,
+    isEmptyBlockShellDraft,
+    isEmptyQuoteShellDraft,
+} from "./markdown-inline-edit";
+import { serializeBlockDomToMarkdown } from "./markdown-transform/dom-to-markdown";
 
 function mount(html: string): HTMLElement {
     const host = document.createElement("div");
@@ -225,5 +234,217 @@ describe("captureWysiwygInfo — 空种子不得开 WYSIWYG（空编辑器根防
         const bInfo = captureWysiwygInfo("blank", blank, "");
         expect(bInfo).not.toBeNull();
         expect(bInfo!.html).toBe("");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// R3 干净种子：emoji <button> 必须移除，标题降为普通 <p>（只取标题文本 span 的内容）。
+// ---------------------------------------------------------------------------
+function mountCallout(innerHtml: string): HTMLElement {
+    return mount(
+        `<calloutalert class="markdown-alert markdown-alert-note" data-source-line="1" data-source-line-end="3">${innerHtml}</calloutalert>`
+    );
+}
+
+describe("calloutSeedHtml (R3)", () => {
+    it("removes the emoji button and flattens the title paragraph to a plain <p>", () => {
+        const el = mountCallout(
+            '<p class="markdown-alert-title" data-source-line="1">' +
+                '<button class="markdown-alert-emoji-btn" type="button">🔥</button>' +
+                '<span class="markdown-alert-title-text">标题<b>粗</b></span></p>' +
+                '<p data-source-line="3">正文</p>'
+        );
+        const html = calloutSeedHtml(el);
+        // 种子不得含 emoji 按钮（否则 emoji 文本会 unwrap 泄漏进正文）
+        expect(html).not.toContain("<button");
+        expect(html).not.toContain("🔥");
+        // 标题降为普通 <p>，行内格式保留
+        expect(html).toContain("<p>标题<b>粗</b></p>");
+        // 正文保留
+        expect(html).toContain("<p data-source-line=\"3\">正文</p>");
+    });
+
+    it("real app DOM shape: title is a <div class=markdown-alert-title> (registry p renderer)", () => {
+        // The title mdast `p` goes through the registry `p` renderer, which renders
+        // <div className="paragraph" {…props}> — props.className (markdown-alert-title) wins,
+        // so the DOM title is a DIV and a tag-qualified `p.` selector would miss it.
+        const el = mountCallout(
+            '<div class="markdown-alert-title" data-source-line="1">' +
+                '<button class="markdown-alert-emoji-btn" type="button">🔥</button>' +
+                '<span class="markdown-alert-title-text">标题</span></div>' +
+                '<div class="paragraph" data-source-line="3">正文</div>'
+        );
+        const html = calloutSeedHtml(el);
+        expect(html).not.toContain("<button");
+        // title flattened to a plain <p> (class stripped), body inner text kept
+        expect(html).toContain("<p>标题</p>");
+        expect(html).toContain("<div class=\"paragraph\" data-source-line=\"3\">正文</div>");
+        // and the serializer round-trips it back to quote lines
+        const root = document.createElement("div");
+        root.innerHTML = html;
+        expect(serializeBlockDomToMarkdown(root, { kind: "quote" })).toBe("> 标题\n>\n> 正文");
+    });
+
+    it("empty title → <p></p> (serializes to a bare label, keeps first-line position)", () => {
+        const el = mountCallout(
+            '<p class="markdown-alert-title" data-source-line="1">' +
+                '<button class="markdown-alert-emoji-btn is-empty" type="button"></button>' +
+                '<span class="markdown-alert-title-text"></span></p>' +
+                '<p data-source-line="3">正文</p>'
+        );
+        const html = calloutSeedHtml(el);
+        expect(html).toContain("<p></p>");
+        expect(html).not.toContain("<button");
+    });
+});
+
+describe("captureWysiwygInfo — callout seed (R3)", () => {
+    it("seed drops the button, keeps title + body text, and passes the empty-root guard", () => {
+        const el = mountCallout(
+            '<p class="markdown-alert-title" data-source-line="1">' +
+                '<button class="markdown-alert-emoji-btn" type="button">🔥</button>' +
+                '<span class="markdown-alert-title-text">标题</span></p>' +
+                '<p data-source-line="3">正文</p>'
+        );
+        const info = captureWysiwygInfo("quote", el, "> [!NOTE] 🔥 标题\n>\n> 正文");
+        expect(info).not.toBeNull();
+        expect(info!.html).not.toContain("<button");
+        expect(info!.html).toContain("标题");
+        expect(info!.html).toContain("正文");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// R4 标记保真：从源码首行捕获 `[!TYPE]` + emoji（保大小写），提交时回写首行。
+// ---------------------------------------------------------------------------
+describe("captureCalloutPrefix (R4)", () => {
+    it("preserves the marker's original case and the emoji", () => {
+        expect(captureCalloutPrefix("> [!Note] 标题")).toBe("[!Note] ");
+        expect(captureCalloutPrefix("> [!IMPORTANT] 🔥 标题")).toBe("[!IMPORTANT] 🔥 ");
+    });
+
+    it("returns \"\" for a plain quote (no marker invented)", () => {
+        expect(captureCalloutPrefix("> 普通引用")).toBe("");
+        expect(captureCalloutPrefix("")).toBe("");
+    });
+
+    it("marker-only first line captures just the marker", () => {
+        expect(captureCalloutPrefix("> [!NOTE]")).toBe("[!NOTE]");
+        expect(captureCalloutPrefix("  > [!TIP]")).toBe("[!TIP]");
+    });
+});
+
+describe("callout R3 → R4 serializer round-trip (no editor)", () => {
+    function seedRoot(el: HTMLElement): HTMLElement {
+        const root = document.createElement("div");
+        root.innerHTML = calloutSeedHtml(el);
+        return root;
+    }
+
+    it("single-line callout: marker + emoji restored, marker case preserved", () => {
+        const el = mountCallout(
+            '<p class="markdown-alert-title" data-source-line="1">' +
+                '<button class="markdown-alert-emoji-btn" type="button">🔥</button>' +
+                '<span class="markdown-alert-title-text">标题</span></p>'
+        );
+        const serialized = serializeBlockDomToMarkdown(seedRoot(el), { kind: "quote" });
+        expect(serialized).toBe("> 标题");
+        const prefix = captureCalloutPrefix("> [!Note] 🔥 标题");
+        expect(applyCalloutPrefix(serialized, prefix)).toBe("> [!Note] 🔥 标题");
+    });
+
+    it("multi-paragraph callout: bare > separator preserved", () => {
+        const el = mountCallout(
+            '<p class="markdown-alert-title" data-source-line="1">' +
+                '<button class="markdown-alert-emoji-btn is-empty" type="button"></button>' +
+                '<span class="markdown-alert-title-text">标题</span></p>' +
+                '<p data-source-line="3">正文</p>'
+        );
+        const serialized = serializeBlockDomToMarkdown(seedRoot(el), { kind: "quote" });
+        expect(serialized).toBe("> 标题\n>\n> 正文");
+        expect(applyCalloutPrefix(serialized, captureCalloutPrefix("> [!NOTE] 标题\n>\n> 正文"))).toBe(
+            "> [!NOTE] 标题\n>\n> 正文"
+        );
+    });
+
+    it("plain quote: empty prefix leaves the draft untouched (no [!quote])", () => {
+        const el = mountCallout('<p data-source-line="1">普通引用</p>');
+        const serialized = serializeBlockDomToMarkdown(seedRoot(el), { kind: "quote" });
+        expect(serialized).toBe("> 普通引用");
+        expect(applyCalloutPrefix(serialized, captureCalloutPrefix("> 普通引用"))).toBe("> 普通引用");
+    });
+});
+
+describe("applyCalloutPrefix (R4)", () => {
+    it("bare > → `> [!NOTE]` with no trailing space", () => {
+        expect(applyCalloutPrefix(">", "[!NOTE] ")).toBe("> [!NOTE]");
+    });
+
+    it("inserts the prefix before the existing title text", () => {
+        expect(applyCalloutPrefix("> 标题", "[!NOTE] ")).toBe("> [!NOTE] 标题");
+        expect(applyCalloutPrefix("> 标题", "[!NOTE] 🔥 ")).toBe("> [!NOTE] 🔥 标题");
+    });
+
+    it("plain quote (empty prefix) is untouched — no [!quote] invented", () => {
+        expect(applyCalloutPrefix("> 标题", "")).toBe("> 标题");
+    });
+
+    it("does not touch a non-quote first line", () => {
+        expect(applyCalloutPrefix("plain text", "[!NOTE] ")).toBe("plain text");
+    });
+
+    it("multi-line: only the first line gains the marker", () => {
+        expect(applyCalloutPrefix(">\n> 正文", "[!NOTE] ")).toBe("> [!NOTE]\n> 正文");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// R1–R4 实测发现的保真 bug：紧邻 <br> 的格式化换行。
+// 渲染器在软换行前后插 `\n`（`<p>a<br>\nb</p>`）。渲染态 normal 下不可见，但编辑器是
+// pre-wrap → 它变成第二个真实换行 → 引用块提交后凭空多出裸 ">" 空行
+// （普通引用 `> a` / `> b` 被拆成两个段落）。实测于普通引用与无标题 callout。
+// ---------------------------------------------------------------------------
+describe("stripInsignificantWhitespace — 紧邻 <br> 的格式化换行", () => {
+    // 注意：必须用 DOM API 构造，不能写 innerHTML 字符串。HTML 解析器会把相邻文本节点
+    // **合并**（`"<br>\nb"` → 一个 `"\nb"` 文本节点），而 React 是逐 children 建节点的
+    // （`<br>` 之后那个 `"\n"` 是**独立**文本节点）—— 只有后者才等于应用里的真实结构，
+    // 而 bug 正是这个独立节点造成的。
+    const br = () => document.createElement("br");
+    const makeQuote = (children: (string | Node)[]): HTMLElement => {
+        const host = document.createElement("div");
+        const bq = document.createElement("blockquote");
+        bq.setAttribute("data-source-line", "1");
+        const para = document.createElement("p");
+        for (const child of children) {
+            para.append(typeof child === "string" ? document.createTextNode(child) : child);
+        }
+        bq.append(para);
+        host.append(bq);
+        document.body.appendChild(host);
+        return bq;
+    };
+
+    it("删掉 <br> 之后紧随的独立换行节点，引用块不再凭空多出裸 >", () => {
+        const el = makeQuote(["a", br(), "\n", "b"]);
+        expect(el.querySelector("p")!.childNodes.length).toBe(4); // a | br | "\n" | b
+        expect(captureWysiwygInfo("quote", el, "> a\n> b")!.html).toBe("<p>a<br>b</p>");
+    });
+
+    it("<br> 之前的独立换行节点同样删掉", () => {
+        const el = makeQuote(["a", "\n", br(), "b"]);
+        expect(captureWysiwygInfo("quote", el, "> a\n> b")!.html).toBe("<p>a<br>b</p>");
+    });
+
+    it("不含换行的空白原样保留（可能是用户有意输入）", () => {
+        const el = makeQuote(["a ", br(), "b"]);
+        expect(captureWysiwygInfo("quote", el, "> a\n> b")!.html).toBe("<p>a <br>b</p>");
+    });
+
+    it("nbsp 不被当作格式化空白（保留，且序列化成 \\u00a0 实体）", () => {
+        const el = makeQuote(["a\u00a0", br(), "b"]);
+        const html = captureWysiwygInfo("quote", el, "> a\n> b")!.html;
+        // 内容保留即可：template 的 innerHTML 会把 nbsp 序列化成 `&nbsp;` 实体
+        expect(html.replace(/&nbsp;/g, "\u00a0")).toBe("<p>a\u00a0<br>b</p>");
+        expect(html).toContain("&nbsp;");
     });
 });

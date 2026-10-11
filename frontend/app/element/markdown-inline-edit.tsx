@@ -259,6 +259,15 @@ export type InlineEditSession = {
      */
     wysiwygListIndent?: string;
     /**
+     * R4: callout `[!TYPE]` + emoji prefix captured from the SOURCE first line at beginEdit.
+     * Present only for callout WYSIWYG sessions (handled by captureCalloutPrefix); on commit
+     * applyCalloutPrefix writes it back so editing a title never drops the marker or emoji.
+     * `""` means “plain quote, do not invent a marker”.
+     */
+    calloutPrefix?: string;
+    /** R4: true when the anchored block is a callout/quote container (`calloutalert`). */
+    isCallout?: boolean;
+    /**
      * Placeholder-row session: the editor sits on a single blank row that was already
      * pre-inserted into the document (the immediate "click insert / Enter split" feedback
      * row). On commit the draft REPLACES that row and separator blanks are added/deduped
@@ -363,8 +372,11 @@ const WYSIWYG_KINDS: ReadonlySet<InlineEditBlockKind> = new Set(["p", "h", "list
  *   - Blocks containing `<img>` (resolved srcs don't round-trip)
  *   - Blocks containing `<a>` (internal hrefs — wave-wiki / file — are transformed;
  *     links keep their dedicated hover-tooltip edit form)
- *   - Callout containers (`.markdown-alert`) — the title emoji prefix would be
- *     injected back into source on commit
+ *
+ * Callout containers (`.markdown-alert` / `<calloutalert>`) are NOT excluded any more:
+ * their seed is built by calloutSeedHtml (R3) so the emoji `<button>` is dropped and the
+ * title paragraph is flattened to a plain `<p>`. The `[!TYPE]` marker + emoji are restored
+ * on commit from the ORIGINAL source first line (R4, captureCalloutPrefix / applyCalloutPrefix).
  */
 /** Block-level tags; a whitespace-only text node beside one of these is inter-element
  *  formatting, never content. */
@@ -408,7 +420,19 @@ const SEED_BLOCK_TAGS = new Set([
  * elements suddenly occupies a full line box. mdast-util-to-hast injects exactly such a `\n`
  * between the items of a LOOSE list, which made a loose list look double-spaced (and the block
  * grow ~2x) the moment it was clicked. The editor must not see them at all.
+ *
+ * 另一个同类来源（R1–R4 实测）：**紧邻 `<br>` 的换行**。渲染器在软换行前后会插 `\n`
+ * （`<p>a<br>\nb</p>`）。渲染态 `normal` 下它紧跟 `<br>`、不可见；编辑器却是 `pre-wrap`，
+ * 于是它成了**第二个真实换行** —— 引用块提交后凭空多出一条裸 `>` 空行，把一行软换行
+ * 内容拆成两个段落（实测于普通引用与无标题 callout）。必须在**字符串层**去掉：
+ * DOM 层已经来不及，因为 `innerHTML` 重新解析时相邻文本节点会被合并，
+ * 那个 `\n` 已经并进 `"\nb"` 里、不再是一个可单独识别的空白节点。
  */
+function normalizeBreaksAroundNewlines(html: string): string {
+    // 只动紧贴 `<br>` 的那一个换行；用户正文里的换行（不贴 <br>）一律不动。
+    return html.replace(/(<br\s*\/?>)[ \t]*\r?\n/g, "$1").replace(/\r?\n[ \t]*(<br\s*\/?>)/g, "$1");
+}
+
 function stripInsignificantWhitespace(html: string): string {
     // F4: the old early-return also required whitespace to sit BETWEEN two tags
     // (`/>\s+</`), but a single-paragraph quote seed is exactly `"\n<p>a</p>\n"` — the
@@ -420,7 +444,7 @@ function stripInsignificantWhitespace(html: string): string {
         return html;
     }
     const template = document.createElement("template");
-    template.innerHTML = html;
+    template.innerHTML = normalizeBreaksAroundNewlines(html);
     const walk = (parent: Node) => {
         const kids = Array.from(parent.childNodes);
         for (const child of kids) {
@@ -441,6 +465,34 @@ function stripInsignificantWhitespace(html: string): string {
     return template.innerHTML;
 }
 
+/**
+ * R3 干净种子：callout 的编辑种子必须与「用户看到的正文」对齐，而不是渲染 DOM 原样。
+ *
+ * 两处差异：
+ *   1) emoji `<button>` 必须移除。序列化器（serializeNode）对未知/`button` 走 default
+ *      分支 unwrap 成文本 —— 若留在种子里，按钮内的 emoji 会被当成标题文本泄漏进正文，
+ *      提交后与 R4 回写的前缀叠加，emoji 重复。emoji 由 R4 从源码首行回写。
+ *   2) 标题段 `p.markdown-alert-title` 必须降为普通 `<p>`（只取 `.markdown-alert-title-text`
+ *      的内容）。否则 `> [!NOTE] 标题` 的种子会变成 `> <p class="markdown-alert-title">…`，
+ *      序列化后 class 被 unwrap（内容保留），但空标题会留下装饰性空段。降为 `<p>` 后：
+ *      空标题 → `<p></p>` → 序列化成裸 `>`（首行位置语义不变）。
+ */
+export function calloutSeedHtml(el: HTMLElement): string {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("button.markdown-alert-emoji-btn").forEach((b) => b.remove());
+    // NOTE: match by class only, not `p.…`. In the real app the title mdast `p` runs through
+    // the registry `p` renderer, which emits `<div class="markdown-alert-title">` (className
+    // overrides the default `paragraph`), so a tag-qualified `p.` selector misses it entirely.
+    const title = clone.querySelector(".markdown-alert-title");
+    if (title != null) {
+        const textEl = title.querySelector(".markdown-alert-title-text");
+        const p = document.createElement("p");
+        p.innerHTML = textEl != null ? textEl.innerHTML : "";
+        title.replaceWith(p);
+    }
+    return clone.innerHTML;
+}
+
 export function captureWysiwygInfo(
     blockKind: InlineEditBlockKind,
     targetEl: HTMLElement,
@@ -449,14 +501,16 @@ export function captureWysiwygInfo(
     if (!isBlockEditorFeatureEnabled("wysiwyg") || !WYSIWYG_KINDS.has(blockKind)) {
         return null;
     }
-    const html =
-        blockKind === "h"
-            ? (targetEl.querySelector(".heading-title")?.innerHTML ?? targetEl.innerHTML)
-            : blockKind === "list"
-              ? targetEl.outerHTML // <ul>/<ol> outerHTML preserves list structure for the serializer
-              : blockKind === "blank"
-                ? ""
-                : targetEl.innerHTML;
+    const isCallout = targetEl.matches("calloutalert, .markdown-alert");
+    const html = isCallout
+        ? calloutSeedHtml(targetEl)
+        : blockKind === "h"
+          ? (targetEl.querySelector(".heading-title")?.innerHTML ?? targetEl.innerHTML)
+          : blockKind === "list"
+            ? targetEl.outerHTML // <ul>/<ol> outerHTML preserves list structure for the serializer
+            : blockKind === "blank"
+              ? ""
+              : targetEl.innerHTML;
     const strippedHtml = stripInsignificantWhitespace(html);
     // 空编辑器根防线（step1 数据事故的前置条件，也是 step1b 解挂的门槛）。
     //
@@ -606,6 +660,48 @@ export function indentListDraft(markdown: string, indent: string): string {
         .split("\n")
         .map((line) => (line.trim() === "" ? line : `${indent}${line}`))
         .join("\n");
+}
+
+// R4 标记语义（与 markdown.tsx 的 applyCalloutEmoji 同源，不要另起一套）。
+const CALLOUT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i;
+const CALLOUT_LEADING_EMOJI_RE = /^(\p{Extended_Pictographic}(?:\uFE0F|\u20E3)?)\s*/u;
+
+/**
+ * R4 捕获：从 callout 的源码首行提取「`[!TYPE]` 标记 + emoji 的原文」，**保大小写**。
+ *
+ * 编辑种子把标记/emoji 都摘掉了（R3）—— 标记不是用户的“正文”，emoji 由专门的按钮管。
+ * 提交时用这里捕获的原文回写，所以 `[!Note]` 不会被规范化成 `[!NOTE]`，emoji 也不会
+ * 因为按钮被移除而丢。无标记的普通引用返回 `""` —— 调用方据此不写任何标记（R4 硬要求）。
+ */
+export function captureCalloutPrefix(firstSourceLine: string): string {
+    const content = (firstSourceLine ?? "").replace(/^\s*>\s?/, "");
+    const m = content.match(CALLOUT_MARKER_RE);
+    const after = m ? content.slice(m[0].length) : content;
+    const e = after.match(CALLOUT_LEADING_EMOJI_RE);
+    return `${m ? m[0] : ""}${e ? e[0] : ""}`;
+}
+
+/**
+ * R4 回写：把 captureCalloutPrefix 捕获的前缀插回草稿首行。
+ *
+ * 首行形态总是 `> ...`（或裸 `>`）。prefix 为 `""`（普通引用）时原样返回 —— 这是
+ * 「普通引用不得凭空新增 `[!quote]`」的实现点。非引用首行（理论上不会出现）也不动。
+ * 空首行（用户把标题整段删掉）写成 `> [!NOTE]`，不残留尾空格。
+ */
+export function applyCalloutPrefix(markdown: string, prefix: string): string {
+    if (prefix === "") return markdown;
+    const lines = markdown.split("\n");
+    if (lines.length === 0) return markdown;
+    const m = lines[0].match(/^(\s*>\s?)/);
+    if (m == null) return markdown; // 不是引用行 → 不动
+    const rest = lines[0].slice(m[1].length);
+    if (rest.trim() === "") {
+        // 空标题 / 空首行：不要留下 `> [!NOTE] ` 的尾空格（会被写盘）。
+        lines[0] = `${m[1].trimEnd()} ${prefix.replace(/[ \t]+$/, "")}`;
+    } else {
+        lines[0] = `${m[1]}${prefix}${rest}`;
+    }
+    return lines.join("\n");
 }
 
 const ListIndentStep = 2; // markdown 列表嵌套用 2 空格缩进（与 serializeListDomToMarkdown 一致）
@@ -997,6 +1093,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                       ? stripListMarker(sourceContent)
                       : sourceContent;
             const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent);
+            // R4: capture the callout marker from the ORIGINAL source first line. Only for
+            // WYSIWYG sessions — a textarea fallback commits the raw source verbatim (marker
+            // already included), so applying a prefix there would duplicate it.
+            const isCallout = targetEl.matches("calloutalert, .markdown-alert");
+            const calloutPrefix =
+                wysiwygInfo != null && isCallout
+                    ? captureCalloutPrefix(lines[safeLine - 1] ?? "")
+                    : undefined;
             const session: InlineEditSession = {
                 blockKind,
                 startLine: safeLine,
@@ -1014,6 +1118,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 wysiwygHeadingLevel: wysiwygInfo?.headingLevel,
                 wysiwygListMarker: wysiwygInfo?.listMarker,
                 wysiwygListIndent: wysiwygInfo?.listIndent,
+                isCallout: isCallout || undefined,
+                calloutPrefix,
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
@@ -1198,6 +1304,13 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             if (draftText.trim().length === 0 && current.insertMode != null) {
                 // Inserted a blank line then committed nothing: drop the empty draft, no-op.
                 return;
+            }
+            // R4: restore the callout marker + emoji on the first line. MUST run AFTER the
+            // shell guards above — they recognize a bare ">" draft (the collapsed-root
+            // signature); once the marker is written back, "> [!NOTE]" no longer looks like a
+            // shell and the guard would wrongly let a destroyed quote through.
+            if (current.calloutPrefix != null && current.calloutPrefix !== "") {
+                committedDraft = applyCalloutPrefix(committedDraft, current.calloutPrefix);
             }
             let newFull: string;
             if (current.insertMode != null) {

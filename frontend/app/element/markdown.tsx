@@ -451,6 +451,18 @@ export function resolveEditTargetFromElement(
     if (el?.closest("img") != null) {
         return null;
     }
+    // R2: callouts are whole-block edit targets (kind "quote"). This MUST run before the
+    // generic closest("[data-source-line]") below — otherwise a click on the body <p> wins
+    // first (kind "p"), edits only that one line, and writes away the `> ` prefix. The
+    // calloutalert element carries data-source-line / -end from the R1 renderer; the
+    // `.markdown-alert` fallback covers pre-R1 DOM still mounted during an upgrade.
+    const alert = el?.closest<HTMLElement>("calloutalert[data-source-line], .markdown-alert[data-source-line]");
+    if (alert != null) {
+        const alertLine = Number(alert.dataset.sourceLine);
+        if (Number.isFinite(alertLine) && alertLine >= 1) {
+            return { target: alert, line: alertLine, blockKind: "quote" };
+        }
+    }
     let target = el?.closest<HTMLElement>("[data-source-line]");
     if (target == null) {
         return null;
@@ -1917,6 +1929,7 @@ const Markdown = ({
             case "HR":
                 return "hr";
             case "BLOCKQUOTE":
+            case "CALLOUTALERT":
                 return "quote";
             case "OL":
             case "UL":
