@@ -1,0 +1,438 @@
+{
+ "menuStyle": "top: 256.797px; left: 379.109px;",
+ "count": 80,
+ "items": [
+  {
+   "group": "第三方应用"
+  },
+  {
+   "name": "墨刀",
+   "shortcut": "/md",
+   "cls": "_2C9_Q _2vlim item-ctf1GFDNudQnEwjKeL8VeE",
+   "blockId": "ctf1GFDNudQnEwjKeL8VeE"
+  },
+  {
+   "name": "石墨文档",
+   "shortcut": "/smwd",
+   "cls": "_2C9_Q item-owCSgLf79o1hp45RxQAPiD",
+   "blockId": "owCSgLf79o1hp45RxQAPiD"
+  },
+  {
+   "name": "Figma",
+   "shortcut": "/figma",
+   "cls": "_2C9_Q item-dAMTyAXhg8sA3G3dsTwtvD",
+   "blockId": "dAMTyAXhg8sA3G3dsTwtvD"
+  },
+  {
+   "name": "腾讯会议",
+   "shortcut": "/wemeet",
+   "cls": "_2C9_Q item-kupN4bDu37ZwfKWNMz9VBg",
+   "blockId": "kupN4bDu37ZwfKWNMz9VBg"
+  },
+  {
+   "name": "MasterGo",
+   "shortcut": "/mastergo",
+   "cls": "_2C9_Q item-bYX5kfiJvmyAiTdLi2Rg6z",
+   "blockId": "bYX5kfiJvmyAiTdLi2Rg6z"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "基础块列表"
+  },
+  {
+   "name": "页面",
+   "shortcut": "/ym",
+   "cls": "_2C9_Q item-m93t6cgDcwRQXEn681jCGN",
+   "blockId": "m93t6cgDcwRQXEn681jCGN"
+  },
+  {
+   "name": "着重文字 - 跑马灯",
+   "shortcut": "/pmd",
+   "cls": "_2C9_Q item-gHp1KxB77wQDUG6LUAyfB3",
+   "blockId": "gHp1KxB77wQDUG6LUAyfB3"
+  },
+  {
+   "name": "代码片段",
+   "shortcut": "/dmpd",
+   "cls": "_2C9_Q item-iJULpSEWPn8isoonzUoafm",
+   "blockId": "iJULpSEWPn8isoonzUoafm"
+  },
+  {
+   "name": "数字列表",
+   "shortcut": "/number",
+   "cls": "_2C9_Q item-mH6unGGgyoXQ3SuLcdgVkW",
+   "blockId": "mH6unGGgyoXQ3SuLcdgVkW"
+  },
+  {
+   "name": "数学公式",
+   "shortcut": "/mathequation",
+   "cls": "_2C9_Q item-r3h3WodazoChEUsVL7Vgyw",
+   "blockId": "r3h3WodazoChEUsVL7Vgyw"
+  },
+  {
+   "name": "大标题",
+   "shortcut": "/midheader",
+   "cls": "_2C9_Q item-uruU1tK5XNFV35XjMNjetK",
+   "blockId": "uruU1tK5XNFV35XjMNjetK"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "转换为"
+  },
+  {
+   "name": "页面",
+   "shortcut": "/ym",
+   "cls": "_2C9_Q item-jU3PdzMVEfeP1TPWUpMM1n",
+   "blockId": "jU3PdzMVEfeP1TPWUpMM1n"
+  },
+  {
+   "name": "代码片段",
+   "shortcut": "/dmpd",
+   "cls": "_2C9_Q item-u1bYqK5FSjQc2vCHmV1q6D",
+   "blockId": "u1bYqK5FSjQc2vCHmV1q6D"
+  },
+  {
+   "name": "数字列表",
+   "shortcut": "/number",
+   "cls": "_2C9_Q item-dy9Jep6VUsqASPnpKi4hVM",
+   "blockId": "dy9Jep6VUsqASPnpKi4hVM"
+  },
+  {
+   "name": "思维导图",
+   "shortcut": "/minder",
+   "cls": "_2C9_Q item-ieGtU74otU7Wvy82XxBeuR",
+   "blockId": "ieGtU74otU7Wvy82XxBeuR"
+  },
+  {
+   "name": "数学公式",
+   "shortcut": "/mathequation",
+   "cls": "_2C9_Q item-sNt2h3RER9KTfUGaCFQfHh",
+   "blockId": "sNt2h3RER9KTfUGaCFQfHh"
+  },
+  {
+   "name": "大标题",
+   "shortcut": "/midheader",
+   "cls": "_2C9_Q item-x91vT3B6y84vYKsRULduWp",
+   "blockId": "x91vT3B6y84vYKsRULduWp"
+  },
+  {
+   "name": "折叠大标题",
+   "shortcut": "/togglemidheader",
+   "cls": "_2C9_Q item-2wXQrj1LysdzWAnBK29ceX",
+   "blockId": "2wXQrj1LysdzWAnBK29ceX"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "媒体与附件\n/mtyfj"
+  },
+  {
+   "name": "图片",
+   "shortcut": "/img",
+   "cls": "_2C9_Q item-emw8niCV4vWqVoBVFHfQ4N",
+   "blockId": "emw8niCV4vWqVoBVFHfQ4N"
+  },
+  {
+   "name": "最近上传图片",
+   "shortcut": "/img",
+   "cls": "_2C9_Q item-94DRRtsejJtZS79vkXw4ZS",
+   "blockId": "94DRRtsejJtZS79vkXw4ZS"
+  },
+  {
+   "name": "视频",
+   "shortcut": "/mp4",
+   "cls": "_2C9_Q item-8W99Yx98GAaWpZeCFgYwvg",
+   "blockId": "8W99Yx98GAaWpZeCFgYwvg"
+  },
+  {
+   "name": "音频",
+   "shortcut": "/mp3",
+   "cls": "_2C9_Q item-q1BqZjQwyYZUmYr72912KN",
+   "blockId": "q1BqZjQwyYZUmYr72912KN"
+  },
+  {
+   "name": "嵌入内容",
+   "shortcut": "/embed",
+   "cls": "_2C9_Q item-w4ym5214yYtzGsVrK5Go5P",
+   "blockId": "w4ym5214yYtzGsVrK5Go5P"
+  },
+  {
+   "name": "网易云音乐",
+   "shortcut": "/music",
+   "cls": "_2C9_Q item-dNnnoVnBzzx7iYuyzo8rKS",
+   "blockId": "dNnnoVnBzzx7iYuyzo8rKS"
+  },
+  {
+   "name": "网址书签",
+   "shortcut": "/bookmark",
+   "cls": "_2C9_Q item-tDta85V2c29uzWi8yZaeRX",
+   "blockId": "tDta85V2c29uzWi8yZaeRX"
+  },
+  {
+   "name": "哔哩哔哩视频",
+   "shortcut": null,
+   "cls": "_2C9_Q item-tJRETfqxmx7hK18sbmpGHe",
+   "blockId": "tJRETfqxmx7hK18sbmpGHe"
+  },
+  {
+   "name": "腾讯视频",
+   "shortcut": null,
+   "cls": "_2C9_Q item-bG1Dtp9FhqfUHehMXULjLh",
+   "blockId": "bG1Dtp9FhqfUHehMXULjLh"
+  },
+  {
+   "name": "优酷视频",
+   "shortcut": null,
+   "cls": "_2C9_Q item-MZun4gLSrmQ3yqTvUEVxi",
+   "blockId": "MZun4gLSrmQ3yqTvUEVxi"
+  },
+  {
+   "name": "YouTube视频",
+   "shortcut": null,
+   "cls": "_2C9_Q item-pZgs97F4BSaZoGQM4Di8J",
+   "blockId": "pZgs97F4BSaZoGQM4Di8J"
+  },
+  {
+   "name": "西瓜视频",
+   "shortcut": null,
+   "cls": "_2C9_Q item-hhGGGJwCKYSW7m8DscSJMJ",
+   "blockId": "hhGGGJwCKYSW7m8DscSJMJ"
+  },
+  {
+   "name": "搜狐视频",
+   "shortcut": null,
+   "cls": "_2C9_Q item-aXu7ago9jcnwAVjafonWnP",
+   "blockId": "aXu7ago9jcnwAVjafonWnP"
+  },
+  {
+   "name": "上传文件附件",
+   "shortcut": null,
+   "cls": "_2C9_Q item-msybRZs1YxMSdeSU2j7feL",
+   "blockId": "msybRZs1YxMSdeSU2j7feL"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "AI 助理"
+  },
+  {
+   "name": "更多",
+   "shortcut": null,
+   "cls": "_2C9_Q item-okKZZnYk4V9H22nonBNB32",
+   "blockId": "okKZZnYk4V9H22nonBNB32"
+  },
+  {
+   "name": "总结",
+   "shortcut": "/summarize",
+   "cls": "_2C9_Q item-858hHJx81Yn11wcrtvRLTH",
+   "blockId": "858hHJx81Yn11wcrtvRLTH"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "进阶块列表"
+  },
+  {
+   "name": "页面目录",
+   "shortcut": "/ymml",
+   "cls": "_2C9_Q item-oLRS238KpFaP3vMxZtGoVZ",
+   "blockId": "oLRS238KpFaP3vMxZtGoVZ"
+  },
+  {
+   "name": "按钮",
+   "shortcut": "/mban",
+   "cls": "_2C9_Q item-37THVQuX6Fh3AyboNLiEBC",
+   "blockId": "37THVQuX6Fh3AyboNLiEBC"
+  },
+  {
+   "name": "数据表格 - 表单",
+   "shortcut": "/form",
+   "cls": "_2C9_Q item-rTdmyt1KTWaS6qRRxg9eK3",
+   "blockId": "rTdmyt1KTWaS6qRRxg9eK3"
+  },
+  {
+   "name": "会议",
+   "shortcut": "/ddmeet",
+   "cls": "_2C9_Q item-7Gdko7VDH9XoVr9zxAbuZn",
+   "blockId": "7Gdko7VDH9XoVr9zxAbuZn"
+  },
+  {
+   "name": "Mermaid 绘图",
+   "shortcut": "/mermaid",
+   "cls": "_2C9_Q item-iZ85hcojWfFcDfSvYPNczJ",
+   "blockId": "iZ85hcojWfFcDfSvYPNczJ"
+  },
+  {
+   "name": "思维导图",
+   "shortcut": "/minder",
+   "cls": "_2C9_Q item-9imVdFQ3dYoUTiTw5wZJRa",
+   "blockId": "9imVdFQ3dYoUTiTw5wZJRa"
+  },
+  {
+   "name": "数据表格 - 时间线视图",
+   "shortcut": "/timeline",
+   "cls": "_2C9_Q item-s3BqL5E9oTg62hNsdzSrJF",
+   "blockId": "s3BqL5E9oTg62hNsdzSrJF"
+  },
+  {
+   "name": "简单表格",
+   "shortcut": "/simpletable",
+   "cls": "_2C9_Q item-XgBJzpKxi3UXe2PmuKKDQ",
+   "blockId": "XgBJzpKxi3UXe2PmuKKDQ"
+  },
+  {
+   "name": "仪表数字",
+   "shortcut": "/dashboardnumber",
+   "cls": "_2C9_Q item-bcWtNdWSgUR8rtuNC3bBZj",
+   "blockId": "bcWtNdWSgUR8rtuNC3bBZj"
+  },
+  {
+   "name": "折叠大标题",
+   "shortcut": "/togglemidheader",
+   "cls": "_2C9_Q item-8Hipe4UQmt7UGdRikT35su",
+   "blockId": "8Hipe4UQmt7UGdRikT35su"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "快速输入"
+  },
+  {
+   "name": "输入当前时间\n23:20",
+   "shortcut": "/time",
+   "cls": "_2C9_Q item-ijYrSQX7uCpc3VoZPxiAyP",
+   "blockId": "ijYrSQX7uCpc3VoZPxiAyP"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "背景色"
+  },
+  {
+   "name": null,
+   "shortcut": "/mrbj",
+   "cls": ""
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "行内块列表"
+  },
+  {
+   "name": "Emoji",
+   "shortcut": "/emoji",
+   "cls": "_2C9_Q item-riKDrinXsiaGdHy2DPr5KB",
+   "blockId": "riKDrinXsiaGdHy2DPr5KB"
+  },
+  {
+   "name": "Font Awesome",
+   "shortcut": "/fontawesome",
+   "cls": "_2C9_Q item-dMkPxFYRrfPXrVB6UJ6Cdm",
+   "blockId": "dMkPxFYRrfPXrVB6UJ6Cdm"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "快速功能"
+  },
+  {
+   "name": "页面关系图",
+   "shortcut": "/ymgxt",
+   "cls": "_2C9_Q item-gpt6LpRGKnCz5U6Ffjnbua",
+   "blockId": "gpt6LpRGKnCz5U6Ffjnbua"
+  },
+  {
+   "name": "导入文件",
+   "shortcut": "/import",
+   "cls": "_2C9_Q item-edB5wbbggNCPWQysdkBEbF",
+   "blockId": "edB5wbbggNCPWQysdkBEbF"
+  },
+  {
+   "name": "导入数据表格",
+   "shortcut": "/import",
+   "cls": "_2C9_Q item-5Ry8EBYGofARauxt6wLodf",
+   "blockId": "5Ry8EBYGofARauxt6wLodf"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "插入引用"
+  },
+  {
+   "name": "页面引用链接",
+   "shortcut": "/ymyylj",
+   "cls": "_2C9_Q item-peaEoiYgxchzbHr6xtsn1P",
+   "blockId": "peaEoiYgxchzbHr6xtsn1P"
+  },
+  {
+   "name": "嵌入块引用",
+   "shortcut": "/embedblockref",
+   "cls": "_2C9_Q item-kjGFoXyFBq3cViyY8hgQU3",
+   "blockId": "kjGFoXyFBq3cViyY8hgQU3"
+  },
+  {
+   "name": null,
+   "shortcut": null,
+   "cls": "_1FEHs"
+  },
+  {
+   "group": "快速分栏\n/quick_split_column"
+  },
+  {
+   "name": "两列分栏",
+   "shortcut": "/quicksplitcolumn2",
+   "cls": "_2C9_Q item-s6FW1eJWhEFyKhDHHemLfk",
+   "blockId": "s6FW1eJWhEFyKhDHHemLfk"
+  },
+  {
+   "name": "三列分栏",
+   "shortcut": "/quicksplitcolumn3",
+   "cls": "_2C9_Q item-pWbUkRYT77ohBrRjRPGFbg",
+   "blockId": "pWbUkRYT77ohBrRjRPGFbg"
+  },
+  {
+   "name": "四列分栏",
+   "shortcut": "/quicksplitcolumn4",
+   "cls": "_2C9_Q item-udpfdEu76N6SVjQVwsSJHr",
+   "blockId": "udpfdEu76N6SVjQVwsSJHr"
+  },
+  {
+   "name": "五列分栏",
+   "shortcut": "/quicksplitcolumn5",
+   "cls": "_2C9_Q item-gfEGQtJscp6LK7GC6HMfHS",
+   "blockId": "gfEGQtJscp6LK7GC6HMfHS"
+  }
+ ]
+}

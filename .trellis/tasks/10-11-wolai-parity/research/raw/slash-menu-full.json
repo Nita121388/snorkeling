@@ -1,0 +1,706 @@
+{
+ "count": 179,
+ "items": [
+  {
+   "group": "AI 助理\n/ai"
+  },
+  {
+   "name": "用 AI 写作",
+   "shortcut": "/yaixz"
+  },
+  {
+   "name": "续写",
+   "shortcut": "/xx"
+  },
+  {
+   "name": "总结",
+   "shortcut": "/zj"
+  },
+  {
+   "name": "更多",
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "基础块列表\n/jichukuai"
+  },
+  {
+   "name": "文本",
+   "shortcut": "/wb"
+  },
+  {
+   "name": "待办列表",
+   "shortcut": "/dblb"
+  },
+  {
+   "name": "高级待办列表",
+   "shortcut": "/gjdblb"
+  },
+  {
+   "name": "主标题",
+   "shortcut": "/h1"
+  },
+  {
+   "name": "大标题",
+   "shortcut": "/h2"
+  },
+  {
+   "name": "中标题",
+   "shortcut": "/h3"
+  },
+  {
+   "name": "小标题",
+   "shortcut": "/h4"
+  },
+  {
+   "name": "页面",
+   "shortcut": "/ym"
+  },
+  {
+   "name": "列表",
+   "shortcut": "/wxlb"
+  },
+  {
+   "name": "数字列表",
+   "shortcut": "/szlb"
+  },
+  {
+   "name": "折叠列表",
+   "shortcut": "/zdlb"
+  },
+  {
+   "name": "引述文字",
+   "shortcut": "/yswz"
+  },
+  {
+   "name": "着重文字",
+   "shortcut": "/zzwz"
+  },
+  {
+   "name": "着重文字 - 跑马灯",
+   "shortcut": "/pmd"
+  },
+  {
+   "name": "分割线",
+   "shortcut": "/fgx"
+  },
+  {
+   "name": "代码片段",
+   "shortcut": "/dmpd"
+  },
+  {
+   "name": "数学公式",
+   "shortcut": "/sxgs"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "进阶块列表\n/jinjiekuai"
+  },
+  {
+   "name": "折叠主标题",
+   "shortcut": "/h1"
+  },
+  {
+   "name": "折叠大标题",
+   "shortcut": "/h2"
+  },
+  {
+   "name": "折叠中标题",
+   "shortcut": "/h3"
+  },
+  {
+   "name": "折叠小标题",
+   "shortcut": "/h4"
+  },
+  {
+   "name": "折叠待办列表",
+   "shortcut": "/zddblb"
+  },
+  {
+   "name": "折叠高级待办列表",
+   "shortcut": "/zdgjdblb"
+  },
+  {
+   "name": "页面目录",
+   "shortcut": "/toc"
+  },
+  {
+   "name": "按钮",
+   "shortcut": "/an"
+  },
+  {
+   "name": "简单表格",
+   "shortcut": "/jdbg"
+  },
+  {
+   "name": "进度条",
+   "shortcut": "/jdt"
+  },
+  {
+   "name": "数据表格 - 嵌入",
+   "shortcut": "/db"
+  },
+  {
+   "name": "数据表格 - 子页面",
+   "shortcut": "/db"
+  },
+  {
+   "name": "数据表格 - 看板视图",
+   "shortcut": "/db"
+  },
+  {
+   "name": "数据表格 - 画廊视图",
+   "shortcut": "/db"
+  },
+  {
+   "name": "数据表格 - 列表视图",
+   "shortcut": "/db"
+  },
+  {
+   "name": "数据表格 - 时间线视图",
+   "shortcut": "/db"
+  },
+  {
+   "name": "数据表格 - 日历视图",
+   "shortcut": "/db"
+  },
+  {
+   "name": "数据表格 - 表单",
+   "shortcut": "/db"
+  },
+  {
+   "name": "统计图表\nbeta",
+   "shortcut": "/yb"
+  },
+  {
+   "name": "Mermaid 绘图",
+   "shortcut": "/code"
+  },
+  {
+   "name": "仪表数字",
+   "shortcut": "/dn"
+  },
+  {
+   "name": "会议",
+   "shortcut": "/hy"
+  },
+  {
+   "name": "思维导图",
+   "shortcut": "/nt"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "脚注/注释\n/zs"
+  },
+  {
+   "name": "脚注",
+   "shortcut": "/jz"
+  },
+  {
+   "name": "注释",
+   "shortcut": "/zs"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "快速分栏\n/ksfl"
+  },
+  {
+   "name": "两列分栏",
+   "shortcut": "/2"
+  },
+  {
+   "name": "三列分栏",
+   "shortcut": "/3"
+  },
+  {
+   "name": "四列分栏",
+   "shortcut": "/4"
+  },
+  {
+   "name": "五列分栏",
+   "shortcut": "/5"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "转换为\n/zhw"
+  },
+  {
+   "name": "文本",
+   "shortcut": "/wb"
+  },
+  {
+   "name": "待办列表",
+   "shortcut": "/dblb"
+  },
+  {
+   "name": "高级待办列表",
+   "shortcut": "/zhgjdblb"
+  },
+  {
+   "name": "主标题",
+   "shortcut": "/h1"
+  },
+  {
+   "name": "大标题",
+   "shortcut": "/h2"
+  },
+  {
+   "name": "中标题",
+   "shortcut": "/h3"
+  },
+  {
+   "name": "小标题",
+   "shortcut": "/h4"
+  },
+  {
+   "name": "折叠主标题",
+   "shortcut": "/h1"
+  },
+  {
+   "name": "折叠大标题",
+   "shortcut": "/h2"
+  },
+  {
+   "name": "折叠中标题",
+   "shortcut": "/h3"
+  },
+  {
+   "name": "折叠小标题",
+   "shortcut": "/h4"
+  },
+  {
+   "name": "折叠待办列表",
+   "shortcut": "/zhzddblb"
+  },
+  {
+   "name": "折叠高级待办列表",
+   "shortcut": "/zhzdgjdblb"
+  },
+  {
+   "name": "页面",
+   "shortcut": "/ym"
+  },
+  {
+   "name": "列表",
+   "shortcut": "/列表"
+  },
+  {
+   "name": "数字列表",
+   "shortcut": "/szlb"
+  },
+  {
+   "name": "折叠列表",
+   "shortcut": "/zdlb"
+  },
+  {
+   "name": "引述文字",
+   "shortcut": "/yswz"
+  },
+  {
+   "name": "着重文字",
+   "shortcut": "/zzwz"
+  },
+  {
+   "name": "代码片段",
+   "shortcut": "/dmpd"
+  },
+  {
+   "name": "数学公式",
+   "shortcut": "/sxgs"
+  },
+  {
+   "name": "思维导图",
+   "shortcut": "/nt"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "媒体与附件\n/mtyfj"
+  },
+  {
+   "name": "图片",
+   "shortcut": "/tp"
+  },
+  {
+   "name": "最近上传图片",
+   "shortcut": "/tp"
+  },
+  {
+   "name": "视频",
+   "shortcut": "/sp"
+  },
+  {
+   "name": "音频",
+   "shortcut": "/yp"
+  },
+  {
+   "name": "网易云音乐",
+   "shortcut": "/163"
+  },
+  {
+   "name": "哔哩哔哩视频",
+   "shortcut": "/bzsp"
+  },
+  {
+   "name": "腾讯视频",
+   "shortcut": "/txsp"
+  },
+  {
+   "name": "优酷视频",
+   "shortcut": "/yksp"
+  },
+  {
+   "name": "YouTube视频",
+   "shortcut": "/ygsp"
+  },
+  {
+   "name": "西瓜视频",
+   "shortcut": "/xgsp"
+  },
+  {
+   "name": "搜狐视频",
+   "shortcut": "/shsp"
+  },
+  {
+   "name": "嵌入内容",
+   "shortcut": "/qrnr"
+  },
+  {
+   "name": "网址书签",
+   "shortcut": "/wzsq"
+  },
+  {
+   "name": "上传文件附件",
+   "shortcut": "/doc"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "第三方应用\n/app"
+  },
+  {
+   "name": "腾讯会议",
+   "shortcut": "/txhy"
+  },
+  {
+   "name": "墨刀",
+   "shortcut": "/md"
+  },
+  {
+   "name": "蓝湖",
+   "shortcut": "/lh"
+  },
+  {
+   "name": "Figma",
+   "shortcut": "/figma"
+  },
+  {
+   "name": "MasterGo",
+   "shortcut": "/mastergo"
+  },
+  {
+   "name": "ProcessOn",
+   "shortcut": "/processon"
+  },
+  {
+   "name": "SeaTable",
+   "shortcut": "/seatable"
+  },
+  {
+   "name": "金数据",
+   "shortcut": "/jsj"
+  },
+  {
+   "name": "石墨文档",
+   "shortcut": "/smwd"
+  },
+  {
+   "name": "CodePen",
+   "shortcut": "/codepen"
+  },
+  {
+   "name": "腾讯问卷",
+   "shortcut": "/wenj"
+  },
+  {
+   "name": "AirTable",
+   "shortcut": "/airtable"
+  },
+  {
+   "name": "芦笋视频",
+   "shortcut": "/lusun"
+  },
+  {
+   "name": "组件世界",
+   "shortcut": "/zjsj"
+  },
+  {
+   "name": "Replit",
+   "shortcut": "/replit"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "快速输入\n/kssr"
+  },
+  {
+   "name": "输入当前时间\n23:21",
+   "shortcut": "/sj"
+  },
+  {
+   "name": "输入当前日期\n2026/10/11",
+   "shortcut": "/rq"
+  },
+  {
+   "name": "今天\n2026/10/11 星期日",
+   "shortcut": "/jt"
+  },
+  {
+   "name": "输入当前星期几\n星期日",
+   "shortcut": "/xq"
+  },
+  {
+   "name": "现在\n2026/10/11 23:21:28",
+   "shortcut": "/xz"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "插入引用\n/cryy"
+  },
+  {
+   "name": "页面引用链接",
+   "shortcut": "/ymyylj"
+  },
+  {
+   "name": "行内块引用",
+   "shortcut": "/hnkyy"
+  },
+  {
+   "name": "嵌入块引用",
+   "shortcut": "/qrkyy"
+  },
+  {
+   "name": "引用数据表格",
+   "shortcut": "/db"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "行内块列表\n/hn"
+  },
+  {
+   "name": "行内公式",
+   "shortcut": "/hngs"
+  },
+  {
+   "name": "Emoji",
+   "shortcut": "/bq"
+  },
+  {
+   "name": "Font Awesome",
+   "shortcut": "/fa"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "快速功能\n/ksgn"
+  },
+  {
+   "name": "搜索",
+   "shortcut": "/ss"
+  },
+  {
+   "name": "页面关系图",
+   "shortcut": "/ymgxt"
+  },
+  {
+   "name": "个人设置",
+   "shortcut": "/grsz"
+  },
+  {
+   "name": "空间设置",
+   "shortcut": "/kjsz"
+  },
+  {
+   "name": "导入文件",
+   "shortcut": "/drwj"
+  },
+  {
+   "name": "导入数据表格",
+   "shortcut": "/db"
+  },
+  {
+   "name": "退出登录",
+   "shortcut": "/quit"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "文字颜色\n/ys"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": "/灰色"
+  },
+  {
+   "name": null,
+   "shortcut": "/深灰"
+  },
+  {
+   "name": null,
+   "shortcut": "/棕色"
+  },
+  {
+   "name": null,
+   "shortcut": "/橙色"
+  },
+  {
+   "name": null,
+   "shortcut": "/黄色"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": "/靛蓝"
+  },
+  {
+   "name": null,
+   "shortcut": "/紫色"
+  },
+  {
+   "name": null,
+   "shortcut": "/粉色"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "背景色\n/ys"
+  },
+  {
+   "name": null,
+   "shortcut": "/mrbj"
+  },
+  {
+   "name": null,
+   "shortcut": "/冷色"
+  },
+  {
+   "name": null,
+   "shortcut": "/冷色"
+  },
+  {
+   "name": null,
+   "shortcut": "/浅棕色"
+  },
+  {
+   "name": null,
+   "shortcut": "/橙色"
+  },
+  {
+   "name": null,
+   "shortcut": "/淡黄色"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": "/蓝色"
+  },
+  {
+   "name": null,
+   "shortcut": "/轻紫色"
+  },
+  {
+   "name": null,
+   "shortcut": "/紫色"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "group": "荧光背景色\n/ys"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": "/绿色"
+  },
+  {
+   "name": null,
+   "shortcut": null
+  },
+  {
+   "name": null,
+   "shortcut": "/紫色"
+  },
+  {
+   "name": null,
+   "shortcut": "/紫色"
+  }
+ ]
+}
