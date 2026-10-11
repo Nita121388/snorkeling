@@ -1,20 +1,24 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { makeIconClass } from "@/util/util";
+import { isBlank, makeIconClass } from "@/util/util";
 import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from "@floating-ui/react";
 import { memo, useCallback, useEffect, useRef } from "react";
+import type { InlineTabStatusDot } from "./inlinetab-agent-status";
 
 type TabInfo = {
     id: string;
     title: string;
+    /** Full path + connection for the row tooltip; falls back to `title`. */
+    tooltip?: string;
     icon: string;
     isActive: boolean;
-    statusDot?: {
-        state: string;
-        unread?: boolean;
-        doneUnread?: boolean;
-    };
+    /** Connection meta, used for the remote badge label. */
+    connection?: string;
+    /** Non-local connection → show the remote dot badge on the row icon. */
+    isRemote?: boolean;
+    /** Agent status dot (shared presentation rules with the strip labels). */
+    statusDot?: InlineTabStatusDot;
 };
 
 type InlineTabDropdownMenuProps = {
@@ -27,6 +31,10 @@ type InlineTabDropdownMenuProps = {
     /** Callback to toggle the dropdown open state. */
     onOpenChange: (open: boolean) => void;
     onSelect: (blockId: string) => void;
+    /** Optional per-item close (删除) action; rendered as a hover-revealed × on each row. */
+    onClose?: (blockId: string) => void;
+    /** Optional ack action for the agent status dot; mirrors the strip label behavior. */
+    onStatusAck?: (blockId: string) => void;
 };
 
 /**
@@ -35,7 +43,16 @@ type InlineTabDropdownMenuProps = {
  * The trigger (button/pill that opens it) is rendered by the parent component.
  */
 export const InlineTabDropdownMenu = memo(
-    ({ tabs, activeTabId, anchorRef, isOpen, onOpenChange, onSelect }: InlineTabDropdownMenuProps) => {
+    ({
+        tabs,
+        activeTabId,
+        anchorRef,
+        isOpen,
+        onOpenChange,
+        onSelect,
+        onClose,
+        onStatusAck,
+    }: InlineTabDropdownMenuProps) => {
         const menuRef = useRef<HTMLDivElement>(null);
 
         const { refs, floatingStyles } = useFloating({
@@ -87,6 +104,15 @@ export const InlineTabDropdownMenu = memo(
             [onSelect, onOpenChange]
         );
 
+        // 删除某一项: 与标签上的 × 走同一条 uxCloseBlock 链路 (含脏数据确认), 删除后关闭菜单
+        const handleClose = useCallback(
+            (blockId: string) => {
+                onClose?.(blockId);
+                onOpenChange(false);
+            },
+            [onClose, onOpenChange]
+        );
+
         // 键盘导航
         const handleKeyDown = useCallback(
             (e: React.KeyboardEvent) => {
@@ -124,9 +150,25 @@ export const InlineTabDropdownMenu = memo(
                         (menuItems[menuItems.length - 1] as HTMLElement).focus();
                         break;
                     }
+                    // Delete/Backspace: 删除当前聚焦项 (悬浮 × 按钮不在 Tab 顺序内, 用键盘同样可达)
+                    case "Delete":
+                    case "Backspace": {
+                        if (onClose == null || currentIndex < 0) {
+                            return;
+                        }
+                        e.preventDefault();
+                        const target = menuItems[currentIndex] as HTMLElement;
+                        const blockId = target.getAttribute("data-blockid");
+                        if (isBlank(blockId)) {
+                            return;
+                        }
+                        onClose(blockId);
+                        onOpenChange(false);
+                        break;
+                    }
                 }
             },
-            [isOpen]
+            [isOpen, onClose, onOpenChange]
         );
 
         if (!isOpen) {
@@ -146,33 +188,75 @@ export const InlineTabDropdownMenu = memo(
                     aria-label="All tabs"
                     onKeyDown={handleKeyDown}
                 >
-                    {tabs.map((tab) => (
-                        <div
-                            key={tab.id}
-                            className={`inline-tab-block-dropdown-item ${tab.isActive ? "active" : ""}`}
-                            role="menuitem"
-                            tabIndex={0}
-                            title={tab.title}
-                            aria-label={tab.title}
-                            onClick={() => handleSelect(tab.id)}
-                        >
-                            <span className="dropdown-item-icon">
-                                <i className={makeIconClass(tab.icon, true)} />
-                            </span>
-                            <span className="dropdown-item-name">{tab.title}</span>
-                            {tab.statusDot && (
-                                <span
-                                    className={`dropdown-item-status ${
-                                        tab.statusDot.state === "working"
-                                            ? "is-working"
-                                            : tab.statusDot.state === "done"
-                                              ? "is-done"
-                                              : ""
-                                    }`}
-                                />
-                            )}
-                        </div>
-                    ))}
+                    {tabs.map((tab) => {
+                        const statusDot = tab.statusDot;
+                        const ackable = statusDot != null && (statusDot.unread || statusDot.doneUnread);
+                        return (
+                            <div
+                                key={tab.id}
+                                data-blockid={tab.id}
+                                className={`inline-tab-block-dropdown-item ${tab.isActive ? "active" : ""}`}
+                                role="menuitem"
+                                tabIndex={0}
+                                title={tab.tooltip ?? tab.title}
+                                aria-label={tab.title}
+                                onClick={() => handleSelect(tab.id)}
+                            >
+                                <span className="dropdown-item-icon">
+                                    <i className={makeIconClass(tab.icon, true)} />
+                                    {tab.isRemote && (
+                                        <span
+                                            className="inline-tab-block-dropdown-remote-dot"
+                                            title={`Remote: ${tab.connection ?? ""}`}
+                                            aria-label="Remote connection"
+                                        />
+                                    )}
+                                </span>
+                                <span className="dropdown-item-name">{tab.title}</span>
+                                {statusDot != null && (
+                                    <span
+                                        className={`dropdown-item-status is-${statusDot.state} ${
+                                            statusDot.inferred ? "is-inferred" : ""
+                                        } ${statusDot.unread ? "is-unread" : "is-acked"} ${
+                                            statusDot.doneUnread ? "is-done-unread" : ""
+                                        }`}
+                                        data-elapsed={statusDot.doneUnread ? statusDot.doneElapsedText : undefined}
+                                        title={statusDot.title}
+                                        role={ackable ? "button" : undefined}
+                                        onClick={
+                                            ackable && onStatusAck
+                                                ? (e) => {
+                                                      // 必须阻止冒泡: 否则会连带触发外层菜单项的「切换到该 tab」
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                      onStatusAck(tab.id);
+                                                  }
+                                                : undefined
+                                        }
+                                    >
+                                        {statusDot.state === "done" ? <i className="fa-solid fa-check" /> : null}
+                                    </span>
+                                )}
+                                {onClose != null && (
+                                    <button
+                                        type="button"
+                                        className="dropdown-item-close"
+                                        title={`Close ${tab.title}`}
+                                        aria-label={`Close ${tab.title}`}
+                                        tabIndex={-1}
+                                        onClick={(e) => {
+                                            // 必须阻止冒泡: 否则会连带触发外层菜单项的「切换到该 tab」
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleClose(tab.id);
+                                        }}
+                                    >
+                                        <i className={makeIconClass("xmark", true)} />
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </FloatingPortal>
         );

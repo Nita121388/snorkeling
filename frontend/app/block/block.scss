@@ -1,6 +1,117 @@
 // Copyright 2024, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// Shared agent-status dot presentation for inline tab surfaces.
+// Used by the strip label (.inline-tab-block-tab-statusdot) and the "more tabs"
+// dropdown (.dropdown-item-status) so R/D states never drift apart.
+// Context selector itself must supply position/overflow; this mixin only owns
+// the state colors, animations and the done check mark.
+@mixin inline-tab-status-dot-states {
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--secondary-text-color);
+    overflow: visible;
+    opacity: 0.85;
+    position: relative;
+
+    // working 蓝 (与主色解耦), 不复用 success 绿 — 否则与 done/done-unread 绿撞色.
+    &.is-working {
+        background: var(--agent-working-color);
+        animation: agent-status-text-shimmer 1.6s ease-in-out infinite;
+    }
+
+    // 完成: 绿色实心圆 + 白色对勾 (GitHub 风格). 用 Font Awesome fa-solid fa-check 子节点
+    // 渲染勾 (tsx 注入), color:#fff 稳定不再受主题色影响. flexbox 居中替代 CSS ::after
+    // 画勾 — 后者依赖正方形 L + translate 比例, 不同圆点尺寸下易漂移.
+    &.is-done {
+        width: 10px;
+        height: 10px;
+        background: var(--agent-done-color, #22c55e);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+
+        i {
+            color: #fff;
+            font-size: 7px;
+            line-height: 1;
+        }
+    }
+
+    &.is-blocked {
+        background: var(--warning-color, #f59e0b);
+        animation: agent-status-blocked-border 1.6s ease-in-out infinite;
+    }
+
+    &.is-error {
+        background: var(--error-color, #ef4444);
+        box-shadow: 0 0 6px rgb(from var(--error-color, #ef4444) r g b / 0.7);
+    }
+
+    &.is-rate-limited {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    // stale = 卡住/长时间无更新: 用独立紫 --agent-stale-color, 不再复用
+    // secondary-text-color — 后者与 idle/unknown 的灰点同色, stale 看不出来.
+    &.is-stale {
+        background: var(--agent-stale-color, #a855f7);
+        opacity: 0.9;
+        box-shadow: 0 0 0 1px rgb(from var(--agent-stale-color, #a855f7) r g b / 0.35);
+    }
+
+    // D 类完成态点亮 (非 idle→idle 跳变后未阅): 加大 + 绿色呼吸, 与 is-idle 一致时
+    // 排在 is-idle/state 类之后胜出. 与 is-done 一致用 fa-check 白勾, 仅 8px 圆点勾字号略收.
+    &.is-done-unread {
+        background: var(--agent-done-color, #22c55e);
+        width: 8px;
+        height: 8px;
+        box-shadow: 0 0 0 1px rgb(from var(--agent-done-color, #22c55e) r g b / 0.4);
+        animation: agent-status-done-pulse 2s ease-in-out infinite;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+
+        i {
+            color: #fff;
+            font-size: 5.5px;
+            line-height: 1;
+        }
+    }
+
+    &.is-inferred {
+        outline: 1px dashed currentColor;
+        outline-offset: -1px;
+    }
+
+    // Acknowledged: user 已确认过该状态 → 淡出并停掉动画, 不再抢注意力.
+    // 必须放在 is-working/is-blocked 之后 (source order) 才能以同specificity 胜出.
+    &.is-acked {
+        background: var(--secondary-text-color);
+        opacity: 0.4;
+        box-shadow: none;
+        animation: none;
+
+        i {
+            display: none;
+        }
+    }
+}
+
+// 远程 badge: view icon 右上角的 6px 小圆点. 用中性灰而非红/黄 — 远程不是错误状态.
+// 绝对定位在图标容器内, 不参与 flex 布局, 因此不改变 tab 宽度 / 溢出折叠测量.
+@mixin inline-tab-remote-dot {
+    position: absolute;
+    top: -2px;
+    right: -3px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--secondary-text-color);
+    box-shadow: 0 0 0 1px var(--block-bg-color);
+    pointer-events: none;
+}
+
 .block {
     display: flex;
     flex-direction: column;
@@ -928,108 +1039,28 @@
                 font-weight: 400;
             }
 
-            // agent 状态点: 仅作颜色指示, 不参与文本截断布局, 不显示文字
+            // agent 状态点: 仅作颜色指示, 不参与文本截断布局, 不显示文字.
+            // 状态色/动画/完成勾全部走共享 mixin, 与下拉菜单的 .dropdown-item-status 同源.
             .inline-tab-block-tab-statusdot {
-                flex: 0 0 auto;
                 width: 6px;
                 height: 6px;
                 margin-left: 1px;
-                border-radius: 50%;
-                background: var(--secondary-text-color);
-                overflow: visible;
-                opacity: 0.85;
+
+                @include inline-tab-status-dot-states;
+            }
+
+            // 远程 badge: connection 非本地时点亮图标右上角小圆点.
+            // 定位在图标槽 (.inline-tab-block-tab-iconwrap) 内, 不占布局宽度.
+            .inline-tab-block-tab-iconwrap {
                 position: relative;
+                display: inline-flex;
+                flex: 0 0 auto;
+                align-items: center;
+                justify-content: center;
+            }
 
-                &.is-working {
-                    // working 蓝 (与主色解耦), 不复用 success 绿 — 否则与 done/done-unread 绿撞色.
-                    background: var(--agent-working-color);
-                    animation: agent-status-text-shimmer 1.6s ease-in-out infinite;
-                }
-
-                // 完成: 绿色实心圆 + 白色对勾 (GitHub 风格). 用 Font Awesome fa-solid fa-check 子节点
-                // 渲染勾 (block.tsx 注入), color:#fff 稳定不再受主题色影响. flexbox 居中替代 CSS ::after
-                // 画勾 — 后者依赖正方形 L + translate 比例, 不同圆点尺寸下易漂移.
-                &.is-done {
-                    width: 10px;
-                    height: 10px;
-                    background: var(--agent-done-color, #22c55e);
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-
-                    i {
-                        color: #fff;
-                        font-size: 7px;
-                        line-height: 1;
-                    }
-                }
-
-                &.is-blocked {
-                    background: var(--warning-color, #f59e0b);
-                    animation: agent-status-blocked-border 1.6s ease-in-out infinite;
-                }
-
-                &.is-error {
-                    background: var(--error-color, #ef4444);
-                    box-shadow: 0 0 6px rgb(from var(--error-color, #ef4444) r g b / 0.7);
-                }
-
-                &.is-rate-limited {
-                    background: var(--warning-color, #f59e0b);
-                }
-
-                &.is-stale {
-                    // stale = 卡住/长时间无更新: 用独立紫 --agent-stale-color, 不再复用
-                    // secondary-text-color — 后者与 idle/unknown 的灰点同色, stale 看不出来.
-                    background: var(--agent-stale-color, #a855f7);
-                    opacity: 0.9;
-                    box-shadow: 0 0 0 1px rgb(from var(--agent-stale-color, #a855f7) r g b / 0.35);
-                }
-
-                // D 类完成态点亮 (非 idle→idle 跳变后未阅): 加大 + 绿色呼吸, 与 is-idle 一致时
-                // 排在 is-idle/state 类之后胜出. state 是 idle 时通用灰点会被这里翻成绿色提示.
-                // 与 is-done 一致用 fa-check 白勾, 仅 8px 圆点勾字号略收, 保留呼吸光晕.
-                &.is-done-unread {
-                    background: var(--agent-done-color, #22c55e);
-                    width: 8px;
-                    height: 8px;
-                    box-shadow: 0 0 0 1px rgb(from var(--agent-done-color, #22c55e) r g b / 0.4);
-                    animation: agent-status-done-pulse 2s ease-in-out infinite;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-
-                    i {
-                        color: #fff;
-                        font-size: 5.5px;
-                        line-height: 1;
-                    }
-                }
-
-                &.is-inferred {
-                    outline: 1px dashed currentColor;
-                    outline-offset: -1px;
-                }
-
-                // Acknowledged: user has dismissed the agent status badge (clicked any of
-                // Session Overview chip / term header pill / this dot itself). Fade it out,
-                // kill shimmer (is-working) and blocked-border pulse (is-blocked) animations.
-                // Source order puts this AFTER the is-working/is-blocked rules so the same
-                // specificity wins, stopping the dot from demanding attention while the
-                // outline/position remains. Re-lights when the agent's `status.updatedAt`
-                // flips newer than the ackedAt timestamp (is-acked class drops off).
-                // is-acked 必须显式 override is-blocked/is-done/is-working 设的 background, 否则
-                // 同级 specificity 下橙色/绿色背景仍胜出, 已读位点看不出"已读".
-                &.is-acked {
-                    background: var(--secondary-text-color);
-                    opacity: 0.4;
-                    box-shadow: none;
-                    animation: none;
-
-                    i {
-                        display: none;
-                    }
-                }
+            .inline-tab-block-tab-remote-dot {
+                @include inline-tab-remote-dot;
             }
         }
 
@@ -1893,11 +1924,17 @@
 
     .dropdown-item-icon {
         display: inline-flex;
+        position: relative;
         width: 14px;
         justify-content: center;
         font-size: 11px;
         opacity: 0.7;
         flex-shrink: 0;
+    }
+
+    // 远程 badge: 与 tab 标签同一 mixin, 绝对定位在行图标右上角, 不占菜单宽度。
+    .inline-tab-block-dropdown-remote-dot {
+        @include inline-tab-remote-dot;
     }
 
     .dropdown-item-name {
@@ -1908,11 +1945,71 @@
         white-space: nowrap;
     }
 
+    // agent 状态点: 与 tab 标签的 .inline-tab-block-tab-statusdot 同源 (共享 mixin),
+    // 保证 R/D 降噪与配色两处一致。未读 (is-unread) 时可点ack, cursor 提示可交互。
     .dropdown-item-status {
-        flex: 0 0 auto;
         width: 6px;
         height: 6px;
-        border-radius: 50%;
-        background: var(--secondary-text-color);
+        margin-left: 1px;
+
+        @include inline-tab-status-dot-states;
+    }
+
+    .dropdown-item-status.is-unread,
+    .dropdown-item-status.is-done-unread {
+        cursor: pointer;
+
+        &:hover {
+            filter: brightness(1.15);
+        }
+    }
+
+    // 删除 (×) 按钮: 默认折叠不占位 (width:0 + opacity:0), 避免非悬停时右侧留一片空白;
+    // 行 hover (或内部按钮自身 focus-visible) 时才撑开显形。对齐标签上的 .inline-tab-block-tab-close。
+    .dropdown-item-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 0;
+        height: 16px;
+        margin-left: 0;
+        flex: 0 0 auto;
+        padding: 0;
+        border: 0;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--main-text-color);
+        cursor: pointer;
+        opacity: 0;
+        overflow: hidden;
+        transition:
+            width 100ms ease,
+            margin-left 100ms ease,
+            opacity 100ms ease,
+            background 100ms ease,
+            color 100ms ease;
+
+        i {
+            font-size: 10px;
+        }
+
+        &:hover,
+        &:focus-visible {
+            color: var(--error-color, #ef4444);
+            background: rgb(from var(--error-color, #ef4444) r g b / 0.14);
+            outline: none;
+        }
+    }
+
+    &:hover .dropdown-item-close,
+    &:focus-within .dropdown-item-close,
+    .dropdown-item-close:focus-visible {
+        width: 16px;
+        margin-left: 4px;
+        opacity: 0.7;
+    }
+
+    .dropdown-item-close:hover {
+        opacity: 1;
     }
 }

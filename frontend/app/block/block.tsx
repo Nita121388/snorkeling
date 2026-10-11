@@ -1,12 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { agentStatusPresentation, isInferredAgentStatus } from "@/app/agent-status/agent-status-derive";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
-import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import {
     BlockComponentModel2,
     BlockProps,
@@ -39,7 +36,12 @@ import {
     InlineTabDropResult,
 } from "@/layout/lib/inlineTabs";
 import { counterInc } from "@/store/counters";
-import { getBlockComponentModel, registerBlockComponentModel, unregisterBlockComponentModel } from "@/store/global";
+import {
+    getBlockComponentModel,
+    globalStore,
+    registerBlockComponentModel,
+    unregisterBlockComponentModel,
+} from "@/store/global";
 import { makeORef } from "@/store/wos";
 import { focusedBlockId, getElemAsStr } from "@/util/focusutil";
 import { isBlank, makeIconClass, useAtomValueSafe } from "@/util/util";
@@ -61,6 +63,7 @@ import { BlockFrame } from "./blockframe";
 import { makeViewModel } from "./blockregistry";
 import { blockViewToIcon, blockViewToName } from "./blockutil";
 import { InlineTabGroupAddButton } from "./inlinetab-addmenu";
+import { blockPathLocality, buildAgentStatusDot, getAgentStatusDotInAtom } from "./inlinetab-agent-status";
 import { InlineTabDropdownMenu } from "./inlinetab-dropdown";
 
 /**
@@ -249,6 +252,10 @@ const InlineTabLabel = memo(
         const displayTitle =
             duplicateIndex != null && duplicateIndex > 1 && !customTitle ? `${title} ${duplicateIndex}` : title;
         const iconClass = makeIconClass(blockViewToIcon(blockView), true);
+        // 远程 badge: connection 非本地 (ssh:host / wsl://) 时在图标右上角点亮小圆点.
+        // 标题刻意不追加连接名 (实测会把 tab 撑宽 ~55px, 提前触发溢出折叠), 连接名只在
+        // hover tooltip (fullPath 已带 connection) 和 badge 的 title 里出现.
+        const locality = useMemo(() => blockPathLocality(connection), [connection]);
         // agent 类 Block: Tab 标签上显示对应 agent 的品牌 logo 而不是通用 terminal 图标
         const agentLogo = useMemo(() => {
             const meta = blockData?.meta;
@@ -272,35 +279,10 @@ const InlineTabLabel = memo(
         // D 类 done ack 走 agent-status 自有通道 (决策 6B), 与 R ack map 平行, 仅由 A 头部点击写入
         // (决策 2A) — 这里只读不写, B 处点击只 ack R (19 号方案既有行为), D 必须切回 block 点 A.
         const doneAckedAtMap = useAtomValueSafe(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
-        const statusDot = useMemo(() => {
-            if (agentStatus == null) return null;
-            const state = agentStatus.state;
-            const ackedFp = ackedFpMap[blockId] ?? null;
-            const unread = isAgentStatusUnread(agentStatus, ackedFp);
-            const doneAckedAt = doneAckedAtMap[blockId] ?? 0;
-            const doneUnread = isAgentDoneUnread(agentStatus, doneAckedAt);
-            // 22 号方案明确: idle/unknown 默认不渲染 R 状态点减噪; 但 D 触发后即便 state=idle,
-            // 因 doneUnread=true 也要点亮. 否则进入"开局即 idle 不亮"分支会把 D 也误吞.
-            if ((state === "idle" || state === "unknown") && !doneUnread) return null;
-            const presentation = agentStatusPresentation(agentStatus);
-            const inferred = isInferredAgentStatus(agentStatus);
-            const doneElapsedMs = doneUnread ? agentDoneElapsedMs(agentStatus, Date.now()) : 0;
-            const doneElapsedText = doneUnread ? formatDoneElapsed(doneElapsedMs) : "";
-            return {
-                state,
-                inferred,
-                unread,
-                doneUnread,
-                doneElapsedText,
-                title: `${presentation.label}${inferred ? " (inferred)" : ""}${
-                    unread
-                        ? " — click to mark as read"
-                        : doneUnread
-                          ? ` — done ${doneElapsedText} ago, switch to block to dismiss`
-                          : " — up to date"
-                }`,
-            };
-        }, [agentStatus, ackedFpMap, doneAckedAtMap, blockId]);
+        const statusDot = useMemo(
+            () => buildAgentStatusDot(agentStatus, blockId, ackedFpMap, doneAckedAtMap),
+            [agentStatus, ackedFpMap, doneAckedAtMap, blockId]
+        );
 
         useEffect(() => {
             if (isEditing) {
@@ -479,16 +461,28 @@ const InlineTabLabel = memo(
                                 aria-label={`Tab ${displayTitle}${isActive ? ", active" : ""}`}
                                 tabIndex={isActive ? 0 : -1}
                             >
-                                {agentLogo != null ? (
-                                    <span
-                                        className="agent-brand-icon inline-tab-block-tab-agentlogo"
-                                        style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}
-                                    >
-                                        {agentLogo.icon}
-                                    </span>
-                                ) : (
-                                    <i className={iconClass} />
-                                )}
+                                {/* 图标槽: 供远程 badge 绝对定位参考, 自身不占额外宽度 */}
+                                <span className="inline-tab-block-tab-iconwrap">
+                                    {agentLogo != null ? (
+                                        <span
+                                            className="agent-brand-icon inline-tab-block-tab-agentlogo"
+                                            style={
+                                                agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined
+                                            }
+                                        >
+                                            {agentLogo.icon}
+                                        </span>
+                                    ) : (
+                                        <i className={iconClass} />
+                                    )}
+                                    {locality.isRemote && (
+                                        <span
+                                            className="inline-tab-block-tab-remote-dot"
+                                            title={`Remote: ${locality.connection}`}
+                                            aria-label="Remote connection"
+                                        />
+                                    )}
+                                </span>
                                 <span>{displayTitle}</span>
                                 {isDirty ? (
                                     <span className="inline-tab-block-tab-dirty-dot" title="未保存的修改" />
@@ -678,41 +672,63 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const duplicateIndexes = useMemo(() => getDuplicateIndexes(blockIds, titleMap), [blockIds, titleMap]);
 
     // 计算每个标签的信息，用于下拉菜单（通过 derived atom 避免在 useMemo 中使用 hook）
-    const tabsInfoAtom = useMemo(
-        () =>
-            atom((get) => {
-                return blockIds.map((blockId) => {
-                    const blockData = get(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
-                    const blockView = (get(waveEnv.getBlockMetaKeyAtom(blockId, "view")) as string) ?? "";
-                    const customTitle = layoutData.blockTabTitles?.[blockId];
-                    // 提取路径信息（与 InlineTabLabel 逻辑对齐，只取 basename）
-                    const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
-                    const cwd = typeof meta["cmd:cwd"] === "string" ? meta["cmd:cwd"] : "";
-                    const file = typeof meta["file"] === "string" ? meta["file"] : "";
-                    const vcsPath = typeof meta["vcs:path"] === "string" ? meta["vcs:path"] : "";
-                    let rawPath = "";
-                    if (blockView === "preview" && !isBlank(file)) {
-                        rawPath = file;
-                    } else if (!isBlank(cwd)) {
-                        rawPath = cwd;
-                    } else if (blockView === "vcs" && !isBlank(vcsPath)) {
-                        rawPath = vcsPath;
-                    }
-                    const shortName = isBlank(rawPath)
-                        ? blockViewToName(blockView) || blockId.slice(0, 8)
-                        : basename(rawPath);
+    const tabsInfoAtom = useMemo(() => {
+        const statusStore = AgentStatusStore.getInstance();
+        const overviewModel = SessionOverviewModel.getInstance();
+        return atom((get) => {
+            const ackedFpMap = get(overviewModel.agentStatusAckedFpAtom);
+            const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom);
+            return blockIds.map((blockId) => {
+                const blockData = get(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
+                const blockView = (get(waveEnv.getBlockMetaKeyAtom(blockId, "view")) as string) ?? "";
+                const customTitle = layoutData.blockTabTitles?.[blockId];
+                // 提取路径信息（与 InlineTabLabel 逻辑对齐，只取 basename）
+                const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+                const cwd = typeof meta["cmd:cwd"] === "string" ? meta["cmd:cwd"] : "";
+                const file = typeof meta["file"] === "string" ? meta["file"] : "";
+                const vcsPath = typeof meta["vcs:path"] === "string" ? meta["vcs:path"] : "";
+                const connection = typeof meta["connection"] === "string" ? meta["connection"] : "";
+                let rawPath = "";
+                if (blockView === "preview" && !isBlank(file)) {
+                    rawPath = file;
+                } else if (!isBlank(cwd)) {
+                    rawPath = cwd;
+                } else if (blockView === "vcs" && !isBlank(vcsPath)) {
+                    rawPath = vcsPath;
+                }
+                const shortName = isBlank(rawPath)
+                    ? blockViewToName(blockView) || blockId.slice(0, 8)
+                    : basename(rawPath);
+                // 远程: connection 非本地。菜单项 tooltip 用完整路径 + 连接名 (不占菜单宽度)。
+                const locality = blockPathLocality(connection);
+                const fullPath = isBlank(rawPath) ? "" : locality.isRemote ? `${rawPath} · ${connection}` : rawPath;
 
-                    return {
-                        id: blockId,
-                        title: customTitle || shortName,
-                        icon: blockViewToIcon(blockView),
-                        isActive: blockId === activeBlockId,
-                    };
-                });
-            }),
-        [blockIdsKey, activeBlockId, layoutData.blockTabTitles, waveEnv]
-    );
+                return {
+                    id: blockId,
+                    title: customTitle || shortName,
+                    tooltip: customTitle ? `${customTitle} (${fullPath || shortName})` : fullPath || shortName,
+                    icon: blockViewToIcon(blockView),
+                    isActive: blockId === activeBlockId,
+                    connection,
+                    isRemote: locality.isRemote,
+                    // agent 状态点: 与标签共用同一份R/D 降噪规则. peekPresentedStatusAtom
+                    // 只读已订阅状态 (组内每个 tab 的标签都持有 acquire), 不新建订阅.
+                    statusDot: getAgentStatusDotInAtom(get, statusStore, blockId, ackedFpMap, doneAckedAtMap),
+                };
+            });
+        });
+        // 不要把 blockIds 数组本身加入 deps (每次渲染都是新引用) — 用 blockIdsKey 字符串,
+        // 与下方 lockedBlockIds / 溢出量测 effect 保持同一约定.
+    }, [blockIdsKey, activeBlockId, layoutData.blockTabTitles, waveEnv]);
     const tabsInfo = useAtomValue(tabsInfoAtom);
+    // 下拉菜单里agent 状态点的 ack: 与标签上的点击行为一致 (R 清未读指纹 + D 清 done 未读).
+    // 菜单项拿不到AgentStatus 对象, 点击时从 store 的 raw atom 现取 (peek: 不新建订阅).
+    const handleDropdownStatusAck = useCallback((blockId: string) => {
+        const rawAtom = AgentStatusStore.getInstance().peekStatusAtom(blockId);
+        const status = rawAtom != null ? globalStore.get(rawAtom) : null;
+        SessionOverviewModel.getInstance().markAgentStatusAcked(blockId, Date.now(), status);
+        agentStatusDoneAckStore.markDoneAcked(blockId, Date.now(), "block-header");
+    }, []);
     // 组内各 block 的锁定标记集合 (block:lock meta). 锁定不拦截正常关闭,
     // 仅用于「关闭其他/全部(锁定除外)」时保留对应标签。
     const lockedBlockIds = useAtomValue(
@@ -1001,6 +1017,8 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                                 isOpen={menuOpen}
                                 onOpenChange={setMenuOpen}
                                 onSelect={(blockId) => layoutModel?.setActiveInlineTabBlock(nodeModel.nodeId, blockId)}
+                                onClose={(blockId) => uxCloseBlock(blockId)}
+                                onStatusAck={handleDropdownStatusAck}
                             />
                         )}
                     </div>
