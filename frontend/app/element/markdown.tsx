@@ -138,7 +138,8 @@ import ReactDOM from "react-dom";
 import ReactMarkdown, { Components, defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeSanitize from "rehype-sanitize";
+import { FilePathHrefProtocols, makeMarkdownSanitizeSchema } from "@/app/element/markdown-sanitize-schema";
 import rehypeSlug from "rehype-slug";
 import { ContextMenuModel } from "../store/contextmenu";
 
@@ -172,12 +173,6 @@ function liveScrollDebug(message: string, details: Record<string, unknown> = {})
 // (`frontend/app/element/remark/`) so new pipeline stages can be added without
 // growing this file. `makeRemarkPlugins` assembles the full chain.
 
-
-const FilePathHrefProtocols = [
-    ...(defaultSchema.protocols?.href ?? []),
-    "file",
-    ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-];
 
 function markdownUrlTransform(value: string): string {
     if (value.startsWith("wave-wiki:")) {
@@ -4376,70 +4371,7 @@ const Markdown = ({
             rehypeRaw,
             rehypeHighlight,
             (): any =>
-                rehypeSanitize({
-                    ...defaultSchema,
-                    attributes: {
-                        ...defaultSchema.attributes,
-                        p: [
-                            // blank-line-spacers plugin emits spacer paragraphs tagged with
-                            // className=["paragraph","blank-spacer"] + dataSpacerLines +
-                            // dataEmptySpacer. defaultSchema has no `p` entry so sanitize
-                            // would strip these and the .paragraph.blank-spacer CSS sizing
-                            // rules would never match.
-                            //
-                            // hast property names are camelCased (hastscript normalises
-                            // kebab `data-spacer-lines` -> `dataSpacerLines`); a regex like
-                            // /^data./ would also work, but pinning the exact names keeps
-                            // the surface tight.
-                            ["className", "paragraph", "blank-spacer", "markdown-alert-title"],
-                            "dataSpacerLines",
-                            "dataEmptySpacer",
-                        ],
-                        span: [
-                            ...(defaultSchema.attributes?.span || []),
-                            // Allow all class names starting with `hljs-`.
-                            ["className", /^hljs-./],
-                            ["className", /^markdown-alert/],
-                            ["className", "markdown-alert-emoji-btn", "is-empty"],
-                            ["srcset"],
-                            ["media"],
-                            ["type"],
-                            // Alternatively, to allow only certain class names:
-                            // ['className', 'hljs-number', 'hljs-title', 'hljs-variable']
-                        ],
-                        waveblock: [["blockkey"]],
-                        div: [...(defaultSchema.attributes?.div || []), ["className", /^markdown-alert/], "dir"],
-                        button: [
-                            ["className", /^markdown-alert/],
-                            ["className", "is-empty"],
-                            "type",
-                            "ariaLabel",
-                            "dataAlertType",
-                            "dataAlertLine",
-                            "dataAlertEmoji",
-                        ],
-                        // remarkLooseListSpacing tags loose lists with data-loose so CSS can
-                        // restore the blank-line spacing between items.
-                        ol: [...(defaultSchema.attributes?.ol || []), "dataLoose", "start", "dataSplitGroup"],
-                        ul: [...(defaultSchema.attributes?.ul || []), "dataLoose"],
-                    },
-                    protocols: {
-                        ...defaultSchema.protocols,
-                        href: [...FilePathHrefProtocols, "wave-wiki"],
-                    },
-                    tagNames: [
-                        ...(defaultSchema.tagNames || []),
-                        "span",
-                        "waveblock",
-                        "picture",
-                        "source",
-                        "mermaidblock",
-                        "div",
-                        "svg",
-                        "path",
-                        "button",
-                    ],
-                }),
+                rehypeSanitize(makeMarkdownSanitizeSchema()),
             (): any => rehypeSlug({ prefix: idPrefix }),
         ];
     }, [rehype, idPrefix]);
