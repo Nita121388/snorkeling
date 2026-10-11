@@ -173,6 +173,31 @@ WYSIWYG 的「所见即所得」打字手感：输入 `**bold**` 光标到末尾
 所以提交前必须补回源码首行的缩进（`captureWysiwygInfo` 捕获 → `indentListDraft` 应用）；
 否则内层列表会被提升为顶层。
 
+### 结构自持 + 规范化（step2，必读）
+
+**不要把结构操作交给浏览器**。`document.execCommand("indent")` 产出的嵌套列表会
+**直接挂在 `ul` 下而不在任何 `li` 里**（实测），这是**数据丢失**的直接来源：
+老版 `serializeListDomToMarkdown` 先 `filter` 出 `li` 再递归，游离的 `ul` 子树
+既不在 `items` 里也无人访问 → 整项被静默丢弃（Tab 缩进后提交，源码少一项）。
+
+契约（`markdown-transform/list-dom.ts`，纯函数可直测）：
+
+- **不变式**：`ul/ol` 的直接子元素只能是 `li`。`normalizeListDom(root)` 负责收敛：
+  游离子列表并入紧邻前一个 `li`（无前一个则并入最后一个 `li`；列表内无 `li` 时
+  **整段提升并删除因此变空的列表**——留着空列表会让序列化命中它又把内容丢掉）。
+  必须幂等。收口在 `input` 事件后（原生 Enter/Backspace/粘贴都能覆盖）+ 种子落地后。
+- **结构操作自持**：Tab = 成为紧邻前一个兄弟 `li` 的子列表项（已有则追加不新建）；
+  Shift+Tab = 移出到父 `li` 之后（父列表空则删）。第一项 Tab / 顶层 Shift+Tab = no-op。
+  缩进**字面量只由序列化产出**（2 空格/层），操作只改 DOM 嵌套。
+- **序列化兜底**：即使结构非规范，`serializeListDomToMarkdown` 也必须输出游离列表
+  （按嵌套处理），**绝不静默丢弃**——任何“只遍历规范结构”的写法都是潜在丢数据。
+- **光标锚定**：结构变更前 `plantCaretAnchor` 插 `<wbr>`，变更后 `focusByAnchor` 按邻居
+  文本节点重建 collapsed Range（思源 `focusByWbr` 语义）。锚点不得残留在 DOM。
+
+> 为何不照抄思源的 div 块载体：那需要自研 Enter/Tab/Backspace/粘贴整套语义（思源 `list.ts` 71KB）。
+> 实测 Enter 原生行为可用，真正的病因是「结构未被自持 + 序列化不兼容非规范结构」，
+> 因此以最小成本拿到正确性；div 化推迟到块身份（step3）之后再评估。
+
 ## Pattern: 内联编辑器的尺寸与种子契约（step1 D2/F4/F5/F6）
 
 **尺寸**：overlay 是 `position: fixed` 的定位盒，**绝不能用固定 height 承载可增长内容**——
@@ -279,3 +304,29 @@ react-markdown 往每个元素的 props 里注入 `node` 对象。写 `<li {...p
 **Cause**: 渲染态 `white-space: normal` 折叠块间空白，编辑器却是 `pre-wrap`。
 
 **Fix / Prevention**: 提交/种子路径统一过 `stripInsignificantWhitespace()`。
+
+### 只遍历「规范结构」，把非规范节点静默丢掉
+
+**Symptom**: 在列表项上按 Tab 缩进，提交后那一项从文件里消失（数据丢失）。
+
+**Cause**: 浏览器 `execCommand("indent")` 产出的嵌套 `ul` 直接挂在 `ul` 下；
+序列化先 `filter` 出 `li` 再递归 → 游离子树无人访问 → 被丢弃。
+
+**Fix / Prevention**: 见「结构自持 + 规范化」。任何序列化器都必须对
+“不在预期位置的子节点”有**兜底输出**，宁可输出得难看也不能丢。
+
+### UI 交互验证时忽略渲染进程可见性
+
+**Symptom**: CDP `click` / `key` 完全无效——DOM 上连 `mousedown` 都收不到，
+`window.getSelection()` 能被 eval 改但真实按键被应用抢走。
+
+**Cause**: 窗口被遮挡/最小化时 `document.hidden === true`，**Chromium 不向隐藏的
+渲染进程投递输入事件**（合成事件仍可用，所以容易误判为“应用没响应”）。
+另：合成 `KeyboardEvent` 不触发浏览器默认编辑动作（Enter 分裂列表项、Tab 缩进、
+Backspace 合并），验证这些行为必须用 `scripts/inspect-electron-ui.mjs key`。
+
+**Fix / Prevention**: 先查 `document.visibilityState`；必要时把窗口置前，
+或用 `Page.setWebLifecycleState({state:"active"})` + `Emulation.setFocusEmulationEnabled`
+并**保持 CDP 长连接**（会话结束即失效）。进编辑态用真 CDP `click`（合成点击只设选区、不给 DOM 焦点）。
+隔离沙箱：`node scripts/dev-isolated.mjs --profile scratch --vite-port 51752 --cdp-port 9333`，
+并把沙箱 DB 里**所有** md 路径改写到草稿文件，避免误写真实笔记。
