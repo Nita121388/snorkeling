@@ -440,6 +440,106 @@ type MarkdownScrollSourceState = {
     isAtBottom: boolean;
 };
 
+/**
+ * Pure block-identity resolver for click / dblclick-to-edit: map a clicked element to the
+ * `[data-source-line]` block that should enter the inline editor. Extracted from the Markdown
+ * component so the resolution rules (whole-list promotion) stay unit-testable without rendering
+ * the whole note surface.
+ *
+ * Returns null when the click didn't land on an editable block (native selection takes over).
+ */
+export function resolveEditTargetFromElement(
+    el: HTMLElement | null
+): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null {
+    // Images are read-only in the preview: clicking zooms, right-click opens the image menu.
+    // Never let a click on an <img> fall through to paragraph inline editing.
+    if (el?.closest("img") != null) {
+        return null;
+    }
+    let target = el?.closest<HTMLElement>("[data-source-line]");
+    if (target == null) {
+        return null;
+    }
+    if (target.tagName === "LI") {
+        // WYSIWYG list editing is whole-list, not per-item: a bare <li> seed is invalid HTML and
+        // its layout box differs from the rendered list (the reported offset bug). Promote
+        // UNCONDITIONALLY to the owning <ul>/<ol>, which carries data-source-line-end so the edit
+        // range covers every item — a nested sublist must never be torn open mid-list.
+        const parentList = target.parentElement?.closest<HTMLElement>("[data-source-line]");
+        if (parentList != null && (parentList.tagName === "OL" || parentList.tagName === "UL")) {
+            target = parentList;
+        }
+    }
+    const lineAttr = target.dataset.sourceLine;
+    if (lineAttr == null) {
+        return null;
+    }
+    let line = Number(lineAttr);
+    if (!Number.isFinite(line) || line < 1) {
+        return null;
+    }
+    let blockKind: InlineEditBlockKind | null = null;
+    const tag = target.tagName;
+    // Promote a click inside a <blockquote> to the blockquote element (kind "quote").
+    // The blockquote carries its own data-source-line (from our component); its inner
+    // paragraphs are the editable content. Quote content is prefixed with "> " on commit.
+    if (tag !== "BLOCKQUOTE" && target.closest?.("blockquote[data-source-line]") != null) {
+        const bq = target.closest<HTMLElement>("blockquote[data-source-line]");
+        if (bq != null && bq.dataset.sourceLine != null) {
+            target = bq;
+            line = Number(bq.dataset.sourceLine);
+            blockKind = "quote";
+        }
+    }
+    // Spacers render through the same `p` component as paragraphs but carry the
+    // `blank-spacer` class (see remark/blank-line-spacers). A blank line is not prose —
+    // editing it should target the blank source line(s), not open a paragraph textarea.
+    if (target.classList.contains("blank-spacer")) {
+        blockKind = "blank";
+    } else if (tag === "BLOCKQUOTE") {
+        blockKind = "quote";
+    } else if (tag === "HR") {
+        blockKind = "hr";
+    } else if (tag === "P" || target.classList.contains("paragraph")) {
+        blockKind = "p";
+    } else if (
+        tag === "H1" ||
+        tag === "H2" ||
+        tag === "H3" ||
+        tag === "H4" ||
+        tag === "H5" ||
+        tag === "H6" ||
+        // CollapsibleHeading renders as <div class="heading is-N"> rather than <hN>;
+        // match by class so click-to-edit works for the headings the user actually sees.
+        target.classList.contains("heading")
+    ) {
+        blockKind = "h";
+    } else if (tag === "OL" || tag === "UL" || tag === "LI") {
+        blockKind = "list";
+    } else if (tag === "TABLE" || target.classList.contains("table-wrapper")) {
+        // When tablecell flag is ON, cell clicks are handled by TableBlock's own
+        // mousedown→contentEditable path. Returning here would open the raw textarea.
+        if (isBlockEditorFeatureEnabled("tablecell")) {
+            return null;
+        }
+        blockKind = "table";
+    } else if (tag === "PRE" || target.classList.contains("codeblock")) {
+        blockKind = "code";
+    } else {
+        // Block kind not yet supported by inline editing. Plain click/dblclick → native
+        // selection for now; add a branch above to enable a new kind.
+        return null;
+    }
+    // Don't intercept on a heading that is currently collapsed. CollapsibleHeading expresses
+    // state via the `collapsed` class (no aria-expanded on the div), so a click on a folded
+    // heading should expand it, not open the editor. For raw <hN> tags there's no collapsed class,
+    // so this check is a no-op and the editor opens normally.
+    if (blockKind === "h" && target.classList.contains("collapsed")) {
+        return null;
+    }
+    return { target, line, blockKind };
+}
+
 const Markdown = ({
     text,
     textAtom,
@@ -799,108 +899,12 @@ const Markdown = ({
 
     // === Inline-edit: target resolution + click/dblclick handlers =======================
 
-    // Shared target resolution for dblclick- and click-to-edit. Walks the click target up
-    // to its enclosing [data-source-line] block, promoting <LI> to its parent <OL>/<UL> so the
-    // editor owns the whole list (M2 ships list-as-block, not listitem-as-block), then maps the
-    // element's tag/class to one of the InlineEditBlockKind values the editor knows how to slice.
-    //
-    // Returns null when the click didn't land on a block the editor supports — caller returns and
-    // native behavior (selection, link navigation, heading toggle) takes over. Also returns null
-    // for a heading currently in the `collapsed` state: a folded heading should expand on click
-    // rather than open the editor, mirroring the dblclick path's long-standing guard.
+    // Shared target resolution for dblclick- and click-to-edit. Delegates to the pure
+    // `resolveEditTargetFromElement` (module scope) so callout identity + whole-list promotion
+    // stay unit-testable without rendering the note surface.
     const resolveEditTargetFromEl = useCallback(
-        (el: HTMLElement | null): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null => {
-            // Images are read-only in the preview: clicking zooms, right-click opens the
-            // image menu. Never let a click/dblclick on an <img> fall through to paragraph
-            // inline editing — that used to pop the editor over the whole paragraph.
-            if (el?.closest("img") != null) {
-                return null;
-            }
-            let target = el?.closest<HTMLElement>("[data-source-line]");
-            if (target == null) {
-                return null;
-            }
-            if (target.tagName === "LI") {
-                // Per-item granularity (Obsidian-style): clicking one item edits THAT item's
-                // source lines. Only items with nested sublists promote to the whole list, so
-                // the editor never tears a nested list open.
-                if (target.querySelector("ol, ul") != null) {
-                    const parentList = target.parentElement?.closest<HTMLElement>("[data-source-line]");
-                    if (parentList != null && (parentList.tagName === "OL" || parentList.tagName === "UL")) {
-                        target = parentList;
-                    }
-                }
-            }
-            const lineAttr = target.dataset.sourceLine;
-            if (lineAttr == null) {
-                return null;
-            }
-            let line = Number(lineAttr);
-            if (!Number.isFinite(line) || line < 1) {
-                return null;
-            }
-            let blockKind: InlineEditBlockKind | null = null;
-            const tag = target.tagName;
-            // Promote a click inside a <blockquote> to the blockquote element (kind "quote").
-            // The blockquote carries its own data-source-line (from our component); its inner
-            // paragraphs are the editable content. Quote content is prefixed with "> " on commit.
-            if (tag !== "BLOCKQUOTE" && target.closest?.("blockquote[data-source-line]") != null) {
-                const bq = target.closest<HTMLElement>("blockquote[data-source-line]");
-                if (bq != null && bq.dataset.sourceLine != null) {
-                    target = bq;
-                    line = Number(bq.dataset.sourceLine);
-                    blockKind = "quote";
-                }
-            }
-            // Spacers render through the same `p` component as paragraphs but carry the
-            // `blank-spacer` class (see remark/blank-line-spacers). A blank line is not prose —
-            // editing it should target the blank source line(s), not open a paragraph textarea.
-            if (target.classList.contains("blank-spacer")) {
-                blockKind = "blank";
-            } else if (tag === "BLOCKQUOTE") {
-                blockKind = "quote";
-            } else if (tag === "HR") {
-                blockKind = "hr";
-            } else if (tag === "P" || target.classList.contains("paragraph")) {
-                blockKind = "p";
-            } else if (
-                tag === "H1" ||
-                tag === "H2" ||
-                tag === "H3" ||
-                tag === "H4" ||
-                tag === "H5" ||
-                tag === "H6" ||
-                // CollapsibleHeading renders as <div class="heading is-N"> rather than <hN>;
-                // match by class so click-to-edit works for the headings the user actually sees.
-                target.classList.contains("heading")
-            ) {
-                blockKind = "h";
-            } else if (tag === "OL" || tag === "UL" || tag === "LI") {
-                blockKind = "list";
-            } else if (tag === "TABLE" || target.classList.contains("table-wrapper")) {
-                // When tablecell flag is ON, cell clicks are handled by TableBlock's own
-                // mousedown→contentEditable path. Returning here would open the raw textarea.
-                if (isBlockEditorFeatureEnabled("tablecell")) {
-                    return null;
-                }
-                blockKind = "table";
-            } else if (tag === "PRE" || target.classList.contains("codeblock")) {
-                blockKind = "code";
-            } else {
-                // Block kind not yet supported by inline editing. Plain click/dblclick → native
-                // selection for now; add a branch above to enable a new kind.
-                return null;
-            }
-            // Don't intercept on a heading that is currently collapsed. CollapsibleHeading
-            // expresses state via the `collapsed` class (no aria-expanded on the div), so a
-            // click on a folded heading should expand it, not open the editor. For raw <hN>
-            // tags (non-collapsible render path) there's no collapsed class, so this check is a
-            // no-op and the editor opens normally.
-            if (blockKind === "h" && target.classList.contains("collapsed")) {
-                return null;
-            }
-            return { target, line, blockKind };
-        },
+        (el: HTMLElement | null): { target: HTMLElement; line: number; blockKind: InlineEditBlockKind } | null =>
+            resolveEditTargetFromElement(el),
         []
     );
 
