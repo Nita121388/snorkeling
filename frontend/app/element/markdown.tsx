@@ -109,7 +109,7 @@ import {
 import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
 import { MarkdownContentBlockType, transformBlocks } from "@/app/element/markdown-util";
 import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip } from "./markdown-render";
-import { useEditorHistory } from "./use-editor-history";
+import { useEditorHistory, type EditorHistoryOp } from "./use-editor-history";
 import { editorController } from "./block-model/editor-controller-instance";
 import type { Block } from "./markdown-transform/tree";
 import { makeRemarkPlugins } from "@/app/element/remark";
@@ -324,6 +324,11 @@ const MarkdownAnchorSwitchDelayMs = 180;
 type EditorCommitOptions = {
     renumberOrderedListFromLine?: number;
     skipHistory?: boolean;
+    /**
+     * step3 S3：块级逆操作数据（来自 inline-edit commit()）。随 undo 快照一起入栈，
+     * 仅为阶段 4 的块级结构操作准备精确逆操作数据；不参与任何现有行为。
+     */
+    blockOp?: EditorHistoryOp;
 };
 
 // P2-B1：编辑提交收敛到 AST 的统一控制器实例来自 block-model/editor-controller-instance
@@ -846,12 +851,18 @@ const Markdown = ({
         // list block, renumber that block so SOURCE numbering matches what remark renders
         // (CommonMark silently renumbers, leaving stale wrong numbers like 1,2,2 in the file).
         // Scoped to one block + fence-aware; a no-op for edits outside any list.
-        const renumberAnchorLine = opts?.renumberOrderedListFromLine ?? inlineEdit.editSession?.startLine ?? null;
+        // step3：优先用块级 op 里的**重定位后**行号（真正写盘的位置）；无 op 的提交（表格
+        // cell 等）才退回会话捕获行号。否则行号位移后会在错误的位置上重编号列表。
+        const renumberAnchorLine =
+            opts?.renumberOrderedListFromLine ??
+            opts?.blockOp?.startLine ??
+            inlineEdit.editSession?.startLine ??
+            null;
         if (renumberAnchorLine != null) {
             nextText = renumberOrderedListBlockAtLine(nextText, renumberAnchorLine)?.text ?? nextText;
         }
         if (!opts?.skipHistory) {
-            editorHistoryRef.current.record(beforeText, nextText);
+            editorHistoryRef.current.record(beforeText, nextText, opts?.blockOp);
         }
         onInlineEditCommit(nextText);
         lastAppliedTextRef.current = nextText;

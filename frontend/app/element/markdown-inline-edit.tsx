@@ -9,6 +9,7 @@ import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { editorController } from "./block-model/editor-controller-instance";
+import type { EditorHistoryOp } from "./use-editor-history";
 import type { Block } from "./markdown-transform/tree";
 import type { CodeEditorHandle } from "./content-editable-code-editor";
 import ContentEditableCodeEditor from "./content-editable-code-editor";
@@ -204,6 +205,15 @@ export type InlineEditSession = {
     endLine: number;
     /** Original segment text captured when entering edit — used for cancel/Revert + initial draft. */
     initialContent: string;
+    /**
+     * step3 S2 块身份：锚点元素上的 `data-block-id`（remarkBlockIds 打的、内容寻址的稳定 id）。
+     *
+     * 注意：**id 是身份，不是坐标**。它不替代 startLine/endLine（行号仍是唯一的写盘坐标），
+     * 而是用来：① 提交前重定位——别的提交让行号整体位移后仍能找回同一块并取到**当前**行号；
+     * ② 陈旧检测的锚点（配合 initialContent 比对拒绝写错块）。元素上没有该属性时
+     * （旧 DOM / 未覆盖的块型）为 undefined，此时自动退化为「不做重定位」，不阻断流程。
+     */
+    blockId?: string;
     /** DOM element we anchored on; kept hidden (visibility:hidden) while textarea is mounted. */
     targetEl: HTMLElement;
     /**
@@ -581,6 +591,26 @@ function stripListMarker(source: string): string {
     return source.replace(/^(\s*)(?:\d{1,9}[.)]|[-+*])\s+/, "$1");
 }
 
+/**
+ * 单一归一化入口：把「源码切片」变成「编辑器里的初始正文」。
+ *
+ * step3 S2 的关键防漂移动作：beginEdit 计算 `initialContent` 与 commit 的陈旧检测都**必须**
+ * 调这一个函数。两边各写一份（哪怕逻辑相同）迟早会漂移：改了 code 的围栏或 list 的 marker
+ * 处理而忘了另一侧，陈旧检测就会把所有合法提交都判成「内容不符」，变成“怎么都存不进去”的
+ * 数据事故（或者反过来放过真正的陈旧块）。
+ *
+ * - code：去掉 ``` / ~~~ 围栏（编辑器里只出现代码本体）；
+ * - list：去掉行首 marker 与缩进（编辑器里是“内容”，marker 由提交时回写）；
+ * - 其余（p/h/quote/table/blank/hr）：原样。
+ */
+export function initialContentFor(kind: InlineEditBlockKind, sourceSlice: string): string {
+    return kind === "code"
+        ? stripCodeFence(sourceSlice)
+        : kind === "list"
+          ? stripListMarker(sourceSlice)
+          : sourceSlice;
+}
+
 function wrapListMarker(source: string, original: string): string {
     const match = original.match(/^(\s*)(\d{1,9}[.)]|[-+*])(\s+)/);
     if (match == null) return source;
@@ -741,10 +771,157 @@ export function indentListRange(text: string, startLine: number, endLine: number
     return next.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// step3 S2：提交前的块身份重定位 + 陈旧检测
+// ---------------------------------------------------------------------------
+
+/** 渲染根选择器（与 measureOverlay 的 `.markdown-render-root` 一致）。 */
+export const MarkdownRenderRootSelector = ".markdown-render-root";
+
+/**
+ * 用块身份在当前 DOM 里重定位：返回**当前**的源码行范围，未命中返回 null。
+ *
+ * 选择器同时要求 `data-source-line`：表格的 wrapper 与内层 <table> 会带**同一个** id
+ * （wrapper 不带坐标），只按 id 查会拿到没有坐标的那个元素；复合选择器天然跳过它。
+ *
+ * 未命中（形状变了、块被别的提交替换、旧 DOM 没有 id）→ 返回 null，调用方退回捕获范围，
+ * 继续用内容守卫把关——这正是「id 是身份不是坐标」的退化路径。
+ */
+export function relocateByBlockId(
+    root: ParentNode | null | undefined,
+    blockId: string | undefined
+): { startLine: number; endLine: number } | null {
+    if (root == null || blockId == null || blockId === "") {
+        return null;
+    }
+    // 括号形式足以处理 id 值里的特殊字符；blockId 本身形如 blk-<hex>-<n>，无 CSS 元字符。
+    const el = root.querySelector<HTMLElement>(`[data-block-id="${blockId}"][data-source-line]`);
+    if (el == null) {
+        return null;
+    }
+    const start = Number(el.dataset.sourceLine);
+    if (!Number.isFinite(start) || start < 1) {
+        return null;
+    }
+    const endRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : start;
+    const end = Number.isFinite(endRaw) && endRaw >= start ? Math.trunc(endRaw) : Math.trunc(start);
+    return { startLine: Math.trunc(start), endLine: end };
+}
+
+/**
+ * 陈旧检测：当前源码切片与打开编辑器时捕获的 `initialContent` 是否一致？
+ *
+ * 不一致 → 该块在编辑期间被外部（磁盘改动、别的提交、实时预览重渲染）改过，写下去就会
+ * 覆盖别人的内容。**宁可丢一次编辑，不可写错块**。
+ *
+ * 跳过两类会话（它们本来就没有「原文」可比）：
+ * - `insertMode`（块边缘插入）：写的是新增内容；
+ * - `initialContent === ""`（placeholder / 空块）：空字符串不是可比的基准。
+ *
+ * 两侧归一化共用 `initialContentFor`（beginEdit 也是它）——这是不会漂移的关键。
+ */
+export function isStaleTargetBlock(
+    session: Pick<InlineEditSession, "blockKind" | "startLine" | "endLine" | "initialContent" | "insertMode">,
+    fullText: string
+): boolean {
+    if (session.insertMode != null || session.initialContent === "") {
+        return false;
+    }
+    const lines = fullText.split(/\r\n|\n/);
+    const sourceSlice = lines.slice(session.startLine - 1, session.endLine).join("\n");
+    return initialContentFor(session.blockKind, sourceSlice) !== session.initialContent;
+}
+
+export type InlineEditCommitPreparation =
+    | { ok: true; session: InlineEditSession; relocated: boolean; relocatedBy?: "id" | "content" }
+    | { ok: false; session: InlineEditSession; reason: "stale" };
+
+/**
+ * 退化重定位：精确 id 落空时，按「**内容唯一匹配**」找回同一个块。
+ *
+ * 为什么需要（沙箱实测发现）：id 是「内容摘要 + 同摘要出现序号」派生的。编辑一个与本块
+ * 内容相同的兄弟块后，那个兄弟的摘要变了、本块的**序号**因此前移（实测：改完上面那个
+ * 「一样的内容」后，下面那个的 id 从 `blk-xxxx-1` 变成 `blk-xxxx-0`），于是按 id 精确定位
+ * 落空 —— 尽管本块一个字都没被改。
+ *
+ * 安全约束：**只在恰好一个候选时采用**。多个候选 = 真歧义（例如两个仍然完全相同、
+ * 都等于 initialContent 的块），此时不猜，退回捕获范围、交给内容守卫把关 ——
+ * 宁可失去重定位能力，绝不让改动落到另一个块上。
+ */
+export function relocateByContent(
+    root: ParentNode | null | undefined,
+    session: Pick<InlineEditSession, "blockKind" | "startLine" | "endLine" | "initialContent" | "insertMode">,
+    fullText: string
+): { startLine: number; endLine: number } | null {
+    if (root == null || session.insertMode != null || session.initialContent === "") {
+        return null;
+    }
+    // 调用方可能传一个只实现了 querySelector 的桩（测试里就有），这里保持纯函数「总返回」。
+    if (typeof (root as any).querySelectorAll !== "function") {
+        return null;
+    }
+    const lines = fullText.split(/\r\n|\n/);
+    const candidates: { startLine: number; endLine: number }[] = [];
+    for (const el of Array.from(root.querySelectorAll<HTMLElement>("[data-source-line]"))) {
+        const start = Number(el.dataset.sourceLine);
+        if (!Number.isFinite(start) || start < 1) {
+            continue;
+        }
+        const endRaw = el.dataset.sourceLineEnd != null ? Number(el.dataset.sourceLineEnd) : start;
+        const end = Number.isFinite(endRaw) && endRaw >= start ? Math.trunc(endRaw) : Math.trunc(start);
+        const slice = lines.slice(Math.trunc(start) - 1, end).join("\n");
+        if (initialContentFor(session.blockKind, slice) === session.initialContent) {
+            candidates.push({ startLine: Math.trunc(start), endLine: end });
+            if (candidates.length > 1) {
+                return null; // 真歧义：不猜
+            }
+        }
+    }
+    return candidates[0] ?? null;
+}
+
+/**
+ * commit() 写盘前的唯一决策点（纯函数，可直测）：
+ *   1) 按块身份重定位到**当前**行号（命中则覆盖 startLine/endLine，R4）；
+ *   2) 陈旧检测（不符则 ok=false，调用方必须中止写入，R3）。
+ *
+ * 未命中时退回捕获范围，仍过内容守卫——所以「拿不到 id」不会导致漏防护，只会失去重定位能力。
+ * 顺序不可颠倒：必须先重定位再比对，否则行号位移后拿旧行号切片必然“不符”，把所有合法提交都拦下。
+ */
+export function prepareInlineEditCommit(
+    session: InlineEditSession,
+    fullText: string,
+    root: ParentNode | null | undefined
+): InlineEditCommitPreparation {
+    const byId = relocateByBlockId(root, session.blockId);
+    // 精确 id 先试；落空时退到「内容唯一匹配」（见 relocateByContent 的说明）。
+    const relocatedRange = byId ?? relocateByContent(root, session, fullText);
+    const resolved =
+        relocatedRange == null
+            ? session
+            : { ...session, startLine: relocatedRange.startLine, endLine: relocatedRange.endLine };
+    if (isStaleTargetBlock(resolved, fullText)) {
+        return { ok: false, session: resolved, reason: "stale" };
+    }
+    return {
+        ok: true,
+        session: resolved,
+        relocated: relocatedRange != null,
+        relocatedBy: relocatedRange == null ? undefined : byId != null ? "id" : "content",
+    };
+}
+
+/**
+ * step3 S3：commit() → 提交通道的附加参数。`blockOp` 是块级逆操作数据，
+ * 由 markdown.tsx 的收敛点（handleInlineEditCommit）连同 undo 快照一起记账；
+ * 它不改变任何现有行为，只为阶段 4 的块级结构操作准备精确逆操作。
+ */
+export type InlineEditCommitOptions = { blockOp?: EditorHistoryOp };
+
 type UseInlineEditArgs = {
     fullText: string;
     /** Called with the new full text on every successful commit; never on cancel. */
-    onCommit: (newFullText: string) => void;
+    onCommit: (newFullText: string, opts?: InlineEditCommitOptions) => void;
     /**
      * Optional: flush the committed draft to disk. Wired only by callers that own a model with a
      * handleFileSave (preview-mode pair). When present, ⌘/Ctrl+S inside the textarea commits the
@@ -1086,12 +1263,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     ? Math.min(Math.trunc(endLineRaw), lines.length)
                     : safeLine;
             const sourceContent = lines.slice(safeLine - 1, endLine).join("\n");
-            const initialContent =
-                blockKind === "code"
-                    ? stripCodeFence(sourceContent)
-                    : blockKind === "list"
-                      ? stripListMarker(sourceContent)
-                      : sourceContent;
+            // 归一化入口收敛到 initialContentFor（与 commit 的陈旧检测同一个函数，防漂移）。
+            const initialContent = initialContentFor(blockKind, sourceContent);
             const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent);
             // R4: capture the callout marker from the ORIGINAL source first line. Only for
             // WYSIWYG sessions — a textarea fallback commits the raw source verbatim (marker
@@ -1107,6 +1280,9 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 endLine,
                 initialContent,
                 targetEl,
+                // step3 S2：块身份从锚点元素上直接读（remarkBlockIds 打的 data-block-id）。
+                // 没这个属性（旧 DOM / 未覆盖的块型）时 undefined，提交前自动跳过重定位。
+                blockId: targetEl.dataset.blockId ?? undefined,
                 typography: captureBlockTypography(targetEl),
                 caretOffset,
                 insertRevert,
@@ -1180,20 +1356,68 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // and ReactMarkdown keeps rendering the pre-edit text until something else (a Save, a tab
             // blur) bumps the fileKey atom. Pulling the commit side effect out of the updater — and
             // closing over the current session — fixes the live-preview-after-blur refresh path.
-            const current = editSession;
-            if (current == null) {
+            const session = editSession;
+            if (session == null) {
                 return;
             }
             inlineEditDebug("commit", {
-                kind: current.blockKind,
-                startLine: current.startLine,
-                insertMode: current.insertMode,
+                kind: session.blockKind,
+                startLine: session.startLine,
+                insertMode: session.insertMode,
                 draftLen: draftText.length,
-                initialLen: current.initialContent.length,
-                changed: draftText !== current.initialContent,
+                initialLen: session.initialContent.length,
+                changed: draftText !== session.initialContent,
             });
             setEditSession(null);
             setDraftText("");
+            // ---------------------------------------------------------------------------
+            // step3 S2：先按块身份重定位（命中则用**当前**行号，行号位移后仍写对位置），
+            // 再做陈旧检测（当前源码切片与 initialContent 不符 → 中止，不写盘）。
+            //
+            // 位置：在**所有**写盘分支（空壳守卫 / placeholder / insertMode / 控制器 / replaceSourceRange）
+            // 之前；空壳守卫继续在 placeholder 分支之前（step1 的 BLOCKER1 结论绝不能回退）。
+            // 中止时只关掉编辑器（上面已做），不调 onCommit → 文本与磁盘均不变。
+            // ---------------------------------------------------------------------------
+            const root = getViewportEl()?.querySelector<HTMLElement>(MarkdownRenderRootSelector) ?? null;
+            const prepared = prepareInlineEditCommit(session, fullTextRef.current, root);
+            if (!prepared.ok) {
+                inlineEditDebug("commit:stale-target-blocked", {
+                    kind: session.blockKind,
+                    blockId: session.blockId,
+                    startLine: session.startLine,
+                    endLine: session.endLine,
+                });
+                return;
+            }
+            const current = prepared.session;
+            // 只在行号**真的**被纠正时记日志：relocated 为真只表示「解析到了范围」，
+            // 大多数提交解析出来的就是捕获时那个范围，记下来只会把真正有用的信号淹掉。
+            if (
+                prepared.relocated &&
+                (current.startLine !== session.startLine || current.endLine !== session.endLine)
+            ) {
+                inlineEditDebug("commit:relocated", {
+                    blockId: current.blockId,
+                    by: prepared.relocatedBy,
+                    from: session.startLine,
+                    to: current.startLine,
+                    endLine: current.endLine,
+                });
+            }
+            // step3 S3：块级逆操作记账（数据层，行为零变化）。
+            // 用的是**重定位后**的 startLine/endLine（与真正写盘的范围一致），
+            // before = 会话 initialContent（该块原文），after = 本块写盘后的内容。
+            // 消费点：markdown.tsx 的提交通道把它连同 undo 快照一起入栈；
+            // 阶段 4 的块级结构操作（移动/缩进/删除）才真正用它做逆操作。
+            const commitOpts = (after: string): InlineEditCommitOptions => ({
+                blockOp: {
+                    blockId: current.blockId,
+                    startLine: current.startLine,
+                    endLine: current.endLine,
+                    before: current.initialContent,
+                    after,
+                },
+            });
             // 方案 02 §2.1 typing transform: a paragraph/blank editor whose first draft line
             // matches a typing pattern ("# ", "> ", "- [ ] ", fence, "| a |", incl. full-width
             // ＃／＞／＊／···) commits the CANONICAL rewritten line — the source stays clean
@@ -1281,7 +1505,8 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                               current.startLine,
                               current.endLine,
                               committedDraft
-                          )
+                          ),
+                    commitOpts(committedDraft)
                 );
                 return;
             }
@@ -1313,6 +1538,9 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 committedDraft = applyCalloutPrefix(committedDraft, current.calloutPrefix);
             }
             let newFull: string;
+            // 真正写入该块范围的文本（S3 的 op.after）——各分支实际的写盘内容，
+            // 不是编辑器草稿：else 分支可能要补回 code 围栏 / list marker。
+            let opAfter = committedDraft;
             if (current.insertMode != null) {
                 // Insert the draft as a new block before/after the anchor line. Draft lines are
                 // inserted verbatim (blank lines inside the draft stay blank); we bracket the block
@@ -1363,7 +1591,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     { text: fullTextRef.current }
                 );
                 if (res != null) {
-                    onCommit(res.text);
+                    onCommit(res.text, commitOpts(committedDraft));
                     return;
                 }
                 // 理论不失败（坐标合法即成功）；兜底 fallthrough 到原 replaceSourceRange。
@@ -1384,11 +1612,12 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                         : current.blockKind === "list"
                           ? wrapListMarker(committedDraft, originalSource)
                           : committedDraft;
+                opAfter = sourceDraft;
                 newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, sourceDraft);
             }
-            onCommit(newFull);
+            onCommit(newFull, commitOpts(opAfter));
         },
-        [editSession, draftText, onCommit]
+        [editSession, draftText, onCommit, getViewportEl]
     );
 
     const cancel = useCallback(() => {

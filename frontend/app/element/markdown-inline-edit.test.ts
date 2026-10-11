@@ -9,11 +9,16 @@ import {
     deleteBlockRange,
     expandBlockSelection,
     indentListRange,
+    initialContentFor,
     inlineKindToTreeKind,
     isEmptyBlockShellDraft,
     isSelectingRange,
+    isStaleTargetBlock,
     makeInlineEditKeydown,
     moveBlockRange,
+    prepareInlineEditCommit,
+    relocateByBlockId,
+    relocateByContent,
     replaceSourceRange,
     resolveInlineEditTarget,
     spliceBlankRow,
@@ -991,5 +996,290 @@ describe("list WYSIWYG 提交 → replace-content（P2-B3：修复重复 marker 
         expect(commitList("intro\n\n- apple\n- pear\n\nnext block", 3, 4, "- APPLE\n- PEAR", true)).toBe(
             "intro\n\n- APPLE\n- PEAR\n\nnext block"
         );
+    });
+});
+
+describe("step3 S2 — initialContentFor：beginEdit 与提交守卫共用的单一归一化入口", () => {
+    it("list 去 marker（含缩进与有序/任务 marker）", () => {
+        expect(initialContentFor("list", "- item")).toBe("item");
+        expect(initialContentFor("list", "  1. item")).toBe("  item");
+        expect(initialContentFor("list", "- [ ] task")).toBe("[ ] task");
+        expect(initialContentFor("list", "- a\n- b")).toBe("a\n- b"); // 只去首行 marker（与 beginEdit 原语义一致）
+    });
+
+    it("code 去围栏（``` 与 ~~~，且只有围栏闭合时才去）", () => {
+        expect(initialContentFor("code", "```js\nconst x = 1\n```")).toBe("const x = 1");
+        expect(initialContentFor("code", "~~~\nx\n~~~")).toBe("x");
+        // 没有闭合围栏 → 原样保留（stripCodeFence 的既有语义）
+        expect(initialContentFor("code", "```js\nx")).toBe("```js\nx");
+    });
+
+    it("p/h/quote/table/blank/hr 原样（不分归一化）", () => {
+        expect(initialContentFor("p", "a\nb")).toBe("a\nb");
+        expect(initialContentFor("h", "## title")).toBe("## title");
+        expect(initialContentFor("quote", "> a\n> b")).toBe("> a\n> b");
+        expect(initialContentFor("table", "| a |\n| - |\n| 1 |")).toBe("| a |\n| - |\n| 1 |");
+        expect(initialContentFor("blank", "")).toBe("");
+    });
+
+    it("beginEdit 与陈旧检测同源：用同一函数算 initialContent → 守卫必然通过（list/code 各一例）", () => {
+        // 复刻 beginEdit 的算式（beginEdit 里是同一行代码：initialContentFor(kind, slice)）。
+        const beginEditFormula = (kind: Parameters<typeof initialContentFor>[0], slice: string) => ({
+            blockKind: kind,
+            startLine: 1,
+            endLine: slice.split("\n").length,
+            initialContent: initialContentFor(kind, slice),
+            insertMode: undefined,
+        });
+        const listText = "- apple";
+        expect(isStaleTargetBlock(beginEditFormula("list", listText), listText)).toBe(false);
+        const codeText = "```js\nconst x = 1\n```";
+        expect(isStaleTargetBlock(beginEditFormula("code", codeText), codeText)).toBe(false);
+    });
+});
+
+describe("step3 S2 — 提交前重定位 + 陈旧检测（数据安全）", () => {
+    /** 构造一个只实现 querySelector 的渲染根：按 `[data-block-id="x"][data-source-line]` 查。 */
+    function fakeRoot(map: Record<string, { startLine: number; endLine?: number } | undefined>): ParentNode {
+        return {
+            querySelector(selector: string) {
+                const m = selector.match(/^\[data-block-id="([^"]+)"\]\[data-source-line\]$/);
+                const entry = m != null ? map[m[1]] : undefined;
+                if (entry == null) {
+                    return null;
+                }
+                return {
+                    dataset: {
+                        sourceLine: String(entry.startLine),
+                        sourceLineEnd: entry.endLine != null ? String(entry.endLine) : undefined,
+                    },
+                } as unknown as HTMLElement;
+            },
+        } as unknown as ParentNode;
+    }
+
+    function session(over: Partial<InlineEditSession>): InlineEditSession {
+        return {
+            blockKind: "p",
+            startLine: 3,
+            endLine: 3,
+            initialContent: "hello",
+            targetEl: {} as HTMLElement,
+            ...over,
+        };
+    }
+
+    /**
+     * commit() 写盘分支的等价复刻（注释标注真实代码位置）：
+     *   markdown-inline-edit.tsx commit():
+     *     const prepared = prepareInlineEditCommit(session, fullTextRef.current, root);
+     *     if (!prepared.ok) { log("commit:stale-target-blocked"); return; }   // 不写盘、不改文本
+     *     const current = prepared.session;  // ← 后续所有分支用它的 startLine/endLine
+     * 这里用同一个 prepareInlineEditCommit（生产函数本体，不是镜像逻辑）复刻该分支。
+     */
+    function commitReplica(args: {
+        session: InlineEditSession;
+        fullText: string;
+        root: ParentNode | null;
+        draft: string;
+    }): { text: string; committed: boolean } {
+        const prepared = prepareInlineEditCommit(args.session, args.fullText, args.root);
+        if (!prepared.ok) {
+            return { text: args.fullText, committed: false };
+        }
+        const s = prepared.session;
+        return {
+            text: replaceSourceRange(args.fullText, s.startLine, s.endLine, args.draft),
+            committed: true,
+        };
+    }
+
+    it("重定位命中 → 使用 DOM 上的**当前**行号（R4：行号位移后仍写对位置）", () => {
+        // 会话捕获时块在 3..3；期间另一个提交在前面插了两行 → 该块现在在 5..5。
+        const fullText = ["intro", "", "INSERTED", "", "hello", "", "tail"].join("\n");
+        const root = fakeRoot({ "blk-A": { startLine: 5 } });
+        const prepared = prepareInlineEditCommit(session({ blockId: "blk-A" }), fullText, root);
+        expect(prepared.ok).toBe(true);
+        expect(prepared.ok && prepared.session.startLine).toBe(5);
+        expect(prepared.ok && prepared.relocated).toBe(true);
+        // 写入落在当前行号上
+        const res = commitReplica({ session: session({ blockId: "blk-A" }), fullText, root, draft: "HELLO" });
+        expect(res.committed).toBe(true);
+        expect(res.text.split("\n")[4]).toBe("HELLO");
+        expect(res.text.split("\n")[2]).toBe("INSERTED");
+    });
+
+    it("重定位命中多行块（endLine 来自 data-source-line-end）", () => {
+        const fullText = ["a", "b", "c", "d"].join("\n");
+        const root = fakeRoot({ "blk-M": { startLine: 2, endLine: 3 } });
+        const prepared = prepareInlineEditCommit(
+            session({ blockId: "blk-M", initialContent: "b\nc" }),
+            fullText,
+            root
+        );
+        expect(prepared.ok).toBe(true);
+        expect(prepared.ok && prepared.session.startLine).toBe(2);
+        expect(prepared.ok && prepared.session.endLine).toBe(3);
+    });
+
+    it("重定位未命中 → 退回捕获范围，但仍过内容守卫（相符则提交）", () => {
+        const fullText = ["a", "", "hello"].join("\n");
+        const root = fakeRoot({}); // 该 id 不在 DOM 里（形状被别的提交改了 / 旧 DOM）
+        const prepared = prepareInlineEditCommit(session({ blockId: "blk-gone" }), fullText, root);
+        expect(prepared.ok).toBe(true);
+        expect(prepared.ok && prepared.session.startLine).toBe(3);
+        expect(prepared.ok && prepared.relocated).toBe(false);
+        const res = commitReplica({ session: session({ blockId: "blk-gone" }), fullText, root, draft: "HELLO" });
+        expect(res.committed).toBe(true);
+        expect(res.text).toBe("a\n\nHELLO");
+    });
+
+    it("重定位未命中 + 捕获范围内容不符（外部改动）→ 提交中止：不调 onCommit、文本不变", () => {
+        // 外部把第 3 行改成了 "externally changed"
+        const fullText = ["a", "", "externally changed"].join("\n");
+        const root = fakeRoot({});
+        const onCommit = vi.fn();
+        const res = commitReplica({
+            session: session({ blockId: "blk-gone" }),
+            fullText,
+            root,
+            draft: "MY EDIT",
+        });
+        if (res.committed) {
+            onCommit(res.text);
+        }
+        expect(onCommit).not.toHaveBeenCalled();
+        expect(res.text).toBe(fullText); // 文本未变（即 commit() 的 `return`）
+    });
+
+    it("重定位命中但内容已被外部改动 → 仍然中止（守卫在重定位之后、写盘之前）", () => {
+        const fullText = ["a", "", "x", "", "y", "", "externally changed"].join("\n");
+        const root = fakeRoot({ "blk-A": { startLine: 7 } });
+        const prepared = prepareInlineEditCommit(session({ blockId: "blk-A" }), fullText, root);
+        expect(prepared.ok).toBe(false);
+        const res = commitReplica({ session: session({ blockId: "blk-A" }), fullText, root, draft: "MY EDIT" });
+        expect(res.committed).toBe(false);
+        expect(res.text).toBe(fullText);
+    });
+
+    it("isStaleTargetBlock：跳过 insertMode 与 initialContent==='' 的会话（placeholder/插入/blank）", () => {
+        // insertMode（块边缘插入）：没有“原文”可比
+        expect(
+            isStaleTargetBlock(session({ initialContent: "hello", insertMode: "after" }), "totally different")
+        ).toBe(false);
+        // placeholder / blank：initialContent 为空
+        expect(isStaleTargetBlock(session({ initialContent: "" }), "totally different")).toBe(false);
+        // 普通会话：内容不符即陈旧
+        expect(isStaleTargetBlock(session({ initialContent: "hello" }), "totally different")).toBe(true);
+    });
+
+    it("isStaleTargetBlock：源码切片越界（文件变短）也算陈旧 —— 宁可丢一次编辑", () => {
+        expect(isStaleTargetBlock(session({ startLine: 9, endLine: 9, initialContent: "hello" }), "a\nb")).toBe(true);
+    });
+
+    it("relocateByBlockId：无 id / 元素无坐标 → null（退化路径不报错）", () => {
+        const root = fakeRoot({ "blk-A": { startLine: 4 } });
+        expect(relocateByBlockId(root, undefined)).toBeNull();
+        expect(relocateByBlockId(root, "")).toBeNull();
+        expect(relocateByBlockId(null, "blk-A")).toBeNull();
+        expect(relocateByBlockId(root, "blk-missing")).toBeNull();
+        expect(relocateByBlockId(root, "blk-A")).toEqual({ startLine: 4, endLine: 4 });
+    });
+
+    it("initialContent 为空 / 无 blockId 的旧会话：行为与 step2 完全一致（不回归）", () => {
+        const fullText = "a\n\nhello";
+        const prepared = prepareInlineEditCommit(session({ initialContent: "" }), fullText, null);
+        expect(prepared.ok).toBe(true);
+        expect(prepared.ok && prepared.relocated).toBe(false);
+        expect(prepared.ok && prepared.session.startLine).toBe(3);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// step3 S2 补丁：id 是「内容摘要 + 同摘要序号」，所以编辑一个内容相同的兄弟块会让本块的
+// **序号**前移、精确 id 落空（沙箱实测发现）。补「内容唯一匹配」退化重定位；
+// 多个候选 = 真歧义 → 不猜（避免改到另一个块）。
+// ---------------------------------------------------------------------------
+describe("relocateByContent — 精确 id 落空后的退化重定位（step3 S2 补丁）", () => {
+    // 本文件是 node 环境（无 jsdom），所以用桩对象：relocateBy* 只用到
+    // root.querySelector / querySelectorAll 与 el.dataset。
+    type Stub = { line: number; end?: number; text: string; id?: string };
+    const elOf = (b: Stub) => ({
+        dataset: {
+            sourceLine: String(b.line),
+            ...(b.end != null ? { sourceLineEnd: String(b.end) } : {}),
+        },
+    });
+    const rootOf = (blocks: Stub[]) => ({
+        querySelector: (sel: string) => {
+            const hit = blocks.find((b) => b.id != null && sel.includes(b.id));
+            return hit != null ? elOf(hit) : null;
+        },
+        querySelectorAll: () => blocks.map(elOf),
+    });
+
+    it("两处内容相同 → 真歧义 → 不猜（宁可失去重定位，也不改到另一个块）", () => {
+        const fullText = "一样的内容\n\n别的\n\n一样的内容";
+        const root = rootOf([
+            { line: 1, text: "一样的内容" },
+            { line: 3, text: "别的" },
+            { line: 5, text: "一样的内容" },
+        ]);
+        const session = {
+            blockKind: "p" as const,
+            startLine: 1,
+            endLine: 1,
+            initialContent: "一样的内容",
+            insertMode: undefined,
+        };
+        expect(relocateByContent(root as any, session, fullText)).toBeNull();
+    });
+
+    it("候选唯一时给出它的当前行号", () => {
+        const fullText = "AAA\n\n别的\n\n一样的内容";
+        const root = rootOf([
+            { line: 1, text: "AAA" },
+            { line: 3, text: "别的" },
+            { line: 5, text: "一样的内容" },
+        ]);
+        const session = {
+            blockKind: "p" as const,
+            startLine: 1,
+            endLine: 1,
+            initialContent: "一样的内容",
+            insertMode: undefined,
+        };
+        expect(relocateByContent(root as any, session, fullText)).toEqual({ startLine: 5, endLine: 5 });
+    });
+
+    it("prepareInlineEditCommit：精确 id 落空 → 退化到内容匹配并标记 relocatedBy=content", () => {
+        const fullText = "AAA\n\n一样的内容";
+        const root = rootOf([
+            { line: 1, text: "AAA", id: "blk-other-0" },
+            { line: 3, text: "一样的内容", id: "blk-tgt-0" },
+        ]);
+        const session = {
+            blockKind: "p" as const,
+            startLine: 1,
+            endLine: 1,
+            initialContent: "一样的内容",
+            insertMode: undefined,
+            blockId: "blk-tgt-1", // 序号已前移（兄弟块被改过），精确命中落空
+        };
+        const prepared = prepareInlineEditCommit(session as any, fullText, root as any);
+        expect(prepared.ok).toBe(true);
+        // 收窄放在 ok 为真的分支里（false 分支的 reason 字段在本仓库 tsconfig 下不加窄，
+        // 本文件其它用例也是这个写法）
+        if (prepared.ok) {
+            expect(prepared.session.startLine).toBe(3);
+            expect(prepared.relocatedBy).toBe("content");
+        }
+    });
+
+    it("插入会话与空 initialContent 不做内容重定位（无原文可比）", () => {
+        const root = rootOf([{ line: 3, text: "一样的内容" }]);
+        const base = { blockKind: "p" as const, startLine: 1, endLine: 1, initialContent: "一样的内容" };
+        expect(relocateByContent(root as any, { ...base, insertMode: "after" } as any, "一样的内容")).toBeNull();
+        expect(relocateByContent(root as any, { ...base, initialContent: "" } as any, "")).toBeNull();
     });
 });
