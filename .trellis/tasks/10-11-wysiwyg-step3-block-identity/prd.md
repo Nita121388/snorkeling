@@ -1,19 +1,80 @@
-# 块身份 + 块级提交（data-block-id 取代行号 + 逆操作缓存）
+# step3：块身份（block id）+ 块级提交定位 + 逆操作记账
 
-## Goal
+父任务：`10-11-wysiwyg-overhaul`。依赖：step1 / step1b / step2（全部已完成）。
 
-data-block-id 取代 data-source-line 作为块身份；提交从 replaceSourceRange(行号) 改为块级操作 + 逆操作缓存。为结构操作(阶段4)与逐类型覆盖(阶段5)打地基。依赖 step1/step2。
+## 关键判断：id 是「身份」，不是「坐标」
+
+原任务名写的是「`data-block-id` **取代** `data-source-line`」，开工前必须纠正这一点：
+在 **markdown 文件**模型下，行号是**不可替代的写盘坐标** —— 要改文件就必须知道改哪几行。
+思源之所以能只靠 `data-node-id`，是因为它的「源码」就是块树（`.sy` JSON），不存在
+「块 → 文本行」的映射问题。我们是文件模型，映射必须留着。
+
+所以 step3 的目标是：**给块一个稳定身份，用它把「写错块」这一类风险彻底关掉**，而不是
+去掉行号。身份用于三件事：
+
+1. **陈旧检测**：提交前确认「我要写的这段源码」还是我打开编辑器时读到的那个块；
+2. **重定位**：别的提交让行号整体位移后，仍能靠 id 找回同一个块；
+3. **记账**：为阶段 4 的结构操作（移动/缩进/删除）准备块级逆操作数据。
 
 ## Requirements
 
-- TBD
+- **R1 稳定块身份**：每个渲染出的块元素带 `data-block-id`。id 由**块内容**确定性派生
+  （不污染源文件、不依赖随机数），同一份文档两次解析得到完全相同的 id；
+  内容相同的重复块（如两个都写着 `- item` 的列表）必须得到**不同** id。
+- **R2 身份直达 DOM**：id 由 remark 插件打（`hProperties.dataBlockId`），经 sanitize 放行后
+  由渲染器的 `{...domProps(props)}` 自然落到 DOM（**渲染器无需改动**，已用探针验证）。
+- **R3 提交前陈旧检测（数据安全）**：提交前用会话记录的 `blockId` 在当前 DOM 里重定位；
+  并校验「当前源码切片」与打开编辑器时的 `initialContent` 一致（按块类型做同样的
+  marker/fence 归一化）。**不一致则中止写入**并记日志 —— 宁可丢一次编辑，不可写错块。
+- **R4 行号位移后仍能写对**：先提交块 A（行号整体位移），再提交块 B 时，B 的写入范围必须
+  基于**当前**行号，而不是打开编辑器时的旧行号。
+- **R5 逆操作记账**：每次提交在 undo 条目里记录
+  `{blockId, startLine, endLine, before, after}`（数据层，不改动现有历史引擎的行为）。
+- **R6 不回归**：step1 / step1b / step2 的全部行为与守卫不变；`data-source-line`
+  继续作为写盘坐标。
 
 ## Acceptance Criteria
 
-- [ ] TBD
+- [ ] 单测：同一文档两次解析 → 所有块 id 完全相同；块内容改动 → 该块 id 改变、其它块不变
+- [ ] 单测：两个内容完全相同的块 → id 不同
+- [ ] 单测：真实管线（remark → sanitize → 渲染器）后 DOM 上有 `data-block-id`，且
+      未被 sanitize 剥离
+- [ ] 单测：`initialContentFor(kind, slice)` 对 beginEdit 与提交守卫是**同一个函数**
+      （list 去 marker、code 去围栏），两侧归一化不会漂移
+- [ ] 单测：源码切片与 `initialContent` 不符 → 提交**中止**（不写盘、不改文本）
+- [ ] 单测：blockId 重定位命中当前 DOM → 使用当前行号；未命中 → 退回捕获范围但仍过内容守卫
+- [ ] 单测：undo 条目携带 `{blockId, before, after}`，现有一致性/撤销行为不变
+- [ ] 沙箱实测（隔离实例 + 一次性草稿）：① 连续编辑两个块，第二次写对位置；
+      ② 中途从外部改文件后提交 → 拒绝写入且文件未被破坏；③ 重复内容块消歧
+- [ ] `npx vitest run frontend/app/element` 全绿；`npx tsc --noEmit` 无新增错误（基线 68）
 
-## Notes
+## 明确不做（记录理由）
 
-- Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
-- Lightweight tasks can remain PRD-only.
-- For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+- **不用 id 取代 `data-source-line`**：见上「关键判断」。行号仍是写盘坐标。
+- **不改历史引擎为纯逆操作栈**：现有快照式 undo 行为正确、风险低；step3 只补记账数据，
+  逆操作栈留给阶段 4（届时才有真正的消费者）。
+- **不引入随机/持久 id**：源文件是用户资产，不得写入 id（对比思源把 `id` 写进 `.sy`）。
+
+## 风险
+
+- 内容守卫可能**过度拦截**：外部改动、其它提交位移、实时预览重渲染都可能让切片与
+  `initialContent` 不符。取舍已定：宁可用户重做一次编辑，不可写错块。
+  缓解：中止时写调试日志（`__inlineEditLog`）便于定位。
+- id 派生必须**纯函数且与渲染顺序无关**（否则 HMR/重渲染后 id 漂移，重定位失效）。
+
+---
+
+## 实测结果（2026-10-11，隔离沙箱 + 一次性草稿 + CDP 真实点击/按键）
+
+- ✅ R1/R2：真实 DOM 上 66 个元素带 `data-block-id`；两个内容相同的段落得到
+  `blk-261b94ee-0` / `blk-261b94ee-1`；reload 后 id 稳定不变。
+- ✅ 连续编辑两个重复块 + 最后一块：三处各改各的、位置全对；整段 4 次提交**零
+  `commit:stale-target-blocked`** → 陈旧检测**不误伤正常流程**（本次最大风险点已排除）。
+- ⚠️ R4 重定位：真实提交里走得通（日志可见），但**行号真正被纠正**的场景只有单测覆盖
+  —— 应用内很难构造「编辑器开着、内存文本又被别处改动」而不先触发 pointerdown 提交。
+- ❗ **scenario 2 的前提是错的**：原计划「从磁盘外部改动 → 提交被拒」不成立，因为
+  **预览根本不重读外部磁盘改动**（实测外部改写后等 15s，DOM 仍是内存旧值）。
+  丢失更新因此不是本守卫能覆盖的：守卫比较的是「内存文本 vs 内存 initialContent」，
+  外部改动连内存都没进来。这是与本步**无关的既有缺口**，已记 TODO
+  （需要对文件改动做失效/mtime 校验）。守卫真正拦的是「内存文本已被别处改动」这一类。
+- 结论：R1/R2/R3/R5 达标并有单测；R3 的应用内构造受限已如实记录。

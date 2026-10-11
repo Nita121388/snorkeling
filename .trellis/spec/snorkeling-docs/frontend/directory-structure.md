@@ -62,6 +62,8 @@ frontend/app/element/
     └── index.ts             # 统一 re-export（不含单例）
 ```
 
+- `remark/block-ids.ts`：`remarkBlockIds` 块身份插件（`data-block-id`，内容寻址）。
+
 ## markdown 渲染管线相关文件（R1–R4 新增）
 
 - `markdown-sanitize-schema.ts`：markdown 渲染的 sanitize schema 工厂

@@ -286,6 +286,29 @@ CSS 从未生效（沙箱实测：span `flex` 仍是 `0 1 auto`、`min-width: au
   裸 `>` 才能认出空壳。
 - 编辑 emoji 选择器复用同一套前缀正则语义（`markdown.tsx` 的 `applyCalloutEmoji`）。
 
+## Pattern: 块身份是「身份」，行号是「坐标」（step3，必读）
+
+markdown 文件模型下，**行号是写盘坐标、不可替代** —— 要改文件就必须知道改哪几行。
+思源能只靠 `data-node-id`，是因为它的「源码」就是块树（`.sy` JSON），不存在「块 → 文本行」
+的映射问题。所以我们**加身份，不换坐标**：
+
+- **身份**：`remarkBlockIds` 给块级节点打
+  `data-block-id = blk-<fnv1a(块文本)>-<同摘要出现序号>`。纯函数（内容 + 文档内顺序）、
+  不写进源文件（用户资产零污染）、内容相同的重复块靠序号消歧。
+- **落地方式**：插件设 `hProperties.dataBlockId` → sanitize 放行 `dataBlockId`
+  （**只一条**）→ 渲染器收到的 prop 名是 **`data-block-id`** → 靠既有
+  `{...domProps(props)}` 自然落 DOM。自持根节点的渲染器（`heading`、`code-block`）需单独补。
+- **提交前置决策点**（`prepareInlineEditCommit`，纯函数）顺序不可颠倒：
+  **重定位 → 陈旧检测 → 空壳守卫 → placeholder → 写盘**。
+  * 重定位：`[data-block-id=…][data-source-line]`（复合选择器跳过无坐标的 wrapper）
+    命中则用**当前**行号，行号位移后仍写对位置。
+  * **退化重定位**（`relocateByContent`）：id 含「同摘要序号」，编辑一个内容相同的兄弟块
+    会让本块序号前移、精确命中落空 —— 此时按「内容唯一匹配」找回；**多个候选 = 真歧义
+    → 不猜**，退回捕获范围。宁可失去重定位能力，绝不改到另一个块。
+  * 陈旧检测：当前切片与 `initialContent` 不符 → **中止写入**（宁可丢一次编辑）。
+    归一化必须收敛到 `initialContentFor(kind, slice)` 一个函数（list 去 marker、code 去围栏），
+    `beginEdit` 与守卫共用，否则两侧必漂移。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下
