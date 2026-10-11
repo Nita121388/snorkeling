@@ -235,6 +235,36 @@ describe("serializeListDomToMarkdown", () => {
             "- top\n  1. child1\n  2. child2"
         );
     });
+
+    // -----------------------------------------------------------------------
+    // F1 兜底：非规范结构（ul/ol 直接挂在 ul/ol 下）绝不能静默丢弃。
+    // 这是浏览器 document.execCommand("indent") 的真实产物：嵌套 ul 没被放进 li。
+    // 事故复现：在列表项上 Tab → 提交后源码少一项（item C 整项消失）。
+    // -----------------------------------------------------------------------
+
+    test("游离（非规范）子列表必须输出，不得丢弃（Tab/indent 事故复现）", () => {
+        const el = makeEl(
+            "<ul><li>item A</li><li></li><li>inserteditem B</li><ul><li>item C</li></ul></ul>",
+            "div"
+        );
+        expect(serializeListDomToMarkdown(el.querySelector("ul")!, false, "-")).toBe(
+            "- item A\n- \n- inserteditem B\n  - item C"
+        );
+    });
+
+    test("游离子列表在第一个 li 之前 → 按同级输出（内容仍不丢）", () => {
+        const el = makeEl("<ul><ul><li>orphan</li></ul><li>item A</li></ul>", "div");
+        expect(serializeListDomToMarkdown(el.querySelector("ul")!, false, "-")).toBe(
+            "- orphan\n- item A"
+        );
+    });
+
+    test("游离的有序子列表按有序输出", () => {
+        const el = makeEl("<ul><li>a</li><ol><li>x</li><li>y</li></ol></ul>", "div");
+        expect(serializeListDomToMarkdown(el.querySelector("ul")!, false, "-")).toBe(
+            "- a\n  1. x\n  2. y"
+        );
+    });
 });
 
 describe("serializeBlockDomToMarkdown — blank", () => {

@@ -190,38 +190,51 @@ export function serializeListDomToMarkdown(rootEl: Element, ordered: boolean, ma
     const lines: string[] = [];
 
     const emitList = (listEl: Element, depth: number, isOrdered: boolean, counter: number) => {
-        const items = Array.from(listEl.children).filter((c) => c.tagName === "LI") as HTMLElement[];
+        // F1: 按 `children` 顺序遍历（而不是先 filter 出 li），因为浏览器
+        // `document.execCommand("indent")` 产出的嵌套列表会**直接挂在 ul/ol 下**、不在
+        // 任何 li 里。老实现只遍历 `li`，这种子树既不在 items 里、也不会被任何 li 的递归
+        // 访问到 → 整棵子树被静默丢弃（实测：Tab 缩进后提交，源码少一项）。
         let n = counter;
-        for (const li of items) {
-            const indent = "  ".repeat(depth);
-            const checkbox = li.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-            let prefix: string;
-            if (isOrdered) {
-                prefix = `${n}. `;
-                n++;
-            } else {
-                prefix = `${marker} `;
-            }
-            if (checkbox != null) {
-                prefix += checkbox.checked ? "[x] " : "[ ] ";
-            }
-            // Rendered task items carry a space between the checkbox and its text
-            // ("<input> text") — strip it so the serialized line stays clean
-            // "- [ ] text" instead of "- [ ]  text".
-            const content = serializeLiContent(li, opts)
-                .replace(new RegExp(opts.brToken + "+$"), "")
-                .replace(/^\s+/, "");
-            lines.push(indent + prefix + content);
-            // Nested list: re-indent under this item. Ordered nested lists restart at 1.
-            for (const child of Array.from(li.children)) {
-                if (child.nodeType === 1) {
-                    const tag = (child as HTMLElement).tagName;
-                    if (tag === "UL") {
-                        emitList(child, depth + 1, false, 1);
-                    } else if (tag === "OL") {
-                        emitList(child, depth + 1, true, 1);
+        let emittedItem = false;
+        for (const child of Array.from(listEl.children)) {
+            const tag = child.tagName;
+            if (tag === "LI") {
+                const li = child as HTMLElement;
+                const indent = "  ".repeat(depth);
+                const checkbox = li.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+                let prefix: string;
+                if (isOrdered) {
+                    prefix = `${n}. `;
+                    n++;
+                } else {
+                    prefix = `${marker} `;
+                }
+                if (checkbox != null) {
+                    prefix += checkbox.checked ? "[x] " : "[ ] ";
+                }
+                // Rendered task items carry a space between the checkbox and its text
+                // ("<input> text") — strip it so the serialized line stays clean
+                // "- [ ] text" instead of "- [ ]  text".
+                const content = serializeLiContent(li, opts)
+                    .replace(new RegExp(opts.brToken + "+$"), "")
+                    .replace(/^\s+/, "");
+                lines.push(indent + prefix + content);
+                emittedItem = true;
+                // Nested list: re-indent under this item. Ordered nested lists restart at 1.
+                for (const nested of Array.from(li.children)) {
+                    const nestedTag = nested.tagName;
+                    if (nestedTag === "UL") {
+                        emitList(nested, depth + 1, false, 1);
+                    } else if (nestedTag === "OL") {
+                        emitList(nested, depth + 1, true, 1);
                     }
                 }
+                continue;
+            }
+            if (tag === "UL" || tag === "OL") {
+                // 游离（非规范）子列表：必须输出，绝不丢弃。缩进一层（跟随上一个已输出的项）；
+                // 若它出现在第一个 li 之前（没有可寄宿的前项），按同级输出以免误缩进。
+                emitList(child, depth + (emittedItem ? 1 : 0), tag === "OL", 1);
             }
         }
     };
