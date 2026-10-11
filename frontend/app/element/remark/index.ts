@@ -13,12 +13,14 @@ import remarkMarkdownFileReferences from "./markdown-file-refs";
 import remarkBlankLineSpacers from "./blank-line-spacers";
 import remarkLooseListSpacing from "./loose-list-spacing";
 import remarkSplitLooseLists from "./split-loose-lists";
+import remarkBlockIds from "./block-ids";
 import type { BlankSpacerOptions } from "./types";
 
 export { linkifyMarkdownFileReferences } from "./markdown-file-refs";
 export { default as remarkSoftBreaks } from "./soft-breaks";
 export { default as remarkMarkdownFileReferences } from "./markdown-file-refs";
 export { default as remarkBlankLineSpacers } from "./blank-line-spacers";
+export { default as remarkBlockIds } from "./block-ids";
 export type { BlankSpacerOptions } from "./types";
 
 export interface RemarkPipelineOptions {
@@ -69,6 +71,10 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
         remarkSplitLooseLists,
         remarkLooseListSpacing,
         enableBlankSpacers && blankSpacerOpts !== null ? [remarkBlankLineSpacers, blankSpacerOpts] : null,
+        // step3：块身份必须打在**定型之后**的节点上（callout 替换、列表拆分、spacer 插入
+        // 都已完成），否则 id 会落到一个随后被替换掉的节点上。放在 content block 之前：
+        // 后者只动 paragraph 的 inline children，不会替换 paragraph 本身。
+        remarkBlockIds,
         [createContentBlockPlugin, { blocks: opts.contentBlocksMap }],
     ].filter(Boolean);
 }

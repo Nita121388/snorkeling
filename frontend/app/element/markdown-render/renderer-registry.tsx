@@ -210,6 +210,13 @@ export function registerBuiltinRenderers(): void {
                     onClickExecute={ctx.onClickExecute}
                     sourceLine={srcLine}
                     sourceLineEnd={getSourceLineEnd(props)}
+                    // step3：code 块身份必须显式透传给 CodeBlock（它自己拥有唯一的 <pre> 锚点，
+                    // 不会展开任意 props）。mdast 的 code 属性落在 <code> 子元素上
+                    // （remark-rehype 的 pre > code 结构），所以从 children.props 取；
+                    // pre 自身的 props 作为兼容回退。
+                    dataBlockId={
+                        (props as any)["data-block-id"] ?? (props.children as any)?.props?.["data-block-id"]
+                    }
                     language={lang}
                     onApplyLanguage={
                         ctx.onInlineEditCommit != null && srcLine != null && isBlockEditorFeatureEnabled("codelang")

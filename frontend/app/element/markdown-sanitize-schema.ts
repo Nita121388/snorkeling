@@ -30,6 +30,12 @@ export function makeMarkdownSanitizeSchema(): typeof defaultSchema {
         ...defaultSchema,
         attributes: {
             ...defaultSchema.attributes,
+            // step3 块身份：remarkBlockIds 把 `data.hProperties.dataBlockId` 交给 remark-rehype
+            // 后变成 hast 属性 `dataBlockId`，**插件设的属性必须过 sanitize**（渲染器自己产的
+            // srcLineAttrs 不过，所以过去不需要放行）。放行后 hast-util-to-jsx-runtime 输出
+            // `data-block-id`，由渲染器的 {...domProps(props)} 落到 DOM。
+            // ⚠️ 同名属性只写一条（见文件顶部维护规则）。
+            "*": [...(defaultSchema.attributes?.["*"] ?? []), "dataBlockId"],
             p: [
                 // blank-line-spacers plugin emits spacer paragraphs tagged with
                 // className=["paragraph","blank-spacer"] + dataSpacerLines +

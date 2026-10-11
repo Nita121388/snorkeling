@@ -12,6 +12,12 @@ export type CodeBlockProps = {
     onClickExecute?: (cmd: string) => void;
     sourceLine?: number;
     sourceLineEnd?: number;
+    /**
+     * step3 块身份：remarkBlockIds 打在 mdast code 节点上的 `data-block-id`。
+     * CodeBlock 自己拥有 <pre>（唯一的行内编辑锚点），而它不展开任意 props，所以身份必须
+     * 显式透传——否则代码块在 DOM 上没有身份，提交前无法按身份重定位。
+     */
+    dataBlockId?: string;
     /** Detected fence language (from the <code> child's className); null when unset. */
     language?: string | null;
     /** When provided the language badge becomes an editable affordance (方案 04 §2). */
@@ -46,6 +52,7 @@ export const CodeBlock = ({
     onClickExecute,
     sourceLine,
     sourceLineEnd,
+    dataBlockId,
     language,
     onApplyLanguage,
 }: CodeBlockProps) => {
@@ -83,6 +90,7 @@ export const CodeBlock = ({
     return (
         <pre
             className={clsx("codeblock", collapsed && "is-collapsed")}
+            data-block-id={dataBlockId}
             {...sourceLineAttrs(sourceLine, sourceLineEnd)}
             // 折叠态下双击进 inline-edit 前先展开，避免“看着被截断却在编辑全文”
             onDoubleClick={() => {

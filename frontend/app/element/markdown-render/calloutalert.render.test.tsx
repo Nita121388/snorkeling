@@ -10,35 +10,16 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeSanitize from "rehype-sanitize";
+import { makeMarkdownSanitizeSchema } from "../markdown-sanitize-schema";
 import { remarkCalloutAlert } from "../remark/callout-alert";
 import { CalloutAlert } from "./calloutalert";
 
-// markdown.tsx 的 sanitize schema 的最小镜像（callout 相关部分），用于证明新 tag/class
-// 在真实清洗后仍然存活。
-const schema = {
-    ...defaultSchema,
-    tagNames: [...(defaultSchema.tagNames || []), "span", "waveblock", "calloutalert", "button"],
-    attributes: {
-        ...defaultSchema.attributes,
-        p: [...(defaultSchema.attributes?.p || []), ["className", "paragraph", "blank-spacer", "markdown-alert-title"]],
-        span: [
-            ...(defaultSchema.attributes?.span || []),
-            ["className", /^markdown-alert/],
-            ["className", "markdown-alert-emoji-btn", "is-empty"],
-        ],
-        calloutalert: [["className", /^markdown-alert/], "dataSourceLine", "dataSourceLineEnd"],
-        button: [
-            ["className", /^markdown-alert/],
-            ["className", "is-empty"],
-            "type",
-            "ariaLabel",
-            "dataAlertType",
-            "dataAlertLine",
-            "dataAlertEmoji",
-        ],
-    },
-};
+// 真实 sanitize schema（不再维护「镜像 schema」）。本仓库吃过一次静默失效的教训：
+// 镜像 schema 的条目顺序与真实 schema 不同，于是 span 上「同名 className 只取第一条」
+// 导致 markdown-alert-title-text 被剥掉的事故在测试里完全测不出来。
+// 任何新增/放宽属性都直接改 markdown-sanitize-schema.ts，这里 import 真货。
+const schema = makeMarkdownSanitizeSchema();
 
 function render(md: string): string {
     return renderToStaticMarkup(
