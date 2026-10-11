@@ -4676,6 +4676,7 @@ const Markdown = ({
                                         ? `${inlineEdit.editSession.blockKind}:${inlineEdit.editSession.startLine}:${inlineEdit.editSession.endLine}`
                                         : undefined
                                 }
+                                caretOffset={inlineEdit.editSession?.caretOffset}
                                 onTextChange={(v, caret) => {
                                     inlineEdit.setDraftText(v);
                                     trackEditorTriggers(v, caret);

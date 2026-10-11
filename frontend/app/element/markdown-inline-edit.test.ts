@@ -10,6 +10,7 @@ import {
     expandBlockSelection,
     indentListRange,
     inlineKindToTreeKind,
+    isEmptyBlockShellDraft,
     isSelectingRange,
     makeInlineEditKeydown,
     moveBlockRange,
@@ -816,6 +817,70 @@ describe("moveBlockRange (drag-and-drop reorder)", () => {
     });
 });
 
+
+describe("commit() 数据安全守卫（BLOCKER 1/2：空壳草稿不得写盘）", () => {
+    // commit() 里的两处守卫位于 markdown-inline-edit.tsx 的 useInlineEdit 闭包内，jsdom 下无法
+    // 低成本驱动整个 commit；此处用导出的纯函数复刻其判定契约，并注释调用位置与语义：
+    //
+    //   1) 结构性空壳守卫——在 setEditSession(null) 之后、`if (current.placeholder)` 之前：
+    //        domShell = isEmptyBlockShellDraft(kind, committedDraft)
+    //        mirrorShell = isEmptyBlockShellDraft(kind, draftText)
+    //        seedNeverLanded = kind === "quote" ? draftText.trim() !== "" && domShell
+    //                                             : !mirrorShell && domShell
+    //        → return（不写盘）。placeholder 会话（handleNavigateUp 合并时以 placeholder=true
+    //        打开上一个既有非空块）同样受保护：空编辑器根序列化出的空壳不再覆写既有块。
+    //        引用块从严（空壳 `>` 非空，宁可拦下“清空”也不能丢内容）；h/list/p 用「两侧是否
+    //        同时为空壳」判别——合法清空时两侧一致，提交成立。
+    const wouldBlockEmptyShell = (
+        kind: Parameters<typeof isEmptyBlockShellDraft>[0],
+        committedDraft: string,
+        draftText: string,
+        wysiwyg = true
+    ) => {
+        if (!wysiwyg) {
+            return false;
+        }
+        const domShell = isEmptyBlockShellDraft(kind, committedDraft);
+        const mirrorShell = isEmptyBlockShellDraft(kind, draftText);
+        return kind === "quote" ? draftText.trim() !== "" && domShell : !mirrorShell && domShell;
+    };
+
+    it("placeholder 会话打开既有 quote：空根序列化为 >，镜像仍非空 → 阻断", () => {
+        expect(wouldBlockEmptyShell("quote", ">", "> 既有引用正文")).toBe(true);
+    });
+
+    it("p/h/list 同族空壳在 wysiwyg 会话同样阻断，不得只保 quote", () => {
+        expect(wouldBlockEmptyShell("p", "", "既有段落")).toBe(true);
+        expect(wouldBlockEmptyShell("h", "###", "### title")).toBe(true);
+        expect(wouldBlockEmptyShell("list", "- ", "- item")).toBe(true);
+    });
+
+    it("code 不是 wysiwyg kind → 本守卫不触发；其空壳形态仍由纯函数覆盖", () => {
+        // 守卫的第一条件是 current.wysiwyg（见上）；code 会话走 ContentEditableCodeEditor
+        // 的 content 参数路径，不由本守卫拦截。但 F1 要求纯函数仍能识别 code 的空壳形态。
+        expect(wouldBlockEmptyShell("code", "", "const x = 1", false)).toBe(false);
+        expect(isEmptyBlockShellDraft("code", "")).toBe(true);
+    });
+
+    it("用户真的清空：段落/标题/列表两侧同时为空壳 → 放行；引用块从严拦下", () => {
+        // 段落：清空后 syncMirror 把 draftText 置空 → 不阻断（合法删除该行）。
+        expect(wouldBlockEmptyShell("p", "", "")).toBe(false);
+        // 标题：清空后两侧同为 "###" → 必须允许，否则用户无法清空标题正文。
+        expect(wouldBlockEmptyShell("h", "###", "###")).toBe(false);
+        // 列表：清空后两侧同为 "- " → 同理放行。
+        expect(wouldBlockEmptyShell("list", "- ", "- ")).toBe(false);
+        // 引用块：空壳是**非空**的 ">"，且清空整段引用是罕见操作；丢内容不可恢复，
+        // 因此从严拦下（删整段引用请走源码编辑器）。
+        expect(wouldBlockEmptyShell("quote", ">", ">")).toBe(true);
+    });
+
+    it("真实内容的草稿不受影响", () => {
+        expect(wouldBlockEmptyShell("p", "hello", "hello")).toBe(false);
+        expect(wouldBlockEmptyShell("quote", "> real", "> real")).toBe(false);
+        expect(wouldBlockEmptyShell("h", "## title", "## title")).toBe(false);
+        expect(wouldBlockEmptyShell("list", "- item", "- item")).toBe(false);
+    });
+});
 
 describe("list WYSIWYG 提交 → replace-content（P2-B3：修复重复 marker + 收敛到块模型控制器）", () => {
     // 复刻 markdown-inline-edit.tsx commit() 的 list 分支（P2-B3）：

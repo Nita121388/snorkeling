@@ -253,6 +253,12 @@ export type InlineEditSession = {
      */
     wysiwygListMarker?: string;
     /**
+     * F3: leading whitespace of the list's first source line ("" at top level). Re-applied
+     * to every non-empty line on commit so editing an INNER list doesn't promote it to top
+     * level (the DOM serializer always starts at depth 0).
+     */
+    wysiwygListIndent?: string;
+    /**
      * Placeholder-row session: the editor sits on a single blank row that was already
      * pre-inserted into the document (the immediate "click insert / Enter split" feedback
      * row). On commit the draft REPLACES that row and separator blanks are added/deduped
@@ -404,7 +410,13 @@ const SEED_BLOCK_TAGS = new Set([
  * grow ~2x) the moment it was clicked. The editor must not see them at all.
  */
 function stripInsignificantWhitespace(html: string): string {
-    if (html === "" || !/>\s+</.test(html)) {
+    // F4: the old early-return also required whitespace to sit BETWEEN two tags
+    // (`/>\s+</`), but a single-paragraph quote seed is exactly `"\n<p>a</p>\n"` — the
+    // leading/trailing `\n` never matched and the normalized editor got an extra blank
+    // line (committing an extra bare `>`). Any non-empty seed goes through the walk; a
+    // single template parse is negligible and the walk itself is a no-op when there is
+    // no block sibling.
+    if (html === "") {
         return html;
     }
     const template = document.createElement("template");
@@ -433,7 +445,7 @@ export function captureWysiwygInfo(
     blockKind: InlineEditBlockKind,
     targetEl: HTMLElement,
     sourceText: string
-): { html: string; headingLevel?: number; listMarker?: string } | null {
+): { html: string; headingLevel?: number; listMarker?: string; listIndent?: string } | null {
     if (!isBlockEditorFeatureEnabled("wysiwyg") || !WYSIWYG_KINDS.has(blockKind)) {
         return null;
     }
@@ -457,6 +469,11 @@ export function captureWysiwygInfo(
     }
     // List marker from original source (preserve author's choice of - / * / 1. etc).
     let listMarker: string | undefined;
+    // F3: the source line's leading indentation. Clicking an INNER list item promotes the
+    // target to that inner <ul>, whose source lines are indented (`  - b`). The DOM
+    // serializer always starts at depth 0, so without re-applying the outer indent the
+    // committed draft is promoted to top level. Captured here, re-applied on commit.
+    let listIndent: string | undefined;
     if (blockKind === "list") {
         const lines = sourceText.split(/\r?\n/);
         const first = lines[0] ?? "";
@@ -464,8 +481,9 @@ export function captureWysiwygInfo(
         if (markerMatch != null) {
             listMarker = markerMatch[1];
         }
+        listIndent = first.match(/^([ \t]*)/)?.[1] ?? "";
     }
-    return { html: strippedHtml, headingLevel, listMarker };
+    return { html: strippedHtml, headingLevel, listMarker, listIndent };
 }
 
 function stripCodeFence(source: string): string {
@@ -510,6 +528,56 @@ export function isEmptyQuoteShellDraft(markdown: string): boolean {
         const trimmed = line.trim();
         return trimmed === ">" || trimmed === "";
     });
+}
+
+/** A list line that carries only its marker (optionally a task checkbox) and no content. */
+const EMPTY_LIST_SHELL_LINE_RE = /^(?:[-+*]|\d{1,9}[.)])(?:[ \t]+\[[ xX]\])?[ \t]*$/;
+
+/**
+ * Is this markdown the EMPTY SHELL of the given block kind?
+ *
+ * The WYSIWYG editor serializes its DOM root, and an EMPTY root yields a different
+ * "shell" per kind: `""` for p/blank/code/table/hr, `"###"` for a heading, `">"`
+ * lines for a quote, and `""`/bare markers for a list. `commit()` uses this to tell
+ * "the user genuinely cleared the block" from "the editor root never carried content"
+ * (DOM serialization collapsed) — the latter must never be written over an existing
+ * block. Exported for tests.
+ */
+export function isEmptyBlockShellDraft(kind: InlineEditBlockKind, markdown: string): boolean {
+    if (kind === "quote") {
+        return isEmptyQuoteShellDraft(markdown);
+    }
+    if (kind === "h") {
+        // Serializer emits a bare run of `#` for an empty heading root (see
+        // serializeBlockDomToMarkdown's h branch); a real title is `### text`.
+        return /^#{1,6}$/.test(markdown.trim());
+    }
+    if (kind === "list") {
+        if (markdown.trim() === "") {
+            return true; // empty <ul>/<ol> → ""
+        }
+        return markdown
+            .split("\n")
+            .every((line) => line.trim() === "" || EMPTY_LIST_SHELL_LINE_RE.test(line.trim()));
+    }
+    // p / blank / code / table / hr: an empty editor root serializes to "".
+    return markdown.trim() === "";
+}
+
+/**
+ * F3: re-apply the source list's leading indentation to every non-empty line of a
+ * serialized list draft. `indent` is the source first line's `^([ \t]*)` ("" at top
+ * level), so a top-level list is untouched. Nested lines already carry the serializer's
+ * own per-level indent, which is preserved relative to the added prefix.
+ */
+export function indentListDraft(markdown: string, indent: string): string {
+    if (indent === "") {
+        return markdown;
+    }
+    return markdown
+        .split("\n")
+        .map((line) => (line.trim() === "" ? line : `${indent}${line}`))
+        .join("\n");
 }
 
 const ListIndentStep = 2; // markdown 列表嵌套用 2 空格缩进（与 serializeListDomToMarkdown 一致）
@@ -917,6 +985,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 wysiwygHtml: wysiwygInfo?.html,
                 wysiwygHeadingLevel: wysiwygInfo?.headingLevel,
                 wysiwygListMarker: wysiwygInfo?.listMarker,
+                wysiwygListIndent: wysiwygInfo?.listIndent,
             };
             inlineEditDebug("beginEdit", {
                 kind: blockKind,
@@ -998,7 +1067,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // Master switch off (方案 06 §5) → the draft commits verbatim, no transform.
             // For code blocks (contenteditable), draftText may be stale — the caller passes the
             // actual editor content via the `content` parameter.
-            const committedDraft =
+            let committedDraft =
                 content ??                (current.wysiwyg
                     ? // WYSIWYG：DOM 是事实源。组合中 syncMirror 被 compositionActiveRef 跳过 →
                       // draftText 可能滞后（组合前文本）；切块路径（pointerdown commit 无 content）
@@ -1010,6 +1079,41 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                         isBlockEditorFeatureEnabled("blockeditor")
                       ? (rewriteDraftFirstLine(draftText) ?? draftText)
                       : draftText);
+            // F3: the DOM serializer emits lists from depth 0, but the session may be an INNER
+            // list (source lines indented). Re-apply the captured source indent to every
+            // non-empty line so committing an inner list keeps it nested.
+            if (current.blockKind === "list" && current.wysiwygListIndent) {
+                committedDraft = indentListDraft(committedDraft, current.wysiwygListIndent);
+            }
+            // STRUCTURAL DATA-SAFETY GUARD (BLOCKER 1 + 2): if the DOM serialized to this
+            // kind's empty-shell shape while the mirror draft still holds content, the editor
+            // root never carried content (or serialization collapsed) — no branch below may
+            // write that over an existing block.
+            // Discriminator differs per kind, on purpose:
+            //   - quote: the shell is a NON-EMPTY ">", and emptying a whole quote is a rare
+            //     operation — so block whenever the draft collapsed to a shell and the mirror is
+            //     not empty. Silent loss of a quote's body is unrecoverable, a blocked clear is
+            //     only an annoyance (and the file's source editor can still delete it).
+            //   - h / list / p: the shell (`###`, `- `, `""`) is exactly what a LEGITIMATE clear
+            //     leaves behind, so both sides being a shell means "the user cleared it" and the
+            //     commit must stand; only a mirror that still holds content while the DOM
+            //     collapsed is the "seed never landed" signature.
+            // Must run BEFORE the `placeholder` branch: a placeholder session can open an
+            // EXISTING non-empty block (handleNavigateUp's merge), and an empty root there
+            // used to commit `">"` over it.
+            const domShell = isEmptyBlockShellDraft(current.blockKind, committedDraft);
+            const mirrorShell = isEmptyBlockShellDraft(current.blockKind, draftText);
+            const seedNeverLanded =
+                current.blockKind === "quote"
+                    ? draftText.trim() !== "" && domShell
+                    : !mirrorShell && domShell;
+            if (current.wysiwyg && seedNeverLanded) {
+                inlineEditDebug("commit:empty-shell-blocked", {
+                    kind: current.blockKind,
+                    draft: committedDraft,
+                });
+                return;
+            }
             if (current.placeholder) {
                 // Placeholder-row commit (click A/B insert or Enter split pre-inserted a single
                 // blank row for us to type into). Typed something → replace the row; block-level
@@ -1025,6 +1129,14 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     if (!current.placeholderKeepOnEmpty) {
                         current.insertRevert?.();
                     }
+                    return;
+                }
+                // Placeholder sessions also cover "open an existing block" (handleNavigateUp's
+                // merge-up flow opens the PREVIOUS non-empty block with placeholder=true). The
+                // user typed nothing, so this must be a no-op — never rewrite that block.
+                // Kept AFTER the empty-draft revert above: that branch owns rolling back a
+                // pre-inserted row, so an early return here would leak the pre-insert.
+                if (draftText === current.initialContent && current.initialContent.trim().length > 0) {
                     return;
                 }
                 onCommit(
@@ -1195,6 +1307,13 @@ type InlineEditOverlayProps = {
      * its internal liveKind/headingLevel/DOM seed all reset to block B.
      */
     wysiwygSessionKey?: string;
+    /**
+     * F6: rendered-text offset the caret should land on when the WYSIWYG editor takes focus.
+     * Set by the single-click-to-edit path (markdown.tsx maps the click point to an offset);
+     * without it the editor focuses at the start/end, so clicking list item N dropped the
+     * caret at the list head. `undefined` keeps the old focus-at-end behavior.
+     */
+    caretOffset?: number;
     onTextChange: (v: string, caret: number) => void;
     onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
     onPaste?: (e: React.ClipboardEvent<HTMLElement>) => void;
@@ -1292,6 +1411,7 @@ export function InlineEditOverlay({
     wysiwygHeadingLevel,
     wysiwygListMarker,
     wysiwygSessionKey,
+    caretOffset,
 }: InlineEditOverlayProps) {
     useLayoutEffect(() => {
         if (overlayRect == null || blockKind == null) {
@@ -1299,7 +1419,10 @@ export function InlineEditOverlay({
         }
         const raf = requestAnimationFrame(() => {
             if (wysiwygRef?.current != null) {
-                wysiwygRef.current.focus();
+                // F6: pass the click-derived offset through so a single click inside a list /
+                // paragraph lands the caret where the user clicked. `focus(undefined)` keeps the
+                // old focus-at-end behavior for dblclick / keyboard sessions.
+                wysiwygRef.current.focus(caretOffset);
                 return;
             }
             if (blockKind === "code") {
@@ -1309,7 +1432,7 @@ export function InlineEditOverlay({
             textareaRef.current?.focus({ preventScroll: true });
         });
         return () => cancelAnimationFrame(raf);
-    }, [blockKind, overlayRect, wysiwygSessionKey, wysiwygRef, codeEditorRef, textareaRef]);
+    }, [blockKind, overlayRect, wysiwygSessionKey, wysiwygRef, codeEditorRef, textareaRef, caretOffset]);
 
     if (overlayRect == null || blockKind == null) {
         return null;
@@ -1335,7 +1458,12 @@ export function InlineEditOverlay({
                 // Fixed height clipped growing content (D2). minHeight anchors the box to the
                 // rendered block; height:auto lets it grow; maxHeight + overflowY keeps a very tall
                 // editor inside the viewport while remaining scrollable.
-                minHeight: `${overlayRect.height}px`,
+                //
+                // F5: `min-height` is applied BEFORE `max-height` in the CSS cascade, so a plain
+                // block-height minHeight overrides maxHeight whenever the block is taller than the
+                // viewport (bottom unreachable). Clamping minHeight by the SAME viewport bound keeps
+                // min <= max: the editor is at least 160px but never pinned above the max-height.
+                minHeight: `min(${overlayRect.height}px, max(160px, calc(100vh - ${overlayRect.top}px - 8px)))`,
                 height: "auto",
                 // `max()` matters: for a block whose top sits below the viewport the plain
                 // `calc(100vh - top)` goes NEGATIVE, and a clamped-to-zero max-height pins the

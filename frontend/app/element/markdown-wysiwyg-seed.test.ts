@@ -9,7 +9,7 @@
 // injects exactly such a "\n" between the items of a LOOSE list — the editor must not see it.
 
 import { describe, expect, it } from "vitest";
-import { captureWysiwygInfo, isEmptyQuoteShellDraft } from "./markdown-inline-edit";
+import { captureWysiwygInfo, indentListDraft, isEmptyBlockShellDraft, isEmptyQuoteShellDraft } from "./markdown-inline-edit";
 
 function mount(html: string): HTMLElement {
     const host = document.createElement("div");
@@ -42,6 +42,41 @@ describe("captureWysiwygInfo — seed whitespace normalization", () => {
         const info = captureWysiwygInfo("quote", el, "> before\n>\n> after");
         expect(info!.html).toBe("<p>before</p><p></p><p>after</p>");
     });
+
+    it("F4: strips the leading/trailing newlines a single-paragraph quote seed carries", () => {
+        // Real render: <blockquote>\n<p>a</p>\n</blockquote>, so innerHTML is "\n<p>a</p>\n".
+        // The old `/>\s+</` early-return required whitespace BETWEEN two tags and skipped
+        // normalization entirely → the editor got a blank first/last line (extra bare ">").
+        const el = mount('<blockquote data-source-line="1">\n<p>a</p>\n</blockquote>');
+        expect(el.innerHTML).toBe("\n<p>a</p>\n");
+        const info = captureWysiwygInfo("quote", el, "> a");
+        expect(info!.html).toBe("<p>a</p>");
+    });
+});
+
+describe("captureWysiwygInfo — list indent (F3)", () => {
+    it("captures the source first line's leading indentation for an inner list", () => {
+        const el = mount(
+            '<ul data-source-line="2"><li data-source-line="2">b</li><li data-source-line="3">c</li></ul>'
+        );
+        // beginEdit passes the marker-stripped source: "  b\n  - c" (indent preserved by
+        // stripListMarker), so the indent is read off the FIRST line.
+        const info = captureWysiwygInfo("list", el, "  b\n  - c");
+        expect(info!.listIndent).toBe("  ");
+    });
+
+    it("top-level lists capture an empty indent", () => {
+        const el = mount('<ul data-source-line="1"><li data-source-line="1">a</li></ul>');
+        expect(captureWysiwygInfo("list", el, "a")!.listIndent).toBe("");
+    });
+
+    it("round-trip: serializer output re-indented to the source's 2 spaces", () => {
+        const serializedFromDom = "- b\n- c"; // serializeListDomToMarkdown always starts at depth 0
+        expect(indentListDraft(serializedFromDom, "  ")).toBe("  - b\n  - c");
+        expect(indentListDraft(serializedFromDom, "")).toBe(serializedFromDom);
+        // Nested lines keep their own relative indent under the added prefix.
+        expect(indentListDraft("- a\n  - b", "  ")).toBe("  - a\n    - b");
+    });
 });
 
 describe("isEmptyQuoteShellDraft — data-loss guard", () => {
@@ -59,5 +94,51 @@ describe("isEmptyQuoteShellDraft — data-loss guard", () => {
     it("leaves empty prose alone (clearing a paragraph is legitimate)", () => {
         expect(isEmptyQuoteShellDraft("")).toBe(false);
         expect(isEmptyQuoteShellDraft("   ")).toBe(false);
+    });
+});
+
+describe("isEmptyBlockShellDraft — per-kind data-loss guard", () => {
+    it("p/blank: an empty serialization is a shell", () => {
+        expect(isEmptyBlockShellDraft("p", "")).toBe(true);
+        expect(isEmptyBlockShellDraft("p", "   ")).toBe(true);
+        expect(isEmptyBlockShellDraft("blank", "")).toBe(true);
+        // Real prose is NOT a shell, and neither is a quote-formatted draft.
+        expect(isEmptyBlockShellDraft("p", "> real")).toBe(false);
+        expect(isEmptyBlockShellDraft("p", "text")).toBe(false);
+    });
+
+    it("code/table/hr also serialize to an empty string when the root is empty", () => {
+        expect(isEmptyBlockShellDraft("code", "")).toBe(true);
+        expect(isEmptyBlockShellDraft("table", "")).toBe(true);
+        expect(isEmptyBlockShellDraft("hr", "")).toBe(true);
+    });
+
+    it("h: only a bare run of # is a shell", () => {
+        expect(isEmptyBlockShellDraft("h", "#")).toBe(true);
+        expect(isEmptyBlockShellDraft("h", "###")).toBe(true);
+        expect(isEmptyBlockShellDraft("h", "### ")).toBe(true);
+        expect(isEmptyBlockShellDraft("h", "### title")).toBe(false);
+        expect(isEmptyBlockShellDraft("h", "")).toBe(false); // a heading never serializes to ""
+    });
+
+    it("quote: delegates to isEmptyQuoteShellDraft", () => {
+        expect(isEmptyBlockShellDraft("quote", ">")).toBe(true);
+        expect(isEmptyBlockShellDraft("quote", ">\n>")).toBe(true);
+        expect(isEmptyBlockShellDraft("quote", "> real")).toBe(false);
+        expect(isEmptyBlockShellDraft("quote", "")).toBe(false); // legitimate clear
+    });
+
+    it("list: empty or marker-only lines are shells", () => {
+        expect(isEmptyBlockShellDraft("list", "")).toBe(true);
+        expect(isEmptyBlockShellDraft("list", "- ")).toBe(true);
+        expect(isEmptyBlockShellDraft("list", "1. ")).toBe(true);
+        expect(isEmptyBlockShellDraft("list", "* ")).toBe(true);
+        expect(isEmptyBlockShellDraft("list", "- [ ] ")).toBe(true);
+        expect(isEmptyBlockShellDraft("list", "- \n- ")).toBe(true);
+        // Indented marker-only (inner list) is still a shell.
+        expect(isEmptyBlockShellDraft("list", "  - ")).toBe(true);
+        // Real items are not.
+        expect(isEmptyBlockShellDraft("list", "- item")).toBe(false);
+        expect(isEmptyBlockShellDraft("list", "- item\n- ")).toBe(false);
     });
 });
