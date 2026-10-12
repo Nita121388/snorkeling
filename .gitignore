@@ -64,3 +64,12 @@ electron-vite
 # CDP debug/temp scripts
 scripts/.tmp-cdp-*
 scripts/cdp-gui-chat-*.mjs
+
+# === 隐私纪律（2026-10-12 事件后加入）===
+# 任务研究中的「原始证据 / 语料 / 截图 / 用户内容副本」一律不入库（含真实笔记副本、外部 API dump、UI 截图）。
+# 入库的只允许：md 摘要、报告、脚本。原始证据保存在本地/知识库中。
+.trellis/tasks/**/research/raw/
+.trellis/tasks/**/research/corpus/
+.trellis/tasks/**/research/outputs/
+.trellis/tasks/**/research/screenshots/
+.trellis/tasks/**/*.tgz
