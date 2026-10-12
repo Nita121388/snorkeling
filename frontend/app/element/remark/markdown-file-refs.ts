@@ -3,7 +3,7 @@
 
 import type { Root } from "mdast";
 import type { Plugin } from "unified";
-import { parseMarkdownFileLineReference, parseMarkdownWikiLink, makeMarkdownWikiLinkHref } from "@/app/view/preview/file-link-navigation";
+import { getMdHost } from "../markdown-core/host";
 
 /**
  * Walks the mdast and turns bare text nodes that look like file references
@@ -41,7 +41,7 @@ export function splitTextNodeWithWikiLinks(node: { type: "text"; value: string; 
         if (match.index > 0 && value[match.index - 1] === "!") {
             continue;
         }
-        const wikiLink = parseMarkdownWikiLink(match[0]);
+        const wikiLink = getMdHost().parseMarkdownWikiLink(match[0]);
         if (wikiLink == null) {
             continue;
         }
@@ -55,7 +55,7 @@ export function splitTextNodeWithWikiLinks(node: { type: "text"; value: string; 
         }
         parts.push({
             type: "link",
-            url: makeMarkdownWikiLinkHref(wikiLink.target, wikiLink.heading),
+            url: getMdHost().makeMarkdownWikiLinkHref(wikiLink.target, wikiLink.heading),
             children: [{ type: "text", value: wikiLink.label }],
             position: segmentOffsetPosition(node.position, match.index, match.index + match[0].length),
         });
@@ -84,7 +84,7 @@ export function linkifyMarkdownFileReferences(tree: any): void {
             if (segments != null) {
                 return segments;
             }
-            const reference = parseMarkdownFileLineReference(child.value);
+            const reference = getMdHost().parseMarkdownFileLineReference(child.value);
             if (reference != null) {
                 const label = child.value.trim();
                 return [

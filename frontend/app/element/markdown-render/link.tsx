@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { openLink } from "../../store/global";
-import {
-    openFileLinkInPreview,
-    parseMarkdownFileLineReference,
-    parseMarkdownWikiLink,
-} from "../../view/preview/file-link-navigation";
+import { getMdHost } from "../markdown-core/host";
 
 // MarkdownResolveOpts is a global type (frontend/types/custom.d.ts).
 
@@ -46,33 +41,37 @@ export const Link = ({
         if (href.startsWith("#")) {
             focusHeading(href);
         } else {
-            const wikiLink = parseMarkdownWikiLink(href);
+            const wikiLink = getMdHost().parseMarkdownWikiLink(href);
             if (wikiLink != null) {
-                void openFileLinkInPreview(wikiLink.target, {
+                void getMdHost()
+                    .openFileLinkInPreview(wikiLink.target, {
+                        connection: resolveOpts?.connName,
+                        baseDir: resolveOpts?.baseDir,
+                        openDirectoryIndex: true,
+                        heading: wikiLink.heading,
+                        onOpenPath,
+                    })
+                    .then((opened) => {
+                        if (!opened) {
+                            getMdHost().openLink(href);
+                        }
+                    });
+                return;
+            }
+            const fileReference = getMdHost().parseMarkdownFileLineReference(href);
+            void getMdHost()
+                .openFileLinkInPreview(fileReference?.filePath ?? href, {
                     connection: resolveOpts?.connName,
                     baseDir: resolveOpts?.baseDir,
                     openDirectoryIndex: true,
-                    heading: wikiLink.heading,
+                    lineNumber: fileReference?.lineNumber,
                     onOpenPath,
-                }).then((opened) => {
+                })
+                .then((opened) => {
                     if (!opened) {
-                        openLink(href);
+                        getMdHost().openLink(href);
                     }
                 });
-                return;
-            }
-            const fileReference = parseMarkdownFileLineReference(href);
-            void openFileLinkInPreview(fileReference?.filePath ?? href, {
-                connection: resolveOpts?.connName,
-                baseDir: resolveOpts?.baseDir,
-                openDirectoryIndex: true,
-                lineNumber: fileReference?.lineNumber,
-                onOpenPath,
-            }).then((opened) => {
-                if (!opened) {
-                    openLink(href);
-                }
-            });
         }
     };
     return (

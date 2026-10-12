@@ -9,14 +9,11 @@ import {
     removeImageSizeInLine,
     removeImageSyntaxInLine,
     replaceImageSrcInLine,
-    resolveRemoteFile,
-    resolveSrcSet,
     updateImageAltInLine,
     updateImageSizeInLine,
 } from "@/app/element/markdown-util";
-import { ImageLightbox } from "@/app/element/image-lightbox";
-import { ContextMenuModel } from "../../store/contextmenu";
-import { cn } from "@/util/util";
+import { cn } from "../markdown-core/classnames";
+import { getMdHost } from "../markdown-core/host";
 import { domProps } from "./shared";
 
 // MarkdownResolveOpts is a global type (frontend/types/custom.d.ts).
@@ -36,7 +33,7 @@ export const MarkdownSource = ({
 
     useEffect(() => {
         const resolvePath = async () => {
-            const resolved = await resolveSrcSet(props.srcSet, resolveOpts);
+            const resolved = await getMdHost().resolveImageSrcSet(props.srcSet, resolveOpts);
             setResolvedSrcSet(resolved);
             setResolving(false);
         };
@@ -113,8 +110,8 @@ export const MarkdownImg = ({
 
         const resolveFn = async () => {
             const [resolvedSrc, resolvedSrcSet] = await Promise.all([
-                resolveRemoteFile(rawImgSrc, resolveOpts),
-                resolveSrcSet(props.srcSet, resolveOpts),
+                getMdHost().resolveImageSrc(rawImgSrc, resolveOpts),
+                getMdHost().resolveImageSrcSet(props.srcSet, resolveOpts),
             ]);
 
             setResolvedSrc(resolvedSrc);
@@ -360,7 +357,7 @@ export const MarkdownImg = ({
             menu.push({ label: "Edit path", click: openPathInput });
             menu.push({ label: "Delete image", click: deleteImage });
         }
-        ContextMenuModel.getInstance().showContextMenu(menu, e);
+        getMdHost().showContextMenu(menu, e);
     };
 
     if (resolving) {
@@ -469,9 +466,12 @@ export const MarkdownImg = ({
                 )}
                 {copied && <span className="markdown-img-copied">Path copied</span>}
                 {copiedFull && <span className="markdown-img-copied">Full path copied</span>}
-                {lightboxOpen && (
-                    <ImageLightbox src={resolvedSrc} alt={props.alt} onClose={() => setLightboxOpen(false)} />
-                )}
+                {lightboxOpen &&
+                    getMdHost().renderImageLightbox({
+                        src: resolvedSrc,
+                        alt: props.alt,
+                        onClose: () => setLightboxOpen(false),
+                    })}
                 {pathInputOpen &&
                     inputPos != null &&
                     ReactDOM.createPortal(

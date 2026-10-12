@@ -10,6 +10,14 @@ import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { base64ToString, isBlank, isLocalConnName } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
+// md-core 抽离 P0 · C2：纯引用语法解析已下沉到这里（宿主导航层反过来依赖纯模块）。
+import {
+    makeMarkdownWikiLinkHref,
+    parseMarkdownFileLineReference,
+    parseMarkdownWikiLink,
+    safeDecodeURIComponent,
+    type MarkdownWikiLink,
+} from "@/app/element/markdown-core/markdown-refs";
 import {
     PreviewDefaultDirectoryDisplaySettingKey,
     PreviewDirectoryDisplayMetaKey,
@@ -39,72 +47,15 @@ type PreviewTreeBlock = {
 };
 
 const WindowsAbsolutePathRe = /^[A-Za-z]:(?:[\\/]|$)/;
-const MarkdownFileLineReferenceRe = /^((?:[A-Za-z]:[\\/]|\/|~\/).+\.(?:md|markdown|mdx)):(\d+)$/i;
-const MarkdownWikiLinkPrefix = "wave-wiki:";
 const FileUrlPrefixRe = /^file:\/\//i;
 const ExternalSchemeRe = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 
-function safeDecodeURIComponent(value: string): string {
-    try {
-        return decodeURIComponent(value);
-    } catch {
-        return value;
-    }
-}
-
-export function parseMarkdownFileLineReference(value: string): { filePath: string; lineNumber: number } | null {
-    if (typeof value !== "string") {
-        return null;
-    }
-    const match = safeDecodeURIComponent(value.trim()).match(MarkdownFileLineReferenceRe);
-    if (match == null) {
-        return null;
-    }
-    const lineNumber = Number(match[2]);
-    if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) {
-        return null;
-    }
-    return {
-        filePath: match[1].replace(/\\/g, "/"),
-        lineNumber,
-    };
-}
-
-export type MarkdownWikiLink = {
-    target: string;
-    label: string;
-    heading?: string;
-};
-
-export function parseMarkdownWikiLink(value: string): MarkdownWikiLink | null {
-    if (typeof value !== "string") {
-        return null;
-    }
-    let raw = value.trim();
-    if (raw.startsWith(MarkdownWikiLinkPrefix)) {
-        raw = safeDecodeURIComponent(raw.slice(MarkdownWikiLinkPrefix.length));
-    } else if (raw.startsWith("[[") && raw.endsWith("]]")) {
-        raw = raw.slice(2, -2);
-    } else {
-        return null;
-    }
-    const [targetAndHeading, labelPart] = raw.split("|", 2);
-    const [targetPart, headingPart] = targetAndHeading.split("#", 2);
-    const target = targetPart?.trim() ?? "";
-    if (target === "") {
-        return null;
-    }
-    return {
-        target: /\.(?:md|markdown|mdx)$/i.test(target) ? target : `${target}.md`,
-        label: labelPart?.trim() || target,
-        heading: headingPart?.trim() || undefined,
-    };
-}
-
-export function makeMarkdownWikiLinkHref(target: string, heading?: string): string {
-    const payload = heading == null || heading === "" ? target : `${target}#${heading}`;
-    return `${MarkdownWikiLinkPrefix}${encodeURIComponent(payload)}`;
-}
+// md-core 抽离 P0 · C2：纯引用语法解析（`path/file.md:12` / `[[wiki]]`）已下沉到
+// `@/app/element/markdown-core/markdown-refs`（纯模块，零宿主依赖，故
+// `remark/markdown-file-refs.ts` 不再需要 import 本宿主导航模块）。
+// 这里 re-export 保持对外 API（名称 + 签名）逐字不变。
+export { makeMarkdownWikiLinkHref, parseMarkdownFileLineReference, parseMarkdownWikiLink };
+export type { MarkdownWikiLink };
 
 export function findMarkdownHeadingLine(text: string, heading: string): number | null {
     const normalizedHeading = heading.trim().replace(/\s+/g, " ").toLowerCase();
