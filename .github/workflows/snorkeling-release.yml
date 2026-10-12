@@ -171,6 +171,10 @@ jobs:
               uses: actions/upload-artifact@v5
               with:
                   name: release-${{ matrix.os }}
+                  # The publish job consumes these within minutes. A 1-day retention keeps a
+                  # release from permanently holding ~3.7GB per platform (7 releases had piled
+                  # up ~26GB and exhausted the account's artifact storage quota).
+                  retention-days: 1
                   path: make/*
 
     publish:

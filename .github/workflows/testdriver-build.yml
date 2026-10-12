@@ -75,9 +75,14 @@ jobs:
               shell: powershell # electron-builder's Windows code signing package has some compatibility issues with pwsh, so we need to use Windows Powershell
 
             # Upload .exe as an artifact
+            # retention-days: this runs on every push to main + every PR + daily cron, and the
+            # artifact is ~165MB. Without a short retention these pile up unbounded (79 copies ≈
+            # 13GB in ~10 days) and exhaust the account's Actions artifact storage quota, which
+            # then makes every other workflow's upload-artifact step fail.
             - name: Upload .exe artifact
               id: upload
               uses: actions/upload-artifact@v5
               with:
                   name: windows-exe
+                  retention-days: 3
                   path: make/*.exe
