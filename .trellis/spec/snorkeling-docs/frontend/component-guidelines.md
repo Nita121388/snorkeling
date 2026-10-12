@@ -459,3 +459,14 @@ Backspace 合并），验证这些行为必须用 `scripts/inspect-electron-ui.m
 并**保持 CDP 长连接**（会话结束即失效）。进编辑态用真 CDP `click`（合成点击只设选区、不给 DOM 焦点）。
 隔离沙箱：`node scripts/dev-isolated.mjs --profile scratch --vite-port 51752 --cdp-port 9333`，
 并把沙箱 DB 里**所有** md 路径改写到草稿文件，避免误写真实笔记。
+
+## overlay 样式不变量（编辑态只允许加「供能性」）
+
+- `.inline-edit-overlay` 作用域**不得**声明结构性样式（padding / margin / border / background / font-* / line-height / width / height / display / overflow …）。
+  理由：编辑态必须让**预览渲染器的样式自然生效**；手工镜像一份必然漂移 —— 10-08 `callout` 标题竖排修复「实际没生效」就是同类事故。
+- 允许：caret / ::selection / :hover / :focus-visible / cursor / overlay 自身包裹布局。
+- 门禁：`frontend/app/element/overlay-style-contract.test.ts`
+  （现存结构性镜像逐条登记台账 + reason + todo；**新增未登记即失败**；台账条目消失也失败，防止台账失真）。
+- token：引用的 `var(--x)` 必须有定义。门禁：`frontend/app/element/token-existence.test.ts`
+  （已知悬空 token 逐条豁免并带 reason/todo；`todo="fix-token-2"` = 待修的真实视觉问题）。
+- 扫描范围只覆盖我们负责的范围（`frontend/app/element` + `packages/md-core/src`），宿主其它模块的历史悬空 token 不在本门禁职责内。

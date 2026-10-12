@@ -107,3 +107,8 @@ This project is indexed by GitNexus as **snorkeling** (25382 symbols, 72316 rela
 - 分开跑，先跑最小必要验证（受影响包/文件的测试），最后再跑全量。
 - `tsc` 慢是已知事实，**不要**因为等待而重复执行或中断；先做别的验证，最后再取 tsc 结果。
 - 给子代理派任务时，把「先跑针对性测试、最后跑 tsc」写进提示词。
+
+## 排查小坑（2026-10-12 踩过）
+
+- **`grep` 模式以 `--` 开头会被当成选项**（例：查 CSS token `--main-bg-color:`）→ 必须写 `grep -- "--main-bg-color:"`，否则静默无输出，容易得出「该 token 未定义」的错误结论。
+- 判定「某 token 是否存在」时，先 `grep -rn -- "<token>:" frontend/` 全仓查，不要只查一个文件。
