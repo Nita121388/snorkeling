@@ -1853,7 +1853,9 @@ export function InlineEditOverlay({
                     }}
                 >
                     {/* 编辑态复用渲染态 DOM 结构：pre.codeblock > code.hljs(contenteditable) + 同构顶栏，
-                        样式由 overlay 镜像的 .codeblock 规则天然生效 → 进出编辑零跳变。 */}
+                        样式由 markdown.scss 的真源组合选择器
+                        （.markdown .content / .inline-edit-overlay[data-block-kind="code"]）天然生效
+                        → 进出编辑零跳变（此处不再持有镜像声明）。 */}
                     <ContentEditableCodeEditor
                         ref={codeEditorRef}
                         initialText={draftText}

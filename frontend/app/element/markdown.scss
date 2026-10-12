@@ -509,93 +509,102 @@
             background-color: color-mix(in srgb, var(--panel-bg-color) 42%, transparent);
         }
 
-        pre.codeblock {
-            // 不透明专用底色：半透明 panel-bg 会让长代码块透出预览底色、显得发脏
-            background-color: var(--codeblock-bg-color, #f7f7f7);
-            margin: 0.5em 0.75em;
-            // 顶部留出顶栏空间（22px），避免语言标签压住首行代码（Wolai 用独立标题栏解决同一问题）
-            padding: 1.6em 1em 0.85em;
-            border-radius: 6px;
-            position: relative;
+        // 真源（预览 + 编辑态共用）：overlay 经 createPortal 渲染在 .markdown 之外，
+        // 所以这里用**组合选择器**同时服务两个作用域 —— 不要在 overlay 里再抄一份（必然漂移）。
+        // 第二支限定 [data-block-kind="code"]：编辑态代码块走 pre.codeblock 路径，
+        // 文字块走 textarea 路径，不能被这条规则碰到。
+        // 用 @at-root 是因为 Sass 下嵌套规则只能继承一条父选择器；它只把选择器提到根层，
+        // **输出位置仍在原处**（已验证：预览侧选择器与声明体逐字不变，只多了编辑态那一支）。
+        @at-root .markdown .content,
+            .inline-edit-overlay[data-block-kind="code"] {
+            pre.codeblock {
+                // 不透明专用底色：半透明 panel-bg 会让长代码块透出预览底色、显得发脏
+                background-color: var(--codeblock-bg-color, #f7f7f7);
+                margin: 0.5em 0.75em;
+                // 顶部留出顶栏空间（22px），避免语言标签压住首行代码（Wolai 用独立标题栏解决同一问题）
+                padding: 1.6em 1em 0.85em;
+                border-radius: 6px;
+                position: relative;
 
-            code {
-                font-size: 13px;
-                line-height: 1.6;
-                white-space: pre-wrap;
-                word-wrap: break-word;
-                overflow: auto;
-                overflow: hidden;
-                background-color: transparent;
-                // 浅色主题下 --main-text-color 是棕色，配专用代码色更清晰
-                color: var(--codeblock-text-color, var(--main-text-color));
-            }
-
-            // 顶栏：语言常驻（可发现“能改语言”），操作按钮 hover 才显（减噪）
-            .codeblock-header {
-                position: absolute;
-                top: 0.25em;
-                left: 0.5em;
-                right: 0.5em;
-                height: 22px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 0.286em;
-                pointer-events: none; // 容器不吃点击，代码区仍可正常选中
-                z-index: 1;
-
-                > * {
-                    pointer-events: auto;
+                code {
+                    font-size: 13px;
+                    line-height: 1.6;
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                    overflow: auto;
+                    overflow: hidden;
+                    background-color: transparent;
+                    // 浅色主题下 --main-text-color 是棕色，配专用代码色更清晰
+                    color: var(--codeblock-text-color, var(--main-text-color));
                 }
-            }
 
-            .codeblock-ops {
-                visibility: hidden;
-                display: flex;
-                align-items: center;
-                gap: 0.286em;
-                opacity: 0;
-                transition:
-                    opacity 120ms ease,
-                    visibility 120ms ease;
-            }
+                // 顶栏：语言常驻（可发现“能改语言”），操作按钮 hover 才显（减噪）
+                .codeblock-header {
+                    position: absolute;
+                    top: 0.25em;
+                    left: 0.5em;
+                    right: 0.5em;
+                    height: 22px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 0.286em;
+                    pointer-events: none; // 容器不吃点击，代码区仍可正常选中
+                    z-index: 1;
 
-            // 命令类语言的执行按钮常驻：本项目是终端，命令块一键执行是核心场景（对齐/强于 Wolai）
-            .codeblock-ops .is-persistent {
-                visibility: visible;
-            }
+                    > * {
+                        pointer-events: auto;
+                    }
+                }
 
-            &:hover .codeblock-ops,
-            .codeblock-ops:focus-within {
-                visibility: visible;
-                opacity: 1;
-            }
+                .codeblock-ops {
+                    visibility: hidden;
+                    display: flex;
+                    align-items: center;
+                    gap: 0.286em;
+                    opacity: 0;
+                    transition:
+                        opacity 120ms ease,
+                        visibility 120ms ease;
+                }
 
-            // 折叠：仅 CSS 裁剪，DOM 文本不变 → inline-edit 行坐标安全
-            &.is-collapsed {
-                max-height: 250px;
-                overflow: hidden;
-            }
+                // 命令类语言的执行按钮常驻：本项目是终端，命令块一键执行是核心场景（对齐/强于 Wolai）
+                .codeblock-ops .is-persistent {
+                    visibility: visible;
+                }
 
-            .codeblock-ops button {
-                border-radius: 4px;
-            }
+                &:hover .codeblock-ops,
+                .codeblock-ops:focus-within {
+                    visibility: visible;
+                    opacity: 1;
+                }
 
-            .codeblock-expand {
-                position: absolute;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                display: flex;
-                align-items: flex-end;
-                justify-content: center;
-                height: 64px;
-                padding: 0 0 6px;
-                border: none;
-                background: linear-gradient(to bottom, transparent, var(--codeblock-bg-color, #f7f7f7) 72%);
-                color: var(--secondary-text-color);
-                font-size: 11px;
-                cursor: pointer;
+                // 折叠：仅 CSS 裁剪，DOM 文本不变 → inline-edit 行坐标安全
+                &.is-collapsed {
+                    max-height: 250px;
+                    overflow: hidden;
+                }
+
+                .codeblock-ops button {
+                    border-radius: 4px;
+                }
+
+                .codeblock-expand {
+                    position: absolute;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    display: flex;
+                    align-items: flex-end;
+                    justify-content: center;
+                    height: 64px;
+                    padding: 0 0 6px;
+                    border: none;
+                    background: linear-gradient(to bottom, transparent, var(--codeblock-bg-color, #f7f7f7) 72%);
+                    color: var(--secondary-text-color);
+                    font-size: 11px;
+                    cursor: pointer;
+                }
             }
         }
 
@@ -752,54 +761,40 @@
     // un-truncated but at a scrollWidth wider than the textarea, which makes auto-grow's
     // scrollHeight recompute on every keystroke and visually flicker the box. `inherit` lets
     // the textarea wrap exactly like the surrounding prose, so the height sits stable.
+    // 只留「overlay 盒子 ≠ 预览块」的差异项：overlay 容器已按预览块的 border-box 定位，
+    // 所以这里的 pre 要填满容器并抹掉渲染器自带的外边距（否则编辑态会再叠一次偏移）。
+    // padding / border-radius / background-color / position 均来自上面的真源组合选择器；
+    // 那条规则在本文档更早处，同特异性下由源序保证这里的 margin / overflow 生效。
     &[data-block-kind="code"] pre.codeblock {
         box-sizing: border-box;
         width: 100%;
         height: 100%;
         margin: 0;
-        padding: 1.6em 1em 0.85em;
-        border-radius: 6px;
-        position: relative;
-        background-color: var(--codeblock-bg-color, #f7f7f7);
         overflow: hidden;
     }
 
+    // 编辑态代码元素：只留真源覆盖不到的字形项 + 编辑期内容编辑可供性。
+    // display / min-height / font-family / font-variant-ligatures / tab-size 的逐条理由见
+    // overlay-style-contract.test.ts 的 KNOWN_STRUCTURAL_MIRRORS（todo="keep"）。
+    // padding / background / color / font-size / line-height / white-space / word-wrap / overflow
+    // 已由真源组合选择器覆盖（值逐字一致）→ 不再复制。
     &[data-block-kind="code"] pre.codeblock > code.hljs {
         display: block;
         min-height: 1em;
-        padding: 0;
-        background: transparent;
-        color: var(--codeblock-text-color, var(--main-text-color));
         font-family: var(--markdown-code-font, var(--mono-font, monospace));
-        font-size: 13px;
-        line-height: 1.6;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        overflow: hidden;
-        outline: none;
         font-variant-ligatures: none;
         tab-size: var(--markdown-tab-size, 4);
+        outline: none;
         caret-color: var(--codeblock-text-color, var(--main-text-color));
     }
 
-    &[data-block-kind="code"] pre.codeblock .codeblock-header {
-        position: absolute;
-        top: 0.25em;
-        left: 0.5em;
-        right: 0.5em;
-        height: 22px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.286em;
-        pointer-events: none;
-        z-index: 1;
-    }
+    // .codeblock-header（含 > *）不是镜像：真源组合选择器已打到编辑态，两条声明体逐字相同，
+    // 所以这里不再保留副本。
 
-    &[data-block-kind="code"] pre.codeblock .codeblock-header > * {
-        pointer-events: auto;
-    }
-
+    // 保留（台账 todo="keep"）：预览态语言标签是 button.codeblock-lang-badge（.codeblock 作用域），
+    // 编辑态是原生 select.codeblock-lang-select —— 元素类型不同，无法做「同一声明体 + 组合选择器」的合并。
+    // 与预览 badge 仍有已知漂移（padding 0 5px vs 0 6px、background 不透明 vs transparent、缺 letter-spacing），
+    // 属编辑期控件自身的样式问题，交给后续切片，不在本切片偷偷改数值。
     &[data-block-kind="code"] pre.codeblock .codeblock-edit-header .codeblock-lang-select {
         height: 20px;
         padding: 0 5px;
@@ -812,69 +807,13 @@
         cursor: pointer;
     }
 
-    &[data-block-kind="code"] pre.codeblock .codeblock-ops {
-        visibility: visible;
-        display: flex;
-        align-items: center;
-        gap: 0.286em;
-    }
-
-    // The overlay is portaled outside .markdown, so mirror the preview token selectors here.
-    &[data-block-kind="code"] pre.codeblock .hljs-comment,
-    &[data-block-kind="code"] pre.codeblock .hljs-quote {
-        color: var(--code-token-comment, var(--secondary-text-color));
-    }
-    &[data-block-kind="code"] pre.codeblock .hljs-keyword,
-    &[data-block-kind="code"] pre.codeblock .hljs-selector-tag,
-    &[data-block-kind="code"] pre.codeblock .hljs-literal,
-    &[data-block-kind="code"] pre.codeblock .hljs-doctag {
-        color: var(--code-token-keyword, currentColor);
-    }
-    &[data-block-kind="code"] pre.codeblock .hljs-string,
-    &[data-block-kind="code"] pre.codeblock .hljs-regexp,
-    &[data-block-kind="code"] pre.codeblock .hljs-addition,
-    &[data-block-kind="code"] pre.codeblock .hljs-meta .hljs-string {
-        color: var(--code-token-string, currentColor);
-    }
-    &[data-block-kind="code"] pre.codeblock .hljs-number,
-    &[data-block-kind="code"] pre.codeblock .hljs-symbol,
-    &[data-block-kind="code"] pre.codeblock .hljs-bullet {
-        color: var(--code-token-number, currentColor);
-    }
-    &[data-block-kind="code"] pre.codeblock .hljs-title,
-    &[data-block-kind="code"] pre.codeblock .hljs-title.function_,
-    &[data-block-kind="code"] pre.codeblock .hljs-section,
-    &[data-block-kind="code"] pre.codeblock .hljs-name {
-        color: var(--code-token-function, currentColor);
-    }
-    &[data-block-kind="code"] pre.codeblock .hljs-attr,
-    &[data-block-kind="code"] pre.codeblock .hljs-attribute,
-    &[data-block-kind="code"] pre.codeblock .hljs-variable,
-    &[data-block-kind="code"] pre.codeblock .hljs-template-variable {
-        color: var(--code-token-attr, currentColor);
-    }
-    &[data-block-kind="code"] pre.codeblock .hljs-type,
-    &[data-block-kind="code"] pre.codeblock .hljs-built_in,
-    &[data-block-kind="code"] pre.codeblock .hljs-class .hljs-title {
-        color: var(--code-token-type, currentColor);
-    }
-    &[data-block-kind="code"] pre.codeblock .hljs-meta,
-    &[data-block-kind="code"] pre.codeblock .hljs-deletion {
-        color: var(--code-token-meta, var(--secondary-text-color));
-    }
-
-    &[data-block-kind="code"] pre.codeblock > code.language-diff {
-        .hljs-addition,
-        .hljs-addition * {
-            color: var(--codeblock-diff-add-text, #166534) !important;
-            background-color: var(--codeblock-diff-add-bg, #dcfce7) !important;
-        }
-        .hljs-deletion,
-        .hljs-deletion * {
-            color: var(--codeblock-diff-del-text, #9f1239) !important;
-            background-color: var(--codeblock-diff-del-bg, #ffe4e6) !important;
-        }
-    }
+    // .codeblock-ops：编辑态顶栏（CodeBlockEditHeader）只渲染语言 select、不渲染 ops，
+    // 因此这条 overlay 镜像在编辑态匹配不到任何元素；display / align-items / gap 也已由真源覆盖
+    // → 整条删除。若将来编辑顶栏加回 ops，应让真源规则生效，不要再抄一份。
+    //
+    // 语法高亮 token / language-diff 配色：编辑态不再复制一份，改由文末
+    // `.markdown pre.codeblock, .inline-edit-overlay[data-block-kind="code"] pre.codeblock`
+    // 这条真源组合选择器同时服务两个作用域（声明体逐字未变，含 !important）。
 
     &[data-block-kind="code"] .inline-edit-textarea {
         font-family: var(--markdown-code-font, var(--mono-font, monospace));
@@ -1904,9 +1843,14 @@
 }
 
 // 语法高亮 token：文件顶部 @import 的 github-dark-dimmed 是**固定暗色**配色，浅色主题下
-// token 会看不清，这里按主题变量覆盖。选择器带 .markdown pre.codeblock 以提高特异性，
-// 确保盖过主题文件里的 .hljs-* 规则。
-.markdown pre.codeblock {
+// token 会看不清，这里按主题变量覆盖。选择器带 .markdown pre.codeblock（以及编辑态分支）
+// 以提高特异性，确保盖过主题文件里的 .hljs-* 规则。
+//
+// 真源组合选择器：overlay 经 portal 渲染在 .markdown 之外，所以这一簇 token/diff 规则
+// 用一条规则同时服务预览态与编辑态代码块（编辑态分支限 [data-block-kind="code"]，
+// 避开 textarea 回退路径）—— 不要再在 .inline-edit-overlay 里镜像一份。
+.markdown pre.codeblock,
+.inline-edit-overlay[data-block-kind="code"] pre.codeblock {
     // 先掀掉 github-dark-dimmed 自带的 code.hljs 底色（#22272e）与 1em 内边距：
     // 底色会让浅色主题下的代码块整块发暗，1em 内边距会破坏顶栏留白。
     code.hljs {

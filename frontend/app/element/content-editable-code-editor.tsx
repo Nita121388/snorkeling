@@ -51,8 +51,9 @@ function placeCaret(el: HTMLElement, offset: number) {
 
 /**
  * Re-highlight `el`'s plain text in place. The result is hljs token spans — the SAME class
- * names the preview's rehype-highlight emits — so the overlay-scoped .hljs-* color rules in
- * markdown.scss style them identically to the rendered block.
+ * names the preview's rehype-highlight emits — so the shared token rules in markdown.scss
+ * (`.markdown pre.codeblock, .inline-edit-overlay[data-block-kind="code"] pre.codeblock` 组合选择器)
+ * style them identically to the rendered block.
  *
  * Undo note: this runs ONCE at edit-open, before any user input, so the contenteditable's
  * native undo stack starts clean. No re-highlight during typing (that would rewrite innerHTML
@@ -73,9 +74,11 @@ function highlight(el: HTMLElement, language: string | null | undefined) {
 
 /**
  * Code-block inline editor: a `<code class="hljs language-x" contenteditable>` living inside the
- * overlay's `<pre class="codeblock">` — the SAME DOM structure as the rendered block, so the
- * overlay-scoped .codeblock styles (markdown.scss) apply unchanged and entering edit is
- * pixel-stable: same font/line-height/padding/background/token colors.
+ * overlay's `<pre class="codeblock">` — the SAME DOM structure as the rendered block. markdown.scss
+ * hangs the code-block truth on a combined selector (`.markdown .content`, plus
+ * `.inline-edit-overlay[data-block-kind="code"]` for the portaled overlay), so editing reuses the
+ * rendered styles verbatim and entering edit is pixel-stable: same font/line-height/padding/
+ * background/token colors — 编辑态不再持有第二份镜像。
  *
  * Content ownership is imperative (React renders the element bare; textContent/innerHTML are
  * written directly): React reconciling children would fight the browser's caret + undo state.
