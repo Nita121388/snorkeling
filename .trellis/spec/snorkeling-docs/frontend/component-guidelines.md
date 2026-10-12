@@ -309,6 +309,53 @@ markdown 文件模型下，**行号是写盘坐标、不可替代** —— 要�
     归一化必须收敛到 `initialContentFor(kind, slice)` 一个函数（list 去 marker、code 去围栏），
     `beginEdit` 与守卫共用，否则两侧必漂移。
 
+## Pattern: md-core 边界不变量（P0 C1/C2/C3，必读）
+
+目标：让「markdown 编辑部分可单独抽离」成为**可验证的不变量**（抽离本身是下一个任务）。
+
+**依赖方向（单向）**
+
+```
+markdown-inline-edit.tsx（编辑壳）
+      │ 只 re-export，不再拥有实现
+      ▼
+markdown-transform/ block-model/ remark/ markdown-render/
+      │ 只允许 →（不可反）
+      ▼
+markdown-core/（host.ts / markdown-refs.ts / classnames.ts）
+      │ 默认实现只能**动态** import
+      ▼
+宿主（@/view, @/store, @/util, @/app/view, @/app/store, jōtai, wos）
+```
+
+- **块区间纯函数住在 `markdown-transform/block-range.ts`**（`replaceSourceRange` / `spliceInsertBlock` /
+  `deleteBlockRange` / `moveBlockRange` + `MoveBlockResult`）。编辑壳 `markdown-inline-edit.tsx`
+  **import 并 re-export** 同名符号，对外 API 逐字不变（`markdown.tsx` 等引用点无需改动）。
+  新增块区间逻辑请加到 `block-range.ts`，不要加回编辑壳。
+- **宿主能力只走 `MdHostAdapter`**：核心目录不得直接 import 宿主的图片解析 / 灯箱 / 右键菜单 /
+  链接导航 / 引用语法解析，改调 `getMdHost().xxx(...)`。默认实现在 `markdown-core/host.ts` 里，
+  用**动态 import**（`await import("@/...")`）/`React.lazy` 回退到原 Wave 路径；同步渲染类能力
+  （灯箱）也必须是动态加载，否则本文件就变成静态宿主依赖了。
+- **引用语法解析是纯函数**：`parseMarkdownFileLineReference` / `parseMarkdownWikiLink` /
+  `makeMarkdownWikiLinkHref` 住在 `markdown-core/markdown-refs.ts`；`file-link-navigation` 反向
+  import + re-export。改语法只改这一处，否则两处实现必漂移。
+
+**门禁**：`frontend/app/element/markdown-core-boundary.test.ts`（随 `frontend/app/element` 套件跑）。
+
+- 扫描 4 个目录的非测试源文件，抽出 `from "…"` 与 `import("…")` 两种 specifier；**相对路径先解析**
+  再判定，所以 `../../store/global` 这类绕过 alias 前缀检查的写法同样会被抓。
+- 禁列（无豁免）：`frontend/app/view/`、`frontend/app/store/`、`frontend/util/`、裸包 `jotai`/`wos`、
+  模块名 `markdown-inline-edit`。
+- 落在 4 个核心目录 / `markdown-core/` 内 → 允许；落在其它任何地方 → **必须**进
+  `CORE_SHARED_ALLOWLIST` 并写明 `reason`（白名单 = Phase B 的搬移/保留决策清单）。
+- 白名单还可是空转：禁止出现未使用的残留条目（test 会报 stale）。
+- **先失败后通过是可验证的**：临时在核心目录加 `import { atom } from "jotai"` /
+  `import { x } from "../../store/global"` / `../markdown-inline-edit`，三条都会报 `文件:行 + 原文`。
+
+**新增跨目录依赖时的正确做法**：先问「这是纯逻辑吗？」——是就下沉到 `markdown-transform/`（或
+`markdown-core/` 纯模块）；不是就加到 `markdown-core/host.ts` 的 adapter 能力里并用动态 import 回退。
+只有两者都不适用（如 schema/UI 集成点、block-editor 组件）才登记白名单 + reason。
+
 ## Common Mistake: 把编辑提交通道与只读门控混用
 
 **Symptom**: P0 拆分 markdown.tsx 块渲染器时，`img` 图片编辑和 `pre` 代码块改语言在 Preview 模式下

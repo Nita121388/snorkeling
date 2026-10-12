@@ -50,8 +50,10 @@ frontend/app/element/
 │   ├── renderer-registry.tsx  # registerMarkdownRenderer / buildMarkdownComponents + MarkdownRenderContext
 │   └── index.ts            # 统一 re-export
 └── markdown-transform/     # 纯函数文本变换（源码文本级）
+    ├── block-range.ts      # P0 C1：块区间纯函数（replaceSourceRange/spliceInsertBlock/deleteBlockRange/moveBlockRange）；零宿主依赖，编辑壳 re-export
     ├── block-type.ts       # L1 块类型引擎（detectBlockKind/findBlockRangeAtLine/transformBlockType）
     ├── tree.ts             # P1-B M1 只读块模型（buildBlockTree + Block + TreeBlockKind）
+    ├── structural-ops.ts   # 阶段 4：结构操作可逆模型（StructuralOp + invertStructuralOp），依赖 block-range
     ├── code-block.ts       # 代码围栏识别
     ├── table.ts            # 表格块识别
     └── …
@@ -60,6 +62,10 @@ frontend/app/element/
     ├── editor-controller-instance.ts # 模块级共享单例（P2-B2；index.ts 不转发，避免依赖环）
     ├── render-adapter.tsx   # Block → ReactMarkdown 行内渲染（语义视图，flag 关闭）
     └── index.ts             # 统一 re-export（不含单例）
+└── markdown-core/          # P0 C2：md-core 宿主缝隙（Phase B 随包搬走，目录内零静态宿主依赖）
+    ├── host.ts             # MdHostAdapter 接口 + setMdHost/getMdHost + 默认实现（动态 import 宿主）
+    ├── markdown-refs.ts    # 纯引用语法解析（parseMarkdownFileLineReference / parseMarkdownWikiLink / makeMarkdownWikiLinkHref）
+    └── classnames.ts       # cn（twMerge(clsx(…))，等价 @/util/util 的 cn）
 ```
 
 - `remark/block-ids.ts`：`remarkBlockIds` 块身份插件（`data-block-id`，内容寻址）。
@@ -77,6 +83,24 @@ frontend/app/element/
 - `markdown-render/`：ReactMarkdown 的渲染器组件（**生产渲染**走它，P0 已 registry 化）。
 - `block-model/`：块模型坐标之上的**语义视图（Block→renderable）** + **编辑控制器（intent→文本变换）**，
   供 P2-B 编辑路径收敛消费。两目录互补不重叠。
+
+## markdown-core/：宿主缝隙（P0 C2/C3，必读）
+
+`markdown-core/` 不是第四个渲染层，而是**抽离边界本身**：
+
+- `host.ts`：`MdHostAdapter`（图片 src 解析 / 灯箱 / 右键菜单 / 链接导航 / 引用语法解析）+ `setMdHost` /
+  `getMdHost`。默认实现在**调用时动态 import** 原 Wave 路径（灯箱走 `React.lazy`），因此本文件
+  **零静态宿主依赖**，Phase B 可原样搬入 md-core。
+- `markdown-refs.ts`：从 `@/app/view/preview/file-link-navigation` 下沉的**纯**引用语法解析；
+  宿主侧反向 import + re-export（对外 API 不变）。
+- `classnames.ts`：`cn`，与 `@/util/util` 的 `cn` 逐字节同实现（核心层不得 import `@/util`）。
+
+**谁可以依赖谁**：`markdown-transform` / `block-model` / `remark` / `markdown-render` → `markdown-core`（可）；
+反向（不可）。编辑壳 `markdown-inline-edit` ← 核心层（不可）。
+
+门禁：`frontend/app/element/markdown-core-boundary.test.ts` 把上述不变量变成可执行断言（见
+component-guidelines 的「md-core 边界不变量」）。新增跨目录依赖时，测试会给出 `文件:行 + 原文` 并
+要求登记到 `CORE_SHARED_ALLOWLIST`（每条必须写 reason）。
 
 ## 块渲染器拆分规则（P0 约定）
 
