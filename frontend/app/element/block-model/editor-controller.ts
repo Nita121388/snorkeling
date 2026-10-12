@@ -32,7 +32,7 @@ import {
     type LineRange,
     type StructuralOp,
 } from "../markdown-transform/structural-ops";
-import { deleteBlockRange, moveBlockRange, spliceInsertBlock } from "../markdown-inline-edit";
+import { deleteBlockRange, moveBlockRange, spliceInsertBlock } from "../markdown-transform/block-range";
 import { toggleTaskCheckboxAtLine } from "../markdown-task-toggle";
 import { renumberOrderedListBlockAtLine } from "../markdown-ordered-list";
 import type { Block, TreeBlockKind } from "../markdown-transform/tree";

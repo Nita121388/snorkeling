@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { buildBlockTree, type Block } from "../markdown-transform/tree";
 import { createEditController, lineRangeToCharOffset, makeBlockRef } from "./editor-controller";
 import { invertStructuralOp } from "../markdown-transform/structural-ops";
-import { moveBlockRange } from "../markdown-inline-edit";
+import { moveBlockRange } from "../markdown-transform/block-range";
 
 describe("lineRangeToCharOffset — 块坐标 → 绝对字符偏移", () => {
     it("单行范围", () => {

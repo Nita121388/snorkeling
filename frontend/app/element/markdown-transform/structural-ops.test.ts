@@ -26,7 +26,7 @@ import {
     deleteBlockRange,
     type StructuralOp,
 } from "./structural-ops";
-import { spliceInsertBlock } from "../markdown-inline-edit";
+import { spliceInsertBlock } from "./block-range";
 
 /** 用既有纯函数造一个 move op（与控制器 move-block 分支同构，便于独立测 invert）。 */
 function makeMoveOp(text: string, s: number, e: number, tgt: number, mode: "before" | "after") {

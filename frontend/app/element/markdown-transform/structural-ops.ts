@@ -4,7 +4,7 @@
 /**
  * 阶段 4 M1：结构操作（块级重排 / 删除 / 复制）的**可独立求逆**数据模型。
  *
- * 为什么单独一个文件：现有 `moveBlockRange` / `deleteBlockRange`（markdown-inline-edit.tsx）
+ * 为什么单独一个文件：现有 `moveBlockRange` / `deleteBlockRange`（此前住在 2461 行的编辑壳里）
  * 是「谁需要谁调」的散装纯函数——键盘重排、拖拽重排、退格合并各自直接调用，且**没有逆操作
  * 数据**。这里把三种结构操作的结果固化成 `StructuralOp`，并给出**只依赖 op 本身**的逆操作
  * `invertStructuralOp(op)`：把 op 应用到 after 文本上应逐字节回到 before，
@@ -30,15 +30,14 @@
  *   `invert` 在把中间部分还原后，再把首/尾空行补回去。没有这一步，`invert(op)(after)`
  *   会丢掉文件末尾那个换行。
  *
- * 依赖方向说明：本文件 import `markdown-inline-edit.tsx` 的纯函数，而 `markdown-inline-edit`
- * 也 import 编辑控制器；于是形成 editor-controller ↔ markdown-inline-edit 的模块环。
- * 这些调用全部发生在**函数体内**（非模块初始化期），且被引用的都是 `export function`
- * 声明（提升），ESM 循环求值下安全；现有测试与产物构建均通过。
+ * 依赖方向说明：本文件只依赖 `./block-range`（纯函数模块，零宿主依赖）。
+ * P0 C1 之前它 import 编辑壳里的纯函数，于是形成「编辑控制器 ↔ 编辑壳」的模块环；
+ * 下沉到 block-range 后依赖方向变为单向：编辑壳 / 结构操作 / 编辑控制器 → block-range。
  */
 
-import { moveBlockRange, replaceSourceRange } from "../markdown-inline-edit";
+import { moveBlockRange, replaceSourceRange } from "./block-range";
 
-/** 1-based inclusive 行范围（源码行坐标，与 markdown-inline-edit 的行号体系一致）。 */
+/** 1-based inclusive 行范围（源码行坐标，与编辑壳的行号体系一致）。 */
 export interface LineRange {
     start: number;
     end: number;
@@ -83,7 +82,7 @@ export type StructuralOp =
           edgeBlanks?: EdgeBlanks;
       };
 
-/** 把一段文本按行切开（统一 LF；调用方与 markdown-inline-edit 的换行约定一致）。 */
+/** 把一段文本按行切开（统一 LF；调用方与编辑壳的换行约定一致）。 */
 function toLines(text: string): string[] {
     return text === "" ? [] : text.split(/\r\n|\n/);
 }
@@ -210,4 +209,4 @@ export function structuralOpChanged(op: StructuralOp): boolean {
 }
 
 // `deleteBlockRange` 由消费方（编辑控制器）直接委派；这里 re-export 便于本目录内引用与测试。
-export { deleteBlockRange, moveBlockRange, replaceSourceRange } from "../markdown-inline-edit";
+export { deleteBlockRange, moveBlockRange, replaceSourceRange } from "./block-range";
