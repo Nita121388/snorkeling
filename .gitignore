@@ -66,10 +66,8 @@ scripts/.tmp-cdp-*
 scripts/cdp-gui-chat-*.mjs
 
 # === 隐私纪律（2026-10-12 事件后加入）===
-# 任务研究中的「原始证据 / 语料 / 截图 / 用户内容副本」一律不入库（含真实笔记副本、外部 API dump、UI 截图）。
-# 入库的只允许：md 摘要、报告、脚本。原始证据保存在本地/知识库中。
-.trellis/tasks/**/research/raw/
-.trellis/tasks/**/research/corpus/
-.trellis/tasks/**/research/outputs/
-.trellis/tasks/**/research/screenshots/
-.trellis/tasks/**/*.tgz
+# 用户私人数据的**唯一**原则：**本地保留、绝不入库、绝不推送**。
+# - research/ 下默认全部忽略（原始证据、语料、用户笔记副本、外部 API dump、UI 截图、导出包）
+# - 例外：research/ 顶层的 .md 报告（方法论与结论）可以入库
+.trellis/tasks/**/research/**
+!.trellis/tasks/**/research/*.md

@@ -86,3 +86,24 @@ This project is indexed by GitNexus as **snorkeling** (25382 symbols, 72316 rela
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## 隐私纪律（2026-10-12 事件后，硬规则）
+
+**用户私人数据的唯一原则：本地保留、绝不入库、绝不推送。**
+
+- 仓库 `Nita121388/snorkeling` 虽然可以是 public，但**任何用户私人数据都不得进入 git**。
+- 不得入库的内容：用户笔记全文/副本、外部服务 API dump（如 Wolai 空间数据）、含用户内容的 UI 截图、导出包（`*.tgz`）。
+- 已由 `.gitignore` 强制：`.trellis/tasks/**/research/**` 全部忽略，**只有 `research/` 顶层 `.md` 报告**例外（方法论与结论可入库）。
+- 实测与语料默认写到仓库外的临时目录（如 `/tmp/milkdown-trial`），**不要**写进 `frontend/` 或仓库内被跟踪的路径。
+- 提交前自查：`git status --short` 不应出现任何「用户内容」类文件；新增研究产物先确认 `git check-ignore <path>` 命中。
+- 真实笔记/真实文件上**不做**交互验证；一律用隔离沙箱与草稿。
+
+## 长命令与子代理纪律（2026-10-12 实测教训）
+
+实测：本仓库 `npx tsc --noEmit` 在加入新包后需 **4–5 分钟**；`vitest run frontend/app/element` 约 35–60 秒；`npm run build:dev` 数分钟。
+
+因此：
+- **不要把 `vitest` + `tsc` + `build` 串进同一条 bash 命令**——单条命令超过 240 秒会触发「工具长开」告警，看起来像卡死。
+- 分开跑，先跑最小必要验证（受影响包/文件的测试），最后再跑全量。
+- `tsc` 慢是已知事实，**不要**因为等待而重复执行或中断；先做别的验证，最后再取 tsc 结果。
+- 给子代理派任务时，把「先跑针对性测试、最后跑 tsc」写进提示词。
