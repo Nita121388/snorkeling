@@ -1938,7 +1938,7 @@ export function InlineEditOverlay({
                             aria-hidden="true"
                         >
                             {formatPrefix}
-                            <span style={{ color: "var(--text-placeholder, #aaa)" }}>{ghostPlaceholder}</span>
+                            <span style={{ color: "var(--secondary-text-color)" }}>{ghostPlaceholder}</span>
                         </span>
                     )}
                 </>

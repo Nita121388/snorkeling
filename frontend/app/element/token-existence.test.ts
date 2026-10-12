@@ -10,9 +10,10 @@
  * 规则：`frontend/**` 的 scss/css/tsx 里用到的 `var(--x)`，`--x` 必须能在
  * `frontend/app/theme.scss`（或同一文件内）找到定义，否则失败。
  *
- * 豁免：当前唯一已知悬空 token `--content-bg-color` —— 它出现在
- * `var(--content-bg-color, var(--main-bg-color, transparent))` 的 fallback 链里，
- * 实际解析到已定义的 `--main-bg-color`，视觉无害。新豁免必须写明 reason。
+ * 豁免：仅剩两条**视觉无害**的悬空 token（`--content-bg-color` / `--markdown-tab-size`），
+ * 两条都带回退值且能解析到已定义 token 或等价默认值。新豁免必须写明 reason。
+ * （切片 token-fix-2 已修复 `--wolai-*` / `--input-*` / `--text-placeholder` / `--font-monospace`
+ * 六个悬空 token，其豁免条目已随之删除 —— 再引用即门禁失败。）
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -30,36 +31,6 @@ const EXEMPT_UNDEFINED_TOKENS: { token: string; reason: string; todo: "harmless"
         token: "--content-bg-color",
         reason: "出现在 fallback 链 var(--content-bg-color, var(--main-bg-color, transparent)) 中，实际解析到已定义的 --main-bg-color",
         todo: "harmless",
-    },
-    {
-        token: "--wolai-quote-border-color",
-        reason: "全仓 0 处定义；回退值 rgba(0,0,0,0.12) 是浅色专用 → 暗色下引用块左边框几乎不可见（真 bug，待换既有 token）",
-        todo: "fix-token-2",
-    },
-    {
-        token: "--wolai-editor-color",
-        reason: "全仓 0 处定义；回退值 rgba(0,0,0,0.85) 是浅色专用 → 暗色下文字近黑（真 bug，待换既有 token）",
-        todo: "fix-token-2",
-    },
-    {
-        token: "--font-monospace",
-        reason: "全仓 0 处定义且**无回退**（font-family: var(--font-monospace) 整条声明会失效）→ 待换既有等宽字族或补定义",
-        todo: "fix-token-2",
-    },
-    {
-        token: "--input-bg-color",
-        reason: "全仓 0 处定义，回退为硬编码深色色值 → 浅色主题下不匹配（待换既有 token）",
-        todo: "fix-token-2",
-    },
-    {
-        token: "--input-border-color",
-        reason: "全仓 0 处定义，回退为硬编码 #444 → 浅色主题下不匹配（待换既有 token）",
-        todo: "fix-token-2",
-    },
-    {
-        token: "--text-placeholder",
-        reason: "全仓 0 处定义，但有回退值；占位文字颜色不匹配主题（待换既有 token）",
-        todo: "fix-token-2",
     },
     {
         token: "--markdown-tab-size",

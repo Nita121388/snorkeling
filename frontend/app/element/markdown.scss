@@ -265,13 +265,13 @@
 
         blockquote {
             margin: 0.571em 0.714em;
-            border-left: 3px solid var(--wolai-quote-border-color, rgba(0, 0, 0, 0.12));
+            border-left: 3px solid var(--border-color);
             border-radius: 0 4px 4px 0;
             background-color: var(--panel-bg-color);
             padding: 0.714em 1em;
             font-size: 1em;
             line-height: 1.6;
-            color: var(--wolai-editor-color, rgba(0, 0, 0, 0.85));
+            color: var(--main-text-color);
 
             > :last-child {
                 margin-bottom: 0;
@@ -292,7 +292,7 @@
             font-size: 1em;
             line-height: 1.6;
             position: relative;
-            color: var(--wolai-editor-color, rgba(0, 0, 0, 0.85));
+            color: var(--main-text-color);
 
             .markdown-alert-emoji {
                 position: absolute;
@@ -390,7 +390,7 @@
             background-color: color-mix(in srgb, #f85149 6%, transparent);
         }
         .markdown-alert-quote {
-            border-left-color: var(--wolai-quote-border-color, rgba(0, 0, 0, 0.12));
+            border-left-color: var(--border-color);
             background-color: transparent;
             color: var(--secondary-text-color);
         }
@@ -966,12 +966,12 @@
 // Quote — mirror blockquote style.
 .wysiwyg-editor.wysiwyg-quote {
     margin: 0.571em 0.714em;
-    border-left: 3px solid var(--wolai-quote-border-color, rgba(0, 0, 0, 0.12));
+    border-left: 3px solid var(--border-color);
     border-radius: 0 4px 4px 0;
     background-color: var(--panel-bg-color);
     padding: 0.714em 1em;
     line-height: 1.6;
-    color: var(--wolai-editor-color, rgba(0, 0, 0, 0.85));
+    color: var(--main-text-color);
 }
 
 // Paragraph placeholder — shown when the WYSIWYG editor is empty.
@@ -1125,7 +1125,7 @@
             padding: 4px 8px;
             font-size: 13px;
             color: var(--main-text-color);
-            background: var(--input-bg-color, rgba(255, 255, 255, 0.06));
+            background: var(--panel-bg-color);
             border: 1px solid var(--border-color);
             border-radius: 2px;
             outline: none;
@@ -1180,7 +1180,7 @@
     border-radius: 4px;
     color: var(--error-color, #d9534f);
     background: color-mix(in srgb, var(--error-color, #d9534f) 10%, transparent);
-    font-family: var(--font-monospace);
+    font-family: var(--markdown-code-font, var(--mono-font, monospace));
     font-size: 0.85em;
     line-height: 1.4;
     white-space: pre-wrap;
@@ -1317,7 +1317,7 @@
     font-size: 12px;
     line-height: 1.4;
     color: var(--main-text-color, inherit);
-    background: var(--input-bg-color, #2a2a2a);
+    background: var(--panel-bg-color);
     border: 1px solid var(--accent-color, #58c4ff);
     border-radius: 4px;
     outline: none;
@@ -1343,8 +1343,8 @@
         padding: 4px 8px;
         font-size: 13px;
         color: var(--main-text-color);
-        background: var(--input-bg-color, #2a2a2a);
-        border: 1px solid var(--input-border-color, #444);
+        background: var(--panel-bg-color);
+        border: 1px solid var(--border-color);
         border-radius: 4px;
         outline: none;
 
