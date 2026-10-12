@@ -69,6 +69,33 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "PathUsageEntryType": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "lastAt": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "path",
+        "kind",
+        "count",
+        "lastAt"
+      ]
+    },
     "PinnedDirectoryType": {
       "properties": {
         "path": {
@@ -508,6 +535,12 @@
         "preview:pinned-directories": {
           "items": {
             "$ref": "#/$defs/PinnedDirectoryType"
+          },
+          "type": "array"
+        },
+        "preview:path-usage": {
+          "items": {
+            "$ref": "#/$defs/PathUsageEntryType"
           },
           "type": "array"
         },

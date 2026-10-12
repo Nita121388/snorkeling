@@ -43,6 +43,8 @@ import type * as MonacoTypes from "monaco-editor";
 import { createRef } from "react";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
+import { isNoiseUsagePath } from "./path-usage";
+import { recordPathUsage } from "./path-usage-store";
 import { runMarkdownExport, availableExportProviders } from "./plugins/export/export-runner";
 import { isMarkdownFile } from "./plugins/export/pdf-export";
 import type { ExportFormat, ExportOptions } from "./plugins/export/export-provider";
@@ -444,6 +446,7 @@ export class PreviewModel implements ViewModel {
     copyPathStatusResetTimer: number | null;
     diskBaseContent: PrimitiveAtom<string | null>;
     private _diskBaseUnsub: (() => void) | undefined;
+    private _pathUsageUnsub: (() => void) | undefined;
 
     openFileModal: PrimitiveAtom<boolean>;
     openFileModalDelay: PrimitiveAtom<boolean>;
@@ -481,8 +484,9 @@ export class PreviewModel implements ViewModel {
     directoryKeyDownHandler: (waveEvent: WaveKeyboardEvent) => boolean;
     codeEditKeyDownHandler: (waveEvent: WaveKeyboardEvent) => boolean;
     env: PreviewEnv;
-    recentDirs: PrimitiveAtom<Map<string, number>>;
-    pinnedDirs: PrimitiveAtom<PinnedDirectory[]>;
+    // Derived straight from the settings default so the Files panel (widgets.tsx) and the
+    // directory context menu never diverge: the persisted config is the single writer.
+    pinnedDirs: Atom<PinnedDirectory[]>;
 
     constructor({ blockId, nodeModel, tabModel, waveEnv }: ViewModelInitType) {
         this.viewType = "preview";
@@ -490,12 +494,10 @@ export class PreviewModel implements ViewModel {
         this.nodeModel = nodeModel;
         this.tabModel = tabModel;
         this.env = waveEnv;
-        this.recentDirs = atom(new Map<string, number>()) as PrimitiveAtom<Map<string, number>>;
-        this.pinnedDirs = atom([]) as PrimitiveAtom<PinnedDirectory[]>;
-        const savedPinned = globalStore.get(this.env.getSettingsKeyAtom(PreviewPinnedDirectoriesKey));
-        if (Array.isArray(savedPinned)) {
-            globalStore.set(this.pinnedDirs, savedPinned as PinnedDirectory[]);
-        }
+        this.pinnedDirs = atom((get) => {
+            const savedPinned = get(this.env.getSettingsKeyAtom(PreviewPinnedDirectoriesKey));
+            return Array.isArray(savedPinned) ? (savedPinned as PinnedDirectory[]) : [];
+        });
         const showHiddenFiles = globalStore.get(this.env.getSettingsKeyAtom("preview:showhiddenfiles")) ?? true;
         this.showHiddenFiles = atom<boolean>(showHiddenFiles);
         this.refreshVersion = atom(0);
@@ -1254,6 +1256,12 @@ export class PreviewModel implements ViewModel {
         });
 
         this.noPadding = atom(true);
+
+        // Record real preview navigation/open events into the path-usage config.
+        // metaFilePath changes cover goHistory (directory jumps) and every openPath*
+        // helper, since they all funnel through block.meta.file.
+        this.recordCurrentPathUsage();
+        this._pathUsageUnsub = globalStore.sub(this.metaFilePath, () => this.recordCurrentPathUsage());
     }
 
     markdownShowTocToggle() {
@@ -2594,33 +2602,13 @@ export class PreviewModel implements ViewModel {
         return formatRemoteUri(path, await get(this.connection));
     }
 
-    // ── Pinned / Recent directories (used by context menus + recent tracking) ──
-    trackRecentDir(dirPath: string): void {
-        const current = globalStore.get(this.recentDirs);
-        const next = new Map(current);
-        next.set(dirPath, Date.now());
-        if (next.size > 10) {
-            const sorted = [...next.entries()].sort((a, b) => b[1] - a[1]);
-            globalStore.set(this.recentDirs, new Map(sorted.slice(0, 10)));
-            return;
-        }
-        globalStore.set(this.recentDirs, next);
-    }
-
-    clearRecentDir(dirPath: string): void {
-        const current = globalStore.get(this.recentDirs);
-        const next = new Map(current);
-        next.delete(dirPath);
-        globalStore.set(this.recentDirs, next);
-    }
-
+    // ── Pinned directories (used by context menus + the Files panel) ──
     togglePinnedDir(dirPath: string, label?: string): void {
         const current = globalStore.get(this.pinnedDirs);
         const idx = current.findIndex((p) => p.path === dirPath);
         const next = idx >= 0
             ? current.filter((_, i) => i !== idx)
             : [...current, { path: dirPath, label: label ?? basename(dirPath), addedAt: Date.now() }];
-        globalStore.set(this.pinnedDirs, next);
         fireAndForget(() =>
             this.env.rpc.SetConfigCommand(TabRpcClient, { [PreviewPinnedDirectoriesKey]: next })
         );
@@ -2628,6 +2616,23 @@ export class PreviewModel implements ViewModel {
 
     isPinned(dirPath: string): boolean {
         return globalStore.get(this.pinnedDirs).some((p) => p.path === dirPath);
+    }
+
+    /** Record the currently open preview path (if explicitly set) into path usage. */
+    private recordCurrentPathUsage(): void {
+        const rawFile = globalStore.get(this.blockAtom)?.meta?.file;
+        if (isBlank(rawFile)) {
+            return;
+        }
+        const connection = globalStore.get(this.connectionImmediate) ?? undefined;
+        fireAndForget(async () => {
+            const finfo = await globalStore.get(this.statFile);
+            const path = finfo?.path ?? rawFile;
+            if (isNoiseUsagePath(path)) {
+                return;
+            }
+            recordPathUsage(path, finfo?.isdir ? "dir" : "file", connection);
+        });
     }
 
     async setTabDefaultPath(dirPath: string): Promise<void> {
@@ -2645,5 +2650,7 @@ export class PreviewModel implements ViewModel {
     dispose(): void {
         this._diskBaseUnsub?.();
         this._diskBaseUnsub = undefined;
+        this._pathUsageUnsub?.();
+        this._pathUsageUnsub = undefined;
     }
 }

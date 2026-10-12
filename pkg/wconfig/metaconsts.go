@@ -104,6 +104,7 @@ const (
 	ConfigKey_PreviewDefaultDirectoryDisplay = "preview:defaultdirectorydisplay"
 	ConfigKey_PreviewDefaultOpenTarget       = "preview:defaultopentarget"
 	ConfigKey_PreviewPinnedDirectories       = "preview:pinned-directories"
+	ConfigKey_PreviewPathUsage               = "preview:path-usage"
 
 	ConfigKey_TabPreset                      = "tab:preset"
 	ConfigKey_TabConfirmClose                = "tab:confirmclose"

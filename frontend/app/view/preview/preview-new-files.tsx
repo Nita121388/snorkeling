@@ -1,30 +1,33 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+    buildPathPanelSections,
+    flattenPanelRows,
+    type PathPanelRow,
+    type PathSelection,
+} from "@/app/view/preview/path-panel-model";
 import { useFloating, FloatingPortal, offset, useDismiss, useInteractions } from "@floating-ui/react";
 import clsx from "clsx";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type PinnedDirectory = PinnedDirectoryType;
 
 type NewFilesFloatingWindowProps = {
     isOpen: boolean;
     onClose: () => void;
-    onSelect: (path: string) => void;
+    onSelect: (selection: PathSelection) => void;
     referenceElement: HTMLElement | null;
     pinnedDirs: PinnedDirectory[];
-    recentDirs: string[];
-    onRemovePinned: (path: string) => void;
-    onClearRecent: (path: string) => void;
+    usageEntries: PathUsageEntryType[];
+    onTogglePin: (selection: PathSelection, label?: string) => void;
+    onRemoveUsage: (selection: PathSelection) => void;
 };
 
-function formatPath(path: string): string {
-    if (path.startsWith("~")) return path;
-    if (path.length > 40) {
-        const parts = path.replace(/\\/g, "/").split("/");
-        if (parts.length > 3) return parts[0] + "/…/" + parts.slice(-2).join("/");
-    }
-    return path;
+function rowIcon(row: PathPanelRow): string {
+    if (row.pinned) return "fa-solid fa-star text-green";
+    if (row.kind === "file") return "fa-regular fa-file text-muted";
+    return "fa-regular fa-folder text-muted";
 }
 
 const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
@@ -33,9 +36,9 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
     onSelect,
     referenceElement,
     pinnedDirs,
-    recentDirs,
-    onRemovePinned,
-    onClearRecent,
+    usageEntries,
+    onTogglePin,
+    onRemoveUsage,
 }: NewFilesFloatingWindowProps) {
     const { refs, floatingStyles, context } = useFloating({
         open: isOpen,
@@ -49,13 +52,84 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
 
     const { getFloatingProps } = useInteractions([useDismiss(context, { escapeKey: true })]);
 
+    const [query, setQuery] = useState("");
+    const [activeIndex, setActiveIndex] = useState(-1);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    const sections = useMemo(
+        () =>
+            buildPathPanelSections({
+                pinnedDirs,
+                usage: usageEntries,
+                query,
+                now: Date.now(),
+            }),
+        [pinnedDirs, usageEntries, query]
+    );
+    const rows = useMemo(() => flattenPanelRows(sections), [sections]);
+    // Flat index per row: the same path can legitimately appear in both Pinned and
+    // Frequent, so row keys are not unique across sections and cannot drive nav.
+    const rowIndex = useMemo(() => {
+        const map = new Map<PathPanelRow, number>();
+        rows.forEach((row, index) => map.set(row, index));
+        return map;
+    }, [rows]);
+
+    // Reset transient state whenever the panel opens so it always starts clean.
+    useEffect(() => {
+        if (!isOpen) return;
+        setQuery("");
+        setActiveIndex(-1);
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const handle = window.setTimeout(() => inputRef.current?.focus(), 0);
+        return () => window.clearTimeout(handle);
+    }, [isOpen]);
+
     const handleSelect = useCallback(
-        (path: string) => {
-            onSelect(path);
+        (row: PathPanelRow) => {
+            onSelect({ path: row.path, connection: row.connection });
             onClose();
         },
         [onSelect, onClose]
     );
+
+    const moveActive = useCallback(
+        (delta: number) => {
+            if (rows.length === 0) return;
+            setActiveIndex((prev) => {
+                if (prev < 0) return delta > 0 ? 0 : rows.length - 1;
+                return (prev + delta + rows.length) % rows.length;
+            });
+        },
+        [rows.length]
+    );
+
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                moveActive(1);
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                moveActive(-1);
+            } else if (e.key === "Enter") {
+                e.preventDefault();
+                const row = activeIndex >= 0 ? rows[activeIndex] : rows[0];
+                if (row != null) handleSelect(row);
+            } else if (e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+            }
+        },
+        [moveActive, rows, activeIndex, handleSelect, onClose]
+    );
+
+    const copyPath = useCallback((path: string) => {
+        void navigator.clipboard?.writeText(path);
+    }, []);
 
     if (!isOpen) return null;
 
@@ -70,89 +144,106 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                 {/* header */}
                 <div className="flex items-center px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
                     <i className="fa-solid fa-location-crosshairs text-accent text-xs mr-2" />
-                    <span>New Files</span>
+                    <span>Files</span>
+                </div>
+
+                {/* search */}
+                <div className="px-2 pt-2 pb-1">
+                    <div className="flex items-center gap-2 px-2 h-7 rounded-md bg-surface-soft/60 border border-border/50">
+                        <i className="fa-solid fa-magnifying-glass text-[10px] text-muted" />
+                        <input
+                            ref={inputRef}
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Search paths"
+                            className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-foreground placeholder:text-muted"
+                            spellCheck={false}
+                        />
+                    </div>
                 </div>
 
                 {/* scrollable content */}
                 <div className="flex-1 overflow-y-auto px-1 py-1 min-h-0">
-                    {/* Pinned section */}
-                    <div className="border-b border-border/60">
-                        <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 text-[11px] text-muted uppercase tracking-wide font-medium">
-                            <i className="fa-solid fa-star text-[10px] text-green" />
-                            <span>Pinned</span>
-                            <span className="text-[10px] px-1.5 rounded bg-surface-soft">{pinnedDirs.length}</span>
-                        </div>
-                        {pinnedDirs.map((pinned) => (
-                            <div
-                                key={pinned.path}
-                                className="group flex items-center gap-2.5 py-1.5 pl-3.5 pr-2 mx-1 rounded-md cursor-pointer transition-colors min-h-[36px] hover:bg-hoverbg"
-                                onClick={() => handleSelect(pinned.path)}
-                            >
-                                <i className="fa-solid fa-star text-green text-xs w-4 text-center shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-xs text-foreground font-medium truncate">{pinned.label}</div>
-                                    <div className="text-[11px] text-muted font-mono truncate">
-                                        {formatPath(pinned.path)}
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    className="w-5 h-5 shrink-0 inline-flex items-center justify-center rounded-sm text-muted opacity-0 group-hover:opacity-100 hover:bg-error/12 hover:text-error transition-all cursor-pointer border-none bg-transparent"
-                                    title="Unpin"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onRemovePinned(pinned.path);
-                                    }}
-                                >
-                                    <i className="fa-solid fa-xmark text-[10px]" />
-                                </button>
+                    {sections.map((section) => (
+                        <div key={section.id} className="border-b border-border/60 last:border-b-0">
+                            <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 text-[11px] text-muted uppercase tracking-wide font-medium">
+                                <i className={clsx(section.icon, "text-[10px]", section.id === "pinned" && "text-green")} />
+                                <span>{section.title}</span>
+                                <span className="text-[10px] px-1.5 rounded bg-surface-soft">{section.rows.length}</span>
                             </div>
-                        ))}
-                    </div>
-
-                    {/* Recent section */}
-                    <div>
-                        <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1 text-[11px] text-muted uppercase tracking-wide font-medium">
-                            <i className="fa-regular fa-clock text-[10px]" />
-                            <span>Recent</span>
-                            <span className="text-[10px] px-1.5 rounded bg-surface-soft">{recentDirs.length}</span>
-                        </div>
-                        {recentDirs.length === 0 ? (
-                            <div className="px-4 py-5 text-center text-muted text-xs">
-                                <i className="fa-regular fa-clock text-lg mb-2 block opacity-40" />
-                                Directories you navigate to will appear here.
-                            </div>
-                        ) : (
-                            recentDirs.map((dirPath) => (
-                                <div
-                                    key={dirPath}
-                                    className="group flex items-center gap-2.5 py-1.5 pl-3.5 pr-2 mx-1 rounded-md cursor-pointer transition-colors min-h-[36px] hover:bg-hoverbg"
-                                    onClick={() => handleSelect(dirPath)}
-                                >
-                                    <i className="fa-regular fa-clock text-muted text-xs w-4 text-center shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-xs text-foreground font-medium truncate">
-                                            {dirPath.split("/").filter(Boolean).pop() || dirPath}
-                                        </div>
-                                        <div className="text-[11px] text-muted font-mono truncate">
-                                            {formatPath(dirPath)}
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="w-5 h-5 shrink-0 inline-flex items-center justify-center rounded-sm text-muted opacity-0 group-hover:opacity-100 hover:bg-error/12 hover:text-error transition-all cursor-pointer border-none bg-transparent"
-                                        title="Clear from recent"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onClearRecent(dirPath);
-                                        }}
+                            {section.rows.length === 0 ? (
+                                section.emptyHint != null ? (
+                                    <div className="px-4 py-4 text-center text-muted text-xs">{section.emptyHint}</div>
+                                ) : null
+                            ) : (
+                                section.rows.map((row) => (
+                                    <div
+                                        key={row.key}
+                                        className={clsx(
+                                            "group flex items-center gap-2.5 py-1.5 pl-3.5 pr-2 mx-1 rounded-md cursor-pointer transition-colors min-h-[36px] hover:bg-hoverbg",
+                                            activeIndex >= 0 && rowIndex.get(row) === activeIndex && "bg-hoverbg"
+                                        )}
+                                        onClick={() => handleSelect(row)}
                                     >
-                                        <i className="fa-solid fa-xmark text-[10px]" />
-                                    </button>
-                                </div>
-                            ))
-                        )}
-                    </div>
+                                        <i className={clsx(rowIcon(row), "text-xs w-4 text-center shrink-0")} />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-xs text-foreground font-medium truncate">{row.label}</div>
+                                            <div className="text-[11px] text-muted font-mono truncate">
+                                                {row.displayPath}
+                                            </div>
+                                        </div>
+                                        {row.count != null && section.id !== "search" ? (
+                                            <span className="text-[10px] text-muted shrink-0">×{row.count}</span>
+                                        ) : null}
+                                        <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                type="button"
+                                                className="w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-surface-soft hover:text-foreground transition-all cursor-pointer border-none bg-transparent"
+                                                title={row.pinned ? "Unpin" : "Pin"}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onTogglePin({ path: row.path, connection: row.connection }, row.label);
+                                                }}
+                                            >
+                                                <i
+                                                    className={clsx(
+                                                        "text-[10px]",
+                                                        row.pinned ? "fa-solid fa-star text-green" : "fa-regular fa-star"
+                                                    )}
+                                                />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-surface-soft hover:text-foreground transition-all cursor-pointer border-none bg-transparent"
+                                                title="Copy path"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    copyPath(row.path);
+                                                }}
+                                            >
+                                                <i className="fa-regular fa-copy text-[10px]" />
+                                            </button>
+                                            {section.id === "recent" ||
+                                            (section.id === "search" && row.count != null) ? (
+                                                <button
+                                                    type="button"
+                                                    className="w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-error/12 hover:text-error transition-all cursor-pointer border-none bg-transparent"
+                                                    title="Remove"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onRemoveUsage({ path: row.path, connection: row.connection });
+                                                    }}
+                                                >
+                                                    <i className="fa-solid fa-xmark text-[10px]" />
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    ))}
                 </div>
 
                 {/* footer */}
@@ -160,7 +251,10 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                     <button
                         type="button"
                         className="inline-flex items-center gap-1.5 h-6 px-2 rounded-md text-xs font-medium text-secondary bg-transparent hover:bg-surface-soft transition-colors cursor-pointer border-none"
-                        onClick={() => handleSelect("~")}
+                        onClick={() => {
+                            onSelect({ path: "~" });
+                            onClose();
+                        }}
                         title="Open home directory"
                     >
                         <i className="fa-solid fa-home text-[9px]" />

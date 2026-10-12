@@ -48,4 +48,48 @@ Questions to answer:
 
 <!-- State management mistakes your team has made -->
 
-(To be filled by the team)
+### 1. 快照式持久化状态会产生双写者（data loss）
+
+反例：构造函数里把配置值快照进 `PrimitiveAtom`，之后写入时仍从这份**过期**快照重建整个数组。
+两个写者（视图 A 的本地 atom、视图 B 直接写配置）会互相覆盖。
+
+实证：`preview:pinned-directories` 曾由 `PreviewModel.pinnedDirs`（一次性快照）与
+`widgets.tsx` 面板 Pin 同时写入，面板 Pin 的记录会被目录右键 Pin 覆盖丢失。
+
+正确做法：**配置即唯一事实源**，用派生 atom 读配置，删除本地 `globalStore.set`：
+
+```ts
+// preview-model.tsx
+this.pinnedDirs = atom((get) => {
+    const saved = get(this.env.getSettingsKeyAtom(PreviewPinnedDirectoriesKey));
+    return Array.isArray(saved) ? (saved as PinnedDirectory[]) : [];
+});
+```
+
+### 2. 只在 TS 侧新增 settings 键
+
+后端 `wconfig.SetBaseConfigValue` 反射校验 `SettingsType` 的 json tag，
+未注册的键直接返回 `invalid config key`，用 `fireAndForget` 包裹时表现为**静默失效**。
+新增配置键的完整链路（Go 注册 → `node scripts/run-task.mjs generate` → TS 派生 atom）见
+`docs/project/config-settings-key-flow.md`。
+
+### 3. 用作身份键前未归一化 connection
+
+本地连接存在 `""` / `"local"` / `"local:*"` 多种拼写；直接拼身份键会让同一路径被记成多条、去重失效。
+先归一化再拼 key（见 `frontend/app/view/preview/path-usage.ts` 的 `canonicalConnection`）。
+
+### 4. 高频状态直接落盘
+
+配置文件是整文件重写。导航类状态用"模块级缓冲 + debounce + 条目上限"合并写入，
+并在 `pagehide` 做 best-effort flush。参考 `frontend/app/view/preview/path-usage-store.ts`。
+
+---
+
+## Recommended Split: pure logic + stateful store
+
+可测状态的推荐拆法（本仓库已验证）：
+
+- `xxx.ts` — 纯逻辑：类型、归一化、归约、排序、过滤。**不 import** jotai / react / env / electron，
+  因此可以直接单测，无需 jsdom。参考 `frontend/app/view/preview/path-usage.ts`。
+- `xxx-store.ts` — 有状态适配层：jotai atom、配置持久化、节流。参考 `path-usage-store.ts`。
+- 组件只负责渲染 store 暴露的数据与调用 store 的动作。

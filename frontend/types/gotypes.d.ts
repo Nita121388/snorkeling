@@ -1792,6 +1792,15 @@ declare global {
         tabid: string;
     };
 
+    // wconfig.PathUsageEntryType
+    type PathUsageEntryType = {
+        path: string;
+        connection?: string;
+        kind: string;
+        count: number;
+        lastAt: number;
+    };
+
     // wconfig.PinnedDirectoryType
     type PinnedDirectoryType = {
         path: string;
@@ -2208,6 +2217,7 @@ declare global {
         "preview:defaultdirectorydisplay"?: string;
         "preview:defaultopentarget"?: string;
         "preview:pinned-directories"?: PinnedDirectoryType[];
+        "preview:path-usage"?: PathUsageEntryType[];
         "tab:preset"?: string;
         "tab:confirmclose"?: boolean;
         "tab:background"?: string;

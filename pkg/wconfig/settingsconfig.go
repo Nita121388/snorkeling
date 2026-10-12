@@ -83,6 +83,14 @@ type PinnedDirectoryType struct {
 	AddedAt int64  `json:"addedAt,omitempty"`
 }
 
+type PathUsageEntryType struct {
+	Path       string `json:"path"`
+	Connection string `json:"connection,omitempty"` // "" = local
+	Kind       string `json:"kind"`                 // "dir" | "file"
+	Count      int    `json:"count"`
+	LastAt     int64  `json:"lastAt"` // unix ms
+}
+
 // ScheduledTask schedule definition
 type ScheduledTaskScheduleType struct {
 	Type       string  `json:"type"`                 // cron / interval / once / daily / weekly
@@ -237,6 +245,7 @@ type SettingsType struct {
 	PreviewDefaultDirectoryDisplay string                `json:"preview:defaultdirectorydisplay,omitempty" jsonschema:"enum=tree,enum=list"`
 	PreviewDefaultOpenTarget       string                `json:"preview:defaultopentarget,omitempty" jsonschema:"enum=off,enum=left,enum=right,enum=up,enum=down"`
 	PreviewPinnedDirectories       []PinnedDirectoryType `json:"preview:pinned-directories,omitempty"`
+	PreviewPathUsage               []PathUsageEntryType  `json:"preview:path-usage,omitempty"`
 
 	TabPreset       string `json:"tab:preset,omitempty"`
 	TabConfirmClose bool   `json:"tab:confirmclose,omitempty"`

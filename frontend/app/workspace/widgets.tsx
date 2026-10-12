@@ -41,11 +41,13 @@ import { getNoteDirectory, makeNoteBlockDef, NoteWidgetAction } from "@/app/work
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { openWidgetQuickLaunch } from "@/app/workspace/widget-quick-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
+import { type PathSelection } from "@/app/view/preview/path-panel-model";
+import { pathUsageAtom, removePathUsage } from "@/app/view/preview/path-usage-store";
 import { NewFilesFloatingWindow } from "@/app/view/preview/preview-new-files";
 import type { LayoutTreeInsertNodeAction } from "@/layout/index";
 import { getLayoutModelForStaticTab, LayoutTreeActionType, newLayoutNode } from "@/layout/index";
 import { modalsModel } from "@/store/modalmodel";
-import { fireAndForget, isBlank, makeIconClass } from "@/util/util";
+import { basename, fireAndForget, isBlank, makeIconClass } from "@/util/util";
 import {
     autoUpdate,
     flip,
@@ -1804,7 +1806,7 @@ const Widgets = memo(() => {
     const terminalHoverTimerRef = useRef<number | null>(null);
     const [isFilesWindowOpen, setIsFilesWindowOpen] = useState(false);
     const [filesReferenceElement, setFilesReferenceElement] = useState<HTMLElement | null>(null);
-    const [filesRecentDirs, setFilesRecentDirs] = useState<string[]>([]);
+    const filesUsageEntries = useAtomValue(pathUsageAtom);
     const filesPinnedDirs = useMemo(() => {
         const saved = settings?.["preview:pinned-directories"];
         return Array.isArray(saved) ? saved : [];
@@ -2232,6 +2234,14 @@ const Widgets = memo(() => {
             if (runWidgetAction(widget.action)) {
                 closeAgentTargetSelector();
                 closeTerminalTargetSelector();
+                return;
+            }
+
+            if (widgetId === DefaultFilesWidgetId) {
+                closeAgentTargetSelector();
+                closeTerminalTargetSelector();
+                setFilesReferenceElement(e.currentTarget);
+                setIsFilesWindowOpen(true);
                 return;
             }
 
@@ -2710,26 +2720,37 @@ const Widgets = memo(() => {
                     onClose={() => setIsFilesWindowOpen(false)}
                     referenceElement={filesReferenceElement}
                     pinnedDirs={filesPinnedDirs}
-                    recentDirs={filesRecentDirs}
-                    onSelect={(path) => {
+                    usageEntries={filesUsageEntries}
+                    onSelect={(selection: PathSelection) => {
                         fireAndForget(async () => {
                             const blockDef: BlockDef = {
-                                meta: { view: "preview", file: path, connection: "local" },
+                                meta: {
+                                    view: "preview",
+                                    file: selection.path,
+                                    connection: selection.connection ?? "local",
+                                },
                             };
                             await env.createBlock(blockDef, false, true);
                         });
-                        // Track in recent
-                        setFilesRecentDirs((prev) => {
-                            const next = [path, ...prev.filter((p) => p !== path)];
-                            return next.slice(0, 10);
-                        });
                     }}
-                    onRemovePinned={(path) => {
-                        const next = filesPinnedDirs.filter((p) => p.path !== path);
-                        fireAndForget(() => env.rpc.SetConfigCommand(TabRpcClient, { "preview:pinned-directories": next }));
+                    onTogglePin={(selection: PathSelection, label?: string) => {
+                        const exists = filesPinnedDirs.some((p) => p.path === selection.path);
+                        const next = exists
+                            ? filesPinnedDirs.filter((p) => p.path !== selection.path)
+                            : [
+                                  ...filesPinnedDirs,
+                                  {
+                                      path: selection.path,
+                                      label: label ?? basename(selection.path),
+                                      addedAt: Date.now(),
+                                  },
+                              ];
+                        fireAndForget(() =>
+                            env.rpc.SetConfigCommand(TabRpcClient, { "preview:pinned-directories": next })
+                        );
                     }}
-                    onClearRecent={(path) => {
-                        setFilesRecentDirs((prev) => prev.filter((p) => p !== path));
+                    onRemoveUsage={(selection: PathSelection) => {
+                        removePathUsage(selection);
                     }}
                 />
             )}
