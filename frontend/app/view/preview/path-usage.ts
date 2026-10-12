@@ -105,6 +105,27 @@ export function resolvePathUsageKind(statIsDir?: boolean, metaIsDir?: boolean): 
     return metaIsDir === true ? "dir" : "file";
 }
 
+/**
+ * Gate for a preview block's *initial* path record: returns true only the first time this
+ * blockId is claimed. `BlockInner` keys on the active inline tab (`block.tsx`), so switching
+ * inline tabs disposes and re-creates the view model — without this gate a mere tab switch
+ * would inflate the use count of a path the user never re-opened. Real navigation does NOT
+ * go through this gate (it records directly), so switching/navigating still counts.
+ *
+ * A blank/undefined blockId fails open (records, claims nothing): recording is better than
+ * silently dropping a path when the caller cannot supply an identity.
+ */
+export function claimInitialPathRecord(seenBlockIds: Set<string>, blockId: string | undefined): boolean {
+    if (blockId == null || blockId.trim() === "") {
+        return true;
+    }
+    if (seenBlockIds.has(blockId)) {
+        return false;
+    }
+    seenBlockIds.add(blockId);
+    return true;
+}
+
 export type RecordPathUsageChange = {
     path: string;
     kind: PathUsageKind;

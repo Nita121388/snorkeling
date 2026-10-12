@@ -44,7 +44,7 @@ import { createRef } from "react";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
 import { isNoiseUsagePath, resolvePathUsageKind } from "./path-usage";
-import { recordPathUsage } from "./path-usage-store";
+import { recordInitialPathUsage, recordPathUsage } from "./path-usage-store";
 import { runMarkdownExport, availableExportProviders } from "./plugins/export/export-runner";
 import { isMarkdownFile } from "./plugins/export/pdf-export";
 import type { ExportFormat, ExportOptions } from "./plugins/export/export-provider";
@@ -1260,8 +1260,11 @@ export class PreviewModel implements ViewModel {
         // Record real preview navigation/open events into the path-usage config.
         // metaFilePath changes cover goHistory (directory jumps) and every openPath*
         // helper, since they all funnel through block.meta.file.
-        this.recordCurrentPathUsage();
-        this._pathUsageUnsub = globalStore.sub(this.metaFilePath, () => this.recordCurrentPathUsage());
+        // The *initial* record is gated per block (inline-tab re-mount would otherwise
+        // re-count the same path); the *subscription* record is ungated so real
+        // navigation always counts.
+        this.recordCurrentPathUsage(true);
+        this._pathUsageUnsub = globalStore.sub(this.metaFilePath, () => this.recordCurrentPathUsage(false));
     }
 
     markdownShowTocToggle() {
@@ -2632,8 +2635,13 @@ export class PreviewModel implements ViewModel {
      * The record must not be dropped when the stat fails: `statFile` swallows RPC errors
      * and resolves `undefined`, so the path falls back to `meta.file` and the kind falls
      * back to the `preview:pathisdir` meta flag.
+     *
+     * `initial` distinguishes the constructor-time record from later navigation records.
+     * `BlockInner` keys on the active inline tab (`block.tsx`), so switching tabs disposes
+     * and re-creates this model -> without a per-block gate the constructor would re-count
+     * a path the user never re-opened. Navigation (`initial === false`) stays ungated.
      */
-    private recordCurrentPathUsage(): void {
+    private recordCurrentPathUsage(initial: boolean): void {
         const blockMeta = globalStore.get(this.blockAtom)?.meta;
         const rawFile = blockMeta?.file;
         if (isBlank(rawFile)) {
@@ -2641,13 +2649,19 @@ export class PreviewModel implements ViewModel {
         }
         const connection = globalStore.get(this.connectionImmediate) ?? undefined;
         const metaIsDir = blockMeta?.[PreviewPathIsDirMetaKey] === true;
+        const blockId = this.blockId;
         fireAndForget(async () => {
             const finfo = await globalStore.get(this.statFile);
             const path = finfo?.path ?? rawFile;
             if (isNoiseUsagePath(path)) {
                 return;
             }
-            recordPathUsage(path, resolvePathUsageKind(finfo?.isdir, metaIsDir), connection);
+            const kind = resolvePathUsageKind(finfo?.isdir, metaIsDir);
+            if (initial) {
+                recordInitialPathUsage(blockId, path, kind, connection);
+            } else {
+                recordPathUsage(path, kind, connection);
+            }
         });
     }
 

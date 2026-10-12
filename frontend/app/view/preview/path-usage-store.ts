@@ -5,6 +5,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { isPreviewWindow } from "@/app/store/windowtype";
 import {
+    claimInitialPathRecord,
     recordPathUsageEntry,
     removePathUsageEntry,
     type PathUsageKind,
@@ -111,16 +112,45 @@ export function flushPathUsageWrites(): void {
     });
 }
 
-export function recordPathUsage(path: string, kind: PathUsageKind, connection?: string): void {
-    if (isPreviewWindow() || !isUsageConfigReady()) return;
+/**
+ * Record a usage event. Returns `true` only when this call buffered a change; `false` when it
+ * was a no-op (preview window, config not loaded yet, or the path was filtered as noise and
+ * already known). Callers may ignore the return value; `recordInitialPathUsage` relies on it.
+ */
+export function recordPathUsage(path: string, kind: PathUsageKind, connection?: string): boolean {
+    if (isPreviewWindow() || !isUsageConfigReady()) return false;
     ensureEchoSubscription();
     const current = currentEntries();
     const next = recordPathUsageEntry(current, { path, kind, connection, now: Date.now() });
     if (next === current) {
-        return;
+        return false;
     }
     pendingEntries = next;
     scheduleFlush();
+    return true;
+}
+
+// One short blockId string per preview block, for this session only. The set exists solely to
+// suppress the duplicate initial record a `BlockInner` re-mount (inline-tab switch) would cause.
+const initialRecordedBlockIds = new Set<string>();
+
+/**
+ * Record a preview block's *initial* path at most once per session per block.
+ * The per-block claim is only kept when the record actually went through, so an early
+ * mount before the config is ready does not permanently lose the path.
+ */
+export function recordInitialPathUsage(
+    blockId: string,
+    path: string,
+    kind: PathUsageKind,
+    connection?: string
+): void {
+    if (!claimInitialPathRecord(initialRecordedBlockIds, blockId)) {
+        return;
+    }
+    if (!recordPathUsage(path, kind, connection)) {
+        initialRecordedBlockIds.delete(blockId);
+    }
 }
 
 export function removePathUsage(selection: { path: string; connection?: string }): void {

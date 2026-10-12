@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+    claimInitialPathRecord,
     isNoiseUsagePath,
     normalizeUsagePath,
     PathUsageMaxEntries,
@@ -78,6 +79,31 @@ describe("isNoiseUsagePath", () => {
         expect(isNoiseUsagePath("")).toBe(true);
         expect(isNoiseUsagePath("   ")).toBe(true);
         expect(isNoiseUsagePath("/")).toBe(true);
+    });
+});
+
+describe("claimInitialPathRecord", () => {
+    it("claims a block id the first time only", () => {
+        const seen = new Set<string>();
+        expect(claimInitialPathRecord(seen, "block-1")).toBe(true);
+        expect(claimInitialPathRecord(seen, "block-1")).toBe(false);
+    });
+
+    it("keeps different block ids independent", () => {
+        const seen = new Set<string>();
+        expect(claimInitialPathRecord(seen, "block-1")).toBe(true);
+        expect(claimInitialPathRecord(seen, "block-2")).toBe(true);
+        expect(seen.has("block-1")).toBe(true);
+        expect(seen.has("block-2")).toBe(true);
+    });
+
+    it("always allows a blank or undefined block id", () => {
+        const seen = new Set<string>();
+        expect(claimInitialPathRecord(seen, "")).toBe(true);
+        expect(claimInitialPathRecord(seen, "")).toBe(true);
+        expect(claimInitialPathRecord(seen, "   ")).toBe(true);
+        expect(claimInitialPathRecord(seen, undefined)).toBe(true);
+        expect(seen.size).toBe(0);
     });
 });
 

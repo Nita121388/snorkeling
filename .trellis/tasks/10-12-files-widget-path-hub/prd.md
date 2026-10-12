@@ -35,6 +35,7 @@
 - 记录字段：路径、连接（本地/远程）、类型（dir/file）、累计次数、最后使用时间。
 - 类型判定优先级：stat 成功 → `finfo.isdir`；stat 失败（`statFile` 内部已 catch，返回 `undefined`）→ 回退到 block meta 的 `preview:pathisdir`（`createPreviewBlockForOpen` / `applyDirectoryNavigationMeta` 对目录会写 `true`），避免目录被误记为 file。
 - 记录不得因 stat 失败而整体丢失（`statFile` 失败时仍须用已知路径落一条记录）。
+- **构造时的初始记录必须按 block 幂等**：`BlockInner` 以 active inline tab 为 key，切换 tab 会 dispose 并重建 `PreviewModel`；初始记录需按 blockId 去重（每会话每 block 至多一次），否则单纯切换 inline tab 会虚增该路径的 `count`。真实导航（`metaFilePath` 订阅）保持无门槛，仍然记录。
 
 ### R2 常用路径自动学习
 - 按 `次数 × 时间衰减` 排序，产出"常用路径"列表。
@@ -88,6 +89,7 @@
 - [ ] AC12：`npm run test` 与 `npm run check:ts`（或等价 tsc 检查）通过。
 - [ ] AC13：在 Files Block 中对一个**目录**执行「Open in New Block」，该目录以 `kind="dir"` 进入 Recent；对一个**文件**（列表右键「Open Preview in New Block」或双击）执行后以 `kind="file"` 进入 Recent。
 - [ ] AC14：stat 失败（例如不可访问路径）时，路径仍被记录，不会整条丢失。
+- [ ] AC15：在 inline-tab 组内来回切换 tab（不重新打开路径）不会让该路径的 `count` 虚增；而真实导航（双击进入子目录 / Open in This Block）仍会记录。
 
 ## Constraints
 

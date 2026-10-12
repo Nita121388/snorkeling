@@ -120,6 +120,7 @@ selectRecentPaths(entries, excludeKeys, limit=12) // 按 lastAt desc，剔除 ex
 - `normalizeUsagePath(path)`、`usageEntryKey(path, connection)`
 - `isNoiseUsagePath(path)`
 - `recordPathUsageEntry(entries, change)`
+- `claimInitialPathRecord(seenBlockIds, blockId)`（初始记录去重门，见 §3.5）
 - `removePathUsageEntry(entries, path, connection)`
 - `pathUsageScore(entry, now)`
 - `selectFrequentPaths(entries, limit, now)`
@@ -140,7 +141,8 @@ export const pathUsageAtom = atom<PathUsageEntryType[]>(
   (get) => get(getSettingsKeyAtom("preview:path-usage")) ?? []
 );
 
-export function recordPathUsage(path, kind, connection?): void
+export function recordPathUsage(path, kind, connection?): boolean   // true = 实际缓冲了变更
+export function recordInitialPathUsage(blockId, path, kind, connection?): void   // 按 block 幂等
 export function removePathUsage(selection): void
 export function flushPathUsageWrites(): void   // 测试/卸载时立即落盘
 ```
@@ -149,6 +151,7 @@ export function flushPathUsageWrites(): void   // 测试/卸载时立即落盘
 - **累加缓冲**：读当前值优先取 `pendingEntries ?? globalStore.get(pathUsageAtom)`，避免节流窗口内的多次记录互相覆盖。
 - **回声收敛**：配置更新事件回来后 `pathUsageAtom` 与 `pendingEntries` 深度相等 → 清空 `pendingEntries`，避免抖动。
 - 非 Tauri/预览窗口（`getSettingsKeyAtom` 返回 NullAtom）下记录为 no-op，不影响启动。
+- `recordInitialPathUsage(blockId, ...)` 用模块级 `initialRecordedBlockIds` + `claimInitialPathRecord` 把“构造时的初始记录”限为每会话每 block 一次；仅当 `recordPathUsage` 返回 `true`（真的缓冲了变更）才保留 claim，避免早期挂载时 config 未就绪而永久丢失该路径。
 
 > 已知取舍（写入 PRD Non-Goals）：配置是 JSON 文件、每次落盘是整文件重写。P0 用 600ms 节流 + 200 条上限控制频率与体积；若后续路径量级增大，再迁移到 `pkg/filestore` 式的 SQLite store（P2）。
 
@@ -225,21 +228,27 @@ type NewFilesFloatingWindowProps = {
 ```ts
 private _pathUsageUnsub: (() => void) | null = null;
 
-private recordCurrentPathUsage(): void {
-    const rawFile = globalStore.get(this.blockAtom)?.meta?.file;
+private recordCurrentPathUsage(initial: boolean): void {
+    const blockMeta = globalStore.get(this.blockAtom)?.meta;
+    const rawFile = blockMeta?.file;
     if (isBlank(rawFile)) return;              // 只记录显式设置的路径，忽略 "~" 兜底
     const connection = globalStore.get(this.connectionImmediate) ?? undefined;
+    const metaIsDir = blockMeta?.[PreviewPathIsDirMetaKey] === true;
+    const blockId = this.blockId;
     fireAndForget(async () => {
         const finfo = await globalStore.get(this.statFile);
         const path = finfo?.path ?? rawFile;
         if (isNoiseUsagePath(path)) return;
-        recordPathUsage(path, finfo?.isdir ? "dir" : "file", connection);
+        const kind = resolvePathUsageKind(finfo?.isdir, metaIsDir);
+        if (initial) recordInitialPathUsage(blockId, path, kind, connection);
+        else recordPathUsage(path, kind, connection);
     });
 }
 ```
 
-- 构造函数尾部：先 `recordCurrentPathUsage()`（覆盖"新 block 打开文件"这一最常见路径），再
-  `this._pathUsageUnsub = globalStore.sub(this.metaFilePath, () => this.recordCurrentPathUsage())`（覆盖后续导航）。
+- 构造函数尾部：先 `this.recordCurrentPathUsage(true)`（覆盖“新 block 打开文件”这一最常见路径），再
+  `this._pathUsageUnsub = globalStore.sub(this.metaFilePath, () => this.recordCurrentPathUsage(false))`（覆盖后续导航）。
+- **初始 vs 导航**：`recordInitialPathUsage` 按 blockId 每会话只记录一次（`claimInitialPathRecord`，见 §3.1）。`BlockInner` 以 active inline tab 为 key（`block.tsx`），切换 tab 会 dispose + 重建 `PreviewModel`；若初始记录不去重，单切 tab 就会虚增 `count` 并把路径推入 Frequent。导航走的订阅分支不设门槛，真实双击/跳转始终会记录。
 - `dispose()` 里 `this._pathUsageUnsub?.()`。
 - 用 `statFile` 的 resolved path/isdir 决定 kind，避免依赖 `preview:pathisdir` 是否被写入（新建 block 打开目录时该 meta 不存在）。
 - 只在 `metaFilePath` 变化时触发，`refreshVersion` 重刷不会重复计数。
@@ -291,7 +300,7 @@ preview 导航/打开
 
 ## 6. Validation Plan
 
-- 单测：`path-usage.test.ts`（归一化/噪音/归约/衰减/上限/移除/去重）、`path-panel-model.test.ts`（分区/过滤/互斥去重/empty hint/键盘扁平化）。
+- 单测：`path-usage.test.ts`（归一化/噪音/归约/衰减/上限/移除/去重）、`path-panel-model.test.ts`（分区/过滤/互斥去重/empty hint/键盘扁平化）、`path-usage-store.test.ts`（初始记录按 block 幂等 / claim 在未落盘时释放 / `recordPathUsage` 返回值契约）、`preview-model-path-usage.test.ts`（构造函数走 `recordInitialPathUsage`，`meta.file` 变化走无门槛 `recordPathUsage`）。
 - 类型：`npx tsc --noEmit`（等价 `task check:ts`）。
 - 生成物一致性：`node scripts/run-task.mjs generate` 后 `git diff --stat` 只应出现预期生成文件。
 - 全量：`npm run test`。
