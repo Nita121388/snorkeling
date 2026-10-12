@@ -29,7 +29,12 @@
 ### R1 记录真实路径使用
 - 用户在 preview 中打开文件或导航到目录时，记录该路径。
 - 记录需覆盖：打开文件、打开目录、在目录视图内跳转、从面板选择路径。
+- **记录必须覆盖 Files Block 目录树/列表右键菜单里的「Open in This Block」与「Open in New Block / Open Preview in New Block」**（用户明确提出的来源）。
+  - 「Open in This Block」走 `PreviewModel.goHistory()` 改同一 block 的 `meta.file` → 由 `metaFilePath` 订阅记录。
+  - 「Open in New Block」经 `openPathInNewBlockSmart()` 新建 preview block（`createPreviewBlockForOpen` / `openPathInPreviewBlockAsTab` 在创建时就写入 `meta.file`）→ 由新 block 的 `PreviewModel` 构造函数首记 + 订阅记录。
 - 记录字段：路径、连接（本地/远程）、类型（dir/file）、累计次数、最后使用时间。
+- 类型判定优先级：stat 成功 → `finfo.isdir`；stat 失败（`statFile` 内部已 catch，返回 `undefined`）→ 回退到 block meta 的 `preview:pathisdir`（`createPreviewBlockForOpen` / `applyDirectoryNavigationMeta` 对目录会写 `true`），避免目录被误记为 file。
+- 记录不得因 stat 失败而整体丢失（`statFile` 失败时仍须用已知路径落一条记录）。
 
 ### R2 常用路径自动学习
 - 按 `次数 × 时间衰减` 排序，产出"常用路径"列表。
@@ -81,6 +86,8 @@
 - [ ] AC10：`/tmp`、`node_modules` 下的路径不进入面板列表。
 - [ ] AC11：新增纯逻辑单测通过（归一化/噪音/记录/衰减排序/去重/上限淘汰/移除）。
 - [ ] AC12：`npm run test` 与 `npm run check:ts`（或等价 tsc 检查）通过。
+- [ ] AC13：在 Files Block 中对一个**目录**执行「Open in New Block」，该目录以 `kind="dir"` 进入 Recent；对一个**文件**（列表右键「Open Preview in New Block」或双击）执行后以 `kind="file"` 进入 Recent。
+- [ ] AC14：stat 失败（例如不可访问路径）时，路径仍被记录，不会整条丢失。
 
 ## Constraints
 

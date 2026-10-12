@@ -90,6 +90,21 @@ export function isNoiseUsagePath(path: string): boolean {
     return false;
 }
 
+/**
+ * Decide whether a recorded path is a directory.
+ *
+ * `statIsDir` comes from a successful stat; when the stat failed (`undefined`) fall back to
+ * the block meta `preview:pathisdir`, which the open helpers set for directories
+ * (`createPreviewBlockForOpen`, `applyDirectoryNavigationMeta`) so a directory opened via
+ * "Open in New Block" is not mis-recorded as a file.
+ */
+export function resolvePathUsageKind(statIsDir?: boolean, metaIsDir?: boolean): PathUsageKind {
+    if (statIsDir != null) {
+        return statIsDir ? "dir" : "file";
+    }
+    return metaIsDir === true ? "dir" : "file";
+}
+
 export type RecordPathUsageChange = {
     path: string;
     kind: PathUsageKind;

@@ -43,7 +43,7 @@ import type * as MonacoTypes from "monaco-editor";
 import { createRef } from "react";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
-import { isNoiseUsagePath } from "./path-usage";
+import { isNoiseUsagePath, resolvePathUsageKind } from "./path-usage";
 import { recordPathUsage } from "./path-usage-store";
 import { runMarkdownExport, availableExportProviders } from "./plugins/export/export-runner";
 import { isMarkdownFile } from "./plugins/export/pdf-export";
@@ -2618,20 +2618,36 @@ export class PreviewModel implements ViewModel {
         return globalStore.get(this.pinnedDirs).some((p) => p.path === dirPath);
     }
 
-    /** Record the currently open preview path (if explicitly set) into path usage. */
+    /**
+     * Record the currently open preview path (if explicitly set) into path usage.
+     *
+     * Coverage — every real open/navigation funnels through `block.meta.file`, so this
+     * one recording point covers all of them without double-counting:
+     * - preview opens / in-preview navigation (`goHistory`, `openPathInCurrentBlock`)
+     * - Files Block tree/list "Open in This Block" -> `goHistory` on the same block
+     * - "Open in New Block" / "Open Preview in New Block" -> new preview block whose
+     *   `PreviewModel` constructor records its initial `meta.file`
+     * - the Files panel's own `onSelect` (creates a preview block with `meta.file`)
+     *
+     * The record must not be dropped when the stat fails: `statFile` swallows RPC errors
+     * and resolves `undefined`, so the path falls back to `meta.file` and the kind falls
+     * back to the `preview:pathisdir` meta flag.
+     */
     private recordCurrentPathUsage(): void {
-        const rawFile = globalStore.get(this.blockAtom)?.meta?.file;
+        const blockMeta = globalStore.get(this.blockAtom)?.meta;
+        const rawFile = blockMeta?.file;
         if (isBlank(rawFile)) {
             return;
         }
         const connection = globalStore.get(this.connectionImmediate) ?? undefined;
+        const metaIsDir = blockMeta?.[PreviewPathIsDirMetaKey] === true;
         fireAndForget(async () => {
             const finfo = await globalStore.get(this.statFile);
             const path = finfo?.path ?? rawFile;
             if (isNoiseUsagePath(path)) {
                 return;
             }
-            recordPathUsage(path, finfo?.isdir ? "dir" : "file", connection);
+            recordPathUsage(path, resolvePathUsageKind(finfo?.isdir, metaIsDir), connection);
         });
     }
 

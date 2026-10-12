@@ -8,6 +8,7 @@ import {
     pathUsageScore,
     recordPathUsageEntry,
     removePathUsageEntry,
+    resolvePathUsageKind,
     selectFrequentPaths,
     selectRecentPaths,
     usageEntryKey,
@@ -176,6 +177,27 @@ describe("pathUsageScore", () => {
         const recent = pathUsageScore(entry("/recent", 3, now), now);
         const older = pathUsageScore(entry("/older", 3, now - 7 * DAY), now);
         expect(recent).toBeGreaterThan(older);
+    });
+});
+
+describe("resolvePathUsageKind", () => {
+    it("uses the stat result when the stat succeeded", () => {
+        expect(resolvePathUsageKind(true, undefined)).toBe("dir");
+        expect(resolvePathUsageKind(false, undefined)).toBe("file");
+    });
+
+    it("prefers the stat result over the meta hint when both are present", () => {
+        expect(resolvePathUsageKind(true, false)).toBe("dir");
+        expect(resolvePathUsageKind(false, true)).toBe("file");
+    });
+
+    it("falls back to meta preview:pathisdir when the stat failed", () => {
+        expect(resolvePathUsageKind(undefined, true)).toBe("dir");
+        expect(resolvePathUsageKind(undefined, false)).toBe("file");
+    });
+
+    it("defaults to file when neither the stat nor the meta hint is known", () => {
+        expect(resolvePathUsageKind(undefined, undefined)).toBe("file");
     });
 });
 
