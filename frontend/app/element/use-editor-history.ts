@@ -23,7 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { StructuralOp } from "./markdown-transform/structural-ops";
+import type { StructuralOp } from "@md/core/transform/structural-ops";
 
 export const MAX_HISTORY = 200;
 

@@ -1,0 +1,21 @@
+{
+    "//": "md-core 自持 tsconfig：只覆盖 packages/md-core/src，不继承宿主的 `@/*` 别名 —— 包内禁止宿主路径。",
+    "//note": "宿主的全局类型（frontend/types/custom.d.ts 里的 MarkdownResolveOpts）不在此 include 内；仓库级 npx tsc --noEmit 走根 tsconfig，把包和宿主放在同一个 program 里检查。",
+    "include": ["src/**/*"],
+    "compilerOptions": {
+        "target": "es6",
+        "module": "es2020",
+        "jsx": "preserve",
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "moduleResolution": "bundler",
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "lib": ["dom", "dom.iterable", "es6"],
+        "allowJs": true,
+        "strict": false,
+        "noEmit": true
+    }
+}

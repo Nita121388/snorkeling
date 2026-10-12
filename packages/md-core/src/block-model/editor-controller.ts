@@ -23,19 +23,19 @@
 import {
     transformBlockType,
     type BlockKind,
-} from "../markdown-transform/block-type";
-import { applyInlineStyle, type InlineStyleId } from "../markdown-transform/inline-style";
-import { setCodeBlockLanguage } from "../markdown-transform/code-block";
+} from "../transform/block-type";
+import { applyInlineStyle, type InlineStyleId } from "../transform/inline-style";
+import { setCodeBlockLanguage } from "../transform/code-block";
 import {
     edgeBlankCounts,
     makeDeleteOp,
     type LineRange,
     type StructuralOp,
-} from "../markdown-transform/structural-ops";
-import { deleteBlockRange, moveBlockRange, spliceInsertBlock } from "../markdown-transform/block-range";
-import { toggleTaskCheckboxAtLine } from "../markdown-task-toggle";
-import { renumberOrderedListBlockAtLine } from "../markdown-ordered-list";
-import type { Block, TreeBlockKind } from "../markdown-transform/tree";
+} from "../transform/structural-ops";
+import { deleteBlockRange, moveBlockRange, spliceInsertBlock } from "../transform/block-range";
+import { toggleTaskCheckboxAtLine } from "../shared/markdown-task-toggle";
+import { renumberOrderedListBlockAtLine } from "../shared/markdown-ordered-list";
+import type { Block, TreeBlockKind } from "../transform/tree";
 
 /** 一个「对某块模型的编辑意图」。所有坐标取自 Block（0-based startLine/endLine）。
  *

@@ -17,7 +17,7 @@ import {
     parseMarkdownWikiLink,
     safeDecodeURIComponent,
     type MarkdownWikiLink,
-} from "@/app/element/markdown-core/markdown-refs";
+} from "@md/core/core/markdown-refs";
 import {
     PreviewDefaultDirectoryDisplaySettingKey,
     PreviewDirectoryDisplayMetaKey,

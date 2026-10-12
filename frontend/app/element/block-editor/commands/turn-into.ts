@@ -8,7 +8,7 @@
  * single commit funnel.
  */
 
-import type { BlockKind } from "../../markdown-transform/block-type";
+import type { BlockKind } from "@md/core/transform/block-type";
 import type { BlockActionSpec, BlockCtx } from "../registry";
 
 const LIST_KINDS: ReadonlySet<BlockKind> = new Set(["bulleted", "numbered", "todo"]);

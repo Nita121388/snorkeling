@@ -13,7 +13,7 @@
  *   - everything here is plain data + closures; no React, no DOM
  */
 
-import { transformBlockType, type BlockKind } from "../markdown-transform/block-type";
+import { transformBlockType, type BlockKind } from "@md/core/transform/block-type";
 
 /** Minimal context describing "what block is this" to registry items. */
 export interface BlockCtx {

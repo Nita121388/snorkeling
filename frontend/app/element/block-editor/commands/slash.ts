@@ -8,7 +8,7 @@
  * there; this file is registration glue only.
  */
 
-import { transformBlockType, type BlockKind } from "../../markdown-transform/block-type";
+import { transformBlockType, type BlockKind } from "@md/core/transform/block-type";
 import type { BlockCtx, OpenPickerResult, SlashCommandSpec } from "../registry";
 
 function blockTransformCommand(

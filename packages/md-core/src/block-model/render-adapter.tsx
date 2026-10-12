@@ -19,7 +19,7 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Block } from "../markdown-transform/tree";
+import type { Block } from "../transform/tree";
 
 /**
  * 把单个 Block 渲染为一个元素。block.text 是其源码文本（可含多行，如代码块/表格）。

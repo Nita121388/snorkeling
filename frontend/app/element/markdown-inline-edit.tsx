@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
-import { rewriteDraftFirstLine } from "@/app/element/markdown-transform/block-type";
+import { rewriteDraftFirstLine } from "@md/core/transform/block-type";
 import { inlineEditingActiveAtom } from "@/app/view/preview/preview-shared-draft";
 import { globalStore } from "@/store/jotaiStore";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { editorController } from "./block-model/editor-controller-instance";
+import { editorController } from "@md/core/block-model/editor-controller-instance";
 import type { EditorHistoryOp } from "./use-editor-history";
-import type { Block } from "./markdown-transform/tree";
+import type { Block } from "@md/core/transform/tree";
 import type { CodeEditorHandle } from "./content-editable-code-editor";
 import ContentEditableCodeEditor from "./content-editable-code-editor";
 import { WysiwygEditor, type WysiwygEditorHandle } from "./wysiwyg-editor";
@@ -20,7 +20,7 @@ import {
     replaceSourceRange,
     spliceInsertBlock,
     type MoveBlockResult,
-} from "./markdown-transform/block-range";
+} from "@md/core/transform/block-range";
 
 // ---------------------------------------------------------------------------
 // Re-export（md-core 抽离 P0 · C1）：4 个纯块区间函数已下沉到

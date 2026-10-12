@@ -12,7 +12,7 @@ import {
     groupFirstPickableIndex,
     type EmojiCatalog,
     type EmojiEntry,
-} from "../../markdown-transform/emoji";
+} from "@md/core/transform/emoji";
 
 export type EmojiPickerMode = "inline" | "document";
 

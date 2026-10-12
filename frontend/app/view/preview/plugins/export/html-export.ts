@@ -6,9 +6,9 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
 import rehypeHighlight from "rehype-highlight";
-import { makeRemarkPlugins } from "@/app/element/remark";
-import { transformBlocks } from "@/app/element/markdown-util";
-import { findFrontmatterSpan, parseFrontmatterProperties } from "@/app/element/markdown-transform/doc-meta";
+import { makeRemarkPlugins } from "@md/core/remark";
+import { transformBlocks } from "@md/core/shared/markdown-util";
+import { findFrontmatterSpan, parseFrontmatterProperties } from "@md/core/transform/doc-meta";
 import type { PreviewMatchContext } from "@/app/view/preview/preview-plugin-registry";
 import type { ExportOptions, SerializedExport } from "./export-provider";
 

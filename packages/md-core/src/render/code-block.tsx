@@ -3,8 +3,7 @@
 
 import { useState } from "react";
 import clsx from "clsx";
-import { CopyButton } from "@/app/element/copybutton";
-import { IconButton } from "@/app/element/iconbutton";
+import { getMdHost } from "../core/host";
 import { sourceLineAttrs } from "./shared";
 
 export type CodeBlockProps = {
@@ -86,6 +85,10 @@ export const CodeBlock = ({
             return;
         }
     };
+
+    // 宿主 UI 原语经 adapter 取用（md-core 物理抽包 10-12 · R4）。默认实现 = 延迟 import 预热，
+    // 模块求值期就把真实宿主组件写进缓存，所以这里的引用在首次 render 前已是宿主的原件。
+    const { CopyButton, IconButton } = getMdHost().components;
 
     return (
         <pre

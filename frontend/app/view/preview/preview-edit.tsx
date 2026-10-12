@@ -27,7 +27,7 @@ import {
     renumberOrderedListsInSelection,
     type OrderedListLineRange,
     type OrderedListMoveState,
-} from "@/app/element/markdown-ordered-list";
+} from "@md/core/shared/markdown-ordered-list";
 import { CenteredDiv } from "@/app/element/quickelems";
 import { Search, useSearch } from "@/app/element/search";
 import {

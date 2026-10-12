@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { buildBlockTree } from "../markdown-transform/tree";
+import { buildBlockTree } from "../transform/tree";
 import { BlockTreeRenderer } from "./render-adapter";
 
 function renderMarkdown(src: string): string {

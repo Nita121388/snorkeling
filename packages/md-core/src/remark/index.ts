@@ -4,10 +4,11 @@
 import type { Plugin } from "unified";
 import type { Root } from "mdast";
 import remarkGfm from "remark-gfm";
+import { getMdHost } from "../core/host";
+import type { MarkdownContentBlockType } from "../shared/markdown-util";
+import remarkMermaidToTag from "../shared/mermaid-to-tag";
 import remarkCalloutAlert from "./callout-alert";
-import remarkMermaidToTag from "@/app/element/remark-mermaid-to-tag";
-import { createContentBlockPlugin } from "@/app/element/markdown-contentblock-plugin";
-import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
+import { createContentBlockPlugin } from "./contentblock";
 import remarkSoftBreaks from "./soft-breaks";
 import remarkMarkdownFileReferences from "./markdown-file-refs";
 import remarkBlankLineSpacers from "./blank-line-spacers";
@@ -60,6 +61,8 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
         ? null
         : { ...DEFAULT_BLANK_SPACER, ...(opts.blankSpacer ?? {}) };
     const enableBlankSpacers = opts.enableBlankSpacers !== false && !blankSpacerDisabled;
+    // 内容块占位符插件：宿主可经 adapter 换一套语法；未注入时用包内纯实现（md-core 10-12）。
+    const contentBlockPlugin = getMdHost().contentBlockPlugin ?? createContentBlockPlugin;
     return [
         remarkMermaidToTag,
         remarkMarkdownFileReferences,
@@ -75,6 +78,6 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
         // 都已完成），否则 id 会落到一个随后被替换掉的节点上。放在 content block 之前：
         // 后者只动 paragraph 的 inline children，不会替换 paragraph 本身。
         remarkBlockIds,
-        [createContentBlockPlugin, { blocks: opts.contentBlocksMap }],
+        [contentBlockPlugin, { blocks: opts.contentBlocksMap }],
     ].filter(Boolean);
 }

@@ -82,11 +82,11 @@ import {
     normalizeOrderedListNumbering,
     renumberOrderedListBlockAtLine,
     setOrderedListMarkerNumberAtLine,
-} from "@/app/element/markdown-ordered-list";
+} from "@md/core/shared/markdown-ordered-list";
 import { MarkdownOutline, type MarkdownOutlineItem } from "@/app/element/markdown-outline";
-import { toggleTaskCheckboxAtLine } from "@/app/element/markdown-task-toggle";
-import { applyTypingPatternAtLine, detectBlockKind, type BlockKind } from "@/app/element/markdown-transform/block-type";
-import { getFrontmatterEmoji, setFrontmatterEmoji } from "@/app/element/markdown-transform/doc-meta";
+import { toggleTaskCheckboxAtLine } from "@md/core/shared/markdown-task-toggle";
+import { applyTypingPatternAtLine, detectBlockKind, type BlockKind } from "@md/core/transform/block-type";
+import { getFrontmatterEmoji, setFrontmatterEmoji } from "@md/core/transform/doc-meta";
 import {
     buildEmojiPickerItems,
     emojiPickerEntries,
@@ -96,8 +96,8 @@ import {
     recordRecentEmoji,
     type EmojiCatalog,
     type EmojiEntry,
-} from "@/app/element/markdown-transform/emoji";
-import { applyInlineStyle, hasInlineStyle, type InlineStyleId } from "@/app/element/markdown-transform/inline-style";
+} from "@md/core/transform/emoji";
+import { applyInlineStyle, hasInlineStyle, type InlineStyleId } from "@md/core/transform/inline-style";
 import {
     caretToTableCoord,
     deleteTableColumn,
@@ -106,17 +106,17 @@ import {
     insertTableColumn,
     insertTableRow,
     setColumnAlign,
-} from "@/app/element/markdown-transform/table";
-import { detectInlineTrigger } from "@/app/element/markdown-transform/triggers";
-import { MarkdownContentBlockType, transformBlocks } from "@/app/element/markdown-util";
-import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip } from "./markdown-render";
+} from "@md/core/transform/table";
+import { detectInlineTrigger } from "@md/core/transform/triggers";
+import { MarkdownContentBlockType, transformBlocks } from "@md/core/shared/markdown-util";
+import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip } from "@md/core/render";
 import { useEditorHistory, type EditorHistoryOp } from "./use-editor-history";
-import { editorController } from "./block-model/editor-controller-instance";
-import { makeBlockRef } from "./block-model/editor-controller";
-import type { StructuralOp } from "./markdown-transform/structural-ops";
-import type { Block } from "./markdown-transform/tree";
-import { makeRemarkPlugins } from "@/app/element/remark";
-import remarkFrontmatterToWaveBlock from "@/app/element/remark/frontmatter-to-waveblock";
+import { editorController } from "@md/core/block-model/editor-controller-instance";
+import { makeBlockRef } from "@md/core/block-model/editor-controller";
+import type { StructuralOp } from "@md/core/transform/structural-ops";
+import type { Block } from "@md/core/transform/tree";
+import { makeRemarkPlugins } from "@md/core/remark";
+import remarkFrontmatterToWaveBlock from "@md/core/remark/frontmatter-to-waveblock";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
 import { arrayToBase64, boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
@@ -142,7 +142,7 @@ import ReactMarkdown, { Components, defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
-import { FilePathHrefProtocols, makeMarkdownSanitizeSchema } from "@/app/element/markdown-sanitize-schema";
+import { FilePathHrefProtocols, makeMarkdownSanitizeSchema } from "@md/core/shared/markdown-sanitize-schema";
 import rehypeSlug from "rehype-slug";
 import { ContextMenuModel } from "../store/contextmenu";
 
@@ -151,7 +151,7 @@ import { TabRpcClient } from "../store/wshrpcutil";
 import { normalizeLinkedFilePath } from "../view/preview/file-link-navigation";
 import "./markdown.scss";
 import { buildCopyContextText } from "./selection-copy-overlay";
-export { linkifyMarkdownFileReferences } from "@/app/element/remark";
+export { linkifyMarkdownFileReferences } from "@md/core/remark";
 
 // Stable no-op atom used when callers omit `textAtom` — keeps the `useAtomValue(loadable(...))`
 // call unconditional so the Rules of Hooks remain satisfied below.
@@ -5162,4 +5162,4 @@ export { Markdown };
 
 // P0 拆分后这些共享符号从 markdown-render 重新导出，保持对外 API 不变
 // （既有测试从 "./markdown" import）。
-export { shouldOpenMarkdownLinkInNewBlock, splitOrderedListItemChildren } from "./markdown-render";
+export { shouldOpenMarkdownLinkInNewBlock, splitOrderedListItemChildren } from "@md/core/render";

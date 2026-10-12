@@ -12,7 +12,7 @@
 // - 无 banner 属性 → 原样 MarkdownPreview，零改动回退。
 // - 优先级低于 md-properties 插件，确保属性卡片优先显示。
 
-import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
+import type { MarkdownContentBlockType } from "@md/core/shared/markdown-util";
 import { loadable } from "jotai/utils";
 import { globalStore } from "@/app/store/jotaiStore";
 import { useAtomValue } from "jotai";
@@ -22,7 +22,7 @@ import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
 import { parseFrontmatterBlock } from "../md-properties/frontmatter-block";
 import { parseBannerFromFrontmatter, type BannerBlock } from "./banner-block";
-import { getFrontmatterEmoji } from "@/app/element/markdown-transform/doc-meta";
+import { getFrontmatterEmoji } from "@md/core/transform/doc-meta";
 import { BannerRenderer } from "./banner-renderer";
 import { EmojiBadge } from "./emoji-badge";
 import { TitleArea } from "./title-area";

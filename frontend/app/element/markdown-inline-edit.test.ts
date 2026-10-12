@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from "vitest";
-import { editorController } from "./block-model/editor-controller-instance";
-import type { Block } from "./markdown-transform/tree";
+import { editorController } from "@md/core/block-model/editor-controller-instance";
+import type { Block } from "@md/core/transform/tree";
 import {
     commitPlaceholderBlock,
     deleteBlockRange,

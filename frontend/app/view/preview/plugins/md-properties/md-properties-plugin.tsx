@@ -16,8 +16,8 @@
 //   顶部 Save / Cmd+S 落盘，支持 Revert）。
 // - 无 frontmatter / 解析失败 → 原样 MarkdownPreview，零改动回退。
 
-import { reorderFrontmatterProperties } from "@/app/element/markdown-transform/doc-meta";
-import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
+import { reorderFrontmatterProperties } from "@md/core/transform/doc-meta";
+import type { MarkdownContentBlockType } from "@md/core/shared/markdown-util";
 import { globalStore } from "@/app/store/jotaiStore";
 import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
 import type { PreviewModel } from "@/app/view/preview/preview-model";

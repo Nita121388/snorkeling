@@ -25,11 +25,11 @@ import {
     setTableCellText,
     tableRenderedRowCount,
     type TableAlign,
-} from "../../markdown-transform/table";
-import { tableCellDomToMarkdown } from "../../markdown-transform/table-cell";
+} from "@md/core/transform/table";
+import { tableCellDomToMarkdown } from "@md/core/transform/table-cell";
 // Strip react-markdown's `node` object before spreading onto real DOM elements: React would
 // serialize it as `node="[object Object]"` (and the clone-based WYSIWYG seed would inherit it).
-import { domProps } from "../../markdown-render/shared";
+import { domProps } from "@md/core/render/shared";
 import { isBlockEditorFeatureEnabled } from "../flags";
 
 // ---------------------------------------------------------------------------

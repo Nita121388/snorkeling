@@ -3,7 +3,7 @@
 
 import type { Root } from "mdast";
 import type { Plugin } from "unified";
-import { getMdHost } from "../markdown-core/host";
+import { getMdHost } from "../core/host";
 
 /**
  * Walks the mdast and turns bare text nodes that look like file references

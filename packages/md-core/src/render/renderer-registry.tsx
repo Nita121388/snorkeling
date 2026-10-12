@@ -16,10 +16,9 @@
  */
 
 import type { Components } from "react-markdown";
-import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
-import { TableBlock } from "@/app/element/block-editor/components/table-block";
-import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
-import { setCodeBlockLanguage } from "@/app/element/markdown-transform/code-block";
+import { getMdHost } from "../core/host";
+import type { MarkdownContentBlockType } from "../shared/markdown-util";
+import { setCodeBlockLanguage } from "../transform/code-block";
 import { CalloutAlert } from "./calloutalert";
 import { CollapsibleHeading } from "./heading";
 import { MarkdownListItem, MarkdownOrderedList, MarkdownTaskCheckbox, MarkdownUnorderedList } from "./list";
@@ -151,7 +150,8 @@ export function registerBuiltinRenderers(): void {
         render: (props: React.HTMLAttributes<HTMLTableElement>, ctx) => {
             const collapsed = ctx.collapsedTables.has(String(getSourceLine(props)));
             const toggle = () => ctx.toggleTableCollapse(String(getSourceLine(props)));
-            if (isBlockEditorFeatureEnabled("tablecell")) {
+            if (getMdHost().features.isBlockEditorFeatureEnabled("tablecell")) {
+                const TableBlock = getMdHost().components.TableBlock;
                 return <TableBlock props={props} collapsed={collapsed} onToggle={toggle} />;
             }
             return <CollapsibleTable props={props} collapsed={collapsed} onToggle={toggle} />;
@@ -219,7 +219,9 @@ export function registerBuiltinRenderers(): void {
                     }
                     language={lang}
                     onApplyLanguage={
-                        ctx.onInlineEditCommit != null && srcLine != null && isBlockEditorFeatureEnabled("codelang")
+                        ctx.onInlineEditCommit != null &&
+                            srcLine != null &&
+                            getMdHost().features.isBlockEditorFeatureEnabled("codelang")
                             ? (nextLang) => {
                                   const next = setCodeBlockLanguage(ctx.text, srcLine, nextLang);
                                   if (next != null) {

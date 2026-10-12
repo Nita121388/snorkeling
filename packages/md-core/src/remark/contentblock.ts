@@ -1,11 +1,18 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+/**
+ * `!!!type[key]!!!` 内容块占位符 → `waveblock` 节点的 remark 插件（md-core 物理抽包 10-12）。
+ *
+ * 本模块只依赖 mdast / unist-util-visit 与纯类型，随包搬入 `@md/core/remark/contentblock`；
+ * 宿主仍可通过 `MdHostAdapter.contentBlockPlugin` 覆盖占位符的构造方式。
+ */
+
 import type { Paragraph, Root, Text } from "mdast";
 import { visit } from "unist-util-visit";
-import { type MarkdownContentBlockType } from "./markdown-util";
+import { type MarkdownContentBlockType } from "../shared/markdown-util";
 
-interface ContentBlockPluginOptions {
+export interface ContentBlockPluginOptions {
     blocks: Map<string, MarkdownContentBlockType>;
 }
 

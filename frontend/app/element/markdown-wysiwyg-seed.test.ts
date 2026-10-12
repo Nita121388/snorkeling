@@ -18,7 +18,7 @@ import {
     isEmptyBlockShellDraft,
     isEmptyQuoteShellDraft,
 } from "./markdown-inline-edit";
-import { serializeBlockDomToMarkdown } from "./markdown-transform/dom-to-markdown";
+import { serializeBlockDomToMarkdown } from "@md/core/transform/dom-to-markdown";
 
 function mount(html: string): HTMLElement {
     const host = document.createElement("div");

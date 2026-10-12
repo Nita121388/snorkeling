@@ -24,8 +24,8 @@ import {
     detectClosedInlinePair,
     type BlockKind,
     type ClosedInlinePair,
-} from "./markdown-transform/block-type";
-import { serializeBlockDomToMarkdown, type WysiwygBlockKind } from "./markdown-transform/dom-to-markdown";
+} from "@md/core/transform/block-type";
+import { serializeBlockDomToMarkdown, type WysiwygBlockKind } from "@md/core/transform/dom-to-markdown";
 import {
     focusByAnchor,
     indentListItem,
@@ -33,7 +33,7 @@ import {
     normalizeListDom,
     outdentListItem,
     plantCaretAnchor,
-} from "./markdown-transform/list-dom";
+} from "@md/core/transform/list-dom";
 
 // ---------------------------------------------------------------------------
 // Public handle — consumed by markdown.tsx via ref.

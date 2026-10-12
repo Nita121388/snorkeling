@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getMdHost } from "../markdown-core/host";
+import { getMdHost } from "../core/host";
 
 // MarkdownResolveOpts is a global type (frontend/types/custom.d.ts).
 

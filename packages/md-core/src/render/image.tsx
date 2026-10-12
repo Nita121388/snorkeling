@@ -11,9 +11,9 @@ import {
     replaceImageSrcInLine,
     updateImageAltInLine,
     updateImageSizeInLine,
-} from "@/app/element/markdown-util";
-import { cn } from "../markdown-core/classnames";
-import { getMdHost } from "../markdown-core/host";
+} from "../shared/markdown-util";
+import { cn } from "../core/classnames";
+import { getMdHost } from "../core/host";
 import { domProps } from "./shared";
 
 // MarkdownResolveOpts is a global type (frontend/types/custom.d.ts).

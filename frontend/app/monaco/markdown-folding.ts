@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { getMarkdownOrderedListFoldingRanges } from "@/app/element/markdown-ordered-list";
+import { getMarkdownOrderedListFoldingRanges } from "@md/core/shared/markdown-ordered-list";
 import type * as MonacoTypes from "monaco-editor";
 
 export type MarkdownHeading = {

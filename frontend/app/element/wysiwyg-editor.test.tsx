@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { convertClosedInlineAtCaret } from "./wysiwyg-editor";
-import { detectClosedInlinePair, type ClosedInlinePair } from "./markdown-transform/block-type";
+import { detectClosedInlinePair, type ClosedInlinePair } from "@md/core/transform/block-type";
 
 function makeAnchor(text: string): { anchor: Text; parent: HTMLElement } {
     const parent = document.createElement("div");

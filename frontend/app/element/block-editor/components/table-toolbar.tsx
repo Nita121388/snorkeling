@@ -8,7 +8,7 @@
  */
 
 import { createPortal } from "react-dom";
-import type { TableAlign } from "../../markdown-transform/table";
+import type { TableAlign } from "@md/core/transform/table";
 
 export type TableOp =
     | { type: "insert-row" }

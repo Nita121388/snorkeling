@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Markdown } from "@/element/markdown";
-import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
+import type { MarkdownContentBlockType } from "@md/core/shared/markdown-util";
 import { getBlockComponentModel, getOverrideConfigAtom, getSettingsKeyAtom } from "@/store/global";
 import { fireAndForget } from "@/util/util";
 import { globalStore } from "@/store/jotaiStore";

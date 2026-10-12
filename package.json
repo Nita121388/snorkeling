@@ -156,6 +156,7 @@
     "packageManager": "npm@10.9.2",
     "workspaces": [
         "docs",
-        "tsunami/frontend"
+        "tsunami/frontend",
+        "packages/md-core"
     ]
 }

@@ -14,7 +14,7 @@ import {
     detectBlockKind,
     transformBlockType,
     type BlockKind,
-} from "../markdown-transform/block-type";
+} from "@md/core/transform/block-type";
 import type { BlockCtx, SlashCommandSpec, SlashCommandRunResult, TextReplaceResult } from "./registry";
 import { normalizeSlashCommandResult } from "./registry";
 

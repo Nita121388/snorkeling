@@ -8,7 +8,7 @@
 //   - 正文没有 H1 时，回退用文件名（去掉扩展名）当标题。
 // 供 .md 只读预览（md-properties / banner 等插件）复用，避免各自复制标题判定逻辑。
 
-import { findFrontmatterSpan } from "@/app/element/markdown-transform/doc-meta";
+import { findFrontmatterSpan } from "@md/core/transform/doc-meta";
 import { basename } from "@/util/util";
 
 /**

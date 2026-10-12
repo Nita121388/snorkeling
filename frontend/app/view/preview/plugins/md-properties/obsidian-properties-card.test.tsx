@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
+import type { MarkdownContentBlockType } from "@md/core/shared/markdown-util";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {

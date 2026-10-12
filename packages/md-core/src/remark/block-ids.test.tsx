@@ -14,8 +14,8 @@ import rehypeSanitize from "rehype-sanitize";
 import { remark } from "remark";
 import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vitest";
-import { makeMarkdownSanitizeSchema } from "../markdown-sanitize-schema";
-import { buildMarkdownComponents } from "../markdown-render/renderer-registry";
+import { makeMarkdownSanitizeSchema } from "../shared/markdown-sanitize-schema";
+import { buildMarkdownComponents } from "../render/renderer-registry";
 import remarkBlockIds, { blockIdForNode, collectBlockText, deriveBlockId, fnv1a } from "./block-ids";
 import { makeRemarkPlugins } from "./index";
 

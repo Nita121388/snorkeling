@@ -2,87 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Block-editor feature switches (方案 06 §5). Everything defaults ON; a user (or future
- * settings UI) can flip a capability off via localStorage "snorkeling:block-editor:*" =
- * "off". The master switch `blockeditor` gates every sub-feature, so turning it off
- * returns the Note surface to the pre-block-editor baseline behavior.
+ * 宿主侧 re-export shim（md-core 物理抽包 10-12）。
  *
- * NOTE (deviation from plan): these are localStorage-backed rather than Wave settings
- * keys — adding a real `markdown:*` settings key requires regenerating gotypes.d.ts from
- * the Go schema, so the buttoned-up settings panel lands with M6's polish pass. The
- * gate call sites are intentionally a single function, so swapping the store later is a
- * one-file change.
+ * flag 的实现是**纯逻辑**（零 import），已随包搬到 `@md/core/core/flags` —— 渲染层需要一个
+ * 同步的 flag 读取点，同步能力无法用「延迟 import() 兜底」实现，只能让纯实现随包走。
+ *
+ * 本文件保留原路径 + 原导出名，是为了让宿主的 ~10 个调用点
+ * （`markdown.tsx` / `markdown-inline-edit.tsx` / `block-editor/components/table-block.tsx` /
+ * `block-editor/flags.test.ts`）**一个字节都不用改**。
+ *
+ * 宿主若要换 flag 的存储后端，覆盖 `MdHostAdapter.features`（见 `@md/core/core/host`）；
+ * 宿主自身的 `isBlockEditorFeatureEnabled` 调用点仍走本模块。
  */
 
-export type BlockEditorFeature =
-    | "blockeditor" // master switch
-    | "turninto" // grip menu "Turn into ▸"
-    | "slash" // `/` palette + typing patterns
-    | "toolbar" // floating selection toolbar
-    | "emoji" // `:` emoji trigger
-    | "docemoji" // document emoji badge (frontmatter)
-    | "table" // table toolbar
-    | "tablecell" // milkdown-style table WYSIWYG: in-cell editing + hover handles (off → M4 raw editor)
-    | "codelang" // code block language badge
-    | "wysiwyg"; // WYSIWYG contentEditable editing for prose blocks (p/h/list/quote/blank)
-
-const LS_PREFIX = "snorkeling:block-editor:";
-
-const ALL_FEATURES: BlockEditorFeature[] = [
-    "blockeditor",
-    "turninto",
-    "slash",
-    "toolbar",
-    "emoji",
-    "docemoji",
-    "table",
-    "tablecell",
-    "codelang",
-    "wysiwyg",
-];
-
-let flagsCache: Record<BlockEditorFeature, boolean> | null = null;
-
-function readFlags(): Record<BlockEditorFeature, boolean> {
-    const out = {} as Record<BlockEditorFeature, boolean>;
-    let store: Storage | null = null;
-    try {
-        store = typeof window !== "undefined" ? window.localStorage : null;
-    } catch {
-        store = null;
-    }
-    const master = store?.getItem(LS_PREFIX + "blockeditor") ?? "on";
-    for (const f of ALL_FEATURES) {
-        const raw = store?.getItem(LS_PREFIX + f) ?? "on";
-        // master "off" forces every feature off, whatever the per-feature key says.
-        out[f] = raw !== "off" && master !== "off";
-    }
-    return out;
-}
-
-/** Current flag map (cached; invalidated by setBlockEditorFlag). */
-export function blockEditorFlags(): Record<BlockEditorFeature, boolean> {
-    if (flagsCache == null) {
-        flagsCache = readFlags();
-    }
-    return flagsCache;
-}
-
-export function isBlockEditorFeatureEnabled(feature: BlockEditorFeature): boolean {
-    return blockEditorFlags()[feature];
-}
-
-/** Flip a flag (mainly for manual console use / future settings UI). */
-export function setBlockEditorFlag(feature: BlockEditorFeature, enabled: boolean): void {
-    try {
-        window.localStorage?.setItem(LS_PREFIX + feature, enabled ? "on" : "off");
-    } catch {
-        /* no storage (tests / SSR) */
-    }
-    flagsCache = null;
-}
-
-/** Test helper. */
-export function resetBlockEditorFlagsForTests(): void {
-    flagsCache = null;
-}
+export * from "@md/core/core/flags";

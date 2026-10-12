@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
-import { makeMarkdownSanitizeSchema } from "../markdown-sanitize-schema";
+import { makeMarkdownSanitizeSchema } from "../shared/markdown-sanitize-schema";
 import { remarkCalloutAlert } from "../remark/callout-alert";
 import { CalloutAlert } from "./calloutalert";
 

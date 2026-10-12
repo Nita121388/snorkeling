@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import type { InlineStyleId } from "../../markdown-transform/inline-style";
+import type { InlineStyleId } from "@md/core/transform/inline-style";
 
 export type ToolbarStyleItem = {
     id: InlineStyleId;

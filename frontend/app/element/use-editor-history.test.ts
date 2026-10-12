@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { HistoryStack, MAX_HISTORY, type EditorHistoryOp } from "./use-editor-history";
-import type { StructuralOp } from "./markdown-transform/structural-ops";
+import type { StructuralOp } from "@md/core/transform/structural-ops";
 
 describe("HistoryStack — 统一 undo/redo 栈（P1-A 核心）", () => {
     it("记录一步后可以撤销/重做，文本正确回填", () => {

@@ -1,5 +1,5 @@
 {
-    "include": ["frontend/**/*", "emain/**/*"],
+    "include": ["frontend/**/*", "emain/**/*", "packages/md-core/src/**/*"],
     "exclude": ["node_modules", "emain/**/*.test.node.ts"],
     "compilerOptions": {
         "target": "es6",
@@ -24,7 +24,8 @@
             "@/view/*": ["frontend/app/view/*"],
             "@/element/*": ["frontend/app/element/*"],
             "@/shadcn/*": ["frontend/app/shadcn/*"],
-            "@/preview/*": ["frontend/preview/*"]
+            "@/preview/*": ["frontend/preview/*"],
+            "@md/core/*": ["packages/md-core/src/*"]
         },
         "lib": ["dom", "dom.iterable", "es6"],
         "allowJs": true,

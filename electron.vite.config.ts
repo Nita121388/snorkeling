@@ -4,6 +4,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "electron-vite";
 import { ViteImageOptimizer } from "vite-plugin-image-optimizer";
 import svgr from "vite-plugin-svgr";
@@ -14,6 +15,10 @@ const CHROME = "chrome140";
 const NODE = "node22";
 const DevServerPort = Number(process.env.SNORKELING_VITE_PORT || "51740");
 const require = createRequire(import.meta.url);
+
+// md-core 物理抽包（10-12）：`@md/core/*` → packages/md-core/src/*。
+// 这里是**构建期的唯一真源**，必须与 tsconfig.json 的 paths、vitest.config.ts 的 resolve.alias 保持一致。
+const MdCoreSrcDir = fileURLToPath(new URL("./packages/md-core/src", import.meta.url));
 
 function hasSharpDependency(): boolean {
     try {
@@ -135,6 +140,11 @@ export default defineConfig({
     },
     renderer: {
         root: ".",
+        resolve: {
+            alias: {
+                "@md/core": MdCoreSrcDir,
+            },
+        },
         build: {
             target: CHROME,
             sourcemap: true,

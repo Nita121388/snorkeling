@@ -7,7 +7,7 @@
 // Enter 保存（触发 onDataChange → 上层写回草稿）、Esc 取消。只改值、不增删属性键。
 // 卡片不携带 data-source-line → Markdown 容器 inline-edit 点击天然不拦截本区域。
 
-import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
+import type { MarkdownContentBlockType } from "@md/core/shared/markdown-util";
 import clsx from "clsx";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { buildPropertyEntries, parseFrontmatterYamlText, type PropertyEntry } from "./frontmatter-block";
