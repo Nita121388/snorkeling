@@ -165,7 +165,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
         setTestState({ status: "testing" });
         try {
             const result = await testService.TestConnection({
-                apitType: form["ai:apitype"],
+                apiType: form["ai:apitype"],
                 endpoint: form["ai:endpoint"],
                 model: form["ai:model"],
                 provider: form["ai:provider"],

@@ -19,11 +19,11 @@ import (
 // It mirrors AIModeConfigType but is intentionally a plain struct so the visual
 // editor can test an unsaved form without touching the config file.
 type AITestConnectionRequest struct {
-	APIType   string `json:"apitType,omitempty"`
-	Endpoint  string `json:"endpoint,omitempty"`
-	Model     string `json:"model,omitempty"`
-	Provider  string `json:"provider,omitempty"`
-	APIToken  string `json:"apiToken,omitempty"`
+	APIType    string `json:"apiType,omitempty"`
+	Endpoint   string `json:"endpoint,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	APIToken   string `json:"apiToken,omitempty"`
 	SecretName string `json:"secretName,omitempty"`
 }
 
