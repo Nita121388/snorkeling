@@ -1,0 +1,34 @@
+<mxfile host="app.diagrams.net" agent="pi" version="24.7.7">
+  <diagram id="block-editor-a3" name="Block Editor A3 路线图">
+    <mxGraphModel dx="1400" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="t1" value="&lt;b&gt;Block Editor WYSIWYG：现状(两套样式) → A3 终态(一套样式) → 路线图&lt;/b&gt;" style="text;html=1;fontSize=20;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1300" height="50" as="geometry"/></mxCell>
+        <mxCell id="c1" value="&lt;b&gt;现状：两套样式（差异的根源）&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6e6;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="40" y="90" width="620" height="40" as="geometry"/></mxCell>
+        <mxCell id="p1" value="预览 React 树&lt;br&gt;.markdown .content（渲染器样式 A）" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="60" y="150" width="280" height="70" as="geometry"/></mxCell>
+        <mxCell id="p2" value="点击 / 双击 块" style="ellipse;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="380" y="150" width="140" height="70" as="geometry"/></mxCell>
+        <mxCell id="p3" value="&lt;b&gt;overlay（createPortal · position:fixed 克隆块）&lt;/b&gt;&lt;br&gt;1) typography 快照（JS 取首个文本节点）&lt;br&gt;2) overlay 镜像 CSS（此前 54 条，已并/删）&lt;br&gt;3) 种子 HTML（来自块自身复制）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" vertex="1" parent="1"><mxGeometry x="60" y="250" width="560" height="110" as="geometry"/></mxCell>
+        <mxCell id="p4" value="样式 B = 反推 + 复制 + 快照&lt;br&gt;→ 必然漂移（背景被窗口基色盖住 / 字重被快照污染 / …）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6e6;strokeColor=#b85450;" vertex="1" parent="1"><mxGeometry x="60" y="400" width="560" height="80" as="geometry"/></mxCell>
+        <mxCell id="p5" value="差异 → parity 门禁穷追&lt;br&gt;（已修：code 簇 67 行 / prose 簇 / 6 悬空 token / 背景 / 字重… 仍会继续冒）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="60" y="520" width="560" height="80" as="geometry"/></mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="p1" target="p2"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="p2" target="p3"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="p3" target="p4"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="p4" target="p5"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="c2" value="&lt;b&gt;A3 终态：一套样式（所见即所得 by construction）&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="720" y="90" width="620" height="40" as="geometry"/></mxCell>
+        <mxCell id="a1" value="预览 React 树&lt;br&gt;.markdown .content（渲染器样式 A —— 唯一样式）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="740" y="150" width="480" height="70" as="geometry"/></mxCell>
+        <mxCell id="a2" value="点击 → 同一元素 contenteditable（在位编辑，不克隆）&lt;br&gt;复用：种子 HTML / WysiwygEditor 键盘语义 / 提交链 + 块身份 + 守卫" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="740" y="250" width="480" height="90" as="geometry"/></mxCell>
+        <mxCell id="a3" value="只有一套样式 → 差异不存在&lt;br&gt;与 Wolai / 思源 / Milkdown 同构（编辑面 = 渲染面）&lt;br&gt;&lt;i&gt;我们是文件优先：markdown 文件仍是事实源&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="740" y="400" width="480" height="90" as="geometry"/></mxCell>
+        <mxCell id="a4" value="✅ 零差异 · 无需快照/镜像/parity 比对&lt;br&gt;门禁降级为「配置不变式」（可保留作护栏）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="740" y="520" width="480" height="80" as="geometry"/></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="a1" target="a2"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="a2" target="a3"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="a3" target="a4"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="r0" value="&lt;b&gt;路线图（距 A3：机制已 80%，差 1 个重构切片）&lt;/b&gt;" style="text;html=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="40" y="640" width="1300" height="30" as="geometry"/></mxCell>
+        <mxCell id="r1" value="✅ 已完成&lt;br&gt;P0–P3 · step1–4（止血/块身份/结构意图）&lt;br&gt;md-core 抽离（边界 + 独立包）&lt;br&gt;parity 地基（门禁/台账/脚本）&lt;br&gt;image-block 数据修复" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="40" y="680" width="300" height="110" as="geometry"/></mxCell>
+        <mxCell id="r2" value="🔄 A3 迁移（下一步）&lt;br&gt;切片1：在位编辑引擎（prose 先行，flag 双轨）&lt;br&gt;切片2：code / table 在位&lt;br&gt;切片3：拆除 overlay + 快照 + 镜像（台账清零）&lt;br&gt;切片4：parity 门禁转型 + 沙箱回归" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1"><mxGeometry x="360" y="680" width="340" height="110" as="geometry"/></mxCell>
+        <mxCell id="r3" value="📋 A3 之后（现有任务树 2–8）&lt;br&gt;footnote / math · 交互层(手柄/slash/拖拽)&lt;br&gt;表格块 · 代码块 · 杂项块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="720" y="680" width="300" height="110" as="geometry"/></mxCell>
+        <mxCell id="r4" value="🚀 复用（战略）&lt;br&gt;md-dom（框架无关编辑引擎）&lt;br&gt;journal 真实集成 · playground" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="1040" y="680" width="300" height="110" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
