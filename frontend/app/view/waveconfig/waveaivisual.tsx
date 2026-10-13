@@ -9,7 +9,6 @@
 //
 // Storage format is unchanged — this is a UX layer over AIModeConfigType.
 
-import { globalStore } from "@/app/store/jotaiStore";
 import { atoms } from "@/app/store/global-atoms";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -45,8 +44,6 @@ const ApiTypeOptions: { value: string; label: string }[] = [
 ];
 
 const APITypeLabels = Object.fromEntries(ApiTypeOptions.map((o) => [o.value, o.label]));
-
-const MODE_KEY_PATTERN = /^[a-zA-Z0-9_@.-]+$/;
 
 export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     model,
