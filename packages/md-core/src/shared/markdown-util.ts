@@ -9,6 +9,8 @@
  * 本文件只做文本层面的解析/改写：content-block 切分 + 图片语法（路径/尺寸/alt）编辑。
  */
 
+import { makeImageFragmentRe, parseImageFragment, serializeImageFragment } from "../transform/image-size";
+
 export type MarkdownContentBlockType = {
     type: string;
     id: string;
@@ -158,67 +160,67 @@ export function transformBlocks(content: string): { content: string; blocks: Map
 
 // ---------------------------------------------------------------------------
 // Image syntax editing helpers (used by the markdown preview image context menu
-// for "edit path" / "delete image"). They operate on one source line at a time:
-// locate the `![alt](src "title")` fragment whose src matches, then rewrite or
-// remove just that fragment.
+// for "edit path" / "delete image" / "resize" / "edit description").
+//
+// 语法契约（10-12 image-block 切片 1，见 `transform/image-size.ts`）：
+//   - **写**：只用 Obsidian 约定 `![alt|WxH](path)`（尺寸只在 alt 里，目的地永远干净）；
+//   - **读**：`![alt|WxH](path)` / `![alt](path =WxH)`（历史自研）/ `![alt](path)` 三种都认。
+//   本文件里所有改写都走 `serializeImageFragment`（单一写出口），因此**不可能**再产出
+//   历史上那个让图片消失的 `![alt](path =WxH)` 形态。
+//
+// They operate on one source line at a time: locate the `![alt](dest "title")` fragment
+// whose (去尺寸后的) src matches, then rewrite or remove just that fragment.
 //
 // The rendering pipeline (rehype) gives each <img> a node.position with
 // start.line + start.column (1-based) pointing at the start of the image syntax.
 // We trust the src match over the exact column (a line can hold several images,
 // and column is unreliable across soft-wrapped paragraphs), so these helpers scan
 // the line for a fragment whose src equals the one the user clicked.
-// ponytail: handles `![alt](src)` and `![alt](src "title")`; does NOT handle
-// escaped brackets inside alt or src, HTML `<img src=...>` tags, or srcset. For
-// those the menu falls back to whole-line editing (beginEdit) rather than a
-// targeted rewrite. Upgrade path: a real markdown parser on the source line.
+// ponytail: does NOT handle HTML `<img src=...>` tags or srcset. For those the menu
+// falls back to whole-line editing (beginEdit) rather than a targeted rewrite.
 // ---------------------------------------------------------------------------
 
-// Splits the inside of `(...)` into (src, title|null). `src "title"` / `src 'title'`
-// are the two common shapes; anything else is treated as pure src.
-function splitImageSrcAndTitle(inner: string): { src: string; title: string | null } {
-    // [\s\S] replaces the `s` flag (dotAll) which needs target es2018+; a source line
-    // never contains a newline anyway.
-    const m = inner.match(/^(.*?)\s+["']([\s\S]*)["']$/);
-    if (m != null) {
-        return { src: m[1], title: m[2] };
-    }
-    return { src: inner, title: null };
-}
-
-// Returns the range of the first image fragment in `lineText` whose src equals `src`,
-// or null. Range is [start, end) as char offsets within the line, covering the whole
-// `![alt](src "title")` fragment.
+/** 图片片段的定位结果（[start, end) 字符区间，覆盖整个 `![alt](dest "title")`）。 */
 function locateImageSyntaxInLine(lineText: string, src: string): { start: number; end: number } | null {
-    const re = /!\[[^\]]*\]\(([^)]*)\)/g;
+    const re = makeImageFragmentRe();
     let m: RegExpExecArray | null;
     while ((m = re.exec(lineText)) != null) {
-        const { src: curSrc } = splitImageSrcAndTitle(m[1]);
-        // Also match the stripped src so sized images (=WxH) are found by raw URL.
-        const curStripped = curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "");
-        if (curSrc === src || curStripped === src) {
+        const parsed = parseImageFragment(m[0]);
+        // 比较**去尺寸后缀**的真实路径：尺寸无论写在 alt 还是旧式 src 后缀里都能匹配上。
+        if (parsed != null && parsed.src === src) {
             return { start: m.index, end: m.index + m[0].length };
         }
     }
     return null;
 }
 
-// Replace the src of the matched image fragment in `lineText`, preserving alt + title.
-// Returns null when the fragment isn't found.
-export function replaceImageSrcInLine(lineText: string, src: string, newSrc: string): string | null {
+/** 用规范形式改写命中的片段（保留 alt / 尺寸 / 标题），未命中 → null。 */
+function rewriteImageFragmentInLine(
+    lineText: string,
+    src: string,
+    rewrite: (parsed: ReturnType<typeof parseImageFragment>) => string | null
+): string | null {
     const loc = locateImageSyntaxInLine(lineText, src);
     if (loc == null) {
         return null;
     }
-    const frag = lineText.slice(loc.start, loc.end);
-    const parenStart = frag.indexOf("(");
-    const { src: curSrc } = splitImageSrcAndTitle(frag.slice(parenStart + 1, -1));
-    const curStripped = curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "");
-    if (curSrc !== src && curStripped !== src) {
+    const parsed = parseImageFragment(lineText.slice(loc.start, loc.end));
+    if (parsed == null) {
         return null;
     }
-    const srcStart = loc.start + parenStart + 1;
-    const srcEnd = srcStart + curSrc.length;
-    return lineText.slice(0, srcStart) + newSrc + lineText.slice(srcEnd);
+    const next = rewrite(parsed);
+    if (next == null) {
+        return null;
+    }
+    return lineText.slice(0, loc.start) + next + lineText.slice(loc.end);
+}
+
+// Replace the src of the matched image fragment in `lineText`, preserving alt + title + size.
+// Returns null when the fragment isn't found.
+export function replaceImageSrcInLine(lineText: string, src: string, newSrc: string): string | null {
+    return rewriteImageFragmentInLine(lineText, src, (parsed) =>
+        serializeImageFragment({ ...parsed, src: newSrc })
+    );
 }
 
 // Remove the matched image fragment from `lineText`. Returns { text, isEmpty } where
@@ -232,8 +234,6 @@ export function removeImageSyntaxInLine(lineText: string, src: string): { text: 
     const removed = lineText.slice(0, loc.start) + lineText.slice(loc.end);
     return { text: removed, isEmpty: removed.trim().length === 0 };
 }
-
-
 
 // Apply a per-line edit to `fullText` at the given 1-based line number, then join back
 // with "\n". Returns the new full text, or null when the line is out of range or the
@@ -256,95 +256,34 @@ export function editImageSyntaxInFullText(
     return lines.join("\n");
 }
 
-// Parse an optional size suffix (=WxH) from an image src string.
-// Returns { src, width, height } where src is the real URL without the size suffix.
-// Example: "path.png =300x200" → { src: "path.png", width: 300, height: 200 }
-export function parseImageSizeSuffix(rawSrc: string): {
-    src: string;
-    width: number | null;
-    height: number | null;
-} {
-    if (rawSrc == null) {
-        return { src: rawSrc ?? "", width: null, height: null };
-    }
-    const m = rawSrc.match(/^(.+?)\s+=(\d+)(?:x(\d+))?\s*$/);
-    if (m == null) {
-        return { src: rawSrc, width: null, height: null };
-    }
-    const src = m[1];
-    const width = parseInt(m[2], 10);
-    const height = m[3] != null ? parseInt(m[3], 10) : null;
-    return { src, width, height };
-}
-
-// Replace the size suffix in a markdown image fragment's src, preserving alt + title.
-// If the image has no existing size suffix, it is appended.
-// Example:
-//   updateImageSizeInLine("![alt](path.png)", "path.png", 300, 200)
-//   → "![alt](path.png =300x200)"
+/**
+ * 写入图片尺寸（拖拽缩放 / 数值改尺寸的**唯一**写路径）。
+ * 产出恒为 Obsidian 约定 `![alt|WxH](path "title")`；未命中片段 → null。
+ *
+ * 数据安全：尺寸只落在 alt 里，目的地保持干净 —— 因此 remark 一定能读回图片节点
+ * （历史 `![alt](path =WxH)` 会让图片整个消失，见 image.render.test.tsx 的 REPRO）。
+ */
 export function updateImageSizeInLine(
     lineText: string,
     src: string,
     width: number,
     height: number
 ): string | null {
-    const loc = locateImageSyntaxInLine(lineText, src);
-    if (loc == null) {
-        return null;
-    }
-    const frag = lineText.slice(loc.start, loc.end);
-    const parenStart = frag.indexOf("(");
-    const inner = frag.slice(parenStart + 1, -1);
-    const { src: curSrc, title } = splitImageSrcAndTitle(inner);
-    if (curSrc !== src && curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "") !== src) {
-        return null;
-    }
-    // Build new inner: src =WxH "title"
-    const realSrc = curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "");
-    let newInner = `${realSrc} =${width}x${height}`;
-    if (title != null) {
-        newInner += ` "${title}"`;
-    }
-    const newFrag = frag.slice(0, parenStart + 1) + newInner + ")";
-    return lineText.slice(0, loc.start) + newFrag + lineText.slice(loc.end);
+    return rewriteImageFragmentInLine(lineText, src, (parsed) =>
+        serializeImageFragment({ ...parsed, width, height })
+    );
 }
 
-// Remove the size suffix from a markdown image fragment's src.
+/** 去掉尺寸（回到自然尺寸）。本身就是无尺寸 → null（调用方据此跳过提交）。 */
 export function removeImageSizeInLine(lineText: string, src: string): string | null {
-    const loc = locateImageSyntaxInLine(lineText, src);
-    if (loc == null) {
-        return null;
-    }
-    const frag = lineText.slice(loc.start, loc.end);
-    const parenStart = frag.indexOf("(");
-    const inner = frag.slice(parenStart + 1, -1);
-    const { src: curSrc, title } = splitImageSrcAndTitle(inner);
-    const realSrc = curSrc.replace(/\s+=\d+(?:x\d+)?\s*$/, "");
-    if (realSrc === curSrc) {
-        return null; // no size suffix to remove
-    }
-    let newInner = realSrc;
-    if (title != null) {
-        newInner += ` "${title}"`;
-    }
-    const newFrag = frag.slice(0, parenStart + 1) + newInner + ")";
-    return lineText.slice(0, loc.start) + newFrag + lineText.slice(loc.end);
+    return rewriteImageFragmentInLine(lineText, src, (parsed) =>
+        parsed.width == null ? null : serializeImageFragment({ ...parsed, width: null, height: null })
+    );
 }
 
-// Replace the alt text of the matched image fragment in `lineText`, preserving src + title.
-// Returns null when the fragment isn't found.
+/** 改题注（alt），**保留尺寸**（改说明文字不该丢尺寸）。 */
 export function updateImageAltInLine(lineText: string, src: string, newAlt: string): string | null {
-    const loc = locateImageSyntaxInLine(lineText, src);
-    if (loc == null) {
-        return null;
-    }
-    const frag = lineText.slice(loc.start, loc.end);
-    // frag = "![old alt](src ...)" — alt is between ![ and ]
-    const bracketEnd = frag.indexOf("]");
-    if (bracketEnd < 0) {
-        return null;
-    }
-    // Rebuild: "![newAlt](rest..."
-    const newFrag = "![" + newAlt + "]" + frag.slice(bracketEnd + 1);
-    return lineText.slice(0, loc.start) + newFrag + lineText.slice(loc.end);
+    return rewriteImageFragmentInLine(lineText, src, (parsed) =>
+        serializeImageFragment({ ...parsed, alt: newAlt })
+    );
 }

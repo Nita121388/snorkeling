@@ -5,13 +5,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import {
     editImageSyntaxInFullText,
-    parseImageSizeSuffix,
     removeImageSizeInLine,
     removeImageSyntaxInLine,
     replaceImageSrcInLine,
     updateImageAltInLine,
     updateImageSizeInLine,
 } from "../shared/markdown-util";
+import { parseImageSize } from "../transform/image-size";
 import { cn } from "../core/classnames";
 import { getMdHost } from "../core/host";
 import { domProps } from "./shared";
@@ -78,7 +78,16 @@ export const MarkdownImg = ({
     const [altDraft, setAltDraft] = useState("");
 
     // --- Image resize state ---
-    const { src: rawImgSrc, width: initWidth, height: initHeight } = parseImageSizeSuffix(props.src);
+    // 语法解析走同一条纯函数（`transform/image-size.ts`）：
+    //   - src → 真实路径（历史 `=WxH` 后缀在这里剥掉）；
+    //   - alt → 真实题注（Obsidian 约定的 `|WxH` 后缀在这里剥掉，不得漏进可见文本/DOM alt）；
+    //   - 尺寸 → 两种写法都能读到。
+    const {
+        src: rawImgSrc,
+        alt: imgAlt,
+        width: initWidth,
+        height: initHeight,
+    } = parseImageSize(props.src, props.alt);
     const [imgWidth, setImgWidth] = useState<number | null>(initWidth);
     const [imgHeight, setImgHeight] = useState<number | null>(initHeight);
     const [isResizing, setIsResizing] = useState(false);
@@ -126,10 +135,10 @@ export const MarkdownImg = ({
     // Sync size state when the source image path or size suffix changes (e.g., file reload,
     // undo, or another editor changing the size).
     useEffect(() => {
-        const { width, height } = parseImageSizeSuffix(props.src);
+        const { width, height } = parseImageSize(props.src, props.alt);
         setImgWidth(width);
         setImgHeight(height);
-    }, [props.src]);
+    }, [props.src, props.alt]);
 
     // Only real, loadable images participate in the lightbox / context menu. Placeholder
     // ([img:...]) and data-URI images are excluded from edit ops but data: URIs still zoom.
@@ -195,8 +204,9 @@ export const MarkdownImg = ({
             return;
         }
         const trimmed = altDraft.trim();
-        // Only commit if the alt actually changed
-        if (trimmed !== (props.alt ?? "")) {
+        // Only commit if the alt actually changed (比较**去尺寸**的真实题注；
+        // 写回时尺寸由 updateImageAltInLine 原样保留)。
+        if (trimmed !== imgAlt) {
             const newText = editImageSyntaxInFullText(fullText, sourceLine, (lineText) =>
                 updateImageAltInLine(lineText, sourceSrc, trimmed)
             );
@@ -393,9 +403,12 @@ export const MarkdownImg = ({
                     onMouseEnter={() => hasResize && !isResizing && setShowResizeHandle(true)}
                     onMouseLeave={() => !isResizing && setShowResizeHandle(false)}
                 >
+                    {/* hast 的 alt 可能带 Obsidian 尺寸后缀（`a|300x200`）→ 覆盖成真实题注，
+                        否则尺寸会漏进可见文本 / 无障碍树。 */}
                     <img
                         ref={imgRef}
                         {...domProps(props)}
+                        alt={imgAlt}
                         src={resolvedSrc}
                         srcSet={resolvedSrcSet}
                         className={cn(props.className, "markdown-img-clickable")}
@@ -435,12 +448,12 @@ export const MarkdownImg = ({
                         className="markdown-img-alt-display"
                         onClick={(e) => {
                             e.stopPropagation();
-                            setAltDraft(props.alt ?? "");
+                            setAltDraft(imgAlt);
                             setAltEditing(true);
                         }}
                         title="Click to edit alt text"
                     >
-                        {(props.alt ?? "") === "" ? "+ Add description" : props.alt}
+                        {imgAlt === "" ? "+ Add description" : imgAlt}
                     </div>
                 )}
                 {canEdit && altEditing && (
@@ -469,7 +482,7 @@ export const MarkdownImg = ({
                 {lightboxOpen &&
                     getMdHost().renderImageLightbox({
                         src: resolvedSrc,
-                        alt: props.alt,
+                        alt: imgAlt,
                         onClose: () => setLightboxOpen(false),
                     })}
                 {pathInputOpen &&

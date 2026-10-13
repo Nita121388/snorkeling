@@ -15,6 +15,7 @@ import remarkBlankLineSpacers from "./blank-line-spacers";
 import remarkLooseListSpacing from "./loose-list-spacing";
 import remarkSplitLooseLists from "./split-loose-lists";
 import remarkBlockIds from "./block-ids";
+import remarkLegacyImageSize from "./legacy-image-size";
 import type { BlankSpacerOptions } from "./types";
 
 export { linkifyMarkdownFileReferences } from "./markdown-file-refs";
@@ -22,6 +23,7 @@ export { default as remarkSoftBreaks } from "./soft-breaks";
 export { default as remarkMarkdownFileReferences } from "./markdown-file-refs";
 export { default as remarkBlankLineSpacers } from "./blank-line-spacers";
 export { default as remarkBlockIds } from "./block-ids";
+export { default as remarkLegacyImageSize } from "./legacy-image-size";
 export type { BlankSpacerOptions } from "./types";
 
 export interface RemarkPipelineOptions {
@@ -64,6 +66,9 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
     // 内容块占位符插件：宿主可经 adapter 换一套语法；未注入时用包内纯实现（md-core 10-12）。
     const contentBlockPlugin = getMdHost().contentBlockPlugin ?? createContentBlockPlugin;
     return [
+        // 必须是第一个：历史图片尺寸语法 `![alt](path =WxH)` 在 remark 眼里是**文本**，
+        // 后续插件会先把 text 节点拆开 —— 拆完就再也拼不回一个完整片段了。
+        remarkLegacyImageSize,
         remarkMermaidToTag,
         remarkMarkdownFileReferences,
         remarkSoftBreaks,

@@ -23,6 +23,14 @@
     --markdown-fixed-font-size: 12px;
     
     --block-border-radius: 8px;
+
+    // 图片块（10-12 image-block）：只描述**容器 / 控件外观**，宽度与对齐不在这里（宽高来自
+    // markdown 语法本身，见 packages/md-core/src/transform/image-size.ts）。值 = 收敛前的
+    // 字面量（**不改视觉**），只是把样式来源从"散落的 magic number"收成 token；
+    // 不新增任何颜色（图片块的颜色一律取既有 --accent-color / --modal-* / --error-color 等）。
+    --markdown-image-radius: 4px;            // 图片容器 / 错误占位 / 题注编辑器圆角
+    --markdown-image-control-radius: 3px;    // 尺寸徽标 + 重置按钮圆角
+    --markdown-image-caption-font-size: 12px; // 题注（alt / description）字号
     --header-font: 700 11px / normal "Inter", sans-serif;
     --header-icon-size: 14px;
     --header-icon-width: 16px;
