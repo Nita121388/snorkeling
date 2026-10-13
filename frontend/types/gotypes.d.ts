@@ -75,6 +75,19 @@ declare global {
         includeTools?: boolean;
     };
 
+    // aisessionsservice.AISessionsGenerateMetadataRequest
+    type AISessionsGenerateMetadataRequest = {
+        id: string;
+        connection?: string;
+        aiMode?: string;
+    };
+
+    // aisessionsservice.AISessionsGenerateMetadataResponse
+    type AISessionsGenerateMetadataResponse = {
+        summary: SessionSummary;
+        suggestion: MetadataSuggestion;
+    };
+
     // aisessionsservice.AISessionsListRequest
     type AISessionsListRequest = {
         source?: string;
@@ -1742,6 +1755,13 @@ declare global {
         "onboarding:githubstar"?: boolean;
         "onboarding:lastversion"?: string;
         count?: number;
+    };
+
+    // aisessions.MetadataSuggestion
+    type MetadataSuggestion = {
+        note: string;
+        tags: string[];
+        confidence?: number;
     };
 
     // tsgenmeta.MethodMeta

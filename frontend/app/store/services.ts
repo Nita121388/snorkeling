@@ -61,6 +61,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "DetailDelta", Array.from(arguments))
     }
 
+    // generate a proposed AI note and tags for a session without saving
+    // @returns AI metadata suggestion plus the current session summary
+    GenerateMetadata(request: AISessionsGenerateMetadataRequest): Promise<AISessionsGenerateMetadataResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "GenerateMetadata", Array.from(arguments))
+    }
+
     // list local AI sessions
     // @returns AI session summaries
     List(request: AISessionsListRequest): Promise<AISessionsListResponse> {
