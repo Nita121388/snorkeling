@@ -13,6 +13,19 @@ declare global {
         data64: string;
     };
 
+    // aitestservice.AIFetchModelsRequest
+    type AIFetchModelsRequest = {
+        endpoint?: string;
+        apiToken?: string;
+        secretName?: string;
+    };
+
+    // aitestservice.AIFetchModelsResponse
+    type AIFetchModelsResponse = {
+        models?: string[];
+        error?: string;
+    };
+
     // wconfig.AIModeConfigType
     type AIModeConfigType = {
         "display:name": string;
@@ -213,6 +226,23 @@ declare global {
         summary: SessionSummary;
         messages: Message[];
         userMessageCount: number;
+    };
+
+    // aitestservice.AITestConnectionRequest
+    type AITestConnectionRequest = {
+        apitType?: string;
+        endpoint?: string;
+        model?: string;
+        provider?: string;
+        apiToken?: string;
+        secretName?: string;
+    };
+
+    // aitestservice.AITestConnectionResponse
+    type AITestConnectionResponse = {
+        ok: boolean;
+        latencyMs?: number;
+        message?: string;
     };
 
     // wshrpc.ActivityDisplayType

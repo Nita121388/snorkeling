@@ -142,6 +142,29 @@ export class AISessionsServiceType {
 
 export const AISessionsService = new AISessionsServiceType();
 
+// aitestservice.AITestService (aitest)
+export class AITestServiceType {
+    waveEnv: WaveEnv;
+
+    constructor(waveEnv?: WaveEnv) {
+        this.waveEnv = waveEnv;
+    }
+
+    // list models advertised by an OpenAI-compatible endpoint without saving
+    // @returns model id list or an error message
+    FetchModels(request: AIFetchModelsRequest): Promise<AIFetchModelsResponse> {
+        return callBackendService(this?.waveEnv, "aitest", "FetchModels", Array.from(arguments))
+    }
+
+    // test an AI endpoint with a minimal completion without saving
+    // @returns connection test result with latency
+    TestConnection(request: AITestConnectionRequest): Promise<AITestConnectionResponse> {
+        return callBackendService(this?.waveEnv, "aitest", "TestConnection", Array.from(arguments))
+    }
+}
+
+export const AITestService = new AITestServiceType();
+
 // blockservice.BlockService (block)
 export class BlockServiceType {
     waveEnv: WaveEnv;
@@ -470,6 +493,7 @@ export const WorkspaceService = new WorkspaceServiceType();
 
 export const AllServiceTypes = {
     "aisessions": AISessionsServiceType,
+    "aitest": AITestServiceType,
     "block": BlockServiceType,
     "client": ClientServiceType,
     "commontext": CommonTextServiceType,
@@ -481,6 +505,7 @@ export const AllServiceTypes = {
 
 export const AllServiceImpls = {
     "aisessions": AISessionsService,
+    "aitest": AITestService,
     "block": BlockService,
     "client": ClientService,
     "commontext": CommonTextService,
