@@ -32,10 +32,6 @@ export function getWaveAIModeEntries(): WaveAIModeEntry[] {
     return Object.entries(modes).map(([key, config]) => ({ key, config }));
 }
 
-export function getDefaultWaveAIMode(): string {
-    return globalStore.get(atoms.settingsAtom)?.["waveai:defaultmode"] ?? "";
-}
-
 async function writeWaveAIModes(model: WaveConfigViewModel, next: Record<string, AIModeConfigType>): Promise<void> {
     const fullPath = `${model.configDir}/waveai.json`;
     const data64 = stringToBase64(JSON.stringify(next, null, 2));

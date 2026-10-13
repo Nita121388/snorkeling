@@ -10,12 +10,12 @@
 // Storage format is unchanged — this is a UX layer over AIModeConfigType.
 
 import { atoms } from "@/app/store/global-atoms";
+import { getSettingsKeyAtom } from "@/app/store/global";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import {
     deleteWaveAIMode,
-    getDefaultWaveAIMode,
     renameWaveAIMode,
     setDefaultWaveAIMode,
     upsertWaveAIMode,
@@ -52,7 +52,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
 }) {
     // Live mode map, re-renders on every backend broadcast (including our own writes).
     const modeConfigs = useAtomValue(atoms.waveaiModeConfigAtom) ?? {};
-    const defaultMode = getDefaultWaveAIMode();
+    const defaultMode = useAtomValue(getSettingsKeyAtom("waveai:defaultmode")) ?? "";
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     // editor keeps a local form copy so typing doesn't re-render from the atom mid-keystroke
     const [form, setForm] = useState<AIModeConfigType | null>(null);

@@ -230,7 +230,7 @@ declare global {
 
     // aitestservice.AITestConnectionRequest
     type AITestConnectionRequest = {
-        apitType?: string;
+        apiType?: string;
         endpoint?: string;
         model?: string;
         provider?: string;
