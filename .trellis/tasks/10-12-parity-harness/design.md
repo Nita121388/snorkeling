@@ -43,3 +43,29 @@
 - 合并后 overlay 那份镜像声明即可删除，台账条目同步移除（门禁会强制两者一致）。
 - 验证手段：`node scripts/parity-check.mjs --endpoint http://127.0.0.1:9333 --target "Wave Terminal - T1" --line N`
   （隔离沙箱，两态 computed style 逐项比对；不得在用户正在使用的 9222 实例上点击真实笔记）。
+
+---
+
+## 关键发现（切片 4：WYSIWYG prose 簇的 9 条 parity-2 判定完毕）
+
+9 条 = `.inline-edit-overlay[data-block-kind="wysiwyg"] { background }` 1 条 +
+`.wysiwyg-editor / > * / li / p / h1-h6` 组的 8 条盒尺寸声明。逐条结论：**删 3 条、keep 6 条**。
+
+**删 3 条**（box-sizing / margin-left / margin-right）：它们的真源不在 markdown.scss，而在**全局 reset**
+——`reset.scss` 的 `@layer base { * { box-sizing: border-box; margin: 0; padding: 0 } }`，由 `app.scss` `@use` 全局加载；
+overlay 是 `createPortal(document.body)`，同样匹配那条 `*` 规则 → **同值、不丢样式**。留着的唯一后果是第二份可漂移的副本
+（同切片 3 删 `.codeblock-ops` 的依据：真源已覆盖两个作用域 = 删镜像）。台账里已无 `parity-2`。
+
+**keep 6 条**（每条理由在 `overlay-style-contract.test.ts` 的台账里）：
+- `background`：预览块的底色来自**宿主**（`.markdown` / `.content` 都不画背景），markdown.scss 里没有可合并的声明体；
+  锚定块 `visibility: hidden` 后 overlay 变高必须遮住下方块的真实文本（防穿透）→ 不能删。
+- `width` / `min-width` / `max-width`：固定宽 portal 盒（inline width = 预览块矩形 + `overflowX: hidden`）的盒尺寸兜底；
+  预览侧块宽来自正常流 block fill，markdown.scss 无等价声明体。
+- `overflow-wrap` / `word-break`：**已知 parity 缺口** —— 预览取 `.content` 的 `break-word` / `normal`，编辑期故意用
+  `anywhere` / `break-word` 兜长 URL。`parity-check.mjs` 的 `PARITY_PROPS` 把这两项列为「必须一致」，所以下次跑
+  CDP 两态比对时会在**编辑态内部元素**上看到差异（编辑根元素因 `captureBlockTypography` 的 inline 快照被覆盖而不受影响）。
+  改正要实测换行位置 → 留给后续切片；本切片不偷改数值。
+
+**审计手段（本切片新增）**：`git show HEAD:…/markdown.scss` 与工作区版本分别 `npx sass` 编译，再逐 selector 比声明体
+——预览侧（不含 `.inline-edit-overlay` 的 252 条规则）变化 0 / 丢失 0 / 新增 0（= 未触发停手条件 1）；overlay 侧
+只少了本次删除的 3 条声明，32 个选择器数量不变。

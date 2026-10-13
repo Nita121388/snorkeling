@@ -702,6 +702,13 @@
 
     // D2: the anchored block stays `visibility: hidden` (layout box preserved), so a taller overlay
     // covers the content below it — fill it with the content background so text doesn't show through.
+    //
+    // 台账 todo="keep"（切片 4 判定，不是真源镜像）：预览块的底色**不在 markdown.scss 里**
+    // —— `.markdown` / `.content` 都不画背景，块底下看到的是宿主（widget/panel）的底色。
+    // 所以没有「同一声明体 + 组合选择器」可合并；删掉它只会让下方块的真实文本透过 portal 盒
+    // 显形（锚定块 visibility: hidden 后仍是同一块区域）。已知无功能影响的小瑕疵：
+    // `--content-bg-color` 全仓未定义（token-existence.test.ts 已豁免），实际解析到
+    // `--main-bg-color`（app.tsx 写在 body 上的宿主基色）。
     &[data-block-kind="wysiwyg"] {
         background: var(--content-bg-color, var(--main-bg-color, transparent));
     }
@@ -733,6 +740,16 @@
         outline: none;
     }
 
+    // overlay 盒内的「盒尺寸兜底」（切片 4 判定 = keep，不是预览样式的镜像）：portal 盒的宽度是
+    // inline 固定值（预览块矩形），overflowX: hidden —— 子树里任何元素撑宽都会被直接裁掉，
+    // 所以这里要显式收口。预览侧的块宽来自正常流（block fill），markdown.scss 里**没有**等价的
+    // 声明体可以「合并出 overlay 分支」（.content 本行规则只有容器级的 overflow-wrap: break-word）。
+    //
+    // 已删除的 box-sizing / margin-left / margin-right：真源是全局 reset（reset.scss 的
+    // `@layer base { * { box-sizing: border-box; margin: 0 } }`，由 app.scss @use 全局加载）。
+    // overlay 经 createPortal 渲染到 document.body，**同样匹配那条 `*` 规则** → 同值、不丢样式，
+    // 留着只是第二份可漂移的副本（同切片 3 删 `.codeblock-ops` 的依据）。
+    // （编辑器根另有文末 `.wysiwyg-editor` 基本规则声明同值 box-sizing，即便 reset 缺席也不受影响。）
     .wysiwyg-editor,
     .wysiwyg-editor > *,
     .wysiwyg-editor li,
@@ -746,9 +763,10 @@
         width: 100%;
         min-width: 0;
         max-width: 100%;
-        box-sizing: border-box;
-        margin-left: 0;
-        margin-right: 0;
+        // 折行得比预览更激进（anywhere / break-word）才能在固定宽盒里兜住长 URL：预览是
+        // `.content` 的 break-word / normal。这是**已知 parity 缺口**（parity-check.mjs 的
+        // PARITY_PROPS 把 overflowWrap / wordBreak 列为必须一致），改正要用 CDP 沙箱实测换行
+        // 位置 → 留给后续切片；本切片不偷改数值。
         overflow-wrap: anywhere;
         word-break: break-word;
     }

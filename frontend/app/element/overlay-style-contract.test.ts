@@ -20,6 +20,16 @@
  *  - todo="parity-2"：仍是待消除的镜像（已由 design.md 「真源组合选择器」方案接管，见 markdown.scss 与 implement.md）。
  * code 块的镜像已删：.markdown .content pre.codeblock 与其 token/diff 配色改成一条
  * `真源X, .inline-edit-overlay[data-block-kind="code"] X` 的组合选择器，编辑态不再持有第二份。
+ *
+ * 切片 4（WYSIWYG prose 簇）把最后 9 条 parity-2 逐条判定完毕，台账里已无 parity-2：
+ *  - **删 3 条**：`.wysiwyg-editor…h6` 组的 box-sizing / margin-left / margin-right。它们的真源是全局 reset
+ *    （reset.scss 的 `@layer base { * { box-sizing: border-box; margin: 0 } }`，由 app.scss @use 全局加载）；
+ *    overlay 经 createPortal 渲染到 document.body，**同样匹配那条 `*` 规则** → 同值、不丢样式，
+ *    留着只是第二份可漂移的副本（同切片 3 删 `.codeblock-ops` 的依据）。
+ *  - **留 6 条 keep**：`[data-block-kind="wysiwyg"]` 的 background（防穿透）＋ 该组的
+ *    width / min-width / max-width（固定宽 portal 盒的盒尺寸兜底）＋ overflow-wrap / word-break
+ *    （编辑期折行比预览更激进，**已知与预览 computed 漂移** → 改正需 CDP 沙箱实测换行位置，留给后续切片）。
+ * "parity-2" 仍是合法 todo：后续切片（table / quote / heading 簇）还会登记新的待消除镜像。
  */
 
 import { readFileSync } from "node:fs";
@@ -154,7 +164,8 @@ function extractOverlayRows(src: string): Row[] {
 
 /**
  * B 类台账（现存的结构性声明）。每条必须有 reason；todo="keep" = 已判定为 overlay 自带需求（非镜像），
- * todo="parity-2" = 待消除的镜像。切片 3 删掉了 code 簇的 24 条镜像条目（真源改为组合选择器后的必然结果）。
+ * todo="parity-2" = 待消除的镜像。切片 3 删掉了 code 簇的 24 条镜像条目（真源改为组合选择器后的必然结果）；
+ * 切片 4 删掉了 wysiwyg 簇的 3 条 reset 重复声明（box-sizing / margin-left / margin-right）。
  * 由 `research/overlay-structural-inventory.json` 生成，人工复核后维护。
  */
 const KNOWN_STRUCTURAL_MIRRORS: { scope: string; prop: string; reason: string; todo: "keep" | "parity-2" }[] = [
@@ -162,15 +173,12 @@ const KNOWN_STRUCTURAL_MIRRORS: { scope: string; prop: string; reason: string; t
     { scope: ".inline-edit-overlay", prop: "min-width", reason: "overlay 容器自身布局（编辑期包裹层，非块内容）→ 允许但登记", todo: "keep" },
     { scope: ".inline-edit-overlay", prop: "max-width", reason: "overlay 容器自身布局（编辑期包裹层，非块内容）→ 允许但登记", todo: "keep" },
     { scope: ".inline-edit-overlay", prop: "overflow", reason: "overlay 容器自身布局（编辑期包裹层，非块内容）→ 允许但登记", todo: "keep" },
-    { scope: ".inline-edit-overlay &[data-block-kind=\"wysiwyg\"]", prop: "background", reason: "WYSIWYG 编辑态背景覆盖（背景应由渲染器/宿主决定）→ 待移除", todo: "parity-2" },
-    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "width", reason: "编辑容器内元素 margin/宽度归零（抑制预览排版）→ 待移除或收敛为编辑期必要项", todo: "parity-2" },
-    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "min-width", reason: "编辑容器内元素 margin/宽度归零（抑制预览排版）→ 待移除或收敛为编辑期必要项", todo: "parity-2" },
-    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "max-width", reason: "编辑容器内元素 margin/宽度归零（抑制预览排版）→ 待移除或收敛为编辑期必要项", todo: "parity-2" },
-    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "box-sizing", reason: "编辑容器内元素 margin/宽度归零（抑制预览排版）→ 待移除或收敛为编辑期必要项", todo: "parity-2" },
-    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "margin-left", reason: "编辑容器内元素 margin/宽度归零（抑制预览排版）→ 待移除或收敛为编辑期必要项", todo: "parity-2" },
-    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "margin-right", reason: "编辑容器内元素 margin/宽度归零（抑制预览排版）→ 待移除或收敛为编辑期必要项", todo: "parity-2" },
-    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "overflow-wrap", reason: "编辑容器内元素 margin/宽度归零（抑制预览排版）→ 待移除或收敛为编辑期必要项", todo: "parity-2" },
-    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "word-break", reason: "编辑容器内元素 margin/宽度归零（抑制预览排版）→ 待移除或收敛为编辑期必要项", todo: "parity-2" },
+    { scope: ".inline-edit-overlay &[data-block-kind=\"wysiwyg\"]", prop: "background", reason: "overlay 独有（不是镜像）：预览块底下是宿主底色——.markdown/.content 都不画背景，markdown.scss 里没有可合并的声明体；锚定块 visibility:hidden 后 overlay 变高时必须遮住下方块的真实文本 → 保留。已知小瑕疵：--content-bg-color 全仓未定义（token 测试已豁免），实际解析到 --main-bg-color", todo: "keep" },
+    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "width", reason: "overlay 独有盒尺寸兜底（不是镜像）：portal 盒宽是 inline 固定值 + overflowX:hidden，子树撑宽即被裁；预览侧块宽来自正常流 block fill，markdown.scss 无等价声明体可合并", todo: "keep" },
+    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "min-width", reason: "同上（width 那条）：固定宽盒内的收缩保护；预览侧无对应声明（reset 只给 margin/padding/box-sizing）", todo: "keep" },
+    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "max-width", reason: "同上（width 那条）：固定宽 portal 盒的宽度上限；预览侧块宽由正常流决定，无对应声明可合并", todo: "keep" },
+    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "overflow-wrap", reason: "overlay 独有且**已知与预览漂移**：预览取 .content 的 overflow-wrap: break-word，编辑期故意用 anywhere（固定宽盒 + 长 URL 兜底）。改正要 CDP 沙箱实测换行位置 → 留给后续切片，本切片不偷改数值", todo: "keep" },
+    { scope: ".inline-edit-overlay .wysiwyg-editor h6", prop: "word-break", reason: "overlay 独有且**已知与预览漂移**：预览 computed 是 word-break: normal（.content 不声明），编辑期用 break-word 兜长串。同 overflow-wrap 那条，改正需沙箱实测 → 留给后续切片", todo: "keep" },
     { scope: ".inline-edit-overlay &[data-block-kind=\"code\"] pre.codeblock", prop: "box-sizing", reason: "overlay 容器是预览块的 border-box，容器自身负责定位/宽度，pre 只负责填满它 → 保留（overlay 独有，不是镜像）", todo: "keep" },
     { scope: ".inline-edit-overlay &[data-block-kind=\"code\"] pre.codeblock", prop: "width", reason: "overlay 容器是预览块的 border-box，容器自身负责定位/宽度，pre 只负责填满它 → 保留（预览态是 .content 的 100%）", todo: "keep" },
     { scope: ".inline-edit-overlay &[data-block-kind=\"code\"] pre.codeblock", prop: "height", reason: "pre 高度由 overlay 容器的 min-height/内容决定（父级 height:auto）→ 保留，避免与预览块 height 语义混淆", todo: "keep" },
