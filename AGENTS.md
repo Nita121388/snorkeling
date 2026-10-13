@@ -127,3 +127,18 @@ for i in $(seq 1 24); do curl -s --max-time 2 http://127.0.0.1:9333/json/list >/
 ```
 `dist/bin/` 里已有 darwin 二进制时无需重新编译。同理 `dev-isolated.mjs` 支持 `SNORKELING_DEV_TASK` 覆盖任务名
 （仓库自带先例：`electron:cdp:winquick`）。
+
+## parity/交互验证的副作用纪律（2026-10-12 实测）
+
+坐标点击会命中**非预期的控件**：实测用 `parity-check.mjs` 点任务列表块时，
+点击落到了 `<input type=checkbox>` 上，把 `- [ ] todo two` 变成了 `- [x] todo two`（沙箱草稿被真实改写）。
+
+因此做任何点击类验证时：
+1. **验证前后比对目标文件 md5**（沙箱草稿也一样）——这是唯一能发现"意外写盘"的手段；
+2. 发现被改写 → **立刻恢复**并记录（不要留着"反正沙箱"）；
+3. 尽量避开交互控件：任务列表先测文本区（远离左侧 checkbox）、
+   或对这类块改用非点击方式触发编辑（双击/键盘）；
+4. 块可能不在视口内：先 `scrollIntoView` 再取坐标，否则 `elementFromPoint` 为 null、点击落空
+   （会被误判成 parity 失败）。
+5. 上一次点击残留的 `:hover` 会给块加高亮底色（实测预览 `<li>` 出现 `--accent-color` 4% 混合背景）
+   → 两态测量前都把指针移到中性位置。
