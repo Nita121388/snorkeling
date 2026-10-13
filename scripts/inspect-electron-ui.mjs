@@ -17,6 +17,7 @@ function usage() {
         "  elements [--limit N]  Print visible interactive elements with coordinates",
         "  style <query>         Print geometry and computed style for matching elements",
         "  click <x> <y>         Click viewport coordinates using CDP mouse events",
+        "  move <x> <y>          Move the mouse pointer only (no click) — for hover-state control",
         "  key <name>            Dispatch a real key press (Enter|Tab|Shift+Tab|Backspace|Delete|Escape|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End)",
         "  type <text>           Type real characters into the focused element (per-char key events)",
         "  screenshot [path]     Save a PNG screenshot",
@@ -371,6 +372,16 @@ async function commandStyle(client, args) {
     console.log(JSON.stringify(data, null, 2));
 }
 
+async function commandMove(client, args) {
+    const x = Number(args[0]);
+    const y = Number(args[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new Error("move requires numeric x and y coordinates");
+    }
+    await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+    console.log(`moved ${x},${y}`);
+}
+
 async function commandClick(client, args) {
     const x = Number(args[0]);
     const y = Number(args[1]);
@@ -477,6 +488,8 @@ async function main() {
             await commandStyle(client, opts.args);
         } else if (opts.command === "click") {
             await commandClick(client, opts.args);
+        } else if (opts.command === "move") {
+            await commandMove(client, opts.args);
         } else if (opts.command === "key") {
             await commandKey(client, opts.args);
         } else if (opts.command === "type") {

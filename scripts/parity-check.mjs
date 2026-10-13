@@ -214,8 +214,16 @@ const MEASURE_FN = `(() => {
         }
         return null;
         function describe(el) {
+            // 先把块滚进视口：块可能在折叠区之下（实测 line 32 的 y=948 超出视口，
+            // elementFromPoint 返回 null → 点击落空、编辑器根本不打开，容易被误判为 parity 失败）
+            el.scrollIntoView({ block: "center", inline: "nearest" });
             const r = el.getBoundingClientRect();
-            return { line: el.getAttribute("data-source-line"), tag: el.tagName.toLowerCase(), cls: String(el.className || ""), x: Math.round(r.x + r.width / 2), y: Math.round(r.y + Math.min(r.height / 2, 12)) };
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const x = Math.round(Math.min(Math.max(r.x + r.width / 2, 8), vw - 8));
+            const y = Math.round(Math.min(Math.max(r.y + Math.min(r.height / 2, 12), 8), vh - 8));
+            const inViewport = r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
+            return { line: el.getAttribute("data-source-line"), tag: el.tagName.toLowerCase(), cls: String(el.className || ""), x, y, inViewport };
         }
     };
     window.__parityOverlayProbe = () => {
@@ -289,6 +297,10 @@ async function main() {
     }
     const selector = opts.selector ?? `[data-source-line="${target.line}"]`;
 
+    // 把指针移到中性角落再测「预览态」：否则上一次点击残留的 :hover 会给块加高亮底色
+    // （实测：预览 <li> 出现 --accent-color 4% 混合背景 → 被误报为 parity 差异）
+    ui(opts, "move", "4", "4");
+    await new Promise((r) => setTimeout(r, 150));
     const preview = evalJson(opts, CLICK_AND_MEASURE(opts, selector));
     ui(opts, "click", String(target.x), String(target.y));
     await new Promise((r) => setTimeout(r, 600));
@@ -296,6 +308,8 @@ async function main() {
     if (!probe?.present) {
         throw new Error("点击后未出现 .inline-edit-overlay —— 未进入编辑态（窗口可见性/坐标是否失效？）");
     }
+    ui(opts, "move", "4", "4"); // 编辑态同样移开指针，让两态在同一 hover 条件下比较
+    await new Promise((r) => setTimeout(r, 150));
     const edit = evalJson(opts, CLICK_AND_MEASURE(opts, selector));
 
     const rows = diff(preview, edit);
@@ -310,7 +324,7 @@ async function main() {
             )
         );
     } else {
-        console.log(`目标块: line=${target.line} <${target.tag} class="${target.cls}">`);
+        console.log(`目标块: line=${target.line} <${target.tag} class="${target.cls}"> inViewport=${target.inViewport}`);
         console.log(`编辑态: overlay kind=${probe.kind} editor=${probe.hasEditor}`);
         if (rows.length === 0) {
             console.log("✅ 两态 computed style 逐项一致（无任何差异，含豁免项）");
