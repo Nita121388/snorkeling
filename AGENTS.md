@@ -112,3 +112,18 @@ This project is indexed by GitNexus as **snorkeling** (25382 symbols, 72316 rela
 
 - **`grep` 模式以 `--` 开头会被当成选项**（例：查 CSS token `--main-bg-color:`）→ 必须写 `grep -- "--main-bg-color:"`，否则静默无输出，容易得出「该 token 未定义」的错误结论。
 - 判定「某 token 是否存在」时，先 `grep -rn -- "<token>:" frontend/` 全仓查，不要只查一个文件。
+
+## 起隔离沙箱要用 quickdev（2026-10-12 实测教训）
+
+`node scripts/dev-isolated.mjs --profile scratch --vite-port 51752 --cdp-port 9333` 默认走 `electron:dev`，
+会触发 **wsh 的 5 平台交叉编译**（linux/darwin/windows × amd64/arm64 的 `go build`），
+在这台机器上要十几分钟，表现为「CDP 端口长时间不响应」（容易被误判为卡死）。
+
+正确姿势（Taskfile:46 的 `electron:quickdev` = no docsite / arm64 only / no generate / **no wsh**）：
+```bash
+SNORKELING_DEV_TASK=electron:quickdev nohup node scripts/dev-isolated.mjs \
+  --profile scratch --vite-port 51752 --cdp-port 9333 > /tmp/parity-sandbox.log 2>&1 &
+for i in $(seq 1 24); do curl -s --max-time 2 http://127.0.0.1:9333/json/list >/dev/null && echo READY && break; sleep 5; done
+```
+`dist/bin/` 里已有 darwin 二进制时无需重新编译。同理 `dev-isolated.mjs` 支持 `SNORKELING_DEV_TASK` 覆盖任务名
+（仓库自带先例：`electron:cdp:winquick`）。
