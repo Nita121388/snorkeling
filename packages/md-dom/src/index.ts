@@ -58,6 +58,12 @@ export {
     type InlineEditBlockKind,
 } from "./block-syntax";
 export {
+    planBlockCommit,
+    type BlockCommitOp,
+    type BlockCommitPlan,
+    type BlockCommitRequest,
+} from "./commit-plan";
+export {
     fallbackSelector,
     isSelectingRange,
     resolveInlineEditTarget,

@@ -80,6 +80,7 @@ import {
     captureInplaceSeedHtml,
     isEmptyBlockShellDraft,
     initialContentFor,
+    planBlockCommit,
     prepareInlineEditCommit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
@@ -967,98 +968,41 @@ const Markdown = ({
             if (session == null) {
                 return;
             }
-            inlineEditDebug("inplace:commit", { kind: session.kind, startLine: session.startLine, len: content.length });
-            // 复用既有提交链：prepareInlineEditCommit（重定位 + 陈旧检测）→ 控制器 /
-            // replaceSourceRange → handleInlineEditCommit（写盘 + undo + autosave）。
-            const root = getViewportEl()?.querySelector<HTMLElement>(MarkdownRenderRootSelector) ?? null;
-            const fullText = textRef.current;
-            // 构造成既有守卫需要的 session 形状（其余字段仅用于提交定位）。
-            const prepared = prepareInlineEditCommit(
-                {
-                    blockKind: session.kind as InlineEditBlockKind,
-                    startLine: session.startLine,
-                    endLine: session.endLine,
-                    initialContent: sessionInitialContent(session),
-                    blockId: session.blockId,
-                    targetEl: document.body,
-                    insertMode: undefined,
-                } as any,
-                fullText,
-                root
-            );
-            if (!prepared.ok) {
-                inlineEditDebug("inplace:commit:stale", { kind: session.kind, startLine: session.startLine });
+            const finish = () => {
                 setInplaceSession(null);
                 inplaceFrozenTextRef.current = null;
-                return;
-            }
-            const current = prepared.session;
-            // callout 前缀回写（R4，与 overlay 的 applyCalloutPrefix 同一来源）。
-            let committed = content;
-            const prefix = (session as any).calloutPrefix;
-            if (typeof prefix === "string" && prefix !== "") {
-                committed = applyCalloutPrefix(committed, prefix);
-            }
-            // 空壳守卫：种子从未落地（DOM 序列化塌缩成空壳）→ 不写盘。
-            // quote 的裸 `>` 空壳 + 原文非空 → 拦（防丢引用内容）；
-            // 若原文本就是空引用则放行（清空合法）。与 overlay 的 isEmptyQuoteShell 语义一致。
-            const shell = isEmptyBlockShellDraft(
-                session.kind === "h" ? "h" : session.kind === "quote" ? "quote" : "p",
-                committed
-            );
-            const original = (session as any).initialContent ?? "";
-            if (shell && content.trim() !== "" && original.trim() !== "") {
-                inlineEditDebug("inplace:commit:empty-shell-blocked", { kind: session.kind });
-                setInplaceSession(null);
-                inplaceFrozenTextRef.current = null;
-                return;
-            }
-            // 无变化提交：不动文档（与 overlay 的 unchangedDraft 语义一致）。
-            if (committed === (session as any).initialContent && current.startLine === session.startLine) {
-                setInplaceSession(null);
-                inplaceFrozenTextRef.current = null;
-                return;
-            }
-            // 写盘：复用编辑器控制器的 replace-content（P2-B2 收敛点），坐标 1-based → 0-based。
-            const block: Block = {
-                id: `inplace:${current.startLine}:${current.endLine}`,
-                kind: inlineKindToTreeKind(session.kind as InlineEditBlockKind, committed),
-                startLine: current.startLine - 1,
-                endLine: current.endLine - 1,
-                depth: 0,
-                text: (session as any).initialContent ?? "",
-                children: [],
             };
-            const res = editorController.apply(
-                { type: "replace-content", block, content: committed },
-                { text: fullText }
-            );
-            if (res != null) {
-                handleInlineEditCommit(res.text, {
-                    blockOp: {
-                        blockId: current.blockId,
-                        startLine: current.startLine,
-                        endLine: current.endLine,
-                        before: (session as any).initialContent ?? "",
-                        after: committed,
-                    },
+            // 提交决策收敛到 md-dom 的单一真源（planBlockCommit）：重定位/陈旧检测 →
+            // callout 前缀回写 → 空壳守卫 → 无变化跳过 → 落地为全文。
+            // 这条链此前在 overlay 与在位路径各写了一遍 —— 而这里漏一道守卫的后果是
+            // **数据被覆盖**，不是样式错，所以必须只有一份定义。
+            const plan = planBlockCommit({
+                kind: session.kind as InlineEditBlockKind,
+                committed: content,
+                calloutPrefix: (session as any).calloutPrefix,
+                startLine: session.startLine,
+                endLine: session.endLine,
+                initialContent: sessionInitialContent(session),
+                blockId: session.blockId,
+                fullText: textRef.current,
+                root: getViewportEl()?.querySelector<HTMLElement>(MarkdownRenderRootSelector) ?? null,
+            });
+            if (plan.action === "skip") {
+                // 跳过原因必须记下来：否则「怎么都存不进去」只能靠猜。
+                inlineEditDebug(`inplace:commit:skip:${plan.reason}`, {
+                    kind: session.kind,
+                    startLine: session.startLine,
                 });
-            } else {
-                handleInlineEditCommit(
-                    replaceSourceRange(fullText, current.startLine, current.endLine, committed),
-                    {
-                        blockOp: {
-                            blockId: current.blockId,
-                            startLine: current.startLine,
-                            endLine: current.endLine,
-                            before: (session as any).initialContent ?? "",
-                            after: committed,
-                        },
-                    }
-                );
+                finish();
+                return;
             }
-            setInplaceSession(null);
-            inplaceFrozenTextRef.current = null;
+            inlineEditDebug("inplace:commit", {
+                kind: session.kind,
+                startLine: plan.blockOp.startLine,
+                len: content.length,
+            });
+            handleInlineEditCommit(plan.text, { blockOp: plan.blockOp });
+            finish();
         },
         [getViewportEl, handleInlineEditCommit]
     );

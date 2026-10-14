@@ -77,6 +77,12 @@ export {
     resolveInlineEditTarget,
     type EditableHostTarget,
 } from "@md/dom/edit-target";
+export {
+    planBlockCommit,
+    type BlockCommitOp,
+    type BlockCommitPlan,
+    type BlockCommitRequest,
+} from "@md/dom/commit-plan";
 
 import {
     applyCalloutPrefix,
