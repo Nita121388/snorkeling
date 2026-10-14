@@ -57,3 +57,9 @@ export {
     wrapListMarker,
     type InlineEditBlockKind,
 } from "./block-syntax";
+export {
+    fallbackSelector,
+    isSelectingRange,
+    resolveInlineEditTarget,
+    type EditableHostTarget,
+} from "./edit-target";

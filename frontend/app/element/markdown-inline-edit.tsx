@@ -71,6 +71,12 @@ export {
     type WysiwygEligibleKind,
     type WysiwygSeedInfo,
 } from "@md/dom/seed";
+export {
+    fallbackSelector,
+    isSelectingRange,
+    resolveInlineEditTarget,
+    type EditableHostTarget,
+} from "@md/dom/edit-target";
 
 import {
     applyCalloutPrefix,
@@ -87,6 +93,7 @@ import {
 } from "@md/dom/block-syntax";
 import { MarkdownRenderRootSelector, prepareInlineEditCommit, type CommitPreparation } from "@md/dom/commit-prep";
 import { captureWysiwygInfo, type WysiwygEligibleKind } from "@md/dom/seed";
+import { isSelectingRange, resolveInlineEditTarget } from "@md/dom/edit-target";
 
 /**
  * 提交前置结果（宿主视角的具体化）：`CommitPreparation` 用泛型保住会话类型，
@@ -345,37 +352,6 @@ export type InlineEditSession = {
     dynamicPlaceholder?: string;
 };
 
-// Fallback selector used to re-locate a block within the viewport by start line when the
-// initially-anchored element is gone (e.g. its list was re-rendered or replaced during edit).
-// Keep it block-kind-agnostic — any renderer-emitted block carries data-source-line — so list /
-// table / code blocks introduced after M1 resolve from the same path without a per-kind map.
-function fallbackSelector(startLine: number): string {
-    return `.markdown-render-root [data-source-line="${startLine}"]`;
-}
-
-export function resolveInlineEditTarget(
-    viewport: HTMLElement,
-    session: Pick<InlineEditSession, "blockKind" | "startLine" | "targetEl">
-): HTMLElement | null {
-    if (session.targetEl.isConnected && viewport.contains(session.targetEl)) {
-        return session.targetEl;
-    }
-    return viewport.querySelector<HTMLElement>(fallbackSelector(session.startLine));
-}
-
-/**
- * Pure intent detector for the preview click-to-edit gesture: is there an ACTIVE selection
- * right now? A `Range`-type selection means the user is selecting text (drag-select in flight
- * or just completed) and the click handler must NOT hijack it by opening the editor. The
- * selection-length heuristic in markdown.tsx catches selections that already grew; this
- * catches the residual cases (empty-text selects, drag still settling). Exported so the
- * drag-select suppression has a runnable contract in tests; `sel` is a minimal Selection-like
- * shape so jsdom/node tests can pass plain objects and `window.getSelection()` results both
- * fit.
- */
-export function isSelectingRange(sel: { type?: string; rangeCount: number } | null): boolean {
-    return sel != null && sel.rangeCount > 0 && sel.type === "Range";
-}
 
 
 /**
