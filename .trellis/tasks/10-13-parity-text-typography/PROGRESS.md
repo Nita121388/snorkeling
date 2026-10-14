@@ -1,6 +1,6 @@
 # A3 在位编辑 —— 进度与续接点
 
-> 最后更新：2026-10-14（A3 切片 1 / 2a / 3 / 4 + D2 第一阶段已提交）
+> 最后更新：2026-10-15（A3 切片 1 / 2a / 3 / 4 + md-dom 全部纯层 + 提交决策收敛）
 > 提交序列：`cebb647f` → `c2869fb8` → `5db13852` → `53a4580f` → `7d2e3f6b` → `8d94274d`
 > → `4505e1fa`（md-dom 建包 + 块语法层）→ `27d5fdcb`（md-dom 提交前置层）
 
@@ -62,6 +62,7 @@ flag 关闭时的 overlay 回退，是减法目标）。文件头那句「台账
 | `src/commit-prep.ts` | `relocateByBlockId` / `relocateByContent` / `isStaleTargetBlock` / `prepareInlineEditCommit` / `BlockEditTarget` / `CommitPreparation<T>` | DOM |
 | `src/seed.ts` | `captureWysiwygInfo`（宿主 flag 由**注入** `isWysiwygEnabled`）/ `captureInplaceSeedHtml` / `calloutSeedHtml` / `normalizeBreaksAroundNewlines` / `stripInsignificantWhitespace` / `WYSIWYG_KINDS` | DOM |
 | `src/edit-target.ts` | `resolveInlineEditTarget` / `fallbackSelector` / `isSelectingRange` / `EditableHostTarget` | DOM |
+| `src/commit-plan.ts` | `planBlockCommit`（四道判定收敛为单一真源）/ `BlockCommitOp` / `BlockCommitPlan` / `BlockCommitRequest` | DOM+md-core |
 
 边界门禁 `src/boundary.test.ts`（6 用例，**任一条违反即红**）：
 ① 零 React 运行时依赖（react / react-dom / react-markdown / jotai / wos / electron）
@@ -82,6 +83,14 @@ flag 关闭时的 overlay 回退，是减法目标）。文件头那句「台账
 （实测踩过：5d9c5437 修了 4 处，其中两处是只在特定提交路径才炸的 ReferenceError。）
 
 ---
+
+## 已完成的关键收敛（2026-10-15）
+
+`planBlockCommit`：**「一次提交该写什么 / 该不该写」的四道判定收成一份定义**
+（重定位+陈旧检测 → callout 前缀回写 → 空壳守卫 → 无变化跳过）。
+此前 overlay 与在位路径各写一遍 —— 这里漏一道的后果是**用户内容被覆盖**，不是样式错。
+`markdown.tsx` 的 `inplaceCommit` 从 ~90 行手工串联改成调这一个函数。
+真实应用验证：真写盘往返只改目标行、markdown 格式逐字节保真；parity 仍 0 差异。
 
 ## md-dom 还没搬的部分（只剩会话驱动）
 

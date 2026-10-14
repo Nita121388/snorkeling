@@ -113,6 +113,21 @@ This project is indexed by GitNexus as **snorkeling** (25382 symbols, 72316 rela
 - **`grep` 模式以 `--` 开头会被当成选项**（例：查 CSS token `--main-bg-color:`）→ 必须写 `grep -- "--main-bg-color:"`，否则静默无输出，容易得出「该 token 未定义」的错误结论。
 - 判定「某 token 是否存在」时，先 `grep -rn -- "<token>:" frontend/` 全仓查，不要只查一个文件。
 
+## 沙箱排查坑（2026-10-15 踩过，花了很久）
+
+- **改 vite 别名（`electron.vite.config.ts` 的 `resolve.alias`）后必须重启 dev server。**
+  别名在启动时解析。用旧 server 验证新别名会得到
+  `Failed to resolve import "@md/dom/block-syntax"` —— 看起来像代码写错了，实际只是 server 陈旧。
+  自查：`curl -s "http://127.0.0.1:51752/frontend/app/element/markdown-inline-edit.tsx" | head -1`
+  首行应是 `import { createHotContext as __vite__createHotContext ...`（vite 转换产物）；
+  返回 `<!doctype html>` 就是 vite 的报错页，把那页里的 `error = {…}` 拉出来看真实原因。
+- **CDP 有两个 page target，别量错。** `Wave Terminal`（约 67 字符空壳）vs `Wave Terminal - T1`（真应用）。
+  不带 `--target` 的 `eval` 会撞上空壳，表现为「应用没起来 / body 是空的」。
+  先 `curl -s http://127.0.0.1:9333/json/list` 确认标题，再带 `--target "Wave Terminal - T1"`。
+- **应用启动失败时 DOM 是空壳，「看 DOM」什么都看不到** —— 原因只在 CDP 事件域里。
+  用 `node scripts/cdp-errors.mjs --endpoint http://127.0.0.1:9333 --target "Wave Terminal - T1" --reload`
+  打印 console 错误与 `exceptionThrown`。
+
 ## 起隔离沙箱要用 quickdev（2026-10-12 实测教训）
 
 `node scripts/dev-isolated.mjs --profile scratch --vite-port 51752 --cdp-port 9333` 默认走 `electron:dev`，
