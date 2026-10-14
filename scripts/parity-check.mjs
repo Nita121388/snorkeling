@@ -70,6 +70,12 @@ const PARITY_PROPS = [
 /**
  * 显式豁免：两态**允许**不同的属性/情形，每条必须写清理由。
  * 这些正是「编辑态可以加的供能性 + 编辑必然引入的差异」。
+ *
+ * ⚠️ 这张表是 **overlay 路径专用**，因为它豁免的每一条都源于 overlay「另一个 DOM 子树 +
+ * 另一条祖先链 + 固定定位盒」这一事实。在位编辑（wysiwyg-inplace）下，编辑面**就是**
+ * 渲染面本身：没有 portal、没有 fixed 盒、没有 visibility:hidden。
+ * 拿这张表去量在位模式 = 用一把偏松的尺子量最严的要求，会把真差异读成“豁免”。
+ * 故 INPLACE_EXEMPTIONS 只留「contenteditable 语义本身必然带来」的那几条。
  */
 const EXEMPTIONS = [
     { scope: "prop", name: "caretColor", reason: "caret 颜色属供能性，不影响阅读外观" },
@@ -90,6 +96,23 @@ const EXEMPTIONS = [
     { scope: "prop", name: "maxHeight", reason: "overlay 用 min() 边界兜底视口溢出" },
     { scope: "prop", name: "top", reason: "overlay 定位" },
     { scope: "prop", name: "left", reason: "overlay 定位" },
+];
+
+/**
+ * 在位路径的豁免表：**只**豁免 contenteditable / focus 语义本身带来的差异。
+ *
+ * 关键：不豁免任何几何属性。编辑面就是预览块本身（同一根元素、同一祖先链），
+ * 所以 position/zIndex/width/height/top/left/visibility **必须逐项相等** ——
+ * 它们一旦不等，就是“编辑面不是渲染面”的直接证据，必须报为阻塞差异。
+ */
+const INPLACE_EXEMPTIONS = [
+    { scope: "prop", name: "caretColor", reason: "caret 颜色属供能性" },
+    { scope: "prop", name: "outline", reason: "focus-visible 可供性" },
+    { scope: "prop", name: "outlineColor", reason: "focus-visible 可供性" },
+    { scope: "prop", name: "outlineStyle", reason: "focus-visible 可供性" },
+    { scope: "prop", name: "outlineWidth", reason: "focus-visible 可供性" },
+    { scope: "prop", name: "cursor", reason: "编辑态必须显示文本光标" },
+    { scope: "prop", name: "userSelect", reason: "编辑态必须可选中" },
 ];
 
 function usage() {
@@ -226,32 +249,46 @@ const MEASURE_FN = `(() => {
             return { line: el.getAttribute("data-source-line"), tag: el.tagName.toLowerCase(), cls: String(el.className || ""), x, y, inViewport };
         }
     };
-    window.__parityOverlayProbe = () => {
+    window.__parityEditProbe = (selector) => {
+        // overlay 路径：独立的 portal 盒
         const ov = document.querySelector(".inline-edit-overlay");
-        if (ov == null) return { present: false };
+        if (ov != null) {
+            return {
+                mode: "overlay",
+                present: true,
+                kind: ov.getAttribute("data-block-kind"),
+                hasEditor: ov.querySelector("[contenteditable=true], textarea") != null,
+            };
+        }
+        // 在位路径：**没有**新盒子 —— 块自身变成 contenteditable。
+        // 判据：目标块自身（或其唯一的内层编辑体）是 [contenteditable]。
+        const el = document.querySelector(selector);
+        if (el == null) return { mode: "none", present: false };
+        const self = el.getAttribute("contenteditable") === "true";
+        const inner = el.querySelector("[contenteditable=true]");
+        if (!self && inner == null) return { mode: "none", present: false };
         return {
+            mode: "inplace",
             present: true,
-            kind: ov.getAttribute("data-block-kind"),
-            targetVisible: (() => {
-                const sel = ov.__paritySelector;
-                const t = sel ? document.querySelector(sel) : null;
-                return t ? getComputedStyle(t).visibility : null;
-            })(),
-            hasEditor: ov.querySelector("[contenteditable=true], textarea") != null,
+            kind: el.tagName.toLowerCase(),
+            hasEditor: true,
+            editableIsRoot: self,
         };
     };
+    window.__parityOverlayProbe = () => window.__parityEditProbe(window.__parityLastSelector);
     return "ready";
 })()`;
 
 const CLICK_AND_MEASURE = (opts, selector) =>
     `(() => {
+        window.__parityLastSelector = ${JSON.stringify(selector)};
         const ov = document.querySelector(".inline-edit-overlay");
         if (ov) ov.__paritySelector = ${JSON.stringify(selector)};
         return window.__parityMeasure(${JSON.stringify(selector)});
     })()`;
 
-function diff(a, b) {
-    const exempt = new Set(EXEMPTIONS.filter((e) => e.scope === "prop").map((e) => e.name));
+function diff(a, b, exemptionTable = EXEMPTIONS) {
+    const exempt = new Set(exemptionTable.filter((e) => e.scope === "prop").map((e) => e.name));
     const rows = [];
     for (const bucket of ["block", "text"]) {
         const left = a?.[bucket] ?? {};
@@ -282,6 +319,16 @@ async function main() {
         return;
     }
 
+    // 先置前 + 开 focus 模拟（已知坑：窗口未置前时 visibilityState=hidden，
+    // CDP 输入不投递 → 点击/按键全部落空 → 会被误判为“未进入编辑态”）。
+    // 不这一步就会抛下面的 visibility 断言；做成自动的就不依赖人工把窗口摆在前台。
+    try {
+        ui(opts, "focus");
+    } catch {
+        // 老版本没有 focus 命令时忽略，交给下面的断言报清楚的错
+    }
+    await new Promise((r) => setTimeout(r, 300));
+
     const visibility = evalJson(opts, "document.visibilityState");
     if (visibility !== "visible") {
         throw new Error(
@@ -304,15 +351,19 @@ async function main() {
     const preview = evalJson(opts, CLICK_AND_MEASURE(opts, selector));
     ui(opts, "click", String(target.x), String(target.y));
     await new Promise((r) => setTimeout(r, 600));
-    const probe = evalJson(opts, "window.__parityOverlayProbe()");
+    const probe = evalJson(opts, `window.__parityEditProbe(${JSON.stringify(selector)})`);
     if (!probe?.present) {
-        throw new Error("点击后未出现 .inline-edit-overlay —— 未进入编辑态（窗口可见性/坐标是否失效？）");
+        throw new Error(
+            "点击后未进入编辑态（既没有 .inline-edit-overlay，也没有 contenteditable 块）—— 窗口可见性/坐标是否失效？或 wysiwyg-inplace flag 未开且点击未命中可编辑块"
+        );
     }
     ui(opts, "move", "4", "4"); // 编辑态同样移开指针，让两态在同一 hover 条件下比较
     await new Promise((r) => setTimeout(r, 150));
     const edit = evalJson(opts, CLICK_AND_MEASURE(opts, selector));
 
-    const rows = diff(preview, edit);
+    // 在位路径用**更严**的豁免表：几何属性一律不得豁免（它们不等就是“编辑面≠渲染面”的铁证）。
+    const table = probe.mode === "inplace" ? INPLACE_EXEMPTIONS : EXEMPTIONS;
+    const rows = diff(preview, edit, table);
     const blocking = rows.filter((r) => !r.exempt);
 
     if (opts.json) {
@@ -325,7 +376,10 @@ async function main() {
         );
     } else {
         console.log(`目标块: line=${target.line} <${target.tag} class="${target.cls}"> inViewport=${target.inViewport}`);
-        console.log(`编辑态: overlay kind=${probe.kind} editor=${probe.hasEditor}`);
+        console.log(
+            `编辑态: mode=${probe.mode} kind=${probe.kind} editor=${probe.hasEditor}` +
+                (probe.mode === "inplace" ? ` editableIsRoot=${probe.editableIsRoot}` : "")
+        );
         if (rows.length === 0) {
             console.log("✅ 两态 computed style 逐项一致（无任何差异，含豁免项）");
         } else {

@@ -164,6 +164,20 @@ export type WysiwygEditorProps = {
     onPaste?: (e: React.ClipboardEvent<HTMLElement>) => void;
     /** Called on selection change with the markdown-space range (P3 G4: floating toolbar). */
     onSelectionChange?: (sel: { start: number; end: number } | null) => void;
+    // --- A3 在位编辑（wysiwyg-inplace）：渲染器对活跃会话块直接渲染 EditableBlock，
+    // 根 tag + className 必须与预览逐字一致（命中同一套 .markdown .content 样式）。
+    // 默认缺省时退化为既有行为（固定 div + wysiwyg-* class），overlay 路径零影响。
+    /** 根元素 tag（默认 "div"）。calloutalert / blockquote 等预览根 tag。 */
+    rootTag?: string;
+    /**
+     * 根元素 className。
+     * - `undefined`：不指定 → 用 cssClassForKind 的 wysiwyg-* class（overlay 路径）。
+     * - `null` / `""`：**显式不要 class** —— 预览根本就没有 class（如 `<blockquote>`）。
+     *   必须与「不传」区分开，否则会退回 wysiwyg-quote，根形态与预览不一致。
+     */
+    rootClassName?: string | null;
+    /** 追加到根元素上的 data-* 属性（data-source-line / data-block-id 等）。 */
+    rootAttrs?: Record<string, string | undefined>;
 };
 
 // ---------------------------------------------------------------------------
@@ -292,6 +306,9 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         onKeyDown,
         onPaste,
         onSelectionChange,
+        rootTag: rootTagProp,
+        rootClassName,
+        rootAttrs,
     },
     ref
 ) {
@@ -917,18 +934,46 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
     }, [commitCtx]);
 
     // --- Render ---
-    const Tag = "div" as const;
+    // A3 在位编辑：rootTag / rootClassName / rootAttrs 缺省时退化为既有行为
+    // （固定 div + wysiwyg-* class），overlay 路径零影响。
+    //
+    // A3 隔离：`rootTagProp !== undefined` 就是「在位根」的唯一判据（overlay 不传它）。
+    // 在位根必须与预览根**逐属性同构**，因此不能携带 overlay 专属标记：
+    //  - data-block-kind="wysiwyg"：SCSS 里所有 [data-block-kind=…] 规则都限定在
+    //    .inline-edit-overlay 下（那是 overlay 的作用域），对在位根是死属性，
+    //    但它让根多出一个预览没有的属性 → 根同构对拍会红、也给未来选择器埋雷。
+    //  - class：null/"" 表示预览根本就无 class，与「不传」语义不同。
+    const Tag = (rootTagProp ?? "div") as any;
+    const isInplaceRoot = rootTagProp !== undefined;
+    const renderedClass =
+        rootClassName === undefined ? cssClassForKind(liveKind, headingLevel) : rootClassName || undefined;
+    const dataAttrs: Record<string, string> = dataAttrForKind(liveKind, headingLevel);
+    const mergedRootAttrs: Record<string, string> = { ...rootAttrs };
+    if (mergedRootAttrs["data-kind"] == null && dataAttrs["data-kind"] != null) {
+        mergedRootAttrs["data-kind"] = dataAttrs["data-kind"];
+    }
 
     return (
         <Tag
             ref={rootRef}
-            className={cssClassForKind(liveKind, headingLevel)}
-            data-block-kind="wysiwyg"
-            {...dataAttrForKind(liveKind, headingLevel)}
+            className={renderedClass}
+            {...(isInplaceRoot ? {} : { "data-block-kind": "wysiwyg" })}
+            {...mergedRootAttrs}
             contentEditable="true"
             suppressContentEditableWarning
-            style={{ ...typography, whiteSpace: "pre-wrap" }}
-            data-placeholder={placeholder}
+            // A3 隔离：**在位根不得挂任何内联样式**。
+            //
+            // `typography` 是 overlay 时代的第三条样式通道：把打开编辑那一刻的
+            // getComputedStyle 快照逐条糊到编辑器根上（fontWeight/lineHeight/padding/…）。
+            // 它是为「textarea 承载 markdown 源码」设计的——源码需要 pre-wrap 保留换行、
+            // 需要从渲染块抄缩进才能对齐。
+            //
+            // 但在位根是 contentEditable，承载的是**渲染后的 HTML**，布局完全由
+            // `.markdown .content` 下的预览样式决定。挂上快照 = 重新引入了第二套样式世界，
+            // 实测已直接表现为 whiteSpace normal→pre-wrap 差异。
+            // 零差异要 by construction，内联快照在位路径上必须为 0。
+            style={isInplaceRoot ? undefined : { ...typography, whiteSpace: "pre-wrap" }}
+            {...(isInplaceRoot ? {} : { "data-placeholder": placeholder })}
             onInput={handleInput}
             onBlur={handleBlur}
             onCompositionStart={handleCompositionStart}

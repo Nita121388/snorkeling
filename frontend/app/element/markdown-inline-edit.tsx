@@ -492,6 +492,30 @@ export function calloutSeedHtml(el: HTMLElement): string {
     return clone.innerHTML;
 }
 
+/**
+ * A3 在位编辑的种子采集：**保留渲染器产出的全部结构**，只剔除供能性控件。
+ *
+ * 与 `calloutSeedHtml` 的关键区别（两者故意不同）：
+ * - overlay 路径：编辑面是另一个盒子（`.wysiwyg-editor.wysiwyg-quote`），自带边框/边距，
+ *   所以必须把 callout 的 `.markdown-alert-title` 容器**拆成裸 `<p>`**，否则样式叠加两次。
+ * - 在位路径：编辑面**就是渲染面本身**。任何「为了对齐而简化结构」的操作都会直接造成
+ *   样式差异——实测正是如此：种子拆掉 `.markdown-alert-title` 后，编辑态的文本元素退化成
+ *   `p`（fontWeight 500 / lineHeight 22.4px），而预览是
+ *   `span.markdown-alert-title-text`（650 / 20.3px）→ 两项未豁免差异。
+ *
+ * 所以这里只做一件事：删掉 **button 类的供能性控件**（emoji 按钮 / 折叠按钮）。
+ * 它们是「编辑期不该有的交互」，但它们的**容器**是渲染器产出的结构，必须原样保留。
+ */
+export function captureInplaceSeedHtml(targetEl: HTMLElement): string {
+    const clone = targetEl.cloneNode(true) as HTMLElement;
+    clone
+        .querySelectorAll(
+            "button.markdown-alert-emoji-btn, button.heading-collapse-button, button.markdown-alert-toggle"
+        )
+        .forEach((b) => b.remove());
+    return clone.innerHTML;
+}
+
 export function captureWysiwygInfo(
     blockKind: InlineEditBlockKind,
     targetEl: HTMLElement,

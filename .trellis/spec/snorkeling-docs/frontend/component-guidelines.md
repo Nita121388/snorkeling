@@ -470,3 +470,38 @@ Backspace 合并），验证这些行为必须用 `scripts/inspect-electron-ui.m
 - token：引用的 `var(--x)` 必须有定义。门禁：`frontend/app/element/token-existence.test.ts`
   （已知悬空 token 逐条豁免并带 reason/todo；`todo="fix-token-2"` = 待修的真实视觉问题）。
 - 扫描范围只覆盖我们负责的范围（`frontend/app/element` + `packages/md-core/src`），宿主其它模块的历史悬空 token 不在本门禁职责内。
+
+## Pattern: A3 在位编辑（wysiwyg-inplace）——渲染面即编辑面（10-13，必读）
+
+**目标**：彻底告别「编辑态 vs 预览态追差异」。渲染器对**活跃会话块**直接渲染 `EditableBlock`：
+根元素 tag + className 与预览渲染器输出**逐字一致** → 命中同一套 `.markdown .content` 样式
+→ 零差异 by construction（prd R1）。
+
+**机制**：
+- flag `wysiwyg-inplace`（默认关，`packages/md-core/src/core/flags.ts` 的 DEFAULT_OFF_FEATURES）。
+  双轨：关 → 走 overlay 旧路径（行为逐字节不变）；开 → 点击 p/h/quote/callout 进入 inplace。
+- 会话：`ctx.inplaceSession: InplaceRenderSession | null`（host.ts 契约层定义，renderer-registry 引用）。
+  渲染器（p / h1-6 / blockquote / calloutalert）用 `matchInplaceSession`（data-block-id 优先，
+  其次 data-source-line）命中会话 → 渲染 `getMdHost().components.EditableBlock`（经 host adapter 注入，
+  与 TableBlock 同模式，md-core 不静态依赖宿主）。
+- `EditableBlock`（frontend/app/element/editable-block.tsx）：根 tag+class 来自 `inplaceRootShape`
+  （p→div.paragraph；h→div.heading.is-N + 内层 span.heading-title，**必须保留 collapse-button 占位**防
+  flex 布局跳变；quote→blockquote；callout→calloutalert + 预览 props 的 className）。内部复用
+  `WysiwygEditor`（rootTag / rootClassName / rootAttrs 三个新 props 覆盖默认 wysiwyg-* 根形态，
+  overlay 不传 → 行为不变）。
+- **冻结**（prd R2）：会话期间渲染树输入冻结为会话开始时的 text 快照（markdown.tsx `renderText`）。
+  textAtom 更新不触发 ReactMarkdown 重挂 EditableBlock 的 contentEditable DOM。提交/取消后解冻。
+  `memo` 包裹 + props 引用稳定兜底。
+- 提交/取消：blur → WysiwygEditor 序列化 → `inplaceCommit`（宿主侧 prepareInlineEditCommit 守卫 →
+  callout 前缀回写 → editorController.replace-content / replaceSourceRange → handleInlineEditCommit
+  写盘 + undo）；Esc → `inplaceCancel`（无写盘）。
+
+**不变量（改动时必须保持）**：
+- `EditableBlock` 根 class 必须等于对应渲染器输出（改任一侧另一侧同步）。
+- 会话期间 `renderText` 冻结；结束必须解冻（否则预览卡在旧文本）。
+- callout 提交必须回写 `[!TYPE]` + emoji 前缀（captureCalloutPrefix / applyCalloutPrefix 与 overlay 同源）。
+- 门禁：`packages/md-core/src/render/inplace-render.test.tsx`（渲染器分支）、
+  `frontend/app/element/editable-block.test.tsx`（根结构 + 提交/取消 + 冻结）、
+  `frontend/app/element/markdown-inplace-commit.test.ts`（提交数学与 overlay 同源）。
+- md-core 边界门禁（markdown-core-boundary.test.ts）的 HOST_SEAM_DYNAMIC_IMPORTS 已登记
+  `@/app/element/editable-block`（新增宿主缝隙必须登记）。

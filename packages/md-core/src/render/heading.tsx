@@ -11,6 +11,26 @@ export type HeadingProps = {
     onToggle: (headingId: string) => void;
 };
 
+/**
+ * heading 根的**唯一真源形态**（className + 身份属性）。
+ *
+ * A3 在位编辑的 EditableBlock 必须命中与预览**完全相同**的根形态（同一套样式），
+ * 而 heading 是唯一一个根带额外 data-* 的块（`data-heading-level` / `data-heading-id`），
+ * 也是唯一一个有两层结构（`.heading` > `.heading-title`）的块。
+ *
+ * 因此把形态判定抽到这里，由预览渲染器与 EditableBlock **共同调用**：
+ * 今后新增/重命名一个根属性，两边自动跟随，不存在「抄漏一条」的可能。
+ * （此前 EditableBlock 手抄了 srcLineAttrs，已在退化节点上与真源分叉，见其文件注释。）
+ */
+export function headingRootAttrs(props: any, hnum: number, collapsed = false) {
+    const headingId = typeof props?.id === "string" ? props.id : "";
+    return {
+        className: clsx("heading", `is-${hnum}`, { collapsed }),
+        "data-heading-level": hnum,
+        "data-heading-id": headingId,
+    };
+}
+
 export const CollapsibleHeading = ({ props, hnum, collapsed, onToggle }: HeadingProps) => {
     const headingId = typeof props.id === "string" ? props.id : "";
     return (
@@ -21,9 +41,7 @@ export const CollapsibleHeading = ({ props, hnum, collapsed, onToggle }: Heading
             // （id/className/…）必须覆盖 props 的同名值，行为与改动前一致。
             {...domProps(props)}
             id={props.id}
-            className={clsx("heading", `is-${hnum}`, { collapsed })}
-            data-heading-level={hnum}
-            data-heading-id={headingId}
+            {...headingRootAttrs(props, hnum, collapsed)}
             {...srcLineAttrs(props)}
         >
             <button

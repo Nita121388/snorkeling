@@ -16,7 +16,7 @@
  */
 
 import type { Components } from "react-markdown";
-import { getMdHost } from "../core/host";
+import { getMdHost, type InplaceRenderSession } from "../core/host";
 import type { MarkdownContentBlockType } from "../shared/markdown-util";
 import { setCodeBlockLanguage } from "../transform/code-block";
 import { CalloutAlert } from "./calloutalert";
@@ -64,7 +64,22 @@ export interface MarkdownRenderContext {
     /** Callout emoji picker affordance: ref + opener passed through from the host. */
     calloutEmojiButtonRef: React.RefObject<HTMLButtonElement | null>;
     openCalloutEmojiPicker: (button: HTMLButtonElement) => void;
-}
+    /**
+     * A3 在位编辑：活跃会话块信息。
+     * 渲染器（p / h1-6 / blockquote / calloutalert）对该块改渲染为 EditableBlock
+     * （同一根 tag+className，内部复用 WysiwygEditor），零差异 by construction。
+     * 为 null / 未传 → 所有块走正常预览渲染（overlay 双轨的旧路径不变）。
+     */
+    inplaceSession?: InplaceRenderSession | null;
+    /** A3：EditableBlock 提交回调（序列化 → prepareInlineEditCommit → 写盘）。 */
+    inplaceCommit?: (content: string) => void;
+    /** A3：EditableBlock 取消回调（无写盘）。 */
+    inplaceCancel?: () => void;
+    /** A3：EditableBlock 裸 Enter 拆分回调（splitBlockAtCaretText → 写盘 → 新行开会话）。 */
+    inplaceSplit?: (content: string, caretMarkdown: number) => void;
+    /** A3：EditableBlock ⌘/Ctrl+S 保存回调（提交 + flush 磁盘）。 */
+    inplaceSave?: () => void;
+};
 
 export interface MarkdownRendererSpec {
     /** react-markdown element key (h1/h2/p/li/table/pre/img/a/ol/ul/...). */
@@ -115,12 +130,70 @@ export function buildMarkdownComponents(ctx: MarkdownRenderContext): Partial<Com
 // ---------------------------------------------------------------------------
 
 function headingRenderer(hnum: number) {
-    return (props: React.HTMLAttributes<HTMLHeadingElement>, ctx: MarkdownRenderContext) => (
-        <CollapsibleHeading
-            props={props}
-            hnum={hnum}
-            collapsed={ctx.collapsedHeadings.has(String(props.id))}
-            onToggle={ctx.toggleHeadingCollapse}
+    return (props: React.HTMLAttributes<HTMLHeadingElement>, ctx: MarkdownRenderContext) => {
+        // A3 在位编辑：命中活跃会话 → 渲染 EditableBlock（同一根 class "heading is-N"）。
+        const inplace = matchInplaceSession(props, ctx);
+        if (inplace != null) {
+            return renderInplaceEditableBlock(inplace, props, ctx);
+        }
+        return (
+            <CollapsibleHeading
+                props={props}
+                hnum={hnum}
+                collapsed={ctx.collapsedHeadings.has(String(props.id))}
+                onToggle={ctx.toggleHeadingCollapse}
+            />
+        );
+    };
+}
+
+/**
+ * A3 在位编辑：判断当前块的 props 是否命中活跃会话。
+ * 优先按 data-block-id（身份），其次按 data-source-line（坐标）——
+ * 与提交链 prepareInlineEditCommit 的重定位顺序保持一致。
+ * 返回会话副本（kind 归并到 InplaceRenderSession 的 kind 域）。
+ */
+function matchInplaceSession(
+    props: any,
+    ctx: MarkdownRenderContext
+): InplaceRenderSession | null {
+    const session = ctx.inplaceSession;
+    // 守的是 **inplace 提交回调**，不是 overlay 的 onInlineEditCommit：
+    // inplace 路径的写盘入口是 ctx.inplaceCommit。若误用 overlay 回调做闸门，
+    // 任何不传 onInlineEditCommit 的宿主（那正是 overlay 本来就不用的场景）
+    // 都会把 inplace 静默关掉 —— 编辑面永远渲染不出 EditableBlock，且无任何报错。
+    if (session == null || ctx.inplaceCommit == null) {
+        return null;
+    }
+    const blockId = props?.["data-block-id"];
+    if (session.blockId != null && blockId != null && blockId !== "") {
+        return String(blockId) === String(session.blockId) ? session : null;
+    }
+    const line = getSourceLine(props);
+    if (line != null && session.startLine === line) {
+        return session;
+    }
+    return null;
+}
+
+/**
+ * A3 在位编辑：把命中会话的块渲染为宿主 EditableBlock。
+ * 通过 host adapter 注入宿主组件（与 TableBlock 同模式），md-core 不静态依赖宿主。
+ */
+function renderInplaceEditableBlock(
+    session: InplaceRenderSession,
+    props: any,
+    ctx: MarkdownRenderContext
+): React.ReactNode {
+    const EditableBlock = getMdHost().components.EditableBlock;
+    return (
+        <EditableBlock
+            session={session}
+            blockProps={props}
+            onCommit={ctx.inplaceCommit}
+            onCancel={ctx.inplaceCancel}
+            onSplit={ctx.inplaceSplit}
+            onSave={ctx.inplaceSave}
         />
     );
 }
@@ -258,9 +331,14 @@ export function registerBuiltinRenderers(): void {
     });
     registerMarkdownRenderer({
         key: "p",
-        render: (props: React.HTMLAttributes<HTMLParagraphElement>, ctx) => (
-            <div className="paragraph" {...domProps(props)} {...srcLineAttrs(props)} />
-        ),
+        render: (props: React.HTMLAttributes<HTMLParagraphElement>, ctx) => {
+            // A3 在位编辑：命中活跃会话的 p 块渲染为 EditableBlock（同一根 class "paragraph"）。
+            const inplace = matchInplaceSession(props, ctx);
+            if (inplace != null) {
+                return renderInplaceEditableBlock(inplace, props, ctx);
+            }
+            return <div className="paragraph" {...domProps(props)} {...srcLineAttrs(props)} />;
+        },
     });
     registerMarkdownRenderer({
         key: "hr",
@@ -270,16 +348,28 @@ export function registerBuiltinRenderers(): void {
     });
     registerMarkdownRenderer({
         key: "blockquote",
-        render: (props: React.HTMLAttributes<HTMLQuoteElement>, ctx) => (
-            <blockquote {...domProps(props)} {...srcLineAttrs(props)} />
-        ),
+        render: (props: React.HTMLAttributes<HTMLQuoteElement>, ctx) => {
+            // A3 在位编辑：命中活跃会话的 quote 渲染为 EditableBlock（同一根 tag blockquote）。
+            const inplace = matchInplaceSession(props, ctx);
+            if (inplace != null) {
+                return renderInplaceEditableBlock(inplace, props, ctx);
+            }
+            return <blockquote {...domProps(props)} {...srcLineAttrs(props)} />;
+        },
     });
     registerMarkdownRenderer({
         // remarkCalloutAlert (R1) turns every blockquote into this custom element and keeps
         // the source position so srcLineAttrs can emit data-source-line / -end. Unknown tags
         // are blocked by rehype-sanitize unless allow-listed (see markdown.tsx tagNames).
         key: "calloutalert",
-        render: (props: any) => <CalloutAlert {...props} />,
+        render: (props: any, ctx) => {
+            // A3 在位编辑：命中活跃会话的 callout 渲染为 EditableBlock（同一根 class markdown-alert）。
+            const inplace = matchInplaceSession(props, ctx);
+            if (inplace != null) {
+                return renderInplaceEditableBlock(inplace, props, ctx);
+            }
+            return <CalloutAlert {...props} />;
+        },
     });
     registerMarkdownRenderer({
         key: "span",

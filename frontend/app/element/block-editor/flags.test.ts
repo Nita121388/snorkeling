@@ -8,9 +8,12 @@ import { blockEditorFlags, isBlockEditorFeatureEnabled, resetBlockEditorFlagsFor
 describe("block-editor flags", () => {
     beforeEach(() => resetBlockEditorFlagsForTests());
 
-    test("all features default ON (no storage)", () => {
+    test("all features default ON (no storage) except wysiwyg-inplace", () => {
         const flags = blockEditorFlags();
-        expect(Object.values(flags).every(Boolean)).toBe(true);
+        // wysiwyg-inplace（A3 双轨）默认关，其余全部默认开。
+        const defaultsOn = Object.entries(flags).filter(([k]) => k !== "wysiwyg-inplace");
+        expect(defaultsOn.every(([, v]) => Boolean(v))).toBe(true);
+        expect(flags["wysiwyg-inplace"]).toBe(false);
         expect(isBlockEditorFeatureEnabled("slash")).toBe(true);
         expect(isBlockEditorFeatureEnabled("toolbar")).toBe(true);
     });

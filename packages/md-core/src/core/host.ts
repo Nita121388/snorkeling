@@ -102,7 +102,58 @@ export interface MdHostComponents {
     }>;
     /** 图标按钮 UI 原语（`@/app/element/iconbutton`）。 */
     IconButton: ComponentType<{ decl: any; className?: string }>;
+    /**
+     * A3 在位编辑（wysiwyg-inplace）：活跃会话块的编辑体（`@/app/element/editable-block`）。
+     * 渲染器对命中会话的块渲染本组件；根 tag+className 与预览一致（同一套样式），
+     * 内部复用 WysiwygEditor 的键盘/IME/序列化语义。
+     */
+    EditableBlock: ComponentType<EditableBlockHostProps>;
 }
+
+/**
+ * A3 在位编辑：渲染器需要的最小会话信息（宿主侧构造，经 buildMarkdownComponents 传入）。
+ * 渲染器按 data-block-id（优先）或 data-source-line 与当前块的 props 匹配。
+ * 定义在 host 契约层（而非 renderer-registry）：EditableBlock 宿主组件、渲染器、
+ * markdown.tsx 宿主三方共同引用，避免 renderer-registry → host 的运行时依赖反向。
+ */
+export type InplaceRenderSession = {
+    /** 编辑块类型（切片 1：p / h / quote；callout 归并为 quote）。 */
+    kind: "p" | "h" | "quote";
+    /** 1-based source start line。 */
+    startLine: number;
+    /** 1-based，inclusive source end line（多行段落）。 */
+    endLine: number;
+    /** 块身份（remarkBlockIds 打的 data-block-id）；旧 DOM 可能缺失。 */
+    blockId?: string;
+    /** heading 级别（kind === "h"）。 */
+    headingLevel?: number;
+    /** callout / 引用（kind === "quote"，isCallout 时根 tag=calloutalert + class markdown-alert）。 */
+    isCallout?: boolean;
+    /** 编辑种子 HTML（captureWysiwygInfo 产物，净内容、无块标记）。 */
+    seedHtml: string;
+    /** R4：callout `[!TYPE]` + emoji 前缀（从源码首行捕获，提交时回写）。 */
+    calloutPrefix?: string;
+};
+
+/**
+ * A3 在位编辑：宿主 EditableBlock 组件的 props（结构类型，宿主实现可按需扩展）。
+ * `session` 携带渲染器需要的定位信息；种子 HTML 与提交回调由宿主经会话回调提供。
+ */
+export type EditableBlockHostProps = {
+    /** 活跃会话的定位信息（渲染器从 ctx.inplaceSession 透传）。 */
+    session: InplaceRenderSession;
+    /** 渲染器透传的 react-markdown 块 props（含 node 位置 / data-block-id）。 */
+    blockProps?: any;
+    /** 宿主提供的提交回调（序列化 → prepareInlineEditCommit → 写盘）。 */
+    onCommit?: (content: string) => void;
+    /** 宿主提供的取消回调（无写盘）。 */
+    onCancel?: () => void;
+    /** 宿主提供的裸 Enter 拆分回调（splitBlockAtCaretText → 写盘 → 新行开会话）。 */
+    onSplit?: (content: string, caretMarkdown: number) => void;
+    /** 宿主提供的 ⌘/Ctrl+S 保存回调（提交 + flush 磁盘）。 */
+    onSave?: () => void;
+};
+
 
 /** 宿主特性开关（默认实现 = 包内纯实现 `./flags`，宿主可换成 settings / 远端配置）。 */
 export interface MdHostFeatures {
@@ -201,6 +252,10 @@ const DEFAULTS: MdHostAdapter = {
         IconButton: defineLazyHostComponent("IconButton", async () => {
             const mod = await import("@/app/element/iconbutton");
             return { default: mod.IconButton };
+        }),
+        EditableBlock: defineLazyHostComponent("EditableBlock", async () => {
+            const mod = await import("@/app/element/editable-block");
+            return { default: mod.EditableBlock };
         }),
     },
 };

@@ -62,6 +62,7 @@ import {
     expandBlockSelection,
     indentListRange,
     inlineEditDebug,
+    inlineKindToTreeKind,
     InlineEditOverlay,
     isSelectingRange,
     makeInlineEditKeydown,
@@ -74,6 +75,13 @@ import {
     splitBlockAtCaretText,
     splitListItemDraft,
     useInlineEdit,
+    applyCalloutPrefix,
+    captureCalloutPrefix,
+    captureInplaceSeedHtml,
+    captureWysiwygInfo,
+    isEmptyBlockShellDraft,
+    initialContentFor,
+    prepareInlineEditCommit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
 import { replaceLinkInSource, wikiTargetFromHref, type LinkEditRequest } from "@/app/element/markdown-link-edit";
@@ -109,10 +117,9 @@ import {
 } from "@md/core/transform/table";
 import { detectInlineTrigger } from "@md/core/transform/triggers";
 import { MarkdownContentBlockType, transformBlocks } from "@md/core/shared/markdown-util";
-import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip } from "@md/core/render";
+import { buildMarkdownComponents, MarkdownLinkEditor, MarkdownLinkTooltip, type InplaceRenderSession } from "@md/core/render";
 import { useEditorHistory, type EditorHistoryOp } from "./use-editor-history";
-import { editorController } from "@md/core/block-model/editor-controller-instance";
-import { makeBlockRef } from "@md/core/block-model/editor-controller";
+import { editorController } from "@md/core/block-model/editor-controller-instance";import { makeBlockRef } from "@md/core/block-model/editor-controller";
 import type { StructuralOp } from "@md/core/transform/structural-ops";
 import type { Block } from "@md/core/transform/tree";
 import { makeRemarkPlugins } from "@md/core/remark";
@@ -121,7 +128,7 @@ import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
 import { arrayToBase64, boundNumber, cn, useAtomValueSafe } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import clsx from "clsx";
-import { atom, Atom, useAtomValue } from "jotai";
+import { atom, Atom, useAtom, useAtomValue } from "jotai";
 import { loadable } from "jotai/utils";
 import { OverlayScrollbarsComponent, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import {
@@ -149,6 +156,7 @@ import { ContextMenuModel } from "../store/contextmenu";
 import { RpcApi } from "../store/wshclientapi";
 import { TabRpcClient } from "../store/wshrpcutil";
 import { normalizeLinkedFilePath } from "../view/preview/file-link-navigation";
+import { inlineEditingActiveAtom } from "../view/preview/preview-shared-draft";
 import "./markdown.scss";
 import { buildCopyContextText } from "./selection-copy-overlay";
 export { linkifyMarkdownFileReferences } from "@md/core/remark";
@@ -163,6 +171,15 @@ ensureBuiltinBlockEditorCommands();
 
 function isLiveScrollDebugEnabled(): boolean {
     return typeof window !== "undefined" && window.localStorage?.getItem("snorkelingLiveScrollDebug") === "1";
+}
+
+/**
+ * A3 在位编辑：从会话里取「打开编辑器时捕获的原文切片」（陈旧检测的比对基准）。
+ * beginInplaceEdit 时把 initialContent 挂到 session 上（InplaceRenderSession 是
+ * 渲染器最小视图，宿主私有字段扩展无需改 md-core 类型）。
+ */
+function sessionInitialContent(session: InplaceRenderSession): string {
+    return (session as any).initialContent ?? "";
 }
 
 function liveScrollDebug(message: string, details: Record<string, unknown> = {}) {
@@ -721,13 +738,39 @@ const Markdown = ({
     const [idPrefix] = useState<string>(() => idPrefixProp ?? crypto.randomUUID());
 
     text = textAtomValue ?? text ?? "";
+
+    // === A3 在位编辑（wysiwyg-inplace）：活跃会话 + 渲染树冻结 ============================
+    // 渲染器对命中会话的块渲染 EditableBlock（同一根 class）。会话期间把渲染输入冻结为
+    // 会话开始时的 text 快照（inplaceFrozenTextRef）：textAtom 更新不触发 ReactMarkdown 重挂
+    // EditableBlock 的 contentEditable DOM（冻结机制，prd R2）。提交/取消后解冻。
+    // 状态必须声明于 transformedOutput / markdownComponents 之前：冻结依赖 renderText，
+    // 渲染树的 useMemo 链（transformBlocks → scrollableMarkdownTree）都吃它。
+    const [inplaceSession, setInplaceSession] = useState<InplaceRenderSession | null>(null);
+    const inplaceFrozenTextRef = useRef<string | null>(null);
+    const inplaceSessionRef = useRef<InplaceRenderSession | null>(null);
+    inplaceSessionRef.current = inplaceSession;
+
+    // 会话期间渲染树用冻结文本；会话结束（commit/cancel/dismiss）后恢复实时 text。
+    const renderText =
+        inplaceSession != null && inplaceFrozenTextRef.current != null ? inplaceFrozenTextRef.current : text;
+
+    // 与 overlay 路径一致：inplace 会话活跃时置位全局「编辑中」标志（Cmd+E 抑制 /
+    // live-scroll 跳过 / Save 行为一致性）。
+    const [, setInplaceEditingFlag] = useAtom(inlineEditingActiveAtom);
+    useEffect(() => {
+        const active = inplaceSession != null;
+        setInplaceEditingFlag(active);
+        return () => active && setInplaceEditingFlag(false);
+    }, [inplaceSession, setInplaceEditingFlag]);
+
     // useMemo 稳定 transformedOutput/contentBlocksMap 引用：鼠标移动（handleRootMouseOver →
     // setInsertAnchor）、滚动（measureInsertAnchor → setInsertPos）等无关重渲染不改变 text，
     // memo 命中后下游 waveblock 委托引用稳定，React 保留波块子树实例，块内组件 state
     // （ObsidianPropertiesCard 折叠/编辑）不随重渲染丢失。frontmatter 注册随 transform 一起
     // memo：blockKey ↔ yamlText 幂等，内容不变时引用不变。
+    // A3 冻结：渲染输入用 renderText（会话期间 = 冻结快照）而非 text。
     const transformedOutput = useMemo(() => {
-        const output = transformBlocks(text);
+        const output = transformBlocks(renderText);
         if (frontmatterBlock) {
             // 注册 frontmatter 内容块：后续 remark 插件把 mdast 层 frontmatter 节点替换成
             // waveblock 占位（blockkey 指向该条目）。type 固定 "obsidian-props"
@@ -739,7 +782,7 @@ const Markdown = ({
             });
         }
         return output;
-    }, [text, frontmatterBlock]);
+    }, [renderText, frontmatterBlock]);
     const transformedText = transformedOutput.content;
     const contentBlocksMap = transformedOutput.blocks;
 
@@ -915,6 +958,263 @@ const Markdown = ({
     const textRef = useRef(text);
     textRef.current = text;
     const pendingCellFocusRef = useRef<TableCellFocus | null>(null);
+
+    // === A3 在位编辑：EditableBlock 的提交/取消回调（透传给渲染器 ctx）=====================
+    // 回调必须在此定义（textRef / getViewportEl / handleInlineEditCommit 已就绪）；
+    // 会话 state 与 renderText 在上方 transformedOutput 之前声明（冻结渲染树）。
+    const inplaceCommit = useCallback(
+        (content: string) => {
+            const session = inplaceSessionRef.current;
+            if (session == null) {
+                return;
+            }
+            inlineEditDebug("inplace:commit", { kind: session.kind, startLine: session.startLine, len: content.length });
+            // 复用既有提交链：prepareInlineEditCommit（重定位 + 陈旧检测）→ 控制器 /
+            // replaceSourceRange → handleInlineEditCommit（写盘 + undo + autosave）。
+            const root = getViewportEl()?.querySelector<HTMLElement>(MarkdownRenderRootSelector) ?? null;
+            const fullText = textRef.current;
+            // 构造成既有守卫需要的 session 形状（其余字段仅用于提交定位）。
+            const prepared = prepareInlineEditCommit(
+                {
+                    blockKind: session.kind as InlineEditBlockKind,
+                    startLine: session.startLine,
+                    endLine: session.endLine,
+                    initialContent: sessionInitialContent(session),
+                    blockId: session.blockId,
+                    targetEl: document.body,
+                    insertMode: undefined,
+                } as any,
+                fullText,
+                root
+            );
+            if (!prepared.ok) {
+                inlineEditDebug("inplace:commit:stale", { kind: session.kind, startLine: session.startLine });
+                setInplaceSession(null);
+                inplaceFrozenTextRef.current = null;
+                return;
+            }
+            const current = prepared.session;
+            // callout 前缀回写（R4，与 overlay 的 applyCalloutPrefix 同一来源）。
+            let committed = content;
+            const prefix = (session as any).calloutPrefix;
+            if (typeof prefix === "string" && prefix !== "") {
+                committed = applyCalloutPrefix(committed, prefix);
+            }
+            // 空壳守卫：种子从未落地（DOM 序列化塌缩成空壳）→ 不写盘。
+            // quote 的裸 `>` 空壳 + 原文非空 → 拦（防丢引用内容）；
+            // 若原文本就是空引用则放行（清空合法）。与 overlay 的 isEmptyQuoteShell 语义一致。
+            const shell = isEmptyBlockShellDraft(
+                session.kind === "h" ? "h" : session.kind === "quote" ? "quote" : "p",
+                committed
+            );
+            const original = (session as any).initialContent ?? "";
+            if (shell && content.trim() !== "" && original.trim() !== "") {
+                inlineEditDebug("inplace:commit:empty-shell-blocked", { kind: session.kind });
+                setInplaceSession(null);
+                inplaceFrozenTextRef.current = null;
+                return;
+            }
+            // 无变化提交：不动文档（与 overlay 的 unchangedDraft 语义一致）。
+            if (committed === (session as any).initialContent && current.startLine === session.startLine) {
+                setInplaceSession(null);
+                inplaceFrozenTextRef.current = null;
+                return;
+            }
+            // 写盘：复用编辑器控制器的 replace-content（P2-B2 收敛点），坐标 1-based → 0-based。
+            const block: Block = {
+                id: `inplace:${current.startLine}:${current.endLine}`,
+                kind: inlineKindToTreeKind(session.kind as InlineEditBlockKind, committed),
+                startLine: current.startLine - 1,
+                endLine: current.endLine - 1,
+                depth: 0,
+                text: (session as any).initialContent ?? "",
+                children: [],
+            };
+            const res = editorController.apply(
+                { type: "replace-content", block, content: committed },
+                { text: fullText }
+            );
+            if (res != null) {
+                handleInlineEditCommit(res.text, {
+                    blockOp: {
+                        blockId: current.blockId,
+                        startLine: current.startLine,
+                        endLine: current.endLine,
+                        before: (session as any).initialContent ?? "",
+                        after: committed,
+                    },
+                });
+            } else {
+                handleInlineEditCommit(
+                    replaceSourceRange(fullText, current.startLine, current.endLine, committed),
+                    {
+                        blockOp: {
+                            blockId: current.blockId,
+                            startLine: current.startLine,
+                            endLine: current.endLine,
+                            before: (session as any).initialContent ?? "",
+                            after: committed,
+                        },
+                    }
+                );
+            }
+            setInplaceSession(null);
+            inplaceFrozenTextRef.current = null;
+        },
+        [getViewportEl, handleInlineEditCommit]
+    );
+    const inplaceCancel = useCallback(() => {
+        inlineEditDebug("inplace:cancel", { kind: inplaceSessionRef.current?.kind });
+        setInplaceSession(null);
+        inplaceFrozenTextRef.current = null;
+    }, []);
+
+    /**
+     * A3 在位编辑：裸 Enter 拆分（与 overlay handleEnterSplit 同源，prd R3）。
+     * before 留在原块（走 inplaceCommit 提交），after 作为新块插入（splitBlockAtCaretText
+     * 的纯链已把全文拼好）→ handleInlineEditCommit 写盘 → 新行开 inplace 会话继续编辑。
+     */
+    const tryBeginInplaceEdit = useCallback(
+        (
+            blockKind: InlineEditBlockKind,
+            line: number,
+            targetEl: HTMLElement
+        ): boolean => {
+            if (!isBlockEditorFeatureEnabled("wysiwyg-inplace") || !isBlockEditorFeatureEnabled("wysiwyg")) {
+                return false;
+            }
+            // 切片 1 范围：p / h / quote（callout 归并为 quote）。list/table/code/blank 不走
+            // inplace（各自有专用编辑器，后续切片）。
+            if (blockKind !== "p" && blockKind !== "h" && blockKind !== "quote") {
+                return false;
+            }
+            const safeLine = Math.max(1, Math.trunc(line));
+            const lines = textRef.current.split(/\r\n|\n/);
+            if (safeLine > lines.length) {
+                return false;
+            }
+            const endAttr = targetEl.dataset.sourceLineEnd;
+            const endLineRaw = endAttr != null ? Number(endAttr) : safeLine;
+            const endLine =
+                Number.isFinite(endLineRaw) && endLineRaw >= safeLine
+                    ? Math.min(Math.trunc(endLineRaw), lines.length)
+                    : safeLine;
+            const initialContent = initialContentFor(blockKind, lines.slice(safeLine - 1, endLine).join("\n"));
+            // A3 种子：用**在位专用**采集器，保留渲染器产出的全部结构（只删 button 供能控件）。
+            // 不用 captureWysiwygInfo —— 它会把 callout 的 .markdown-alert-title 拆成裸 <p>，
+            // 那对 overlay 正确（编辑面是另一个盒子），对在位是反效果（实测两项样式差异）。
+            const seedHtml = captureInplaceSeedHtml(targetEl);
+            const seedProbe = document.createElement("template");
+            seedProbe.innerHTML = seedHtml;
+            const seedText = (seedProbe.content.textContent ?? "").trim();
+            if (seedText === "" && !isEmptyBlockShellDraft(blockKind, initialContent)) {
+                return false; // 种子无文本而源码非空壳 → 不可得，回退 overlay
+            }
+            const isCallout = targetEl.matches("calloutalert, .markdown-alert");
+            const calloutPrefix = isCallout ? captureCalloutPrefix(lines[safeLine - 1] ?? "") : "";
+            const headingLevel =
+                blockKind === "h" ? (/\bis-(\d)\b/.exec(targetEl.className)?.[1] as any) || 1 : undefined;
+            // 附挂宿主私有字段（initialContent / calloutPrefix），EditableBlock 提交时读。
+            const session: InplaceRenderSession & { initialContent: string; calloutPrefix?: string } = {
+                kind: blockKind === "quote" ? "quote" : (blockKind as "p" | "h"),
+                startLine: safeLine,
+                endLine,
+                blockId: targetEl.dataset.blockId ?? undefined,
+                headingLevel,
+                isCallout: isCallout || undefined,
+                seedHtml,
+                initialContent,
+                calloutPrefix: calloutPrefix || undefined,
+            };
+            inlineEditDebug("inplace:begin", {
+                kind: session.kind,
+                startLine: safeLine,
+                endLine,
+                blockId: session.blockId,
+                seedLen: seedHtml.length,
+            });
+            inplaceFrozenTextRef.current = textRef.current;
+            setInplaceSession(session);
+            return true;
+        },
+        []
+    );
+
+
+    const inplaceEnterSplit = useCallback(
+        (content: string, caretMarkdown: number) => {
+            const session = inplaceSessionRef.current;
+            if (session == null) {
+                return;
+            }
+            // 与 overlay handleEnterSplit 的 wysiwyg p/h/quote 分支逐字一致。
+            const { text: newFull, newLine } = splitBlockAtCaretText(
+                textRef.current,
+                session.startLine,
+                session.endLine,
+                content,
+                caretMarkdown
+            );
+            inlineEditDebug("inplace:split", {
+                kind: session.kind,
+                startLine: session.startLine,
+                caret: caretMarkdown,
+                newLine,
+                len: content.length,
+            });
+            handleInlineEditCommit(newFull);
+            // 当前会话结束（原块已提交）。新行继续编辑走 inplace 会话。
+            setInplaceSession(null);
+            inplaceFrozenTextRef.current = null;
+            // 等待渲染树落出新行再开会话（镜像 overlay 的 focusEditedLine rAF 重试）。
+            // 关键：textRef.current 在 React 重渲染时更新（textRef.current = text），而
+            // handleInlineEditCommit 写 draft atom 是 async 的——el 先出现但 textRef 仍是
+            // 旧全文时 tryBeginInplaceEdit 会切到错误的行（读空/读错种子）。因此 el 找到后
+            // 必须再等 textRef.current 已含新行内容（非空），否则重试。
+            const tryOpen = (attempts: number) => {
+                // 用 document 直接查（不依赖 getViewportEl：OSB viewport 类名随版本/宿主
+                // 变化，渲染 root 一定在 document 里；overlay 的 measure 有 OSB 定位需求，
+                // inplace 定位只需元素存在）。
+                inlineEditDebug("inplace:split:tryOpen", { newLine, attempts, textRefHasLine: (textRef.current.split(/\r?\n/)[newLine - 1] ?? "").slice(0, 20) });
+                const el = document.querySelector<HTMLElement>(
+                    `.markdown-render-root [data-source-line="${newLine}"]`
+                );
+                if (el == null || el.closest("img") != null) {
+                    if (attempts < 12) {
+                        requestAnimationFrame(() => tryOpen(attempts + 1));
+                    }
+                    return;
+                }
+                // textRef 同步守卫：等 draft 更新进 textRef 再开（否则种子/陈旧检测基准错位）。
+                // 注意 after 段可能是空（caret 在行末 → placeholder 空行），slice 为 "" 也合法；
+                // 只需 slice != null（textRef 已包含新行）。
+                const slice = textRef.current.split(/\r?\n/)[newLine - 1];
+                if (slice == null) {
+                    if (attempts < 12) {
+                        requestAnimationFrame(() => tryOpen(attempts + 1));
+                    }
+                    return;
+                }
+                const resolved = resolveEditTargetFromElement(el);
+                if (resolved == null) {
+                    return;
+                }
+                // 新行若是 p（after 段无 marker）→ 直接 inplace；list/blank 等走 overlay 兜底。
+                if (tryBeginInplaceEdit(resolved.blockKind, resolved.line, resolved.target)) {
+                    return;
+                }
+                inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target);
+            };
+            requestAnimationFrame(() => requestAnimationFrame(() => tryOpen(0)));
+        },
+        [handleInlineEditCommit, tryBeginInplaceEdit]
+    );
+
+    /**
+     * A3 在位编辑：点击 p/h/quote/callout 块时开始 inplace 会话。
+     * 双轨：flag `wysiwyg-inplace` 关时返回 false，调用方走 overlay 旧路径。
+     * 成功 → 渲染器对该块渲染 EditableBlock（同一根 class），同时冻结渲染树。
+     */
     const tableEditContext = useMemo<TableEditContextValue>(
         () => ({
             getFullText: () => textRef.current,
@@ -1098,9 +1398,13 @@ const Markdown = ({
             }
             e.preventDefault();
             e.stopPropagation();
+            // A3 双轨：flag 开时 p/h/quote/callout 走 inplace，其余/失败回退 overlay。
+            if (tryBeginInplaceEdit(resolved.blockKind, resolved.line, resolved.target)) {
+                return;
+            }
             inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target);
         },
-        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent]
+        [inlineEdit, onInlineEditCommit, resolveEditTargetFromEvent, tryBeginInplaceEdit]
     );
 
     // Records the selection string present at mousedown time so the click handler can tell
@@ -1174,7 +1478,25 @@ const Markdown = ({
                 e.stopPropagation();
                 return;
             }
-            // Already editing — check if the click targets a DIFFERENT block.
+            // A3 inplace 会话活跃：点击同一块 → 编辑体自己拥有点击（不重开）；
+            // 点击不同块 → blur 已先行提交（焦点迁移触发 WysiwygEditor onBlur → inplaceCommit），
+            // 这里只负责对新块开新会话。
+            if (inplaceSessionRef.current != null) {
+                const currentLine = inplaceSessionRef.current.startLine;
+                const resolved = resolveEditTargetFromEvent(e);
+                if (resolved == null || resolved.line === currentLine) {
+                    return; // 同一块 / 无目标：让编辑体与浏览器默认处理
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                const caretOffset = computeRenderedOffset(e.clientX, e.clientY, resolved.target);
+                if (tryBeginInplaceEdit(resolved.blockKind, resolved.line, resolved.target)) {
+                    return;
+                }
+                inlineEdit.beginEdit(resolved.blockKind, resolved.line, resolved.target, caretOffset ?? undefined);
+                return;
+            }
+            // Already editing (overlay) — check if the click targets a DIFFERENT block.
             // If so, commit the current session and open on the new block
             // (one-click block switch, same as the textarea mode's blur-then-focus).
             if (inlineEdit.editSession != null) {
@@ -1300,6 +1622,10 @@ const Markdown = ({
             }
             e.preventDefault();
             e.stopPropagation();
+            // A3 双轨：flag 开时 p/h/quote/callout 走 inplace，其余/失败回退 overlay。
+            if (tryBeginInplaceEdit(resolved.blockKind, resolved.line, resolved.target)) {
+                return;
+            }
             // Single click = edit at the clicked position (caret lands where the user
             // clicked). Dblclick still select-alls via beginEdit without a caret — the two
             // gestures complement each other.
@@ -1313,6 +1639,7 @@ const Markdown = ({
             getViewportEl,
             text,
             handleInlineEditCommit,
+            tryBeginInplaceEdit,
         ]
     );
 
@@ -4552,8 +4879,9 @@ const Markdown = ({
         // 组装块渲染器（P0 拆分）：所有块渲染已抽到 markdown-render/ 的 registry，
         // 这里只把主组件闭包里的 host 回调/状态作为 context 传入。依赖数组与原实现
         // 逐项一致，保证 memo 命中语义不变（DOM/选中态/折叠态不随无关重渲染丢失）。
+        // A3 冻结：ctx.text 用 renderText（会话期间 = 冻结快照）；inplace 会话/回调透传。
         return buildMarkdownComponents({
-            text,
+            text: renderText,
             resolveOpts,
             onClickExecute,
             focusHeading,
@@ -4573,6 +4901,11 @@ const Markdown = ({
             waveBlockRenderers,
             calloutEmojiButtonRef,
             openCalloutEmojiPicker,
+            inplaceSession,
+            inplaceCommit,
+            inplaceCancel,
+            inplaceSplit: inplaceEnterSplit,
+            inplaceSave: onInlineEditSave,
         });
     }, [
         focusHeading,
@@ -4585,7 +4918,7 @@ const Markdown = ({
         collapsedOrderedListItems,
         toggleOrderedListItemCollapse,
         onClickExecute,
-        text,
+        renderText,
         handleInlineEditCommit,
         onInlineEditCommit,
         handleTaskCheckboxToggle,
@@ -4594,6 +4927,11 @@ const Markdown = ({
         openCalloutEmojiPicker,
         contentBlocksMap,
         waveBlockRenderers,
+        inplaceSession,
+        inplaceCommit,
+        inplaceCancel,
+        inplaceEnterSplit,
+        onInlineEditSave,
     ]);
 
     const tocItems = useMemo<MarkdownOutlineItem[]>(

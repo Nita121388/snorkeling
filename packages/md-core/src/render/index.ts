@@ -16,8 +16,10 @@ export {
     type MarkdownRendererSpec,
 } from "./renderer-registry";
 
+export type { InplaceRenderSession, EditableBlockHostProps } from "../core/host";
+
 export { CalloutAlert } from "./calloutalert";
-export { CollapsibleHeading, type HeadingProps } from "./heading";
+export { CollapsibleHeading, headingRootAttrs, type HeadingProps } from "./heading";
 export {
     CollapsibleOrderedListItem,
     MarkdownListItem,

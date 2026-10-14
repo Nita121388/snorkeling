@@ -81,6 +81,10 @@ const HOST_SEAM_DYNAMIC_IMPORTS: { module: string; reason: string }[] = [
         module: "@/app/element/iconbutton",
         reason: "图标按钮是宿主 UI 原语（依赖 jotai / useLongClick / @/util），无法随包搬走（10-12 R4）",
     },
+    {
+        module: "@/app/element/editable-block",
+        reason: "A3 在位编辑（wysiwyg-inplace）编辑体：复用宿主 WysiwygEditor / markdown-inline-edit 提交链，无法随包搬走（10-13 A3）",
+    },
 ];
 
 type Specifier = { file: string; line: number; specifier: string; kind: "static" | "dynamic"; raw: string };

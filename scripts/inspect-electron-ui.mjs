@@ -18,6 +18,7 @@ function usage() {
         "  style <query>         Print geometry and computed style for matching elements",
         "  click <x> <y>         Click viewport coordinates using CDP mouse events",
         "  move <x> <y>          Move the mouse pointer only (no click) — for hover-state control",
+        "  focus                 Bring the window to front + enable focus emulation (fixes visibilityState=hidden)",
         "  key <name>            Dispatch a real key press (Enter|Tab|Shift+Tab|Backspace|Delete|Escape|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End)",
         "  type <text>           Type real characters into the focused element (per-char key events)",
         "  screenshot [path]     Save a PNG screenshot",
@@ -472,6 +473,24 @@ async function commandEval(client, args) {
     console.log(typeof value === "string" ? value : JSON.stringify(value, null, 2));
 }
 
+async function commandFocus(client) {
+    // 已知坑：窗口未置前时 document.visibilityState=hidden，CDP 输入不投递
+    // （点击/按键全部落空 → parity 会被误判为“未进入编辑态”）。
+    // 之前靠人工把窗口置前；这里做成命令：Page.bringToFront 是目标级副作用，
+    // 连接断了也仍然生效，因此不需要“长连接 + focus 模拟”那套。
+    await client.send("Page.bringToFront").catch(() => {});
+    try {
+        await client.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    } catch {
+        // 部分 Electron 版本无此域：忽略（bringToFront 已足够）
+    }
+    const state = await evaluate(client, "document.visibilityState");
+    console.log(JSON.stringify({ visibilityState: state, focused: typeof document !== "undefined" ? state : null }));
+    if (state !== "visible") {
+        process.exitCode = 1;
+    }
+}
+
 async function main() {
     const opts = parseArgs(process.argv.slice(2));
     if (opts.command === "help") {
@@ -496,6 +515,8 @@ async function main() {
             await commandType(client, opts.args);
         } else if (opts.command === "screenshot") {
             await commandScreenshot(client, opts.args);
+        } else if (opts.command === "focus") {
+            await commandFocus(client);
         } else if (opts.command === "eval") {
             await commandEval(client, opts.args);
         } else {

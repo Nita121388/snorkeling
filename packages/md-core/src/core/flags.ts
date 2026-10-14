@@ -34,9 +34,8 @@ export type BlockEditorFeature =
     | "table" // table toolbar
     | "tablecell" // milkdown-style table WYSIWYG: in-cell editing + hover handles (off → M4 raw editor)
     | "codelang" // code block language badge
-    | "wysiwyg"; // WYSIWYG contentEditable editing for prose blocks (p/h/list/quote/blank)
-
-const LS_PREFIX = "snorkeling:block-editor:";
+    | "wysiwyg" // WYSIWYG contentEditable editing for prose blocks (p/h/list/quote/blank)
+    | "wysiwyg-inplace"; // A3 在位编辑：渲染器对活跃会话块直接渲染 EditableBlock（同一根 class，零差异）
 
 const ALL_FEATURES: BlockEditorFeature[] = [
     "blockeditor",
@@ -49,7 +48,16 @@ const ALL_FEATURES: BlockEditorFeature[] = [
     "tablecell",
     "codelang",
     "wysiwyg",
+    "wysiwyg-inplace",
 ];
+
+const LS_PREFIX = "snorkeling:block-editor:";
+
+/**
+ * 默认关的 feature（A3 双轨：`wysiwyg-inplace` 沙箱全块型检验通过前保持关闭，
+ * 验证通过后由用户/主线显式开启）。其余 feature 默认开。
+ */
+const DEFAULT_OFF_FEATURES: ReadonlySet<BlockEditorFeature> = new Set(["wysiwyg-inplace"]);
 
 let flagsCache: Record<BlockEditorFeature, boolean> | null = null;
 
@@ -63,7 +71,7 @@ function readFlags(): Record<BlockEditorFeature, boolean> {
     }
     const master = store?.getItem(LS_PREFIX + "blockeditor") ?? "on";
     for (const f of ALL_FEATURES) {
-        const raw = store?.getItem(LS_PREFIX + f) ?? "on";
+        const raw = store?.getItem(LS_PREFIX + f) ?? (DEFAULT_OFF_FEATURES.has(f) ? "off" : "on");
         // master "off" forces every feature off, whatever the per-feature key says.
         out[f] = raw !== "off" && master !== "off";
     }
