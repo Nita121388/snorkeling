@@ -21,15 +21,21 @@
  * code 块的镜像已删：.markdown .content pre.codeblock 与其 token/diff 配色改成一条
  * `真源X, .inline-edit-overlay[data-block-kind="code"] X` 的组合选择器，编辑态不再持有第二份。
  *
- * 切片 4（WYSIWYG prose 簇）把最后 9 条 parity-2 逐条判定完毕，台账里已无 parity-2：
- *  - **删 3 条**：`.wysiwyg-editor…h6` 组的 box-sizing / margin-left / margin-right。它们的真源是全局 reset
- *    （reset.scss 的 `@layer base { * { box-sizing: border-box; margin: 0 } }`，由 app.scss @use 全局加载）；
- *    overlay 经 createPortal 渲染到 document.body，**同样匹配那条 `*` 规则** → 同值、不丢样式，
- *    留着只是第二份可漂移的副本（同切片 3 删 `.codeblock-ops` 的依据）。
- *  - **留 6 条 keep**：`[data-block-kind="wysiwyg"]` 的 background（防穿透）＋ 该组的
- *    width / min-width / max-width（固定宽 portal 盒的盒尺寸兜底）＋ overflow-wrap / word-break
- *    （编辑期折行比预览更激进，**已知与预览 computed 漂移** → 改正需 CDP 沙箱实测换行位置，留给后续切片）。
- * "parity-2" 仍是合法 todo：后续切片（table / quote / heading 簇）还会登记新的待消除镜像。
+ * 切片 4（WYSIWYG prose 簇）把 overlay 作用域里的最后 9 条逐条判定完毕。
+ *
+ * ⚠️ **A3 切片 3 修正了这句结论**：上面那段结论当时是真的，但只对 **`.inline-edit-overlay`
+ * 作用域**成立 —— 原扫描面从 `.inline-edit-overlay {` 扫到配对大括号（690-853 行）就停，
+ * 而 overlay 的编辑器类名规则（`.wysiwyg-editor` / `.wysiwyg-heading.is-N` / `.wysiwyg-quote` /
+ * `.wysiwyg-list`）因为 overlay 经 createPortal 渲染到 document.body，必须写在**顶层**（865-956 行），
+ * 于是那一整段 52 条结构性声明**从来没有被审计过**。
+ * “台账里已无 parity-2”描述的是真事实，只是漏掉了半个编辑面。
+ *
+ * 现在的扫描面是**两段**（见 `extractOverlayRows` + `extractEditorSurfaceRows`）：
+ *   ① `.inline-edit-overlay { … }`（690-853）
+ *   ② 顶层 `.wysiwyg-editor*` 组（865-956）
+ * 台账里 `parity-2` = 52 条，全部集中在 ②，理由写明「A3 在位编辑不再需要，本组仅为 flag
+ * 关闭时的 overlay 回退保留，切片 3 减法目标」。也就是说：**在位路径零镜像**，
+ * 回退路径仍有 52 条镜像待删 —— 这两件事必须分开说，不能混成一句“已清零”。
  */
 
 import { readFileSync } from "node:fs";
@@ -196,14 +202,141 @@ const KNOWN_STRUCTURAL_MIRRORS: { scope: string; prop: string; reason: string; t
     { scope: ".inline-edit-overlay &[data-block-kind=\"code\"] pre.codeblock .codeblock-edit-header .codeblock-lang-select", prop: "background", reason: "编辑态专属控件：预览态语言标签是 button.codeblock-lang-badge（.codeblock 作用域），这里却是原生 <select> —— 元素类型不同，无法做「同一声明体+组合选择器」的合并 → 保留；且与预览 badge 已有数值漂移（padding 0 5px vs 0 6px、background 不透明 vs transparent），属独立问题，交给后续切片", todo: "keep" },
     { scope: ".inline-edit-overlay &[data-block-kind=\"code\"] pre.codeblock .codeblock-edit-header .codeblock-lang-select", prop: "color", reason: "编辑态专属控件：预览态语言标签是 button.codeblock-lang-badge（.codeblock 作用域），这里却是原生 <select> —— 元素类型不同，无法做「同一声明体+组合选择器」的合并 → 保留", todo: "keep" },
     { scope: ".inline-edit-overlay &[data-block-kind=\"code\"] pre.codeblock .codeblock-edit-header .codeblock-lang-select", prop: "font", reason: "编辑态专属控件：预览态语言标签是 button.codeblock-lang-badge（.codeblock 作用域），这里却是原生 <select> —— 元素类型不同，无法做「同一声明体+组合选择器」的合并 → 保留", todo: "keep" },
+    // ── A3 切片 3：顶层  组（此前完全在门禁视野之外）───────────────
+    // 这一段 865-956 行是**最大的一块镜像**：标题字号/字重/行高、引用边框、列表 marker，
+    // 全部是预览渲染器同名声明的手工副本。原来的 extractOverlayRows 只从 
+    // 扫到配对大括号（690-853 行）就停，所以这 50 条一直是不可见的 —— 台账写「已无 parity-2」
+    // TODO(切片 3)：删除本组，改由预览 class 直接命中真源（在位路径已经这么做）。
+    { scope: ".wysiwyg-editor", prop: "display", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "width", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "min-width", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "max-width", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "min-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "box-sizing", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "border", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "background", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "overflow", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "font", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "color", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-1", prop: "font-size", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-1", prop: "font-weight", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-1", prop: "line-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-1", prop: "border-bottom", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-1", prop: "padding-bottom", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-1", prop: "margin-bottom", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-2", prop: "font-size", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-2", prop: "font-weight", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-2", prop: "line-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-2", prop: "border-bottom", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-2", prop: "padding-bottom", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-2", prop: "margin-bottom", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-3", prop: "font-size", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-3", prop: "font-weight", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-3", prop: "line-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-4", prop: "font-size", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-4", prop: "font-weight", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-4", prop: "line-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-5", prop: "font-size", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-5", prop: "font-weight", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-5", prop: "line-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-6", prop: "font-size", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-6", prop: "font-weight", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-heading.is-6", prop: "line-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-quote", prop: "margin", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-quote", prop: "border-left", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-quote", prop: "border-radius", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-quote", prop: "background-color", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-quote", prop: "padding", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-quote", prop: "line-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-quote", prop: "color", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor:empty::before", prop: "color", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-list ol", prop: "margin", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-list ol", prop: "padding-left", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-list li", prop: "padding-left", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-list li", prop: "margin", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-list li", prop: "line-height", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-list li::marker", prop: "color", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor.wysiwyg-list li::marker", prop: "font-weight", reason: "overlay 镜像：预览渲染器同名声明的手工副本（真源在 .markdown .content 的 hN/blockquote/ul/ol/li）。A3 在位编辑不再需要——在位根用预览 class 直接命中真源；本组仅为 flag 关闭时的 overlay 回退保留。切片 3 的减法目标", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "overflow-wrap", reason: "overlay 独有且**已知与预览漂移**：预览取 .content 的 overflow-wrap: break-word，编辑期故意用 break-word 兜固定宽盒里的长 URL。与上面 .inline-edit-overlay .wysiwyg-editor h6 那两条是同一个洞的两处声明。A3 在位路径不再有这个问题（位根就是预览元素）；本组只为 flag 关闭时的 overlay 回退保留", todo: "parity-2" },
+    { scope: ".wysiwyg-editor", prop: "word-break", reason: "overlay 独有且**已知与预览漂移**：预览 computed 是 word-break: normal（.content 不声明），编辑期用 break-word 兜长串。同上，切片 3 减法目标", todo: "parity-2" },
 ];
+
+/**
+ * A3 切片 3：扫描**顶层 `.wysiwyg-editor*` 规则组。
+ *
+ * 为什么必须单独扫一段：`extractOverlayRows` 从 `.inline-edit-overlay {` 扫到它的配对
+ * 大括号就停（690-853 行），而 overlay 的编辑器类名规则在 **865 行之后、顶层**（因为 overlay
+ * 经 createPortal 渲染到 document.body，其规则不能再嵌在 `.markdown` 里）。
+ * 于是一整段镜像永远不被审计 —— 这正是「台账清零但用户仍看到差异」的机械原因。
+ *
+ * 判据与 `extractOverlayRows` 逐条一致（同 STRUCTURAL_PROPS / 同 cls 分组），
+ * 保证两段合起来是一张完整的「编辑面样式面」。
+ */
+function extractEditorSurfaceRows(src: string): Row[] {
+    const lines = src.split("\n");
+    const groups: { sel: string; lines: number[] }[] = [];
+    let depth = 0;
+    let cur: { sel: string; lines: number[] } | null = null;
+    for (let i = 0; i < lines.length; i++) {
+        const text = lines[i].trim();
+        const opens = (text.match(/\{/g) ?? []).length;
+        const closes = (text.match(/\}/g) ?? []).length;
+        if (depth === 0 && opens > 0 && lines[i].startsWith(".wysiwyg-editor")) {
+            cur = { sel: text.slice(0, -1).trim(), lines: [] };
+            groups.push(cur);
+        }
+        depth += opens - closes;
+        if (cur != null) {
+            cur.lines.push(i);
+            if (depth === 0) {
+                cur = null;
+            }
+        }
+    }
+    const rows: Row[] = [];
+    for (const g of groups) {
+        const stack: string[] = [];
+        for (const li of g.lines) {
+            const text = lines[li].trim();
+            if (text.endsWith("{") && !text.startsWith("@")) {
+                stack.push(text.slice(0, -1).trim());
+                continue;
+            }
+            if (text === "}") {
+                stack.pop();
+                continue;
+            }
+            const m = /^([a-z-]+)\s*:/.exec(text);
+            if (!m) {
+                continue;
+            }
+            const prop = m[1];
+            const scope = stack.join(" ");
+            let cls: Row["cls"];
+            if (scope.includes("inline-edit-textarea")) {
+                cls = "C";
+            } else if (/(:hover|:focus-visible|:focus|:active|::selection)/.test(scope)) {
+                cls = "A";
+            } else if (STRUCTURAL_PROPS.has(prop)) {
+                cls = "B";
+            } else {
+                cls = "A";
+            }
+            rows.push({ line: li + 1, prop, scope, text, cls });
+        }
+    }
+    return rows;
+}
 
 function toKey(scope: string, prop: string): string {
     return `${scope}::${prop}`;
 }
 
 describe("overlay 样式契约：编辑态只允许加供能性样式", () => {
-    const rows = extractOverlayRows(readFileSync(SCSS_PATH, "utf8"));
+    const rows = [
+        ...extractOverlayRows(readFileSync(SCSS_PATH, "utf8")),
+        ...extractEditorSurfaceRows(readFileSync(SCSS_PATH, "utf8")),
+    ];
 
     it("扫描面非空（防止选择器改名后门禁空转）", () => {
         // 该断言只防“扫不到东西”（选择器改名 → rows 归零）；精确清单由下面两条台账断言强制。
