@@ -51,46 +51,47 @@ callout 提交凭空插入一行裸 `>`（remark 把软换行渲染成 `<br>` **
 **从来没被审计过**。现扫描面扩为两段，52 条全部登记为 `parity-2`（在位路径零镜像；这组只服务
 flag 关闭时的 overlay 回退，是减法目标）。文件头那句「台账已无 parity-2」已改写成两句实话。
 
-### D2：`packages/md-dom` 已存在，两块引擎层已搬入
+### D2：`packages/md-dom` —— **全部纯层已搬完，只剩会话驱动**
 
 新包 `packages/md-dom`（`@md/dom`），别名三处已同步（`electron.vite.config.ts` 是构建期真源 /
 `vitest.config.ts` / `tsconfig.json`）+ `package.json` workspaces + `package-lock` 注册。
 
-已搬入（宿主 `markdown-inline-edit.tsx` 改为 re-export，**调用点一个字节未改**）：
-
-| 模块 | 内容 |
-|---|---|
-| `src/block-syntax.ts` | `initialContentFor` / `stripCodeFence` / `stripListMarker` / `wrapListMarker` / `wrapCodeFence` / `isEmptyBlockShellDraft` / `isEmptyQuoteShellDraft` / `captureCalloutPrefix` / `applyCalloutPrefix` / `indentListDraft` / `indentListRange` / `inlineKindToTreeKind` / `InlineEditBlockKind` |
-| `src/commit-prep.ts` | `relocateByBlockId` / `relocateByContent` / `isStaleTargetBlock` / `prepareInlineEditCommit` / `MarkdownRenderRootSelector` / `BlockEditTarget` / `CommitPreparation<T>` |
+| 模块 | 内容 | 性质 |
+|---|---|---|
+| `src/block-syntax.ts` | `initialContentFor` / `strip*`·`wrap*` 成对函数 / 空壳守卫 / callout 前缀 / 列表缩进 / `inlineKindToTreeKind` | 纯字符串 |
+| `src/commit-prep.ts` | `relocateByBlockId` / `relocateByContent` / `isStaleTargetBlock` / `prepareInlineEditCommit` / `BlockEditTarget` / `CommitPreparation<T>` | DOM |
+| `src/seed.ts` | `captureWysiwygInfo`（宿主 flag 由**注入** `isWysiwygEnabled`）/ `captureInplaceSeedHtml` / `calloutSeedHtml` / `normalizeBreaksAroundNewlines` / `stripInsignificantWhitespace` / `WYSIWYG_KINDS` | DOM |
+| `src/edit-target.ts` | `resolveInlineEditTarget` / `fallbackSelector` / `isSelectingRange` / `EditableHostTarget` | DOM |
 
 边界门禁 `src/boundary.test.ts`（6 用例，**任一条违反即红**）：
 ① 零 React 运行时依赖（react / react-dom / react-markdown / jotai / wos / electron）
 ② 零宿主静态依赖（`@/` alias + 相对路径解析后不得逃出包外）
 ③ 包间依赖单向（只允许 `@md/core`）　④ 包内不得出现 `.tsx`
 
-包内自带测试面（44 用例）：`block-syntax.test.ts` / `commit-prep.test.ts`。
+包内自带测试面（73 用例）：`block-syntax` / `commit-prep` / `seed` / `edit-target`。
 
-**类型设计要点**：`BlockEditTarget` 是**结构化最小类型**（不含 React 类型），
-`prepareInlineEditCommit<T extends BlockEditTarget>` 用泛型保住宿主完整会话类型 ——
-既不需要为一个类型把 React 拖进包，也不用改宿主 12 处调用。
+**类型设计要点（通用经验）**：搬包遇到「宿主那边的类型含框架类型」时，不要为了一个类型
+把框架拖进包，也不要改宿主 N 处调用 —— 用**结构化窄接口 + 泛型**：
+`BlockEditTarget`（只列重定位/陈旧检测真正需要的字段）、
+`EditableHostTarget`（只列定位需要的字段）、`prepareInlineEditCommit<T extends BlockEditTarget>`。
 
-**意外收获**：包内往返测试抓到一处**既有不对称** —— `initialContentFor` 对列表保留行首缩进，
-而 `wrapListMarker` 又按原文再加一次，缩进项首行会多一个空格。本层**不做猜测性修复**（
-改它要同时看 listIndent 链路与写盘结果，否则可能把嵌套缩进改坏、进而变层），已钉成显式用例。
+**踩过的坑（必须成对检查 + 必须跑 tsc）**：
+`export { type X } from "..."` **不会**把 X 带进本模块作用域，而要再导出又要本地使用的符号必须
+**同时**写 import 与 export —— 只写一个要么编译报错、要么运行时报 ReferenceError。
+本仓库 `vitest` 用 esbuild 剥类型，**全绿也照不出这类错误**；只有 `npx tsc --noEmit` 能。
+（实测踩过：5d9c5437 修了 4 处，其中两处是只在特定提交路径才炸的 ReferenceError。）
 
 ---
 
-## md-dom 还没搬的部分（编辑引擎本体）
+## md-dom 还没搬的部分（只剩会话驱动）
 
 `md-dom` 目前是「引擎的纯部分」。仍留在宿主、且**确实属于 md-dom** 的：
 
-1. **种子采集层**（DOM-only，可直搬）：`captureWysiwygInfo`、`captureInplaceSeedHtml`、
-   `calloutSeedHtml`、`resolveTextElement`、`captureBlockTypography`、
-   `stripInsignificantWhitespace`、`normalizeBreaksAroundNewlines`、`SEED_BLOCK_TAGS`
-2. **编辑会话驱动**（最难）：`useInlineEdit`（现为 React hook）、就地编辑 DOM 生命周期、
+1. ~~种子采集层~~ **[已搬完成]**
+2. **编辑会话驱动**（唯一剩下的大块）：`useInlineEdit`（现为 React hook）、就地编辑 DOM 生命周期、
    caret/选区、键盘语义。**这是「编辑引擎」的核心**，也是 `md-react` 只做薄绑定的前提。
    拆法：先把状态与 DOM 操作分离，再逐段搬迁，每段都有测试护栏。
-3. 其余：`resolveInlineEditTarget` / `fallbackSelector` / `isSelectingRange` / `inlineEditDebug`
+3. 其余：`captureBlockTypography`（overlay 专属的快照，不在 md-dom 范围）/ `inlineEditDebug`
 
 再往后：`md-schema`（块类型 + sanitize + 序列化白名单正式化）→ `md-react`（从 `markdown.tsx`
 剥离 slash / 块菜单 / 拖拽 / emoji）→ fixture 驱动 playground → **journal 真跑通**（唯一诚实的
