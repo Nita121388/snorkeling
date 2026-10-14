@@ -17,8 +17,10 @@ const DevServerPort = Number(process.env.SNORKELING_VITE_PORT || "51740");
 const require = createRequire(import.meta.url);
 
 // md-core 物理抽包（10-12）：`@md/core/*` → packages/md-core/src/*。
+// md-dom 物理抽包（A3/D2）：`@md/dom/*` → packages/md-dom/src/*（框架无关的编辑引擎）。
 // 这里是**构建期的唯一真源**，必须与 tsconfig.json 的 paths、vitest.config.ts 的 resolve.alias 保持一致。
 const MdCoreSrcDir = fileURLToPath(new URL("./packages/md-core/src", import.meta.url));
+const MdDomSrcDir = fileURLToPath(new URL("./packages/md-dom/src", import.meta.url));
 
 function hasSharpDependency(): boolean {
     try {
@@ -143,6 +145,7 @@ export default defineConfig({
         resolve: {
             alias: {
                 "@md/core": MdCoreSrcDir,
+                "@md/dom": MdDomSrcDir,
             },
         },
         build: {

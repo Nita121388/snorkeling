@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 import electronViteConfig from "./electron.vite.config";
 
 // md-core 物理抽包（10-12）：与 electron.vite.config.ts / tsconfig.json 三处别名保持一致。
+// md-dom 物理抽包（A3/D2）：同上。
 const MdCoreSrcDir = fileURLToPath(new URL("./packages/md-core/src", import.meta.url));
+const MdDomSrcDir = fileURLToPath(new URL("./packages/md-dom/src", import.meta.url));
 
 export default mergeConfig(
     electronViteConfig.renderer as UserConfig,
@@ -11,6 +13,7 @@ export default mergeConfig(
         resolve: {
             alias: {
                 "@md/core": MdCoreSrcDir,
+                "@md/dom": MdDomSrcDir,
             },
         },
         test: {

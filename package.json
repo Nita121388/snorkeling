@@ -157,6 +157,7 @@
     "workspaces": [
         "docs",
         "tsunami/frontend",
-        "packages/md-core"
+        "packages/md-core",
+        "packages/md-dom"
     ]
 }

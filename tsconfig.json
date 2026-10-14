@@ -25,7 +25,8 @@
             "@/element/*": ["frontend/app/element/*"],
             "@/shadcn/*": ["frontend/app/shadcn/*"],
             "@/preview/*": ["frontend/preview/*"],
-            "@md/core/*": ["packages/md-core/src/*"]
+            "@md/core/*": ["packages/md-core/src/*"],
+            "@md/dom/*": ["packages/md-dom/src/*"]
         },
         "lib": ["dom", "dom.iterable", "es6"],
         "allowJs": true,
