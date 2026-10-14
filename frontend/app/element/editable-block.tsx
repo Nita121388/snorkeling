@@ -57,12 +57,15 @@ export type EditableBlockProps = {
 
 /**
  * 预览渲染器产出的根元素形态（与 renderer-registry 的 p / CollapsibleHeading /
- * blockquote / CalloutAlert 输出逐字一致）。EditableBlock 的根复用这里的
+ * blockquote / CalloutAlert / ul / ol 输出逐字一致）。EditableBlock 的根复用这里的
  * tag + className，保证命中同一套样式。callout 的 className 含类型后缀
  * （`markdown-alert markdown-alert-note`），从 blockProps 原样透传。
+ *
+ * 关键不变量：**本函数的返回值必须能由根同构对拍测试验证**
+ * （inplace-root-isomorphism.test.tsx）。新增块型时同步在那边加 case。
  */
 export function inplaceRootShape(
-    session: Pick<InplaceRenderSession, "kind" | "headingLevel" | "isCallout">,
+    session: Pick<InplaceRenderSession, "kind" | "headingLevel" | "isCallout" | "listTag">,
     blockProps?: any
 ): { tag: string; className?: string; contentEditableIsTitleSpan: boolean } {
     if (session.kind === "h") {
@@ -81,6 +84,13 @@ export function inplaceRootShape(
         // 与 CalloutAlert 渲染器输出逐字一致。
         const propsClass = typeof blockProps?.className === "string" ? blockProps.className : "";
         return { tag: "calloutalert", className: propsClass, contentEditableIsTitleSpan: false };
+    }
+    if (session.kind === "list") {
+        // list 的预览根就是 <ul>/<ol> 本身（无 class）→ 位根用同一个 tag，不包 div。
+        // tag 优先取会话字段，缺省时从 react-markdown 节点 tagName 推。
+        const nodeTag = String(blockProps?.node?.tagName ?? "").toLowerCase();
+        const tag = session.listTag ?? (nodeTag === "ol" ? "ol" : "ul");
+        return { tag, className: undefined, contentEditableIsTitleSpan: false };
     }
     return { tag: "div", className: "paragraph", contentEditableIsTitleSpan: false };
 }
@@ -256,7 +266,7 @@ export const EditableBlock = memo(function EditableBlock({
         <WysiwygEditor
             ref={editorRef}
             initialHtml={session.seedHtml}
-            blockKind={session.kind === "quote" ? "quote" : "p"}
+            blockKind={session.kind === "quote" ? "quote" : session.kind === "list" ? "list" : "p"}
             rootTag={rootShape.tag}
             rootClassName={rootShape.className ?? null}
             rootAttrs={rootAttrs}

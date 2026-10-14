@@ -117,8 +117,8 @@ export interface MdHostComponents {
  * markdown.tsx 宿主三方共同引用，避免 renderer-registry → host 的运行时依赖反向。
  */
 export type InplaceRenderSession = {
-    /** 编辑块类型（切片 1：p / h / quote；callout 归并为 quote）。 */
-    kind: "p" | "h" | "quote";
+    /** 编辑块类型（切片 1：p / h / quote；切片 2a：list）。callout 归并为 quote。 */
+    kind: "p" | "h" | "quote" | "list";
     /** 1-based source start line。 */
     startLine: number;
     /** 1-based，inclusive source end line（多行段落）。 */
@@ -127,6 +127,11 @@ export type InplaceRenderSession = {
     blockId?: string;
     /** heading 级别（kind === "h"）。 */
     headingLevel?: number;
+    /**
+     * list 根 tag（kind === "list"）："ul" | "ol"。
+     * 预览渲染器的 list 根**就是** `<ul>`/`<ol>` 本身，所以位根必须用同一个 tag。
+     */
+    listTag?: "ul" | "ol";
     /** callout / 引用（kind === "quote"，isCallout 时根 tag=calloutalert + class markdown-alert）。 */
     isCallout?: boolean;
     /** 编辑种子 HTML（captureWysiwygInfo 产物，净内容、无块标记）。 */

@@ -147,6 +147,18 @@ describe("A3 根同构：预览渲染器输出 ⟷ EditableBlock 输出", () => 
             session: { kind: "quote", isCallout: true, startLine: 5, endLine: 5, seedHtml: "note" },
             propsOpts: { startLine: 5, blockId: "blk-c-0", className: "markdown-alert markdown-alert-note" },
         },
+        {
+            name: "list（ul 根，无 class）",
+            previewKey: "ul",
+            session: { kind: "list", listTag: "ul", startLine: 7, endLine: 9, seedHtml: "<li>a</li><li>b</li>" },
+            propsOpts: { startLine: 7, endLine: 9, blockId: "blk-ul-0" },
+        },
+        {
+            name: "list（ol 根，无 class）",
+            previewKey: "ol",
+            session: { kind: "list", listTag: "ol", startLine: 11, endLine: 12, seedHtml: "<li>a</li><li>b</li>" },
+            propsOpts: { startLine: 11, endLine: 12, blockId: "blk-ol-0" },
+        },
     ];
 
     for (const c of CASES) {

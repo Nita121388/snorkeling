@@ -232,13 +232,25 @@ export function registerBuiltinRenderers(): void {
     });
     registerMarkdownRenderer({
         key: "ol",
-        render: (props: React.OlHTMLAttributes<HTMLOListElement>, ctx) => (
-            <MarkdownOrderedList props={props} collapsible={ctx.collapsibleOrderedLists} />
-        ),
+        render: (props: React.OlHTMLAttributes<HTMLOListElement>, ctx) => {
+            // A3 在位编辑：命中会话 → EditableBlock（同一根 tag <ol>，预览无 class）。
+            const inplace = matchInplaceSession(props, ctx);
+            if (inplace != null) {
+                return renderInplaceEditableBlock(inplace, props, ctx);
+            }
+            return <MarkdownOrderedList props={props} collapsible={ctx.collapsibleOrderedLists} />;
+        },
     });
     registerMarkdownRenderer({
         key: "ul",
-        render: (props: React.HTMLAttributes<HTMLUListElement>, ctx) => <MarkdownUnorderedList {...props} />,
+        render: (props: React.HTMLAttributes<HTMLUListElement>, ctx) => {
+            // A3 在位编辑：命中会话 → EditableBlock（同一根 tag <ul>，预览无 class）。
+            const inplace = matchInplaceSession(props, ctx);
+            if (inplace != null) {
+                return renderInplaceEditableBlock(inplace, props, ctx);
+            }
+            return <MarkdownUnorderedList {...props} />;
+        },
     });
     registerMarkdownRenderer({
         key: "li",

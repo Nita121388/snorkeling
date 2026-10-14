@@ -54,7 +54,23 @@ function escapeRun(text: string, opts: Required<InlineSerializeOpts>): string {
 
 function serializeChildren(el: Element, opts: Required<InlineSerializeOpts>): string {
     let out = "";
-    for (const child of Array.from(el.childNodes)) {
+    const children = Array.from(el.childNodes);
+    for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        // `<br>` 之后的行首空白在 HTML 里会被折叠掉（white-space: normal 行首去空白）。
+        // remark 把软换行渲染成 `<br>\n`，于是「一个换行」在 DOM 里有两个信号。
+        // 不剥掉就会数成两次换行 —— 实测事故：在位编辑 callout 后失焦提交，
+        // 写盘源文件里凭空多出一行裸 `>`（引用块把空行渲染为 `>`），且不可逆。
+        //
+        // 只剥**紧随 br 之后**的空白：普通文本里的空格仍是内容。
+        if (child.nodeType === 3) {
+            let text = child.textContent ?? "";
+            if (children[i - 1]?.nodeName === "BR") {
+                text = text.replace(/^[ \t\r\n]+/, "");
+            }
+            out += escapeRun(text, opts);
+            continue;
+        }
         out += serializeNode(child, opts);
     }
     return out;

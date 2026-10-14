@@ -1083,10 +1083,25 @@ const Markdown = ({
             if (!isBlockEditorFeatureEnabled("wysiwyg-inplace") || !isBlockEditorFeatureEnabled("wysiwyg")) {
                 return false;
             }
-            // 切片 1 范围：p / h / quote（callout 归并为 quote）。list/table/code/blank 不走
-            // inplace（各自有专用编辑器，后续切片）。
-            if (blockKind !== "p" && blockKind !== "h" && blockKind !== "quote") {
+            // 切片 1 范围：p / h / quote（callout 归并为 quote）；切片 2a 加入 list。
+            // table/code 各自有专用编辑器，不走 inplace（后续切片）。
+            if (blockKind !== "p" && blockKind !== "h" && blockKind !== "quote" && blockKind !== "list") {
                 return false;
+            }
+            // list 的两道闸：
+            // ① 根必须是 <ul>/<ol>（不能是 li）；
+            // ② **带折叠可供性的有序列表**（`.ordered-list-summary-row` + 展开/折叠按钮）
+            //    不接：那些按钮是渲染器产的 chrome，种子会把它们删掉，剩下的
+            //    `.ordered-list-summary-row` 空壳 div 会改变子结构布局。
+            //    这是「宁可回落 overlay，不假装零差异」的取舍。
+            if (blockKind === "list") {
+                const tag = targetEl.tagName;
+                if (tag !== "UL" && tag !== "OL") {
+                    return false;
+                }
+                if (targetEl.querySelector(".ordered-list-summary-row") != null) {
+                    return false;
+                }
             }
             const safeLine = Math.max(1, Math.trunc(line));
             const lines = textRef.current.split(/\r\n|\n/);
@@ -1116,11 +1131,13 @@ const Markdown = ({
                 blockKind === "h" ? (/\bis-(\d)\b/.exec(targetEl.className)?.[1] as any) || 1 : undefined;
             // 附挂宿主私有字段（initialContent / calloutPrefix），EditableBlock 提交时读。
             const session: InplaceRenderSession & { initialContent: string; calloutPrefix?: string } = {
-                kind: blockKind === "quote" ? "quote" : (blockKind as "p" | "h"),
+                kind:
+                blockKind === "quote" ? "quote" : blockKind === "list" ? "list" : (blockKind as "p" | "h"),
                 startLine: safeLine,
                 endLine,
                 blockId: targetEl.dataset.blockId ?? undefined,
                 headingLevel,
+                listTag: blockKind === "list" ? ((targetEl.tagName.toLowerCase() as "ul" | "ol") ?? "ul") : undefined,
                 isCallout: isCallout || undefined,
                 seedHtml,
                 initialContent,
