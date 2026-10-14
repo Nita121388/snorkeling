@@ -26,6 +26,14 @@
  */
 
 export {
+    isStaleTargetBlock,
+    MarkdownRenderRootSelector,
+    prepareInlineEditCommit,
+    relocateByBlockId,
+    relocateByContent,
+    type BlockEditTarget,
+} from "./commit-prep";
+export {
     applyCalloutPrefix,
     captureCalloutPrefix,
     indentListDraft,
