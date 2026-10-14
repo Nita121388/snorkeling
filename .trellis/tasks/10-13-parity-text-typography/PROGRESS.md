@@ -1,7 +1,8 @@
 # A3 在位编辑 —— 进度与续接点
 
-> 最后更新：2026-10-14（A3 切片 1 / 2a / 3 / 4 已验证并提交）
-> 提交序列：`cebb647f` → `c2869fb8` → `5db13852` → `53a4580f` → `7d2e3f6b`
+> 最后更新：2026-10-14（A3 切片 1 / 2a / 3 / 4 + D2 第一阶段已提交）
+> 提交序列：`cebb647f` → `c2869fb8` → `5db13852` → `53a4580f` → `7d2e3f6b` → `8d94274d`
+> → `4505e1fa`（md-dom 建包 + 块语法层）→ `27d5fdcb`（md-dom 提交前置层）
 
 ## 目标（两条，同一条链）
 
@@ -50,20 +51,61 @@ callout 提交凭空插入一行裸 `>`（remark 把软换行渲染成 `<br>` **
 **从来没被审计过**。现扫描面扩为两段，52 条全部登记为 `parity-2`（在位路径零镜像；这组只服务
 flag 关闭时的 overlay 回退，是减法目标）。文件头那句「台账已无 parity-2」已改写成两句实话。
 
-### D2 前置：编辑链路零 React 已验证可跑
+### D2：`packages/md-dom` 已存在，两块引擎层已搬入
 
-`host-free-editor-pipeline.test.ts`：不 import react / react-dom / react-markdown，用手写的
-预览态 DOM 走完 源码切片 → 种子 → 就地编辑 → 序列化 → 重定位/陈旧检测 → 写盘拼接。覆盖 p / list / callout。
+新包 `packages/md-dom`（`@md/dom`），别名三处已同步（`electron.vite.config.ts` 是构建期真源 /
+`vitest.config.ts` / `tsconfig.json`）+ `package.json` workspaces + `package-lock` 注册。
 
-**可搬进 `md-dom` 的符号清单**（纯 DOM / 字符串，无 React 调用）：
-`initialContentFor`、`captureInplaceSeedHtml`、`inlineKindToTreeKind`、
-`isEmptyBlockShellDraft`、`captureCalloutPrefix`、`applyCalloutPrefix`、`relocateByBlockId`、
-`relocateByContent`、`isStaleTargetBlock`、`prepareInlineEditCommit`、`resolveInlineEditTarget`、
-`indentListRange`、`indentListDraft`
-＋ `@md/core/transform/dom-to-markdown` 的 `serializeBlockDomToMarkdown`（已在包内）。
+已搬入（宿主 `markdown-inline-edit.tsx` 改为 re-export，**调用点一个字节未改**）：
 
-它们现在住在 `frontend/app/element/markdown-inline-edit.tsx`（该文件同时含 React 组件）——
-**这就是「编辑引擎与框架绑在一起」的机械原因，搬出去即解耦。**
+| 模块 | 内容 |
+|---|---|
+| `src/block-syntax.ts` | `initialContentFor` / `stripCodeFence` / `stripListMarker` / `wrapListMarker` / `wrapCodeFence` / `isEmptyBlockShellDraft` / `isEmptyQuoteShellDraft` / `captureCalloutPrefix` / `applyCalloutPrefix` / `indentListDraft` / `indentListRange` / `inlineKindToTreeKind` / `InlineEditBlockKind` |
+| `src/commit-prep.ts` | `relocateByBlockId` / `relocateByContent` / `isStaleTargetBlock` / `prepareInlineEditCommit` / `MarkdownRenderRootSelector` / `BlockEditTarget` / `CommitPreparation<T>` |
+
+边界门禁 `src/boundary.test.ts`（6 用例，**任一条违反即红**）：
+① 零 React 运行时依赖（react / react-dom / react-markdown / jotai / wos / electron）
+② 零宿主静态依赖（`@/` alias + 相对路径解析后不得逃出包外）
+③ 包间依赖单向（只允许 `@md/core`）　④ 包内不得出现 `.tsx`
+
+包内自带测试面（44 用例）：`block-syntax.test.ts` / `commit-prep.test.ts`。
+
+**类型设计要点**：`BlockEditTarget` 是**结构化最小类型**（不含 React 类型），
+`prepareInlineEditCommit<T extends BlockEditTarget>` 用泛型保住宿主完整会话类型 ——
+既不需要为一个类型把 React 拖进包，也不用改宿主 12 处调用。
+
+**意外收获**：包内往返测试抓到一处**既有不对称** —— `initialContentFor` 对列表保留行首缩进，
+而 `wrapListMarker` 又按原文再加一次，缩进项首行会多一个空格。本层**不做猜测性修复**（
+改它要同时看 listIndent 链路与写盘结果，否则可能把嵌套缩进改坏、进而变层），已钉成显式用例。
+
+---
+
+## md-dom 还没搬的部分（编辑引擎本体）
+
+`md-dom` 目前是「引擎的纯部分」。仍留在宿主、且**确实属于 md-dom** 的：
+
+1. **种子采集层**（DOM-only，可直搬）：`captureWysiwygInfo`、`captureInplaceSeedHtml`、
+   `calloutSeedHtml`、`resolveTextElement`、`captureBlockTypography`、
+   `stripInsignificantWhitespace`、`normalizeBreaksAroundNewlines`、`SEED_BLOCK_TAGS`
+2. **编辑会话驱动**（最难）：`useInlineEdit`（现为 React hook）、就地编辑 DOM 生命周期、
+   caret/选区、键盘语义。**这是「编辑引擎」的核心**，也是 `md-react` 只做薄绑定的前提。
+   拆法：先把状态与 DOM 操作分离，再逐段搬迁，每段都有测试护栏。
+3. 其余：`resolveInlineEditTarget` / `fallbackSelector` / `isSelectingRange` / `inlineEditDebug`
+
+再往后：`md-schema`（块类型 + sanitize + 序列化白名单正式化）→ `md-react`（从 `markdown.tsx`
+剥离 slash / 块菜单 / 拖拽 / emoji）→ fixture 驱动 playground → **journal 真跑通**（唯一诚实的
+「可复用」验收）。
+
+### D2 前提证据：编辑链路零 React 已验证可跑
+
+`frontend/app/element/host-free-editor-pipeline.test.ts`：不 import react / react-dom /
+react-markdown，用手写的预览态 DOM 走完 源码切片 → 种子 → 就地编辑 → 序列化 →
+重定位/陈旧检测 → 写盘拼接，覆盖 p / list / callout。
+这就是「搬得出去」的判据：如果这些函数需要 React 运行时，包就不可能被 journal 用。
+
+已搬走的那些符号（见上表）现在从 `@md/dom/*` 导入；剩下的仍住在
+`frontend/app/element/markdown-inline-edit.tsx`（该文件同时含 React 组件）——
+**这就是「编辑引擎与框架绑在一起」的机械原因，搬完即解耦**。
 
 ---
 
@@ -73,7 +115,7 @@ flag 关闭时的 overlay 回退，是减法目标）。文件头那句「台账
 |---|---|---|---|
 | 1 | 切片 3 减法 | 删掉那 52 条 overlay 镜像（需先决定是否保留 flag 关闭的回退路径） | ⬜ |
 | 2 | 切片 2b | table / code 在位化（当前 code 走 overlay、table 走单元格内联编辑器） | ⬜ |
-| 3 | **D2 主体** | 建 `packages/md-dom`，把上面的符号搬过去；宿主改为从包 import | ⬜ |
+| 3 | **D2** | ~~建 `packages/md-dom`~~ **[已做]**；剩：种子采集层 + 编辑会话驱动搬迁 | 🔄 |
 | 4 | D2 | `md-schema`（块类型 + sanitize + 序列化白名单正式化） | ⬜ |
 | 5 | D2 | `md-react`（从 `markdown.tsx` 剥离 slash / 块菜单 / 拖拽 / emoji） | ⬜ |
 | 6 | D2 | fixture 驱动 playground（兼视觉回归载体） | ⬜ |
