@@ -119,7 +119,9 @@ function usage() {
     return `Usage: node scripts/parity-check.mjs [--endpoint URL] [--target TEXT] [--line N] [--selector CSS] [--json] [--keep-open]
 
 对同一个块抓「预览态 / 编辑态」两份 computed style 并逐项比对。
-退出码 0 = 无未豁免差异。`;
+退出码 0 = 无未豁免差异。
+
+--allow-no-session：点击后无块级编辑会话时降级为“跳过”（默认当错误，以免“点击失效”被静默放过）。`;
 }
 
 export function parseArgs(argv) {
@@ -130,6 +132,9 @@ export function parseArgs(argv) {
         selector: null,
         json: false,
         keepOpen: false,
+        // 表格 / hr / 空白块**没有块级编辑会话**（表格用常驻的单元格内联编辑器）。
+        // 默认仍当错误（防止“点击失效”被静默放过）；显式传 --allow-no-session 时降级为跳过。
+        allowNoSession: false,
     };
     const rest = [...argv];
     while (rest.length > 0) {
@@ -160,6 +165,10 @@ export function parseArgs(argv) {
         }
         if (item === "--keep-open") {
             opts.keepOpen = true;
+            continue;
+        }
+        if (item === "--allow-no-session") {
+            opts.allowNoSession = true;
             continue;
         }
         throw new Error(`unknown argument: ${item}`);
@@ -261,11 +270,18 @@ const MEASURE_FN = `(() => {
             };
         }
         // 在位路径：**没有**新盒子 —— 块自身变成 contenteditable。
-        // 判据：目标块自身（或其唯一的内层编辑体）是 [contenteditable]。
+        // 判据：目标块自身（或其自己的编辑体，如 heading 的 .heading-title）是 [contenteditable]。
         const el = document.querySelector(selector);
         if (el == null) return { mode: "none", present: false };
         const self = el.getAttribute("contenteditable") === "true";
-        const inner = el.querySelector("[contenteditable=true]");
+        // 排除**常驻内联编辑器**（不是 A3 会话的一部分）：
+        //  - 表格单元格（tablecell feature 给每个 td/th 挂常驻 contenteditable）
+        //  - 代码块内部（ContentEditableCodeEditor）
+        // 不排除的话，点表格单元格会被误判为“进入 inplace 编辑”，
+        // 于是拿“预览表格 vs 单元格编辑器”去对拍 —— 可能读出假差异，也可能掩盖真差异。
+        const inner = Array.from(el.querySelectorAll("[contenteditable=true]")).find(
+            (node) => node.closest("td, th, pre.codeblock, .table-wrapper") == null
+        );
         if (!self && inner == null) return { mode: "none", present: false };
         return {
             mode: "inplace",
@@ -353,6 +369,13 @@ async function main() {
     await new Promise((r) => setTimeout(r, 600));
     const probe = evalJson(opts, `window.__parityEditProbe(${JSON.stringify(selector)})`);
     if (!probe?.present) {
+        if (opts.allowNoSession) {
+            console.log(`目标块: line=${target.line} <${target.tag} class="${target.cls}">`);
+            console.log(
+                "⏭️  该块没有块级编辑会话（表格用常驻单元格内联编辑器 / hr、空白块不可块级编辑）—— 跳过"
+            );
+            return;
+        }
         throw new Error(
             "点击后未进入编辑态（既没有 .inline-edit-overlay，也没有 contenteditable 块）—— 窗口可见性/坐标是否失效？或 wysiwyg-inplace flag 未开且点击未命中可编辑块"
         );

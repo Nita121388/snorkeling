@@ -54,10 +54,19 @@ const ALL_FEATURES: BlockEditorFeature[] = [
 const LS_PREFIX = "snorkeling:block-editor:";
 
 /**
- * 默认关的 feature（A3 双轨：`wysiwyg-inplace` 沙箱全块型检验通过前保持关闭，
- * 验证通过后由用户/主线显式开启）。其余 feature 默认开。
+ * 默认关的 feature。
+ *
+ * A3 切片 4：`wysiwyg-inplace` 已从默认关转为**默认开**。
+ * 转正依据（沙箱实测，`scripts/parity-check.mjs`，见提交说明）：
+ *   p / h1-h6 / quote / callout / ul / ol 两态 computed style 逐项 0 差异；
+ *   写盘往返逐字节保真（含多行列表不丢项）。
+ * table / code 不在切片 2 范围内，会**自动回落 overlay**（tryBeginInplaceEdit 返回 false），
+ * 不是静默失败：回落是逐块判定的，同一文档里两种路径可共存。
+ *
+ * 保留这个集合（而不是删掉机制）是为了以后新切片仍能安全地双轨上线：
+ * 新增块型先进这个集合，沙箱全块型验过再移出。
  */
-const DEFAULT_OFF_FEATURES: ReadonlySet<BlockEditorFeature> = new Set(["wysiwyg-inplace"]);
+const DEFAULT_OFF_FEATURES: ReadonlySet<BlockEditorFeature> = new Set<BlockEditorFeature>([]);
 
 let flagsCache: Record<BlockEditorFeature, boolean> | null = null;
 
