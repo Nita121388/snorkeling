@@ -44,6 +44,7 @@ export {
     isEmptyQuoteShellDraft,
     wrapCodeFence,
     wrapListMarker,
+    type InlineEditBlockKind,
 } from "@md/dom/block-syntax";
 import {
     applyCalloutPrefix,
@@ -53,6 +54,9 @@ import {
     initialContentFor,
     inlineKindToTreeKind,
     isEmptyBlockShellDraft,
+    isEmptyQuoteShellDraft,
+    wrapCodeFence,
+    wrapListMarker,
     type InlineEditBlockKind,
 } from "@md/dom/block-syntax";
 import type { CommitPreparation } from "@md/dom/commit-prep";
