@@ -78,7 +78,6 @@ import {
     applyCalloutPrefix,
     captureCalloutPrefix,
     captureInplaceSeedHtml,
-    captureWysiwygInfo,
     isEmptyBlockShellDraft,
     initialContentFor,
     prepareInlineEditCommit,

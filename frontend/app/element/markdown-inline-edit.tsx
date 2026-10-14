@@ -29,10 +29,16 @@ import {
 // 无需改动；`./markdown-inline-edit` 仍是这些符号的唯一公开入口。
 // ---------------------------------------------------------------------------
 export { deleteBlockRange, moveBlockRange, replaceSourceRange, spliceInsertBlock };
-// ── A3/D2 · md-dom 物理抽包 ───────────────────────────────────────────────
-// 块语法层（源码切片归一化 / 空壳守卫 / callout 前缀 / 列表缩进 / kind 映射）已搬到
-// `packages/md-dom/src/block-syntax.ts` —— 它是纯字符串层，零 React、零宿主依赖，
-// 非 React 消费方（journal）可直接取用。本模块继续 re-export，宿主调用点**一个字节都不用改**。
+// ── A3/D2 · md-dom 物理抽包 ───────────────────────────────────────────────────
+// md-dom 是框架无关的编辑引擎（零 React / 零宿主）。已经搬过去的四块：
+//   block-syntax.ts  块语法层（源码切片归一化 / 空壳守卫 / callout 前缀 / 列表缩进 / kind 映射）
+//   commit-prep.ts   提交前置（块身份重定位 + 陈旧检测）
+//   seed.ts          种子采集（渲染 DOM → 编辑器初始内容）
+// 本模块**继续 re-export**，所以宿主（markdown.tsx 等）与既有测试一个字节都不用改。
+//
+// 注：`export { type X } from` **不会**把 X 带进本模块作用域 ——
+// 所以每个「既要再导出、又要在本文件里用」的符号都要**同时**写 import 与 export。
+// 只写一个的话要么编译报错、要么运行时 ReferenceError（实测踩过，见 5d9c5437）。
 export {
     applyCalloutPrefix,
     captureCalloutPrefix,
@@ -46,6 +52,26 @@ export {
     wrapListMarker,
     type InlineEditBlockKind,
 } from "@md/dom/block-syntax";
+export {
+    isStaleTargetBlock,
+    MarkdownRenderRootSelector,
+    prepareInlineEditCommit,
+    relocateByBlockId,
+    relocateByContent,
+    type BlockEditTarget,
+} from "@md/dom/commit-prep";
+export {
+    calloutSeedHtml,
+    captureInplaceSeedHtml,
+    captureWysiwygInfo,
+    normalizeBreaksAroundNewlines,
+    SEED_BLOCK_TAGS,
+    stripInsignificantWhitespace,
+    WYSIWYG_KINDS,
+    type WysiwygEligibleKind,
+    type WysiwygSeedInfo,
+} from "@md/dom/seed";
+
 import {
     applyCalloutPrefix,
     captureCalloutPrefix,
@@ -59,7 +85,14 @@ import {
     wrapListMarker,
     type InlineEditBlockKind,
 } from "@md/dom/block-syntax";
-import type { CommitPreparation } from "@md/dom/commit-prep";
+import { MarkdownRenderRootSelector, prepareInlineEditCommit, type CommitPreparation } from "@md/dom/commit-prep";
+import { captureWysiwygInfo, type WysiwygEligibleKind } from "@md/dom/seed";
+
+/**
+ * 提交前置结果（宿主视角的具体化）：`CommitPreparation` 用泛型保住会话类型，
+ * 所以这里只需把泛型参数填成宿主的 `InlineEditSession`，既有引用点就照旧可用。
+ */
+export type InlineEditCommitPreparation = CommitPreparation<InlineEditSession>;
 
 export type { MoveBlockResult };
 
@@ -193,7 +226,7 @@ function captureBlockTypography(blockEl: HTMLElement): React.CSSProperties {
 // Blocks that can participate in WYSIWYG contentEditable editing（方案 08）。
 // Table and code have their own dedicated WYSIWYG editors (TableBlock /
 // ContentEditableCodeEditor); these prose kinds get the generic WYSIWYG editor.
-export type WysiwygEligibleKind = "p" | "h" | "list" | "quote" | "blank";
+// A3/D2：类型与种子采集已搬到 `@md/dom/seed`（单一真源），本模块 re-export。
 
 export type InlineEditSession = {
     blockKind: InlineEditBlockKind;
@@ -344,60 +377,6 @@ export function isSelectingRange(sel: { type?: string; rangeCount: number } | nu
     return sel != null && sel.rangeCount > 0 && sel.type === "Range";
 }
 
-// ---------------------------------------------------------------------------
-// WYSIWYG eligibility & seed HTML capture (方案 08)
-// ---------------------------------------------------------------------------
-
-const WYSIWYG_KINDS: ReadonlySet<InlineEditBlockKind> = new Set(["p", "h", "list", "quote", "blank"]);
-
-/**
- * Determine whether a block qualifies for WYSIWYG contentEditable editing and
- * return the seed HTML + metadata that the editor needs to render the block
- * correctly. Returns null when the block must fall back to the textarea path.
- *
- * Exclusion rules (data-fidelity guard — never corrupt the source):
- *   - Blocks containing `<img>` (resolved srcs don't round-trip)
- *   - Blocks containing `<a>` (internal hrefs — wave-wiki / file — are transformed;
- *     links keep their dedicated hover-tooltip edit form)
- *
- * Callout containers (`.markdown-alert` / `<calloutalert>`) are NOT excluded any more:
- * their seed is built by calloutSeedHtml (R3) so the emoji `<button>` is dropped and the
- * title paragraph is flattened to a plain `<p>`. The `[!TYPE]` marker + emoji are restored
- * on commit from the ORIGINAL source first line (R4, captureCalloutPrefix / applyCalloutPrefix).
- */
-/** Block-level tags; a whitespace-only text node beside one of these is inter-element
- *  formatting, never content. */
-const SEED_BLOCK_TAGS = new Set([
-    "ADDRESS",
-    "ARTICLE",
-    "ASIDE",
-    "BLOCKQUOTE",
-    "DETAILS",
-    "DIV",
-    "DL",
-    "FIELDSET",
-    "FIGCAPTION",
-    "FIGURE",
-    "FOOTER",
-    "FORM",
-    "H1",
-    "H2",
-    "H3",
-    "H4",
-    "H5",
-    "H6",
-    "HEADER",
-    "HR",
-    "LI",
-    "MAIN",
-    "NAV",
-    "OL",
-    "P",
-    "PRE",
-    "SECTION",
-    "TABLE",
-    "UL",
-]);
 
 /**
  * Strip inter-element whitespace from a WYSIWYG seed.
@@ -415,188 +394,7 @@ const SEED_BLOCK_TAGS = new Set([
  * DOM 层已经来不及，因为 `innerHTML` 重新解析时相邻文本节点会被合并，
  * 那个 `\n` 已经并进 `"\nb"` 里、不再是一个可单独识别的空白节点。
  */
-function normalizeBreaksAroundNewlines(html: string): string {
-    // 只动紧贴 `<br>` 的那一个换行；用户正文里的换行（不贴 <br>）一律不动。
-    return html.replace(/(<br\s*\/?>)[ \t]*\r?\n/g, "$1").replace(/\r?\n[ \t]*(<br\s*\/?>)/g, "$1");
-}
 
-function stripInsignificantWhitespace(html: string): string {
-    // F4: the old early-return also required whitespace to sit BETWEEN two tags
-    // (`/>\s+</`), but a single-paragraph quote seed is exactly `"\n<p>a</p>\n"` — the
-    // leading/trailing `\n` never matched and the normalized editor got an extra blank
-    // line (committing an extra bare `>`). Any non-empty seed goes through the walk; a
-    // single template parse is negligible and the walk itself is a no-op when there is
-    // no block sibling.
-    if (html === "") {
-        return html;
-    }
-    const template = document.createElement("template");
-    template.innerHTML = normalizeBreaksAroundNewlines(html);
-    const walk = (parent: Node) => {
-        const kids = Array.from(parent.childNodes);
-        for (const child of kids) {
-            if (child.nodeType === 1) {
-                walk(child);
-            }
-        }
-        if (!kids.some((n) => n.nodeType === 1 && SEED_BLOCK_TAGS.has((n as Element).tagName))) {
-            return; // no block sibling → whitespace here is real inline content
-        }
-        for (const node of kids) {
-            if (node.nodeType === 3 && (node.textContent ?? "").trim() === "") {
-                node.remove();
-            }
-        }
-    };
-    walk(template.content);
-    return template.innerHTML;
-}
-
-/**
- * R3 干净种子：callout 的编辑种子必须与「用户看到的正文」对齐，而不是渲染 DOM 原样。
- *
- * 两处差异：
- *   1) emoji `<button>` 必须移除。序列化器（serializeNode）对未知/`button` 走 default
- *      分支 unwrap 成文本 —— 若留在种子里，按钮内的 emoji 会被当成标题文本泄漏进正文，
- *      提交后与 R4 回写的前缀叠加，emoji 重复。emoji 由 R4 从源码首行回写。
- *   2) 标题段 `p.markdown-alert-title` 必须降为普通 `<p>`（只取 `.markdown-alert-title-text`
- *      的内容）。否则 `> [!NOTE] 标题` 的种子会变成 `> <p class="markdown-alert-title">…`，
- *      序列化后 class 被 unwrap（内容保留），但空标题会留下装饰性空段。降为 `<p>` 后：
- *      空标题 → `<p></p>` → 序列化成裸 `>`（首行位置语义不变）。
- */
-export function calloutSeedHtml(el: HTMLElement): string {
-    const clone = el.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll("button.markdown-alert-emoji-btn").forEach((b) => b.remove());
-    // NOTE: match by class only, not `p.…`. In the real app the title mdast `p` runs through
-    // the registry `p` renderer, which emits `<div class="markdown-alert-title">` (className
-    // overrides the default `paragraph`), so a tag-qualified `p.` selector misses it entirely.
-    const title = clone.querySelector(".markdown-alert-title");
-    if (title != null) {
-        const textEl = title.querySelector(".markdown-alert-title-text");
-        const p = document.createElement("p");
-        p.innerHTML = textEl != null ? textEl.innerHTML : "";
-        title.replaceWith(p);
-    }
-    return clone.innerHTML;
-}
-
-/**
- * A3 在位编辑的种子采集：**保留渲染器产出的全部结构**，只剔除供能性控件。
- *
- * 与 `calloutSeedHtml` 的关键区别（两者故意不同）：
- * - overlay 路径：编辑面是另一个盒子（`.wysiwyg-editor.wysiwyg-quote`），自带边框/边距，
- *   所以必须把 callout 的 `.markdown-alert-title` 容器**拆成裸 `<p>`**，否则样式叠加两次。
- * - 在位路径：编辑面**就是渲染面本身**。任何「为了对齐而简化结构」的操作都会直接造成
- *   样式差异——实测正是如此：种子拆掉 `.markdown-alert-title` 后，编辑态的文本元素退化成
- *   `p`（fontWeight 500 / lineHeight 22.4px），而预览是
- *   `span.markdown-alert-title-text`（650 / 20.3px）→ 两项未豁免差异。
- *
- * 所以这里只做一件事：删掉 **button 类的供能性控件**（emoji 按钮 / 折叠按钮）。
- * 它们是「编辑期不该有的交互」，但它们的**容器**是渲染器产出的结构，必须原样保留。
- */
-export function captureInplaceSeedHtml(targetEl: HTMLElement): string {
-    const clone = targetEl.cloneNode(true) as HTMLElement;
-    clone
-        .querySelectorAll(
-            "button.markdown-alert-emoji-btn, button.heading-collapse-button, button.markdown-alert-toggle"
-        )
-        .forEach((b) => b.remove());
-    return clone.innerHTML;
-}
-
-export function captureWysiwygInfo(
-    blockKind: InlineEditBlockKind,
-    targetEl: HTMLElement,
-    sourceText: string
-): { html: string; headingLevel?: number; listMarker?: string; listIndent?: string } | null {
-    if (!isBlockEditorFeatureEnabled("wysiwyg") || !WYSIWYG_KINDS.has(blockKind)) {
-        return null;
-    }
-    const isCallout = targetEl.matches("calloutalert, .markdown-alert");
-    const html = isCallout
-        ? calloutSeedHtml(targetEl)
-        : blockKind === "h"
-          ? (targetEl.querySelector(".heading-title")?.innerHTML ?? targetEl.innerHTML)
-          : blockKind === "list"
-            ? targetEl.outerHTML // <ul>/<ol> outerHTML preserves list structure for the serializer
-            : blockKind === "blank"
-              ? ""
-              : targetEl.innerHTML;
-    const strippedHtml = stripInsignificantWhitespace(html);
-    // 空编辑器根防线（step1 数据事故的前置条件，也是 step1b 解挂的门槛）。
-    //
-    // 种子为空、但源码里这个块**并非空壳**时，说明 `targetEl` 不是这个块的内容载体。
-    // beginEdit 的 `el` 与 `blockKind` **不保证同源**：focusEditedLine 用
-    // `blockKindFromElement(prevEl)` 得到 kind，却把同一个 el 交给 beginEdit 当种子——
-    // 引用块内的空白占位段（`>` 空行渲染成 .blank-spacer）、已被清空的元素都会走到这里。
-    //
-    // 危害链条：`""` 仍能通过调用方的 `wysiwygHtml != null` 判断 → WysiwygEditor 以
-    // initialHtml="" 挂载 → `root.innerHTML = ""` → 失焦提交时 DOM 序列化成裸 `>`
-    // （quote 的合法空壳），覆盖掉原本有内容的引用块，且不可恢复。
-    //
-    // 回落 textarea：它的种子取源码 `initialContent`，永远与块内容一致；最坏情况只是
-    // 把 `>` 之类的标记符号暴露出来，代价远低于丢内容。
-    if (strippedHtml === "" && !isEmptyBlockShellDraft(blockKind, sourceText)) {
-        return null;
-    }
-    // 同一条防线的另一个形状：** html 非空、但一个文本都没有**。
-    // 典型：callout 标题 `\<p class="markdown-alert-title"><button …></button><span
-    // class="markdown-alert-title-text"></span></p>` —— 全是装饰元素、零文本。
-    // 这种种子同样给出「看起来空」的编辑器根，提交时一样序列化成空壳；
-    // 只看 html 是否为空是拦不住的。判据：种子文本为空而源码并非空壳 → 拒绝。
-    // （前面 `strippedHtml === ""` 的检查被此条覆盖，保留只为把意图写清楚。）
-    const seedProbe = document.createElement("template");
-    seedProbe.innerHTML = strippedHtml;
-    const seedText = (seedProbe.content.textContent ?? "").trim();
-    if (seedText === "" && !isEmptyBlockShellDraft(blockKind, sourceText)) {
-        return null;
-    }
-    if (/<img\b/i.test(strippedHtml) || /<a\b/i.test(strippedHtml)) {
-        return null; // images & links round-trip lossy — fall back to textarea
-    }
-    // Heading level from rendered class is-N.
-    let headingLevel: number | undefined;
-    if (blockKind === "h") {
-        const m = targetEl.className.match(/\bis-(\d)\b/);
-        if (m != null) headingLevel = parseInt(m[1], 10);
-    }
-    // List marker from original source (preserve author's choice of - / * / 1. etc).
-    let listMarker: string | undefined;
-    // F3: the source line's leading indentation. Clicking an INNER list item promotes the
-    // target to that inner <ul>, whose source lines are indented (`  - b`). The DOM
-    // serializer always starts at depth 0, so without re-applying the outer indent the
-    // committed draft is promoted to top level. Captured here, re-applied on commit.
-    let listIndent: string | undefined;
-    if (blockKind === "list") {
-        const lines = sourceText.split(/\r?\n/);
-        const first = lines[0] ?? "";
-        const markerMatch = first.match(/^\s*([-*+]|\d{1,9}[.)])/);
-        if (markerMatch != null) {
-            listMarker = markerMatch[1];
-        }
-        listIndent = first.match(/^([ \t]*)/)?.[1] ?? "";
-    }
-    return { html: strippedHtml, headingLevel, listMarker, listIndent };
-}
-
-
-// A3/D2 · 提交前置（块身份重定位 + 陈旧检测）也已搬进 md-dom（零 React / 零宿主）。
-// 同上：本模块 re-export，宿主调用点与既有测试不需改一个字。
-import { MarkdownRenderRootSelector, prepareInlineEditCommit } from "@md/dom/commit-prep";
-export {
-    isStaleTargetBlock,
-    MarkdownRenderRootSelector,
-    prepareInlineEditCommit,
-    relocateByBlockId,
-    relocateByContent,
-    type BlockEditTarget,
-} from "@md/dom/commit-prep";
-
-/**
- * 提交前置结果（宿主视角的具体化）：`CommitPreparation` 用泛型保住会话类型，
- * 所以这里只需把泛型参数填成宿主的 `InlineEditSession`，既有引用点就照旧可用。
- */
-export type InlineEditCommitPreparation = CommitPreparation<InlineEditSession>;
 
 /**
  * step3 S3：commit() → 提交通道的附加参数。`blockOp` 是块级逆操作数据，
@@ -952,7 +750,11 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             const sourceContent = lines.slice(safeLine - 1, endLine).join("\n");
             // 归一化入口收敛到 initialContentFor（与 commit 的陈旧检测同一个函数，防漂移）。
             const initialContent = initialContentFor(blockKind, sourceContent);
-            const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent);
+            // 种子采集已搬到 md-dom。**feature 开关由宿主注入** —— 包不该知道宿主的
+            // flag 存在哪里（这是保持“零宿主依赖”的那条边界）。
+            const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent, {
+                isWysiwygEnabled: () => isBlockEditorFeatureEnabled("wysiwyg"),
+            });
             // R4: capture the callout marker from the ORIGINAL source first line. Only for
             // WYSIWYG sessions — a textarea fallback commits the raw source verbatim (marker
             // already included), so applying a prefix there would duplicate it.

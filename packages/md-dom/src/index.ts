@@ -34,6 +34,17 @@ export {
     type BlockEditTarget,
 } from "./commit-prep";
 export {
+    calloutSeedHtml,
+    captureInplaceSeedHtml,
+    captureWysiwygInfo,
+    normalizeBreaksAroundNewlines,
+    SEED_BLOCK_TAGS,
+    stripInsignificantWhitespace,
+    WYSIWYG_KINDS,
+    type WysiwygEligibleKind,
+    type WysiwygSeedInfo,
+} from "./seed";
+export {
     applyCalloutPrefix,
     captureCalloutPrefix,
     indentListDraft,
