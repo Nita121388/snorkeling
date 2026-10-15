@@ -58,6 +58,14 @@ export function splitTextNodeWithWikiLinks(node: { type: "text"; value: string; 
             url: getMdHost().makeMarkdownWikiLinkHref(wikiLink.target, wikiLink.heading),
             children: [{ type: "text", value: wikiLink.label }],
             position: segmentOffsetPosition(node.position, match.index, match.index + match[0].length),
+            // **带上原始源码**（`match[0]` 就是用户文件里逐字那个 `[[target|label]]`）。
+            //
+            // 为什么必须带：`wave-wiki:` href **不能**反向重建出原文 ——
+            // `parseMarkdownWikiLink` 会给目标补 `.md`，且无法区分“本来就没写 label”
+            // 与“label 恰好等于 target”。只靠 href 还原，用户文件里的 `[[note]]` 会被
+            // 写成 `[[note.md]]` —— 语义相同但**改写了用户的文件**，这正是本项目要避免的。
+            // hProperties 会经 react-markdown 透传到 `<a>` 上，序列化器再读回来。
+            data: { hProperties: { "data-source-markdown": match[0] } },
         });
         last = match.index + match[0].length;
     }

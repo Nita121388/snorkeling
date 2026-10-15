@@ -27,6 +27,10 @@ export const Link = ({
     // Hast node position (offsets into the ORIGINAL source text) rides along with hover, so
     // the link editor can splice this exact span even when the block holds duplicate links.
     const nodePos = (props as any)?.node?.position;
+    // react-markdown v9：自定义组件的 props 上**不含** hProperties 带来的 data-*，
+    // 它们留在 `node.properties` 里。先试直取 prop，再回落 node.properties。
+    const sourceMarkdown: string | undefined =
+        (props as any)["data-source-markdown"] ?? (props as any)?.node?.properties?.["data-source-markdown"];
     const nodeOffsets =
         nodePos?.start?.offset != null && nodePos?.end?.offset != null
             ? { start: nodePos.start.offset, end: nodePos.end.offset }
@@ -78,6 +82,13 @@ export const Link = ({
         <a
             href={props.href}
             title={typeof props.href === "string" ? props.href : undefined}
+            // 把 remark 层挂上的**原始源码**透传到 DOM，序列化器靠它做逐字节往返。
+            // wiki 链接的 href 不能反向重建原文（会补 `.md`、分不出有无 label），
+            // 详见 markdown-file-refs.ts 里的说明。
+            //
+            // 两条读取路径（react-markdown v9 实测：直接 prop 里**拿不到** data-*，
+            // 它们留在 hast properties 上）：
+            data-source-markdown={sourceMarkdown}
             onClick={onClick}
             className="text-accent hover:underline"
             onMouseEnter={onHoverIn != null ? (e) => onHoverIn(e.currentTarget, nodeOffsets) : undefined}

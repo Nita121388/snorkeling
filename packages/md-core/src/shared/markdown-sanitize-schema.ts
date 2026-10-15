@@ -88,6 +88,16 @@ export function makeMarkdownSanitizeSchema(): typeof defaultSchema {
             // restore the blank-line spacing between items.
             ol: [...(defaultSchema.attributes?.ol || []), "dataLoose", "start", "dataSplitGroup"],
             ul: [...(defaultSchema.attributes?.ul || []), "dataLoose"],
+            // wiki 链接的**原始源码**（`[[target|label]]`）：序列化器靠它做逐字节往返。
+            // 不放行就会被 sanitize 静默剥掉 —— 表现是“代码看起来都对，但往返又退回了
+            // `[label](wave-wiki:…)`”，很难归因。属性名是 camelCase 形式（同上文说明）。
+            a: [...(defaultSchema.attributes?.a || []), "dataSourceMarkdown"],
+            // 脚注引用的原始源码（`[^id]`）：同理由（remark-gfm 生成的 sup 结构无法反推）。
+            // 必须展开 defaultSchema —— 不展开会把这个标签的默认白名单**整个抹掉**。
+            sup: [...(defaultSchema.attributes?.sup || []), "id", "dataSourceMarkdown"],
+            // 图片的原始源码（`![[a.png|300]]` / `![alt](a.png)`）：渲染器把 src 换成了
+            // 解析后 URL，尺寸与 alt 都在别的属性上，必须靠原始源码还原。
+            img: [...(defaultSchema.attributes?.img || []), "dataSourceMarkdown"],
         },
         protocols: {
             ...defaultSchema.protocols,

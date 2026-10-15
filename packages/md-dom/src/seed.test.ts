@@ -153,9 +153,24 @@ describe("captureWysiwygInfo：拒绝的三种情形都是「宁可暴露标记�
         expect(info).not.toBeNull();
     });
 
-    it("种子含 **wiki** 链接 → 拒绝（`[[n|label]]` 会被改写成 `[label](wave-wiki:n)`）", () => {
+    it("wiki 链接 **没有**原始源码 → 拒（会被改写成 `[label](wave-wiki:n)`）", () => {
         const el = mount('<div class="paragraph">见 <a href="wave-wiki:note">label</a></div>');
         expect(captureWysiwygInfo("p", el, "见 [[note|label]]")).toBeNull();
+    });
+
+    // P0-2：渲染器会挂上原始源码，序列化器逐字还原 → 有源码就不再有损。
+    it("wiki 链接**带** data-source-markdown → 放行（已学会逐字还原）", () => {
+        const el = mount(
+            '<div class="paragraph">见 <a href="wave-wiki:note.md" data-source-markdown="[[note|label]]">label</a></div>'
+        );
+        expect(captureWysiwygInfo("p", el, "见 [[note|label]]")).not.toBeNull();
+    });
+
+    it("一段里既有能还原的 wiki 链接、又有真丢的脚注 → 仍然拒（不能因为部分可救而放行）", () => {
+        const el = mount(
+            '<div class="paragraph"><a href="wave-wiki:note.md" data-source-markdown="[[note]]">note</a><sup><a href="#user-content-fn-1">1</a></sup></div>'
+        );
+        expect(captureWysiwygInfo("p", el, "[[note]] 字[^1]")).toBeNull();
     });
 
     it("种子含脚注引用 <sup> → 拒绝（旧正则漏掉这类）", () => {

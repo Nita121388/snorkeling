@@ -81,6 +81,37 @@ function wrap(marker: string, inner: string): string {
     return inner === "" ? "" : `${marker}${inner}${marker}`;
 }
 
+/**
+ * 解析**原始** wiki 链接源码 `[[target#heading|label]]` 的三个部分。
+ *
+ * 与 `parseMarkdownWikiLink` 的关键区别：**不补 `.md`**、**不把 label 补成 target**。
+ * 那两个“补全”对导航是对的（用户写 `[[note]]` 也能打开 note.md），但对**往返保真**是灾难：
+ * `[[note]]` 会被还原成 `[[note.md]]` —— 语义相同，用户文件却被改写了。
+ * 保真优先，所以这里只做语法拆分，不做任何规范化。
+ *
+ * 原文没写 label 时，渲染出来的可见文本等于 target，所以这里把 label 补成 target ——
+ * 这样才能在序列化时正确识别「用户没改过链接文字」。
+ */
+function parseRawWikiLink(source: string): { target: string; label: string; heading?: string } | null {
+    const inner = source.slice(2, -2).trim();
+    if (inner === "") {
+        return null;
+    }
+    const [targetAndHeading, labelPart] = inner.split("|", 2);
+    const [targetPart, headingPart] = targetAndHeading.split("#", 2);
+    const target = targetPart?.trim() ?? "";
+    if (target === "") {
+        return null;
+    }
+    const label = labelPart == null ? "" : labelPart.trim();
+    return {
+        target,
+        label: label === "" ? target : label,
+        heading: headingPart?.trim() || undefined,
+    };
+}
+
+
 function serializeNode(node: ChildNode, opts: Required<InlineSerializeOpts>): string {
     if (node.nodeType === 3) {
         return escapeRun(node.textContent ?? "", opts);
@@ -109,6 +140,28 @@ function serializeNode(node: ChildNode, opts: Required<InlineSerializeOpts>): st
         case "CODE":
             return escapeCodeSpan(el.textContent ?? "");
         case "A": {
+            // wiki 链接优先用 remark 层挂上来的**原始源码**逐字节还原（见 markdown-file-refs.ts）。
+            // href 不能反向重建：`[[note]]` 会被写成 `[[note.md]]` —— 语义同但**改写了用户文件**。
+            //
+            // 但 verbatim 有一条必须守住的边界：**只有当用户没改过链接文字时才逐字输出**。
+            // 否则用户把显示名改成「别的」而 href 没变，verbatim 会把他们的修改**静默丢弃**。
+            // 判定「改过没」= 当前 DOM 文本 ≠ 原始源码里的 label（下方解析）。
+            const sourceMarkdown = el.getAttribute("data-source-markdown");
+            if (sourceMarkdown != null && sourceMarkdown.startsWith("[[")) {
+                const inner = serializeChildren(el, opts);
+                const original = parseRawWikiLink(sourceMarkdown);
+                if (original != null) {
+                    if (inner === original.label) {
+                        return sourceMarkdown; // 未动 → 逐字节保真
+                    }
+                    // 改了显示名：目标与锚点保持不变，只换 label（删空则退回无 label 形式）。
+                    const targetPart =
+                        original.heading != null && original.heading !== ""
+                            ? `${original.target}#${original.heading}`
+                            : original.target;
+                    return inner.trim() === "" ? `[[${targetPart}]]` : `[[${targetPart}|${inner}]]`;
+                }
+            }
             const inner = serializeChildren(el, opts);
             const href = el.getAttribute("href") ?? "";
             if (inner === "") {

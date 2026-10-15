@@ -46,6 +46,9 @@ const LOSSY_SELECTORS: ReadonlyArray<readonly [string, LossyConstruct]> = [
     // [^fnid] → <sup>：序列化器没有 sup 分支，走 default 变成显示数字，引用关系丢失
     ["sup", "footnote-ref"],
     // [[target|label]] → <a href="wave-wiki:…">：只能还原成 [label](wave-wiki:…)，wiki 语法丢失
+    // **但已经救回来了**：渲染器会挂 data-source-markdown（原始源码），序列化器逐字还原。
+    //   所以只要**该元素**带这个属性，就不再算有损（见下方 wikiLinkRecoverable）。
+    //   逐字节保真 + “用户改了 label 不能被吞”都有专门测试钉住。
     ['a[href^="wave-wiki:"]', "wiki-link"],
     // ![[a.png|300]] → <img src="解析后URL">：src / alt / 尺寸都还原不回去
     ["img", "image"],
@@ -61,6 +64,15 @@ const LOSSY_SELECTORS: ReadonlyArray<readonly [string, LossyConstruct]> = [
  * 漏判则是图片语法被占位文案吃掉（不可恢复）。方向必须偏向前者。
  */
 const IMAGE_PLACEHOLDER_TEXT_RE = /\[Image unavailable:|\[img:/;
+
+/**
+ * 已学会还原的构造：元素上带着 remark 层挂下来的**原始源码**时，就不再有损。
+ *
+ * 语义：「没有原始源码 → 无法还原 → 拒写」；「有原始源码 → 能逐字还原 → 放行」。
+ * 逐字还原必须配一个「用户改过没有」的判据，否则会静默丢弃用户的编辑 ——
+ * 见 dom-to-markdown 的 `A` 分支（有实现有测试）。
+ */
+const RECOVERABLE_ATTR = "data-source-markdown";
 
 /**
  * 扫描「即将被序列化的那段内容」里所有有损构造。
@@ -84,8 +96,18 @@ export function findLossyInlineConstructs(root: ParentNode | null | undefined): 
         const el = root as Element;
         // matches() 覆盖「根自己就命中」，querySelector 覆盖后代。
         const selfHit = typeof el.matches === "function" && el.matches(selector);
-        if (selfHit || root.querySelector(selector) != null) {
+        const hits = root.querySelectorAll(selector);
+        if (selfHit) {
+            if (kind !== "wiki-link" || el.getAttribute(RECOVERABLE_ATTR) == null) {
+                found.add(kind);
+            }
+        }
+        for (const hit of hits) {
+            if (kind === "wiki-link" && hit.getAttribute(RECOVERABLE_ATTR) != null) {
+                continue; // 已学会还原 → 放行
+            }
             found.add(kind);
+            break;
         }
     }
     // 无 class 的图片占位 span：只能认文本。
