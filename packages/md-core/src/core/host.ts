@@ -157,6 +157,13 @@ export type EditableBlockHostProps = {
     onSplit?: (content: string, caretMarkdown: number) => void;
     /** 宿主提供的 ⌘/Ctrl+S 保存回调（提交 + flush 磁盘）。 */
     onSave?: () => void;
+    /**
+     * 宿主回调：用户本次会话首次真实输入（敲键/删除/粘贴）时触发一次。
+     *
+     * 宿主用它给空壳守卫提供「用户动过没有」的判据——在位路径没有镜像草稿，
+     * 这是区分「用户主动清空一个块」与「种子从未落地（DOM 塌缩）」的唯一依据。
+     */
+    onUserInput?: () => void;
 };
 
 

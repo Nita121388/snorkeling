@@ -53,6 +53,14 @@ export type EditableBlockProps = {
      * makeInlineEditKeydown save 语义一致）。缺省时 ⌘S 只提交不落盘。
      */
     onSave?: () => void;
+    /**
+     * 用户在本次会话里首次编辑（敲键/删除/粘贴）时回调一次。
+     *
+     * 宿主用它标记 `userEdited`，交给 md-dom 的空壳守卫区分
+     * 「用户主动清空」与「种子从未落地」——**在位路径没有镜像草稿**，
+     * 「动过没有」是唯一可用的判据。少了它，清空标题会被静默拦下（实测过）。
+     */
+    onUserInput?: () => void;
 };
 
 /**
@@ -163,6 +171,7 @@ export const EditableBlock = memo(function EditableBlock({
     onCancel,
     onSplit,
     onSave,
+    onUserInput,
 }: EditableBlockProps) {
     const editorRef = useRef<WysiwygEditorHandle | null>(null);
     const rootShape = inplaceRootShape(session, blockProps);
@@ -221,7 +230,16 @@ export const EditableBlock = memo(function EditableBlock({
 
     // 会话期间 contentEditable 内的内容不读 textAtom；onInput 由 WysiwygEditor 镜像，
     // 这里只保留 no-op（切片 1 不需要 draftText 镜像，提交直接序列化 DOM）。
-    const handleInput = useCallback((_md: string, _caret: number) => {}, []);
+    // 首次真实输入时向上报一次（在位路径的空壳守卫靠它区分“用户主动清空”与“种子未落地”）。
+    const userEditedRef = useRef(false);
+    const handleInput = useCallback(
+        (_md: string, _caret: number) => {
+            if (userEditedRef.current) return;
+            userEditedRef.current = true;
+            onUserInput?.();
+        },
+        [onUserInput]
+    );
 
     // 挂载后聚焦编辑体（与 overlay 的 InlineEditOverlay focus 语义一致：进入编辑即聚焦）。
     useEffect(() => {

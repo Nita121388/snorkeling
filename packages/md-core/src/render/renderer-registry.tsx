@@ -79,6 +79,12 @@ export interface MarkdownRenderContext {
     inplaceSplit?: (content: string, caretMarkdown: number) => void;
     /** A3：EditableBlock ⌘/Ctrl+S 保存回调（提交 + flush 磁盘）。 */
     inplaceSave?: () => void;
+    /**
+     * A3：用户本次会话首次真实输入时回调一次。
+     * 空壳守卫靠它区分「用户主动清空」与「种子从未落地」——**在位路径没有镜像草稿**，
+     * 「动过没有」是唯一可用的判据（少了它，清空标题会被静默拦下）。
+     */
+    inplaceUserInput?: () => void;
 };
 
 export interface MarkdownRendererSpec {
@@ -194,6 +200,7 @@ function renderInplaceEditableBlock(
             onCancel={ctx.inplaceCancel}
             onSplit={ctx.inplaceSplit}
             onSave={ctx.inplaceSave}
+            onUserInput={ctx.inplaceUserInput}
         />
     );
 }

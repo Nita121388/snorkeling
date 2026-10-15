@@ -749,6 +749,13 @@ const Markdown = ({
     const inplaceFrozenTextRef = useRef<string | null>(null);
     const inplaceSessionRef = useRef<InplaceRenderSession | null>(null);
     inplaceSessionRef.current = inplaceSession;
+    // 本次会话里用户是否真的编辑过（敲键/删除/粘贴）。空壳守卫靠它区分
+    // 「用户主动清空一个块」与「种子从未落地（DOM 塌缩）」——在位路径没有镜像草稿，
+    // 「动过没有」是唯一判据。不跟踪它的后果实测过：删光标题 → 失焦 → 文字原样回来。
+    const inplaceUserEditedRef = useRef(false);
+    const markInplaceUserEdited = useCallback(() => {
+        inplaceUserEditedRef.current = true;
+    }, []);
 
     // 会话期间渲染树用冻结文本；会话结束（commit/cancel/dismiss）后恢复实时 text。
     const renderText =
@@ -986,6 +993,8 @@ const Markdown = ({
                 blockId: session.blockId,
                 fullText: textRef.current,
                 root: getViewportEl()?.querySelector<HTMLElement>(MarkdownRenderRootSelector) ?? null,
+                // 空壳守卫的判据：用户动过没有。删光标题 = 合法清空，不能当“种子未落地”拦下。
+                userEdited: inplaceUserEditedRef.current,
             });
             if (plan.action === "skip") {
                 // 跳过原因必须记下来：否则「怎么都存不进去」只能靠猜。
@@ -1094,6 +1103,7 @@ const Markdown = ({
                 seedLen: seedHtml.length,
             });
             inplaceFrozenTextRef.current = textRef.current;
+            inplaceUserEditedRef.current = false; // 新会话：重置“用户动过没”标记
             setInplaceSession(session);
             return true;
         },
@@ -4866,6 +4876,7 @@ const Markdown = ({
             inplaceCancel,
             inplaceSplit: inplaceEnterSplit,
             inplaceSave: onInlineEditSave,
+            inplaceUserInput: markInplaceUserEdited,
         });
     }, [
         focusHeading,
@@ -4892,6 +4903,7 @@ const Markdown = ({
         inplaceCancel,
         inplaceEnterSplit,
         onInlineEditSave,
+        markInplaceUserEdited,
     ]);
 
     const tocItems = useMemo<MarkdownOutlineItem[]>(

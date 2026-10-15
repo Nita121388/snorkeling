@@ -14,6 +14,17 @@
  *   3. **空壳守卫**（`isEmptyBlockShellDraft`）
  *      —— 编辑器根从未承载内容时序列化出的「空壳」（裸 `>` / 裸 `###`）绝不能覆盖
  *         本来有内容的块。判据要同时看"草稿是不是空壳"和"原文是不是本来就空"。
+ *
+ *         这里的判据有一个**曾经写错过的细节**：光看「草稿是空壳 + 原文非空」是**不够**的，
+ *         因为「用户主动清空一个标题」同样满足这两条（清空后的标题序列化出来就是裸
+ *         `###`）。错把两者混同的后果是**用户删掉标题、失焦、文字原样回来** ——
+ *         一个静默的数据/交互缺陷（实测复现过）。
+ *
+ *         真正要区分的是「空壳 = 用户干的」还是「空壳 = 种子从未落地（DOM 塌缩）」。
+ *         overlay 路径靠**镜像草稿**区分（镜像还有内容、DOM 却塌了 → 种子没落地）；
+ *         在位路径没有镜像（编辑面就是渲染面），因此改用**用户是否真的动过**：
+ *         没动过而草稿塌成空壳 → 不可信（种子没落地）；动过 → 空壳是用户的意图，放行。
+ *         调用方通过 `userEdited` 传入；**不传则保持保守语义（拦）**，避免隐式放宽守卫。
  *   4. **无变化跳过**
  *      —— 内容与原文一致且没被重定位就不写盘（避免无谓的 undo 记账与磁盘抖动）。
  *
@@ -65,6 +76,13 @@ export type BlockCommitRequest = {
     fullText: string;
     /** 渲染根（用于按块身份/内容重定位）。 */
     root: ParentNode | null | undefined;
+    /**
+     * 用户在本次会话里是否**真的编辑过**（敲键 / 删除都算）。
+     *
+     * 这是空壳守卫区分「用户主动清空」与「种子从未落地」的唯一依据（在位路径无镜像草稿）。
+     * 缺省 `undefined` = 不确定 → 守卫保持保守（拦），不会隐式放宽数据安全判定。
+     */
+    userEdited?: boolean;
 };
 
 /** 提交决策：要么写，要么跳过（跳过原因必须可区分，否则没法诊断「为什么没存进去」）。 */
@@ -104,12 +122,13 @@ export function planBlockCommit(req: BlockCommitRequest): BlockCommitPlan {
             ? applyCalloutPrefix(req.committed, req.calloutPrefix)
             : req.committed;
 
-    // 3) 空壳守卫。两个条件都要看：
-    //    - 草稿是空壳，且
-    //    - 源码原文**不是**本来就空的（用户主动清空是合法操作，必须放行）
-    //    否则「引用块内容被一个空壳草稿吃掉」这类事故会静默发生。
+    // 3) 空壳守卫。
+    //    「草稿是空壳」本身**不足以**拒写：清空一个标题得到的就是裸 `###`。
+    //    只有「用户根本没动过，草稿却塌成空壳」才是种子未落地的特征（见文件头说明）。
+    //    `userEdited !== true` 同时覆盖「显式 false」与「调用方没提供」两种情况 ——
+    //    都不足以放宽这条守卫。
     const shell = isEmptyBlockShellDraft(req.kind, committed);
-    if (shell && req.committed.trim() !== "" && req.initialContent.trim() !== "") {
+    if (shell && req.userEdited !== true && req.committed.trim() !== "" && req.initialContent.trim() !== "") {
         return { action: "skip", reason: "empty-shell", startLine: current.startLine, endLine: current.endLine };
     }
 

@@ -83,7 +83,7 @@ describe("planBlockCommit：写 / 不写 的四道判定", () => {
         expect(plan).toMatchObject({ action: "skip", reason: "stale" });
     });
 
-    it("空壳草稿 + 原文非空 → skip:empty-shell（防丢引用内容）", () => {
+    it("空壳草稿 + 原文非空 + **用户没动过** → skip:empty-shell（种子未落地的特征）", () => {
         addBlock(3, ">", { blockId: "blk-q-0" });
         const plan = planBlockCommit({
             kind: "quote",
@@ -94,6 +94,61 @@ describe("planBlockCommit：写 / 不写 的四道判定", () => {
             blockId: "blk-q-0",
             fullText: ["", "", "> 原本有引用内容"].join("\n"),
             root,
+        });
+        expect(plan).toMatchObject({ action: "skip", reason: "empty-shell" });
+    });
+
+    // ⚠ 回归钉子（实测复现过的静默缺陷，2026-10-15）：
+    // 用户**删掉了标题的全文**、失焦，结果文字原样回来 —— 因为「裸 `###` 是空壳」被
+    // 当成「种子从未落地」。可清空标题得到的就是裸 `###`，那是用户的意图。
+    // 判据必须是「用户动过没有」，不是「草稿是不是空壳」。
+    it("清空标题（用户真的删了）→ **必须放行 write**，否则用户删不掉标题", () => {
+        addBlock(1, "###", { blockId: "blk-h-0" });
+        const plan = planBlockCommit({
+            kind: "h",
+            committed: "###",
+            startLine: 1,
+            endLine: 1,
+            initialContent: "### 三级标题",
+            blockId: "blk-h-0",
+            fullText: "### 三级标题",
+            root,
+            userEdited: true,
+        });
+        expect(plan.action).toBe("write");
+        if (plan.action === "write") {
+            expect(plan.text.trim()).toBe("###");
+        }
+    });
+
+    it("清空引用（用户真的删了）→ 同样放行：守卫不该拦住合法清空", () => {
+        addBlock(1, ">", { blockId: "blk-q-1" });
+        const plan = planBlockCommit({
+            kind: "quote",
+            committed: ">",
+            startLine: 1,
+            endLine: 1,
+            initialContent: "> 引用正文",
+            blockId: "blk-q-1",
+            fullText: "> 引用正文",
+            root,
+            userEdited: true,
+        });
+        expect(plan.action).toBe("write");
+    });
+
+    it("userEdited 显式 false（动过但内容塌了）→ 仍然拦：false 不能当“不知道”用", () => {
+        addBlock(1, "###", { blockId: "blk-h-1" });
+        const plan = planBlockCommit({
+            kind: "h",
+            committed: "###",
+            startLine: 1,
+            endLine: 1,
+            initialContent: "### 标题",
+            blockId: "blk-h-1",
+            fullText: "### 标题",
+            root,
+            userEdited: false,
         });
         expect(plan).toMatchObject({ action: "skip", reason: "empty-shell" });
     });
