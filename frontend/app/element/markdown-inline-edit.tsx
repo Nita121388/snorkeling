@@ -72,6 +72,11 @@ export {
     type WysiwygSeedInfo,
 } from "@md/dom/seed";
 export {
+    canEditInPlaceLosslessly,
+    findLossyInlineConstructs,
+    type LossyConstruct,
+} from "@md/dom/lossy";
+export {
     fallbackSelector,
     isSelectingRange,
     resolveInlineEditTarget,

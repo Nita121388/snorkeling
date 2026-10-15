@@ -78,6 +78,7 @@ import {
     applyCalloutPrefix,
     captureCalloutPrefix,
     captureInplaceSeedHtml,
+    canEditInPlaceLosslessly,
     isEmptyBlockShellDraft,
     initialContentFor,
     planBlockCommit,
@@ -1080,6 +1081,14 @@ const Markdown = ({
             const seedText = (seedProbe.content.textContent ?? "").trim();
             if (seedText === "" && !isEmptyBlockShellDraft(blockKind, initialContent)) {
                 return false; // 种子无文本而源码非空壳 → 不可得，回退 overlay
+            }
+            // **往返有损的块一律不进在位编辑**（wiki 链接 / 脚注引用 / 图片）。
+            // 实测过：在含 `[[note|label]]` 的段落里打一个字，提交就会把用户的
+            // `[[...]]` 改写成 `[label](wave-wiki:...)` —— 用户文件被静默改写。
+            // 判据与 overlay 路径共用 md-dom 的单一真源（lossy.ts），检查对象同为**待
+            // 序列化的种子**（渲染面已被剔掉的 chrome 不算，否则会误拒、白丢原位编辑）。
+            if (!canEditInPlaceLosslessly(seedProbe.content)) {
+                return false; // 回退 overlay，让用户看到原始标记（宁可难看，不能丢内容）
             }
             const calloutPrefix =
                 isCalloutAnchor ? captureCalloutPrefix(lines[safeLine - 1] ?? "") : "";

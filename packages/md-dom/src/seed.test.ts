@@ -137,9 +137,30 @@ describe("captureWysiwygInfo：拒绝的三种情形都是「宁可暴露标记�
         expect(captureWysiwygInfo("quote", el, "> [!NOTE] 有内容")).toBeNull();
     });
 
-    it("种子含 img / a → 拒绝（往返有损，回落 textarea）", () => {
-        expect(captureWysiwygInfo("p", mount("<div class=\"paragraph\"><img src=\"x.png\"></div>"), "![x](x.png)")).toBeNull();
-        expect(captureWysiwygInfo("p", mount('<div class="paragraph"><a href="/x">x</a></div>'), "[x](/x)")).toBeNull();
+    it("种子含 img → 拒绝（往返有损，回落 textarea）", () => {
+        expect(captureWysiwygInfo("p", mount('<div class="paragraph"><img src="x.png"></div>'), "![x](x.png)")).toBeNull();
+    });
+
+    // 旧实现用 `/<img|<a/` 正则把所有链接都拒掉 —— **过度保守**：
+    // 实测普通链接往返无损（渲染器 `href={props.href}` 原样透传，序列化还原 `[t](u)`）。
+    // 过度拒绝的代价是真实的：用户平白失去原位编辑。所以只拒真正有损的那一类。
+    it("种子含**普通**链接 → 放行（实测往返无损，不再一刀切）", () => {
+        const info = captureWysiwygInfo(
+            "p",
+            mount('<div class="paragraph"><a href="https://x.com">t</a></div>'),
+            "[t](https://x.com)"
+        );
+        expect(info).not.toBeNull();
+    });
+
+    it("种子含 **wiki** 链接 → 拒绝（`[[n|label]]` 会被改写成 `[label](wave-wiki:n)`）", () => {
+        const el = mount('<div class="paragraph">见 <a href="wave-wiki:note">label</a></div>');
+        expect(captureWysiwygInfo("p", el, "见 [[note|label]]")).toBeNull();
+    });
+
+    it("种子含脚注引用 <sup> → 拒绝（旧正则漏掉这类）", () => {
+        const el = mount('<div class="paragraph">字<sup class="footnote-ref"><a href="#fn-1">1</a></sup></div>');
+        expect(captureWysiwygInfo("p", el, "字[^1]")).toBeNull();
     });
 
     it("**feature 开关由宿主注入**：显式 false → 直接拒绝（包不猜宿主 flag 在哪）", () => {

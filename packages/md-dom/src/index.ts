@@ -69,3 +69,8 @@ export {
     resolveInlineEditTarget,
     type EditableHostTarget,
 } from "./edit-target";
+export {
+    canEditInPlaceLosslessly,
+    findLossyInlineConstructs,
+    type LossyConstruct,
+} from "./lossy";

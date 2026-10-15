@@ -22,6 +22,7 @@
  */
 
 import { isEmptyBlockShellDraft, type InlineEditBlockKind } from "./block-syntax";
+import { canEditInPlaceLosslessly } from "./lossy";
 
 /** 能用 **通用** WYSIWYG 编辑器（非专用编辑器）编辑的散文类块。 */
 export type WysiwygEligibleKind = "p" | "h" | "list" | "quote" | "blank";
@@ -230,8 +231,13 @@ export function captureWysiwygInfo(
     if (seedText === "" && !isEmptyBlockShellDraft(blockKind, sourceText)) {
         return null;
     }
-    if (/<img\b/i.test(strippedHtml) || /<a\b/i.test(strippedHtml)) {
-        return null; // images & links round-trip lossy — fall back to textarea
+    // **往返有损的结构必须拒绝**，否则提交会把用户的源码改写掉（实测过）。
+    // 判据用 md-dom 的单一真源（lossy.ts），不再这里手写正则 ——
+    // 旧正则只查 `<img|<a`，**漏了 `<sup>`（脚注引用）**。
+    // 检查对象是**待序列化的种子**（而非渲染根）：渲染面上被剥掉的 chrome 不算，
+    // 拿渲染根判会误拒，让用户白丢原位编辑。
+    if (!canEditInPlaceLosslessly(seedProbe.content)) {
+        return null; // 有损 → 回落 textarea，让用户看到原始标记（宁可难看，不能丢内容）
     }
     // Heading level from rendered class is-N.
     let headingLevel: number | undefined;
