@@ -12,6 +12,7 @@ import { createContentBlockPlugin } from "./contentblock";
 import remarkSoftBreaks from "./soft-breaks";
 import remarkMarkdownFileReferences from "./markdown-file-refs";
 import remarkFootnoteSource from "./footnote-source";
+import remarkImageSource from "./image-source";
 import remarkBlankLineSpacers from "./blank-line-spacers";
 import remarkLooseListSpacing from "./loose-list-spacing";
 import remarkSplitLooseLists from "./split-loose-lists";
@@ -76,6 +77,8 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
         remarkGfm,
         // 必须在 remarkGfm 之后：脚注节点是 remark-gfm 语法扩展在 parse 阶段产生的。
         remarkFootnoteSource,
+        // 图片原始源码（按 position 切源文件，不重建）。
+        remarkImageSource,
         remarkCalloutAlert,
         // Split BEFORE loose-list spacing + blank-line spacers so split groups become tight
         // lists and the blank rows between groups render as real spacer paragraphs.

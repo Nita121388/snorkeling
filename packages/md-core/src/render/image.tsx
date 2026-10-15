@@ -61,6 +61,11 @@ export const MarkdownImg = ({
     fullText?: string;
     onInlineEditCommit?: (newFullText: string) => void;
 }) => {
+    // 图片的**原始源码**（remark 插件按 position 从源文件切的，逐字节精确）。
+    // 渲染器把 src 换成了解析后的 URL，alt 与尺寸也分散在别处 —— 序列化器只靠 DOM
+    // 重建会同时丢掉 alt / 尺寸，并在图片加载失败时把整个语法替换成英文占位文案。
+    const sourceMarkdown: string | undefined =
+        (props as any)["data-source-markdown"] ?? (props as any)?.node?.properties?.["dataSourceMarkdown"];
     const [resolvedSrc, setResolvedSrc] = useState<string>(props.src);
     const [resolvedSrcSet, setResolvedSrcSet] = useState<string>(props.srcSet);
     const [resolvedStr, setResolvedStr] = useState<string>(null);
@@ -374,11 +379,17 @@ export const MarkdownImg = ({
         return null;
     }
     if (resolvedStr != null) {
-        return <span>{resolvedStr}</span>;
+        return <span data-source-markdown={sourceMarkdown}>{resolvedStr}</span>;
     }
     if (imageLoadError != null || resolvedSrc == null) {
+        // 占位文案**必须**带原始源码：否则用户在这个段落里打一个字，
+        // 文件里的 `![alt](a.png|100)` 就会被这段英文占位替换掉（实测发生过，不可恢复）。
         return (
-            <span className="markdown-img-error" title={`${imageLoadError ?? "Unable to load image"}: ${rawImgSrc}`}>
+            <span
+                className="markdown-img-error"
+                data-source-markdown={sourceMarkdown}
+                title={`${imageLoadError ?? "Unable to load image"}: ${rawImgSrc}`}
+            >
                 [Image unavailable: {rawImgSrc}]
             </span>
         );
@@ -408,6 +419,7 @@ export const MarkdownImg = ({
                     <img
                         ref={imgRef}
                         {...domProps(props)}
+                        data-source-markdown={sourceMarkdown}
                         alt={imgAlt}
                         src={resolvedSrc}
                         srcSet={resolvedSrcSet}

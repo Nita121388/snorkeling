@@ -90,12 +90,40 @@ describe("findLossyInlineConstructs：有损构造必须判出来", () => {
         ).toContain("image-unresolved");
     });
 
-    // 误判成「可还原」= 直接放行数据损坏，所以白名单必须**显式**，
-    // 不能只看「有没有挂源码属性」。
-    it("带源码但**尚未学会还原**的构造（img）→ 仍然拒", () => {
+    // 白名单必须**显式**：万一将来出现「挂了源码但序列化器根本不读」的构造，
+    // 只看「有没有属性」会直接放行数据损坏。这条用例钉住 img 已进入白名单，
+    // 新增构造时必须同步在这里补一条（review 时的检查点）。
+    it("`<img>` 带源码 → 已进入白名单（放行）", () => {
         expect(
-            findLossyInlineConstructs(el('<p><img src="file:///a.png" alt="" data-source-markdown="![[a.png|300]]"></p>'))
-        ).toEqual(["image"]);
+            findLossyInlineConstructs(
+                el('<p><img src="file:///a.png" alt="重要截图" data-source-markdown="![重要截图](a.png|300)"></p>')
+            )
+        ).toEqual([]);
+    });
+
+    it("占位 span **带**原始源码 → 放行（图片语法不会被占位文案吃掉）", () => {
+        expect(
+            findLossyInlineConstructs(
+                el(
+                    '<p><span class="markdown-img-error" data-source-markdown="![](a.png|100)">[Image unavailable: a.png]</span></p>'
+                )
+            )
+        ).toEqual([]);
+    });
+
+    it("无 class 的裸占位 `<span>[img:…]</span>` 带源码 → 也放行", () => {
+        expect(findLossyInlineConstructs(el('<p><span data-source-markdown="![](a.png)">[img:a.png]</span></p>'))).toEqual(
+            []
+        );
+    });
+
+    // 部分还原 = 仍然有损：块里只要有一个占位元素没源码，整块就不能原位编辑。
+    it("两个占位只有一个带源码 → 仍然拒", () => {
+        expect(
+            findLossyInlineConstructs(
+                el('<p><span data-source-markdown="![](a.png)">[img:a.png]</span><span>[img:b.png]</span></p>')
+            )
+        ).toEqual(["image-unresolved"]);
     });
 
     it("多种构造同时存在 → 全部列出并去重（调用方要能知道是哪些）", () => {

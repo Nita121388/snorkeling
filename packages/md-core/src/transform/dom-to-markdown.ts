@@ -112,6 +112,12 @@ function parseRawWikiLink(source: string): { target: string; label: string; head
 }
 
 
+/**
+ * 图片解析失败的占位文案特征（与 `md-dom/lossy.ts` 的判据保持同一份定义）。
+ * 两种形态：`[Image unavailable: x]` 与 `[img:x]`。
+ */
+const IMAGE_PLACEHOLDER_TEXT_RE = /\[Image unavailable:|\[img:/;
+
 function serializeNode(node: ChildNode, opts: Required<InlineSerializeOpts>): string {
     if (node.nodeType === 3) {
         return escapeRun(node.textContent ?? "", opts);
@@ -139,6 +145,18 @@ function serializeNode(node: ChildNode, opts: Required<InlineSerializeOpts>): st
             return wrap("~~", serializeChildren(el, opts));
         case "CODE":
             return escapeCodeSpan(el.textContent ?? "");
+        case "SPAN": {
+            // 图片**加载失败**的占位 span（渲染器把 `![alt](a.png)` 换成一段英文文案）。
+            // 带原始源码就逐字还原 —— 否则用户在这个段落里打一个字，
+            // 文件里的图片语法会被占位文案顶掉（实测发生过）。
+            // 判据用「叶子节点 + 文本像占位」，避免误吞用户自己写的 <span>。
+            const spanSource = el.getAttribute("data-source-markdown");
+            const isLeaf = el.children.length === 0;
+            if (spanSource != null && isLeaf && IMAGE_PLACEHOLDER_TEXT_RE.test(el.textContent ?? "")) {
+                return spanSource;
+            }
+            return serializeChildren(el, opts);
+        }
         case "A": {
             // wiki 链接优先用 remark 层挂上来的**原始源码**逐字节还原（见 markdown-file-refs.ts）。
             // href 不能反向重建：`[[note]]` 会被写成 `[[note.md]]` —— 语义同但**改写了用户文件**。
@@ -170,6 +188,12 @@ function serializeNode(node: ChildNode, opts: Required<InlineSerializeOpts>): st
             return href === "" ? inner : `[${inner}](${href})`;
         }
         case "IMG": {
+            // 带原始源码 → 逐字输出。渲染器把 src 换成了解析后 URL，alt 与尺寸后缀
+            // 都在别的属性上，按 DOM 重建会同时丢三样（其中 alt 是纯损失，不可恢复）。
+            const imgSource = el.getAttribute("data-source-markdown");
+            if (imgSource != null && imgSource.startsWith("![")) {
+                return imgSource;
+            }
             const imgEl = el as HTMLImageElement;
             const src = imgEl.getAttribute("src") ?? "";
             if (src === "") {

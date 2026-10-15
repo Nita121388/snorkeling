@@ -82,7 +82,12 @@ const RECOVERABLE_ATTR = "data-source-markdown";
  * **必须有白名单**：带上了源码但**序列化器不读它**的构造（目前是 image）仍然是丢的，
  * 误判成“可还原”会直接放行数据损坏。
  */
-const RECOVERABLE_KINDS: ReadonlySet<LossyConstruct> = new Set<LossyConstruct>(["wiki-link", "footnote-ref"]);
+const RECOVERABLE_KINDS: ReadonlySet<LossyConstruct> = new Set<LossyConstruct>([
+    "wiki-link",
+    "footnote-ref",
+    "image",
+    "image-unresolved",
+]);
 
 /** 该元素是否「已学会还原」：构造在白名单里、且元素上带着原始源码。 */
 function isRecoverable(kind: LossyConstruct, el: Element): boolean {
@@ -126,10 +131,35 @@ export function findLossyInlineConstructs(root: ParentNode | null | undefined): 
         }
     }
     // 无 class 的图片占位 span：只能认文本。
+    // 但**不是**只要认到就判有损 —— 渲染器给占位元素挂了原始源码时，序列化器能逐字还原。
+    // 判据：所有占位元素（按 class 找的 + 按文本找的叶子）都带源码属性 → 可还原。
     if (IMAGE_PLACEHOLDER_TEXT_RE.test(root.textContent ?? "")) {
-        found.add("image-unresolved");
+        const placeholders = collectImagePlaceholders(root);
+        const allRecoverable = placeholders.length > 0 && placeholders.every((el) => isRecoverable("image-unresolved", el));
+        if (!allRecoverable) {
+            found.add("image-unresolved");
+        }
     }
     return [...found];
+}
+
+/**
+ * 收集图片占位元素：按 class 找的（`.markdown-img-error`）加上「叶子且文本像占位」的。
+ * 后者必要 —— 一支渲染是**无 class 的裸 `<span>[img:…]</span>`**，选择器完全抓不到。
+ */
+function collectImagePlaceholders(root: ParentNode): Element[] {
+    const byClass = [...root.querySelectorAll("span.markdown-img-error")];
+    const seen = new Set<Element>(byClass);
+    const candidates = [root as Element, ...root.querySelectorAll("span")].filter((el) => el != null);
+    for (const el of candidates) {
+        if (seen.has(el) || el.children.length > 0) {
+            continue;
+        }
+        if (IMAGE_PLACEHOLDER_TEXT_RE.test(el.textContent ?? "")) {
+            seen.add(el);
+        }
+    }
+    return [...seen];
 }
 
 /** 便捷判据：这���内容能不能原位编辑（不能丢内容的那种）。 */
