@@ -181,6 +181,28 @@ func releaseAgentStatus(blockId string) {
 
 // Public API Functions
 
+type redrawableController interface {
+	RedrawTUI() error
+}
+
+// RedrawController asks a controller to redraw its interactive terminal UI without
+// restarting the controller or changing its session state. Controllers that do not
+// support redraw, or blocks without a live controller, are intentionally no-ops.
+func RedrawController(ctx context.Context, blockId string) error {
+	if blockId == "" {
+		return nil
+	}
+	controller := getController(blockId)
+	if controller == nil {
+		return nil
+	}
+	redrawable, ok := controller.(redrawableController)
+	if !ok {
+		return nil
+	}
+	return redrawable.RedrawTUI()
+}
+
 func ResyncController(ctx context.Context, tabId string, blockId string, rtOpts *waveobj.RuntimeOpts, force bool) error {
 	if tabId == "" || blockId == "" {
 		return fmt.Errorf("invalid tabId or blockId passed to ResyncController")

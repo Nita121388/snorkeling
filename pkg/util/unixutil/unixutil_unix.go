@@ -92,3 +92,22 @@ func SendSignalByName(pid int, sigName string) error {
 	}
 	return p.Signal(sig)
 }
+
+// SignalGroupByName sends a named signal to an entire process group (negative
+// pgid, mirroring PTY resize behavior where the kernel broadcasts SIGWINCH to
+// the foreground process group). Returns an error when the signal is unsupported
+// or the group does not exist; never falls back to killing.
+func SignalGroupByName(pgid int, sigName string) error {
+	if pgid <= 0 {
+		return fmt.Errorf("invalid process group id %d", pgid)
+	}
+	sig := ParseSignal(sigName)
+	if sig == nil {
+		return fmt.Errorf("unsupported or invalid signal %q", sigName)
+	}
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		return fmt.Errorf("unsupported signal %q", sigName)
+	}
+	return syscall.Kill(-pgid, sysSig)
+}

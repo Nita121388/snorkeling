@@ -15,6 +15,7 @@ import { WidgetQuickLaunchModal } from "@/app/workspace/widget-quick-launch";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
+import { RestartConfirmModal } from "./restartconfirmmodal";
 import { FileConflictModal } from "./file-conflict-modal";
 import { UnsavedFileModal } from "./unsavedfilemodal";
 import { UserInputModal } from "./userinputmodal";
@@ -41,6 +42,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [DeleteFileModal.displayName || "DeleteFileModal"]: DeleteFileModal,
     [SetSecretDialog.displayName || "SetSecretDialog"]: SetSecretDialog,
     [ExportOptionsModal.displayName || "ExportOptionsModal"]: ExportOptionsModal,
+    [RestartConfirmModal.displayName || "RestartConfirmModal"]: RestartConfirmModal,
 };
 
 export const getModalComponent = (key: string): React.ComponentType<any> | undefined => {

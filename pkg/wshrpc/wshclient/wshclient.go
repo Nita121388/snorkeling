@@ -217,6 +217,12 @@ func ControllerResyncCommand(w *wshutil.WshRpc, data wshrpc.CommandControllerRes
 	return err
 }
 
+// command "controllerredraw", wshserver.ControllerRedrawCommand
+func ControllerRedrawCommand(w *wshutil.WshRpc, blockId string, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "controllerredraw", blockId, opts)
+	return err
+}
+
 // command "createblock", wshserver.CreateBlockCommand
 func CreateBlockCommand(w *wshutil.WshRpc, data wshrpc.CommandCreateBlockData, opts *wshrpc.RpcOpts) (waveobj.ORef, error) {
 	resp, err := sendRpcRequestCallHelper[waveobj.ORef](w, "createblock", data, opts)
