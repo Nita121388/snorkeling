@@ -48,3 +48,9 @@ func IsPidRunning(pid int) bool {
 func SendSignalByName(pid int, sigName string) error {
 	return fmt.Errorf("sending signals is not supported on Windows")
 }
+
+// SignalGroupByName is a no-op on Windows; process-group signaling is a unix
+// concept. RedrawTUI degrades gracefully to the frontend-only repaint.
+func SignalGroupByName(pgid int, sigName string) error {
+	return fmt.Errorf("process group signals are not supported on Windows")
+}

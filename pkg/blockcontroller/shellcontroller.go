@@ -31,6 +31,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/util/envutil"
 	"github.com/wavetermdev/waveterm/pkg/util/fileutil"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
+	"github.com/wavetermdev/waveterm/pkg/util/unixutil"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
 	"github.com/wavetermdev/waveterm/pkg/utilds"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
@@ -265,6 +266,48 @@ func (sc *ShellController) SendInput(inputUnion *BlockInputUnion) error {
 		return fmt.Errorf("no shell input chan")
 	}
 	shellInputCh <- inputUnion
+	return nil
+}
+
+// shellProcPid returns the OS pid of a locally-running shell process, or 0 when
+// the process is remote, not started, or already exited. Remote shell procs are
+// proxied over wshrpc and have no locally-signallable pid.
+func shellProcPid(sp *shellexec.ShellProc) int {
+	if sp == nil || sp.Cmd == nil {
+		return 0
+	}
+	switch c := sp.Cmd.(type) {
+	case shellexec.CmdWrap:
+		if c.Cmd != nil && c.Cmd.Process != nil {
+			return c.Cmd.Process.Pid
+		}
+	case *shellexec.CmdWrap:
+		if c.Cmd != nil && c.Cmd.Process != nil {
+			return c.Cmd.Process.Pid
+		}
+	}
+	return 0
+}
+
+// RedrawTUI asks the running shell/agent process to redraw its terminal UI by
+// sending SIGWINCH to its process group (or the process itself as a fallback).
+// This mirrors what a real PTY resize does, without restarting the controller or
+// changing any session state. It is a no-op when no local process is running.
+func (sc *ShellController) RedrawTUI() error {
+	var sp *shellexec.ShellProc
+	sc.WithLock(func() {
+		sp = sc.ShellProc
+	})
+	pid := shellProcPid(sp)
+	if pid <= 0 {
+		return nil
+	}
+	if pgid, err := unixutil.GetProcessGroupId(pid); err == nil && pgid > 0 {
+		if err := unixutil.SignalGroupByName(pgid, "SIGWINCH"); err == nil {
+			return nil
+		}
+	}
+	_ = unixutil.SendSignalByName(pid, "SIGWINCH")
 	return nil
 }
 

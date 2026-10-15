@@ -62,7 +62,7 @@ let lastTermSaveTs = 0;
 export const SupportsImageInput = true;
 const MaxRepaintTransactionMs = 2000;
 
-function isNoControllerFoundError(error: unknown): boolean {
+export function isNoControllerFoundError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error ?? "");
     return /no controller found for block/i.test(message);
 }

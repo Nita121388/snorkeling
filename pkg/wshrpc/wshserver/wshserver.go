@@ -472,6 +472,12 @@ func (ws *WshServer) ControllerResyncCommand(ctx context.Context, data wshrpc.Co
 	return blockcontroller.ResyncController(ctx, data.TabId, data.BlockId, data.RtOpts, data.ForceRestart)
 }
 
+func (ws *WshServer) ControllerRedrawCommand(ctx context.Context, blockId string) error {
+	ctx = genconn.ContextWithConnData(ctx, blockId)
+	ctx = termCtxWithLogBlockId(ctx, blockId)
+	return blockcontroller.RedrawController(ctx, blockId)
+}
+
 func (ws *WshServer) ControllerInputCommand(ctx context.Context, data wshrpc.CommandBlockInputData) error {
 	inputUnion := &blockcontroller.BlockInputUnion{
 		SigName:  data.SigName,

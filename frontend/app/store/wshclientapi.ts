@@ -216,6 +216,12 @@ export class RpcApiType {
         return client.wshRpcCall("controllerresync", data, opts);
     }
 
+    // command "controllerredraw" [call]
+    ControllerRedrawCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "controllerredraw", data, opts);
+        return client.wshRpcCall("controllerredraw", data, opts);
+    }
+
     // command "createblock" [call]
     CreateBlockCommand(client: WshClient, data: CommandCreateBlockData, opts?: RpcOpts): Promise<ORef> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "createblock", data, opts);

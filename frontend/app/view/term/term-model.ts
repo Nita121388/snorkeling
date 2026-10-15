@@ -74,7 +74,7 @@ import {
     terminalSelectionToSingleLine,
     trimTerminalSelection,
 } from "./termutil";
-import { TermWrap, WebGLSupported } from "./termwrap";
+import { isNoControllerFoundError, TermWrap, WebGLSupported } from "./termwrap";
 
 const TerminalFontFamilies = ["Hack", "JetBrains Mono", "SF Mono", "Menlo", "Berkeley Mono"];
 
@@ -441,22 +441,29 @@ export class TermViewModel implements ViewModel {
             }
             let iconName: string = null;
             let title: string = null;
+            let click: () => void = null;
             const noun = isCmd ? "Command" : "Shell";
             if (shellProcStatus == "init") {
                 iconName = "play";
                 title = "Click to Start " + noun;
+                click = () => fireAndForget(() => this.forceRestartController());
             } else if (shellProcStatus == "running") {
+                // Redraw TUI: repaint the terminal buffer and nudge the running
+                // TUI process to redraw itself via SIGWINCH. Never restarts the
+                // controller or changes session state.
                 iconName = "refresh";
-                title = noun + " Running. Click to Restart";
+                title = "Redraw TUI";
+                click = () => this.redrawTUI();
             } else if (shellProcStatus == "done") {
                 iconName = "refresh";
-                title = noun + " Exited. Click to Restart";
+                title = "Redraw TUI";
+                click = () => this.redrawTUI();
             }
             if (iconName != null) {
                 const buttonDecl: IconButtonDecl = {
                     elemtype: "iconbutton",
                     icon: iconName,
-                    click: () => fireAndForget(() => this.forceRestartController()),
+                    click: click,
                     title: title,
                 };
                 rtn.push(buttonDecl);
@@ -1008,6 +1015,31 @@ export class TermViewModel implements ViewModel {
             forcerestart: true,
             rtopts: { termsize: termsize },
         });
+    }
+
+    /**
+     * Redraw the terminal UI without touching the controller or session state:
+     * 1) force an xterm buffer/canvas re-render, and
+     * 2) ask the running TUI process to redraw itself by sending SIGWINCH.
+     * Safe to call even when no process is running (frontend-only repaint).
+     */
+    redrawTUI() {
+        const terminal = this.termRef.current?.terminal;
+        if (terminal) {
+            try {
+                terminal.refresh(0, terminal.rows - 1);
+            } catch (e) {
+                console.warn("redrawTUI refresh error", e);
+            }
+        }
+        fireAndForget(() =>
+            RpcApi.ControllerRedrawCommand(TabRpcClient, this.blockId).catch((error) => {
+                if (isNoControllerFoundError(error)) {
+                    return; // no live controller — frontend repaint already ran
+                }
+                console.warn("redrawTUI rpc error", error);
+            })
+        );
     }
 
     async restartSessionWithDurability(isDurable: boolean) {
@@ -1623,6 +1655,21 @@ export class TermViewModel implements ViewModel {
             label: "Transparency",
             submenu: transparencySubMenu,
         });
+        const isAgentBlock = isAgentTerminalMeta(blockData?.meta);
+        fullMenu.push({
+            label: isAgentBlock ? "Restart Agent Session" : "Restart Shell",
+            click: () => {
+                modalsModel.pushModal("RestartConfirmModal", {
+                    blockId: this.blockId,
+                    isAgent: isAgentBlock,
+                    onResolve: (restart: boolean) => {
+                        if (restart) {
+                            fireAndForget(() => this.forceRestartController());
+                        }
+                    },
+                });
+            },
+        });
         fullMenu.push({ type: "separator" });
         const advancedSubmenu: ContextMenuItem[] = [];
         const allowBracketedPaste = blockData?.meta?.["term:allowbracketedpaste"];
@@ -1663,10 +1710,6 @@ export class TermViewModel implements ViewModel {
                     },
                 },
             ],
-        });
-        advancedSubmenu.push({
-            label: "Force Restart Controller",
-            click: () => fireAndForget(() => this.forceRestartController()),
         });
         const isClearOnStart = blockData?.meta?.["cmd:clearonstart"];
         advancedSubmenu.push({
