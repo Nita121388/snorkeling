@@ -26,6 +26,9 @@ import {
     type ClosedInlinePair,
 } from "@md/core/transform/block-type";
 import { serializeBlockDomToMarkdown, type WysiwygBlockKind } from "@md/core/transform/dom-to-markdown";
+// caret 桥（DOM 位置 ↔ markdown 偏移）已搬进 md-dom：编辑引擎里最易错的一环，
+// 且必须是框架无关的（任何非 React 消费方都要用它）。
+import { caretToMarkdownOffset, placeCaretByTextOffset, selectionToMarkdownRange } from "@md/dom/caret";
 import {
     focusByAnchor,
     indentListItem,
@@ -180,80 +183,12 @@ export type WysiwygEditorProps = {
     rootAttrs?: Record<string, string | undefined>;
 };
 
-// ---------------------------------------------------------------------------
-// Sentinel helper: DOM-caret → markdown-offset (exact, marker-aware)
-// ---------------------------------------------------------------------------
-
-const SENTINEL = "\uE000";
-const SENTINEL_START = "\uE001";
-const SENTINEL_END = "\uE002";
 
 /**
  * Insert a sentinel character at the current selection in `root`, serialize
  * the whole root, find the sentinel in the output, remove it, and return
  * the index — i.e. the exact markdown-space offset of the original caret.
  */
-function sentinelMarkdownCaret(
-    root: Element,
-    ctx: {
-        kind: WysiwygBlockKind;
-        headingLevel?: number;
-        listMarker?: string;
-    }
-): number | null {
-    const sel = window.getSelection();
-    if (sel == null || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) {
-        return null;
-    }
-    const range = sel.getRangeAt(0).cloneRange();
-    const textNode = document.createTextNode(SENTINEL);
-    range.insertNode(textNode);
-    const md = serializeBlockDomToMarkdown(root, ctx);
-    const idx = md.indexOf(SENTINEL);
-    textNode.parentNode?.removeChild(textNode);
-    root.normalize();
-    // Merge any adjacent text nodes the insertion may have split.
-    return idx >= 0 ? idx : null;
-}
-
-/**
- * DOM 选区 → markdown 空间的 `{start, end}` 偏移（P3 G4：让 FloatingToolbar 在 WYSIWYG
- * 下也能拿到选区）。与 sentinelMarkdownCaret 同法：选区两端各插一个哨兵，序列化后读出
- * 两个索引。与 caret 版不同：折叠选区返回 null（非选区 → 无工具栏）。
- */
-function sentinelMarkdownSelection(
-    root: Element,
-    ctx: {
-        kind: WysiwygBlockKind;
-        headingLevel?: number;
-        listMarker?: string;
-    }
-): { start: number; end: number } | null {
-    const sel = window.getSelection();
-    if (sel == null || sel.rangeCount === 0 || sel.isCollapsed || !root.contains(sel.anchorNode)) {
-        return null;
-    }
-    const range = sel.getRangeAt(0);
-    const startNode = document.createTextNode(SENTINEL_START);
-    const endNode = document.createTextNode(SENTINEL_END);
-    const rStart = range.cloneRange();
-    rStart.collapse(true);
-    rStart.insertNode(startNode);
-    const rEnd = range.cloneRange();
-    rEnd.collapse(false);
-    rEnd.insertNode(endNode);
-    const md = serializeBlockDomToMarkdown(root, ctx);
-    const iStart = md.indexOf(SENTINEL_START);
-    const iEnd = md.indexOf(SENTINEL_END);
-    startNode.parentNode?.removeChild(startNode);
-    endNode.parentNode?.removeChild(endNode);
-    root.normalize();
-    if (iStart < 0 || iEnd < 0) {
-        return null;
-    }
-    return { start: Math.min(iStart, iEnd), end: Math.max(iStart, iEnd) };
-}
-
 // ---------------------------------------------------------------------------
 // Live kind state: the block may convert from p → h/list/quote via typing
 // ---------------------------------------------------------------------------
@@ -341,7 +276,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         const root = rootRef.current;
         if (root == null) return "";
         const md = serializeBlockDomToMarkdown(root, commitCtx());
-        const caret = sentinelMarkdownCaret(root, commitCtx()) ?? md.length;
+        const caret = caretToMarkdownOffset(root, commitCtx()) ?? md.length;
         onInput(md, caret);
         return md;
     }, [commitCtx, onInput]);
@@ -612,12 +547,12 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
             },
 
             getCaretMarkdown() {
-                return rootRef.current != null ? (sentinelMarkdownCaret(rootRef.current, commitCtx()) ?? 0) : 0;
+                return rootRef.current != null ? (caretToMarkdownOffset(rootRef.current, commitCtx()) ?? 0) : 0;
             },
 
             getSelectionRange() {
                 return rootRef.current != null
-                    ? sentinelMarkdownSelection(rootRef.current, commitCtx())
+                    ? selectionToMarkdownRange(rootRef.current, commitCtx())
                     : null;
             },
 
@@ -927,7 +862,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                 selectionReportRef.current?.(null);
                 return;
             }
-            selectionReportRef.current?.(sentinelMarkdownSelection(rootRef.current, commitCtx()));
+            selectionReportRef.current?.(selectionToMarkdownRange(rootRef.current, commitCtx()));
         };
         document.addEventListener("selectionchange", handleSelectionChange);
         return () => document.removeEventListener("selectionchange", handleSelectionChange);
@@ -996,32 +931,3 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
  * Works for both plain and inline-marked content because it counts
  * the TEXT content of each node (ignoring tags/markers).
  */
-function placeCaretByTextOffset(root: HTMLElement, offset: number) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let pos = 0;
-    let node: Node | null;
-    while ((node = walker.nextNode()) != null) {
-        const text = node.textContent ?? "";
-        if (pos + text.length >= offset) {
-            const range = document.createRange();
-            range.setStart(node, Math.min(offset - pos, text.length));
-            range.collapse(true);
-            const sel = window.getSelection();
-            if (sel != null) {
-                sel.removeAllRanges();
-                sel.addRange(range);
-            }
-            return;
-        }
-        pos += text.length;
-    }
-    // Offset past the end: collapse to end.
-    const range = document.createRange();
-    range.selectNodeContents(root);
-    range.collapse(false);
-    const sel = window.getSelection();
-    if (sel != null) {
-        sel.removeAllRanges();
-        sel.addRange(range);
-    }
-}
