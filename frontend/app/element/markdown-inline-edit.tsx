@@ -83,6 +83,12 @@ export {
     type BlockCommitPlan,
     type BlockCommitRequest,
 } from "@md/dom/commit-plan";
+export {
+    resolveEditAnchor,
+    type EditAnchor,
+    type EditAnchorRequest,
+    type EditAnchorResult,
+} from "@md/dom/edit-anchor";
 
 import {
     applyCalloutPrefix,
@@ -100,6 +106,7 @@ import {
 import { MarkdownRenderRootSelector, prepareInlineEditCommit, type CommitPreparation } from "@md/dom/commit-prep";
 import { captureWysiwygInfo, type WysiwygEligibleKind } from "@md/dom/seed";
 import { isSelectingRange, resolveInlineEditTarget } from "@md/dom/edit-target";
+import { resolveEditAnchor } from "@md/dom/edit-anchor";
 
 /**
  * 提交前置结果（宿主视角的具体化）：`CommitPreparation` 用泛型保住会话类型，
@@ -714,37 +721,28 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             placeholder?: boolean | "inline",
             keepOnEmpty?: boolean
         ): boolean => {
-            const safeLine = Math.max(1, Math.trunc(line));
-            const lines = fullTextRef.current.split(/\r\n|\n/);
-            if (safeLine > lines.length) {
+            // 块定位 + 切片 + 归一化基准 + 块身份 + callout 前缀：已搬进 md-dom 的
+            // resolveEditAnchor（在位路径用同一个函数）。两份实现的危险不在样式，而在于
+            // 算出**不同的初始内容** —— 它是陈旧检测的基准，漂移会让合法提交被判陈旧而
+            // 静默丢弃，或拿错的基准去覆盖别人的改动。
+            // stripsCalloutMarker：只有 wysiwyg（种子剥了 marker）才回写前缀；
+            // textarea 回落逐字提交源码（含 marker），回写会写两遍。
+            const anchor = resolveEditAnchor({
+                blockKind,
+                line,
+                targetEl,
+                fullText: fullTextRef.current,
+                stripsCalloutMarker: isBlockEditorFeatureEnabled("wysiwyg"),
+            });
+            if (!anchor.ok) {
                 return false;
             }
-            // Multi-line visual blocks (soft-broken paragraphs/headings) carry an explicit
-            // data-source-line-end so we slice the whole range. Headings without a soft break and
-            // legacy renders without the end attr fall back to single-line — keeps the M1
-            // single-line behavior intact for anything that hasn't been re-rendered.
-            const endAttr = targetEl.dataset.sourceLineEnd;
-            const endLineRaw = endAttr != null ? Number(endAttr) : safeLine;
-            const endLine =
-                Number.isFinite(endLineRaw) && endLineRaw >= safeLine
-                    ? Math.min(Math.trunc(endLineRaw), lines.length)
-                    : safeLine;
-            const sourceContent = lines.slice(safeLine - 1, endLine).join("\n");
-            // 归一化入口收敛到 initialContentFor（与 commit 的陈旧检测同一个函数，防漂移）。
-            const initialContent = initialContentFor(blockKind, sourceContent);
+            const { safeLine, endLine, initialContent, calloutPrefix, isCallout } = anchor.anchor;
             // 种子采集已搬到 md-dom。**feature 开关由宿主注入** —— 包不该知道宿主的
             // flag 存在哪里（这是保持“零宿主依赖”的那条边界）。
             const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent, {
                 isWysiwygEnabled: () => isBlockEditorFeatureEnabled("wysiwyg"),
             });
-            // R4: capture the callout marker from the ORIGINAL source first line. Only for
-            // WYSIWYG sessions — a textarea fallback commits the raw source verbatim (marker
-            // already included), so applying a prefix there would duplicate it.
-            const isCallout = targetEl.matches("calloutalert, .markdown-alert");
-            const calloutPrefix =
-                wysiwygInfo != null && isCallout
-                    ? captureCalloutPrefix(lines[safeLine - 1] ?? "")
-                    : undefined;
             const session: InlineEditSession = {
                 blockKind,
                 startLine: safeLine,
@@ -753,7 +751,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 targetEl,
                 // step3 S2：块身份从锚点元素上直接读（remarkBlockIds 打的 data-block-id）。
                 // 没这个属性（旧 DOM / 未覆盖的块型）时 undefined，提交前自动跳过重定位。
-                blockId: targetEl.dataset.blockId ?? undefined,
+                blockId: anchor.anchor.blockId,
                 typography: captureBlockTypography(targetEl),
                 caretOffset,
                 insertRevert,

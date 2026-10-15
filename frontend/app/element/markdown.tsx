@@ -81,6 +81,7 @@ import {
     isEmptyBlockShellDraft,
     initialContentFor,
     planBlockCommit,
+    resolveEditAnchor,
     prepareInlineEditCommit,
     type InlineEditBlockKind,
 } from "@/app/element/markdown-inline-edit";
@@ -1055,18 +1056,21 @@ const Markdown = ({
                     return false;
                 }
             }
-            const safeLine = Math.max(1, Math.trunc(line));
-            const lines = textRef.current.split(/\r\n|\n/);
-            if (safeLine > lines.length) {
+            // 块定位 + 切片 + 归一化基准 + 块身份：与 overlay 路径共用 md-dom 的
+            // resolveEditAnchor —— 同一份定义，避免两边算出不同的初始内容
+            // （它同时是陈旧检测的基准，漂移会让合法提交被静默丢弃）。
+            const anchor = resolveEditAnchor({
+                blockKind,
+                line,
+                targetEl,
+                fullText: textRef.current,
+                stripsCalloutMarker: true, // 在位种子总是剥掉 callout marker
+            });
+            if (!anchor.ok) {
                 return false;
             }
-            const endAttr = targetEl.dataset.sourceLineEnd;
-            const endLineRaw = endAttr != null ? Number(endAttr) : safeLine;
-            const endLine =
-                Number.isFinite(endLineRaw) && endLineRaw >= safeLine
-                    ? Math.min(Math.trunc(endLineRaw), lines.length)
-                    : safeLine;
-            const initialContent = initialContentFor(blockKind, lines.slice(safeLine - 1, endLine).join("\n"));
+            const { safeLine, endLine, initialContent, isCallout: isCalloutAnchor } = anchor.anchor;
+            const lines = textRef.current.split(/\r\n|\n/);
             // A3 种子：用**在位专用**采集器，保留渲染器产出的全部结构（只删 button 供能控件）。
             // 不用 captureWysiwygInfo —— 它会把 callout 的 .markdown-alert-title 拆成裸 <p>，
             // 那对 overlay 正确（编辑面是另一个盒子），对在位是反效果（实测两项样式差异）。
@@ -1077,8 +1081,8 @@ const Markdown = ({
             if (seedText === "" && !isEmptyBlockShellDraft(blockKind, initialContent)) {
                 return false; // 种子无文本而源码非空壳 → 不可得，回退 overlay
             }
-            const isCallout = targetEl.matches("calloutalert, .markdown-alert");
-            const calloutPrefix = isCallout ? captureCalloutPrefix(lines[safeLine - 1] ?? "") : "";
+            const calloutPrefix =
+                isCalloutAnchor ? captureCalloutPrefix(lines[safeLine - 1] ?? "") : "";
             const headingLevel =
                 blockKind === "h" ? (/\bis-(\d)\b/.exec(targetEl.className)?.[1] as any) || 1 : undefined;
             // 附挂宿主私有字段（initialContent / calloutPrefix），EditableBlock 提交时读。
@@ -1087,10 +1091,10 @@ const Markdown = ({
                 blockKind === "quote" ? "quote" : blockKind === "list" ? "list" : (blockKind as "p" | "h"),
                 startLine: safeLine,
                 endLine,
-                blockId: targetEl.dataset.blockId ?? undefined,
+                blockId: anchor.anchor.blockId,
                 headingLevel,
                 listTag: blockKind === "list" ? ((targetEl.tagName.toLowerCase() as "ul" | "ol") ?? "ul") : undefined,
-                isCallout: isCallout || undefined,
+                isCallout: isCalloutAnchor || undefined,
                 seedHtml,
                 initialContent,
                 calloutPrefix: calloutPrefix || undefined,
