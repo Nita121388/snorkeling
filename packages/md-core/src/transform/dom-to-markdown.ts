@@ -184,6 +184,16 @@ function serializeNode(node: ChildNode, opts: Required<InlineSerializeOpts>): st
             // inputs (read-only chrome in the preview) have no markdown equivalent.
             return "";
         }
+        case "SUP": {
+            // 脚注引用：带原始源码的（由 remark 插件挂上）逐字还原。
+            // 没带的不猜 —— remark-gfm 的重复引用形态是 <sup>2</sup>，**没有 <a>**，
+            // 从 DOM 反推不出 label。宁可回落成数字让调用方判定为有损，也不能猜错标签。
+            const fnSource = el.getAttribute("data-source-markdown");
+            if (fnSource != null && fnSource.startsWith("[^")) {
+                return fnSource;
+            }
+            return serializeChildren(el, opts);
+        }
         case "DIV":
         case "P":
         case "LI":

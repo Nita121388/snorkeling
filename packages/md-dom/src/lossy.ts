@@ -43,7 +43,9 @@ export type LossyConstruct = "footnote-ref" | "wiki-link" | "image" | "image-unr
  * （`resolveImageSrc`），**任何**图片的 src 都已经不是源码路径了。
  */
 const LOSSY_SELECTORS: ReadonlyArray<readonly [string, LossyConstruct]> = [
-    // [^fnid] → <sup>：序列化器没有 sup 分支，走 default 变成显示数字，引用关系丢失
+    // [^label] → <sup>：序列化器原本只会退回显示序号（引用关系丢失）。
+    // **已救回**：remark 插件给行内引用挂 data-source-markdown（`[^label]`）→ 逐字还原。
+    //   拿不到标注的是**定义区的回链**（`[^1]: 定义` 渲染出的 <sup>2</sup>），仍然有损。
     ["sup", "footnote-ref"],
     // [[target|label]] → <a href="wave-wiki:…">：只能还原成 [label](wave-wiki:…)，wiki 语法丢失
     // **但已经救回来了**：渲染器会挂 data-source-markdown（原始源码），序列化器逐字还原。
@@ -75,6 +77,19 @@ const IMAGE_PLACEHOLDER_TEXT_RE = /\[Image unavailable:|\[img:/;
 const RECOVERABLE_ATTR = "data-source-markdown";
 
 /**
+ * 已经学会逐字还原的构造：带上原始源码就不再有损。
+ *
+ * **必须有白名单**：带上了源码但**序列化器不读它**的构造（目前是 image）仍然是丢的，
+ * 误判成“可还原”会直接放行数据损坏。
+ */
+const RECOVERABLE_KINDS: ReadonlySet<LossyConstruct> = new Set<LossyConstruct>(["wiki-link", "footnote-ref"]);
+
+/** 该元素是否「已学会还原」：构造在白名单里、且元素上带着原始源码。 */
+function isRecoverable(kind: LossyConstruct, el: Element): boolean {
+    return RECOVERABLE_KINDS.has(kind) && el.getAttribute(RECOVERABLE_ATTR) != null;
+}
+
+/**
  * 扫描「即将被序列化的那段内容」里所有有损构造。
  *
  * 参数应是**实际要序列化的内容**（可以是元素，也可以是 fragment），
@@ -98,12 +113,12 @@ export function findLossyInlineConstructs(root: ParentNode | null | undefined): 
         const selfHit = typeof el.matches === "function" && el.matches(selector);
         const hits = root.querySelectorAll(selector);
         if (selfHit) {
-            if (kind !== "wiki-link" || el.getAttribute(RECOVERABLE_ATTR) == null) {
+            if (!isRecoverable(kind, el)) {
                 found.add(kind);
             }
         }
         for (const hit of hits) {
-            if (kind === "wiki-link" && hit.getAttribute(RECOVERABLE_ATTR) != null) {
+            if (isRecoverable(kind, hit)) {
                 continue; // 已学会还原 → 放行
             }
             found.add(kind);

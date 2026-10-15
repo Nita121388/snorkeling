@@ -35,6 +35,19 @@ describe("findLossyInlineConstructs：有损构造必须判出来", () => {
         ]);
     });
 
+    // 已学会还原：带原始源码的 sup 放行。
+    it("脚注引用**带** data-source-markdown → 放行（已学会逐字还原）", () => {
+        expect(
+            findLossyInlineConstructs(el('<p>字<sup data-source-markdown="[^1]"><a href="#user-content-fn-1">1</a></sup></p>'))
+        ).toEqual([]);
+    });
+
+    // 更正：初版这里写的是「重复引用拿不到标注」—— 那是隔离管线的误测。真机重复引用
+    // **有**标注；拿不到标注的是**脚注定义区的回链**（<sup>2</sup>）。
+    it("无标注的 `<sup>2</sup>`（= 脚注定义区回链）→ 仍拒", () => {
+        expect(findLossyInlineConstructs(el("<p>字<sup>2</sup>再</p>"))).toEqual(["footnote-ref"]);
+    });
+
     it("wiki 链接 <a href=wave-wiki:> → wiki-link（实测：`[[n|label]]` 变成 `[label](wave-wiki:n)`）", () => {
         expect(findLossyInlineConstructs(el('<p>见 <a class="internal-link" href="wave-wiki:note">label</a></p>'))).toEqual([
             "wiki-link",
@@ -75,6 +88,14 @@ describe("findLossyInlineConstructs：有损构造必须判出来", () => {
                 el('<p><span class="markdown-img-error">[Image unavailable: scratch-parity-all.png%7C100]</span></p>')
             )
         ).toContain("image-unresolved");
+    });
+
+    // 误判成「可还原」= 直接放行数据损坏，所以白名单必须**显式**，
+    // 不能只看「有没有挂源码属性」。
+    it("带源码但**尚未学会还原**的构造（img）→ 仍然拒", () => {
+        expect(
+            findLossyInlineConstructs(el('<p><img src="file:///a.png" alt="" data-source-markdown="![[a.png|300]]"></p>'))
+        ).toEqual(["image"]);
     });
 
     it("多种构造同时存在 → 全部列出并去重（调用方要能知道是哪些）", () => {
