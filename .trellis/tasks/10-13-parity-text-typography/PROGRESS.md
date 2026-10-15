@@ -1,6 +1,6 @@
 # A3 在位编辑 —— 进度与续接点
 
-> 最后更新：2026-10-15（A3 切片 1 / 2a / 3 / 4 + md-dom 全部纯层 + 提交决策收敛）
+> 最后更新：2026-10-15（A3 切片 1 / 2a / 3 / 4 + md-dom 全部纯层 + 提交决策/锚点解析收敛）
 > 提交序列：`cebb647f` → `c2869fb8` → `5db13852` → `53a4580f` → `7d2e3f6b` → `8d94274d`
 > → `4505e1fa`（md-dom 建包 + 块语法层）→ `27d5fdcb`（md-dom 提交前置层）
 
@@ -62,6 +62,7 @@ flag 关闭时的 overlay 回退，是减法目标）。文件头那句「台账
 | `src/commit-prep.ts` | `relocateByBlockId` / `relocateByContent` / `isStaleTargetBlock` / `prepareInlineEditCommit` / `BlockEditTarget` / `CommitPreparation<T>` | DOM |
 | `src/seed.ts` | `captureWysiwygInfo`（宿主 flag 由**注入** `isWysiwygEnabled`）/ `captureInplaceSeedHtml` / `calloutSeedHtml` / `normalizeBreaksAroundNewlines` / `stripInsignificantWhitespace` / `WYSIWYG_KINDS` | DOM |
 | `src/edit-target.ts` | `resolveInlineEditTarget` / `fallbackSelector` / `isSelectingRange` / `EditableHostTarget` | DOM |
+| `src/edit-anchor.ts` | `resolveEditAnchor`（块定位+切片+归一化基准+块身份+callout 前缀）/ `EditAnchor` | DOM |
 | `src/commit-plan.ts` | `planBlockCommit`（四道判定收敛为单一真源）/ `BlockCommitOp` / `BlockCommitPlan` / `BlockCommitRequest` | DOM+md-core |
 
 边界门禁 `src/boundary.test.ts`（6 用例，**任一条违反即红**）：
@@ -91,6 +92,18 @@ flag 关闭时的 overlay 回退，是减法目标）。文件头那句「台账
 此前 overlay 与在位路径各写一遍 —— 这里漏一道的后果是**用户内容被覆盖**，不是样式错。
 `markdown.tsx` 的 `inplaceCommit` 从 ~90 行手工串联改成调这一个函数。
 真实应用验证：真写盘往返只改目标行、markdown 格式逐字节保真；parity 仍 0 差异。
+
+## 待决策 / 已知缺口（明确记账，不装看不见）
+
+1. **清空标题留下裸 `###`，而不是删块**。现在行为与 overlay 一致（忠实于用户动作、可恢复），
+   但「清空标题/空段落 → 删块」是更自然的体验。**产品决策**，未擅自实施。
+2. **overlay 回落路径的 callout 背景色有 1 项 parity 缺口**（预览 accent 6% 底色 → 编辑态透明）。
+   `git stash` 对比确认是既有问题。overlay 是上线后的**回滚阀** ——
+   要么在退役回滚阀时一起删掉，要么修它，不能当作不存在。
+3. **两条提交路径的守卫仍未代码合一**。`planBlockCommit` 收敛的是在位路径；
+   overlay 的 `commit` 多一道 `seedNeverLanded` 两源对比，且要覆盖 placeholder / insertMode
+   两类会话。本次已让**语义**对齐（都用「用户动过没有」），代码合一要等
+   placeholder / insertMode 分支先抽出来。
 
 ## md-dom 还没搬的部分（只剩会话驱动）
 
