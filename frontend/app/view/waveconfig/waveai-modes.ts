@@ -32,13 +32,22 @@ export function getWaveAIModeEntries(): WaveAIModeEntry[] {
     return Object.entries(modes).map(([key, config]) => ({ key, config }));
 }
 
-async function writeWaveAIModes(model: WaveConfigViewModel, next: Record<string, AIModeConfigType>): Promise<void> {
+let writeQueue = Promise.resolve();
+
+function writeWaveAIModes(model: WaveConfigViewModel, next: Record<string, AIModeConfigType>): Promise<void> {
+    // Update the local projection immediately, then serialize file writes. This
+    // prevents a delayed watcher event or an earlier keystroke write from
+    // resurrecting a mode just deleted by the user.
+    globalStore.set(atoms.waveaiModeConfigAtom, next);
     const fullPath = `${model.configDir}/waveai.json`;
     const data64 = stringToBase64(JSON.stringify(next, null, 2));
-    await model.env.rpc.FileWriteCommand(TabRpcClient, {
-        info: { path: fullPath, mimetype: "application/json" },
-        data64,
-    });
+    writeQueue = writeQueue.then(() =>
+        model.env.rpc.FileWriteCommand(TabRpcClient, {
+            info: { path: fullPath, mimetype: "application/json" },
+            data64,
+        })
+    );
+    return writeQueue;
 }
 
 /** Apply a patch (add/update) to the mode map and persist. */
