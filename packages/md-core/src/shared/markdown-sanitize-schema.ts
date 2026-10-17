@@ -35,7 +35,15 @@ export function makeMarkdownSanitizeSchema(): typeof defaultSchema {
             // srcLineAttrs 不过，所以过去不需要放行）。放行后 hast-util-to-jsx-runtime 输出
             // `data-block-id`，由渲染器的 {...domProps(props)} 落到 DOM。
             // ⚠️ 同名属性只写一条（见文件顶部维护规则）。
-            "*": [...(defaultSchema.attributes?.["*"] ?? []), "dataBlockId"],
+            "*": [
+                ...(defaultSchema.attributes?.["*"] ?? []),
+                "dataBlockId",
+                // 源码坐标（写盘/重定位的根据）。放行在 `*` 上而不是逐个块 tag：
+                // 块 tag 集合会随块类型增长，逐个列会漏（漏了就是**静默剥掉坐标** →
+                // 该块永远无法原位编辑，且看不出原因）。坐标是数字，宽松无安全代价。
+                "dataSourceLine",
+                "dataSourceLineEnd",
+            ],
             p: [
                 // blank-line-spacers plugin emits spacer paragraphs tagged with
                 // className=["paragraph","blank-spacer"] + dataSpacerLines +

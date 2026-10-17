@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { readSourceMarkdown } from "../shared/source-markdown-attr";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getMdHost } from "../core/host";
 
@@ -29,8 +30,8 @@ export const Link = ({
     const nodePos = (props as any)?.node?.position;
     // react-markdown v9：自定义组件的 props 上**不含** hProperties 带来的 data-*，
     // 它们留在 `node.properties` 里。先试直取 prop，再回落 node.properties。
-    const sourceMarkdown: string | undefined =
-        (props as any)["data-source-markdown"] ?? (props as any)?.node?.properties?.["data-source-markdown"];
+    // 用共享读取器：hast 里是 camelCase、真实 DOM 上是 kebab，写死一个就会静默失效。
+    const sourceMarkdown = readSourceMarkdown(props);
     const nodeOffsets =
         nodePos?.start?.offset != null && nodePos?.end?.offset != null
             ? { start: nodePos.start.offset, end: nodePos.end.offset }

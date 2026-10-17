@@ -28,6 +28,7 @@
  * 原样渲染成文字、往返无损，所以不需要也不应该在这里管它。
  */
 
+import { SOURCE_MARKDOWN_HAST_ATTR } from "../shared/source-markdown-attr";
 import type { Plugin } from "unified";
 import type { Root } from "mdast";
 import { visit } from "unist-util-visit";
@@ -54,7 +55,7 @@ const remarkImageSource: Plugin<[], Root> = function () {
             node.data = node.data ?? {};
             node.data.hProperties = {
                 ...(node.data.hProperties ?? {}),
-                dataSourceMarkdown: raw,
+                [SOURCE_MARKDOWN_HAST_ATTR]: raw,
             };
         });
     };

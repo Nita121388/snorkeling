@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { readSourceMarkdown } from "../shared/source-markdown-attr";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import {
@@ -64,8 +65,7 @@ export const MarkdownImg = ({
     // 图片的**原始源码**（remark 插件按 position 从源文件切的，逐字节精确）。
     // 渲染器把 src 换成了解析后的 URL，alt 与尺寸也分散在别处 —— 序列化器只靠 DOM
     // 重建会同时丢掉 alt / 尺寸，并在图片加载失败时把整个语法替换成英文占位文案。
-    const sourceMarkdown: string | undefined =
-        (props as any)["data-source-markdown"] ?? (props as any)?.node?.properties?.["dataSourceMarkdown"];
+    const sourceMarkdown = readSourceMarkdown(props);
     const [resolvedSrc, setResolvedSrc] = useState<string>(props.src);
     const [resolvedSrcSet, setResolvedSrcSet] = useState<string>(props.srcSet);
     const [resolvedStr, setResolvedStr] = useState<string>(null);

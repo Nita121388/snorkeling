@@ -24,6 +24,7 @@
  * 其实是定义区的回链。断言前要拿真机 DOM，这已是本轮第二次因此出错。）
  */
 
+import { SOURCE_MARKDOWN_HAST_ATTR } from "../shared/source-markdown-attr";
 import type { Plugin } from "unified";
 import type { Root } from "mdast";
 import { visit } from "unist-util-visit";
@@ -38,7 +39,7 @@ const remarkFootnoteSource: Plugin<[], Root> = function () {
             node.data = node.data ?? {};
             node.data.hProperties = {
                 ...(node.data.hProperties ?? {}),
-                dataSourceMarkdown: `[^${identifier}]`,
+                [SOURCE_MARKDOWN_HAST_ATTR]: `[^${identifier}]`,
             };
         });
     };

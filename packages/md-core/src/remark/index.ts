@@ -29,7 +29,14 @@ export { default as remarkLegacyImageSize } from "./legacy-image-size";
 export type { BlankSpacerOptions } from "./types";
 
 export interface RemarkPipelineOptions {
-    contentBlocksMap: Map<string, MarkdownContentBlockType>;
+    /**
+     * 内容块占位符的宿主表。
+     *
+     **可选**：框架无关消费方（journal 这类）通常没有"内容块"概念，
+     * 传一个空表即可（内部兜 `new Map()`）—— 这是"零配置"的一部分，
+     * 以前它是必填的，导致非宿主渲染器必须伪造一个空表才能跑通管线。
+     */
+    contentBlocksMap?: Map<string, MarkdownContentBlockType>;
     /**
      * Pass null to disable spacer insertion entirely (legacy 1-blank-line =
      * collapse behaviour). Pass an options object to tune; omit for defaults.
@@ -67,6 +74,8 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
     const enableBlankSpacers = opts.enableBlankSpacers !== false && !blankSpacerDisabled;
     // 内容块占位符插件：宿主可经 adapter 换一套语法；未注入时用包内纯实现（md-core 10-12）。
     const contentBlockPlugin = getMdHost().contentBlockPlugin ?? createContentBlockPlugin;
+    // 兜空表：没有内容块概念的消费者不必伪造参数（见 RemarkPipelineOptions 的说明）。
+    const contentBlocks = opts.contentBlocksMap ?? new Map<string, MarkdownContentBlockType>();
     return [
         // 必须是第一个：历史图片尺寸语法 `![alt](path =WxH)` 在 remark 眼里是**文本**，
         // 后续插件会先把 text 节点拆开 —— 拆完就再也拼不回一个完整片段了。
@@ -89,6 +98,6 @@ export function makeRemarkPlugins(opts: RemarkPipelineOptions): Array<Plugin<any
         // 都已完成），否则 id 会落到一个随后被替换掉的节点上。放在 content block 之前：
         // 后者只动 paragraph 的 inline children，不会替换 paragraph 本身。
         remarkBlockIds,
-        [contentBlockPlugin, { blocks: opts.contentBlocksMap }],
+        [contentBlockPlugin, { blocks: contentBlocks }],
     ].filter(Boolean);
 }

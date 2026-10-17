@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { SOURCE_MARKDOWN_HAST_ATTR } from "../shared/source-markdown-attr";
 import type { Root } from "mdast";
 import type { Plugin } from "unified";
 import { getMdHost } from "../core/host";
@@ -65,7 +66,9 @@ export function splitTextNodeWithWikiLinks(node: { type: "text"; value: string; 
             // 与“label 恰好等于 target”。只靠 href 还原，用户文件里的 `[[note]]` 会被
             // 写成 `[[note.md]]` —— 语义相同但**改写了用户的文件**，这正是本项目要避免的。
             // hProperties 会经 react-markdown 透传到 `<a>` 上，序列化器再读回来。
-            data: { hProperties: { "data-source-markdown": match[0] } },
+            // ⚠ 必须用 camelCase（hast 属性约定）：写 kebab 会被 rehype-sanitize
+            // 按 camelCase 匹配不上而**静默剥掉**（实测踩过）。
+            data: { hProperties: { [SOURCE_MARKDOWN_HAST_ATTR]: match[0] } },
         });
         last = match.index + match[0].length;
     }

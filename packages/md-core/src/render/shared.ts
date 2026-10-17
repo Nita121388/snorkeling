@@ -68,8 +68,11 @@ export const OrderedListContext = createContext(false);
  * clone it into the WYSIWYG seed DOM). `srcLineAttrs(props)` still receives the UNSTRIPPED props
  * because it reads the source-line position out of `props.node`.
  */
-export function domProps<T extends Record<string, any>>(props: T): Omit<T, "node"> {
-    const { node: _node, ...rest } = props;
+export function domProps<T extends Record<string, any>>(props: T): Record<string, any> {
+    // `dataSourceMarkdown` 必须丢掉：React 会把 camelCase 的未知属性渲染成
+    // `datasourcemarkdown="…"`（不是 `data-source-markdown`），既是垃圾属性，
+    // 又会让序列化器读不到。需要它的渲染器自己用 kebab 形式显式写出（见 link/image）。
+    const { node: _node, dataSourceMarkdown: _sm, "data-source-markdown": _sm2, ...rest } = props;
     return rest;
 }
 
