@@ -44,6 +44,8 @@ const ApiTypeOptions: { value: string; label: string }[] = [
 ];
 
 const APITypeLabels = Object.fromEntries(ApiTypeOptions.map((o) => [o.value, o.label]));
+const DEFAULT_MODE_KEY = "custom@default";
+const isBuiltInMode = (key: string) => key.startsWith("waveai@");
 
 export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     model,
@@ -62,6 +64,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
     const [fetchedModels, setFetchedModels] = useState<string[]>([]);
     const [adding, setAdding] = useState(false);
+    const initializedDefault = useRef(false);
     const apiKeyInputRef = useRef<HTMLInputElement>(null);
     const testService = useMemo(() => new AITestServiceType(), []);
 
@@ -76,6 +79,23 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
         [modeConfigs]
     );
 
+    const userEntries = useMemo(() => entries.filter((entry) => !isBuiltInMode(entry.key)), [entries]);
+    const builtInEntries = useMemo(() => entries.filter((entry) => isBuiltInMode(entry.key)), [entries]);
+
+    useEffect(() => {
+        if (initializedDefault.current || entries.length > 0) return;
+        initializedDefault.current = true;
+        const config: AIModeConfigType = {
+            "display:name": "My AI",
+            "ai:provider": "custom",
+            "ai:apitype": "openai-chat",
+            "ai:model": "",
+            "ai:endpoint": "",
+            "ai:apitokensecretname": "",
+        };
+        void upsertWaveAIMode(model, DEFAULT_MODE_KEY, config).then(() => setDefaultWaveAIMode(DEFAULT_MODE_KEY));
+    }, [entries.length, model]);
+
     const selectedEntry = useMemo(
         () => entries.find((e) => e.key === selectedKey) ?? null,
         [entries, selectedKey]
@@ -87,7 +107,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
             setSelectedKey(entries[0]?.key ?? null);
         }
         if (selectedKey == null && entries.length > 0) {
-            setSelectedKey(entries[0].key);
+            setSelectedKey(userEntries[0]?.key ?? entries[0].key);
         }
     }, [entries, modeConfigs, selectedKey]);
 
@@ -217,20 +237,13 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
 
     return (
         <div className="flex h-full min-h-0 flex-col gap-3 p-5 text-primary">
-            <header className="flex shrink-0 items-start justify-between gap-4">
-                <div>
-                    <h2 className="text-lg font-semibold">Wave AI Modes</h2>
-                    <p className="mt-1 max-w-3xl text-sm text-secondary">
-                        Configure which models Wave AI uses. Built-in Wave Cloud modes ship with the app; custom
-                        providers store their API key in the system keychain.
-                    </p>
-                </div>
+            <header className="flex shrink-0 items-start justify-end gap-4">
                 <button
                     type="button"
                     className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded bg-action px-3 py-1.5 text-xs text-actiontext hover:bg-actionhover"
                     onClick={() => setAdding((v) => !v)}
                 >
-                    <span className="text-sm leading-none">+</span> Add mode
+                    <span className="text-sm leading-none">+</span> Add provider
                 </button>
             </header>
 
@@ -262,10 +275,13 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                 </div>
             ) : (
                 <div className="@container flex min-h-0 min-w-0 flex-1">
-                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface @xl:flex-row">
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-surface @xl:flex-row">
                         {/* Left pane: mode list */}
                         <div className="max-h-[168px] shrink-0 overflow-y-auto border-b border-border p-1.5 @xl:max-h-none @xl:w-[240px] @xl:border-r @xl:border-b-0">
-                            {entries.map((entry) => {
+                            {userEntries.length > 0 && (
+                                <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">My Models</div>
+                            )}
+                            {userEntries.map((entry) => {
                                 const isDefault = entry.key === defaultMode;
                                 const isSelected = entry.key === selectedKey;
                                 return (
@@ -292,6 +308,22 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                                     </button>
                                 );
                             })}
+                            {builtInEntries.length > 0 && (
+                                <>
+                                    <div className="mt-2 border-t border-border px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Built-in Wave AI</div>
+                                    {builtInEntries.map((entry) => {
+                                        const isDefault = entry.key === defaultMode;
+                                        const isSelected = entry.key === selectedKey;
+                                        return (
+                                            <button key={entry.key} type="button" onClick={() => setSelectedKey(entry.key)} aria-current={isSelected ? "true" : undefined} className={cn("flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded px-2 text-left transition-colors", isSelected ? "bg-hoverbg text-primary" : "text-secondary hover:bg-hoverbg/50")}>
+                                                <span className={cn("h-[6px] w-[6px] shrink-0 rounded-full", isDefault ? "bg-success" : "bg-border")} />
+                                                <span className="min-w-0 flex-1 truncate text-xs font-medium">{entry.config["display:name"] || entry.key}</span>
+                                                {isDefault && <span className="shrink-0 text-[9px] text-success">Default</span>}
+                                            </button>
+                                        );
+                                    })}
+                                </>
+                            )}
                         </div>
 
                         {/* Right pane: edit form */}
@@ -330,7 +362,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                                             ) : (
                                                 <button
                                                     type="button"
-                                                    className="block h-7 max-w-full cursor-pointer truncate rounded px-1.5 text-left text-sm font-semibold text-primary hover:bg-hoverbg"
+                                                    className="block h-7 w-full max-w-full cursor-pointer truncate rounded px-1.5 text-left text-sm font-semibold text-primary hover:bg-hoverbg"
                                                     title="Rename"
                                                     onClick={() => {
                                                         setNameDraft(selectedEntry.config["display:name"]);
