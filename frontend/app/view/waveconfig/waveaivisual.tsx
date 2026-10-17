@@ -45,6 +45,7 @@ const ApiTypeOptions: { value: string; label: string }[] = [
 
 const APITypeLabels = Object.fromEntries(ApiTypeOptions.map((o) => [o.value, o.label]));
 const DEFAULT_MODE_KEY = "custom@default";
+const isBuiltInMode = (key: string) => key.startsWith("waveai@");
 
 export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     model,
