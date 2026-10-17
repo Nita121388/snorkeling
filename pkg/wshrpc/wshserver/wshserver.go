@@ -36,6 +36,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/genconn"
 	"github.com/wavetermdev/waveterm/pkg/jobcontroller"
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
+	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
@@ -51,7 +52,6 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wavejwt"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
-	"github.com/wavetermdev/waveterm/pkg/pslog"
 	"github.com/wavetermdev/waveterm/pkg/wcloud"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
@@ -1684,6 +1684,11 @@ func (ws *WshServer) CcSwitchListOpenCodeVendorsCommand(ctx context.Context) (*c
 // Same soft-degrade contract as the Claude variant — never blocks agent launch.
 func (ws *WshServer) CcSwitchListPiVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error) {
 	return ccswitch.ListPiVendors(ctx)
+}
+
+// CcSwitchListWaveAIVendorsCommand returns a redacted, read-only provider projection.
+func (ws *WshServer) CcSwitchListWaveAIVendorsCommand(ctx context.Context) (*ccswitch.WaveAIVendorList, error) {
+	return ccswitch.ListWaveAIVendors(ctx)
 }
 
 func (ws *WshServer) GetSecretsCommand(ctx context.Context, names []string) (map[string]string, error) {

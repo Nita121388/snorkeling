@@ -3002,6 +3002,27 @@ declare global {
         fullconfig: FullConfigType;
     };
 
+    // ccswitch.WaveAIVendor
+    type WaveAIVendor = {
+        id: string;
+        name: string;
+        appType: string;
+        category?: string;
+        endpoint?: string;
+        apiType?: string;
+        models?: string[];
+        defaultModel?: string;
+        isCurrent: boolean;
+        icon?: string;
+    };
+
+    // ccswitch.WaveAIVendorList
+    type WaveAIVendorList = {
+        vendors: WaveAIVendor[];
+        dbpath: string;
+        detected: boolean;
+    };
+
 
     // filestore.WaveFile
     type WaveFile = {

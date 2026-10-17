@@ -176,6 +176,7 @@ type WshRpcInterface interface {
 	CcSwitchListOpenCodeVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error)
 	// cc-switch integration: read-only list of cc-switch's Pi providers (vendors), for per-block vendor isolation
 	CcSwitchListPiVendorsCommand(ctx context.Context) (*ccswitch.VendorList, error)
+	CcSwitchListWaveAIVendorsCommand(ctx context.Context) (*ccswitch.WaveAIVendorList, error)
 
 	WorkspaceListCommand(ctx context.Context) ([]WorkspaceInfoData, error)
 	GetUpdateChannelCommand(ctx context.Context) (string, error)
@@ -1072,9 +1073,9 @@ type RemoteVcsSwitchBranchRtnData struct {
 // CreateBranch creates a new branch at the current HEAD (or an optional start point),
 // then checks it out. For git repositories only.
 type CommandRemoteVcsCreateBranchData struct {
-	RepoType  string `json:"repotype"`
-	RepoPath  string `json:"repopath"`
-	Branch    string `json:"branch"`
+	RepoType   string `json:"repotype"`
+	RepoPath   string `json:"repopath"`
+	Branch     string `json:"branch"`
 	StartPoint string `json:"startpoint,omitempty"`
 }
 

@@ -87,6 +87,27 @@ type VendorList struct {
 	Detected bool     `json:"detected"`
 }
 
+// WaveAIVendor is a redacted, read-only projection of cc-switch providers for
+// Wave AI import. It intentionally contains no token or raw settings_config.
+type WaveAIVendor struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	AppType      string   `json:"appType"`
+	Category     string   `json:"category,omitempty"`
+	Endpoint     string   `json:"endpoint,omitempty"`
+	APIType      string   `json:"apiType,omitempty"`
+	Models       []string `json:"models,omitempty"`
+	DefaultModel string   `json:"defaultModel,omitempty"`
+	IsCurrent    bool     `json:"isCurrent"`
+	Icon         string   `json:"icon,omitempty"`
+}
+
+type WaveAIVendorList struct {
+	Vendors  []WaveAIVendor `json:"vendors"`
+	DbPath   string         `json:"dbpath"`
+	Detected bool           `json:"detected"`
+}
+
 // DBPath returns the resolved path to the cc-switch SQLite DB, expanding ~ via wavebase.ExpandHomeDir.
 func DBPath() (string, error) {
 	return wavebase.ExpandHomeDir("~/" + DefaultDBRelPath)
@@ -199,6 +220,90 @@ func ListOpenCodeVendors(ctx context.Context) (*VendorList, error) {
 // ListPiVendors reads all cc-switch providers where app_type='pi', extracting each one's env and
 // materializing a per-vendor PiConfigDir containing config.json with just the vendor env.
 // Mirrors ListClaudeVendors' soft-failure contract (DB-missing → Detected=false, nil err) — never blocks agent launch.
+// ListWaveAIVendors returns redacted OpenAI-compatible provider projections from
+// existing cc-switch app types. It never materializes configs or returns tokens.
+func ListWaveAIVendors(ctx context.Context) (*WaveAIVendorList, error) {
+	path, err := DBPath()
+	if err != nil {
+		return nil, err
+	}
+	result := &WaveAIVendorList{Vendors: []WaveAIVendor{}, DbPath: path}
+	if _, err := os.Stat(path); err != nil {
+		return result, nil
+	}
+	db, err := openReadOnly(ctx, path)
+	if err != nil {
+		return result, nil
+	}
+	defer db.Close()
+	var rows []struct {
+		ID, Name, AppType, SettingsJSON, Category string
+		IsCurrent                                 sql.NullBool
+	}
+	err = db.SelectContext(ctx, &rows, `SELECT id, name, app_type, settings_config, category, is_current FROM providers WHERE app_type IN (?, ?, ?) ORDER BY name`, CcSwitchProviderAppTypeOpenCode, "openclaw", "custom")
+	if err != nil {
+		return result, nil
+	}
+	for _, row := range rows {
+		var raw struct {
+			BaseURL  string            `json:"baseUrl"`
+			Endpoint string            `json:"endpoint"`
+			APIType  string            `json:"api"`
+			Model    string            `json:"model"`
+			Models   []json.RawMessage `json:"models"`
+		}
+		if json.Unmarshal([]byte(row.SettingsJSON), &raw) != nil {
+			continue
+		}
+		endpoint := raw.BaseURL
+		if endpoint == "" {
+			endpoint = raw.Endpoint
+		}
+		if endpoint == "" {
+			continue
+		}
+		models := []string{}
+		for _, item := range raw.Models {
+			var s string
+			if json.Unmarshal(item, &s) == nil && s != "" {
+				models = append(models, s)
+				continue
+			}
+			var obj struct {
+				ID    string `json:"id"`
+				Model string `json:"model"`
+				Name  string `json:"name"`
+			}
+			if json.Unmarshal(item, &obj) == nil {
+				for _, v := range []string{obj.ID, obj.Model, obj.Name} {
+					if v != "" {
+						models = append(models, v)
+						break
+					}
+				}
+			}
+		}
+		if raw.Model != "" {
+			models = append([]string{raw.Model}, models...)
+		}
+		result.Vendors = append(result.Vendors, WaveAIVendor{ID: row.ID, Name: row.Name, AppType: row.AppType, Category: row.Category, Endpoint: endpoint, APIType: raw.APIType, Models: uniqueStrings(models), DefaultModel: raw.Model, IsCurrent: row.IsCurrent.Valid && row.IsCurrent.Bool})
+	}
+	result.Detected = true
+	return result, nil
+}
+
+func uniqueStrings(input []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range input {
+		if value != "" && !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 func ListPiVendors(ctx context.Context) (*VendorList, error) {
 	vl, err := listVendors(ctx, CcSwitchProviderAppTypePi)
 	if err == nil && vl != nil && vl.Detected {
