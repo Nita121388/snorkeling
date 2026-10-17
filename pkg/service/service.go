@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/service/aisessionsservice"
+	"github.com/wavetermdev/waveterm/pkg/service/aitestservice"
 	"github.com/wavetermdev/waveterm/pkg/service/blockservice"
 	"github.com/wavetermdev/waveterm/pkg/service/clientservice"
 	"github.com/wavetermdev/waveterm/pkg/service/commontextservice"
@@ -25,6 +26,7 @@ import (
 
 var ServiceMap = map[string]any{
 	"aisessions": &aisessionsservice.AISessionsService{},
+	"aitest":     &aitestservice.AITestService{},
 	"block":      blockservice.BlockServiceInstance,
 	"object":     &objectservice.ObjectService{},
 	"client":     &clientservice.ClientService{},

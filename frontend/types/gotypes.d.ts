@@ -13,6 +13,19 @@ declare global {
         data64: string;
     };
 
+    // aitestservice.AIFetchModelsRequest
+    type AIFetchModelsRequest = {
+        endpoint?: string;
+        apiToken?: string;
+        secretName?: string;
+    };
+
+    // aitestservice.AIFetchModelsResponse
+    type AIFetchModelsResponse = {
+        models?: string[];
+        error?: string;
+    };
+
     // wconfig.AIModeConfigType
     type AIModeConfigType = {
         "display:name": string;
@@ -73,6 +86,19 @@ declare global {
         refresh?: boolean;
         tail?: number;
         includeTools?: boolean;
+    };
+
+    // aisessionsservice.AISessionsGenerateMetadataRequest
+    type AISessionsGenerateMetadataRequest = {
+        id: string;
+        connection?: string;
+        aiMode?: string;
+    };
+
+    // aisessionsservice.AISessionsGenerateMetadataResponse
+    type AISessionsGenerateMetadataResponse = {
+        summary: SessionSummary;
+        suggestion: MetadataSuggestion;
     };
 
     // aisessionsservice.AISessionsListRequest
@@ -200,6 +226,23 @@ declare global {
         summary: SessionSummary;
         messages: Message[];
         userMessageCount: number;
+    };
+
+    // aitestservice.AITestConnectionRequest
+    type AITestConnectionRequest = {
+        apiType?: string;
+        endpoint?: string;
+        model?: string;
+        provider?: string;
+        apiToken?: string;
+        secretName?: string;
+    };
+
+    // aitestservice.AITestConnectionResponse
+    type AITestConnectionResponse = {
+        ok: boolean;
+        latencyMs?: number;
+        message?: string;
     };
 
     // wshrpc.ActivityDisplayType
@@ -1742,6 +1785,13 @@ declare global {
         "onboarding:githubstar"?: boolean;
         "onboarding:lastversion"?: string;
         count?: number;
+    };
+
+    // aisessions.MetadataSuggestion
+    type MetadataSuggestion = {
+        note: string;
+        tags: string[];
+        confidence?: number;
     };
 
     // tsgenmeta.MethodMeta
