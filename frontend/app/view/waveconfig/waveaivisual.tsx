@@ -45,7 +45,6 @@ const ApiTypeOptions: { value: string; label: string }[] = [
 
 const APITypeLabels = Object.fromEntries(ApiTypeOptions.map((o) => [o.value, o.label]));
 const DEFAULT_MODE_KEY = "custom@default";
-const isBuiltInMode = (key: string) => key.startsWith("waveai@");
 
 export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     model,
@@ -80,8 +79,6 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     );
 
     const userEntries = useMemo(() => entries.filter((entry) => !isBuiltInMode(entry.key)), [entries]);
-    const builtInEntries = useMemo(() => entries.filter((entry) => isBuiltInMode(entry.key)), [entries]);
-
     useEffect(() => {
         if (initializedDefault.current || entries.length > 0) return;
         initializedDefault.current = true;
@@ -152,11 +149,13 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
         if (!window.confirm(`Delete AI mode "${selectedEntry?.config["display:name"] ?? selectedKey}"?`)) {
             return;
         }
-        void deleteWaveAIMode(model, selectedKey);
+        void deleteWaveAIMode(model, selectedKey).catch((error) => {
+            window.alert(`Could not delete AI provider: ${error instanceof Error ? error.message : String(error)}`);
+        });
         if (defaultMode === selectedKey) {
             void setDefaultWaveAIMode("");
         }
-        setSelectedKey(entries.find((e) => e.key !== selectedKey)?.key ?? null);
+        setSelectedKey(userEntries.find((e) => e.key !== selectedKey)?.key ?? null);
     }, [defaultMode, entries, model, selectedEntry, selectedKey]);
 
     const handleAddFromTemplate = useCallback(
@@ -308,22 +307,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                                     </button>
                                 );
                             })}
-                            {builtInEntries.length > 0 && (
-                                <>
-                                    <div className="mt-2 border-t border-border px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Built-in Wave AI</div>
-                                    {builtInEntries.map((entry) => {
-                                        const isDefault = entry.key === defaultMode;
-                                        const isSelected = entry.key === selectedKey;
-                                        return (
-                                            <button key={entry.key} type="button" onClick={() => setSelectedKey(entry.key)} aria-current={isSelected ? "true" : undefined} className={cn("flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 rounded px-2 text-left transition-colors", isSelected ? "bg-hoverbg text-primary" : "text-secondary hover:bg-hoverbg/50")}>
-                                                <span className={cn("h-[6px] w-[6px] shrink-0 rounded-full", isDefault ? "bg-success" : "bg-border")} />
-                                                <span className="min-w-0 flex-1 truncate text-xs font-medium">{entry.config["display:name"] || entry.key}</span>
-                                                {isDefault && <span className="shrink-0 text-[9px] text-success">Default</span>}
-                                            </button>
-                                        );
-                                    })}
-                                </>
-                            )}
+
                         </div>
 
                         {/* Right pane: edit form */}
