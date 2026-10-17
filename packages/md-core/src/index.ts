@@ -33,3 +33,16 @@ export {
     safeDecodeURIComponent,
     type MarkdownWikiLink,
 } from "./core/markdown-refs";
+
+// ── 渲染契约 + 块类型/行内构造描述符（见 design/plans/md-kernel-render-contract.md）────────
+// 「同一件知识只有一份声明」的那一份；六项门禁由 descriptor.test.ts 检查（G1–G5）。
+export {
+    BLOCK_DESCRIPTORS,
+    INLINE_DESCRIPTORS,
+    STRUCTURAL_RENDERER_KEYS,
+    declaredRendererKeys,
+    roundTripLossyReason,
+    type BlockDescriptor,
+    type InlineDescriptor,
+    type RoundTripRule,
+} from "./blocks/descriptor";

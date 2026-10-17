@@ -110,6 +110,9 @@ packages/md-dom/src/block-syntax.ts                        块语法 / 空壳守
 11. **`export { type X } from` 不会把 X 带进本模块作用域** —— 既要再导出又要本地用必须成对写 import；
     vitest（esbuild 剥类型）照不出这类错误，**只有 tsc 能**。
 12. `grep` 模式以 `--` 开头会被当选项 → 写 `grep -- "--token"`。
+13. **本项目 `tsconfig.json` 是 `"strict": false`** → 布尔判别联合用三元收窄**不生效**
+    （`rule.recoverable ? null : rule.lossyReason` 报 TS2339）。改判据写法：用 `"lossyReason" in rule`。
+    这类错误只有 tsc 能抓（vitest 的 esbuild 剥类型）。
 
 ## 8. 本会话已完成（避免重复劳动）
 
