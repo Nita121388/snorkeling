@@ -66,9 +66,17 @@ func (s *CcSwitchService) ImportWaveAI(ctx context.Context, req *ImportWaveAIReq
 	path := filepath.Join(wavebase.GetWaveConfigDir(), "waveai.json")
 	raw := map[string]map[string]any{}
 	if b, e := os.ReadFile(path); e == nil && len(b) > 0 {
-		_ = json.Unmarshal(b, &raw)
+		if err := json.Unmarshal(b, &raw); err != nil {
+			return nil, fmt.Errorf("waveai.json is invalid; refusing to overwrite existing modes: %w", err)
+		}
+	} else if e != nil && !os.IsNotExist(e) {
+		return nil, fmt.Errorf("cannot read waveai.json: %w", e)
 	}
-	config := map[string]any{"display:name": data.Vendor.Name + " · " + model, "ai:provider": "custom", "ai:apitype": data.Vendor.APIType, "ai:model": model, "ai:endpoint": data.Vendor.Endpoint, "ai:apitokensecretname": secretName}
+	apiType := data.Vendor.APIType
+	if apiType != "openai-responses" && apiType != "openai-chat" && apiType != "google-gemini" && apiType != "anthropic-messages" {
+		apiType = "openai-chat"
+	}
+	config := map[string]any{"display:name": data.Vendor.Name + " · " + model, "ai:provider": "custom", "ai:apitype": apiType, "ai:model": model, "ai:endpoint": data.Vendor.Endpoint, "ai:apitokensecretname": secretName}
 	if config["ai:apitype"] == "" {
 		config["ai:apitype"] = "openai-chat"
 	}
