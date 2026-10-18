@@ -144,7 +144,7 @@ class ImageWidget extends WidgetType {
             });
             wrap.appendChild(img);
         } else {
-            failText.textContent = alt ? `![${alt}](${src})` : `![](${src})`;
+            failText.textContent = this.alt ? `![${this.alt}](${this.src})` : `![](${this.src})`;
             wrap.replaceChildren(failText);
         }
         return wrap;

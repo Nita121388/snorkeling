@@ -30,7 +30,7 @@ type FakeCard = { id: string; content: string; title: string };
 
 class FakeCardEditor {
     static domCount = 0;
-    private editor: InstanceType<typeof Api.createMarkdownEditor> | null = null;
+    editor: ReturnType<typeof Api.createMarkdownEditor> | null = null;
     private parent: HTMLElement | null = null;
     card: FakeCard;
     constructor(card: FakeCard) {
