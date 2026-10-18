@@ -1,0 +1,20 @@
+{
+    "//": "md-codemirror 自持 tsconfig：只覆盖 packages/md-codemirror/src，不继承宿主的 `@/*` 别名 —— 包内禁止宿主路径。",
+    "include": ["src/**/*"],
+    "compilerOptions": {
+        "target": "es6",
+        "module": "es2020",
+        "jsx": "preserve",
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "moduleResolution": "bundler",
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "lib": ["dom", "dom.iterable", "es6"],
+        "allowJs": true,
+        "strict": false,
+        "noEmit": true
+    }
+}

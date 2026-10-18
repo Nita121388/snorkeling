@@ -158,6 +158,7 @@
         "docs",
         "tsunami/frontend",
         "packages/md-core",
-        "packages/md-dom"
+        "packages/md-dom",
+        "packages/md-codemirror"
     ]
 }

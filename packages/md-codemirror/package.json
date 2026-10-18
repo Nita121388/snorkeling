@@ -1,0 +1,25 @@
+{
+    "name": "@snorkeling/md-codemirror",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "description": "CodeMirror 6 Markdown editing kernel: text state, selection, scrolling, IME, history, and live-preview decorations. Zero React, zero Monaco, zero host imports.",
+    "license": "Apache-2.0",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": "./src/index.ts",
+        "./*": "./src/*"
+    },
+    "dependencies": {
+        "@snorkeling/md-core": "*",
+        "@codemirror/state": "^6.7.6",
+        "@codemirror/view": "^6.43.14",
+        "@codemirror/language": "^6.13.1",
+        "@codemirror/commands": "^6.11.1",
+        "@codemirror/lang-markdown": "^6.5.2",
+        "@codemirror/autocomplete": "^6.20.3",
+        "@codemirror/search": "^6.7.2",
+        "@lezer/highlight": "^1.2.5"
+    }
+}
