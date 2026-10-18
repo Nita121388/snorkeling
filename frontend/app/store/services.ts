@@ -226,6 +226,23 @@ export class BlockServiceType {
 
 export const BlockService = new BlockServiceType();
 
+// ccswitchservice.CcSwitchService (ccswitch)
+export class CcSwitchServiceType {
+    waveEnv: WaveEnv;
+
+    constructor(waveEnv?: WaveEnv) {
+        this.waveEnv = waveEnv;
+    }
+
+    // import a redacted cc-switch provider into Wave AI
+    // @returns imported Wave AI mode
+    ImportWaveAI(request: ImportWaveAIRequest): Promise<ImportWaveAIResponse> {
+        return callBackendService(this?.waveEnv, "ccswitch", "ImportWaveAI", Array.from(arguments))
+    }
+}
+
+export const CcSwitchService = new CcSwitchServiceType();
+
 // clientservice.ClientService (client)
 export class ClientServiceType {
     waveEnv: WaveEnv;
@@ -495,6 +512,7 @@ export const AllServiceTypes = {
     "aisessions": AISessionsServiceType,
     "aitest": AITestServiceType,
     "block": BlockServiceType,
+    "ccswitch": CcSwitchServiceType,
     "client": ClientServiceType,
     "commontext": CommonTextServiceType,
     "object": ObjectServiceType,
@@ -507,6 +525,7 @@ export const AllServiceImpls = {
     "aisessions": AISessionsService,
     "aitest": AITestService,
     "block": BlockService,
+    "ccswitch": CcSwitchService,
     "client": ClientService,
     "commontext": CommonTextService,
     "object": ObjectService,

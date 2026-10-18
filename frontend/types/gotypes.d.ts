@@ -1586,6 +1586,19 @@ declare global {
         statuses: HookStatus[];
     };
 
+    // ccswitchservice.ImportWaveAIRequest
+    type ImportWaveAIRequest = {
+        vendorId: string;
+        model?: string;
+    };
+
+    // ccswitchservice.ImportWaveAIResponse
+    type ImportWaveAIResponse = {
+        modeKey: string;
+        secretName?: string;
+        model: string;
+    };
+
     // waveobj.Job
     type Job = WaveObj & {
         connection: string;

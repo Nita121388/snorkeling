@@ -21,7 +21,7 @@ import {
     upsertWaveAIMode,
 } from "@/app/view/waveconfig/waveai-modes";
 import { templateModeKey, templateToAIMode, WaveAITemplates } from "@/app/view/waveconfig/waveai-templates";
-import { AITestServiceType } from "@/app/store/services";
+import { AITestServiceType, CcSwitchServiceType } from "@/app/store/services";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { cn } from "@/util/util";
 
@@ -70,6 +70,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     const initializedDefault = useRef(false);
     const apiKeyInputRef = useRef<HTMLInputElement>(null);
     const testService = useMemo(() => new AITestServiceType(), []);
+    const ccSwitchService = useMemo(() => new CcSwitchServiceType(), []);
 
     const entries = useMemo(
         () =>
@@ -177,19 +178,11 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     const handleImportCcSwitch = useCallback(async (vendor: WaveAIVendor) => {
         const models = vendor.models?.length > 0 ? vendor.models : [vendor.defaultModel || ""];
         for (const modelId of models.filter(Boolean)) {
-            const suffix = modelId.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "model";
-            const key = `ccswitch@${vendor.id}@${suffix}`;
-            await upsertWaveAIMode(model, key, {
-                "display:name": `${vendor.name} · ${modelId}`,
-                "ai:provider": "custom",
-                "ai:apitype": vendor.apiType || "openai-chat",
-                "ai:model": modelId,
-                "ai:endpoint": vendor.endpoint,
-                "ai:apitokensecretname": "",
-            });
+            await ccSwitchService.ImportWaveAI({ vendorId: vendor.id, model: modelId });
         }
         setAdding(false);
-    }, [model]);
+        window.location.reload();
+    }, [ccSwitchService]);
 
     const handleAddFromTemplate = useCallback(
         (templateId: string) => {
