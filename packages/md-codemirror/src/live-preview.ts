@@ -31,6 +31,7 @@ import {
     type DecorationSet,
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
+import type { SyntaxNode } from "@lezer/common";
 
 import type { MarkdownEditorHost } from "./types";
 
@@ -199,7 +200,7 @@ export function buildDecorations(view: EditorView, host: MarkdownEditorHost): De
     const insideWiki = (from: number, to: number): boolean =>
         wikiSpans.some((w) => w.from <= from && to <= w.to);
 
-    const walk = (node: Parameters<typeof tree.topNode.firstChild>[0] extends never ? never : any): void => {
+    const walk = (node: SyntaxNode): void => {
         if (node == null) return;
         const name = node.type.name;
         const from = node.from;
