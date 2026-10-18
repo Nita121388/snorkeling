@@ -22,6 +22,7 @@ import {
 } from "@/app/view/waveconfig/waveai-modes";
 import { templateModeKey, templateToAIMode, WaveAITemplates } from "@/app/view/waveconfig/waveai-templates";
 import { AITestServiceType } from "@/app/store/services";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { cn } from "@/util/util";
 
 type TestState =
@@ -64,6 +65,8 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
     const [fetchedModels, setFetchedModels] = useState<string[]>([]);
     const [adding, setAdding] = useState(false);
+    const [ccSwitchVendors, setCcSwitchVendors] = useState<WaveAIVendor[]>([]);
+    const [loadingCcSwitch, setLoadingCcSwitch] = useState(false);
     const initializedDefault = useRef(false);
     const apiKeyInputRef = useRef<HTMLInputElement>(null);
     const testService = useMemo(() => new AITestServiceType(), []);
@@ -159,6 +162,35 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
         setSelectedKey(userEntries.find((e) => e.key !== selectedKey)?.key ?? null);
     }, [defaultMode, entries, model, selectedEntry, selectedKey]);
 
+    const handleLoadCcSwitch = useCallback(async () => {
+        setLoadingCcSwitch(true);
+        try {
+            const result = await model.env.rpc.CcSwitchListWaveAIVendorsCommand(TabRpcClient);
+            setCcSwitchVendors(result?.vendors ?? []);
+        } catch (error) {
+            window.alert(`Could not read cc-switch providers: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            setLoadingCcSwitch(false);
+        }
+    }, [model]);
+
+    const handleImportCcSwitch = useCallback(async (vendor: WaveAIVendor) => {
+        const models = vendor.models?.length > 0 ? vendor.models : [vendor.defaultModel || ""];
+        for (const modelId of models.filter(Boolean)) {
+            const suffix = modelId.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "model";
+            const key = `ccswitch@${vendor.id}@${suffix}`;
+            await upsertWaveAIMode(model, key, {
+                "display:name": `${vendor.name} · ${modelId}`,
+                "ai:provider": "custom",
+                "ai:apitype": vendor.apiType || "openai-chat",
+                "ai:model": modelId,
+                "ai:endpoint": vendor.endpoint,
+                "ai:apitokensecretname": "",
+            });
+        }
+        setAdding(false);
+    }, [model]);
+
     const handleAddFromTemplate = useCallback(
         (templateId: string) => {
             const template = WaveAITemplates.find((t) => t.id === templateId);
@@ -250,6 +282,21 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
             {adding && (
                 <section className="shrink-0 rounded-lg border border-border bg-surface p-3">
                     <div className="mb-2 text-xs font-medium text-primary">Add from template</div>
+                    <div className="mb-3 flex flex-wrap gap-1.5">
+                        <button type="button" className="cursor-pointer rounded border border-border bg-panel px-2.5 py-1.5 text-xs text-secondary hover:bg-hover hover:text-primary" onClick={() => void handleLoadCcSwitch()} disabled={loadingCcSwitch}>
+                            {loadingCcSwitch ? "Loading cc-switch…" : "Import from cc-switch"}
+                        </button>
+                    </div>
+                    {ccSwitchVendors.length > 0 && (
+                        <div className="mb-3 flex flex-col gap-1 rounded border border-border bg-panel p-2">
+                            <div className="text-[11px] font-medium text-secondary">cc-switch providers</div>
+                            {ccSwitchVendors.map((vendor) => (
+                                <button key={`${vendor.appType}:${vendor.id}`} type="button" className="flex items-center justify-between rounded px-2 py-1.5 text-left text-xs text-secondary hover:bg-hover hover:text-primary" onClick={() => void handleImportCcSwitch(vendor)}>
+                                    <span>{vendor.name}</span><span className="text-[10px] text-muted-foreground">{vendor.models?.length ?? 0} models</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                         {WaveAITemplates.map((template) => (
                             <button
