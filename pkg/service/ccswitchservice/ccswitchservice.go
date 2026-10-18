@@ -56,6 +56,9 @@ func (s *CcSwitchService) ImportWaveAI(ctx context.Context, req *ImportWaveAIReq
 	secretName := ""
 	if data.Token != "" {
 		secretName = "CCSWITCH_" + sanitizeSecret(data.Vendor.ID)
+		if existing, exists, err := secretstore.GetSecret(secretName); err == nil && exists && existing != data.Token {
+			secretName += "_" + sanitizeSecret(model)
+		}
 		if err := secretstore.SetSecret(secretName, data.Token); err != nil {
 			return nil, err
 		}
