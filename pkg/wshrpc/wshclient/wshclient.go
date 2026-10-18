@@ -127,6 +127,12 @@ func CcSwitchListPiVendorsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*ccs
 	return resp, err
 }
 
+// command "ccswitchlistwaveaivendors", wshserver.CcSwitchListWaveAIVendorsCommand
+func CcSwitchListWaveAIVendorsCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*ccswitch.WaveAIVendorList, error) {
+	resp, err := sendRpcRequestCallHelper[*ccswitch.WaveAIVendorList](w, "ccswitchlistwaveaivendors", nil, opts)
+	return resp, err
+}
+
 // command "checkgoversion", wshserver.CheckGoVersionCommand
 func CheckGoVersionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.CommandCheckGoVersionRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandCheckGoVersionRtnData](w, "checkgoversion", nil, opts)

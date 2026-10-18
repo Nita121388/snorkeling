@@ -126,6 +126,12 @@ export class RpcApiType {
         return client.wshRpcCall("ccswitchlistpivendors", null, opts);
     }
 
+    // command "ccswitchlistwaveaivendors" [call]
+    CcSwitchListWaveAIVendorsCommand(client: WshClient, opts?: RpcOpts): Promise<WaveAIVendorList> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "ccswitchlistwaveaivendors", null, opts);
+        return client.wshRpcCall("ccswitchlistwaveaivendors", null, opts);
+    }
+
     // command "checkgoversion" [call]
     CheckGoVersionCommand(client: WshClient, opts?: RpcOpts): Promise<CommandCheckGoVersionRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "checkgoversion", null, opts);
