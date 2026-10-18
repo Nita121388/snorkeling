@@ -21,5 +21,8 @@
         "@codemirror/autocomplete": "^6.20.3",
         "@codemirror/search": "^6.7.2",
         "@lezer/highlight": "^1.2.5"
+    },
+    "scripts": {
+        "build": "node scripts/build-esm.mjs"
     }
 }
