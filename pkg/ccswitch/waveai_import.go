@@ -16,6 +16,54 @@ type WaveAIImportData struct {
 	Token  string
 }
 
+func extractModelIDs(raw json.RawMessage) []string {
+	var values []json.RawMessage
+	if len(raw) > 0 && json.Unmarshal(raw, &values) != nil {
+		var keyed map[string]json.RawMessage
+		if json.Unmarshal(raw, &keyed) == nil {
+			for key, value := range keyed {
+				var obj struct {
+					ID    string `json:"id"`
+					Model string `json:"model"`
+					Name  string `json:"name"`
+				}
+				if json.Unmarshal(value, &obj) == nil {
+					for _, candidate := range []string{obj.ID, obj.Model, obj.Name} {
+						if candidate != "" {
+							values = append(values, json.RawMessage(`"`+candidate+`"`))
+							break
+						}
+					}
+				} else {
+					values = append(values, json.RawMessage(`"`+key+`"`))
+				}
+			}
+		}
+	}
+	models := []string{}
+	for _, item := range values {
+		var text string
+		if json.Unmarshal(item, &text) == nil && text != "" {
+			models = append(models, text)
+			continue
+		}
+		var obj struct {
+			ID    string `json:"id"`
+			Model string `json:"model"`
+			Name  string `json:"name"`
+		}
+		if json.Unmarshal(item, &obj) == nil {
+			for _, candidate := range []string{obj.ID, obj.Model, obj.Name} {
+				if candidate != "" {
+					models = append(models, candidate)
+					break
+				}
+			}
+		}
+	}
+	return uniqueStrings(models)
+}
+
 func GetWaveAIImportData(ctx context.Context, vendorID string) (*WaveAIImportData, error) {
 	path, err := DBPath()
 	if err != nil {
@@ -40,7 +88,7 @@ func GetWaveAIImportData(ctx context.Context, vendorID string) (*WaveAIImportDat
 		Model    string            `json:"model"`
 		APIKey   string            `json:"apiKey"`
 		Env      map[string]string `json:"env"`
-		Models   []json.RawMessage `json:"models"`
+		Models   json.RawMessage   `json:"models"`
 	}
 	if err := json.Unmarshal([]byte(row.SettingsJSON), &raw); err != nil {
 		return nil, fmt.Errorf("invalid cc-switch provider configuration")
@@ -52,27 +100,7 @@ func GetWaveAIImportData(ctx context.Context, vendorID string) (*WaveAIImportDat
 	if strings.TrimSpace(endpoint) == "" {
 		return nil, fmt.Errorf("cc-switch provider has no endpoint")
 	}
-	models := []string{}
-	for _, item := range raw.Models {
-		var s string
-		if json.Unmarshal(item, &s) == nil && s != "" {
-			models = append(models, s)
-			continue
-		}
-		var obj struct {
-			ID    string `json:"id"`
-			Model string `json:"model"`
-			Name  string `json:"name"`
-		}
-		if json.Unmarshal(item, &obj) == nil {
-			for _, v := range []string{obj.ID, obj.Model, obj.Name} {
-				if v != "" {
-					models = append(models, v)
-					break
-				}
-			}
-		}
-	}
+	models := extractModelIDs(raw.Models)
 	if raw.Model != "" {
 		models = append([]string{raw.Model}, models...)
 	}
