@@ -27,7 +27,8 @@
     "10-12-code-block",
     "10-12-misc-blocks",
     "10-12-md-dom-core",
-    "10-13-parity-text-typography"
+    "10-13-parity-text-typography",
+    "10-19-wysiwyg-fix"
   ],
   "parent": null,
   "relatedFiles": [],
