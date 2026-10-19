@@ -174,6 +174,12 @@ export type WysiwygSeedInfo = {
     headingLevel?: number;
     listMarker?: string;
     listIndent?: string;
+    /**
+     * For ordered lists, the starting number of the original list (e.g., 5 for "5.").
+     * This preserves the user's original numbering when editing, so a list starting
+     * at "5." stays "5.", "6.", "7." rather than reverting to "1.", "2.", "3.".
+     */
+    listStartNumber?: number;
 };
 
 /**
@@ -252,14 +258,22 @@ export function captureWysiwygInfo(
     // serializer always starts at depth 0, so without re-applying the outer indent the
     // committed draft is promoted to top level. Captured here, re-applied on commit.
     let listIndent: string | undefined;
+    // For ordered lists, the starting number (e.g., 5 for "5."). This preserves
+    // the user's original numbering.
+    let listStartNumber: number | undefined;
     if (blockKind === "list") {
         const lines = sourceText.split(/\r?\n/);
         const first = lines[0] ?? "";
         const markerMatch = first.match(/^\s*([-*+]|\d{1,9}[.)])/);
         if (markerMatch != null) {
             listMarker = markerMatch[1];
+            // Parse the starting number for ordered lists (e.g., "5." -> 5)
+            const numMatch = markerMatch[1].match(/^(\d{1,9})/);
+            if (numMatch != null) {
+                listStartNumber = parseInt(numMatch[1], 10);
+            }
         }
         listIndent = first.match(/^([ \t]*)/)?.[1] ?? "";
     }
-    return { html: strippedHtml, headingLevel, listMarker, listIndent };
+    return { html: strippedHtml, headingLevel, listMarker, listIndent, listStartNumber };
 }

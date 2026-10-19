@@ -259,6 +259,13 @@ export interface BlockDomCtx {
      * `1)`).
      */
     listMarker?: string;
+    /**
+     * For ordered lists, the starting number of the original list (e.g., 5 for "5.").
+     * If not provided or undefined, ordered lists start from 1. This preserves the
+     * user's original numbering when editing (e.g., a list starting at "5." stays
+     * "5.", "6.", "7." rather than reverting to "1.", "2.", "3.").
+     */
+    listStartNumber?: number;
 }
 
 /** Prefix written before a rendered heading's text (empty title → bare markers). */
@@ -288,7 +295,20 @@ function serializeLiContent(li: HTMLElement, opts: Required<InlineSerializeOpts>
  * an ordered/unordered list, not which bullet char or counter style the author
  * chose.
  */
-export function serializeListDomToMarkdown(rootEl: Element, ordered: boolean, marker: string): string {
+/**
+ * Serialize a list (<ul>/<ol>) to markdown source lines.
+ * @param rootEl - The list element to serialize
+ * @param ordered - Whether this is an ordered list
+ * @param marker - The bullet/prefix character (e.g., "-", "*", "1.", "1)")
+ * @param startNumber - For ordered lists, the starting number (default 1). Preserves
+ *   the user's original numbering when editing (e.g., "5.", "6." stays that way).
+ */
+export function serializeListDomToMarkdown(
+    rootEl: Element,
+    ordered: boolean,
+    marker: string,
+    startNumber: number = 1
+): string {
     const opts: Required<InlineSerializeOpts> = { ...DEFAULT_INLINE_OPTS };
     const lines: string[] = [];
 
@@ -357,7 +377,11 @@ export function serializeBlockDomToMarkdown(rootEl: Element, ctx: BlockDomCtx): 
         const listEl = rootEl.querySelector("ul, ol") ?? rootEl;
         const ordered = listEl.tagName === "OL" || listEl.getAttribute("data-ordered") === "true";
         const marker = ctx.listMarker ?? (ordered ? "1." : "-");
-        return serializeListDomToMarkdown(listEl, ordered, marker);
+        // listStartNumber preserves the original starting number for ordered lists
+        // (e.g., a list starting at "5." stays "5.", "6.", "7.").
+        // Falls back to 1 if not provided.
+        const startNumber = ctx.listStartNumber ?? 1;
+        return serializeListDomToMarkdown(listEl, ordered, marker, startNumber);
     }
     if (ctx.kind === "h") {
         const level = ctx.headingLevel ?? 1;

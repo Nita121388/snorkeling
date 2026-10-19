@@ -331,6 +331,12 @@ export type InlineEditSession = {
      */
     wysiwygListIndent?: string;
     /**
+     * For ordered lists, the starting number of the original list (e.g., 5 for "5.").
+     * Preserves the user's original numbering when editing, so a list starting at "5."
+     * stays "5.", "6.", "7." rather than reverting to "1.", "2.", "3.".
+     */
+    wysiwygListStartNumber?: number;
+    /**
      * R4: callout `[!TYPE]` + emoji prefix captured from the SOURCE first line at beginEdit.
      * Present only for callout WYSIWYG sessions (handled by captureCalloutPrefix); on commit
      * applyCalloutPrefix writes it back so editing a title never drops the marker or emoji.
@@ -768,6 +774,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 wysiwygHeadingLevel: wysiwygInfo?.headingLevel,
                 wysiwygListMarker: wysiwygInfo?.listMarker,
                 wysiwygListIndent: wysiwygInfo?.listIndent,
+                wysiwygListStartNumber: wysiwygInfo?.listStartNumber,
                 isCallout: isCallout || undefined,
                 calloutPrefix,
             };
@@ -1359,6 +1366,7 @@ export function InlineEditOverlay({
                     blockKind={blockKind as WysiwygEligibleKind}
                     headingLevel={wysiwygHeadingLevel}
                     listMarker={wysiwygListMarker}
+                    listStartNumber={wysiwygListStartNumber}
                     typography={typography}
                     placeholder={placeholder}
                     onInput={(md, caretMd) => {

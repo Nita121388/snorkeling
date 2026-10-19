@@ -153,6 +153,11 @@ export type WysiwygEditorProps = {
     headingLevel?: number;
     /** Original list marker from source: "-" | "*" | "+" | "1." | "1)" etc. */
     listMarker?: string;
+    /**
+     * For ordered lists, the starting number of the original list (e.g., 5 for "5.").
+     * Preserves the user's original numbering when editing.
+     */
+    listStartNumber?: number;
     /** Typography snapshot from the rendered block (for CSS overlay matching). */
     typography?: React.CSSProperties;
     /** Placeholder text shown when empty. */
@@ -234,6 +239,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         blockKind,
         headingLevel: initialHeadingLevel = 1,
         listMarker: initialListMarker = "-",
+        listStartNumber: initialListStartNumber,
         typography,
         placeholder,
         onInput,
@@ -255,6 +261,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
     const headingLevelRef = useRef(headingLevel);
     headingLevelRef.current = headingLevel;
     const listMarkerRef = useRef(initialListMarker);
+    const listStartNumberRef = useRef(initialListStartNumber);
     const initializedRef = useRef(false);
     // IME composition 活跃标记（P3 F2）：组合期间禁止任何 DOM 手术（sentinel 插/删节点、
     // detectTypingTrigger 的 live-kind 转换、normalize），这些会打断中文/日文输入法的候选
@@ -267,6 +274,7 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
             kind: liveKindRef.current,
             headingLevel: headingLevelRef.current,
             listMarker: listMarkerRef.current,
+            listStartNumber: listStartNumberRef.current,
         }),
         []
     );
@@ -400,11 +408,12 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
         setHeadingLevel(initialHeadingLevel);
         headingLevelRef.current = initialHeadingLevel;
         listMarkerRef.current = initialListMarker;
+        listStartNumberRef.current = initialListStartNumber;
         root.innerHTML = initialHtml || (blockKind === "list" ? "<ul><li></li></ul>" : "");
         // F2：种子落地后立即规范化（防御外部/渲染器 HTML 里的非规范列表结构：
         // 嵌套 ul 直接挂在 ul 下会让序列化丢掉整棵子树）。
         normalizeListDom(root);
-    }, [initialHtml, blockKind, initialHeadingLevel, initialListMarker]);
+    }, [initialHtml, blockKind, initialHeadingLevel, initialListMarker, initialListStartNumber]);
 
     // --- Inline-format closing (P3 F5) ---
     // 用户输入到闭合 marker（`**bold**` 光标在末尾）时，把配对转成对应行内元素（所见即所得）。
