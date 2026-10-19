@@ -24,7 +24,23 @@ const (
 	tailWindowBytes      = 16 * 1024
 	toolSummaryMaxChars  = 800
 	messageDeltaMaxBytes = 512 * 1024
+	// maxDeltaWindowBytes bounds the delta window growth used to step over a
+	// single JSONL line that is larger than one frame (pi inlines base64 images
+	// in tool results, so 1MB+ lines are normal).
+	maxDeltaWindowBytes = 64 * 1024 * 1024
+	// loadAllMessageOverheadBytes approximates one message's JSON envelope cost so
+	// a full-load frame budget tracks the wire size, not just the text bytes.
+	loadAllMessageOverheadBytes = 96
 )
+
+// toolCallAnchorRe matches a bare tool anchor ("[Tool: name]"), mirroring the
+// frontend's ExactToolCallAnchorPattern. Anchors drive the positional pairing
+// between timeline messages and ToolCall rows.
+var toolCallAnchorRe = regexp.MustCompile(`^\[Tool:\s*[^\]]+\]$`)
+
+func isToolCallAnchorText(text string) bool {
+	return toolCallAnchorRe.MatchString(strings.TrimSpace(text))
+}
 
 var uuidRe = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 
@@ -189,6 +205,81 @@ func normalizeMessageDeltaMaxBytes(maxBytes int64) int64 {
 	return maxBytes
 }
 
+// frameLoadAllMessages returns the slice of messages starting at offset whose
+// combined serialized size stays within maxBytes, plus the resume index. It
+// always returns at least one message (when any remain) so a single oversized
+// message cannot stall a LoadAll stream.
+func frameLoadAllMessages(messages []Message, offset int, maxBytes int64) ([]Message, int) {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(messages) {
+		offset = len(messages)
+	}
+	if maxBytes <= 0 {
+		maxBytes = messageDeltaMaxBytes
+	}
+	end := offset
+	var used int64
+	for end < len(messages) {
+		size := int64(len(messages[end].Text)+len(messages[end].Thinking)) + loadAllMessageOverheadBytes
+		if end > offset && used+size > maxBytes {
+			break
+		}
+		used += size
+		end++
+	}
+	if end == offset {
+		return []Message{}, offset
+	}
+	return messages[offset:end], end
+}
+
+// toolCallAnchorCount counts bare tool anchors among messages (the same rule the
+// GUI uses to pair an anchor message with its ToolCall row).
+func toolCallAnchorCount(messages []Message) int {
+	count := 0
+	for _, message := range messages {
+		if isToolCallAnchorText(message.Text) {
+			count++
+		}
+	}
+	return count
+}
+
+// frameLoadAllToolCalls slices the canonical tool call list so it lines up with
+// one message frame: the GUI pairs the i-th loaded anchor with the i-th loaded
+// tool call, so start/end are anchor counts, not message indexes.
+func frameLoadAllToolCalls(toolCalls []ToolCall, messages []Message, offset int, next int) []ToolCall {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(messages) {
+		offset = len(messages)
+	}
+	if next < offset {
+		next = offset
+	}
+	if next > len(messages) {
+		next = len(messages)
+	}
+	start := toolCallAnchorCount(messages[:offset])
+	end := toolCallAnchorCount(messages[:next])
+	if start > len(toolCalls) {
+		start = len(toolCalls)
+	}
+	if end > len(toolCalls) {
+		end = len(toolCalls)
+	}
+	if start > end {
+		start = end
+	}
+	if start == end {
+		return nil
+	}
+	return toolCalls[start:end]
+}
+
 func loadLocalMessageDelta(
 	ctx context.Context,
 	source string,
@@ -233,17 +324,42 @@ func loadLocalMessageDelta(
 		readSize = maxBytes
 		hasMore = true
 	}
-	if _, err := file.Seek(cursorOffset, io.SeekStart); err != nil {
-		return MessageDelta{}, err
+	// A single JSONL line can be far larger than one frame (pi inlines base64
+	// images in tool results, so 1MB+ lines are routine). When the window ends
+	// inside such a line the parser consumes nothing and the cursor never
+	// advances — the GUI then shows "loading forever" while re-requesting the
+	// same offset. Grow the window until at least one complete line is consumed.
+	remaining := fileSize - cursorOffset
+	window := readSize
+	var messages []Message
+	var lastSeq int
+	var bytesRead int64
+	for attempt := 0; ; attempt++ {
+		if _, err := file.Seek(cursorOffset, io.SeekStart); err != nil {
+			return MessageDelta{}, err
+		}
+		parsed, parsedLastSeq, parsedBytes, parseErr := parseCompleteJSONLFromReader(
+			ctx,
+			io.LimitReader(file, window),
+			cursor.LastSeq+1,
+			parser,
+		)
+		if parseErr != nil {
+			return MessageDelta{}, parseErr
+		}
+		messages, lastSeq, bytesRead = parsed, parsedLastSeq, parsedBytes
+		if bytesRead > 0 || window >= remaining || window >= maxDeltaWindowBytes {
+			break
+		}
+		window *= 2
+		if window > remaining {
+			window = remaining
+		}
 	}
-	messages, lastSeq, bytesRead, err := parseCompleteJSONLFromReader(
-		ctx,
-		io.LimitReader(file, readSize),
-		cursor.LastSeq+1,
-		parser,
-	)
-	if err != nil {
-		return MessageDelta{}, err
+	if bytesRead == 0 && remaining > 0 {
+		// Nothing parseable within the window (single oversized/invalid line):
+		// still advance so a client polling this cursor makes forward progress.
+		bytesRead = window
 	}
 	nextCursor.ByteOffset = cursorOffset + bytesRead
 	nextCursor.LastSeq = cursor.LastSeq

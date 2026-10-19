@@ -222,12 +222,22 @@ export class AgentViewModel implements ViewModel {
                 connection: this.getConnection(),
                 refresh,
                 includeTools: true,
+                loadAll: true,
             });
             if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== session.key) {
                 return;
             }
-            if (!this.commitDetail(detail)) return;
+            // The first LoadAll frame intentionally carries only the EARLIEST
+            // messages, so it can be shorter than the detail already on screen;
+            // accept it instead of treating it as a stale-detail regression.
+            if (!this.commitDetail(detail, { allowFewer: true })) return;
             globalStore.set(this.historySyncErrorAtom, "");
+            // A LoadAll frame reports hasMore when the session was cut into
+            // frames. Continue appending frames so the timeline reaches the end
+            // without the user hitting a "load more" control.
+            if (detail.hasMore) {
+                void this.loadDetailFullFrames(session.key);
+            }
         } catch (e) {
             if (loadSeq === this.detailLoadSeq) {
                 globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
@@ -235,6 +245,72 @@ export class AgentViewModel implements ViewModel {
         } finally {
             if (loadSeq === this.detailLoadSeq) {
                 globalStore.set(this.detailLoadingAtom, false);
+            }
+        }
+    }
+
+    // Appends LoadAll continuation frames until hasMore is false. Frames come from
+    // the canonical message list, so they are plain appends — no byte-cursor
+    // merge, which is why this does not reuse applyDetailDelta.
+    async loadDetailFullFrames(sessionKey: string): Promise<void> {
+        // Only guard against a second continuation loop. Do NOT check
+        // detailLoadingAtom here: loadDetail kicks this off while its own
+        // finally block has not yet cleared that flag.
+        if (globalStore.get(this.detailDeltaLoadingAtom)) {
+            return;
+        }
+        const loadSeq = this.detailLoadSeq;
+        globalStore.set(this.detailDeltaLoadingAtom, true);
+        try {
+            for (;;) {
+                const detail = globalStore.get(this.detailAtom);
+                if (detail?.summary?.key !== sessionKey || !detail.hasMore) {
+                    return;
+                }
+                const messageOffset = detail.nextMessageOffset ?? detail.messages?.length ?? 0;
+                const delta = await this.service.DetailDelta({
+                    id: sessionKey,
+                    connection: this.getConnection(),
+                    source: detail.summary.source,
+                    filePath: detail.summary.filePath,
+                    messageCount: detail.summary.messageCount,
+                    loadAll: true,
+                    messageOffset,
+                    includeTools: true,
+                });
+                if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== sessionKey) {
+                    return;
+                }
+                const frameMessages = delta.messages ?? [];
+                if (frameMessages.length === 0 && !delta.hasMore) {
+                    // Provider reported nothing left: close the stream so the
+                    // detail stops advertising hasMore.
+                    globalStore.set(this.detailAtom, { ...detail, hasMore: false });
+                    return;
+                }
+                globalStore.set(this.detailAtom, {
+                    ...detail,
+                    messages: [...(detail.messages ?? []), ...frameMessages],
+                    toolCalls: [...(detail.toolCalls ?? []), ...(delta.toolCalls ?? [])],
+                    summary: {
+                        ...detail.summary,
+                        messageCount:
+                            typeof delta.summary?.messageCount === "number"
+                                ? delta.summary.messageCount
+                                : detail.summary.messageCount,
+                    },
+                    cursor: delta.cursor ?? detail.cursor,
+                    hasMore: delta.hasMore,
+                    nextMessageOffset: delta.nextMessageOffset ?? messageOffset + frameMessages.length,
+                });
+            }
+        } catch (e) {
+            if (loadSeq === this.detailLoadSeq) {
+                globalStore.set(this.historySyncErrorAtom, getErrorMessage(e));
+            }
+        } finally {
+            if (loadSeq === this.detailLoadSeq) {
+                globalStore.set(this.detailDeltaLoadingAtom, false);
             }
         }
     }
@@ -391,9 +467,10 @@ export class AgentViewModel implements ViewModel {
         }
     }
 
-    commitDetail(detail: SessionDetail): boolean {
+    commitDetail(detail: SessionDetail, opts?: { allowFewer?: boolean }): boolean {
         const current = globalStore.get(this.detailAtom);
         if (
+            !opts?.allowFewer &&
             current?.summary?.key === detail.summary?.key &&
             (detail.messages?.length ?? 0) < (current.messages?.length ?? 0)
         ) {

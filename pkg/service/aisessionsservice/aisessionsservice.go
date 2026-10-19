@@ -29,14 +29,14 @@ const VendorConfigurationUnavailableError = "Vendor configuration is no longer a
 type AISessionsService struct{}
 
 type AISessionsListRequest struct {
-	Source             string   `json:"source,omitempty"`
-	Project            string   `json:"project,omitempty"`
-	Query              string   `json:"query,omitempty"`
-	Connection         string   `json:"connection,omitempty"`
-	Limit              int      `json:"limit,omitempty"`
-	Refresh            bool     `json:"refresh,omitempty"`
-	Marked             string   `json:"marked,omitempty"`
-	Since              int64    `json:"since,omitempty"`
+	Source              string   `json:"source,omitempty"`
+	Project             string   `json:"project,omitempty"`
+	Query               string   `json:"query,omitempty"`
+	Connection          string   `json:"connection,omitempty"`
+	Limit               int      `json:"limit,omitempty"`
+	Refresh             bool     `json:"refresh,omitempty"`
+	Marked              string   `json:"marked,omitempty"`
+	Since               int64    `json:"since,omitempty"`
 	Before              int64    `json:"before,omitempty"`
 	TagFilters          []string `json:"tagFilters,omitempty"`
 	TagPresence         string   `json:"tagPresence,omitempty"`
@@ -49,15 +49,15 @@ type AISessionsListResponse struct {
 }
 
 type AISessionsTagsRequest struct {
-	Source      string `json:"source,omitempty"`
-	Project     string `json:"project,omitempty"`
-	Connection  string `json:"connection,omitempty"`
-	Marked      string `json:"marked,omitempty"`
-	Since       int64  `json:"since,omitempty"`
-	Before      int64  `json:"before,omitempty"`
+	Source      string   `json:"source,omitempty"`
+	Project     string   `json:"project,omitempty"`
+	Connection  string   `json:"connection,omitempty"`
+	Marked      string   `json:"marked,omitempty"`
+	Since       int64    `json:"since,omitempty"`
+	Before      int64    `json:"before,omitempty"`
 	TagFilters  []string `json:"tagFilters,omitempty"`
-	TagPresence string `json:"tagPresence,omitempty"`
-	Refresh     bool   `json:"refresh,omitempty"`
+	TagPresence string   `json:"tagPresence,omitempty"`
+	Refresh     bool     `json:"refresh,omitempty"`
 }
 
 type AISessionsTagsResponse struct {
@@ -86,6 +86,11 @@ type AISessionsDetailRequest struct {
 	Refresh      bool   `json:"refresh,omitempty"`
 	Tail         int    `json:"tail,omitempty"`
 	IncludeTools bool   `json:"includeTools,omitempty"`
+	// LoadAll streams the whole session instead of returning one snapshot: the
+	// first frame carries the EARLIEST content plus hasMore/nextMessageOffset,
+	// and the caller keeps appending with DetailDelta(loadAll,messageOffset) until
+	// hasMore is false. Left false, Detail behaves exactly as before.
+	LoadAll bool `json:"loadAll,omitempty"`
 }
 
 type AISessionsDetailDeltaRequest struct {
@@ -96,6 +101,10 @@ type AISessionsDetailDeltaRequest struct {
 	Cursor       aisessions.SessionMessageCursor `json:"cursor"`
 	MaxBytes     int64                           `json:"maxBytes,omitempty"`
 	MessageCount int                             `json:"messageCount,omitempty"`
+	// LoadAll + MessageOffset continue a Detail(loadAll) stream by message index
+	// instead of by file byte cursor. Both unset keeps the legacy byte-delta path.
+	LoadAll       bool `json:"loadAll,omitempty"`
+	MessageOffset int  `json:"messageOffset,omitempty"`
 }
 
 type AISessionsUserOutlineRequest struct {
@@ -124,7 +133,7 @@ type AISessionsGenerateMetadataRequest struct {
 }
 
 type AISessionsGenerateMetadataResponse struct {
-	Summary    aisessions.SessionSummary      `json:"summary"`
+	Summary    aisessions.SessionSummary     `json:"summary"`
 	Suggestion aisessions.MetadataSuggestion `json:"suggestion"`
 }
 
@@ -387,7 +396,7 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 		return nil, fmt.Errorf("session id is required")
 	}
 	start := time.Now()
-	aiSessionsDebugf("Detail start id=%q connection=%q refresh=%v tail=%d includeTools=%v", request.ID, request.Connection, request.Refresh, request.Tail, request.IncludeTools)
+	aiSessionsDebugf("Detail start id=%q connection=%q refresh=%v tail=%d includeTools=%v loadAll=%v", request.ID, request.Connection, request.Refresh, request.Tail, request.IncludeTools, request.LoadAll)
 	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
 	if err != nil {
 		aiSessionsDebugf("Detail manager error id=%q duration=%s err=%v", request.ID, time.Since(start), err)
@@ -396,6 +405,7 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 	detail, err := manager.Load(ctx, request.ID, aisessions.LoadOptions{
 		Refresh:      request.Refresh,
 		IncludeTools: request.IncludeTools,
+		LoadAll:      request.LoadAll,
 	})
 	if err != nil {
 		aiSessionsDebugf("Detail load error id=%q duration=%s err=%v", request.ID, time.Since(start), err)
@@ -407,7 +417,7 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 		detail.Messages = detail.Messages[len(detail.Messages)-tail:]
 	}
 	aiSessionsDebugf(
-		"Detail success id=%q key=%q source=%q file=%q loadedMessages=%d returnedMessages=%d summaryMessageCount=%d duration=%s",
+		"Detail success id=%q key=%q source=%q file=%q loadedMessages=%d returnedMessages=%d summaryMessageCount=%d loadAll=%v hasMore=%v nextMessageOffset=%d duration=%s",
 		request.ID,
 		detail.Summary.Key,
 		detail.Summary.Source,
@@ -415,6 +425,9 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 		loadedCount,
 		len(detail.Messages),
 		detail.Summary.MessageCount,
+		request.LoadAll,
+		detail.HasMore,
+		detail.NextMessageOffset,
 		time.Since(start),
 	)
 	return &detail, nil
@@ -444,10 +457,12 @@ func (svc *AISessionsService) DetailDelta(ctx context.Context, request *AISessio
 		MessageCount: request.MessageCount,
 	}
 	delta, err := manager.LoadDelta(ctx, request.ID, aisessions.LoadDeltaOptions{
-		Summary:   summary,
-		Cursor:    request.Cursor,
-		BaseCount: request.MessageCount,
-		MaxBytes:  request.MaxBytes,
+		Summary:       summary,
+		Cursor:        request.Cursor,
+		BaseCount:     request.MessageCount,
+		MaxBytes:      request.MaxBytes,
+		LoadAll:       request.LoadAll,
+		MessageOffset: request.MessageOffset,
 	})
 	if err != nil {
 		return nil, err

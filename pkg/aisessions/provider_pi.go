@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -158,8 +159,8 @@ func (p *PiProvider) scanSnippet(tail []string) string {
 // scanTitle derives a display title from the entries of a pi session file.
 // Priority matches pi's own getSessionName() semantics:
 //
-//	1. latest session_info entry's name (explicit /name or --name) -> source_title
-//	2. first effective user message text                          -> first_user_message
+//  1. latest session_info entry's name (explicit /name or --name) -> source_title
+//  2. first effective user message text                          -> first_user_message
 //
 // Returns ("", "") when neither is found, so the caller falls back to the
 // project basename (or session id) via DisplayTitle. The forward pass breaks
@@ -276,6 +277,7 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 		raw := piRawEntry{id: id, parentID: strValue(value, "parentId")}
 		if strValue(value, "type") == "message" {
 			raw.msgs = piEntryMessages(value)
+			annotatePiEntryMessages(id, raw.msgs)
 		}
 		entries = append(entries, raw)
 	}
@@ -317,6 +319,40 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 		}
 	}
 	return messages, nil
+}
+
+// annotatePiEntryMessages stamps the stable EntryID/ItemKey pair onto every
+// display message an entry produced. pi JSONL entries carry their own `id`, and
+// one entry can split into a text message plus N tool anchors, so Seq (which
+// depends on how much of the file is loaded) is not a usable identity. The key
+// shape is "<entryId>:m<ordinal>" for the entry's own text and
+// "<entryId>:t<ordinal>" for the tool anchors; ordinals count emission order
+// inside the entry, so re-reading the same file yields identical keys.
+func annotatePiEntryMessages(entryID string, msgs []Message) {
+	if entryID == "" {
+		return
+	}
+	toolOrdinal := 0
+	textOrdinal := 0
+	for i := range msgs {
+		msgs[i].EntryID = entryID
+		if isToolCallAnchorText(msgs[i].Text) {
+			msgs[i].ItemKey = entryID + ":t" + strconv.Itoa(toolOrdinal)
+			toolOrdinal++
+			continue
+		}
+		msgs[i].ItemKey = entryID + ":m" + strconv.Itoa(textOrdinal)
+		textOrdinal++
+	}
+}
+
+// piToolCallItemKey mirrors annotatePiEntryMessages' tool-anchor numbering for
+// the ToolCall side, so a ToolCall and the Message that anchors it share one key.
+func piToolCallItemKey(entryID string, toolOrdinal int) string {
+	if entryID == "" {
+		return ""
+	}
+	return entryID + ":t" + strconv.Itoa(toolOrdinal)
 }
 
 // piExtractThinking joins the thinking blocks of a pi assistant message
@@ -450,6 +486,9 @@ func parsePiMessageDeltaLine(line []byte, seq int) ([]Message, bool) {
 	for i := range msgs {
 		msgs[i].Seq = seq + i
 	}
+	// Delta frames must carry EntryID/ItemKey too: without them the GUI falls
+	// back to Seq keys and every merge that shifts positions breaks anchors.
+	annotatePiEntryMessages(strValue(value, "id"), msgs)
 	return msgs, true
 }
 
@@ -507,6 +546,11 @@ func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]Tool
 		if !ok {
 			continue
 		}
+		// Tool anchors are numbered per entry, in the same order
+		// piScanAssistantTools numbers them, so a ToolCall's ItemKey matches the
+		// ItemKey of the Message that anchors it ("<entryId>:t0", ...).
+		entryID := strValue(value, "id")
+		toolOrdinal := 0
 		for _, item := range arr {
 			itemMap, ok := item.(map[string]any)
 			if !ok {
@@ -518,11 +562,14 @@ func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]Tool
 			if strValue(itemMap, "kind") == "bashExecution" || itemType == "bashExecution" {
 				pending = append(pending, piToolCallItem{
 					tc: ToolCall{
-						Seq:    len(pending) + 1,
-						Name:   "bash",
-						Output: strValue(itemMap, "bashOutput"),
+						Seq:     len(pending) + 1,
+						Name:    "bash",
+						Output:  strValue(itemMap, "bashOutput"),
+						EntryID: entryID,
+						ItemKey: piToolCallItemKey(entryID, toolOrdinal),
 					},
 				})
+				toolOrdinal++
 				continue
 			}
 			if !strings.EqualFold(itemType, "toolCall") {
@@ -542,9 +589,12 @@ func (p *PiProvider) LoadToolCalls(ctx context.Context, filePath string) ([]Tool
 					Name:    name,
 					Summary: summarizeToolInput(input),
 					Output:  strValue(itemMap, "output"),
+					EntryID: entryID,
+					ItemKey: piToolCallItemKey(entryID, toolOrdinal),
 				},
 				callID: strValue(itemMap, "id"),
 			})
+			toolOrdinal++
 		}
 	}
 	if err := scanner.Err(); err != nil {

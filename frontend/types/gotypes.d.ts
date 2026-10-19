@@ -77,6 +77,8 @@ declare global {
         cursor: SessionMessageCursor;
         maxBytes?: number;
         messageCount?: number;
+        loadAll?: boolean;
+        messageOffset?: number;
     };
 
     // aisessionsservice.AISessionsDetailRequest
@@ -86,6 +88,7 @@ declare global {
         refresh?: boolean;
         tail?: number;
         includeTools?: boolean;
+        loadAll?: boolean;
     };
 
     // aisessionsservice.AISessionsGenerateMetadataRequest
@@ -1664,6 +1667,8 @@ declare global {
     // aisessions.Message
     type Message = {
         seq: number;
+        entryId?: string;
+        itemKey?: string;
         role: string;
         text: string;
         model?: string;
@@ -1677,9 +1682,11 @@ declare global {
     type MessageDelta = {
         summary: SessionSummary;
         messages: Message[];
+        toolCalls?: ToolCall[];
         cursor: SessionMessageCursor;
         hasMore?: boolean;
         resetRequired?: boolean;
+        nextMessageOffset?: number;
     };
 
     // waveobj.MetaTSType
@@ -2183,6 +2190,8 @@ declare global {
         messages: Message[];
         toolCalls?: ToolCall[];
         cursor?: SessionMessageCursor;
+        hasMore?: boolean;
+        nextMessageOffset?: number;
     };
 
     // aisessions.SessionMessageCursor
@@ -2602,6 +2611,8 @@ declare global {
     // aisessions.ToolCall
     type ToolCall = {
         seq: number;
+        entryId?: string;
+        itemKey?: string;
         name: string;
         summary?: string;
         output?: string;

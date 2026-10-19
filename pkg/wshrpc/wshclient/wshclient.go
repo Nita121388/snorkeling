@@ -217,15 +217,15 @@ func ControllerInputCommand(w *wshutil.WshRpc, data wshrpc.CommandBlockInputData
 	return err
 }
 
-// command "controllerresync", wshserver.ControllerResyncCommand
-func ControllerResyncCommand(w *wshutil.WshRpc, data wshrpc.CommandControllerResyncData, opts *wshrpc.RpcOpts) error {
-	_, err := sendRpcRequestCallHelper[any](w, "controllerresync", data, opts)
+// command "controllerredraw", wshserver.ControllerRedrawCommand
+func ControllerRedrawCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "controllerredraw", data, opts)
 	return err
 }
 
-// command "controllerredraw", wshserver.ControllerRedrawCommand
-func ControllerRedrawCommand(w *wshutil.WshRpc, blockId string, opts *wshrpc.RpcOpts) error {
-	_, err := sendRpcRequestCallHelper[any](w, "controllerredraw", blockId, opts)
+// command "controllerresync", wshserver.ControllerResyncCommand
+func ControllerResyncCommand(w *wshutil.WshRpc, data wshrpc.CommandControllerResyncData, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "controllerresync", data, opts)
 	return err
 }
 

@@ -47,7 +47,15 @@ type SessionSummary struct {
 }
 
 type Message struct {
-	Seq       int    `json:"seq"`
+	Seq int `json:"seq"`
+	// EntryID is the provider entry id this message came from (pi JSONL entry id).
+	// Stable across re-reads of the same file, so it survives a detail refresh.
+	EntryID string `json:"entryId,omitempty"`
+	// ItemKey identifies one display message of one entry ("<entryId>:m0" for the
+	// entry's own text, "<entryId>:t0" for its first tool anchor). One pi entry can
+	// split into several messages, so positional Seq is not a safe identity:
+	// deltas and UI anchors must use ItemKey.
+	ItemKey   string `json:"itemKey,omitempty"`
 	Role      string `json:"role"`
 	Text      string `json:"text"`
 	Model     string `json:"model,omitempty"`
@@ -58,7 +66,11 @@ type Message struct {
 }
 
 type ToolCall struct {
-	Seq      int    `json:"seq"`
+	Seq int `json:"seq"`
+	// EntryID / ItemKey mirror the anchoring Message: the tool call that pairs with
+	// message ItemKey "<entryId>:t0" carries ItemKey "<entryId>:t0" itself.
+	EntryID  string `json:"entryId,omitempty"`
+	ItemKey  string `json:"itemKey,omitempty"`
 	Name     string `json:"name"`
 	Summary  string `json:"summary,omitempty"`
 	Output   string `json:"output,omitempty"`
@@ -70,6 +82,12 @@ type SessionDetail struct {
 	Messages  []Message            `json:"messages"`
 	ToolCalls []ToolCall           `json:"toolCalls,omitempty"`
 	Cursor    SessionMessageCursor `json:"cursor,omitempty"`
+	// HasMore is set by a LoadAll detail frame when the session has messages past
+	// NextMessageOffset; callers continue with DetailDelta + MessageOffset until it
+	// is false. Left unset (false) by the legacy Detail path.
+	HasMore bool `json:"hasMore,omitempty"`
+	// NextMessageOffset is the message index to resume a LoadAll stream from.
+	NextMessageOffset int `json:"nextMessageOffset,omitempty"`
 }
 
 type SessionTagSummary struct {
@@ -107,6 +125,10 @@ type MessageDeltaProvider interface {
 type LoadOptions struct {
 	Refresh      bool
 	IncludeTools bool
+	// LoadAll streams the whole session in frames: the first frame carries the
+	// EARLIEST messages plus HasMore/NextMessageOffset, and the caller keeps
+	// appending via LoadDeltaOptions.MessageOffset until HasMore is false.
+	LoadAll bool
 }
 
 type LoadDeltaOptions struct {
@@ -114,6 +136,13 @@ type LoadDeltaOptions struct {
 	Cursor    SessionMessageCursor
 	BaseCount int
 	MaxBytes  int64
+	// LoadAll switches DetailDelta from byte-cursor mode to LoadAll continuation
+	// mode: the canonical message list is sliced from MessageOffset (inclusive)
+	// instead of reading the file at Cursor.ByteOffset. Legacy callers leave it
+	// false and keep the byte-cursor behavior untouched.
+	LoadAll       bool
+	MessageOffset int
+	IncludeTools  bool
 }
 
 type SessionMessageCursor struct {
@@ -126,9 +155,12 @@ type SessionMessageCursor struct {
 type MessageDelta struct {
 	Summary       SessionSummary       `json:"summary"`
 	Messages      []Message            `json:"messages"`
+	ToolCalls     []ToolCall           `json:"toolCalls,omitempty"`
 	Cursor        SessionMessageCursor `json:"cursor"`
 	HasMore       bool                 `json:"hasMore,omitempty"`
 	ResetRequired bool                 `json:"resetRequired,omitempty"`
+	// NextMessageOffset is the resume index for a LoadAll stream (see SessionDetail).
+	NextMessageOffset int `json:"nextMessageOffset,omitempty"`
 }
 
 type ListOptions struct {

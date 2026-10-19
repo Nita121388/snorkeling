@@ -461,7 +461,7 @@ func (m *Manager) Refresh(ctx context.Context) (IndexStats, []error) {
 
 func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions) (SessionDetail, error) {
 	start := time.Now()
-	debugf("Manager.Load start id=%q refresh=%v includeTools=%v", identifier, opts.Refresh, opts.IncludeTools)
+	debugf("Manager.Load start id=%q refresh=%v includeTools=%v loadAll=%v", identifier, opts.Refresh, opts.IncludeTools, opts.LoadAll)
 	summary, err := m.resolveSession(ctx, identifier, opts.Refresh)
 	if err != nil {
 		debugf("Manager.Load resolve error id=%q duration=%s err=%v", identifier, time.Since(start), err)
@@ -475,16 +475,7 @@ func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions)
 		return SessionDetail{}, err
 	}
 	summary.MessageCount = readableMessageCount(messages)
-	detail := SessionDetail{
-		Summary:  summary,
-		Messages: messages,
-		Cursor: SessionMessageCursor{
-			ByteOffset: summary.Size,
-			FileSize:   summary.Size,
-			MTime:      summary.MTime,
-			LastSeq:    lastMessageSeq(messages),
-		},
-	}
+	var toolCalls []ToolCall
 	if opts.IncludeTools {
 		provider := providerBySource(m.Providers, summary.Source)
 		if provider == nil {
@@ -495,16 +486,41 @@ func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions)
 			// Pending live sessions may not have a file yet; skip tool parsing
 			// instead of failing the whole detail request.
 			if _, statErr := os.Stat(summary.FilePath); statErr == nil {
-				toolCalls, err := toolProvider.LoadToolCalls(ctx, summary.FilePath)
-				if err != nil {
-					debugf("Manager.Load tool calls error id=%q key=%q duration=%s err=%v", identifier, summary.Key, time.Since(start), err)
-					return SessionDetail{}, err
+				loadedToolCalls, toolErr := toolProvider.LoadToolCalls(ctx, summary.FilePath)
+				if toolErr != nil {
+					debugf("Manager.Load tool calls error id=%q key=%q duration=%s err=%v", identifier, summary.Key, time.Since(start), toolErr)
+					return SessionDetail{}, toolErr
 				}
-				detail.ToolCalls = toolCalls
+				toolCalls = loadedToolCalls
 			}
 		}
 	}
-	debugf("Manager.Load success id=%q key=%q messages=%d readable=%d toolCalls=%d duration=%s", identifier, summary.Key, len(messages), summary.MessageCount, len(detail.ToolCalls), time.Since(start))
+	detail := SessionDetail{
+		Summary:   summary,
+		Messages:  messages,
+		ToolCalls: toolCalls,
+		Cursor: SessionMessageCursor{
+			ByteOffset: summary.Size,
+			FileSize:   summary.Size,
+			MTime:      summary.MTime,
+			LastSeq:    lastMessageSeq(messages),
+		},
+	}
+	if opts.LoadAll {
+		// Full load streams frames: first frame = earliest content. Callers resume
+		// with LoadDelta(MessageOffset = len(messages)) until HasMore is false.
+		detail.HasMore = len(messages) > 0
+		detail.NextMessageOffset = len(messages)
+		// A full load must not emit the whole canonical list at once, so the first
+		// frame is cut to the same budget the delta frames use.
+		frame, next := frameLoadAllMessages(messages, 0, messageDeltaMaxBytes)
+		detail.Messages = frame
+		detail.NextMessageOffset = next
+		detail.HasMore = next < len(messages)
+		detail.ToolCalls = frameLoadAllToolCalls(toolCalls, messages, 0, next)
+	}
+	debugf("Manager.Load success id=%q key=%q messages=%d readable=%d toolCalls=%d loadAll=%v nextOffset=%d hasMore=%v duration=%s",
+		identifier, summary.Key, len(messages), summary.MessageCount, len(detail.ToolCalls), opts.LoadAll, detail.NextMessageOffset, detail.HasMore, time.Since(start))
 	return detail, nil
 }
 
@@ -516,6 +532,9 @@ func (m *Manager) LoadDelta(ctx context.Context, identifier string, opts LoadDel
 		if err != nil {
 			return MessageDelta{}, err
 		}
+	}
+	if opts.LoadAll {
+		return m.loadAllDelta(ctx, identifier, summary, opts)
 	}
 	provider := providerBySource(m.Providers, summary.Source)
 	if provider == nil {
@@ -551,6 +570,66 @@ func (m *Manager) LoadDelta(ctx context.Context, identifier string, opts LoadDel
 	mergedSummary.MessageCount = baseCount + readableMessageCount(delta.Messages)
 	delta.Summary = mergedSummary
 	return delta, nil
+}
+
+// loadAllDelta serves one frame of a LoadAll stream. Frames come from the
+// canonical message list (not the file byte cursor), so ids stay stable while
+// frames are appended: message.ItemKey is derived from the provider entry, not
+// from a byte position. The byte cursor is kept reporting "already at EOF" so a
+// caller that mixes both modes never rewinds.
+func (m *Manager) loadAllDelta(ctx context.Context, identifier string, summary SessionSummary, opts LoadDeltaOptions) (MessageDelta, error) {
+	start := time.Now()
+	messages, err := m.loadMessages(ctx, summary, false)
+	if err != nil {
+		debugf("Manager.loadAllDelta messages error id=%q key=%q duration=%s err=%v", identifier, summary.Key, time.Since(start), err)
+		return MessageDelta{}, err
+	}
+	var toolCalls []ToolCall
+	if opts.IncludeTools {
+		provider := providerBySource(m.Providers, summary.Source)
+		if provider == nil {
+			return MessageDelta{}, fmt.Errorf("no provider for source %q", summary.Source)
+		}
+		if toolProvider, ok := provider.(ToolCallProvider); ok {
+			if _, statErr := os.Stat(summary.FilePath); statErr == nil {
+				loadedToolCalls, toolErr := toolProvider.LoadToolCalls(ctx, summary.FilePath)
+				if toolErr != nil {
+					debugf("Manager.loadAllDelta tool calls error id=%q key=%q duration=%s err=%v", identifier, summary.Key, time.Since(start), toolErr)
+					return MessageDelta{}, toolErr
+				}
+				toolCalls = loadedToolCalls
+			}
+		}
+	}
+	summary.MessageCount = readableMessageCount(messages)
+	frame, next := frameLoadAllMessages(messages, opts.MessageOffset, opts.MaxBytes)
+	baseCount := opts.BaseCount
+	if baseCount <= 0 {
+		baseCount = summary.MessageCount
+	}
+	mergedSummary := summary
+	mergedSummary.MessageCount = baseCount
+	debugf("Manager.loadAllDelta success id=%q key=%q offset=%d frame=%d nextOffset=%d hasMore=%v duration=%s",
+		identifier, summary.Key, opts.MessageOffset, len(frame), next, next < len(messages), time.Since(start))
+	return MessageDelta{
+		Summary:           mergedSummary,
+		Messages:          frame,
+		ToolCalls:         frameLoadAllToolCalls(toolCalls, messages, opts.MessageOffset, next),
+		Cursor:            cursorAtEOF(summary),
+		HasMore:           next < len(messages),
+		NextMessageOffset: next,
+	}, nil
+}
+
+// cursorAtEOF reports a byte cursor positioned at the end of the file, so a
+// legacy byte-mode consumer of a LoadAll stream sees "nothing new" instead of
+// re-reading the whole file from offset 0.
+func cursorAtEOF(summary SessionSummary) SessionMessageCursor {
+	return SessionMessageCursor{
+		ByteOffset: summary.Size,
+		FileSize:   summary.Size,
+		MTime:      summary.MTime,
+	}
 }
 
 func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
