@@ -15,6 +15,12 @@ import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./common
 import { copyCommonText, insertOrCopyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
 import { computeEditorMaxHeight } from "./commontext-editor-size";
 import {
+    materializePastedImages,
+    pickPastedImages,
+    spliceTextAtRange,
+    type PasteImageInsertResult,
+} from "./commontext-paste-image";
+import {
     deleteCommonTextItem,
     filterCommonTextItemsByTags,
     getCommonTextItems,
@@ -833,6 +839,55 @@ const CommonTextComposeModal = memo(() => {
         }
     };
 
+    // 粘贴图片：Cmd/Ctrl+V 时若剪贴板里是 png/jpeg/gif/webp，接管这次粘贴——图片先落成
+    // 附件文件，再在 caret 处插入 markdown 图片引用。纯文本粘贴不进入这个分支（直接
+    // 放行给浏览器原生），所以既有文本插入/撤销行为完全不变。
+    // 落盘与插入是异步的：先记下粘贴瞬间的 caret 区间，等文件写好再落到同一个位置。
+    const handleEditorPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const images = pickPastedImages(event.clipboardData?.items ?? null);
+        if (images.length === 0) {
+            return;
+        }
+        event.preventDefault();
+        const target = event.currentTarget;
+        const start = target.selectionStart ?? target.value.length;
+        const end = target.selectionEnd ?? start;
+        fireAndForget(() => insertPastedImages(images, start, end));
+    };
+
+    const insertPastedImages = async (images: Blob[], start: number, end: number) => {
+        const pasted: PasteImageInsertResult = await materializePastedImages(images);
+        if (pasted.markdown !== "") {
+            // 用 setState 的函数式更新拿最新 editor：写盘期间用户可能已经改过文本，
+            // 用闭包里的旧 state.editor 会把这期间的输入抹掉。
+            setState((cur) => {
+                const next = spliceTextAtRange(cur.editor, start, end, pasted.markdown);
+                return {
+                    ...cur,
+                    editor: next.text,
+                    editorCaret: next.caret,
+                    editorFilterDismissed: false,
+                    selectedIndex: 0,
+                };
+            });
+            // 图片引用是块级内容，粘完把 editor 撑开展示（折叠态只有一行高，看不见引用）。
+            setEditorExpanded(true);
+            const editor = editorRef.current;
+            if (editor != null) {
+                requestAnimationFrame(() => {
+                    editor.focus();
+                    const caret = Math.min(start + pasted.markdown.length, editor.value.length);
+                    editor.setSelectionRange(caret, caret);
+                });
+            }
+        }
+        if (pasted.failures.length > 0) {
+            setStatus(pasted.failures.join("; "), "err");
+        } else if (pasted.written > 0) {
+            setStatus(pasted.written === 1 ? "Pasted image" : `Pasted ${pasted.written} images`, "ok");
+        }
+    };
+
     const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
         const isComposing =
             isComposingRef.current || event.nativeEvent?.isComposing || event.keyCode == 229 || event.key === "Process";
@@ -941,6 +996,7 @@ const CommonTextComposeModal = memo(() => {
                         }, 600);
                     }}
                     onSelect={(event) => updateEditorCaret(event.currentTarget)}
+                    onPaste={handleEditorPaste}
                     onKeyDown={handleEditorKeyDown}
                     onCompositionStart={handleCompositionStart}
                     onCompositionEnd={handleCompositionEnd}
