@@ -1489,20 +1489,29 @@ const Markdown = ({
                     // Same block or no target: let the overlay own this click.
                     return;
                 }
-                // Different block: commit current, then focus the new one.
+                // Different block: dismiss current immediately, then open new one.
+                // Using dismiss (not commit) + immediate beginEdit for responsiveness.
+                // Content changes will be lost unless user explicitly saves.
                 e.preventDefault();
                 e.stopPropagation();
                 const caretOffset = computeRenderedOffset(e.clientX, e.clientY, resolved.target);
-                inlineEdit.commit();
-                focusEditedLine(
-                    resolved.line,
-                    undefined,
-                    false,
-                    undefined,
-                    undefined,
-                    resolved.blockKind,
-                    caretOffset ?? undefined
-                );
+                // Immediately dismiss the current editor (synchronous, no rAF delay)
+                inlineEdit.dismiss();
+                // Immediately try to open the new editor (single rAF for DOM stability)
+                requestAnimationFrame(() => {
+                    const viewport = getViewportEl();
+                    const el = viewport?.querySelector<HTMLElement>(
+                        `.markdown-render-root [data-source-line="${resolved.line}"]`
+                    );
+                    if (el != null) {
+                        inlineEdit.beginEdit(
+                            resolved.blockKind,
+                            resolved.line,
+                            el,
+                            caretOffset ?? undefined
+                        );
+                    }
+                });
                 return;
             }
             if (e.button !== 0) {

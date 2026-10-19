@@ -870,7 +870,7 @@
     min-height: 1em;
     box-sizing: border-box;
     border: 0;
-    outline: none;
+    outline: none !important;
     background: transparent;
     cursor: text;
     overflow: hidden;

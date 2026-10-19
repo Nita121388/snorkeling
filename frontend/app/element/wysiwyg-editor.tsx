@@ -526,19 +526,10 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                     return;
                 }
 
-                if (offset != null && offset > 0) {
+                if (offset != null && offset >= 0) {
                     placeCaretByTextOffset(root, offset);
                 } else {
                     root.focus();
-                    // Place caret at end.
-                    const sel = window.getSelection();
-                    if (sel != null) {
-                        const r = document.createRange();
-                        r.selectNodeContents(root);
-                        r.collapse(false);
-                        sel.removeAllRanges();
-                        sel.addRange(r);
-                    }
                 }
             },
 
