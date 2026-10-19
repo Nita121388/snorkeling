@@ -2,7 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getApi } from "@/app/store/global";
+import { globalStore } from "@/app/store/jotaiStore";
 import { isBlank, isLocalConnName } from "@/util/util";
+import {
+    getDefaultHtmlOpenModeStorage,
+    isHtmlPreviewPath,
+    resolveHtmlOpenMode,
+    writeHtmlOpenModeMap,
+    type HtmlOpenMode,
+} from "./preview-text-modes";
+import { htmlOpenModePrefsAtom } from "./preview-text-modes-store";
 import type { PreviewModel } from "./preview-model";
 
 const MaxFileSize = 1024 * 1024 * 10; // 10MB
@@ -101,6 +110,21 @@ export function shouldOpenWithDefaultApp(fileInfo: FileInfo, conn: string): bool
     return !canPreviewFileInfo(fileInfo);
 }
 
+/**
+ * `.html` remembered as "System Default App" makes a normal open go to the OS browser.
+ * The other two modes fall through to the normal in-app open, where `getSpecializedView`
+ * picks the source (`codeedit`) or sandboxed render (`htmlpreview`) view.
+ */
+export function shouldOpenHtmlWithDefaultApp(fileInfo: FileInfo, conn: string): boolean {
+    if (fileInfo == null || fileInfo.isdir || isBlank(fileInfo.path) || !isLocalConnName(conn)) {
+        return false;
+    }
+    if (!isHtmlPreviewPath(fileInfo.path)) {
+        return false;
+    }
+    return resolveHtmlOpenMode(getDefaultHtmlOpenModeStorage(), fileInfo.path) === "system";
+}
+
 type OpenPreviewEntryOptions = {
     forceNewBlock?: boolean;
     directoryPath?: string | null;
@@ -112,7 +136,7 @@ export async function openPreviewEntry(
     conn: string,
     options?: OpenPreviewEntryOptions
 ): Promise<void> {
-    if (shouldOpenWithDefaultApp(fileInfo, conn)) {
+    if (shouldOpenWithDefaultApp(fileInfo, conn) || shouldOpenHtmlWithDefaultApp(fileInfo, conn)) {
         getApi().openNativePath(fileInfo.path);
         return;
     }
@@ -122,4 +146,30 @@ export async function openPreviewEntry(
         directoryPath: targetIsDir ? fileInfo.path : options?.directoryPath,
         pathIsDir: targetIsDir,
     });
+}
+
+/**
+ * Apply one of the three explicit `.html` open modes from a context menu / toolbar.
+ * Remembers it for the extension first, then performs the mode:
+ *   - `system`  -> OS default app, no block involved
+ *   - `source` / `preview` -> normal in-app open; the specialized view picks the renderer
+ */
+export async function openHtmlEntryWithMode(
+    model: PreviewModel,
+    fileInfo: FileInfo,
+    conn: string,
+    mode: HtmlOpenMode,
+    options?: OpenPreviewEntryOptions
+): Promise<void> {
+    const next = writeHtmlOpenModeMap(getDefaultHtmlOpenModeStorage(), fileInfo.path, mode);
+    if (next != null) {
+        globalStore.set(htmlOpenModePrefsAtom, next);
+    }
+    if (mode === "system") {
+        if (isLocalConnName(conn)) {
+            getApi().openNativePath(fileInfo.path);
+        }
+        return;
+    }
+    await openPreviewEntry(model, fileInfo, conn, options);
 }

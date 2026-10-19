@@ -44,6 +44,18 @@ import { createRef } from "react";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
 import { isNoiseUsagePath, resolvePathUsageKind } from "./path-usage";
+import {
+    formatPreviewByteSize,
+    getHtmlOpenModeEntry,
+    HtmlOpenModeEntries,
+    isHtmlPreviewPath,
+    isTextPreviewOversize,
+    resolveHtmlOpenModeFromMap,
+    resolveTextPreviewKind,
+    TextPreviewMaxBytes,
+    type HtmlOpenMode,
+} from "./preview-text-modes";
+import { htmlOpenModePrefsAtom, persistHtmlOpenMode } from "./preview-text-modes-store";
 import { recordInitialPathUsage, recordPathUsage } from "./path-usage-store";
 import { runMarkdownExport, availableExportProviders } from "./plugins/export/export-runner";
 import { isMarkdownFile } from "./plugins/export/pdf-export";
@@ -419,6 +431,7 @@ export class PreviewModel implements ViewModel {
     hideViewName: Atom<boolean>;
     previewTextRef: React.RefObject<HTMLDivElement>;
     editMode: Atom<boolean>;
+    htmlOpenMode: Atom<HtmlOpenMode>;
     canPreview: PrimitiveAtom<boolean>;
     specializedView: Atom<Promise<{ specializedView?: string; errorStr?: string }>>;
     loadableSpecializedView: Atom<Loadable<{ specializedView?: string; errorStr?: string }>>;
@@ -634,6 +647,11 @@ export class PreviewModel implements ViewModel {
             const blockData = get(this.blockAtom);
             return blockData?.meta?.edit ?? false;
         });
+        // `.html` 打开方式偏好：按扩展名记忆（localStorage），默认内部预览。
+        // 依赖 htmlOpenModePrefsAtom，因此 setHtmlOpenMode() 会驱动 specializedView 重算。
+        this.htmlOpenMode = atom<HtmlOpenMode>((get) => {
+            return resolveHtmlOpenModeFromMap(get(htmlOpenModePrefsAtom), get(this.metaFilePath));
+        });
         this.viewName = atom("Preview");
         this.hideViewName = atom(true);
         this.viewText = atom((get) => {
@@ -726,6 +744,22 @@ export class PreviewModel implements ViewModel {
                         fireAndForget(() => this.toggleDirectoryDisplayMode());
                     },
                     className: "preview-list-mode-toggle",
+                });
+            }
+            const htmlOpenMode = get(this.htmlOpenMode);
+            const htmlModeEntry = getHtmlOpenModeEntry(htmlOpenMode);
+            const htmlModeMenuItems: MenuItem[] = HtmlOpenModeEntries.map((entry) => ({
+                label: `${htmlOpenMode === entry.id ? "✓ " : ""}${entry.label}`,
+                onClick: () => fireAndForget(() => this.setHtmlOpenMode(entry.id)),
+            }));
+            if (!isDirectoryView && !isCeView && isHtmlPreviewPath(get(this.metaFilePath))) {
+                viewTextChildren.push({
+                    elemtype: "menubutton",
+                    text: htmlModeEntry.label,
+                    icon: htmlModeEntry.icon,
+                    title: "Open HTML files with",
+                    className: "compact-open-target-menubutton",
+                    items: htmlModeMenuItems,
                 });
             }
             if (isDirectoryView || explorerActive) {
@@ -855,6 +889,20 @@ export class PreviewModel implements ViewModel {
                     zone: "reveal",
                     click: () => {
                         globalStore.set(this.showHiddenFiles, (prev) => !prev);
+                    },
+                });
+            }
+            if (!isCeView && isHtmlPreviewPath(get(this.metaFilePath))) {
+                const currentHtmlEntry = getHtmlOpenModeEntry(get(this.htmlOpenMode));
+                buttons.push({
+                    elemtype: "iconbutton",
+                    icon: currentHtmlEntry.icon,
+                    title: `HTML Open Mode: ${currentHtmlEntry.label} (double-click remembers this)`,
+                    zone: "reveal",
+                    click: () => {
+                        const order: HtmlOpenMode[] = ["source", "preview", "system"];
+                        const nextMode = order[(order.indexOf(get(this.htmlOpenMode)) + 1) % order.length];
+                        fireAndForget(() => this.setHtmlOpenMode(nextMode));
                     },
                 });
             }
@@ -1421,6 +1469,22 @@ export class PreviewModel implements ViewModel {
                 return { specializedView: "codeedit" };
             }
             return { specializedView: "markdown" };
+        }
+        // 文本 lane：.txt / .log / text/plain 与 .html 需要显式路由，不能依赖下面
+        // isTextFile() 的兜底（那条兜底同时罩住所有源码文件，导致 .txt 没有只读文本语义、
+        // .html 也没有源码/预览/外部应用三选一）。
+        if (isTextPreviewOversize(fileInfo.size, TextPreviewMaxBytes)) {
+            return { errorStr: `File Too Large for Text Preview (${formatPreviewByteSize(fileInfo.size)} > ${formatPreviewByteSize(TextPreviewMaxBytes)} Max)` };
+        }
+        const textKind = resolveTextPreviewKind(fileInfo.path ?? fileName, mimeType);
+        if (textKind != null) {
+            if (textKind === "html" && !editMode && getFn(this.htmlOpenMode) === "preview") {
+                // 内部渲染：沙箱 iframe（见 preview-streaming.tsx HtmlPreviewView）。
+                return { specializedView: "htmlpreview" };
+            }
+            // 只读文本视图：复用既有 codeedit 视图（Monaco readonly / 字号 / 搜索 / 换行
+            // 都与源码视图一致），不另造第二个文本查看器。.html 的 source 模式也走这里。
+            return { specializedView: "codeedit" };
         }
         if (isTextFile(mimeType) || fileInfo.size == 0) {
             return { specializedView: "codeedit" };
@@ -2019,6 +2083,22 @@ export class PreviewModel implements ViewModel {
         await this.env.services.object.UpdateObjectMeta(blockOref, updateMeta);
     }
 
+    /**
+     * Remember the open mode for this file's extension and (for `system`) open it now.
+     * Source/preview need no action: the `htmlOpenMode` atom drives `specializedView`.
+     */
+    async setHtmlOpenMode(mode: HtmlOpenMode): Promise<void> {
+        const filePath = (await globalStore.get(this.statFilePath)) ?? globalStore.get(this.metaFilePath);
+        persistHtmlOpenMode(filePath, mode);
+        if (mode !== "system" || isBlank(filePath)) {
+            return;
+        }
+        const conn = globalStore.get(this.connectionImmediate);
+        if (isLocalConnName(conn)) {
+            getApi().openNativePath(filePath);
+        }
+    }
+
     async setEditMode(edit: boolean) {
         const blockMeta = globalStore.get(this.blockAtom)?.meta;
         const blockOref = WOS.makeORef("block", this.blockId);
@@ -2440,6 +2520,18 @@ export class PreviewModel implements ViewModel {
         menuItems.push({ type: "separator" });
         const finfo = jotaiLoadableValue(globalStore.get(this.loadableFileInfo), null);
         addOpenMenuItems(menuItems, globalStore.get(this.connectionImmediate), finfo);
+        if (finfo != null && !finfo.isdir && isHtmlPreviewPath(finfo.path)) {
+            const currentMode = getHtmlOpenMode(finfo.path);
+            menuItems.push({ type: "separator" });
+            for (const entry of HtmlOpenModeEntries) {
+                menuItems.push({
+                    label: `HTML: ${entry.label}`,
+                    type: "radio",
+                    checked: currentMode === entry.id,
+                    click: () => fireAndForget(() => this.setHtmlOpenMode(entry.id)),
+                });
+            }
+        }
         if (isNoteBlock) {
             menuItems.push({ type: "separator" });
             menuItems.push({

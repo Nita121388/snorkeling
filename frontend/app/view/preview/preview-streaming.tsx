@@ -75,4 +75,35 @@ function StreamingPreview({ model }: SpecializedViewProps) {
     return <CenteredDiv>Preview Not Supported</CenteredDiv>;
 }
 
-export { StreamingPreview };
+/**
+ * Internal HTML preview.
+ *
+ * Reuses the existing `/wave/stream-file` endpoint (same mechanism as the PDF branch above)
+ * instead of reading + injecting the file, so no new file-serving path is added.
+ *
+ * `sandbox=""` is an EMPTY sandbox: scripts, forms, popups, top-navigation and same-origin
+ * access are all denied, and the frame gets a unique opaque origin. Page scripts therefore
+ * cannot reach the app's context. For the same reason this cannot use a remote URL
+ * (`allow-same-origin` must never be combined with `allow-scripts`).
+ */
+function HtmlPreviewView({ model }: SpecializedViewProps) {
+    const conn = useAtomValue(model.connection);
+    const fileInfo = useAtomValue(model.statFile);
+    const remotePath = formatRemoteUri(fileInfo.path, conn);
+    const usp = new URLSearchParams();
+    usp.set("path", remotePath);
+    const streamingUrl = `${getWebServerEndpoint()}/wave/stream-file?${usp.toString()}`;
+    return (
+        <div className="flex flex-row h-full w-full overflow-hidden">
+            <iframe
+                className="w-full h-full border-0 bg-white"
+                title="HTML Preview (sandboxed)"
+                sandbox=""
+                referrerPolicy="no-referrer"
+                src={streamingUrl}
+            />
+        </div>
+    );
+}
+
+export { HtmlPreviewView, StreamingPreview };

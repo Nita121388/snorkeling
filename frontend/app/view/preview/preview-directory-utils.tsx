@@ -25,6 +25,8 @@ import {
 import { type PreviewModel } from "./preview-model";
 import { makeRelativePathForCopy } from "./preview-paths";
 import { isWindowsDrivesPath } from "./preview-windows-drives";
+import { getHtmlOpenMode, HtmlOpenModeEntries, isHtmlPreviewPath } from "./preview-text-modes";
+import { openHtmlEntryWithMode } from "./preview-open";
 
 export const recursiveError = "recursive flag must be set for directory operations";
 export const overwriteError = "set overwrite flag to delete the existing file";
@@ -854,6 +856,20 @@ export async function makeDirectoryEntryMenuItems(
         openInCurrentBlock: options.openInCurrentBlock,
         openInNewBlock: options.openInNewBlock,
     });
+    // `.html`: the three explicit open modes. Picking one also remembers it for the
+    // extension, so the next double-click reuses it.
+    if (!finfo.isdir && isHtmlPreviewPath(finfo.path)) {
+        menu.push({ type: "separator" });
+        const currentMode = getHtmlOpenMode(finfo.path);
+        for (const entry of HtmlOpenModeEntries) {
+            menu.push({
+                label: `HTML: ${entry.label}`,
+                type: "radio",
+                checked: currentMode === entry.id,
+                click: () => fireAndForget(() => openHtmlEntryWithMode(model, finfo, conn, entry.id, options)),
+            });
+        }
+    }
     // Pin / Unpin / Set as Tab Default for directories
     if (finfo.isdir) {
         menu.push({ type: "separator" });

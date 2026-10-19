@@ -17,7 +17,7 @@ import { PreviewExplorer } from "./preview-explorer";
 import { MarkdownLivePreview, MarkdownPreview } from "./preview-markdown";
 import type { PreviewModel } from "./preview-model";
 import { PreviewPathIsDirMetaKey } from "./preview-navigation";
-import { StreamingPreview } from "./preview-streaming";
+import { HtmlPreviewView, StreamingPreview } from "./preview-streaming";
 import { getPreviewPluginById } from "./preview-plugin-registry";
 import { registerBaseViewPlugin } from "./plugins/base-view/base-view-plugin";
 import { registerMdPropertiesPlugin } from "./plugins/md-properties/md-properties-plugin";
@@ -32,6 +32,7 @@ export type SpecializedViewProps = {
 
 const SpecializedViewMap: { [view: string]: ({ model }: SpecializedViewProps) => React.JSX.Element } = {
     streaming: StreamingPreview,
+    htmlpreview: HtmlPreviewView,
     markdown: MarkdownPreview,
     markdownlivepreview: MarkdownLivePreview,
     codeedit: CodeEditPreview,
