@@ -592,6 +592,9 @@
                     display: flex;
                     flex-shrink: 0;
                     justify-content: flex-end;
+                    // 固定 2px 间距：pinned 区按钮宽度固定（24px），间距必须由容器来保证，
+                    // 否则徽标/变宽内容会挤到相邻的 Close 按钮上。
+                    column-gap: 2px;
 
                     // ── reveal 区: 默认隐藏, 悬浮才显示 ──
                     .wave-iconbutton.end-icon-reveal {

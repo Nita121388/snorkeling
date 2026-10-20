@@ -103,11 +103,7 @@ export function RefreshStatusIcon({
                     )}
                     aria-label={cfg.ariaLabel}
                 />
-                {status === "autoEnabled" && autoRefreshIntervalMs && autoRefreshIntervalMs > 0 && (
-                    <span className="rounded bg-accent/10 px-1 py-px text-[9px] font-medium leading-none text-accent">
-                        Auto
-                    </span>
-                )}
+
             </span>
         </Tooltip>
     );
