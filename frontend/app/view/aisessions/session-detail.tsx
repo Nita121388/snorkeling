@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { type AISessionsServiceType } from "@/app/store/services";
 import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { Modal } from "@/app/modals/modal";
 import { getWebServerEndpoint } from "@/util/endpoints";
@@ -12,6 +13,8 @@ import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { MessageCard, ToolCallRow } from "./session-message";
+import { SubagentCard } from "./subagent-card";
+import { openAISessionDetailFromList } from "./session-detail-block";
 import { SessionDetailSkeleton } from "./session-detail-skeleton";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "@/app/view/session-outline-rail";
@@ -54,6 +57,9 @@ const RenameTitleInputClass =
     "h-6 min-w-0 flex-1 rounded border border-accent bg-surface px-1.5 text-sm font-medium text-primary outline-none";
 
 export type SessionDetailController = {
+    // 可选：供子代理折叠卡片加载子会话内容 / 打开子会话块。
+    service?: AISessionsServiceType;
+    blockId?: string;
     loadDetail: (session: SessionSummary, refresh?: boolean) => Promise<void>;
     loadDetailDelta?: (reason?: "manual" | "bottom") => Promise<boolean>;
     loadDetailTools: (refresh?: boolean) => Promise<boolean>;
@@ -750,6 +756,49 @@ export function SessionDetailPane({
         setExpandedToolCalls((current) => ({ ...current, [seq]: !current[seq] }));
     }, []);
 
+    // 子代理折叠：detail 命中 subagent 派发时，按 itemKey 渲染 SubagentCard。
+    // 只在 detail 已就绪时拉一次，避免每次 delta 刷新都打后端。
+    const subagentSessionId = detail?.summary?.key ?? "";
+    const [subagentFold, setSubagentFold] = useState<AISessionsSubagentFoldResponse | null>(null);
+    useEffect(() => {
+        if (model.service == null || subagentSessionId === "") {
+            setSubagentFold(null);
+            return;
+        }
+        let cancelled = false;
+        model.service
+            .SubagentFold({ id: subagentSessionId, connection })
+            .then((result) => {
+                if (!cancelled) {
+                    setSubagentFold(result);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setSubagentFold(null);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [model.service, subagentSessionId, connection]);
+    const subagentMatchesByKey = useMemo(() => {
+        const matches = subagentFold?.matches ?? [];
+        const byKey = new Map<string, SubagentMatch>();
+        for (const match of matches) {
+            if (match.call.itemKey) {
+                byKey.set(match.call.itemKey, match);
+            }
+        }
+        return byKey;
+    }, [subagentFold]);
+    // 只有 subagent 工具行才查折叠数据；其余工具保持原卡片。
+    const subagentMatchFor = useCallback(
+        (item: { toolCall: ToolCall }) =>
+            item.toolCall.name === "subagent" ? subagentMatchesByKey.get(item.toolCall.itemKey ?? "") : undefined,
+        [subagentMatchesByKey]
+    );
+
     const jumpToMessage = useCallback(
         (seq: number) => {
             if (messageRefs.current[seq]) {
@@ -1145,6 +1194,20 @@ export function SessionDetailPane({
                                                     groupStart={isGroupStart}
                                                     registerRef={(node) => {
                                                         messageRefs.current[item.message.seq] = node;
+                                                    }}
+                                                />
+                                            ) : subagentMatchFor(item) != null && model.service != null ? (
+                                                <SubagentCard
+                                                    key={`subagent-${item.anchorSeq}-${item.toolCall.seq}`}
+                                                    match={subagentMatchFor(item)!}
+                                                    service={model.service}
+                                                    connection={connection || undefined}
+                                                    onOpenSession={(sessionKey) => {
+                                                        if (model.blockId) {
+                                                            void openAISessionDetailFromList(sessionKey, model.blockId, {
+                                                                forceNewBlock: true,
+                                                            });
+                                                        }
                                                     }}
                                                 />
                                             ) : (
