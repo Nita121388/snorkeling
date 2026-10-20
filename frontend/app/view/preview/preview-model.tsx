@@ -54,7 +54,7 @@ import {
     TextPreviewMaxBytes,
     type HtmlOpenMode,
 } from "./preview-text-modes";
-import { htmlOpenModePrefsAtom, persistHtmlOpenMode } from "./preview-text-modes-store";
+import { getHtmlOpenMode, htmlOpenModePrefsAtom, setHtmlOpenMode } from "./preview-text-modes-store";
 import { recordInitialPathUsage, recordPathUsage } from "./path-usage-store";
 import { runMarkdownExport, availableExportProviders } from "./plugins/export/export-runner";
 import { isMarkdownFile } from "./plugins/export/pdf-export";
@@ -2094,7 +2094,7 @@ export class PreviewModel implements ViewModel {
      */
     async setHtmlOpenMode(mode: HtmlOpenMode): Promise<void> {
         const filePath = (await globalStore.get(this.statFilePath)) ?? globalStore.get(this.metaFilePath);
-        persistHtmlOpenMode(filePath, mode);
+        setHtmlOpenMode(filePath, mode);
         if (mode !== "system" || isBlank(filePath)) {
             return;
         }

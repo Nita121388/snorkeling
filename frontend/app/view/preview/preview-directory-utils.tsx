@@ -25,7 +25,9 @@ import {
 import { type PreviewModel } from "./preview-model";
 import { makeRelativePathForCopy } from "./preview-paths";
 import { isWindowsDrivesPath } from "./preview-windows-drives";
-import { getHtmlOpenMode, HtmlOpenModeEntries, isHtmlPreviewPath } from "./preview-text-modes";
+import { HtmlOpenModeEntries, isHtmlPreviewPath } from "./preview-text-modes";
+// getHtmlOpenMode 定义在 -store（依赖 jotai 的 htmlOpenModePrefsAtom），不在 preview-text-modes。
+import { getHtmlOpenMode } from "./preview-text-modes-store";
 import { openHtmlEntryWithMode } from "./preview-open";
 
 export const recursiveError = "recursive flag must be set for directory operations";
