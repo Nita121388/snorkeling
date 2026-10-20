@@ -19,7 +19,12 @@ body {
     background: rgb(from var(--main-bg-color) r g b / var(--window-opacity));
     -webkit-font-smoothing: auto;
     backface-visibility: hidden;
-    transform: translateZ(0);
+    // 不要给 body 加 transform（例如旧的 translateZ(0)）：transform 会
+    // 让 body 成为 containing block，`.tile-layout` 里 `position: fixed`
+    // 的 .overlay-container / .placeholder-container（非拖拽时被移到
+    // top:10000px）就改为相对 body 定位，把 body.scrollHeight 撑到 10000+px。
+    // 浏览器为保住滚动锚点会把 body.scrollTop 设成非零，于是 #main 被整体
+    // 上移、底部空出一道缝。现代 Chrome 无需该合成提示。
 }
 
 :read-write {
