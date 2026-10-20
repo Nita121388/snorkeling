@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1347,46 +1346,60 @@ func (idx *SQLiteIndex) GetSession(ctx context.Context, identifier string) (Sess
 	if identifier == "" {
 		return SessionSummary{}, fmt.Errorf("session id is required")
 	}
-	var rows []sqliteSessionRow
-	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing FROM ai_sessions WHERE missing = 0`)
-	if err != nil {
+
+	// 1) 主键精确命中。GetSession 在 Note/Tag/Mark 等元数据写入路径上被高频调用，
+	//    原先无条件 SELECT 全表再内存匹配，会话量大时会明显拖慢写入。key 是主键，
+	//    绝大多数调用都能在这里一次索引查询返回。
+	var row sqliteSessionRow
+	err := idx.db.GetContext(ctx, &row, `SELECT `+sessionSummaryColumns+` FROM ai_sessions WHERE key = ? AND missing = 0`, identifier)
+	if err == nil {
+		summary := row.summary()
+		if err := idx.ApplyMeta(ctx, &summary); err != nil {
+			return SessionSummary{}, err
+		}
+		return summary, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return SessionSummary{}, err
 	}
-	var matches []SessionSummary
-	for _, row := range rows {
-		if ctx.Err() != nil {
-			return SessionSummary{}, ctx.Err()
-		}
+
+	// 2) id 精确命中（前端有时只传裸 id 而不是带 source 的 key）。
+	err = idx.db.GetContext(ctx, &row, `SELECT `+sessionSummaryColumns+` FROM ai_sessions WHERE id = ? AND missing = 0 ORDER BY updated_at DESC LIMIT 1`, identifier)
+	if err == nil {
 		summary := row.summary()
-		if summary.Key == identifier || summary.ID == identifier || strings.HasPrefix(summary.ID, identifier) {
-			if err := idx.ApplyMeta(ctx, &summary); err != nil {
-				return SessionSummary{}, err
-			}
-			matches = append(matches, summary)
+		if err := idx.ApplyMeta(ctx, &summary); err != nil {
+			return SessionSummary{}, err
 		}
+		return summary, nil
 	}
-	if len(matches) == 0 {
+	if !errors.Is(err, sql.ErrNoRows) {
+		return SessionSummary{}, err
+	}
+
+	// 3) id 前缀命中（保留旧的宽松行为）。多候选时报歧义，不猜。
+	var rows []sqliteSessionRow
+	if err := idx.db.SelectContext(ctx, &rows, `SELECT `+sessionSummaryColumns+` FROM ai_sessions WHERE missing = 0 AND id LIKE ? ESCAPE '\' ORDER BY updated_at DESC`, escapeLikePrefix(identifier)); err != nil {
+		return SessionSummary{}, err
+	}
+	if len(rows) == 0 {
 		return SessionSummary{}, fmt.Errorf("session not found: %s", identifier)
 	}
-	sort.SliceStable(matches, func(i, j int) bool {
-		if matches[i].Key == identifier {
-			return true
-		}
-		if matches[j].Key == identifier {
-			return false
-		}
-		if matches[i].ID == identifier {
-			return true
-		}
-		if matches[j].ID == identifier {
-			return false
-		}
-		return summarySortTime(matches[i]) > summarySortTime(matches[j])
-	})
-	if len(matches) > 1 && matches[0].ID != identifier && matches[0].Key != identifier {
-		return SessionSummary{}, fmt.Errorf("ambiguous session id prefix %q (%d matches)", identifier, len(matches))
+	if len(rows) > 1 {
+		return SessionSummary{}, fmt.Errorf("ambiguous session id prefix %q (%d matches)", identifier, len(rows))
 	}
-	return matches[0], nil
+	summary := rows[0].summary()
+	if err := idx.ApplyMeta(ctx, &summary); err != nil {
+		return SessionSummary{}, err
+	}
+	return summary, nil
+}
+
+const sessionSummaryColumns = `key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing`
+
+// escapeLikePrefix 把 LIKE 前匹配的通配符转义，避免 identifier 里的 % / _ 被当成通配符。
+func escapeLikePrefix(prefix string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(prefix) + "%"
 }
 
 type sqliteSessionRow struct {

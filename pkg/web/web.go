@@ -32,6 +32,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/service"
 	"github.com/wavetermdev/waveterm/pkg/util/fileutil"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 )
@@ -59,6 +60,36 @@ const HttpReadTimeout = 5 * time.Second
 const HttpWriteTimeout = 21 * time.Second
 const HttpMaxHeaderBytes = 60000
 const HttpTimeoutDuration = 21 * time.Second
+
+// web:servicetimeoutms 的边界。超时只用于兜底挂死的非流式请求；大 JSONL 会话详情
+// 解析确实可能超过 21s，因此允许放宽到 60s，但不允许无上限（那会让挂死请求长期占用连接）。
+const HttpServiceTimeoutMinMs = 1000
+const HttpServiceTimeoutMaxMs = 60_000
+
+// serviceTimeoutDuration 解析当前生效的 /wave/ 非流式路由超时。
+// 优先读 settings 的 web:servicetimeoutms（毫秒），未设置/非法时回落默认 21s，
+// 并夹在 [1s, 60s] 之间。
+func serviceTimeoutDuration() time.Duration {
+	configured := wconfig.GetWatcher().GetFullConfig().Settings.WebServiceTimeoutMs
+	if configured == nil {
+		return HttpTimeoutDuration
+	}
+	return clampServiceTimeoutMs(*configured)
+}
+
+// clampServiceTimeoutMs 把配置的毫秒值夹到合法区间；非正值视为非法，回落默认值。
+func clampServiceTimeoutMs(ms int64) time.Duration {
+	if ms <= 0 {
+		return HttpTimeoutDuration
+	}
+	if ms < HttpServiceTimeoutMinMs {
+		ms = HttpServiceTimeoutMinMs
+	}
+	if ms > HttpServiceTimeoutMaxMs {
+		ms = HttpServiceTimeoutMaxMs
+	}
+	return time.Duration(ms) * time.Millisecond
+}
 
 const WSStateReconnectTime = 30 * time.Second
 const WSStatePacketChSize = 20
@@ -514,8 +545,9 @@ func RunWebServer(listener net.Listener) {
 	vdomRouter := mux.NewRouter()
 	vdomRouter.HandleFunc("/vdom/{uuid}/{path:.*}", WebFnWrap(WebFnOpts{AllowCaching: true}, handleVDom))
 
-	gr.PathPrefix("/wave/").Handler(http.TimeoutHandler(waveRouter, HttpTimeoutDuration, "Timeout"))
-	gr.PathPrefix("/vdom/").Handler(http.TimeoutHandler(vdomRouter, HttpTimeoutDuration, "Timeout"))
+	serviceTimeout := serviceTimeoutDuration()
+	gr.PathPrefix("/wave/").Handler(http.TimeoutHandler(waveRouter, serviceTimeout, "Timeout"))
+	gr.PathPrefix("/vdom/").Handler(http.TimeoutHandler(vdomRouter, serviceTimeout, "Timeout"))
 
 	// Other routes without timeout
 	gr.PathPrefix(schemaPrefix).Handler(http.StripPrefix(schemaPrefix, schema.GetSchemaHandler()))

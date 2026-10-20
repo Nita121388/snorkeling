@@ -649,7 +649,7 @@ func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) 
 }
 
 func (m *Manager) Mark(ctx context.Context, identifier string, marked bool) (SessionSummary, error) {
-	summary, err := m.resolveSession(ctx, identifier, false)
+	summary, err := m.resolveSessionForMetaWrite(ctx, identifier)
 	if err != nil {
 		return SessionSummary{}, err
 	}
@@ -690,7 +690,7 @@ func (m *Manager) Mark(ctx context.Context, identifier string, marked bool) (Ses
 }
 
 func (m *Manager) Note(ctx context.Context, identifier string, note string) (SessionSummary, error) {
-	summary, err := m.resolveSession(ctx, identifier, false)
+	summary, err := m.resolveSessionForMetaWrite(ctx, identifier)
 	if err != nil {
 		return SessionSummary{}, err
 	}
@@ -737,7 +737,7 @@ func (m *Manager) Note(ctx context.Context, identifier string, note string) (Ses
 }
 
 func (m *Manager) NoteAndTags(ctx context.Context, identifier string, note string, tags []string) (SessionSummary, error) {
-	summary, err := m.resolveSession(ctx, identifier, false)
+	summary, err := m.resolveSessionForMetaWrite(ctx, identifier)
 	if err != nil {
 		return SessionSummary{}, err
 	}
@@ -756,7 +756,7 @@ func (m *Manager) NoteAndTags(ctx context.Context, identifier string, note strin
 }
 
 func (m *Manager) SetTitle(ctx context.Context, identifier string, title string) (SessionSummary, error) {
-	summary, err := m.resolveSession(ctx, identifier, false)
+	summary, err := m.resolveSessionForMetaWrite(ctx, identifier)
 	if err != nil {
 		return SessionSummary{}, err
 	}
@@ -1174,6 +1174,28 @@ func (m *Manager) applySessionMeta(ctx context.Context, summary *SessionSummary)
 	}
 }
 
+// resolveSessionForMetaWrite 解析会话用于「写元数据」（note / title / mark / tags）场景。
+//
+// 与 resolveSession 的区别：元数据写入不依赖会话内容是否最新，因此优先直接按
+// key 从 SQLite 命中，跳过 cachedSummaryFileIsCurrent 的文件 mtime/size 校验。
+// 这一步很关键：会话文件正被 agent 写入时 mtime 会漂移，旧逻辑校验失败后退化
+// 成全量 ScanSummaries，正是 Note/Tag 保存超时的根因。
+func (m *Manager) resolveSessionForMetaWrite(ctx context.Context, identifier string) (SessionSummary, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return SessionSummary{}, fmt.Errorf("session id is required")
+	}
+	sqliteIdx, err := m.openSQLiteIndex()
+	if err == nil && sqliteIdx != nil {
+		summary, getErr := sqliteIdx.GetSession(ctx, identifier)
+		_ = sqliteIdx.Close()
+		if getErr == nil && strings.TrimSpace(summary.Key) != "" {
+			return summary, nil
+		}
+	}
+	return m.resolveSession(ctx, identifier, false)
+}
+
 func (m *Manager) resolveSessionFromSQLite(ctx context.Context, identifier string, requireCurrent bool) (SessionSummary, bool, error) {
 	sqliteIdx, err := m.openSQLiteIndex()
 	if err != nil {
@@ -1199,8 +1221,7 @@ func (m *Manager) resolveSessionFromSQLite(ctx context.Context, identifier strin
 	return summary, true, nil
 }
 
-func cachedSummaryFileIsCurrent(summary SessionSummary) bool {
-	filePath := strings.TrimSpace(summary.FilePath)
+func cachedSummaryFileIsCurrent(summary SessionSummary) bool {	filePath := strings.TrimSpace(summary.FilePath)
 	if filePath == "" || strings.HasPrefix(filePath, "remote:") {
 		return true
 	}

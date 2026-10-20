@@ -225,6 +225,9 @@ type SettingsType struct {
 	WebOpenLinksInternally bool   `json:"web:openlinksinternally,omitempty"`
 	WebDefaultUrl          string `json:"web:defaulturl,omitempty"`
 	WebDefaultSearch       string `json:"web:defaultsearch,omitempty"`
+	// web:servicetimeoutms — non-streaming /wave/ RPC 的超时上限（毫秒）。默认 21000，
+	// 允许放宽到 60000，以容纳大 JSONL 会话详情解析。仅用于兜底挂死的请求。
+	WebServiceTimeoutMs *int64 `json:"web:servicetimeoutms,omitempty"`
 
 	AutoUpdateClear         bool    `json:"autoupdate:*,omitempty"`
 	AutoUpdateEnabled       bool    `json:"autoupdate:enabled,omitempty"`

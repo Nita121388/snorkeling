@@ -1017,3 +1017,133 @@ func TestManagerSetTitleDualWriteAndPreservesOtherMeta(t *testing.T) {
 		t.Fatalf("expected cleared title to fall back to provider title, got %#v", cleared)
 	}
 }
+
+func TestSQLiteGetSessionResolvesByIdAndKey(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := OpenSQLiteIndex(filepath.Join(dir, "index-v2.sqlite"), filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	summaries := []SessionSummary{
+		{Key: "codex:aaa:/tmp/aaa.jsonl", ID: "aaa", Source: SourceCodex, FilePath: "/tmp/aaa.jsonl", MTime: 1, Size: 10},
+		{Key: "codex:bbb:/tmp/bbb.jsonl", ID: "bbb", Source: SourceCodex, FilePath: "/tmp/bbb.jsonl", MTime: 2, Size: 20},
+	}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), summaries, true); len(errs) != 0 {
+		t.Fatalf("unexpected save errors: %v", errs)
+	}
+
+	byKey, err := idx.GetSession(context.Background(), summaries[0].Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byKey.Key != summaries[0].Key {
+		t.Fatalf("key lookup got %q, want %q", byKey.Key, summaries[0].Key)
+	}
+
+	byID, err := idx.GetSession(context.Background(), "bbb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byID.ID != "bbb" {
+		t.Fatalf("id lookup got %q, want %q", byID.ID, "bbb")
+	}
+
+	if _, err := idx.GetSession(context.Background(), "zzz"); err == nil {
+		t.Fatal("expected not-found error for unknown identifier")
+	}
+
+	// 前缀命中仍保留旧的宽松行为，但多候选必须报歧义而不是猜。
+	if _, err := idx.GetSession(context.Background(), "a"); err != nil {
+		t.Fatalf("expected single prefix match for %q, got err: %v", "a", err)
+	}
+
+	dupA := SessionSummary{Key: "codex:aa2:/tmp/aa2.jsonl", ID: "aa2", Source: SourceCodex, FilePath: "/tmp/aa2.jsonl", MTime: 3, Size: 5}
+	dupB := SessionSummary{Key: "codex:aa3:/tmp/aa3.jsonl", ID: "aa3", Source: SourceCodex, FilePath: "/tmp/aa3.jsonl", MTime: 4, Size: 5}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), []SessionSummary{dupA, dupB}, true); len(errs) != 0 {
+		t.Fatalf("unexpected save errors: %v", errs)
+	}
+	if _, err := idx.GetSession(context.Background(), "aa"); err == nil {
+		t.Fatal("expected ambiguous prefix error, got nil")
+	}
+
+	// LIKE 通配符必须被转义，不能变成“匹配任意会话”。
+	if _, err := idx.GetSession(context.Background(), "%"); err == nil {
+		t.Fatal("expected not-found for literal percent identifier")
+	}
+}
+
+func TestSQLiteGetSessionSkipsMissingSessions(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := OpenSQLiteIndex(filepath.Join(dir, "index-v2.sqlite"), filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	summary := SessionSummary{Key: "codex:gone:/tmp/gone.jsonl", ID: "gone", Source: SourceCodex, FilePath: "/tmp/gone.jsonl", MTime: 1, Size: 10}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), []SessionSummary{summary}, true); len(errs) != 0 {
+		t.Fatalf("unexpected save errors: %v", errs)
+	}
+	if err := idx.MarkSessionMissing(context.Background(), summary.Key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.GetSession(context.Background(), summary.Key); err == nil {
+		t.Fatal("expected missing session to be invisible to GetSession")
+	}
+}
+
+// 元数据写入路径不应触发 provider 全量扫描。会话文件正被 agent 写入时 mtime 会
+// 漂移，旧逻辑的 resolveSession 会因此退化到 ScanSummaries —— 这是 Note/Tag
+// 保存超时的根因。
+func TestManagerMetaWriteSkipsProviderScan(t *testing.T) {
+	dir := t.TempDir()
+	metaPath := filepath.Join(dir, "meta.json")
+	indexPath := filepath.Join(dir, "index.json")
+	sqlitePath := filepath.Join(dir, "index-v2.sqlite")
+	sessionKey := "codex:meta-write:/tmp/meta-write.jsonl"
+	summary := SessionSummary{Key: sessionKey, ID: "meta-write", Source: SourceCodex, FilePath: "/tmp/meta-write.jsonl", MTime: 1, Size: 10}
+	provider := &cacheProvider{
+		source:    SourceCodex,
+		summaries: []SessionSummary{summary},
+		messages:  []Message{{Seq: 1, Role: RoleUser, Text: "hello"}},
+	}
+	manager := NewManagerWithOptions(ManagerOptions{
+		Providers:  []Provider{provider},
+		IndexPath:  indexPath,
+		MetaPath:   metaPath,
+		SQLitePath: sqlitePath,
+	})
+
+	// 播种索引：让 session 已存在于 SQLite，后续写入无需扫描文件系统。
+	if _, err := manager.List(context.Background(), ListOptions{Refresh: true}); err != nil {
+		t.Fatal(err)
+	}
+	baseline := provider.listHit
+	if baseline == 0 {
+		t.Fatal("expected initial seeding to hit the provider once")
+	}
+
+	if _, err := manager.Note(context.Background(), "meta-write", "fast note"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Mark(context.Background(), "meta-write", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.NoteAndTags(context.Background(), "meta-write", "tagged note", []string{"work"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.listHit; got != baseline {
+		t.Fatalf("provider List called %d extra time(s) during metadata writes (baseline %d)", got-baseline, baseline)
+	}
+
+	reloaded, err := manager.Summary(context.Background(), "meta-write", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.Marked || reloaded.Note != "tagged note" {
+		t.Fatalf("metadata did not survive the writes: %#v", reloaded)
+	}
+	if len(reloaded.Tags) != 1 || reloaded.Tags[0] != "work" {
+		t.Fatalf("tags did not survive the writes: %#v", reloaded.Tags)
+	}
+}
