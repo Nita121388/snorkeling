@@ -155,8 +155,10 @@ describe("session-note-cache (behavior baseline)", () => {
         expect(result.status).toBe("ok");
         expect(noteAndTagsFn).toHaveBeenCalledWith({ id: summary.key, note: "new note", tags: ["tag1"] });
         expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("new note");
-        expect(events).toHaveLength(1);
+        // 两次派发：先乐观值（不等 RPC），再服务端权威值覆写。
+        expect(events).toHaveLength(2);
         expect(events[0].note).toBe("new note");
+        expect(events[1].note).toBe("new note");
     });
 
     it("external note-updated event syncs the cache without refetch", async () => {
@@ -181,5 +183,93 @@ describe("session-note-cache (behavior baseline)", () => {
         expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("v2-from-elsewhere");
         expect(summaryFn).toHaveBeenCalledTimes(1); // 未重新拉取
         unsub();
+    });
+});
+
+describe("saveSessionNote optimistic update", () => {
+    it("dispatches the optimistic value before the backend resolves", async () => {
+        const { service, summaryFn, noteAndTagsFn } = makeMockService();
+        const sessionId = nextId("s");
+        const summary = makeSummary(sessionId, "old");
+        summaryFn.mockResolvedValue(summary);
+
+        let release: () => void = () => {};
+        noteAndTagsFn.mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    release = () => resolve({ ...summary, note: "server note" });
+                })
+        );
+
+        ensureSessionNote(service, sessionId);
+        await vi.waitFor(() => {
+            expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded");
+        });
+
+        const events: SessionSummary[] = [];
+        window.addEventListener(AiSessionNoteUpdatedEvent, (e) => {
+            events.push((e as CustomEvent<{ summary: SessionSummary }>).detail.summary);
+        });
+
+        const pending = saveSessionNote(service, sessionId, undefined, "optimistic note", ["t"]);
+        // RPC 尚未返回，缓存与事件必须已经反映用户输入。
+        expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("optimistic note");
+        expect(getSessionNoteSnapshot(sessionId).summary?.tags).toEqual(["t"]);
+        expect(events).toHaveLength(1);
+        expect(events[0].note).toBe("optimistic note");
+
+        release();
+        await pending;
+        // 服务端权威值最终覆写乐观值。
+        expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("server note");
+        expect(events.at(-1)?.note).toBe("server note");
+    });
+
+    it("rolls back the optimistic value when the save fails", async () => {
+        const { service, summaryFn, noteAndTagsFn } = makeMockService();
+        const sessionId = nextId("s");
+        const summary = makeSummary(sessionId, "old");
+        summaryFn.mockResolvedValue(summary);
+        noteAndTagsFn.mockRejectedValue(new Error("boom"));
+
+        ensureSessionNote(service, sessionId);
+        await vi.waitFor(() => {
+            expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded");
+        });
+
+        const events: SessionSummary[] = [];
+        window.addEventListener(AiSessionNoteUpdatedEvent, (e) => {
+            events.push((e as CustomEvent<{ summary: SessionSummary }>).detail.summary);
+        });
+
+        const result = await saveSessionNote(service, sessionId, undefined, "doomed", ["x"]);
+        expect(result.status).toBe("error");
+        // 回滚到保存前的真实状态，不留下后端不认可的编辑。
+        expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("old");
+        expect(getSessionNoteSnapshot(sessionId).summary?.tags).not.toEqual(["x"]);
+        expect(events.at(-1)?.note).toBe("old");
+    });
+
+    it("still errors when no baseline summary is cached", async () => {
+        const { service, noteAndTagsFn } = makeMockService();
+        const sessionId = nextId("s");
+        const result = await saveSessionNote(service, sessionId, undefined, "note", []);
+        expect(result.status).toBe("error");
+        expect(noteAndTagsFn).not.toHaveBeenCalled();
+    });
+
+    it("uses the summary key, not the raw session id, for the RPC", async () => {
+        const { service, summaryFn, noteAndTagsFn } = makeMockService();
+        const sessionId = nextId("s");
+        const summary = makeSummary(sessionId, "old");
+        summaryFn.mockResolvedValue(summary);
+        noteAndTagsFn.mockResolvedValue({ ...summary, note: "n" });
+
+        ensureSessionNote(service, sessionId);
+        await vi.waitFor(() => {
+            expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded");
+        });
+        await saveSessionNote(service, sessionId, undefined, "n", []);
+        expect(noteAndTagsFn).toHaveBeenCalledWith({ id: summary.key, note: "n", tags: [] });
     });
 });

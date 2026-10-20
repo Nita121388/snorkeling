@@ -191,7 +191,11 @@ export type SaveSessionNoteResult =
     | { status: "error"; error: string };
 
 /**
- * 保存 note + tags：写后端 → 更新缓存 → 派发全局更新事件（同步其他订阅者）。
+ * 保存 note + tags。
+ *
+ * 乐观更新：先把 note/tags 应用进缓存并派发全局事件，UI（hover 卡片 / 信息条）
+ * 立刻反映用户的输入，不等 RPC 往返。RPC 成功后再用服务端返回的权威 summary 覆写；
+ * 失败则用保存前的快照回滚，让用户看到的内容回到真实落盘状态。
  */
 export async function saveSessionNote(
     service: AISessionsServiceType,
@@ -202,12 +206,23 @@ export async function saveSessionNote(
 ): Promise<SaveSessionNoteResult> {
     const conn = normalizeConnection(connection);
     const entry = getEntry(sessionId, conn);
-    const summary = entry.snapshot.summary;
-    if (summary == null) {
+    const before = entry.snapshot.summary;
+    if (before == null) {
+        // 没有基线 summary（会话还没落盘 / note 还没加载）时无法做乐观合并，
+        // 也拿不到稳定的 key —— 直接报错，不去猜。
         return { status: "error", error: "session summary not loaded" };
     }
+    const optimistic: SessionSummary = {
+        ...before,
+        note,
+        tags: [...tags],
+    };
+    clearRetryTimer(entry);
+    entry.retryCount = 0;
+    setSnapshot(entry, { status: "loaded", summary: optimistic, error: "", loadedAt: Date.now() });
+    dispatchAISessionNoteUpdated(optimistic);
     try {
-        const updated = await service.NoteAndTags({ id: summary.key, note, tags });
+        const updated = await service.NoteAndTags({ id: before.key, note, tags });
         clearRetryTimer(entry);
         entry.retryCount = 0;
         setSnapshot(entry, { status: "loaded", summary: updated, error: "", loadedAt: Date.now() });
@@ -216,6 +231,9 @@ export async function saveSessionNote(
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         dlog("note save failed", { sessionId, error: message });
+        // 回滚到保存前的状态，避免屏幕上留着后端并不认可的编辑。
+        setSnapshot(entry, { status: "loaded", summary: before, error: message, loadedAt: Date.now() });
+        dispatchAISessionNoteUpdated(before);
         return { status: "error", error: message };
     }
 }

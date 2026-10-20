@@ -186,6 +186,12 @@ function useSessionNote(blockId: string, blockData: Block | null) {
                     console.debug("[agent-hover-card] failed to save session note", { sessionId, error: result.error });
                     setSaveStatus("error");
                     setError(result.error);
+                    // 缓存已回滚到保存前的权威值，草稿也要跟着回滚，
+                    // 否则输入框里会留着后端并不认可的编辑。
+                    const rolledBack = getSessionNoteSnapshot(sessionId, connection).summary?.note ?? "";
+                    if (!isEditing) {
+                        setNoteDraft(rolledBack);
+                    }
                 }
             });
         },
