@@ -65,6 +65,27 @@ const (
 	subagentMatchTrailSkewMS int64 = 6 * 60 * 60 * 1000 // 允许晚于调用 6 小时
 )
 
+// normalizeProjectPath 统一大小写与分隔符，用于比较两个会话是否在同一个 cwd。
+func normalizeProjectPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+	trimmed = strings.ReplaceAll(trimmed, "\\", "/")
+	trimmed = strings.TrimRight(trimmed, "/")
+	return strings.ToLower(trimmed)
+}
+
+// subagentSameProjectPath 判断两个会话是否属于同一个项目目录。
+func subagentSameProjectPath(left, right string) bool {
+	l := normalizeProjectPath(left)
+	r := normalizeProjectPath(right)
+	if l == "" || r == "" {
+		return false
+	}
+	return l == r
+}
+
 // subagentNameMatches 判断子会话名是否以 agent 名开头。
 // 子会话名格式为 "agent: 任务摘要"（由 setSessionName 写入 session_info.name），
 // 因此以 agent 名开头即视为名称候选。

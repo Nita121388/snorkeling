@@ -851,6 +851,58 @@ func (m *Manager) Path(ctx context.Context, identifier string, refresh bool) (st
 	return summary.FilePath, nil
 }
 
+// SubagentFold 汇总父会话里所有 subagent 派发及其可能的子会话匹配。
+//
+// 只读：不动父会话 JSONL，也不改 pi-subagents 扩展。匹配不唯一时返回
+// ambiguous 候选，交由 UI 决定（PRD 明确要求不得猜测）。
+func (m *Manager) SubagentFold(ctx context.Context, identifier string) ([]SubagentMatch, error) {
+	summary, err := m.resolveSession(ctx, identifier, false)
+	if err != nil {
+		return nil, err
+	}
+	calls, err := ExtractSubagentCalls(ctx, summary.FilePath)
+	if err != nil {
+		return nil, err
+	}
+	if len(calls) == 0 {
+		return nil, nil
+	}
+	candidates, err := m.subagentCandidates(ctx, summary)
+	if err != nil {
+		return nil, err
+	}
+	return matchSubagentCalls(calls, candidates), nil
+}
+
+// subagentCandidates 找出同一 projectPath 下、标题来自 session_info.name 的
+// 子会话作为匹配候选。非 source_title 的标题（派生自首条用户消息）不作为候选，
+// 避免把普通会话误当成子会话。
+func (m *Manager) subagentCandidates(ctx context.Context, parent SessionSummary) ([]SubagentCandidate, error) {
+	summaries, err := m.ListCached(ctx, ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]SubagentCandidate, 0, 8)
+	for _, s := range summaries {
+		if s.Key == parent.Key {
+			continue
+		}
+		if !subagentSameProjectPath(s.ProjectPath, parent.ProjectPath) {
+			continue
+		}
+		if s.TitleSource != "source_title" || s.Title == "" {
+			continue
+		}
+		candidates = append(candidates, SubagentCandidate{
+			SessionKey: s.Key,
+			SessionID:  s.ID,
+			Name:       s.Title,
+			CreatedAt:  s.CreatedAt,
+		})
+	}
+	return candidates, nil
+}
+
 func (m *Manager) openMeta() (*MetaStore, error) {
 	return OpenMeta(m.MetaPath)
 }
