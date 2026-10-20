@@ -45,7 +45,6 @@ import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
 import { isNoiseUsagePath, resolvePathUsageKind } from "./path-usage";
 import {
-    formatPreviewByteSize,
     getHtmlOpenModeEntry,
     HtmlOpenModeEntries,
     isHtmlPreviewPath,
@@ -1473,17 +1472,23 @@ export class PreviewModel implements ViewModel {
         // 文本 lane：.txt / .log / text/plain 与 .html 需要显式路由，不能依赖下面
         // isTextFile() 的兜底（那条兜底同时罩住所有源码文件，导致 .txt 没有只读文本语义、
         // .html 也没有源码/预览/外部应用三选一）。
-        if (isTextPreviewOversize(fileInfo.size, TextPreviewMaxBytes)) {
-            return { errorStr: `File Too Large for Text Preview (${formatPreviewByteSize(fileInfo.size)} > ${formatPreviewByteSize(TextPreviewMaxBytes)} Max)` };
-        }
         const textKind = resolveTextPreviewKind(fileInfo.path ?? fileName, mimeType);
         if (textKind != null) {
-            if (textKind === "html" && !editMode && getFn(this.htmlOpenMode) === "preview") {
-                // 内部渲染：沙箱 iframe（见 preview-streaming.tsx HtmlPreviewView）。
-                return { specializedView: "htmlpreview" };
+            if (textKind === "html") {
+                // 只有“内部渲染”需要对超大文件设防（iframe 里塞一份巨页会卡）；
+                // 源码模式与普通文本一样走 codeedit。
+                if (!editMode && getFn(this.htmlOpenMode) === "preview") {
+                    if (isTextPreviewOversize(fileInfo.size, TextPreviewMaxBytes)) {
+                        return { specializedView: "codeedit" };
+                    }
+                    // 内部渲染：沙箱 iframe（见 preview-streaming.tsx HtmlPreviewView）。
+                    return { specializedView: "htmlpreview" };
+                }
+                return { specializedView: "codeedit" };
             }
-            // 只读文本视图：复用既有 codeedit 视图（Monaco readonly / 字号 / 搜索 / 换行
-            // 都与源码视图一致），不另造第二个文本查看器。.html 的 source 模式也走这里。
+            // 纯文本：复用既有 codeedit 视图（Monaco readonly / 字号 / 搜索 / 换行都与
+            // 源码视图一致）。大文件交给下面既有的 MaxFileSize(10MB) 上限，
+            // 不在这里另加 2MB 拦截——那会把常见的 .log/.txt 直接挡在预览之外。
             return { specializedView: "codeedit" };
         }
         if (isTextFile(mimeType) || fileInfo.size == 0) {
