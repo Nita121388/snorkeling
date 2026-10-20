@@ -163,24 +163,52 @@
 
 ---
 
-## 4. 待用户裁决
+### G6 · [P1] 会话详情加载骨架渲染（skeleton）
 
-| ID | 问题 | 影响 | 建议默认 |
-|---|---|---|---|
-| D1 | 「报错的脚本/工具执行删除/撤回」：Trellis `annotate` PRD 已写「不做删除/软删，用户已决定搁置」。是否**维持搁置**（只做标注），还是要恢复删除/撤回需求？（若恢复，需明确是 Scheduled Tasks 运行历史，还是会话内 tool call 的 UI 隐藏） | annotate / 新任务 | 维持搁置，只做标注；Scheduled Tasks 历史删除另立小任务 |
-| D2 | G1/G2 的 hover 延迟降到 **150ms** 是否可接受？（当前 500ms 是刻意防误触） | G1 / G2 | 150ms + 离开即取消 |
-| D3 | G4 的 `HttpTimeoutDuration` 是否允许提到 60s？ | G4 | 默认 21s，可配置到 60s |
-| D4 | full-load 的「Load all」是**打开即自动全量**（当前实现），还是保留一个显式按钮？（PRD 要求有 Load all 入口，当前实现是自动续帧） | full-load | 保留自动全量 + 提供手动"刷新全部"兜底 |
+**现状（已核实）**
+- `session-detail.tsx` 里详情未就绪（`detail == null && !isNewChat && liveTurn == null`）时，只渲染一个**居中 spinner**（`fa-spinner animate-spin`，约 `session-detail.tsx:886`）。
+- 结果是：切会话/首次打开时是一块**空白 + 小 spinner**，消息区没有结构感，长会话等待时尤其空洞。
+- 项目已用 Tailwind `animate-pulse`（`aimessage.tsx`、`onboarding/fakechat.tsx` 有先例），不需要新依赖。
+
+**方案**
+1. 新增 `SessionDetailSkeleton` 组件（放 `session-detail.tsx` 同目录或 `empty-state.tsx` 旁）。
+2. 骨架结构对齐真实 `MessageCard`：
+   - 5–6 组占位行；每行 = 左侧小圆点（角色点）+ 右侧 2–3 条圆角灰条（宽度 90% / 75% / 55%，最后一条更短）。
+   - 用 `animate-pulse` + `bg-hover`/`bg-secondary/10`，不抢视觉。
+   - 容器整体 `aria-busy="true"`、`role="status"`、`aria-label="Loading conversation"`（保留无障碍语义）。
+3. 触发条件：
+   - `detail == null && loading` → 显示骨架（替换现有居中 spinner）。
+   - `deltaLoading` 且当前无可渲染消息 → 也显示骨架（当前是直接空）。
+   - **`liveTurn != null` 时绝不用骨架盖住实时流**（保留现有优先显示 live turn 的行为）。
+4. 切会话：`summary.key` 变化且新详情未到时显示骨架，避免旧会话内容残留（当前靠 `detail == null` 判断，需确认 `commitDetail` 的 `allowFewer` 路径不会提前清空）。
+5. 骨架高度按视口铺满（`flex-1`），与真实列表同 padding（`p-3`），避免加载完成后跳动。
+
+**验收**
+- 切到一个大会话：立即出现 5–6 行骨架，而不是居中 spinner；详情到达后骨架整块替换，无高度跳变。
+- 流式会话首轮进行中：不会出现骨架覆盖 live turn。
+- 骨架在浅/深主题下都可见但不刺眼。
+- 用 CDP 实测 `aria-busy` 与骨架数量（`node scripts/inspect-electron-ui.mjs style`）。
+
+---
+
+## 4. 已裁决（用户已确认，按此执行）
+
+| ID | 裁决 |
+|---|---|
+| D1 | **维持搁置**：不做会话内删除/软删，只做标注（Trellis `annotate`）。Scheduled Tasks 运行历史的删除另立小任务，不阻塞夜间主线。 |
+| D2 | G1/G2 的 hover 延迟统一降到 **150ms**，离开即取消；两处常量抽共享模块。 |
+| D3 | `HttpTimeoutDuration` **默认保持 21s**，允许通过 settings 配置到 60s；不删 `TimeoutHandler`。 |
+| D4 | full-load **保留自动全量**（打开即续帧到末尾），另提供手动「刷新全部」兜底入口。 |
 
 ---
 
 ## 5. 夜间执行顺序建议
 
 1. **P0**：G4（先做 1、2 两条细项，独立性强、收益最大）。
-2. **P1 并行**：G1、G2（不同文件，可并行）；G3（preview 域，若与 preview 任务冲突则串行）。
+2. **P1 并行**：G1、G2（不同文件，可并行）；G6 骨架渲染（只碰 `session-detail.tsx` 顶部早退分支，改动局部）；G3（preview 域，若与 preview 任务冲突则串行）。
 3. **P1**：Trellis 里 in_progress 的 `full-load` / `refresh-icon` / `preview-txt-html-modes` 收尾（先读 PRD 与已有 commit，只补差）。
 4. **P2**：G5（full-load 渲染优化，以 Trellis 为准）。
-5. **等裁决**：D1 相关；Trellis `block-separation`（Wave 3，改动最大）。
+5. **不阻塞主线**：Scheduled Tasks 运行历史删除（D1 派生小任务，可选）；Trellis `block-separation`（Wave 3，改动最大）。
 6. 每批完成跑：`npm run build:dev` + 相关 `vitest` + `go test ./pkg/aisessions ./pkg/service/aisessionsservice ./pkg/scheduler`。
 
 ---
@@ -188,5 +216,5 @@
 ## 附：本文件与 Trellis 的分工
 
 - **Trellis = 权威任务系统**：交互/默认值/验收标准以 PRD 为准。
-- **本文件 = 对账 + 缺口清单**：只列 Trellis 未覆盖的（G1–G5）与需裁决项（D1–D4）。
-- 若本文件与 Trellis PRD 冲突，**以 PRD 为准**，并在 §4 记录冲突。
+- **本文件 = 对账 + 缺口清单**：只列 Trellis 未覆盖的缺口（G1–G6）。
+- 若本文件与 Trellis PRD 冲突，**以 PRD 为准**，并在此记录冲突。
