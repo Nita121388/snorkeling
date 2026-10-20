@@ -53,16 +53,16 @@ const (
 
 // SubagentMatch 是「一次派发 → 匹配结果」。
 type SubagentMatch struct {
-	Call       SubagentCall       `json:"call"`
+	Call       SubagentCall        `json:"call"`
 	Status     SubagentMatchStatus `json:"status"`
-	SessionKey string             `json:"sessionKey,omitempty"`
+	SessionKey string              `json:"sessionKey,omitempty"`
 	Candidates []SubagentCandidate `json:"candidates,omitempty"`
 }
 
 // 默认时间窗口：子会话应在调用之后不久创建。允许一点前向偏差（时钟漂移 / 先建后派）。
 const (
-	subagentMatchLeadSkewMS  int64 = 5 * 60 * 1000       // 允许早于调用 5 分钟
-	subagentMatchTrailSkewMS int64 = 6 * 60 * 60 * 1000  // 允许晚于调用 6 小时
+	subagentMatchLeadSkewMS  int64 = 5 * 60 * 1000      // 允许早于调用 5 分钟
+	subagentMatchTrailSkewMS int64 = 6 * 60 * 60 * 1000 // 允许晚于调用 6 小时
 )
 
 // subagentNameMatches 判断子会话名是否以 agent 名开头。
