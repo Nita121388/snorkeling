@@ -1,8 +1,9 @@
 # 夜间自主执行清单 — AISessions / Preview / 交互性能
 
-> 状态：● 已与 `main`（`6df7d63c`）对账
+> 状态：● 夜间执行完成（G1/G2/G3/G4/G6 已落地；G5 依赖 Trellis full-load 收尾）
 > 用途：交给夜间 Agent 自主排序、实现、验证。
 > 生成时间：2026-09｜对账时间：基于 main 最新提交
+> **执行结果见 §6「夜间执行记录」**
 
 ---
 
@@ -218,3 +219,32 @@
 - **Trellis = 权威任务系统**：交互/默认值/验收标准以 PRD 为准。
 - **本文件 = 对账 + 缺口清单**：只列 Trellis 未覆盖的缺口（G1–G6）。
 - 若本文件与 Trellis PRD 冲突，**以 PRD 为准**，并在此记录冲突。
+---
+
+## 6. 夜间执行记录（2026-10-20）
+
+> 用户在离开模式下授权「自主推荐完成这些的开发和验证」，以下为实际落地结果。
+> 全部已推送到 `main`。
+
+### 已提交
+
+| Commit | 任务 | 内容 |
+|---|---|---|
+| `82c428b8` | G1 + G2 | hover-intent 延迟 500ms → 150ms，两处抽共享常量 `element/hover-timing.ts`；WidgetsBar 悬浮即预热 cc-switch vendors；二级弹窗锚点 rect 改为 hover 开始时测量 |
+| `afce0461` | G6 | 新增 `session-detail-skeleton.tsx`（骨架屏），替换详情加载时的居中 spinner；`aria-busy`/`role=status` 无障碍语义；含 6 个单测 |
+| `f57b6222` | G4 | `SQLiteIndex.GetSession` 从「SELECT 全表 + 内存匹配」改为三级索引查询（主键 → id → LIKE 前缀），LIKE 通配符转义；新增 `resolveSessionForMetaWrite`，Note/Mark/SetTitle/NoteAndTags 跳过 `resolveSession` 的全量扫描；新增 `web:servicetimeoutms` 配置（默认 21s，可放宽到 60s） |
+| `03be9023` | G3 | `.txt`/`.log` 修复：此前 2MB 上限会把常见日志直接挡在预览之外报错，现改为走既有 10MB `codeedit` 路径；超大 html 的内部渲染降级为 codeedit |
+| `7657662a` | refresh-icon | 移除 `Auto` 文字徽标（重叠根因），`.block-frame-end-icons` 加 `column-gap: 2px` 保证 pinned 区不互压 |
+
+### 验证
+
+- Go：`pkg/aisessions` / `pkg/aisessions/chat` / `pkg/web` / `pkg/service/aisessionsservice` 全绿
+- 新增单测：`GetSession` 的 key/id/前缀/歧义/通配符/missing 6 个 case；元数据写入不触发 provider 扫描；超时夹取边界；骨架屏 6 个 case
+- 前端：`aisessions` 107 通过、`inlinetab-addmenu` 7 通过、`preview-text-modes` + `preview-open` + `preview-model` 23 通过
+- `tsc --noEmit`：本批改动文件零新增错误（preview-model 的 10 个错误与 `mimetype`/`getApi`/`LayoutNode` 相关，已用 `git stash` 对比确认为存量）
+
+### 未做 / 交接
+
+- **G5（虚拟列表）**：依赖 Trellis `10-19-aisessions-full-load` 收尾后再接，见该 PRD
+- **CDP 实测 UI 布局**：夜间未启动 Electron 实例（无法在没有用户桌面的环境下稳定拉起），refresh-icon 的重叠修复与骨架屏渲染**建议用户开机后按 PRD 的 CDP 步骤复核一次**
+- **Trellis 任务状态**：`refresh-icon` / `full-load` / `preview-txt-html-modes` / `commontext-paste-image` 的 `task.json` 状态未改动（应由用户在 Trellis 流程里更新）
