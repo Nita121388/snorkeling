@@ -3,6 +3,7 @@
 
 import { MiddleEllipsis } from "@/app/element/middle-ellipsis";
 import { Tooltip } from "@/app/element/tooltip";
+import { LaunchHoverOpenDelayMs } from "@/app/element/hover-timing";
 import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
@@ -111,7 +112,8 @@ function sortByDisplayOrder(wmap: { [key: string]: WidgetConfigType }): WidgetEn
 // Hover dwell time required on the New Terminal / New Agent launch card before the
 // pick-a-target floating window opens. Sized so a quick sweep across the widget
 // doesn't trigger the popup, but a deliberate pause still feels instant.
-const WidgetHoverOpenDelayMs = 500;
+// 与 Blocks 组「＋」菜单共享同一延迟，见 element/hover-timing.ts。
+const WidgetHoverOpenDelayMs = LaunchHoverOpenDelayMs;
 
 // 收起态（hover-peek）下，鼠标离开按钮条多久后自动收回（毫秒）。
 const WidgetBarAutoCollapseMs = 1200;
@@ -2353,6 +2355,12 @@ const Widgets = memo(() => {
                 if (agentHoverTimerRef.current != null) {
                     window.clearTimeout(agentHoverTimerRef.current);
                 }
+                // 预热 cc-switch vendor 列表：hover 意图一出现就开始拉，等 LaunchHoverOpenDelayMs
+                // 后开窗时通常已命中 module cache，省掉首次打开的额外卡顿。
+                refreshCcSwitchVendors("claude", false);
+                refreshCcSwitchVendors("codex", false);
+                refreshCcSwitchVendors("opencode", false);
+                refreshCcSwitchVendors("pi", false);
                 agentHoverTimerRef.current = window.setTimeout(() => {
                     if (agentProfileOptions.length > 0) {
                         openAgentTargetPopup(widget, referenceElement);
@@ -2371,7 +2379,7 @@ const Widgets = memo(() => {
                 }, WidgetHoverOpenDelayMs);
             }
         },
-        [agentProfileOptions.length, openAgentTargetPopup, openTerminalTargetPopup]
+        [agentProfileOptions.length, openAgentTargetPopup, openTerminalTargetPopup, refreshCcSwitchVendors]
     );
 
     // Cancel any pending hover-open timer when the pointer leaves the launch card.

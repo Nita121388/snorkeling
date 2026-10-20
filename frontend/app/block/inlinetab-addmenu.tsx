@@ -6,6 +6,7 @@ import { requestLaunchPopup } from "@/app/workspace/launch-popup-bus";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { getNoteDirectory, makeNoteBlockDef, NoteWidgetAction } from "@/app/workspace/note-block";
 import { Tooltip } from "@/app/element/tooltip";
+import { LaunchHoverOpenDelayMs } from "@/app/element/hover-timing";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { getLayoutModelForTabById, LayoutTreeActionType, newLayoutNode } from "@/layout/index";
 import type { LayoutTreeInsertNodeAction } from "@/layout/index";
@@ -16,8 +17,7 @@ import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockEnv } from "./blockenv";
 
-// 悬浮 Terminal/Agent 菜单项多久后开二级浮窗（与右侧 WidgetsBar 一致）。
-const ItemHoverOpenDelayMs = 500;
+// 悬浮 Terminal/Agent 菜单项多久后开二级浮窗（与右侧 WidgetsBar 共享同一延迟，见 hover-timing.ts）。
 
 // 把菜单项锚点冻结为一次性快照。二级浮窗若锚定活的菜单项（它在overflow:auto的一级菜单里），
 // 鼠标移入弹窗的瞬间 floating-ui autoUpdate（layoutShift/elementResize）会重算导致瞬移；
@@ -163,18 +163,20 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
         [scheduleMenuClose]
     );
 
-    // 悬浮 Terminal/Agent 菜单项 ItemHoverOpenDelayMs → 开二级（锚定该菜单项）。
+    // 悬浮 Terminal/Agent 菜单项 LaunchHoverOpenDelayMs → 开二级（锚定该菜单项）。
+    // 锚点 rect 在 hover 开始时就冻结（而不是 timer 触发后才测），省掉打开瞬间的“测布局 + 开窗”叠加。
     const startItemHover = useCallback(
         (mode: "terminal" | "agent", anchorEl: HTMLElement) => {
             if (itemHoverTimerRef.current != null) {
                 return;
             }
+            const frozenAnchor = makeFrozenAnchor(anchorEl);
             itemHoverTimerRef.current = window.setTimeout(() => {
                 itemHoverTimerRef.current = null;
                 secondLevelOpenRef.current = true;
                 setSecondLevelOpen(true);
-                requestLaunchPopup({ mode, anchorEl: makeFrozenAnchor(anchorEl), nodeId, onOpenChange: handleSecondLevelOpenChange, centered: false });
-            }, ItemHoverOpenDelayMs);
+                requestLaunchPopup({ mode, anchorEl: frozenAnchor, nodeId, onOpenChange: handleSecondLevelOpenChange, centered: false });
+            }, LaunchHoverOpenDelayMs);
         },
         [handleSecondLevelOpenChange, nodeId]
     );
