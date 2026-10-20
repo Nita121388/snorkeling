@@ -85,7 +85,7 @@ type GroupedSessionListProps = {
     onToggleGroup: (key: string) => void;
     selectedKey: string;
     onSelectNew: () => void;
-    onSelectSession: (session: SessionSummary) => void;
+    onSelectSession: (session: SessionSummary, event: ReactMouseEvent<HTMLDivElement>) => void;
     onMark: (session: SessionSummary, event: ReactMouseEvent<HTMLButtonElement>) => void;
     onNoteSave: (session: SessionSummary, note: string, tags: string[]) => Promise<boolean>;
     onResume: (session: SessionSummary, event: ReactMouseEvent<HTMLButtonElement>) => void;
@@ -118,7 +118,7 @@ export function GroupedSessionList({
             key={session.key}
             session={session}
             selected={session.key === selectedKey}
-            onSelect={() => onSelectSession(session)}
+            onSelect={(event) => onSelectSession(session, event)}
             onMark={(event) => onMark(session, event)}
             onNoteSave={(note, tags) => onNoteSave(session, note, tags)}
             onResume={(event) => onResume(session, event)}

@@ -13,7 +13,7 @@ import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } 
 import { globalStore } from "@/store/jotaiStore";
 import { RefreshStatusIcon, deriveRefreshStatus } from "@/app/element/refresh-status-icon";
 import type { RefreshStatus } from "@/app/element/refresh-status-icon";
-import { cn } from "@/util/util";
+import { cn, fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +24,7 @@ import { defaultChatSource } from "./sources";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { SessionDetailPane } from "./session-detail";
+import { openAISessionDetailFromList, openAISessionNewChatFromList } from "./session-detail-block";
 import { mergeSessionTimeline } from "./session-timeline-sync";
 import {
     AiSessionNoteUpdatedEvent,
@@ -1009,6 +1010,19 @@ function readDefaultSessionListCollapsed(model: AiSessionsViewModel): boolean {
     return blockData?.meta?.["aisessions:sessionlistcollapsed"] === true;
 }
 
+/** 这个块是否绑定到某个具体会话（详情块）而不是列表块。 */
+function readBlockSessionId(model: AiSessionsViewModel): string {
+    const blockData = globalStore.get(model.blockAtom);
+    const sessionId = blockData?.meta?.["aisessions:sessionid"];
+    return typeof sessionId === "string" ? sessionId.trim() : "";
+}
+
+/** 是否是「自动开新会话」的详情块。 */
+function readBlockNewChat(model: AiSessionsViewModel): boolean {
+    const blockData = globalStore.get(model.blockAtom);
+    return (blockData?.meta as Record<string, unknown> | undefined)?.["aisessions:newchat"] === true;
+}
+
 function customAutoRefreshMenuItems(currentInterval: number, model: AiSessionsViewModel): ContextMenuItem[] {
     const isPreset = AutoRefreshIntervalOptions.some((option) => option.value === currentInterval);
     return [
@@ -1072,6 +1086,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [sortDescending, setSortDescending] = jotai.useAtom(model.sortDescendingAtom);
     const [groupMode, setGroupMode] = jotai.useAtom(model.groupModeAtom);
     const [sessionListCollapsed, setSessionListCollapsed] = useState(() => readDefaultSessionListCollapsed(model));
+    // 列表 / 详情分离：纯列表块（没有绑定具体会话）不再内嵌详情面板，
+    // 点会话时把详情拆到独立块；只有详情块才渲染详情面板。
+    const blockSessionId = readBlockSessionId(model);
+    const blockNewChat = readBlockNewChat(model);
+    const showsDetailPane = sessionListCollapsed || blockSessionId !== "" || blockNewChat;
     const [groupCollapsed, setGroupCollapsed] = useState<string[]>(() => readCollapsedGroups());
     const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
     const [refreshTimeNow, setRefreshTimeNow] = useState(() => Date.now());
@@ -1332,7 +1351,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         [sessionListWidth]
     );
 
-    const gridTemplateColumns = sessionListCollapsed ? "minmax(0,1fr)" : `${sessionListWidth}px minmax(0,1fr)`;
+    const gridTemplateColumns = !showsDetailPane
+        ? "minmax(0,1fr)"
+        : sessionListCollapsed
+          ? "minmax(0,1fr)"
+          : `${sessionListWidth}px minmax(0,1fr)`;
     const lastRefreshLabel = lastSessionsRefreshAt
         ? formatRelativeRefreshTime(lastSessionsRefreshAt, refreshTimeNow)
         : "";
@@ -1496,10 +1519,28 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         }
                                         selectedKey={selectedKey}
                                         onSelectNew={() => {
+                                            if (!showsDetailPane) {
+                                                // 列表/详情分离：新会话也开独立详情块。
+                                                fireAndForget(() => openAISessionNewChatFromList(model.blockId));
+                                                return;
+                                            }
                                             globalStore.set(model.selectedKeyAtom, NewSessionKey);
                                             globalStore.set(model.detailAtom, null);
                                         }}
-                                        onSelectSession={(session) => model.loadDetail(session)}
+                                        onSelectSession={(session, event) => {
+                                            if (!showsDetailPane) {
+                                                // 列表块只负责列表：详情拆到独立块。
+                                                // Ctrl/Cmd+点击强制单开，便于左右对比。
+                                                const sessionId = session.key || session.id;
+                                                fireAndForget(() =>
+                                                    openAISessionDetailFromList(sessionId, model.blockId, {
+                                                        forceNewBlock: event.metaKey || event.ctrlKey,
+                                                    })
+                                                );
+                                                return;
+                                            }
+                                            void model.loadDetail(session);
+                                        }}
                                         onMark={(session, e) => {
                                             e.stopPropagation();
                                             model.toggleMark(session);
@@ -1522,7 +1563,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                             </div>
                         </>
                     )}
-                    {!sessionListCollapsed ? (
+                    {!sessionListCollapsed && showsDetailPane ? (
                         <div
                             role="separator"
                             aria-label="Resize sessions list"
@@ -1532,9 +1573,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                         />
                     ) : null}
                 </div>
-                <SessionDetailPane
-                    model={model}
-                    detail={detail}
+                {showsDetailPane ? (
+                    <SessionDetailPane
+                        model={model}
+                        detail={detail}
                     isNewChat={activeSession?.key === NewSessionKey}
                     newChatEpoch={newChatEpoch}
                     loading={
@@ -1555,6 +1597,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                         sessionListCollapsed ? () => setSessionListCollapsed(false) : undefined
                     }
                 />
+                ) : null}
             </div>
         </div>
     );

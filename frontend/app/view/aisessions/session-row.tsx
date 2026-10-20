@@ -3,7 +3,7 @@
 
 import { Tooltip } from "@/app/element/tooltip";
 import { cn } from "@/util/util";
-import type { MouseEventHandler } from "react";
+import type { MouseEvent as ReactMouseEvent, MouseEventHandler } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { CopyIconButton, IconButton } from "./controls";
 import { getChatSource } from "./sources";
@@ -100,7 +100,8 @@ export function SessionRow({
 }: {
     session: SessionSummary;
     selected: boolean;
-    onSelect: () => void;
+    // 带上事件，让上层能区分 Ctrl/Cmd+点击（强制单开详情块）。
+    onSelect: (event: ReactMouseEvent<HTMLDivElement>) => void;
     onMark: MouseEventHandler<HTMLButtonElement>;
     onNoteSave: (note: string, tags: string[]) => Promise<boolean>;
     onResume: MouseEventHandler<HTMLButtonElement>;
