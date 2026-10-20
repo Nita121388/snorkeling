@@ -191,6 +191,17 @@ declare global {
         missing?: boolean;
     };
 
+    // aisessionsservice.AISessionsSubagentFoldRequest
+    type AISessionsSubagentFoldRequest = {
+        id?: string;
+        connection?: string;
+    };
+
+    // aisessionsservice.AISessionsSubagentFoldResponse
+    type AISessionsSubagentFoldResponse = {
+        matches?: SubagentMatch[];
+    };
+
     // aisessionsservice.AISessionsSummaryRequest
     type AISessionsSummaryRequest = {
         id: string;
@@ -2393,6 +2404,31 @@ declare global {
         rwnd: number;
         readerrouteid: string;
         writerrouteid: string;
+    };
+
+    // aisessions.SubagentCall
+    type SubagentCall = {
+        entryId?: string;
+        itemKey?: string;
+        agent: string;
+        task?: string;
+        timestamp?: number;
+    };
+
+    // aisessions.SubagentCandidate
+    type SubagentCandidate = {
+        sessionKey: string;
+        sessionId?: string;
+        name?: string;
+        createdAt?: number;
+    };
+
+    // aisessions.SubagentMatch
+    type SubagentMatch = {
+        call: SubagentCall;
+        status: string;
+        sessionKey?: string;
+        candidates?: SubagentCandidate[];
     };
 
     // wps.SubscriptionRequest

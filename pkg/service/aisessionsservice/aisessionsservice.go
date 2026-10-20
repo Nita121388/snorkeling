@@ -164,6 +164,17 @@ type AISessionsStatResponse struct {
 	Missing  bool   `json:"missing,omitempty"`
 }
 
+// AISessionsSubagentFoldRequest asks for the subagent dispatches of one session
+// and their (possibly ambiguous) child-session matches.
+type AISessionsSubagentFoldRequest struct {
+	ID         string `json:"id,omitempty"`
+	Connection string `json:"connection,omitempty"`
+}
+
+type AISessionsSubagentFoldResponse struct {
+	Matches []aisessions.SubagentMatch `json:"matches,omitempty"`
+}
+
 type AISessionsBackupRequest struct {
 	Connection string `json:"connection,omitempty"`
 	KeepRecent int    `json:"keepRecent,omitempty"`
@@ -706,6 +717,26 @@ func (svc *AISessionsService) Stat(ctx context.Context, request *AISessionsStatR
 		MTime:    stat.ModTime().UnixMilli(),
 		Size:     stat.Size(),
 	}, nil
+}
+
+func (svc *AISessionsService) SubagentFold_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list subagent dispatches of a local AI session with child-session matches",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "subagent dispatch matches",
+	}
+}
+
+func (svc *AISessionsService) SubagentFold(ctx context.Context, request *AISessionsSubagentFoldRequest) (*AISessionsSubagentFoldResponse, error) {
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	matches, err := manager.SubagentFold(ctx, request.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsSubagentFoldResponse{Matches: matches}, nil
 }
 
 func (svc *AISessionsService) Mark_Meta() tsgenmeta.MethodMeta {

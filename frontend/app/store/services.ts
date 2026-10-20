@@ -115,6 +115,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Stat", Array.from(arguments))
     }
 
+    // list subagent dispatches of a local AI session with child-session matches
+    // @returns subagent dispatch matches
+    SubagentFold(request: AISessionsSubagentFoldRequest): Promise<AISessionsSubagentFoldResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "SubagentFold", Array.from(arguments))
+    }
+
     // load a local AI session summary without loading messages
     // @returns AI session summary
     Summary(request: AISessionsSummaryRequest): Promise<SessionSummary> {
