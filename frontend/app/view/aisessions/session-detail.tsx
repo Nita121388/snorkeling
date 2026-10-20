@@ -12,6 +12,7 @@ import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { MessageCard, ToolCallRow } from "./session-message";
+import { SessionDetailSkeleton } from "./session-detail-skeleton";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "@/app/view/session-outline-rail";
 import { SessionTagChips } from "./session-tag-chips";
@@ -883,17 +884,12 @@ export function SessionDetailPane({
     // detail request may briefly clear the persisted snapshot during promotion;
     // returning an empty pane here would hide an otherwise healthy stream.
     if (detail == null && !isNewChat && liveTurn == null) {
-        return (
-            <div className="flex min-h-0 flex-1 items-center justify-center">
-                {loading ? (
-                    <i
-                        className="fa-sharp fa-solid fa-spinner animate-spin text-sm text-accent"
-                        role="status"
-                        aria-label="Loading conversation"
-                    />
-                ) : null}
-            </div>
-        );
+        // 加载中：用骨架屏撑出时间线结构（而不是空白 + 小 spinner）。
+        // 有 liveTurn 时上文已拦截，绝不会用骨架盖住实时流。
+        if (!loading) {
+            return <div className="h-full w-full" />;
+        }
+        return <SessionDetailSkeleton />;
     }
     const noteStatusText =
         noteSaveStatus === "saving"
@@ -1116,6 +1112,8 @@ export function SessionDetailPane({
                                                 will appear in the list on the left.
                                             </div>
                                         </div>
+                                    ) : loading || deltaLoading ? (
+                                        <SessionDetailSkeleton />
                                     ) : (
                                         <EmptyState text="No readable messages." />
                                     )
