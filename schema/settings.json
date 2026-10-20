@@ -478,6 +478,9 @@
         "web:defaultsearch": {
           "type": "string"
         },
+        "web:servicetimeoutms": {
+          "type": "integer"
+        },
         "autoupdate:*": {
           "type": "boolean"
         },
