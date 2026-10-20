@@ -21,7 +21,6 @@ import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "@/a
 import { SessionTagChips } from "./session-tag-chips";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "./session-tags";
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
-import { defaultVisibleMessageCount, visibleMessageCountStep } from "./types";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
 import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
 import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
@@ -222,13 +221,11 @@ export function SessionDetailPane({
     // 上滚离开底部时浮出「跳到最新」胶囊（流式吸底/回到底部则收起）
     const [showJumpPill, setShowJumpPill] = useState(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const [visibleMessageCount, setVisibleMessageCount] = useState(defaultVisibleMessageCount);
     const [expandedToolCalls, setExpandedToolCalls] = useState<Record<number, boolean>>({});
     const [detailSearchQuery, setDetailSearchQuery] = useState("");
     const [activeSearchSeq, setActiveSearchSeq] = useState<number | null>(null);
     const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
-    const pendingJumpSeqRef = useRef<number | null>(null);
     // 本 session 是否已经做过"打开时自动滚到底"（流式新消息到来不重复跟随）
     const autoScrolledToBottomRef = useRef(false);
     const bottomDeltaRequestedRef = useRef(false);
@@ -292,7 +289,6 @@ export function SessionDetailPane({
 
     useEffect(() => {
         messageRefs.current = {};
-        pendingJumpSeqRef.current = null;
         bottomDeltaRequestedRef.current = false;
         if (bottomDeltaTimerRef.current != null) {
             window.clearTimeout(bottomDeltaTimerRef.current);
@@ -302,7 +298,6 @@ export function SessionDetailPane({
         setNoteEditorOpen(false);
         setNoteSaveStatus("idle");
         setExpandedToolCalls({});
-        setVisibleMessageCount(defaultVisibleMessageCount);
         setDetailSearchQuery("");
         setActiveSearchSeq(null);
         // 切 session 时重置「自动滚到底已执行」标志，让新 session 重新滚到底
@@ -329,10 +324,10 @@ export function SessionDetailPane({
         return models;
     }, [effectiveDetail?.messages]);
     const actualModel = actualModels.at(-1) ?? "";
-    const detailMessages = useMemo(
-        () => readableMessages.slice(-visibleMessageCount),
-        [readableMessages, visibleMessageCount]
-    );
+    // 全量渲染：详情里的可读消息一次性全部呈现，不再按 30 条分页。
+    // 后端本就一次返回整份可读消息（toolResult 的 base64 图片不进 payload），
+    // 契约上不存在"点一次加载一页"的语义，分页窗口纯属前端历史遗留。
+    const detailMessages = readableMessages;
     const timelineItems = useMemo(
         () =>
             buildSessionDetailTimeline(
@@ -363,7 +358,6 @@ export function SessionDetailPane({
     );
     const normalizedDetailSearchQuery = normalizedSearchQuery(detailSearchQuery);
     const toolCalls = effectiveDetail?.toolCalls ?? [];
-    const hasPreviousMessages = visibleMessageCount < readableMessages.length;
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
     const detailSearchSummary =
         normalizedDetailSearchQuery === ""
@@ -375,21 +369,27 @@ export function SessionDetailPane({
                 : `${detailSearchMatches.length} match${detailSearchMatches.length === 1 ? "" : "es"}`;
 
     const scrollToVisibleMessage = useCallback((seq: number, behavior: ScrollBehavior = "smooth") => {
-        const node = messageRefs.current[seq];
         const container = detailScrollRef.current;
-        if (node && container) {
-            const containerRect = container.getBoundingClientRect();
-            const nodeRect = node.getBoundingClientRect();
-            const top = nodeRect.top - containerRect.top + container.scrollTop - 12;
-            container.scrollTo({ top, behavior });
-            return;
-        }
-        node?.scrollIntoView({ behavior, block: "start" });
+        // 全量渲染后消息节点应当已在 DOM；仅当首帧尚未提交时做几次 rAF 重试。
+        const attemptScroll = (attempt: number) => {
+            const node = messageRefs.current[seq];
+            if (node && container) {
+                const containerRect = container.getBoundingClientRect();
+                const nodeRect = node.getBoundingClientRect();
+                const top = nodeRect.top - containerRect.top + container.scrollTop - 12;
+                container.scrollTo({ top, behavior });
+                return;
+            }
+            if (node) {
+                node.scrollIntoView({ behavior, block: "start" });
+                return;
+            }
+            if (attempt < 3) {
+                window.requestAnimationFrame(() => attemptScroll(attempt + 1));
+            }
+        };
+        attemptScroll(0);
     }, []);
-
-    const loadPreviousMessages = useCallback(() => {
-        setVisibleMessageCount((current) => Math.min(current + visibleMessageCountStep, readableMessages.length));
-    }, [readableMessages.length]);
 
     // 实时流式 turn（主消息区内联渲染）：assistant_delta/tool 事件累积，turn_end 后由
     // DetailDelta 正式数据替换（先刷新落地再清除，避免空窗闪烁）。
@@ -801,16 +801,9 @@ export function SessionDetailPane({
 
     const jumpToMessage = useCallback(
         (seq: number) => {
-            if (messageRefs.current[seq]) {
-                scrollToVisibleMessage(seq);
-                return;
-            }
-            const targetIndex = readableMessages.findIndex((message) => message.seq === seq);
-            if (targetIndex < 0) return;
-            pendingJumpSeqRef.current = seq;
-            setVisibleMessageCount((current) => Math.max(current, readableMessages.length - targetIndex));
+            scrollToVisibleMessage(seq);
         },
-        [readableMessages, scrollToVisibleMessage]
+        [scrollToVisibleMessage]
     );
 
     const jumpToSearchMatch = useCallback(
@@ -847,13 +840,6 @@ export function SessionDetailPane({
         },
         [detailSearchMatches.length, jumpToNextSearchMatch, jumpToPreviousSearchMatch]
     );
-
-    useEffect(() => {
-        const pendingSeq = pendingJumpSeqRef.current;
-        if (pendingSeq == null || !messageRefs.current[pendingSeq]) return;
-        pendingJumpSeqRef.current = null;
-        window.requestAnimationFrame(() => scrollToVisibleMessage(pendingSeq, "smooth"));
-    }, [detailMessages, scrollToVisibleMessage]);
 
     // 打开 panel / 切换 session 后：仅在内容超出一屏时才置底（ponytail: 否则短对话应从顶部开始）
     useLayoutEffect(() => {
@@ -1168,16 +1154,6 @@ export function SessionDetailPane({
                                     )
                                 ) : (
                                     <div>
-                                        <div className="flex items-center justify-end gap-2 text-xs text-secondary">
-                                            {effectiveDetail != null && hasPreviousMessages ? (
-                                                <button
-                                                    className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                                    onClick={loadPreviousMessages}
-                                                >
-                                                    Load more
-                                                </button>
-                                            ) : null}
-                                        </div>
                                         {renderItems.map((item, itemIdx) => {
                                             const prevItem = itemIdx > 0 ? renderItems[itemIdx - 1] : null;
                                             const isGroupStart =
