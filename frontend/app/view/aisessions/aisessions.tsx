@@ -1390,6 +1390,17 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         [sessionListWidth]
     );
 
+    // 打开 Detail Block。双击行、Ctrl/Cmd+点击、会话菜单共用。
+    // 纯列表块：新建独立 Detail Block（不抢占列表本身）；详情块：同样新开一个块，
+    // 便于左右对比同一个会话。
+    const openSessionDetail = useCallback(
+        (session: SessionSummary) => {
+            if (!session.key) return;
+            fireAndForget(() => openAISessionDetailFromList(session.key, model.blockId, { forceNewBlock: true }));
+        },
+        [model.blockId]
+    );
+
     const gridTemplateColumns = !showsDetailPane
         ? "minmax(0,1fr)"
         : sessionListCollapsed
@@ -1572,19 +1583,21 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                     globalStore.set(model.detailAtom, null);
                                                 }}
                                                 onSelectSession={(session, event) => {
-                                                    if (!showsDetailPane) {
-                                                        // 列表块只负责列表：详情拆到独立块。
-                                                        // Ctrl/Cmd+点击强制单开，便于左右对比。
-                                                        const sessionId = session.key || session.id;
-                                                        fireAndForget(() =>
-                                                            openAISessionDetailFromList(sessionId, model.blockId, {
-                                                                forceNewBlock: event.metaKey || event.ctrlKey,
-                                                            })
-                                                        );
+                                                    // Ctrl/Cmd+点击 = 强制打开 Detail Block（便于左右对比）。
+                                                    if (event.metaKey || event.ctrlKey) {
+                                                        openSessionDetail(session);
                                                         return;
                                                     }
+                                                    if (!showsDetailPane) {
+                                                        // 纯列表块：单击只选中，不再自动弹详情。
+                                                        // 想看详情请双击该行（或 Ctrl/Cmd+点击）。
+                                                        globalStore.set(model.selectedKeyAtom, session.key);
+                                                        return;
+                                                    }
+                                                    // 详情块：单击切换右侧详情面板。
                                                     void model.loadDetail(session);
                                                 }}
+                                                onOpenSession={(session) => openSessionDetail(session)}
                                                 onMark={(session, e) => {
                                                     e.stopPropagation();
                                                     model.toggleMark(session);

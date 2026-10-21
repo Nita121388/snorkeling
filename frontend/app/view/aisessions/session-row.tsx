@@ -36,6 +36,21 @@ function sourceDotClass(source: string): string {
 }
 
 /**
+ * 行内交互元素（星标、复制、Resume、note/标签编辑…）的标记。
+ *
+ * 点击语义：单击 = 选中，双击 = 打开 Detail Block。行内控件两种都不该触发，
+ * 否则用户"想点一下编辑标签"却把会话详情弹了出来。stopPropagation 只挡 click，
+ * 挡不住 dblclick，所以统一用这个属性做判定。
+ */
+const RowActionAttribute = "data-row-action";
+
+function isRowActionTarget(event: { target: EventTarget | null }): boolean {
+    const target = event.target as HTMLElement | null;
+    if (target == null || typeof target.closest !== "function") return false;
+    return target.closest(`[${RowActionAttribute}]`) != null;
+}
+
+/**
  * Four-dot spinner shown beneath the mark button when the session has a live block.
  * Four dots sit at the top/right/bottom/left of a small box and the whole box rotates,
  * so the dots appear to chase each other around a square path.
@@ -90,6 +105,7 @@ export function SessionRow({
     session,
     selected,
     onSelect,
+    onOpen,
     onMark,
     onNoteSave,
     onResume,
@@ -102,6 +118,8 @@ export function SessionRow({
     selected: boolean;
     // 带上事件，让上层能区分 Ctrl/Cmd+点击（强制单开详情块）。
     onSelect: (event: ReactMouseEvent<HTMLDivElement>) => void;
+    /** 双击行：打开该会话的 Detail Block（纯列表块下新建块，详情块下新开一个块）。 */
+    onOpen?: (event: ReactMouseEvent<HTMLDivElement>) => void;
     onMark: MouseEventHandler<HTMLButtonElement>;
     onNoteSave: (note: string, tags: string[]) => Promise<boolean>;
     onResume: MouseEventHandler<HTMLButtonElement>;
@@ -211,7 +229,14 @@ export function SessionRow({
                     "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
             title={tooltip}
-            onClick={onSelect}
+            onClick={(event) => {
+                if (isRowActionTarget(event)) return;
+                onSelect(event);
+            }}
+            onDoubleClick={(event) => {
+                if (isRowActionTarget(event)) return;
+                onOpen?.(event);
+            }}
         >
             <div className="flex min-w-0 items-start gap-2">
                 <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1">
@@ -221,6 +246,7 @@ export function SessionRow({
                             session.marked && "text-accent opacity-100"
                         )}
                         title="Mark session"
+                        data-row-action="true"
                         onClick={onMark}
                     >
                         <i className={cn("fa-sharp", session.marked ? "fa-solid fa-star" : "fa-regular fa-star")} />
@@ -234,18 +260,21 @@ export function SessionRow({
                             type="button"
                             className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
                             title="Resume session"
+                            data-row-action="true"
                             disabled={resumeDisabled}
                             onClick={onResume}
                         >
                             <i className="fa-sharp fa-solid fa-square-terminal" />
                             <span>Resume</span>
                         </button>
-                        <CopyIconButton
-                            text={restoreCommandForSession(session)}
-                            label="Copy resume command"
-                            size="xs"
-                            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                        />
+                        <span data-row-action="true" className="inline-flex">
+                            <CopyIconButton
+                                text={restoreCommandForSession(session)}
+                                label="Copy resume command"
+                                size="xs"
+                                className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                            />
+                        </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-secondary tabular-nums">
                         <span className="inline-flex items-center gap-1">
@@ -283,6 +312,7 @@ export function SessionRow({
                                     className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
                                     title="Add note and tags"
                                     aria-label="Add note and tags"
+                                    data-row-action="true"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         void toggleNoteEditor();
@@ -304,6 +334,7 @@ export function SessionRow({
                             )}
                             title={noteToggleLabel}
                             aria-label={noteToggleLabel}
+                            data-row-action="true"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 void toggleNoteEditor();
@@ -335,7 +366,11 @@ export function SessionRow({
                         </button>
                     ) : null}
                     {noteEditing ? (
-                        <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+                        <div
+                            className="mt-2 space-y-2"
+                            data-row-action="true"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             <SessionTagChips
                                 tags={nextTags}
                                 removable

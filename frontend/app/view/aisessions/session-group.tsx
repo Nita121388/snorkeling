@@ -86,6 +86,8 @@ type GroupedSessionListProps = {
     selectedKey: string;
     onSelectNew: () => void;
     onSelectSession: (session: SessionSummary, event: ReactMouseEvent<HTMLDivElement>) => void;
+    /** 双击行：在 Detail Block 中打开该会话。 */
+    onOpenSession: (session: SessionSummary, event: ReactMouseEvent<HTMLDivElement>) => void;
     onMark: (session: SessionSummary, event: ReactMouseEvent<HTMLButtonElement>) => void;
     onNoteSave: (session: SessionSummary, note: string, tags: string[]) => Promise<boolean>;
     onResume: (session: SessionSummary, event: ReactMouseEvent<HTMLButtonElement>) => void;
@@ -104,6 +106,7 @@ export function GroupedSessionList({
     selectedKey,
     onSelectNew,
     onSelectSession,
+    onOpenSession,
     onMark,
     onNoteSave,
     onResume,
@@ -119,6 +122,7 @@ export function GroupedSessionList({
             session={session}
             selected={session.key === selectedKey}
             onSelect={(event) => onSelectSession(session, event)}
+            onOpen={(event) => onOpenSession(session, event)}
             onMark={(event) => onMark(session, event)}
             onNoteSave={(note, tags) => onNoteSave(session, note, tags)}
             onResume={(event) => onResume(session, event)}
