@@ -21,13 +21,18 @@ type Manager struct {
 	IndexPath  string
 	MetaPath   string
 	SQLitePath string
+	// OnScanProgress, when set, receives progress ticks from full summary
+	// scans. The service layer uses it to publish a UI event; pkg/aisessions
+	// itself stays free of wps dependencies.
+	OnScanProgress func(ScanProgress)
 }
 
 type ManagerOptions struct {
-	Providers  []Provider
-	IndexPath  string
-	MetaPath   string
-	SQLitePath string
+	Providers      []Provider
+	IndexPath      string
+	MetaPath       string
+	SQLitePath     string
+	OnScanProgress func(ScanProgress)
 }
 
 const (
@@ -83,7 +88,13 @@ func NewManagerWithOptions(opts ManagerOptions) *Manager {
 			sqlitePath = DefaultSQLiteIndexPath()
 		}
 	}
-	return &Manager{Providers: providers, IndexPath: indexPath, MetaPath: metaPath, SQLitePath: sqlitePath}
+	return &Manager{
+		Providers:      providers,
+		IndexPath:      indexPath,
+		MetaPath:       metaPath,
+		SQLitePath:     sqlitePath,
+		OnScanProgress: opts.OnScanProgress,
+	}
 }
 
 func (m *Manager) openIndex() (*Index, error) {
@@ -160,28 +171,60 @@ func (m *Manager) ScanList(ctx context.Context, opts ListOptions, query string) 
 // (distinct projectPath counts over sessions passing the non-project filters),
 // which the path-filter UI uses to navigate the directory tree with true counts.
 func (m *Manager) ScanListWithDistribution(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, error) {
+	result, err := m.ScanListResult(ctx, opts, query)
+	return result.Sessions, result.ProjectPaths, err
+}
+
+// ScanListResult is ScanListWithDistribution plus the scan state the UI needs to
+// render a progressive list.
+//
+// Cache hit: answer immediately, no scan. Cache miss: run one budgeted,
+// single-flighted scan (newest files first). If the budget expires mid-scan the
+// partial result comes back with Scanning=true and a background pass finishes
+// the index, so the UI paints rows first and fills skeleton gaps later.
+func (m *Manager) ScanListResult(ctx context.Context, opts ListOptions, query string) (ScanListResult, error) {
 	if !opts.Refresh {
 		if summaries, dist, ok, err := m.cachedScanListWithDistribution(ctx, opts, query); ok || err != nil {
-			return summaries, dist, err
+			return ScanListResult{Sessions: summaries, ProjectPaths: dist}, err
 		}
 	}
-	summaries, errs := ScanSummaries(ctx, m.Providers)
+	summaries, dist, partial, err := m.scanListNow(ctx, opts, query)
+	if err != nil {
+		return ScanListResult{}, err
+	}
+	result := ScanListResult{Sessions: summaries, ProjectPaths: dist}
+	if partial {
+		m.startBackgroundScan()
+		scanned, total, scanning := scanProgressSnapshot(m.scanKey())
+		result.Scanned = scanned
+		result.Total = total
+		result.Scanning = scanning || total == 0
+	}
+	return result, nil
+}
+
+// scanListNow runs one budgeted synchronous full scan and applies the list
+// filters. The trailing bool reports whether the scan was cut short.
+func (m *Manager) scanListNow(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, bool, error) {
+	summaries, errs, partial := m.refreshAllSummaries(ctx, ScanOptions{})
 	if len(errs) > 0 && len(summaries) == 0 {
-		return nil, nil, errs[0]
+		return nil, nil, partial, errs[0]
 	}
-	sqliteIdx, sqliteErr := m.openSQLiteIndex()
-	if sqliteErr != nil {
-		debugf("Manager.ScanList sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
-	}
-	if sqliteIdx != nil {
-		defer sqliteIdx.Close()
-		if _, saveErrs := sqliteIdx.SaveScannedSummaries(ctx, summaries, len(errs) == 0); len(saveErrs) > 0 {
-			debugf("Manager.ScanList sqlite save scanned summaries path=%q errors=%d firstErr=%v", m.SQLitePath, len(saveErrs), saveErrs[0])
-		}
+	if partial {
+		debugf("Manager.scanListNow partial scan path=%q summaries=%d", m.SQLitePath, len(summaries))
 	}
 	meta, _ := m.openMeta()
 	if meta != nil {
 		defer meta.Close()
+	}
+	// Note/tags/marked live in SQLite first (meta.json is the legacy dual-write),
+	// so pull them from the index when it is available.
+	metaIdx, metaErr := m.openSQLiteIndex()
+	if metaErr != nil {
+		debugf("Manager.scanListNow meta sqlite open skipped path=%q err=%v", m.SQLitePath, metaErr)
+	}
+	if metaIdx != nil {
+		defer metaIdx.Close()
 	}
 	query = strings.ToLower(strings.TrimSpace(query))
 	baseOpts := opts
@@ -190,11 +233,11 @@ func (m *Manager) ScanListWithDistribution(ctx context.Context, opts ListOptions
 	dist := make(map[string]int, 16)
 	for _, summary := range summaries {
 		if ctx.Err() != nil {
-			return filtered, summarizeProjectPathsFromMap(dist), ctx.Err()
+			return filtered, summarizeProjectPathsFromMap(dist), partial, ctx.Err()
 		}
-		if sqliteIdx != nil {
-			if err := sqliteIdx.ApplyMeta(ctx, &summary); err != nil {
-				debugf("Manager.ScanList sqlite meta apply error key=%q err=%v", summary.Key, err)
+		if metaIdx != nil {
+			if err := metaIdx.ApplyMeta(ctx, &summary); err != nil {
+				debugf("Manager.scanListNow sqlite meta apply error key=%q err=%v", summary.Key, err)
 			}
 		} else if meta != nil {
 			meta.Apply(&summary)
@@ -217,7 +260,97 @@ func (m *Manager) ScanListWithDistribution(ctx context.Context, opts ListOptions
 	sortSummaries(filtered)
 	limited := limitSummaries(filtered, opts.Limit)
 	m.populateMessageCounts(ctx, limited, opts.Refresh)
-	return limited, summarizeProjectPathsFromMap(dist), nil
+	return limited, summarizeProjectPathsFromMap(dist), partial, nil
+}
+
+// refreshAllSummaries runs a shared full scan and persists the result. A partial
+// scan never records the "complete scan" marker, so the next call resumes.
+func (m *Manager) refreshAllSummaries(ctx context.Context, opts ScanOptions) ([]SessionSummary, []error, bool) {
+	if opts.Progress == nil {
+		opts.Progress = m.OnScanProgress
+	}
+	summaries, errs, partial := m.ScanAllSummaries(ctx, opts)
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil {
+		debugf("Manager.refreshAllSummaries sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
+		return summaries, errs, partial
+	}
+	if sqliteIdx == nil {
+		return summaries, errs, partial
+	}
+	defer sqliteIdx.Close()
+	complete := len(errs) == 0 && !partial
+	if _, saveErrs := sqliteIdx.SaveScannedSummaries(ctx, summaries, complete); len(saveErrs) > 0 {
+		debugf("Manager.refreshAllSummaries sqlite save path=%q errors=%d firstErr=%v", m.SQLitePath, len(saveErrs), saveErrs[0])
+	}
+	return summaries, errs, partial
+}
+
+// startBackgroundScan kicks off a full scan without blocking the caller. At most
+// one scan runs per index path; concurrent calls collapse into it.
+func (m *Manager) startBackgroundScan() {
+	key := m.scanKey()
+	if !backgroundScans.start(key) {
+		debugf("Manager.startBackgroundScan already running path=%q", m.SQLitePath)
+		return
+	}
+	providers := append([]Provider(nil), m.Providers...)
+	indexPath := m.IndexPath
+	metaPath := m.MetaPath
+	sqlitePath := m.SQLitePath
+	onProgress := m.OnScanProgress
+	go func() {
+		defer backgroundScans.done(key)
+		manager := NewManagerWithOptions(ManagerOptions{
+			Providers:      providers,
+			IndexPath:      indexPath,
+			MetaPath:       metaPath,
+			SQLitePath:     sqlitePath,
+			OnScanProgress: onProgress,
+		})
+		_, errs, partial := manager.refreshAllSummaries(context.Background(), ScanOptions{Budget: backgroundScanBudget})
+		if len(errs) > 0 {
+			debugf("Manager.startBackgroundScan errors=%d firstErr=%v", len(errs), errs[0])
+		}
+		if partial {
+			debugf("Manager.startBackgroundScan partial path=%q", sqlitePath)
+		}
+	}()
+}
+
+// listFromIndexDebug builds a list response purely from the SQLite index
+// without scanning. Kept for diagnostics and future progressive first paint.
+func (m *Manager) listFromIndexDebug(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, error) {
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil {
+		debugf("Manager.listFromIndex sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
+		return nil, nil, nil
+	}
+	defer sqliteIdx.Close()
+	listOpts := opts
+	if strings.TrimSpace(query) != "" {
+		listOpts.Limit = 0
+	}
+	summaries, dist, err := sqliteIdx.ListWithDistribution(ctx, listOpts)
+	if err != nil {
+		debugf("Manager.listFromIndex sqlite list error path=%q err=%v", m.SQLitePath, err)
+		return nil, nil, nil
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query != "" {
+		filtered := summaries[:0]
+		for _, summary := range summaries {
+			if ctx.Err() != nil {
+				return nil, dist, ctx.Err()
+			}
+			if summaryMatchesQuery(summary, query) {
+				filtered = append(filtered, summary)
+			}
+		}
+		summaries = limitSummaries(filtered, opts.Limit)
+	}
+	m.populateMessageCounts(ctx, summaries, false)
+	return summaries, dist, nil
 }
 
 func (m *Manager) cachedScanList(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, bool, error) {
@@ -384,6 +517,11 @@ func (m *Manager) populateMessageCounts(ctx context.Context, summaries []Session
 		defer idxStore.Close()
 	}
 	cacheDirty := false
+	// Budget guard: parsing message bodies for every summary in one list call is
+	// what used to blow up memory on large histories. Sessions past the budget
+	// keep the MessageCount already stored in the index instead.
+	budget := messageCountBudgetBytes()
+	usedBytes := int64(0)
 	for idx := range summaries {
 		if ctx.Err() != nil {
 			break
@@ -402,6 +540,10 @@ func (m *Manager) populateMessageCounts(ctx context.Context, summaries []Session
 			if err == nil && ok {
 				messages = cachedMessages
 			}
+		}
+		if messages == nil && usedBytes >= budget {
+			debugf("Manager.populateMessageCounts budget exhausted key=%q used=%d budget=%d", summaries[idx].Key, usedBytes, budget)
+			continue
 		}
 		if messages == nil {
 			provider := providerBySource(m.Providers, summaries[idx].Source)
@@ -422,6 +564,7 @@ func (m *Manager) populateMessageCounts(ctx context.Context, summaries []Session
 				cacheDirty = true
 			}
 		}
+		usedBytes += messageSliceBytes(messages)
 		summaries[idx].MessageCount = readableMessageCount(messages)
 	}
 	if cacheDirty && idxStore != nil {
@@ -462,7 +605,7 @@ func (m *Manager) Refresh(ctx context.Context) (IndexStats, []error) {
 func (m *Manager) Load(ctx context.Context, identifier string, opts LoadOptions) (SessionDetail, error) {
 	start := time.Now()
 	debugf("Manager.Load start id=%q refresh=%v includeTools=%v loadAll=%v", identifier, opts.Refresh, opts.IncludeTools, opts.LoadAll)
-	summary, err := m.resolveSession(ctx, identifier, opts.Refresh)
+	summary, err := m.resolveSession(ctx, identifier, opts.Refresh, false)
 	if err != nil {
 		debugf("Manager.Load resolve error id=%q duration=%s err=%v", identifier, time.Since(start), err)
 		return SessionDetail{}, err
@@ -528,7 +671,7 @@ func (m *Manager) LoadDelta(ctx context.Context, identifier string, opts LoadDel
 	summary := opts.Summary
 	var err error
 	if strings.TrimSpace(summary.FilePath) == "" || strings.TrimSpace(summary.Source) == "" {
-		summary, err = m.resolveSession(ctx, identifier, false)
+		summary, err = m.resolveSession(ctx, identifier, false, false)
 		if err != nil {
 			return MessageDelta{}, err
 		}
@@ -645,7 +788,7 @@ func (m *Manager) Summary(ctx context.Context, identifier string, refresh bool) 
 			debugf("Manager.Summary stale sqlite skipped id=%q err=%v", identifier, err)
 		}
 	}
-	return m.resolveSession(ctx, identifier, false)
+	return m.resolveSession(ctx, identifier, false, true)
 }
 
 func (m *Manager) Mark(ctx context.Context, identifier string, marked bool) (SessionSummary, error) {
@@ -809,7 +952,7 @@ func (m *Manager) RenameTag(ctx context.Context, from string, to string) (int, e
 }
 
 func (m *Manager) Delete(ctx context.Context, identifier string) (SessionSummary, error) {
-	summary, err := m.resolveSession(ctx, identifier, false)
+	summary, err := m.resolveSession(ctx, identifier, false, false)
 	if err != nil {
 		return SessionSummary{}, err
 	}
@@ -844,7 +987,7 @@ func (m *Manager) Delete(ctx context.Context, identifier string) (SessionSummary
 }
 
 func (m *Manager) Path(ctx context.Context, identifier string, refresh bool) (string, error) {
-	summary, err := m.resolveSession(ctx, identifier, refresh)
+	summary, err := m.resolveSession(ctx, identifier, refresh, false)
 	if err != nil {
 		return "", err
 	}
@@ -856,7 +999,7 @@ func (m *Manager) Path(ctx context.Context, identifier string, refresh bool) (st
 // 只读：不动父会话 JSONL，也不改 pi-subagents 扩展。匹配不唯一时返回
 // ambiguous 候选，交由 UI 决定（PRD 明确要求不得猜测）。
 func (m *Manager) SubagentFold(ctx context.Context, identifier string) ([]SubagentMatch, error) {
-	summary, err := m.resolveSession(ctx, identifier, false)
+	summary, err := m.resolveSession(ctx, identifier, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1058,7 +1201,7 @@ func (r *summaryRefreshTracker) done(key string) {
 	delete(r.inflight, key)
 }
 
-func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh bool) (SessionSummary, error) {
+func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh bool, allowStale bool) (SessionSummary, error) {
 	start := time.Now()
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
@@ -1075,7 +1218,11 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 		}
 	}
 	if !refresh {
-		if summary, ok, err := m.resolveSessionFromSQLite(ctx, identifier, true); err == nil && ok {
+		// Detail reads (allowStale=false) must see the file's current state so the
+		// message cache invalidates; polling reads (Summary, allowStale=true) may
+		// answer from a stale row instead of paying for a full scan.
+		requireCurrent := !allowStale
+		if summary, ok, err := m.resolveSessionFromSQLite(ctx, identifier, requireCurrent); err == nil && ok {
 			debugf("Manager.resolveSession sqlite success id=%q key=%q source=%q file=%q duration=%s", identifier, summary.Key, summary.Source, summary.FilePath, time.Since(start))
 			return summary, nil
 		} else if err != nil {
@@ -1083,17 +1230,17 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 		}
 	}
 
-	summaries, errs := ScanSummaries(ctx, m.Providers)
+	summaries, errs, partial := m.refreshAllSummaries(ctx, ScanOptions{})
 	if len(errs) > 0 && len(summaries) == 0 {
 		debugf("Manager.resolveSession scan error id=%q duration=%s err=%v", identifier, time.Since(start), errs[0])
 		return SessionSummary{}, errs[0]
 	}
+	if partial {
+		debugf("Manager.resolveSession partial scan id=%q scanned=%d duration=%s", identifier, len(summaries), time.Since(start))
+	}
 	sqliteIdx, sqliteErr := m.openSQLiteIndex()
 	if sqliteErr == nil && sqliteIdx != nil {
 		defer sqliteIdx.Close()
-		if _, saveErrs := sqliteIdx.SaveScannedSummaries(ctx, summaries, len(errs) == 0); len(saveErrs) > 0 {
-			debugf("Manager.resolveSession sqlite save scanned summaries path=%q errors=%d firstErr=%v", m.SQLitePath, len(saveErrs), saveErrs[0])
-		}
 	}
 	var matches []SessionSummary
 	for _, summary := range summaries {
@@ -1245,7 +1392,7 @@ func (m *Manager) resolveSessionForMetaWrite(ctx context.Context, identifier str
 			return summary, nil
 		}
 	}
-	return m.resolveSession(ctx, identifier, false)
+	return m.resolveSession(ctx, identifier, false, false)
 }
 
 func (m *Manager) resolveSessionFromSQLite(ctx context.Context, identifier string, requireCurrent bool) (SessionSummary, bool, error) {
@@ -1273,7 +1420,8 @@ func (m *Manager) resolveSessionFromSQLite(ctx context.Context, identifier strin
 	return summary, true, nil
 }
 
-func cachedSummaryFileIsCurrent(summary SessionSummary) bool {	filePath := strings.TrimSpace(summary.FilePath)
+func cachedSummaryFileIsCurrent(summary SessionSummary) bool {
+	filePath := strings.TrimSpace(summary.FilePath)
 	if filePath == "" || strings.HasPrefix(filePath, "remote:") {
 		return true
 	}

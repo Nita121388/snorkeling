@@ -101,7 +101,13 @@ func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
 	if updatedAt == 0 {
 		updatedAt = file.MTime
 	}
-	title, titleSource := p.scanTitle(file.Path)
+	// Oversized transcripts (pi inlines base64 images in tool results, so single
+	// files reach tens of MB) skip the title scan entirely; DisplayTitle then
+	// falls back to the project basename or the session id.
+	var title, titleSource string
+	if file.Size <= summaryParseMaxFileBytes() {
+		title, titleSource = p.scanTitle(file.Path)
+	}
 	summary := SessionSummary{
 		ID:          id,
 		Source:      SourcePi,
@@ -182,11 +188,13 @@ func (p *PiProvider) scanTitle(path string) (string, string) {
 	var firstUserMessage string
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	var readBytes int64
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
+		readBytes += int64(len(line)) + 1
 		var value map[string]any
 		if err := json.Unmarshal([]byte(line), &value); err != nil {
 			continue
@@ -208,6 +216,11 @@ func (p *PiProvider) scanTitle(path string) (string, string) {
 			}
 		}
 		if name != "" && firstUserMessage != "" {
+			break
+		}
+		// Reading a multi-MB transcript only to find a title is wasted work; the
+		// caller falls back to the project basename via DisplayTitle.
+		if readBytes >= titleScanMaxBytes() {
 			break
 		}
 	}

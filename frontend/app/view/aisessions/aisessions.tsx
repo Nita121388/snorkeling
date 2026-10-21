@@ -43,6 +43,9 @@ import {
     PathFilterOtherRoot,
     dateRangeToSinceBefore,
 } from "./types";
+import { ScanProgressStrip, SkeletonSessionRows } from "./scan-progress";
+import type { ScanStatus } from "./scan-status-logic";
+import { useScanStatus } from "./use-scan-status";
 import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
 import {
     emptySessionsText,
@@ -128,6 +131,7 @@ export class AiSessionsViewModel implements ViewModel {
     newChatEpochAtom = jotai.atom(0);
     deletingAtom = jotai.atom<boolean>(false);
     lastSessionsRefreshAtAtom = jotai.atom<number>(0);
+    scanStatusAtom = jotai.atom<ScanStatus>({ scanned: 0, total: 0, running: false, done: false, partial: false });
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     sessionsLoadSeq = 0;
     detailLoadSeq = 0;
@@ -330,6 +334,14 @@ export class AiSessionsViewModel implements ViewModel {
             }
             let sessions = response?.sessions ?? [];
             globalStore.set(this.projectPathsAtom, response?.projectPaths ?? []);
+            // 后台扫描仍在补索引：记下进度，列表尾部用骨架行占位。
+            globalStore.set(this.scanStatusAtom, {
+                scanned: response?.scanned ?? 0,
+                total: response?.total ?? 0,
+                running: response?.scanning ?? false,
+                done: false,
+                partial: (response?.scanning ?? false) && (response?.total ?? 0) > 0,
+            });
             // Other bucket can't be expressed server-side (project="" matches all),
             // so filter locally after the response arrives.
             if (pathFilter.root === PathFilterOtherRoot) {
@@ -1098,6 +1110,33 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [backupCleanupError, setBackupCleanupError] = useState("");
     const [backupCleanupRunning, setBackupCleanupRunning] = useState(false);
     const [blockVisible, setBlockVisible] = useState(true);
+    // 后台摘要扫描的进度：响应里的快照 + wps 事件推的实时进度，两者合并使用。
+    const responseScanStatus = jotai.useAtomValue(model.scanStatusAtom);
+    const scanDoneTimerRef = useRef<number | null>(null);
+    const handleScanDone = useCallback(() => {
+        // 扫描结束事件会成批到达（多 provider），防抖后再取一次列表。
+        if (scanDoneTimerRef.current != null) {
+            window.clearTimeout(scanDoneTimerRef.current);
+        }
+        scanDoneTimerRef.current = window.setTimeout(() => {
+            scanDoneTimerRef.current = null;
+            void model.loadSessions(false, sortDescending, true);
+        }, 400);
+    }, [model, sortDescending]);
+    const liveScanStatus = useScanStatus({ enabled: blockVisible, onScanDone: handleScanDone });
+    useEffect(() => {
+        return () => {
+            if (scanDoneTimerRef.current != null) {
+                window.clearTimeout(scanDoneTimerRef.current);
+                scanDoneTimerRef.current = null;
+            }
+        };
+    }, []);
+    const scanning = responseScanStatus.running || (liveScanStatus.running && !liveScanStatus.done);
+    const scanProgress =
+        liveScanStatus.total > 0
+            ? { scanned: liveScanStatus.scanned, total: liveScanStatus.total }
+            : { scanned: responseScanStatus.scanned, total: responseScanStatus.total };
     const [runningChatSessionIds, setRunningChatSessionIds] = useState<ReadonlySet<string>>(() => new Set());
     const sessionsRunning = useSessionsRunning(blockVisible);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -1499,66 +1538,77 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     </span>
                                 ) : null}
                             </div>
+                            {scanning ? (
+                                <ScanProgressStrip scanned={scanProgress.scanned} total={scanProgress.total} />
+                            ) : null}
                             <div className="min-h-0 flex-1 overflow-auto">
-                                {loading && visibleSessions.length === 0 ? (
+                                {loading && visibleSessions.length === 0 && !scanning ? (
                                     <EmptyState text="Loading sessions..." />
-                                ) : visibleSessions.length === 0 ? (
+                                ) : visibleSessions.length === 0 && !scanning ? (
                                     <EmptyState text={emptySessionsText(markedFilter, remoteFilterActive)} />
                                 ) : (
-                                    <GroupedSessionList
-                                        groupMode={groupMode}
-                                        sessions={visibleSessions}
-                                        grouped={groupedSessions}
-                                        groupCollapsed={groupCollapsed}
-                                        onToggleGroup={(key) =>
-                                            setGroupCollapsed((current) =>
-                                                current.includes(key)
-                                                    ? current.filter((k) => k !== key)
-                                                    : [...current, key]
-                                            )
-                                        }
-                                        selectedKey={selectedKey}
-                                        onSelectNew={() => {
-                                            if (!showsDetailPane) {
-                                                // 列表/详情分离：新会话也开独立详情块。
-                                                fireAndForget(() => openAISessionNewChatFromList(model.blockId));
-                                                return;
-                                            }
-                                            globalStore.set(model.selectedKeyAtom, NewSessionKey);
-                                            globalStore.set(model.detailAtom, null);
-                                        }}
-                                        onSelectSession={(session, event) => {
-                                            if (!showsDetailPane) {
-                                                // 列表块只负责列表：详情拆到独立块。
-                                                // Ctrl/Cmd+点击强制单开，便于左右对比。
-                                                const sessionId = session.key || session.id;
-                                                fireAndForget(() =>
-                                                    openAISessionDetailFromList(sessionId, model.blockId, {
-                                                        forceNewBlock: event.metaKey || event.ctrlKey,
-                                                    })
-                                                );
-                                                return;
-                                            }
-                                            void model.loadDetail(session);
-                                        }}
-                                        onMark={(session, e) => {
-                                            e.stopPropagation();
-                                            model.toggleMark(session);
-                                        }}
-                                        onNoteSave={(session, note, tags) => model.updateNote(session, note, tags)}
-                                        onResume={(session, e) => {
-                                            e.stopPropagation();
-                                            void model.restoreSession(session);
-                                        }}
-                                        resumeDisabled={restoring}
-                                        runningStateOf={(session) =>
-                                            sessionsRunning.get(session.key) ?? sessionsRunning.get(session.id) ?? null
-                                        }
-                                        chatRunningOf={(session) =>
-                                            runningChatSessionIds.has(session.key) || runningChatSessionIds.has(session.id)
-                                        }
-                                        onJumpToBlock={jumpToRunningSessionBlock}
-                                    />
+                                    <>
+                                        {visibleSessions.length > 0 ? (
+                                            <GroupedSessionList
+                                                groupMode={groupMode}
+                                                sessions={visibleSessions}
+                                                grouped={groupedSessions}
+                                                groupCollapsed={groupCollapsed}
+                                                onToggleGroup={(key) =>
+                                                    setGroupCollapsed((current) =>
+                                                        current.includes(key)
+                                                            ? current.filter((k) => k !== key)
+                                                            : [...current, key]
+                                                    )
+                                                }
+                                                selectedKey={selectedKey}
+                                                onSelectNew={() => {
+                                                    if (!showsDetailPane) {
+                                                        // 列表/详情分离：新会话也开独立详情块。
+                                                        fireAndForget(() => openAISessionNewChatFromList(model.blockId));
+                                                        return;
+                                                    }
+                                                    globalStore.set(model.selectedKeyAtom, NewSessionKey);
+                                                    globalStore.set(model.detailAtom, null);
+                                                }}
+                                                onSelectSession={(session, event) => {
+                                                    if (!showsDetailPane) {
+                                                        // 列表块只负责列表：详情拆到独立块。
+                                                        // Ctrl/Cmd+点击强制单开，便于左右对比。
+                                                        const sessionId = session.key || session.id;
+                                                        fireAndForget(() =>
+                                                            openAISessionDetailFromList(sessionId, model.blockId, {
+                                                                forceNewBlock: event.metaKey || event.ctrlKey,
+                                                            })
+                                                        );
+                                                        return;
+                                                    }
+                                                    void model.loadDetail(session);
+                                                }}
+                                                onMark={(session, e) => {
+                                                    e.stopPropagation();
+                                                    model.toggleMark(session);
+                                                }}
+                                                onNoteSave={(session, note, tags) => model.updateNote(session, note, tags)}
+                                                onResume={(session, e) => {
+                                                    e.stopPropagation();
+                                                    void model.restoreSession(session);
+                                                }}
+                                                resumeDisabled={restoring}
+                                                runningStateOf={(session) =>
+                                                    sessionsRunning.get(session.key) ??
+                                                    sessionsRunning.get(session.id) ??
+                                                    null
+                                                }
+                                                chatRunningOf={(session) =>
+                                                    runningChatSessionIds.has(session.key) ||
+                                                    runningChatSessionIds.has(session.id)
+                                                }
+                                                onJumpToBlock={jumpToRunningSessionBlock}
+                                            />
+                                        ) : null}
+                                        {scanning ? <SkeletonSessionRows /> : null}
+                                    </>
                                 )}
                             </div>
                         </>

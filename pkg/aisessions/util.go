@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -465,6 +466,12 @@ func sessionFilesFromPaths(ctx context.Context, source string, paths []string) (
 			Size:   stat.Size(),
 		})
 	}
+	// Newest first: the summary scan visits files in this order, so the sessions
+	// a user is most likely to open are indexed (and visible) first, and a
+	// budget-bound scan degrades gracefully toward "only old sessions missing".
+	sort.SliceStable(files, func(i, j int) bool {
+		return files[i].MTime > files[j].MTime
+	})
 	return files, nil
 }
 
@@ -793,6 +800,16 @@ func readableMessageCount(messages []Message) int {
 		}
 	}
 	return count
+}
+
+// messageSliceBytes is the payload size of a message slice (text + thinking),
+// used to budget how much a list call may parse.
+func messageSliceBytes(messages []Message) int64 {
+	var total int64
+	for _, message := range messages {
+		total += int64(len(message.Text) + len(message.Thinking))
+	}
+	return total
 }
 
 func lastMessageSeq(messages []Message) int {

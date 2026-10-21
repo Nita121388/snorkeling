@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
@@ -19,6 +20,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
+	"github.com/wavetermdev/waveterm/pkg/wps"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 	"github.com/wavetermdev/waveterm/pkg/wshutil"
@@ -46,6 +48,11 @@ type AISessionsListRequest struct {
 type AISessionsListResponse struct {
 	Sessions     []aisessions.SessionSummary     `json:"sessions"`
 	ProjectPaths []aisessions.ProjectPathSummary `json:"projectPaths,omitempty"`
+	// Scanning reports that a background summary scan is still filling the
+	// index; the GUI renders skeleton rows plus a progress strip until it ends.
+	Scanning bool `json:"scanning"`
+	Scanned  int  `json:"scanned"`
+	Total    int  `json:"total"`
 }
 
 type AISessionsTagsRequest struct {
@@ -211,7 +218,7 @@ func connectionFromRemoteSessionKey(identifier string) string {
 func (svc *AISessionsService) managerForConnection(ctx context.Context, connection string) (*aisessions.Manager, error) {
 	connection = strings.TrimSpace(connection)
 	if conncontroller.IsLocalConnName(connection) || conncontroller.IsWslConnName(connection) {
-		return aisessions.NewManager("", nil), nil
+		return newLocalManager(), nil
 	}
 	remoteInfo, err := wshclient.RemoteGetInfoCommand(
 		wshfs.RpcClient,
@@ -231,17 +238,75 @@ func (svc *AISessionsService) managerForConnection(ctx context.Context, connecti
 		return nil, err
 	}
 	return aisessions.NewManagerWithOptions(aisessions.ManagerOptions{
-		Providers:  []aisessions.Provider{provider},
-		MetaPath:   remoteMetaPath(connection),
-		SQLitePath: remoteSQLitePath(connection),
+		Providers:      []aisessions.Provider{provider},
+		MetaPath:       remoteMetaPath(connection),
+		SQLitePath:     remoteSQLitePath(connection),
+		OnScanProgress: makeScanProgressPublisher(connection),
 	}), nil
 }
+
+// newLocalManager builds the default manager with scan-progress reporting so the
+// GUI can show a skeleton + progress strip while a background scan runs.
+func newLocalManager() *aisessions.Manager {
+	return aisessions.NewManagerWithOptions(aisessions.ManagerOptions{
+		OnScanProgress: makeScanProgressPublisher(""),
+	})
+}
+
+// scanProgressThrottle keeps wps events bounded: at most one per 200ms, unless a
+// scan finishes or a large batch lands.
+type scanProgressThrottle struct {
+	mu          sync.Mutex
+	lastSent    time.Time
+	lastScanned int
+	lastEvent   aisessions.ScanStatusEvent
+}
+
+var scanProgressEmitter scanProgressThrottle
+
+func makeScanProgressPublisher(connection string) func(aisessions.ScanProgress) {
+	return func(progress aisessions.ScanProgress) {
+		scanProgressEmitter.publish(connection, progress)
+	}
+}
+
+func (t *scanProgressThrottle) publish(connection string, progress aisessions.ScanProgress) {
+	event := aisessions.ScanStatusEvent{
+		Connection: connection,
+		Scanned:    progress.Scanned,
+		Total:      progress.Total,
+		Running:    progress.Running,
+		Done:       progress.Done,
+		Partial:    progress.Partial,
+	}
+	t.mu.Lock()
+	now := time.Now()
+	if !event.Done {
+		if now.Sub(t.lastSent) < scanProgressMinInterval &&
+			event.Scanned-t.lastScanned < scanProgressMinDelta {
+			t.mu.Unlock()
+			return
+		}
+	}
+	t.lastSent = now
+	t.lastScanned = event.Scanned
+	t.mu.Unlock()
+	wps.Broker.Publish(wps.WaveEvent{
+		Event: wps.Event_AISessionsScanStatus,
+		Data:  event,
+	})
+}
+
+const (
+	scanProgressMinInterval = 200 * time.Millisecond
+	scanProgressMinDelta    = 50
+)
 
 func (svc *AISessionsService) managerForIdentifier(ctx context.Context, identifier string) (*aisessions.Manager, error) {
 	if connection := connectionFromRemoteSessionKey(identifier); connection != "" {
 		return svc.managerForConnection(ctx, connection)
 	}
-	return aisessions.NewManager("", nil), nil
+	return newLocalManager(), nil
 }
 
 func (svc *AISessionsService) managerForRequest(ctx context.Context, identifier string, connection string) (*aisessions.Manager, error) {
@@ -299,7 +364,7 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	if err != nil {
 		return nil, err
 	}
-	sessions, projectPaths, err := manager.ScanListWithDistribution(ctx, aisessions.ListOptions{
+	result, err := manager.ScanListResult(ctx, aisessions.ListOptions{
 		Source:      request.Source,
 		Project:     request.Project,
 		Limit:       limit,
@@ -313,9 +378,14 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	if err != nil {
 		return nil, err
 	}
-	response := &AISessionsListResponse{Sessions: sessions}
+	response := &AISessionsListResponse{
+		Sessions: result.Sessions,
+		Scanning: result.Scanning,
+		Scanned:  result.Scanned,
+		Total:    result.Total,
+	}
 	if request.IncludeProjectPaths {
-		response.ProjectPaths = projectPaths
+		response.ProjectPaths = result.ProjectPaths
 	}
 	return response, nil
 }

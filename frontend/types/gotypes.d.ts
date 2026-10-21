@@ -124,6 +124,9 @@ declare global {
     type AISessionsListResponse = {
         sessions: SessionSummary[];
         projectPaths?: ProjectPathSummary[];
+        scanning: boolean;
+        scanned: number;
+        total: number;
     };
 
     // aisessionsservice.AISessionsLiveSessionStateRequest
@@ -2138,6 +2141,16 @@ declare global {
     type RuntimeOpts = {
         termsize?: TermSize;
         winsize?: WinSize;
+    };
+
+    // aisessions.ScanStatusEvent
+    type ScanStatusEvent = {
+        connection?: string;
+        scanned: number;
+        total: number;
+        running: boolean;
+        done: boolean;
+        partial?: boolean;
     };
 
     // wconfig.ScheduledTaskRunRecord

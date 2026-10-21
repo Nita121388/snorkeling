@@ -95,6 +95,28 @@ type SessionTagSummary struct {
 	Count int    `json:"count"`
 }
 
+// ScanListResult is one page of sessions plus the state of the background
+// summary scan that fills the index. Scanning=true means the list may still
+// gain rows; Scanned/Total drive the progress indicator.
+type ScanListResult struct {
+	Sessions     []SessionSummary
+	ProjectPaths []ProjectPathSummary
+	Scanning     bool
+	Scanned      int
+	Total        int
+}
+
+// ScanStatusEvent is published as a wps event so the GUI can move its progress
+// indicator and refetch the list when a background scan finishes.
+type ScanStatusEvent struct {
+	Connection string `json:"connection,omitempty"`
+	Scanned    int    `json:"scanned"`
+	Total      int    `json:"total"`
+	Running    bool   `json:"running"`
+	Done       bool   `json:"done"`
+	Partial    bool   `json:"partial,omitempty"`
+}
+
 type SessionFile struct {
 	Source      string
 	Path        string
