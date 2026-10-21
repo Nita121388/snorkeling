@@ -196,26 +196,31 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                                         {row.count != null && section.id !== "search" ? (
                                             <span className="text-[10px] text-muted shrink-0">×{row.count}</span>
                                         ) : null}
-                                        <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {/* 行内按钮默认不占位（max-w-0 + opacity-0），hover 时展开并渐显；
+                                            max-width 可动画，比 w-auto 更平顺。 */}
+                                        <div className="flex items-center gap-0.5 shrink-0 overflow-hidden max-w-0 opacity-0 transition-[max-width,opacity] duration-150 ease-out group-hover:max-w-[96px] group-hover:opacity-100">
+                                            {/* Pinned 区里的行已经固定，星标按钮与删除按钮动作重复，只保留删除。 */}
+                                            {section.id !== "pinned" ? (
+                                                <button
+                                                    type="button"
+                                                    className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-surface-soft hover:text-foreground transition-all cursor-pointer border-none bg-transparent"
+                                                    title={row.pinned ? "Unpin" : "Pin"}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onTogglePin({ path: row.path, connection: row.connection }, row.label);
+                                                    }}
+                                                >
+                                                    <i
+                                                        className={clsx(
+                                                            "text-[10px]",
+                                                            row.pinned ? "fa-solid fa-star text-green" : "fa-regular fa-star"
+                                                        )}
+                                                    />
+                                                </button>
+                                            ) : null}
                                             <button
                                                 type="button"
-                                                className="w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-surface-soft hover:text-foreground transition-all cursor-pointer border-none bg-transparent"
-                                                title={row.pinned ? "Unpin" : "Pin"}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onTogglePin({ path: row.path, connection: row.connection }, row.label);
-                                                }}
-                                            >
-                                                <i
-                                                    className={clsx(
-                                                        "text-[10px]",
-                                                        row.pinned ? "fa-solid fa-star text-green" : "fa-regular fa-star"
-                                                    )}
-                                                />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-surface-soft hover:text-foreground transition-all cursor-pointer border-none bg-transparent"
+                                                className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-surface-soft hover:text-foreground transition-all cursor-pointer border-none bg-transparent"
                                                 title="Copy path"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -224,20 +229,26 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                                             >
                                                 <i className="fa-regular fa-copy text-[10px]" />
                                             </button>
-                                            {section.id === "recent" ||
-                                            (section.id === "search" && row.count != null) ? (
-                                                <button
-                                                    type="button"
-                                                    className="w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-error/12 hover:text-error transition-all cursor-pointer border-none bg-transparent"
-                                                    title="Remove"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
+                                            {/* 每行都支持删除，hover 时才显示（外层 group-hover 控制）。
+                                                Pinned 区的删除是取消固定，其余分区是删掉使用记录。 */}
+                                            <button
+                                                type="button"
+                                                className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-error/12 hover:text-error transition-all cursor-pointer border-none bg-transparent"
+                                                title={section.id === "pinned" ? "Unpin" : "Remove"}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (section.id === "pinned") {
+                                                        onTogglePin(
+                                                            { path: row.path, connection: row.connection },
+                                                            row.label
+                                                        );
+                                                    } else {
                                                         onRemoveUsage({ path: row.path, connection: row.connection });
-                                                    }}
-                                                >
-                                                    <i className="fa-solid fa-xmark text-[10px]" />
-                                                </button>
-                                            ) : null}
+                                                    }
+                                                }}
+                                            >
+                                                <i className="fa-solid fa-xmark text-[10px]" />
+                                            </button>
                                         </div>
                                     </div>
                                 ))

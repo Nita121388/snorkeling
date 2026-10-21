@@ -2239,14 +2239,6 @@ const Widgets = memo(() => {
                 return;
             }
 
-            if (widgetId === DefaultFilesWidgetId) {
-                closeAgentTargetSelector();
-                closeTerminalTargetSelector();
-                setFilesReferenceElement(e.currentTarget);
-                setIsFilesWindowOpen(true);
-                return;
-            }
-
             const shouldCreateDefault = isAgentTargetOpen || isTerminalTargetOpen;
 
             if (widgetId === DefaultTerminalWidgetId) {
@@ -2283,6 +2275,9 @@ const Widgets = memo(() => {
 
             closeAgentTargetSelector();
             closeTerminalTargetSelector();
+            // 点击 Files widget 是「建默认 Block」的主行为；悬浮已弹开的路径中枢面板
+            // 顺手收起，避免建完块后还留一个悬浮窗飘在界面上。
+            setIsFilesWindowOpen(false);
             const blockDef = widget.blockdef;
             if (blockDef == null) {
                 console.warn(`Widget ${widgetId} has no blockdef`);
@@ -2738,7 +2733,10 @@ const Widgets = memo(() => {
                                     connection: selection.connection ?? "local",
                                 },
                             };
-                            await env.createBlock(blockDef, false, true);
+                            // 走正常插入而不是 ephemeral 节点：ephemeral 是「浮在所有节点之上、
+                            // 不属于布局树」的悬浮层（见 layoutModel.ephemeralNode），
+                            // 从路径中枢选一个路径应该是普通的切分 Block。
+                            await env.createBlock(blockDef);
                         });
                     }}
                     onTogglePin={(selection: PathSelection, label?: string) => {
