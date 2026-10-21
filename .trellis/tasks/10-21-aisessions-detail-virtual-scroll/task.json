@@ -22,5 +22,8 @@
   "parent": "10-19-aisessions-ux-perf-overhaul",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "f8569562",
+    "verification": "unit-tests-green; e2e-pending-user-build"
+  }
 }
