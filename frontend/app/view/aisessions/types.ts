@@ -60,4 +60,6 @@ export function dateRangeToSinceBefore(range: DateRangeFilter, now: number): { s
 
 export const sortPreferenceStorageKey = "aisessions.sortDescending";
 export const groupPreferenceStorageKey = "aisessions.groupMode";
+/** 列表工具栏「展开全部标签」的全局偏好（方案 B）。 */
+export const expandAllTagsStorageKey = "aisessions.expandAllTags";
 export type SessionGroupMode = "project" | "time";

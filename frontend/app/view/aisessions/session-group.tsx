@@ -129,6 +129,8 @@ type GroupedSessionListProps = {
     fullyExpandedParents: Set<string>;
     /** 列表当前的排序方向（新→旧 / 旧→新）；树必须跟随它，否则排序按钮失效。 */
     sortDescending: boolean;
+    /** 工具栏「展开全部标签」的全局偏好（方案 B）。 */
+    expandAllTags: boolean;
 };
 
 export function GroupedSessionList({
@@ -152,6 +154,7 @@ export function GroupedSessionList({
     onToggleExpandParent,
     fullyExpandedParents,
     sortDescending,
+    expandAllTags,
 }: GroupedSessionListProps) {
     const newSession = sessions.find((session) => session.key === NewSessionKey);
 
@@ -197,6 +200,7 @@ export function GroupedSessionList({
                     childCount={node.childCount}
                     matchedChildCount={node.matchedChildCount}
                     onToggleExpand={() => onToggleExpandParent(key)}
+                    expandAllTags={expandAllTags}
                 />
                 {children.map((child) => renderNode(child))}
                 {hidden > 0 ? (

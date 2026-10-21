@@ -4,7 +4,12 @@ import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import { isWindows } from "@/util/platformutil";
 import { buildSessionTree, type SessionTreeNode } from "./session-tree";
 import type { MarkedFilter, PathFilter, SessionGroupMode } from "./types";
-import { PathFilterOtherRoot, groupPreferenceStorageKey, sortPreferenceStorageKey } from "./types";
+import {
+    PathFilterOtherRoot,
+    expandAllTagsStorageKey,
+    groupPreferenceStorageKey,
+    sortPreferenceStorageKey,
+} from "./types";
 
 const ExactToolCallAnchorPattern = /^\[Tool:\s*[^\]]+\]$/;
 const ToolCallAnchorPattern = /\[Tool:\s*[^\]]+\]/;
@@ -162,6 +167,32 @@ export function readSortPreference(): boolean {
 export function writeSortPreference(descending: boolean): void {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(sortPreferenceStorageKey, descending ? "1" : "0");
+}
+
+/**
+ * 工具栏「展开全部标签」偏好（方案 B）。
+ *
+ * 默认 false：列表默认折叠到 4 个标签 + `+N`，避免每一行都被标签撑高。
+ * 打开后**所有行**都铺开全部标签，偏好写入 localStorage，跨会话保持。
+ * 单行的 `+N` / Show less 仍然可用，只是展开态的判定要同时看这个全局开关。
+ */
+export function readExpandAllTagsPreference(): boolean {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(expandAllTagsStorageKey) === "1";
+}
+
+export function writeExpandAllTagsPreference(expanded: boolean): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(expandAllTagsStorageKey, expanded ? "1" : "0");
+}
+
+/**
+ * 一行是否应该铺开全部标签：全局开关打开，或者这一行自己点过 `+N`。
+ * 全局开关打开时，单行「Show less」不能把整列偏好翻转，只能收起自己 —— 见
+ * `session-row.tsx` 里对 collapseOverride 的处理。
+ */
+export function shouldExpandAllTags(globalExpanded: boolean, rowExpanded: boolean): boolean {
+    return globalExpanded || rowExpanded;
 }
 
 export function readGroupPreference(): SessionGroupMode {

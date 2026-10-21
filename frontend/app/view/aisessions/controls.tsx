@@ -27,9 +27,7 @@ export function SourceButton({
             className={cn(
                 "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-transparent text-xs transition-colors",
                 iconOnly ? "w-8 px-1" : "px-2.5",
-                active
-                    ? "bg-accent/10 text-primary"
-                    : "text-secondary hover:bg-hoverbg hover:text-primary"
+                active ? "bg-accent/10 text-primary" : "text-secondary hover:bg-hoverbg hover:text-primary"
             )}
             onClick={onClick}
             title={label}
@@ -136,6 +134,32 @@ export function SortButton({ descending, onToggle }: { descending: boolean; onTo
     );
 }
 
+/**
+ * 「展开全部标签」开关（方案 B）。
+ *
+ * 标签默认折叠到 4 个 + `+N`，避免每一行都被标签撑高。打开后所有行铺开全部标签，
+ * 偏好写入 localStorage 跨会话保持；单行的 Show less 仍然可用，只收起自己。
+ */
+export function ExpandAllTagsButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+    return (
+        <button
+            type="button"
+            className={cn(
+                "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
+                expanded
+                    ? "border-accent/40 bg-accent/10 text-accent shadow-sm"
+                    : "border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
+            )}
+            onClick={onToggle}
+            title={expanded ? "Collapse tags in every row" : "Expand all tags in every row"}
+            aria-label={expanded ? "Collapse tags in every row" : "Expand all tags in every row"}
+            aria-pressed={expanded}
+        >
+            <i className={cn("fa-sharp fa-solid text-[11px]", expanded ? "fa-tags" : "fa-tag")} />
+        </button>
+    );
+}
+
 export type ListGroupMode = "project" | "time";
 
 /**
@@ -145,13 +169,7 @@ export type ListGroupMode = "project" | "time";
  * inline-flex strip whose moving fill is the selected label, so it reads as one
  * control at the same size as its neighbours rather than a second sort affordance.
  */
-export function GroupModeSwitch({
-    mode,
-    onChange,
-}: {
-    mode: ListGroupMode;
-    onChange: (mode: ListGroupMode) => void;
-}) {
+export function GroupModeSwitch({ mode, onChange }: { mode: ListGroupMode; onChange: (mode: ListGroupMode) => void }) {
     const options: { value: ListGroupMode; label: string; icon: string }[] = [
         { value: "project", label: "Project", icon: "fa-folder" },
         { value: "time", label: "Time", icon: "fa-clock" },
@@ -174,12 +192,16 @@ export function GroupModeSwitch({
                         onClick={() => onChange(value)}
                         className={cn(
                             "flex h-[22px] cursor-pointer items-center gap-1 rounded px-2 text-xs transition-colors",
-                            current
-                                ? "bg-background text-primary shadow-sm"
-                                : "text-secondary hover:text-primary"
+                            current ? "bg-background text-primary shadow-sm" : "text-secondary hover:text-primary"
                         )}
                     >
-                        <i className={cn("fa-sharp fa-solid text-[10px]", icon, current ? "text-primary" : "text-secondary")} />
+                        <i
+                            className={cn(
+                                "fa-sharp fa-solid text-[10px]",
+                                icon,
+                                current ? "text-primary" : "text-secondary"
+                            )}
+                        />
                         <span className="sr-only">{label}</span>
                     </button>
                 );
@@ -300,7 +322,9 @@ export function CopyTextButton({
             divClassName={wrapperClassName}
             content={
                 <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
-                    <div className={cn(status === "failed" ? "text-error" : "text-secondary")}>{tooltipText || text}</div>
+                    <div className={cn(status === "failed" ? "text-error" : "text-secondary")}>
+                        {tooltipText || text}
+                    </div>
                     <div
                         className={cn(
                             "mt-1 inline-flex items-center gap-1 text-[10px] uppercase",

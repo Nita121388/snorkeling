@@ -108,7 +108,7 @@ describe("note / tag row markup", () => {
         return markup.match(/<button[^>]*>(\+\d+|Show less)<\/button>/);
     }
 
-    function renderRow(note: string | null, sessionTags: string[]): string {
+    function renderRow(note: string | null, sessionTags: string[], expandAllTags = false): string {
         const session = { key: "k", id: "k", source: "pi", note, tags: sessionTags } as unknown as SessionSummary;
         // SessionRow owns hooks, so it must be rendered as an element (not called).
         return renderToStaticMarkup(
@@ -120,6 +120,7 @@ describe("note / tag row markup", () => {
                 onNoteSave={() => Promise.resolve(true)}
                 onResume={() => {}}
                 onJumpToBlock={() => {}}
+                expandAllTags={expandAllTags}
             />
         );
     }
@@ -155,6 +156,22 @@ describe("note / tag row markup", () => {
     it("carries an accessible name on the +N control so it is not a bare +2", () => {
         const markup = renderRow("note", ["a", "b", "c", "d", "e", "f"]);
         expect(markup).toMatch(/aria-label="Show \d+ more tag\(s\)"/);
+    });
+
+    it("renders every tag when the global expand-all preference is on", () => {
+        const markup = renderRow("note", ["a", "b", "c", "d", "e", "f"], true);
+        for (const tag of ["a", "b", "c", "d", "e", "f"]) {
+            expect(markup).toContain(`>${tag}</span>`);
+        }
+        // Expanded by preference: the control now offers to fold, not to expand.
+        expect(findOverflowControl(markup)?.[1]).toBe("Show less");
+    });
+
+    it("keeps folding when the global preference is off", () => {
+        const markup = renderRow("note", ["a", "b", "c", "d", "e", "f"], false);
+        expect(findOverflowControl(markup)?.[1]).toBe("+2");
+        expect(markup).not.toContain(">e</span>");
+        expect(markup).not.toContain(">f</span>");
     });
 
     it("does not render a note row when there is no note and no tags", () => {

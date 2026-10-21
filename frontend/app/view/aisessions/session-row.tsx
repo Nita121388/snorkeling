@@ -136,6 +136,7 @@ export function SessionRow({
     childCount = 0,
     matchedChildCount = 0,
     onToggleExpand,
+    expandAllTags = false,
 }: {
     session: SessionSummary;
     selected: boolean;
@@ -164,6 +165,11 @@ export function SessionRow({
     matchedChildCount?: number;
     /** 点箭头 / 计数徽标：只展开收起，不选中、不打开。 */
     onToggleExpand?: (event: ReactMouseEvent<HTMLElement>) => void;
+    /**
+     * 工具栏「展开全部标签」的全局偏好（方案 B）。
+     * 打开时所有行铺开全部标签；行内「Show less」只收起自己，不改全局偏好。
+     */
+    expandAllTags?: boolean;
 }) {
     const isChild = depth > 0;
     const childIcon =
@@ -177,6 +183,8 @@ export function SessionRow({
     const [noteEditing, setNoteEditing] = useState(false);
     // 标签展开是纯 UI 态：不落盘、不跨会话记忆，避免行高跳动（design §4）。
     const [tagsExpanded, setTagsExpanded] = useState(false);
+    // 全局「展开全部标签」打开时，单行仍可用「Show less」收起自己。
+    const [tagsCollapsedLocally, setTagsCollapsedLocally] = useState(false);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
     const [tagDraft, setTagDraft] = useState<string[]>(() => normalizeSessionTags(session.tags));
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
@@ -219,8 +227,18 @@ export function SessionRow({
     const sessionTime = session.updatedAt || session.createdAt || 0;
     const sessionTags = normalizeSessionTags(session.tags);
     // 折叠态默认 4 个标签（design §4）；展开态由行内「收起」按钮回折。
-    const visibleSessionTags = visibleTagsFor(sessionTags, tagsExpanded);
-    const hiddenTags = hiddenTagCount(sessionTags, tagsExpanded);
+    // 全局偏好优先；单行的「Show less」只覆盖自己。
+    const tagsOpen = expandAllTags ? !tagsCollapsedLocally : tagsExpanded;
+    const visibleSessionTags = visibleTagsFor(sessionTags, tagsOpen);
+    const hiddenTags = hiddenTagCount(sessionTags, tagsOpen);
+    /** 行内切换：全局偏好打开时只覆盖本行，否则翻转本行的展开态。 */
+    const toggleTags = () => {
+        if (expandAllTags) {
+            setTagsCollapsedLocally((current) => !current);
+            return;
+        }
+        setTagsExpanded((current) => !current);
+    };
     const hasNoteInfo = Boolean(session.note || sessionTags.length);
     const noteToggleLabel =
         !hasNoteInfo && !noteEditing
@@ -479,33 +497,33 @@ export function SessionRow({
                                         {tag}
                                     </span>
                                 ))}
-                                {hiddenTags > 0 || tagsExpanded ? (
+                                {hiddenTags > 0 || tagsOpen ? (
                                     <button
                                         type="button"
                                         className="shrink-0 cursor-pointer rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[10px] leading-none text-accent transition-colors hover:bg-accent/20"
                                         title={
-                                            tagsExpanded
+                                            tagsOpen
                                                 ? "Show fewer tags"
                                                 : `Show ${sessionTags.length - DefaultVisibleTagCount} more tag(s)`
                                         }
                                         aria-label={
-                                            tagsExpanded
+                                            tagsOpen
                                                 ? "Show fewer tags"
                                                 : `Show ${sessionTags.length - DefaultVisibleTagCount} more tag(s)`
                                         }
                                         data-row-action="true"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setTagsExpanded((current) => !current);
+                                            toggleTags();
                                         }}
                                         onKeyDown={(e) => {
                                             if (e.key !== "Enter" && e.key !== " ") return;
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            setTagsExpanded((current) => !current);
+                                            toggleTags();
                                         }}
                                     >
-                                        {tagsExpanded ? "Show less" : `+${hiddenTags}`}
+                                        {tagsOpen ? "Show less" : `+${hiddenTags}`}
                                     </button>
                                 ) : null}
                             </span>

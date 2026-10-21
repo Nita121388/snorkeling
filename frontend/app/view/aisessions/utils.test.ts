@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { PlatformMacOS, PlatformWindows, setPlatform } from "@/util/platformutil";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     buildSessionDetailTimeline,
     formatFileSize,
@@ -10,11 +10,15 @@ import {
     formatSessionRelativeTime,
     groupSessionsByProject,
     isReadableMessage,
+    readExpandAllTagsPreference,
     restoreCommandForSession,
     restoreMetaForSession,
+    shouldExpandAllTags,
     shouldStartEmptyChat,
     UnclassifiedGroupName,
+    writeExpandAllTagsPreference,
 } from "./utils";
+import { expandAllTagsStorageKey } from "./types";
 
 function makeMessage(seq: number, role: string, text: string): Message {
     return {
@@ -370,5 +374,57 @@ describe("groupSessionsByProject", () => {
             makeSummary("old", "/work/x", 100),
         ]);
         expect(groups[0].sessions.map((s) => s.key)).toEqual(["new", "old"]);
+    });
+});
+
+describe("expand-all-tags preference (option B)", () => {
+    // The suite runs in the node environment, so window/localStorage must be
+    // stubbed the same way the preview draft tests do it.
+    function stubStorage(): Map<string, string> {
+        const storage = new Map<string, string>();
+        vi.stubGlobal("window", {
+            localStorage: {
+                getItem: (key: string) => storage.get(key) ?? null,
+                setItem: (key: string, value: string) => {
+                    storage.set(key, value);
+                },
+                removeItem: (key: string) => {
+                    storage.delete(key);
+                },
+            },
+        });
+        return storage;
+    }
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it("defaults to collapsed when storage is empty", () => {
+        stubStorage();
+        // The preference is opt-in: a fresh user keeps the 4-tag + "+N" layout,
+        // otherwise every row would be padded out by its tags.
+        expect(readExpandAllTagsPreference()).toBe(false);
+    });
+
+    it("round-trips through localStorage", () => {
+        stubStorage();
+        writeExpandAllTagsPreference(true);
+        expect(readExpandAllTagsPreference()).toBe(true);
+        writeExpandAllTagsPreference(false);
+        expect(readExpandAllTagsPreference()).toBe(false);
+    });
+
+    it("treats any non-'1' stored value as collapsed", () => {
+        const storage = stubStorage();
+        storage.set(expandAllTagsStorageKey, "yes");
+        expect(readExpandAllTagsPreference()).toBe(false);
+    });
+
+    it("expands a row when either the global preference or the row is open", () => {
+        expect(shouldExpandAllTags(true, false)).toBe(true);
+        expect(shouldExpandAllTags(false, true)).toBe(true);
+        expect(shouldExpandAllTags(true, true)).toBe(true);
+        expect(shouldExpandAllTags(false, false)).toBe(false);
     });
 });

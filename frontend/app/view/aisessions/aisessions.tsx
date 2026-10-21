@@ -19,7 +19,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import "../../session-overview/session-overview.scss";
-import { GroupModeSwitch, IconButton, SortButton, type ListGroupMode } from "./controls";
+import { ExpandAllTagsButton, GroupModeSwitch, IconButton, SortButton, type ListGroupMode } from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { ScanProgressStrip, SkeletonSessionRows } from "./scan-progress";
@@ -64,11 +64,13 @@ import {
     pathAncestorSegments,
     pathFilterEqual,
     pathFilterToPrefix,
+    readExpandAllTagsPreference,
     readGroupPreference,
     readSortPreference,
     restoreMetaForSession,
     shouldStartEmptyChat,
     sortSessionsByTime,
+    writeExpandAllTagsPreference,
     writeGroupPreference,
     writeSortPreference,
 } from "./utils";
@@ -1104,6 +1106,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const deleting = jotai.useAtomValue(model.deletingAtom);
     const lastSessionsRefreshAt = jotai.useAtomValue(model.lastSessionsRefreshAtAtom);
     const [sortDescending, setSortDescending] = jotai.useAtom(model.sortDescendingAtom);
+    // 方案 B：全局「展开全部标签」偏好，写入 localStorage 跨会话保持。
+    const [expandAllTags, setExpandAllTags] = useState<boolean>(() => readExpandAllTagsPreference());
+    useEffect(() => {
+        writeExpandAllTagsPreference(expandAllTags);
+    }, [expandAllTags]);
     const [groupMode, setGroupMode] = jotai.useAtom(model.groupModeAtom);
     const [sessionListCollapsed, setSessionListCollapsed] = useState(() => readDefaultSessionListCollapsed(model));
     // 列表 / 详情分离：纯列表块（没有绑定具体会话）不再内嵌详情面板，
@@ -1611,6 +1618,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         descending={sortDescending}
                                         onToggle={() => setSortDescending((current) => !current)}
                                     />
+                                    <ExpandAllTagsButton
+                                        expanded={expandAllTags}
+                                        onToggle={() => setExpandAllTags((current) => !current)}
+                                    />
                                 </div>
                                 {backupStats != null && backupStats.cleanupCount > 0 ? (
                                     <div className="rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-[11px] text-secondary">
@@ -1694,6 +1705,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 expandedParents={renderedExpandedParents}
                                                 onToggleExpandParent={toggleExpandParent}
                                                 fullyExpandedParents={fullyExpandedParents}
+                                                expandAllTags={expandAllTags}
                                                 sortDescending={sortDescending}
                                                 selectedKey={selectedKey}
                                                 onSelectNew={() => {
