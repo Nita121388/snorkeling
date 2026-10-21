@@ -26,7 +26,8 @@
     "10-19-aisessions-block-separation",
     "10-19-aisessions-subagent-fold",
     "10-19-aisessions-refresh-icon",
-    "10-21-aisessions-detail-virtual-scroll"
+    "10-21-aisessions-detail-virtual-scroll",
+    "10-21-aisessions-subagent-tree"
   ],
   "parent": null,
   "relatedFiles": [],
