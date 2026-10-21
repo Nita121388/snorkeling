@@ -16,6 +16,7 @@ import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
 import { RestartConfirmModal } from "./restartconfirmmodal";
+import { ConfirmModal } from "./confirmmodal";
 import { FileConflictModal } from "./file-conflict-modal";
 import { UnsavedFileModal } from "./unsavedfilemodal";
 import { UserInputModal } from "./userinputmodal";
@@ -43,6 +44,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [SetSecretDialog.displayName || "SetSecretDialog"]: SetSecretDialog,
     [ExportOptionsModal.displayName || "ExportOptionsModal"]: ExportOptionsModal,
     [RestartConfirmModal.displayName || "RestartConfirmModal"]: RestartConfirmModal,
+    [ConfirmModal.displayName || "ConfirmModal"]: ConfirmModal,
 };
 
 export const getModalComponent = (key: string): React.ComponentType<any> | undefined => {
