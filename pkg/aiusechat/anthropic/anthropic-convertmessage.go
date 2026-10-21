@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/wavetermdev/waveterm/pkg/aiusechat/aiutil"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/chatstore"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/util/logutil"
@@ -42,6 +43,8 @@ func buildAnthropicHTTPRequest(ctx context.Context, msgs []anthropicInputMessage
 	if endpoint == "" {
 		return nil, errors.New("ai:endpoint is required")
 	}
+	// Accept a base URL as well as a full request URL; see aiutil.endpoint.
+	endpoint = aiutil.ResolveChatEndpoint(endpoint, uctypes.APIType_AnthropicMessages)
 
 	maxTokens := opts.MaxTokens
 	if maxTokens <= 0 {

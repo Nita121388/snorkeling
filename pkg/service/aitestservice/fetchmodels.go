@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/aiusechat/aiutil"
 	"github.com/wavetermdev/waveterm/pkg/secretstore"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 )
@@ -42,21 +43,13 @@ func (svc *AITestService) FetchModels(ctx context.Context, request *AIFetchModel
 	if request == nil {
 		return nil, fmt.Errorf("fetch models request is required")
 	}
-	base := strings.TrimSpace(request.Endpoint)
+	// The mode config's ai:endpoint may be the full request URL
+	// (…/chat/completions) or just a base URL (https://host/v1);
+	// aiutil.ResolveModelsEndpoint accepts both, so the "Fetch from endpoint"
+	// button and the chat request now agree on what the endpoint means.
+	base := aiutil.ResolveModelsEndpoint(request.Endpoint)
 	if base == "" {
 		return &AIFetchModelsResponse{Error: "endpoint is required"}, nil
-	}
-	// The mode config's ai:endpoint is the full request URL for chat/completions;
-	// derive the base by trimming /chat/completions, /responses, or a trailing slash.
-	for _, suffix := range []string{"/chat/completions", "/responses", "/v1/chat/completions", "/v1/responses"} {
-		if strings.HasSuffix(base, suffix) {
-			base = strings.TrimSuffix(base, suffix)
-			break
-		}
-	}
-	base = strings.TrimRight(base, "/")
-	if !strings.HasSuffix(base, "/models") {
-		base = base + "/models"
 	}
 
 	token := strings.TrimSpace(request.APIToken)

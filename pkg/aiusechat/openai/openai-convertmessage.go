@@ -211,6 +211,8 @@ func buildOpenAIHTTPRequest(ctx context.Context, inputs []any, chatOpts uctypes.
 	if endpoint == "" {
 		return nil, errors.New("ai:endpoint is required")
 	}
+	// Accept a base URL as well as a full request URL; see aiutil.endpoint.
+	endpoint = aiutil.ResolveChatEndpoint(endpoint, uctypes.APIType_OpenAIResponses)
 
 	maxTokens := opts.MaxTokens
 	if maxTokens <= 0 {

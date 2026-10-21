@@ -135,7 +135,7 @@ func buildChatHTTPRequest(ctx context.Context, messages []ChatRequestMessage, ch
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, opts.Endpoint, bytes.NewReader(buf))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, aiutil.ResolveChatEndpoint(opts.Endpoint, uctypes.APIType_OpenAIChat), bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}

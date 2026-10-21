@@ -73,7 +73,10 @@ func RunChatStep(
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, nil, nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		// Include the URL we actually called: a 404 here is almost always an
+		// endpoint that points at a base URL instead of the request path, and
+		// without the URL the message reads like the model or key is wrong.
+		return nil, nil, nil, fmt.Errorf("API returned status %d from %s: %s", resp.StatusCode, req.URL.String(), strings.TrimSpace(string(bodyBytes)))
 	}
 
 	// Setup SSE if this is a new request (not a continuation)

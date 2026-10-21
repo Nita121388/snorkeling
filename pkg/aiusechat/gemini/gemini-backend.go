@@ -157,8 +157,9 @@ func buildGeminiHTTPRequest(ctx context.Context, contents []GeminiContent, chatO
 		return nil, err
 	}
 
-	// Build URL
-	endpoint, err := ensureAltSse(opts.Endpoint)
+	// Build URL. Accept a bare base URL as well as the full
+	// `.../models/<model>:streamGenerateContent` form; see aiutil.endpoint.
+	endpoint, err := ensureAltSse(aiutil.ResolveGeminiEndpoint(opts.Endpoint, opts.Model))
 	if err != nil {
 		return nil, err
 	}
