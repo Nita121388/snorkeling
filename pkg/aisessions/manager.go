@@ -188,7 +188,9 @@ func (m *Manager) ScanListResult(ctx context.Context, opts ListOptions, query st
 			return ScanListResult{Sessions: summaries, ProjectPaths: dist}, err
 		}
 	}
-	summaries, dist, partial, err := m.scanListNow(ctx, opts, query)
+	listCtx, cancel := m.listBudgetContext(ctx)
+	defer cancel()
+	summaries, dist, partial, err := m.scanListNow(listCtx, opts, query)
 	if err != nil {
 		return ScanListResult{}, err
 	}
@@ -201,6 +203,14 @@ func (m *Manager) ScanListResult(ctx context.Context, opts ListOptions, query st
 		result.Scanning = scanning || total == 0
 	}
 	return result, nil
+}
+
+// listBudgetContext caps a whole List RPC. Without it, a slow disk plus a large
+// message-count pass can exceed the HTTP service timeout, at which point the web
+// server drops the connection and the browser only sees
+// `net::ERR_EMPTY_RESPONSE` — no backend error, no stack, just a dead request.
+func (m *Manager) listBudgetContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, listBudgetDuration())
 }
 
 // scanListNow runs one budgeted synchronous full scan and applies the list
@@ -518,12 +528,25 @@ func (m *Manager) populateMessageCounts(ctx context.Context, summaries []Session
 	}
 	cacheDirty := false
 	// Budget guard: parsing message bodies for every summary in one list call is
-	// what used to blow up memory on large histories. Sessions past the budget
-	// keep the MessageCount already stored in the index instead.
+	// what used to blow up memory on large histories — and it is also what blew
+	// past the 21s HTTP service timeout (an oversized List RPC surfaces to the
+	// GUI as `net::ERR_EMPTY_RESPONSE`). Both a byte budget and a wall-clock
+	// budget apply; sessions past them keep the MessageCount already stored in
+	// the index instead.
 	budget := messageCountBudgetBytes()
+	deadline := time.Now().Add(messageCountBudgetDuration())
 	usedBytes := int64(0)
 	for idx := range summaries {
 		if ctx.Err() != nil {
+			break
+		}
+		// A stored count is authoritative: SaveMessages writes it back, so once a
+		// session has been counted once we never re-parse it just to render a list.
+		if !refresh && summaries[idx].MessageCount > 0 {
+			continue
+		}
+		if usedBytes >= budget || time.Now().After(deadline) {
+			debugf("Manager.populateMessageCounts budget exhausted key=%q used=%d budget=%d", summaries[idx].Key, usedBytes, budget)
 			break
 		}
 		var messages []Message
@@ -540,10 +563,6 @@ func (m *Manager) populateMessageCounts(ctx context.Context, summaries []Session
 			if err == nil && ok {
 				messages = cachedMessages
 			}
-		}
-		if messages == nil && usedBytes >= budget {
-			debugf("Manager.populateMessageCounts budget exhausted key=%q used=%d budget=%d", summaries[idx].Key, usedBytes, budget)
-			continue
 		}
 		if messages == nil {
 			provider := providerBySource(m.Providers, summaries[idx].Source)

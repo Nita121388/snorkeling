@@ -290,9 +290,9 @@ func TestPopulateMessageCountsBudget(t *testing.T) {
 	})
 
 	summaries := []SessionSummary{
-		{Key: "k1", ID: "1", Source: "fake", FilePath: "/sessions/1.jsonl", MessageCount: 7},
-		{Key: "k2", ID: "2", Source: "fake", FilePath: "/sessions/2.jsonl", MessageCount: 9},
-		{Key: "k3", ID: "3", Source: "fake", FilePath: "/sessions/3.jsonl", MessageCount: 11},
+		{Key: "k1", ID: "1", Source: "fake", FilePath: "/sessions/1.jsonl", MessageCount: 0},
+		{Key: "k2", ID: "2", Source: "fake", FilePath: "/sessions/2.jsonl", MessageCount: 0},
+		{Key: "k3", ID: "3", Source: "fake", FilePath: "/sessions/3.jsonl", MessageCount: 0},
 	}
 	manager.populateMessageCounts(context.Background(), summaries, true)
 
@@ -302,8 +302,39 @@ func TestPopulateMessageCountsBudget(t *testing.T) {
 	if summaries[0].MessageCount != 1 {
 		t.Fatalf("expected the first session to be counted, got %d", summaries[0].MessageCount)
 	}
-	if summaries[1].MessageCount != 9 || summaries[2].MessageCount != 11 {
-		t.Fatalf("expected budget-skipped sessions to keep stored counts, got %d and %d", summaries[1].MessageCount, summaries[2].MessageCount)
+	if summaries[1].MessageCount != 0 || summaries[2].MessageCount != 0 {
+		t.Fatalf("expected budget-skipped sessions to keep their stored counts, got %d and %d", summaries[1].MessageCount, summaries[2].MessageCount)
+	}
+}
+
+// A stored count is authoritative; a list render must never re-parse a session
+// just to print "N msgs" (that is what pushed the List RPC past the service
+// timeout and surfaced as net::ERR_EMPTY_RESPONSE).
+func TestPopulateMessageCountsTrustsStoredCount(t *testing.T) {
+	resetScanState()
+	provider := &scanFileProvider{
+		source:   "fake",
+		messages: []Message{{Seq: 1, Role: RoleUser, Text: "hello"}},
+	}
+	dir := t.TempDir()
+	manager := NewManagerWithOptions(ManagerOptions{
+		Providers:  []Provider{provider},
+		IndexPath:  filepath.Join(dir, "index.json"),
+		MetaPath:   filepath.Join(dir, "meta.json"),
+		SQLitePath: filepath.Join(dir, "index-v2.sqlite"),
+	})
+
+	summaries := []SessionSummary{
+		{Key: "k1", ID: "1", Source: "fake", FilePath: "/sessions/1.jsonl", MessageCount: 7},
+		{Key: "k2", ID: "2", Source: "fake", FilePath: "/sessions/2.jsonl", MessageCount: 9},
+	}
+	manager.populateMessageCounts(context.Background(), summaries, false)
+
+	if got := atomic.LoadInt32(&provider.loadMsgsCalls); got != 0 {
+		t.Fatalf("expected no message parsing when counts are stored, provider loads=%d", got)
+	}
+	if summaries[0].MessageCount != 7 || summaries[1].MessageCount != 9 {
+		t.Fatalf("expected stored counts to be preserved, got %d and %d", summaries[0].MessageCount, summaries[1].MessageCount)
 	}
 }
 

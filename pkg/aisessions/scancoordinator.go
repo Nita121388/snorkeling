@@ -129,8 +129,47 @@ func titleScanMaxBytes() int64 {
 // may parse in one call. Sessions past the budget keep their stored count.
 var defaultMessageCountBudgetBytes int64 = 128 * 1024 * 1024
 
+// defaultMessageCountBudgetDuration caps how long one List call may spend
+// parsing message bodies. The web service timeout is 21s by default
+// (web:servicetimeoutms, max 60s); overshooting it makes the browser report
+// `net::ERR_EMPTY_RESPONSE` with no backend error at all. The default keeps the
+// whole RPC (scan + parse + serialize) inside that window.
+var defaultMessageCountBudgetDuration = 5 * time.Second
+
 func messageCountBudgetBytes() int64 {
 	return envInt64("SNORKELING_AISESSIONS_MSG_BUDGET_BYTES", defaultMessageCountBudgetBytes)
+}
+
+func messageCountBudgetDuration() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("SNORKELING_AISESSIONS_MSG_BUDGET_MS"))
+	if raw == "" {
+		return defaultMessageCountBudgetDuration
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil || ms <= 0 {
+		return defaultMessageCountBudgetDuration
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// defaultListBudgetDuration bounds one List RPC end to end (scan + message
+// counts + serialization). The web layer closes the HTTP connection when a
+// handler outlives HttpWriteTimeout / web:servicetimeoutms (21s by default), and
+// the browser then reports `net::ERR_EMPTY_RESPONSE` with no backend error --
+// which is exactly the "AI sessions won't load" symptom. Staying well under that
+// window turns a dead request into a partial (but useful) response.
+var defaultListBudgetDuration = 10 * time.Second
+
+func listBudgetDuration() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("SNORKELING_AISESSIONS_LIST_BUDGET_MS"))
+	if raw == "" {
+		return defaultListBudgetDuration
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil || ms <= 0 {
+		return defaultListBudgetDuration
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 func envInt64(name string, fallback int64) int64 {
