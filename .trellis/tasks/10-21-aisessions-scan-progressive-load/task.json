@@ -23,6 +23,9 @@
   "relatedFiles": [],
   "notes": "",
   "meta": {
-    "owner": "YG"
+    "owner": "YG",
+    "commit": "1b911c8a",
+    "phase_d": "deferred-p2",
+    "verification": "pending-user-build"
   }
 }

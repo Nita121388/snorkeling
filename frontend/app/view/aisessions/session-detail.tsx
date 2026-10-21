@@ -6,7 +6,7 @@ import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { Modal } from "@/app/modals/modal";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { cn } from "@/util/util";
-import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChatComposer } from "./chat-composer";
 import { CopyIconButton, IconButton } from "./controls";
@@ -22,6 +22,17 @@ import { SessionTagChips } from "./session-tag-chips";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "./session-tags";
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
+import {
+    EstimatedRowHeight,
+    VirtualOverscan,
+    activeSeqFromVirtualItems,
+    buildSeqToIndex,
+    isNearBottom,
+    outlineProbeOffset as computeOutlineProbeOffset,
+    shouldVirtualize,
+    timelineItemKey,
+} from "./timeline-virtual";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
 import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
 
@@ -43,6 +54,7 @@ import {
     outlinePreview,
     restoreCommandForSession,
 } from "./utils";
+import type { SessionDetailTimelineItem } from "./utils";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const ToolCallPreviewLength = 1200;
@@ -225,6 +237,15 @@ export function SessionDetailPane({
     const [detailSearchQuery, setDetailSearchQuery] = useState("");
     const [activeSearchSeq, setActiveSearchSeq] = useState<number | null>(null);
     const messageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+    // 虚拟化状态通过 ref 暴露给早期定义的 scrollToVisibleMessage（避免 TDZ 与 deps 抖动）。
+    const virtualScrollRef = useRef<{
+        enabled: boolean;
+        seqToIndex: Map<number, number>;
+        scrollToIndex: (index: number) => void;
+        items: () => Array<{ index: number; start: number }>;
+    } | null>(null);
+    // 虚拟化下滚动高度来自 virtualizer，供 nearBottom 判定复用。
+    const virtualTotalSizeRef = useRef(0);
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
     // 本 session 是否已经做过"打开时自动滚到底"（流式新消息到来不重复跟随）
     const autoScrolledToBottomRef = useRef(false);
@@ -347,7 +368,6 @@ export function SessionDetailPane({
         () => outlineMessages.map((message) => ({ seq: message.seq, preview: outlinePreview(message) })),
         [outlineMessages]
     );
-    const activeOutlineSeq = useActiveOutlineSeq(detailScrollRef, outlinePrompts);
     const detailSearchMatches = useMemo(
         () => readableMessages.filter((message) => messageMatchesSearch(message, detailSearchQuery)),
         [detailSearchQuery, readableMessages]
@@ -370,6 +390,27 @@ export function SessionDetailPane({
 
     const scrollToVisibleMessage = useCallback((seq: number, behavior: ScrollBehavior = "smooth") => {
         const container = detailScrollRef.current;
+        if (container == null) return;
+        // 虚拟化后目标行可能不在视区（没有 DOM 节点）：先按行号滚动，再在下一帧
+        // 用测量后的真实位置修正一次，避免用户看到明显跳动。
+        const virtual = virtualScrollRef.current;
+        if (virtual != null && virtual.enabled) {
+            const index = virtual.seqToIndex.get(seq);
+            if (index == null) return;
+            virtual.scrollToIndex(index);
+            const correct = (attempt: number) => {
+                const item = virtual.items().find((candidate) => candidate.index === index);
+                if (item != null) {
+                    container.scrollTo({ top: Math.max(0, item.start - 12), behavior: "auto" });
+                    return;
+                }
+                if (attempt < 3) {
+                    window.requestAnimationFrame(() => correct(attempt + 1));
+                }
+            };
+            window.requestAnimationFrame(() => correct(0));
+            return;
+        }
         // 全量渲染后消息节点应当已在 DOM；仅当首帧尚未提交时做几次 rAF 重试。
         const attemptScroll = (attempt: number) => {
             const node = messageRefs.current[seq];
@@ -710,7 +751,9 @@ export function SessionDetailPane({
     const handleDetailScroll = useCallback(() => {
         const node = detailScrollRef.current;
         if (node != null) {
-            nearBottomRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
+            // 虚拟化后 scrollHeight 只是已渲染窗口的高度，真实内容高度取 virtualizer 总高。
+            const contentHeight = virtualTotalSizeRef.current > 0 ? virtualTotalSizeRef.current : node.scrollHeight;
+            nearBottomRef.current = isNearBottom(contentHeight, node.scrollTop, node.clientHeight, 120);
             // 上滚离开底部 → 浮出「跳到最新」胶囊；流式吸底 / 回到底部则收起。
             setShowJumpPill(!nearBottomRef.current && (readableMessages.length > 0 || liveTurn != null));
         }
@@ -841,20 +884,6 @@ export function SessionDetailPane({
         [detailSearchMatches.length, jumpToNextSearchMatch, jumpToPreviousSearchMatch]
     );
 
-    // 打开 panel / 切换 session 后：仅在内容超出一屏时才置底（ponytail: 否则短对话应从顶部开始）
-    useLayoutEffect(() => {
-        if (autoScrolledToBottomRef.current) return;
-        if (lastVisibleMessage == null) return;
-        if (!messageRefs.current[lastVisibleMessage.seq]) return;
-        autoScrolledToBottomRef.current = true;
-        const container = detailScrollRef.current;
-        if (!container) return;
-        // 内容未溢出视图时保持顶部对齐（首个消息从顶部开始）
-        if (container.scrollHeight > container.clientHeight) {
-            container.scrollTop = container.scrollHeight;
-        }
-    }, [lastVisibleMessage?.seq]);
-
     useEffect(() => {
         if (normalizedDetailSearchQuery === "" || detailSearchMatches.length === 0) {
             setActiveSearchSeq(null);
@@ -915,6 +944,184 @@ export function SessionDetailPane({
         return () => window.clearTimeout(handle);
     }, [noteEditorOpen, noteSaving, noteUnchanged, saveNote, summary, trimmedNoteDraft]);
 
+    // 实时 turn 转成与历史同款 timeline 项，追加在历史项之后，用同一套
+    // MessageCard / ToolCallCard 渲染——保证实时与历史样式完全一致。
+    const liveTimelineItems = liveTurn != null ? liveTurnToTimelineItems(liveTurn, liveUserMessagePersisted) : [];
+    // 子代理归位：把已匹配的 subagent 工具行从时间线里摘掉，改成发起它的那条消息的
+    // 子级内容（MessageCard children）。未匹配的仍按普通工具行降级显示。
+    const subagentMatchesByAnchor = useMemo(() => {
+        const byAnchor = new Map<number, SubagentMatch[]>();
+        for (const item of timelineItems) {
+            if (item.kind !== "tool" || item.toolCall.name !== "subagent") continue;
+            const match = subagentMatchesByKey.get(item.toolCall.itemKey ?? "");
+            if (match == null) continue;
+            const list = byAnchor.get(item.anchorSeq);
+            if (list == null) {
+                byAnchor.set(item.anchorSeq, [match]);
+            } else {
+                list.push(match);
+            }
+        }
+        return byAnchor;
+    }, [timelineItems, subagentMatchesByKey]);
+    const renderItems = useMemo(() => {
+        const merged = liveTimelineItems.length > 0 ? [...timelineItems, ...liveTimelineItems] : timelineItems;
+        if (subagentMatchesByAnchor.size === 0) return merged;
+        return merged.filter(
+            (item) =>
+                !(
+                    item.kind === "tool" &&
+                    item.toolCall.name === "subagent" &&
+                    subagentMatchesByKey.has(item.toolCall.itemKey ?? "")
+                )
+        );
+    }, [timelineItems, liveTimelineItems, subagentMatchesByAnchor, subagentMatchesByKey]);
+    // 大会话走虚拟化：只渲染视口附近的几行，避免 5000+ 个 DOM 节点把滚动拖死。
+    // 小会话保持原有全量渲染（行为与改动前一致）。
+    const virtualEnabled = shouldVirtualize(renderItems.length);
+    const seqToIndex = useMemo(() => buildSeqToIndex(renderItems), [renderItems]);
+    const virtualizer = useVirtualizer({
+        count: renderItems.length,
+        getScrollElement: () => detailScrollRef.current,
+        estimateSize: () => EstimatedRowHeight,
+        overscan: VirtualOverscan,
+        enabled: virtualEnabled,
+        measureElement: (element) => element.getBoundingClientRect().height,
+    });
+    const virtualItems = virtualizer.getVirtualItems();
+    virtualScrollRef.current = {
+        enabled: virtualEnabled,
+        seqToIndex,
+        scrollToIndex: (index: number) => virtualizer.scrollToIndex(index, { align: "start" }),
+        items: () => virtualizer.getVirtualItems(),
+    };
+    virtualTotalSizeRef.current = virtualEnabled ? virtualizer.getTotalSize() : 0;
+    const timelineItemSeqs = useMemo(
+        () => renderItems.map((item) => (item.kind === "message" ? item.message.seq : null)),
+        [renderItems]
+    );
+    // 大纲轨 active 刻度：虚拟化后改用可见项推导，不再遍历 DOM 节点。
+    const [outlineProbeOffset, setOutlineProbeOffset] = useState(0);
+    useEffect(() => {
+        const container = detailScrollRef.current;
+        if (container == null || !virtualEnabled) return;
+        const update = () => setOutlineProbeOffset(computeOutlineProbeOffset(container.clientHeight));
+        update();
+        if (typeof ResizeObserver === "undefined") return;
+        const observer = new ResizeObserver(update);
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, [virtualEnabled]);
+    const fullRenderActiveSeq = useActiveOutlineSeq(detailScrollRef, outlinePrompts, !virtualEnabled);
+    const activeOutlineSeq = virtualEnabled
+        ? activeSeqFromVirtualItems(
+              virtualItems,
+              timelineItemSeqs,
+              outlineProbeOffset,
+              outlinePrompts[0]?.seq ?? null
+          )
+        : fullRenderActiveSeq;
+    // live turn 追加时消息节点高度变化：显式重测，避免虚拟行高失真。
+    useEffect(() => {
+        if (!virtualEnabled || liveTurn == null) return;
+        virtualizer.measure();
+    }, [virtualEnabled, liveTurn, virtualizer]);
+    // 打开会话自动置底：虚拟化后用总高度滚动，语义与全量渲染一致。
+    useLayoutEffect(() => {
+        if (autoScrolledToBottomRef.current) return;
+        if (lastVisibleMessage == null) return;
+        // 非虚拟化路径沿用「等真实节点出现」的旧条件，行为完全不变。
+        if (!virtualEnabled && messageRefs.current[lastVisibleMessage.seq] == null) return;
+        autoScrolledToBottomRef.current = true;
+        const container = detailScrollRef.current;
+        if (container == null) return;
+        const totalHeight = virtualEnabled ? virtualizer.getTotalSize() : container.scrollHeight;
+        // 内容未溢出视图时保持顶部对齐（首个消息从顶部开始）
+        if (totalHeight > container.clientHeight) {
+            container.scrollTo({ top: totalHeight, behavior: "auto" });
+        }
+    }, [lastVisibleMessage?.seq, virtualEnabled, virtualizer]);
+    // 渲染单行的共享实现：全量分支与虚拟分支必须长得完全一样，避免两条路径漂移。
+    const renderTimelineItem = useCallback(
+        (item: SessionDetailTimelineItem, itemIdx: number, items: SessionDetailTimelineItem[]) => {
+            const prevItem = itemIdx > 0 ? items[itemIdx - 1] : null;
+            const isGroupStart =
+                item.kind !== "message" ||
+                prevItem == null ||
+                prevItem.kind !== "message" ||
+                prevItem.message.role !== item.message.role;
+            if (item.kind === "message") {
+                const foldedSubagents = subagentMatchesByAnchor.get(item.message.seq);
+                return (
+                    <MessageCard
+                        message={item.message}
+                        searchQuery={detailSearchQuery}
+                        searchActive={item.message.seq === activeSearchSeq}
+                        groupStart={isGroupStart}
+                        registerRef={(node) => {
+                            if (node) messageRefs.current[item.message.seq] = node;
+                        }}
+                    >
+                        {foldedSubagents != null && model.service != null
+                            ? foldedSubagents.map((match) => (
+                                  <div key={match.call.itemKey ?? match.sessionKey} className="mt-1">
+                                      <SubagentCard
+                                          match={match}
+                                          service={model.service!}
+                                          connection={connection || undefined}
+                                          onOpenSession={(sessionKey) => {
+                                              if (model.blockId) {
+                                                  void openAISessionDetailFromList(sessionKey, model.blockId, {
+                                                      forceNewBlock: true,
+                                                  });
+                                              }
+                                          }}
+                                      />
+                                  </div>
+                              ))
+                            : null}
+                    </MessageCard>
+                );
+            }
+            const subagentMatch = subagentMatchFor(item);
+            if (subagentMatch != null && model.service != null) {
+                return (
+                    <SubagentCard
+                        match={subagentMatch}
+                        service={model.service}
+                        connection={connection || undefined}
+                        onOpenSession={(sessionKey) => {
+                            if (model.blockId) {
+                                void openAISessionDetailFromList(sessionKey, model.blockId, {
+                                    forceNewBlock: true,
+                                });
+                            }
+                        }}
+                    />
+                );
+            }
+            return (
+                <ToolCallCard
+                    toolCall={item.toolCall}
+                    liveStatus={"liveStatus" in item ? item.liveStatus : undefined}
+                    expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
+                    onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
+                />
+            );
+        },
+        [
+            activeSearchSeq,
+            connection,
+            detailSearchQuery,
+            expandedToolCalls,
+            model.blockId,
+            model.service,
+            subagentMatchFor,
+            subagentMatchesByAnchor,
+            toggleToolCallExpanded,
+        ]
+    );
+
     // Keep the live turn visible while authoritative history is loading. The
     // detail request may briefly clear the persisted snapshot during promotion;
     // returning an empty pane here would hide an otherwise healthy stream.
@@ -938,10 +1145,6 @@ export function SessionDetailPane({
                   : "";
     const projectDirectory = summary?.projectPath?.trim() ?? "";
     const sessionFilePath = summary?.filePath?.trim() ?? "";
-    // 实时 turn 转成与历史同款 timeline 项，追加在历史项之后，用同一套
-    // MessageCard / ToolCallCard 渲染——保证实时与历史样式完全一致。
-    const liveTimelineItems = liveTurn != null ? liveTurnToTimelineItems(liveTurn, liveUserMessagePersisted) : [];
-    const renderItems = liveTimelineItems.length > 0 ? [...timelineItems, ...liveTimelineItems] : timelineItems;
     return (
         <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
             {historySyncError && effectiveDetail != null ? (
@@ -1154,48 +1357,43 @@ export function SessionDetailPane({
                                     )
                                 ) : (
                                     <div>
-                                        {renderItems.map((item, itemIdx) => {
-                                            const prevItem = itemIdx > 0 ? renderItems[itemIdx - 1] : null;
-                                            const isGroupStart =
-                                                item.kind !== "message" ||
-                                                prevItem == null ||
-                                                prevItem.kind !== "message" ||
-                                                prevItem.message.role !== item.message.role;
-                                            return item.kind === "message" ? (
-                                                <MessageCard
-                                                    key={`message-${item.message.seq}`}
-                                                    message={item.message}
-                                                    searchQuery={detailSearchQuery}
-                                                    searchActive={item.message.seq === activeSearchSeq}
-                                                    groupStart={isGroupStart}
-                                                    registerRef={(node) => {
-                                                        messageRefs.current[item.message.seq] = node;
-                                                    }}
-                                                />
-                                            ) : subagentMatchFor(item) != null && model.service != null ? (
-                                                <SubagentCard
-                                                    key={`subagent-${item.anchorSeq}-${item.toolCall.seq}`}
-                                                    match={subagentMatchFor(item)!}
-                                                    service={model.service}
-                                                    connection={connection || undefined}
-                                                    onOpenSession={(sessionKey) => {
-                                                        if (model.blockId) {
-                                                            void openAISessionDetailFromList(sessionKey, model.blockId, {
-                                                                forceNewBlock: true,
-                                                            });
-                                                        }
-                                                    }}
-                                                />
-                                            ) : (
-                                                <ToolCallCard
-                                                    key={`tool-${item.anchorSeq}-${item.toolCall.seq}`}
-                                                    toolCall={item.toolCall}
-                                                    liveStatus={"liveStatus" in item ? item.liveStatus : undefined}
-                                                    expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
-                                                    onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
-                                                />
-                                            );
-                                        })}
+                                        {virtualEnabled ? (
+                                            <div
+                                                style={{
+                                                    height: virtualizer.getTotalSize(),
+                                                    position: "relative",
+                                                    width: "100%",
+                                                }}
+                                                data-testid="aisessions-virtual-timeline"
+                                            >
+                                                {virtualItems.map((virtualItem) => {
+                                                    const item = renderItems[virtualItem.index];
+                                                    if (item == null) return null;
+                                                    return (
+                                                        <div
+                                                            key={virtualItem.key}
+                                                            data-index={virtualItem.index}
+                                                            ref={virtualizer.measureElement}
+                                                            style={{
+                                                                position: "absolute",
+                                                                top: 0,
+                                                                left: 0,
+                                                                width: "100%",
+                                                                transform: `translateY(${virtualItem.start}px)`,
+                                                            }}
+                                                        >
+                                                            {renderTimelineItem(item, virtualItem.index, renderItems)}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            renderItems.map((item, itemIdx) => (
+                                                <Fragment key={timelineItemKey(item, itemIdx)}>
+                                                    {renderTimelineItem(item, itemIdx, renderItems)}
+                                                </Fragment>
+                                            ))
+                                        )}
                                         {liveTurn != null && (activeChatStreamStatus === "sending" || activeChatStreamStatus === "streaming") ? (
                                             <div className="flex items-center gap-1.5 px-1 py-1 text-xs text-accent" role="status" aria-live="polite">
                                                 <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />

@@ -406,12 +406,15 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
  */
 export function useActiveOutlineSeq(
     containerRef: React.RefObject<HTMLDivElement | null>,
-    prompts: OutlinePrompt[]
+    prompts: OutlinePrompt[],
+    enabled = true
 ): number | null {
     const [activeSeq, setActiveSeq] = useState<number | null>(null);
     const promptSeqs = useMemo(() => prompts.map((p) => p.seq), [prompts]);
 
     useEffect(() => {
+        // 虚拟化路径由调用方按可见项推导（不可视行没有 DOM 节点可探测）。
+        if (!enabled) return;
         const container = containerRef.current;
         if (container == null || promptSeqs.length === 0) return;
         let raf = 0;
@@ -440,7 +443,7 @@ export function useActiveOutlineSeq(
             container.removeEventListener("scroll", onScroll);
             if (raf !== 0) window.cancelAnimationFrame(raf);
         };
-    }, [containerRef, promptSeqs]);
+    }, [containerRef, promptSeqs, enabled]);
 
     return activeSeq;
 }

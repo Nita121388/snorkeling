@@ -79,6 +79,7 @@ declare global {
         messageCount?: number;
         loadAll?: boolean;
         messageOffset?: number;
+        includeTools?: boolean;
     };
 
     // aisessionsservice.AISessionsDetailRequest

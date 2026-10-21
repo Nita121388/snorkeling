@@ -277,6 +277,8 @@ export class AgentViewModel implements ViewModel {
                     loadAll: true,
                     messageOffset,
                     includeTools: true,
+                    // LoadAll 分帧按消息下标推进，字节游标不参与；类型要求必填。
+                    cursor: { byteOffset: 0, fileSize: 0, mtime: 0, lastSeq: 0 },
                 });
                 if (loadSeq !== this.detailLoadSeq || globalStore.get(this.selectedKeyAtom) !== sessionKey) {
                     return;

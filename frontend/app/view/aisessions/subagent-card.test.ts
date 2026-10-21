@@ -73,3 +73,20 @@ describe("subagentRowStatus", () => {
         expect(subagentRowStatus(ambiguous)).toBe("completed");
     });
 });
+
+describe("progressive loading contract", () => {
+    it("never shows a bare loading label: the skeleton owns the loading state", async () => {
+        // 结构契约：展开加载时必须渲染带 role=status 的骨架，而不是一行静态文字。
+        const { SessionDetailSkeleton } = await import("./session-detail-skeleton");
+        const { renderToStaticMarkup } = await import("react-dom/server");
+        const html = renderToStaticMarkup(SessionDetailSkeleton({ rows: 3 }));
+        expect(html).toContain('role="status"');
+        expect(html).toContain('aria-busy="true"');
+        expect(html).not.toContain("加载中…");
+    });
+
+    it("keeps subagent loads serial so the main timeline wins", async () => {
+        const { SubagentLoadConcurrency } = await import("./subagent-load-queue");
+        expect(SubagentLoadConcurrency).toBe(1);
+    });
+});

@@ -112,6 +112,10 @@ type AISessionsDetailDeltaRequest struct {
 	// instead of by file byte cursor. Both unset keeps the legacy byte-delta path.
 	LoadAll       bool `json:"loadAll,omitempty"`
 	MessageOffset int  `json:"messageOffset,omitempty"`
+	// IncludeTools keeps tool calls in continuation frames. Without it a
+	// LoadAll stream shows tool cards for the first frame only, which is what
+	// the GUI (agent detail, subagent cards) expects to avoid.
+	IncludeTools bool `json:"includeTools,omitempty"`
 }
 
 type AISessionsUserOutlineRequest struct {
@@ -543,6 +547,7 @@ func (svc *AISessionsService) DetailDelta(ctx context.Context, request *AISessio
 		BaseCount:     request.MessageCount,
 		MaxBytes:      request.MaxBytes,
 		LoadAll:       request.LoadAll,
+		IncludeTools:  request.IncludeTools,
 		MessageOffset: request.MessageOffset,
 	})
 	if err != nil {

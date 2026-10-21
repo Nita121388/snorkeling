@@ -313,6 +313,7 @@ export const MessageCard = memo(function MessageCard({
   searchQuery,
   searchActive = false,
   groupStart = true,
+  children,
 }: {
   message: Message;
   registerRef: (node: HTMLDivElement | null) => void;
@@ -320,6 +321,11 @@ export const MessageCard = memo(function MessageCard({
   searchActive?: boolean;
   /** 是否为同角色连续消息分组的开头（决定上间距 + 组头） */
   groupStart?: boolean;
+  /**
+   * 归位到这条消息下的子级内容（目前是它派发出去的 subagent 卡片）。
+   * 渲染在 meta 行之后、消息块内部，折叠态只占一行。
+   */
+  children?: ReactNode;
 }) {
   const isUser = message.role === "user";
   const normalizedSearchQuery = searchQuery?.trim().toLowerCase() ?? "";
@@ -402,12 +408,14 @@ export const MessageCard = memo(function MessageCard({
           />
         </div>
       )}
+      {children}
     </div>
   );
 }, (previous, next) =>
   previous.message === next.message &&
   previous.searchQuery === next.searchQuery &&
   previous.searchActive === next.searchActive &&
-  previous.groupStart === next.groupStart
+  previous.groupStart === next.groupStart &&
+  previous.children === next.children
 );
 MessageCard.displayName = "MessageCard";
