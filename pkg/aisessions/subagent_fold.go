@@ -37,6 +37,12 @@ type SubagentCandidate struct {
 	SessionID  string `json:"sessionId,omitempty"`
 	Name       string `json:"name,omitempty"`
 	CreatedAt  int64  `json:"createdAt,omitempty"`
+	// ParentKey 非空表示这个候选是通过磁盘目录结构判定为「父会话的子会话」，
+	// 比 agent 名匹配可靠：子会话文件没有 session_info.name。
+	ParentKey string `json:"parentKey,omitempty"`
+	// Kind 是 session / subagent / fork。只有 subagent 是派发产生的，
+	// fork 是用户主动分叉，不应当作某次派发的目标。
+	Kind string `json:"kind,omitempty"`
 }
 
 // SubagentMatchStatus 表示一次派发的匹配结果。
@@ -111,10 +117,32 @@ func subagentTimeWithinWindow(createdAt, callAt int64) bool {
 	return createdAt <= callAt+subagentMatchTrailSkewMS
 }
 
+// subagentCandidateEligible 判断某个候选是否够格参与这次派发的匹配。
+//
+// 两条路径，按可靠性从高到低：
+//  1. 结构候选（ParentKey 非空且 Kind=subagent）：磁盘目录结构已经确定它属于这个父会话，
+//     而子会话文件没有 session_info.name，所以只看时间窗，不要求名字匹配。
+//  2. 名称候选：老的 agent 名 + 时间窗匹配，作为兜底。
+//
+// fork 即使挂在父目录下也永远不是派发目标（它是用户主动分叉），直接排除。
+func subagentCandidateEligible(cand SubagentCandidate, call SubagentCall) bool {
+	if cand.Kind == SessionKindFork {
+		return false
+	}
+	if strings.TrimSpace(cand.ParentKey) != "" && cand.Kind == SessionKindSubagent {
+		return subagentTimeWithinWindow(cand.CreatedAt, call.Timestamp)
+	}
+	if !subagentNameMatches(cand.Name, call.Agent) {
+		return false
+	}
+	return subagentTimeWithinWindow(cand.CreatedAt, call.Timestamp)
+}
+
 // matchSubagentCalls 把每次派发匹配到至多一个子会话候选。纯函数，便于单测。
 //
 // 约束：
-//   - 只有名称 + 时间都命中的候选才参与匹配；
+//   - 结构候选（目录结构已知的 subagent）优先，只校验时间窗；其余走名称 + 时间窗兜底；
+//   - fork 永不参与匹配；
 //   - 唯一命中 → matched；多个命中 → ambiguous（不猜测，列出候选）；
 //   - 无命中 → missing；
 //   - 已经被更早一次派发占用过的候选不会再次匹配，避免两个调用抢同一个子会话；
@@ -128,10 +156,7 @@ func matchSubagentCalls(calls []SubagentCall, candidates []SubagentCandidate) []
 			if used[cand.SessionKey] {
 				continue
 			}
-			if !subagentNameMatches(cand.Name, call.Agent) {
-				continue
-			}
-			if !subagentTimeWithinWindow(cand.CreatedAt, call.Timestamp) {
+			if !subagentCandidateEligible(cand, call) {
 				continue
 			}
 			hits = append(hits, cand)

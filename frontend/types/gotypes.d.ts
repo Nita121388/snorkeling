@@ -2247,6 +2247,8 @@ declare global {
         tags?: string[];
         missing?: boolean;
         live?: boolean;
+        parentKey?: string;
+        kind?: string;
         size?: number;
     };
 

@@ -1,8 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
-
 import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import { isWindows } from "@/util/platformutil";
+import { buildSessionTree, type SessionTreeNode } from "./session-tree";
 import type { MarkedFilter, PathFilter, SessionGroupMode } from "./types";
 import { PathFilterOtherRoot, groupPreferenceStorageKey, sortPreferenceStorageKey } from "./types";
 
@@ -187,6 +187,8 @@ export type ProjectSessionGroup = {
     path: string;
     /** Sessions in this project, newest first (by the same key as the flat list). */
     sessions: SessionSummary[];
+    /** 该分组按父子关系组织好的树（父行 + 其子会话）；渲染用它，sessions 只用于计数。 */
+    tree: SessionTreeNode[];
     /** Whether this bucket holds sessions with no usable project path. */
     unclassified: boolean;
 };
@@ -225,7 +227,7 @@ export function groupSessionsByProject(sessions: SessionSummary[]): ProjectSessi
         if (existing) {
             existing.sessions.push(session);
         } else {
-            buckets.set(key, { name, path, sessions: [session], unclassified: key === "" });
+            buckets.set(key, { name, path, sessions: [session], tree: [], unclassified: key === "" });
         }
     }
     const groups = [...buckets.values()];
@@ -236,6 +238,11 @@ export function groupSessionsByProject(sessions: SessionSummary[]): ProjectSessi
         const rightTime = sessionSortTime(right.sessions[0]);
         return rightTime - leftTime;
     });
+    // 每个分组内部再按父子关系成树；父会话必然与子会话同 project（同一目录），
+    // 所以树不会跨分组。父不在本组里的子会话由 buildSessionTree 提升为顶层。
+    for (const group of groups) {
+        group.tree = buildSessionTree(group.sessions);
+    }
     return groups;
 }
 

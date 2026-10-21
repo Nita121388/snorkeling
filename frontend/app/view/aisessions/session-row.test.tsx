@@ -4,7 +4,7 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { RunningDot } from "./session-row";
+import { RunningDot, SessionRow, hiddenTagCount, visibleTagsFor } from "./session-row";
 
 type ElementProps = {
     className?: string;
@@ -73,5 +73,88 @@ describe("RunningDot", () => {
 
     it("renders nothing when the session is not running", () => {
         expect(RunningDot({ runningState: null, onJumpToBlock: () => {} })).toBeNull();
+    });
+});
+
+describe("session tag folding", () => {
+    const tags = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
+
+    it("shows only the first four tags while collapsed", () => {
+        expect(visibleTagsFor(tags, false)).toEqual(["alpha", "beta", "gamma", "delta"]);
+        expect(hiddenTagCount(tags, false)).toBe(2);
+    });
+
+    it("shows every tag once expanded and hides the +N control", () => {
+        expect(visibleTagsFor(tags, true)).toEqual(tags);
+        expect(hiddenTagCount(tags, true)).toBe(0);
+    });
+
+    it("does not overflow at exactly the visible limit", () => {
+        const four = ["a", "b", "c", "d"];
+        expect(visibleTagsFor(four, false)).toEqual(four);
+        expect(hiddenTagCount(four, false)).toBe(0);
+    });
+
+    it("handles empty and oversized lists", () => {
+        expect(visibleTagsFor([], false)).toEqual([]);
+        expect(hiddenTagCount([], false)).toBe(0);
+        expect(hiddenTagCount(["a"], false)).toBe(0);
+    });
+});
+
+describe("note / tag row markup", () => {
+    /** Find the tag overflow control (+N / 收起) in the rendered row. */
+    function findOverflowControl(markup: string): RegExpMatchArray | null {
+        return markup.match(/<button[^>]*>(\+\d+|收起)<\/button>/);
+    }
+
+    function renderRow(note: string | null, sessionTags: string[]): string {
+        const session = { key: "k", id: "k", source: "pi", note, tags: sessionTags } as unknown as SessionSummary;
+        // SessionRow owns hooks, so it must be rendered as an element (not called).
+        return renderToStaticMarkup(
+            <SessionRow
+                session={session}
+                selected={false}
+                onSelect={() => {}}
+                onMark={() => {}}
+                onNoteSave={() => Promise.resolve(true)}
+                onResume={() => {}}
+                onJumpToBlock={() => {}}
+            />
+        );
+    }
+
+    it("uses div[role=button] for the note row so the tag button can nest", () => {
+        // Six tags → the +N overflow control renders as a real <button> inside the
+        // note row, which is why the note row itself must not be a <button>.
+        const markup = renderRow("#tag hello", ["a", "b", "c", "d", "e", "f"]);
+        expect(markup).toContain('role="button"');
+        expect(markup).toContain('tabindex="0"');
+        // The nested tag overflow control must be a real button inside it.
+        expect(markup).toMatch(/<div[^>]*role="button"[^>]*>[\s\S]*<button/);
+    });
+
+    it("renders the +N control when tags exceed the folded limit", () => {
+        const markup = renderRow("note", ["a", "b", "c", "d", "e", "f"]);
+        expect(findOverflowControl(markup)?.[1]).toBe("+2");
+    });
+
+    it("renders no +N control at or below the folded limit", () => {
+        const markup = renderRow("note", ["a", "b", "c", "d"]);
+        expect(findOverflowControl(markup)).toBeNull();
+    });
+
+    it("colors the note text with the same accent as the tag badges", () => {
+        const markup = renderRow("plain note body", ["a"]);
+        const noteSpan = markup.match(/<span class="[^"]*text-accent[^"]*">plain note body<\/span>/);
+        expect(noteSpan).not.toBeNull();
+        const tagSpan = markup.match(/<span class="[^"]*text-accent[^"]*">a<\/span>/);
+        expect(tagSpan).not.toBeNull();
+    });
+
+    it("does not render a note row when there is no note and no tags", () => {
+        const markup = renderRow(null, []);
+        expect(markup).not.toContain('role="button"');
+        expect(markup).not.toContain("Add a note");
     });
 });

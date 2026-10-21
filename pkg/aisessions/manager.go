@@ -1049,6 +1049,19 @@ func (m *Manager) subagentCandidates(ctx context.Context, parent SessionSummary)
 		if s.Key == parent.Key {
 			continue
 		}
+		// 磁盘结构判定的直接子会话（pi subagent 目录下的文件）：这些文件没有
+		// session_info.name，所以必须靠 parentKey 才能参与匹配。
+		if s.ParentKey == parent.Key && s.Kind == SessionKindSubagent {
+			candidates = append(candidates, SubagentCandidate{
+				SessionKey: s.Key,
+				SessionID:  s.ID,
+				Name:       s.Title,
+				CreatedAt:  s.CreatedAt,
+				ParentKey:  s.ParentKey,
+				Kind:       s.Kind,
+			})
+			continue
+		}
 		if !subagentSameProjectPath(s.ProjectPath, parent.ProjectPath) {
 			continue
 		}
@@ -1060,6 +1073,8 @@ func (m *Manager) subagentCandidates(ctx context.Context, parent SessionSummary)
 			SessionID:  s.ID,
 			Name:       s.Title,
 			CreatedAt:  s.CreatedAt,
+			ParentKey:  s.ParentKey,
+			Kind:       s.Kind,
 		})
 	}
 	return candidates, nil

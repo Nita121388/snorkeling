@@ -3,10 +3,9 @@
 
 import { Tooltip } from "@/app/element/tooltip";
 import { cn } from "@/util/util";
-import type { MouseEvent as ReactMouseEvent, MouseEventHandler } from "react";
+import type { MouseEventHandler, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { CopyIconButton, IconButton } from "./controls";
-import { getChatSource } from "./sources";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { SessionTagChips } from "./session-tag-chips";
 import {
@@ -18,6 +17,7 @@ import {
     sessionTagsLabel,
     stripSessionTagHashes,
 } from "./session-tags";
+import { getChatSource } from "./sources";
 import type { SessionRunningState } from "./use-sessions-running";
 import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
 
@@ -43,6 +43,22 @@ function sourceDotClass(source: string): string {
  * 挡不住 dblclick，所以统一用这个属性做判定。
  */
 const RowActionAttribute = "data-row-action";
+
+/** 折叠态默认展示的标签数（design §4：4 个，超出折叠成 +N）。 */
+export const DefaultVisibleTagCount = 4;
+
+/**
+ * 折叠态只取前 4 个标签，其余折叠成 `+N`；展开态给全部。
+ * 抽成纯函数便于单测（行内交互态不落盘，见 design §4）。
+ */
+export function visibleTagsFor(tags: string[], expanded: boolean): string[] {
+    return expanded ? tags : tags.slice(0, DefaultVisibleTagCount);
+}
+
+/** 折叠态下被藏起来的标签数量（0 表示不需要渲染 `+N`）。 */
+export function hiddenTagCount(tags: string[], expanded: boolean): number {
+    return expanded ? 0 : Math.max(0, tags.length - DefaultVisibleTagCount);
+}
 
 function isRowActionTarget(event: { target: EventTarget | null }): boolean {
     const target = event.target as HTMLElement | null;
@@ -113,6 +129,13 @@ export function SessionRow({
     runningState = null,
     chatRunning = false,
     onJumpToBlock,
+    depth = 0,
+    childKind,
+    expandable = false,
+    expanded = false,
+    childCount = 0,
+    matchedChildCount = 0,
+    onToggleExpand,
 }: {
     session: SessionSummary;
     selected: boolean;
@@ -127,8 +150,33 @@ export function SessionRow({
     runningState?: SessionRunningState | null;
     chatRunning?: boolean;
     onJumpToBlock: (runningState: SessionRunningState) => void;
+    /** 树层级：0 = 顶层会话，1 = 子会话（subagent / fork）。 */
+    depth?: number;
+    /** 子会话类型 → 决定行内图标；顶层行不传。 */
+    childKind?: "subagent" | "fork";
+    /** 父行：有子会话可展开。 */
+    expandable?: boolean;
+    /** 父行：当前是否展开。 */
+    expanded?: boolean;
+    /** 父行：子会话总数（计数徽标用）。 */
+    childCount?: number;
+    /** 父行：命中本次筛选的子会话数（>0 时徽标走 accent 高亮）。 */
+    matchedChildCount?: number;
+    /** 点箭头 / 计数徽标：只展开收起，不选中、不打开。 */
+    onToggleExpand?: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
+    const isChild = depth > 0;
+    const childIcon =
+        childKind === "fork" ? "fa-sharp fa-solid fa-code-branch" : "fa-sharp fa-solid fa-wand-magic-sparkles";
+    const childBadge =
+        matchedChildCount > 0 && childCount > 0 ? `${matchedChildCount}/${childCount}` : `+${childCount}`;
+    const childBadgeTitle =
+        matchedChildCount > 0 && childCount > 0
+            ? `${matchedChildCount} of ${childCount} sub-sessions match this filter`
+            : `${childCount} sub-session${childCount === 1 ? "" : "s"}`;
     const [noteEditing, setNoteEditing] = useState(false);
+    // 标签展开是纯 UI 态：不落盘、不跨会话记忆，避免行高跳动（design §4）。
+    const [tagsExpanded, setTagsExpanded] = useState(false);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
     const [tagDraft, setTagDraft] = useState<string[]>(() => normalizeSessionTags(session.tags));
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
@@ -170,7 +218,9 @@ export function SessionRow({
     const noteSaving = noteSaveStatus === "saving";
     const sessionTime = session.updatedAt || session.createdAt || 0;
     const sessionTags = normalizeSessionTags(session.tags);
-    const visibleSessionTags = sessionTags.slice(0, 3);
+    // 折叠态默认 4 个标签（design §4）；展开态由行内「收起」按钮回折。
+    const visibleSessionTags = visibleTagsFor(sessionTags, tagsExpanded);
+    const hiddenTags = hiddenTagCount(sessionTags, tagsExpanded);
     const hasNoteInfo = Boolean(session.note || sessionTags.length);
     const noteToggleLabel =
         !hasNoteInfo && !noteEditing
@@ -225,6 +275,7 @@ export function SessionRow({
         <div
             className={cn(
                 "group relative cursor-pointer border-b border-border bg-block-solid px-3 py-2 text-sm hover:bg-hoverbg",
+                isChild && "bg-block-solid/60 text-[13px]",
                 selected &&
                     "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
@@ -239,6 +290,36 @@ export function SessionRow({
             }}
         >
             <div className="flex min-w-0 items-start gap-2">
+                {isChild ? (
+                    <div className="mt-0.5 flex w-4 shrink-0 flex-col items-center" aria-hidden="true">
+                        <span className="h-full w-px bg-border/70" />
+                    </div>
+                ) : null}
+                {expandable ? (
+                    <button
+                        type="button"
+                        className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-secondary transition-colors hover:text-accent"
+                        aria-expanded={expanded}
+                        aria-label={expanded ? "Collapse sub-sessions" : "Expand sub-sessions"}
+                        title={
+                            expanded
+                                ? "Collapse sub-sessions"
+                                : `Expand ${childCount} sub-session${childCount === 1 ? "" : "s"}`
+                        }
+                        data-row-action="true"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onToggleExpand?.(event);
+                        }}
+                    >
+                        <i
+                            className={cn(
+                                "fa-sharp fa-solid text-[9px]",
+                                expanded ? "fa-chevron-down" : "fa-chevron-right"
+                            )}
+                        />
+                    </button>
+                ) : null}
                 <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1">
                     <button
                         className={cn(
@@ -255,7 +336,34 @@ export function SessionRow({
                 </div>
                 <div className="min-w-0 flex-1 border-l border-border pl-3">
                     <div className="flex min-w-0 items-center gap-2">
+                        {isChild ? (
+                            <i
+                                className={cn(childIcon, "shrink-0 text-[10px] text-secondary")}
+                                title={childKind === "fork" ? "Fork" : "Sub-agent session"}
+                            />
+                        ) : null}
                         <div className="min-w-0 flex-1 truncate font-medium">{session.title || session.id}</div>
+                        {expandable ? (
+                            <button
+                                type="button"
+                                className={cn(
+                                    "flex h-4 shrink-0 items-center gap-1 rounded-full px-1.5 text-[10px] tabular-nums transition-colors",
+                                    matchedChildCount > 0
+                                        ? "bg-accent/15 text-accent"
+                                        : "bg-surface text-secondary hover:text-primary"
+                                )}
+                                title={childBadgeTitle}
+                                aria-label={childBadgeTitle}
+                                data-row-action="true"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onToggleExpand?.(event);
+                                }}
+                            >
+                                <i className="fa-sharp fa-solid fa-diagram-project text-[8px]" />
+                                {childBadge}
+                            </button>
+                        ) : null}
                         <button
                             type="button"
                             className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
@@ -324,10 +432,15 @@ export function SessionRow({
                         </div>
                     ) : null}
                     {hasNoteInfo || noteEditing ? (
-                        <button
-                            type="button"
+                        /*
+                         * 外层不能用 <button>：里面还要放「+N / 收起」真按钮（button 不能嵌套）。
+                         * 改成 div[role=button] 保留键盘可达性（Enter/Space）。
+                         */
+                        <div
+                            role="button"
+                            tabIndex={0}
                             className={cn(
-                                "relative mt-1 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded py-0.5 pl-2 pr-1 text-left text-xs text-primary transition-colors hover:bg-hover hover:text-accent",
+                                "relative mt-1 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded py-0.5 pl-2 pr-1 text-left text-xs transition-colors hover:bg-hover hover:text-accent",
                                 noteHasProse(session.note) &&
                                     "before:absolute before:top-0 before:bottom-0 before:left-0 before:w-0.5 before:bg-accent/50 before:content-['']",
                                 noteEditing && "bg-hover/60 text-accent"
@@ -339,10 +452,18 @@ export function SessionRow({
                                 e.stopPropagation();
                                 void toggleNoteEditor();
                             }}
+                            onKeyDown={(e) => {
+                                if (e.key !== "Enter" && e.key !== " ") return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                void toggleNoteEditor();
+                            }}
                         >
-                            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                            <span
+                                className={cn("flex min-w-0 flex-1 items-center gap-1.5", tagsExpanded && "flex-wrap")}
+                            >
                                 {session.note ? (
-                                    <span className="min-w-0 flex-1 truncate">
+                                    <span className="min-w-0 flex-1 truncate text-accent">
                                         {stripSessionTagHashes(session.note)}
                                     </span>
                                 ) : null}
@@ -354,23 +475,38 @@ export function SessionRow({
                                         {tag}
                                     </span>
                                 ))}
-                                {sessionTags.length > visibleSessionTags.length ? (
-                                    <span className="shrink-0 rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[10px] leading-none text-accent">
-                                        +{sessionTags.length - visibleSessionTags.length}
-                                    </span>
+                                {hiddenTags > 0 || tagsExpanded ? (
+                                    <button
+                                        type="button"
+                                        className="shrink-0 cursor-pointer rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[10px] leading-none text-accent transition-colors hover:bg-accent/20"
+                                        title={
+                                            tagsExpanded
+                                                ? "Collapse tags"
+                                                : `Show ${sessionTags.length - DefaultVisibleTagCount} more tag(s)`
+                                        }
+                                        data-row-action="true"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setTagsExpanded((current) => !current);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key !== "Enter" && e.key !== " ") return;
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setTagsExpanded((current) => !current);
+                                        }}
+                                    >
+                                        {tagsExpanded ? "收起" : `+${hiddenTags}`}
+                                    </button>
                                 ) : null}
                             </span>
                             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100">
                                 <i className="fa-sharp fa-solid fa-pen text-[10px]" />
                             </span>
-                        </button>
+                        </div>
                     ) : null}
                     {noteEditing ? (
-                        <div
-                            className="mt-2 space-y-2"
-                            data-row-action="true"
-                            onClick={(e) => e.stopPropagation()}
-                        >
+                        <div className="mt-2 space-y-2" data-row-action="true" onClick={(e) => e.stopPropagation()}>
                             <SessionTagChips
                                 tags={nextTags}
                                 removable

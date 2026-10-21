@@ -22,5 +22,9 @@
   "parent": "10-19-aisessions-ux-perf-overhaul",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "pending",
+    "verification": "go-vet-green; go-test-aisessions-green; vitest-aisessions-236-green; tsc-no-new-errors; e2e-pending-user-build",
+    "stages": "A1-A3 + B1-B3 + C + D + E done"
+  }
 }

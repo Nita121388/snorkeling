@@ -145,3 +145,109 @@ func TestExtractSubagentCalls_MissingFile(t *testing.T) {
 		t.Fatalf("expected an error for a missing file")
 	}
 }
+
+// 阶段 E：目录结构判定出的 subagent 没有 session_info.name（Name 为空），
+// 老的名称匹配对它必然 missing。现在它应仅凭「同父 + 时间窗」就匹配上。
+func TestMatchSubagentCalls_StructuralCandidateWithoutName(t *testing.T) {
+	calls := []SubagentCall{
+		{Agent: "general", Task: "explore the repo", Timestamp: 1_000_000},
+	}
+	candidates := []SubagentCandidate{
+		{
+			SessionKey: "child-1",
+			SessionID:  "child-1",
+			CreatedAt:  1_030_000,
+			ParentKey:  "parent-1",
+			Kind:       SessionKindSubagent,
+		},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 match, got %d", len(matches))
+	}
+	if matches[0].Status != SubagentMatchMatched {
+		t.Fatalf("expected matched, got %s", matches[0].Status)
+	}
+	if matches[0].SessionKey != "child-1" {
+		t.Fatalf("expected session key child-1, got %q", matches[0].SessionKey)
+	}
+}
+
+// fork 挂在同一个父目录下，但它是用户主动分叉，不是任何一次派发的目标。
+func TestMatchSubagentCalls_ForkNeverMatches(t *testing.T) {
+	calls := []SubagentCall{
+		{Agent: "general", Task: "explore the repo", Timestamp: 1_000_000},
+	}
+	candidates := []SubagentCandidate{
+		{
+			SessionKey: "fork-1",
+			SessionID:  "fork-1",
+			CreatedAt:  1_030_000,
+			ParentKey:  "parent-1",
+			Kind:       SessionKindFork,
+		},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if matches[0].Status != SubagentMatchMissing {
+		t.Fatalf("expected missing for a fork, got %s", matches[0].Status)
+	}
+}
+
+// 时间窗之外的子会话不参与匹配（否则一次派发会认领数小时前创建的会话）。
+func TestMatchSubagentCalls_StructuralCandidateOutsideWindow(t *testing.T) {
+	// Realistic epoch-ms values: a timestamp of 0 or below is treated as "unknown"
+	// and matches leniently, which would defeat the point of this test.
+	callAt := int64(1_760_000_000_000)
+	calls := []SubagentCall{
+		{Agent: "general", Task: "explore the repo", Timestamp: callAt},
+	}
+	candidates := []SubagentCandidate{
+		{
+			SessionKey: "child-old",
+			SessionID:  "child-old",
+			CreatedAt:  callAt - (8 * 60 * 60 * 1000),
+			ParentKey:  "parent-1",
+			Kind:       SessionKindSubagent,
+		},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if matches[0].Status != SubagentMatchMissing {
+		t.Fatalf("expected missing outside the time window, got %s", matches[0].Status)
+	}
+}
+
+// 结构候选与名称候选混在一起时仍不猜测：多个命中 → ambiguous。
+func TestMatchSubagentCalls_MixedCandidatesAmbiguous(t *testing.T) {
+	calls := []SubagentCall{
+		{Agent: "reviewer", Task: "check diff", Timestamp: 1_000_000},
+	}
+	candidates := []SubagentCandidate{
+		{SessionKey: "named", SessionID: "named", Name: "reviewer: check diff", CreatedAt: 1_030_000},
+		{SessionKey: "struct", SessionID: "struct", CreatedAt: 1_020_000, ParentKey: "p", Kind: SessionKindSubagent},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if matches[0].Status != SubagentMatchAmbiguous {
+		t.Fatalf("expected ambiguous, got %s", matches[0].Status)
+	}
+	if len(matches[0].Candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(matches[0].Candidates))
+	}
+}
+
+// 一次派发只能认领一个子会话；第二个候选留给下一次派发，否则两次调用会抢同一个会话。
+func TestMatchSubagentCalls_StructuralCandidateNotReused(t *testing.T) {
+	calls := []SubagentCall{
+		{Agent: "general", Task: "one", Timestamp: 1_000_000},
+		{Agent: "general", Task: "two", Timestamp: 1_000_100},
+	}
+	candidates := []SubagentCandidate{
+		{SessionKey: "child", SessionID: "child", CreatedAt: 1_030_000, ParentKey: "p", Kind: SessionKindSubagent},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if matches[0].Status != SubagentMatchMatched {
+		t.Fatalf("expected first call matched, got %s", matches[0].Status)
+	}
+	if matches[1].Status != SubagentMatchMissing {
+		t.Fatalf("expected second call missing (candidate already used), got %s", matches[1].Status)
+	}
+}

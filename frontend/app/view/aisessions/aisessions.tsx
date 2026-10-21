@@ -3,6 +3,8 @@
 
 import { restoreMinimizedBlockToLayout } from "@/app/block/block-minimize";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
+import type { RefreshStatus } from "@/app/element/refresh-status-icon";
+import { RefreshStatusIcon, deriveRefreshStatus } from "@/app/element/refresh-status-icon";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
@@ -11,29 +13,34 @@ import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
-import { RefreshStatusIcon, deriveRefreshStatus } from "@/app/element/refresh-status-icon";
-import type { RefreshStatus } from "@/app/element/refresh-status-icon";
 import { cn, fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import "../../session-overview/session-overview.scss";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
-import { IconButton, SortButton, GroupModeSwitch, type ListGroupMode } from "./controls";
-import { defaultChatSource } from "./sources";
+import "../../session-overview/session-overview.scss";
+import { GroupModeSwitch, IconButton, SortButton, type ListGroupMode } from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
+import { ScanProgressStrip, SkeletonSessionRows } from "./scan-progress";
+import type { ScanStatus } from "./scan-status-logic";
 import { SessionDetailPane } from "./session-detail";
 import { openAISessionDetailFromList, openAISessionNewChatFromList } from "./session-detail-block";
-import { mergeSessionTimeline } from "./session-timeline-sync";
+import {
+    GroupedSessionList,
+    readCollapsedGroups,
+    readExpandedParents,
+    writeCollapsedGroups,
+    writeExpandedParents,
+} from "./session-group";
 import {
     AiSessionNoteUpdatedEvent,
     dispatchAISessionNoteUpdated,
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
-import { SessionRow } from "./session-row";
-import { GroupedSessionList, SessionGroup, readCollapsedGroups, writeCollapsedGroups } from "./session-group";
 import { normalizeSessionTags } from "./session-tags";
+import { mergeSessionTimeline } from "./session-timeline-sync";
+import { defaultChatSource } from "./sources";
 import type { DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
 import {
     DefaultDateRange,
@@ -43,8 +50,6 @@ import {
     PathFilterOtherRoot,
     dateRangeToSinceBefore,
 } from "./types";
-import { ScanProgressStrip, SkeletonSessionRows } from "./scan-progress";
-import type { ScanStatus } from "./scan-status-logic";
 import { useScanStatus } from "./use-scan-status";
 import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
 import {
@@ -124,9 +129,9 @@ export class AiSessionsViewModel implements ViewModel {
     errorAtom = jotai.atom<string>("");
     historySyncErrorAtom = jotai.atom<string>("");
     restoringAtom = jotai.atom<boolean>(false);
-    newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(null) as jotai.PrimitiveAtom<
-        SessionSummary | null
-    >;
+    newSessionAtom: jotai.PrimitiveAtom<SessionSummary | null> = jotai.atom(
+        null
+    ) as jotai.PrimitiveAtom<SessionSummary | null>;
     // 每次 startNewSession 自增：详情面板按世代作废上一轮 New Chat 的绑定与残留
     newChatEpochAtom = jotai.atom(0);
     deletingAtom = jotai.atom<boolean>(false);
@@ -148,9 +153,7 @@ export class AiSessionsViewModel implements ViewModel {
         this.endIconButtons = jotai.atom((get) => {
             const blockData = get(this.blockAtom);
             const loading = get(this.loadingAtom);
-            const autoRefreshMs = normalizeAutoRefreshIntervalMs(
-                blockData?.meta?.[AutoRefreshIntervalMetaKey]
-            );
+            const autoRefreshMs = normalizeAutoRefreshIntervalMs(blockData?.meta?.[AutoRefreshIntervalMetaKey]);
             const autoRefreshEnabled = this.getConnection() === "";
             const refreshStatus: RefreshStatus = deriveRefreshStatus({
                 loading,
@@ -233,7 +236,12 @@ export class AiSessionsViewModel implements ViewModel {
             globalStore.set(this.detailAtom, null);
             return;
         }
-        globalStore.set(this.newSessionAtom, { key: NewSessionKey, id: "", source: defaultChatSource().id, title: "New Chat" });
+        globalStore.set(this.newSessionAtom, {
+            key: NewSessionKey,
+            id: "",
+            source: defaultChatSource().id,
+            title: "New Chat",
+        });
         globalStore.set(this.selectedKeyAtom, NewSessionKey);
         globalStore.set(this.detailAtom, null);
     }
@@ -1104,6 +1112,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const blockNewChat = readBlockNewChat(model);
     const showsDetailPane = sessionListCollapsed || blockSessionId !== "" || blockNewChat;
     const [groupCollapsed, setGroupCollapsed] = useState<string[]>(() => readCollapsedGroups());
+    // 已展开的父会话（持久化到 localStorage，与 groupCollapsed 同套路）。
+    const [expandedParents, setExpandedParents] = useState<string[]>(() => readExpandedParents());
+    // 点过「显示全部」的父会话：只在本次会话内有效，不落盘（避免刷新后列表被 107 个子会话撑爆）。
+    const [fullyExpandedParents, setFullyExpandedParents] = useState<Set<string>>(() => new Set());
     const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
     const [refreshTimeNow, setRefreshTimeNow] = useState(() => Date.now());
     const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
@@ -1154,6 +1166,28 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         const base = newSession != null ? visibleSessions.slice(1) : visibleSessions;
         return groupSessionsByProject(base);
     }, [visibleSessions, newSession]);
+
+    const toggleExpandParent = useCallback((sessionKey: string, showAll = false) => {
+        if (showAll) {
+            setFullyExpandedParents((current) => {
+                const next = new Set(current);
+                next.add(sessionKey);
+                return next;
+            });
+            setExpandedParents((current) => (current.includes(sessionKey) ? current : [...current, sessionKey]));
+            return;
+        }
+        setExpandedParents((current) =>
+            current.includes(sessionKey) ? current.filter((key) => key !== sessionKey) : [...current, sessionKey]
+        );
+        // 收起时顺手清掉「显示全部」，否则下次展开会一次性铺开上百行。
+        setFullyExpandedParents((current) => {
+            if (!current.has(sessionKey)) return current;
+            const next = new Set(current);
+            next.delete(sessionKey);
+            return next;
+        });
+    }, []);
     const normalizedTagFilters = normalizeSessionTags(tagFilters);
     const queryActive = query.trim().length > 0;
     const tagFilterActive = normalizedTagFilters.length > 0;
@@ -1178,6 +1212,34 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         (pathActive ? 1 : 0) +
         (tagPresenceActive ? 1 : 0) +
         (source !== "" ? 1 : 0);
+    // 搜索/筛选命中子会话时，自动展开它的父：结果集是后端过滤后的子集，
+    // 「子行命中但父行没命中」在这个集合里只能靠 parentKey 关系反推。
+    // 只加不减，避免每次筛选都覆盖用户手动展开/收起的选择。
+    const matchedChildParentKeys = useMemo(() => {
+        if (!filterActive) {
+            return [] as string[];
+        }
+        const keys = new Set<string>();
+        const known = new Set(visibleSessions.map((session) => session.key));
+        for (const session of visibleSessions) {
+            const parentKey = (session.parentKey ?? "").trim();
+            if (parentKey !== "" && known.has(parentKey)) {
+                keys.add(parentKey);
+            }
+        }
+        return [...keys];
+    }, [filterActive, visibleSessions]);
+
+    useEffect(() => {
+        if (matchedChildParentKeys.length === 0) {
+            return;
+        }
+        setExpandedParents((current) => {
+            const missing = matchedChildParentKeys.filter((key) => !current.includes(key));
+            return missing.length === 0 ? current : [...current, ...missing];
+        });
+    }, [matchedChildParentKeys]);
+
     const availablePathRoots = useMemo(() => extractPathRoots(projectPaths), [projectPaths]);
     const pathChildren = useMemo(() => extractPathChildren(pathFilter, projectPaths), [pathFilter, projectPaths]);
     const pathAncestors = useMemo(() => pathAncestorSegments(pathFilter), [pathFilter]);
@@ -1260,6 +1322,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         writeCollapsedGroups(groupCollapsed);
     }, [groupCollapsed]);
+
+    useEffect(() => {
+        writeExpandedParents(expandedParents);
+    }, [expandedParents]);
 
     useEffect(() => {
         const handleNoteUpdated = (event: Event) => {
@@ -1398,9 +1464,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const openSessionDetail = useCallback(
         (session: SessionSummary, forceNew = false) => {
             if (!session.key) return;
-            fireAndForget(() =>
-                openAISessionDetailFromList(session.key, model.blockId, { forceNewBlock: forceNew })
-            );
+            fireAndForget(() => openAISessionDetailFromList(session.key, model.blockId, { forceNewBlock: forceNew }));
         },
         [model.blockId]
     );
@@ -1466,10 +1530,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <GroupModeSwitch
-                                        mode={groupMode}
-                                        onChange={(next) => setGroupMode(next)}
-                                    />
+                                    <GroupModeSwitch mode={groupMode} onChange={(next) => setGroupMode(next)} />
                                     <div className="flex-1" />
                                     <button
                                         type="button"
@@ -1576,11 +1637,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                             : [...current, key]
                                                     )
                                                 }
+                                                expandedParents={expandedParents}
+                                                onToggleExpandParent={toggleExpandParent}
+                                                fullyExpandedParents={fullyExpandedParents}
                                                 selectedKey={selectedKey}
                                                 onSelectNew={() => {
                                                     if (!showsDetailPane) {
                                                         // 列表/详情分离：新会话也开独立详情块。
-                                                        fireAndForget(() => openAISessionNewChatFromList(model.blockId));
+                                                        fireAndForget(() =>
+                                                            openAISessionNewChatFromList(model.blockId)
+                                                        );
                                                         return;
                                                     }
                                                     globalStore.set(model.selectedKeyAtom, NewSessionKey);
@@ -1607,7 +1673,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                     e.stopPropagation();
                                                     model.toggleMark(session);
                                                 }}
-                                                onNoteSave={(session, note, tags) => model.updateNote(session, note, tags)}
+                                                onNoteSave={(session, note, tags) =>
+                                                    model.updateNote(session, note, tags)
+                                                }
                                                 onResume={(session, e) => {
                                                     e.stopPropagation();
                                                     void model.restoreSession(session);
@@ -1645,26 +1713,21 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     <SessionDetailPane
                         model={model}
                         detail={detail}
-                    isNewChat={activeSession?.key === NewSessionKey}
-                    newChatEpoch={newChatEpoch}
-                    loading={
-                        error === "" &&
-                        detailLoading &&
-                        detail == null &&
-                        activeSession?.key !== NewSessionKey
-                    }
-                    deltaLoading={detailDeltaLoading}
-                    toolCallsLoading={toolCallsLoading}
-                    restoring={restoring}
-                    deleting={deleting}
-                    error={error}
-                    historySyncError={historySyncError}
-                    onBound={(sessionId) => model.bindNewSession(sessionId)}
-                    onRunningSessionIdsChange={handleRunningChatSessionIdsChange}
-                    onExpandSessionList={
-                        sessionListCollapsed ? () => setSessionListCollapsed(false) : undefined
-                    }
-                />
+                        isNewChat={activeSession?.key === NewSessionKey}
+                        newChatEpoch={newChatEpoch}
+                        loading={
+                            error === "" && detailLoading && detail == null && activeSession?.key !== NewSessionKey
+                        }
+                        deltaLoading={detailDeltaLoading}
+                        toolCallsLoading={toolCallsLoading}
+                        restoring={restoring}
+                        deleting={deleting}
+                        error={error}
+                        historySyncError={historySyncError}
+                        onBound={(sessionId) => model.bindNewSession(sessionId)}
+                        onRunningSessionIdsChange={handleRunningChatSessionIdsChange}
+                        onExpandSessionList={sessionListCollapsed ? () => setSessionListCollapsed(false) : undefined}
+                    />
                 ) : null}
             </div>
         </div>
