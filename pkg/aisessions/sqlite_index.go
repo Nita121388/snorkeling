@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	sqliteIndexSchemaVersion = "3"
+	sqliteIndexSchemaVersion = "4"
 	summaryParserVersionKey  = "summary_parser_version"
 	summaryParserVersion     = "3"
 )
@@ -147,6 +147,8 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			mtime INTEGER,
 			size INTEGER,
 			missing INTEGER NOT NULL DEFAULT 0,
+			parent_key TEXT,
+			kind TEXT,
 			indexed_at INTEGER NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS ai_session_messages (
@@ -201,6 +203,9 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 	if err := idx.ensureAISessionProvenanceColumns(ctx); err != nil {
 		return err
 	}
+	if err := idx.ensureAISessionParentColumns(ctx); err != nil {
+		return err
+	}
 	if err := idx.ensureMetaTitleColumn(ctx); err != nil {
 		return err
 	}
@@ -229,6 +234,27 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 }
 
 func (idx *SQLiteIndex) ensureAISessionProvenanceColumns(ctx context.Context) error {
+	return idx.ensureAISessionColumns(ctx, map[string]string{
+		"vendor_id":  "TEXT",
+		"config_dir": "TEXT",
+	})
+}
+
+// ensureAISessionParentColumns (schema v4) adds the parent/child relationship
+// columns used to fold pi subagent runs and forks under their parent session.
+// Older databases are migrated in place; existing rows keep NULL for both, which
+// reads back as "top-level session" — the pre-v4 behaviour.
+func (idx *SQLiteIndex) ensureAISessionParentColumns(ctx context.Context) error {
+	return idx.ensureAISessionColumns(ctx, map[string]string{
+		"parent_key": "TEXT",
+		"kind":       "TEXT",
+	})
+}
+
+// ensureAISessionColumns adds any missing columns to ai_sessions. CREATE TABLE
+// only covers freshly created databases, so every column added after v1 needs an
+// explicit ALTER guarded by pragma_table_info.
+func (idx *SQLiteIndex) ensureAISessionColumns(ctx context.Context, wanted map[string]string) error {
 	var columns []struct {
 		Name string `db:"name"`
 	}
@@ -239,10 +265,7 @@ func (idx *SQLiteIndex) ensureAISessionProvenanceColumns(ctx context.Context) er
 	for _, column := range columns {
 		existing[column.Name] = true
 	}
-	for name, definition := range map[string]string{
-		"vendor_id":  "TEXT",
-		"config_dir": "TEXT",
-	} {
+	for name, definition := range wanted {
 		if existing[name] {
 			continue
 		}
@@ -1252,7 +1275,7 @@ func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSu
 // which the path-filter UI uses to navigate the directory tree with true counts.
 func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptions) ([]SessionSummary, []ProjectPathSummary, error) {
 	var rows []sqliteSessionRow
-	err := idx.db.SelectContext(ctx, &rows, `SELECT key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing FROM ai_sessions WHERE missing = 0`)
+	err := idx.db.SelectContext(ctx, &rows, `SELECT `+sessionSummaryColumns+` FROM ai_sessions WHERE missing = 0`)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1394,7 +1417,7 @@ func (idx *SQLiteIndex) GetSession(ctx context.Context, identifier string) (Sess
 	return summary, nil
 }
 
-const sessionSummaryColumns = `key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing`
+const sessionSummaryColumns = `key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, parent_key, kind`
 
 // escapeLikePrefix 把 LIKE 前匹配的通配符转义，避免 identifier 里的 % / _ 被当成通配符。
 func escapeLikePrefix(prefix string) string {
@@ -1419,6 +1442,8 @@ type sqliteSessionRow struct {
 	MTime        int64  `db:"mtime"`
 	Size         int64  `db:"size"`
 	Missing      bool   `db:"missing"`
+	ParentKey    string `db:"parent_key"`
+	Kind         string `db:"kind"`
 }
 
 func (row sqliteSessionRow) summary() SessionSummary {
@@ -1439,13 +1464,15 @@ func (row sqliteSessionRow) summary() SessionSummary {
 		MTime:        row.MTime,
 		Size:         row.Size,
 		Missing:      row.Missing,
+		ParentKey:    row.ParentKey,
+		Kind:         row.Kind,
 	}
 }
 
 func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary SessionSummary, messageIndexed bool) error {
 	now := time.Now().UnixMilli()
-	_, err := tx.ExecContext(ctx, `INSERT INTO ai_sessions(key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, indexed_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := tx.ExecContext(ctx, `INSERT INTO ai_sessions(key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, parent_key, kind, indexed_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET
 			id = excluded.id,
 			source = excluded.source,
@@ -1466,9 +1493,12 @@ func (idx *SQLiteIndex) saveSummaryTx(ctx context.Context, tx *sqlx.Tx, summary 
 			mtime = excluded.mtime,
 			size = excluded.size,
 			missing = excluded.missing,
+			parent_key = excluded.parent_key,
+			kind = excluded.kind,
 			indexed_at = excluded.indexed_at`,
 		summary.Key, summary.ID, summary.Source, summary.Title, summary.TitleSource, summary.ProjectPath, summary.CreatedAt, summary.UpdatedAt,
-		summary.MessageCount, summary.FilePath, summary.VendorID, summary.ConfigDir, summary.Snippet, summary.MTime, summary.Size, boolToInt(summary.Missing), now,
+		summary.MessageCount, summary.FilePath, summary.VendorID, summary.ConfigDir, summary.Snippet, summary.MTime, summary.Size, boolToInt(summary.Missing),
+		summary.ParentKey, summary.Kind, now,
 		boolToInt(messageIndexed))
 	if err != nil {
 		return err

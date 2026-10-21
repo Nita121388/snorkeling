@@ -1393,10 +1393,14 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     // 打开 Detail Block。双击行、Ctrl/Cmd+点击、会话菜单共用。
     // 纯列表块：新建独立 Detail Block（不抢占列表本身）；详情块：同样新开一个块，
     // 便于左右对比同一个会话。
+    // 默认不强制单开：同一个会话已经开着时聚焦已有块，避免重复点击堆出一排相同详情块。
+    // 只有 Ctrl/Cmd+点击（forceNew=true）才刻意再开一个用于左右对比。
     const openSessionDetail = useCallback(
-        (session: SessionSummary) => {
+        (session: SessionSummary, forceNew = false) => {
             if (!session.key) return;
-            fireAndForget(() => openAISessionDetailFromList(session.key, model.blockId, { forceNewBlock: true }));
+            fireAndForget(() =>
+                openAISessionDetailFromList(session.key, model.blockId, { forceNewBlock: forceNew })
+            );
         },
         [model.blockId]
     );
@@ -1585,7 +1589,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 onSelectSession={(session, event) => {
                                                     // Ctrl/Cmd+点击 = 强制打开 Detail Block（便于左右对比）。
                                                     if (event.metaKey || event.ctrlKey) {
-                                                        openSessionDetail(session);
+                                                        // Ctrl/Cmd+点击 = 强制再开一个 Detail Block（便于左右对比）。
+                                                        openSessionDetail(session, true);
                                                         return;
                                                     }
                                                     if (!showsDetailPane) {

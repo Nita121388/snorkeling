@@ -1071,9 +1071,8 @@ export function SessionDetailPane({
                                           connection={connection || undefined}
                                           onOpenSession={(sessionKey) => {
                                               if (model.blockId) {
-                                                  void openAISessionDetailFromList(sessionKey, model.blockId, {
-                                                      forceNewBlock: true,
-                                                  });
+                                                  // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
+                                                  void openAISessionDetailFromList(sessionKey, model.blockId);
                                               }
                                           }}
                                       />
@@ -1092,9 +1091,8 @@ export function SessionDetailPane({
                         connection={connection || undefined}
                         onOpenSession={(sessionKey) => {
                             if (model.blockId) {
-                                void openAISessionDetailFromList(sessionKey, model.blockId, {
-                                    forceNewBlock: true,
-                                });
+                                // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
+                                void openAISessionDetailFromList(sessionKey, model.blockId);
                             }
                         }}
                     />

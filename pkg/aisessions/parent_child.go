@@ -33,6 +33,12 @@ func ClassifyPiSessionFile(sessionsDir string, filePath string) (string, string)
 		return "", SessionKindSession
 	}
 	rel = filepath.ToSlash(rel)
+	// A path outside the sessions root cannot be classified. Treat it as a
+	// top-level session instead of letting the leading "../" segments be read as
+	// project/parent directories.
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", SessionKindSession
+	}
 	parts := strings.Split(rel, "/")
 	// <project>/<file>.jsonl → 顶层
 	if len(parts) <= 2 {
@@ -60,11 +66,13 @@ func PiParentKey(source string, sessionsDir string, filePath string) string {
 	if parentPath == "" {
 		return ""
 	}
-	parentDir := filepath.Base(filepath.Dir(parentPath))
-	if parentDir == "." || parentDir == string(filepath.Separator) {
+	// parentPath is <sessionsDir>/<project>/<parent>.jsonl, so the session's own
+	// directory name lives in the file name, not in its parent directory.
+	parentName := strings.TrimSuffix(filepath.Base(parentPath), filepath.Ext(parentPath))
+	if parentName == "" || parentName == "." {
 		return ""
 	}
-	return StableKey(source, piUUIDFromDirName(parentDir), parentPath)
+	return StableKey(source, piUUIDFromDirName(parentName), parentPath)
 }
 
 // piUUIDFromDirName 从 `<timestamp>_<uuid>` 形态的目录名里取出 uuid。

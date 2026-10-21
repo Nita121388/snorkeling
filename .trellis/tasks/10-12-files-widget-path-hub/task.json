@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "10-21-files-group-addmenu-popup"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "",

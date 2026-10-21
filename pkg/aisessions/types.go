@@ -42,8 +42,14 @@ type SessionSummary struct {
 	Tags         []string `json:"tags,omitempty"`
 	Missing      bool     `json:"missing,omitempty"`
 	Live         bool     `json:"live,omitempty"`
-	MTime        int64    `json:"-"`
-	Size         int64    `json:"size,omitempty"`
+	// ParentKey is the session key of the conversation that spawned this one (pi
+	// subagent runs and forks). Empty means the row is a top-level session.
+	ParentKey string `json:"parentKey,omitempty"`
+	// Kind is SessionKindSession / SessionKindSubagent / SessionKindFork. Empty
+	// is treated as a top-level session (rows indexed by older binaries).
+	Kind  string `json:"kind,omitempty"`
+	MTime int64  `json:"-"`
+	Size  int64  `json:"size,omitempty"`
 }
 
 type Message struct {
@@ -123,6 +129,11 @@ type SessionFile struct {
 	MTime       int64
 	Size        int64
 	ContentHash string
+	// ParentPath is the session file this one belongs to (pi subagent/fork
+	// layout). Empty means a top-level session file.
+	ParentPath string
+	// Kind mirrors SessionKind*; empty is treated as SessionKindSession.
+	Kind string
 }
 
 type Provider interface {

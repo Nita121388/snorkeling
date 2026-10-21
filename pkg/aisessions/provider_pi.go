@@ -53,15 +53,32 @@ func (p *PiProvider) ListFiles(ctx context.Context) ([]SessionFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sessionFilesFromPaths(ctx, p.Source(), files)
+	sessionFiles, err := sessionFilesFromPaths(ctx, p.Source(), files)
+	if err != nil {
+		return nil, err
+	}
+	// pi writes subagent runs and forks inside a directory named after their parent
+	// session, so the parent/child relationship only exists on disk. Classify every
+	// file here so downstream consumers (index, list) get ParentPath/Kind for free.
+	for i := range sessionFiles {
+		parentPath, kind := ClassifyPiSessionFile(p.sessionsDir, sessionFiles[i].Path)
+		sessionFiles[i].ParentPath = parentPath
+		sessionFiles[i].Kind = kind
+	}
+	return sessionFiles, nil
 }
 
 func (p *PiProvider) ParseSummary(ctx context.Context, file SessionFile) (SessionSummary, bool) {
 	if ctx.Err() != nil {
 		return SessionSummary{}, false
 	}
+	// Callers that go through ListFiles already carry the classification; callers
+	// that build the file by hand (and the tests) do not, so resolve it here too.
+	if file.Kind == "" && file.ParentPath == "" {
+		file.ParentPath, file.Kind = ClassifyPiSessionFile(p.sessionsDir, file.Path)
+	}
 	mtime, size := fileStatFields(file.Path)
-	return p.parseSummaryFile(SessionFile{Source: p.Source(), Path: file.Path, MTime: mtime, Size: size})
+	return p.parseSummaryFile(SessionFile{Source: p.Source(), Path: file.Path, MTime: mtime, Size: size, ParentPath: file.ParentPath, Kind: file.Kind})
 }
 
 // parseSummaryFile reads the pi JSONL v3 header line, plus the first-window
@@ -120,9 +137,21 @@ func (p *PiProvider) parseSummaryFile(file SessionFile) (SessionSummary, bool) {
 		FilePath:    file.Path,
 		MTime:       file.MTime,
 		Size:        file.Size,
+		ParentKey:   PiParentKey(SourcePi, p.sessionsDir, file.Path),
+		Kind:        normalizePiSessionKind(file.Kind),
 	}
 	summary.Key = StableKey(summary.Source, summary.ID, summary.FilePath)
 	return summary, summary.Validate() == nil
+}
+
+// normalizePiSessionKind maps an unclassified file to a top-level session so the
+// index never stores an empty kind for pi rows (empty is reserved for rows written
+// by older binaries and for providers without a parent/child concept).
+func normalizePiSessionKind(kind string) string {
+	if strings.TrimSpace(kind) == "" {
+		return SessionKindSession
+	}
+	return kind
 }
 
 // scanSnippet derives a short content preview from the tail of a pi session
