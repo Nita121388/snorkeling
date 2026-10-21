@@ -274,8 +274,10 @@ export function SessionRow({
     return (
         <div
             className={cn(
-                "group relative cursor-pointer border-b border-border bg-block-solid px-3 py-2 text-sm hover:bg-hoverbg",
-                isChild && "bg-block-solid/60 text-[13px]",
+                // 子行缩进 20px（design §3.1）：父行 pl-3 = 12px，子行 pl-8 = 32px。
+                // 这里不用 px-3 + 条件 pl-*，两个 padding 工具类会互相覆盖。
+                "group relative cursor-pointer border-b border-border bg-block-solid py-2 pr-3 text-sm hover:bg-hoverbg",
+                isChild ? "bg-block-solid/60 pl-8 text-[13px]" : "pl-3",
                 selected &&
                     "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
@@ -291,8 +293,10 @@ export function SessionRow({
         >
             <div className="flex min-w-0 items-start gap-2">
                 {isChild ? (
-                    <div className="mt-0.5 flex w-4 shrink-0 flex-col items-center" aria-hidden="true">
-                        <span className="h-full w-px bg-border/70" />
+                    // 左侧竖线：self-stretch 让这个 rail 撑满行高，span 再用 flex-1 填满它。
+                    // 只写 h-full 的话父容器高度是 auto，百分比高度会退化成 0（线不可见）。
+                    <div className="flex w-4 shrink-0 flex-col items-center self-stretch" aria-hidden="true">
+                        <span className="w-px flex-1 bg-border/70" />
                     </div>
                 ) : null}
                 {expandable ? (
@@ -481,7 +485,12 @@ export function SessionRow({
                                         className="shrink-0 cursor-pointer rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[10px] leading-none text-accent transition-colors hover:bg-accent/20"
                                         title={
                                             tagsExpanded
-                                                ? "Collapse tags"
+                                                ? "Show fewer tags"
+                                                : `Show ${sessionTags.length - DefaultVisibleTagCount} more tag(s)`
+                                        }
+                                        aria-label={
+                                            tagsExpanded
+                                                ? "Show fewer tags"
                                                 : `Show ${sessionTags.length - DefaultVisibleTagCount} more tag(s)`
                                         }
                                         data-row-action="true"
@@ -496,7 +505,7 @@ export function SessionRow({
                                             setTagsExpanded((current) => !current);
                                         }}
                                     >
-                                        {tagsExpanded ? "收起" : `+${hiddenTags}`}
+                                        {tagsExpanded ? "Show less" : `+${hiddenTags}`}
                                     </button>
                                 ) : null}
                             </span>

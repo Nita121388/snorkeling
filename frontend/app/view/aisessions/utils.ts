@@ -217,7 +217,7 @@ export function basenamePath(path: string): string {
  * come back ordered by their most-recently-touched session, so the project you
  * worked in two minutes ago floats to the top; 未归类 always sinks last.
  */
-export function groupSessionsByProject(sessions: SessionSummary[]): ProjectSessionGroup[] {
+export function groupSessionsByProject(sessions: SessionSummary[], descending = true): ProjectSessionGroup[] {
     const buckets = new Map<string, ProjectSessionGroup>();
     for (const session of sessions) {
         const path = (session.projectPath ?? "").trim();
@@ -240,8 +240,9 @@ export function groupSessionsByProject(sessions: SessionSummary[]): ProjectSessi
     });
     // 每个分组内部再按父子关系成树；父会话必然与子会话同 project（同一目录），
     // 所以树不会跨分组。父不在本组里的子会话由 buildSessionTree 提升为顶层。
+    // descending 必须沿用列表的排序方向，否则成树会把「旧→新」重新排成「新→旧」。
     for (const group of groups) {
-        group.tree = buildSessionTree(group.sessions);
+        group.tree = buildSessionTree(group.sessions, undefined, descending);
     }
     return groups;
 }

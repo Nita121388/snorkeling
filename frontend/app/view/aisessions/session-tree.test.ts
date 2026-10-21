@@ -100,12 +100,41 @@ describe("buildSessionTree", () => {
         expect(tree[0].childCount).toBe(2);
     });
 
-    it("treats every row as matched when no filter set is given", () => {
+    it("promotes sessions that only form a cycle so none of them disappears", () => {
+        // A→B→A: neither is a root and neither hangs off a root. Both must still render.
+        const a = session({ key: "a", kind: "subagent", parentKey: "b" });
+        const b = session({ key: "b", kind: "subagent", parentKey: "a" });
+        const tree = buildSessionTree([a, b]);
+        // 两行都必须出现在列表里：一个提升为顶层，另一个挂到它下面。
+        expect(countTreeRows(tree)).toBe(2);
+        expect(tree).toHaveLength(1);
+        expect(tree[0].children).toHaveLength(1);
+    });
+
+    it("follows the requested sort direction for roots and children", () => {
+        const parent = session({ key: "p", kind: "session", updatedAt: 100 });
+        const olderChild = session({ key: "c-old", kind: "subagent", parentKey: "p", updatedAt: 10 });
+        const newerChild = session({ key: "c-new", kind: "subagent", parentKey: "p", updatedAt: 50 });
+        const otherRoot = session({ key: "q", kind: "session", updatedAt: 1 });
+        const rows = [parent, otherRoot, olderChild, newerChild];
+
+        const newestFirst = buildSessionTree(rows, undefined, true);
+        expect(newestFirst.map((node) => node.session.key)).toEqual(["p", "q"]);
+        expect(newestFirst[0].children.map((child) => child.session.key)).toEqual(["c-new", "c-old"]);
+
+        const oldestFirst = buildSessionTree(rows, undefined, false);
+        expect(oldestFirst.map((node) => node.session.key)).toEqual(["q", "p"]);
+        expect(oldestFirst[1].children.map((child) => child.session.key)).toEqual(["c-old", "c-new"]);
+    });
+
+    it("reports no matched children when no filter set is given", () => {
         const parent = session({ key: "p", kind: "session" });
         const child = session({ key: "c", kind: "fork", parentKey: "p" });
         const tree = buildSessionTree([parent, child]);
         expect(tree[0].matched).toBe(true);
-        expect(tree[0].matchedChildCount).toBe(1);
+        // 没有生效的筛选，"命中"没有意义：给 0，父行才会回落到普通的 +N 徽标。
+        // 给 childCount 会让徽标在未筛选时也显示"1/1"并高亮成 accent。
+        expect(tree[0].matchedChildCount).toBe(0);
     });
 });
 

@@ -105,7 +105,7 @@ describe("session tag folding", () => {
 describe("note / tag row markup", () => {
     /** Find the tag overflow control (+N / 收起) in the rendered row. */
     function findOverflowControl(markup: string): RegExpMatchArray | null {
-        return markup.match(/<button[^>]*>(\+\d+|收起)<\/button>/);
+        return markup.match(/<button[^>]*>(\+\d+|Show less)<\/button>/);
     }
 
     function renderRow(note: string | null, sessionTags: string[]): string {
@@ -150,6 +150,11 @@ describe("note / tag row markup", () => {
         expect(noteSpan).not.toBeNull();
         const tagSpan = markup.match(/<span class="[^"]*text-accent[^"]*">a<\/span>/);
         expect(tagSpan).not.toBeNull();
+    });
+
+    it("carries an accessible name on the +N control so it is not a bare +2", () => {
+        const markup = renderRow("note", ["a", "b", "c", "d", "e", "f"]);
+        expect(markup).toMatch(/aria-label="Show \d+ more tag\(s\)"/);
     });
 
     it("does not render a note row when there is no note and no tags", () => {

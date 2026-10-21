@@ -129,6 +129,9 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// ai_sessions' parent_key/kind must match ensureAISessionParentColumns' DDL
+	// exactly: a nullable column would be NULL for rows written before the ALTER
+	// ran, and the SELECT projection scans these into non-nullable strings.
 	stmts = []string{
 		`CREATE TABLE IF NOT EXISTS ai_sessions (
 			key TEXT PRIMARY KEY,
@@ -147,8 +150,8 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			mtime INTEGER,
 			size INTEGER,
 			missing INTEGER NOT NULL DEFAULT 0,
-			parent_key TEXT,
-			kind TEXT,
+			parent_key TEXT NOT NULL DEFAULT '',
+			kind TEXT NOT NULL DEFAULT '',
 			indexed_at INTEGER NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS ai_session_messages (
@@ -242,13 +245,46 @@ func (idx *SQLiteIndex) ensureAISessionProvenanceColumns(ctx context.Context) er
 
 // ensureAISessionParentColumns (schema v4) adds the parent/child relationship
 // columns used to fold pi subagent runs and forks under their parent session.
-// Older databases are migrated in place; existing rows keep NULL for both, which
-// reads back as "top-level session" — the pre-v4 behaviour.
+// Older databases are migrated in place; existing rows read back as "top-level
+// session" (empty parent_key/kind), which is the pre-v4 behaviour.
+//
+// NOT NULL with a default is required, not a style choice: a plain TEXT column is
+// NULL for every pre-v4 row, and `SELECT ... parent_key` into sqliteSessionRow's
+// `string` field then fails with "converting NULL to string is unsupported",
+// which takes down List/ListWithDistribution/GetSession for the whole index. The
+// non-NULL default makes NULL literally unrepresentable.
 func (idx *SQLiteIndex) ensureAISessionParentColumns(ctx context.Context) error {
-	return idx.ensureAISessionColumns(ctx, map[string]string{
-		"parent_key": "TEXT",
-		"kind":       "TEXT",
-	})
+	if err := idx.ensureAISessionColumns(ctx, map[string]string{
+		"parent_key": "TEXT NOT NULL DEFAULT ''",
+		"kind":       "TEXT NOT NULL DEFAULT ''",
+	}); err != nil {
+		return err
+	}
+	return idx.backfillParentColumns(ctx)
+}
+
+// backfillParentColumns normalises the NULLs an ALTER TABLE cannot avoid.
+//
+// A column added by ALTER TABLE always gets the default for pre-existing rows, so
+// a correctly-added column never holds NULL. This is a second safety net for
+// indexes that already went through a build where the columns were added as
+// nullable (or were seeded by an external tool): any NULL is rewritten to the
+// "top-level session" value. One UPDATE over the table, guarded by an index scan
+// so it is skipped entirely on healthy databases.
+func (idx *SQLiteIndex) backfillParentColumns(ctx context.Context) error {
+	var nulls int
+	if err := idx.db.GetContext(ctx, &nulls, `SELECT count(*) FROM ai_sessions WHERE parent_key IS NULL OR kind IS NULL`); err != nil {
+		return err
+	}
+	if nulls == 0 {
+		return nil
+	}
+	_, err := idx.db.ExecContext(ctx, `UPDATE ai_sessions SET parent_key = '' WHERE parent_key IS NULL`)
+	if err != nil {
+		return err
+	}
+	_, err = idx.db.ExecContext(ctx, `UPDATE ai_sessions SET kind = '' WHERE kind IS NULL`)
+	return err
 }
 
 // ensureAISessionColumns adds any missing columns to ai_sessions. CREATE TABLE

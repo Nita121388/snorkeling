@@ -19,7 +19,7 @@ export type SessionTreeNode = {
     childCount: number;
     /** 子会话里命中本次筛选的数量（父行展示「匹配子会话」标记用）。 */
     matchedChildCount: number;
-    /** 已按 updatedAt 降序排好的直接子会话。 */
+    /** 已按列表当前排序方向排好的直接子会话。 */
     children: SessionTreeNode[];
     /** 该行本身是否命中筛选（父行未命中但子行命中时，父行仍要展示）。 */
     matched: boolean;
@@ -40,20 +40,33 @@ function byNewestFirst(left: SessionSummary, right: SessionSummary): number {
     return left.key.localeCompare(right.key);
 }
 
+/** 按列表当前排序方向比较两个会话（时间相同按 key 稳定）。 */
+function makeSessionOrder(descending: boolean) {
+    if (descending) return byNewestFirst;
+    return (left: SessionSummary, right: SessionSummary): number => -byNewestFirst(left, right);
+}
+
 /**
  * 组织父子树。
  *
  * @param rows          列表/筛选结果（平铺）
- * @param matchedKeys   命中本次筛选的行 key 集合。缺省视为全部命中（无筛选场景），
- *                      此时父行的 matched 恒为 true。
+ * @param matchedKeys   命中本次筛选的行 key 集合。缺省表示「没有生效的筛选」，
+ *                      此时 matchedChildCount 恒为 0，父行只显示普通 `+N` 徽标。
+ * @param descending    列表当前排序方向。树必须跟随它，否则排序按钮（新→旧／旧→新）
+ *                      在成树后失效——成树会重排顶层行与子行。
  *
  * 规则：
  *  - parentKey 为空 / 指向不存在的行 / 指向自己 → 顶层
  *  - 其余挂到父节点下；父不在结果集里的子行提升为顶层（不丢结果）
- *  - 顶层按时间倒序；子行按时间倒序跟在父行后
+ *  - 顶层按时间排序；子行按时间排序跟在父行后
  */
-export function buildSessionTree(rows: SessionSummary[], matchedKeys?: Set<string>): SessionTreeNode[] {
+export function buildSessionTree(
+    rows: SessionSummary[],
+    matchedKeys?: Set<string>,
+    descending = true
+): SessionTreeNode[] {
     const allMatched = matchedKeys == null;
+    const order = makeSessionOrder(descending);
     const byKey = new Map<string, SessionSummary>();
     for (const row of rows) {
         byKey.set(row.key, row);
@@ -77,19 +90,40 @@ export function buildSessionTree(rows: SessionSummary[], matchedKeys?: Set<strin
         }
     }
 
-    const makeNode = (session: SessionSummary, depth: number): SessionTreeNode => {
-        const children = (childMap.get(session.key) ?? []).sort(byNewestFirst);
+    // 脏数据的另一种形态：两个会话互为父（A→B→A）。它们既不是根，也不在任何根的
+    // 子树里，直接构树会让两行一起从列表里消失。把没有从根可达的行提升为顶层。
+    const reachable = new Set<string>();
+    const markReachable = (key: string) => {
+        if (reachable.has(key)) return;
+        reachable.add(key);
+        for (const child of childMap.get(key) ?? []) {
+            markReachable(child.key);
+        }
+    };
+    roots.forEach((root) => markReachable(root.key));
+    for (const row of rows) {
+        if (reachable.has(row.key)) continue;
+        roots.push(row);
+        markReachable(row.key);
+    }
+
+    const makeNode = (session: SessionSummary, depth: number, ancestors: Set<string>): SessionTreeNode => {
+        const path = new Set(ancestors);
+        path.add(session.key);
+        // 防御环路：已经出现在这条链上的会话不再当作子行，否则递归会无限展开。
+        const children = (childMap.get(session.key) ?? []).filter((child) => !path.has(child.key)).sort(order);
         return {
             session,
             depth,
             childCount: children.length,
-            matchedChildCount: children.filter((child) => allMatched || matchedKeys!.has(child.key)).length,
-            children: children.map((child) => makeNode(child, depth + 1)),
+            // 没有生效的筛选时不存在「命中」的概念，给 0 让父行回到普通的 `+N` 徽标。
+            matchedChildCount: allMatched ? 0 : children.filter((child) => matchedKeys!.has(child.key)).length,
+            children: children.map((child) => makeNode(child, depth + 1, path)),
             matched: allMatched || matchedKeys!.has(session.key),
         };
     };
 
-    return roots.sort(byNewestFirst).map((session) => makeNode(session, 0));
+    return [...roots].sort(order).map((session) => makeNode(session, 0, new Set()));
 }
 
 /** 展开某父节点时实际要渲染的子行（默认只给前 DefaultVisibleChildCount 个）。 */

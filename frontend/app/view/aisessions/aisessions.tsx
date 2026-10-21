@@ -1114,6 +1114,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const [groupCollapsed, setGroupCollapsed] = useState<string[]>(() => readCollapsedGroups());
     // 已展开的父会话（持久化到 localStorage，与 groupCollapsed 同套路）。
     const [expandedParents, setExpandedParents] = useState<string[]>(() => readExpandedParents());
+    // 搜索命中子会话时自动展开的父会话：只在本会话内生效，不落盘（design §3.2）。
+    // 落盘会把一次搜索的结果永久变成用户的选择，刷新后也回不到「默认全部收起」。
+    const [autoExpandedParents, setAutoExpandedParents] = useState<string[]>([]);
     // 点过「显示全部」的父会话：只在本次会话内有效，不落盘（避免刷新后列表被 107 个子会话撑爆）。
     const [fullyExpandedParents, setFullyExpandedParents] = useState<Set<string>>(() => new Set());
     const [sessionListWidth, setSessionListWidth] = useState(readSessionListWidth);
@@ -1164,30 +1167,42 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
      */
     const groupedSessions = useMemo(() => {
         const base = newSession != null ? visibleSessions.slice(1) : visibleSessions;
-        return groupSessionsByProject(base);
-    }, [visibleSessions, newSession]);
+        return groupSessionsByProject(base, sortDescending);
+    }, [visibleSessions, newSession, sortDescending]);
 
-    const toggleExpandParent = useCallback((sessionKey: string, showAll = false) => {
-        if (showAll) {
+    const toggleExpandParent = useCallback(
+        (sessionKey: string, showAll = false) => {
+            // 自动展开不是用户选择：点一下箭头就应该能把它收起来，所以两处都清，
+            // 并记进抑制集，避免命中集合变化时又被自动加回来。
+            const currentlyExpanded = expandedParents.includes(sessionKey) || autoExpandedParents.includes(sessionKey);
+            if (currentlyExpanded) {
+                suppressedAutoExpandRef.current.add(sessionKey);
+            } else {
+                suppressedAutoExpandRef.current.delete(sessionKey);
+            }
+            setAutoExpandedParents((current) => current.filter((key) => key !== sessionKey));
+            if (showAll) {
+                setFullyExpandedParents((current) => {
+                    const next = new Set(current);
+                    next.add(sessionKey);
+                    return next;
+                });
+                setExpandedParents((current) => (current.includes(sessionKey) ? current : [...current, sessionKey]));
+                return;
+            }
+            setExpandedParents((current) =>
+                currentlyExpanded ? current.filter((key) => key !== sessionKey) : [...current, sessionKey]
+            );
+            // 收起时顺手清掉「显示全部」，否则下次展开会一次性铺开上百行。
             setFullyExpandedParents((current) => {
+                if (!current.has(sessionKey)) return current;
                 const next = new Set(current);
-                next.add(sessionKey);
+                next.delete(sessionKey);
                 return next;
             });
-            setExpandedParents((current) => (current.includes(sessionKey) ? current : [...current, sessionKey]));
-            return;
-        }
-        setExpandedParents((current) =>
-            current.includes(sessionKey) ? current.filter((key) => key !== sessionKey) : [...current, sessionKey]
-        );
-        // 收起时顺手清掉「显示全部」，否则下次展开会一次性铺开上百行。
-        setFullyExpandedParents((current) => {
-            if (!current.has(sessionKey)) return current;
-            const next = new Set(current);
-            next.delete(sessionKey);
-            return next;
-        });
-    }, []);
+        },
+        [expandedParents, autoExpandedParents]
+    );
     const normalizedTagFilters = normalizeSessionTags(tagFilters);
     const queryActive = query.trim().length > 0;
     const tagFilterActive = normalizedTagFilters.length > 0;
@@ -1230,15 +1245,54 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         return [...keys];
     }, [filterActive, visibleSessions]);
 
+    // 用户在筛选期间手动收起的父：自动展开必须尊重它，否则列表 60s 自动刷新一次
+    // 就会把刚收起的父行重新撑开。只在筛选条件本身变化时清空。
+    const suppressedAutoExpandRef = useRef<Set<string>>(new Set());
+    const filterSignature = [
+        query,
+        source,
+        normalizedTagFilters.join(","),
+        tagPresence,
+        markedFilter,
+        dateRange.preset,
+        pathFilter.root,
+    ].join("\u0000");
+
+    useEffect(() => {
+        suppressedAutoExpandRef.current.clear();
+    }, [filterSignature]);
+
+    const matchedChildParentKeySignature = matchedChildParentKeys.join("\u0000");
     useEffect(() => {
         if (matchedChildParentKeys.length === 0) {
             return;
         }
-        setExpandedParents((current) => {
-            const missing = matchedChildParentKeys.filter((key) => !current.includes(key));
+        setAutoExpandedParents((current) => {
+            const missing = matchedChildParentKeys.filter(
+                (key) => !current.includes(key) && !suppressedAutoExpandRef.current.has(key)
+            );
             return missing.length === 0 ? current : [...current, ...missing];
         });
-    }, [matchedChildParentKeys]);
+        // 依赖签名而不是数组：列表默认 60s 自动刷新会生成新数组，直接依赖数组会让
+        // 用户刚收起的父行被下一次刷新又撑开。
+    }, [matchedChildParentKeySignature]);
+
+    // 清掉筛选后回到「默认全部收起」：自动展开是筛选的副产品，不是用户的选择。
+    useEffect(() => {
+        if (filterActive) {
+            return;
+        }
+        setAutoExpandedParents((current) => (current.length === 0 ? current : []));
+    }, [filterActive]);
+
+    // 渲染用「用户展开 ∪ 搜索自动展开」；写入 localStorage 的只有前一部分。
+    const renderedExpandedParents = useMemo(
+        () =>
+            autoExpandedParents.length === 0
+                ? expandedParents
+                : [...new Set([...expandedParents, ...autoExpandedParents])],
+        [expandedParents, autoExpandedParents]
+    );
 
     const availablePathRoots = useMemo(() => extractPathRoots(projectPaths), [projectPaths]);
     const pathChildren = useMemo(() => extractPathChildren(pathFilter, projectPaths), [pathFilter, projectPaths]);
@@ -1637,9 +1691,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                             : [...current, key]
                                                     )
                                                 }
-                                                expandedParents={expandedParents}
+                                                expandedParents={renderedExpandedParents}
                                                 onToggleExpandParent={toggleExpandParent}
                                                 fullyExpandedParents={fullyExpandedParents}
+                                                sortDescending={sortDescending}
                                                 selectedKey={selectedKey}
                                                 onSelectNew={() => {
                                                     if (!showsDetailPane) {
@@ -1653,9 +1708,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                     globalStore.set(model.detailAtom, null);
                                                 }}
                                                 onSelectSession={(session, event) => {
-                                                    // Ctrl/Cmd+点击 = 强制打开 Detail Block（便于左右对比）。
+                                                    // Ctrl/Cmd+点击 = 强制再开一个 Detail Block（便于左右对比）。
                                                     if (event.metaKey || event.ctrlKey) {
-                                                        // Ctrl/Cmd+点击 = 强制再开一个 Detail Block（便于左右对比）。
                                                         openSessionDetail(session, true);
                                                         return;
                                                     }

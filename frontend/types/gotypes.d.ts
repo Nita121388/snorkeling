@@ -2437,6 +2437,8 @@ declare global {
         sessionId?: string;
         name?: string;
         createdAt?: number;
+        parentKey?: string;
+        kind?: string;
     };
 
     // aisessions.SubagentMatch

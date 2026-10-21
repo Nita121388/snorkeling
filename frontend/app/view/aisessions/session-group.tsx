@@ -127,6 +127,8 @@ type GroupedSessionListProps = {
     onToggleExpandParent: (sessionKey: string, showAll?: boolean) => void;
     /** 已点过「显示全部」的父会话 key 集合（本次会话内 state，不落盘）。 */
     fullyExpandedParents: Set<string>;
+    /** 列表当前的排序方向（新→旧 / 旧→新）；树必须跟随它，否则排序按钮失效。 */
+    sortDescending: boolean;
 };
 
 export function GroupedSessionList({
@@ -149,12 +151,20 @@ export function GroupedSessionList({
     expandedParents,
     onToggleExpandParent,
     fullyExpandedParents,
+    sortDescending,
 }: GroupedSessionListProps) {
     const newSession = sessions.find((session) => session.key === NewSessionKey);
 
     // 树在上层（aisessions.tsx）按筛选结果算好后随 grouped / sessions 一起传下来：
     // 这里只负责渲染，避免每个分组各算一遍。见 ProjectSessionGroup.tree。
-    const flatTree = groupMode === "project" ? [] : buildSessionTree(sessions.filter((s) => s.key !== NewSessionKey));
+    const flatTree =
+        groupMode === "project"
+            ? []
+            : buildSessionTree(
+                  sessions.filter((s) => s.key !== NewSessionKey),
+                  undefined,
+                  sortDescending
+              );
 
     /** 渲染一个树节点及其（已展开的）子节点；子会话超过 20 个时追加「显示全部」。 */
     const renderNode = (node: SessionTreeNode): ReactNode => {
