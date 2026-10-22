@@ -334,6 +334,32 @@ const closeFilesWindow = useCallback(() => {
 
 ---
 
+## 6.1 待补：CDP 运行时验收
+
+提交时（2026-10-22）**未完成运行时验收**：仓库里同时有 5 个并发任务在跑，
+vite dev server 被压到单次请求 9~40s（甚至不响应），Electron 渲染器起不来
+（`#main` 为空、viewport 0x0、控制台无异常 → 不是本改动引起的）。
+
+**已完成的替代验证**：
+
+- `npx tsc --noEmit`：本改动的 5 个文件**零错误**（另 2 处报错是并发任务在跑时
+  `agent-split.ts` 被删除导致的瞬时 "File not found"，与本改动无关）；
+- `npx vitest run frontend/app/block frontend/app/workspace frontend/app/view/preview`：
+  **19 failed / 466 passed**，4 个失败文件与 baseline 完全相同（零新增）。
+  466 = baseline 468 − 删掉的 3 个 `buildFilesBlockDef` 用例 + 新增 1 个 bus 用例；
+- eslint：0 error，3 个 warning 全是 pre-existing。
+
+**重启 dev app 后需补跑的项**：
+
+- 组内多 tab →「+」→ hover Files ≈500ms → 二级浮窗出现在菜单项右侧，分区与右侧 WidgetsBar 一致；
+- 点击 Files → 立即开二级；一级菜单保持开启；
+- 选一个最近路径 → preview block 进入**当前组**并激活；
+- Pin / Unpin / Copy / Remove / Home 与右侧栏表现一致（同一份状态，双向同步）；
+- 指针移出 → 二级关、一级 220ms 后关；**Esc 只关二级，再 Esc 才关一级**（验证 §2.3.1 的 `notifyBus` 修复）；
+- 右侧 WidgetsBar Files 悬浮 → 浮窗正常，选路径 → 普通建块（不进任何组）。
+
+---
+
 ## 7. 验证方式
 
 1. **Vitest**：`frontend/app/block/inlinetab-addmenu.test.ts`（删除 `buildFilesBlockDef` 用例后仍全绿）、

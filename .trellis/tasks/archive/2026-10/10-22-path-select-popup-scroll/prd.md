@@ -111,3 +111,30 @@ WidgetsBar 右侧竖条有三个「路径选择」浮窗：New Terminal、New Ag
   —— *"Dialog layout is header, scrollable content, and footer.
   Footer actions do not move when content overflows."*
 - 本任务为纯布局改动，不含逻辑变更。
+
+## 待补：CDP 运行时验收
+
+本任务提交时（2026-10-22）**未能完成运行时验收**：仓库里同时有 5 个并发任务在跑，
+vite dev server 被压到单次请求 9~40s（甚至不响应），Electron 渲染器起不来
+（`#main` 为空、viewport 0x0、控制台无异常 → 不是本改动引起的，纯 class 改动不会导致挂载失败）。
+
+**已完成的替代验证**（check 子代理 + 门禁）：
+
+- `npx tsc --noEmit`：本改动的 2 个文件**零错误**（仓库其余 71 处为历史错误，与 baseline 一致）；
+- `npx vitest run frontend/app/workspace frontend/app/view/preview frontend/app/block`：
+  19 failed / 468 passed，4 个失败文件**与 baseline 完全相同**（零新增）；
+- eslint：0 error；改动行 prettier 合规；
+- 静态布局推演见 design.md §5。
+
+**重启 dev app 后需补跑的项**（命令见 `AGENTS.md`）：
+
+```bash
+node scripts/inspect-electron-ui.mjs state
+node scripts/inspect-electron-ui.mjs style "Select a path"
+```
+
+- 造 ≥ 15 个块的 tab → New Terminal / New Agent：浮窗高度恒定 ≤ 640px，列表 `scrollHeight > clientHeight`；
+- 滚动前后 footer 的 `getBoundingClientRect().top` 不变；
+- 列表滚到底继续滚 → 浮窗与页面不跟着动（`overscroll-contain`）；
+- ≤ 5 个块的 tab：外观与改动前一致，无滚动条；
+- New Files：高度 ≤ `min(500px, 100vh-32px)`，贴下缘时向上翻转。
