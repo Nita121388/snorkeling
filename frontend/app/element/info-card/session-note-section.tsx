@@ -21,8 +21,8 @@ import {
     InfoCardPreview,
     InfoCardSection,
     InfoCardText,
-    InfoCardTitle,
 } from "./info-card";
+import { InfoCardMarquee } from "./marquee";
 import type { SessionNoteState } from "@/app/store/session-note-hook";
 import { createBlock } from "@/app/store/global";
 import { cn } from "@/util/util";
@@ -72,13 +72,14 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
     return (
         <InfoCardSection>
             <div className="flex items-center justify-between gap-2">
-                <InfoCardHead>
+                {/* min-w-0 + flex-1：标题行可收缩，长会话名不再把卡片撑破。 */}
+                <InfoCardHead className="min-w-0 flex-1">
                     <InfoCardIcon icon={`fa-sharp fa-solid ${statusIcon(state)}`} />
-                    <InfoCardTitle>{title}</InfoCardTitle>
+                    <InfoCardMarquee text={title} />
                 </InfoCardHead>
                 <button
                     type="button"
-                    className="cursor-pointer rounded px-1.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                    className="shrink-0 cursor-pointer rounded px-1.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
                     title="Generate note and tags with AI"
                     aria-label="Generate note and tags with AI"
                     disabled={metadataStatus === "loading" || state.sessionId === ""}

@@ -34,6 +34,9 @@
     align-items: center;
     gap: 6px;
     margin-bottom: 4px;
+    // 作为 flex item 时允许收缩：否则长标题（会话名）的自动最小尺寸 = 全文宽度，
+    // 会把整行撑破卡片，文字直接跑到卡片边框外面。
+    min-width: 0;
 }
 
 .info-card-icon {
@@ -48,6 +51,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    // overflow:hidden 已让自动最小尺寸归零，这里显式写出来：以后有人删掉 overflow 时
+    // 标题仍可收缩，不会重新把卡片撑破。
+    min-width: 0;
 }
 
 .info-card-meta {
@@ -125,6 +131,78 @@
     margin-top: 4px;
     font-size: 11px;
     color: var(--error-color);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   走马灯 — 长标题在卡片内部无缝滚动
+   ═══════════════════════════════════════════════════════════════════════
+   结构：容器(.info-card-marquee) → 轨道(.info-card-marquee-track) → 两份副本。
+     - 未溢出：副本可收缩 → 省略号（与普通标题一致）；
+     - 溢出(is-scrolling)：副本不收缩 + 第二份接上 + 轨道左移一个副本宽，
+       两份首尾相接 → 循环无缝。
+   位移距离与时长由组件按实测宽度注入（--info-card-marquee-shift / -duration）。
+   ─────────────────────────────────────────────────────────────────── */
+.info-card-marquee {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.info-card-marquee-track {
+    display: inline-flex;
+    white-space: nowrap;
+}
+
+.info-card-marquee-copy {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 第二份副本默认不参与布局（非滚动态不需要重复内容）。 */
+.info-card-marquee-copy + .info-card-marquee-copy {
+    display: none;
+}
+
+/* 滚动态：两份都不收缩，轨道整体左移一个副本宽 → 无缝衔接。 */
+.info-card-marquee.is-scrolling .info-card-marquee-copy {
+    flex: 0 0 auto;
+    overflow: visible;
+    text-overflow: clip;
+    padding-right: 28px;
+}
+
+.info-card-marquee.is-scrolling .info-card-marquee-copy + .info-card-marquee-copy {
+    display: inline-flex;
+}
+
+.info-card-marquee.is-scrolling .info-card-marquee-track {
+    animation: info-card-marquee var(--info-card-marquee-duration, 12s) linear infinite;
+}
+
+/* 悬停 / 聚焦时暂停，方便停在某一段细看。 */
+.info-card-marquee:hover .info-card-marquee-track,
+.info-card-marquee:focus-within .info-card-marquee-track {
+    animation-play-state: paused;
+}
+
+@keyframes info-card-marquee {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(calc(-1 * var(--info-card-marquee-shift, 0px)));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .info-card-marquee.is-scrolling .info-card-marquee-track {
+        animation: none;
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

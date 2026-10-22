@@ -11,6 +11,7 @@ import {
     InfoCard,
     InfoCardHead,
     InfoCardIcon,
+    InfoCardMarquee,
     InfoCardPreview,
     InfoCardSection,
     InfoCardText,
@@ -55,7 +56,7 @@ export function SessionDetailInfoCard({
             <InfoCardSection>
                 <InfoCardHead>
                     <InfoCardIcon icon="fa-sharp fa-solid fa-comments" />
-                    <InfoCardTitle>{title}</InfoCardTitle>
+                    <InfoCardMarquee text={title} />
                 </InfoCardHead>
                 {metaParts.length > 0 ? (
                     <div className="session-detail-card-meta">{metaParts.join(" · ")}</div>

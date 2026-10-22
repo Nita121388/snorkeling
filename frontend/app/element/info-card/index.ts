@@ -18,6 +18,8 @@ export {
     InfoCardTitle,
 } from "./info-card";
 export { InfoCardPortal, useInfoCardHover } from "./info-card-hover";
+export { InfoCardMarquee, isMarqueeNeeded, marqueeDurationSec } from "./marquee";
+export type { InfoCardMarqueeProps } from "./marquee";
 export type { InfoCardHoverState, InfoCardPlacement } from "./info-card-hover";
 export {
     claimInfoCard,
