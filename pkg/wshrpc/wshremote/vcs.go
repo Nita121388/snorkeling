@@ -145,6 +145,14 @@ func vcsCommandEnv() []string {
 
 func newVcsCommand(ctx context.Context, dir string, command string, args ...string) (*exec.Cmd, context.Context, context.CancelFunc) {
 	cmdCtx, cancelFn := context.WithTimeout(ctx, DefaultVcsCommandTimeout)
+	if command == "git" {
+		// Disable git's C-style path quoting so non-ASCII (e.g. Chinese) paths
+		// are emitted as raw UTF-8. "-c" is a git global option and must be
+		// placed before the subcommand, so it has to happen here: this is the
+		// single entry point for every git/svn invocation.
+		// Note: build a fresh slice so the caller's backing array is not reused.
+		args = append([]string{"-c", "core.quotePath=false"}, args...)
+	}
 	cmd := exec.CommandContext(cmdCtx, command, args...)
 	cmd.Env = vcsCommandEnv()
 	if dir != "" {
@@ -606,6 +614,119 @@ func makeRepoInfo(repoType string, repoRoot string) wshrpc.VcsRepositoryInfo {
 	return repoInfo
 }
 
+// decodeGitPathToken decodes a single path token emitted by git.
+//
+// git quotes paths that contain special characters using C-style escapes
+// (see git's quote.c). With the default core.quotePath=true every byte of a
+// non-ASCII path is emitted as a 3-digit octal escape, e.g.
+//
+//	"\346\226\260\345\273\272\346\226\207\344\273\266.txt"
+//
+// which decodes back to the original UTF-8 bytes. Tokens that are not quoted
+// are returned unchanged.
+func decodeGitPathToken(token string) string {
+	if !strings.HasPrefix(token, `"`) {
+		return token
+	}
+	var sb strings.Builder
+	sb.Grow(len(token))
+	for i := 1; i < len(token); {
+		ch := token[i]
+		if ch == '"' {
+			// Closing quote: stop here and ignore anything that follows.
+			return sb.String()
+		}
+		if ch != '\\' {
+			sb.WriteByte(ch)
+			i++
+			continue
+		}
+		if i+1 >= len(token) {
+			// Unterminated escape at the end of the token: keep the backslash
+			// verbatim instead of failing.
+			sb.WriteByte(ch)
+			i++
+			continue
+		}
+		esc := token[i+1]
+		switch esc {
+		case 'a':
+			sb.WriteByte('\a')
+			i += 2
+		case 'b':
+			sb.WriteByte('\b')
+			i += 2
+		case 'f':
+			sb.WriteByte('\f')
+			i += 2
+		case 'n':
+			sb.WriteByte('\n')
+			i += 2
+		case 'r':
+			sb.WriteByte('\r')
+			i += 2
+		case 't':
+			sb.WriteByte('\t')
+			i += 2
+		case 'v':
+			sb.WriteByte('\v')
+			i += 2
+		case '"':
+			sb.WriteByte('"')
+			i += 2
+		case '\\':
+			sb.WriteByte('\\')
+			i += 2
+		default:
+			if esc >= '0' && esc <= '7' {
+				// Octal escape: 1 to 3 digits, restored as a single byte.
+				value := int(esc - '0')
+				digits := 1
+				next := i + 2
+				for digits < 3 && next < len(token) && token[next] >= '0' && token[next] <= '7' {
+					value = value*8 + int(token[next]-'0')
+					next++
+					digits++
+				}
+				sb.WriteByte(byte(value))
+				i = next
+				continue
+			}
+			// Unknown escape: keep the escaped character (C-like behavior).
+			sb.WriteByte(esc)
+			i += 2
+		}
+	}
+	return sb.String()
+}
+
+// splitGitRenamePath splits a git rename record ("<old> -> <new>") and returns
+// the new path. The separator is only recognized outside of quoted sections so
+// that a path containing " -> " does not confuse the split.
+func splitGitRenamePath(raw string) (string, bool) {
+	inQuote := false
+	for i := 0; i < len(raw); i++ {
+		ch := raw[i]
+		if inQuote && ch == '\\' {
+			// Skip the escaped character so an escaped quote does not end the
+			// quoted section.
+			i++
+			continue
+		}
+		if ch == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if inQuote {
+			continue
+		}
+		if ch == ' ' && i+3 < len(raw) && raw[i+1] == '-' && raw[i+2] == '>' && raw[i+3] == ' ' {
+			return raw[i+4:], true
+		}
+	}
+	return raw, false
+}
+
 func parseGitStatus(statusOut string, statusLimit int) []wshrpc.VcsFileStatus {
 	if statusLimit <= 0 {
 		statusLimit = DefaultVcsStatusLimit
@@ -622,10 +743,10 @@ func parseGitStatus(statusOut string, statusLimit int) []wshrpc.VcsFileStatus {
 			code = line[0:2]
 		}
 		path := strings.TrimSpace(line[3:])
-		if idx := strings.LastIndex(path, " -> "); idx >= 0 {
-			path = path[idx+4:]
+		if renamedPath, ok := splitGitRenamePath(path); ok {
+			path = renamedPath
 		}
-		path = strings.Trim(path, "\"")
+		path = decodeGitPathToken(path)
 		if path == "" {
 			continue
 		}
@@ -657,7 +778,11 @@ func loadGitRepoState(ctx context.Context, repoPath string, statusLimit int) (st
 			branch = "detached@" + shortHash
 		}
 	}
-	statusOut, statusErr := runVcsCommand(ctx, repoPath, "git", "status", "--porcelain=1", "-uall")
+	// Use the raw output here: porcelain v1 lines start with a two-column
+	// status code, so an unstaged modification begins with a space (" M
+	// path"). Trimming the whole output would drop that leading space of the
+	// first line and shift the path by one character.
+	statusOut, statusErr := runVcsCommandRaw(ctx, repoPath, "git", "status", "--porcelain=1", "-uall")
 	if statusErr != nil {
 		return branch, nil, statusErr
 	}
@@ -1365,6 +1490,7 @@ func parseGitCommitFiles(nameStatusOut string) []wshrpc.VcsCommitFileInfo {
 		}
 		code := strings.TrimSpace(fields[0])
 		filePath := strings.TrimSpace(fields[len(fields)-1])
+		filePath = decodeGitPathToken(filePath)
 		filePath = filepath.ToSlash(filePath)
 		if filePath == "" {
 			continue

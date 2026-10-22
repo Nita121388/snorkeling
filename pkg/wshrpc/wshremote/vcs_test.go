@@ -11,6 +11,304 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
+func TestNewVcsCommandDisablesGitPathQuoting(t *testing.T) {
+	gitCmd, _, gitCancel := newVcsCommand(context.Background(), "", "git", "status", "--porcelain=1")
+	defer gitCancel()
+	if len(gitCmd.Args) < 4 || gitCmd.Args[1] != "-c" || gitCmd.Args[2] != "core.quotePath=false" {
+		t.Fatalf("expected git args to disable quotePath, got %v", gitCmd.Args)
+	}
+	if gitCmd.Args[3] != "status" {
+		t.Fatalf("expected subcommand after git options, got %v", gitCmd.Args)
+	}
+
+	svnCmd, _, svnCancel := newVcsCommand(context.Background(), "", "svn", "status")
+	defer svnCancel()
+	if len(svnCmd.Args) != 2 || svnCmd.Args[1] != "status" {
+		t.Fatalf("expected svn args to stay unchanged, got %v", svnCmd.Args)
+	}
+
+	// The caller-provided slice must not be reused/overwritten.
+	args := []string{"status"}
+	_, _, cancel := newVcsCommand(context.Background(), "", "git", args...)
+	defer cancel()
+	if len(args) != 1 || args[0] != "status" {
+		t.Fatalf("expected caller args to be untouched, got %v", args)
+	}
+}
+
+func TestDecodeGitPathTokenDecodesUnicodeEscapes(t *testing.T) {
+	tests := []struct {
+		name  string
+		token string
+		want  string
+	}{
+		{
+			name:  "unicode octal escapes",
+			token: `"\346\226\260\345\273\272\346\226\207\344\273\266.txt"`,
+			want:  "新建文件.txt",
+		},
+		{
+			name:  "unicode octal escapes in subdirectory",
+			token: `"\345\255\220\347\233\256\345\275\225/\346\265\213\350\257\225\346\226\207\344\273\266.md"`,
+			want:  "子目录/测试文件.md",
+		},
+		{
+			name:  "short octal escapes",
+			token: `"\101\102\103"`,
+			want:  "ABC",
+		},
+		{
+			name:  "c style escapes",
+			token: `"my\tfile\n.txt"`,
+			want:  "my\tfile\n.txt",
+		},
+		{
+			name:  "escaped quote and backslash",
+			token: `"we\"ird\\name.txt"`,
+			want:  `we"ird\name.txt`,
+		},
+		{
+			name:  "unterminated quote",
+			token: `"\346\226\260`,
+			want:  "新",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := decodeGitPathToken(test.token)
+			if got != test.want {
+				t.Fatalf("expected %q, got %q", test.want, got)
+			}
+		})
+	}
+}
+
+func TestDecodeGitPathTokenKeepsPlainPaths(t *testing.T) {
+	for _, token := range []string{"README.md", "src/main.go", "子目录/测试文件.md", "my file.txt", ""} {
+		got := decodeGitPathToken(token)
+		if got != token {
+			t.Fatalf("expected %q to be unchanged, got %q", token, got)
+		}
+	}
+}
+
+func TestSplitGitRenamePathIgnoresSeparatorInsideQuotes(t *testing.T) {
+	tests := []struct {
+		name      string
+		raw       string
+		want      string
+		wantFound bool
+	}{
+		{
+			name:      "quoted rename",
+			raw:       `"\346\226\260.txt" -> "\351\207\215.txt"`,
+			want:      `"\351\207\215.txt"`,
+			wantFound: true,
+		},
+		{
+			name:      "separator inside quotes is ignored",
+			raw:       `"a -> b.txt" -> "c.txt"`,
+			want:      `"c.txt"`,
+			wantFound: true,
+		},
+		{
+			name:      "escaped quote does not end the quoted section",
+			raw:       `"we\"ird" -> "next.txt"`,
+			want:      `"next.txt"`,
+			wantFound: true,
+		},
+		{
+			name:      "no separator",
+			raw:       `"a -> b.txt"`,
+			want:      `"a -> b.txt"`,
+			wantFound: false,
+		},
+		{
+			name:      "plain rename",
+			raw:       "old.txt -> new.txt",
+			want:      "new.txt",
+			wantFound: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, found := splitGitRenamePath(test.raw)
+			if found != test.wantFound {
+				t.Fatalf("expected found=%v, got %v", test.wantFound, found)
+			}
+			if got != test.want {
+				t.Fatalf("expected %q, got %q", test.want, got)
+			}
+		})
+	}
+}
+
+func TestParseGitStatusDecodesQuotedUnicodePath(t *testing.T) {
+	statusOut := `?? "\346\226\260\345\273\272\346\226\207\344\273\266.txt"` + "\n" +
+		`R  "\346\226\260.txt" -> "\351\207\215\345\221\275\345\220\215\346\226\207\344\273\266.txt"` + "\n" +
+		` M "my file.txt"` + "\n"
+
+	statuses := parseGitStatus(statusOut, 10)
+	if len(statuses) != 3 {
+		t.Fatalf("expected 3 statuses, got %d (%#v)", len(statuses), statuses)
+	}
+	byPath := make(map[string]wshrpc.VcsFileStatus, len(statuses))
+	for _, status := range statuses {
+		if strings.Contains(status.Path, `\`) {
+			t.Fatalf("expected decoded path without escapes, got %q", status.Path)
+		}
+		byPath[status.Path] = status
+	}
+
+	untracked, ok := byPath["新建文件.txt"]
+	if !ok {
+		t.Fatalf("expected decoded untracked path, got %#v", statuses)
+	}
+	if !untracked.Untracked || untracked.Staged {
+		t.Fatalf("expected untracked status, got %#v", untracked)
+	}
+
+	renamed, ok := byPath["重命名文件.txt"]
+	if !ok {
+		t.Fatalf("expected decoded rename target path, got %#v", statuses)
+	}
+	if renamed.Code != "R" {
+		t.Fatalf("expected rename code, got %#v", renamed)
+	}
+
+	spaced, ok := byPath["my file.txt"]
+	if !ok {
+		t.Fatalf("expected spaced path, got %#v", statuses)
+	}
+	if spaced.Staged {
+		t.Fatalf("expected unstaged status, got %#v", spaced)
+	}
+}
+
+func TestParseGitCommitFilesDecodesQuotedUnicodePath(t *testing.T) {
+	nameStatusOut := "A\t" + `"\346\226\260\345\273\272\346\226\207\344\273\266.txt"` + "\n" +
+		"M\t" + `"\345\255\220\347\233\256\345\275\225/\346\265\213\350\257\225\346\226\207\344\273\266.md"` + "\n"
+
+	files := parseGitCommitFiles(nameStatusOut)
+	if len(files) != 2 {
+		t.Fatalf("expected 2 commit files, got %d (%#v)", len(files), files)
+	}
+	byPath := make(map[string]wshrpc.VcsCommitFileInfo, len(files))
+	for _, file := range files {
+		if strings.Contains(file.Path, `\`) {
+			t.Fatalf("expected decoded path without escapes, got %q", file.Path)
+		}
+		byPath[file.Path] = file
+	}
+
+	added, ok := byPath["新建文件.txt"]
+	if !ok {
+		t.Fatalf("expected decoded commit file path, got %#v", files)
+	}
+	if added.Code != "A" {
+		t.Fatalf("expected add code, got %#v", added)
+	}
+
+	modified, ok := byPath["子目录/测试文件.md"]
+	if !ok {
+		t.Fatalf("expected decoded commit file path, got %#v", files)
+	}
+	if modified.Code != "M" {
+		t.Fatalf("expected modify code, got %#v", modified)
+	}
+}
+
+func TestRemoteVcsRepositoriesCommandDecodesUnicodePaths(t *testing.T) {
+	root := t.TempDir()
+	runGitForTest(t, root, "init")
+	runGitForTest(t, root, "config", "user.name", "Test User")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+
+	const unicodeFileName = "新建文件.txt"
+	if err := os.WriteFile(filepath.Join(root, unicodeFileName), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write unicode file: %v", err)
+	}
+	runGitForTest(t, root, "add", ".")
+	runGitForTest(t, root, "commit", "-qm", "initial")
+	if err := os.WriteFile(filepath.Join(root, unicodeFileName), []byte("hello\nworld\n"), 0o644); err != nil {
+		t.Fatalf("modify unicode file: %v", err)
+	}
+
+	impl := &ServerImpl{}
+	repos, err := impl.RemoteVcsRepositoriesCommand(context.Background(), wshrpc.CommandRemoteVcsRepositoriesData{
+		Path: root, StatusLimit: 50,
+	})
+	if err != nil {
+		t.Fatalf("repositories command: %v", err)
+	}
+	if len(repos.Repositories) != 1 {
+		t.Fatalf("expected 1 repository, got %d (%#v)", len(repos.Repositories), repos.Repositories)
+	}
+	repo := repos.Repositories[0]
+	if repo.StatusErr != "" {
+		t.Fatalf("unexpected status error: %s", repo.StatusErr)
+	}
+	found := false
+	for _, status := range repo.Status {
+		if strings.Contains(status.Path, `\`) {
+			t.Fatalf("expected decoded path without escapes, got %q", status.Path)
+		}
+		if status.Path == unicodeFileName {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected status entry %q, got %#v", unicodeFileName, repo.Status)
+	}
+
+	diff, err := impl.RemoteVcsFileDiffCommand(context.Background(), wshrpc.CommandRemoteVcsFileDiffData{
+		RepoType: "git", RepoPath: repo.RootPath, FilePath: filepath.Join(repo.RootPath, unicodeFileName),
+	})
+	if err != nil {
+		t.Fatalf("file diff command: %v", err)
+	}
+	if !strings.Contains(diff.Diff, "world") {
+		t.Fatalf("expected diff content for unicode path, got %q", diff.Diff)
+	}
+}
+
+// The first porcelain line of "git status" starts with a space when the change
+// is unstaged (" M path"). Trimming the whole command output would drop that
+// space and shift the path of the first entry by one character.
+func TestLoadGitRepoStateKeepsFirstStatusLinePath(t *testing.T) {
+	root := t.TempDir()
+	runGitForTest(t, root, "init")
+	runGitForTest(t, root, "config", "user.name", "Test User")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(root, "first.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitForTest(t, root, "add", ".")
+	runGitForTest(t, root, "commit", "-qm", "initial")
+	if err := os.WriteFile(filepath.Join(root, "first.txt"), []byte("one\ntwo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, statuses, err := loadGitRepoState(context.Background(), root, 10)
+	if err != nil {
+		t.Fatalf("load git repo state: %v", err)
+	}
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d (%#v)", len(statuses), statuses)
+	}
+	if statuses[0].Path != "first.txt" {
+		t.Fatalf("expected first.txt, got %q", statuses[0].Path)
+	}
+	if statuses[0].Staged {
+		t.Fatalf("expected unstaged modification, got %#v", statuses[0])
+	}
+	if statuses[0].Untracked {
+		t.Fatalf("expected tracked file, got %#v", statuses[0])
+	}
+}
+
 func TestRemoteVcsSwitchBranchSwitchesLocalBranch(t *testing.T) {
 	root := t.TempDir()
 	run := func(args ...string) {
