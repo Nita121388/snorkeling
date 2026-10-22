@@ -22,3 +22,14 @@
    由 `pkg/service/*` 层转事件。
 4. **不写用户数据。** 扫描/索引类代码只读 agent 写入的文件（`~/.pi`、`~/.codex`），
    派生数据一律落在 Snorkeling 自己的索引里。
+5. **AI 端点密钥的优先级只有一处定义。** 任何要拿 AI 端点密钥的代码（聊天链路、
+   设置编辑器的 "Test connection" / "Fetch models" 探测）都必须走
+   `aiusechat.ResolveAPIToken(apiToken, secretName)`：显式密钥（mode 的 `ai:apitoken`）
+   优先，其次按名字读本机密钥库（`ai:apitokensecretname`）。不要在其它包里重写一遍
+   取密钥逻辑——历史上正因为探测按钮与聊天链路各写一份，导致同一份 mode 配置
+   “聊天能用、按钮 401”。
+   - 探测类请求（GET 之类的无副作用读）**不得**因为没有密钥就提前失败：匿名端点要继续可用；
+     但被 401/403 拒了必须说清楚原因（“no API key was sent: secret ... is not in the
+     Settings > Secrets store”），不能只回传服务端的裸 401。
+   - 会产生副作用的请求（Test connection 会真的跑一次 completion）保留前置拦截，
+     但提示要点名是哪个 secret 没找到。
