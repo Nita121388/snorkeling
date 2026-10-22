@@ -186,6 +186,105 @@ describe("session-note-cache (behavior baseline)", () => {
     });
 });
 
+describe("session-note-cache TTL refresh", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        resetSessionNoteCache();
+    });
+
+    afterEach(() => {
+        resetSessionNoteCache();
+        vi.useRealTimers();
+    });
+
+    it("keeps the cached value inside the TTL", async () => {
+        const { service, summaryFn } = makeMockService();
+        const sessionId = nextId("ttl-inside");
+        summaryFn.mockResolvedValue(makeSummary(sessionId, "v1"));
+
+        ensureSessionNote(service, sessionId);
+        await vi.waitFor(() => expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded"));
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        ensureSessionNote(service, sessionId);
+        expect(summaryFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("refreshes in the background after the TTL without flashing loading", async () => {
+        const { service, summaryFn } = makeMockService();
+        const sessionId = nextId("ttl-expired");
+        summaryFn.mockResolvedValueOnce(makeSummary(sessionId, "v1"));
+
+        ensureSessionNote(service, sessionId);
+        await vi.waitFor(() => expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded"));
+
+        await vi.advanceTimersByTimeAsync(31_000);
+        let release: () => void = () => {};
+        summaryFn.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    release = () => resolve(makeSummary(sessionId, "v2"));
+                })
+        );
+
+        ensureSessionNote(service, sessionId);
+        expect(summaryFn).toHaveBeenCalledTimes(2);
+        // 刷新在途时旧值继续可读，状态不回到 loading。
+        expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded");
+        expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("v1");
+
+        release();
+        await vi.waitFor(() => {
+            expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("v2");
+        });
+    });
+
+    it("force refresh bypasses the TTL", async () => {
+        const { service, summaryFn } = makeMockService();
+        const sessionId = nextId("ttl-force");
+        summaryFn.mockResolvedValue(makeSummary(sessionId, "v1"));
+
+        ensureSessionNote(service, sessionId);
+        await vi.waitFor(() => expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded"));
+
+        ensureSessionNote(service, sessionId, undefined, { force: true });
+        expect(summaryFn).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe("session-note-cache event matching normalization", () => {
+    beforeEach(() => {
+        resetSessionNoteCache();
+    });
+
+    afterEach(() => {
+        resetSessionNoteCache();
+    });
+
+    it("matches a StableKey event against a bare sessionId entry", async () => {
+        const { service, summaryFn } = makeMockService();
+        const sessionId = nextId("norm-key");
+        summaryFn.mockResolvedValue(makeSummary(sessionId, "old"));
+
+        ensureSessionNote(service, sessionId);
+        await vi.waitFor(() => expect(getSessionNoteSnapshot(sessionId).status).toBe("loaded"));
+
+        const fromList: SessionSummary = {
+            key: `codex:${sessionId}:/tmp/rollout.jsonl`,
+            id: "some-other-id",
+            source: "codex",
+            note: "edited in global list",
+            tags: ["tag1"],
+        };
+        window.dispatchEvent(
+            new CustomEvent(AiSessionNoteUpdatedEvent, { detail: { summary: fromList } })
+        );
+
+        expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("edited in global list");
+        expect(getSessionNoteSnapshot(sessionId).summary?.tags).toEqual(["tag1"]);
+    });
+});
+
 describe("saveSessionNote optimistic update", () => {
     it("dispatches the optimistic value before the backend resolves", async () => {
         const { service, summaryFn, noteAndTagsFn } = makeMockService();

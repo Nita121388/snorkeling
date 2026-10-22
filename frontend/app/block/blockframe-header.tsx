@@ -32,7 +32,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term/agent-folder";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
-import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
+import { isAgentCardMeta } from "@/app/block/block-info-card-meta";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import {
     insertBlockAtFixedLeftOrder,
@@ -557,7 +557,9 @@ const BlockFrame_Header = ({
     const blockData = jotai.useAtomValue(
         waveEnv.wos.getWaveObjectAtom<Block>(WOS.makeORef("block", nodeModel.blockId))
     );
-    const isAgentBlock = isTerminalBlock && isAgentTerminalMeta(blockData?.meta);
+    // 会话类 block（term agent / 会话详情 / GUI Chat）都需要悬浮卡；
+    // 判定收紧后的行为等价：不命中分派器时 BlockInfoCard 返回 null，不制造空卡片。
+    const isAgentBlock = isAgentCardMeta(blockData?.meta as Record<string, unknown> | undefined);
     viewName = metaFrameTitle ?? viewName;
     viewIconUnion = metaFrameIcon ?? viewIconUnion;
     const [isHovered, setIsHovered] = React.useState(false);

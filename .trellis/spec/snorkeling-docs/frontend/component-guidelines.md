@@ -99,7 +99,33 @@ thing I'm counting?". See `frontend/app/block/block.tsx` (`SingleBlock` / `Inlin
 `frontend/app/view/preview/path-usage-store.ts`,
 `frontend/app/view/preview/preview-model-path-usage.test.ts`.
 
-### 2. Testing module-level mutable state
+### 3. Block InfoCard：分派只在一处，新增类型只加分支
+
+Block 悬浮卡的唯一分派点是 `frontend/app/block/block-info-card.tsx` 的 `BlockInfoCard()`，
+被 inline tab / block frame header / sidebar / Tab 卡分类四处复用。新增一类卡片的正确做法：
+
+1. 在 `frontend/app/block/block-info-card-meta.ts` 加**纯函数**判定（可单测、不 import React）；
+2. 在 `BlockInfoCard()` 按「Note → Preview → SessionDetail → Chat → Agent → null」顺序插分支；
+3. 不要改 `isAgentTerminalMeta` 的语义（它是 HIGH 风险符号，5 个直接调用方）——
+   用 `isAgentCardMeta` 这类**超集** helper 在卡片层做并集判定。
+
+会话类 block 的 id 解析统一走 `resolveBlockSessionId(meta)`：
+`aisessions:sessionid` → `agent:sessionid` → `resolveAgentSessionId(meta)`。
+**不要只看 `agent:sessionid`**：GUI Chat / 会话详情 block 的权威 id 在 `aisessions:sessionid`，
+漏掉会让 note/tags 请求根本不发出去。
+
+### 4. 会话 note/tags：数据只走 session-note-cache，草稿必须有 dirty
+
+- note/tags 的唯一真相源是 `frontend/app/store/session-note-cache.ts`；
+  跨界面同步靠 `aisession-note-updated` 事件 + 缓存 TTL 刷新，不要在卡片里各自发 RPC。
+- 可编辑草稿一律用 `useSessionNoteState`（`frontend/app/store/session-note-hook.ts`）：
+  `dirty` 未置位时**禁止**自动保存。反例：草稿只在 `[sessionId]` 变化时初始化，
+  summary 异步到达后草稿仍是 `""`，3 秒防抖把空串写回，**清空真实备注**。
+- 展示优先用 `summary.note`，编辑态才用草稿；否则首屏会显示 "Click to add a note..." 的假空态。
+- 事件匹配要归一化 `StableKey`（`<source>:<id>:<path>`、远端 `remote:<b64>` 段）与裸 id，
+  不能用 `===` 硬比。
+
+### 5. Testing module-level mutable state
 
 When a module keeps state at module scope (buffers, debounce timers, `Set`/`Map` claims),
 a test must re-import a **fresh module instance** per case (`vi.resetModules()` + dynamic

@@ -11,8 +11,10 @@
 // 目前支持：
 //  - Note Block        → NoteInfoCard（极简：图标 + 文件路径）
 //  - Preview Block     → PreviewInfoCard（目录 → 文件夹图标；文件 → 文件图标，均带路径）
-//  - Agent Block       → AgentHoverCard（完整：provider / model / status / note）
-//  - 其它 Block        → null（由调用方 fallback 到原生 title tooltip）
+//  - Session Detail    ～ SessionDetailInfoCard（会话标题 / tags / note / 路径）
+//  - GUI Chat Block    ～ SessionDetailInfoCard（同一份会话身份 + note/tags）
+//  - Agent Block       ～ AgentHoverCard（完整：provider / model / status / note）
+//  - 其它 Block        ～ null（由调用方 fallback 到原生 title tooltip）
 
 import {
     InfoCard,
@@ -25,6 +27,8 @@ import {
 } from "@/app/element/info-card";
 import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
 import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
+import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
+import { SessionDetailInfoCard } from "@/app/block/session-detail-info-card";
 import { PreviewPathIsDirMetaKey } from "@/app/view/preview/preview-navigation";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import type * as React from "react";
@@ -99,9 +103,11 @@ export function PreviewInfoCard({ blockData, onOpen }: { blockData: Block | null
 /**
  * Block → 信息卡 分派器。
  *
- * 检测顺序：Note → Preview → Agent → null。
+ * 检测顺序：Note → Preview → SessionDetail → Chat → Agent → null。
  * Note 与 Agent 互斥（note 有 SnorkelingBlockKindMetaKey，agent 有 agent:autoresume / agent:provider），
  * 万一同时命中 Note 优先（与旧 InlineTabLabel 一致）。
+ * SessionDetail 必须先于 Chat：详情块同样带 aisessions:sessionid，但它是单会话视图。
+ * Chat 先于 Agent：从列表 resume 出来的 chat 块可能同时带 agent:*，应走会话卡片。
  *
  * @param onOpen  卡片点击回调（Inline Tab 传 onActivate，Sidebar 传 restore 等）。
  */
@@ -123,6 +129,12 @@ export function BlockInfoCard({
     }
     if (meta?.view === "preview") {
         return <PreviewInfoCard blockData={blockData} onOpen={onOpen} />;
+    }
+    if (isSessionDetailBlockMeta(meta)) {
+        return <SessionDetailInfoCard blockData={blockData} onOpen={onOpen} />;
+    }
+    if (isChatBlockMeta(meta)) {
+        return <SessionDetailInfoCard blockData={blockData} onOpen={onOpen} />;
     }
     if (isAgentTerminalMeta(blockData?.meta)) {
         return <AgentHoverCard blockId={blockId} blockData={blockData} mode={mode} />;

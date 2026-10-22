@@ -22,6 +22,7 @@ import {
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
 import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { getObjectValue, makeORef } from "@/app/store/wos";
@@ -29,10 +30,14 @@ import * as React from "react";
 
 // ── block 类型分类 ──
 
-type TabBlockKind = "agent" | "file" | "note" | "terminal" | "other";
+type TabBlockKind = "agent" | "chat" | "file" | "note" | "terminal" | "other";
 
 function classifyBlock(block: Block | null): TabBlockKind {
     const meta = (block?.meta ?? {}) as Record<string, unknown>;
+    // 会话类 block 先判定：GUI Chat / 会话详情都带 aisessions:*，不应落进 other。
+    if (isSessionDetailBlockMeta(meta) || isChatBlockMeta(meta)) {
+        return "chat";
+    }
     if (isAgentTerminalMeta(block?.meta ?? null)) {
         return "agent";
     }
@@ -145,7 +150,7 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
     // block 分类统计
     const blockIds = tab?.blockids ?? [];
     const counts = React.useMemo(() => {
-        const acc: Record<TabBlockKind, number> = { agent: 0, file: 0, note: 0, terminal: 0, other: 0 };
+        const acc: Record<TabBlockKind, number> = { agent: 0, chat: 0, file: 0, note: 0, terminal: 0, other: 0 };
         for (const blockId of blockIds) {
             const block = getObjectValue<Block>(makeORef("block", blockId));
             acc[classifyBlock(block)]++;
@@ -155,7 +160,7 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
 
     const agentBlockIds = React.useMemo(() => blockIds.filter((id) => classifyBlock(getObjectValue<Block>(makeORef("block", id))) === "agent"), [blockIds]);
 
-    const hasContent = counts.agent + counts.file + counts.note + counts.terminal > 0;
+    const hasContent = counts.agent + counts.chat + counts.file + counts.note + counts.terminal > 0;
 
     return (
         <InfoCard className="tab-card">
@@ -182,6 +187,12 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
                             <span className="tab-card-block-count">
                                 <i className="fa-sharp fa-solid fa-microchip" />
                                 {counts.agent} agent{counts.agent > 1 ? "s" : ""}
+                            </span>
+                        )}
+                        {counts.chat > 0 && (
+                            <span className="tab-card-block-count">
+                                <i className="fa-sharp fa-solid fa-comments" />
+                                {counts.chat} chat{counts.chat > 1 ? "s" : ""}
                             </span>
                         )}
                         {counts.file > 0 && (

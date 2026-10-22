@@ -16,6 +16,10 @@ const dlog = debug("wave:sessionnotecache");
 // 需要延迟重试直到 agent 真正产出会话数据（或达到次数上限）。
 const NoteLoadRetryDelayMs = 3000;
 const NoteLoadMaxRetries = 10;
+// 已加载条目的软过期时间：全局 aisession 视图/详情块改了 note 时靠事件同步，
+// 但事件可能错过（监听器尚未挂载、id 写法不同、其它窗口）。超过 TTL 后下一次
+// ensure 会在后台静默刷新，避免卡片长期显示旧 note/tags。
+const NoteRefreshTtlMs = 30_000;
 
 export type SessionNoteStatus = "idle" | "loading" | "loaded" | "error";
 
@@ -82,14 +86,35 @@ function clearRetryTimer(entry: NoteEntry): void {
 }
 
 // 外部 note 更新事件（其他组件保存了 note）→ 同步缓存，让所有订阅者立即看到。
+// 同一会话可能以 <source>:<id>:<path> 或裸 id 两种写法出现，这里做归一化匹配。
+function sessionIdMatches(candidate: string, sessionId: string): boolean {
+    if (candidate === "" || sessionId === "") {
+        return false;
+    }
+    if (candidate === sessionId) {
+        return true;
+    }
+    // StableKey 形如 <source>:<id>:<filePath>，id 作为独立段出现；
+    // 远端 key 还会多出 remote:<b64> 段，所以按段匹配而不是前缀/后缀推断。
+    if (candidate.split(":").includes(sessionId)) {
+        return true;
+    }
+    return false;
+}
+
 function handleNoteUpdatedEvent(event: Event): void {
     if (!isAISessionNoteUpdatedEvent(event)) {
         return;
     }
     const summary = event.detail.summary;
-    const candidates = new Set([summary.key, summary.id].filter((id): id is string => typeof id === "string" && id !== ""));
+    const candidates = [summary.key, summary.id].filter(
+        (id): id is string => typeof id === "string" && id !== ""
+    );
+    if (candidates.length === 0) {
+        return;
+    }
     for (const entry of noteCache.values()) {
-        if (!candidates.has(entry.snapshot.sessionId)) {
+        if (!candidates.some((candidate) => sessionIdMatches(candidate, entry.snapshot.sessionId))) {
             continue;
         }
         clearRetryTimer(entry);
@@ -106,14 +131,25 @@ function ensureEventListener(): void {
     eventListenerAttached = true;
 }
 
-function loadSessionNote(service: AISessionsServiceType, sessionId: string, connection: string): void {
+function loadSessionNote(
+    service: AISessionsServiceType,
+    sessionId: string,
+    connection: string,
+    opts?: { background?: boolean }
+): void {
     const entry = getEntry(sessionId, connection);
-    if (entry.promise != null || entry.snapshot.status === "loaded") {
+    if (entry.promise != null) {
+        return;
+    }
+    // background 刷新：保留旧快照先展示，等新值到达再覆盖（不闪 loading）。
+    if (!opts?.background && entry.snapshot.status === "loaded") {
         return;
     }
     clearRetryTimer(entry);
-    setSnapshot(entry, { status: "loading", error: "" });
-    dlog("note request", { sessionId, attempt: entry.retryCount + 1 });
+    if (!opts?.background) {
+        setSnapshot(entry, { status: "loading", error: "" });
+    }
+    dlog("note request", { sessionId, attempt: entry.retryCount + 1, background: opts?.background === true });
     const request = service
         .Summary({ id: sessionId, connection: connection || undefined })
         .then((summary) => {
@@ -135,7 +171,10 @@ function loadSessionNote(service: AISessionsServiceType, sessionId: string, conn
                         loadSessionNote(service, sessionId, connection);
                     }
                 }, NoteLoadRetryDelayMs);
-                setSnapshot(entry, { status: "loading", error: "" });
+                // background 刷新失败时保留已加载的旧快照，不要把卡片打回 loading/error。
+                if (!opts?.background) {
+                    setSnapshot(entry, { status: "loading", error: "" });
+                }
             } else {
                 setSnapshot(entry, { status: "error", error: message });
             }
@@ -151,7 +190,8 @@ function loadSessionNote(service: AISessionsServiceType, sessionId: string, conn
 export function ensureSessionNote(
     service: AISessionsServiceType,
     sessionId: string,
-    connection?: string | null
+    connection?: string | null,
+    opts?: { force?: boolean }
 ): SessionNoteSnapshot {
     ensureEventListener();
     const conn = normalizeConnection(connection);
@@ -166,6 +206,12 @@ export function ensureSessionNote(
             entry.retryCount = 0;
         }
         loadSessionNote(service, sessionId, conn);
+    } else if (
+        entry.snapshot.status === "loaded" &&
+        (opts?.force === true || Date.now() - entry.snapshot.loadedAt > NoteRefreshTtlMs)
+    ) {
+        // 软过期 / 显式刷新：后台拉一次，旧快照继续展示。
+        loadSessionNote(service, sessionId, conn, { background: true });
     }
     return entry.snapshot;
 }
