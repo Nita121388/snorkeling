@@ -64,3 +64,6 @@ electron-vite
 # CDP debug/temp scripts
 scripts/.tmp-cdp-*
 scripts/cdp-gui-chat-*.mjs
+
+# Local verification scratch output (lint / tsc / vitest logs)
+.tmp-*.txt
