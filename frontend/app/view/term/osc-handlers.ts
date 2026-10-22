@@ -16,6 +16,7 @@ import { base64ToString, fireAndForget, isSshConnName, isWslConnName } from "@/u
 import { genFrontendTraceId, pslogTrace } from "@/store/pslog-trace";
 import debug from "debug";
 import { resolveAgentCommandBinding } from "./agent-session";
+import { filePathFromFileUrl } from "./term-file-url";
 import type { TermWrap } from "./termwrap";
 
 const dlog = debug("wave:termwrap");
@@ -319,33 +320,22 @@ export function handleOsc7Command(data: string, blockId: string, loaded: boolean
         return true;
     }
 
-    let pathPart: string;
+    let url: URL;
     try {
-        const url = new URL(data);
-        if (url.protocol !== "file:") {
-            console.log("Invalid OSC 7 command received (non-file protocol)", data);
-            return true;
-        }
-        pathPart = decodeURIComponent(url.pathname);
-
-        // Normalize double slashes at the beginning to single slash
-        if (pathPart.startsWith("//")) {
-            pathPart = pathPart.substring(1);
-        }
-
-        // Handle Windows paths (e.g., /C:/... or /D:\...)
-        if (/^\/[a-zA-Z]:[\\/]/.test(pathPart)) {
-            // Strip leading slash and normalize to forward slashes
-            pathPart = pathPart.substring(1).replace(/\\/g, "/");
-        }
-
-        // Handle UNC paths (e.g., /\\server\share)
-        if (pathPart.startsWith("/\\\\")) {
-            // Strip leading slash but keep backslashes for UNC
-            pathPart = pathPart.substring(1);
-        }
+        url = new URL(data);
     } catch (e) {
         console.log("Invalid OSC 7 command received (parse error)", data, e);
+        return true;
+    }
+    if (url.protocol !== "file:") {
+        console.log("Invalid OSC 7 command received (non-file protocol)", data);
+        return true;
+    }
+    // 路径归一化与终端里的 file:// 链接共用一套规则（term-file-url）。
+    // OSC 7 语义下 host 是本机名，直接忽略。
+    const pathPart = filePathFromFileUrl(url);
+    if (pathPart == null) {
+        console.log("Invalid OSC 7 command received (bad file path)", data);
         return true;
     }
 

@@ -4,6 +4,7 @@
 import { PLATFORM, PlatformMacOS } from "@/util/platformutil";
 import { FloatingPortal, VirtualElement, flip, offset, shift, useFloating } from "@floating-ui/react";
 import * as React from "react";
+import { terminalLinkHint } from "./term-file-url";
 import type { TermWrap } from "./termwrap";
 
 // ── low-level primitive ──────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ export const TermTooltip = React.memo(function TermTooltip({ mousePos, content }
             <div
                 ref={refs.setFloating}
                 style={floatingStyles}
-                className="bg-zinc-800/70 rounded-md px-2 py-1 text-xs text-secondary shadow-xl z-50 pointer-events-none select-none"
+                className="rounded-md border border-[var(--border-color)] bg-[var(--overlay-bg-color)] px-2 py-1 text-xs text-[var(--main-text-color)] shadow-[0_8px_24px_var(--modal-shadow-color)] z-50 pointer-events-none select-none"
             >
                 {content}
             </div>
@@ -92,6 +93,7 @@ interface TermLinkTooltipProps {
  */
 export const TermLinkTooltip = React.memo(function TermLinkTooltip({ termWrap }: TermLinkTooltipProps) {
     const [mousePos, setMousePos] = React.useState<{ x: number; y: number } | null>(null);
+    const [hoveredUri, setHoveredUri] = React.useState<string | null>(null);
     const timeoutRef = React.useRef<number | null>(null);
     const maxTimeoutRef = React.useRef<number | null>(null);
 
@@ -106,6 +108,7 @@ export const TermLinkTooltip = React.memo(function TermLinkTooltip({ termWrap }:
             if (uri == null) {
                 clearTimeoutRef(maxTimeoutRef);
                 setMousePos(null);
+                setHoveredUri(null);
                 return;
             }
 
@@ -113,11 +116,13 @@ export const TermLinkTooltip = React.memo(function TermLinkTooltip({ termWrap }:
             timeoutRef.current = window.setTimeout(() => {
                 timeoutRef.current = null;
                 setMousePos({ x: mouseX, y: mouseY });
+                setHoveredUri(uri);
                 // Auto-dismiss after MaxHoverTimeMs so the tooltip doesn't linger forever.
                 clearTimeoutRef(maxTimeoutRef);
                 maxTimeoutRef.current = window.setTimeout(() => {
                     maxTimeoutRef.current = null;
                     setMousePos(null);
+                    setHoveredUri(null);
                 }, MaxHoverTimeMs);
             }, HoverDelayMs);
         };
@@ -127,8 +132,14 @@ export const TermLinkTooltip = React.memo(function TermLinkTooltip({ termWrap }:
             clearTimeoutRef(timeoutRef);
             clearTimeoutRef(maxTimeoutRef);
             setMousePos(null);
+            setHoveredUri(null);
         };
     }, [termWrap]);
 
-    return <TermTooltip mousePos={mousePos} content={<span>{modKey}-click to open link</span>} />;
+    return (
+        <TermTooltip
+            mousePos={mousePos}
+            content={<span>{hoveredUri == null ? "" : terminalLinkHint(hoveredUri, modKey)}</span>}
+        />
+    );
 });

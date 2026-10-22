@@ -37,6 +37,7 @@ import {
     isClaudeCodeCommand,
     type ShellIntegrationStatus,
 } from "./osc-handlers";
+import { isFileUrl, terminalFilePath, TerminalLinkRegex } from "./term-file-url";
 import { isAgentTerminalMeta } from "./agent-meta";
 import {
     bufferLinesToText,
@@ -197,20 +198,25 @@ export class TermWrap {
             new WebLinksAddon(
                 (e, uri) => {
                     e.preventDefault();
-                    switch (PLATFORM) {
-                        case PlatformMacOS:
-                            if (e.metaKey) {
-                                fireAndForget(() => openTerminalLink(uri));
-                            }
-                            break;
-                        default:
-                            if (e.ctrlKey) {
-                                fireAndForget(() => openTerminalLink(uri));
-                            }
-                            break;
+                    const modPressed = PLATFORM === PlatformMacOS ? e.metaKey : e.ctrlKey;
+                    if (!modPressed) {
+                        return;
                     }
+                    if (isFileUrl(uri)) {
+                        // file:// 链接用系统默认程序打开（.html 走浏览器）。
+                        const nativePath = terminalFilePath(uri);
+                        if (nativePath != null) {
+                            getApi().openNativePath(nativePath);
+                            return;
+                        }
+                        // 路径解析失败时退化为交给系统浏览器。
+                        getApi().openExternal(uri);
+                        return;
+                    }
+                    fireAndForget(() => openTerminalLink(uri));
                 },
                 {
+                    urlRegex: TerminalLinkRegex,
                     hover: (e, uri) => {
                         this.hoveredLinkUri = uri;
                         this.onLinkHover?.(uri, e.clientX, e.clientY);

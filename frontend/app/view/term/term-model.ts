@@ -67,6 +67,7 @@ import {
 } from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
 import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
+import { isFileUrl, terminalFilePath } from "./term-file-url";
 import {
     computeTheme,
     getDefaultTermTheme,
@@ -1127,31 +1128,48 @@ export class TermViewModel implements ViewModel {
 
         const hoveredLinkUri = this.termRef.current?.hoveredLinkUri;
         if (hoveredLinkUri) {
-            let hoveredURL: URL = null;
-            try {
-                hoveredURL = new URL(hoveredLinkUri);
-            } catch (e) {
-                // not a valid URL
-            }
-            if (hoveredURL) {
+            const nativeFilePath = isFileUrl(hoveredLinkUri) ? terminalFilePath(hoveredLinkUri) : null;
+            if (nativeFilePath != null) {
                 menu.push({
-                    label: hoveredURL.hostname ? "Open URL (" + hoveredURL.hostname + ")" : "Open URL",
+                    label: "Open File in Default App",
                     click: () => {
-                        createBlock({
-                            meta: {
-                                view: "web",
-                                url: hoveredURL.toString(),
-                            },
-                        });
+                        getApi().openNativePath(nativeFilePath);
                     },
                 });
                 menu.push({
-                    label: "Open URL in External Browser",
+                    label: "Show in Folder",
                     click: () => {
-                        getApi().openExternal(hoveredURL.toString());
+                        getApi().revealNativePath(nativeFilePath);
                     },
                 });
                 menu.push({ type: "separator" });
+            } else {
+                let hoveredURL: URL = null;
+                try {
+                    hoveredURL = new URL(hoveredLinkUri);
+                } catch (e) {
+                    // not a valid URL
+                }
+                if (hoveredURL) {
+                    menu.push({
+                        label: hoveredURL.hostname ? "Open URL (" + hoveredURL.hostname + ")" : "Open URL",
+                        click: () => {
+                            createBlock({
+                                meta: {
+                                    view: "web",
+                                    url: hoveredURL.toString(),
+                                },
+                            });
+                        },
+                    });
+                    menu.push({
+                        label: "Open URL in External Browser",
+                        click: () => {
+                            getApi().openExternal(hoveredURL.toString());
+                        },
+                    });
+                    menu.push({ type: "separator" });
+                }
             }
         }
 
