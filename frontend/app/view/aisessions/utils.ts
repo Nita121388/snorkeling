@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 import { copyText as writeTextToClipboard } from "@/util/clipboard";
+import { formatFileSize } from "@/util/fileformat";
 import { isWindows } from "@/util/platformutil";
 import { buildSessionTree, type SessionTreeNode } from "./session-tree";
 import type { MarkedFilter, PathFilter, SessionGroupMode } from "./types";
@@ -435,17 +436,9 @@ export function formatSessionDate(timestamp: number): string {
     return `${year}-${month}-${day}`;
 }
 
-export function formatFileSize(bytes: number | null | undefined): string {
-    if (bytes == null || Number.isNaN(bytes)) return "";
-    if (bytes < 0) return "";
-    if (bytes === 0) return "0 B";
-    const units = ["B", "KB", "MB", "GB", "TB", "PB"];
-    const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-    const value = bytes / Math.pow(1024, unitIndex);
-    const display =
-        unitIndex === 0 ? Math.round(value).toString() : value.toFixed(value < 10 ? 1 : 0).replace(/\.0$/, "");
-    return `${display} ${units[unitIndex]}`;
-}
+// 实现已平移到 @/util/fileformat（叶子模块，供 Files 树 / Files 表格 / AI 会话列表共用）。
+// 这里保留 re-export，既有 import 路径（./utils）零改动。
+export { formatFileSize };
 
 function pad2(value: number): string {
     return value.toString().padStart(2, "0");

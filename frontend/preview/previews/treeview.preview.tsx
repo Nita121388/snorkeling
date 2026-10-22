@@ -15,14 +15,58 @@ const RootNode: TreeNodeData = {
 
 const DirectoryData: Record<string, TreeNodeData[]> = {
     [RootId]: [
-        { id: "workspace:/src", path: "workspace:/src", label: "src", parentId: RootId, isDirectory: true },
-        { id: "workspace:/docs", path: "workspace:/docs", label: "docs", parentId: RootId, isDirectory: true },
-        { id: "workspace:/README.md", path: "workspace:/README.md", label: "README.md", parentId: RootId, isDirectory: false, mimeType: "text/markdown" },
-        { id: "workspace:/package.json", path: "workspace:/package.json", label: "package.json", parentId: RootId, isDirectory: false, mimeType: "application/json" },
+        {
+            id: "workspace:/src",
+            path: "workspace:/src",
+            label: "src",
+            parentId: RootId,
+            isDirectory: true,
+            modtime: Date.parse("2026-09-20T08:12:00.000Z"),
+        },
+        {
+            id: "workspace:/docs",
+            path: "workspace:/docs",
+            label: "docs",
+            parentId: RootId,
+            isDirectory: true,
+            modtime: Date.parse("2026-09-11T17:45:00.000Z"),
+        },
+        {
+            id: "workspace:/README.md",
+            path: "workspace:/README.md",
+            label: "README.md",
+            parentId: RootId,
+            isDirectory: false,
+            mimeType: "text/markdown",
+            size: 4300,
+            modtime: Date.parse("2026-09-15T14:32:00.000Z"),
+        },
+        {
+            id: "workspace:/package.json",
+            path: "workspace:/package.json",
+            label: "package.json",
+            parentId: RootId,
+            isDirectory: false,
+            mimeType: "application/json",
+            size: 1572,
+            modtime: Date.parse("2025-12-31T09:00:00.000Z"),
+        },
     ],
     "workspace:/src": [
-        { id: "workspace:/src/app", path: "workspace:/src/app", label: "app", parentId: "workspace:/src", isDirectory: true },
-        { id: "workspace:/src/styles", path: "workspace:/src/styles", label: "styles", parentId: "workspace:/src", isDirectory: true },
+        {
+            id: "workspace:/src/app",
+            path: "workspace:/src/app",
+            label: "app",
+            parentId: "workspace:/src",
+            isDirectory: true,
+        },
+        {
+            id: "workspace:/src/styles",
+            path: "workspace:/src/styles",
+            label: "styles",
+            parentId: "workspace:/src",
+            isDirectory: true,
+        },
         ...Array.from({ length: 200 }).map((_, idx) => ({
             id: `workspace:/src/file-${idx.toString().padStart(3, "0")}.tsx`,
             path: `workspace:/src/file-${idx.toString().padStart(3, "0")}.tsx`,
@@ -33,11 +77,36 @@ const DirectoryData: Record<string, TreeNodeData[]> = {
         })),
     ],
     "workspace:/src/app": [
-        { id: "workspace:/src/app/main.tsx", path: "workspace:/src/app/main.tsx", label: "main.tsx", parentId: "workspace:/src/app", isDirectory: false, mimeType: "text/typescript" },
-        { id: "workspace:/src/app/router.ts", path: "workspace:/src/app/router.ts", label: "router.ts", parentId: "workspace:/src/app", isDirectory: false, mimeType: "text/typescript" },
+        {
+            id: "workspace:/src/app/main.tsx",
+            path: "workspace:/src/app/main.tsx",
+            label: "main.tsx",
+            parentId: "workspace:/src/app",
+            isDirectory: false,
+            mimeType: "text/typescript",
+            size: 24380,
+            modtime: Date.parse("2026-09-18T11:05:00.000Z"),
+        },
+        {
+            id: "workspace:/src/app/router.ts",
+            path: "workspace:/src/app/router.ts",
+            label: "router.ts",
+            parentId: "workspace:/src/app",
+            isDirectory: false,
+            mimeType: "text/typescript",
+            size: 1820,
+            modtime: Date.parse("2026-08-02T16:40:00.000Z"),
+        },
     ],
     "workspace:/src/styles": [
-        { id: "workspace:/src/styles/app.css", path: "workspace:/src/styles/app.css", label: "app.css", parentId: "workspace:/src/styles", isDirectory: false, mimeType: "text/css" },
+        {
+            id: "workspace:/src/styles/app.css",
+            path: "workspace:/src/styles/app.css",
+            label: "app.css",
+            parentId: "workspace:/src/styles",
+            isDirectory: false,
+            mimeType: "text/css",
+        },
     ],
     "workspace:/docs": Array.from({ length: 25 }).map((_, idx) => ({
         id: `workspace:/docs/page-${idx + 1}.md`,
@@ -71,6 +140,7 @@ export function TreeViewPreview() {
             <TreeView
                 rootIds={[RootId]}
                 initialNodes={initialNodes}
+                defaultExpandedIds={[RootId]}
                 width={width}
                 minWidth={100}
                 maxWidth={400}

@@ -107,6 +107,10 @@ function toTreeNode(fileInfo: FileInfo, parentId: string, directoryIconColor: st
         isReadonly: fileInfo.readonly,
         notfound: fileInfo.notfound,
         staterror: fileInfo.staterror,
+        // 目录的字节大小在各平台语义不一致（有的算 entry 数、有的算 block 数），不展示；
+        // 修改时间目录/文件都有，正常透传。
+        size: fileInfo.isdir ? undefined : fileInfo.size,
+        modtime: fileInfo.modtime,
     };
 }
 
@@ -194,7 +198,11 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const rootIds = useMemo(() => [rootPath], [rootPath]);
     const persistedExpandedDirs = useMemo(
         () =>
-            loadPersistedExpandedDirs(model.blockId, rootPath, (blockData?.meta as Record<string, unknown> | undefined)?.[PreviewExpandedDirsMetaKey]),
+            loadPersistedExpandedDirs(
+                model.blockId,
+                rootPath,
+                (blockData?.meta as Record<string, unknown> | undefined)?.[PreviewExpandedDirsMetaKey]
+            ),
         [blockData?.meta, model.blockId, rootPath]
     );
     const defaultExpandedIds = useMemo(
@@ -208,9 +216,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         (expanded: Set<string>) => {
             const dirs = Array.from(expanded).sort();
             const current = persistedExpandedDirs;
-            const isSame =
-                current.length === dirs.length &&
-                current.every((p, i) => p === dirs[i]);
+            const isSame = current.length === dirs.length && current.every((p, i) => p === dirs[i]);
             if (isSame) {
                 return;
             }
@@ -346,7 +352,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     useEffect(() => {
         model.directoryKeyDownHandler = (waveEvent: WaveKeyboardEvent): boolean => {
             if (checkKeyPressed(waveEvent, "Delete") || checkKeyPressed(waveEvent, "Cmd:Backspace")) {
-                const targetNodes = selectedTreeNodes.length > 0 ? selectedTreeNodes : (selectedTreeNode ? [selectedTreeNode] : []);
+                const targetNodes =
+                    selectedTreeNodes.length > 0 ? selectedTreeNodes : selectedTreeNode ? [selectedTreeNode] : [];
                 if (targetNodes.length === 0) {
                     return false;
                 }
@@ -374,7 +381,18 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         return () => {
             model.directoryKeyDownHandler = null;
         };
-    }, [closeSearch, model, searchActive, searchInput, searchQuery, selectedTreeNode, selectedTreeNodes, setErrorMsg, setSearchActive, startDirectNameSearch]);
+    }, [
+        closeSearch,
+        model,
+        searchActive,
+        searchInput,
+        searchQuery,
+        selectedTreeNode,
+        selectedTreeNodes,
+        setErrorMsg,
+        setSearchActive,
+        startDirectNameSearch,
+    ]);
 
     useEffect(() => {
         const revealPath = blockData?.meta?.[PreviewRevealPathMetaKey];
@@ -500,12 +518,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         [env.rpc, model]
     );
 
-    const openRename = useCallback(
-        (path: string, isDir: boolean) => {
-            setEditingRenameNode({ path, isDir });
-        },
-        []
-    );
+    const openRename = useCallback((path: string, isDir: boolean) => {
+        setEditingRenameNode({ path, isDir });
+    }, []);
 
     const openMoveTo = useCallback(
         (fileInfos: FileInfo[]) => {

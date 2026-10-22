@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { FileTooltipHoverDelayMs } from "@/app/element/hover-timing";
 import { InlineRenameInput } from "@/app/element/inline-rename-input";
 import { makeIconClass, naturalStringCompare } from "@/util/util";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -10,12 +11,15 @@ import React, {
     KeyboardEvent,
     MouseEvent,
     forwardRef,
+    useCallback,
     useEffect,
     useImperativeHandle,
     useMemo,
     useRef,
     useState,
 } from "react";
+import { FileMetaTooltip } from "./treeview-file-tooltip";
+import { useHoverIntent } from "./use-hover-intent";
 
 type TreeNodeChildrenStatus = "unloaded" | "loading" | "loaded" | "error" | "capped";
 
@@ -31,6 +35,10 @@ export interface TreeNodeData {
     isReadonly?: boolean;
     notfound?: boolean;
     staterror?: string;
+    /** 文件字节数；目录不设置 */
+    size?: number;
+    /** 最后修改时间（unix 毫秒） */
+    modtime?: number;
     childrenStatus?: TreeNodeChildrenStatus;
     childrenIds?: string[];
     capInfo?: { max: number; totalKnown?: number };
@@ -109,6 +117,8 @@ export interface TreeViewRef {
 
 const DefaultRowHeight = 24;
 const DirectoryLoadTimeoutMs = 15_000;
+// Tooltip 出场动画时长；到期后浮层 DOM 才真正摘除
+const TooltipCloseDelayMs = 140;
 // Minimum fetch duration before a `Loading…` row is painted. Fast local fetches finish
 // well inside this window and expand instantly without flashing a loading frame.
 // 300ms covers most directory listings; slow/remote dirs still show a spinner afterwards.
@@ -460,7 +470,9 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
 
     // Marquee (rubber-band) selection state
     const [marqueeActive, setMarqueeActive] = useState(false);
-    const [marqueeRect, setMarqueeRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+    const [marqueeRect, setMarqueeRect] = useState<{ left: number; top: number; width: number; height: number } | null>(
+        null
+    );
     const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
     const marqueeDraggingRef = useRef(false);
     const dragStartXRef = useRef<number>(0);
@@ -469,6 +481,58 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
     const marqueeJustCompletedRef = useRef(false);
     const onMarqueeSelectRef = useRef(onMarqueeSelect);
     onMarqueeSelectRef.current = onMarqueeSelect;
+
+    // ── hover-intent 文件信息 Tooltip ──────────────────────────────────────
+    // 计时器逻辑在 useHoverIntent 里（整棵树共用一个计时器：行是虚拟滚动的，
+    // 可能同时挂载几十行，每行一个 timer 会互相抢先把 tooltip 指向别的行）。
+    const [hoveredRow, setHoveredRow] = useState<{
+        id: string;
+        node: TreeNodeData;
+        element: HTMLElement;
+        icon: string;
+    } | null>(null);
+    const [tooltipOpen, setTooltipOpen] = useState(false);
+    // 行 → 行的临时状态：pointerenter 时记下当前行，等计时到期再用
+    const pendingRowRef = useRef<{ node: TreeNodeData; element: HTMLElement; icon: string } | null>(null);
+
+    const hoverIntent = useHoverIntent({
+        delayMs: FileTooltipHoverDelayMs,
+        closeDelayMs: TooltipCloseDelayMs,
+        onOpen: () => {
+            const pending = pendingRowRef.current;
+            if (pending == null) {
+                return;
+            }
+            setHoveredRow({ id: pending.node.id, node: pending.node, element: pending.element, icon: pending.icon });
+            setTooltipOpen(true);
+        },
+        onClose: () => {
+            setTooltipOpen(false);
+        },
+        onUnmount: () => {
+            setHoveredRow(null);
+            pendingRowRef.current = null;
+        },
+    });
+
+    const handleRowPointerEnter = useCallback(
+        (event: React.PointerEvent<HTMLDivElement>, row: TreeViewVisibleRow) => {
+            if (row.kind !== "node" || row.node == null) {
+                return;
+            }
+            pendingRowRef.current = {
+                node: row.node,
+                element: event.currentTarget,
+                icon: getNodeIcon(row.node, row.isExpanded),
+            };
+            hoverIntent.pointerEnter();
+        },
+        [hoverIntent]
+    );
+
+    const handleRowPointerLeave = useCallback(() => {
+        hoverIntent.pointerLeave();
+    }, [hoverIntent]);
 
     const onScrollContainerMouseDown = (e: MouseEvent<HTMLDivElement>) => {
         if (e.button !== 0) {
@@ -1030,10 +1094,17 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                 className="h-full overflow-auto select-none"
                 style={{ position: "relative" }}
                 onMouseDown={onScrollContainerMouseDown}
+                onScroll={() => {
+                    // 滚动时行会被虚拟化回收，锚点会失效 → 直接收起 tooltip
+                    hoverIntent.pointerLeave();
+                }}
                 onClick={(event) => {
                     // Click on empty space (not on a row) → clear selection
                     // But skip if a marquee just completed (the flag will be cleared on next mousedown)
-                    if (!(event.target as HTMLElement).closest("[data-treeview-row]") && !marqueeJustCompletedRef.current) {
+                    if (
+                        !(event.target as HTMLElement).closest("[data-treeview-row]") &&
+                        !marqueeJustCompletedRef.current
+                    ) {
                         onBackgroundClick?.();
                     }
                 }}
@@ -1061,6 +1132,12 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                     top: 0,
                                     height: rowHeight,
                                     transform: `translateY(${virtualRow.start}px)`,
+                                }}
+                                onPointerEnter={(event) => {
+                                    handleRowPointerEnter(event, row);
+                                }}
+                                onPointerLeave={() => {
+                                    handleRowPointerLeave();
                                 }}
                                 onClick={(event) => {
                                     if (row.kind !== "node" || row.node == null) {
@@ -1159,7 +1236,6 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                         ) : (
                                             <span
                                                 className={clsx("ml-1 truncate", row.node.isReadonly && "text-muted")}
-                                                title={row.label}
                                             >
                                                 {row.label}
                                             </span>
@@ -1184,6 +1260,13 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                     />
                 )}
             </div>
+            <FileMetaTooltip
+                reference={hoveredRow?.element ?? null}
+                node={hoveredRow?.node ?? null}
+                icon={hoveredRow?.icon}
+                iconColor={hoveredRow?.node?.iconColor}
+                open={tooltipOpen}
+            />
         </div>
     );
 });

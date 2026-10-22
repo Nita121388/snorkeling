@@ -156,3 +156,43 @@ vendor 列表……），契约是 **header / scrollable content / footer** 三�
 不要为了限高而给已经有内部滚动容器的浮窗引入 `size` middleware——
 用 CSS 的 `max-h-[min(500px,calc(100vh-32px))]` 就够。
 
+
+### 7. 虚拟滚动列表上的悬浮浮层：不能包裹 DOM，计时器必须共享
+
+`frontend/app/treeview/treeview.tsx` 的行是 `@tanstack/react-virtual` 渲染的
+**绝对定位**元素（`style.transform: translateY(...)`）。在行上挂浮层有三条硬规矩：
+
+1. **不要用会包一层 `<div>` 的现成 Tooltip**（`frontend/app/element/tooltip.tsx` 就会包）。
+   多包一层会改变行内 flex 布局与缩进。正确做法是浮层组件自己管 floating，
+   由调用方把**行 DOM 节点**作为 reference 传进去，浮层只通过 `FloatingPortal`
+   渲染一个绝对定位的兄弟节点。参考 `frontend/app/treeview/treeview-file-tooltip.tsx`。
+2. **计时器整棵树共用一个**。行是虚拟滚动的，可能同时挂载几十行，
+   每行一个 timer 会互相抢先把浮层指向别的行。计时逻辑抽成
+   `createHoverIntentController`（`frontend/app/treeview/use-hover-intent.ts`），
+   纯函数、无 DOM 依赖，可以用 fake timers 做确定性单测。
+3. **行被回收时浮层要能自愈**：滚动会销毁行 DOM，锚点失效 → 滚动时主动收起浮层。
+
+另外，虚拟列表里的行**不要留原生 `title`**：浏览器原生 tooltip 会和浮层重叠，
+把「完整名字」的职责交给浮层（浮层里显示全名 + 路径）。
+
+### 8. 浮层入场动画：先渲染隐藏态，再翻到可见态
+
+浮层带着终态（`opacity: 1`）挂载时，浏览器没有「变化前样式」，`transition`
+**不会触发**——动画看起来完全没发生。正确顺序：
+
+- 首次渲染用隐藏态（`opacity: 0` / `scale: 0.96`）；
+- 下一帧（`requestAnimationFrame`）再切到可见态，`transition` 才会跑起来。
+
+出场要「延迟卸载」：淡出动画跑完后才把 DOM 摘掉，否则元素直接消失、没有过渡。
+两段式关闭（`onClose` 触发淡出 → `onUnmount` 摘 DOM）见
+`createHoverIntentController` 的 `pointerLeave()`。
+
+缩放动效用**独立的 `scale` CSS 属性**，不要写 `transform`——floating-ui 用
+`transform` 做定位translate，写 `transform: scale(...)` 会把定位顶掉。
+
+### 9. floating-ui `shift` 默认只约束交叉轴
+
+`shift({ padding: 12 })` 默认只在**交叉轴**（垂直方向）上回拉，主轴（水平）溢出
+指望 `flip()` 兜底。但当两侧都放不下时，`flip()` 会维持原位 → 浮层溢出视口被裁切。
+需要「无论如何不出屏」时用 `shift({ padding: 12, crossAxis: true })`，
+让主轴也被拉回视口内（树面板贴屏幕边缘时的真实场景）。

@@ -4,9 +4,9 @@
 import { createBlock } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { getLastModifiedTime } from "@/util/fileformat";
 import { addOpenMenuItems } from "@/util/previewutil";
 import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
-import dayjs from "dayjs";
 import React from "react";
 import { quote as shellQuote } from "shell-quote";
 import {
@@ -24,11 +24,11 @@ import {
 } from "./preview-file-clipboard";
 import { type PreviewModel } from "./preview-model";
 import { makeRelativePathForCopy } from "./preview-paths";
-import { isWindowsDrivesPath } from "./preview-windows-drives";
 import { HtmlOpenModeEntries, isHtmlPreviewPath } from "./preview-text-modes";
+import { isWindowsDrivesPath } from "./preview-windows-drives";
 // getHtmlOpenMode 定义在 -store（依赖 jotai 的 htmlOpenModePrefsAtom），不在 preview-text-modes。
-import { getHtmlOpenMode } from "./preview-text-modes-store";
 import { openHtmlEntryWithMode } from "./preview-open";
+import { getHtmlOpenMode } from "./preview-text-modes-store";
 
 export const recursiveError = "recursive flag must be set for directory operations";
 export const overwriteError = "set overwrite flag to delete the existing file";
@@ -60,23 +60,9 @@ export function getBestUnit(bytes: number, si = false, sigfig = 3): string {
     return `${parseFloat(value.toPrecision(sigfig))}${displaySuffixes[unit] ?? unit}`;
 }
 
-function padDay(day: number) {
-    return String(day).padStart(2, " ");
-}
-
-export function getLastModifiedTime(unixMillis: number): string {
-    const file = dayjs(unixMillis);
-    const now = dayjs();
-
-    const day = padDay(file.date());
-    const time = file.format("HH:mm");
-
-    if (now.isSame(file, "year")) {
-        return `${file.format("MMM")} ${day} ${time}`;
-    }
-
-    return `${file.format("YYYY-MM-DD")}`;
-}
+// 实现已平移到 @/util/fileformat（叶子模块，供 Files 树 / Files 表格共用）。
+// 这里保留 re-export，既有 import 路径（./preview-directory-utils）零改动。
+export { getLastModifiedTime };
 
 const iconRegex = /^[a-z0-9- ]+$/;
 
@@ -247,11 +233,7 @@ export function handleFileDelete(
     });
 }
 
-export function handleFileDeletes(
-    model: PreviewModel,
-    fileInfos: FileInfo[],
-    setErrorMsg: (msg: ErrorMsg) => void
-) {
+export function handleFileDeletes(model: PreviewModel, fileInfos: FileInfo[], setErrorMsg: (msg: ErrorMsg) => void) {
     if (fileInfos.length === 0) {
         return;
     }
