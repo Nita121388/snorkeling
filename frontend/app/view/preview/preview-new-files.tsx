@@ -7,7 +7,16 @@ import {
     type PathPanelRow,
     type PathSelection,
 } from "@/app/view/preview/path-panel-model";
-import { useFloating, FloatingPortal, offset, useDismiss, useInteractions } from "@floating-ui/react";
+import {
+    flip,
+    FloatingPortal,
+    limitShift,
+    offset,
+    shift,
+    useDismiss,
+    useFloating,
+    useInteractions,
+} from "@floating-ui/react";
 import clsx from "clsx";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -43,7 +52,7 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
     const { refs, floatingStyles, context } = useFloating({
         open: isOpen,
         placement: "left-start",
-        middleware: [offset(8)],
+        middleware: [offset(8), flip(), shift({ padding: 12, limiter: limitShift() })],
         elements: { reference: referenceElement },
         onOpenChange: (open) => {
             if (!open) onClose();
@@ -139,7 +148,7 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                 ref={refs.setFloating}
                 style={floatingStyles}
                 {...getFloatingProps()}
-                className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[480px] max-h-[500px] overflow-hidden flex flex-col"
+                className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[480px] max-h-[min(500px,calc(100vh-32px))] overflow-hidden flex flex-col"
             >
                 {/* header */}
                 <div className="flex items-center px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">

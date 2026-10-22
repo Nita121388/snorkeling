@@ -647,8 +647,13 @@ const AgentTargetFloatingWindow = memo(
                     padding: 12,
                     // ponytail: 120px floor keeps the panel scrollable in pathological viewports;
                     // it must stay well below real content height so the clamp actually wins.
+                    // 浮窗不再承担滚动：内层路径列表自己滚（overscroll-contain），
+                    // 标题 / 芯片 / footer 固定不动。640px 是内容自然高度的硬上限。
+                    // overflowY 仍留 auto 作退化兜底：根节点是 flex 列 + 列表 flex-1/min-h-0，
+                    // 正常情况下溢出量被列表吸收（根不滚）；只有视口矮到 chrome 段都放不下时，
+                    // 根才会真的溢出并可滚，保证 footer 按钮仍可达。
                     apply({ availableHeight, elements }) {
-                        elements.floating.style.maxHeight = `${Math.max(availableHeight, 120)}px`;
+                        elements.floating.style.maxHeight = `${Math.max(Math.min(availableHeight, 640), 120)}px`;
                         elements.floating.style.overflowY = "auto";
                     },
                 }),
@@ -885,10 +890,10 @@ const AgentTargetFloatingWindow = memo(
                     {...getFloatingProps()}
                     onPointerEnter={onPointerEnter}
                     onPointerLeave={launchEnvLocked ? undefined : onPointerLeave}
-                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
+                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] flex flex-col overflow-hidden"
                 >
                     {/* header */}
-                    <div className="flex items-center justify-between px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
+                    <div className="shrink-0 flex items-center justify-between px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
                         <span>New Agent</span>
                         <button
                             type="button"
@@ -910,7 +915,7 @@ const AgentTargetFloatingWindow = memo(
                         </button>
                     </div>
 
-                    <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
+                    <div className="shrink-0 px-3 pt-2 pb-1.5 border-b border-border/60">
                         <div className="text-xxs text-muted mb-1.5">Select an agent type</div>
                         {profileOptions.length === 0 ? (
                             <div className="px-2 py-1.5 text-xs text-muted">No detected agents</div>
@@ -995,7 +1000,7 @@ const AgentTargetFloatingWindow = memo(
                     {(isClaudeProfileActive || isCodexProfileActive) &&
                         effectiveVendorDetected !== false &&
                         Array.isArray(effectiveVendorOptions) && (
-                            <div className="px-3 pt-2 pb-1.5 border-b border-border/60">
+                            <div className="shrink-0 px-3 pt-2 pb-1.5 border-b border-border/60">
                                 <div className="flex items-center justify-between mb-1.5">
                                     <span className="text-xxs text-muted">Vendor · from cc-switch</span>
                                     <button
@@ -1083,7 +1088,7 @@ const AgentTargetFloatingWindow = memo(
                         )}
 
                     {isPiProfileActive ? (
-                        <div className="px-1 pb-1">
+                        <div className="shrink-0 px-1 pb-1">
                             <div className="px-2 pt-2 pb-1 text-xxs text-muted">启动方式</div>
                             <div className="mx-2 mb-1 inline-flex rounded-lg border border-border bg-surface p-0.5">
                                 <button
@@ -1115,85 +1120,87 @@ const AgentTargetFloatingWindow = memo(
                     ) : null}
 
                     {/* path list */}
-                    <div className="px-1 pb-1">
-                        <div className="px-2 pt-2 pb-1 text-xxs text-muted">Select a path.</div>
-                        {targets.length === 0 ? (
-                            <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
-                        ) : (
-                            targets.map((target, idx) => {
-                                const isSelected = idx === clampedSelectedIdx;
-                                const isDefault = getLaunchTargetDefaultKey(target) === defaultTargetKey;
-                                const canSetDefault = canSetLaunchTargetDefault(target);
-                                return (
-                                    <div
-                                        key={target.blockId}
-                                        role="button"
-                                        tabIndex={0}
-                                        className={clsx(
-                                            "group w-full text-left transition-colors cursor-pointer py-2 pl-3 pr-2 rounded-md mb-[1px]",
-                                            isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
-                                        )}
-                                        onClick={() => setSelectedIdx(idx)}
-                                        onFocus={() => setSelectedIdx(idx)}
-                                        onKeyDown={(event) => {
-                                            if (event.currentTarget !== event.target) return;
-                                            if (event.key === "Enter" || event.key === " ") {
-                                                event.preventDefault();
-                                                setSelectedIdx(idx);
-                                            }
-                                        }}
-                                    >
-                                        {isSelected && (
-                                            <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-full" />
-                                        )}
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="w-4 shrink-0 text-center text-muted">
-                                                {target.source === "home" ? (
-                                                    <i className="fa-sharp fa-regular fa-house text-[11px]" />
-                                                ) : target.source === "terminal" || target.source === "agent" ? (
-                                                    <i className="fa-sharp fa-regular fa-terminal text-[11px]" />
-                                                ) : (
-                                                    <i className="fa-sharp fa-regular fa-folder text-[11px]" />
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <Tooltip
-                                                    content={target.detail || target.label}
-                                                    placement="top"
-                                                    disable={isBlank(target.detail) && isBlank(target.label)}
-                                                    divClassName="min-w-0"
-                                                >
-                                                    <MiddleEllipsis
-                                                        text={target.detail || target.label}
-                                                        className="text-xs text-foreground"
+                    <div className="px-1 pb-1 flex flex-col min-h-0">
+                        <div className="shrink-0 px-2 pt-2 pb-1 text-xxs text-muted">Select a path.</div>
+                        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain max-h-[min(320px,40vh)]">
+                            {targets.length === 0 ? (
+                                <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
+                            ) : (
+                                targets.map((target, idx) => {
+                                    const isSelected = idx === clampedSelectedIdx;
+                                    const isDefault = getLaunchTargetDefaultKey(target) === defaultTargetKey;
+                                    const canSetDefault = canSetLaunchTargetDefault(target);
+                                    return (
+                                        <div
+                                            key={target.blockId}
+                                            role="button"
+                                            tabIndex={0}
+                                            className={clsx(
+                                                "group w-full text-left transition-colors cursor-pointer py-2 pl-3 pr-2 rounded-md mb-[1px]",
+                                                isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
+                                            )}
+                                            onClick={() => setSelectedIdx(idx)}
+                                            onFocus={() => setSelectedIdx(idx)}
+                                            onKeyDown={(event) => {
+                                                if (event.currentTarget !== event.target) return;
+                                                if (event.key === "Enter" || event.key === " ") {
+                                                    event.preventDefault();
+                                                    setSelectedIdx(idx);
+                                                }
+                                            }}
+                                        >
+                                            {isSelected && (
+                                                <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-full" />
+                                            )}
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-4 shrink-0 text-center text-muted">
+                                                    {target.source === "home" ? (
+                                                        <i className="fa-sharp fa-regular fa-house text-[11px]" />
+                                                    ) : target.source === "terminal" || target.source === "agent" ? (
+                                                        <i className="fa-sharp fa-regular fa-terminal text-[11px]" />
+                                                    ) : (
+                                                        <i className="fa-sharp fa-regular fa-folder text-[11px]" />
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <Tooltip
+                                                        content={target.detail || target.label}
+                                                        placement="top"
+                                                        disable={isBlank(target.detail) && isBlank(target.label)}
+                                                        divClassName="min-w-0"
+                                                    >
+                                                        <MiddleEllipsis
+                                                            text={target.detail || target.label}
+                                                            className="text-xs text-foreground"
+                                                        />
+                                                    </Tooltip>
+                                                    {!target.isLocal ? (
+                                                        <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
+                                                            {target.label}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                                {canSetDefault ? (
+                                                    <DefaultCheckButton
+                                                        checked={isDefault}
+                                                        ariaLabel="Set default launch target"
+                                                        title="Set default launch target"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            onSetDefaultTarget(target);
+                                                        }}
                                                     />
-                                                </Tooltip>
-                                                {!target.isLocal ? (
-                                                    <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
-                                                        {target.label}
-                                                    </div>
                                                 ) : null}
                                             </div>
-                                            {canSetDefault ? (
-                                                <DefaultCheckButton
-                                                    checked={isDefault}
-                                                    ariaLabel="Set default launch target"
-                                                    title="Set default launch target"
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        onSetDefaultTarget(target);
-                                                    }}
-                                                />
-                                            ) : null}
                                         </div>
-                                    </div>
-                                );
-                            })
-                        )}
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
 
                     {selectedTarget != null ? (
-                        <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
+                        <div className="shrink-0 border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
                             <button
                                 type="button"
                                 className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-muted hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
@@ -1380,8 +1387,13 @@ const TerminalTargetFloatingWindow = memo(
                     padding: 12,
                     // ponytail: 120px floor keeps the panel scrollable in pathological viewports;
                     // it must stay well below real content height so the clamp actually wins.
+                    // 浮窗不再承担滚动：内层路径列表自己滚（overscroll-contain），
+                    // 标题 / footer 固定不动。640px 是内容自然高度的硬上限。
+                    // overflowY 仍留 auto 作退化兜底：根节点是 flex 列 + 列表 flex-1/min-h-0，
+                    // 正常情况下溢出量被列表吸收（根不滚）；只有视口矮到 chrome 段都放不下时，
+                    // 根才会真的溢出并可滚，保证 footer 按钮仍可达。
                     apply({ availableHeight, elements }) {
-                        elements.floating.style.maxHeight = `${Math.max(availableHeight, 120)}px`;
+                        elements.floating.style.maxHeight = `${Math.max(Math.min(availableHeight, 640), 120)}px`;
                         elements.floating.style.overflowY = "auto";
                     },
                 }),
@@ -1437,92 +1449,94 @@ const TerminalTargetFloatingWindow = memo(
                     {...getFloatingProps()}
                     onPointerEnter={onPointerEnter}
                     onPointerLeave={launchEnvLocked ? undefined : onPointerLeave}
-                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] overflow-visible"
+                    className="bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl z-50 min-w-[400px] max-w-[520px] flex flex-col overflow-hidden"
                 >
                     {/* header */}
-                    <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
+                    <div className="shrink-0 px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
                         New Terminal
                     </div>
 
                     {/* path list */}
-                    <div className="px-1 pb-1">
-                        {targets.length === 0 ? (
-                            <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
-                        ) : (
-                            targets.map((target, idx) => {
-                                const isSelected = idx === clampedSelectedIdx;
-                                const isDefault = getLaunchTargetDefaultKey(target) === defaultTargetKey;
-                                const canSetDefault = canSetLaunchTargetDefault(target);
-                                return (
-                                    <div
-                                        key={target.blockId}
-                                        role="button"
-                                        tabIndex={0}
-                                        className={clsx(
-                                            "group w-full text-left transition-colors cursor-pointer py-2 pl-3 pr-2 rounded-md mb-[1px]",
-                                            isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
-                                        )}
-                                        onClick={() => setSelectedIdx(idx)}
-                                        onFocus={() => setSelectedIdx(idx)}
-                                        onKeyDown={(event) => {
-                                            if (event.currentTarget !== event.target) return;
-                                            if (event.key === "Enter" || event.key === " ") {
-                                                event.preventDefault();
-                                                setSelectedIdx(idx);
-                                            }
-                                        }}
-                                    >
-                                        {isSelected && (
-                                            <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-full" />
-                                        )}
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="w-4 shrink-0 text-center text-muted">
-                                                {target.source === "home" ? (
-                                                    <i className="fa-sharp fa-regular fa-house text-[11px]" />
-                                                ) : target.source === "terminal" || target.source === "agent" ? (
-                                                    <i className="fa-sharp fa-regular fa-terminal text-[11px]" />
-                                                ) : (
-                                                    <i className="fa-sharp fa-regular fa-folder text-[11px]" />
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <Tooltip
-                                                    content={target.detail || target.label}
-                                                    placement="top"
-                                                    disable={isBlank(target.detail) && isBlank(target.label)}
-                                                    divClassName="min-w-0"
-                                                >
-                                                    <MiddleEllipsis
-                                                        text={target.detail || target.label}
-                                                        className="text-xs text-foreground"
+                    <div className="px-1 pb-1 flex flex-col min-h-0">
+                        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain max-h-[min(320px,40vh)]">
+                            {targets.length === 0 ? (
+                                <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
+                            ) : (
+                                targets.map((target, idx) => {
+                                    const isSelected = idx === clampedSelectedIdx;
+                                    const isDefault = getLaunchTargetDefaultKey(target) === defaultTargetKey;
+                                    const canSetDefault = canSetLaunchTargetDefault(target);
+                                    return (
+                                        <div
+                                            key={target.blockId}
+                                            role="button"
+                                            tabIndex={0}
+                                            className={clsx(
+                                                "group w-full text-left transition-colors cursor-pointer py-2 pl-3 pr-2 rounded-md mb-[1px]",
+                                                isSelected ? "bg-accent/12 relative" : "hover:bg-hoverbg"
+                                            )}
+                                            onClick={() => setSelectedIdx(idx)}
+                                            onFocus={() => setSelectedIdx(idx)}
+                                            onKeyDown={(event) => {
+                                                if (event.currentTarget !== event.target) return;
+                                                if (event.key === "Enter" || event.key === " ") {
+                                                    event.preventDefault();
+                                                    setSelectedIdx(idx);
+                                                }
+                                            }}
+                                        >
+                                            {isSelected && (
+                                                <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-accent rounded-full" />
+                                            )}
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-4 shrink-0 text-center text-muted">
+                                                    {target.source === "home" ? (
+                                                        <i className="fa-sharp fa-regular fa-house text-[11px]" />
+                                                    ) : target.source === "terminal" || target.source === "agent" ? (
+                                                        <i className="fa-sharp fa-regular fa-terminal text-[11px]" />
+                                                    ) : (
+                                                        <i className="fa-sharp fa-regular fa-folder text-[11px]" />
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <Tooltip
+                                                        content={target.detail || target.label}
+                                                        placement="top"
+                                                        disable={isBlank(target.detail) && isBlank(target.label)}
+                                                        divClassName="min-w-0"
+                                                    >
+                                                        <MiddleEllipsis
+                                                            text={target.detail || target.label}
+                                                            className="text-xs text-foreground"
+                                                        />
+                                                    </Tooltip>
+                                                    {!target.isLocal ? (
+                                                        <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
+                                                            {target.label}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                                {canSetDefault ? (
+                                                    <DefaultCheckButton
+                                                        checked={isDefault}
+                                                        ariaLabel="Set default launch target"
+                                                        title="Set default launch target"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            onSetDefaultTarget(target);
+                                                        }}
                                                     />
-                                                </Tooltip>
-                                                {!target.isLocal ? (
-                                                    <div className="mt-0.5 text-xxs text-secondary/70 whitespace-nowrap">
-                                                        {target.label}
-                                                    </div>
                                                 ) : null}
                                             </div>
-                                            {canSetDefault ? (
-                                                <DefaultCheckButton
-                                                    checked={isDefault}
-                                                    ariaLabel="Set default launch target"
-                                                    title="Set default launch target"
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        onSetDefaultTarget(target);
-                                                    }}
-                                                />
-                                            ) : null}
                                         </div>
-                                    </div>
-                                );
-                            })
-                        )}
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
 
                     {selectedTarget != null ? (
-                        <div className="border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
+                        <div className="shrink-0 border-t border-border/60 px-3 py-2 flex items-center justify-end gap-3">
                             <button
                                 type="button"
                                 className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-muted hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"

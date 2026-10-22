@@ -131,3 +131,28 @@ When a module keeps state at module scope (buffers, debounce timers, `Set`/`Map`
 a test must re-import a **fresh module instance** per case (`vi.resetModules()` + dynamic
 `import()`), otherwise cases leak into each other. See
 `frontend/app/view/preview/path-usage-store.test.ts`.
+
+### 6. 浮窗里的长列表：限高 + 内部滚动，浮窗本身不滚
+
+浮窗（floating window）里如果有一段会随数据变长的列表（路径列表、目标列表、
+vendor 列表……），契约是 **header / scrollable content / footer** 三段式
+（`docs/design-system.md` §Modal, Popover, and Menu）：
+
+- 根节点：`flex flex-col` + 明确的 `max-height` 上限；
+- 列表段：`flex-1 min-h-0 overflow-y-auto overscroll-contain` + 自己的 `max-h` 上限；
+- header / 芯片区 / footer：`shrink-0`。
+
+两个反例：
+
+1. **根节点不是 flex 容器** → 溢出量不会被列表吸收，浮窗一路长到视口高，
+   然后由 floating-ui `size` middleware 的内联 `overflowY:auto` 兜底 →
+   变成**整个弹窗滚动**（标题、芯片、footer 一起滚走）。
+   正确形态见 `frontend/app/view/preview/preview-new-files.tsx`（路径中枢）。
+2. **列表不加 `overscroll-contain`** → 列表滚到底后滚轮继续外溢到浮窗/页面，
+   观感上还是「整个弹窗在动」。
+
+注意 floating-ui `size` middleware 的 `apply` 写的是**内联样式**（压过 class）：
+`elements.floating.style.overflowY = "auto"` 会让任何 `overflow-hidden` class 失效。
+不要为了限高而给已经有内部滚动容器的浮窗引入 `size` middleware——
+用 CSS 的 `max-h-[min(500px,calc(100vh-32px))]` 就够。
+
