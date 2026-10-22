@@ -97,7 +97,7 @@ theme.scss 定义 CSS 变量（三种主题：dark / light / monochrome）
 ```css
 .bg-surface      { background-color: #ffffff0f; }        /* 字面量 → 恒为白色微透明 */
 .bg-surface-soft { background-color: #ffffff0a; }        /* 同上 */
-.bg-block        { background-color: var(--block-bg-color); }   /* 跟随主题 ✅ */
+.bg-block        { background-color: var(--block-bg-color); }   /* 跟随主题 ✅，但半透明 ⚠️ */
 .bg-panel        { background-color: var(--panel-bg-color); }   /* 跟随主题 ✅ */
 .bg-modalbg      { background-color: var(--modal-bg-color); }   /* 跟随主题 ✅ */
 ```
@@ -106,11 +106,23 @@ theme.scss 定义 CSS 变量（三种主题：dark / light / monochrome）
 
 > 结论：**`bg-surface` / `bg-surface-soft` / `bg-surface-strong` 是本仓库唯一三个主题无关的背景 token。** 新代码用 `bg-panel` / `bg-block` / `bg-modalbg` / `bg-hover` / `bg-actionsoft`。
 
+**第二个陷阱：`bg-block` 跟随主题，但仍然是半透明的。**
+
+```
+--block-bg-color        暗色 rgba(0,0,0,0.5) / 浅色 rgba(255,253,248,0.72)   ← bg-block，半透明
+--block-bg-solid-color  暗色 rgb(0,0,0)      / 浅色 #fffdf8 等不透明实色      ← bg-block-solid
+```
+
+`bg-block` 是"浮在主背景之上的一块半透明 block"用的。**凡是压在滚动内容上面的元素（sticky 头、悬浮条、遮罩面板）必须用 `bg-block-solid`**，否则底下的文字会透过那层 28% 透明度渗出来，看起来像"半透明 + 鬼影"。
+
+实例：会话列表的分组折叠头（`session-group.tsx`）原本是 `bg-block` + `sticky top-0`，滚动时会透出行文字；换成 `bg-block-solid` 后与面板底色完全一致（面板根容器 / 会话行 / 扫描条本来就都是 `bg-block-solid`），鬼影消失。同理，静态小徽标（分组计数胶囊）别用硬编码白色的 `bg-surface`，用 `bg-hoverbg` 才在浅色主题下可见。
+
 ### 3.2 语义 token 表
 
 | 用途 | class | 主题安全 |
 | --- | --- | --- |
 | 面板底 | `bg-panel` `bg-block` `bg-modalbg` `bg-background` | ✅ |
+| 压在滚动内容上（sticky / 悬浮 / 遮罩） | `bg-block-solid` | ✅ 不透明，**不要用 `bg-block`** |
 | 悬停 / 选中 | `hover:bg-hover` `hover:bg-hoverbg` `bg-highlightbg` | ✅ |
 | 弱强调底 | `bg-actionsoft` (配 `text-actionsofttext` / `border-actionsoftborder`) | ✅ |
 | 主强调按钮 | `bg-action text-actiontext hover:bg-actionhover` | ✅ |
