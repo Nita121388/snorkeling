@@ -317,32 +317,32 @@ export function SessionRow({
                         <span className="w-px flex-1 bg-border/70" />
                     </div>
                 ) : null}
-                {expandable ? (
-                    <button
-                        type="button"
-                        className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-secondary transition-colors hover:text-accent"
-                        aria-expanded={expanded}
-                        aria-label={expanded ? "Collapse sub-sessions" : "Expand sub-sessions"}
-                        title={
-                            expanded
-                                ? "Collapse sub-sessions"
-                                : `Expand ${childCount} sub-session${childCount === 1 ? "" : "s"}`
-                        }
-                        data-row-action="true"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onToggleExpand?.(event);
-                        }}
-                    >
-                        <i
-                            className={cn(
-                                "fa-sharp fa-solid text-[9px]",
-                                expanded ? "fa-chevron-down" : "fa-chevron-right"
-                            )}
-                        />
-                    </button>
-                ) : null}
-                <div className="mt-0.5 flex shrink-0 flex-col items-center gap-1">
+                <div className={cn("flex shrink-0 flex-col items-center gap-1", !expandable && "mt-0.5")}>
+                    {expandable ? (
+                        <button
+                            type="button"
+                            className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-secondary transition-colors hover:text-accent"
+                            aria-expanded={expanded}
+                            aria-label={expanded ? "Collapse sub-sessions" : "Expand sub-sessions"}
+                            title={
+                                expanded
+                                    ? "Collapse sub-sessions"
+                                    : `Expand ${childCount} sub-session${childCount === 1 ? "" : "s"}`
+                            }
+                            data-row-action="true"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onToggleExpand?.(event);
+                            }}
+                        >
+                            <i
+                                className={cn(
+                                    "fa-sharp fa-solid text-[9px]",
+                                    expanded ? "fa-chevron-down" : "fa-chevron-right"
+                                )}
+                            />
+                        </button>
+                    ) : null}
                     <button
                         className={cn(
                             "text-secondary opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100",
