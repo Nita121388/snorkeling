@@ -185,6 +185,11 @@ export function SessionRow({
     const [tagsExpanded, setTagsExpanded] = useState(false);
     // 全局「展开全部标签」打开时，单行仍可用「Show less」收起自己。
     const [tagsCollapsedLocally, setTagsCollapsedLocally] = useState(false);
+    // 全局开关每次切换都清掉行内覆盖：否则关掉再打开，之前点过 Show less 的行
+    // 会一直保持收起，看起来像「全局展开不生效」。
+    useEffect(() => {
+        setTagsCollapsedLocally(false);
+    }, [expandAllTags]);
     const [noteDraft, setNoteDraft] = useState(session.note ?? "");
     const [tagDraft, setTagDraft] = useState<string[]>(() => normalizeSessionTags(session.tags));
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
@@ -231,6 +236,9 @@ export function SessionRow({
     const tagsOpen = expandAllTags ? !tagsCollapsedLocally : tagsExpanded;
     const visibleSessionTags = visibleTagsFor(sessionTags, tagsOpen);
     const hiddenTags = hiddenTagCount(sessionTags, tagsOpen);
+    // 只有真的存在被折叠的标签（超过 4 个）时才需要 +N / Show less 控件。
+    // 否则单标签行在全局展开时也会长出一个点了没反应的「Show less」。
+    const tagOverflow = sessionTags.length > DefaultVisibleTagCount;
     /** 行内切换：全局偏好打开时只覆盖本行，否则翻转本行的展开态。 */
     const toggleTags = () => {
         if (expandAllTags) {
@@ -482,7 +490,7 @@ export function SessionRow({
                             }}
                         >
                             <span
-                                className={cn("flex min-w-0 flex-1 items-center gap-1.5", tagsExpanded && "flex-wrap")}
+                                className={cn("flex min-w-0 flex-1 items-center gap-1.5", tagsOpen && "flex-wrap")}
                             >
                                 {session.note ? (
                                     <span className="min-w-0 flex-1 truncate text-accent">
@@ -497,7 +505,7 @@ export function SessionRow({
                                         {tag}
                                     </span>
                                 ))}
-                                {hiddenTags > 0 || tagsOpen ? (
+                                {tagOverflow ? (
                                     <button
                                         type="button"
                                         className="shrink-0 cursor-pointer rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[10px] leading-none text-accent transition-colors hover:bg-accent/20"

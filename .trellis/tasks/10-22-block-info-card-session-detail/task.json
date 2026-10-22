@@ -22,5 +22,8 @@
   "parent": null,
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "commit": "5dbf54a1",
+    "notes": "已提交 5dbf54a1。45 项测试全绿，tsc/eslint 对改动文件干净。待办：CDP 手工验证（inline tab / block header / sidebar 悬浮卡片、全局列表改 note 后同步、Tab 卡 chat 计数）。"
+  }
 }

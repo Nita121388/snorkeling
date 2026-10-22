@@ -174,6 +174,23 @@ describe("note / tag row markup", () => {
         expect(markup).not.toContain(">f</span>");
     });
 
+    it("renders no Show less when tags fit inside the folded limit", () => {
+        // 单标签/少标签行没有可折叠内容，全局展开时也不该长出一个点了没反应的按钮。
+        const markup = renderRow("note", ["a"], true);
+        expect(findOverflowControl(markup)).toBeNull();
+        expect(markup).not.toContain("Show less");
+    });
+
+    it("wraps the tag row when the global preference is on", () => {
+        // 全局展开必须让容器 flex-wrap：否则第 5 个之后的 chip 被 min-w-0 裁掉，
+        // 视觉上「点了展开但没展开」。
+        const wrapped = renderRow("note", ["a", "b", "c", "d", "e", "f"], true);
+        const folded = renderRow("note", ["a", "b", "c", "d", "e", "f"], false);
+        const rowClass = /<span class="([^"]*flex-wrap[^"]*)">/.exec(wrapped)?.[1];
+        expect(rowClass).toBeTruthy();
+        expect(folded).not.toMatch(/<span class="[^"]*flex-wrap[^"]*">/);
+    });
+
     it("does not render a note row when there is no note and no tags", () => {
         const markup = renderRow(null, []);
         expect(markup).not.toContain('role="button"');
