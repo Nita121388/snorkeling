@@ -181,3 +181,25 @@ Go 侧不加默认值，避免 `SettingsType` 的 `*bool`/`*int64` 语义被破�
 - 不加 Windows 专注助手（Focus Assist）检测——Electron 没有对应 API。
 - 不做通知内容富文本、不做图标。
 - 不改 `frontend/app/agent-status/agent-status-notify.ts` 的分类规则。
+
+---
+
+## 12. 运行时验收缺口（2026-10-22）
+
+提交时（2026-10-22）**未完成运行时验收**：仓库里同时有多个并发任务在跑，
+vite dev server 被压住，Electron 渲染器起不来稳定的实例。
+
+**已完成的替代验证**（全部是静态/单元层面）：
+
+- `npm exec vitest run emain/` → 43 passed（本次新增 16 个用例，覆盖 4 条新抑制原因
+  + 合并摘要 + 跨窗口去重 + idle 不可用时不抑制 + 两个新开关退回旧行为）；
+- `npm exec vitest run frontend/app/view/waveconfig/` → 19 passed
+  （新增 `resolveAgentOsNotifySettings` 的 unset-vs-false/0 用例）；
+- `go test -count=1 ./pkg/wconfig/...` → 新增 3 个键名↔字段类型契约用例全绿；
+- `npm exec -- eslint frontend emain` → 本次改动的 7 个文件 **0 error**（3 个
+  `rh` 未使用 warning 是 pre-existing）；仓库整体的 1 个 error 来自
+  `emain/updater-shared.test.node.ts`（parserOptions.project 解析问题，pre-existing）；
+- `npm exec -- tsc --noEmit` → 本次改动的文件 **0 error**（仓库既有 36 个无关错误，
+  分布在 preview/term/mock 等目录，均未由本次改动引入）。
+
+**运行时需补跑的项**：见 `prd.md` 的「待补：运行时验收」7 条。

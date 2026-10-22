@@ -95,3 +95,22 @@ blockId 去重，实际 `done` 的间隔是 0，去重从未生效。
 
 - 数据来源：本机 hook 日志，按 FE 分类器 `decideNotifyKind` 重放得出，不是估算。
 - 关联代码注释错误：`frontend/app/agent-status/agent-status-done-ack-store.ts:184-191`。
+
+## 待补：运行时验收（2026-10-22）
+
+提交时**未做运行时验收**：仓库里同时有多个并发任务在跑，Electron dev server 被压住，
+起不来稳定的渲染器；用户当晚自行验证。以下逐条对应本文件的 Acceptance Criteria。
+
+1. **空闲才提示**：跑一个 agent（Claude Code / pi），**手离开键盘鼠标 30 秒以上** →
+   应弹 1 条 `Agent done — <provider>`。
+2. **操作中不提示**：agent 完成时**持续敲键盘** → 不应弹 toast
+   （Snorkeling 界面里仍有 in-app 的 D 角标）。
+3. **合并摘要**：1 分钟内让 10 个 agent 依次完成 → 最多 1 条即时 toast + 1 条摘要，
+   摘要正文形如 `9 agents finished. Click to return to the app.`。
+4. **跨窗口去重**：开两个 Snorkeling 窗口，同一个 agent 完成 → 只弹 1 条。
+5. **设置面板**：Wave Config → "Agent Notifications" → 开关总开关 / done / blocked、
+   改空闲阈值与冷却时长 → 保存后**下一次事件**即生效；`settings.json` 里的其它键不丢。
+6. **退回旧行为**：`wsh config set agentstatus:osnotifyidleminms 0` → 关闭空闲检测；
+   `wsh config set agentstatus:osnotifycooldownms 0` → 关闭冷却与合并。
+7. **死设置修复**：`wsh config set agentstatus:osnotifywhenfocused true` →
+   Snorkeling 窗口聚焦时也弹 toast。
