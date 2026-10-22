@@ -65,6 +65,10 @@
 
 - `aisessions-chat-redesign/` — **▲ 设计活跃**;AI Sessions GUI 对话界面重构（上下布局）+ New Agent GUI/TUI 双模式选择设计。覆盖范围：(1) aisessions 视图改造（左右列表+上下聊天详情）(2) 底部输入框 PromptInput (3) 消息组件 MessageCard/ToolCallCard/StreamingBubble (4) New Agent 多步创建表单（来源选择→提炼设定→绑定Agent→GUI/TUI模式→加入群组）(5) 群聊界面预览。镜像源：`frontend/app/view/aisessions/session-detail.tsx, session-message.tsx, chat-composer.tsx, aisessions.tsx`；参考：beui PromptInput/MessageScroller/SignupForm + Paseo 聊天界面。
 
+## `session-detail-block-header/` — 1 项（自建目录）
+
+- `session-detail-block-header/` — **▲ 设计活跃**（2026-10-22）;会话详情块「双 Header」问题的四方案对比原型:现状(块框头 30px + 详情面板头 46px,两条相邻下边框)、A 合并入块框头(单一 Header,会话标题/来源 chip/模型 chip 走 viewText+endIconButtons,保留原生块交互)、B 隐藏块框头(面板头升级并补块级按钮)、C 双层弱化(压高度去分割线)。含明暗主题切换、hover 显隐、标题改名交互。镜像源:`frontend/app/view/aisessions/session-detail.tsx`, `frontend/app/block/blockframe-header.tsx`, `frontend/app/block/block.scss`;真实组件尚未实现。配套任务 `.trellis/tasks/10-22-aisessions-detail-single-header/`。
+
 ## `message-queue-redesign/` — 1 项（自建目录）
 
 - `message-queue-redesign/` — **▲ 设计活跃**;AI Sessions ChatComposer 消息队列交互重构：替换当前仅有 11px text 的「N messages queued」为可交互 MessageQueuePill（折叠态/展开列表/拖拽排序/优先级切换/取消/abort 恢复 toast）。参照 Paseo `GitProcessScheduler` 双优先级队列 + drain 调度模式。镜像 `frontend/app/view/aisessions/session-detail.tsx`（queuedMessagesRef + flushQueuedRef + handleChatQueue）+ `chat-composer.tsx`（queuedCount prop + 11px text 渲染）;真实组件尚未实现。
