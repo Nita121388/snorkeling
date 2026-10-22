@@ -3,6 +3,7 @@
 
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { buildSplitBlockDef } from "@/app/workspace/agent-split";
 import {
     getLayoutModelForStaticTab,
     LayoutTreeActionType,
@@ -370,7 +371,9 @@ async function createBlockSplitHorizontally(
 ): Promise<string> {
     const layoutModel = getLayoutModelForStaticTab();
     const rtOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
-    const newBlockId = await ObjectService.CreateBlock(blockDef, rtOpts);
+    // 拆分 agent 块时，新块必须起一个全新会话（不能 resume 源块的会话）——
+    // buildSplitBlockDef 剥掉新块 meta 里的会话身份，其余配置原样保留。
+    const newBlockId = await ObjectService.CreateBlock(buildSplitBlockDef(blockDef), rtOpts);
     const targetNodeId = layoutModel.getNodeByBlockId(targetBlockId)?.id;
     if (targetNodeId == null) {
         throw new Error(`targetNodeId not found for blockId: ${targetBlockId}`);
@@ -393,7 +396,8 @@ async function createBlockSplitVertically(
 ): Promise<string> {
     const layoutModel = getLayoutModelForStaticTab();
     const rtOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
-    const newBlockId = await ObjectService.CreateBlock(blockDef, rtOpts);
+    // 同 createBlockSplitHorizontally：拆分 agent 块 = 新会话。
+    const newBlockId = await ObjectService.CreateBlock(buildSplitBlockDef(blockDef), rtOpts);
     const targetNodeId = layoutModel.getNodeByBlockId(targetBlockId)?.id;
     if (targetNodeId == null) {
         throw new Error(`targetNodeId not found for blockId: ${targetBlockId}`);

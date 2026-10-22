@@ -89,6 +89,20 @@ blocks.
 
 :::
 
+## Splitting an Agent Block
+
+Splitting an agent terminal block horizontally or vertically (from the terminal context menu or the
+header split buttons) starts a **brand new session** in the new block — it does not resume the
+session of the block you split.
+
+- The new block starts with the **same provider, model, vendor, working directory, and connection**
+  as the source block.
+- The source block keeps its own session and is left untouched.
+- The new block gets its own session id, so restarting it later resumes **its own** session, not the
+  source block's.
+
+Splitting a plain terminal, preview, or session-detail block behaves exactly as before.
+
 ## Agent Block Information
 
 Agent-related blocks carry more visible information:

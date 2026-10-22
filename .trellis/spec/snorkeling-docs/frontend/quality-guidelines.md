@@ -38,6 +38,22 @@ Questions to answer:
 
 ---
 
+## Agent 块拆分 = 新会话（2026-10-22, task 10-22-agent-split-new-session）
+
+- 拆分（水平/垂直）一个 Agent 块时，新块起**全新会话**，不 resume 源块会话。改写落点唯一：
+  `frontend/app/store/global.ts` 的 `createBlockSplitHorizontally` / `createBlockSplitVertically`
+  套 `buildSplitBlockDef`（`frontend/app/workspace/agent-split.ts`）。
+- 任何"拿已有 block meta 去开新块"的路径都要先问一句：**这份 meta 是不是带 agent 身份**
+  （`agent:autoresume` / `agent:provider` / `agent:sessionid`）。带 → 剥会话身份再开新块。
+  整份复制 meta 会把 `agent:sessionid` 一起带走，后端据此给新块拼 resume → 两个块共用一个会话。
+- 剥会话身份 = 删 `agent:sessionid` + 剥 `cmd:args` 里的 resume 参数；**其余 meta 全留**
+  （provider / 模型 / vendor / cwd / connection / `agent:autoresume`），新块才是"同配置的新会话"。
+- **不要动** `createBlock` / `replaceBlock`：`restoreMetaForSession` 等「用户主动打开某个会话」的
+  路径走 `createBlock`，必须保留 resume 语义。
+- 完整跨层契约见 [Agent 会话 resume 契约](../backend/agent-session-resume-contract.md)。
+
+---
+
 ## Required Patterns
 
 <!-- Patterns that must always be used -->
