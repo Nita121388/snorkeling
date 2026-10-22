@@ -74,7 +74,7 @@ export function SessionGroup({
                 title={`${group.name} · ${group.sessions.length} sessions`}
                 onClick={onToggleCollapsed}
                 className={cn(
-                    "group/head sticky top-0 z-10 flex w-full cursor-pointer items-center gap-2 rounded-md border-t border-border bg-block px-2 py-1.5 text-left text-xs transition-colors hover:bg-hoverbg",
+                    "group/head sticky top-0 z-10 flex w-full cursor-pointer items-center gap-2 rounded-md border-b border-border bg-block-solid px-2 py-1.5 text-left text-xs transition-colors hover:bg-hoverbg",
                     group.unclassified && "text-secondary"
                 )}
             >
@@ -89,7 +89,7 @@ export function SessionGroup({
                     )}
                 />
                 <span className="min-w-0 flex-1 truncate font-medium text-primary">{group.name}</span>
-                <span className="shrink-0 rounded-full bg-surface px-1.5 py-px text-[10px] text-secondary tabular-nums">
+                <span className="shrink-0 rounded-full bg-hoverbg px-1.5 py-px text-[10px] text-secondary tabular-nums">
                     {group.sessions.length}
                 </span>
                 <i
