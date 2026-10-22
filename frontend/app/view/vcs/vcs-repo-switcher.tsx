@@ -83,7 +83,7 @@ export function VcsRepoSwitcher({
                         +{overflow.length}
                     </button>
                     {overflowOpen && (
-                        <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-md border border-border bg-block p-1 shadow-xl">
+                        <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-md border border-border bg-overlay p-1 shadow-xl">
                             {overflow.map((repo) => {
                                 const dirty = repoIsDirty(repo);
                                 const active = repo.repoid === activeRepoId;

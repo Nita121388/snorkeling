@@ -57,6 +57,8 @@ These values document the current palette. Features must consume roles rather th
 | Secondary content | `--secondary-text-color` | `text-secondary` | Metadata, labels, inactive icons |
 | De-emphasized content | `--grey-text-color` | `text-muted` | Tertiary or placeholder content |
 | Panel | `--panel-bg-color` | `bg-panel` | Sidebars and tool panels |
+| Block surface | `--block-bg-color` | `bg-block` | Translucent block floating over the canvas |
+| Block surface (opaque) | `--block-bg-solid-color` | `bg-block-solid` | Opaque block surface; anything drawn over scrolling content |
 | Soft surface | `--color-surface-soft` | `bg-surface-soft` | Subtle grouping |
 | Surface | `--color-surface` | `bg-surface` | Repeated rows and controls |
 | Strong surface | `--color-surface-strong` | `bg-surface-strong` | Selected or raised local regions |
@@ -67,6 +69,22 @@ These values document the current palette. Features must consume roles rather th
 | Strong hover | `--hover-bg-color-strong` | `bg-hoverbg` | Compact icon-button hover |
 
 `white`, `black`, `gray-*`, `zinc-*`, and opacity variants of those utilities are prohibited for feature-owned surfaces and text. They are permitted only in documented terminal, image, shadow, backdrop, and third-party-content exceptions.
+
+### 4.1.1 Surface opacity
+
+Being a semantic token is not the same as being opaque. `--block-bg-color` (`bg-block`) and `--panel-bg-color` (`bg-panel`) are translucent by design - they are the "block floating over the canvas" and "sidebar over the canvas" layers. `--block-bg-solid-color` (`bg-block-solid`), `--modal-bg-color` (`bg-modalbg`), and `--overlay-bg-color` (`bg-overlay`) are fully opaque in every theme.
+
+Anything drawn **over scrolling content** - a sticky header, a floating toolbar, a dropdown menu - must use an opaque surface, otherwise the content behind it bleeds through and the surface reads as half-transparent with ghost text.
+
+| Role | Token | Opacity |
+| --- | --- | --- |
+| Sticky / floating header over a scrolling list | `bg-block-solid` | opaque |
+| Menu, popover, dropdown | `bg-overlay` | opaque |
+| Dialog body | `bg-modalbg` | opaque |
+| Block floating over the canvas | `bg-block` | translucent (fine, nothing scrolls behind it) |
+| Sidebar / tool panel | `bg-panel` | translucent (fine, nothing scrolls behind it) |
+
+`bg-block` is not a menu surface: it is the block layer, and using it on a dropdown paints a translucent card over the list behind it.
 
 ### 4.2 Actions and states
 
@@ -174,7 +192,7 @@ Inputs may use `focus:border-accent` when the full control boundary changes visi
 
 - Modal uses semantic backdrop, modal surface, border, and shadow.
 - Dialog layout is header, scrollable content, and footer. Footer actions do not move when content overflows.
-- Menus and popovers use overlay tokens and retain keyboard focus visibility.
+- Menus and popovers use overlay tokens (`bg-overlay`, opaque in every theme) and retain keyboard focus visibility.
 - Do not place cards inside modal cards; use unframed sections within the modal surface.
 
 ## 9. Exceptions
