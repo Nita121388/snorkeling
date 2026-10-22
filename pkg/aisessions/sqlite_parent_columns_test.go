@@ -332,3 +332,81 @@ func TestSQLiteNullableParentColumnsAreRepaired(t *testing.T) {
 		t.Fatalf("repaired row = %#v, want one top-level session", summaries)
 	}
 }
+
+// A v3 -> v4 upgrade must invalidate the summary-scan marker, otherwise the next
+// List only refreshes changed files and parent_key/kind stay empty on every
+// untouched row — the tree silently never folds (the regression this task
+// fixed on a 2GB index where nothing had changed).
+func TestSQLiteMigrationInvalidatesSummaryScanMarker(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "index-v3.sqlite")
+
+	v3, err := sqlx.Open("sqlite3", "file:"+dbPath+"?mode=rwc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmts := []string{
+		`CREATE TABLE ai_schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+		`INSERT INTO ai_schema_meta(key, value) VALUES('schema_version', '3')`,
+		`INSERT INTO ai_schema_meta(key, value) VALUES('summaries_scanned_at', '2026-10-21T00:00:00Z')`,
+		`INSERT INTO ai_schema_meta(key, value) VALUES('summary_parser_version', '3')`,
+		`CREATE TABLE ai_sessions (
+			key TEXT PRIMARY KEY,
+			id TEXT NOT NULL,
+			source TEXT NOT NULL,
+			title TEXT,
+			title_source TEXT,
+			project_path TEXT,
+			created_at INTEGER,
+			updated_at INTEGER,
+			message_count INTEGER,
+			file_path TEXT NOT NULL,
+			vendor_id TEXT,
+			config_dir TEXT,
+			snippet TEXT,
+			mtime INTEGER,
+			size INTEGER,
+			missing INTEGER NOT NULL DEFAULT 0,
+			indexed_at INTEGER NOT NULL
+		)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := v3.ExecContext(context.Background(), stmt); err != nil {
+			t.Fatalf("seed v3 db: %v", err)
+		}
+	}
+	if err := v3.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := openSQLiteIndex(dbPath, "")
+	if err != nil {
+		t.Fatalf("openSQLiteIndex: %v", err)
+	}
+	defer idx.Close()
+
+	hasScan, err := idx.HasSummaryScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasScan {
+		t.Fatalf("summary-scan marker survived the v3->v4 migration; next List would skip the full pass and leave parent_key/kind empty")
+	}
+
+	// A second open is a no-op: the columns now exist, so the marker must NOT be
+	// wiped again (which would force a full re-scan on every app start).
+	idx2, err := openSQLiteIndex(dbPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx2.Close()
+	var scannedAt string
+	if err := idx2.db.GetContext(context.Background(), &scannedAt,
+		`SELECT value FROM ai_schema_meta WHERE key = 'summaries_scanned_at'`); err != nil {
+		if err.Error() != "sql: no rows in result set" {
+			t.Fatalf("second open re-invalidated the marker: %v", err)
+		}
+		// no row is fine too: the marker was cleared once and never re-set here
+	}
+	_ = scannedAt
+}

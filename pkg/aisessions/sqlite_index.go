@@ -237,10 +237,11 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 }
 
 func (idx *SQLiteIndex) ensureAISessionProvenanceColumns(ctx context.Context) error {
-	return idx.ensureAISessionColumns(ctx, map[string]string{
+	_, err := idx.ensureAISessionColumns(ctx, map[string]string{
 		"vendor_id":  "TEXT",
 		"config_dir": "TEXT",
 	})
+	return err
 }
 
 // ensureAISessionParentColumns (schema v4) adds the parent/child relationship
@@ -253,14 +254,36 @@ func (idx *SQLiteIndex) ensureAISessionProvenanceColumns(ctx context.Context) er
 // `string` field then fails with "converting NULL to string is unsupported",
 // which takes down List/ListWithDistribution/GetSession for the whole index. The
 // non-NULL default makes NULL literally unrepresentable.
+//
+// A v3 -> v4 upgrade must also invalidate the summary-scan marker: without it the
+// next List only refreshes *changed* files, so parent_key/kind stay empty on every
+// untouched row and the tree silently never folds (exactly what happened on a
+// 2GB index where nothing had changed). Clearing the marker makes the next List
+// run one full pass that fills the columns, and it is a no-op on every later
+// open because the columns already exist.
 func (idx *SQLiteIndex) ensureAISessionParentColumns(ctx context.Context) error {
-	if err := idx.ensureAISessionColumns(ctx, map[string]string{
+	added, err := idx.ensureAISessionColumns(ctx, map[string]string{
 		"parent_key": "TEXT NOT NULL DEFAULT ''",
 		"kind":       "TEXT NOT NULL DEFAULT ''",
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
+	if added {
+		if err := idx.invalidateSummaryScanMarker(ctx); err != nil {
+			return err
+		}
+	}
 	return idx.backfillParentColumns(ctx)
+}
+
+// invalidateSummaryScanMarker drops the "a complete summary scan has run" markers
+// so the next List performs a full pass instead of only refreshing changed files.
+func (idx *SQLiteIndex) invalidateSummaryScanMarker(ctx context.Context) error {
+	if _, err := idx.db.ExecContext(ctx, `DELETE FROM ai_schema_meta WHERE key IN (?, ?)`, "summaries_scanned_at", summaryParserVersionKey); err != nil {
+		return err
+	}
+	return nil
 }
 
 // backfillParentColumns normalises the NULLs an ALTER TABLE cannot avoid.
@@ -289,27 +312,31 @@ func (idx *SQLiteIndex) backfillParentColumns(ctx context.Context) error {
 
 // ensureAISessionColumns adds any missing columns to ai_sessions. CREATE TABLE
 // only covers freshly created databases, so every column added after v1 needs an
-// explicit ALTER guarded by pragma_table_info.
-func (idx *SQLiteIndex) ensureAISessionColumns(ctx context.Context, wanted map[string]string) error {
+// explicit ALTER guarded by pragma_table_info. It reports whether any column was
+// added, so callers can run one-time follow-up work (e.g. invalidating the
+// summary-scan marker after a schema bump).
+func (idx *SQLiteIndex) ensureAISessionColumns(ctx context.Context, wanted map[string]string) (bool, error) {
 	var columns []struct {
 		Name string `db:"name"`
 	}
 	if err := idx.db.SelectContext(ctx, &columns, `SELECT name FROM pragma_table_info('ai_sessions')`); err != nil {
-		return err
+		return false, err
 	}
 	existing := make(map[string]bool, len(columns))
 	for _, column := range columns {
 		existing[column.Name] = true
 	}
+	added := false
 	for name, definition := range wanted {
 		if existing[name] {
 			continue
 		}
 		if _, err := idx.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE ai_sessions ADD COLUMN %s %s", name, definition)); err != nil {
-			return err
+			return added, err
 		}
+		added = true
 	}
-	return nil
+	return added, nil
 }
 
 func (idx *SQLiteIndex) ensureMetaTitleColumn(ctx context.Context) error {
