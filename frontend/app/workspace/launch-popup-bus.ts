@@ -10,7 +10,7 @@
 // WorkspaceWidgets subscriber). If multi-window support ever lands, move this into a
 // window-scoped store.
 
-export type LaunchPopupMode = "terminal" | "agent";
+export type LaunchPopupMode = "terminal" | "agent" | "files";
 
 // 二级浮窗锚点：可以是一个真实的 HTMLElement（右侧 WidgetsBar 按钮/Quick Launch 的 1px 固定 div），
 // 也可以是一个“冻结快照”虚拟锚点（getBoundingClientRect 返回打开瞬间捕获的 rect）。
@@ -45,6 +45,11 @@ export type LaunchPopupRequest = {
      * the viewport center; the floating window applies translate(-50%, -50%) to truly center.
      */
     centered?: boolean;
+    /**
+     * Fallback connection for the "files" mode: the group sink's active terminal connection.
+     * Used only when the picked path row carries no connection of its own (e.g. Home "~").
+     */
+    fallbackConnection?: string | null;
 };
 
 

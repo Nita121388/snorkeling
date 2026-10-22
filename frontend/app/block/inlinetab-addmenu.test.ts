@@ -5,7 +5,7 @@
 // Run: npx vitest run frontend/app/block/inlinetab-addmenu.test.ts
 
 import { assert, describe, expect, test } from "vitest";
-import { buildFilesBlockDef, pickGroupAddableWidgets } from "./inlinetab-addmenu";
+import { pickGroupAddableWidgets } from "./inlinetab-addmenu";
 import { requestLaunchPopup, subscribeLaunchPopup } from "@/app/workspace/launch-popup-bus";
 
 function makeWidget(overrides: Partial<WidgetConfigType>): WidgetConfigType {
@@ -41,29 +41,6 @@ describe("pickGroupAddableWidgets", () => {
     });
 });
 
-describe("buildFilesBlockDef", () => {
-    const base: BlockDef = { meta: { view: "preview", file: "~" } };
-
-    test("inherits cwd + connection from an active terminal block", () => {
-        const active = { meta: { view: "term", connection: "hostA", "cmd:cwd": "/work/dir" } } as unknown as Block;
-        const out = buildFilesBlockDef(base, active);
-        assert.equal(out.meta["view"], "preview");
-        assert.equal(out.meta["file"], "/work/dir");
-        assert.equal(out.meta["connection"], "hostA");
-    });
-
-    test("falls back to widget default (~) when active block has no terminal context", () => {
-        const active = { meta: { view: "preview", file: "/elsewhere" } } as unknown as Block;
-        const out = buildFilesBlockDef(base, active);
-        assert.equal(out.meta["file"], "~");
-    });
-
-    test("handles missing active block", () => {
-        const out = buildFilesBlockDef(base, null);
-        assert.equal(out.meta["file"], "~");
-    });
-});
-
 describe("launch-popup-bus", () => {
     test("request reaches subscriber; unsubscribe stops delivery", () => {
         const seen: unknown[] = [];
@@ -74,5 +51,20 @@ describe("launch-popup-bus", () => {
         requestLaunchPopup({ ...req, nodeId: "node-2" });
         expect(seen).toHaveLength(1);
         expect((seen[0] as { nodeId: string }).nodeId).toBe("node-1");
+    });
+
+    test("carries the files mode and its fallback connection", () => {
+        const seen: { mode: string; fallbackConnection?: string | null }[] = [];
+        const unsub = subscribeLaunchPopup((req) => seen.push(req));
+        requestLaunchPopup({
+            mode: "files",
+            anchorEl: null as unknown as HTMLElement,
+            nodeId: "node-3",
+            fallbackConnection: "hostA",
+        });
+        unsub();
+        expect(seen).toHaveLength(1);
+        expect(seen[0].mode).toBe("files");
+        expect(seen[0].fallbackConnection).toBe("hostA");
     });
 });

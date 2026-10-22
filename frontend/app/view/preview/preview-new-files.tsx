@@ -16,6 +16,7 @@ import {
     useDismiss,
     useFloating,
     useInteractions,
+    type VirtualElement,
 } from "@floating-ui/react";
 import clsx from "clsx";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,7 +27,11 @@ type NewFilesFloatingWindowProps = {
     isOpen: boolean;
     onClose: () => void;
     onSelect: (selection: PathSelection) => void;
-    referenceElement: HTMLElement | null;
+    /**
+     * HTMLElement（右侧 WidgetsBar 的 Files widget 按钮）或 floating-ui VirtualElement
+     * （Blocks 组「＋」菜单的冻结锚点快照，见 launch-popup-bus 的 LaunchPopupAnchor）。
+     */
+    referenceElement: HTMLElement | VirtualElement | null;
     pinnedDirs: PinnedDirectory[];
     usageEntries: PathUsageEntryType[];
     onTogglePin: (selection: PathSelection, label?: string) => void;

@@ -1821,7 +1821,11 @@ const Widgets = memo(() => {
     const agentHoverTimerRef = useRef<number | null>(null);
     const terminalHoverTimerRef = useRef<number | null>(null);
     const [isFilesWindowOpen, setIsFilesWindowOpen] = useState(false);
-    const [filesReferenceElement, setFilesReferenceElement] = useState<HTMLElement | null>(null);
+    // 锚点：右侧 WidgetsBar 的 Files 按钮（HTMLElement）或组「＋」菜单的冻结锚点快照（VirtualElement）。
+    const [filesReferenceElement, setFilesReferenceElement] = useState<LaunchPopupAnchor | null>(null);
+    // 组场景的 connection 兜底：所选路径行自带 connection 时以行为准，只有 Home 这类
+    // 无自带 connection 的行才用它（右侧 WidgetsBar 入口恒为 null）。
+    const [filesFallbackConnection, setFilesFallbackConnection] = useState<string | null>(null);
     const filesUsageEntries = useAtomValue(pathUsageAtom);
     const filesPinnedDirs = useMemo(() => {
         const saved = settings?.["preview:pinned-directories"];
@@ -1956,7 +1960,11 @@ const Widgets = memo(() => {
         refreshCcSwitchVendors("pi", false);
     }, [isAgentTargetOpen, refreshCcSwitchVendors]);
 
-    const closeAgentTargetSelector = useCallback(() => {
+    // notifyBus：是否回传 bus 发起方「二级已关闭」。
+    // 默认 true = 真正的关闭（用户关掉浮窗 / Esc / 点外面）→ 一级菜单该收起。
+    // false = 「只是因为要打开另一个二级浮窗而顺手关掉这个」→ 不能回传 false，
+    // 否则一级菜单会误以为二级已关（提前收起 + Esc 一次关两层）。
+    const closeAgentTargetSelector = useCallback((notifyBus = true) => {
         setIsAgentTargetOpen(false);
         setAgentReferenceElement(null);
         setAgentTargets([]);
@@ -1968,7 +1976,7 @@ const Widgets = memo(() => {
         setCcOpencodeSelectedVendorId(undefined);
         setCcPiSelectedVendorId(undefined);
         // 回传 bus 发起方：二级已关闭（用于其一级菜单收起协调）。仅 bus 来源置位才会触发。
-        if (launchPopupBusOpenedRef.current) {
+        if (notifyBus && launchPopupBusOpenedRef.current) {
             launchPopupOnOpenChangeRef.current?.(false);
             launchPopupBusOpenedRef.current = false;
             launchPopupOnOpenChangeRef.current = null;
@@ -1976,12 +1984,47 @@ const Widgets = memo(() => {
         setGroupSinkNodeId(null);
     }, []);
 
-    const closeTerminalTargetSelector = useCallback(() => {
+    const closeTerminalTargetSelector = useCallback((notifyBus = true) => {
         setIsTerminalTargetOpen(false);
         setTerminalReferenceElement(null);
         setTerminalTargets([]);
         setTerminalBaseBlockDef(undefined);
-        if (launchPopupBusOpenedRef.current) {
+        if (notifyBus && launchPopupBusOpenedRef.current) {
+            launchPopupOnOpenChangeRef.current?.(false);
+            launchPopupBusOpenedRef.current = false;
+            launchPopupOnOpenChangeRef.current = null;
+        }
+        setGroupSinkNodeId(null);
+    }, []);
+
+    // 路径中枢浮窗（Files）：右侧 WidgetsBar 的悬浮入口与 Blocks 组「＋」菜单共用同一面板。
+    // 组入口经 launch-popup-bus 发起，sinkNodeId 非空时创建结果落回发起组（见 createBlockInGroupSink）。
+    const openFilesWindowAt = useCallback(
+        (
+            referenceElement: LaunchPopupAnchor,
+            sinkNodeId: string | null,
+            fallbackConnection: string | null
+        ) => {
+            // 先关两个 target selector：它们会把 groupSinkNodeId 置 null，所以必须先关再设。
+            // notifyBus=false：这里只是「换一个二级浮窗」，不是二级被用户关掉，
+            // 回传 false 会让一级菜单误判二级已关（提前收起 + Esc 一次关两层）。
+            closeAgentTargetSelector(false);
+            closeTerminalTargetSelector(false);
+            setFilesReferenceElement(referenceElement);
+            setFilesFallbackConnection(fallbackConnection);
+            setGroupSinkNodeId(sinkNodeId);
+            setIsFilesWindowOpen(true);
+        },
+        [closeAgentTargetSelector, closeTerminalTargetSelector]
+    );
+
+    // notifyBus 语义同 closeAgentTargetSelector：false = 只是换浮窗，不是二级被用户关掉。
+    const closeFilesWindow = useCallback((notifyBus = true) => {
+        setIsFilesWindowOpen(false);
+        setFilesReferenceElement(null);
+        setFilesFallbackConnection(null);
+        // 回传 bus 发起方：二级已关闭（用于其一级菜单收起协调）。仅 bus 来源置位才会触发。
+        if (notifyBus && launchPopupBusOpenedRef.current) {
             launchPopupOnOpenChangeRef.current?.(false);
             launchPopupBusOpenedRef.current = false;
             launchPopupOnOpenChangeRef.current = null;
@@ -2171,7 +2214,9 @@ const Widgets = memo(() => {
     // inline-tab group (see createBlockInGroupSink).
     const openAgentTargetsAt = useCallback(
         (referenceElement: LaunchPopupAnchor, magnified: boolean, sinkNodeId: string | null) => {
-            closeTerminalTargetSelector();
+            // notifyBus=false：只是「换一个二级浮窗」，不是二级被用户关掉（见 closeAgentTargetSelector 注释）。
+            closeTerminalTargetSelector(false);
+            closeFilesWindow(false);
             const launchTargets = moveDefaultTargetFirst(
                 getLaunchCreatableTargets(getCurrentTabAgentLaunchTargets()),
                 agentDefaultTargetKey
@@ -2182,7 +2227,7 @@ const Widgets = memo(() => {
             setGroupSinkNodeId(sinkNodeId);
             setIsAgentTargetOpen(true);
         },
-        [closeTerminalTargetSelector, agentDefaultTargetKey]
+        [closeFilesWindow, closeTerminalTargetSelector, agentDefaultTargetKey]
     );
 
     const openAgentTargetPopup = useCallback(
@@ -2199,7 +2244,9 @@ const Widgets = memo(() => {
             baseBlockDef: BlockDef | undefined,
             sinkNodeId: string | null
         ) => {
-            closeAgentTargetSelector();
+            // notifyBus=false：只是「换一个二级浮窗」，不是二级被用户关掉（见 closeAgentTargetSelector 注释）。
+            closeAgentTargetSelector(false);
+            closeFilesWindow(false);
             const launchTargets = moveDefaultTargetFirst(
                 getLaunchCreatableTargets(getCurrentTabTerminalLaunchTargets()),
                 terminalDefaultTargetKey
@@ -2211,7 +2258,7 @@ const Widgets = memo(() => {
             setGroupSinkNodeId(sinkNodeId);
             setIsTerminalTargetOpen(true);
         },
-        [closeAgentTargetSelector, terminalDefaultTargetKey]
+        [closeAgentTargetSelector, closeFilesWindow, terminalDefaultTargetKey]
     );
 
     const openTerminalTargetPopup = useCallback(
@@ -2230,11 +2277,13 @@ const Widgets = memo(() => {
             launchPopupCenteredRef.current = req.centered ?? false;
             if (req.mode === "agent") {
                 openAgentTargetsAt(req.anchorEl, false, req.nodeId);
-            } else {
+            } else if (req.mode === "terminal") {
                 openTerminalTargetsAt(req.anchorEl, false, undefined, req.nodeId);
+            } else {
+                openFilesWindowAt(req.anchorEl, req.nodeId ?? null, req.fallbackConnection ?? null);
             }
         });
-    }, [openAgentTargetsAt, openTerminalTargetsAt]);
+    }, [openAgentTargetsAt, openTerminalTargetsAt, openFilesWindowAt]);
 
     const handleWidgetSelect = useCallback(
         (widgetId: string, widget: WidgetConfigType, e: React.MouseEvent<HTMLDivElement>) => {
@@ -2291,7 +2340,7 @@ const Widgets = memo(() => {
             closeTerminalTargetSelector();
             // 点击 Files widget 是「建默认 Block」的主行为；悬浮已弹开的路径中枢面板
             // 顺手收起，避免建完块后还留一个悬浮窗飘在界面上。
-            setIsFilesWindowOpen(false);
+            closeFilesWindow();
             const blockDef = widget.blockdef;
             if (blockDef == null) {
                 console.warn(`Widget ${widgetId} has no blockdef`);
@@ -2305,6 +2354,7 @@ const Widgets = memo(() => {
             agentDefaultTargetKey,
             agentProfileOptions.length,
             closeAgentTargetSelector,
+            closeFilesWindow,
             closeTerminalTargetSelector,
             env,
             isAgentTargetOpen,
@@ -2384,6 +2434,9 @@ const Widgets = memo(() => {
                 }
                 filesHoverTimerRef.current = window.setTimeout(() => {
                     setFilesReferenceElement(referenceElement);
+                    // 右侧 WidgetsBar 入口无组 sink，也没有 connection 兜底。
+                    setFilesFallbackConnection(null);
+                    setGroupSinkNodeId(null);
                     setIsFilesWindowOpen(true);
                 }, WidgetHoverOpenDelayMs);
             }
@@ -2734,7 +2787,7 @@ const Widgets = memo(() => {
             {filesReferenceElement != null && (
                 <NewFilesFloatingWindow
                     isOpen={isFilesWindowOpen}
-                    onClose={() => setIsFilesWindowOpen(false)}
+                    onClose={closeFilesWindow}
                     referenceElement={filesReferenceElement}
                     pinnedDirs={filesPinnedDirs}
                     usageEntries={filesUsageEntries}
@@ -2744,13 +2797,17 @@ const Widgets = memo(() => {
                                 meta: {
                                     view: "preview",
                                     file: selection.path,
-                                    connection: selection.connection ?? "local",
+                                    // 路径行自带 connection 时以行为准；否则用组内活跃终端的
+                                    // connection 兜底（右侧 WidgetsBar 入口无兜底，恒为 local）。
+                                    connection: selection.connection ?? filesFallbackConnection ?? "local",
                                 },
                             };
                             // 走正常插入而不是 ephemeral 节点：ephemeral 是「浮在所有节点之上、
                             // 不属于布局树」的悬浮层（见 layoutModel.ephemeralNode），
                             // 从路径中枢选一个路径应该是普通的切分 Block。
-                            await env.createBlock(blockDef);
+                            // 组「＋」菜单来源时走 sink 漏斗，创建结果落回发起组。
+                            await createToCurrentTabForWindows(blockDef, false);
+                            closeFilesWindow();
                         });
                     }}
                     onTogglePin={(selection: PathSelection, label?: string) => {

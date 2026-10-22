@@ -57,6 +57,12 @@ preview block **落回发起请求的那个组**。
 - `Esc` 先关二级；二级关闭后再 `Esc` 才关一级。
 - 二级需通过 `onOpenChange` 把 open 状态回传一级（`launch-popup-bus` 已有该约定）。
 
+> **连带修复（R4 的前提）**：`widgets.tsx` 里三个二级浮窗的 close 函数在关闭时会回传
+> `onOpenChange(false)`，而「打开另一个二级浮窗」也要先 close 当前浮窗 → 会被误报成
+> 「二级已关」，导致一级菜单提前收起 + Esc 一次关两层。该缺陷今天就存在于
+> Terminal / Agent 之间，Files 接入后会继承。本任务给三个 close 函数增 `notifyBus` 参数
+> （默认 true），「换浮窗」的路径传 false（详见 design.md §2.3.1）。
+
 ### R5 — 终端上下文继承
 
 - 非 sink（右侧栏）场景语义不变。

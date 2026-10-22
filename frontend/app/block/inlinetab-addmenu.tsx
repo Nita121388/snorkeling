@@ -1,8 +1,13 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { DefaultAgentWidgetId, DefaultTerminalWidgetId, extractTerminalContextMeta } from "@/app/workspace/agent-launch";
-import { requestLaunchPopup } from "@/app/workspace/launch-popup-bus";
+import {
+    DefaultAgentWidgetId,
+    DefaultFilesWidgetId,
+    DefaultTerminalWidgetId,
+    extractTerminalContextMeta,
+} from "@/app/workspace/agent-launch";
+import { requestLaunchPopup, type LaunchPopupMode } from "@/app/workspace/launch-popup-bus";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { getNoteDirectory, makeNoteBlockDef, NoteWidgetAction } from "@/app/workspace/note-block";
 import { Tooltip } from "@/app/element/tooltip";
@@ -57,23 +62,6 @@ export function pickGroupAddableWidgets(wmap: { [key: string]: WidgetConfigType 
         .map(([id, config]) => ({ id, config }));
     wlist.sort((a, b) => (a.config["display:order"] ?? 0) - (b.config["display:order"] ?? 0));
     return wlist;
-}
-
-/**
- * Files widget blockdef for the "+" menu: inherit connection + cwd from the active terminal
- * block of the group so the new preview opens where the user already is; fall back to the
- * widget's default (~). Non-terminal active blocks give no context (extractTerminalContextMeta).
- */
-export function buildFilesBlockDef(widgetBlockDef: BlockDef, activeBlock: Block | null | undefined): BlockDef {
-    const ctx = extractTerminalContextMeta(activeBlock);
-    const meta: Record<string, unknown> = { ...(widgetBlockDef?.meta ?? {}) };
-    if (ctx?.["cmd:cwd"] != null) {
-        meta["file"] = ctx["cmd:cwd"];
-    }
-    if (ctx?.connection != null) {
-        meta["connection"] = ctx.connection;
-    }
-    return { ...widgetBlockDef, meta };
 }
 
 type InlineTabGroupAddButtonProps = {
@@ -163,10 +151,10 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
         [scheduleMenuClose]
     );
 
-    // 悬浮 Terminal/Agent 菜单项 LaunchHoverOpenDelayMs → 开二级（锚定该菜单项）。
+    // 悬浮 Terminal/Agent/Files 菜单项 LaunchHoverOpenDelayMs → 开二级（锚定该菜单项）。
     // 锚点 rect 在 hover 开始时就冻结（而不是 timer 触发后才测），省掉打开瞬间的“测布局 + 开窗”叠加。
     const startItemHover = useCallback(
-        (mode: "terminal" | "agent", anchorEl: HTMLElement) => {
+        (mode: LaunchPopupMode, anchorEl: HTMLElement) => {
             if (itemHoverTimerRef.current != null) {
                 return;
             }
@@ -175,10 +163,17 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
                 itemHoverTimerRef.current = null;
                 secondLevelOpenRef.current = true;
                 setSecondLevelOpen(true);
-                requestLaunchPopup({ mode, anchorEl: frozenAnchor, nodeId, onOpenChange: handleSecondLevelOpenChange, centered: false });
+                requestLaunchPopup({
+                    mode,
+                    anchorEl: frozenAnchor,
+                    nodeId,
+                    onOpenChange: handleSecondLevelOpenChange,
+                    centered: false,
+                    fallbackConnection: extractTerminalContextMeta(activeBlock)?.connection ?? null,
+                });
             }, LaunchHoverOpenDelayMs);
         },
-        [handleSecondLevelOpenChange, nodeId]
+        [activeBlock, handleSecondLevelOpenChange, nodeId]
     );
 
     const clearItemHover = useCallback(() => {
@@ -241,20 +236,28 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
         };
     }, [menuOpen, refs]);
 
-    // Terminal / Agent: close menu and ask WorkspaceWidgets to open its target-selector popup
+    // Terminal / Agent / Files: ask WorkspaceWidgets to open its target-selector popup
     // anchored at this "+" button; creation funnels back into this group (group sink nodeId).
     const requestTargetPopup = useCallback(
-        (mode: "terminal" | "agent", anchorEl: HTMLElement) => {
-            // 点击 Terminal/Agent：立即开二级（锚定该菜单项），并保持一级菜单不关。
+        (mode: LaunchPopupMode, anchorEl: HTMLElement) => {
+            // 点击 Terminal/Agent/Files：立即开二级（锚定该菜单项），并保持一级菜单不关。
             clearItemHover();
             secondLevelOpenRef.current = true;
             setSecondLevelOpen(true);
-            requestLaunchPopup({ mode, anchorEl: makeFrozenAnchor(anchorEl), nodeId, onOpenChange: handleSecondLevelOpenChange, centered: false });
+            requestLaunchPopup({
+                mode,
+                anchorEl: makeFrozenAnchor(anchorEl),
+                nodeId,
+                onOpenChange: handleSecondLevelOpenChange,
+                centered: false,
+                // 组内活跃终端的 connection 作为浮窗选择项的兜底（所选路径自带 connection 时以行为准）。
+                fallbackConnection: extractTerminalContextMeta(activeBlock)?.connection ?? null,
+            });
         },
-        [clearItemHover, handleSecondLevelOpenChange, nodeId]
+        [activeBlock, clearItemHover, handleSecondLevelOpenChange, nodeId]
     );
 
-    // 普通 widget 点击直接创建并关菜单；Terminal/Agent 走二级（保持菜单开），见上方。
+    // 普通 widget 点击直接创建并关菜单；Terminal/Agent/Files 走二级（保持菜单开），见上方。
 
     const handleDirectCreate = useCallback(
         (widgetId: string, widget: WidgetConfigType) => {
@@ -269,9 +272,6 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
             } else {
                 console.warn(`Widget ${widgetId} cannot be added to a group`);
                 return;
-            }
-            if (widgetId === "defwidget@files") {
-                blockDef = buildFilesBlockDef(blockDef, activeBlock);
             }
             const layoutModel = getLayoutModelForTabById(tabId);
             if (layoutModel == null) {
@@ -292,7 +292,7 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
                 }
             });
         },
-        [activeBlock, closeMenu, nodeId, tabId, waveEnv.services.object]
+        [closeMenu, nodeId, tabId, waveEnv.services.object]
     );
 
     return (
@@ -342,9 +342,18 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
                         }}
                     >
                         {addableWidgets.map(({ id, config }) => {
-                            const isTargetWidget = id === DefaultTerminalWidgetId || id === DefaultAgentWidgetId;
-                            const mode: "terminal" | "agent" | null =
-                                id === DefaultTerminalWidgetId ? "terminal" : id === DefaultAgentWidgetId ? "agent" : null;
+                            const isTargetWidget =
+                                id === DefaultTerminalWidgetId ||
+                                id === DefaultAgentWidgetId ||
+                                id === DefaultFilesWidgetId;
+                            const mode: LaunchPopupMode | null =
+                                id === DefaultTerminalWidgetId
+                                    ? "terminal"
+                                    : id === DefaultAgentWidgetId
+                                      ? "agent"
+                                      : id === DefaultFilesWidgetId
+                                        ? "files"
+                                        : null;
                             return (
                                 <button
                                     key={id}
@@ -352,7 +361,7 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
                                     role="menuitem"
                                     className="inline-tab-block-addmenu-item"
                                     title={config.description || config.label}
-                                    // Terminal/Agent：悬浮 500ms 开二级（锚定本项），点击立即开二级；普通 widget 点击直接创建。
+                                    // Terminal/Agent/Files：悬浮 500ms 开二级（锚定本项），点击立即开二级；普通 widget 点击直接创建。
                                     onPointerEnter={(e) => {
                                         if (mode != null) {
                                             startItemHover(mode, e.currentTarget);

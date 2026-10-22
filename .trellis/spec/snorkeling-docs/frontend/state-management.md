@@ -83,6 +83,30 @@ this.pinnedDirs = atom((get) => {
 配置文件是整文件重写。导航类状态用"模块级缓冲 + debounce + 条目上限"合并写入，
 并在 `pagehide` 做 best-effort flush。参考 `frontend/app/view/preview/path-usage-store.ts`。
 
+### 5. 共享的二级浮窗：close ≠ 「用户关掉了」
+
+多个二级浮窗（Terminal / Agent / Files 目标选择器）共用一个打开位时，
+**打开另一个必须先 close 当前**。如果 close 函数里带「通知发起方」的回调
+（例如 `launch-popup-bus` 的 `onOpenChange(false)`），那么「换浮窗」会被误报成
+「二级被用户关掉」：一级菜单立刻认为二级已关 → 提前收起 + Esc 一次关两层。
+
+正确做法：给 close 加一个「是否通知发起方」的参数，只有**真正的用户关闭**
+（Esc / 点外面 / 选完）才通知；「换浮窗」走静默关闭。
+
+```ts
+// frontend/app/workspace/widgets.tsx
+const closeTerminalTargetSelector = useCallback((notifyBus = true) => { ... }, []);
+// 换浮窗：静默
+closeTerminalTargetSelector(false);
+// 用户真的关掉了：通知
+closeTerminalTargetSelector();
+```
+
+配套约定：
+
+- 「换浮窗」路径里 **先 close 再设共享状态**（close 常常会把 sink / 选中项重置为 null）；
+- 只有最后一个真正关闭的浮窗负责回传 `onOpenChange(false)`，避免重复通知。
+
 ---
 
 ## Recommended Split: pure logic + stateful store
