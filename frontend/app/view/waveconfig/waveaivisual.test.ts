@@ -37,4 +37,11 @@ describe("Wave AI modes editor contracts", () => {
     it("keeps disabled controls off the not-allowed cursor", () => {
         expect(visual).not.toContain("cursor-not-allowed");
     });
+
+    it("passes the mode's api token to both probe buttons", () => {
+        // "Test connection" and "Fetch models" must use the same token priority
+        // as the chat path, so both handlers forward ai:apitoken to the backend.
+        const occurrences = visual.split('apiToken: form["ai:apitoken"]').length - 1;
+        expect(occurrences).toBeGreaterThanOrEqual(2);
+    });
 });

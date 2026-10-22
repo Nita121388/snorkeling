@@ -21,7 +21,6 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/aiutil"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/chatstore"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
-	"github.com/wavetermdev/waveterm/pkg/secretstore"
 	"github.com/wavetermdev/waveterm/pkg/telemetry"
 	"github.com/wavetermdev/waveterm/pkg/telemetry/telemetrydata"
 	"github.com/wavetermdev/waveterm/pkg/util/ds"
@@ -86,18 +85,16 @@ func getWaveAISettings(premium bool, builderMode bool, rtInfo waveobj.ObjRTInfo,
 	if config.WaveAICloud && !telemetry.IsTelemetryEnabled() {
 		return nil, fmt.Errorf("Wave AI cloud modes require telemetry to be enabled")
 	}
-	apiToken := config.APIToken
-	if apiToken == "" && config.APITokenSecretName != "" {
-		secret, exists, err := secretstore.GetSecret(config.APITokenSecretName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve secret %s: %w", config.APITokenSecretName, err)
-		}
-		secret = strings.TrimSpace(secret)
-		if !exists || secret == "" {
-			return nil, fmt.Errorf("secret %s not found or empty", config.APITokenSecretName)
-		}
-		apiToken = secret
+	// Token priority lives in one place: an explicit ai:apitoken wins, otherwise
+	// the named secret is read from the local secret store.
+	tokenResult, err := ResolveAPIToken(config.APIToken, config.APITokenSecretName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve secret %s: %w", config.APITokenSecretName, err)
 	}
+	if tokenResult.Token == "" && tokenResult.SecretName != "" {
+		return nil, fmt.Errorf("secret %s not found or empty", config.APITokenSecretName)
+	}
+	apiToken := tokenResult.Token
 
 	var baseUrl string
 	if config.Endpoint != "" {

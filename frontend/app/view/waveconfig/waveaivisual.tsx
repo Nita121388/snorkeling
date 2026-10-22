@@ -281,6 +281,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                 endpoint: form["ai:endpoint"],
                 model: form["ai:model"],
                 provider: form["ai:provider"],
+                apiToken: form["ai:apitoken"],
                 secretName: form["ai:apitokensecretname"],
             });
             if (result.ok) {
@@ -306,6 +307,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
         try {
             const result = await testService.FetchModels({
                 endpoint: form["ai:endpoint"],
+                apiToken: form["ai:apitoken"],
                 secretName: form["ai:apitokensecretname"],
             });
             if (result.error) {

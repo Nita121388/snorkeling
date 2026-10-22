@@ -11,7 +11,6 @@ import (
 
 	"github.com/wavetermdev/waveterm/pkg/aiusechat"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
-	"github.com/wavetermdev/waveterm/pkg/secretstore"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 )
 
@@ -53,14 +52,19 @@ func (svc *AITestService) TestConnection(ctx context.Context, request *AITestCon
 	if strings.TrimSpace(request.Model) == "" {
 		return &AITestConnectionResponse{Ok: false, Message: "model is required"}, nil
 	}
-	token := strings.TrimSpace(request.APIToken)
-	if token == "" && strings.TrimSpace(request.SecretName) != "" {
-		if value, ok, err := secretstore.GetSecret(request.SecretName); err == nil && ok {
-			token = value
-		}
+	// Same token priority as the chat path. Test connection issues a real
+	// completion, so a missing key is reported before the request is sent.
+	tokenResult, err := aiusechat.ResolveAPIToken(request.APIToken, request.SecretName)
+	if err != nil {
+		return &AITestConnectionResponse{Ok: false, Message: fmt.Sprintf("failed to retrieve secret %s: %v", request.SecretName, err)}, nil
 	}
+	token := tokenResult.Token
 	if token == "" {
-		return &AITestConnectionResponse{Ok: false, Message: "API key is missing; save it in the Secrets tab or fill it here"}, nil
+		message := tokenResult.MissingReason()
+		if tokenResult.SecretName == "" {
+			message = "no API key configured; save one in Settings > Secrets or set ai:apitoken in the mode config"
+		}
+		return &AITestConnectionResponse{Ok: false, Message: message}, nil
 	}
 
 	opts := uctypes.AIOptsType{

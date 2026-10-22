@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/aiusechat"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/aiutil"
-	"github.com/wavetermdev/waveterm/pkg/secretstore"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 )
 
@@ -52,12 +52,11 @@ func (svc *AITestService) FetchModels(ctx context.Context, request *AIFetchModel
 		return &AIFetchModelsResponse{Error: "endpoint is required"}, nil
 	}
 
-	token := strings.TrimSpace(request.APIToken)
-	if token == "" && strings.TrimSpace(request.SecretName) != "" {
-		if value, ok, err := secretstore.GetSecret(request.SecretName); err == nil && ok {
-			token = value
-		}
-	}
+	// Same token priority as the chat path. A secret store failure is not fatal
+	// here: anonymous endpoints must keep working, and the non-200 branch below
+	// explains that no API key was sent.
+	tokenResult, tokenErr := aiusechat.ResolveAPIToken(request.APIToken, request.SecretName)
+	token := tokenResult.Token
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base, nil)
 	if err != nil {
@@ -74,7 +73,15 @@ func (svc *AITestService) FetchModels(ctx context.Context, request *AIFetchModel
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return &AIFetchModelsResponse{Error: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))}, nil
+		errMsg := fmt.Sprintf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		if token == "" && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+			reason := tokenResult.MissingReason()
+			if tokenErr != nil {
+				reason = fmt.Sprintf("could not read secret %q: %v", tokenResult.SecretName, tokenErr)
+			}
+			errMsg += fmt.Sprintf(" (no API key was sent: %s)", reason)
+		}
+		return &AIFetchModelsResponse{Error: errMsg}, nil
 	}
 	var payload struct {
 		Data []struct {
