@@ -1,0 +1,97 @@
+---
+sidebar_position: 1.78
+id: "agent-notifications"
+title: "Agent Notifications"
+---
+
+# Agent Notifications
+
+When an AI agent changes state, Snorkeling can raise a native desktop toast. Two kinds exist:
+
+- `done` — a working agent became idle, so the turn finished.
+- `blocked` — the agent is waiting for input, for example an approval prompt.
+
+Notifications are evaluated in the main process, so a setting change takes effect on the very next
+agent event. The keys live in your `settings.json`; see [Configuration](./config) for how to edit
+config files, and [Agent Workflow](./agent-workflow) for how agent status is collected.
+
+## Configuration Keys
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `agentstatus:osnotify` | bool | `true` | Master switch for all agent notifications. |
+| `agentstatus:osnotifydone` | bool | `true` | Enable `done` notifications. |
+| `agentstatus:osnotifyblocked` | bool | `true` | Enable `blocked` notifications. |
+| `agentstatus:osnotifywhenfocused` | bool | `false` | Notify even when a Snorkeling window has focus. |
+| `agentstatus:osnotifyidleminms` | int | `30000` | Only notify when the system has been idle this many milliseconds. `0` disables the check. |
+| `agentstatus:osnotifycooldownms` | int | `60000` | Cooldown window per notification kind, in milliseconds. `0` disables cooldown and merging. |
+| `agentstatus:osnotifyblockedminms` | int | `0` | Per-block cooldown for `blocked`, in milliseconds. `0` means no limit. |
+
+## Idle Detection
+
+`agentstatus:osnotifyidleminms` reads the operating system idle timer: the time since the last
+keyboard or mouse input on the machine. While you are actively typing, agent notifications are
+suppressed, so a long agent loop does not interrupt you. Notifications start again once you have
+been idle for the configured duration.
+
+If the operating system does not report an idle time, the check is skipped and notifications behave
+the way they did before this setting existed.
+
+## Cooldown and Merging
+
+`agentstatus:osnotifycooldownms` limits how often one kind of notification can reach the screen.
+
+- The first event fires immediately.
+- Further events of the same kind inside the window are counted.
+- When the window ends, one summary notification is sent, for example `3 agents finished`.
+
+The cooldown is tracked in the main process, so opening several Snorkeling windows does not produce
+duplicate notifications for the same agent event.
+
+The `done` and `blocked` kinds have separate windows, so an approval request is not delayed by an
+unrelated completion.
+
+## Turning Notifications Off
+
+Set the master switch to `false` to silence agent notifications completely:
+
+```json
+{
+  "agentstatus:osnotify": false
+}
+```
+
+To silence only one kind:
+
+```json
+{
+  "agentstatus:osnotifydone": false,
+  "agentstatus:osnotifyblocked": true
+}
+```
+
+You can also edit the same keys from the command line:
+
+```bash
+wsh config set agentstatus:osnotify false
+```
+
+## Restoring the Previous Behavior
+
+Set both new thresholds to `0` to turn the idle check and the cooldown off:
+
+```json
+{
+  "agentstatus:osnotifyidleminms": 0,
+  "agentstatus:osnotifycooldownms": 0
+}
+```
+
+With both values at `0`, every agent event produces its own notification, exactly as before these
+settings were introduced.
+
+## Related
+
+- [Agent Workflow](./agent-workflow) — launch agents and follow agent status.
+- [Configuration](./config) — all configuration keys and config file locations.
+- [Wsh Reference](./wsh-reference#notify) — the `wsh notify` command for script-driven toasts.

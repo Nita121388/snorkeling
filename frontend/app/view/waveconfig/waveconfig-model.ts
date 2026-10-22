@@ -8,6 +8,7 @@ import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
+import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
 import { WaveAIVisualContent } from "@/app/view/waveconfig/waveaivisual";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import { applyVisibleSettingsDefaults } from "@/app/view/waveconfig/waveconfig-settings";
@@ -73,6 +74,13 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             description: "Light / Dark / Monochrome / System",
             hasJsonView: false,
             visualComponent: ThemePickerContent,
+        },
+        {
+            name: "Agent Notifications",
+            path: "agentnotifications",
+            description: "OS toasts for agent done / blocked",
+            hasJsonView: false,
+            visualComponent: AgentNotifySettingsContent,
         },
         {
             name: "Connections",

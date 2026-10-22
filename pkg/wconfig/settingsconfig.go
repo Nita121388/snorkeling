@@ -167,12 +167,20 @@ type SettingsType struct {
 	// POC scope: done (non-idle → idle completion) and blocked. All flags default true except
 	// blockedminintervalms (0 = no per-block rate limit). Pointer types so "false" is observable
 	// distinct from "unset" once defaults are applied by the resolver.
+	//
+	// osnotifyidleminms and osnotifycooldownms are the denoise knobs: the first suppresses
+	// notifications while the user is still working on the machine, the second limits how often
+	// one kind of notification may reach the screen and merges the swallowed events into a
+	// summary. Their defaults live in the electron main process (emain/os-notify.ts), so an unset
+	// value keeps the "unset != 0" semantics of the *int64 fields.
 	AgentStatusClear                bool   `json:"agentstatus:*,omitempty"`
 	AgentStatusOsNotify             *bool  `json:"agentstatus:osnotify,omitempty"`
 	AgentStatusOsNotifyDone         *bool  `json:"agentstatus:osnotifydone,omitempty"`
 	AgentStatusOsNotifyBlocked      *bool  `json:"agentstatus:osnotifyblocked,omitempty"`
 	AgentStatusOsNotifyWhenFocused  *bool  `json:"agentstatus:osnotifywhenfocused,omitempty"`
 	AgentStatusOsNotifyBlockedMinMs *int64 `json:"agentstatus:osnotifyblockedminms,omitempty"`
+	AgentStatusOsNotifyIdleMinMs    *int64 `json:"agentstatus:osnotifyidleminms,omitempty"`
+	AgentStatusOsNotifyCooldownMs   *int64 `json:"agentstatus:osnotifycooldownms,omitempty"`
 
 	AiClear         bool    `json:"ai:*,omitempty"`
 	AiPreset        string  `json:"ai:preset,omitempty"`

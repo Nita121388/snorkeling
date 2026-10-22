@@ -54,6 +54,20 @@ Questions to answer:
 
 ---
 
+## 设置面板：unset ≠ false，默认值在 TS 层 (2026-10-22, task 10-22-agent-os-notify-denoise)
+
+- Go `SettingsType` 的开关字段是 `*bool` / `*int64`，**“未设置”与“false/0”是两个意思**：
+  未设置 → 用默认值；显式存了 `false`/`0` → 必须用 `false`/`0`。
+  读设置一律用 `??` 回落默认值，**禁止用 `||`**（`||` 会把显式 `false` 覆盖成默认 `true`）。
+- 默认值集中在 `frontend/util/sharedconst.ts`，主进程（`emain/` 通过 `@/util/...` 引用）与
+  设置面板同源。**Go 侧不要给这些字段填默认值**——那会把 `false` 和“未设置”合并成一个意思。
+- 写 `settings.json` 走 `RpcApi.SetConfigCommand`：Go 侧 `SetBaseConfigValue` 是**合并**写入，
+  只替换传入的键，其余键原样保留；未知键会被 `getConfigKeyType` 拒绝并报错。
+  因此新增设置键时，键名必须与 Go 的 json tag 完全一致（见 backend 契约文档的必测项）。
+- 完整契约见 [Agent OS 通知抑制契约](../backend/agent-os-notify-contract.md)。
+
+---
+
 ## Required Patterns
 
 <!-- Patterns that must always be used -->

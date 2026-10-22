@@ -185,10 +185,12 @@ export const agentStatusDoneAckStore = AgentStatusDoneAckStore.getInstance();
 // a renderer cold-start that re-derives state from a fresh event will see prev=undefined, which
 // decideNotifyKind already treats as "cannot fire 'done' without a prior working state" — the
 // worst case is missing one toast on the very first cycle after a window reopen, which is fine.
-// Cross-renderer: every renderer that observes the transition owns its own prev snapshot, but
-// the OS notify path is deduped at the main-process level (lastFiredByBlock in os-notify.ts) via
-// blockId-keyed rate limiting, so multiple windows each firing on the same completion collapse
-// to a single toast.
+// Cross-renderer: every renderer that observes the transition owns its own prev snapshot, so
+// two Snorkeling windows both report the same completion. The OS notify path is deduped at the
+// main-process level (AgentOsNotifyGate in os-notify.ts): the gate remembers the last
+// (kind, blockId) it saw and drops a repeat report inside the cooldown window
+// (agentstatus:osnotifycooldownms), so multiple windows each firing on the same completion
+// collapse to a single toast.
 const lastObservedByBlock = new Map<string, AgentStatus>();
 
 // For tests: clear the in-memory prev cache so test cases don't leak state across each other.

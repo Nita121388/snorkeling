@@ -34,6 +34,8 @@ const (
 	ConfigKey_AgentStatusOsNotifyBlocked     = "agentstatus:osnotifyblocked"
 	ConfigKey_AgentStatusOsNotifyWhenFocused = "agentstatus:osnotifywhenfocused"
 	ConfigKey_AgentStatusOsNotifyBlockedMinMs = "agentstatus:osnotifyblockedminms"
+	ConfigKey_AgentStatusOsNotifyIdleMinMs   = "agentstatus:osnotifyidleminms"
+	ConfigKey_AgentStatusOsNotifyCooldownMs  = "agentstatus:osnotifycooldownms"
 
 	ConfigKey_AiClear                        = "ai:*"
 	ConfigKey_AiPreset                       = "ai:preset"

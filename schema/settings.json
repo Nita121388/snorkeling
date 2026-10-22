@@ -330,6 +330,12 @@
         "agentstatus:osnotifyblockedminms": {
           "type": "integer"
         },
+        "agentstatus:osnotifyidleminms": {
+          "type": "integer"
+        },
+        "agentstatus:osnotifycooldownms": {
+          "type": "integer"
+        },
         "ai:*": {
           "type": "boolean"
         },

@@ -11,13 +11,16 @@ import { getWebContentsByBlockId, webGetSelector } from "./emain-web";
 import { createBrowserWindow, getWaveWindowById, getWaveWindowByWorkspaceId } from "./emain-window";
 import {
     AgentOsNotificationDescriptor,
+    AgentOsNotifyContext,
+    AgentOsNotifyGate,
     AgentOsNotifyKind,
     AgentOsNotifySettings,
-    decideSuppression,
+    DefaultAgentOsNotifyCooldownMs,
+    DefaultAgentOsNotifyIdleMinMs,
     defaultIsAnyWindowFocused,
     defaultShowNotification,
+    defaultUserIdleSeconds,
     makeDefaultFocusApp,
-    sendAgentOsNotification,
 } from "./os-notify";
 
 export class ElectronWshClientType extends WshClient {
@@ -142,11 +145,33 @@ export function initElectronWshClient() {
 }
 
 // ---------------- Agent OS notification ----------------
-// Per-block last-fired timestamps (epoch ms) for rate limiting. One entry per (blockId, kind)
-// so a noisy block doesn't starve an unrelated one. Lives in the main process so the
-// suppression decision is consistent across renderer crashes / reloads.
-const lastFiredByBlock = new Map<string, number>();
-const lastFiredKey = (blockId: string, kind: string) => `${blockId}#${kind}`;
+// All mutable notification state (per-block last-fired, per-kind cooldown, per-(kind, blockId)
+// cross-window dedup, and the pending-summary timers) lives in the gate. The gate lives in the
+// main process so the suppression decision is consistent across renderer crashes / reloads and
+// across multiple Snorkeling windows.
+const agentOsNotifyGate = new AgentOsNotifyGate({
+    // Re-read the settings when a cooldown window closes, so a change made during the window
+    // (e.g. the user turning notifications off) is honored.
+    loadSettings: () => loadAgentOsNotifySettings(),
+});
+
+async function loadAgentOsNotifySettings(): Promise<AgentOsNotifySettings> {
+    // Settings are read once per call so subsequent setting changes take effect immediately.
+    // The agentstatus:* flags are *bool — *bool with default true means "off" is observable
+    // distinct from unset; we treat unset as the default (true) too.
+    const settings = (await RpcApi.GetFullConfigCommand(ElectronWshClient)).settings;
+    return {
+        // SettingsType keys carry the literal config names with colons (e.g.
+        // "agentstatus:osnotify"); dotted access would silently read undefined.
+        masterEnabled: boolValue(settings["agentstatus:osnotify"], true),
+        doneEnabled: boolValue(settings["agentstatus:osnotifydone"], true),
+        blockedEnabled: boolValue(settings["agentstatus:osnotifyblocked"], true),
+        notifyWhenFocused: boolValue(settings["agentstatus:osnotifywhenfocused"], false),
+        blockedMinIntervalMs: intValue(settings["agentstatus:osnotifyblockedminms"], 0),
+        idleMinMs: intValue(settings["agentstatus:osnotifyidleminms"], DefaultAgentOsNotifyIdleMinMs),
+        cooldownMs: intValue(settings["agentstatus:osnotifycooldownms"], DefaultAgentOsNotifyCooldownMs),
+    };
+}
 
 async function handleAgentOsNotification(opts: WaveNotificationOptions): Promise<void> {
     if (opts.agentkind !== "done" && opts.agentkind !== "blocked") {
@@ -166,33 +191,18 @@ async function handleAgentOsNotification(opts: WaveNotificationOptions): Promise
         body: opts.body,
     };
 
-    // Settings are read once per call so subsequent setting changes take effect immediately.
-    // The agentstatus:* flags are *bool — *bool with default true means "off" is observable
-    // distinct from unset; we treat unset as the default (true) too.
-    const settings = (await RpcApi.GetFullConfigCommand(ElectronWshClient)).settings;
-    const osNotifySettings: AgentOsNotifySettings = {
-        // SettingsType keys carry the literal config names with colons (e.g.
-        // "agentstatus:osnotify"); dotted access would silently read undefined.
-        masterEnabled: boolValue(settings["agentstatus:osnotify"], true),
-        doneEnabled: boolValue(settings["agentstatus:osnotifydone"], true),
-        blockedEnabled: boolValue(settings["agentstatus:osnotifyblocked"], true),
-        notifyWhenFocused: boolValue(settings["agentstatus:osnotifywhenfocused"], false),
-        blockedMinIntervalMs: intValue(settings["agentstatus:osnotifyblockedminms"], 0),
-    };
+    const osNotifySettings = await loadAgentOsNotifySettings();
 
-    const ctx = {
+    const ctx: AgentOsNotifyContext = {
         settings: osNotifySettings,
         isAnyWindowFocused: defaultIsAnyWindowFocused,
         now: () => Date.now(),
-        lastFiredAt: (blockId: string, k: AgentOsNotifyKind) => lastFiredByBlock.get(lastFiredKey(blockId, k)) ?? 0,
+        userIdleSeconds: defaultUserIdleSeconds,
         showNotification: defaultShowNotification,
         focusApp: makeDefaultFocusApp(),
     };
 
-    const outcome = sendAgentOsNotification(desc, ctx);
-    if (outcome.fired) {
-        lastFiredByBlock.set(lastFiredKey(desc.blockId, kind), ctx.now());
-    }
+    agentOsNotifyGate.offer(desc, ctx);
 }
 
 function boolValue(v: boolean | undefined, def: boolean): boolean {

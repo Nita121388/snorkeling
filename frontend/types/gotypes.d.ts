@@ -2284,6 +2284,8 @@ declare global {
         "agentstatus:osnotifyblocked"?: boolean;
         "agentstatus:osnotifywhenfocused"?: boolean;
         "agentstatus:osnotifyblockedminms"?: number;
+        "agentstatus:osnotifyidleminms"?: number;
+        "agentstatus:osnotifycooldownms"?: number;
         "ai:*"?: boolean;
         "ai:preset"?: string;
         "ai:apitype"?: string;
