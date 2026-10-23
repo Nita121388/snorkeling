@@ -440,6 +440,21 @@ type AIModeConfigUpdate struct {
 	Configs map[string]AIModeConfigType `json:"configs"`
 }
 
+// AIPromptConfigType is the per-feature prompt override stored in aiprompts.json.
+// Empty fields fall back to the built-in defaults, so deleting the file (or a
+// single key) restores the historical behavior without breaking generation.
+type AIPromptConfigType struct {
+	SystemPrompt      string `json:"systemPrompt,omitempty"`
+	ExtraInstructions string `json:"extraInstructions,omitempty"`
+	AIMode            string `json:"aiMode,omitempty"`
+	MaxNoteChars      int    `json:"maxNoteChars,omitempty"`
+	MaxTags           int    `json:"maxTags,omitempty"`
+	MaxTitleChars     int    `json:"maxTitleChars,omitempty"`
+	// Enabled is a pointer so "unset" means enabled; an explicit false disables
+	// the feature's entry point without deleting the prompt.
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
 type WidgetConfigType struct {
 	DisplayOrder  float64           `json:"display:order,omitempty"`
 	DisplayHidden bool              `json:"display:hidden,omitempty"`
@@ -506,6 +521,7 @@ type FullConfigType struct {
 	Connections    map[string]ConnKeywords         `json:"connections"`
 	Bookmarks      map[string]WebBookmark          `json:"bookmarks"`
 	WaveAIModes    map[string]AIModeConfigType     `json:"waveai"`
+	AIPrompts      map[string]AIPromptConfigType   `json:"aiprompts"`
 	ConfigErrors   []ConfigError                   `json:"configerrors" configfile:"-"`
 	Version        string                          `json:"version" configfile:"-"`
 	BuildTime      string                          `json:"buildtime" configfile:"-"`

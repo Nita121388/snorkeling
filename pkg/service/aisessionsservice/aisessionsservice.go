@@ -20,6 +20,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wps"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
@@ -146,6 +147,23 @@ type AISessionsGenerateMetadataRequest struct {
 type AISessionsGenerateMetadataResponse struct {
 	Summary    aisessions.SessionSummary     `json:"summary"`
 	Suggestion aisessions.MetadataSuggestion `json:"suggestion"`
+}
+
+type AISessionsGenerateTitleRequest struct {
+	ID         string `json:"id"`
+	Connection string `json:"connection,omitempty"`
+	AIMode     string `json:"aiMode,omitempty"`
+}
+
+type AISessionsGenerateTitleResponse struct {
+	Summary    aisessions.SessionSummary  `json:"summary"`
+	Suggestion aisessions.TitleSuggestion `json:"suggestion"`
+}
+
+type AISessionsPromptTemplatesRequest struct{}
+
+type AISessionsPromptTemplatesResponse struct {
+	Features []aisessions.PromptFeatureMeta `json:"features"`
 }
 
 type AISessionsRestoreContextRequest struct {
@@ -916,6 +934,10 @@ func (svc *AISessionsService) GenerateMetadata(ctx context.Context, request *AIS
 	if err != nil {
 		return nil, err
 	}
+	promptConfig := promptConfigForFeature(aisessions.PromptFeatureSessionNoteTags)
+	if !aisessions.PromptEnabled(promptConfig) {
+		return nil, fmt.Errorf("session note & tags generation is disabled in AI Prompts settings")
+	}
 	genReq := aisessions.MetadataGenerateRequest{
 		SessionKey:   detail.Summary.Key,
 		Source:       detail.Summary.Source,
@@ -924,12 +946,74 @@ func (svc *AISessionsService) GenerateMetadata(ctx context.Context, request *AIS
 		ExistingNote: detail.Summary.Note,
 		ExistingTags: detail.Summary.Tags,
 		AIMode:       request.AIMode,
+		PromptConfig: promptConfig,
 	}
 	suggestion, err := aisessions.GenerateSessionMetadata(ctx, genReq)
 	if err != nil {
 		return nil, err
 	}
 	return &AISessionsGenerateMetadataResponse{Summary: detail.Summary, Suggestion: suggestion}, nil
+}
+
+// promptConfigForFeature reads the user's override from aiprompts.json (via the
+// full config watcher). A missing file/key yields the zero value, which the
+// registry resolves to the built-in prompt and limits.
+func promptConfigForFeature(feature string) wconfig.AIPromptConfigType {
+	fullConfig := wconfig.GetWatcher().GetFullConfig()
+	if fullConfig.AIPrompts == nil {
+		return wconfig.AIPromptConfigType{}
+	}
+	return fullConfig.AIPrompts[feature]
+}
+
+func (svc *AISessionsService) GenerateTitle_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "generate a proposed AI title for a session without saving",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI title suggestion plus the current session summary",
+	}
+}
+func (svc *AISessionsService) GenerateTitle(ctx context.Context, request *AISessionsGenerateTitleRequest) (*AISessionsGenerateTitleResponse, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := manager.Load(ctx, request.ID, aisessions.LoadOptions{})
+	if err != nil {
+		return nil, err
+	}
+	promptConfig := promptConfigForFeature(aisessions.PromptFeatureSessionTitle)
+	if !aisessions.PromptEnabled(promptConfig) {
+		return nil, fmt.Errorf("session title generation is disabled in AI Prompts settings")
+	}
+	genReq := aisessions.TitleGenerateRequest{
+		SessionKey:    detail.Summary.Key,
+		Source:        detail.Summary.Source,
+		ProjectPath:   detail.Summary.ProjectPath,
+		Messages:      detail.Messages,
+		ExistingTitle: detail.Summary.Title,
+		AIMode:        request.AIMode,
+		PromptConfig:  promptConfig,
+	}
+	suggestion, err := aisessions.GenerateSessionTitle(ctx, genReq)
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsGenerateTitleResponse{Summary: detail.Summary, Suggestion: suggestion}, nil
+}
+
+func (svc *AISessionsService) PromptTemplates_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list AI prompt features with their built-in defaults",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "prompt feature metadata for the settings page",
+	}
+}
+func (svc *AISessionsService) PromptTemplates(ctx context.Context, request *AISessionsPromptTemplatesRequest) (*AISessionsPromptTemplatesResponse, error) {
+	return &AISessionsPromptTemplatesResponse{Features: aisessions.ListPromptFeatures()}, nil
 }
 
 func (svc *AISessionsService) RenameTag_Meta() tsgenmeta.MethodMeta {

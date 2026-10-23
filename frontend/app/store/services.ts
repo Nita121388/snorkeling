@@ -67,6 +67,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "GenerateMetadata", Array.from(arguments))
     }
 
+    // generate a proposed AI title for a session without saving
+    // @returns AI title suggestion plus the current session summary
+    GenerateTitle(request: AISessionsGenerateTitleRequest): Promise<AISessionsGenerateTitleResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "GenerateTitle", Array.from(arguments))
+    }
+
     // list local AI sessions
     // @returns AI session summaries
     List(request: AISessionsListRequest): Promise<AISessionsListResponse> {
@@ -95,6 +101,12 @@ export class AISessionsServiceType {
     // @returns updated AI session summary
     NoteAndTags(request: AISessionsNoteAndTagsRequest): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "NoteAndTags", Array.from(arguments))
+    }
+
+    // list AI prompt features with their built-in defaults
+    // @returns prompt feature metadata for the settings page
+    PromptTemplates(request: AISessionsPromptTemplatesRequest): Promise<AISessionsPromptTemplatesResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "PromptTemplates", Array.from(arguments))
     }
 
     // rename an AI session tag globally

@@ -12,6 +12,7 @@
 | [Agent 会话 resume 契约](./agent-session-resume-contract.md) | 前端 meta ↔ 后端 resume 派生：拆分类「复制 meta」必须剥会话身份；主动打开会话路径不动 | 有效 |
 | [VCS 路径编码契约](./vcs-path-encoding-contract.md) | git 路径必须关闭 quotePath + 解析端反转义；SVN 走 XML 天然 UTF-8；前端不做编解码 | 有效 |
 | [Agent OS 通知抑制契约](./agent-os-notify-contract.md) | toast 抑制链固定 8 步顺序；默认值在 TS 层不在 Go；合并写入与 unset≠false 语义 | 有效 |
+| [AI Prompt 配置契约](./ai-prompt-config-contract.md) | `aiprompts.json` 按功能注册；空=内置默认；只提案不落库；enabled 显式 false 才禁用 | 有效 |
 
 ---
 

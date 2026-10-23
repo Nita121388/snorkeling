@@ -50,9 +50,9 @@ func TestParseMetadataResponse_NormalizesAndBounds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// note rune-capped to metadataMaxNoteRunes
-	if len([]rune(sug.Note)) != metadataMaxNoteRunes {
-		t.Errorf("note length = %d, want %d", len([]rune(sug.Note)), metadataMaxNoteRunes)
+	// note rune-capped to the historical default limit
+	if len([]rune(sug.Note)) != metadataDefaultNoteRunes {
+		t.Errorf("note length = %d, want %d", len([]rune(sug.Note)), metadataDefaultNoteRunes)
 	}
 	// dedup + strip hash + drop empty
 	if len(sug.Tags) != 2 || sug.Tags[0] != "a" || sug.Tags[1] != "b" {
@@ -74,8 +74,8 @@ func TestParseMetadataResponse_CapsTagCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(sug.Tags) != metadataMaxTags {
-		t.Errorf("tags length = %d, want %d", len(sug.Tags), metadataMaxTags)
+	if len(sug.Tags) != DefaultMaxTags {
+		t.Errorf("tags length = %d, want %d", len(sug.Tags), DefaultMaxTags)
 	}
 }
 
@@ -127,5 +127,22 @@ func TestBuildMetadataUserPrompt_CapsMessageCount(t *testing.T) {
 	// only the most recent metadataMaxMessages are included
 	if strings.Count(prompt, "[user] m") != metadataMaxMessages {
 		t.Errorf("prompt message count = %d, want %d", strings.Count(prompt, "[user] m"), metadataMaxMessages)
+	}
+}
+// A user-configured limit above the historical defaults must survive parsing;
+// otherwise the settings UI would advertise a bound the backend silently ignores.
+func TestParseMetadataResponseWithLimits_HonorsConfiguredBounds(t *testing.T) {
+	note := strings.Repeat("n", 1000)
+	tags := []string{"t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8"}
+	raw := `{"note":"` + note + `","tags":["` + strings.Join(tags, `","`) + `"]}`
+	sug, err := parseMetadataResponseWithLimits(raw, ClampNoteChars(1000), ClampTagCount(8))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len([]rune(sug.Note)) != 1000 {
+		t.Errorf("note length = %d, want 1000", len([]rune(sug.Note)))
+	}
+	if len(sug.Tags) != 8 {
+		t.Errorf("tags length = %d, want 8", len(sug.Tags))
 	}
 }

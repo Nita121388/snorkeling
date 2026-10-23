@@ -25,7 +25,7 @@ import {
     sessionTagsEqual,
     sessionTagsLabel,
 } from "@/app/view/aisessions/session-tags";
-import { AiSessionNoteUpdatedEvent, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
+import { AiSessionNoteUpdatedEvent, dispatchAISessionNoteUpdated, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
 import { NoteAutoSaveDelayMs } from "@/app/view/aisessions/session-note-autosave";
 import { resolveMetadataAIMode } from "@/app/view/term/agent-ai-config";
 import { useAtomValueSafe } from "@/util/util";
@@ -62,6 +62,13 @@ export type SessionNoteState = {
     setMetadataStatus: (value: MetadataStatus) => void;
     generateMetadata: () => Promise<void>;
     applyMetadata: () => Promise<void>;
+    // ── AI 标题提案（不落库，点 Apply 才写） ──
+    titleSuggestion: string;
+    titleStatus: MetadataStatus;
+    titleError: string;
+    generateTitle: () => Promise<void>;
+    applyTitle: () => Promise<void>;
+    dismissTitle: () => void;
 };
 
 function firstLine(text: string): string {
@@ -308,6 +315,67 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         }
     }, [connection, metadataNote, metadataStatus, metadataTags, service, sessionId, summary]);
 
+    // ── AI 生成的标题提案（不落库，点 Apply 才写） ──
+    const [titleSuggestion, setTitleSuggestion] = React.useState("");
+    const [titleStatus, setTitleStatus] = React.useState<MetadataStatus>("idle");
+    const [titleError, setTitleError] = React.useState("");
+    const generateTitle = React.useCallback(async () => {
+        if (sessionId === "" || summary == null) {
+            return;
+        }
+        const cfg = resolveMetadataAIMode();
+        if (cfg.available === false) {
+            setTitleError(cfg.reason);
+            setTitleStatus("error");
+            return;
+        }
+        setTitleStatus("loading");
+        setTitleError("");
+        try {
+            const result = await service.GenerateTitle({
+                id: sessionId,
+                connection: connection || undefined,
+                aiMode: cfg.mode,
+            });
+            setTitleSuggestion(result.suggestion.title);
+            setTitleStatus("ready");
+        } catch (err) {
+            setTitleError(err instanceof Error ? err.message : String(err));
+            setTitleStatus("error");
+        }
+    }, [connection, service, sessionId, summary]);
+    const applyTitle = React.useCallback(async () => {
+        if (summary == null || titleStatus !== "ready") {
+            return;
+        }
+        const nextTitle = titleSuggestion.trim();
+        if (nextTitle === "") {
+            setTitleStatus("idle");
+            return;
+        }
+        try {
+            const updated = await service.Title(sessionId, nextTitle);
+            // 广播后，note-cache 与各个卡片会拿到最新 title，不必本地硬改 summary。
+            dispatchAISessionNoteUpdated(updated);
+            setTitleStatus("idle");
+            setTitleSuggestion("");
+        } catch (err) {
+            setTitleError(err instanceof Error ? err.message : String(err));
+            setTitleStatus("error");
+        }
+    }, [service, sessionId, summary, titleSuggestion, titleStatus]);
+    const dismissTitle = React.useCallback(() => {
+        setTitleStatus("idle");
+        setTitleSuggestion("");
+        setTitleError("");
+    }, []);
+    // 切换会话时清掉上一个会话的标题提案，避免 Apply 到错误会话。
+    React.useEffect(() => {
+        setTitleSuggestion("");
+        setTitleStatus("idle");
+        setTitleError("");
+    }, [sessionId]);
+
     const trimmedDraft = noteDraft.trim();
     const title = summary?.title || summary?.id || sessionId;
     // 未编辑时优先用 summary.note（草稿可能还没同步上），编辑时才用草稿。
@@ -339,6 +407,12 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         setMetadataStatus,
         generateMetadata,
         applyMetadata,
+        titleSuggestion,
+        titleStatus,
+        titleError,
+        generateTitle,
+        applyTitle,
+        dismissTitle,
     };
 }
 

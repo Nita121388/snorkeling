@@ -78,3 +78,41 @@ func TestConvertConfigValueForAgentOsNotifyBooleans(t *testing.T) {
 		t.Fatal("converted value is true, want false")
 	}
 }
+
+// aiprompts.json is read through FullConfigType's json tag by ReadFullConfig, so
+// the tag is the whole registration. Pin it (and the wire shape) so a rename
+// cannot silently disable user prompt overrides.
+func TestAIPromptsConfigShape(t *testing.T) {
+	field, ok := reflect.TypeOf(FullConfigType{}).FieldByName("AIPrompts")
+	if !ok {
+		t.Fatal("FullConfigType.AIPrompts is missing")
+	}
+	if tag := field.Tag.Get("json"); tag != "aiprompts" {
+		t.Fatalf("AIPrompts json tag = %q, want aiprompts", tag)
+	}
+
+	var cfg AIPromptConfigType
+	raw := []byte(`{"systemPrompt":"base","extraInstructions":"zh","aiMode":"custom@x","maxNoteChars":200,"maxTags":3,"maxTitleChars":50,"enabled":false}`)
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cfg.SystemPrompt != "base" || cfg.ExtraInstructions != "zh" || cfg.AIMode != "custom@x" {
+		t.Fatalf("string fields = %+v", cfg)
+	}
+	if cfg.MaxNoteChars != 200 || cfg.MaxTags != 3 || cfg.MaxTitleChars != 50 {
+		t.Fatalf("numeric fields = %+v", cfg)
+	}
+	if cfg.Enabled == nil || *cfg.Enabled {
+		t.Fatalf("enabled = %v, want explicit false", cfg.Enabled)
+	}
+}
+
+func TestAIPromptsEnabledUnsetIsNil(t *testing.T) {
+	var cfg AIPromptConfigType
+	if err := json.Unmarshal([]byte(`{}`), &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cfg.Enabled != nil {
+		t.Fatal("unset enabled must stay nil so callers default to enabled")
+	}
+}

@@ -19,6 +19,9 @@ export const DefaultFullConfig: FullConfigType = {
     connections: {},
     bookmarks: {},
     waveai: waveaiJson as unknown as { [key: string]: AIModeConfigType },
+    aiprompts: {},
     backgrounds: backgroundsJson as { [key: string]: BackgroundConfigType },
     configerrors: [],
+    version: "",
+    buildtime: "",
 };

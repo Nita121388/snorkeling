@@ -10,6 +10,7 @@ import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
 import { WaveAIVisualContent } from "@/app/view/waveconfig/waveaivisual";
+import { AIPromptsVisualContent } from "@/app/view/waveconfig/aipromptsettings";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import { applyVisibleSettingsDefaults } from "@/app/view/waveconfig/waveconfig-settings";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
@@ -106,6 +107,14 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             validator: validateWaveAiJson,
             hasJsonView: true,
             visualComponent: WaveAIVisualContent,
+        },
+        {
+            name: "AI Prompts",
+            path: "aiprompts.json",
+            language: "json",
+            description: "Prompts for AI-generated session title / note & tags",
+            hasJsonView: true,
+            visualComponent: AIPromptsVisualContent,
         },
         {
             name: "Tab Backgrounds",

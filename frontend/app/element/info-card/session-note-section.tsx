@@ -59,6 +59,12 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
         setMetadataStatus,
         generateMetadata,
         applyMetadata,
+        titleSuggestion,
+        titleStatus,
+        titleError,
+        generateTitle,
+        applyTitle,
+        dismissTitle,
     } = state;
 
     const openAIConfig = React.useCallback(() => {
@@ -77,25 +83,81 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                     <InfoCardIcon icon={`fa-sharp fa-solid ${statusIcon(state)}`} />
                     <InfoCardMarquee text={title} />
                 </InfoCardHead>
-                <button
-                    type="button"
-                    className="shrink-0 cursor-pointer rounded px-1.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
-                    title="Generate note and tags with AI"
-                    aria-label="Generate note and tags with AI"
-                    disabled={metadataStatus === "loading" || state.sessionId === ""}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        void generateMetadata();
-                    }}
-                >
-                    <i
-                        className={cn(
-                            "fa-sharp fa-solid",
-                            metadataStatus === "loading" ? "fa-spinner animate-spin" : "fa-wand-magic-sparkles"
-                        )}
-                    />
-                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                        type="button"
+                        className="shrink-0 cursor-pointer rounded px-1.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                        title="Generate title with AI"
+                        aria-label="Generate title with AI"
+                        disabled={titleStatus === "loading" || state.sessionId === ""}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            void generateTitle();
+                        }}
+                    >
+                        <i
+                            className={cn(
+                                "fa-sharp fa-solid",
+                                titleStatus === "loading" ? "fa-spinner animate-spin" : "fa-heading"
+                            )}
+                        />
+                    </button>
+                    <button
+                        type="button"
+                        className="shrink-0 cursor-pointer rounded px-1.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                        title="Generate note and tags with AI"
+                        aria-label="Generate note and tags with AI"
+                        disabled={metadataStatus === "loading" || state.sessionId === ""}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            void generateMetadata();
+                        }}
+                    >
+                        <i
+                            className={cn(
+                                "fa-sharp fa-solid",
+                                metadataStatus === "loading" ? "fa-spinner animate-spin" : "fa-wand-magic-sparkles"
+                            )}
+                        />
+                    </button>
+                </div>
             </div>
+            {/* AI 标题提案：只展示建议，点 Apply 才写入。 */}
+            {titleStatus === "loading" ? (
+                <div className="text-xs text-secondary">Generating title…</div>
+            ) : null}
+            {titleStatus === "ready" ? (
+                <div className="space-y-2 rounded border border-border bg-surface-soft p-2">
+                    <div className="break-words text-xs text-primary">{titleSuggestion || "(empty title)"}</div>
+                    <div className="flex justify-end gap-1.5">
+                        <button
+                            type="button"
+                            className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover"
+                            onClick={dismissTitle}
+                        >
+                            Dismiss
+                        </button>
+                        <button
+                            type="button"
+                            className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover"
+                            onClick={() => void generateTitle()}
+                        >
+                            Regenerate
+                        </button>
+                        <button
+                            type="button"
+                            className="cursor-pointer rounded bg-action px-2 py-1 text-[10px] text-actiontext hover:bg-actionhover disabled:opacity-60"
+                            disabled={titleSuggestion.trim() === ""}
+                            onClick={() => void applyTitle()}
+                        >
+                            Apply
+                        </button>
+                    </div>
+                </div>
+            ) : null}
+            {titleStatus === "error" && titleError ? (
+                <InfoCardError>{titleError}</InfoCardError>
+            ) : null}
             {isEditing ? (
                 <InfoCardInput
                     ref={inputRef}

@@ -228,3 +228,55 @@ describe("useSessionNoteState", () => {
         h.unmount();
     });
 });
+// The AI title flow needs a usable model; the real resolver reads global config
+// that this test does not boot. Mock it so the test focuses on proposal/apply.
+vi.mock("@/app/view/term/agent-ai-config", () => ({
+    resolveMetadataAIMode: () => ({ available: true, mode: "waveai@quick" }),
+}));
+
+describe("useSessionNoteState — AI title suggestion", () => {
+    beforeEach(() => {
+        current = null;
+        resetSessionNoteCache();
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("proposes a title and only writes it after apply", async () => {
+        const key = "title-session";
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation(
+            (async () => makeSummary(key, "note")) as never
+        );
+        const generateFn = vi
+            .spyOn(AISessionsServiceType.prototype, "GenerateTitle")
+            .mockImplementation((async () => ({
+                summary: makeSummary(key, "note"),
+                suggestion: { title: "Fix the title flow", confidence: 0.8 },
+            })) as never);
+        const titleFn = vi
+            .spyOn(AISessionsServiceType.prototype, "Title")
+            .mockImplementation((async () => ({ ...makeSummary(key, "note"), title: "Fix the title flow" })) as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary != null, "summary load");
+
+        await act(async () => {
+            await current!.generateTitle();
+        });
+        expect(generateFn).toHaveBeenCalledTimes(1);
+        expect(current?.titleSuggestion).toBe("Fix the title flow");
+        expect(current?.titleStatus).toBe("ready");
+        expect(titleFn).not.toHaveBeenCalled();
+
+        await act(async () => {
+            await current!.applyTitle();
+        });
+        expect(titleFn).toHaveBeenCalledWith(key, "Fix the title flow");
+        expect(current?.titleStatus).toBe("idle");
+        expect(current?.titleSuggestion).toBe("");
+
+        h.unmount();
+    });
+});

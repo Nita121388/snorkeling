@@ -55,6 +55,17 @@ declare global {
         configs: {[key: string]: AIModeConfigType};
     };
 
+    // wconfig.AIPromptConfigType
+    type AIPromptConfigType = {
+        systemPrompt?: string;
+        extraInstructions?: string;
+        aiMode?: string;
+        maxNoteChars?: number;
+        maxTags?: number;
+        maxTitleChars?: number;
+        enabled?: boolean;
+    };
+
     // aisessionsservice.AISessionsBackupRequest
     type AISessionsBackupRequest = {
         connection?: string;
@@ -105,6 +116,19 @@ declare global {
         suggestion: MetadataSuggestion;
     };
 
+    // aisessionsservice.AISessionsGenerateTitleRequest
+    type AISessionsGenerateTitleRequest = {
+        id: string;
+        connection?: string;
+        aiMode?: string;
+    };
+
+    // aisessionsservice.AISessionsGenerateTitleResponse
+    type AISessionsGenerateTitleResponse = {
+        summary: SessionSummary;
+        suggestion: TitleSuggestion;
+    };
+
     // aisessionsservice.AISessionsListRequest
     type AISessionsListRequest = {
         source?: string;
@@ -150,6 +174,14 @@ declare global {
         id: string;
         note: string;
         tags?: string[];
+    };
+
+    // aisessionsservice.AISessionsPromptTemplatesRequest
+    type AISessionsPromptTemplatesRequest = object;
+
+    // aisessionsservice.AISessionsPromptTemplatesResponse
+    type AISessionsPromptTemplatesResponse = {
+        features: PromptFeatureMeta[];
     };
 
     // aisessionsservice.AISessionsRenameTagRequest
@@ -1568,6 +1600,7 @@ declare global {
         connections: {[key: string]: ConnKeywords};
         bookmarks: {[key: string]: WebBookmark};
         waveai: {[key: string]: AIModeConfigType};
+        aiprompts: {[key: string]: AIPromptConfigType};
         configerrors: ConfigError[];
         version: string;
         buildtime: string;
@@ -1956,6 +1989,24 @@ declare global {
     type ProjectPathSummary = {
         path: string;
         count: number;
+    };
+
+    // aisessions.PromptFeatureMeta
+    type PromptFeatureMeta = {
+        key: string;
+        displayName: string;
+        description: string;
+        defaultPrompt: string;
+        parameters: PromptParameterMeta[];
+    };
+
+    // aisessions.PromptParameterMeta
+    type PromptParameterMeta = {
+        key: string;
+        label: string;
+        defaultValue: number;
+        min: number;
+        max: number;
     };
 
     // uctypes.RateLimitInfo
@@ -2665,6 +2716,12 @@ declare global {
     type TimeSeriesData = {
         ts: number;
         values: {[key: string]: number};
+    };
+
+    // aisessions.TitleSuggestion
+    type TitleSuggestion = {
+        title: string;
+        confidence?: number;
     };
 
     // aisessions.ToolCall
