@@ -84,6 +84,27 @@ Questions to answer:
 
 ---
 
+## 终端链接与浮层提示（2026-10-22, task 10-22-terminal-file-url-ctrl-click）
+
+- 终端里的链接识别由 `WebLinksAddon` 的 `urlRegex` 决定，默认正则只认 `https?://`。
+  新增协议（如 `file://`）时改 `frontend/app/view/term/term-file-url.ts` 的 `TerminalLinkRegex`，
+  **不要在该正则上带 `g` flag**——addon 内部会拼成 `new RegExp(source, flags + "g")`，成了 `gg` 会直接抛 `SyntaxError`。
+- `file://` → 原生路径只保留一份实现（`fileUrlToNativePath` / `filePathFromFileUrl`），
+  终端链接打开与 OSC 7 的 cwd 上报共用；Windows 盘符、百分号编码、UNC 的规则只在这里改。
+- OSC 7 语义下 host 是本机名，解析时忽略；只有用户主动点击的 `file://` 链接才把 host 当 UNC 共享
+  （走 `terminalFilePath`，内部按 `isWindows()` 决策）。
+- 用默认程序打开走既有 `getApi().openNativePath(path)` → `open-native-path` → `electron.shell.openPath`；
+  **不要**用 `openExternal("file://…")` 代替，它在 Windows 上不能保证交给默认程序。
+- 终端悬浮提示（`term-tooltip.tsx`）的皮肤必须用主题变量，禁止写死 `bg-zinc-800/*` 这类深色类：
+  浅色主题下 `text-secondary` 是深棕（`#675033`），写死深底就是深底深字。
+  用 `bg-[var(--overlay-bg-color)]` / `text-[var(--main-text-color)]` /
+  `border-[var(--border-color)]` / `shadow-[0_8px_24px_var(--modal-shadow-color)]`，
+  这四个变量在 dark / light / monochrome 三套主题都有定义。
+- 右键菜单按协议分流：`file:` 给「Open File in Default App」+「Show in Folder」，
+  其它协议保持原有「Open URL / Open URL in External Browser」，不要把 `file://` 塞进 web block。
+
+---
+
 ## Code Review Checklist
 
 <!-- What reviewers should check -->
