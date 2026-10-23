@@ -2431,6 +2431,7 @@ declare global {
         agent: string;
         task?: string;
         timestamp?: number;
+        runId?: string;
     };
 
     // aisessions.SubagentCandidate
@@ -2441,6 +2442,7 @@ declare global {
         createdAt?: number;
         parentKey?: string;
         kind?: string;
+        runId?: string;
     };
 
     // aisessions.SubagentMatch
