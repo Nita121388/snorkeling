@@ -1017,6 +1017,9 @@ func (m *Manager) Path(ctx context.Context, identifier string, refresh bool) (st
 //
 // 只读：不动父会话 JSONL，也不改 pi-subagents 扩展。匹配不唯一时返回
 // ambiguous 候选，交由 UI 决定（PRD 明确要求不得猜测）。
+//
+// 匹配优先用 run id（派发回执与子会话名同源，唯一）；拿不到 run id 的历史数据
+// 才回落「名称 + 时间窗」。详见 subagent_fold.go 顶部说明。
 func (m *Manager) SubagentFold(ctx context.Context, identifier string) ([]SubagentMatch, error) {
 	summary, err := m.resolveSession(ctx, identifier, false, false)
 	if err != nil {
@@ -1029,37 +1032,62 @@ func (m *Manager) SubagentFold(ctx context.Context, identifier string) ([]Subage
 	if len(calls) == 0 {
 		return nil, nil
 	}
-	candidates, err := m.subagentCandidates(ctx, summary)
+	// 只有当本次路径上确实存在 run id 时才值得去读子会话文件的尾部：读尾是每个
+	// 候选一次 seek，成本低但不是零，无 run id 时读来也白读。
+	needRunID := false
+	for _, call := range calls {
+		if call.RunID != "" {
+			needRunID = true
+			break
+		}
+	}
+	candidates, err := m.subagentCandidates(ctx, summary, needRunID)
 	if err != nil {
 		return nil, err
 	}
 	return matchSubagentCalls(calls, candidates), nil
 }
 
-// subagentCandidates 找出同一 projectPath 下、标题来自 session_info.name 的
-// 子会话作为匹配候选。非 source_title 的标题（派生自首条用户消息）不作为候选，
-// 避免把普通会话误当成子会话。
-func (m *Manager) subagentCandidates(ctx context.Context, parent SessionSummary) ([]SubagentCandidate, error) {
+// subagentCandidates 找出同一 projectPath 下、可能属于该父会话的子会话作为候选。
+//
+// 候选池包含磁盘结构判定出的直接子会话（含 forks/ 下的 fork-context 子代理），
+// 以及同项目里标题来自 session_info.name 的会话。非 source_title 的标题（派生自
+// 首条用户消息）不作为候选，避免把普通会话误当子会话。
+//
+// when readTail is true，会为每个候选从文件尾部读出 session_info.name 并解出
+// run id：标题扫描的上限是 1MB，而 session_info 在文件末尾，大文件的 Title 恒为空。
+func (m *Manager) subagentCandidates(ctx context.Context, parent SessionSummary, readTail bool) ([]SubagentCandidate, error) {
 	summaries, err := m.ListCached(ctx, ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 	candidates := make([]SubagentCandidate, 0, 8)
+	appendCandidate := func(s SessionSummary, name string) {
+		cand := SubagentCandidate{
+			SessionKey: s.Key,
+			SessionID:  s.ID,
+			Name:       name,
+			CreatedAt:  s.CreatedAt,
+			ParentKey:  s.ParentKey,
+			Kind:       s.Kind,
+		}
+		if readTail && s.FilePath != "" {
+			if tailName := readSessionNameFromTail(s.FilePath); tailName != "" {
+				cand.Name = tailName
+				cand.RunID = parseSubagentNameRunID(tailName)
+			}
+		}
+		candidates = append(candidates, cand)
+	}
 	for _, s := range summaries {
 		if s.Key == parent.Key {
 			continue
 		}
-		// 磁盘结构判定的直接子会话（pi subagent 目录下的文件）：这些文件没有
-		// session_info.name，所以必须靠 parentKey 才能参与匹配。
-		if s.ParentKey == parent.Key && s.Kind == SessionKindSubagent {
-			candidates = append(candidates, SubagentCandidate{
-				SessionKey: s.Key,
-				SessionID:  s.ID,
-				Name:       s.Title,
-				CreatedAt:  s.CreatedAt,
-				ParentKey:  s.ParentKey,
-				Kind:       s.Kind,
-			})
+		// 磁盘结构判定的直接子会话：必须靠 parentKey 才能参与匹配。fork 也进池
+		// 是因为 pi-subagents 的 fork-context 子代理就落在 forks/ 下，但它们是
+		// 否真的是派发目标由 run id 决定（见 subagentCandidateEligible）。
+		if s.ParentKey == parent.Key {
+			appendCandidate(s, s.Title)
 			continue
 		}
 		if !subagentSameProjectPath(s.ProjectPath, parent.ProjectPath) {
@@ -1068,14 +1096,7 @@ func (m *Manager) subagentCandidates(ctx context.Context, parent SessionSummary)
 		if s.TitleSource != "source_title" || s.Title == "" {
 			continue
 		}
-		candidates = append(candidates, SubagentCandidate{
-			SessionKey: s.Key,
-			SessionID:  s.ID,
-			Name:       s.Title,
-			CreatedAt:  s.CreatedAt,
-			ParentKey:  s.ParentKey,
-			Kind:       s.Kind,
-		})
+		appendCandidate(s, s.Title)
 	}
 	return candidates, nil
 }

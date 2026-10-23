@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -249,5 +250,195 @@ func TestMatchSubagentCalls_StructuralCandidateNotReused(t *testing.T) {
 	}
 	if matches[1].Status != SubagentMatchMissing {
 		t.Fatalf("expected second call missing (candidate already used), got %s", matches[1].Status)
+	}
+}
+
+// run id 是唯一键：同一父会话下 84 个子会话、时间窗宽 6 小时，名称/时间窗匹配
+// 会全部落到 ambiguous，而 run id 能一一对上。
+func TestMatchSubagentCalls_RunIDBeatsTimeWindow(t *testing.T) {
+	calls := []SubagentCall{
+		{Agent: "worker", Timestamp: 1_000_000, RunID: "aaaa-1111"},
+	}
+	candidates := []SubagentCandidate{
+		{SessionKey: "wanted", CreatedAt: 1_030_000, ParentKey: "p", Kind: SessionKindSubagent, RunID: "aaaa-1111"},
+		{SessionKey: "other-1", CreatedAt: 1_040_000, ParentKey: "p", Kind: SessionKindSubagent, RunID: "bbbb-2222"},
+		{SessionKey: "other-2", CreatedAt: 1_050_000, ParentKey: "p", Kind: SessionKindSubagent, RunID: "cccc-3333"},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if matches[0].Status != SubagentMatchMatched {
+		t.Fatalf("expected matched, got %s", matches[0].Status)
+	}
+	if matches[0].SessionKey != "wanted" {
+		t.Fatalf("expected wanted, got %q", matches[0].SessionKey)
+	}
+}
+
+// pi-subagents 的 fork-context 子代理落在 forks/ 目录下（kind=fork）。run id 相等时
+// 必须能认出来，否则这类子代理永远折叠不了。
+func TestMatchSubagentCalls_RunIDMatchesForkKindCandidate(t *testing.T) {
+	calls := []SubagentCall{
+		{Agent: "worker", Timestamp: 1_000_000, RunID: "95145195-af2e-4529-839d-3d68c6531cf6"},
+	}
+	candidates := []SubagentCandidate{
+		{
+			SessionKey: "fork-child",
+			CreatedAt:  1_000_500,
+			ParentKey:  "p",
+			Kind:       SessionKindFork,
+			RunID:      "95145195-af2e-4529-839d-3d68c6531cf6",
+		},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if matches[0].Status != SubagentMatchMatched || matches[0].SessionKey != "fork-child" {
+		t.Fatalf("expected fork-kind candidate matched by run id, got %s/%q", matches[0].Status, matches[0].SessionKey)
+	}
+}
+
+// run id 不相等时不得回落到时间窗：那正是"猜"的来源。
+func TestMatchSubagentCalls_RunIDMismatchDoesNotFallBack(t *testing.T) {
+	calls := []SubagentCall{
+		{Agent: "worker", Timestamp: 1_000_000, RunID: "aaaa-1111"},
+	}
+	candidates := []SubagentCandidate{
+		{SessionKey: "nearby", CreatedAt: 1_000_100, ParentKey: "p", Kind: SessionKindSubagent, RunID: "bbbb-2222"},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if matches[0].Status != SubagentMatchMissing {
+		t.Fatalf("expected missing when run ids differ, got %s", matches[0].Status)
+	}
+}
+
+// 用户真·分叉没有 run id 形态的名字，仍然被 kind=fork 排除。
+func TestMatchSubagentCalls_PlainForkStillExcluded(t *testing.T) {
+	calls := []SubagentCall{
+		{Agent: "worker", Timestamp: 1_000_000},
+	}
+	candidates := []SubagentCandidate{
+		{SessionKey: "user-fork", CreatedAt: 1_000_100, ParentKey: "p", Kind: SessionKindFork},
+	}
+	matches := matchSubagentCalls(calls, candidates)
+	if matches[0].Status != SubagentMatchMissing {
+		t.Fatalf("expected missing for a user fork, got %s", matches[0].Status)
+	}
+}
+
+func TestParseSubagentRunID(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want string
+	}{
+		{
+			name: "async dispatch",
+			text: "Run fan-out: 1/64 used\nAsync: worker [95145195-af2e-4529-839d-3d68c6531cf6]\n",
+			want: "95145195-af2e-4529-839d-3d68c6531cf6",
+		},
+		{
+			name: "agent with dash",
+			text: "Async: claude-code-writer [0f0f0f0f-1111-2222-3333-444444444444]",
+			want: "0f0f0f0f-1111-2222-3333-444444444444",
+		},
+		{name: "no run id", text: "Executable agents: Builtin agents - claude-code", want: ""},
+		{name: "empty", text: "", want: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseSubagentRunID(tc.text); got != tc.want {
+				t.Fatalf("parseSubagentRunID(%q) = %q, want %q", tc.text, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseSubagentNameRunID(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"subagent-worker-95145195-af2e-4529-839d-3d68c6531cf6-1", "95145195-af2e-4529-839d-3d68c6531cf6"},
+		{"subagent-reviewer-0f0f0f0f-1111-2222-3333-444444444444-3", "0f0f0f0f-1111-2222-3333-444444444444"},
+		{"worker: 检查 diff", ""},
+		{"my manual fork", ""},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := parseSubagentNameRunID(tc.name); got != tc.want {
+			t.Fatalf("parseSubagentNameRunID(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// session_info 写在十几 MB 文件的末尾，标题扫描的 1MB 上限读不到；尾部读取要能找到。
+func TestReadSessionNameFromTail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "big.jsonl")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// 先塞 2MB 填充，把 session_info 推离文件头（超过 titleScanMaxBytes = 1MB）。
+	filler := strings.Repeat(`{"type":"message","id":"f","message":{"role":"user","content":[{"type":"text","text":"x"}]}}`+"\n", 20000)
+	if _, err := file.WriteString(filler); err != nil {
+		t.Fatalf("write filler: %v", err)
+	}
+	if _, err := file.WriteString(`{"type":"session_info","name":"subagent-worker-95145195-af2e-4529-839d-3d68c6531cf6-1"}` + "\n"); err != nil {
+		t.Fatalf("write session_info: %v", err)
+	}
+	file.Close()
+
+	stat, _ := os.Stat(path)
+	if stat.Size() <= titleScanMaxBytes() {
+		t.Fatalf("fixture too small to exercise the tail path: %d bytes", stat.Size())
+	}
+	got := readSessionNameFromTail(path)
+	const want = "subagent-worker-95145195-af2e-4529-839d-3d68c6531cf6-1"
+	if got != want {
+		t.Fatalf("readSessionNameFromTail = %q, want %q", got, want)
+	}
+	if runID := parseSubagentNameRunID(got); runID != "95145195-af2e-4529-839d-3d68c6531cf6" {
+		t.Fatalf("run id = %q", runID)
+	}
+}
+
+// 尾部读取要能处理"最后一条 session_info 才是最新"的情形，且无视被窗口截断的半行。
+func TestReadSessionNameFromTail_TakesLatest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	content := `{"type":"session_info","name":"old-name"}` + "\n" +
+		`{"type":"message","id":"e1","message":{"role":"user","content":[]}}` + "\n" +
+		`{"type":"session_info","name":"subagent-worker-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-2"}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	const want = "subagent-worker-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-2"
+	if got := readSessionNameFromTail(path); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestReadSessionNameFromTail_MissingFile(t *testing.T) {
+	if got := readSessionNameFromTail(filepath.Join(t.TempDir(), "nope.jsonl")); got != "" {
+		t.Fatalf("expected empty name for a missing file, got %q", got)
+	}
+}
+
+// 派发与它的回执在同一个文件里，按 toolCallId 关联后应带回 run id。
+func TestExtractSubagentCalls_AttachesRunID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	content := `{"type":"message","id":"e1","timestamp":"2026-08-05T05:20:00.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"call_1","name":"subagent","arguments":{"agent":"worker","task":"do it"}}]}}` + "\n" +
+		`{"type":"message","id":"e2","timestamp":"2026-08-05T05:20:01.000Z","message":{"role":"toolResult","toolCallId":"call_1","toolName":"subagent","content":[{"type":"text","text":"Async: worker [95145195-af2e-4529-839d-3d68c6531cf6]"}]}}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	calls, err := ExtractSubagentCalls(context.Background(), path)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].RunID != "95145195-af2e-4529-839d-3d68c6531cf6" {
+		t.Fatalf("run id = %q", calls[0].RunID)
 	}
 }
