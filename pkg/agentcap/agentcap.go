@@ -15,6 +15,14 @@ Purpose
 - Do not write directly to Snorkeling SQLite databases.
 - Prefer dry-run reports and explicit user confirmation over implicit edits.
 
+Agent Catalog
+- wsh agent list --json  -> the agent catalog: profile name, label, cmd, modelflag,
+  default model, and the configured model list.
+- This is the single source of truth for which agents exist and which models each agent
+  can run. It merges the built-in profiles with the user's agent:profiles settings.
+- The scheduled-task editor consumes the same catalog, so a task and an agent block that
+  name the same profile+model run identically.
+
 Discovery
 - This guidance is loaded on demand. It is not added to every AI chat or terminal agent by default.
 - Start with: wsh data guide

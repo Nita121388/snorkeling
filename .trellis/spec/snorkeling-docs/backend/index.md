@@ -13,6 +13,7 @@
 | [VCS 路径编码契约](./vcs-path-encoding-contract.md) | git 路径必须关闭 quotePath + 解析端反转义；SVN 走 XML 天然 UTF-8；前端不做编解码 | 有效 |
 | [Agent OS 通知抑制契约](./agent-os-notify-contract.md) | toast 抑制链固定 8 步顺序；默认值在 TS 层不在 Go；合并写入与 unset≠false 语义 | 有效 |
 | [AI Prompt 配置契约](./ai-prompt-config-contract.md) | `aiprompts.json` 按功能注册；空=内置默认；只提案不落库；enabled 显式 false 才禁用 | 有效 |
+| [Agent Catalog 单一事实来源契约](./agent-catalog-contract.md) | agent/模型目录唯一来源；解析优先级；RPC/CLI/调度器/UI 同源；未知 model 不阻断 | 有效 |
 
 ---
 

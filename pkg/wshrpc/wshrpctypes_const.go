@@ -49,6 +49,7 @@ const (
 	Command_StreamData                   = "streamdata"
 	Command_StreamDataAck                = "streamdataack"
 
+	Command_AgentProfileList             = "agentprofilelist"
 	Command_ScheduledTaskList            = "scheduledtasklist"
 	Command_ScheduledTaskGet             = "scheduledtaskget"
 	Command_ScheduledTaskCreate          = "scheduledtaskcreate"

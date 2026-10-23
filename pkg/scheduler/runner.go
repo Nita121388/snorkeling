@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/agentcatalog"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
 
@@ -28,7 +29,7 @@ type RunResult struct {
 
 // headlessFlag returns the one-shot/print flag for a given agent binary, when known.
 // Unknown agents default to running with the prompt passed as an argument.
-func headlessArgs(task *wconfig.ScheduledTaskType, profile wconfig.AgentProfileConfigType) []string {
+func headlessArgs(task *wconfig.ScheduledTaskType, profile agentcatalog.ProfileInfo) []string {
 	agent := task.AgentProfile
 	if profile.Cmd != "" {
 		agent = profile.Cmd
@@ -82,7 +83,8 @@ func (r *DefaultTaskRunner) RunTask(task *wconfig.ScheduledTaskType) *RunResult 
 	}
 	log.Printf("[scheduler] running task id=%s name=%q agent=%s model=%s", task.Id, task.Name, task.AgentProfile, task.Model)
 
-	profile := resolveAgentProfile(task.AgentProfile)
+	profile := agentcatalog.Resolve(task.AgentProfile)
+	model := resolveTaskModel(task, profile)
 	var cmdBin string
 	if task.AgentCmd != nil && *task.AgentCmd != "" {
 		cmdBin = *task.AgentCmd
@@ -90,8 +92,8 @@ func (r *DefaultTaskRunner) RunTask(task *wconfig.ScheduledTaskType) *RunResult 
 		cmdBin = profile.Cmd
 	}
 	argv := headlessArgs(task, profile)
-	if task.Model != "" && profile.ModelFlag != "" {
-		argv = append(argv, profile.ModelFlag, task.Model)
+	if model != "" && profile.ModelFlag != "" {
+		argv = append(argv, profile.ModelFlag, model)
 	}
 	if task.Prompt != "" {
 		argv = append(argv, task.Prompt)
@@ -132,30 +134,6 @@ func maybeTaskID(task *wconfig.ScheduledTaskType) string {
 	return task.Id
 }
 
-func resolveAgentProfile(agent string) wconfig.AgentProfileConfigType {
-	profiles := map[string]wconfig.AgentProfileConfigType{}
-	if fc := wconfig.ReadFullConfig(); fc.Settings.AgentProfiles != nil {
-		profiles = fc.Settings.AgentProfiles
-	}
-	if p, ok := profiles[agent]; ok && p.Cmd != "" {
-		return p
-	}
-	switch agent {
-	case "pi":
-		return wconfig.AgentProfileConfigType{Cmd: "pi", ModelFlag: "--model"}
-	case "codex":
-		return wconfig.AgentProfileConfigType{Cmd: "codex", ModelFlag: "--model"}
-	case "claude":
-		return wconfig.AgentProfileConfigType{Cmd: "claude", ModelFlag: "--model"}
-	case "gemini":
-		return wconfig.AgentProfileConfigType{Cmd: "gemini", ModelFlag: "--model"}
-	case "opencode":
-		return wconfig.AgentProfileConfigType{Cmd: "opencode", ModelFlag: "--model"}
-	default:
-		return wconfig.AgentProfileConfigType{Cmd: agent, ModelFlag: "--model"}
-	}
-}
-
 func expandHome(p string) string {
 	if p == "~" {
 		if h, err := os.UserHomeDir(); err == nil {
@@ -168,4 +146,27 @@ func expandHome(p string) string {
 		}
 	}
 	return p
+}
+
+// resolveTaskModel returns the model to pass to the agent. An explicit task model
+// always wins; an empty one falls back to the catalog default. A model that is not
+// in the catalog is still used (only a warning is logged) so new models are not
+// blocked by a stale catalog.
+func resolveTaskModel(task *wconfig.ScheduledTaskType, profile agentcatalog.ProfileInfo) string {
+	if task.Model != "" {
+		if !modelInCatalog(profile, task.Model) {
+			log.Printf("[scheduler] warning: task id=%s model %q is not in agent %q catalog", task.Id, task.Model, task.AgentProfile)
+		}
+		return task.Model
+	}
+	return profile.DefaultModel
+}
+
+func modelInCatalog(profile agentcatalog.ProfileInfo, model string) bool {
+	for _, m := range profile.Models {
+		if m.Id == model {
+			return true
+		}
+	}
+	return false
 }

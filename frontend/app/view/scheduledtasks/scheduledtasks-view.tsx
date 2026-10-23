@@ -2,25 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
+import type { AgentProfileInfo } from "@/app/workspace/agent-catalog";
+import { findAgentProfile, modelOptionsFor, pickDefaultModel } from "@/app/workspace/agent-catalog";
 import { describeCron } from "./cron-describe";
 import type { ScheduledTasksViewModel } from "./scheduledtasks-model";
 import * as jotai from "jotai";
 import * as React from "react";
-
-const AgentProfiles = [
-    { id: "pi", label: "Pi" },
-    { id: "codex", label: "Codex" },
-    { id: "claude", label: "Claude" },
-    { id: "gemini", label: "Gemini" },
-    { id: "opencode", label: "OpenCode" },
-];
-
-const PiModels = [
-    { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek" },
-    { id: "gpt-5", label: "GPT-5", provider: "openai" },
-    { id: "claude-sonnet-4", label: "Claude Sonnet 4", provider: "anthropic" },
-    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "google" },
-];
 
 const ScheduleTypes = ["cron", "interval", "daily", "weekly", "once"];
 
@@ -50,6 +37,25 @@ function describeSchedule(s: ScheduledTaskScheduleType): string {
     }
 }
 
+function agentLabel(agentCatalog: AgentProfileInfo[], name: string | undefined): string {
+    if (name == null || name === "") {
+        return "-";
+    }
+    return findAgentProfile(agentCatalog, name)?.label ?? name;
+}
+
+function modelLabel(
+    agentCatalog: AgentProfileInfo[],
+    agentName: string | undefined,
+    model: string | undefined
+): string {
+    if (model == null || model === "") {
+        return "default";
+    }
+    const found = findAgentProfile(agentCatalog, agentName)?.models.find((m) => m.id === model);
+    return found?.label ?? model;
+}
+
 function statusColor(status?: string): string {
     switch (status) {
         case "success":
@@ -75,6 +81,7 @@ export const ScheduledTasksView: React.FC<ViewComponentProps<ScheduledTasksViewM
         const historyOpen = jotai.useAtomValue(model.historyOpenAtom);
         const historyTask = jotai.useAtomValue(model.historyTaskAtom);
         const history = jotai.useAtomValue(model.historyAtom);
+        const agentCatalog = jotai.useAtomValue(model.agentCatalogAtom);
 
         return (
             <div className="flex flex-col w-full h-full overflow-hidden">
@@ -127,6 +134,7 @@ export const ScheduledTasksView: React.FC<ViewComponentProps<ScheduledTasksViewM
                                     <TaskRow
                                         key={task.id}
                                         task={task}
+                                        agentCatalog={agentCatalog}
                                         onEdit={() => model.openEdit(task)}
                                         onToggle={() => model.toggleEnabled(task)}
                                         onDelete={() => model.deleteTask(task)}
@@ -150,6 +158,7 @@ export const ScheduledTasksView: React.FC<ViewComponentProps<ScheduledTasksViewM
 
 function TaskRow({
     task,
+    agentCatalog,
     onEdit,
     onToggle,
     onDelete,
@@ -157,6 +166,7 @@ function TaskRow({
     onHistory,
 }: {
     task: ScheduledTaskType;
+    agentCatalog: AgentProfileInfo[];
     onEdit: () => void;
     onToggle: () => void;
     onDelete: () => void;
@@ -171,8 +181,8 @@ function TaskRow({
                     {!task.enabled && <span className="text-[10px] uppercase text-muted border border-border rounded px-1">off</span>}
                 </div>
             </td>
-            <td className="px-2 py-2 text-muted">{task.agentProfile ?? "-"}</td>
-            <td className="px-2 py-2 text-muted">{task.model ?? "-"}</td>
+            <td className="px-2 py-2 text-muted">{agentLabel(agentCatalog, task.agentProfile)}</td>
+            <td className="px-2 py-2 text-muted">{modelLabel(agentCatalog, task.agentProfile, task.model)}</td>
             <td className="px-2 py-2">
                 <div className="text-muted">{describeSchedule(task.schedule)}</div>
                 {task.schedule?.type === "cron" && task.schedule.cronExpr && (
@@ -264,6 +274,8 @@ function HistoryOverlay({
 }
 
 function EditorOverlay({ model, draft }: { model: ScheduledTasksViewModel; draft: ScheduledTaskType }) {
+    const agentCatalog = jotai.useAtomValue(model.agentCatalogAtom);
+    const catalogLoading = jotai.useAtomValue(model.catalogLoadingAtom);
     const [form, setForm] = React.useState<ScheduledTaskType>(() => ({
         ...draft,
         schedule: { ...draft.schedule },
@@ -275,6 +287,16 @@ function EditorOverlay({ model, draft }: { model: ScheduledTasksViewModel; draft
         setForm((f) => ({ ...f, [k]: v }));
     const setSched = <K extends keyof ScheduledTaskScheduleType>(k: K, v: ScheduledTaskScheduleType[K]) =>
         setForm((f) => ({ ...f, schedule: { ...f.schedule, [k]: v } }));
+
+    const profile = findAgentProfile(agentCatalog, form.agentProfile);
+    const modelOptions = modelOptionsFor(profile, form.model);
+
+    // Switching agents re-points the model at that agent's default so a stale model id
+    // from the previous agent is never silently carried over.
+    const selectAgent = (name: string) => {
+        const nextProfile = findAgentProfile(agentCatalog, name);
+        setForm((f) => ({ ...f, agentProfile: name, model: pickDefaultModel(nextProfile) }));
+    };
 
     const notify = form.notifyOnComplete || form.notifyOnError;
 
@@ -294,26 +316,46 @@ function EditorOverlay({ model, draft }: { model: ScheduledTasksViewModel; draft
 
                 <div className="grid grid-cols-2 gap-3">
                     <Field label="Agent Profile">
-                        <select className={inputCls} value={form.agentProfile ?? "pi"} onChange={(e) => set("agentProfile", e.target.value)}>
-                            {AgentProfiles.map((a) => (
-                                <option key={a.id} value={a.id}>
-                                    {a.label}
-                                </option>
-                            ))}
-                        </select>
-                    </Field>
-                    <Field label={`Model${form.agentProfile === "pi" ? " — Pi" : ""}`}>
-                        <select className={inputCls} value={form.model ?? ""} onChange={(e) => set("model", e.target.value)}>
-                            {form.agentProfile === "pi" ? (
-                                PiModels.map((m) => (
-                                    <option key={m.id} value={m.id}>
-                                        {m.label}
+                        {agentCatalog.length === 0 ? (
+                            // Catalog unavailable (RPC failed): keep the editor usable with free text.
+                            <input
+                                className={inputCls}
+                                value={form.agentProfile ?? ""}
+                                onChange={(e) => set("agentProfile", e.target.value)}
+                                placeholder="pi"
+                                list="scheduled-task-agent-names"
+                            />
+                        ) : (
+                            <select className={inputCls} value={form.agentProfile ?? ""} onChange={(e) => selectAgent(e.target.value)}>
+                                {agentCatalog.map((a) => (
+                                    <option key={a.name} value={a.name}>
+                                        {a.label}
                                     </option>
-                                ))
-                            ) : (
-                                <option value={form.model ?? ""}>{form.model ?? "Default"}</option>
-                            )}
-                        </select>
+                                ))}
+                            </select>
+                        )}
+                        {catalogLoading && <span className="text-xs text-muted mt-0.5">Loading agents…</span>}
+                        {!catalogLoading && agentCatalog.length === 0 && (
+                            <span className="text-xs text-muted mt-0.5">Agent catalog unavailable — type the agent command name.</span>
+                        )}
+                    </Field>
+                    <Field label={profile != null ? `Model — ${profile.label}` : "Model"}>
+                        {modelOptions.length === 0 ? (
+                            <input
+                                className={inputCls}
+                                value={form.model ?? ""}
+                                onChange={(e) => set("model", e.target.value)}
+                                placeholder="Default (agent chooses)"
+                            />
+                        ) : (
+                            <select className={inputCls} value={form.model ?? ""} onChange={(e) => set("model", e.target.value)}>
+                                {modelOptions.map((m) => (
+                                    <option key={m.id} value={m.id}>
+                                        {m.provider != null && m.provider !== "" ? `${m.label} (${m.provider})` : m.label}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
                     </Field>
                 </div>
 

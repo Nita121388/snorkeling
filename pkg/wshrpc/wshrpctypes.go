@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/wavetermdev/waveterm/pkg/agentcatalog"
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
@@ -196,6 +197,9 @@ type WshRpcInterface interface {
 
 	// screenshot
 	CaptureBlockScreenshotCommand(ctx context.Context, data CommandCaptureBlockScreenshotData) (string, error)
+
+	// agent catalog (single source of truth for agent profiles + models)
+	AgentProfileListCommand(ctx context.Context) ([]agentcatalog.ProfileInfo, error)
 
 	// scheduled tasks
 	ScheduledTaskListCommand(ctx context.Context) ([]wconfig.ScheduledTaskType, error)

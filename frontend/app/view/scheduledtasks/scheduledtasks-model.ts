@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { globalStore } from "@/app/store/jotaiStore";
+import {
+    AgentProfileInfo,
+    invalidateAgentCatalog,
+    loadAgentCatalog,
+    pickDefaultModel,
+} from "@/app/workspace/agent-catalog";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { ScheduledTasksView } from "./scheduledtasks-view";
 import { WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
@@ -15,6 +21,7 @@ type ScheduledTasksEnv = WaveEnvSubset<{
         ScheduledTaskDeleteCommand: WaveEnv["rpc"]["ScheduledTaskDeleteCommand"];
         ScheduledTaskRunNowCommand: WaveEnv["rpc"]["ScheduledTaskRunNowCommand"];
         ScheduledTaskHistoryCommand: WaveEnv["rpc"]["ScheduledTaskHistoryCommand"];
+        AgentProfileListCommand: WaveEnv["rpc"]["AgentProfileListCommand"];
     };
 }>;
 
@@ -30,13 +37,23 @@ function newTaskId(): string {
     }
 }
 
+// The catalog is the source of truth for which agents exist and which models each
+// agent offers. makeDefaultDraft() resolves the default profile/model from it; the
+// atoms are loaded by refreshCatalog() before the editor opens.
+let agentCatalogSnapshot: AgentProfileInfo[] = [];
+
+function defaultProfileName(): string {
+    return agentCatalogSnapshot[0]?.name ?? "";
+}
+
 function makeDefaultDraft(): ScheduledTaskType {
+    const profile = agentCatalogSnapshot.find((p) => p.name === defaultProfileName()) ?? null;
     return {
         id: "",
         name: "",
         enabled: true,
-        agentProfile: "pi",
-        model: "deepseek-v4-pro",
+        agentProfile: defaultProfileName(),
+        model: pickDefaultModel(profile),
         prompt: "",
         workdir: "",
         connection: "local",
@@ -66,6 +83,8 @@ export class ScheduledTasksViewModel implements ViewModel {
     historyTaskAtom: jotai.PrimitiveAtom<ScheduledTaskType | null>;
     historyAtom: jotai.PrimitiveAtom<ScheduledTaskRunRecord[]>;
     statusAtom: jotai.PrimitiveAtom<string>;
+    agentCatalogAtom: jotai.PrimitiveAtom<AgentProfileInfo[]>;
+    catalogLoadingAtom: jotai.PrimitiveAtom<boolean>;
 
     disposed = false;
 
@@ -83,8 +102,11 @@ export class ScheduledTasksViewModel implements ViewModel {
         this.historyTaskAtom = jotai.atom<ScheduledTaskType | null>(null) as jotai.PrimitiveAtom<ScheduledTaskType | null>;
         this.historyAtom = jotai.atom<ScheduledTaskRunRecord[]>([]) as jotai.PrimitiveAtom<ScheduledTaskRunRecord[]>;
         this.statusAtom = jotai.atom<string>("") as jotai.PrimitiveAtom<string>;
+        this.agentCatalogAtom = jotai.atom<AgentProfileInfo[]>([]) as jotai.PrimitiveAtom<AgentProfileInfo[]>;
+        this.catalogLoadingAtom = jotai.atom<boolean>(true) as jotai.PrimitiveAtom<boolean>;
 
         this.refresh();
+        this.refreshCatalog();
     }
 
     get viewComponent(): ViewComponent {
@@ -110,14 +132,28 @@ export class ScheduledTasksViewModel implements ViewModel {
         }
     }
 
+    async refreshCatalog(force: boolean = false) {
+        if (this.disposed) return;
+        try {
+            const profiles = await loadAgentCatalog(force);
+            if (this.disposed) return;
+            agentCatalogSnapshot = profiles;
+            globalStore.set(this.agentCatalogAtom, profiles);
+        } finally {
+            if (!this.disposed) globalStore.set(this.catalogLoadingAtom, false);
+        }
+    }
+
     openCreate() {
         globalStore.set(this.editingTaskAtom, makeDefaultDraft());
         globalStore.set(this.editorOpenAtom, true);
+        void this.refreshCatalog(true);
     }
 
     openEdit(task: ScheduledTaskType) {
         globalStore.set(this.editingTaskAtom, structuredClone(task));
         globalStore.set(this.editorOpenAtom, true);
+        void this.refreshCatalog(true);
     }
 
     closeEditor() {
@@ -133,6 +169,7 @@ export class ScheduledTasksViewModel implements ViewModel {
                 draft.updatedAt = now;
                 await this.env.rpc.ScheduledTaskUpdateCommand(TabRpcClient, draft);
             } else {
+                invalidateAgentCatalog();
                 draft.id = newTaskId();
                 draft.createdAt = now;
                 draft.updatedAt = now;

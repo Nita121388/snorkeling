@@ -56,12 +56,23 @@ type AiSettingsType struct {
 	DisplayOrder    float64 `json:"display:order,omitempty"`
 }
 
+// AgentModelConfigType is one selectable model for an agent profile. It is part of the
+// agent catalog contract (see .trellis/spec/snorkeling-docs/backend/agent-catalog-contract.md).
+type AgentModelConfigType struct {
+	Id       string `json:"id"`
+	Label    string `json:"label,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Default  bool   `json:"default,omitempty"`
+}
+
 type AgentProfileConfigType struct {
-	Cmd       string            `json:"cmd,omitempty"`
-	Args      []string          `json:"args,omitempty"`
-	Model     string            `json:"model,omitempty"`
-	ModelFlag string            `json:"modelflag,omitempty"`
-	CmdEnv    map[string]string `json:"env,omitempty"`
+	Label     string                 `json:"label,omitempty"`
+	Cmd       string                 `json:"cmd,omitempty"`
+	Args      []string               `json:"args,omitempty"`
+	Model     string                 `json:"model,omitempty"`
+	Models    []AgentModelConfigType `json:"models,omitempty"`
+	ModelFlag string                 `json:"modelflag,omitempty"`
+	CmdEnv    map[string]string      `json:"env,omitempty"`
 }
 
 type CommonTextItemType struct {

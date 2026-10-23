@@ -7,6 +7,7 @@ package wshclient
 
 import (
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
+	"github.com/wavetermdev/waveterm/pkg/agentcatalog"
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/ccswitch"
@@ -23,6 +24,12 @@ import (
 func ActivityCommand(w *wshutil.WshRpc, data wshrpc.ActivityUpdate, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "activity", data, opts)
 	return err
+}
+
+// command "agentprofilelist", wshserver.AgentProfileListCommand
+func AgentProfileListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]agentcatalog.ProfileInfo, error) {
+	resp, err := sendRpcRequestCallHelper[[]agentcatalog.ProfileInfo](w, "agentprofilelist", nil, opts)
+	return resp, err
 }
 
 // command "agentstatus", wshserver.AgentStatusCommand

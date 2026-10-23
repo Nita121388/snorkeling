@@ -333,11 +333,21 @@ declare global {
         conn?: {[key: string]: number};
     };
 
+    // wconfig.AgentModelConfigType
+    type AgentModelConfigType = {
+        id: string;
+        label?: string;
+        provider?: string;
+        default?: boolean;
+    };
+
     // wconfig.AgentProfileConfigType
     type AgentProfileConfigType = {
+        label?: string;
         cmd?: string;
         args?: string[];
         model?: string;
+        models?: AgentModelConfigType[];
         modelflag?: string;
         env?: {[key: string]: string};
     };
@@ -1890,6 +1900,15 @@ declare global {
         color: string;
     };
 
+    // agentcatalog.ModelInfo
+    type ModelInfo = {
+        id: string;
+        label: string;
+        provider?: string;
+        default?: boolean;
+        source: string;
+    };
+
     // waveobj.ORef
     type ORef = string;
 
@@ -1983,6 +2002,18 @@ declare global {
         memfree?: number;
         numcpu?: number;
         cpusum?: number;
+    };
+
+    // agentcatalog.ProfileInfo
+    type ProfileInfo = {
+        name: string;
+        label: string;
+        cmd: string;
+        args?: string[];
+        modelflag?: string;
+        defaultModel?: string;
+        models: ModelInfo[];
+        source: string;
     };
 
     // aisessions.ProjectPathSummary
