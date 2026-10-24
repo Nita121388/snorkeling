@@ -196,3 +196,30 @@ vendor 列表……），契约是 **header / scrollable content / footer** 三�
 指望 `flip()` 兜底。但当两侧都放不下时，`flip()` 会维持原位 → 浮层溢出视口被裁切。
 需要「无论如何不出屏」时用 `shift({ padding: 12, crossAxis: true })`，
 让主轴也被拉回视口内（树面板贴屏幕边缘时的真实场景）。
+
+### 10. 悬浮卡的关闭必须有「点击外侧」这条路径
+
+InfoCard（`frontend/app/element/info-card/`）的显示由 `isHovered || isCardHovered` 这类
+**hover/focus 状态**驱动，不是点击打开。三条关闭路径缺一不可：
+
+1. `mouseleave` → 延迟隐藏；
+2. 焦点离开卡片 → 指针已不在卡片上就隐藏；
+3. **document 级 `pointerdown` 落到卡片与触发元素之外 → 立即关闭**
+   （`useInfoCardDismiss`，`info-card-hover.tsx`）。
+
+第 3 条不是锦上添花：卡片内有 textarea / 按钮时，`onFocusCapture` 会把卡片
+「钉住」（`cardFocusRef = true`），此时 `mouseleave` 直接 return 不排隐藏定时器；
+若再没有点击外侧兜底，`onBlurCapture` 只把 `cardFocusRef` 复位、不排隐藏，
+卡片就会**永久停留**，只能重新 hover 一次再移开才消失。
+
+配套两条约束：
+
+- **钉住期间不要因 `mouseleave` 关卡片**：否则在 note textarea 里打字、鼠标顺手挪开，
+  300ms 后卡片消失、编辑被打断。钉住状态只由「点击外侧」或失焦解除。
+- **卡片可见性不要复用 header hover 高亮的状态**：header 高亮有 2000ms 延迟（给图标看），
+  卡片跟着它走就会在指针离开后多挂 2 秒。两者用独立 state（`isCardOpen` / `isHovered`），
+  卡片统一 300ms 收起。
+- 关闭前如果焦点还在卡片内，先 `activeElement.blur()`：textarea 的 `onBlur`（note 提交）
+  必须先跑，否则点外侧会丢草稿。
+
+回归测试：`frontend/app/element/info-card/info-card-hover.dom.test.tsx`。

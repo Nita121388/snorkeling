@@ -16,6 +16,7 @@ import {
     isInfoCardClaimedBy,
     releaseInfoCard,
     subscribeInfoCard,
+    useInfoCardDismiss,
 } from "@/app/element/info-card";
 import { getBlockBadgeAtom } from "@/app/store/badge";
 import {
@@ -563,12 +564,16 @@ const BlockFrame_Header = ({
     viewName = metaFrameTitle ?? viewName;
     viewIconUnion = metaFrameIcon ?? viewIconUnion;
     const [isHovered, setIsHovered] = React.useState(false);
-    const [isCardHovered, setIsCardHovered] = React.useState(false);
+    // 卡片可见性独立于 header hover 高亮：header 高亮有 2000ms 延迟（给图标看），
+    // 卡片不能跟着挂 2 秒 —— 指针离开 header 后卡片应在 300ms 内收起。
+    const [isCardOpen, setIsCardOpen] = React.useState(false);
     // 本 header 在全局独占悬浮卡管理器中的唯一 token。
     const claimTokenRef = React.useRef<symbol>(Symbol("blockframe-header-card"));
     const hideHoverTimerRef = React.useRef<number | null>(null);
     const hideCardTimerRef = React.useRef<number | null>(null);
     const cardFocusRef = React.useRef(false);
+    // 卡片容器（用于「点击外侧」包含判定；header 元素由它 closest 得到）。
+    const cardElRef = React.useRef<HTMLDivElement | null>(null);
     const cancelPendingHideHover = React.useCallback(() => {
         if (hideHoverTimerRef.current != null) {
             window.clearTimeout(hideHoverTimerRef.current);
@@ -581,6 +586,35 @@ const BlockFrame_Header = ({
             hideCardTimerRef.current = null;
         }
     }, []);
+    const scheduleHideCard = React.useCallback(() => {
+        cancelPendingHideCard();
+        hideCardTimerRef.current = window.setTimeout(() => {
+            hideCardTimerRef.current = null;
+            cardFocusRef.current = false;
+            setIsCardOpen(false);
+        }, 300);
+    }, [cancelPendingHideCard]);
+    const closeCardNow = React.useCallback(() => {
+        cancelPendingHideCard();
+        cardFocusRef.current = false;
+        setIsCardOpen(false);
+    }, [cancelPendingHideCard]);
+    // 点击外侧关闭：卡片容器是 header 的直接子节点，两者任一包含点击目标都算「内部」。
+    const isInsideCardOrHeader = React.useCallback((target: Node) => {
+        const cardEl = cardElRef.current;
+        if (cardEl == null) {
+            return false;
+        }
+        if (cardEl.contains(target)) {
+            return true;
+        }
+        return cardEl.closest(".block-frame-default-header")?.contains(target) ?? false;
+    }, []);
+    useInfoCardDismiss({
+        isOpen: isAgentBlock && isCardOpen,
+        isInside: isInsideCardOrHeader,
+        onDismiss: closeCardNow,
+    });
 
     React.useEffect(() => () => {
         cancelPendingHideHover();
@@ -591,17 +625,15 @@ const BlockFrame_Header = ({
     React.useEffect(() => {
         const unsubscribe = subscribeInfoCard(() => {
             if (!isInfoCardClaimedBy(claimTokenRef.current)) {
-                cancelPendingHideHover();
-                cancelPendingHideCard();
+                closeCardNow();
                 setIsHovered(false);
-                setIsCardHovered(false);
             }
         });
         return () => {
             unsubscribe();
             releaseInfoCard(claimTokenRef.current);
         };
-    }, [cancelPendingHideHover, cancelPendingHideCard]);
+    }, [closeCardNow]);
 
     React.useEffect(() => {
         if (magnified && !preview && !prevMagifiedState.current) {
@@ -620,8 +652,10 @@ const BlockFrame_Header = ({
             ref={dragHandleRef}
             onPointerEnter={() => {
                 cancelPendingHideHover();
+                cancelPendingHideCard();
                 claimInfoCard(claimTokenRef.current);
                 setIsHovered(true);
+                setIsCardOpen(true);
             }}
             onPointerLeave={() => {
                 cancelPendingHideHover();
@@ -629,6 +663,12 @@ const BlockFrame_Header = ({
                     hideHoverTimerRef.current = null;
                     setIsHovered(false);
                 }, 2000);
+                // 卡片不跟 header 高亮一起等 2s：指针离开 header 后 300ms 收起。
+                // 指针进了卡片时，卡片自己的 mouseenter 会 cancel 掉这个定时器；
+                // 卡片内有焦点（正在写 note）时保持打开，交给失焦/点击外侧关闭。
+                if (!cardFocusRef.current) {
+                    scheduleHideCard();
+                }
             }}
             onContextMenu={(e) =>
                 showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, tabModel.tabId, moveContext)
@@ -675,8 +715,9 @@ const BlockFrame_Header = ({
                 isHovered={isHovered}
             />
             {/* Agent/Note hover card - 经 BlockInfoCard 分派（GUI 模式；TUI 用 TermAgentSessionRail） */}
-            {isAgentBlock && (isHovered || isCardHovered) && (
+            {isAgentBlock && isCardOpen && (
                 <div
+                    ref={cardElRef}
                     className="info-card-portal"
                     style={{
                         position: "absolute",
@@ -688,31 +729,33 @@ const BlockFrame_Header = ({
                     onMouseEnter={() => {
                         cancelPendingHideCard();
                         claimInfoCard(claimTokenRef.current);
-                        setIsCardHovered(true);
+                        setIsCardOpen(true);
                     }}
                     onFocusCapture={() => {
+                        // 卡片内有焦点 = 钉住：鼠标移开也不关（note 编辑不被打断）。
                         cardFocusRef.current = true;
                         cancelPendingHideCard();
                         claimInfoCard(claimTokenRef.current);
-                        setIsCardHovered(true);
-                        setIsHovered(true);
+                        setIsCardOpen(true);
                     }}
                     onBlurCapture={(event) => {
                         if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) {
                             return;
                         }
                         cardFocusRef.current = false;
+                        // 指针还在卡片上就先不关，等 mouseleave；否则焦点走了就该收卡。
+                        if (cardElRef.current?.matches(":hover")) {
+                            return;
+                        }
+                        scheduleHideCard();
                     }}
                     onMouseLeave={() => {
                         cancelPendingHideCard();
+                        // 钉住期间不因鼠标移开而关闭；由「点击外侧」或失焦负责关闭。
                         if (cardFocusRef.current) {
                             return;
                         }
-                        hideCardTimerRef.current = window.setTimeout(() => {
-                            hideCardTimerRef.current = null;
-                            setIsCardHovered(false);
-                            setIsHovered(false);
-                        }, 300);
+                        scheduleHideCard();
                     }}
                 >
                     {BlockInfoCard({ blockId: nodeModel.blockId, blockData: blockData ?? null, mode: "gui" })}

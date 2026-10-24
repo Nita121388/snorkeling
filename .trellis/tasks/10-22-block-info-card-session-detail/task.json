@@ -24,6 +24,6 @@
   "notes": "",
   "meta": {
     "commit": "5dbf54a1",
-    "notes": "已提交 5dbf54a1。45 项测试全绿，tsc/eslint 对改动文件干净。待办：CDP 手工验证（inline tab / block header / sidebar 悬浮卡片、全局列表改 note 后同步、Tab 卡 chat 计数）。"
+    "notes": "已提交 5dbf54a1（卡片覆盖 + note/tags）。此后追加：Agent Card「点击外侧不关闭」修复。\n\n根因（frontend/app/block/blockframe-header.tsx）：\n1. onFocusCapture 置 cardFocusRef=true 钉住卡片；onMouseLeave 见钉住直接 return，不排隐藏定时器；\n   onBlurCapture 只复位 cardFocusRef、不排隐藏 → 点击外侧后卡片永久停留。\n2. 卡片渲染条件是 isHovered || isCardHovered，而 header 的 onPointerLeave 用 2000ms\n   （那是 header 图标高亮的延迟）→ 离开后卡片多挂 2 秒。\n\n修复：\n- info-card-hover.tsx 新增 useInfoCardDismiss（document 级 pointerdown/contextmenu，捕获阶段）：\n  点击目标不在卡片/触发元素内 → 立即关闭；关闭前先把卡片内 activeElement blur，\n  保证 textarea 的 onBlur（note 提交）先执行。InfoCardPortal 绑定 cardRef 供包含判定。\n- hook 内 cardProps.onMouseLeave 增加 cardFocusRef 判断（钉住时不关，编辑不被打断）；\n  onBlurCapture 在指针已离开卡片时补排隐藏。\n- blockframe-header：卡片可见性独立为 isCardOpen（不再复用 2000ms 的 isHovered），\n  统一 300ms 收起；卡片接上 useInfoCardDismiss，内部判定用 cardEl.closest(header)。\n\n验证：新增 info-card-hover.dom.test.tsx（5 例：hover 开关 / 聚焦钉住不关 / 点击外侧立即关 /\n点击内部不关 / 点击触发元素不关），vitest info-card + block 共 89 项全绿；\ntsc 对两个改动文件干净。待 CDP 手工验证 block header 悬浮卡。\n仍待办：CDP 手工验证 inline tab / block header / sidebar 悬浮卡片、全局列表改 note 后同步、Tab 卡 chat 计数。"
   }
 }
