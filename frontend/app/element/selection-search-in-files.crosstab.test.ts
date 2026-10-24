@@ -473,3 +473,83 @@ describe("searchSelectionInFiles cross-tab routing", () => {
         expect(mockState.opened[0].options.connection).toBe("local");
     });
 });
+
+describe("directory references", () => {
+    beforeEach(resetMockState);
+
+    function collectFeedback() {
+        return (msg: string, kind: string) => {
+            mockState.feedback.push({ msg, kind });
+        };
+    }
+
+    it("resolves an absolute directory inside a covered tree (no ambiguity, no line)", async () => {
+        addTab("tab-a", "Tab A", []);
+        addTab("tab-b", "Tab B", ["tree-b"]);
+        addTreeBlock("tree-b", "E:/code/snorkeling");
+        addDirectory("local", "E:/code/snorkeling/frontend");
+
+        await searchSelectionInFiles(
+            {
+                rawText: "E:/code/snorkeling/frontend",
+                filePath: "E:/code/snorkeling/frontend",
+                isDirectory: true,
+                lineNumber: 42,
+            },
+            { onFeedback: collectFeedback() }
+        );
+
+        expect(mockState.opened).toHaveLength(1);
+        expect(mockState.opened[0].path).toBe("E:/code/snorkeling/frontend");
+        expect(mockState.opened[0].options.tabId).toBe("tab-b");
+        // directory hits skip line targeting entirely
+        expect(mockState.opened[0].options.lineNumber).toBeUndefined();
+        expect(mockState.feedback).toEqual([{ msg: 'Opened in Tab "Tab B"', kind: "success" }]);
+    });
+
+    it("opens a directory outside every tree root in the current tab", async () => {
+        addTab("tab-a", "Tab A", []);
+        addTab("tab-b", "Tab B", ["tree-b"]);
+        addTreeBlock("tree-b", "E:/code/snorkeling");
+        addDirectory("local", "E:/code/other");
+
+        await searchSelectionInFiles(
+            { rawText: "E:/code/other", filePath: "E:/code/other", isDirectory: true },
+            { onFeedback: collectFeedback() }
+        );
+
+        expect(mockState.opened).toHaveLength(1);
+        expect(mockState.opened[0].path).toBe("E:/code/other");
+        expect(mockState.opened[0].options.tabId).toBe("tab-a");
+        expect(mockState.feedback).toHaveLength(0);
+    });
+
+    it("still skips directory hits for non-directory references", async () => {
+        addTab("tab-a", "Tab A", ["tree-a"]);
+        addTreeBlock("tree-a", "E:/code/snorkeling");
+        addDirectory("local", "E:/code/snorkeling/frontend");
+
+        const result = await resolvePreviewTarget(
+            { rawText: "frontend", filePath: "frontend" },
+            await collectPreviewTargets()
+        );
+
+        expect(result.status).toBe("notfound");
+    });
+
+    it("resolves the same path as a directory when the reference is marked as one", async () => {
+        addTab("tab-a", "Tab A", ["tree-a"]);
+        addTreeBlock("tree-a", "E:/code/snorkeling");
+        addDirectory("local", "E:/code/snorkeling/frontend");
+
+        const result = await resolvePreviewTarget(
+            { rawText: "frontend", filePath: "frontend", isDirectory: true },
+            await collectPreviewTargets()
+        );
+
+        expect(result.status).toBe("resolved");
+        if (result.status === "resolved") {
+            expect(result.target.filePath).toBe("E:/code/snorkeling/frontend");
+        }
+    });
+});

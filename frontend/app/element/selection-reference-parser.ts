@@ -8,6 +8,9 @@ export type ParsedFileReference = {
     columnNumber?: number;
     endLineNumber?: number;
     textHint?: string;
+    // Set only by the absolute-directory branch. Callers that never see it keep the
+    // old "a reference must be a file" behaviour.
+    isDirectory?: boolean;
 };
 
 type ScoredParsedFileReference = ParsedFileReference & {
@@ -96,7 +99,9 @@ function parseIndentedMultilinePathReference(text: string): ScoredParsedFileRefe
             parts.push(part);
             const candidate = joinPathParts(parts);
             const parsed = parseCandidate({ text: candidate, scoreBoost: 34 });
-            if (parsed != null) {
+            // The multiline join is only useful when it lands on a file: a partial directory
+            // prefix must not win over a longer join that carries the file name.
+            if (parsed != null && parsed.isDirectory !== true) {
                 return parsed;
             }
         }
@@ -177,6 +182,7 @@ function parseCandidate(candidate: CandidateText): ScoredParsedFileReference | n
         parseParenLineKeywordReference,
         parseParenReference,
         parsePathOnlyReference,
+        parseAbsoluteDirectoryReference,
     ];
     let bestMatch: ScoredParsedFileReference | null = null;
     for (const parser of parsers) {
@@ -274,6 +280,27 @@ function parsePathOnlyReference(candidateText: string, scoreBoost: number): Scor
         rawText: sanitizedCandidate,
         filePath: match[1],
         score: 32 + scoreBoost,
+    });
+}
+
+// Absolute directory references (`E:\code\snorkeling`, `/home/me/proj`, `~/work/proj`).
+// Deliberately scored below parsePathOnlyReference so any path carrying a file extension
+// always wins; relative paths (`src/components`) never qualify.
+function parseAbsoluteDirectoryReference(
+    candidateText: string,
+    scoreBoost: number
+): ScoredParsedFileReference | null {
+    const sanitizedCandidate = stripWrappingPunctuation(candidateText);
+    if (!isAbsoluteDirectoryPath(sanitizedCandidate)) return null;
+    if (!isDirectoryLikePath(sanitizedCandidate)) return null;
+    if (countPathSegments(sanitizedCandidate) < 2) return null;
+    const trimmedPath = sanitizedCandidate.replace(/[\\/]+$/, "");
+    if (!trimmedPath) return null;
+    return createReference({
+        rawText: sanitizedCandidate,
+        filePath: trimmedPath,
+        isDirectory: true,
+        score: 28 + scoreBoost,
     });
 }
 
@@ -466,4 +493,32 @@ function isDirectoryLikeAbsolutePath(filePath: string): boolean {
         return false;
     }
     return filePath.endsWith("/") || !/[^/\\]+\.[A-Za-z0-9._-]+$/.test(filePath);
+}
+
+// Like isAbsolutePath(), but also accepts UNC roots (`\\server\share\dir`). Kept separate
+// so the scoring bonus of existing file references does not change.
+function isAbsoluteDirectoryPath(value: string): boolean {
+    const normalizedPath = value.replace(/\\/g, "/");
+    if (normalizedPath.startsWith("~/")) {
+        return true;
+    }
+    if (/^[A-Za-z]:\//.test(normalizedPath)) {
+        return true;
+    }
+    if (normalizedPath.startsWith("//") && normalizedPath.length > 2) {
+        return true;
+    }
+    return normalizedPath.startsWith("/");
+}
+
+function isDirectoryLikePath(value: string): boolean {
+    const normalizedPath = value.replace(/\\/g, "/");
+    if (normalizedPath.endsWith("/")) {
+        return true;
+    }
+    return !/[^/]+\.[A-Za-z0-9._-]+$/.test(normalizedPath);
+}
+
+function countPathSegments(value: string): number {
+    return value.replace(/\\/g, "/").split("/").filter(Boolean).length;
 }

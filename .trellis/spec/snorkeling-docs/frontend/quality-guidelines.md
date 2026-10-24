@@ -161,6 +161,11 @@ getApi().setActiveTab(targetTabId);   // 只负责把用户视线切过去
 ### 查找范围
 
 - 跨 Tab 查找必须按**发起方 connection** 过滤（从 focused block 的 `meta.connection` 取，取不到回落 `local`），local 与远端 / 不同 ssh 目标不混查。
+- 选区引用既可能是文件也可能是**目录**：
+  - `selection-reference-parser.ts` 的 `FilePathPattern` 强制结尾带扩展名，所以**目录必须走独立分支** `parseAbsoluteDirectoryReference`（低分 28，低于 `parsePathOnlyReference` 的 32，保证带扩展名匹配恒优先）。
+  - 该分支**只认绝对路径**（`~/`、`A:/`、UNC、POSIX `/`）且段数 ≥ 2；**相对路径（`src/components`）永不成候选** —— 否则 `ls`/`tree` 输出会满屏误命中。
+  - `ParsedFileReference.isDirectory` 是唯一开关：未设置时 `resolvePreviewTarget` 必须继续跳过 `fileInfo.isdir`（逐字节等价旧行为）。
+  - 目录命中跳过行号与 `textHint` 定位，打开复用 `openPathInPreview`（已覆盖「reveal 既有树」/「新建 tree block」两条路径）。
 - 只把 `view === "preview" && edit !== true && displayMode === tree` 的块当查找根，root 推导：`preview:explorer-root` → `meta.file`（stat 为目录才认）。
 - 远端 connection 的 stat 必须加超时（1.5s）+ 并发限流（4）+ 单次查找内缓存，超时/异常一律当未命中。
 

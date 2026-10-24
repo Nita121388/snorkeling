@@ -102,6 +102,59 @@ describe("selection reference parser", () => {
         });
     });
 
+    it("parses absolute directory references", () => {
+        expect(parseFileReference("E:\\code\\snorkeling")).toMatchObject({
+            rawText: "E:\\code\\snorkeling",
+            filePath: "E:/code/snorkeling",
+            isDirectory: true,
+        });
+        expect(parseFileReference("E:/code/snorkeling")).toMatchObject({
+            filePath: "E:/code/snorkeling",
+            isDirectory: true,
+        });
+        expect(parseFileReference("/home/me/proj")).toMatchObject({
+            filePath: "/home/me/proj",
+            isDirectory: true,
+        });
+        expect(parseFileReference("~/work/proj")).toMatchObject({
+            filePath: "~/work/proj",
+            isDirectory: true,
+        });
+        expect(parseFileReference("\\\\server\\share\\dir")).toMatchObject({
+            filePath: "//server/share/dir",
+            isDirectory: true,
+        });
+    });
+
+    it("strips a trailing separator from absolute directory references", () => {
+        expect(parseFileReference("E:\\code\\snorkeling\\")).toMatchObject({
+            filePath: "E:/code/snorkeling",
+            isDirectory: true,
+        });
+        expect(parseFileReference("/home/me/proj/")).toMatchObject({
+            filePath: "/home/me/proj",
+            isDirectory: true,
+        });
+    });
+
+    it("does not treat shallow or relative paths as directory references", () => {
+        for (const text of ["E:", "/", "~/", "src/components", "frontend/app"]) {
+            const parsed = parseFileReference(text);
+            expect(parsed?.isDirectory).not.toBe(true);
+        }
+    });
+
+    it("ranks an extension-bearing path above the same string without the extension", () => {
+        // Both candidates are present; the extension-bearing one must win.
+        const parsed = parseFileReference("`/home/me/proj/a.ts` vs `/home/me/proj/a`");
+        expect(parsed?.filePath).toBe("/home/me/proj/a.ts");
+        expect(parsed?.isDirectory).toBeUndefined();
+
+        const dirOnly = parseFileReference("/home/me/proj/a");
+        expect(dirOnly?.filePath).toBe("/home/me/proj/a");
+        expect(dirOnly?.isDirectory).toBe(true);
+    });
+
     it("parses soft-wrapped multiline absolute path segments", () => {
         expect(
             parseFileReference(

@@ -111,7 +111,8 @@ async function openResolvedTarget(
     target: ResolvedPreviewTarget,
     options?: SearchSelectionInFilesOptions
 ): Promise<void> {
-    const lineNumber = await resolveSearchTargetLine(reference, target);
+    // Directory references have no line to resolve (no textHint/lineNumber pass).
+    const lineNumber = reference.isDirectory === true ? undefined : await resolveSearchTargetLine(reference, target);
     const currentTabId = globalStore.get(atoms.staticTabId);
     // PRD R2.5: only drag the user to another tab when that tab's tree actually covers the
     // resolved file. Absolute references may match a file outside of any tree root — then
@@ -411,11 +412,17 @@ export async function resolvePreviewTarget(
     const normalizedReferencePath = normalizePath(reference.filePath);
     const statCached = makeCachedStat();
     const matches: ResolvedPreviewTarget[] = [];
+    // Directory references (absolute dir selected) accept a directory hit; everything else
+    // keeps the "skip directories" behaviour unchanged.
+    const allowDirectory = reference.isDirectory === true;
 
     await runWithConcurrency(targets, StatConcurrency, async (target) => {
         for (const candidatePath of candidatePathsForTarget(normalizedReferencePath, target)) {
             const fileInfo = await statCached(target, candidatePath);
-            if (fileInfo == null || fileInfo.notfound || fileInfo.isdir) {
+            if (fileInfo == null || fileInfo.notfound) {
+                continue;
+            }
+            if (fileInfo.isdir && !allowDirectory) {
                 continue;
             }
             const resolvedPath = normalizePath(fileInfo.path || candidatePath);

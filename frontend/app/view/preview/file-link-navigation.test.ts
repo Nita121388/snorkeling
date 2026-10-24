@@ -312,6 +312,40 @@ describe("openPathInPreview without tabId (default current-tab routing)", () => 
             "preview:pathisdir": false,
         });
     });
+
+    it("reveals a directory inside an existing Files tree without opening a nested tree", async () => {
+        const targetDir = "E:/code/snorkeling/frontend";
+        addTab(CURRENT_TAB_ID, ["tree-block"]);
+        addTreeFilesBlock("tree-block", TREE_ROOT);
+        mockState.fileInfo[targetDir] = { path: targetDir, isdir: true, mimetype: "directory" } as FileInfo;
+        mockState.layoutNodes["tree-block"] = { id: "node-tree" };
+
+        await openPathInPreview(targetDir);
+
+        const revealUpdate = mockState.updateMeta.find((call) => call.oref === "block:tree-block");
+        expect(revealUpdate?.meta["preview:revealpath"]).toBe(targetDir);
+        expect(mockState.refocused).toContain("tree-block");
+        expect(mockState.createdBlocks).toHaveLength(0);
+    });
+
+    it("creates a new tree block rooted at a directory no Files tree covers", async () => {
+        const targetDir = "E:/code/other";
+        addTab(CURRENT_TAB_ID, ["tree-block"]);
+        addTreeFilesBlock("tree-block", TREE_ROOT);
+        mockState.fileInfo[targetDir] = { path: targetDir, isdir: true, mimetype: "directory" } as FileInfo;
+        mockState.layoutNodes["tree-block"] = { id: "node-tree" };
+
+        await openPathInPreview(targetDir);
+
+        expect(mockState.createdBlocks).toHaveLength(1);
+        expect(mockState.createdBlocks[0].meta).toMatchObject({
+            view: "preview",
+            file: targetDir,
+            "preview:directory-display": "tree",
+            "preview:explorer-root": targetDir,
+            "preview:pathisdir": true,
+        });
+    });
 });
 
 describe("openPathInPreview with an explicit tabId", () => {
