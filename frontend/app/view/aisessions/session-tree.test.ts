@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
     buildSessionTree,
+    collectParentKeys,
     collectParentsOfMatches,
     countChildRows,
     countRootRows,
@@ -198,5 +199,39 @@ describe("tree counts", () => {
         expect(countRootRows([])).toBe(0);
         expect(countChildRows([])).toBe(0);
         expect(countTreeRows([])).toBe(0);
+    });
+});
+describe("collectParentKeys", () => {
+    it("collects keys that another row points at", () => {
+        const parents = collectParentKeys([
+            session({ key: "p" }),
+            session({ key: "c1", parentKey: "p" }),
+            session({ key: "c2", parentKey: "p" }),
+            session({ key: "q" }),
+        ]);
+        expect([...parents]).toEqual(["p"]);
+    });
+
+    it("ignores blank keys, self-references and dangling parents", () => {
+        const parents = collectParentKeys([
+            session({ key: "blank", parentKey: "   " }),
+            session({ key: "self", parentKey: "self" }),
+            session({ key: "orphan", parentKey: "gone" }),
+        ]);
+        expect(parents.size).toBe(0);
+    });
+
+    it("returns every parent across different subtrees", () => {
+        const parents = collectParentKeys([
+            session({ key: "p1" }),
+            session({ key: "p1-c", parentKey: "p1" }),
+            session({ key: "p2" }),
+            session({ key: "p2-c", parentKey: "p2" }),
+        ]);
+        expect([...parents].sort()).toEqual(["p1", "p2"]);
+    });
+
+    it("returns an empty set for an empty list", () => {
+        expect(collectParentKeys([]).size).toBe(0);
     });
 });

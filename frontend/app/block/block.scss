@@ -1904,7 +1904,9 @@
     align-items: center;
     gap: 6px;
     width: 100%;
-    height: 24px;
+    // 行高与「＋」菜单 (.inline-tab-block-addmenu-item) 对齐: 24px 在 Windows 的
+    // 字体渲染下显得非常挤, 且不适合作为鼠标点击目标。
+    height: 28px;
     padding: 0 8px;
     border: 0;
     border-radius: 5px;
@@ -1912,6 +1914,8 @@
     color: var(--main-text-color);
     font: var(--header-font);
     font-size: 12px;
+    // --header-font 是为 Tab 标签设计的粗体 (700), 拿来当菜单项偏重, 降一档。
+    font-weight: 500;
     cursor: pointer;
 
     &:hover,

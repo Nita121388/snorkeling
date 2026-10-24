@@ -111,6 +111,8 @@ type GroupedSessionListProps = {
     groupCollapsed: string[];
     onToggleGroup: (key: string) => void;
     selectedKey: string;
+    /** 批量选区（多选）的会话 key 集合。 */
+    selectedKeys?: ReadonlySet<string>;
     onSelectNew: () => void;
     onSelectSession: (session: SessionSummary, event: ReactMouseEvent<HTMLDivElement>) => void;
     /** 双击行：在 Detail Block 中打开该会话。 */
@@ -131,6 +133,8 @@ type GroupedSessionListProps = {
     sortDescending: boolean;
     /** 工具栏「展开全部标签」的全局偏好（方案 B）。 */
     expandAllTags: boolean;
+    /** 远端会话连接（供 Note 弹窗编辑 RPC 使用）。 */
+    connection?: string;
 };
 
 export function GroupedSessionList({
@@ -140,6 +144,7 @@ export function GroupedSessionList({
     groupCollapsed,
     onToggleGroup,
     selectedKey,
+    selectedKeys,
     onSelectNew,
     onSelectSession,
     onOpenSession,
@@ -155,6 +160,7 @@ export function GroupedSessionList({
     fullyExpandedParents,
     sortDescending,
     expandAllTags,
+    connection,
 }: GroupedSessionListProps) {
     const newSession = sessions.find((session) => session.key === NewSessionKey);
 
@@ -170,7 +176,7 @@ export function GroupedSessionList({
               );
 
     /** 渲染一个树节点及其（已展开的）子节点；子会话超过 20 个时追加「显示全部」。 */
-    const renderNode = (node: SessionTreeNode): ReactNode => {
+    const renderNode = (node: SessionTreeNode, isLastChild: boolean): ReactNode => {
         const key = node.session.key;
         const isParent = node.childCount > 0;
         const expanded = expandedParents.includes(key);
@@ -180,10 +186,15 @@ export function GroupedSessionList({
         const childKind =
             node.session.kind === "fork" ? "fork" : node.session.kind === "subagent" ? "subagent" : undefined;
         return (
+            /*
+             * 父行 + 子行包在一个容器里，展开时整组读作一个块：子行容器带极淡底色，
+             * 边框不再重复出现（子行的 border-b 由容器负责，子行本身只留 hover）。
+             */
             <div key={key} data-session-key={key} data-depth={node.depth}>
                 <SessionRow
                     session={node.session}
                     selected={key === selectedKey}
+                    inSelection={selectedKeys?.has(key) ?? false}
                     onSelect={(event) => onSelectSession(node.session, event)}
                     onOpen={(event) => onOpenSession(node.session, event)}
                     onMark={(event) => onMark(node.session, event)}
@@ -200,13 +211,19 @@ export function GroupedSessionList({
                     childCount={node.childCount}
                     matchedChildCount={node.matchedChildCount}
                     onToggleExpand={() => onToggleExpandParent(key)}
+                    isLastChild={isLastChild}
                     expandAllTags={expandAllTags}
+                    connection={connection}
                 />
-                {children.map((child) => renderNode(child))}
+                {children.length > 0 ? (
+                    <div className="bg-surface/25">
+                        {children.map((child, index) => renderNode(child, index === children.length - 1))}
+                    </div>
+                ) : null}
                 {hidden > 0 ? (
                     <button
                         type="button"
-                        className="w-full cursor-pointer border-b border-border bg-transparent py-1 pl-9 pr-3 text-left text-[11px] text-secondary transition-colors hover:bg-hoverbg hover:text-accent"
+                        className="w-full cursor-pointer border-b border-border/70 bg-surface/25 py-1 pl-8 pr-3 text-left text-[11px] text-secondary transition-colors hover:bg-hoverbg hover:text-accent"
                         onClick={() => onToggleExpandParent(key, true)}
                     >
                         Show all {node.childCount} sub-sessions ({hidden} more)
@@ -217,7 +234,8 @@ export function GroupedSessionList({
     };
 
     /** 一棵树 → 扁平 ReactNode 列表。 */
-    const renderTree = (nodes: SessionTreeNode[]): ReactNode[] => nodes.map((node) => renderNode(node));
+    const renderTree = (nodes: SessionTreeNode[]): ReactNode[] =>
+        nodes.map((node, index) => renderNode(node, index === nodes.length - 1));
     return (
         <>
             {newSession ? (

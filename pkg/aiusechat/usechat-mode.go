@@ -57,6 +57,10 @@ func resolveAIMode(requestedMode string, premium bool) (string, *wconfig.AIModeC
 	return mode, config, nil
 }
 
+func strPtr(s string) *string {
+	return &s
+}
+
 func applyProviderDefaults(config *wconfig.AIModeConfigType) {
 	if config.Provider == uctypes.AIProvider_Wave {
 		config.WaveAICloud = true
@@ -81,8 +85,8 @@ func applyProviderDefaults(config *wconfig.AIModeConfigType) {
 				config.Endpoint = OpenAIChatEndpoint
 			}
 		}
-		if config.APITokenSecretName == "" {
-			config.APITokenSecretName = OpenAIAPITokenSecretName
+		if config.APITokenSecretName == nil {
+			config.APITokenSecretName = strPtr(OpenAIAPITokenSecretName)
 		}
 		if len(config.Capabilities) == 0 {
 			if isO1Model(config.Model) {
@@ -99,8 +103,8 @@ func applyProviderDefaults(config *wconfig.AIModeConfigType) {
 		if config.Endpoint == "" {
 			config.Endpoint = OpenRouterChatEndpoint
 		}
-		if config.APITokenSecretName == "" {
-			config.APITokenSecretName = OpenRouterAPITokenSecretName
+		if config.APITokenSecretName == nil {
+			config.APITokenSecretName = strPtr(OpenRouterAPITokenSecretName)
 		}
 	}
 	if config.Provider == uctypes.AIProvider_NanoGPT {
@@ -110,8 +114,8 @@ func applyProviderDefaults(config *wconfig.AIModeConfigType) {
 		if config.Endpoint == "" {
 			config.Endpoint = NanoGPTChatEndpoint
 		}
-		if config.APITokenSecretName == "" {
-			config.APITokenSecretName = NanoGPTAPITokenSecretName
+		if config.APITokenSecretName == nil {
+			config.APITokenSecretName = strPtr(NanoGPTAPITokenSecretName)
 		}
 	}
 	if config.Provider == uctypes.AIProvider_Groq {
@@ -121,8 +125,8 @@ func applyProviderDefaults(config *wconfig.AIModeConfigType) {
 		if config.Endpoint == "" {
 			config.Endpoint = GroqChatEndpoint
 		}
-		if config.APITokenSecretName == "" {
-			config.APITokenSecretName = GroqAPITokenSecretName
+		if config.APITokenSecretName == nil {
+			config.APITokenSecretName = strPtr(GroqAPITokenSecretName)
 		}
 	}
 	if config.Provider == uctypes.AIProvider_AzureLegacy {
@@ -136,8 +140,8 @@ func applyProviderDefaults(config *wconfig.AIModeConfigType) {
 		if config.APIType == "" {
 			config.APIType = uctypes.APIType_OpenAIChat
 		}
-		if config.APITokenSecretName == "" {
-			config.APITokenSecretName = AzureOpenAIAPITokenSecretName
+		if config.APITokenSecretName == nil {
+			config.APITokenSecretName = strPtr(AzureOpenAIAPITokenSecretName)
 		}
 	}
 	if config.Provider == uctypes.AIProvider_Azure {
@@ -155,8 +159,8 @@ func applyProviderDefaults(config *wconfig.AIModeConfigType) {
 				config.Endpoint = fmt.Sprintf(AzureChatEndpointTemplate, config.AzureResourceName)
 			}
 		}
-		if config.APITokenSecretName == "" {
-			config.APITokenSecretName = AzureOpenAIAPITokenSecretName
+		if config.APITokenSecretName == nil {
+			config.APITokenSecretName = strPtr(AzureOpenAIAPITokenSecretName)
 		}
 	}
 	if config.Provider == uctypes.AIProvider_Google {
@@ -166,8 +170,8 @@ func applyProviderDefaults(config *wconfig.AIModeConfigType) {
 		if config.Endpoint == "" && config.Model != "" {
 			config.Endpoint = fmt.Sprintf(GoogleGeminiEndpointTemplate, config.Model)
 		}
-		if config.APITokenSecretName == "" {
-			config.APITokenSecretName = GoogleAIAPITokenSecretName
+		if config.APITokenSecretName == nil {
+			config.APITokenSecretName = strPtr(GoogleAIAPITokenSecretName)
 		}
 		if len(config.Capabilities) == 0 {
 			config.Capabilities = []string{uctypes.AICapabilityTools, uctypes.AICapabilityImages, uctypes.AICapabilityPdfs}
@@ -271,13 +275,13 @@ func handleConfigUpdate(fullConfig wconfig.FullConfigType) {
 
 func ComputeResolvedAIModeConfigs(fullConfig wconfig.FullConfigType) map[string]wconfig.AIModeConfigType {
 	resolvedConfigs := make(map[string]wconfig.AIModeConfigType)
-	
+
 	for modeName, modeConfig := range fullConfig.WaveAIModes {
 		resolved := modeConfig
 		applyProviderDefaults(&resolved)
 		resolvedConfigs[modeName] = resolved
 	}
-	
+
 	return resolvedConfigs
 }
 
@@ -285,7 +289,7 @@ func broadcastAIModeConfigs(configs map[string]wconfig.AIModeConfigType) {
 	update := wconfig.AIModeConfigUpdate{
 		Configs: configs,
 	}
-	
+
 	wps.Broker.Publish(wps.WaveEvent{
 		Event: wps.Event_AIModeConfig,
 		Data:  update,

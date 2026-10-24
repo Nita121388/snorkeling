@@ -193,8 +193,11 @@ async function splitDetailBlock(blockDef: BlockDef, sourceBlockId: string): Prom
     return newBlockId;
 }
 
-/** 从一个纯列表块开一个「新会话」详情块（不带 sessionid，靠 newchat 标志自动起会话）。 */
-export async function openAISessionNewChatFromList(sourceBlockId: string): Promise<string | null> {
+/**
+ * 从一个纯列表块开一个「新会话」详情块（不带 sessionid，靠 newchat 标志自动起会话）。
+ * cwd 可选：用于 tab 分层标题（项目文件夹 basename），仅在明确知道项目目录时传。
+ */
+export async function openAISessionNewChatFromList(sourceBlockId: string, cwd?: string): Promise<string | null> {
     const meta: MetaType & Record<string, unknown> = {
         view: "aisessions",
         "frame:title": "New Session",
@@ -202,6 +205,10 @@ export async function openAISessionNewChatFromList(sourceBlockId: string): Promi
         "aisessions:sessionlistcollapsed": true,
         icon: "comments",
     };
+    const trimmedCwd = cwd?.trim() ?? "";
+    if (trimmedCwd !== "") {
+        meta["cmd:cwd"] = trimmedCwd;
+    }
     return splitDetailBlock({ meta }, sourceBlockId);
 }
 

@@ -13,6 +13,8 @@ import {
 } from "@/app/block/blocktypes";
 import { BlockLockMetaKey, buildInlineTabContextMenu } from "@/app/block/inlinetab-contextmenu";
 import { BlockInfoCard } from "@/app/block/block-info-card";
+import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
+import { useBlockSessionTitle } from "@/app/block/use-block-session-title";
 import { Tooltip } from "@/app/element/tooltip";
 import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
@@ -198,7 +200,31 @@ const InlineTabLabel = memo(
             }).catch((e) => console.warn("failed to toggle block lock", e));
         }, [blockId, isLocked]);
 
+        const sessionMeta = (blockData?.meta ?? {}) as Record<string, unknown>;
+        const isSessionBlock =
+            isSessionDetailBlockMeta(sessionMeta) || isChatBlockMeta(sessionMeta);
+        const tabSessionId =
+            typeof sessionMeta["aisessions:sessionid"] === "string"
+                ? (sessionMeta["aisessions:sessionid"] as string)
+                : "";
+        // 只有当前激活的会话类 tab 才拉 summary（可能触发一次 RPC）；背景 tab 只读缓存。
+        const summaryTitle = useBlockSessionTitle(tabSessionId, connection ?? "", isActive && isSessionBlock);
+
         const defaultTitle = useMemo(() => {
+            // 会话类 Block（会话详情 / GUI Chat）分层标题：
+            // 1) 会话标题（user/ai/provider，后端已定优先级）
+            // 2) 项目文件夹 basename（远端拼 connection）
+            // 3) frame:title 兜底（"Session Details" / "New Session"）
+            if (isSessionBlock) {
+                if (!isBlank(summaryTitle)) {
+                    return summaryTitle;
+                }
+                const cwd = typeof sessionMeta["cmd:cwd"] === "string" ? sessionMeta["cmd:cwd"] : "";
+                const folderName = basename(cwd);
+                if (!isBlank(folderName)) {
+                    return isBlank(connection) ? folderName : `${folderName} · ${connection}`;
+                }
+            }
             if (!isBlank(frameTitle)) {
                 return frameTitle;
             }
@@ -223,9 +249,17 @@ const InlineTabLabel = memo(
                 return isBlank(vcsPath) ? "" : basename(vcsPath);
             }
             return blockViewToName(blockView) || blockId.slice(0, 8);
-        }, [blockId, blockView, connection, filePath, frameTitle, blockData?.meta]);
+        }, [blockId, blockView, connection, filePath, frameTitle, blockData?.meta, isSessionBlock, summaryTitle]);
         // 完整路径(供 hover tooltip 用): 仅 preview 读 meta.file, agent/term 读 cmd:cwd, 远端附 connection
         const fullPath = useMemo(() => {
+            // 会话类 Block: hover tooltip 显示完整 projectPath(+ connection)。
+            const sessionMeta = (blockData?.meta ?? {}) as Record<string, unknown>;
+            if (isSessionDetailBlockMeta(sessionMeta) || isChatBlockMeta(sessionMeta)) {
+                const cwd = typeof sessionMeta["cmd:cwd"] === "string" ? sessionMeta["cmd:cwd"] : "";
+                if (!isBlank(cwd)) {
+                    return isBlank(connection) ? cwd : `${cwd} · ${connection}`;
+                }
+            }
             const agentMeta = isAgentTerminalMeta(blockData?.meta) ? blockData?.meta : null;
             if (agentMeta != null) {
                 const cwd = typeof agentMeta?.["cmd:cwd"] === "string" ? agentMeta["cmd:cwd"] : "";
@@ -1170,6 +1204,13 @@ const BlockFull = memo(({ nodeModel, viewModel }: FullBlockProps) => {
     );
 
     const setFocusTarget = useCallback(() => {
+        // 防御层：若当前焦点已落在 modal 内（in-block 弹窗通过 portal 渲染到 #main，
+        // 不在 block 的 DOM 子树里），不要用 dummy-focus 把焦点抢走，否则弹窗里
+        // 的 textarea / input 会在点击后被强制失焦，无法编辑。
+        const activeElem = document.activeElement;
+        if (activeElem instanceof HTMLElement && activeElem.closest(".modal-wrapper") != null) {
+            return;
+        }
         if (pendingFocusRafRef.current != null) {
             cancelAnimationFrame(pendingFocusRafRef.current);
             pendingFocusRafRef.current = null;

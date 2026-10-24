@@ -135,6 +135,46 @@ export function SortButton({ descending, onToggle }: { descending: boolean; onTo
 }
 
 /**
+ * 「一键展开 / 全部收起」子会话的全局开关（方案见 design.md §1）。
+ *
+ * 作用域是当前列表可见的全部父行，两种分组模式下都生效。override 不落盘：
+ * 刷新后回到 expandedParents（默认空 = 全部折叠），所以一键展开不会把
+ * 「全部展开」变成新的默认折叠行为。
+ */
+export function SubSessionsToggle({
+    allExpanded,
+    parentCount,
+    onToggle,
+}: {
+    allExpanded: boolean;
+    parentCount: number;
+    onToggle: () => void;
+}) {
+    const disabled = parentCount === 0;
+    const label = allExpanded ? "Collapse all sub-sessions" : "Expand all sub-sessions";
+    return (
+        <button
+            type="button"
+            className={cn(
+                "flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border/70 px-2.5 text-xs transition-colors",
+                allExpanded && !disabled
+                    ? "bg-background text-primary shadow-sm"
+                    : "bg-surface text-secondary hover:bg-hover hover:text-primary",
+                disabled && "cursor-default opacity-50 hover:bg-surface hover:text-secondary"
+            )}
+            title={disabled ? "No sub-sessions to expand" : `${label} (${parentCount})`}
+            aria-label={label}
+            aria-pressed={allExpanded}
+            disabled={disabled}
+            onClick={onToggle}
+        >
+            <i className={cn("fa-sharp fa-solid text-[11px]", allExpanded ? "fa-angles-up" : "fa-angles-down")} />
+            {disabled ? null : <span className="tabular-nums">{parentCount}</span>}
+        </button>
+    );
+}
+
+/**
  * 「展开全部标签」开关（方案 B）。
  *
  * 标签默认折叠到 4 个 + `+N`，避免每一行都被标签撑高。打开后所有行铺开全部标签，

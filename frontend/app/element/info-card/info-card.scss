@@ -214,10 +214,29 @@
    仅当 .info-card 同时有 .agent-card 类时生效，不影响其它 InfoCard 场景。
    ─────────────────────────────────────────────────────────────────── */
 
+/*
+ * 色条用 ::before 画，不用 border-left。
+ * 原因：border-radius 会作用于整张卡的边框盒，把 border-left 在上下圆角处
+ * 切成斜段，色条两头向外翻。改成伪元素后，圆角（border-radius: 2px）加在
+ * 色条自己身上，头尾是对称圆头；卡片左边同步改为直角，色条才不会被
+ * 卡片的圆角缺口切到（右边两角保留 6px 圆角，仍是「挂在左边」的形态）。
+ * padding-left 从 12 加到 15（12 + 条宽 3），内容 x 位置与原 border-left 方案一致。
+ */
 .info-card.agent-card {
-    border-left: 3px solid var(--info-card-accent, var(--secondary-text-color));
-    padding-left: 12px;
-    border-radius: 8px;
+    position: relative;
+    border-radius: 0 6px 6px 0;
+    padding-left: 15px;
+}
+
+.info-card.agent-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--info-card-accent, var(--secondary-text-color));
 }
 
 /* ── Provider logo 行 ── */
@@ -340,8 +359,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    /* 复制失败：id 本身转红，不单独弹提示（hover 卡移开就没了） */
+    &.is-error {
+        color: var(--error-color);
+    }
 }
 
+/*
+ * 复制按钮。现在由 CopyButton 渲染（wave-iconbutton + <i> 图标），
+ * 所以这里只负责尺寸与状态色，图标颜色沿用 copybutton.scss 的 .copied 规则。
+ */
 .agent-card-copy-btn {
     flex-shrink: 0;
     display: inline-flex;
@@ -355,6 +383,10 @@
     color: var(--secondary-text-color);
     cursor: pointer;
     padding: 0;
+    opacity: 1; /* 覆写 .wave-iconbutton 的 0.7：这行本来就在底行，不需要再压暗 */
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
 }
 
 .agent-card-copy-btn:hover {
@@ -362,10 +394,13 @@
     color: var(--main-text-color);
 }
 
-.agent-card-copy-btn svg {
-    width: 12px;
-    height: 12px;
-    fill: currentColor;
+/* 复制成功：除了图标变绿勾，再给一个短野的底色块，让反馈在小尺寸里也看得出来 */
+.agent-card-copy-btn.copied {
+    background: color-mix(in srgb, var(--success-color) 16%, transparent);
+}
+
+.agent-card-copy-btn i {
+    font-size: 11px;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

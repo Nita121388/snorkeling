@@ -1032,6 +1032,16 @@ export class TermViewModel implements ViewModel {
             } catch (e) {
                 console.warn("redrawTUI refresh error", e);
             }
+            // WebGL keeps glyphs in a texture atlas; a stale atlas survives a
+            // plain refresh and shows up as corrupted/blank text. Clearing it
+            // forces every glyph to be re-rasterized.
+            if (this.termRef.current?.getTermRenderer?.() === "webgl") {
+                try {
+                    terminal.clearTextureAtlas?.();
+                } catch (e) {
+                    console.warn("redrawTUI clearTextureAtlas error", e);
+                }
+            }
         }
         fireAndForget(() =>
             RpcApi.ControllerRedrawCommand(TabRpcClient, this.blockId).catch((error) => {

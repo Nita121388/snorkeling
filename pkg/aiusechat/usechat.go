@@ -87,12 +87,12 @@ func getWaveAISettings(premium bool, builderMode bool, rtInfo waveobj.ObjRTInfo,
 	}
 	// Token priority lives in one place: an explicit ai:apitoken wins, otherwise
 	// the named secret is read from the local secret store.
-	tokenResult, err := ResolveAPIToken(config.APIToken, config.APITokenSecretName)
+	tokenResult, err := ResolveAPIToken(config.APIToken, config.APITokenSecretNameValue())
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve secret %s: %w", config.APITokenSecretName, err)
+		return nil, fmt.Errorf("failed to retrieve secret %s: %w", config.APITokenSecretNameValue(), err)
 	}
 	if tokenResult.Token == "" && tokenResult.SecretName != "" {
-		return nil, fmt.Errorf("secret %s not found or empty", config.APITokenSecretName)
+		return nil, fmt.Errorf("secret %s not found or empty", config.APITokenSecretNameValue())
 	}
 	apiToken := tokenResult.Token
 

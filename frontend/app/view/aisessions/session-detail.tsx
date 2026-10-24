@@ -55,6 +55,13 @@ import {
     restoreCommandForSession,
 } from "./utils";
 import type { SessionDetailTimelineItem } from "./utils";
+import { registerSessionContextResolver, sessionContextAttrs } from "@/app/element/copy-context-contract";
+import {
+    formatSessionContext,
+    makeSessionContextResolver,
+    type SessionContextState,
+    type SessionCopyMessage,
+} from "./copy-context";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const ToolCallPreviewLength = 1200;
@@ -1041,6 +1048,170 @@ export function SessionDetailPane({
             container.scrollTo({ top: totalHeight, behavior: "auto" });
         }
     }, [lastVisibleMessage?.seq, virtualEnabled, virtualizer]);
+    // 打开子会话时用作 tab 标题提示的项目路径（子会话的 projectPath 拿不到，
+    // 多数场景与父会话同仓，退化用父会话路径；仅作 tab 分层标题提示，不参与会话加载）。
+    const subagentTabCwd = summary?.projectPath?.trim() || projectPath?.trim() || "";
+
+    // ── Copy Context 接线（见任务 10-24-aisessions-copy-context-builder）──
+    //
+    // 两个载体：
+    //  1. 每条消息容器上的 data-copy-context-*，让全局 💡 浮层能把选区解析成「来自哪条消息」；
+    //  2. 下方面板注册的 resolver，它持有完整 model，能重建选区跨越多条（且被虚拟化卸载）的消息。
+    //
+    // seqRange 必须在 selectionchange 期间持续记录：拖选跨出视口后，起始行会被
+    // 虚拟化回收，mouseup 时刻的 DOM 已经拿不到它。
+    const copyDragActiveRef = useRef(false);
+    const copyRangeRef = useRef<{ start: number; end: number } | null>(null);
+    const sessionContextStateRef = useRef<SessionContextState | null>(null);
+    // 会话级定位信息（只拼一次，给 resolver 与 hover 按钮共用）。
+    // filePath / key / parentKey / messageCount 都是为了让接到上下文的 agent
+    // 能直接找到那份会话文件，而不是反问「哪个会话」。
+    const copySummary = useMemo(
+        () =>
+            summary == null
+                ? null
+                : {
+                      id: summary.id,
+                      source: summary.source,
+                      title: summary.title,
+                      projectPath: summary.projectPath,
+                      key: summary.key,
+                      filePath: summary.filePath,
+                      createdAt: summary.createdAt,
+                      updatedAt: summary.updatedAt,
+                      messageCount: summary.messageCount,
+                      parentKey: summary.parentKey,
+                  },
+        [
+            summary?.id,
+            summary?.source,
+            summary?.title,
+            summary?.projectPath,
+            summary?.key,
+            summary?.filePath,
+            summary?.createdAt,
+            summary?.updatedAt,
+            summary?.messageCount,
+            summary?.parentKey,
+        ]
+    );
+
+    sessionContextStateRef.current = copySummary == null
+        ? null
+        : {
+              summary: copySummary,
+              messages: detailMessages as SessionCopyMessage[],
+              seqRange: copyRangeRef.current,
+          };
+
+    useEffect(() => {
+        const sessionId = summary?.id ?? "";
+        if (!sessionId) {
+            return;
+        }
+        return registerSessionContextResolver(
+            sessionId,
+            makeSessionContextResolver(() => sessionContextStateRef.current)
+        );
+    }, [summary?.id]);
+
+    useEffect(() => {
+        const stopDrag = () => {
+            copyDragActiveRef.current = false;
+        };
+        window.addEventListener("pointerup", stopDrag);
+        window.addEventListener("pointercancel", stopDrag);
+        return () => {
+            window.removeEventListener("pointerup", stopDrag);
+            window.removeEventListener("pointercancel", stopDrag);
+        };
+    }, []);
+
+    const handleCopyRangePointerDown = useCallback(() => {
+        copyDragActiveRef.current = true;
+        copyRangeRef.current = null;
+    }, []);
+
+    // 一次委托取代给每行挂事件：从选中节点向上找最近的消息容器，读它的 seq。
+    const handleCopyRangePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (!copyDragActiveRef.current) {
+            return;
+        }
+        const target = event.target as Element | null;
+        const annotated = target?.closest?.("[data-copy-context-kind]");
+        if (annotated == null) {
+            return;
+        }
+        const seq = Number(annotated.getAttribute("data-aisession-seq"));
+        if (!Number.isFinite(seq) || seq <= 0) {
+            return;
+        }
+        const current = copyRangeRef.current;
+        copyRangeRef.current = current == null ? { start: seq, end: seq } : { start: current.start, end: seq };
+    }, []);
+
+    // 每行一个 context 块：hover 的「Copy as context」与 💡 Copy Context 必须同源同文。
+    const contextTextBySeq = useMemo(() => {
+        const map = new Map<number, string>();
+        if (copySummary == null) {
+            return map;
+        }
+        for (const message of detailMessages) {
+            map.set(
+                message.seq,
+                formatSessionContext({
+                    summary: copySummary,
+                    messages: [message as SessionCopyMessage],
+                    seqStart: message.seq,
+                    seqEnd: message.seq,
+                    selectedText: message.text,
+                })
+            );
+        }
+        return map;
+    }, [copySummary, detailMessages]);
+
+    const contextAttrsBySeq = useMemo(() => {
+        const map = new Map<number, Record<string, string>>();
+        if (summary == null) {
+            return map;
+        }
+        for (const message of detailMessages) {
+            map.set(message.seq, {
+                ...sessionContextAttrs({
+                    sessionId: summary.id,
+                    source: summary.source,
+                    title: summary.title,
+                    projectPath: summary.projectPath,
+                    model: message.model,
+                    seq: message.seq,
+                    role: message.role,
+                    timestamp: message.timestamp,
+                    entryId: message.entryId,
+                    itemKey: message.itemKey,
+                }),
+                "data-aisession-seq": String(message.seq),
+            });
+        }
+        return map;
+    }, [summary?.id, summary?.source, summary?.title, summary?.projectPath, detailMessages]);
+
+    const toolContextAttrsBySeq = useMemo(() => {
+        const map = new Map<number, Record<string, string>>();
+        if (summary == null) {
+            return map;
+        }
+        const session = {
+            sessionId: summary.id,
+            source: summary.source,
+            title: summary.title,
+            projectPath: summary.projectPath,
+        };
+        for (const toolCall of toolCalls) {
+            map.set(toolCall.seq, sessionContextAttrs({ ...session, toolName: toolCall.name, exitCode: toolCall.exitCode }));
+        }
+        return map;
+    }, [summary?.id, summary?.source, summary?.title, summary?.projectPath, toolCalls]);
     // 渲染单行的共享实现：全量分支与虚拟分支必须长得完全一样，避免两条路径漂移。
     const renderTimelineItem = useCallback(
         (item: SessionDetailTimelineItem, itemIdx: number, items: SessionDetailTimelineItem[]) => {
@@ -1058,6 +1229,8 @@ export function SessionDetailPane({
                         searchQuery={detailSearchQuery}
                         searchActive={item.message.seq === activeSearchSeq}
                         groupStart={isGroupStart}
+                        contextAttrs={contextAttrsBySeq.get(item.message.seq)}
+                        contextText={contextTextBySeq.get(item.message.seq)}
                         registerRef={(node) => {
                             if (node) messageRefs.current[item.message.seq] = node;
                         }}
@@ -1072,7 +1245,9 @@ export function SessionDetailPane({
                                           onOpenSession={(sessionKey) => {
                                               if (model.blockId) {
                                                   // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
-                                                  void openAISessionDetailFromList(sessionKey, model.blockId);
+                                                  void openAISessionDetailFromList(sessionKey, model.blockId, {
+                                                      cwd: subagentTabCwd || undefined,
+                                                  });
                                               }
                                           }}
                                       />
@@ -1092,31 +1267,42 @@ export function SessionDetailPane({
                         onOpenSession={(sessionKey) => {
                             if (model.blockId) {
                                 // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
-                                void openAISessionDetailFromList(sessionKey, model.blockId);
+                                void openAISessionDetailFromList(sessionKey, model.blockId, {
+                                    cwd: subagentTabCwd || undefined,
+                                });
                             }
                         }}
                     />
                 );
             }
             return (
-                <ToolCallCard
-                    toolCall={item.toolCall}
-                    liveStatus={"liveStatus" in item ? item.liveStatus : undefined}
-                    expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
-                    onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
-                />
+                // 工具卡也挂 provenance，选区落在里面时才能输出 tool / tool-exit。
+                // 故意不给 data-aisession-seq：工具 seq 与消息 seq 同域但不同集合，
+                // 让它参与范围记录会把消息区间污染成空区间。
+                <div {...(toolContextAttrsBySeq.get(item.toolCall.seq) ?? {})}>
+                    <ToolCallCard
+                        toolCall={item.toolCall}
+                        liveStatus={"liveStatus" in item ? item.liveStatus : undefined}
+                        expanded={Boolean(expandedToolCalls[item.toolCall.seq])}
+                        onToggle={() => toggleToolCallExpanded(item.toolCall.seq)}
+                    />
+                </div>
             );
         },
         [
             activeSearchSeq,
             connection,
+            contextAttrsBySeq,
+            contextTextBySeq,
             detailSearchQuery,
             expandedToolCalls,
             model.blockId,
             model.service,
             subagentMatchFor,
             subagentMatchesByAnchor,
+            subagentTabCwd,
             toggleToolCallExpanded,
+            toolContextAttrsBySeq,
         ]
     );
 
@@ -1336,6 +1522,8 @@ export function SessionDetailPane({
                                 ref={detailScrollRef}
                                 className="h-full min-h-0 overflow-auto p-3 pb-10"
                                 onScroll={handleDetailScroll}
+                                onPointerDown={handleCopyRangePointerDown}
+                                onPointerMove={handleCopyRangePointerMove}
                             >
                                 {detailMessages.length === 0 && liveTurn == null ? (
                                     isNewChat ? (

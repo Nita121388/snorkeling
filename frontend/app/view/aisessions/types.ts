@@ -37,7 +37,20 @@ export type PathFilter = {
 
 export const DefaultPathFilter: PathFilter = { root: "", subPath: "" };
 
-export const PathFilterOtherRoot = "other";
+// "__other__" is the sentinel the backend understands (aisessions.ProjectFilterOther):
+// sessions whose projectPath is empty / not an absolute path. With multi-select the
+// frontend can no longer post-filter the response (the server only returns the
+// selected prefixes), so the sentinel travels as a normal prefix value.
+export const PathFilterOtherRoot = "__other__";
+
+/** 包含侧已选目录前缀集合（可含 PathFilterOtherRoot）。 */
+export const DefaultPathSelections: string[] = [];
+
+/** 排除侧目录前缀集合。 */
+export const DefaultPathExcludes: string[] = [];
+
+/** 排除侧标签集合。 */
+export const DefaultExcludeTags: string[] = [];
 
 export const DefaultDateRange: DateRangeFilter = { preset: "7d" };
 

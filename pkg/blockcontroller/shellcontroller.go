@@ -289,26 +289,93 @@ func shellProcPid(sp *shellexec.ShellProc) int {
 	return 0
 }
 
-// RedrawTUI asks the running shell/agent process to redraw its terminal UI by
-// sending SIGWINCH to its process group (or the process itself as a fallback).
-// This mirrors what a real PTY resize does, without restarting the controller or
-// changing any session state. It is a no-op when no local process is running.
+// redrawNudgeDelay is the pause between the temporary and the restored PTY size
+// in redrawByResizeNudge. The gap has to be long enough for the TUI event loop
+// to observe the first WINCH and repaint; without it both ioctls coalesce into a
+// single event carrying the final (unchanged) size and nothing is redrawn.
+var redrawNudgeDelay = 80 * time.Millisecond
+
+// RedrawTUI asks the running shell/agent process to redraw its terminal UI
+// without restarting the controller or touching session state.
+//
+// Two mechanisms are used, in order of preference:
+//
+//  1. SIGWINCH to the process group (or the process itself). Cheap, no reflow.
+//     Only available on unix.
+//  2. A real PTY resize nudge: bump the pty by one row and restore it. This is
+//     the primary path on Windows, where unixutil signalling is a stub, and it
+//     is the only reliable way to make a TUI repaint its full frame. A genuine
+//     TIOCSWINSZ/ResizePseudoConsole is what every TUI already treats as a
+//     full redraw request.
+//
+// It is a no-op when no process is running.
 func (sc *ShellController) RedrawTUI() error {
 	var sp *shellexec.ShellProc
 	sc.WithLock(func() {
 		sp = sc.ShellProc
 	})
-	pid := shellProcPid(sp)
-	if pid <= 0 {
+	if sp == nil || sp.Cmd == nil {
 		return nil
 	}
-	if pgid, err := unixutil.GetProcessGroupId(pid); err == nil && pgid > 0 {
-		if err := unixutil.SignalGroupByName(pgid, "SIGWINCH"); err == nil {
+	pid := shellProcPid(sp)
+	if pid > 0 {
+		if pgid, err := unixutil.GetProcessGroupId(pid); err == nil && pgid > 0 {
+			if err := unixutil.SignalGroupByName(pgid, "SIGWINCH"); err == nil {
+				return nil
+			}
+		}
+		if err := unixutil.SendSignalByName(pid, "SIGWINCH"); err == nil {
 			return nil
 		}
 	}
-	_ = unixutil.SendSignalByName(pid, "SIGWINCH")
+	// Signal path unavailable (Windows, or a proc without a local pid). Force a
+	// real resize instead; it works for local and remote sessions alike.
+	sc.redrawByResizeNudge(sp)
 	return nil
+}
+
+// redrawByResizeNudge briefly changes the pty size by one row and restores it.
+// The transient size is written straight to the pty through Cmd.SetSize,
+// bypassing updateTermSize, so neither the block's stored termsize nor the
+// frontend geometry is affected.
+func (sc *ShellController) redrawByResizeNudge(sp *shellexec.ShellProc) {
+	rows, cols := sc.currentTermSize()
+	nudgePtySize(sp, rows, cols)
+}
+
+// nudgePtySize performs the actual resize-and-restore. It is separated from the
+// term size lookup so it can be tested without a database.
+func nudgePtySize(sp *shellexec.ShellProc, rows, cols int) {
+	if sp == nil || sp.Cmd == nil || rows <= 0 || cols <= 0 {
+		return
+	}
+	if err := sp.Cmd.SetSize(rows+1, cols); err != nil {
+		log.Printf("[redraw] pty nudge resize failed: %v\n", err)
+		return
+	}
+	time.Sleep(redrawNudgeDelay)
+	if err := sp.Cmd.SetSize(rows, cols); err != nil {
+		log.Printf("[redraw] pty restore resize failed: %v\n", err)
+	}
+}
+
+// currentTermSize returns the last termsize the frontend reported for this
+// block, or (0, 0) when it is unknown.
+func (sc *ShellController) currentTermSize() (int, int) {
+	if sc.BlockId == "" {
+		return 0, 0
+	}
+	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancelFn()
+	blockData, err := wstore.DBMustGet[*waveobj.Block](ctx, sc.BlockId)
+	if err != nil || blockData == nil {
+		return 0, 0
+	}
+	ts := getTermSize(blockData)
+	if ts.Rows <= 0 || ts.Cols <= 0 {
+		return 0, 0
+	}
+	return ts.Rows, ts.Cols
 }
 
 func (sc *ShellController) WithLock(f func()) {

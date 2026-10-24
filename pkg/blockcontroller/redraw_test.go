@@ -5,16 +5,13 @@ package blockcontroller
 
 import (
 	"context"
-	"os"
+	"io"
 	"os/exec"
-	"os/signal"
-	"path/filepath"
-	"runtime"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/wavetermdev/waveterm/pkg/shellexec"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 )
@@ -108,68 +105,73 @@ func TestShellProcPid(t *testing.T) {
 	}
 }
 
-func TestShellControllerRedrawTUI_SendsSigwinch(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("SIGWINCH not supported on Windows")
-	}
-	if os.Getenv(redrawTestChildEnv) == "1" {
-		runRedrawTestChild()
-		return // child exits itself
-	}
-	marker := filepath.Join(t.TempDir(), "winch-fired")
-	readyMarker := filepath.Join(t.TempDir(), "child-ready")
-	cmd := exec.Command(os.Args[0], "-test.run=TestShellControllerRedrawTUI_SendsSigwinch")
-	cmd.Env = append(os.Environ(), redrawTestChildEnv+"=1", "WAVETERM_REDRAW_MARKER="+marker, "WAVETERM_REDRAW_READY="+readyMarker)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // own process group: never signal the test runner
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("failed to start helper process: %v", err)
-	}
-	defer func() {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	}()
+// --- pty resize nudge fallback ---------------------------------------------
 
-	// wait for the child to install its SIGWINCH handler before signaling
-	if !waitForFile(readyMarker, 3*time.Second) {
-		t.Fatalf("helper process never became ready")
-	}
+// mockPtyConn implements shellexec.ConnInterface and records every SetSize call
+// so the resize-nudge fallback can be asserted without a real pty.
+type mockPtyConn struct {
+	pty.Pty // nil: only SetSize is exercised in these tests
 
-	wrap := shellexec.MakeCmdWrap(cmd, nil, true)
-	sc := &ShellController{Lock: &sync.Mutex{}, ShellProc: &shellexec.ShellProc{Cmd: wrap}}
-	if err := sc.RedrawTUI(); err != nil {
-		t.Fatalf("RedrawTUI returned error: %v", err)
-	}
+	sizes [][2]int
+	err   error
+}
 
-	if !waitForFile(marker, 3*time.Second) {
-		t.Fatalf("SIGWINCH was not delivered to the process group (marker %q never created)", marker)
+func (m *mockPtyConn) Kill()                              {}
+func (m *mockPtyConn) KillGraceful(time.Duration)         {}
+func (m *mockPtyConn) Wait() error                        { return nil }
+func (m *mockPtyConn) Start() error                       { return nil }
+func (m *mockPtyConn) ExitCode() int                      { return 0 }
+func (m *mockPtyConn) ExitSignal() string                 { return "" }
+func (m *mockPtyConn) StdinPipe() (io.WriteCloser, error) { return nil, nil }
+func (m *mockPtyConn) StdoutPipe() (io.ReadCloser, error) { return nil, nil }
+func (m *mockPtyConn) StderrPipe() (io.ReadCloser, error) { return nil, nil }
+func (m *mockPtyConn) SetSize(w int, h int) error {
+	m.sizes = append(m.sizes, [2]int{w, h})
+	return m.err
+}
+
+func withNoNudgeDelay(t *testing.T) {
+	t.Helper()
+	prev := redrawNudgeDelay
+	redrawNudgeDelay = 0
+	t.Cleanup(func() { redrawNudgeDelay = prev })
+}
+
+func TestNudgePtySize_ResizesThenRestores(t *testing.T) {
+	withNoNudgeDelay(t)
+	conn := &mockPtyConn{}
+	sp := &shellexec.ShellProc{Cmd: conn}
+
+	nudgePtySize(sp, 30, 100)
+
+	if len(conn.sizes) != 2 {
+		t.Fatalf("expected 2 SetSize calls (nudge + restore), got %d: %v", len(conn.sizes), conn.sizes)
+	}
+	if conn.sizes[0] != [2]int{31, 100} {
+		t.Fatalf("expected nudge to 31x100, got %v", conn.sizes[0])
+	}
+	if conn.sizes[1] != [2]int{30, 100} {
+		t.Fatalf("expected restore to 30x100, got %v", conn.sizes[1])
 	}
 }
 
-func waitForFile(path string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
-			return true
-		}
-		time.Sleep(50 * time.Millisecond)
+func TestNudgePtySize_SkipsWhenNoSizeOrNoProc(t *testing.T) {
+	withNoNudgeDelay(t)
+	conn := &mockPtyConn{}
+	nudgePtySize(nil, 30, 100)
+	nudgePtySize(&shellexec.ShellProc{}, 30, 100)
+	nudgePtySize(&shellexec.ShellProc{Cmd: conn}, 0, 100)
+	nudgePtySize(&shellexec.ShellProc{Cmd: conn}, 30, 0)
+	if len(conn.sizes) != 0 {
+		t.Fatalf("expected no SetSize calls, got %v", conn.sizes)
 	}
-	return false
 }
 
-const redrawTestChildEnv = "WAVETERM_REDRAW_TEST_CHILD"
-
-// runRedrawTestChild is the helper-process implementation used by
-// TestShellControllerRedrawTUI_SendsSigwinch. It writes a ready marker once its
-// SIGWINCH handler is installed, then writes a second marker when the signal
-// arrives, and exits. Re-exec-ing the test binary avoids any dependency on an
-// external shell/python for signal testing.
-func runRedrawTestChild() {
-	marker := os.Getenv("WAVETERM_REDRAW_MARKER")
-	readyMarker := os.Getenv("WAVETERM_REDRAW_READY")
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGWINCH)
-	_ = os.WriteFile(readyMarker, []byte("ready"), 0644)
-	<-ch
-	_ = os.WriteFile(marker, []byte("winch"), 0644)
-	os.Exit(0)
+func TestNudgePtySize_NudgeErrorDoesNotRestore(t *testing.T) {
+	withNoNudgeDelay(t)
+	conn := &mockPtyConn{err: io.ErrClosedPipe}
+	nudgePtySize(&shellexec.ShellProc{Cmd: conn}, 24, 80)
+	if len(conn.sizes) != 1 {
+		t.Fatalf("expected a single failed SetSize attempt, got %v", conn.sizes)
+	}
 }

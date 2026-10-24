@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
+import { modalsModel } from "@/app/store/modalmodel";
 import { cn } from "@/util/util";
 import type { MouseEventHandler, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
@@ -19,7 +20,7 @@ import {
 } from "./session-tags";
 import { getChatSource } from "./sources";
 import type { SessionRunningState } from "./use-sessions-running";
-import { formatDateTimeToSecond, formatFileSize, formatSessionRelativeTime, restoreCommandForSession } from "./utils";
+import { describeSessionDates, formatFileSize, restoreCommandForSession } from "./utils";
 
 /**
  * A note's *real* content is whatever survives stripping `#tag` hash-tags.
@@ -120,6 +121,7 @@ type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 export function SessionRow({
     session,
     selected,
+    inSelection = false,
     onSelect,
     onOpen,
     onMark,
@@ -136,10 +138,16 @@ export function SessionRow({
     childCount = 0,
     matchedChildCount = 0,
     onToggleExpand,
+    /** 该行是父行展开后的最后一条子行 → 连接线只画到半高（收尾肘）。 */
+    isLastChild = false,
     expandAllTags = false,
+    /** 远端会话需要带 connection（供弹窗编辑时的 Summary/NoteAndTags RPC）。 */
+    connection = "",
 }: {
     session: SessionSummary;
     selected: boolean;
+    /** 该行属于批量选区（与「当前行」是两个独立概念，可同时为真）。 */
+    inSelection?: boolean;
     // 带上事件，让上层能区分 Ctrl/Cmd+点击（强制单开详情块）。
     onSelect: (event: ReactMouseEvent<HTMLDivElement>) => void;
     /** 双击行：打开该会话的 Detail Block（纯列表块下新建块，详情块下新开一个块）。 */
@@ -165,17 +173,22 @@ export function SessionRow({
     matchedChildCount?: number;
     /** 点箭头 / 计数徽标：只展开收起，不选中、不打开。 */
     onToggleExpand?: (event: ReactMouseEvent<HTMLElement>) => void;
+    /** 展开后同组最后一条子行：竖线止于行的中线，形成 └ 收尾。 */
+    isLastChild?: boolean;
     /**
      * 工具栏「展开全部标签」的全局偏好（方案 B）。
      * 打开时所有行铺开全部标签；行内「Show less」只收起自己，不改全局偏好。
      */
     expandAllTags?: boolean;
+    /** 远端会话需要带 connection（供弹窗编辑时的 Summary/NoteAndTags RPC）。 */
+    connection?: string;
 }) {
     const isChild = depth > 0;
     const childIcon =
         childKind === "fork" ? "fa-sharp fa-solid fa-code-branch" : "fa-sharp fa-solid fa-wand-magic-sparkles";
-    const childBadge =
-        matchedChildCount > 0 && childCount > 0 ? `${matchedChildCount}/${childCount}` : `+${childCount}`;
+    // 折叠时显示总数；筛选命中时显示 M/N（信息量更大）。展开后普通总数让位给箭头，
+    // 但命中徽标继续显示，因为它是筛选结论。
+    const childBadge = matchedChildCount > 0 && childCount > 0 ? `${matchedChildCount}/${childCount}` : `${childCount}`;
     const childBadgeTitle =
         matchedChildCount > 0 && childCount > 0
             ? `${matchedChildCount} of ${childCount} sub-sessions match this filter`
@@ -210,11 +223,16 @@ export function SessionRow({
         return () => window.clearTimeout(handle);
     }, [noteSaveStatus]);
 
+    // 创建 / 最近更新时间：相对时间给出新鲜度，紧凑日期给出定点，同年省略年份。
+    const dateInfo = describeSessionDates(session.createdAt ?? 0, session.updatedAt ?? 0);
+
     const tooltip = useMemo(
         () =>
             [
                 session.title || session.id,
                 session.snippet ? `Content: ${session.snippet}` : "",
+                session.createdAt ? `Created: ${dateInfo.createdFull}` : "",
+                session.updatedAt || session.createdAt ? `Updated: ${dateInfo.updatedFull}` : "",
                 session.note ? `Note: ${session.note}` : "",
                 session.tags?.length ? `Tags: ${sessionTagsLabel(session.tags)}` : "",
                 session.size != null ? `Size: ${formatFileSize(session.size)} (${session.size} bytes)` : "",
@@ -222,14 +240,14 @@ export function SessionRow({
             ]
                 .filter(Boolean)
                 .join("\n\n"),
-        [session]
+        // 只依赖完整时间字符串（基元值）：相对时间每帧都在变，不能让 memo 每次都失效。
+        [session, dateInfo.createdFull, dateInfo.updatedFull]
     );
 
     const parsedDraft = extractSessionTagsFromNote(noteDraft);
     const nextTags = mergeSessionTags(tagDraft, parsedDraft.tags);
     const noteUnchanged = parsedDraft.note === (session.note ?? "") && sessionTagsEqual(nextTags, session.tags);
     const noteSaving = noteSaveStatus === "saving";
-    const sessionTime = session.updatedAt || session.createdAt || 0;
     const sessionTags = normalizeSessionTags(session.tags);
     // 折叠态默认 4 个标签（design §4）；展开态由行内「收起」按钮回折。
     // 全局偏好优先；单行的「Show less」只覆盖自己。
@@ -297,13 +315,23 @@ export function SessionRow({
         setNoteEditing(false);
     }, [noteEditing, noteSaving, noteUnchanged, saveNote]);
 
+    // 弹窗编辑：长 note 需要更宽的编辑面。App 级 modal（不渲染在 block 内，无焦点问题）。
+    const openNoteDialog = useCallback(() => {
+        modalsModel.pushModal("AISessionNoteModal", {
+            sessionId: session.key,
+            connection: connection || undefined,
+        });
+    }, [connection, session.key]);
+
     return (
         <div
             className={cn(
-                // 子行缩进 20px（design §3.1）：父行 pl-3 = 12px，子行 pl-8 = 32px。
-                // 这里不用 px-3 + 条件 pl-*，两个 padding 工具类会互相覆盖。
-                "group relative cursor-pointer border-b border-border bg-block-solid py-2 pr-3 text-sm hover:bg-hoverbg",
-                isChild ? "bg-block-solid/60 pl-8 text-[13px]" : "pl-3",
+                // 层级：父行是组头（py-2 / text-sm / medium），子行是组内条目
+                // （py-1.5 / 13px / 更低对比）。颜色由 design.md §3.2 规定。
+                "group relative cursor-pointer border-b border-border/70 bg-block-solid pl-3 pr-3 hover:bg-hoverbg",
+                isChild ? "bg-transparent py-1.5 text-[13px]" : "py-2 text-sm",
+                // 选区内（多选）：左侧 2px 竖条 + 淡底；当前行（单选）用更实的 accent。
+                inSelection && !selected && "bg-accent/5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent/50",
                 selected &&
                     "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
@@ -319,17 +347,27 @@ export function SessionRow({
         >
             <div className="flex min-w-0 items-start gap-2">
                 {isChild ? (
-                    // 左侧竖线：self-stretch 让这个 rail 撑满行高，span 再用 flex-1 填满它。
-                    // 只写 h-full 的话父容器高度是 auto，百分比高度会退化成 0（线不可见）。
-                    <div className="flex w-4 shrink-0 flex-col items-center self-stretch" aria-hidden="true">
-                        <span className="w-px flex-1 bg-border/70" />
+                    /*
+                     * 连接线：一条竖线 + 一个短肋。竖线固定在本列的 10px 处，加上外层
+                     * pl-3(12px) 后落在 x=22px，与父行折叠箭头的中心同轴（箭头 20px
+                     * 热区的中心 = 12+10）。最后一条子行竖线只画到半高，形成 └ 收尾，
+                     * 不再继续向下延伸。
+                     */
+                    <div className="relative w-5 shrink-0 self-stretch" aria-hidden="true">
+                        <span
+                            className={cn(
+                                "absolute left-2.5 top-0 w-px bg-border/70",
+                                isLastChild ? "h-1/2" : "h-full"
+                            )}
+                        />
+                        <span className="absolute left-2.5 top-1/2 h-px w-2 bg-border/70" />
                     </div>
                 ) : null}
                 <div className={cn("flex shrink-0 flex-col items-center gap-1", !expandable && "mt-0.5")}>
                     {expandable ? (
                         <button
                             type="button"
-                            className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-secondary transition-colors hover:text-accent"
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary transition-colors hover:bg-hover hover:text-accent"
                             aria-expanded={expanded}
                             aria-label={expanded ? "Collapse sub-sessions" : "Expand sub-sessions"}
                             title={
@@ -345,8 +383,8 @@ export function SessionRow({
                         >
                             <i
                                 className={cn(
-                                    "fa-sharp fa-solid text-[9px]",
-                                    expanded ? "fa-chevron-down" : "fa-chevron-right"
+                                    "fa-sharp fa-solid text-[10px] transition-transform duration-150 fa-chevron-right",
+                                    expanded && "rotate-90"
                                 )}
                             />
                         </button>
@@ -364,23 +402,34 @@ export function SessionRow({
                     </button>
                     <RunningDot runningState={runningState} onJumpToBlock={onJumpToBlock} />
                 </div>
-                <div className="min-w-0 flex-1 border-l border-border pl-3">
+                <div className={cn("min-w-0 flex-1 border-l border-border/60 pl-3", isChild && "border-none pl-0")}>
                     <div className="flex min-w-0 items-center gap-2">
                         {isChild ? (
                             <i
-                                className={cn(childIcon, "shrink-0 text-[10px] text-secondary")}
+                                className={cn(childIcon, "shrink-0 text-[10px] text-secondary/80")}
                                 title={childKind === "fork" ? "Fork" : "Sub-agent session"}
                             />
                         ) : null}
-                        <div className="min-w-0 flex-1 truncate font-medium">{session.title || session.id}</div>
+                        <div
+                            className={cn(
+                                "min-w-0 flex-1 truncate",
+                                isChild
+                                    ? "font-normal text-secondary group-hover:text-primary"
+                                    : "font-medium text-primary"
+                            )}
+                        >
+                            {session.title || session.id}
+                        </div>
                         {expandable ? (
                             <button
                                 type="button"
                                 className={cn(
-                                    "flex h-4 shrink-0 items-center gap-1 rounded-full px-1.5 text-[10px] tabular-nums transition-colors",
+                                    "flex h-4 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] tabular-nums transition-colors",
                                     matchedChildCount > 0
                                         ? "bg-accent/15 text-accent"
-                                        : "bg-surface text-secondary hover:text-primary"
+                                        : "bg-surface text-secondary hover:text-primary",
+                                    // 展开后普通总数不再有意义（箭头已表达状态），但命中徽标保留。
+                                    expanded && matchedChildCount === 0 && "hidden"
                                 )}
                                 title={childBadgeTitle}
                                 aria-label={childBadgeTitle}
@@ -390,7 +439,6 @@ export function SessionRow({
                                     onToggleExpand?.(event);
                                 }}
                             >
-                                <i className="fa-sharp fa-solid fa-diagram-project text-[8px]" />
                                 {childBadge}
                             </button>
                         ) : null}
@@ -433,9 +481,12 @@ export function SessionRow({
                                 Vendor {session.vendorid.slice(0, 8)}
                             </span>
                         ) : null}
-                        <span title={formatDateTimeToSecond(sessionTime)}>
-                            {formatSessionRelativeTime(sessionTime)}
-                        </span>
+                        {dateInfo.updatedText ? (
+                            <span title={`Updated: ${dateInfo.updatedFull}`}>{dateInfo.updatedText}</span>
+                        ) : null}
+                        {dateInfo.createdText ? (
+                            <span title={`Created: ${dateInfo.createdFull}`}>Created {dateInfo.createdText}</span>
+                        ) : null}
                         <span>{session.messageCount ?? 0} msgs</span>
                         {session.size != null ? <span>{formatFileSize(session.size)}</span> : null}
                     </div>
@@ -535,6 +586,21 @@ export function SessionRow({
                                     </button>
                                 ) : null}
                             </span>
+                            {session.note ? (
+                                <button
+                                    type="button"
+                                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
+                                    title="Open note in dialog"
+                                    aria-label="Open note in dialog"
+                                    data-row-action="true"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openNoteDialog();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center text-[10px]" />
+                                </button>
+                            ) : null}
                             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100">
                                 <i className="fa-sharp fa-solid fa-pen text-[10px]" />
                             </span>

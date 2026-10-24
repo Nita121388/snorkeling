@@ -16,9 +16,11 @@ type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 
 type AISessionNoteModalProps = {
     sessionId: string;
+    /** 远端会话需要带 connection；本地会话可省略。 */
+    connection?: string;
 };
 
-function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
+function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) {
     const service = useMemo(() => new AISessionsServiceType(), []);
     const [summary, setSummary] = useState<SessionSummary | null>(null);
     const [noteDraft, setNoteDraft] = useState("");
@@ -32,7 +34,7 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
         setLoading(true);
         setError("");
         service
-            .Summary({ id: sessionId })
+            .Summary({ id: sessionId, connection: connection?.trim() || undefined })
             .then((nextSummary) => {
                 if (cancelled) return;
                 setSummary(nextSummary);
@@ -137,7 +139,11 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
                   : "";
 
     return (
-        <Modal className="w-[520px] max-w-[calc(100vw-32px)]" onClose={closeModal} onClickBackdrop={closeModal}>
+        <Modal
+            className="w-[min(680px,calc(100vw-32px))]"
+            onClose={closeModal}
+            onClickBackdrop={closeModal}
+        >
             <div className="space-y-3 text-primary">
                 <div className="space-y-1 pr-7">
                     <div className="text-base font-semibold">Session Note</div>
@@ -169,7 +175,8 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
                         ) : null}
                         <SessionTagChips tags={nextTags} />
                         <textarea
-                            className="min-h-[140px] w-full resize-none rounded border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
+                            autoFocus
+                            className="min-h-[240px] w-full resize-y rounded border border-border bg-transparent px-3 py-2 text-sm leading-6 outline-none focus:border-accent"
                             placeholder="Add a note, use #tag to add tags"
                             value={noteDraft}
                             onChange={(e) => {
@@ -198,6 +205,17 @@ function AISessionNoteModal({ sessionId }: AISessionNoteModalProps) {
                                 {statusText}
                             </span>
                             <div className="flex items-center gap-2">
+                                <button
+                                    className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                                    disabled={saving || (currentNote === "" && noteDraft.trim() === "")}
+                                    onClick={() => {
+                                        latestDraftRef.current = "";
+                                        setNoteDraft("");
+                                        void saveNote("");
+                                    }}
+                                >
+                                    Clear
+                                </button>
                                 <button
                                     className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
                                     disabled={saving}

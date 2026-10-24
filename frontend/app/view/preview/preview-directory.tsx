@@ -7,6 +7,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { checkKeyPressed, isCharacterKeyEvent } from "@/util/keyutil";
+import { isDragMovement, keysUnderRect, rectToCss, type Rect } from "@/util/selectionrect";
 import { PLATFORM, PlatformMacOS } from "@/util/platformutil";
 import { fireAndForget } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
@@ -371,6 +372,12 @@ function TableBody({
     const dirPath = useAtomValue(model.statFilePath);
     const setErrorMsg = useSetAtom(model.errorMsgAtom);
     const [selectionAnchorPath, setSelectionAnchorPath] = useState<string | null>(null);
+    const [marqueeRect, setMarqueeRect] = useState<{ left: number; top: number; width: number; height: number } | null>(
+        null
+    );
+    const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+    const marqueeBaseRef = useRef<Set<string>>(new Set());
+    const marqueeAdditiveRef = useRef(false);
     const blockMoveMenuItems = useBlockMoveMenuItems();
 
     useEffect(() => {
@@ -450,6 +457,60 @@ function TableBody({
         [allRows, focusIndex, selectionAnchorPath, setFocusIndex, setSelectedPaths]
     );
 
+    // 框选：与 AI Sessions 列表共用同一套几何函数（@/util/selectionrect）。
+    // 行标识用 data-file-path；表格是虚拟滚动的绝对定位元素，所以只对当前
+    // 已挂载的行求交 —— 那正是用户肉眼可见、想要框选的那部分。
+    const startMarquee = useCallback(
+        (event: React.MouseEvent<HTMLDivElement>) => {
+            if (event.button !== 0) return;
+            const target = event.target as HTMLElement | null;
+            if (target != null && typeof target.closest === "function") {
+                if (target.closest("[data-rowindex], button, input") != null) {
+                    return;
+                }
+            }
+            marqueeStartRef.current = { x: event.clientX, y: event.clientY };
+            marqueeAdditiveRef.current = event.ctrlKey || event.metaKey;
+            marqueeBaseRef.current = event.ctrlKey || event.metaKey ? new Set(selectedPaths) : new Set();
+        },
+        [selectedPaths]
+    );
+
+    useEffect(() => {
+        const handleMove = (event: MouseEvent) => {
+            const start = marqueeStartRef.current;
+            const container = bodyRef.current;
+            if (start == null || container == null) return;
+            if (!isDragMovement(event.clientX - start.x, event.clientY - start.y)) return;
+            const rect: Rect = {
+                left: Math.min(start.x, event.clientX),
+                top: Math.min(start.y, event.clientY),
+                right: Math.max(start.x, event.clientX),
+                bottom: Math.max(start.y, event.clientY),
+            };
+            setMarqueeRect(rectToCss(rect));
+            const rows = Array.from(container.querySelectorAll("[data-file-path]")).map((el) => ({
+                key: (el as HTMLElement).dataset.filePath ?? "",
+                el: el as HTMLElement,
+            }));
+            const hit = keysUnderRect(rect, rows.filter((row) => row.key !== ""));
+            const next = new Set(marqueeBaseRef.current);
+            for (const key of hit) next.add(key);
+            setSelectedPaths(next);
+        };
+        const handleUp = () => {
+            if (marqueeStartRef.current == null) return;
+            marqueeStartRef.current = null;
+            setMarqueeRect(null);
+        };
+        document.addEventListener("mousemove", handleMove);
+        document.addEventListener("mouseup", handleUp);
+        return () => {
+            document.removeEventListener("mousemove", handleMove);
+            document.removeEventListener("mouseup", handleUp);
+        };
+    }, [bodyRef, setSelectedPaths]);
+
     const handleFileContextMenu = useCallback(
         async (e: any, finfo: FileInfo, idx: number) => {
             e.preventDefault();
@@ -501,7 +562,19 @@ function TableBody({
     const otherRows = allRows.filter((row) => row.getValue("name") !== "..");
 
     return (
-        <div className="dir-table-body" ref={bodyRef}>
+        <div className="dir-table-body relative" ref={bodyRef} onMouseDown={startMarquee}>
+            {marqueeRect != null ? (
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute z-20 border border-accent/60 bg-accent/10"
+                    style={{
+                        left: marqueeRect.left,
+                        top: marqueeRect.top,
+                        width: marqueeRect.width,
+                        height: marqueeRect.height,
+                    }}
+                />
+            ) : null}
             {(searchActive || search !== "") && (
                 <div className="flex rounded-[3px] py-1 px-2 bg-warning text-black" ref={warningBoxRef}>
                     <span>{search === "" ? "Type to search (Esc to cancel)" : `Searching for "${search}"`}</span>
@@ -613,6 +686,7 @@ function TableRow({
         <div
             className={clsx("dir-table-body-row", { focused: focusIndex === idx, selected })}
             data-rowindex={idx}
+            data-file-path={row.getValue("path") as string}
             onDoubleClick={(e) => {
                 fireAndForget(() =>
                     openPreviewEntry(model, row.original, connection, { forceNewBlock: e.ctrlKey || e.metaKey })
@@ -760,6 +834,15 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
         model.directoryKeyDownHandler = (waveEvent: WaveKeyboardEvent): boolean => {
             if (checkKeyPressed(waveEvent, "Cmd:f")) {
                 globalStore.set(model.directorySearchActive, true);
+                return true;
+            }
+            // Ctrl/Cmd+A：全选当前可见行（不含 `..` 上级行，与既有 dotdot 处理一致）。
+            if (checkKeyPressed(waveEvent, "Cmd:a") || checkKeyPressed(waveEvent, "Ctrl:a")) {
+                // 只用当前筛选结果；`..` 上级行的 path 指向父目录，不该进选区。
+                const selectable = filteredData
+                    .map((fileInfo) => fileInfo.path)
+                    .filter((path) => path != null && path !== "");
+                setSelectedPaths(new Set(selectable));
                 return true;
             }
             if (checkKeyPressed(waveEvent, "Cmd:c") || checkKeyPressed(waveEvent, "Ctrl:c")) {

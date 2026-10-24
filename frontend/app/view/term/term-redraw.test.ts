@@ -73,3 +73,30 @@ describe("TermViewModel.redrawTUI", () => {
         expect(() => vm.redrawTUI()).not.toThrow();
     });
 });
+describe("TermViewModel.redrawTUI webgl handling", () => {
+    it("clears the webgl texture atlas when the term renderer is webgl", async () => {
+        const clearTextureAtlas = vi.fn();
+        const vm = makeViewModel();
+        vm.termRef = {
+            current: {
+                getTermRenderer: () => "webgl",
+                terminal: { rows: 24, refresh: vi.fn(), clearTextureAtlas },
+            },
+        };
+        vm.redrawTUI();
+        expect(clearTextureAtlas).toHaveBeenCalled();
+    });
+
+    it("does not touch the atlas for the dom renderer", () => {
+        const clearTextureAtlas = vi.fn();
+        const vm = makeViewModel();
+        vm.termRef = {
+            current: {
+                getTermRenderer: () => "dom",
+                terminal: { rows: 24, refresh: vi.fn(), clearTextureAtlas },
+            },
+        };
+        vm.redrawTUI();
+        expect(clearTextureAtlas).not.toHaveBeenCalled();
+    });
+});

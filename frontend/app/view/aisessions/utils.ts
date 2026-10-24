@@ -306,6 +306,53 @@ export function formatSessionRelativeTime(timestamp: number, now = Date.now()): 
     return `${Math.floor(elapsedHours / 24)}d ago`;
 }
 
+/**
+ * 会话列表用的紧凑日期：与当前时间同一年时省略年份（"03-14"），跨年才带年份
+ * （"2025-03-14"）。年份基准是 now 所在的年，所以跨年后无需改代码。
+ * 0 / 无效时间戳返回 ""，让调用方可以直接不渲染。
+ */
+export function formatSessionDateCompact(timestamp: number, now = Date.now()): string {
+    if (!timestamp) return "";
+    const normalized = normalizeTimestamp(timestamp);
+    if (!Number.isFinite(normalized) || normalized <= 0) return "";
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return "";
+    const monthDay = `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+    return date.getFullYear() === new Date(now).getFullYear() ? monthDay : `${date.getFullYear()}-${monthDay}`;
+}
+
+function sameCalendarDay(left: number, right: number): boolean {
+    const a = new Date(normalizeTimestamp(left));
+    const b = new Date(normalizeTimestamp(right));
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/**
+ * 列表行的「创建 / 最近更新」两段文本。判定逻辑放在这里，JSX 只负责直出：
+ *
+ * - `updatedText` 形如 "2h ago · 03-15"（相对时间给出新鲜度，紧凑日期给出定点）。
+ * - `createdText` 形如 "03-14"；缺省为 0、或与 updatedAt 落在同一自然日时返回 ""
+ *   （同日不重复渲染，避免 "Created 03-15 / Updated 03-15" 的噪音）。
+ * - `updatedFull` / `createdFull` 是秒级完整时间，给 tooltip 用。
+ */
+export function describeSessionDates(
+    createdAt: number,
+    updatedAt: number,
+    now = Date.now()
+): { updatedText: string; createdText: string; updatedFull: string; createdFull: string } {
+    const createdBase = createdAt > 0 ? normalizeTimestamp(createdAt) : 0;
+    const updatedBase = updatedAt > 0 ? normalizeTimestamp(updatedAt) : createdBase;
+    const updatedDate = formatSessionDateCompact(updatedBase, now);
+    const createdDate = formatSessionDateCompact(createdBase, now);
+    const sameDay = createdBase > 0 && updatedBase > 0 && sameCalendarDay(createdBase, updatedBase);
+    return {
+        updatedText: updatedDate ? `${formatSessionRelativeTime(updatedBase, now)} · ${updatedDate}` : "",
+        createdText: createdDate && !sameDay ? createdDate : "",
+        updatedFull: formatDateTimeToSecond(updatedBase),
+        createdFull: formatDateTimeToSecond(createdBase),
+    };
+}
+
 export async function copyText(text: string): Promise<void> {
     await writeTextToClipboard(text);
 }
@@ -684,8 +731,166 @@ export function shortenPathForChip(path: string, maxLen = 44): string {
     return `…/${segs[segs.length - 1]}`;
 }
 
-// Local filter for the "Other" root: keep sessions whose projectPath is empty or
-// does not start with any recognized root prefix.
-export function otherRootMatcher(sessions: { projectPath?: string }[]): { projectPath?: string }[] {
-    return sessions.filter((session) => extractRootOfPath(session.projectPath ?? "") === "");
+// Canonicalize one path prefix for the multi-select filter. Mirrors the Go
+// normalizeProjectPrefix: root forms keep their trailing separator ("/", "E:\",
+// "~/") because the backend relies on it to find the component boundary, and the
+// Other sentinel passes through untouched.
+export function normalizePathPrefix(raw: string): string {
+    const p = raw?.trim() ?? "";
+    if (p === "") return "";
+    if (p === PathFilterOtherRoot) return p;
+    if (p === "/") return "/";
+    if (p === "~" || p === "~/" || p === "~\\") return "~/";
+    if (/^[a-zA-Z]:$/.test(p)) return p[0].toUpperCase() + ":\\";
+    if (/^[a-zA-Z]:[\\/]$/.test(p)) return p[0].toUpperCase() + ":\\";
+    const trimmed = p.replace(/[\\/]+$/, "");
+    return trimmed === "" ? p : trimmed;
+}
+
+// Normalize + dedupe (case-insensitively, keeping first-seen order) a path prefix
+// list. Empty entries are dropped. Used for both the include and exclude sets.
+export function normalizePathSelections(paths: readonly string[] | null | undefined): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of paths ?? []) {
+        const p = normalizePathPrefix(raw);
+        if (p === "") continue;
+        const key = p.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(p);
+    }
+    return out;
+}
+
+// Path sets must NOT be compared with tagsEqual: the tag normalizer rejects
+// "/" and "\", so every real path would collapse to "" and compare equal.
+export function pathSelectionsEqual(
+    a: readonly string[] | null | undefined,
+    b: readonly string[] | null | undefined
+): boolean {
+    const left = normalizePathSelections(a);
+    const right = normalizePathSelections(b);
+    if (left.length !== right.length) return false;
+    return left.every((item, index) => item.toLowerCase() === right[index].toLowerCase());
+}
+
+// Keep the include and exclude path sets mutually exclusive: whatever was just
+// added to one side is removed from the other. Returns both sides normalized so
+// callers never have to think about case/separator variants.
+export function reconcilePathSets(
+    next: readonly string[],
+    other: readonly string[]
+): { next: string[]; other: string[] } {
+    const normalizedNext = normalizePathSelections(next);
+    const added = new Set(normalizedNext.map((p) => p.toLowerCase()));
+    const normalizedOther = normalizePathSelections(other).filter((p) => !added.has(p.toLowerCase()));
+    return { next: normalizedNext, other: normalizedOther };
+}
+
+/** Chip label for a selected path prefix (Other bucket uses its display name). */
+export function pathSelectionLabel(prefix: string): string {
+    if (prefix === PathFilterOtherRoot) return "Other";
+    return shortenPathForChip(prefix);
+}
+
+// Whether `prefix` is already covered by one of the selected prefixes (used to
+// hint "contained in a parent selection" without silently dropping selections).
+export function pathPrefixCoveredBy(prefix: string, selected: readonly string[]): boolean {
+    const target = normalizePathPrefix(prefix).toLowerCase();
+    if (target === "") return false;
+    for (const raw of selected) {
+        const candidate = normalizePathPrefix(raw).toLowerCase();
+        if (candidate === "" || candidate === PathFilterOtherRoot) continue;
+        if (target === candidate) return true;
+        const sep = candidate.endsWith("\\") ? "\\" : "/";
+        if (target.startsWith(candidate + sep)) return true;
+    }
+    return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 多选与批量操作（batch actions）
+//
+// 选区（selectedKeys）是 widget 局部态，与筛选一样不落盘。下面三个纯函数
+// 负责「选区裁剪 / 范围选择 / 批量复制文本」，均不依赖 jotai / react，
+// 可直接单测；UI 与手势接入在 aisessions.tsx。
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * 把选区裁剪到当前可见 key 之内：筛选 / 刷新后消失的会话不该继续算在
+ * 选区内，否则批量栏的「复制 5 个 ID」实际只有 2 条在结果里。
+ * 保序、去重（选区里可能出现重复 key 的脏数据）。
+ */
+export function pruneSelectionToVisible(selection: readonly string[], visibleKeys: readonly string[]): string[] {
+    const visible = new Set(visibleKeys);
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const key of selection) {
+        if (key === "" || !visible.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        out.push(key);
+    }
+    return out;
+}
+
+/**
+ * Shift+范围选：按 visibleKeys 的当前顺序取 anchor 到 target 之间（含两端）。
+ * anchor 为空或已不在可见集里 → 退化为单选 target（此时用户点不到合理区间，
+ * 给他一个确定的结果比保留旧 anchor 更直观）。
+ */
+export function applySelectionRange(visibleKeys: readonly string[], anchor: string, target: string): string[] {
+    if (target === "" || visibleKeys.indexOf(target) < 0) {
+        return [];
+    }
+    const anchorIndex = anchor === "" ? -1 : visibleKeys.indexOf(anchor);
+    if (anchorIndex < 0) {
+        return [target];
+    }
+    const targetIndex = visibleKeys.indexOf(target);
+    const [start, end] = [Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex)];
+    return visibleKeys.slice(start, end + 1);
+}
+
+/** 批量复制的产物类型。 */
+export type BatchCopyKind = "ids" | "filePaths" | "projectPaths" | "resumeCommands";
+
+/**
+ * 按用户点击顺序（而非列表顺序）产出复制文本，每项一行。
+ *   ids              session.id
+ *   filePaths        session.filePath
+ *   projectPaths     session.projectPath（去重保序 —— 同目录多个会话只留一行）
+ *   resumeCommands   restoreCommandForSession()（复用单行菜单同一函数）
+ * 字段缺失的项跳过；全空返回 ""（copyText 已有空串保护）。
+ */
+export function buildBatchCopyText(sessions: readonly SessionSummary[], kind: BatchCopyKind): string {
+    if (sessions.length === 0) return "";
+    const seen = new Set<string>();
+    const lines: string[] = [];
+    for (const session of sessions) {
+        if (session == null) continue;
+        let value = "";
+        switch (kind) {
+            case "ids":
+                value = session.id?.trim() ?? "";
+                break;
+            case "filePaths":
+                value = session.filePath?.trim() ?? "";
+                break;
+            case "projectPaths":
+                value = session.projectPath?.trim() ?? "";
+                break;
+            case "resumeCommands":
+                value = restoreCommandForSession(session);
+                break;
+        }
+        if (value === "") continue;
+        if (kind === "projectPaths") {
+            const dedupeKey = value.toLowerCase();
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+        }
+        lines.push(value);
+    }
+    return lines.join("\n");
 }

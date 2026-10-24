@@ -197,3 +197,46 @@ describe("note / tag row markup", () => {
         expect(markup).not.toContain("Add a note");
     });
 });
+
+describe("created / updated date meta", () => {
+    function renderMeta(createdAt: number, updatedAt: number): string {
+        const session = { key: "k", id: "k", source: "pi", createdAt, updatedAt } as unknown as SessionSummary;
+        return renderToStaticMarkup(
+            <SessionRow
+                session={session}
+                selected={false}
+                onSelect={() => {}}
+                onMark={() => {}}
+                onNoteSave={() => Promise.resolve(true)}
+                onResume={() => {}}
+                onJumpToBlock={() => {}}
+            />
+        );
+    }
+
+    it("renders both the created and the updated date when they differ", () => {
+        const created = new Date(2020, 0, 2, 9, 0, 0).getTime();
+        const updated = new Date(2021, 5, 7, 10, 30, 0).getTime();
+        const markup = renderMeta(created, updated);
+        // 跨年 → 带年份；完整时间在 title 上。
+        expect(markup).toContain("Created 2020-01-02");
+        expect(markup).toContain("2021-06-07");
+        expect(markup).toContain("Created: 2020-01-02 09:00:00");
+        expect(markup).toContain("Updated: 2021-06-07 10:30:00");
+    });
+
+    it("omits the created segment when both timestamps share one day", () => {
+        const created = new Date(2021, 5, 7, 8, 0, 0).getTime();
+        const updated = new Date(2021, 5, 7, 10, 30, 0).getTime();
+        const markup = renderMeta(created, updated);
+        expect(markup).not.toContain("Created ");
+        expect(markup).toContain("2021-06-07");
+    });
+
+    it("does not render a created segment when createdAt is missing", () => {
+        const updated = new Date(2021, 5, 7, 10, 30, 0).getTime();
+        const markup = renderMeta(0, updated);
+        expect(markup).not.toContain("Created ");
+        expect(markup).toContain("2021-06-07");
+    });
+});

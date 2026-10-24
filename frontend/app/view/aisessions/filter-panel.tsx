@@ -3,11 +3,12 @@
 
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { CHAT_SOURCES, getChatSource } from "./sources";
 import type { DatePreset, DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
 import { DefaultPathFilter, DefaultTagPresence, PathFilterOtherRoot } from "./types";
 import type { PathAncestorSegment, PathCountGroup, PathRootOption } from "./utils";
-import { pathFilterToPrefix, shortenPathForChip } from "./utils";
+import { normalizePathPrefix, pathFilterToPrefix, pathPrefixCoveredBy, pathSelectionLabel } from "./utils";
 
 function msToDateInput(ms: number | undefined): string {
     if (!ms) return "";
@@ -46,6 +47,21 @@ const TagPresenceOptions: { value: TagPresenceFilter; icon: string; label: strin
     { value: "any", icon: "fa-solid fa-tag", label: "Any tags" },
     { value: "untagged", icon: "fa-regular fa-tag", label: "Untagged" },
 ];
+
+type Mode = "include" | "exclude";
+
+function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (next: Mode) => void }) {
+    return (
+        <SegTrack>
+            <SegButton active={mode === "include"} title="Include" onClick={() => onChange("include")}>
+                <i className="fa-sharp fa-solid fa-check text-[10px]" />
+            </SegButton>
+            <SegButton active={mode === "exclude"} title="Exclude" onClick={() => onChange("exclude")}>
+                <i className="fa-sharp fa-solid fa-ban text-[10px]" />
+            </SegButton>
+        </SegTrack>
+    );
+}
 
 function markedLabel(value: MarkedFilter): string {
     return MarkedOptions.find((o) => o.value === value)?.label ?? "";
@@ -102,17 +118,25 @@ function ActiveChip({
     icon,
     label,
     title,
+    tone,
     onRemove,
 }: {
     icon?: string;
     label: string;
     title?: string;
+    /** "exclude" renders the negative-filter style (⊘ + dashed error border). */
+    tone?: "exclude";
     onRemove: () => void;
 }) {
     return (
         <span
             title={title}
-            className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-full bg-accent/10 px-1.5 pl-2.5 text-[11px] text-accent"
+            className={cn(
+                "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full px-1.5 pl-2.5 text-[11px]",
+                tone === "exclude"
+                    ? "border border-dashed border-error/60 bg-error/10 text-error"
+                    : "bg-accent/10 text-accent"
+            )}
         >
             {icon ? <i className={cn("fa-sharp", icon)} /> : null}
             <span className="min-w-0 truncate">{label}</span>
@@ -137,12 +161,18 @@ export function FilterPanel({
     setSource,
     availableTags,
     tagFilters,
+    excludeTags,
     tagPresence,
     setTagPresence,
     toggleTagFilter,
+    toggleExcludeTag,
     onClearAll,
     pathFilter,
     setPathFilter,
+    pathSelections,
+    togglePathSelection,
+    pathExcludes,
+    togglePathExclude,
     availablePathRoots,
     pathChildren,
     pathAncestors,
@@ -155,29 +185,52 @@ export function FilterPanel({
     setSource: (value: SourceFilter) => void;
     availableTags: SessionTagSummary[];
     tagFilters: string[];
+    excludeTags: string[];
     tagPresence: TagPresenceFilter;
     setTagPresence: (value: TagPresenceFilter) => void;
     toggleTagFilter: (tag: string) => void;
+    toggleExcludeTag: (tag: string) => void;
     onClearAll: () => void;
     pathFilter: PathFilter;
     setPathFilter: (value: PathFilter) => void;
+    /** 包含侧已选目录前缀（多选并集） */
+    pathSelections: string[];
+    togglePathSelection: (prefix: string) => void;
+    /** 排除侧目录前缀 */
+    pathExcludes: string[];
+    togglePathExclude: (prefix: string) => void;
     availablePathRoots: PathRootOption[];
     pathChildren: PathCountGroup[];
     pathAncestors: PathAncestorSegment[];
 }) {
+    // 含/排 模式：chips 点击根据当前模式分发（同一段内互斥，避免一个 chip 承载三态）。
+    const [tagMode, setTagMode] = useState<Mode>("include");
+    const [pathMode, setPathMode] = useState<Mode>("include");
     const selectedTags = new Set(tagFilters);
+    const excludedTags = new Set(excludeTags);
+    const selectedPaths = new Set(pathSelections);
+    const excludedPaths = new Set(pathExcludes);
     const markedActive = markedFilter !== "all";
     const dateActive = dateRange.preset !== "all";
-    const pathActive = pathFilter.root !== "";
-    const pathChipFull = pathFilterToPrefix(pathFilter);
+    const pathActive = pathSelections.length > 0;
+    const pathExcludeActive = pathExcludes.length > 0;
     const tagPresenceActive = tagPresence !== DefaultTagPresence;
     const sourceActive = source !== "";
+    const tagExcludeActive = excludeTags.length > 0;
     // Untagged is mutually exclusive with tag-include at the ViewModel layer
     // (setTagPresence / setTagFilters enforce the reset on the other side).
     // We visually dim the tag chip row while Untagged is active so the user
     // sees the constraint instead of clicking into a no-op.
     const tagSectionDim = tagPresence === "untagged";
-    const hasActive = markedActive || dateActive || pathActive || selectedTags.size > 0 || tagPresenceActive || sourceActive;
+    const hasActive =
+        markedActive ||
+        dateActive ||
+        pathActive ||
+        pathExcludeActive ||
+        selectedTags.size > 0 ||
+        tagExcludeActive ||
+        tagPresenceActive ||
+        sourceActive;
     return (
         <div className="m-2.5 overflow-hidden rounded-xl border border-border/60 bg-panel shadow-sm">
             <div className="flex items-center justify-end px-2.5 pt-2 pb-1">
@@ -283,9 +336,13 @@ export function FilterPanel({
                         <i className="fa-sharp fa-solid fa-folder-tree w-3.5 shrink-0 text-center text-[11px] text-secondary" />
                         <SegTrack className="min-w-0 flex-1">
                             <SegButton
-                                active={pathFilter.root === ""}
+                                active={pathSelections.length === 0 && pathExcludes.length === 0}
                                 title="All paths"
-                                onClick={() => setPathFilter(DefaultPathFilter)}
+                                onClick={() => {
+                                    setPathFilter(DefaultPathFilter);
+                                    pathSelections.forEach((prefix) => togglePathSelection(prefix));
+                                    pathExcludes.forEach((prefix) => togglePathExclude(prefix));
+                                }}
                             >
                                 <span className="text-xs">All</span>
                             </SegButton>
@@ -293,7 +350,10 @@ export function FilterPanel({
                                 if (opt.isMore) {
                                     return null;
                                 }
-                                const active = pathFilter.root === opt.root;
+                                const active =
+                                    pathMode === "include"
+                                        ? selectedPaths.has(opt.root)
+                                        : excludedPaths.has(opt.root);
                                 return (
                                     <SegButton
                                         key={opt.root}
@@ -303,7 +363,16 @@ export function FilterPanel({
                                                 ? `Other (empty / unrecognized projectPath) — ${opt.count}`
                                                 : `${opt.label} (${opt.count})`
                                         }
-                                        onClick={() => setPathFilter({ root: opt.root, subPath: "" })}
+                                        onClick={() => {
+                                            if (pathMode === "include") {
+                                                togglePathSelection(opt.root);
+                                                if (!selectedPaths.has(opt.root)) {
+                                                    setPathFilter({ root: opt.root, subPath: "" });
+                                                }
+                                            } else {
+                                                togglePathExclude(opt.root);
+                                            }
+                                        }}
                                     >
                                         <span
                                             className="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -317,12 +386,15 @@ export function FilterPanel({
                                 );
                             })}
                         </SegTrack>
+                        <ModeToggle mode={pathMode} onChange={setPathMode} />
                     </div>
                 ) : null}
                 {pathFilter.root !== "" && pathFilter.root !== PathFilterOtherRoot ? (
                     <div className="flex flex-col gap-1.5 border-t border-border/40 py-1.5 pl-[24px]">
                         {/* Parents chain: root + ancestors, current level highlighted.
-                            Click any crumb to pop navigation back to that level. */}
+                            Click any crumb to pop navigation back to that level.
+                            Navigation is deliberately separate from selection: drilling
+                            into a directory must never change the filter. */}
                         <div className="flex min-w-0 flex-wrap items-center gap-1">
                             {[{ name: pathFilter.root, fullSubPath: "" }, ...pathAncestors].map((crumb, index) => {
                                 const isCurrent = index === pathAncestors.length;
@@ -356,9 +428,43 @@ export function FilterPanel({
                                     </span>
                                 );
                             })}
+                            {/* 当前浏览层级的一键选中/排除（浏览只导航，选不选由这两个按钮决定） */}
+                            {pathFilterToPrefix(pathFilter) !== "" ? (
+                                <span className="ml-auto inline-flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        title={`Include ${pathFilterToPrefix(pathFilter)}`}
+                                        aria-pressed={selectedPaths.has(normalizePathPrefix(pathFilterToPrefix(pathFilter)))}
+                                        onClick={() => togglePathSelection(pathFilterToPrefix(pathFilter))}
+                                        className={cn(
+                                            "inline-flex h-5 w-5 items-center justify-center rounded-md text-[9px] cursor-pointer",
+                                            selectedPaths.has(normalizePathPrefix(pathFilterToPrefix(pathFilter)))
+                                                ? "bg-accent/15 text-accent"
+                                                : "text-secondary hover:bg-hover hover:text-primary"
+                                        )}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-check" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title={`Exclude ${pathFilterToPrefix(pathFilter)}`}
+                                        aria-pressed={excludedPaths.has(normalizePathPrefix(pathFilterToPrefix(pathFilter)))}
+                                        onClick={() => togglePathExclude(pathFilterToPrefix(pathFilter))}
+                                        className={cn(
+                                            "inline-flex h-5 w-5 items-center justify-center rounded-md text-[9px] cursor-pointer",
+                                            excludedPaths.has(normalizePathPrefix(pathFilterToPrefix(pathFilter)))
+                                                ? "bg-error/15 text-error"
+                                                : "text-secondary hover:bg-hover hover:text-primary"
+                                        )}
+                                    >
+                                        <i className="fa-sharp fa-solid fa-ban" />
+                                    </button>
+                                </span>
+                            ) : null}
                         </div>
                         {/* Direct children of the selected path: one chip per child dir,
-                            with real counts from the full distribution. Scrollable when long. */}
+                            with real counts from the full distribution. Scrollable when long.
+                            Name area toggles selection; the › chevron drills down. */}
                         {pathChildren.length > 0 ? (
                             <div className="flex max-h-[132px] min-w-0 flex-wrap items-start gap-1 overflow-y-auto pr-1">
                                 {pathChildren.map((child) => {
@@ -366,21 +472,69 @@ export function FilterPanel({
                                     const childSubPath = pathFilter.subPath
                                         ? `${pathFilter.subPath}${sep}${child.name}`
                                         : child.name;
+                                    const prefix = pathFilterToPrefix({
+                                        root: pathFilter.root,
+                                        subPath: childSubPath,
+                                    });
+                                    const active =
+                                        pathMode === "include"
+                                            ? selectedPaths.has(prefix)
+                                            : excludedPaths.has(prefix);
+                                    const covered =
+                                        pathMode === "include" &&
+                                        !active &&
+                                        pathPrefixCoveredBy(prefix, pathSelections);
                                     return (
-                                        <button
+                                        <span
                                             key={child.name}
-                                            type="button"
-                                            title={`Select ${pathFilterToPrefix({ root: pathFilter.root, subPath: childSubPath })}`}
-                                            onClick={() =>
-                                                setPathFilter({ root: pathFilter.root, subPath: childSubPath })
-                                            }
-                                            className="inline-flex h-6 max-w-full items-center gap-1 rounded-md px-1.5 text-[11px] bg-surface-soft text-secondary hover:bg-hover hover:text-primary cursor-pointer"
+                                            className={cn(
+                                                "inline-flex h-6 max-w-full items-center rounded-md text-[11px]",
+                                                active
+                                                    ? pathMode === "include"
+                                                        ? "bg-accent/10 text-accent"
+                                                        : "bg-error/10 text-error border border-dashed border-error/60"
+                                                    : covered
+                                                      ? "bg-accent/5 text-accent/80"
+                                                      : "bg-surface-soft text-secondary"
+                                            )}
                                         >
-                                            <span className="truncate">{child.name}</span>
-                                            <span className="rounded-full bg-surface-strong px-1 text-[9px] opacity-85 tabular-nums">
-                                                {child.count}
-                                            </span>
-                                        </button>
+                                            <button
+                                                type="button"
+                                                title={
+                                                    covered
+                                                        ? `${prefix} — already covered by a parent selection`
+                                                        : `${pathMode === "include" ? "Include" : "Exclude"} ${prefix}`
+                                                }
+                                                onClick={() =>
+                                                    pathMode === "include"
+                                                        ? togglePathSelection(prefix)
+                                                        : togglePathExclude(prefix)
+                                                }
+                                                className="inline-flex h-6 min-w-0 items-center gap-1 rounded-l-md px-1.5 hover:bg-hover/60 cursor-pointer"
+                                            >
+                                                {active || covered ? (
+                                                    <i className="fa-sharp fa-solid fa-check text-[9px]" />
+                                                ) : null}
+                                                <span className="truncate">{child.name}</span>
+                                                <span className="rounded-full bg-surface-strong px-1 text-[9px] opacity-85 tabular-nums">
+                                                    {child.count}
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title={`Browse ${prefix}`}
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    setPathFilter({
+                                                        root: pathFilter.root,
+                                                        subPath: childSubPath,
+                                                    });
+                                                }}
+                                                className="inline-flex h-6 w-5 items-center justify-center rounded-r-md text-[9px] opacity-70 hover:opacity-100 hover:bg-hover cursor-pointer"
+                                            >
+                                                <i className="fa-sharp fa-solid fa-angle-right" />
+                                            </button>
+                                        </span>
                                     );
                                 })}
                             </div>
@@ -407,6 +561,9 @@ export function FilterPanel({
                         {tagPresenceActive ? (
                             <span className="text-[11px] text-secondary">{tagPresenceLabel(tagPresence)}</span>
                         ) : null}
+                        <span className={cn("ml-auto", tagSectionDim && "opacity-40 pointer-events-none")}>
+                            <ModeToggle mode={tagMode} onChange={setTagMode} />
+                        </span>
                     </div>
                     {availableTags.length > 0 ? (
                         <div
@@ -417,20 +574,41 @@ export function FilterPanel({
                         >
                             <div className="flex min-w-0 max-h-40 flex-wrap gap-1 overflow-y-auto pr-1">
                                 {availableTags.map((tagSummary) => {
-                                    const active = selectedTags.has(tagSummary.tag);
+                                    const active =
+                                        tagMode === "include"
+                                            ? selectedTags.has(tagSummary.tag)
+                                            : excludedTags.has(tagSummary.tag);
                                     return (
                                         <button
                                             key={tagSummary.tag}
                                             type="button"
-                                            title={`#${tagSummary.tag}`}
-                                            onClick={() => toggleTagFilter(tagSummary.tag)}
+                                            title={
+                                                tagMode === "include"
+                                                    ? `Include #${tagSummary.tag}`
+                                                    : `Exclude #${tagSummary.tag}`
+                                            }
+                                            onClick={() =>
+                                                tagMode === "include"
+                                                    ? toggleTagFilter(tagSummary.tag)
+                                                    : toggleExcludeTag(tagSummary.tag)
+                                            }
                                             className={cn(
                                                 "inline-flex h-6 max-w-full items-center gap-1 rounded-md px-2 text-[11px] cursor-pointer",
                                                 active
-                                                    ? "bg-accent/10 text-accent"
+                                                    ? tagMode === "include"
+                                                        ? "bg-accent/10 text-accent"
+                                                        : "border border-dashed border-error/60 bg-error/10 text-error"
                                                     : "bg-surface-soft text-secondary hover:bg-hover hover:text-primary"
                                             )}
                                         >
+                                            {active ? (
+                                                <i
+                                                    className={cn(
+                                                        "fa-sharp text-[9px]",
+                                                        tagMode === "include" ? "fa-check" : "fa-ban"
+                                                    )}
+                                                />
+                                            ) : null}
                                             <span className="truncate">
                                                 <span className="opacity-50">#</span>
                                                 {tagSummary.tag}
@@ -473,19 +651,40 @@ export function FilterPanel({
                         <ActiveChip label={dateLabel(dateRange)} onRemove={() => setDateRange({ preset: "all" })} />
                     ) : null}
                     {pathActive ? (
-                        <ActiveChip
-                            icon="fa-solid fa-folder-tree"
-                            label={
-                                pathFilter.root === PathFilterOtherRoot
-                                    ? "Other"
-                                    : shortenPathForChip(pathChipFull || pathFilter.root)
-                            }
-                            title={pathChipFull || undefined}
-                            onRemove={() => setPathFilter(DefaultPathFilter)}
-                        />
+                        pathSelections.map((prefix) => (
+                            <ActiveChip
+                                key={`path:${prefix}`}
+                                icon="fa-solid fa-folder-tree"
+                                label={pathSelectionLabel(prefix)}
+                                title={prefix === PathFilterOtherRoot ? "Other (empty / unrecognized projectPath)" : prefix}
+                                onRemove={() => togglePathSelection(prefix)}
+                            />
+                        ))
+                    ) : null}
+                    {pathExcludeActive ? (
+                        pathExcludes.map((prefix) => (
+                            <ActiveChip
+                                key={`exclPath:${prefix}`}
+                                tone="exclude"
+                                icon="fa-solid fa-ban"
+                                label={pathSelectionLabel(prefix)}
+                                title={prefix === PathFilterOtherRoot ? "Exclude Other" : `Exclude ${prefix}`}
+                                onRemove={() => togglePathExclude(prefix)}
+                            />
+                        ))
                     ) : null}
                     {tagFilters.map((tag) => (
                         <ActiveChip key={tag} label={`#${tag}`} onRemove={() => toggleTagFilter(tag)} />
+                    ))}
+                    {excludeTags.map((tag) => (
+                        <ActiveChip
+                            key={`exclTag:${tag}`}
+                            tone="exclude"
+                            icon="fa-solid fa-ban"
+                            label={`#${tag}`}
+                            title={`Exclude #${tag}`}
+                            onRemove={() => toggleExcludeTag(tag)}
+                        />
                     ))}
                 </div>
             ) : null}

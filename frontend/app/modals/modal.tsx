@@ -49,7 +49,16 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
         const renderModal = () => (
             <div className="modal-wrapper">
                 {renderBackdrop(onClickBackdrop)}
-                <div ref={ref} className={clsx(`modal`, className)} style={style}>
+                <div
+                    ref={ref}
+                    className={clsx(`modal`, className)}
+                    style={style}
+                    // 阻断冒泡回 block：Modal 通过 createPortal 挂到 #main，但在 React 组件树里
+                    // 仍是 block 的后代。若不拦截，点击弹窗内任意处会冒泡到 block frame 的
+                    // onClick → setBlockClickedTrue → setFocusTarget()，把焦点抢回 block 的
+                    // dummy-focus 输入框，导致弹窗内 textarea 无法聚焦/输入。
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <Button className="grey ghost modal-close-btn" onClick={onClose} title="Close (ESC)">
                         <i className="fa-sharp fa-solid fa-xmark"></i>
                     </Button>
@@ -135,7 +144,12 @@ const FlexiModal = forwardRef<HTMLDivElement, FlexiModalProps>(
         const renderModal = () => (
             <div className="modal-wrapper">
                 {renderBackdrop(onClickBackdrop)}
-                <div className={cn("modal pt-6 px-4 pb-4", className)} ref={ref}>
+                <div
+                    className={cn("modal pt-6 px-4 pb-4", className)}
+                    ref={ref}
+                    // 同 Modal：阻断冒泡回 block，避免焦点被 block frame 抢走。
+                    onClick={(e) => e.stopPropagation()}
+                >
                     {children}
                 </div>
             </div>

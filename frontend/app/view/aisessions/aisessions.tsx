@@ -19,11 +19,14 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import "../../session-overview/session-overview.scss";
-import { ExpandAllTagsButton, GroupModeSwitch, IconButton, SortButton, type ListGroupMode } from "./controls";
+import { ExpandAllTagsButton, GroupModeSwitch, IconButton, SortButton, SubSessionsToggle, type ListGroupMode } from "./controls";
+import { SessionBatchBar } from "./session-batch-bar";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { ScanProgressStrip, SkeletonSessionRows } from "./scan-progress";
 import type { ScanStatus } from "./scan-status-logic";
+import type { BatchCopyKind } from "./utils";
+import { isDragMovement, keysUnderRect, rectToCss, type Rect } from "@/util/selectionrect";
 import { SessionDetailPane } from "./session-detail";
 import { openAISessionDetailFromList, openAISessionNewChatFromList } from "./session-detail-block";
 import {
@@ -39,20 +42,26 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
 import { normalizeSessionTags } from "./session-tags";
+import { collectParentKeys } from "./session-tree";
 import { mergeSessionTimeline } from "./session-timeline-sync";
 import { defaultChatSource } from "./sources";
 import type { DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
 import {
     DefaultDateRange,
+    DefaultExcludeTags,
+    DefaultPathExcludes,
     DefaultPathFilter,
+    DefaultPathSelections,
     DefaultTagPresence,
     NewSessionKey,
-    PathFilterOtherRoot,
     dateRangeToSinceBefore,
 } from "./types";
 import { useScanStatus } from "./use-scan-status";
 import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
 import {
+    applySelectionRange,
+    buildBatchCopyText,
+    copyText,
     emptySessionsText,
     extractPathChildren,
     extractPathRoots,
@@ -60,10 +69,13 @@ import {
     formatRelativeRefreshTime,
     getErrorMessage,
     groupSessionsByProject,
-    otherRootMatcher,
+    normalizePathPrefix,
+    normalizePathSelections,
     pathAncestorSegments,
     pathFilterEqual,
-    pathFilterToPrefix,
+    pathSelectionsEqual,
+    pruneSelectionToVisible,
+    reconcilePathSets,
     readExpandAllTagsPreference,
     readGroupPreference,
     readSortPreference,
@@ -114,6 +126,17 @@ export class AiSessionsViewModel implements ViewModel {
         null
     ) as jotai.PrimitiveAtom<SessionDetail | null>;
     selectedKeyAtom = jotai.atom<string>("");
+    // 多选集合（批量操作的作用域），与 selectedKeyAtom 职责分开：
+    // selectedKeyAtom = 当前行 / 详情面板绑定；selectedKeysAtom = 批量操作选区。
+    // 选区始终是「当前可见会话」的子集（筛选/刷新后由 pruneSelectionToVisible 裁剪）。
+    selectedKeysAtom = jotai.atom<string[]>([]);
+    selectionAnchorAtom = jotai.atom<string>("");
+    marqueeRectAtom = jotai.atom<{ left: number; top: number; width: number; height: number } | null>(null) as jotai.PrimitiveAtom<{
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+    } | null>;
     sourceAtom = jotai.atom<SourceFilter>("");
     queryAtom = jotai.atom<string>("");
     tagFiltersAtom = jotai.atom<string[]>([]);
@@ -121,6 +144,11 @@ export class AiSessionsViewModel implements ViewModel {
     markedFilterAtom = jotai.atom<MarkedFilter>("all");
     dateRangeAtom = jotai.atom(DefaultDateRange) as jotai.PrimitiveAtom<DateRangeFilter>;
     pathFilterAtom = jotai.atom<PathFilter>(DefaultPathFilter) as jotai.PrimitiveAtom<PathFilter>;
+    // 已选目录前缀集合（真正参与过滤）。与 pathFilterAtom（仅浏览位置：面包屑/
+    // 子目录导航/计数）刻意分离：下钻看一眼子目录不应改掉筛选条件。
+    pathSelectionsAtom = jotai.atom<string[]>(DefaultPathSelections);
+    pathExcludesAtom = jotai.atom<string[]>(DefaultPathExcludes);
+    excludeTagsAtom = jotai.atom<string[]>(DefaultExcludeTags);
     filtersOpenAtom = jotai.atom<boolean>(false);
     availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
     projectPathsAtom = jotai.atom<ProjectPathSummary[]>([]);
@@ -306,7 +334,9 @@ export class AiSessionsViewModel implements ViewModel {
         const marked = globalStore.get(this.markedFilterAtom);
         const dateRange = globalStore.get(this.dateRangeAtom);
         const pathFilter = globalStore.get(this.pathFilterAtom);
-        const projectPrefix = pathFilterToPrefix(pathFilter);
+        const pathSelections = globalStore.get(this.pathSelectionsAtom);
+        const pathExcludes = globalStore.get(this.pathExcludesAtom);
+        const excludeTags = globalStore.get(this.excludeTagsAtom);
         const { since, before } = dateRangeToSinceBefore(dateRange, Date.now());
         // 后台自动同步不把整个面板打进 loading（避免黑屏）；只有用户/首载 refresh 才置 loading。
         if (!background) {
@@ -325,7 +355,9 @@ export class AiSessionsViewModel implements ViewModel {
                 before,
                 tagFilters,
                 tagPresence,
-                project: projectPrefix,
+                excludeTags,
+                projects: pathSelections,
+                excludeProjects: pathExcludes,
                 includeProjectPaths: true,
             });
             if (
@@ -337,12 +369,15 @@ export class AiSessionsViewModel implements ViewModel {
                     tagPresence,
                     marked,
                     dateRange,
-                    pathFilter
+                    pathFilter,
+                    pathSelections,
+                    pathExcludes,
+                    excludeTags
                 )
             ) {
                 return;
             }
-            let sessions = response?.sessions ?? [];
+            const sessions = response?.sessions ?? [];
             globalStore.set(this.projectPathsAtom, response?.projectPaths ?? []);
             // 后台扫描仍在补索引：记下进度，列表尾部用骨架行占位。
             globalStore.set(this.scanStatusAtom, {
@@ -352,11 +387,8 @@ export class AiSessionsViewModel implements ViewModel {
                 done: false,
                 partial: (response?.scanning ?? false) && (response?.total ?? 0) > 0,
             });
-            // Other bucket can't be expressed server-side (project="" matches all),
-            // so filter locally after the response arrives.
-            if (pathFilter.root === PathFilterOtherRoot) {
-                sessions = otherRootMatcher(sessions) as SessionSummary[];
-            }
+            // The Other bucket is a backend sentinel (PathFilterOtherRoot), so it
+            // arrives inside `projects` like any other prefix — no local post-filter.
             globalStore.set(this.sessionsAtom, sessions);
             globalStore.set(this.lastSessionsRefreshAtAtom, Date.now());
             // Promote the pending new-chat placeholder once its real session
@@ -422,7 +454,10 @@ export class AiSessionsViewModel implements ViewModel {
                     tagPresence,
                     marked,
                     dateRange,
-                    pathFilter
+                    pathFilter,
+                    pathSelections,
+                    pathExcludes,
+                    excludeTags
                 )
             ) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -438,7 +473,10 @@ export class AiSessionsViewModel implements ViewModel {
                     tagPresence,
                     marked,
                     dateRange,
-                    pathFilter
+                    pathFilter,
+                    pathSelections,
+                    pathExcludes,
+                    excludeTags
                 )
             ) {
                 globalStore.set(this.loadingAtom, false);
@@ -454,7 +492,10 @@ export class AiSessionsViewModel implements ViewModel {
         tagPresence: TagPresenceFilter,
         marked: MarkedFilter,
         dateRange: DateRangeFilter,
-        pathFilter: PathFilter
+        pathFilter: PathFilter,
+        pathSelections: string[],
+        pathExcludes: string[],
+        excludeTags: string[]
     ): boolean {
         const currentDateRange = globalStore.get(this.dateRangeAtom);
         return (
@@ -464,7 +505,12 @@ export class AiSessionsViewModel implements ViewModel {
             tagsEqual(globalStore.get(this.tagFiltersAtom), tagFilters) &&
             globalStore.get(this.tagPresenceAtom) === tagPresence &&
             globalStore.get(this.markedFilterAtom) === marked &&
+            // pathFilter is the browse location: it no longer affects the request,
+            // but a stale response for a previous browse state must still be dropped.
             pathFilterEqual(globalStore.get(this.pathFilterAtom), pathFilter) &&
+            pathSelectionsEqual(globalStore.get(this.pathSelectionsAtom), pathSelections) &&
+            pathSelectionsEqual(globalStore.get(this.pathExcludesAtom), pathExcludes) &&
+            tagsEqual(globalStore.get(this.excludeTagsAtom), excludeTags) &&
             currentDateRange.preset === dateRange.preset &&
             (currentDateRange.from ?? 0) === (dateRange.from ?? 0) &&
             (currentDateRange.to ?? 0) === (dateRange.to ?? 0)
@@ -483,6 +529,9 @@ export class AiSessionsViewModel implements ViewModel {
                 before,
                 tagFilters: globalStore.get(this.tagFiltersAtom),
                 tagPresence: globalStore.get(this.tagPresenceAtom),
+                projects: globalStore.get(this.pathSelectionsAtom),
+                excludeProjects: globalStore.get(this.pathExcludesAtom),
+                excludeTags: globalStore.get(this.excludeTagsAtom),
                 refresh,
             });
             globalStore.set(this.availableTagsAtom, response.tags ?? []);
@@ -497,7 +546,10 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.dateRangeAtom, DefaultDateRange);
         globalStore.set(this.tagFiltersAtom, []);
         globalStore.set(this.tagPresenceAtom, DefaultTagPresence);
+        globalStore.set(this.excludeTagsAtom, DefaultExcludeTags);
         globalStore.set(this.pathFilterAtom, DefaultPathFilter);
+        globalStore.set(this.pathSelectionsAtom, DefaultPathSelections);
+        globalStore.set(this.pathExcludesAtom, DefaultPathExcludes);
     }
 
     // Tag-presence setter. Centralizes the mutual-exclusion rule:
@@ -526,6 +578,110 @@ export class AiSessionsViewModel implements ViewModel {
         if (normalized.length > 0) {
             globalStore.set(this.tagPresenceAtom, DefaultTagPresence);
         }
+        // Include and exclude are mutually exclusive: a tag can't be both.
+        globalStore.set(
+            this.excludeTagsAtom,
+            globalStore.get(this.excludeTagsAtom).filter((tag) => !normalized.includes(tag))
+        );
+    }
+
+    // 排除标签集合。与 tagFilters 互斥：同一标签加入排除时从包含侧移除。
+    setExcludeTags(next: string[]): void {
+        const normalized = normalizeSessionTags(next);
+        globalStore.set(this.loadingAtom, true);
+        globalStore.set(this.excludeTagsAtom, normalized);
+        globalStore.set(
+            this.tagFiltersAtom,
+            globalStore.get(this.tagFiltersAtom).filter((tag) => !normalized.includes(tag))
+        );
+    }
+
+    toggleExcludeTag(tag: string): void {
+        const normalized = normalizeSessionTags([tag])[0];
+        if (!normalized) return;
+        const current = globalStore.get(this.excludeTagsAtom);
+        this.setExcludeTags(
+            current.includes(normalized) ? current.filter((item) => item !== normalized) : [...current, normalized]
+        );
+    }
+
+    // 包含侧目录集合（多选）。与排除集合互斥：同一前缀加入包含时从排除侧移除。
+    setPathSelections(next: string[]): void {
+        const reconciled = reconcilePathSets(next, globalStore.get(this.pathExcludesAtom));
+        globalStore.set(this.loadingAtom, true);
+        globalStore.set(this.pathSelectionsAtom, reconciled.next);
+        globalStore.set(this.pathExcludesAtom, reconciled.other);
+    }
+
+    togglePathSelection(prefix: string): void {
+        const normalized = normalizePathPrefix(prefix);
+        if (normalized === "") return;
+        const current = globalStore.get(this.pathSelectionsAtom);
+        this.setPathSelections(
+            current.includes(normalized) ? current.filter((item) => item !== normalized) : [...current, normalized]
+        );
+    }
+
+    // 排除侧目录集合。与包含集合互斥。
+    setPathExcludes(next: string[]): void {
+        const reconciled = reconcilePathSets(next, globalStore.get(this.pathSelectionsAtom));
+        globalStore.set(this.loadingAtom, true);
+        globalStore.set(this.pathExcludesAtom, reconciled.next);
+        globalStore.set(this.pathSelectionsAtom, reconciled.other);
+    }
+
+    togglePathExclude(prefix: string): void {
+        const normalized = normalizePathPrefix(prefix);
+        if (normalized === "") return;
+        const current = globalStore.get(this.pathExcludesAtom);
+        this.setPathExcludes(
+            current.includes(normalized) ? current.filter((item) => item !== normalized) : [...current, normalized]
+        );
+    }
+
+    // ── 多选（batch actions）──────────────────────────────────────
+    // selectedKeyAtom 仍是「当前行 / 详情绑定」；这里的集合只驱动批量栏。
+
+    /** 单选：清空多选集合，只留这一行。 */
+    setSelectedKey(key: string): void {
+        globalStore.set(this.selectedKeyAtom, key);
+        globalStore.set(this.selectedKeysAtom, [key]);
+        globalStore.set(this.selectionAnchorAtom, key);
+    }
+
+    /** Ctrl/Cmd+点击：在集合里切换这一行；新加入的行成为当前行。 */
+    toggleInSelection(key: string): void {
+        const current = globalStore.get(this.selectedKeysAtom);
+        const next = current.includes(key) ? current.filter((item) => item !== key) : [...current, key];
+        globalStore.set(this.selectedKeysAtom, next);
+        globalStore.set(this.selectionAnchorAtom, key);
+        // 取消最后一行时不清空 selectedKey：详情面板仍应显示这一条。
+        globalStore.set(this.selectedKeyAtom, key);
+    }
+
+    /** 清空多选集合（保留 selectedKeyAtom —— Esc 只是退出批量模式）。 */
+    clearSelection(): void {
+        globalStore.set(this.selectedKeysAtom, []);
+        globalStore.set(this.selectionAnchorAtom, "");
+    }
+
+    /** Ctrl+A：全选当前可见会话（顺序 = 列表顺序，决定复制产物行序）。 */
+    selectAllVisible(visibleKeys: string[]): void {
+        globalStore.set(this.selectedKeysAtom, [...visibleKeys]);
+    }
+
+    /** 把选区裁剪到当前可见集合之外（筛选 / 刷新后调用）。 */
+    pruneSelection(visibleKeys: string[]): void {
+        const current = globalStore.get(this.selectedKeysAtom);
+        const pruned = pruneSelectionToVisible(current, visibleKeys);
+        if (pruned.length !== current.length) {
+            globalStore.set(this.selectedKeysAtom, pruned);
+        }
+    }
+
+    /** 复制产物文本（空串表示没有可复制的内容）。 */
+    buildSelectionCopyText(kind: BatchCopyKind, sessions: SessionSummary[]): string {
+        return buildBatchCopyText(sessions, kind);
     }
 
     getBoundSessionId(): string {
@@ -1090,12 +1246,18 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const source = jotai.useAtomValue(model.sourceAtom);
     const query = jotai.useAtomValue(model.queryAtom);
     const tagFilters = jotai.useAtomValue(model.tagFiltersAtom);
+    const excludeTags = jotai.useAtomValue(model.excludeTagsAtom);
     const tagPresence = jotai.useAtomValue(model.tagPresenceAtom);
     const availableTags = jotai.useAtomValue(model.availableTagsAtom);
     const [markedFilter, setMarkedFilter] = jotai.useAtom(model.markedFilterAtom);
     const [dateRange, setDateRange] = jotai.useAtom(model.dateRangeAtom);
     const [pathFilter, setPathFilter] = jotai.useAtom(model.pathFilterAtom);
+    const pathSelections = jotai.useAtomValue(model.pathSelectionsAtom);
+    const pathExcludes = jotai.useAtomValue(model.pathExcludesAtom);
     const [filtersOpen, setFiltersOpen] = jotai.useAtom(model.filtersOpenAtom);
+    const selectedKeys = jotai.useAtomValue(model.selectedKeysAtom);
+    const marqueeRect = jotai.useAtomValue(model.marqueeRectAtom);
+    const [copiedKind, setCopiedKind] = useState<BatchCopyKind | null>(null);
     const loading = jotai.useAtomValue(model.loadingAtom);
     const detailLoading = jotai.useAtomValue(model.detailLoadingAtom);
     const detailDeltaLoading = jotai.useAtomValue(model.detailDeltaLoadingAtom);
@@ -1167,6 +1329,26 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         const base = sortSessionsByTime(sessions, sortDescending);
         return newSession != null ? [newSession, ...base] : base;
     }, [sessions, sortDescending, newSession]);
+    // 多选集合始终是「当前可见会话」的子集：筛选 / 刷新后消失的会话不该继续
+    // 留在选区内，否则批量栏的「复制 5 个 ID」实际只有 2 条在结果里。
+    // New Chat 占位没有 id / filePath，进选区只会让复制产物出现空行，排除它。
+    const selectableKeys = useMemo(
+        () => visibleSessions.filter((session) => session.key !== NewSessionKey).map((session) => session.key),
+        [visibleSessions]
+    );
+    useEffect(() => {
+        model.pruneSelection(selectableKeys);
+    }, [model, selectableKeys]);
+    // 选区内会话（按用户点击顺序，不是列表顺序 —— 决定复制产物的行序）。
+    const selectedSessions = useMemo(() => {
+        if (selectedKeys.length === 0) return [];
+        const byKey = new Map(visibleSessions.map((session) => [session.key, session]));
+        return selectedKeys
+            .map((key) => byKey.get(key))
+            .filter((session): session is SessionSummary => session != null);
+    }, [visibleSessions, selectedKeys]);
+    const selectedKeySet = useMemo(() => new Set(selectedKeys), [selectedKeys]);
+    const selectionAllStarred = selectedSessions.length > 0 && selectedSessions.every((session) => session.marked);
     /*
      * The 按项目 cut of the same pool. The New Chat placeholder is pinned above
      * every group (it has no folder yet), so it is set aside before grouping;
@@ -1177,11 +1359,31 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         return groupSessionsByProject(base, sortDescending);
     }, [visibleSessions, newSession, sortDescending]);
 
+    // 一键展开/全部收起的全局覆盖状态。纯内存态，不落盘：刷新后回到
+    // expandedParents（默认空 = 全部折叠），所以一键展开不会变成新的默认行为。
+    // 声明位置在 toggleExpandParent 之前：那个回调的 deps 会立即求值。
+    type SubSessionsOverride = "expanded" | "collapsed" | null;
+    const [subSessionsOverride, setSubSessionsOverride] = useState<SubSessionsOverride>(null);
+    const allParentKeys = useMemo(() => [...collectParentKeys(sessions)], [sessions]);
+
     const toggleExpandParent = useCallback(
         (sessionKey: string, showAll = false) => {
+            // 一键展开/全部收起是全局覆盖：此时点单个父行必须先把当前生效的集合
+            // 物化进 expandedParents（否则一进手动模式列表会突然全收/全展），
+            // 然后像平常一样增删这一行。
+            const currentOverride = subSessionsOverride;
+            const effective = currentOverride === "expanded" ? allParentKeys : [];
+            const base = currentOverride == null ? expandedParents : effective;
+            const autoBase = currentOverride == null ? autoExpandedParents : [];
+            if (currentOverride != null) {
+                setSubSessionsOverride(null);
+                setExpandedParents([...base]);
+                setAutoExpandedParents(autoBase);
+            }
+            const currentlyExpanded =
+                base.includes(sessionKey) || autoBase.includes(sessionKey);
             // 自动展开不是用户选择：点一下箭头就应该能把它收起来，所以两处都清，
             // 并记进抑制集，避免命中集合变化时又被自动加回来。
-            const currentlyExpanded = expandedParents.includes(sessionKey) || autoExpandedParents.includes(sessionKey);
             if (currentlyExpanded) {
                 suppressedAutoExpandRef.current.add(sessionKey);
             } else {
@@ -1194,7 +1396,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     next.add(sessionKey);
                     return next;
                 });
-                setExpandedParents((current) => (current.includes(sessionKey) ? current : [...current, sessionKey]));
+                setExpandedParents((current) =>
+                    current.includes(sessionKey) ? current : [...current, sessionKey]
+                );
                 return;
             }
             setExpandedParents((current) =>
@@ -1208,15 +1412,20 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                 return next;
             });
         },
-        [expandedParents, autoExpandedParents]
+        [expandedParents, autoExpandedParents, subSessionsOverride, allParentKeys]
     );
     const normalizedTagFilters = normalizeSessionTags(tagFilters);
+    const normalizedExcludeTags = normalizeSessionTags(excludeTags);
+    const normalizedPathSelections = useMemo(() => normalizePathSelections(pathSelections), [pathSelections]);
+    const normalizedPathExcludes = useMemo(() => normalizePathSelections(pathExcludes), [pathExcludes]);
     const queryActive = query.trim().length > 0;
     const tagFilterActive = normalizedTagFilters.length > 0;
     const tagPresenceActive = tagPresence !== DefaultTagPresence;
     const markedActive = markedFilter !== "all";
     const dateActive = dateRange.preset !== "all";
-    const pathActive = pathFilter.root !== "";
+    const pathActive = normalizedPathSelections.length > 0;
+    const pathExcludeActive = normalizedPathExcludes.length > 0;
+    const excludeTagsActive = normalizedExcludeTags.length > 0;
     const remoteFilterActive =
         queryActive ||
         source !== "" ||
@@ -1224,14 +1433,18 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         tagPresenceActive ||
         markedActive ||
         dateActive ||
-        pathActive;
+        pathActive ||
+        pathExcludeActive ||
+        excludeTagsActive;
     const filterActive = remoteFilterActive;
     const filterBusy = loading && remoteFilterActive;
     const activeFilterCount =
         (markedActive ? 1 : 0) +
         (dateActive ? 1 : 0) +
         normalizedTagFilters.length +
-        (pathActive ? 1 : 0) +
+        normalizedPathSelections.length +
+        normalizedPathExcludes.length +
+        normalizedExcludeTags.length +
         (tagPresenceActive ? 1 : 0) +
         (source !== "" ? 1 : 0);
     // 搜索/筛选命中子会话时，自动展开它的父：结果集是后端过滤后的子集，
@@ -1259,10 +1472,12 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         query,
         source,
         normalizedTagFilters.join(","),
+        normalizedExcludeTags.join(","),
         tagPresence,
         markedFilter,
         dateRange.preset,
-        pathFilter.root,
+        normalizedPathSelections.join(","),
+        normalizedPathExcludes.join(","),
     ].join("\u0000");
 
     useEffect(() => {
@@ -1293,13 +1508,34 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     }, [filterActive]);
 
     // 渲染用「用户展开 ∪ 搜索自动展开」；写入 localStorage 的只有前一部分。
-    const renderedExpandedParents = useMemo(
-        () =>
-            autoExpandedParents.length === 0
-                ? expandedParents
-                : [...new Set([...expandedParents, ...autoExpandedParents])],
-        [expandedParents, autoExpandedParents]
-    );
+    const renderedExpandedParents = useMemo(() => {
+        if (subSessionsOverride === "expanded") return allParentKeys;
+        if (subSessionsOverride === "collapsed") return [];
+        return autoExpandedParents.length === 0
+            ? expandedParents
+            : [...new Set([...expandedParents, ...autoExpandedParents])];
+    }, [subSessionsOverride, allParentKeys, autoExpandedParents, expandedParents]);
+    const allSubSessionsExpanded =
+        allParentKeys.length > 0 &&
+        allParentKeys.every((key) => renderedExpandedParents.includes(key));
+
+    const toggleSubSessions = useCallback(() => {
+        const expandedNow =
+            allParentKeys.length > 0 && allParentKeys.every((key) => renderedExpandedParents.includes(key));
+        if (expandedNow) {
+            // 全部收起：物化成「空」并压制筛选自动展开，否则下一个筛选条件或 60s
+            // 刷新又会把父行撑开，用户看不到收起效果。
+            setSubSessionsOverride("collapsed");
+            setExpandedParents([]);
+            setFullyExpandedParents(new Set());
+            setAutoExpandedParents([]);
+            for (const key of allParentKeys) {
+                suppressedAutoExpandRef.current.add(key);
+            }
+            return;
+        }
+        setSubSessionsOverride("expanded");
+    }, [allParentKeys, renderedExpandedParents]);
 
     const availablePathRoots = useMemo(() => extractPathRoots(projectPaths), [projectPaths]);
     const pathChildren = useMemo(() => extractPathChildren(pathFilter, projectPaths), [pathFilter, projectPaths]);
@@ -1451,6 +1687,162 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         [model]
     );
 
+    const toggleExcludeTag = useCallback(
+        (tag: string) => {
+            model.toggleExcludeTag(tag);
+        },
+        [model]
+    );
+
+    const togglePathSelection = useCallback(
+        (prefix: string) => {
+            model.togglePathSelection(prefix);
+        },
+        [model]
+    );
+
+    const togglePathExclude = useCallback(
+        (prefix: string) => {
+            model.togglePathExclude(prefix);
+        },
+        [model]
+    );
+
+    // ── 多选 / 框选 / 批量操作 ────────────────────────────────────
+    // 框选与点击的仲裁：位移未达 DragThresholdPx 视为点击（走行自己的
+    // onSelect），否则进入框选并抑制这一次点击。用 ref 而不是 state，
+    // 因为 mouseup 与行 onClick 之间不能多一次渲染。
+    const suppressRowClickRef = useRef(false);
+    const marqueeStartRef = useRef<{ x: number; y: number; scrollTop: number } | null>(null);
+    const marqueeContainerRef = useRef<HTMLDivElement | null>(null);
+    const marqueeAdditiveRef = useRef(false);
+    const marqueeBaseRef = useRef<string[]>([]);
+
+    const clearSelection = useCallback(() => model.clearSelection(), [model]);
+
+    const copySelection = useCallback(
+        (kind: BatchCopyKind) => {
+            const text = buildBatchCopyText(selectedSessions, kind);
+            if (text === "") return;
+            void copyText(text);
+            setCopiedKind(kind);
+        },
+        [selectedSessions]
+    );
+
+    useEffect(() => {
+        if (copiedKind == null) return;
+        const handle = window.setTimeout(() => setCopiedKind(null), 700);
+        return () => window.clearTimeout(handle);
+    }, [copiedKind]);
+
+    const setStarredForSelection = useCallback(
+        (marked: boolean) => {
+            for (const session of selectedSessions) {
+                if (session.marked !== marked) {
+                    model.toggleMark(session);
+                }
+            }
+        },
+        [model, selectedSessions]
+    );
+
+    // Ctrl+A / Esc：只在焦点不在输入框时生效，否则会抢掉搜索框的文本全选。
+    const handleListKeyDown = useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            const target = event.target as HTMLElement | null;
+            if (target != null && typeof target.closest === "function") {
+                if (target.closest("input, textarea, [contenteditable='true']") != null) {
+                    return;
+                }
+            }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+                event.preventDefault();
+                model.selectAllVisible(selectableKeys);
+                return;
+            }
+            if (event.key === "Escape") {
+                model.clearSelection();
+            }
+        },
+        [model, selectableKeys]
+    );
+
+    // 框选：mousedown 记录起点，mousemove 超阈值后才开始画矩形。
+    // 坐标统一存「视口坐标 + 当时 scrollTop」，每帧按当前 scrollTop 重算，
+    // 这样拖动过程中容器自动滚动时矩形不会和内容错位。
+    const startMarquee = useCallback(
+        (event: React.MouseEvent<HTMLDivElement>) => {
+            if (event.button !== 0) return;
+            const target = event.target as HTMLElement | null;
+            if (target != null && typeof target.closest === "function") {
+                // 行与行内按钮自己处理点击，不在它们身上起框选。
+                if (target.closest("[data-row-action], [data-session-key]") != null) {
+                    return;
+                }
+            }
+            const container = marqueeContainerRef.current;
+            if (container == null) return;
+            marqueeStartRef.current = {
+                x: event.clientX,
+                y: event.clientY,
+                scrollTop: container.scrollTop,
+            };
+            marqueeAdditiveRef.current = event.ctrlKey || event.metaKey;
+            marqueeBaseRef.current = event.ctrlKey || event.metaKey ? selectedKeys : [];
+        },
+        [selectedKeys]
+    );
+
+    useEffect(() => {
+        const handleMove = (event: MouseEvent) => {
+            const start = marqueeStartRef.current;
+            const container = marqueeContainerRef.current;
+            if (start == null || container == null) return;
+            const dx = event.clientX - start.x;
+            const dy = event.clientY - start.y;
+            if (!isDragMovement(dx, dy)) return;
+            const rect: Rect = {
+                left: Math.min(start.x, event.clientX),
+                top: Math.min(start.y, event.clientY),
+                right: Math.max(start.x, event.clientX),
+                bottom: Math.max(start.y, event.clientY),
+            };
+            globalStore.set(model.marqueeRectAtom, rectToCss(rect));
+            const rows = Array.from(container.querySelectorAll("[data-session-key]")).map((el) => ({
+                key: (el as HTMLElement).dataset.sessionKey ?? "",
+                el: el as HTMLElement,
+            }));
+            const hit = keysUnderRect(rect, rows.filter((row) => row.key !== ""));
+            const base = marqueeAdditiveRef.current ? marqueeBaseRef.current : [];
+            const merged = [...base];
+            for (const key of hit) {
+                if (!merged.includes(key)) merged.push(key);
+            }
+            globalStore.set(model.selectedKeysAtom, merged);
+        };
+        const handleUp = (event: MouseEvent) => {
+            const start = marqueeStartRef.current;
+            if (start == null) return;
+            const dragged = isDragMovement(event.clientX - start.x, event.clientY - start.y);
+            marqueeStartRef.current = null;
+            globalStore.set(model.marqueeRectAtom, null);
+            if (dragged) {
+                // 拖拽结束后的那一次 click 不应再把选区改成单选。
+                suppressRowClickRef.current = true;
+                window.setTimeout(() => {
+                    suppressRowClickRef.current = false;
+                }, 0);
+            }
+        };
+        document.addEventListener("mousemove", handleMove);
+        document.addEventListener("mouseup", handleUp);
+        return () => {
+            document.removeEventListener("mousemove", handleMove);
+            document.removeEventListener("mouseup", handleUp);
+        };
+    }, [model]);
+
     const cleanupBackups = useCallback(() => {
         if (backupStats == null || backupStats.cleanupCount <= 0 || backupCleanupRunning) return;
         const confirmed = window.confirm(
@@ -1525,7 +1917,13 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const openSessionDetail = useCallback(
         (session: SessionSummary, forceNew = false) => {
             if (!session.key) return;
-            fireAndForget(() => openAISessionDetailFromList(session.key, model.blockId, { forceNewBlock: forceNew }));
+            // cwd 只用于 tab 分层标题（项目文件夹 basename），不参与会话加载。
+            fireAndForget(() =>
+                openAISessionDetailFromList(session.key, model.blockId, {
+                    forceNewBlock: forceNew,
+                    cwd: session.projectPath,
+                })
+            );
         },
         [model.blockId]
     );
@@ -1618,6 +2016,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         descending={sortDescending}
                                         onToggle={() => setSortDescending((current) => !current)}
                                     />
+                                    <SubSessionsToggle
+                                        allExpanded={allSubSessionsExpanded}
+                                        parentCount={allParentKeys.length}
+                                        onToggle={toggleSubSessions}
+                                    />
                                     <ExpandAllTagsButton
                                         expanded={expandAllTags}
                                         onToggle={() => setExpandAllTags((current) => !current)}
@@ -1655,12 +2058,18 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     setSource={setSource}
                                     availableTags={availableTags}
                                     tagFilters={normalizedTagFilters}
+                                    excludeTags={normalizedExcludeTags}
                                     tagPresence={tagPresence}
                                     setTagPresence={(next) => model.setTagPresence(next)}
                                     toggleTagFilter={toggleTagFilter}
+                                    toggleExcludeTag={toggleExcludeTag}
                                     onClearAll={() => model.clearAllFilters()}
                                     pathFilter={pathFilter}
                                     setPathFilter={setPathFilter}
+                                    pathSelections={normalizedPathSelections}
+                                    togglePathSelection={togglePathSelection}
+                                    pathExcludes={normalizedPathExcludes}
+                                    togglePathExclude={togglePathExclude}
                                     availablePathRoots={availablePathRoots}
                                     pathChildren={pathChildren}
                                     pathAncestors={pathAncestors}
@@ -1682,7 +2091,34 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                             {scanning ? (
                                 <ScanProgressStrip scanned={scanProgress.scanned} total={scanProgress.total} />
                             ) : null}
-                            <div className="min-h-0 flex-1 overflow-auto">
+                            <SessionBatchBar
+                                selectedCount={selectedKeys.length}
+                                copiedKind={copiedKind}
+                                starred={selectionAllStarred}
+                                onCopy={copySelection}
+                                onStar={() => setStarredForSelection(true)}
+                                onUnstar={() => setStarredForSelection(false)}
+                                onClear={clearSelection}
+                            />
+                            <div
+                                ref={marqueeContainerRef}
+                                className="relative min-h-0 flex-1 overflow-auto"
+                                tabIndex={-1}
+                                onKeyDown={handleListKeyDown}
+                                onMouseDown={startMarquee}
+                            >
+                                {marqueeRect != null ? (
+                                    <div
+                                        aria-hidden="true"
+                                        className="pointer-events-none absolute z-20 border border-accent/60 bg-accent/10"
+                                        style={{
+                                            left: marqueeRect.left,
+                                            top: marqueeRect.top,
+                                            width: marqueeRect.width,
+                                            height: marqueeRect.height,
+                                        }}
+                                    />
+                                ) : null}
                                 {loading && visibleSessions.length === 0 && !scanning ? (
                                     <EmptyState text="Loading sessions..." />
                                 ) : visibleSessions.length === 0 && !scanning ? (
@@ -1708,6 +2144,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 expandAllTags={expandAllTags}
                                                 sortDescending={sortDescending}
                                                 selectedKey={selectedKey}
+                                                selectedKeys={selectedKeySet}
                                                 onSelectNew={() => {
                                                     if (!showsDetailPane) {
                                                         // 列表/详情分离：新会话也开独立详情块。
@@ -1720,21 +2157,38 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                     globalStore.set(model.detailAtom, null);
                                                 }}
                                                 onSelectSession={(session, event) => {
-                                                    // Ctrl/Cmd+点击 = 强制再开一个 Detail Block（便于左右对比）。
-                                                    if (event.metaKey || event.ctrlKey) {
-                                                        openSessionDetail(session, true);
+                                                    // 框选刚结束的那一次 click：不再把选区改回单选。
+                                                    if (suppressRowClickRef.current) {
+                                                        suppressRowClickRef.current = false;
                                                         return;
                                                     }
+                                                    // Ctrl/Cmd+点击 = 多选切换（批量操作）。强制新开
+                                                    // Detail Block 的手势已移到 Ctrl+双击。
+                                                    if (event.metaKey || event.ctrlKey) {
+                                                        model.toggleInSelection(session.key);
+                                                        return;
+                                                    }
+                                                    // Shift+点击 = 从锚点到当前行的范围选。
+                                                    if (event.shiftKey) {
+                                                        const anchor = globalStore.get(model.selectionAnchorAtom);
+                                                        const range = applySelectionRange(selectableKeys, anchor, session.key);
+                                                        globalStore.set(model.selectedKeysAtom, range);
+                                                        globalStore.set(model.selectedKeyAtom, session.key);
+                                                        return;
+                                                    }
+                                                    // 单击 = 单选：清空多选集合。
+                                                    model.setSelectedKey(session.key);
                                                     if (!showsDetailPane) {
                                                         // 纯列表块：单击只选中，不再自动弹详情。
-                                                        // 想看详情请双击该行（或 Ctrl/Cmd+点击）。
-                                                        globalStore.set(model.selectedKeyAtom, session.key);
+                                                        // 想看详情请双击该行（或 Ctrl/Cmd+双击）。
                                                         return;
                                                     }
                                                     // 详情块：单击切换右侧详情面板。
                                                     void model.loadDetail(session);
                                                 }}
-                                                onOpenSession={(session) => openSessionDetail(session)}
+                                                onOpenSession={(session, event) =>
+                                                    openSessionDetail(session, event.metaKey || event.ctrlKey)
+                                                }
                                                 onMark={(session, e) => {
                                                     e.stopPropagation();
                                                     model.toggleMark(session);
@@ -1757,6 +2211,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                     runningChatSessionIds.has(session.id)
                                                 }
                                                 onJumpToBlock={jumpToRunningSessionBlock}
+                                                connection={model.getConnection()}
                                             />
                                         ) : null}
                                         {scanning ? <SkeletonSessionRows /> : null}

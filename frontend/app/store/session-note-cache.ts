@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AISessionsServiceType } from "@/app/store/services";
+import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { dispatchAISessionNoteUpdated, isAISessionNoteUpdatedEvent } from "@/app/view/aisessions/session-note-events";
 import debug from "debug";
 
@@ -123,12 +124,73 @@ function handleNoteUpdatedEvent(event: Event): void {
     }
 }
 
+// applyTitleUpdate merges a partial title update into the cache instead of
+// replacing the whole summary. The backend's auto-title worker only publishes
+// {key, title, titleSource}; replacing wholesale would blank the note / tags /
+// marked fields that other surfaces (hover cards, info bars) are showing.
+function applyTitleUpdate(incoming: SessionSummary): void {
+    const candidates = [incoming.key, incoming.id].filter(
+        (id): id is string => typeof id === "string" && id !== ""
+    );
+    if (candidates.length === 0) {
+        return;
+    }
+    for (const entry of noteCache.values()) {
+        const existing = entry.snapshot.summary;
+        if (existing == null) {
+            continue;
+        }
+        if (!candidates.some((candidate) => sessionIdMatches(candidate, entry.snapshot.sessionId))) {
+            continue;
+        }
+        clearRetryTimer(entry);
+        entry.retryCount = 0;
+        setSnapshot(entry, {
+            status: "loaded",
+            summary: { ...existing, title: incoming.title, titleSource: incoming.titleSource },
+            error: "",
+            loadedAt: Date.now(),
+        });
+    }
+}
+
 function ensureEventListener(): void {
     if (eventListenerAttached || typeof window === "undefined") {
         return;
     }
     window.addEventListener("aisession-note-updated", handleNoteUpdatedEvent);
     eventListenerAttached = true;
+}
+
+// ── 后端 wps 事件：aisessions:titleupdated ─────────────────────────────
+// 后台 AI 标题 worker 写完标题后由 pkg/service/aisessionsservice 发布。
+// 这里复用同一个 cache：把 summary 塞进 note-cache，所有已订阅的卡片 / tab
+// 标签自动拿到最新 title，无需轮询。缓存条目不存在（该会话没被任何 surface
+// 订阅过）时直接忽略 —— tab 下一次 ensure 会自然读到新值。
+let titleListenerAttached = false;
+
+export function ensureSessionTitleListener(): void {
+    if (titleListenerAttached || typeof window === "undefined") {
+        return;
+    }
+    titleListenerAttached = true;
+    try {
+        // 模块级单例，生命周期跟随 app 进程，无需保存退订句柄。
+        waveEventSubscribeSingle<"aisessions:titleupdated">({
+            eventType: "aisessions:titleupdated",
+            handler: (event) => {
+                const summary = event.data?.summary;
+                if (summary == null) {
+                    return;
+                }
+                applyTitleUpdate(summary);
+            },
+        });
+    } catch {
+        // 测试环境 / 无 wsh 客户端时订阅不可用：退化为不监听，不影响其他功能，
+        // 也不影响 tab 下次 ensure 拉到新值。允许后续真正需要时重试。
+        titleListenerAttached = false;
+    }
 }
 
 function loadSessionNote(
@@ -194,6 +256,7 @@ export function ensureSessionNote(
     opts?: { force?: boolean }
 ): SessionNoteSnapshot {
     ensureEventListener();
+    ensureSessionTitleListener();
     const conn = normalizeConnection(connection);
     if (sessionId === "") {
         const entry = getEntry("", conn);

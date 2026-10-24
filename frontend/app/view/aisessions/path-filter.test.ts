@@ -2,14 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
+import { normalizeSessionTags } from "./session-tags";
 import { DefaultPathFilter, PathFilterOtherRoot } from "./types";
 import {
     extractPathChildren,
     extractPathRoots,
-    otherRootMatcher,
+    normalizePathPrefix,
+    normalizePathSelections,
     pathAncestorSegments,
     pathFilterEqual,
     pathFilterToPrefix,
+    pathPrefixCoveredBy,
+    pathSelectionLabel,
+    pathSelectionsEqual,
+    reconcilePathSets,
     shortenPathForChip,
 } from "./utils";
 
@@ -181,14 +187,98 @@ describe("path-filter utils (v2 — distribution-driven navigation)", () => {
         expect(shortenPathForChip(`/${single}`)).toBe("…/" + single);
     });
 
-    it("otherRootMatcher keeps only empty / unrecognized projectPath", () => {
-        const sessions = [
-            { projectPath: "E:\\code" },
-            { projectPath: "" },
-            { projectPath: "relative/no-root" },
-            { projectPath: "/home/me" },
-        ];
-        const kept = otherRootMatcher(sessions);
-        expect(kept.map((s) => s.projectPath)).toEqual(["", "relative/no-root"]);
+    it("normalizePathPrefix keeps root forms and canonicalizes drive letters", () => {
+        expect(normalizePathPrefix("")).toBe("");
+        expect(normalizePathPrefix("  ")).toBe("");
+        expect(normalizePathPrefix("/")).toBe("/");
+        expect(normalizePathPrefix("~")).toBe("~/");
+        expect(normalizePathPrefix("~\\")).toBe("~/");
+        expect(normalizePathPrefix("e:")).toBe("E:\\");
+        expect(normalizePathPrefix("e:/")).toBe("E:\\");
+        expect(normalizePathPrefix("E:\\")).toBe("E:\\");
+        expect(normalizePathPrefix("/Users/nita/")).toBe("/Users/nita");
+        expect(normalizePathPrefix(PathFilterOtherRoot)).toBe(PathFilterOtherRoot);
+    });
+
+    it("normalizePathSelections dedupes case-insensitively and drops empties", () => {
+        expect(normalizePathSelections(["/a/", "/A", "", "  ", "/b"])).toEqual(["/a", "/b"]);
+        expect(normalizePathSelections(null)).toEqual([]);
+    });
+
+    it("pathPrefixCoveredBy reports parent coverage without dropping selections", () => {
+        expect(pathPrefixCoveredBy("/p/child", ["/p"])).toBe(true);
+        expect(pathPrefixCoveredBy("/p/child", ["/p/child"])).toBe(true);
+        expect(pathPrefixCoveredBy("/p-sibling", ["/p"])).toBe(false);
+        expect(pathPrefixCoveredBy("/p", ["/p/child"])).toBe(false);
+        // The Other sentinel never covers a real path.
+        expect(pathPrefixCoveredBy("/p", [PathFilterOtherRoot])).toBe(false);
+    });
+
+    it("pathSelectionLabel shows Other for the sentinel", () => {
+        expect(pathSelectionLabel(PathFilterOtherRoot)).toBe("Other");
+        expect(pathSelectionLabel("/a/b")).toBe("/a/b");
+    });
+});
+
+describe("reconcilePathSets", () => {
+    it("normalizes the next set and removes overlap from the other set", () => {
+        const got = reconcilePathSets(["/a/", "/a", "/b"], ["/b", "/c/"]);
+        expect(got.next).toEqual(["/a", "/b"]);
+        expect(got.other).toEqual(["/c"]);
+    });
+
+    it("treats overlap case-insensitively", () => {
+        const got = reconcilePathSets(["/Users/Nita/A"], ["/users/nita/a", "/x"]);
+        expect(got.next).toEqual(["/Users/Nita/A"]);
+        expect(got.other).toEqual(["/x"]);
+    });
+
+    it("handles empty and null-ish input", () => {
+        expect(reconcilePathSets([], [])).toEqual({ next: [], other: [] });
+        expect(reconcilePathSets(null as unknown as string[], undefined as unknown as string[])).toEqual({
+            next: [],
+            other: [],
+        });
+    });
+
+    it("passes the Other sentinel through untouched", () => {
+        const got = reconcilePathSets([PathFilterOtherRoot], [PathFilterOtherRoot, "/a"]);
+        expect(got.next).toEqual([PathFilterOtherRoot]);
+        expect(got.other).toEqual(["/a"]);
+    });
+});
+
+describe("pathSelectionsEqual", () => {
+    it("compares real paths (not collapsed by the tag normalizer)", () => {
+        expect(pathSelectionsEqual(["/a"], ["/a"])).toBe(true);
+        expect(pathSelectionsEqual(["/a"], ["/b"])).toBe(false);
+        expect(pathSelectionsEqual(["E:\\code\\x"], ["E:\\code\\x"])).toBe(true);
+        expect(pathSelectionsEqual(["E:\\code\\x"], ["E:\\code\\y"])).toBe(false);
+    });
+
+    it("is order-sensitive", () => {
+        expect(pathSelectionsEqual(["/a", "/b"], ["/b", "/a"])).toBe(false);
+    });
+
+    it("returns false on different lengths", () => {
+        expect(pathSelectionsEqual(["/a"], ["/a", "/b"])).toBe(false);
+        expect(pathSelectionsEqual([], ["/a"])).toBe(false);
+    });
+
+    it("is case-insensitive and null-safe", () => {
+        expect(pathSelectionsEqual(["/Users/Nita"], ["/users/nita"])).toBe(true);
+        expect(pathSelectionsEqual(null, undefined)).toBe(true);
+        expect(pathSelectionsEqual(null, ["/a"])).toBe(false);
+    });
+
+    it("normalizes trailing separators before comparing", () => {
+        expect(pathSelectionsEqual(["/a/"], ["/a"])).toBe(true);
+    });
+
+    it("regression: normalizeSessionTags collapses real paths to []", () => {
+        // Why pathSelectionsEqual exists: the tag normalizer only accepts
+        // [\p{L}\p{N}_-], so any path with "/" or "\\" becomes "".
+        expect(normalizeSessionTags(["/a", "/b"])).toEqual([]);
+        expect(normalizeSessionTags(["E:\\code\\x"])).toEqual([]);
     });
 });

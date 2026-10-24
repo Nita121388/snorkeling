@@ -179,6 +179,27 @@ export function collectParentsOfMatches(
     return into;
 }
 
+/**
+ * 从平铺的会话列表推导「父行 key 集合」：只要某个会话的 parentKey 指向列表里的
+ * 另一行，那个 parentKey 就是父行。判定与 buildSessionTree 的根部规则一致
+ * （空白 / 自引用 / 父不在结果集 → 不算父），所以两种分组模式下得到的集合相同。
+ *
+ * 用平铺列表而不是树来算：Project 模式有 N 棵树，Time 模式只有一棵，全局展开需要
+ * 两者的并集，让每棵树各算一遍再合并会重复判定孤儿与自引用。
+ */
+export function collectParentKeys(sessions: SessionSummary[]): Set<string> {
+    const known = new Set(sessions.map((session) => session.key));
+    const parents = new Set<string>();
+    for (const session of sessions) {
+        const parentKey = (session.parentKey ?? "").trim();
+        if (parentKey === "" || parentKey === session.key || !known.has(parentKey)) {
+            continue;
+        }
+        parents.add(parentKey);
+    }
+    return parents;
+}
+
 /** 统计一棵树里的总行数（顶层 + 全部子行），用于测试与调试。 */
 export function countTreeRows(nodes: SessionTreeNode[]): number {
     let total = 0;

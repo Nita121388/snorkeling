@@ -4,12 +4,17 @@
 import { PlatformMacOS, PlatformWindows, setPlatform } from "@/util/platformutil";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+    applySelectionRange,
+    buildBatchCopyText,
     buildSessionDetailTimeline,
+    describeSessionDates,
     formatFileSize,
     formatRelativeRefreshTime,
+    formatSessionDateCompact,
     formatSessionRelativeTime,
     groupSessionsByProject,
     isReadableMessage,
+    pruneSelectionToVisible,
     readExpandAllTagsPreference,
     restoreCommandForSession,
     restoreMetaForSession,
@@ -148,6 +153,57 @@ describe("AI session detail timeline", () => {
         expect(formatSessionRelativeTime(now - 2 * 60 * 60_000, now)).toBe("2h ago");
         expect(formatSessionRelativeTime(now - 2 * 24 * 60 * 60_000, now)).toBe("2d ago");
         expect(formatSessionRelativeTime(Math.floor((now - 45_000) / 1000), now)).toBe("45s ago");
+    });
+
+    it("omits the year in compact dates when it matches the current year", () => {
+        const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
+        expect(formatSessionDateCompact(new Date(2026, 2, 14, 9, 0, 0).getTime(), now)).toBe("03-14");
+        expect(formatSessionDateCompact(new Date(2026, 0, 1, 0, 0, 0).getTime(), now)).toBe("01-01");
+        expect(formatSessionDateCompact(new Date(2025, 11, 31, 23, 0, 0).getTime(), now)).toBe("2025-12-31");
+    });
+
+    it("returns an empty compact date for missing or invalid timestamps", () => {
+        const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
+        expect(formatSessionDateCompact(0, now)).toBe("");
+        expect(formatSessionDateCompact(Number.NaN, now)).toBe("");
+    });
+
+    it("accepts second-level timestamps for compact dates", () => {
+        const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
+        const created = Math.floor(new Date(2026, 2, 14, 9, 0, 0).getTime() / 1000);
+        expect(formatSessionDateCompact(created, now)).toBe("03-14");
+    });
+
+    it("describes created and updated dates for a session row", () => {
+        const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
+        const created = new Date(2026, 2, 14, 9, 0, 0).getTime();
+        const updated = new Date(2026, 2, 15, 10, 0, 0).getTime();
+        const info = describeSessionDates(created, updated, now);
+        expect(info.updatedText).toBe("2h ago · 03-15");
+        expect(info.createdText).toBe("03-14");
+        expect(info.updatedFull).toBe("2026-03-15 10:00:00");
+        expect(info.createdFull).toBe("2026-03-14 09:00:00");
+    });
+
+    it("merges created into updated when both land on the same calendar day", () => {
+        const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
+        const created = new Date(2026, 2, 15, 8, 0, 0).getTime();
+        const updated = new Date(2026, 2, 15, 10, 0, 0).getTime();
+        expect(describeSessionDates(created, updated, now).createdText).toBe("");
+    });
+
+    it("falls back to created time and hides the created segment when it is missing", () => {
+        const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
+        const created = new Date(2026, 2, 14, 9, 0, 0).getTime();
+        const onlyCreated = describeSessionDates(created, 0, now);
+        expect(onlyCreated.updatedText).toBe("1d ago · 03-14");
+        expect(onlyCreated.createdText).toBe("");
+        expect(describeSessionDates(0, 0, now)).toEqual({
+            updatedText: "",
+            createdText: "",
+            updatedFull: "never",
+            createdFull: "never",
+        });
     });
 
     it("copies Claude resume commands from the session project directory", () => {
@@ -426,5 +482,103 @@ describe("expand-all-tags preference (option B)", () => {
         expect(shouldExpandAllTags(false, true)).toBe(true);
         expect(shouldExpandAllTags(true, true)).toBe(true);
         expect(shouldExpandAllTags(false, false)).toBe(false);
+    });
+});
+
+// ─── 多选与批量操作 ───
+
+describe("pruneSelectionToVisible", () => {
+    it("returns an empty array for an empty selection", () => {
+        expect(pruneSelectionToVisible([], ["a", "b"])).toEqual([]);
+    });
+
+    it("keeps keys that are still visible, in the original order", () => {
+        expect(pruneSelectionToVisible(["b", "a"], ["a", "b", "c"])).toEqual(["b", "a"]);
+        expect(pruneSelectionToVisible(["a", "b"], ["a", "b"])).toEqual(["a", "b"]);
+    });
+
+    it("drops keys that the filter removed", () => {
+        expect(pruneSelectionToVisible(["a", "gone", "b"], ["a", "b"])).toEqual(["a", "b"]);
+        expect(pruneSelectionToVisible(["a", "b"], [])).toEqual([]);
+    });
+
+    it("drops blank keys and de-duplicates", () => {
+        expect(pruneSelectionToVisible(["", "a", "a", "b"], ["a", "b"])).toEqual(["a", "b"]);
+    });
+});
+
+describe("applySelectionRange", () => {
+    const keys = ["k1", "k2", "k3", "k4", "k5"];
+
+    it("selects forward from anchor to target", () => {
+        expect(applySelectionRange(keys, "k2", "k4")).toEqual(["k2", "k3", "k4"]);
+    });
+
+    it("selects backward when the target precedes the anchor", () => {
+        expect(applySelectionRange(keys, "k4", "k2")).toEqual(["k2", "k3", "k4"]);
+    });
+
+    it("returns just the target when the anchor is blank or no longer visible", () => {
+        expect(applySelectionRange(keys, "", "k3")).toEqual(["k3"]);
+        expect(applySelectionRange(keys, "dropped", "k3")).toEqual(["k3"]);
+    });
+
+    it("returns an empty array when the target is not visible", () => {
+        expect(applySelectionRange(keys, "k2", "dropped")).toEqual([]);
+        expect(applySelectionRange(keys, "k2", "")).toEqual([]);
+    });
+
+    it("selects a single row when anchor and target are the same", () => {
+        expect(applySelectionRange(keys, "k3", "k3")).toEqual(["k3"]);
+    });
+});
+
+describe("buildBatchCopyText", () => {
+    const sessions: SessionSummary[] = [
+        { key: "k1", id: "s1", source: "codex", filePath: "/a/one.jsonl", projectPath: "/Users/nita/work" } as SessionSummary,
+        { key: "k2", id: "s2", source: "codex", filePath: "/a/two.jsonl", projectPath: "/users/nita/work" } as SessionSummary,
+        { key: "k3", id: "s3", source: "codex", filePath: "/a/three.jsonl", projectPath: "/tmp/scratch" } as SessionSummary,
+    ];
+
+    it("returns an empty string for no sessions", () => {
+        expect(buildBatchCopyText([], "ids")).toBe("");
+    });
+
+    it("returns an empty string when every field is blank", () => {
+        const blank = [{ key: "k", id: "  ", source: "codex", filePath: "", projectPath: "" } as SessionSummary];
+        expect(buildBatchCopyText(blank, "ids")).toBe("");
+        expect(buildBatchCopyText(blank, "filePaths")).toBe("");
+    });
+
+    it("copies one id per line", () => {
+        expect(buildBatchCopyText(sessions, "ids")).toBe("s1\ns2\ns3");
+    });
+
+    it("copies file paths verbatim, including Windows separators", () => {
+        const windowsPath = String.raw`E:\code\snorkeling\a.jsonl`;
+        const windows = [{ key: "k", id: "s", source: "codex", filePath: windowsPath } as SessionSummary];
+        expect(buildBatchCopyText(windows, "filePaths")).toBe("E:\\code\\snorkeling\\a.jsonl");
+    });
+
+    it("de-duplicates project paths case-insensitively", () => {
+        expect(buildBatchCopyText(sessions, "projectPaths")).toBe("/Users/nita/work\n/tmp/scratch");
+    });
+
+    it("follows the caller's order, not the list order", () => {
+        expect(buildBatchCopyText([sessions[2], sessions[0]], "ids")).toBe("s3\ns1");
+    });
+
+    it("skips sessions with a blank field but keeps the rest", () => {
+        const mixed = [
+            { key: "k1", id: "", source: "codex", filePath: "" } as SessionSummary,
+            { key: "k2", id: "s2", source: "codex", filePath: "/b.jsonl" } as SessionSummary,
+        ];
+        expect(buildBatchCopyText(mixed, "ids")).toBe("s2");
+    });
+
+    it("builds resume commands through the shared helper", () => {
+        const text = buildBatchCopyText([sessions[0]], "resumeCommands");
+        expect(text.length).toBeGreaterThan(0);
+        expect(text).toContain("s1");
     });
 });
