@@ -12,12 +12,15 @@
 import { AISessionsServiceType } from "@/app/store/services";
 import { atoms } from "@/app/store/global-atoms";
 import { Toggle } from "@/app/element/toggle";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import {
     buildPromptPayload,
     flushPromptDraft,
     hasPromptOverride,
     PROMPT_FEATURE_FALLBACKS,
     PROMPT_FEATURE_ORDER,
+    PROMPT_FEATURE_SESSION_TITLE,
     previewPrompt,
     resolvePromptDraft,
     savePromptConfig,
@@ -174,6 +177,15 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({
             ),
         [modeConfigs]
     );
+
+    const autoTitleEnabled = fullConfig?.settings?.["ai:sessionautotitle"] === true;
+    const saveAutoTitle = useCallback((value: boolean) => {
+        void RpcApi.SetConfigCommand(TabRpcClient, {
+            ["ai:sessionautotitle"]: value,
+        } as SettingsType).catch((err) => {
+            setError(err instanceof Error ? err.message : String(err));
+        });
+    }, []);
 
     const preview = useMemo(() => previewPrompt(draft, meta), [draft, meta]);
     const isCustomized = hasPromptOverride(selectedKey);
@@ -381,6 +393,25 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({
                                 <span title="When off, the card button reports a disabled error">Enabled</span>
                             </label>
                         </section>
+
+                        {selectedKey === PROMPT_FEATURE_SESSION_TITLE && (
+                            <section className="space-y-1.5 rounded border border-border bg-panel px-3 py-2.5">
+                                <label className="flex items-center gap-2 text-xs font-medium text-primary">
+                                    <Toggle
+                                        checked={autoTitleEnabled}
+                                        onChange={(value) => saveAutoTitle(value)}
+                                        label=""
+                                    />
+                                    <span>Auto-generate titles in the background</span>
+                                </label>
+                                <p className="text-xxs leading-4 text-muted">
+                                    Runs a serial, throttled background worker that title-cases sessions which still
+                                    only have a raw first-message title. Each session is generated at most once; a
+                                    hand-renamed title is never overwritten. Off by default to avoid spending model
+                                    quota unexpectedly.
+                                </p>
+                            </section>
+                        )}
 
                         <details className="rounded border border-border bg-panel">
                             <summary className="cursor-pointer px-3 py-2 text-xs text-secondary hover:text-primary">

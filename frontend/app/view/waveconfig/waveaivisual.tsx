@@ -142,6 +142,10 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     }, [modeConfigs, selectedKey, userEntries]);
 
     // Refresh the form when the selected mode changes.
+    // Depends on the mode key only, never on the config object: the backend
+    // re-broadcasts the resolved config after every write we make, and a
+    // key-only dep keeps our own echo (and any external edit) from stomping
+    // half-typed edits in the middle of a keystroke.
     useEffect(() => {
         if (selectedEntry) {
             setForm(selectedEntry.config);
@@ -152,7 +156,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
         } else {
             setForm(null);
         }
-    }, [selectedEntry?.key, selectedEntry?.config]);
+    }, [selectedEntry?.key]);
 
     const showError = useCallback((message: string) => {
         modalsModel.pushModal("MessageModal", { children: message });
@@ -656,7 +660,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                                                     ref={apiKeyInputRef}
                                                     value={form["ai:apitokensecretname"] ?? ""}
                                                     onChange={(e) => applyPatch({ "ai:apitokensecretname": e.target.value })}
-                                                    placeholder="OPENAI_KEY"
+                                                    placeholder="Secret name, e.g. OPENAI_KEY"
                                                     spellCheck={false}
                                                     className="h-8 min-w-0 flex-1 rounded border border-border bg-panel px-2.5 font-mono text-xs text-primary outline-none focus:border-accent"
                                                 />

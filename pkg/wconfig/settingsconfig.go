@@ -208,6 +208,13 @@ type SettingsType struct {
 	AiFontSize      float64 `json:"ai:fontsize,omitempty"`
 	AiFixedFontSize float64 `json:"ai:fixedfontsize,omitempty"`
 
+	// ai:sessionautotitle — 后台静默为还没有标题的会话生成一次 AI 标题。
+	// 默认关闭（nil 视为 false），避免在用户不知情时消耗模型额度。
+	// intervalms = 两次生成之间的最小间隔（串行限流）；batchsize = 单批上限。
+	AiSessionAutoTitle           *bool  `json:"ai:sessionautotitle,omitempty"`
+	AiSessionAutoTitleIntervalMs *int64 `json:"ai:sessionautotitleintervalms,omitempty"`
+	AiSessionAutoTitleBatchSize  *int64 `json:"ai:sessionautotitlebatchsize,omitempty"`
+
 	WaveAiShowCloudModes bool   `json:"waveai:showcloudmodes,omitempty"`
 	WaveAiDefaultMode    string `json:"waveai:defaultmode,omitempty"`
 
@@ -425,26 +432,42 @@ type WebBookmark struct {
 
 // Wave AI panel mode configuration (NEW)
 type AIModeConfigType struct {
-	DisplayName        string   `json:"display:name"`
-	DisplayOrder       float64  `json:"display:order,omitempty"`
-	DisplayIcon        string   `json:"display:icon,omitempty"`
-	DisplayDescription string   `json:"display:description,omitempty"`
-	Provider           string   `json:"ai:provider,omitempty" jsonschema:"enum=wave,enum=google,enum=groq,enum=openrouter,enum=nanogpt,enum=openai,enum=azure,enum=azure-legacy,enum=custom"`
-	APIType            string   `json:"ai:apitype,omitempty" jsonschema:"enum=google-gemini,enum=openai-responses,enum=openai-chat"`
-	Model              string   `json:"ai:model,omitempty"`
-	ThinkingLevel      string   `json:"ai:thinkinglevel,omitempty" jsonschema:"enum=low,enum=medium,enum=high"`
-	Verbosity          string   `json:"ai:verbosity,omitempty" jsonschema:"enum=low,enum=medium,enum=high,description=Text verbosity level (OpenAI Responses API only)"`
-	Endpoint           string   `json:"ai:endpoint,omitempty"`
-	ProxyURL           string   `json:"ai:proxyurl,omitempty"`
-	AzureAPIVersion    string   `json:"ai:azureapiversion,omitempty"`
-	APIToken           string   `json:"ai:apitoken,omitempty"`
-	APITokenSecretName string   `json:"ai:apitokensecretname,omitempty"`
+	DisplayName        string  `json:"display:name"`
+	DisplayOrder       float64 `json:"display:order,omitempty"`
+	DisplayIcon        string  `json:"display:icon,omitempty"`
+	DisplayDescription string  `json:"display:description,omitempty"`
+	Provider           string  `json:"ai:provider,omitempty" jsonschema:"enum=wave,enum=google,enum=groq,enum=openrouter,enum=nanogpt,enum=openai,enum=azure,enum=azure-legacy,enum=custom"`
+	APIType            string  `json:"ai:apitype,omitempty" jsonschema:"enum=google-gemini,enum=openai-responses,enum=openai-chat"`
+	Model              string  `json:"ai:model,omitempty"`
+	ThinkingLevel      string  `json:"ai:thinkinglevel,omitempty" jsonschema:"enum=low,enum=medium,enum=high"`
+	Verbosity          string  `json:"ai:verbosity,omitempty" jsonschema:"enum=low,enum=medium,enum=high,description=Text verbosity level (OpenAI Responses API only)"`
+	Endpoint           string  `json:"ai:endpoint,omitempty"`
+	ProxyURL           string  `json:"ai:proxyurl,omitempty"`
+	AzureAPIVersion    string  `json:"ai:azureapiversion,omitempty"`
+	APIToken           string  `json:"ai:apitoken,omitempty"`
+	// APITokenSecretName is a pointer so three states stay distinct:
+	// nil = never configured (provider default may fill it in),
+	// ""  = the user deliberately cleared it (no secret, no default),
+	// set = the user picked this secret.
+	// A plain string with omitempty cannot express the middle state, which
+	// made "clear the field" impossible: the provider default immediately
+	// replaced the empty value on the next config broadcast.
+	APITokenSecretName *string  `json:"ai:apitokensecretname,omitempty"`
 	AzureResourceName  string   `json:"ai:azureresourcename,omitempty"`
 	AzureDeployment    string   `json:"ai:azuredeployment,omitempty"`
 	Capabilities       []string `json:"ai:capabilities,omitempty" jsonschema:"enum=pdfs,enum=images,enum=tools"`
 	SwitchCompat       []string `json:"ai:switchcompat,omitempty"`
 	WaveAICloud        bool     `json:"waveai:cloud,omitempty"`
 	WaveAIPremium      bool     `json:"waveai:premium,omitempty"`
+}
+
+// APITokenSecretNameValue returns the configured secret name.
+// An unset (nil) pointer and an explicitly cleared ("") pointer both read as "".
+func (c AIModeConfigType) APITokenSecretNameValue() string {
+	if c.APITokenSecretName == nil {
+		return ""
+	}
+	return *c.APITokenSecretName
 }
 
 type AIModeConfigUpdate struct {

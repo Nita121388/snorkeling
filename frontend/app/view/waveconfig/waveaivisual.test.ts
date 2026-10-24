@@ -44,4 +44,13 @@ describe("Wave AI modes editor contracts", () => {
         const occurrences = visual.split('apiToken: form["ai:apitoken"]').length - 1;
         expect(occurrences).toBeGreaterThanOrEqual(2);
     });
+
+    it("does not re-seed the editor form on every config broadcast", () => {
+        // The backend re-broadcasts the resolved config after every write, which
+        // used to overwrite in-flight edits (e.g. clearing the API key secret
+        // field and having OPENAI_KEY snap back). The reset effect may only
+        // depend on the selected mode key.
+        expect(visual).toContain("}, [selectedEntry?.key]);");
+        expect(visual).not.toContain("selectedEntry?.key, selectedEntry?.config");
+    });
 });

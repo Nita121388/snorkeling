@@ -51,6 +51,9 @@ const (
 	ConfigKey_AiProxyUrl                     = "ai:proxyurl"
 	ConfigKey_AiFontSize                     = "ai:fontsize"
 	ConfigKey_AiFixedFontSize                = "ai:fixedfontsize"
+	ConfigKey_AiSessionAutoTitle             = "ai:sessionautotitle"
+	ConfigKey_AiSessionAutoTitleIntervalMs   = "ai:sessionautotitleintervalms"
+	ConfigKey_AiSessionAutoTitleBatchSize    = "ai:sessionautotitlebatchsize"
 
 	ConfigKey_WaveAiShowCloudModes           = "waveai:showcloudmodes"
 	ConfigKey_WaveAiDefaultMode              = "waveai:defaultmode"

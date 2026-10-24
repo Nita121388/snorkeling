@@ -408,6 +408,15 @@
         "ai:fixedfontsize": {
           "type": "number"
         },
+        "ai:sessionautotitle": {
+          "type": "boolean"
+        },
+        "ai:sessionautotitleintervalms": {
+          "type": "integer"
+        },
+        "ai:sessionautotitlebatchsize": {
+          "type": "integer"
+        },
         "waveai:showcloudmodes": {
           "type": "boolean"
         },
