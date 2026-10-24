@@ -67,3 +67,7 @@ scripts/cdp-gui-chat-*.mjs
 
 # Local verification scratch output (lint / tsc / vitest logs)
 .tmp-*.txt
+
+# Local scratch dirs / Windows junk
+.tmp/
+/nul
