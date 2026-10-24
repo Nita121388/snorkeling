@@ -10,10 +10,23 @@
 2. **目录只读配置。** `agentcatalog.List()` / `Resolve()` 合并内置 profile 与 `agent:profiles`，
    不探测外部 CLI、不写用户数据、不做缓存（合并是纯内存操作）。
 3. **模型解析优先级固定**（高 → 低）：
-   `agent:profiles.<name>.models` → 内置模型表 → 已注册 `ModelResolver` → `agent:profiles.<name>.model` 单值 → 空。
+   `agent:profiles.<name>.models` → **各 agent 本地配置 discovery** → 已注册 `ModelResolver`（慢速 CLI 探测预留）→ `agent:profiles.<name>.model` 单值 → 空。
    - `models[].default: true`（来自 config）是最高优先的默认标记；
-   - 其次是 `profile.model`，再其次是内置 default 标记，最后取列表第一项；
+   - 其次是 `profile.model`，再其次是 discovery 的 default 标记，最后取列表第一项；
    - `profile.model` 不在列表中时会被补入（`source=profile-model`），保证默认模型永远可选。
+   - **禁止内置静态模型表**：目录里的模型必须来自用户配置或 agent 自己的配置文件，不得凭空写死 ID。
+
+   discovery 只读本地文件、不跑子进程、不写用户数据：
+
+   | agent | 来源 | 默认模型 |
+   |---|---|---|
+   | `pi` | `$PI_CODING_AGENT_DIR/models.json` | `settings.json` 的 `defaultProvider` + `defaultModel` |
+   | `codex` | `$CODEX_HOME/models_cache.json`（`visibility=list`）+ `config.toml` 顶层 `model` | 顶层 `model` |
+   | `claude` | `$CLAUDE_CONFIG_DIR/settings.json` 的 `ANTHROPIC_*MODEL` env | `ANTHROPIC_MODEL` |
+   | `opencode` | `$OPENCODE_HOME/opencode.json[c]` 的 `provider.*.models` | 顶层 `model` |
+   | `gemini` | `$GEMINI_CONFIG_DIR/settings.json` 的 `model` / `selectedModel` | 同左 |
+
+   `pi --list-models`（约 11s）与 `opencode models`（约 6s）不进入同步 RPC 路径，只留作后续 resolver。
 4. **目录输出结构是跨端契约**：`ProfileInfo{name,label,cmd,args,modelflag,defaultModel,models[],source}`。
    新增字段只能增量，不能重命名或改变语义。
 5. **未知 model 不阻断执行。** 调度器只在日志中告警；UI 用「保留当前值 option」呈现，不能静默丢弃。

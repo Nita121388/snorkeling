@@ -70,6 +70,21 @@
 - [x] `pkg/agentcap/agentcap.go` 指南补 `wsh agent list` 段
 - [x] 手工：`wsh agent list --json` 与 UI 下拉同源核对
 
+## M8 真实模型来源 discovery（替代内置静态表）
+
+- [x] `research/agent-model-sources.md` 记录各 agent 实测来源
+- [x] `pkg/agentcatalog/discovery.go`（新）
+  - pi: `$PI_CODING_AGENT_DIR/models.json` + `settings.json` 默认 provider/model
+  - codex: `$CODEX_HOME/models_cache.json`（visibility=list）+ `config.toml` 顶层 model
+  - claude: `$CLAUDE_CONFIG_DIR/settings.json` env `ANTHROPIC_*MODEL`
+  - opencode: `$OPENCODE_HOME/opencode.json[c]`（JSONC：注释/尾逗号）
+  - gemini: `$GEMINI_CONFIG_DIR/settings.json`
+  - 只读文件、不跑子进程、不写用户数据
+- [x] `pkg/agentcatalog/catalog.go` 删除 `builtinModelCatalogs`，解析改为 config → discovery → resolver → profile.model
+- [x] `pkg/agentcatalog/discovery_test.go`：五类来源 + JSONC + config 覆盖 + source 标记
+- [x] 真实数据核对：pi 13 个模型（默认 deepseek-v4.1-flash）、codex 6 个（默认 gpt-5.6-sol）、claude 1 个（glm-5.3）、opencode/gemini 空
+- [x] `go build ./...` + `go vet ./pkg/agentcatalog/...` + vitest + tsc（改动文件）通过
+
 ## M7 收尾
 
 - [x] `go test ./pkg/agentcatalog/... ./pkg/scheduler/...`

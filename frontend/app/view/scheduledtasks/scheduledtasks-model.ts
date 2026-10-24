@@ -47,12 +47,12 @@ function defaultProfileName(): string {
 }
 
 function makeDefaultDraft(): ScheduledTaskType {
-    const profile = agentCatalogSnapshot.find((p) => p.name === defaultProfileName()) ?? null;
+    const profile = agentCatalogSnapshot[0] ?? null;
     return {
         id: "",
         name: "",
         enabled: true,
-        agentProfile: defaultProfileName(),
+        agentProfile: profile?.name ?? "",
         model: pickDefaultModel(profile),
         prompt: "",
         workdir: "",
@@ -144,7 +144,11 @@ export class ScheduledTasksViewModel implements ViewModel {
         }
     }
 
-    openCreate() {
+    async openCreate() {
+        // The draft needs a loaded catalog: otherwise the first paint shows empty agent/model.
+        if (agentCatalogSnapshot.length === 0) {
+            await this.refreshCatalog(true);
+        }
         globalStore.set(this.editingTaskAtom, makeDefaultDraft());
         globalStore.set(this.editorOpenAtom, true);
         void this.refreshCatalog(true);

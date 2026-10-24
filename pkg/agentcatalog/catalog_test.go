@@ -26,26 +26,8 @@ func TestListIncludesBuiltinProfiles(t *testing.T) {
 		if pi.Cmd != "pi" || pi.ModelFlag != "--model" || pi.Label != "Pi" {
 			t.Fatalf("unexpected pi profile: %#v", pi)
 		}
-		if pi.DefaultModel != "deepseek-v4-pro" {
-			t.Fatalf("pi default model = %q", pi.DefaultModel)
-		}
-		if len(pi.Models) != 4 {
-			t.Fatalf("pi models = %d", len(pi.Models))
-		}
-		defaults := 0
-		for _, m := range pi.Models {
-			if m.Default {
-				defaults++
-				if m.Id != pi.DefaultModel {
-					t.Fatalf("model %q marked default, want %q", m.Id, pi.DefaultModel)
-				}
-			}
-			if m.Label == "" {
-				t.Fatalf("model %q has empty label", m.Id)
-			}
-		}
-		if defaults != 1 {
-			t.Fatalf("expected exactly one default model, got %d", defaults)
+		if len(pi.Models) != 0 || pi.DefaultModel != "" {
+			t.Fatalf("pi should start with no discovered models: %#v", pi)
 		}
 		if names["codex"].DefaultModel != "" || len(names["codex"].Models) != 0 {
 			t.Fatalf("codex should start with no models: %#v", names["codex"])
@@ -81,16 +63,12 @@ func TestResolveOverridesBuiltin(t *testing.T) {
 		if len(pi.Args) != 2 || pi.Args[0] != "--mode" || pi.Args[1] != "rpc" {
 			t.Fatalf("args = %#v", pi.Args)
 		}
-		// builtin catalog still applies; the configured model is already in it, so
-		// it becomes the default instead of being duplicated.
+		// With no discovery the configured profile.model is the only model.
 		if pi.DefaultModel != "gpt-5" {
 			t.Fatalf("default model = %q", pi.DefaultModel)
 		}
-		if len(pi.Models) != 4 {
+		if len(pi.Models) != 1 || pi.Models[0].Id != "gpt-5" || !pi.Models[0].Default {
 			t.Fatalf("models = %#v", pi.Models)
-		}
-		if pi.Models[1].Id != "gpt-5" || pi.Models[1].Source != "builtin" || !pi.Models[1].Default {
-			t.Fatalf("gpt-5 entry = %#v", pi.Models[1])
 		}
 	})
 }
@@ -222,9 +200,43 @@ func TestResolverExtensionPoint(t *testing.T) {
 	})
 }
 
-// withSettings runs fn against an in-memory settings snapshot. The catalog reads
-// configuration only, so the tests never touch the real config dir.
+// withSettings runs fn against an in-memory settings snapshot and an empty,
+// isolated home so per-agent file discovery never reads the developer machine.
 func withSettings(t *testing.T, settings wconfig.SettingsType, fn func(wconfig.SettingsType)) {
 	t.Helper()
+	isolateAgentDirs(t)
 	fn(settings)
+}
+
+// isolateAgentDirs points every supported agent's config directory at a fresh
+// temp dir, so discovery returns nothing unless the test creates files.
+func isolateAgentDirs(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("PI_CODING_AGENT_DIR", dir)
+	t.Setenv("CODEX_HOME", dir)
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	t.Setenv("OPENCODE_HOME", dir)
+	t.Setenv("GEMINI_CONFIG_DIR", dir)
+	return dir
+}
+
+func TestListMarksDefaultProfile(t *testing.T) {
+	withSettings(t, wconfig.SettingsType{AgentDefaultProfile: "codex"}, func(s wconfig.SettingsType) {
+		for _, p := range ListWithSettings(s) {
+			if want := p.Name == "codex"; p.Default != want {
+				t.Fatalf("profile %q Default=%v, want %v", p.Name, p.Default, want)
+			}
+		}
+	})
+}
+
+func TestListDefaultsToPiWhenUnset(t *testing.T) {
+	withSettings(t, wconfig.SettingsType{}, func(s wconfig.SettingsType) {
+		for _, p := range ListWithSettings(s) {
+			if want := p.Name == "pi"; p.Default != want {
+				t.Fatalf("profile %q Default=%v, want %v", p.Name, p.Default, want)
+			}
+		}
+	})
 }

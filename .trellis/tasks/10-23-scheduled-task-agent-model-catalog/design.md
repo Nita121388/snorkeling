@@ -97,29 +97,27 @@ merge:
   cmd      = cfg.cmd      || builtin.cmd
   modelflag= cfg.modelflag|| builtin.modelflag
   label    = cfg.label    || builtin.label || name
-  models   = dedupeById(cfg.models) → 若空，用 builtin.models
+  models   = dedupeById(cfg.models) → 若空，用本地 discovery
            → 若仍空且 cfg.model 非空，用 [{id: cfg.model, source: profile-model}]
-  defaultModel = 第一个 default:true
+  defaultModel = 第一个 config default:true
                || cfg.model
-               || builtin.model
+               || discovery default:true
                || models[0].id
   // cfg.model 若不在 models 中，前置插入一条 source=profile-model 的项
 ```
 
-内置模型表（从现 `PiModels` 迁移 + 各 agent 的合理默认）：
+模型来源改为 **各 agent 自己的本地配置**（不再内置静态表）：
 
-```go
-var builtinModelCatalogs = map[string][]AgentModelConfigType{
-    "pi": {
-        {Id: "deepseek-v4-pro", Label: "DeepSeek V4 Pro", Provider: "deepseek"},
-        {Id: "gpt-5", Label: "GPT-5", Provider: "openai"},
-        {Id: "claude-sonnet-4", Label: "Claude Sonnet 4", Provider: "anthropic"},
-        {Id: "gemini-2.5-pro", Label: "Gemini 2.5 Pro", Provider: "google"},
-    },
-    // codex/claude/gemini/opencode 首期只给空列表 → UI 自由输入，
-    // 用户配置 models 后自动变成下拉。避免凭空编造不存在的模型 ID。
-}
-```
+| agent | 来源 | 默认模型 |
+|---|---|---|
+| `pi` | `$PI_CODING_AGENT_DIR/models.json` → `providers.<p>.models[]` | `settings.json` `defaultProvider`+`defaultModel` |
+| `codex` | `$CODEX_HOME/models_cache.json`（`visibility=list`）+ `config.toml` 顶层 `model` | 顶层 `model` |
+| `claude` | `$CLAUDE_CONFIG_DIR/settings.json` env `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` | `ANTHROPIC_MODEL` |
+| `opencode` | `$OPENCODE_HOME/opencode.json[c]` 的 `provider.*.models` | 顶层 `model` |
+| `gemini` | `$GEMINI_CONFIG_DIR/settings.json` 的 `model` / `selectedModel` | 同左 |
+
+discovery 只读文件、不跑子进程、不写用户数据；`pi --list-models`（约 11s）与 `opencode models`（约 6s）
+不进同步 RPC，只留作后续 resolver。详见 `research/agent-model-sources.md`。
 
 **扩展点**：`type ModelResolver func(name string, cfg AgentProfileConfigType) []AgentModelConfigType`。
 后续接 cc-switch vendor 模型或 `agent --list-models` 探测时，只加 resolver，不改 RPC 结构。

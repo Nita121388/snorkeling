@@ -14,9 +14,13 @@ package agentcatalog
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
+
+// defaultAgentProfile mirrors the frontend DefaultAgentProfile.
+const defaultAgentProfile = "pi"
 
 // ModelInfo is one selectable model for an agent profile.
 type ModelInfo struct {
@@ -24,7 +28,8 @@ type ModelInfo struct {
 	Label    string `json:"label"`
 	Provider string `json:"provider,omitempty"`
 	Default  bool   `json:"default,omitempty"`
-	// Source records where this entry came from: "config", "builtin", or "profile-model".
+	// Source records where this entry came from: "config", "discovery",
+	// "resolver", or "profile-model".
 	Source string `json:"source"`
 }
 
@@ -40,27 +45,14 @@ type ProfileInfo struct {
 	Models       []ModelInfo `json:"models"`
 	// Source is "builtin" for built-in profiles and "config" for user-defined ones.
 	Source string `json:"source"`
+	// Default marks the profile named by `agent:defaultprofile` (defaults to "pi").
+	Default bool `json:"default,omitempty"`
 }
 
 type builtinProfile struct {
 	Label     string
 	Cmd       string
 	ModelFlag string
-	Models    []wconfig.AgentModelConfigType
-}
-
-// builtinModelCatalogs holds the models we can safely advertise for an agent
-// without probing the machine. Only IDs we are confident about are listed; an
-// empty list means "let the user type a model / configure one in settings".
-var builtinModelCatalogs = map[string][]wconfig.AgentModelConfigType{
-	"pi": {
-		{Id: "deepseek-v4-pro", Label: "DeepSeek V4 Pro", Provider: "deepseek", Default: true},
-		{Id: "gpt-5", Label: "GPT-5", Provider: "openai"},
-		{Id: "claude-sonnet-4", Label: "Claude Sonnet 4", Provider: "anthropic"},
-		{Id: "gemini-2.5-pro", Label: "Gemini 2.5 Pro", Provider: "google"},
-	},
-	// codex/claude/gemini/opencode intentionally start empty: the UI falls back
-	// to free text until the user configures `models` in settings.
 }
 
 var builtinProfiles = map[string]builtinProfile{
@@ -68,12 +60,12 @@ var builtinProfiles = map[string]builtinProfile{
 	"claude":   {Label: "Claude Code", Cmd: "claude", ModelFlag: "--model"},
 	"gemini":   {Label: "Gemini", Cmd: "gemini", ModelFlag: "--model"},
 	"opencode": {Label: "OpenCode", Cmd: "opencode", ModelFlag: "--model"},
-	"pi":       {Label: "Pi", Cmd: "pi", ModelFlag: "--model", Models: builtinModelCatalogs["pi"]},
+	"pi":       {Label: "Pi", Cmd: "pi", ModelFlag: "--model"},
 }
 
-// ModelResolver is the extension point for future dynamic model discovery
-// (cc-switch vendors, `agent --list-models`, ...). Resolvers are consulted only
-// when the user has not configured `models` for the profile.
+// ModelResolver is the extension point for slow/dynamic discovery (CLI probes
+// such as `pi --list-models`, cc-switch vendor catalogs). Resolvers are consulted
+// only when neither the user config nor the per-agent file discovery produced models.
 type ModelResolver func(name string, cfg wconfig.AgentProfileConfigType) []wconfig.AgentModelConfigType
 
 var modelResolvers []ModelResolver
@@ -115,9 +107,15 @@ func ListWithSettings(settings wconfig.SettingsType) []ProfileInfo {
 	}
 	sort.Strings(names)
 
+	defaultName := strings.TrimSpace(settings.AgentDefaultProfile)
+	if defaultName == "" {
+		defaultName = defaultAgentProfile
+	}
 	result := make([]ProfileInfo, 0, len(names))
 	for _, name := range names {
-		result = append(result, resolveWithConfig(name, configured[name]))
+		info := resolveWithConfig(name, configured[name])
+		info.Default = name == defaultName
+		result = append(result, info)
 	}
 	return result
 }
@@ -170,31 +168,33 @@ func resolveWithConfig(name string, cfg wconfig.AgentProfileConfigType) ProfileI
 	}
 	info.Args = append([]string(nil), cfg.Args...)
 
-	models := resolveModels(name, cfg, builtin.Models)
+	models := resolveModels(name, cfg)
 	info.DefaultModel = pickDefaultModel(models, cfg.Model)
 	normalizeDefaults(models, info.DefaultModel)
 	info.Models = models
 	return info
 }
 
-// resolveModels applies the precedence: explicit config models -> builtin
-// catalog -> registered resolvers -> single profile.model -> empty.
-func resolveModels(name string, cfg wconfig.AgentProfileConfigType, builtinModels []wconfig.AgentModelConfigType) []ModelInfo {
+// resolveModels applies the precedence: explicit config models -> per-agent
+// file discovery -> registered resolvers -> single profile.model -> empty.
+func resolveModels(name string, cfg wconfig.AgentProfileConfigType) []ModelInfo {
 	var source []wconfig.AgentModelConfigType
 	sourceName := ""
 	switch {
 	case len(cfg.Models) > 0:
 		source = cfg.Models
 		sourceName = "config"
-	case len(builtinModels) > 0:
-		source = builtinModels
-		sourceName = "builtin"
 	default:
-		for _, resolver := range modelResolvers {
-			if resolved := resolver(name, cfg); len(resolved) > 0 {
-				source = resolved
-				sourceName = "resolver"
-				break
+		if discovered := discoverModels(name); len(discovered) > 0 {
+			source = discovered
+			sourceName = "discovery"
+		} else {
+			for _, resolver := range modelResolvers {
+				if resolved := resolver(name, cfg); len(resolved) > 0 {
+					source = resolved
+					sourceName = "resolver"
+					break
+				}
 			}
 		}
 	}

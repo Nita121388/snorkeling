@@ -356,6 +356,11 @@ function EditorOverlay({ model, draft }: { model: ScheduledTasksViewModel; draft
                                 ))}
                             </select>
                         )}
+                        {profile != null && profile.models.length === 0 && (
+                            <span className="text-xs text-muted mt-0.5">
+                                No models configured for this agent — add agent:profiles.{profile.name}.models in settings, or type a model id.
+                            </span>
+                        )}
                     </Field>
                 </div>
 

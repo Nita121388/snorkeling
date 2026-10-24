@@ -2014,6 +2014,7 @@ declare global {
         defaultModel?: string;
         models: ModelInfo[];
         source: string;
+        default?: boolean;
     };
 
     // aisessions.ProjectPathSummary

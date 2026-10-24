@@ -23,9 +23,11 @@
   输出：profile 名、显示名、cmd、modelflag、默认模型、模型列表（id/label/provider/default）。
 - 模型列表解析优先级（高 → 低）：
   1. `agent:profiles.<name>.models`（用户显式配置，最权威）
-  2. 内置模型表（把现在前端硬编码的 PiModels 迁进后端内置表）
-  3. `agent:profiles.<name>.model` 单值（老配置兜底，作为唯一模型）
-  4. 空列表 → 前端退化为自由输入（不阻断保存）
+  2. **各 agent 本地配置 discovery**（pi `models.json`、codex `models_cache.json`、claude `settings.json` env、opencode `opencode.jsonc`、gemini `settings.json`）
+  3. 已注册 `ModelResolver`（后续慢速 CLI 探测扩展点）
+  4. `agent:profiles.<name>.model` 单值（老配置兜底，作为唯一模型）
+  5. 空列表 → 前端退化为自由输入（不阻断保存）
+- **禁止内置静态模型表**：不得凭空写死模型 ID；看不到配置就显示空列表。
 - 去重按 model id；`label` 缺省用 id；默认模型取 `models[].default`，否则 `profile.model`，否则第一项。
 - 目录只读配置，不探测外部 CLI、不写用户数据。
 

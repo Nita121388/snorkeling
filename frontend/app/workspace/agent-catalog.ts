@@ -30,6 +30,8 @@ export interface AgentProfileInfo {
     defaultModel?: string;
     models: AgentModelInfo[];
     source?: string;
+    /** True for the profile named by `agent:defaultprofile`. */
+    default?: boolean;
 }
 
 const CACHE_TTL_MS = 60 * 1000;
@@ -46,10 +48,12 @@ export function loadAgentCatalog(force: boolean = false): Promise<AgentProfileIn
         try {
             const rtn = await RpcApi.AgentProfileListCommand(TabRpcClient);
             const profiles = Array.isArray(rtn) ? rtn : [];
-            return profiles.map((p) => ({
+            const normalized = profiles.map((p) => ({
                 ...p,
                 models: Array.isArray(p.models) ? p.models : [],
             }));
+            // Keep the user's default profile first so a new task starts on the right agent.
+            return [...normalized].sort((a, b) => Number(Boolean(b.default)) - Number(Boolean(a.default)));
         } catch (err) {
             console.warn("[agentcatalog] loadAgentCatalog failed:", err);
             return [];
