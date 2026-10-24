@@ -1,0 +1,30 @@
+{
+  "id": "aisessions-agent-copy-context",
+  "name": "aisessions-agent-copy-context",
+  "title": "AI 会话与 Agent TUI 文本选中及上下文复制",
+  "description": "在 Session Detail 与 Agent TUI 中支持自由选中文字并复制，通过 💡 快捷菜单新增 Copy Context / Quote to Input，把带来源标注的会话上下文直接回灌给 agent 继续对话。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-24",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-24-aisessions-copy-context-builder",
+    "10-24-agent-tui-selection-copy-context",
+    "10-24-aisessions-quote-to-composer"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

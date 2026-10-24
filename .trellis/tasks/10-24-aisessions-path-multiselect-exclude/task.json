@@ -1,0 +1,28 @@
+{
+  "id": "aisessions-path-multiselect-exclude",
+  "name": "aisessions-path-multiselect-exclude",
+  "title": "AI 会话筛选：路径多选 + 排除查询（标签/目录）",
+  "description": "AISessions 列表与搜索：路径筛选升级为多选（OR 并集，含 Other 桶服务端化），并提供否定筛选（排除标签、排除目录前缀），与包含条件 AND 组合，目录分布计数同步扣除排除项。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-24",
+  "completedAt": null,
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "priority": "P1"
+  }
+}

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Card 强调线改造 · 原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="page-head">
+    <h1>Agent Card 强调线改造</h1>
+    <p class="subtitle">
+      镜像源：<code>frontend/app/view/term/agent-hover-card.tsx</code> +
+      <code>frontend/app/element/info-card/info-card.scss</code>（<code>.info-card.agent-card</code>）。
+      现状是 <code>border-left: 3px</code> 配 <code>border-radius: 8px</code>，浏览器会把左侧边框在上下圆角处切成斜段，
+      色条两头往外翻。下面 4 个方案都让「色条所在的边保持直角」。
+    </p>
+  </header>
+
+  <!-- ============ 控制条（评审用，不是应用 UI） ============ -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-label">状态</span>
+      <div class="seg" id="seg-state">
+        <button data-state="working" class="is-on">working</button>
+        <button data-state="done">done</button>
+        <button data-state="blocked">blocked</button>
+        <button data-state="error">error</button>
+      </div>
+    </div>
+    <div class="toolbar-group">
+      <span class="toolbar-label">尺寸</span>
+      <div class="seg" id="seg-width">
+        <button data-width="280">280</button>
+        <button data-width="320" class="is-on">320</button>
+        <button data-width="380">380</button>
+      </div>
+    </div>
+    <div class="toolbar-group">
+      <span class="toolbar-label">圆头半径</span>
+      <div class="seg" id="seg-cap">
+        <button data-cap="1.5">1.5px</button>
+        <button data-cap="2" class="is-on">2px</button>
+        <button data-cap="3">3px</button>
+      </div>
+    </div>
+    <div class="toolbar-group">
+      <label class="chk"><input type="checkbox" id="chk-grid"> 显示 1.5x 放大镜</label>
+    </div>
+  </div>
+
+  <!-- ============ 方案墙 ============ -->
+  <main class="wall" id="wall"></main>
+
+  <!-- ============ 放大镜 ============ -->
+  <section class="loupe" id="loupe" hidden>
+    <div class="loupe-head">
+      <span class="loupe-title">放大镜 · <b id="loupe-name">—</b></span>
+      <button class="loupe-close" id="loupe-close" title="Close">×</button>
+    </div>
+    <div class="loupe-body">
+      <div class="loupe-stage"><div class="loupe-zoom" id="loupe-zoom"></div></div>
+      <div class="loupe-side">
+        <div class="loupe-note" id="loupe-note"></div>
+        <pre class="loupe-code" id="loupe-code"></pre>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,527 @@
+/* ===========================================================
+   Agent Card 强调线改造 — 原型样式
+   颜色 token 对齐 frontend/app/theme.scss（dark 默认主题）
+   =========================================================== */
+
+:root {
+  --main-text-color: #f7f7f7;
+  --secondary-text-color: rgb(195, 200, 194);
+  --border-color: rgba(255, 255, 255, 0.16);
+  --block-bg-solid-color: rgb(0, 0, 0);
+  --hover-bg-color: rgba(255, 255, 255, 0.1);
+  --accent-color: rgb(88, 193, 66);
+  --agent-working-color: #3b82f6;
+  --agent-done-color: rgb(78, 154, 6);
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+
+  --page-bg: #0a0c0b;
+  --page-bg-2: #101312;
+  --page-line: rgba(255, 255, 255, 0.07);
+  --label-color: rgb(150, 158, 152);
+
+  --card-w: 320px;
+  --state-accent: var(--secondary-text-color);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(900px 420px at 12% -8%, rgba(88, 193, 66, 0.07), transparent 70%),
+    linear-gradient(var(--page-line) 1px, transparent 1px) 0 0 / 100% 32px,
+    var(--page-bg);
+  color: var(--main-text-color);
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page { max-width: 1280px; margin: 0 auto; padding: 40px 28px 96px; }
+
+/* ── 页头 ── */
+.page-head h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.subtitle {
+  margin: 0;
+  max-width: 860px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--secondary-text-color);
+}
+.subtitle code {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #cfe8c8;
+}
+
+/* ── 控制条 ── */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  align-items: center;
+  margin: 26px 0 30px;
+  padding: 12px 14px;
+  border: 1px solid var(--page-line);
+  border-radius: 10px;
+  background: rgba(16, 19, 18, 0.86);
+  backdrop-filter: blur(10px);
+}
+.toolbar-group { display: flex; align-items: center; gap: 9px; }
+.toolbar-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--label-color);
+}
+.seg { display: flex; padding: 2px; border-radius: 7px; background: rgba(255, 255, 255, 0.05); }
+.seg button {
+  border: 0;
+  background: transparent;
+  color: var(--secondary-text-color);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.seg button:hover { color: var(--main-text-color); }
+.seg button.is-on {
+  background: rgba(88, 193, 66, 0.18);
+  color: #cdedc2;
+  box-shadow: inset 0 0 0 1px rgba(88, 193, 66, 0.35);
+}
+.chk { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--secondary-text-color); cursor: pointer; }
+.chk input { accent-color: var(--accent-color); }
+
+/* ── 方案墙 ── */
+.wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 26px 30px;
+  align-items: start;
+}
+
+.slot { display: flex; flex-direction: column; gap: 12px; }
+
+.slot-head { display: flex; flex-direction: column; gap: 5px; }
+.slot-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.slot-tag {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--label-color);
+}
+.slot-tag.is-bad { border-color: rgba(239, 68, 68, 0.45); color: #f9a8a8; background: rgba(239, 68, 68, 0.1); }
+.slot-tag.is-rec { border-color: rgba(88, 193, 66, 0.5); color: #b9e6aa; background: rgba(88, 193, 66, 0.12); }
+.slot-desc { font-size: 12px; line-height: 1.6; color: var(--secondary-text-color); }
+.slot-desc b { color: var(--main-text-color); font-weight: 600; }
+
+.slot-stage {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding: 22px 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.012);
+  cursor: zoom-in;
+}
+.slot-stage:hover { border-color: rgba(88, 193, 66, 0.3); }
+
+.slot-stage::after {
+  content: "click to zoom";
+  position: absolute;
+  right: 10px;
+  bottom: 7px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.22);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.slot-stage:hover::after { opacity: 1; }
+
+/* ===========================================================
+   真实组件镜像：info-card / agent-card
+   （数值来自 info-card.scss，未改动）
+   =========================================================== */
+
+.info-card {
+  width: var(--card-w);
+  min-width: 200px;
+  max-width: 400px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--block-bg-solid-color);
+  color: var(--main-text-color);
+  font-size: 12px;
+  padding: 6px 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.info-card-section { padding: 0 0 4px 0; }
+.info-card-section:last-child { padding-bottom: 0; }
+
+/* ── head：logo + provider + model ── */
+.agent-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  min-width: 0;
+}
+.agent-card-logo {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--main-text-color);
+}
+.agent-card-logo svg { width: 100%; height: 100%; fill: currentColor; }
+.agent-card-provider {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--main-text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-card-model {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--secondary-text-color);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 状态行 ── */
+.agent-card-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--secondary-text-color);
+  margin-bottom: 6px;
+}
+.agent-card-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--info-card-accent, var(--secondary-text-color));
+  transition: background 0.2s ease;
+}
+.agent-card-status-dot.is-working { animation: agent-card-pulse 1.6s ease-in-out infinite; }
+@keyframes agent-card-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--info-card-accent) 55%, transparent); }
+  50% { box-shadow: 0 0 0 4px transparent; }
+}
+.agent-card-status-label { color: var(--main-text-color); font-weight: 500; }
+
+/* ── note 区段（近似 SessionNoteSection） ── */
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.note-head-title { font-size: 11px; color: var(--secondary-text-color); }
+.note-head-title .fa-tag { font-size: 10px; color: var(--accent-color); margin-right: 4px; }
+.note-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.note-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--secondary-text-color);
+  font-size: 9px;
+}
+.note-preview {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--main-text-color);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 3px 5px;
+  margin: 0 -5px;
+}
+.note-preview:hover { border-color: rgba(255, 255, 255, 0.16); background: var(--hover-bg-color); }
+
+.agent-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.agent-card-tag {
+  display: inline-block;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--info-card-accent, var(--accent-color)) 12%, transparent);
+  color: var(--info-card-accent, var(--accent-color));
+  border: 1px solid color-mix(in srgb, var(--info-card-accent, var(--accent-color)) 25%, transparent);
+}
+
+/* ── session id 底行 ── */
+.agent-card-session-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  color: var(--secondary-text-color);
+}
+.agent-card-session-id-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-card-copy-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--secondary-text-color);
+  cursor: pointer;
+  padding: 0;
+}
+.agent-card-copy-btn:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+.agent-card-copy-btn svg { width: 12px; height: 12px; fill: currentColor; }
+
+/* ===========================================================
+   ★ 变体：只改「强调线 + 圆角」这几行
+   =========================================================== */
+
+/* 0 — 现状：border-left + 全圆角 → 色条两头弯 */
+.info-card.agent-card.v0 {
+  border-left: 3px solid var(--info-card-accent, var(--secondary-text-color));
+  padding-left: 12px;
+  border-radius: 8px;
+}
+
+/* A — 全直角 + 通长直条 */
+.info-card.agent-card.vA {
+  border-left: 3px solid var(--info-card-accent, var(--secondary-text-color));
+  padding-left: 12px;
+  border-radius: 0;
+}
+
+/* B — 左直角 + 右圆角 + 通长直条 */
+.info-card.agent-card.vB {
+  border-left: 3px solid var(--info-card-accent, var(--secondary-text-color));
+  padding-left: 12px;
+  border-radius: 0 6px 6px 0;
+}
+
+/* C — 顶部状态色带 */
+.info-card.agent-card.vC {
+  border-top: 3px solid var(--info-card-accent, var(--secondary-text-color));
+  border-radius: 8px;
+}
+
+/* D — B + 状态章（状态行变成右上角 chip） */
+.info-card.agent-card.vD {
+  border-left: 3px solid var(--info-card-accent, var(--secondary-text-color));
+  padding-left: 12px;
+  border-radius: 0 6px 6px 0;
+}
+.info-card.agent-card.vD .agent-card-status-row {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  margin: 0;
+  gap: 5px;
+  padding: 1px 7px 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--info-card-accent) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info-card-accent) 30%, transparent);
+}
+.info-card.agent-card.vD {
+  position: relative;
+}
+.info-card.agent-card.vD .agent-card-model { padding-right: 78px; }
+.info-card.agent-card.vD .agent-card-provider { padding-right: 78px; }
+
+/* ===========================================================
+   放大镜
+   =========================================================== */
+
+.loupe[hidden] { display: none; }
+.loupe {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: rgba(6, 8, 7, 0.88);
+  backdrop-filter: blur(6px);
+  padding: 30px;
+}
+.loupe-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--page-line);
+}
+.loupe-title { font-size: 13px; color: var(--secondary-text-color); }
+.loupe-title b { color: var(--main-text-color); font-weight: 600; }
+.loupe-close {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--page-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--secondary-text-color);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.loupe-close:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+
+.loupe-body {
+  display: grid;
+  grid-template-columns: minmax(360px, 520px) minmax(280px, 1fr);
+  gap: 26px;
+  padding-top: 22px;
+  min-height: 0;
+  overflow: auto;
+}
+.loupe-stage {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 26px 20px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #000;
+}
+.loupe-zoom { transform: scale(1.35); transform-origin: top center; width: var(--card-w); }
+.loupe-zoom .info-card { width: 100%; }
+
+.loupe-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.loupe-note { font-size: 12.5px; line-height: 1.75; color: var(--secondary-text-color); }
+.loupe-note b { color: var(--main-text-color); }
+.loupe-code {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--page-line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #cfe8c8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.loupe-code .del { color: #f9a8a8; }
+.loupe-code .add { color: #b9e6aa; }
+.loupe-code .cmt { color: #6b7570; }
+
+@media (max-width: 820px) {
+  .loupe-body { grid-template-columns: 1fr; }
+}
+
+/* ===========================================================
+   ★ 新方向：通长色条 + 色条自身圆头
+   —— 圆角从「卡片边框」还给「色条两端」，头尾是对称圆头，不再被裁成斜段
+   =========================================================== */
+
+/* E — 通长圆头条 + 卡左直角右圆角（条在卡内，首尾贴着上下边框内侧） */
+.info-card.agent-card.vE {
+  position: relative;
+  padding-left: 15px;              /* 12 + 3（条占位），内容 x 与原样一致 */
+  border-radius: 0 6px 6px 0;
+}
+.info-card.agent-card.vE::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--bar-cap, 2px);
+  background: var(--info-card-accent, var(--secondary-text-color));
+}
+
+/* F — 通长圆头条 + 卡外并列（条是卡的兄弟节点，卡片一个角都不动） */
+.agent-shell {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: var(--card-w);
+}
+.agent-shell-bar {
+  width: 3px;
+  flex-shrink: 0;
+  align-self: stretch;
+  border-radius: var(--bar-cap, 2px);
+  background: var(--info-card-accent, var(--secondary-text-color));
+}
+.info-card.agent-card.vF {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  border-radius: 6px;              /* 四角圆角原样保留 */
+}
+
+/* G — 通长圆头条 + 卡全圆角（反例：条会从圆角缺口里探出去一点） */
+.info-card.agent-card.vG {
+  position: relative;
+  padding-left: 15px;
+  border-radius: 6px;
+}
+.info-card.agent-card.vG::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--bar-cap, 2px);
+  background: var(--info-card-accent, var(--secondary-text-color));
+}
+
+/* 圆头半径：由工具条注入到 :root 的 --bar-cap（只影响 E/F/G） */

@@ -27,7 +27,8 @@
     "10-19-aisessions-subagent-fold",
     "10-19-aisessions-refresh-icon",
     "10-21-aisessions-detail-virtual-scroll",
-    "10-21-aisessions-subagent-tree"
+    "10-21-aisessions-subagent-tree",
+    "10-23-aisessions-subsession-fold-toggle"
   ],
   "parent": null,
   "relatedFiles": [],

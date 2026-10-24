@@ -93,6 +93,10 @@
 
 - `agent-id-card/` — **▲ 设计活跃**;Agent 开篇身份证卡:新建/resume Agent 时终端 block 先展示证件风开篇卡(照片位 provider logo + 状态环、Title/Status/Output/Note/Sessions 五信息行、波纹底纹、底部 sessionId 编号行、可选印章),跑起来后折叠成 header 状态灯徽标;10 场景可切换(working·tool/thinking、blocked、error、rate-limited、done、idle、stale、unbound 待落户、missing 户籍注销)+ 印章开关 + 深色桌面对照。状态文案逐字对齐 `agent-status-derive.ts`;镜像 `term.tsx` + `blockframe-header.tsx`,真实组件尚未实现。
 
+## `agent-card-accent/` — 1 项（自建目录）
+
+- `agent-card-accent/` — **◐ 部分落地**（2026-05-20；方案 E 已写入 `info-card.scss`）;Agent hover card 强调线改造：原 `.info-card.agent-card` 用 `border-left: 3px` + `border-radius: 8px`，圆角把左侧色条在上下端切成斜段，视觉上两头向外弯（用户明确不喜欢）。**已落地方案 E：通长直条 + 色条自身的圆头**——`::before` 伪元素 `left/top/bottom: 0` + `width: 3px` + `border-radius: 2px`（圆头来自条本身），卡片 `border-radius: 0 6px 6px 0` + `padding-left: 15px`，CSS-only 不碰 JSX。原型里的备选：A 全直角 / B 左直角右圆角 / C 顶部色带 / D 状态章 / F 卡外并列条（需 JSX）/ G 卡全圆角+条在卡内（反例，条端会探出尖角）。原型可切 working/done/blocked/error、280/320/380 宽度、圆头半径 1.5/2/3px、1.5x 放大镜，点卡片看 CSS 片段。镜像 `frontend/app/view/term/agent-hover-card.tsx` + `frontend/app/element/info-card/info-card.scss`。
+
 ## `save-conflict-protection/` — 1 项（自建目录）
 
 - `save-conflict-protection/` — **▲ 设计活跃**;保存状态优化两个界面:① Inline Tab 脏点（未保存圆点）② 冲突弹窗（覆盖/放弃/复制差异交 Agent/取消）;对应 Obsidian 方案 `Snorkeling-打开md预览与保存状态优化方案.md`,真实组件尚未实现。
