@@ -91,6 +91,7 @@ import {
     summarizePreviewSharedDraftRecord,
 } from "./preview-shared-draft";
 import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-drives";
+import { findInlineTabDedupeMatch, type InlineTabCandidate } from "./preview-inline-tab";
 import { resolvePreviewPlugin, shouldPreviewPluginTakeOver } from "./preview-plugin-registry";
 import type { PreviewEnv } from "./previewenv";
 
@@ -867,9 +868,10 @@ export class PreviewModel implements ViewModel {
             const vcsButton: IconButtonDecl = {
                 elemtype: "iconbutton",
                 icon: "code-branch",
-                title: "Version Control",
+                title: "Version Control (Ctrl/Cmd+Click: new block)",
                 zone: "reveal",
-                click: () => fireAndForget(() => this.openVersionControlBlock()),
+                click: (e) =>
+                    fireAndForget(() => this.openVersionControlBlock({ forceNewBlock: e.ctrlKey || e.metaKey })),
             };
             const isLivePreviewView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
             const canPreview = get(this.canPreview);
@@ -1939,7 +1941,52 @@ export class PreviewModel implements ViewModel {
         await createBlock(blockDef);
     }
 
-    async openVersionControlBlock() {
+    /**
+     * 把 blockDef 以 Tab 形式并入当前 Block 所在的 inline tab group，并把焦点切到新 Tab。
+     *
+     * 与 `openPathInNewBlockSmart` 的目录分支同语义：单块节点会自动升级为 group。
+     * @param dedupeMetaKeys 这些 meta 键与 view 都相等的已有块存在时，聚焦它而不是重复创建。
+     *                       值为空/undefined 的键不参与相等判断。
+     * @returns true = 已并入 tab（或已聚焦已有块）；false = 无宿主节点 / 并入失败，调用方需回退。
+     */
+    async openBlockDefAsInlineTab(blockDef: BlockDef, dedupeMetaKeys?: string[]): Promise<boolean> {
+        const layoutModel = getLayoutModelForStaticTab();
+        const targetNode = layoutModel.getNodeByBlockId(this.blockId);
+        if (!targetNode) {
+            return false;
+        }
+        const meta = blockDef.meta as Record<string, any>;
+        if (dedupeMetaKeys?.length) {
+            const candidates: InlineTabCandidate[] = [];
+            for (const blockId of getLayoutDataBlockIds(targetNode.data)) {
+                const block = globalStore.get(this.env.wos.getWaveObjectAtom<Block>(`block:${blockId}`));
+                candidates.push({ blockId, meta: block?.meta as Record<string, any> | undefined });
+            }
+            const existingBlockId = findInlineTabDedupeMatch(candidates, meta, dedupeMetaKeys);
+            if (existingBlockId != null) {
+                return layoutModel.setActiveInlineTabBlock(targetNode.id, existingBlockId);
+            }
+        }
+        const rtOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
+        const newBlockId = await ObjectService.CreateBlock(blockDef, rtOpts);
+        if (!newBlockId) {
+            return false;
+        }
+        if (!layoutModel.addBlockToInlineTab(targetNode.id, newBlockId)) {
+            fireAndForget(() => ObjectService.DeleteBlock(newBlockId));
+            return false;
+        }
+        this.focusBlockById(newBlockId);
+        return true;
+    }
+
+    /**
+     * 打开 Version Control Block。
+     *
+     * 默认并入当前 Block 所在的 group 作为 Tab（VCS 是 Files 的旁支视图，看完就回来），
+     * Ctrl/Cmd+点击才新开独立 Block 用于并排对比 —— 与文件双击的 forceNewBlock 约定一致。
+     */
+    async openVersionControlBlock(options?: { forceNewBlock?: boolean }) {
         const fileInfo = await globalStore.get(this.statFile);
         if (!fileInfo) {
             return;
@@ -1955,6 +2002,9 @@ export class PreviewModel implements ViewModel {
                 "vcs:selectedfile": selectedFile,
             } as any,
         };
+        if (options?.forceNewBlock !== true && (await this.openBlockDefAsInlineTab(blockDef, ["vcs:path"]))) {
+            return;
+        }
         await createBlock(blockDef);
     }
 

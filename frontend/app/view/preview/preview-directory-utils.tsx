@@ -449,7 +449,24 @@ function makeRepoCommitsLabel(): string {
     return "View Repository Log";
 }
 
-async function openHistoryBlock(conn: string, repo: VcsRepositoryInfo, targetPath: string): Promise<void> {
+/**
+ * VCS 系列入口的统一放置策略：默认并入当前 Block 所在的 inline tab group，
+ * 失败（宿主 group 已不在布局里）才回退到独立 Block。去重后已存在同目标的
+ * 视图时直接聚焦，不重复堆 Tab。
+ */
+async function openVcsViewBlock(model: PreviewModel, blockDef: BlockDef, dedupeMetaKeys: string[]): Promise<void> {
+    if (await model.openBlockDefAsInlineTab(blockDef, dedupeMetaKeys)) {
+        return;
+    }
+    await createBlock(blockDef);
+}
+
+async function openHistoryBlock(
+    model: PreviewModel,
+    conn: string,
+    repo: VcsRepositoryInfo,
+    targetPath: string
+): Promise<void> {
     const blockDef: BlockDef = {
         meta: {
             view: "vcshistory",
@@ -460,10 +477,15 @@ async function openHistoryBlock(conn: string, repo: VcsRepositoryInfo, targetPat
             "vcshistory:title": `History: ${targetPath}`,
         } as any,
     };
-    await createBlock(blockDef);
+    await openVcsViewBlock(model, blockDef, ["vcshistory:repopath", "vcshistory:filepath"]);
 }
 
-async function openDiffBlock(conn: string, repo: VcsRepositoryInfo, targetPath: string): Promise<void> {
+async function openDiffBlock(
+    model: PreviewModel,
+    conn: string,
+    repo: VcsRepositoryInfo,
+    targetPath: string
+): Promise<void> {
     const blockDef: BlockDef = {
         meta: {
             view: "vcsdiff",
@@ -476,10 +498,10 @@ async function openDiffBlock(conn: string, repo: VcsRepositoryInfo, targetPath: 
             "vcsdiff:title": `${targetPath} (working tree)`,
         } as any,
     };
-    await createBlock(blockDef);
+    await openVcsViewBlock(model, blockDef, ["vcsdiff:repopath", "vcsdiff:filepath", "vcsdiff:revision"]);
 }
 
-async function openCommitsBlock(conn: string, repo: VcsRepositoryInfo): Promise<void> {
+async function openCommitsBlock(model: PreviewModel, conn: string, repo: VcsRepositoryInfo): Promise<void> {
     const repoType = getSupportedRepoType(repo);
     const blockDef: BlockDef = {
         meta: {
@@ -490,10 +512,15 @@ async function openCommitsBlock(conn: string, repo: VcsRepositoryInfo): Promise<
             "vcscommits:title": `${repo.name} ${repoType === "svn" ? "Log" : "Commits"}`,
         } as any,
     };
-    await createBlock(blockDef);
+    await openVcsViewBlock(model, blockDef, ["vcscommits:repopath"]);
 }
 
-async function openVcsBlock(conn: string, repo: VcsRepositoryInfo, selectedPath: string): Promise<void> {
+async function openVcsBlock(
+    model: PreviewModel,
+    conn: string,
+    repo: VcsRepositoryInfo,
+    selectedPath: string
+): Promise<void> {
     const meta: Record<string, any> = {
         view: "vcs",
         connection: conn,
@@ -502,16 +529,16 @@ async function openVcsBlock(conn: string, repo: VcsRepositoryInfo, selectedPath:
     if (!isBlank(selectedPath)) {
         meta["vcs:selectedfile"] = selectedPath;
     }
-    await createBlock({ meta } as BlockDef);
+    await openVcsViewBlock(model, { meta } as BlockDef, ["vcs:path"]);
 }
 
-async function openMultiVcsBlock(conn: string, basePath: string): Promise<void> {
+async function openMultiVcsBlock(model: PreviewModel, conn: string, basePath: string): Promise<void> {
     const meta: Record<string, any> = {
         view: "vcs",
         connection: conn,
         "vcs:path": basePath,
     };
-    await createBlock({ meta } as BlockDef);
+    await openVcsViewBlock(model, { meta } as BlockDef, ["vcs:path"]);
 }
 
 async function syncRepo(
@@ -682,7 +709,7 @@ function makeDirectoryVcsMenuItems(
         if (resolveResult.repos.length > 1) {
             submenu.push({
                 label: "Open All Repos",
-                click: () => fireAndForget(() => openMultiVcsBlock(conn, targetPath)),
+                click: () => fireAndForget(() => openMultiVcsBlock(model, conn, targetPath)),
             });
         }
         if (scope === "background") {
@@ -692,26 +719,26 @@ function makeDirectoryVcsMenuItems(
             });
             submenu.push({
                 label: "View History",
-                click: () => fireAndForget(() => openCommitsBlock(conn, repo)),
+                click: () => fireAndForget(() => openCommitsBlock(model, conn, repo)),
             });
         } else {
             submenu.push({
                 label: "View History",
-                click: () => fireAndForget(() => openHistoryBlock(conn, repo, targetPath)),
+                click: () => fireAndForget(() => openHistoryBlock(model, conn, repo, targetPath)),
             });
             if (scope === "file") {
                 submenu.push({
                     label: "View Diff",
-                    click: () => fireAndForget(() => openDiffBlock(conn, repo, targetPath)),
+                    click: () => fireAndForget(() => openDiffBlock(model, conn, repo, targetPath)),
                 });
             }
             submenu.push({
                 label: makeRepoCommitsLabel(),
-                click: () => fireAndForget(() => openCommitsBlock(conn, repo)),
+                click: () => fireAndForget(() => openCommitsBlock(model, conn, repo)),
             });
             submenu.push({
                 label: "Open VCS Block",
-                click: () => fireAndForget(() => openVcsBlock(conn, repo, targetPath)),
+                click: () => fireAndForget(() => openVcsBlock(model, conn, repo, targetPath)),
             });
             submenu.push({
                 label: makeRepoSyncLabel(repo),

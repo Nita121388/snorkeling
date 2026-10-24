@@ -105,6 +105,22 @@ Questions to answer:
 
 ---
 
+## 旁支视图入口的放置策略：默认入 Tab，Ctrl 才单开（2026-10-24, task 10-24-files-vcs-icon-tab-open）
+
+- Block 头部图标打开"旁支视图"（VCS / History / Diff / Commits 这类看完就回的视图）时，
+  默认放置是**并入当前 Block 所在的 inline tab group**（`layoutModel.addBlockToInlineTab`，单块节点会自动升级为 group），
+  而不是再拆一个新块。要新开独立块用 **Ctrl/Cmd+点击**。
+- 修饰键一律判 `e.ctrlKey || e.metaKey`：macOS 上 Ctrl+click 是右键语义，Cmd 才是"新开"。
+  这条与 `preview-directory.tsx` / `preview-explorer.tsx` 的双击 forceNewBlock 约定一致，不要反向设计。
+- 图标 `title` 必须把快捷键写出来（`Version Control (Ctrl/Cmd+Click: new block)`），否则快捷键等于不存在。
+- 去重与聚焦：同一 group 内已有"同 view + 同目标"的块时聚焦它，不要重复堆 Tab。
+  匹配规则只用一份实现：`frontend/app/view/preview/preview-inline-tab.ts` 的 `findInlineTabDedupeMatch`；
+  去重键里值为空/undefined 的键不参与相等判断（避免把"还没选文件"的块误判为同一目标）。
+- 放置失败必须回退：`addBlockToInlineTab` 返回 false（宿主节点已被关）时，
+  先 `ObjectService.DeleteBlock` 清掉刚建的孤儿块，再走原来的 `createBlock`，不能把用户操作吞掉。
+
+---
+
 ## Code Review Checklist
 
 <!-- What reviewers should check -->

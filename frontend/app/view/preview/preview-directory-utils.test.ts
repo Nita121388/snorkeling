@@ -16,7 +16,8 @@ function makeRepo(repotype: string): VcsRepositoryInfo {
 async function loadDirectoryMenuUtils(
     repositories: VcsRepositoryInfo[],
     repositoryError?: Error,
-    fileMoveError?: Error
+    fileMoveError?: Error,
+    inlineTabOpened = false
 ) {
     vi.resetModules();
     const createBlock = vi.fn(async () => "block-id");
@@ -50,6 +51,8 @@ async function loadDirectoryMenuUtils(
     }));
 
     const utils = await import("./preview-directory-utils");
+    // VCS 系列入口默认先试"并入当前 group 的 Tab"，落败才回退 createBlock。
+    const openBlockDefAsInlineTab = vi.fn(async () => inlineTabOpened);
     const model = {
         env: {
             rpc: {
@@ -63,11 +66,13 @@ async function loadDirectoryMenuUtils(
         formatRemoteUri: vi.fn(async (path: string) => `local:${path}`),
         showHiddenFiles: atom(true),
         refresh: vi.fn(),
+        openBlockDefAsInlineTab,
     };
 
     return {
         ...utils,
         createBlock,
+        openBlockDefAsInlineTab,
         addOpenMenuItems,
         model,
         remoteVcsRepositories,
@@ -126,7 +131,8 @@ describe("directory VCS context menus", () => {
     });
 
     it("shows file-scoped Git actions from the resolve cache and opens the VCS block for the selected file", async () => {
-        const { makeDirectoryEntryMenuItems, createBlock, model } = await loadDirectoryMenuUtils([makeRepo("git")]);
+        const { makeDirectoryEntryMenuItems, createBlock, model, openBlockDefAsInlineTab } =
+            await loadDirectoryMenuUtils([makeRepo("git")]);
         const finfo = {
             path: "/repo/src/index.ts",
             dir: "/repo/src",
@@ -159,6 +165,43 @@ describe("directory VCS context menus", () => {
                 "vcs:selectedfile": "/repo/src/index.ts",
             }),
         });
+        // 先尝试并入当前 group 的 Tab（去重键 = vcs:path），失败才回退 createBlock。
+        expect(openBlockDefAsInlineTab).toHaveBeenCalledWith(
+            expect.objectContaining({
+                meta: expect.objectContaining({ view: "vcs", "vcs:path": "/repo" }),
+            }),
+            ["vcs:path"]
+        );
+    });
+
+    it("opens the VCS block as an inline tab instead of a new block when the group accepts it", async () => {
+        const { makeDirectoryEntryMenuItems, createBlock, model, openBlockDefAsInlineTab } =
+            await loadDirectoryMenuUtils([makeRepo("git")], undefined, undefined, true);
+        const finfo = {
+            path: "/repo/src/index.ts",
+            dir: "/repo/src",
+            name: "index.ts",
+            isdir: false,
+        } as FileInfo;
+        await makeDirectoryEntryMenuItems(model as any, finfo, "local", vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+            rename: vi.fn(),
+        });
+        await flushVcsResolve();
+
+        const menu = await makeDirectoryEntryMenuItems(model as any, finfo, "local", vi.fn(), {
+            newFile: vi.fn(),
+            newDirectory: vi.fn(),
+            rename: vi.fn(),
+        });
+        const gitMenu = getSubmenu(menu, "Git");
+
+        gitMenu.find((item) => item.label === "Open VCS Block")?.click?.();
+        await Promise.resolve();
+
+        expect(openBlockDefAsInlineTab).toHaveBeenCalledTimes(1);
+        expect(createBlock).not.toHaveBeenCalled();
     });
 
     it("shows folder-scoped SVN actions from the resolve cache without file diff and runs update", async () => {
