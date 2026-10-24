@@ -133,6 +133,8 @@ declare global {
     type AISessionsListRequest = {
         source?: string;
         project?: string;
+        projects?: string[];
+        excludeProjects?: string[];
         query?: string;
         connection?: string;
         limit?: number;
@@ -141,6 +143,7 @@ declare global {
         since?: number;
         before?: number;
         tagFilters?: string[];
+        excludeTags?: string[];
         tagPresence?: string;
         includeProjectPaths?: boolean;
     };
@@ -249,11 +252,14 @@ declare global {
     type AISessionsTagsRequest = {
         source?: string;
         project?: string;
+        projects?: string[];
+        excludeProjects?: string[];
         connection?: string;
         marked?: string;
         since?: number;
         before?: number;
         tagFilters?: string[];
+        excludeTags?: string[];
         tagPresence?: string;
         refresh?: boolean;
     };
@@ -2383,6 +2389,9 @@ declare global {
         "ai:proxyurl"?: string;
         "ai:fontsize"?: number;
         "ai:fixedfontsize"?: number;
+        "ai:sessionautotitle"?: boolean;
+        "ai:sessionautotitleintervalms"?: number;
+        "ai:sessionautotitlebatchsize"?: number;
         "waveai:showcloudmodes"?: boolean;
         "waveai:defaultmode"?: string;
         "term:*"?: boolean;
@@ -2754,6 +2763,12 @@ declare global {
     type TitleSuggestion = {
         title: string;
         confidence?: number;
+    };
+
+    // aisessions.TitleUpdatedEvent
+    type TitleUpdatedEvent = {
+        connection?: string;
+        summary: SessionSummary;
     };
 
     // aisessions.ToolCall

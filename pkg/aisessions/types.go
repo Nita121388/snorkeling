@@ -29,6 +29,10 @@ type SessionSummary struct {
 	Source       string   `json:"source"`
 	Title        string   `json:"title,omitempty"`
 	TitleSource  string   `json:"titleSource,omitempty"`
+	// 后台 AI 标题自动生成的幂等标记（不暴露给前端）。
+	// AITitleAttemptedAt > 0 表示已经尝试过（无论成功失败），不再自动重试。
+	AITitleAttemptedAt          int64 `json:"-"`
+	AITitleAttemptMessageCount  int   `json:"-"`
 	ProjectPath  string   `json:"projectPath,omitempty"`
 	CreatedAt    int64    `json:"createdAt,omitempty"`
 	UpdatedAt    int64    `json:"updatedAt,omitempty"`
@@ -123,6 +127,14 @@ type ScanStatusEvent struct {
 	Partial    bool   `json:"partial,omitempty"`
 }
 
+// TitleUpdatedEvent is published as a wps event when the background auto-title
+// worker finishes writing an AI title for a session. The GUI uses it to refresh
+// the affected row / tab title without polling.
+type TitleUpdatedEvent struct {
+	Connection string         `json:"connection,omitempty"`
+	Summary    SessionSummary `json:"summary"`
+}
+
 type SessionFile struct {
 	Source      string
 	Path        string
@@ -197,25 +209,36 @@ type MessageDelta struct {
 }
 
 type ListOptions struct {
-	Source      string
-	Project     string
-	Since       int64
-	Before      int64
-	Limit       int
-	Marked      string
-	TagFilters  []string
-	TagPresence string
-	Refresh     bool
+	Source string
+	// Project is the legacy single-prefix include filter. Projects supersedes it
+	// when non-empty (see effectiveProjects).
+	Project string
+	// Projects is the include-side multi-select path filter: a union of
+	// component-boundary prefixes. Empty means "no include constraint". The
+	// Other bucket is expressed with the ProjectFilterOther sentinel.
+	Projects        []string
+	ExcludeProjects []string
+	Since           int64
+	Before          int64
+	Limit           int
+	Marked          string
+	TagFilters      []string
+	ExcludeTags     []string
+	TagPresence     string
+	Refresh         bool
 }
 
 type SearchOptions struct {
-	Query       string
-	Source      string
-	Project     string
-	Limit       int
-	TagFilters  []string
-	TagPresence string
-	Refresh     bool
+	Query           string
+	Source          string
+	Project         string
+	Projects        []string
+	ExcludeProjects []string
+	Limit           int
+	TagFilters      []string
+	ExcludeTags     []string
+	TagPresence     string
+	Refresh         bool
 }
 
 func StableKey(source string, id string, filePath string) string {

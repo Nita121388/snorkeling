@@ -22,7 +22,15 @@ type sessionMeta struct {
 	Marked    bool   `json:"marked,omitempty"`
 	Note      string `json:"note,omitempty"`
 	Title     string `json:"title,omitempty"`
-	UpdatedAt int64  `json:"updatedAt,omitempty"`
+	// TitleSource distinguishes a hand-written / user-applied title ("user")
+	// from a background AI-generated one ("ai"). Empty on legacy rows, which
+	// are treated as "user".
+	TitleSource string `json:"titleSource,omitempty"`
+	// AI title auto-generation idempotency markers: attempted>0 means a
+	// generation was already tried (success or failure) and must not repeat.
+	AITitleAttemptedAt         int64 `json:"aiTitleAttemptedAt,omitempty"`
+	AITitleAttemptMessageCount int   `json:"aiTitleAttemptMessageCount,omitempty"`
+	UpdatedAt                  int64 `json:"updatedAt,omitempty"`
 }
 
 type MetaStore struct {
@@ -71,8 +79,19 @@ func (s *MetaStore) Apply(summary *SessionSummary) {
 	summary.Note = meta.Note
 	if meta.Title != "" {
 		summary.Title = meta.Title
-		summary.TitleSource = "user"
+		summary.TitleSource = normalizeTitleSource(meta.TitleSource)
 	}
+	summary.AITitleAttemptedAt = meta.AITitleAttemptedAt
+	summary.AITitleAttemptMessageCount = meta.AITitleAttemptMessageCount
+}
+
+// normalizeTitleSource maps an empty legacy value to "user" (hand-written or
+// user-applied AI title) so old rows keep their existing precedence.
+func normalizeTitleSource(source string) string {
+	if source == "" {
+		return "user"
+	}
+	return source
 }
 
 func (s *MetaStore) SetMarked(ctx context.Context, key string, marked bool) error {
@@ -103,7 +122,36 @@ func (s *MetaStore) SetTitle(ctx context.Context, key string, title string) erro
 	}
 	meta := s.data.Sessions[key]
 	meta.Title = title
+	meta.TitleSource = "user"
 	meta.UpdatedAt = time.Now().UnixMilli()
+	s.data.Sessions[key] = meta
+	return s.save()
+}
+
+// SetAutoTitle writes an AI-generated title. The separate "ai" source keeps it
+// distinguishable from a user title so a later user edit can upgrade it and so
+// the auto worker never re-touches it.
+func (s *MetaStore) SetAutoTitle(ctx context.Context, key string, title string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	meta := s.data.Sessions[key]
+	meta.Title = title
+	meta.TitleSource = "ai"
+	meta.UpdatedAt = time.Now().UnixMilli()
+	s.data.Sessions[key] = meta
+	return s.save()
+}
+
+// MarkAITitleAttempt records that an auto-generation was attempted, regardless
+// of success, so the worker never retries the same session.
+func (s *MetaStore) MarkAITitleAttempt(ctx context.Context, key string, messageCount int) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	meta := s.data.Sessions[key]
+	meta.AITitleAttemptedAt = time.Now().UnixMilli()
+	meta.AITitleAttemptMessageCount = messageCount
 	s.data.Sessions[key] = meta
 	return s.save()
 }

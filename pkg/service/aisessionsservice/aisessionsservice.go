@@ -34,6 +34,8 @@ type AISessionsService struct{}
 type AISessionsListRequest struct {
 	Source              string   `json:"source,omitempty"`
 	Project             string   `json:"project,omitempty"`
+	Projects            []string `json:"projects,omitempty"`
+	ExcludeProjects     []string `json:"excludeProjects,omitempty"`
 	Query               string   `json:"query,omitempty"`
 	Connection          string   `json:"connection,omitempty"`
 	Limit               int      `json:"limit,omitempty"`
@@ -42,6 +44,7 @@ type AISessionsListRequest struct {
 	Since               int64    `json:"since,omitempty"`
 	Before              int64    `json:"before,omitempty"`
 	TagFilters          []string `json:"tagFilters,omitempty"`
+	ExcludeTags         []string `json:"excludeTags,omitempty"`
 	TagPresence         string   `json:"tagPresence,omitempty"`
 	IncludeProjectPaths bool     `json:"includeProjectPaths,omitempty"`
 }
@@ -57,15 +60,18 @@ type AISessionsListResponse struct {
 }
 
 type AISessionsTagsRequest struct {
-	Source      string   `json:"source,omitempty"`
-	Project     string   `json:"project,omitempty"`
-	Connection  string   `json:"connection,omitempty"`
-	Marked      string   `json:"marked,omitempty"`
-	Since       int64    `json:"since,omitempty"`
-	Before      int64    `json:"before,omitempty"`
-	TagFilters  []string `json:"tagFilters,omitempty"`
-	TagPresence string   `json:"tagPresence,omitempty"`
-	Refresh     bool     `json:"refresh,omitempty"`
+	Source          string   `json:"source,omitempty"`
+	Project         string   `json:"project,omitempty"`
+	Projects        []string `json:"projects,omitempty"`
+	ExcludeProjects []string `json:"excludeProjects,omitempty"`
+	Connection      string   `json:"connection,omitempty"`
+	Marked          string   `json:"marked,omitempty"`
+	Since           int64    `json:"since,omitempty"`
+	Before          int64    `json:"before,omitempty"`
+	TagFilters      []string `json:"tagFilters,omitempty"`
+	ExcludeTags     []string `json:"excludeTags,omitempty"`
+	TagPresence     string   `json:"tagPresence,omitempty"`
+	Refresh         bool     `json:"refresh,omitempty"`
 }
 
 type AISessionsTagsResponse struct {
@@ -264,6 +270,7 @@ func (svc *AISessionsService) managerForConnection(ctx context.Context, connecti
 		MetaPath:       remoteMetaPath(connection),
 		SQLitePath:     remoteSQLitePath(connection),
 		OnScanProgress: makeScanProgressPublisher(connection),
+		OnTitleUpdated: makeTitleUpdatedPublisher(connection),
 	}), nil
 }
 
@@ -272,7 +279,22 @@ func (svc *AISessionsService) managerForConnection(ctx context.Context, connecti
 func newLocalManager() *aisessions.Manager {
 	return aisessions.NewManagerWithOptions(aisessions.ManagerOptions{
 		OnScanProgress: makeScanProgressPublisher(""),
+		OnTitleUpdated: makeTitleUpdatedPublisher(""),
 	})
+}
+
+// makeTitleUpdatedPublisher forwards a finished AI title to the GUI as a wps
+// event. The GUI refreshes only the affected row / tab, so there is no polling.
+func makeTitleUpdatedPublisher(connection string) func(aisessions.SessionSummary) {
+	return func(summary aisessions.SessionSummary) {
+		wps.Broker.Publish(wps.WaveEvent{
+			Event: wps.Event_AISessionsTitleUpdated,
+			Data: aisessions.TitleUpdatedEvent{
+				Connection: connection,
+				Summary:    summary,
+			},
+		})
+	}
 }
 
 // scanProgressThrottle keeps wps events bounded: at most one per 200ms, unless a
@@ -387,15 +409,18 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		return nil, err
 	}
 	result, err := manager.ScanListResult(ctx, aisessions.ListOptions{
-		Source:      request.Source,
-		Project:     request.Project,
-		Limit:       limit,
-		Marked:      request.Marked,
-		Since:       request.Since,
-		Before:      request.Before,
-		TagFilters:  request.TagFilters,
-		TagPresence: request.TagPresence,
-		Refresh:     request.Refresh,
+		Source:          request.Source,
+		Project:         request.Project,
+		Projects:        request.Projects,
+		ExcludeProjects: request.ExcludeProjects,
+		Limit:           limit,
+		Marked:          request.Marked,
+		Since:           request.Since,
+		Before:          request.Before,
+		TagFilters:      request.TagFilters,
+		ExcludeTags:     request.ExcludeTags,
+		TagPresence:     request.TagPresence,
+		Refresh:         request.Refresh,
 	}, request.Query)
 	if err != nil {
 		return nil, err
@@ -471,14 +496,17 @@ func (svc *AISessionsService) Tags(ctx context.Context, request *AISessionsTagsR
 		return nil, err
 	}
 	tags, err := manager.ListTags(ctx, aisessions.ListOptions{
-		Source:      request.Source,
-		Project:     request.Project,
-		Marked:      request.Marked,
-		Since:       request.Since,
-		Before:      request.Before,
-		TagFilters:  request.TagFilters,
-		TagPresence: request.TagPresence,
-		Refresh:     request.Refresh,
+		Source:          request.Source,
+		Project:         request.Project,
+		Projects:        request.Projects,
+		ExcludeProjects: request.ExcludeProjects,
+		Marked:          request.Marked,
+		Since:           request.Since,
+		Before:          request.Before,
+		TagFilters:      request.TagFilters,
+		ExcludeTags:     request.ExcludeTags,
+		TagPresence:     request.TagPresence,
+		Refresh:         request.Refresh,
 	})
 	if err != nil {
 		return nil, err

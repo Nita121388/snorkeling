@@ -25,6 +25,12 @@ type Manager struct {
 	// scans. The service layer uses it to publish a UI event; pkg/aisessions
 	// itself stays free of wps dependencies.
 	OnScanProgress func(ScanProgress)
+	// OnTitleUpdated, when set, is called after the background auto-title worker
+	// writes an AI title. The service layer uses it to publish a UI event so the
+	// list/tab can refresh without polling.
+	OnTitleUpdated func(SessionSummary)
+	// titleQueue drives background AI title generation; nil until started.
+	titleQueue *autoTitleQueue
 }
 
 type ManagerOptions struct {
@@ -33,6 +39,7 @@ type ManagerOptions struct {
 	MetaPath       string
 	SQLitePath     string
 	OnScanProgress func(ScanProgress)
+	OnTitleUpdated func(SessionSummary)
 }
 
 const (
@@ -94,6 +101,7 @@ func NewManagerWithOptions(opts ManagerOptions) *Manager {
 		MetaPath:       metaPath,
 		SQLitePath:     sqlitePath,
 		OnScanProgress: opts.OnScanProgress,
+		OnTitleUpdated: opts.OnTitleUpdated,
 	}
 }
 
@@ -148,13 +156,16 @@ func (m *Manager) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		}
 	}
 	return m.ScanList(ctx, ListOptions{
-		Source:      opts.Source,
-		Project:     opts.Project,
-		Limit:       opts.Limit,
-		Refresh:     opts.Refresh,
-		Marked:      "",
-		TagFilters:  opts.TagFilters,
-		TagPresence: opts.TagPresence,
+		Source:          opts.Source,
+		Project:         opts.Project,
+		Projects:        opts.Projects,
+		ExcludeProjects: opts.ExcludeProjects,
+		Limit:           opts.Limit,
+		Refresh:         opts.Refresh,
+		Marked:          "",
+		TagFilters:      opts.TagFilters,
+		ExcludeTags:     opts.ExcludeTags,
+		TagPresence:     opts.TagPresence,
 	}, opts.Query)
 }
 
@@ -185,6 +196,7 @@ func (m *Manager) ScanListWithDistribution(ctx context.Context, opts ListOptions
 func (m *Manager) ScanListResult(ctx context.Context, opts ListOptions, query string) (ScanListResult, error) {
 	if !opts.Refresh {
 		if summaries, dist, ok, err := m.cachedScanListWithDistribution(ctx, opts, query); ok || err != nil {
+			m.enqueueAutoTitles(summaries)
 			return ScanListResult{Sessions: summaries, ProjectPaths: dist}, err
 		}
 	}
@@ -194,6 +206,7 @@ func (m *Manager) ScanListResult(ctx context.Context, opts ListOptions, query st
 	if err != nil {
 		return ScanListResult{}, err
 	}
+	m.enqueueAutoTitles(summaries)
 	result := ScanListResult{Sessions: summaries, ProjectPaths: dist}
 	if partial {
 		m.startBackgroundScan()
@@ -239,6 +252,9 @@ func (m *Manager) scanListNow(ctx context.Context, opts ListOptions, query strin
 	query = strings.ToLower(strings.TrimSpace(query))
 	baseOpts := opts
 	baseOpts.Project = ""
+	baseOpts.Projects = nil
+	projects := effectiveProjects(opts)
+	excludes := normalizeProjectFilters(opts.ExcludeProjects)
 	var filtered []SessionSummary
 	dist := make(map[string]int, 16)
 	for _, summary := range summaries {
@@ -259,7 +275,10 @@ func (m *Manager) scanListNow(ctx context.Context, opts ListOptions, query strin
 			continue
 		}
 		dist[summary.ProjectPath]++
-		if opts.Project != "" && !projectPathMatches(summary.ProjectPath, opts.Project) {
+		if !projectPathMatchesAny(summary.ProjectPath, projects) {
+			continue
+		}
+		if projectPathExcluded(summary.ProjectPath, excludes) {
 			continue
 		}
 		if query != "" && !summaryMatchesQuery(summary, query) {
@@ -915,6 +934,71 @@ func (m *Manager) NoteAndTags(ctx context.Context, identifier string, note strin
 		return SessionSummary{}, err
 	}
 	return summary, nil
+}
+
+// setAutoTitle persists an AI-generated title. Separate from SetTitle so the
+// two write paths never collide on TitleSource, and so a user rename stays
+// distinguishable (and outrankable) from a background generation.
+func (m *Manager) setAutoTitle(ctx context.Context, key string, title string) (SessionSummary, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return SessionSummary{}, fmt.Errorf("session key is required")
+	}
+	cleanTitle := strings.TrimSpace(title)
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.SetAutoTitle(ctx, key, cleanTitle); err != nil {
+			return SessionSummary{}, err
+		}
+	} else if sqliteErr != nil {
+		debugf("Manager.setAutoTitle sqlite open skipped key=%q err=%v", key, sqliteErr)
+	}
+	if metaDualWriteEnabled() || sqliteIdx == nil || sqliteErr != nil {
+		meta, err := m.openMeta()
+		if meta == nil {
+			if sqliteErr == nil && sqliteIdx != nil {
+				return SessionSummary{Key: key, Title: cleanTitle, TitleSource: "ai"}, nil
+			}
+			return SessionSummary{}, err
+		}
+		defer meta.Close()
+		if err := meta.SetAutoTitle(ctx, key, cleanTitle); err != nil {
+			return SessionSummary{}, err
+		}
+	}
+	return SessionSummary{Key: key, Title: cleanTitle, TitleSource: "ai"}, nil
+}
+
+// markAITitleAttempt records the idempotency marker. It is best-effort: a failed
+// marker write only risks one extra attempt later, never a lost title.
+func (m *Manager) markAITitleAttempt(ctx context.Context, key string, messageCount int) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil
+	}
+	var writeErr error
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.MarkAITitleAttempt(ctx, key, messageCount); err != nil {
+			writeErr = err
+		}
+	}
+	if metaDualWriteEnabled() || sqliteIdx == nil || sqliteErr != nil || writeErr != nil {
+		meta, openErr := m.openMeta()
+		if meta == nil {
+			if writeErr != nil {
+				return writeErr
+			}
+			return openErr
+		}
+		defer meta.Close()
+		if err := meta.MarkAITitleAttempt(ctx, key, messageCount); err != nil && writeErr == nil {
+			return err
+		}
+	}
+	return writeErr
 }
 
 func (m *Manager) SetTitle(ctx context.Context, identifier string, title string) (SessionSummary, error) {

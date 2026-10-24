@@ -191,7 +191,16 @@ func (idx *Index) List(ctx context.Context, opts ListOptions) ([]SessionSummary,
 func (idx *Index) Search(ctx context.Context, opts SearchOptions) ([]SessionSummary, error) {
 	query := strings.ToLower(strings.TrimSpace(opts.Query))
 	if query == "" {
-		return idx.List(ctx, ListOptions{Source: opts.Source, Project: opts.Project, Limit: opts.Limit})
+		return idx.List(ctx, ListOptions{
+			Source:          opts.Source,
+			Project:         opts.Project,
+			Projects:        opts.Projects,
+			ExcludeProjects: opts.ExcludeProjects,
+			Limit:           opts.Limit,
+			TagFilters:      opts.TagFilters,
+			ExcludeTags:     opts.ExcludeTags,
+			TagPresence:     opts.TagPresence,
+		})
 	}
 	var summaries []SessionSummary
 	for _, summary := range idx.data.Sessions {
@@ -205,7 +214,15 @@ func (idx *Index) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		if opts.Source != "" && summary.Source != opts.Source {
 			continue
 		}
-		if opts.Project != "" && !projectPathMatches(summary.ProjectPath, opts.Project) {
+		if !summaryMatchesList(summary, ListOptions{
+			Source:          opts.Source,
+			Project:         opts.Project,
+			Projects:        opts.Projects,
+			ExcludeProjects: opts.ExcludeProjects,
+			TagFilters:      opts.TagFilters,
+			ExcludeTags:     opts.ExcludeTags,
+			TagPresence:     opts.TagPresence,
+		}) {
 			continue
 		}
 		if idx.summaryMatchesSearch(summary, query) {
@@ -462,7 +479,10 @@ func summaryMatchesList(summary SessionSummary, opts ListOptions) bool {
 	if opts.Source != "" && summary.Source != opts.Source {
 		return false
 	}
-	if opts.Project != "" && !projectPathMatches(summary.ProjectPath, opts.Project) {
+	if !projectPathMatchesAny(summary.ProjectPath, effectiveProjects(opts)) {
+		return false
+	}
+	if projectPathExcluded(summary.ProjectPath, normalizeProjectFilters(opts.ExcludeProjects)) {
 		return false
 	}
 	if opts.Since != 0 && summarySortTime(summary) < opts.Since {
@@ -481,6 +501,9 @@ func summaryMatchesList(summary SessionSummary, opts ListOptions) bool {
 		return false
 	}
 	if !sessionTagsContainAll(summary.Tags, opts.TagFilters) {
+		return false
+	}
+	if sessionTagsExcludeAny(summary.Tags, opts.ExcludeTags) {
 		return false
 	}
 	return true

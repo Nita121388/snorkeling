@@ -212,6 +212,9 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 	if err := idx.ensureMetaTitleColumn(ctx); err != nil {
 		return err
 	}
+	if err := idx.ensureMetaAutoTitleColumns(ctx); err != nil {
+		return err
+	}
 	if err := idx.ensureMessageThinkingColumn(ctx); err != nil {
 		return err
 	}
@@ -353,6 +356,39 @@ func (idx *SQLiteIndex) ensureMetaTitleColumn(ctx context.Context) error {
 	}
 	_, err := idx.db.ExecContext(ctx, `ALTER TABLE ai_session_meta ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
 	return err
+}
+
+// ensureMetaAutoTitleColumns adds the AI auto-title bookkeeping columns to
+// ai_session_meta for databases created before they existed:
+//
+//   - title_source             'user' (hand-written / user-applied) vs 'ai'
+//   - ai_title_attempted_at    >0 once a background generation was attempted
+//   - ai_title_attempt_message_count  messageCount at that attempt
+func (idx *SQLiteIndex) ensureMetaAutoTitleColumns(ctx context.Context) error {
+	var columns []struct {
+		Name string `db:"name"`
+	}
+	if err := idx.db.SelectContext(ctx, &columns, `SELECT name FROM pragma_table_info('ai_session_meta')`); err != nil {
+		return err
+	}
+	existing := make(map[string]bool, len(columns))
+	for _, column := range columns {
+		existing[column.Name] = true
+	}
+	wanted := []struct{ name, definition string }{
+		{"title_source", "TEXT NOT NULL DEFAULT 'user'"},
+		{"ai_title_attempted_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"ai_title_attempt_message_count", "INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, column := range wanted {
+		if existing[column.name] {
+			continue
+		}
+		if _, err := idx.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE ai_session_meta ADD COLUMN %s %s", column.name, column.definition)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ensureMessageThinkingColumn adds the thinking column to ai_session_messages
@@ -673,8 +709,11 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 	var marked bool
 	var note string
 	var title string
-	err := idx.db.QueryRowxContext(ctx, `SELECT marked, note, title FROM ai_session_meta WHERE session_key = ?`, summary.Key).
-		Scan(&marked, &note, &title)
+	var titleSource string
+	var aiAttemptedAt int64
+	var aiAttemptCount int
+	err := idx.db.QueryRowxContext(ctx, `SELECT marked, note, title, title_source, ai_title_attempted_at, ai_title_attempt_message_count FROM ai_session_meta WHERE session_key = ?`, summary.Key).
+		Scan(&marked, &note, &title, &titleSource, &aiAttemptedAt, &aiAttemptCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -685,8 +724,10 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 	summary.Note = note
 	if title != "" {
 		summary.Title = title
-		summary.TitleSource = "user"
+		summary.TitleSource = normalizeTitleSource(titleSource)
 	}
+	summary.AITitleAttemptedAt = aiAttemptedAt
+	summary.AITitleAttemptMessageCount = aiAttemptCount
 	tags, err := idx.tagsForSession(ctx, summary.Key)
 	if err != nil {
 		return err
@@ -698,33 +739,39 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 // batchMetaMaps holds preloaded per-session metadata for a list of keys.
 // loaded=true means the meta row existed (otherwise the fields are zero values).
 type batchMetaMaps struct {
-	loaded  map[string]bool
-	marked  map[string]bool
-	note    map[string]string
-	title   map[string]string
-	tags    map[string][]string
+	loaded              map[string]bool
+	marked              map[string]bool
+	note                map[string]string
+	title               map[string]string
+	titleSource         map[string]string
+	aiTitleAttemptedAt  map[string]int64
+	tags                map[string][]string
 }
 
 // batchMetaForKeys loads metadata for many session keys with 2 queries instead of
 // 2-per-key (N+1). Returns empty (non-nil) maps; callers use applyBatchMeta.
 func (idx *SQLiteIndex) batchMetaForKeys(ctx context.Context, keys []string) (batchMetaMaps, error) {
 	result := batchMetaMaps{
-		loaded: make(map[string]bool, len(keys)),
-		marked: make(map[string]bool, len(keys)),
-		note:   make(map[string]string, len(keys)),
-		title:  make(map[string]string, len(keys)),
-		tags:   make(map[string][]string, len(keys)),
+		loaded:             make(map[string]bool, len(keys)),
+		marked:             make(map[string]bool, len(keys)),
+		note:               make(map[string]string, len(keys)),
+		title:              make(map[string]string, len(keys)),
+		titleSource:        make(map[string]string, len(keys)),
+		aiTitleAttemptedAt: make(map[string]int64, len(keys)),
+		tags:               make(map[string][]string, len(keys)),
 	}
 	if len(keys) == 0 {
 		return result, nil
 	}
 	metaRows := []struct {
-		Key    string `db:"session_key"`
-		Marked bool   `db:"marked"`
-		Note   string `db:"note"`
-		Title  string `db:"title"`
+		Key                 string `db:"session_key"`
+		Marked              bool   `db:"marked"`
+		Note                string `db:"note"`
+		Title               string `db:"title"`
+		TitleSource         string `db:"title_source"`
+		AITitleAttemptedAt  int64  `db:"ai_title_attempted_at"`
 	}{}
-	query, args, err := sqlx.In(`SELECT session_key, marked, note, title FROM ai_session_meta WHERE session_key IN (?)`, keys)
+	query, args, err := sqlx.In(`SELECT session_key, marked, note, title, title_source, ai_title_attempted_at FROM ai_session_meta WHERE session_key IN (?)`, keys)
 	if err != nil {
 		return result, err
 	}
@@ -737,6 +784,8 @@ func (idx *SQLiteIndex) batchMetaForKeys(ctx context.Context, keys []string) (ba
 		result.marked[row.Key] = row.Marked
 		result.note[row.Key] = row.Note
 		result.title[row.Key] = row.Title
+		result.titleSource[row.Key] = row.TitleSource
+		result.aiTitleAttemptedAt[row.Key] = row.AITitleAttemptedAt
 	}
 	tagRows := []struct {
 		Key string `db:"session_key"`
@@ -773,13 +822,30 @@ func (idx *SQLiteIndex) applyBatchMeta(summary *SessionSummary, meta batchMetaMa
 	summary.Note = meta.note[summary.Key]
 	if title := meta.title[summary.Key]; title != "" {
 		summary.Title = title
-		summary.TitleSource = "user"
+		summary.TitleSource = normalizeTitleSource(meta.titleSource[summary.Key])
 	}
+	summary.AITitleAttemptedAt = meta.aiTitleAttemptedAt[summary.Key]
 	summary.Tags = meta.tags[summary.Key]
 }
 
 func (idx *SQLiteIndex) SetTitle(ctx context.Context, key string, title string) error {
-	return idx.setMeta(ctx, key, sessionMeta{Title: strings.TrimSpace(title), UpdatedAt: time.Now().UnixMilli()}, "sqlite-title")
+	return idx.setMeta(ctx, key, sessionMeta{Title: strings.TrimSpace(title), TitleSource: "user", UpdatedAt: time.Now().UnixMilli()}, "sqlite-title")
+}
+
+// SetAutoTitle persists an AI-generated title with the "ai" source so it ranks
+// below any user title but above the provider-derived fallbacks.
+func (idx *SQLiteIndex) SetAutoTitle(ctx context.Context, key string, title string) error {
+	return idx.setMeta(ctx, key, sessionMeta{Title: strings.TrimSpace(title), TitleSource: "ai", UpdatedAt: time.Now().UnixMilli()}, "sqlite-ai-title")
+}
+
+// MarkAITitleAttempt records that a background generation was attempted. It
+// deliberately touches no other column: writing it must not disturb note, tags,
+// or a title the user may have set in the meantime.
+func (idx *SQLiteIndex) MarkAITitleAttempt(ctx context.Context, key string, messageCount int) error {
+	return idx.setMeta(ctx, key, sessionMeta{
+		AITitleAttemptedAt:         time.Now().UnixMilli(),
+		AITitleAttemptMessageCount: messageCount,
+	}, "sqlite-ai-title-attempt")
 }
 
 func (idx *SQLiteIndex) SetMarked(ctx context.Context, key string, marked bool) error {
@@ -924,38 +990,59 @@ func (idx *SQLiteIndex) setMetaTx(ctx context.Context, tx *sqlx.Tx, key string, 
 	now := time.Now().UnixMilli()
 	var existing sessionMeta
 	var existingCreatedAt int64
-	err := tx.QueryRowxContext(ctx, `SELECT marked, note, title, updated_at, created_at FROM ai_session_meta WHERE session_key = ?`, key).
-		Scan(&existing.Marked, &existing.Note, &existing.Title, &existing.UpdatedAt, &existingCreatedAt)
+	err := tx.QueryRowxContext(ctx, `SELECT marked, note, title, title_source, ai_title_attempted_at, ai_title_attempt_message_count, updated_at, created_at FROM ai_session_meta WHERE session_key = ?`, key).
+		Scan(&existing.Marked, &existing.Note, &existing.Title, &existing.TitleSource, &existing.AITitleAttemptedAt, &existing.AITitleAttemptMessageCount, &existing.UpdatedAt, &existingCreatedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if source == "sqlite-mark" {
-		incoming.Note = existing.Note
-		incoming.Title = existing.Title
-	} else if source == "sqlite-note" || source == "sqlite-note-tags" {
-		incoming.Marked = existing.Marked
-		incoming.Title = existing.Title
-	} else if source == "sqlite-title" {
-		incoming.Marked = existing.Marked
-		incoming.Note = existing.Note
+	// Merge onto the existing row and only overwrite the fields this source owns.
+	// This is the single place that guarantees writing a note/tag/mark never
+	// clears an unrelated title (or vice versa), and it keeps the three AI-title
+	// bookkeeping columns from being wiped by any legacy write path.
+	merged := existing
+	switch source {
+	case "sqlite-mark":
+		merged.Marked = incoming.Marked
+	case "sqlite-note", "sqlite-note-tags":
+		merged.Note = incoming.Note
+	case "sqlite-title":
+		merged.Title = incoming.Title
+		merged.TitleSource = "user"
+	case "sqlite-ai-title":
+		merged.Title = incoming.Title
+		merged.TitleSource = "ai"
+	case "sqlite-ai-title-attempt":
+		merged.AITitleAttemptedAt = incoming.AITitleAttemptedAt
+		merged.AITitleAttemptMessageCount = incoming.AITitleAttemptMessageCount
+	default:
+		merged = incoming
 	}
-	if incoming.UpdatedAt == 0 {
-		incoming.UpdatedAt = now
+	if incoming.UpdatedAt != 0 {
+		merged.UpdatedAt = incoming.UpdatedAt
+	}
+	if merged.UpdatedAt == 0 {
+		merged.UpdatedAt = now
+	}
+	if merged.TitleSource == "" {
+		merged.TitleSource = "user"
 	}
 	createdAt := existingCreatedAt
 	if createdAt == 0 {
 		createdAt = now
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO ai_session_meta(session_key, marked, note, title, updated_at, created_at, source, dirty)
-		VALUES(?, ?, ?, ?, ?, ?, ?, 1)
+	_, err = tx.ExecContext(ctx, `INSERT INTO ai_session_meta(session_key, marked, note, title, title_source, ai_title_attempted_at, ai_title_attempt_message_count, updated_at, created_at, source, dirty)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(session_key) DO UPDATE SET
 			marked = excluded.marked,
 			note = excluded.note,
 			title = excluded.title,
+			title_source = excluded.title_source,
+			ai_title_attempted_at = excluded.ai_title_attempted_at,
+			ai_title_attempt_message_count = excluded.ai_title_attempt_message_count,
 			updated_at = excluded.updated_at,
 			source = excluded.source,
 			dirty = excluded.dirty`,
-		key, boolToInt(incoming.Marked), incoming.Note, incoming.Title, incoming.UpdatedAt, createdAt, source)
+		key, boolToInt(merged.Marked), merged.Note, merged.Title, merged.TitleSource, merged.AITitleAttemptedAt, merged.AITitleAttemptMessageCount, merged.UpdatedAt, createdAt, source)
 	return err
 }
 
@@ -1301,12 +1388,15 @@ func (idx *SQLiteIndex) CountMeta(ctx context.Context) (int, error) {
 
 func (idx *SQLiteIndex) ListTags(ctx context.Context, opts ListOptions) ([]SessionTagSummary, error) {
 	summaries, err := idx.List(ctx, ListOptions{
-		Source:  opts.Source,
-		Project: opts.Project,
-		Since:   opts.Since,
-		Before:  opts.Before,
-		Marked:  opts.Marked,
-		Limit:   0,
+		Source:          opts.Source,
+		Project:         opts.Project,
+		Projects:        opts.Projects,
+		ExcludeProjects: opts.ExcludeProjects,
+		Since:           opts.Since,
+		Before:          opts.Before,
+		Marked:          opts.Marked,
+		ExcludeTags:     opts.ExcludeTags,
+		Limit:           0,
 	})
 	if err != nil {
 		return nil, err
@@ -1366,8 +1456,15 @@ func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptio
 		}
 	}
 	// --- Pass 2: filter (non-project) + compute distribution, then apply project filter ---
+	// The include-side path selection must NOT narrow the tree the UI navigates
+	// (users need every directory's true count to keep selecting), so dist is
+	// aggregated with Project/Projects cleared. Exclusions DO apply here: an
+	// excluded session should disappear from both the list and the counts.
 	baseOpts := opts
 	baseOpts.Project = ""
+	baseOpts.Projects = nil
+	projects := effectiveProjects(opts)
+	excludes := normalizeProjectFilters(opts.ExcludeProjects)
 	dist := make(map[string]int, 16)
 	var filtered []SessionSummary
 	for i := range summaries {
@@ -1378,7 +1475,10 @@ func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptio
 			continue
 		}
 		dist[summaries[i].ProjectPath]++
-		if opts.Project != "" && !projectPathMatches(summaries[i].ProjectPath, opts.Project) {
+		if !projectPathMatchesAny(summaries[i].ProjectPath, projects) {
+			continue
+		}
+		if projectPathExcluded(summaries[i].ProjectPath, excludes) {
 			continue
 		}
 		if !sessionMatchesTagPresence(summaries[i], opts.TagPresence, opts.TagFilters) {
@@ -1395,7 +1495,16 @@ func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptio
 
 func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]SessionSummary, error) {
 	query := strings.ToLower(strings.TrimSpace(opts.Query))
-	summaries, err := idx.List(ctx, ListOptions{Source: opts.Source, Project: opts.Project, Limit: 0, TagFilters: opts.TagFilters})
+	summaries, err := idx.List(ctx, ListOptions{
+		Source:          opts.Source,
+		Project:         opts.Project,
+		Projects:        opts.Projects,
+		ExcludeProjects: opts.ExcludeProjects,
+		Limit:           0,
+		TagFilters:      opts.TagFilters,
+		ExcludeTags:     opts.ExcludeTags,
+		TagPresence:     opts.TagPresence,
+	})
 	if err != nil {
 		return nil, err
 	}

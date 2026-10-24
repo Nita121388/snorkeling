@@ -136,6 +136,28 @@ func sessionTagsContainAll(tags []string, filters []string) bool {
 	return true
 }
 
+// sessionTagsExcludeAny is the negation side of sessionTagsContainAll: it reports
+// whether any excluded tag is present on the session. An empty exclude list
+// excludes nothing, and a session without tags can never match an excluded tag.
+// When a tag appears in both the include and exclude lists the exclusion wins
+// (defensive; the UI keeps the two lists mutually exclusive).
+func sessionTagsExcludeAny(tags []string, excludes []string) bool {
+	excludes = NormalizeSessionTags(excludes)
+	if len(excludes) == 0 || len(tags) == 0 {
+		return false
+	}
+	tagSet := make(map[string]bool, len(tags))
+	for _, tag := range NormalizeSessionTags(tags) {
+		tagSet[tag] = true
+	}
+	for _, exclude := range excludes {
+		if tagSet[exclude] {
+			return true
+		}
+	}
+	return false
+}
+
 func sortSessionTagSummaries(tags []SessionTagSummary) {
 	sort.SliceStable(tags, func(i, j int) bool {
 		if tags[i].Count != tags[j].Count {
