@@ -121,6 +121,51 @@ Questions to answer:
 
 ---
 
+## 跨 Tab 打开文件的契约（2026-10-24, task 10-24-selection-search-cross-tab）
+
+### 渲染模型（决定了一切写法）
+
+- **每个 Tab 是一个独立 renderer**（`emain/emain-window.ts:418/430`），`setActiveTab` 只切主进程显示的 BrowserView。
+- `atoms.staticTabId = atom(initOpts.tabId)` **在本 renderer 内不可变**（`global-atoms.ts:100`）。
+  → 任何「先 `setActiveTab` 再等 `staticTabId` 变化」的写法**必然超时**，不要写 `waitForActiveTab` 这类轮询。
+- `createBlock`（`global.ts:416`）内部用 `getLayoutModelForStaticTab()`，**永远落在调用方 Tab**，先切 Tab 也没用。
+
+### 在指定 Tab 建 block
+
+唯一正确路径是让服务端插进目标 Tab 的 layout：
+
+```ts
+await ObjectService.CreateBlockInTab(targetTabId, blockDef, DefaultCreateBlockRuntimeOpts, false, magnified);
+getApi().setActiveTab(targetTabId);   // 只负责把用户视线切过去
+```
+
+先例：`workspace/widgets.tsx:2084` 的 `createBlockInExistingTab`。顺序是**先建块 → 再写 reveal meta → 最后 setActiveTab**。
+
+### 枚举非活跃 Tab 的 block
+
+- `getAllBlockComponentModels()` ≡ **当前 Tab**（block 只在挂载时注册，`block.tsx:1274`；`app.tsx:57` 只渲染 staticTabId）。
+  → 需要全 workspace 枚举时，走 `atoms.workspace.tabids` → `WOS.makeORef("tab", id)` → `tab.blockids` → `WOS.makeORef("block", id)`。
+- **陷阱**：`globalStore.get(WOS.getWaveObjectAtom(...))` 在首次访问的同一 tick 返回 `null`。必须 `await WOS.loadAndPinWaveObject(oref)`。
+
+### 聚焦
+
+- `refocusNode` 内部写死 `getLayoutModelForStaticTab()`（`global.ts:646`），**跨 Tab 分支禁止调用**，否则聚焦打到自己身上。
+- 跨 Tab 只做 `setActiveTab`，聚焦交给目标 Tab 的 renderer；确需本渲染器内操作时用 `getLayoutModelForTabById(tabId)` / `restoreMinimizedBlockToLayout(tabId, blockId)`（这两个已按 tabId 工作）。
+
+### `openPathInPreview` 的参数化约束
+
+- 它是 **HIGH 影响面共享函数**（调用方：`searchSelectionInFiles`、`openFileLinkInPreview`、`openSearchPath`，间接覆盖 markdown 链接 / Files 树双击 / `preview-edit` action）。
+- `tabId` 缺省必须**逐字节等价旧行为**：不调 `setActiveTab`、不调 `CreateBlockInTab`、只对 `tabId === staticTabId` 才 `refocusNode`。
+- 改它之前先跑 `impact({target: "openPathInPreview", direction: "upstream"})` 并在 `file-link-navigation.test.ts` 补「不传 tabId」的回归用例。
+
+### 查找范围
+
+- 跨 Tab 查找必须按**发起方 connection** 过滤（从 focused block 的 `meta.connection` 取，取不到回落 `local`），local 与远端 / 不同 ssh 目标不混查。
+- 只把 `view === "preview" && edit !== true && displayMode === tree` 的块当查找根，root 推导：`preview:explorer-root` → `meta.file`（stat 为目录才认）。
+- 远端 connection 的 stat 必须加超时（1.5s）+ 并发限流（4）+ 单次查找内缓存，超时/异常一律当未命中。
+
+---
+
 ## Code Review Checklist
 
 <!-- What reviewers should check -->

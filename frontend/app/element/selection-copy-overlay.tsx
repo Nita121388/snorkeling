@@ -133,8 +133,22 @@ export function makeSelectionQuickActionMenu(
     };
 
     const handleSearchInFiles = async (): Promise<void> => {
-        await searchSelectionInFilesText(text);
-        options?.onHide?.();
+        let feedbackShown = false;
+        await searchSelectionInFilesText(text, (msg, kind) => {
+            // Only assume a bubble is visible when an overlay host can actually render it;
+            // otherwise keeping the overlay mounted just delays hiding for nothing.
+            if (options?.onCommonTextFeedback != null) {
+                feedbackShown = true;
+                options.onCommonTextFeedback(msg, kind);
+            }
+        });
+        // Feedback bubble lives on the overlay, so it must stay mounted until the bubble
+        // has been shown; otherwise hide right away like before.
+        if (feedbackShown) {
+            window.setTimeout(() => options?.onHide?.(), CommonTextFeedbackMs);
+        } else {
+            options?.onHide?.();
+        }
     };
 
     const handleAddCommonText = (
@@ -207,13 +221,16 @@ export function makeSelectionSearchInFilesMenuItem(text: string): ContextMenuIte
     };
 }
 
-async function searchSelectionInFilesText(text: string): Promise<void> {
+async function searchSelectionInFilesText(
+    text: string,
+    onFeedback?: (msg: string, kind: string) => void
+): Promise<void> {
     const reference = parseFileReference(text);
     if (reference == null) {
         window.alert("No file reference found in the selected text.");
         return;
     }
-    await searchSelectionInFiles(reference);
+    await searchSelectionInFiles(reference, { onFeedback });
 }
 
 export function SelectionCopyOverlay({

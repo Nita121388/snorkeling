@@ -2,12 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { restoreMinimizedBlockToLayout } from "@/app/block/block-minimize";
-import { atoms, createBlock, getFocusedBlockId, globalStore, refocusNode, WOS } from "@/app/store/global";
+import {
+    atoms,
+    createBlock,
+    getApi,
+    getFocusedBlockId,
+    globalStore,
+    refocusNode,
+    WOS,
+} from "@/app/store/global";
 import { ObjectService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getMarkdownHeadings } from "@/app/monaco/markdown-folding";
-import { getLayoutModelForStaticTab } from "@/layout/index";
+import { getLayoutModelForTabById } from "@/layout/index";
 import { base64ToString, isBlank, isLocalConnName } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
 import {
@@ -29,6 +37,9 @@ type FileLinkOpenOptions = {
     editMode?: boolean;
     revealInTree?: boolean;
     revealInTreeBlockId?: string | null;
+    // target tab for every tab-scoped lookup (tree block / existing preview block / focus).
+    // omitted or null falls back to atoms.staticTabId, exactly like before this option existed.
+    tabId?: string | null;
     onOpenPath?: (path: string, lineNumber: number | null) => Promise<void>;
 };
 
@@ -37,6 +48,9 @@ type PreviewTreeBlock = {
     block: Block;
     rootPath: string;
 };
+
+// Same default runtime opts other block-creation call sites use (widgets.tsx, inlinetab-addmenu.tsx).
+const DefaultCreateBlockRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
 
 const WindowsAbsolutePathRe = /^[A-Za-z]:(?:[\\/]|$)/;
 const MarkdownFileLineReferenceRe = /^((?:[A-Za-z]:[\\/]|\/|~\/).+\.(?:md|markdown|mdx)):(\d+)$/i;
@@ -270,7 +284,7 @@ function normalizePathForCompare(path: unknown): string {
     return value;
 }
 
-function normalizeConnection(connection: unknown): string {
+export function normalizeConnection(connection: unknown): string {
     const normalized = typeof connection === "string" ? connection.trim() : "";
     return isLocalConnName(normalized) ? "local" : normalized;
 }
@@ -298,12 +312,29 @@ function getCurrentSettingsDirectoryDisplayDefault(): any {
     return globalStore.get(atoms.settingsAtom)?.[PreviewDefaultDirectoryDisplaySettingKey];
 }
 
-function getTreeRootFromBlock(block: Block): string {
+export function getTreeRootFromBlock(block: Block): string {
     const storedRoot = block.meta?.[PreviewExplorerRootMetaKey];
     if (!isBlank(storedRoot)) {
         return storedRoot;
     }
     return block.meta?.file ?? "";
+}
+
+// A "search root" / reveal target is a preview block that renders a file tree.
+// Edit-mode preview blocks and non-tree display modes are not tree roots.
+export function isTreeDisplayPreviewBlock(block: Block | null | undefined): boolean {
+    if (block?.meta?.view !== "preview") {
+        return false;
+    }
+    if (block.meta?.edit === true) {
+        return false;
+    }
+    const displayMode = resolvePreviewDirectoryDisplayMode(
+        block.meta?.[PreviewDirectoryDisplayMetaKey],
+        getCurrentSettingsDirectoryDisplayDefault(),
+        "tree"
+    );
+    return displayMode === "tree";
 }
 
 async function statPath(path: string, connection: string | null | undefined): Promise<FileInfo> {
@@ -329,26 +360,32 @@ async function findDirectoryIndexPath(path: string, connection: string | null | 
     return null;
 }
 
-async function findTreeFilesBlock(targetPath: string, connection: string): Promise<PreviewTreeBlock | null> {
-    const tabId = globalStore.get(atoms.staticTabId);
+function resolveTargetTabId(options?: FileLinkOpenOptions): string | null {
+    const explicitTabId = options?.tabId;
+    if (explicitTabId != null) {
+        return isBlank(explicitTabId) ? null : explicitTabId;
+    }
+    const staticTabId = globalStore.get(atoms.staticTabId);
+    return isBlank(staticTabId) ? null : staticTabId;
+}
+
+async function findTreeFilesBlock(
+    targetPath: string,
+    connection: string,
+    tabId: string | null
+): Promise<PreviewTreeBlock | null> {
     if (isBlank(tabId)) {
         return null;
     }
-    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    // loadAndPinWaveObject: block objects of never-mounted tabs may not be in the WOS
+    // cache yet, in which case a plain globalStore.get() returns null.
+    const tab = await WOS.loadAndPinWaveObject<Tab>(WOS.makeORef("tab", tabId));
     for (const blockId of tab?.blockids ?? []) {
-        const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
-        if (block?.meta?.view !== "preview") {
+        const block = await WOS.loadAndPinWaveObject<Block>(WOS.makeORef("block", blockId));
+        if (!isTreeDisplayPreviewBlock(block)) {
             continue;
         }
         if (normalizeConnection(block.meta?.connection) !== normalizeConnection(connection)) {
-            continue;
-        }
-        const displayMode = resolvePreviewDirectoryDisplayMode(
-            block.meta?.[PreviewDirectoryDisplayMetaKey],
-            getCurrentSettingsDirectoryDisplayDefault(),
-            "tree"
-        );
-        if (displayMode !== "tree") {
             continue;
         }
         const blockPath = block.meta?.file ?? "";
@@ -368,14 +405,17 @@ async function findTreeFilesBlock(targetPath: string, connection: string): Promi
     return null;
 }
 
-async function findExistingNonEditPreviewBlock(targetPath: string, connection: string): Promise<string | null> {
-    const tabId = globalStore.get(atoms.staticTabId);
+async function findExistingNonEditPreviewBlock(
+    targetPath: string,
+    connection: string,
+    tabId: string | null
+): Promise<string | null> {
     if (isBlank(tabId)) {
         return null;
     }
-    const tab = globalStore.get(WOS.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId)));
+    const tab = await WOS.loadAndPinWaveObject<Tab>(WOS.makeORef("tab", tabId));
     for (const blockId of tab?.blockids ?? []) {
-        const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+        const block = await WOS.loadAndPinWaveObject<Block>(WOS.makeORef("block", blockId));
         if (block?.meta?.view !== "preview") {
             continue;
         }
@@ -402,16 +442,30 @@ async function applySearchLineToBlock(blockId: string, options?: FileLinkOpenOpt
     await ObjectService.UpdateObjectMeta(WOS.makeORef("block", blockId), nextMeta);
 }
 
-async function focusTreeBlock(blockId: string) {
-    const tabId = globalStore.get(atoms.staticTabId);
-    const layoutModel = getLayoutModelForStaticTab();
+async function focusTreeBlock(blockId: string, tabId: string | null) {
+    const layoutModel = isBlank(tabId) ? null : getLayoutModelForTabById(tabId);
     const node = layoutModel?.getNodeByBlockId(blockId);
+    // refocusNode() is hard-wired to this renderer's static tab, so it is only safe when
+    // the target tab *is* the current tab. Cross-tab focus is left to the target tab's
+    // own renderer after setActiveTab().
+    const isCurrentTab = !isBlank(tabId) && tabId === globalStore.get(atoms.staticTabId);
     if (node?.id != null) {
-        refocusNode(blockId);
+        if (isCurrentTab) {
+            refocusNode(blockId);
+        } else {
+            layoutModel.focusNode(node.id);
+        }
         return;
     }
     if (!isBlank(tabId) && restoreMinimizedBlockToLayout(tabId, blockId)) {
-        window.setTimeout(() => refocusNode(blockId), 50);
+        if (isCurrentTab) {
+            window.setTimeout(() => refocusNode(blockId), 50);
+            return;
+        }
+        const restoredNode = getLayoutModelForTabById(tabId)?.getNodeByBlockId(blockId);
+        if (restoredNode?.id != null) {
+            getLayoutModelForTabById(tabId)?.focusNode(restoredNode.id);
+        }
     }
 }
 
@@ -427,7 +481,12 @@ async function requestTreeReveal(blockId: string, block: Block, path: string) {
     await ObjectService.UpdateObjectMeta(WOS.makeORef("block", blockId), nextMeta);
 }
 
-async function createPreviewBlock(path: string, connection: string | null | undefined, meta?: Record<string, any>) {
+async function createPreviewBlock(
+    path: string,
+    connection: string | null | undefined,
+    meta?: Record<string, any>,
+    tabId?: string | null
+) {
     const blockMeta: Record<string, any> = {
         view: "preview",
         file: path,
@@ -435,6 +494,21 @@ async function createPreviewBlock(path: string, connection: string | null | unde
     };
     if (!isBlank(connection)) {
         blockMeta.connection = connection;
+    }
+    const targetTabId = isBlank(tabId) ? null : tabId;
+    const currentTabId = globalStore.get(atoms.staticTabId);
+    if (targetTabId != null && !isBlank(currentTabId) && targetTabId !== currentTabId) {
+        // staticTabId is fixed for the lifetime of this renderer, so createBlock() would
+        // always land in the calling tab. Ask the backend to insert the block into the
+        // target tab's layout instead (same path as widgets.tsx createBlockInExistingTab).
+        await ObjectService.CreateBlockInTab(
+            targetTabId,
+            { meta: blockMeta as MetaType },
+            DefaultCreateBlockRuntimeOpts,
+            false,
+            false
+        );
+        return;
     }
     await createBlock({ meta: blockMeta as MetaType });
 }
@@ -475,12 +549,29 @@ export async function openFileLinkInPreview(href: string, options?: FileLinkOpen
 }
 
 export async function openPathInPreview(path: string, options?: FileLinkOpenOptions): Promise<void> {
+    const tabId = resolveTargetTabId(options);
+    const currentTabId = globalStore.get(atoms.staticTabId);
+    const isCrossTab = !isBlank(tabId) && !isBlank(currentTabId) && tabId !== currentTabId;
+    await openPathInPreviewInTab(path, options, tabId);
+    // Order matters (PRD R3.4): the block/reveal work above already landed in the target
+    // tab's layout (server-side), only then move the user's view to that tab.
+    // Callers that do not pass tabId never reach this branch (isCrossTab is false).
+    if (isCrossTab) {
+        getApi().setActiveTab(tabId);
+    }
+}
+
+async function openPathInPreviewInTab(
+    path: string,
+    options: FileLinkOpenOptions | undefined,
+    tabId: string | null
+): Promise<void> {
     const connection = normalizeConnection(options?.connection);
     let fileInfo: FileInfo;
     try {
         fileInfo = await statPath(path, connection);
     } catch {
-        await createPreviewBlock(path, connection, applyPreviewOpenOptions({}, options));
+        await createPreviewBlock(path, connection, applyPreviewOpenOptions({}, options), tabId);
         return;
     }
     const targetPath = fileInfo?.path || path;
@@ -488,25 +579,26 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
     if (targetIsDir && options?.openDirectoryIndex) {
         const indexPath = await findDirectoryIndexPath(targetPath, connection);
         if (indexPath != null) {
-            await openPathInPreview(indexPath, { ...options, openDirectoryIndex: false });
+            await openPathInPreviewInTab(indexPath, { ...options, openDirectoryIndex: false }, tabId);
             return;
         }
     }
-    const treeBlock = options?.revealInTree === false ? null : await findTreeFilesBlock(targetPath, connection);
+    const treeBlock = options?.revealInTree === false ? null : await findTreeFilesBlock(targetPath, connection, tabId);
     if (treeBlock != null) {
         await requestTreeReveal(treeBlock.blockId, treeBlock.block, targetPath);
-        await focusTreeBlock(treeBlock.blockId);
+        await focusTreeBlock(treeBlock.blockId, tabId);
         if (!targetIsDir) {
-            const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+            const existingId = await findExistingNonEditPreviewBlock(targetPath, connection, tabId);
             if (existingId != null) {
-                await focusTreeBlock(existingId);
+                await focusTreeBlock(existingId, tabId);
                 await applySearchLineToBlock(existingId, options);
                 return;
             }
             await createPreviewBlock(
                 targetPath,
                 connection,
-                applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options)
+                applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options),
+                tabId
             );
         }
         return;
@@ -515,18 +607,19 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
         const fallbackBlock = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", options.revealInTreeBlockId)));
         if (fallbackBlock != null) {
             await requestTreeReveal(options.revealInTreeBlockId, fallbackBlock, targetPath);
-            await focusTreeBlock(options.revealInTreeBlockId);
+            await focusTreeBlock(options.revealInTreeBlockId, tabId);
             if (!targetIsDir) {
-                const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+                const existingId = await findExistingNonEditPreviewBlock(targetPath, connection, tabId);
                 if (existingId != null) {
-                    await focusTreeBlock(existingId);
+                    await focusTreeBlock(existingId, tabId);
                     await applySearchLineToBlock(existingId, options);
                     return;
                 }
                 await createPreviewBlock(
                     targetPath,
                     connection,
-                    applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options)
+                    applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options),
+                    tabId
                 );
             }
             return;
@@ -543,19 +636,21 @@ export async function openPathInPreview(path: string, options?: FileLinkOpenOpti
                     [PreviewPathIsDirMetaKey]: true,
                 },
                 options
-            )
+            ),
+            tabId
         );
         return;
     }
-    const existingId = await findExistingNonEditPreviewBlock(targetPath, connection);
+    const existingId = await findExistingNonEditPreviewBlock(targetPath, connection, tabId);
     if (existingId != null) {
-        await focusTreeBlock(existingId);
+        await focusTreeBlock(existingId, tabId);
         await applySearchLineToBlock(existingId, options);
         return;
     }
     await createPreviewBlock(
         targetPath,
         connection,
-        applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options)
+        applyPreviewOpenOptions({ [PreviewPathIsDirMetaKey]: false }, options),
+        tabId
     );
 }
