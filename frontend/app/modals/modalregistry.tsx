@@ -5,22 +5,23 @@ import { MessageModal } from "@/app/modals/messagemodal";
 import { NewInstallOnboardingModal } from "@/app/onboarding/onboarding";
 import { UpgradeOnboardingModal } from "@/app/onboarding/onboarding-upgrade";
 import { UpgradeOnboardingPatch } from "@/app/onboarding/onboarding-upgrade-patch";
+import { ExportOptionsModal } from "@/app/view/preview/plugins/export/export-options-modal";
+import { EnvModalView } from "@/app/view/term/envmodal";
+import { WidgetQuickLaunchModal } from "@/app/workspace/widget-quick-launch";
 import { DeleteFileModal, PublishAppModal, RenameFileModal } from "@/builder/builder-apppanel";
 import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
 import { AboutModal } from "./about";
-import { CloseTabModal } from "./closetabmodal";
 import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
-import { EnvModalView } from "@/app/view/term/envmodal";
-import { WidgetQuickLaunchModal } from "@/app/workspace/widget-quick-launch";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
-import { NoteDirectoryModal } from "./notedirectorymodal";
-import { RestartConfirmModal } from "./restartconfirmmodal";
+import { CloseTabModal } from "./closetabmodal";
 import { ConfirmModal } from "./confirmmodal";
 import { FileConflictModal } from "./file-conflict-modal";
+import { NoteDirectoryModal } from "./notedirectorymodal";
+import { RestartConfirmModal } from "./restartconfirmmodal";
+import { ScheduledTaskEditorModal } from "./scheduledtaskeditormodal";
 import { UnsavedFileModal } from "./unsavedfilemodal";
 import { UserInputModal } from "./userinputmodal";
-import { ExportOptionsModal } from "@/app/view/preview/plugins/export/export-options-modal";
 
 const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [NewInstallOnboardingModal.displayName || "NewInstallOnboardingModal"]: NewInstallOnboardingModal,
@@ -45,6 +46,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [ExportOptionsModal.displayName || "ExportOptionsModal"]: ExportOptionsModal,
     [RestartConfirmModal.displayName || "RestartConfirmModal"]: RestartConfirmModal,
     [ConfirmModal.displayName || "ConfirmModal"]: ConfirmModal,
+    [ScheduledTaskEditorModal.displayName || "ScheduledTaskEditorModal"]: ScheduledTaskEditorModal,
 };
 
 export const getModalComponent = (key: string): React.ComponentType<any> | undefined => {

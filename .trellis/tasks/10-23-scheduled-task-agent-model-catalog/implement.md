@@ -85,6 +85,21 @@
 - [x] 真实数据核对：pi 13 个模型（默认 deepseek-v4.1-flash）、codex 6 个（默认 gpt-5.6-sol）、claude 1 个（glm-5.3）、opencode/gemini 空
 - [x] `go build ./...` + `go vet ./pkg/agentcatalog/...` + vitest + tsc（改动文件）通过
 
+## M9 编辑器升级为 app 级大弹窗
+
+- [x] `frontend/app/modals/scheduledtaskeditormodal.tsx`（新）
+  - 拆出独立 modal 组件，走 `FlexiModal`（portal 到 `#main`）
+  - 尺寸 `w-[min(760px,calc(100vw-40px))] max-h-[min(86vh,calc(100vh-56px))]`，头部/内容滚动/底部操作三段
+  - 布局 `md:grid-cols-2`：Name/Agent/Model/Prompt/Workdir/Schedule/Timezone/Notification
+  - 自己加载 agent 目录，失败回落自由输入
+- [x] `modalregistry.tsx` 注册 `ScheduledTaskEditorModal`
+- [x] `scheduledtasks-model.ts`
+  - 删除 `editorOpenAtom` / `editingTaskAtom` / `closeEditor`
+  - `openCreate` / `openEdit` 改为 `modalsModel.pushModal`，`onSave` 直接回调 `this.save`
+- [x] `scheduledtasks-view.tsx` 删除块内 `Overlay` / `OverlayHeader` / `EditorOverlay`（-298 行）
+- [x] 验证：ESC 与点遮罩关闭（`modal-backdrop`）、字段/下拉与块内版一致、目录真实模型正常
+- [x] `npx tsc --noEmit`（改动文件）干净；vitest 通过
+
 ## M7 收尾
 
 - [x] `go test ./pkg/agentcatalog/... ./pkg/scheduler/...`

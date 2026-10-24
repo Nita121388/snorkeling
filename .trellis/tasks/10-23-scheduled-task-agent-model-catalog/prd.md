@@ -41,6 +41,7 @@
 - 切换 agent 时把 model 重置为该 agent 的默认模型。
 - 编辑已有任务且其 model 不在列表时，保留一个 `<option>` 显示当前值，避免静默丢配置。
 - 删除 `scheduledtasks-view.tsx` 中的硬编码数组。
+- 编辑器必须是 **app 级大弹窗**（`FlexiModal`，portal 到 `#main`），不再局限在 Block 内。
 
 ### R4. 调度执行侧对齐
 - `pkg/scheduler/runner.go` 使用同一目录解析 profile / 默认模型 / modelflag。

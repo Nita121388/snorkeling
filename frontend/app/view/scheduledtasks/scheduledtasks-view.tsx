@@ -3,13 +3,11 @@
 
 import { Tooltip } from "@/app/element/tooltip";
 import type { AgentProfileInfo } from "@/app/workspace/agent-catalog";
-import { findAgentProfile, modelOptionsFor, pickDefaultModel } from "@/app/workspace/agent-catalog";
-import { describeCron } from "./cron-describe";
-import type { ScheduledTasksViewModel } from "./scheduledtasks-model";
+import { findAgentProfile } from "@/app/workspace/agent-catalog";
 import * as jotai from "jotai";
 import * as React from "react";
-
-const ScheduleTypes = ["cron", "interval", "daily", "weekly", "once"];
+import { describeCron } from "./cron-describe";
+import type { ScheduledTasksViewModel } from "./scheduledtasks-model";
 
 function describeSchedule(s: ScheduledTaskScheduleType): string {
     switch (s?.type) {
@@ -76,8 +74,6 @@ export const ScheduledTasksView: React.FC<ViewComponentProps<ScheduledTasksViewM
         const loading = jotai.useAtomValue(model.loadingAtom);
         const error = jotai.useAtomValue(model.errorAtom);
         const status = jotai.useAtomValue(model.statusAtom);
-        const editorOpen = jotai.useAtomValue(model.editorOpenAtom);
-        const editingTask = jotai.useAtomValue(model.editingTaskAtom);
         const historyOpen = jotai.useAtomValue(model.historyOpenAtom);
         const historyTask = jotai.useAtomValue(model.historyTaskAtom);
         const history = jotai.useAtomValue(model.historyAtom);
@@ -106,7 +102,9 @@ export const ScheduledTasksView: React.FC<ViewComponentProps<ScheduledTasksViewM
                         <i className="fa-sharp fa-solid fa-clock text-4xl text-muted" />
                         <div className="flex flex-col gap-1">
                             <h3 className="text-lg font-semibold text-secondary">No scheduled tasks</h3>
-                            <p className="text-muted">Schedule an agent to run on a cron, interval, or daily schedule.</p>
+                            <p className="text-muted">
+                                Schedule an agent to run on a cron, interval, or daily schedule.
+                            </p>
                         </div>
                         <button
                             className="flex items-center gap-2 px-4 py-2 bg-action text-actiontext hover:bg-actionhover rounded cursor-pointer transition-colors"
@@ -150,7 +148,6 @@ export const ScheduledTasksView: React.FC<ViewComponentProps<ScheduledTasksViewM
                 {historyOpen && historyTask != null && (
                     <HistoryOverlay model={model} historyTask={historyTask} history={history} />
                 )}
-                {editorOpen && editingTask != null && <EditorOverlay model={model} draft={editingTask} />}
             </div>
         );
     }
@@ -178,7 +175,9 @@ function TaskRow({
             <td className="px-3 py-2">
                 <div className="flex items-center gap-1.5">
                     <span className={`text-sm ${task.enabled ? "" : "text-muted line-through"}`}>{task.name}</span>
-                    {!task.enabled && <span className="text-[10px] uppercase text-muted border border-border rounded px-1">off</span>}
+                    {!task.enabled && (
+                        <span className="text-[10px] uppercase text-muted border border-border rounded px-1">off</span>
+                    )}
                 </div>
             </td>
             <td className="px-2 py-2 text-muted">{agentLabel(agentCatalog, task.agentProfile)}</td>
@@ -191,7 +190,9 @@ function TaskRow({
             </td>
             <td className="px-2 py-2">
                 <span className={statusColor(task.lastRunStatus)}>{task.lastRunStatus ?? "pending"}</span>
-                {task.lastRunAt && <span className="text-muted block text-[10px]">{new Date(task.lastRunAt).toLocaleString()}</span>}
+                {task.lastRunAt && (
+                    <span className="text-muted block text-[10px]">{new Date(task.lastRunAt).toLocaleString()}</span>
+                )}
             </td>
             <td className="px-2 py-2">
                 <div className="flex items-center gap-1">
@@ -202,7 +203,9 @@ function TaskRow({
                     </Tooltip>
                     <Tooltip content={task.enabled ? "Disable" : "Enable"}>
                         <button className="hover:bg-hoverbg rounded p-1 cursor-pointer" onClick={onToggle}>
-                            <i className={`fa-solid ${task.enabled ? "fa-toggle-on text-accent" : "fa-toggle-off text-muted"}`} />
+                            <i
+                                className={`fa-solid ${task.enabled ? "fa-toggle-on text-accent" : "fa-toggle-off text-muted"}`}
+                            />
                         </button>
                     </Tooltip>
                     <Tooltip content="Run now">
@@ -270,275 +273,6 @@ function HistoryOverlay({
                 </div>
             )}
         </Overlay>
-    );
-}
-
-function EditorOverlay({ model, draft }: { model: ScheduledTasksViewModel; draft: ScheduledTaskType }) {
-    const agentCatalog = jotai.useAtomValue(model.agentCatalogAtom);
-    const catalogLoading = jotai.useAtomValue(model.catalogLoadingAtom);
-    const [form, setForm] = React.useState<ScheduledTaskType>(() => ({
-        ...draft,
-        schedule: { ...draft.schedule },
-    }));
-    const [err, setErr] = React.useState<string>(null);
-    const [saving, setSaving] = React.useState(false);
-
-    const set = <K extends keyof ScheduledTaskType>(k: K, v: ScheduledTaskType[K]) =>
-        setForm((f) => ({ ...f, [k]: v }));
-    const setSched = <K extends keyof ScheduledTaskScheduleType>(k: K, v: ScheduledTaskScheduleType[K]) =>
-        setForm((f) => ({ ...f, schedule: { ...f.schedule, [k]: v } }));
-
-    const profile = findAgentProfile(agentCatalog, form.agentProfile);
-    const modelOptions = modelOptionsFor(profile, form.model);
-
-    // Switching agents re-points the model at that agent's default so a stale model id
-    // from the previous agent is never silently carried over.
-    const selectAgent = (name: string) => {
-        const nextProfile = findAgentProfile(agentCatalog, name);
-        setForm((f) => ({ ...f, agentProfile: name, model: pickDefaultModel(nextProfile) }));
-    };
-
-    const notify = form.notifyOnComplete || form.notifyOnError;
-
-    return (
-        <Overlay>
-            <OverlayHeader title={draft.id ? "Edit Scheduled Task" : "New Scheduled Task"} onClose={() => model.closeEditor()} />
-            <div className="p-4 space-y-3 overflow-y-auto max-h-[70vh]">
-                <Field label="Name">
-                    <input
-                        className={inputCls}
-                        value={form.name}
-                        onChange={(e) => set("name", e.target.value)}
-                        placeholder="Daily Code Review"
-                        autoFocus
-                    />
-                </Field>
-
-                <div className="grid grid-cols-2 gap-3">
-                    <Field label="Agent Profile">
-                        {agentCatalog.length === 0 ? (
-                            // Catalog unavailable (RPC failed): keep the editor usable with free text.
-                            <input
-                                className={inputCls}
-                                value={form.agentProfile ?? ""}
-                                onChange={(e) => set("agentProfile", e.target.value)}
-                                placeholder="pi"
-                                list="scheduled-task-agent-names"
-                            />
-                        ) : (
-                            <select className={inputCls} value={form.agentProfile ?? ""} onChange={(e) => selectAgent(e.target.value)}>
-                                {agentCatalog.map((a) => (
-                                    <option key={a.name} value={a.name}>
-                                        {a.label}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
-                        {catalogLoading && <span className="text-xs text-muted mt-0.5">Loading agents…</span>}
-                        {!catalogLoading && agentCatalog.length === 0 && (
-                            <span className="text-xs text-muted mt-0.5">Agent catalog unavailable — type the agent command name.</span>
-                        )}
-                    </Field>
-                    <Field label={profile != null ? `Model — ${profile.label}` : "Model"}>
-                        {modelOptions.length === 0 ? (
-                            <input
-                                className={inputCls}
-                                value={form.model ?? ""}
-                                onChange={(e) => set("model", e.target.value)}
-                                placeholder="Default (agent chooses)"
-                            />
-                        ) : (
-                            <select className={inputCls} value={form.model ?? ""} onChange={(e) => set("model", e.target.value)}>
-                                {modelOptions.map((m) => (
-                                    <option key={m.id} value={m.id}>
-                                        {m.provider != null && m.provider !== "" ? `${m.label} (${m.provider})` : m.label}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
-                        {profile != null && profile.models.length === 0 && (
-                            <span className="text-xs text-muted mt-0.5">
-                                No models configured for this agent — add agent:profiles.{profile.name}.models in settings, or type a model id.
-                            </span>
-                        )}
-                    </Field>
-                </div>
-
-                <Field label="Prompt">
-                    <textarea
-                        className={`${inputCls} min-h-[72px] resize-y`}
-                        value={form.prompt}
-                        onChange={(e) => set("prompt", e.target.value)}
-                        placeholder="Review the latest commit and suggest improvements"
-                    />
-                </Field>
-
-                <Field label="Working Directory">
-                    <input
-                        className={inputCls}
-                        value={form.workdir ?? ""}
-                        onChange={(e) => set("workdir", e.target.value)}
-                        placeholder="~/myproject"
-                    />
-                </Field>
-
-                <Field label="Schedule Type">
-                    <select className={inputCls} value={form.schedule?.type ?? "cron"} onChange={(e) => setSched("type", e.target.value)}>
-                        {ScheduleTypes.map((t) => (
-                            <option key={t} value={t}>
-                                {t}
-                            </option>
-                        ))}
-                    </select>
-                </Field>
-
-                {(form.schedule?.type ?? "cron") === "cron" && (
-                    <Field label="Cron Expression">
-                        <input
-                            className={`${inputCls} font-mono`}
-                            value={form.schedule?.cronExpr ?? ""}
-                            onChange={(e) => setSched("cronExpr", e.target.value)}
-                            placeholder="0 9 * * 1-5"
-                        />
-                        <span className="text-xs text-secondary mt-0.5 min-h-[16px]">
-                            {describeCron(form.schedule?.cronExpr) || "—"}
-                        </span>
-                    </Field>
-                )}
-                {(form.schedule?.type ?? "cron") === "interval" && (
-                    <Field label="Interval (ms)">
-                        <input
-                            className={inputCls}
-                            type="number"
-                            value={form.schedule?.intervalMs ?? 3600000}
-                            onChange={(e) => setSched("intervalMs", Number(e.target.value))}
-                        />
-                    </Field>
-                )}
-                {(form.schedule?.type ?? "cron") === "daily" && (
-                    <Field label="Time (HH:MM)">
-                        <input
-                            className={inputCls}
-                            value={form.schedule?.timeOfDay ?? ""}
-                            onChange={(e) => setSched("timeOfDay", e.target.value)}
-                            placeholder="09:00"
-                        />
-                    </Field>
-                )}
-                {(form.schedule?.type ?? "cron") === "weekly" && (
-                    <div className="grid grid-cols-2 gap-3">
-                        <Field label="Time (HH:MM)">
-                            <input
-                                className={inputCls}
-                                value={form.schedule?.timeOfDay ?? ""}
-                                onChange={(e) => setSched("timeOfDay", e.target.value)}
-                                placeholder="09:00"
-                            />
-                        </Field>
-                        <Field label="Day of Week (0=Sun)">
-                            <input
-                                className={inputCls}
-                                type="number"
-                                min={0}
-                                max={6}
-                                value={form.schedule?.dayOfWeek ?? 0}
-                                onChange={(e) => setSched("dayOfWeek", Number(e.target.value))}
-                            />
-                        </Field>
-                    </div>
-                )}
-                {(form.schedule?.type ?? "cron") === "once" && (
-                    <Field label="Run At (ISO)">
-                        <input
-                            className={`${inputCls} font-mono`}
-                            value={form.schedule?.runAt ?? ""}
-                            onChange={(e) => setSched("runAt", e.target.value)}
-                            placeholder="2026-09-09T09:00:00Z"
-                        />
-                    </Field>
-                )}
-
-                <Field label="Timezone">
-                    <input
-                        className={`${inputCls} font-mono`}
-                        value={form.schedule?.timezone ?? ""}
-                        onChange={(e) => setSched("timezone", e.target.value)}
-                        placeholder="Asia/Shanghai"
-                    />
-                </Field>
-
-                <div className="flex items-center gap-4 pt-1">
-                    <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={form.enabled}
-                            onChange={(e) => set("enabled", e.target.checked)}
-                        />
-                        Enabled
-                    </label>
-                    <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={form.notifyOnComplete}
-                            onChange={(e) => set("notifyOnComplete", e.target.checked)}
-                        />
-                        Notify on complete
-                    </label>
-                    <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={form.notifyOnError}
-                            onChange={(e) => set("notifyOnError", e.target.checked)}
-                        />
-                        Notify on error
-                    </label>
-                </div>
-                {notify && (
-                    <Field label="Notification Mode">
-                        <select className={inputCls} value={form.notificationMode ?? "os"} onChange={(e) => set("notificationMode", e.target.value)}>
-                            <option value="os">OS</option>
-                            <option value="bell">Bell</option>
-                            <option value="both">Both</option>
-                            <option value="none">None</option>
-                        </select>
-                    </Field>
-                )}
-
-                {err != null && <div className="text-xs text-error">{err}</div>}
-
-                <div className="flex justify-end gap-2 pt-2">
-                    <button className={btnCls} onClick={() => model.closeEditor()}>
-                        Cancel
-                    </button>
-                    <button
-                        className={`${btnCls} bg-accent text-[var(--accent-foreground)]`}
-                        disabled={saving || !form.name}
-                        onClick={async () => {
-                            setSaving(true);
-                            const e = await model.save(form);
-                            setSaving(false);
-                            if (e) setErr(e);
-                        }}
-                    >
-                        {saving ? "Saving…" : "Save"}
-                    </button>
-                </div>
-            </div>
-        </Overlay>
-    );
-}
-
-const inputCls =
-    "w-full bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] border border-border rounded px-2 py-1 text-sm focus:outline-none focus:border-accent";
-
-const btnCls = "px-3 py-1 text-xs rounded border border-border hover:bg-hoverbg cursor-pointer";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-        <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">{label}</span>
-            {children}
-        </label>
     );
 }
 

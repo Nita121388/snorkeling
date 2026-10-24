@@ -189,7 +189,20 @@ catalogLoadingAtom: PrimitiveAtom<boolean>
 
 `ScheduledTasksEnv` 增加该 RPC 类型。
 
-### 6.3 View（`scheduledtasks-view.tsx`）
+### 6.3 Editor（app 级弹窗）
+
+原编辑器是 block 内的 `absolute inset-0` overlay：宽高被 block 裁掉、窄列堆叠、ESC 与遮罩不生效。
+改为 `frontend/app/modals/scheduledtaskeditormodal.tsx`，注册进 `modalregistry`，用 `FlexiModal`
+（portal 到 `#main`）：
+
+- 尺寸 `w-[min(760px,calc(100vw-40px))] max-h-[min(86vh,calc(100vh-56px))]`，三段结构
+  （header / 滚动 body / footer 操作）。
+- `md:grid-cols-2` 双列，Prompt 与 Workdir 通栏。
+- model 层删除 `editorOpenAtom` / `editingTaskAtom` / `closeEditor`，改由 `modalsModel.pushModal`
+  驱动；`onSave` 回调直接指向 `model.save()`，保存成功后 modal 自行关闭。
+- 目录加载搬进 modal 自身（`loadAgentCatalog`），失败回落自由输入。
+
+### 6.4 View（`scheduledtasks-view.tsx`）
 
 - 删除 `AgentProfiles`、`PiModels`。
 - `EditorOverlay`：

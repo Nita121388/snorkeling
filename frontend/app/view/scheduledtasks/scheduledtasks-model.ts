@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { globalStore } from "@/app/store/jotaiStore";
+import { modalsModel } from "@/app/store/modalmodel";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentProfileInfo,
     invalidateAgentCatalog,
     loadAgentCatalog,
     pickDefaultModel,
 } from "@/app/workspace/agent-catalog";
-import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { ScheduledTasksView } from "./scheduledtasks-view";
-import { WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import * as jotai from "jotai";
+import { ScheduledTasksView } from "./scheduledtasks-view";
 
 type ScheduledTasksEnv = WaveEnvSubset<{
     rpc: {
@@ -77,8 +78,6 @@ export class ScheduledTasksViewModel implements ViewModel {
     tasksAtom: jotai.PrimitiveAtom<ScheduledTaskType[]>;
     loadingAtom: jotai.PrimitiveAtom<boolean>;
     errorAtom: jotai.PrimitiveAtom<string>;
-    editorOpenAtom: jotai.PrimitiveAtom<boolean>;
-    editingTaskAtom: jotai.PrimitiveAtom<ScheduledTaskType | null>;
     historyOpenAtom: jotai.PrimitiveAtom<boolean>;
     historyTaskAtom: jotai.PrimitiveAtom<ScheduledTaskType | null>;
     historyAtom: jotai.PrimitiveAtom<ScheduledTaskRunRecord[]>;
@@ -96,10 +95,10 @@ export class ScheduledTasksViewModel implements ViewModel {
         this.tasksAtom = jotai.atom<ScheduledTaskType[]>([]) as jotai.PrimitiveAtom<ScheduledTaskType[]>;
         this.loadingAtom = jotai.atom<boolean>(true);
         this.errorAtom = jotai.atom<string>(null) as jotai.PrimitiveAtom<string>;
-        this.editorOpenAtom = jotai.atom<boolean>(false);
-        this.editingTaskAtom = jotai.atom<ScheduledTaskType | null>(null) as jotai.PrimitiveAtom<ScheduledTaskType | null>;
         this.historyOpenAtom = jotai.atom<boolean>(false);
-        this.historyTaskAtom = jotai.atom<ScheduledTaskType | null>(null) as jotai.PrimitiveAtom<ScheduledTaskType | null>;
+        this.historyTaskAtom = jotai.atom<ScheduledTaskType | null>(
+            null
+        ) as jotai.PrimitiveAtom<ScheduledTaskType | null>;
         this.historyAtom = jotai.atom<ScheduledTaskRunRecord[]>([]) as jotai.PrimitiveAtom<ScheduledTaskRunRecord[]>;
         this.statusAtom = jotai.atom<string>("") as jotai.PrimitiveAtom<string>;
         this.agentCatalogAtom = jotai.atom<AgentProfileInfo[]>([]) as jotai.PrimitiveAtom<AgentProfileInfo[]>;
@@ -149,20 +148,21 @@ export class ScheduledTasksViewModel implements ViewModel {
         if (agentCatalogSnapshot.length === 0) {
             await this.refreshCatalog(true);
         }
-        globalStore.set(this.editingTaskAtom, makeDefaultDraft());
-        globalStore.set(this.editorOpenAtom, true);
         void this.refreshCatalog(true);
+        modalsModel.pushModal("ScheduledTaskEditorModal", {
+            task: makeDefaultDraft(),
+            isNew: true,
+            onSave: (draft: ScheduledTaskType) => this.save(draft),
+        });
     }
 
     openEdit(task: ScheduledTaskType) {
-        globalStore.set(this.editingTaskAtom, structuredClone(task));
-        globalStore.set(this.editorOpenAtom, true);
         void this.refreshCatalog(true);
-    }
-
-    closeEditor() {
-        globalStore.set(this.editorOpenAtom, false);
-        globalStore.set(this.editingTaskAtom, null);
+        modalsModel.pushModal("ScheduledTaskEditorModal", {
+            task: structuredClone(task),
+            isNew: false,
+            onSave: (draft: ScheduledTaskType) => this.save(draft),
+        });
     }
 
     async save(draft: ScheduledTaskType): Promise<string> {
@@ -179,8 +179,6 @@ export class ScheduledTasksViewModel implements ViewModel {
                 draft.updatedAt = now;
                 await this.env.rpc.ScheduledTaskCreateCommand(TabRpcClient, draft);
             }
-            globalStore.set(this.editorOpenAtom, false);
-            globalStore.set(this.editingTaskAtom, null);
             await this.refresh();
             return null;
         } catch (e) {
