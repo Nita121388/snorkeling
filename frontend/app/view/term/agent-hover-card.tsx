@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CopyButton } from "@/app/element/copybutton";
 import { InfoCard, InfoCardIcon, InfoCardSection } from "@/app/element/info-card";
 import { SessionNoteSection } from "@/app/element/info-card/session-note-section";
 import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
@@ -13,6 +14,7 @@ import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
+import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
 import * as React from "react";
 
@@ -91,6 +93,28 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                   : "var(--secondary-text-color)";
     const isThinking = agentStatus != null && statusState === "working" && agentStatus.phase === "thinking";
     const agentLogo = getAgentLogoByProvider(rawProvider === "" ? "agent" : rawProvider);
+    const [copyFailed, setCopyFailed] = React.useState(false);
+
+    // 失败提示 2.5s 后自清，不留一个常驻的红色 id。
+    React.useEffect(() => {
+        if (!copyFailed) {
+            return;
+        }
+        const handle = setTimeout(() => setCopyFailed(false), 2500);
+        return () => clearTimeout(handle);
+    }, [copyFailed]);
+
+    // 复制结果反馈：CopyButton 成功才变绿勾（2s 恢复），并短暂给按钮绿色底；
+    // 失败时 session id 转红 + title 标 (failed)，2.5s 自清——这张卡 hover 出现、
+    // 移开就消失，放 toast 会和卡片脱钩。
+    const handleCopySessionId = React.useCallback(
+        async (e: React.MouseEvent<HTMLButtonElement>) => {
+            e.stopPropagation();
+            setCopyFailed(false);
+            await copyText(sessionId);
+        },
+        [sessionId]
+    );
     const showMetaRow =
         (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
 
@@ -145,23 +169,15 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
             {/* Session ID 底行（复制） */}
             {sessionId !== "" && (
                 <div className="agent-card-session-id">
-                    <span className="agent-card-session-id-text" title={sessionId}>
+                    <span className={cn("agent-card-session-id-text", { "is-error": copyFailed })} title={sessionId}>
                         {sessionId}
                     </span>
-                    <button
-                        type="button"
+                    <CopyButton
                         className="agent-card-copy-btn"
-                        title="Copy session id"
-                        aria-label="Copy session id"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard?.writeText(sessionId).catch(() => {});
-                        }}
-                    >
-                        <svg viewBox="0 0 24 24">
-                            <path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v16z" />
-                        </svg>
-                    </button>
+                        title={`Copy session id${copyFailed ? " (failed)" : ""}`}
+                        onClick={handleCopySessionId}
+                        onError={() => setCopyFailed(true)}
+                    />
                 </div>
             )}
         </InfoCard>

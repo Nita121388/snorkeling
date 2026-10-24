@@ -313,6 +313,8 @@ export const MessageCard = memo(function MessageCard({
   searchQuery,
   searchActive = false,
   groupStart = true,
+  contextAttrs,
+  contextText,
   children,
 }: {
   message: Message;
@@ -321,6 +323,13 @@ export const MessageCard = memo(function MessageCard({
   searchActive?: boolean;
   /** 是否为同角色连续消息分组的开头（决定上间距 + 组头） */
   groupStart?: boolean;
+  /**
+   * Copy Context 的 DOM 标注（`data-copy-context-kind` / `-meta`）。
+   * 由 session-detail 传入；缺省时不挂属性，不影响任何既有行为。
+   */
+  contextAttrs?: Record<string, string>;
+  /** 「Copy as context」按钮的预格式化文本（与 💡 入口同一函数产出） */
+  contextText?: string;
   /**
    * 归位到这条消息下的子级内容（目前是它派发出去的 subagent 卡片）。
    * 渲染在 meta 行之后、消息块内部，折叠态只占一行。
@@ -347,6 +356,7 @@ export const MessageCard = memo(function MessageCard({
     <div
       ref={registerRef}
       id={`aisession-message-${message.seq}`}
+      {...contextAttrs}
       className={cn("group scroll-mt-3 ly-enter", isUser ? "flex flex-col items-end" : "", groupStart ? "mt-4" : "mt-1")}
     >
       <div
@@ -388,6 +398,14 @@ export const MessageCard = memo(function MessageCard({
             label="Copy message"
             size="xs"
           />
+          {contextText ? (
+            <CopyIconButton
+              text={contextText}
+              label="Copy as context"
+              className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              size="xs"
+            />
+          ) : null}
         </div>
       ) : (
         // AI：meta 行（时间 + #seq + 复制）落在 prose 之外（左对齐）
@@ -406,6 +424,14 @@ export const MessageCard = memo(function MessageCard({
             className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             size="xs"
           />
+          {contextText ? (
+            <CopyIconButton
+              text={contextText}
+              label="Copy as context"
+              className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              size="xs"
+            />
+          ) : null}
         </div>
       )}
       {children}
@@ -416,6 +442,8 @@ export const MessageCard = memo(function MessageCard({
   previous.searchQuery === next.searchQuery &&
   previous.searchActive === next.searchActive &&
   previous.groupStart === next.groupStart &&
+  previous.contextAttrs === next.contextAttrs &&
+  previous.contextText === next.contextText &&
   previous.children === next.children
 );
 MessageCard.displayName = "MessageCard";

@@ -3,6 +3,13 @@
 
 import { openCommonTextSearch } from "@/app/commontext/commontext-events";
 import { addSelectionToCommonText, findDuplicateCommonText, getCommonTextItems } from "@/app/commontext/commontext-model";
+import {
+    CopyContextKindAttr,
+    CopyContextKindSession,
+    CopyContextMetaAttr,
+    parseSessionCopyMeta,
+    resolveSessionContext,
+} from "@/app/element/copy-context-contract";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { fireAndForget } from "@/util/util";
 import { useEffect, useRef, useState } from "react";
@@ -44,9 +51,56 @@ function getClosestSourceLineElement(node: Node | null): HTMLElement | null {
     return getElementFromNode(node)?.closest<HTMLElement>("[data-source-line]") ?? null;
 }
 
+function getClosestCopyContextKindElement(node: Node | null): HTMLElement | null {
+    return (
+        getElementFromNode(node)?.closest<HTMLElement>(
+            `[${CopyContextKindAttr}]`
+        ) ?? null
+    );
+}
+
+/**
+ * Resolve the newer provenance contract (AI session messages, tool calls).
+ *
+ * Kept separate from the file/line branch so the file branch stays byte-for-byte
+ * identical: markdown preview, code editor and tables must not regress.
+ */
+function getContractCopyContextText(
+    selection: Selection | null,
+    sourceNode: Node | null
+): string | null {
+    const kindElement = getClosestCopyContextKindElement(sourceNode);
+    if (kindElement == null) {
+        return null;
+    }
+    if (kindElement.getAttribute(CopyContextKindAttr) !== CopyContextKindSession) {
+        // `agentterm` never resolves through the DOM: xterm renders to canvas and
+        // injects its own menu items. Falling through keeps the file branch below
+        // reachable for anything that nests a code preview inside a session pane.
+        return null;
+    }
+    const meta = parseSessionCopyMeta(kindElement.getAttribute(CopyContextMetaAttr));
+    if (meta == null) {
+        return null;
+    }
+    const selectedText = selection != null && !selection.isCollapsed ? selection.toString() : "";
+    const resolved = resolveSessionContext(meta, selectedText);
+    if (resolved == null || resolved.trim().length === 0) {
+        return null;
+    }
+    return resolved;
+}
+
 export function getCopyContextTextFromDom(selection: Selection | null, target?: EventTarget | null): string | null {
     const range = selection != null && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
     const sourceNode = range?.startContainer ?? (typeof Node !== "undefined" && target instanceof Node ? target : null);
+
+    // New contract first; the file/line contract below is untouched.
+    const contractText = getContractCopyContextText(selection, sourceNode);
+    if (contractText != null) {
+        return contractText;
+    }
+
     const root = getClosestCopyContextRoot(sourceNode);
     if (root == null) {
         return null;
