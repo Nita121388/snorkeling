@@ -16,7 +16,7 @@ import { createBlock } from "@/app/store/global";
 import type { SessionNoteState } from "@/app/store/session-note-hook";
 import { GenActionButton } from "@/app/view/aisessions/gen-action-button";
 import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
-import { UndoNoteBar, useNoteUndo } from "@/app/view/aisessions/undo-toast";
+import { UndoNoteBar, useNoteUndo, type NoteUndoSnapshot } from "@/app/view/aisessions/undo-toast";
 import * as React from "react";
 import {
     InfoCardEmpty,
@@ -62,6 +62,7 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
     const sessionKey = summary?.key ?? state.sessionId;
     const connection = state.connection ?? "";
     const undo = useNoteUndo(state.service, sessionKey, connection);
+    const prevNoteRef = React.useRef<NoteUndoSnapshot | null>(null);
     const [genError, setGenError] = React.useState("");
 
     if (summary == null) {
@@ -93,8 +94,9 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                         kind="metadata"
                         size="xs"
                         onBeforeGenerate={() => {
-                            undo.capture({ note: summary.note ?? "", tags: summary.tags ?? [] });
+                            prevNoteRef.current = { note: summary.note ?? "", tags: summary.tags ?? [] };
                         }}
+                        onDone={() => undo.capture(prevNoteRef.current)}
                         onError={setGenError}
                     />
                 </div>
