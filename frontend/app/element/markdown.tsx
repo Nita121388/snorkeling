@@ -59,7 +59,7 @@ import {
 } from "@/app/element/block-editor/registry";
 import { CopyButton } from "@/app/element/copybutton";
 import { ImageLightbox } from "@/app/element/image-lightbox";
-import { computeCollapsedHiddenFlags, findCollapsedScrollPinIndex } from "@/app/element/markdown-collapse";
+import { computeCollapsedHiddenFlags, findCollapsedScrollAnchorIndex } from "@/app/element/markdown-collapse";
 import {
     deleteBlockRange,
     expandBlockSelection,
@@ -4825,32 +4825,35 @@ const Markdown = ({
             }),
             collapsedHeadings
         );
-        // 用户实际 toggle 折叠/展开时（collapsedHeadings 引用变化）钉住阅读位置：折叠用
-        // display:none 移除章节高度，Chromium 的滚动锚定算法会挑错锚点（跳到文档顶/底）
-        // 或在锚点被隐藏后强制钳制。这里选一个「折叠后仍可见、且位于视口顶部附近」的块，
-        // 应用 class 前后测量其顶部位移，反向补偿 scrollTop，让阅读内容原地不动。
+        // User toggled：折叠/展开会改变上方内容的高度，视口要跟着补，让正在读的文字不动。
+        // display:none 会让 Chromium 自己的滚动锚定也调一次 scrollTop（和这里叠加 → 二次
+        // 偏移），所以 .content 上已关掉 overflow-anchor，滚动位置只由这里算。
+        //
+        // 锚点选「折叠后仍可见、且起始位置落在视口内」的第一个块：它的顶部位移正好等于
+        // 被移除/恢复的高度，反向补偿即可。折叠区在视口下方时锚点为 null —— 上方内容根本
+        // 没动，绝不能改 scrollTop（旧规则钉住视口下方的块并补它的位移，整页被拽走一屏）。
         const isUserToggle =
             collapsedHeadingsPrevRef.current != null && collapsedHeadingsPrevRef.current !== collapsedHeadings;
-        const viewportTop = viewport.getBoundingClientRect().top;
-        let pinIndex: number | null = null;
-        let pinOldTop = 0;
+        let anchorIndex: number | null = null;
+        let anchorOldTop = 0;
         if (isUserToggle) {
-            const preToggleBottoms = Array.from(
-                root.children,
-                (elem) => (elem as HTMLElement).getBoundingClientRect().bottom
-            );
-            pinIndex = findCollapsedScrollPinIndex(flags, preToggleBottoms, viewportTop);
-            if (pinIndex != null) {
-                pinOldTop = (root.children[pinIndex] as HTMLElement).getBoundingClientRect().top;
+            const preTops = Array.from(root.children, (elem) => (elem as HTMLElement).getBoundingClientRect().top);
+            const rect = viewport.getBoundingClientRect();
+            anchorIndex = findCollapsedScrollAnchorIndex(flags, preTops, rect.top, rect.bottom);
+            if (anchorIndex != null) {
+                anchorOldTop = preTops[anchorIndex];
             }
         }
         Array.from(root.children).forEach((elem, i) => {
             (elem as HTMLElement).classList.toggle("collapsed-hidden", flags[i]);
         });
-        if (isUserToggle && pinIndex != null) {
-            const pinNewTop = (root.children[pinIndex] as HTMLElement).getBoundingClientRect().top;
-            const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-            viewport.scrollTop = Math.max(0, Math.min(viewport.scrollTop + (pinNewTop - pinOldTop), maxScrollTop));
+        if (isUserToggle && anchorIndex != null) {
+            const anchorNewTop = (root.children[anchorIndex] as HTMLElement).getBoundingClientRect().top;
+            const delta = anchorNewTop - anchorOldTop;
+            if (delta !== 0) {
+                const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+                viewport.scrollTop = Math.max(0, Math.min(viewport.scrollTop + delta, maxScrollTop));
+            }
         }
         collapsedHeadingsPrevRef.current = collapsedHeadings;
     };

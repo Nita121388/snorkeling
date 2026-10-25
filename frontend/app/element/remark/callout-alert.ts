@@ -42,6 +42,9 @@ export const remarkCalloutAlert: Plugin<[], Root> = () => (tree: any) => {
         const titleChildren = first?.children ? cloneInlineChildren(first.children, prefix) : [];
         // Every callout/blockquote gets a fixed emoji affordance. The emoji itself
         // remains opt-in: an empty button is shown only as an add interaction.
+        // NOTE: the first paragraph is always wrapped in `.markdown-alert-title` — that is
+        // only a positioning context for the emoji affordance. Typography (bold title vs.
+        // normal prose) is scoped in markdown.scss so a plain blockquote stays a quote.
         const isTitle = true;
         const button = {
             type: "emphasis",

@@ -41,26 +41,49 @@ export function computeCollapsedHiddenFlags(
 }
 
 /**
- * Picks the top-level block the viewport should stay pinned to when a collapsed-
- * heading visibility change shrinks the document height. Collapsing hides blocks
- * with display:none, which makes Chromium's own scroll anchoring pick a wrong or
- * missing anchor and jump the view to the document top/bottom.
+ * Picks the block the viewport should stay pinned to when a heading collapse/expand changes
+ * the document height. Whatever the browser does natively (scroll anchoring) is disabled on
+ * the scroll container (`overflow-anchor: none`), so this index is the single source of truth
+ * for whether scrollTop moves at all.
  *
- * Rule: the first block that (a) survives the change and (b) sits at or below the
- * viewport top (pre-toggle rect.bottom). If the whole viewport lies inside the
- * newly-hidden region, fall back to the first surviving block anywhere — the view
- * then scrolls back up to the collapsed section boundary. Returns null when every
- * block is hidden (nothing left to pin to — let the browser clamp).
+ * Rule: the first block that is (a) still visible after the toggle and (b) *starts* inside the
+ * viewport — `viewportTop <= preTop < viewportBottom`. Its measured top delta is then applied
+ * to scrollTop, which cancels the shift.
+ *
+ * Why "starts inside the viewport" and not "first block below the viewport top" (the previous
+ * rule): a block below the fold is not what the reader is looking at, but it still slides up by
+ * the collapsed height, so compensating its delta scrolled the whole page by that height — the
+ * collapse-jumps-a-screen bug. With this rule:
+ *
+ * - collapse a section whose content lies below the fold → nothing visible moves → null → 0
+ * - collapse/expand a section above the viewport → the first visible block's delta is exactly
+ *   the height restored/removed above it → cancels the jump
+ * - collapse the section the reader is inside → no surviving block starts in the viewport →
+ *   null → the page does not scroll, the following content just rises into place
+ *
+ * Returns null when no compensation should be applied.
  */
-export function findCollapsedScrollPinIndex(
-    flags: readonly boolean[],
-    preToggleBottoms: ReadonlyArray<number>,
-    viewportTop: number
+export function findCollapsedScrollAnchorIndex(
+    hiddenAfter: readonly boolean[],
+    preToggleTops: readonly number[],
+    viewportTop: number,
+    viewportBottom: number
 ): number | null {
-    const atOrBelowViewport = flags.findIndex((hidden, i) => !hidden && preToggleBottoms[i] > viewportTop);
-    if (atOrBelowViewport >= 0) {
-        return atOrBelowViewport;
+    for (let i = 0; i < hiddenAfter.length; i++) {
+        if (hiddenAfter[i]) {
+            continue;
+        }
+        const top = preToggleTops[i];
+        if (!Number.isFinite(top) || top < viewportTop) {
+            // Hidden, or straddling / above the fold: not the block the reader is on.
+            continue;
+        }
+        if (top >= viewportBottom) {
+            // The first surviving block already starts below the viewport, so nothing the
+            // reader can see has moved. Compensating here is what used to yank the page.
+            return null;
+        }
+        return i;
     }
-    const firstSurvivor = flags.findIndex((hidden) => !hidden);
-    return firstSurvivor >= 0 ? firstSurvivor : null;
+    return null;
 }
