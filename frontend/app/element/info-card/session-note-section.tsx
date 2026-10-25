@@ -4,14 +4,20 @@
 // SessionNoteSection — InfoCard 里可复用的 note / tags 区段。
 //
 // 数据全部来自 useSessionNoteState（session-note-hook.ts），本组件只负责渲染：
-//   - 标题 + AI 生成按钮 + 保存状态图标
+//   - 标题 + AI 一键生成按钮（后台静默入队，不阻塞、不需要 Apply）+ 保存状态图标
 //   - note 预览（点击进入编辑）或 textarea
 //   - tags chips
-//   - 错误 / AI 提案面板
+//   - 错误提示 / note 被 AI 覆盖后的 Undo
 //
 // AgentHoverCard（term agent block）与 SessionDetailInfoCard（会话详情 / GUI Chat）
 // 共用，避免两份 note UI 漂移。
 
+import { createBlock } from "@/app/store/global";
+import type { SessionNoteState } from "@/app/store/session-note-hook";
+import { GenActionButton } from "@/app/view/aisessions/gen-action-button";
+import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
+import { UndoNoteBar, useNoteUndo } from "@/app/view/aisessions/undo-toast";
+import * as React from "react";
 import {
     InfoCardEmpty,
     InfoCardError,
@@ -23,10 +29,6 @@ import {
     InfoCardText,
 } from "./info-card";
 import { InfoCardMarquee } from "./marquee";
-import type { SessionNoteState } from "@/app/store/session-note-hook";
-import { createBlock } from "@/app/store/global";
-import { cn } from "@/util/util";
-import * as React from "react";
 
 function statusIcon(state: SessionNoteState): string {
     return state.saveStatus === "saving"
@@ -51,25 +53,16 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
         previewText,
         title,
         error,
-        metadataStatus,
-        metadataError,
-        metadataNote,
-        metadataTags,
-        setMetadataNote,
-        setMetadataStatus,
-        generateMetadata,
-        applyMetadata,
-        titleSuggestion,
-        titleStatus,
-        titleError,
-        generateTitle,
-        applyTitle,
-        dismissTitle,
     } = state;
 
     const openAIConfig = React.useCallback(() => {
         void createBlock({ meta: { view: "waveconfig", file: "waveai.json" } }, false, true);
     }, []);
+
+    const sessionKey = summary?.key ?? state.sessionId;
+    const connection = state.connection ?? "";
+    const undo = useNoteUndo(state.service, sessionKey, connection);
+    const [genError, setGenError] = React.useState("");
 
     if (summary == null) {
         return null;
@@ -82,82 +75,64 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                 <InfoCardHead className="min-w-0 flex-1">
                     <InfoCardIcon icon={`fa-sharp fa-solid ${statusIcon(state)}`} />
                     <InfoCardMarquee text={title} />
+                    <TitleSourceBadge titleSource={summary.titleSource} className="ml-1" />
                 </InfoCardHead>
                 <div className="flex shrink-0 items-center gap-0.5">
-                    <button
-                        type="button"
-                        className="shrink-0 cursor-pointer rounded px-1.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
-                        title="Generate title with AI"
-                        aria-label="Generate title with AI"
-                        disabled={titleStatus === "loading" || state.sessionId === ""}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            void generateTitle();
+                    {/* 一键后台生成：点击即入队，worker 串行生成并直接落库。 */}
+                    <GenActionButton
+                        sessionKey={sessionKey}
+                        connection={connection}
+                        kind="title"
+                        titleSource={summary.titleSource}
+                        size="xs"
+                        onError={setGenError}
+                    />
+                    <GenActionButton
+                        sessionKey={sessionKey}
+                        connection={connection}
+                        kind="metadata"
+                        size="xs"
+                        onBeforeGenerate={() => {
+                            undo.capture({ note: summary.note ?? "", tags: summary.tags ?? [] });
                         }}
-                    >
-                        <i
-                            className={cn(
-                                "fa-sharp fa-solid",
-                                titleStatus === "loading" ? "fa-spinner animate-spin" : "fa-heading"
-                            )}
-                        />
-                    </button>
-                    <button
-                        type="button"
-                        className="shrink-0 cursor-pointer rounded px-1.5 py-1 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
-                        title="Generate note and tags with AI"
-                        aria-label="Generate note and tags with AI"
-                        disabled={metadataStatus === "loading" || state.sessionId === ""}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            void generateMetadata();
-                        }}
-                    >
-                        <i
-                            className={cn(
-                                "fa-sharp fa-solid",
-                                metadataStatus === "loading" ? "fa-spinner animate-spin" : "fa-wand-magic-sparkles"
-                            )}
-                        />
-                    </button>
+                        onError={setGenError}
+                    />
                 </div>
             </div>
-            {/* AI 标题提案：只展示建议，点 Apply 才写入。 */}
-            {titleStatus === "loading" ? (
-                <div className="text-xs text-secondary">Generating title…</div>
-            ) : null}
-            {titleStatus === "ready" ? (
-                <div className="space-y-2 rounded border border-border bg-surface-soft p-2">
-                    <div className="break-words text-xs text-primary">{titleSuggestion || "(empty title)"}</div>
-                    <div className="flex justify-end gap-1.5">
-                        <button
-                            type="button"
-                            className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover"
-                            onClick={dismissTitle}
-                        >
-                            Dismiss
-                        </button>
-                        <button
-                            type="button"
-                            className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover"
-                            onClick={() => void generateTitle()}
-                        >
-                            Regenerate
-                        </button>
-                        <button
-                            type="button"
-                            className="cursor-pointer rounded bg-action px-2 py-1 text-[10px] text-actiontext hover:bg-actionhover disabled:opacity-60"
-                            disabled={titleSuggestion.trim() === ""}
-                            onClick={() => void applyTitle()}
-                        >
-                            Apply
-                        </button>
-                    </div>
+            {genError ? (
+                <div className="flex items-center gap-2 text-[10px] text-warning">
+                    <span className="min-w-0 flex-1 break-words">{genError}</span>
+                    <button
+                        type="button"
+                        className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-secondary hover:bg-hover hover:text-primary"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            openAIConfig();
+                        }}
+                    >
+                        Open AI settings
+                    </button>
+                    <button
+                        type="button"
+                        className="shrink-0 cursor-pointer text-secondary hover:text-primary"
+                        title="Dismiss"
+                        aria-label="Dismiss"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setGenError("");
+                        }}
+                    >
+                        <i className="fa-sharp fa-solid fa-xmark" />
+                    </button>
                 </div>
             ) : null}
-            {titleStatus === "error" && titleError ? (
-                <InfoCardError>{titleError}</InfoCardError>
-            ) : null}
+            <UndoNoteBar
+                pending={undo.pending}
+                error={undo.error}
+                onUndo={() => void undo.undo()}
+                onDismiss={undo.dismiss}
+                className="my-0.5"
+            />
             {isEditing ? (
                 <InfoCardInput
                     ref={inputRef}
@@ -205,66 +180,6 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                 </div>
             )}
             {error ? <InfoCardError>{error}</InfoCardError> : null}
-            {metadataStatus === "loading" ? (
-                <div className="text-xs text-secondary">Generating note and tags…</div>
-            ) : null}
-            {metadataStatus === "ready" ? (
-                <div className="space-y-2 rounded border border-border bg-surface-soft p-2">
-                    <textarea
-                        className="min-h-[60px] w-full resize-none rounded border border-border bg-transparent px-2 py-1 text-xs outline-none focus:border-accent"
-                        value={metadataNote}
-                        aria-label="AI generated note"
-                        onChange={(event) => {
-                            setMetadataNote(event.target.value);
-                        }}
-                    />
-                    <div className="flex flex-wrap gap-1">
-                        {metadataTags.map((tag) => (
-                            <span
-                                key={tag}
-                                className="rounded border border-border px-1.5 py-0.5 text-[10px] text-secondary"
-                            >
-                                #{tag}
-                            </span>
-                        ))}
-                    </div>
-                    <div className="flex justify-end gap-1.5">
-                        <button
-                            type="button"
-                            className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover"
-                            onClick={() => setMetadataStatus("idle")}
-                        >
-                            Dismiss
-                        </button>
-                        <button
-                            type="button"
-                            className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover"
-                            onClick={() => void generateMetadata()}
-                        >
-                            Regenerate
-                        </button>
-                        <button
-                            type="button"
-                            className="cursor-pointer rounded bg-action px-2 py-1 text-[10px] text-actiontext hover:bg-actionhover"
-                            onClick={() => void applyMetadata()}
-                        >
-                            Apply
-                        </button>
-                    </div>
-                </div>
-            ) : null}
-            {metadataStatus === "error" && metadataError ? (
-                <div className="space-y-1.5">
-                    <InfoCardError>{metadataError}</InfoCardError>
-                    <button
-                        type="button"
-                        className="cursor-pointer rounded border border-border px-2 py-1 text-[10px] text-secondary hover:bg-hover hover:text-primary"
-                        onClick={openAIConfig}
-                    >
-                        Open AI settings
-                    </button>
-                </div>
-            ) : null}
         </InfoCardSection>
     );
 }

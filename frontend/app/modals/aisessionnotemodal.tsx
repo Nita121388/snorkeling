@@ -4,8 +4,9 @@
 import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
-import { dispatchAISessionNoteUpdated } from "@/app/view/aisessions/session-note-events";
+import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "@/app/view/aisessions/note-ai-controls";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "@/app/view/aisessions/session-note-autosave";
+import { dispatchAISessionNoteUpdated } from "@/app/view/aisessions/session-note-events";
 import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
 import { shortSessionId } from "@/app/view/aisessions/utils";
@@ -28,6 +29,8 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
     const [error, setError] = useState("");
     const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("idle");
     const latestDraftRef = useRef("");
+    const noteAI = useNoteAIGenerate(sessionId, connection);
+    const [aiTags, setAiTags] = useState<string[]>([]);
 
     useEffect(() => {
         let cancelled = false;
@@ -65,7 +68,7 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
         async (nextNote: string): Promise<boolean> => {
             if (summary == null || saveStatus === "saving") return false;
             const parsed = extractSessionTagsFromNote(nextNote);
-            const tags = mergeSessionTags(summary.tags ?? [], parsed.tags);
+            const tags = mergeSessionTags(mergeSessionTags(summary.tags ?? [], parsed.tags), aiTags);
             if (parsed.note === (summary.note ?? "") && sessionTagsEqual(tags, summary.tags)) {
                 setError("");
                 return true;
@@ -89,12 +92,12 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
                 return false;
             }
         },
-        [saveStatus, service, summary]
+        [saveStatus, service, summary, aiTags]
     );
 
     const currentNote = summary?.note ?? "";
     const parsedNoteDraft = extractSessionTagsFromNote(noteDraft);
-    const nextTags = mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags);
+    const nextTags = mergeSessionTags(mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags), aiTags);
     const trimmedNoteDraft = noteDraft.trim();
     const noteUnchanged = parsedNoteDraft.note === currentNote && sessionTagsEqual(nextTags, summary?.tags);
     const saving = saveStatus === "saving";
@@ -139,11 +142,7 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
                   : "";
 
     return (
-        <Modal
-            className="w-[min(680px,calc(100vw-32px))]"
-            onClose={closeModal}
-            onClickBackdrop={closeModal}
-        >
+        <Modal className="w-[min(680px,calc(100vw-32px))]" onClose={closeModal} onClickBackdrop={closeModal}>
             <div className="space-y-3 text-primary">
                 <div className="space-y-1 pr-7">
                     <div className="text-base font-semibold">Session Note</div>
@@ -168,6 +167,28 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
                     </div>
                 ) : (
                     <>
+                        <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1 truncate text-base font-semibold text-primary">
+                                Session Note
+                            </div>
+                            <NoteAIButton status={noteAI.status} onGenerate={() => void noteAI.generate()} />
+                        </div>
+                        <NoteAISuggestionBar
+                            suggestion={noteAI.suggestion}
+                            status={noteAI.status}
+                            error={noteAI.error}
+                            configError={noteAI.configError}
+                            onApply={(suggestion) => {
+                                latestDraftRef.current = suggestion.note;
+                                setNoteDraft(suggestion.note);
+                                setAiTags(suggestion.tags);
+                                setSaveStatus("idle");
+                                noteAI.dismiss();
+                            }}
+                            onRegenerate={() => void noteAI.generate()}
+                            onDismiss={noteAI.dismiss}
+                            onOpenSettings={noteAI.openAISettings}
+                        />
                         {error ? (
                             <div className="rounded border border-error/40 bg-error/10 p-2 text-xs text-error">
                                 {error}

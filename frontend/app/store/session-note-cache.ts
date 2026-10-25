@@ -108,9 +108,7 @@ function handleNoteUpdatedEvent(event: Event): void {
         return;
     }
     const summary = event.detail.summary;
-    const candidates = [summary.key, summary.id].filter(
-        (id): id is string => typeof id === "string" && id !== ""
-    );
+    const candidates = [summary.key, summary.id].filter((id): id is string => typeof id === "string" && id !== "");
     if (candidates.length === 0) {
         return;
     }
@@ -129,9 +127,7 @@ function handleNoteUpdatedEvent(event: Event): void {
 // {key, title, titleSource}; replacing wholesale would blank the note / tags /
 // marked fields that other surfaces (hover cards, info bars) are showing.
 function applyTitleUpdate(incoming: SessionSummary): void {
-    const candidates = [incoming.key, incoming.id].filter(
-        (id): id is string => typeof id === "string" && id !== ""
-    );
+    const candidates = [incoming.key, incoming.id].filter((id): id is string => typeof id === "string" && id !== "");
     if (candidates.length === 0) {
         return;
     }
@@ -145,9 +141,20 @@ function applyTitleUpdate(incoming: SessionSummary): void {
         }
         clearRetryTimer(entry);
         entry.retryCount = 0;
+        // 标题事件也可能来自 metadata 生成（summary 带 note/tags）。只 merge
+        // 实际存在的字段，避免自动标题的“只有 title”事件清空 note/tags。
+        const merged: SessionSummary = {
+            ...existing,
+            title: incoming.title ?? existing.title,
+            titleSource: incoming.titleSource ?? existing.titleSource,
+        };
+        if (incoming.note !== undefined) merged.note = incoming.note;
+        if (incoming.tags !== undefined) merged.tags = incoming.tags;
+        if (incoming.marked !== undefined) merged.marked = incoming.marked;
+        if (incoming.updatedAt !== undefined) merged.updatedAt = incoming.updatedAt;
         setSnapshot(entry, {
             status: "loaded",
-            summary: { ...existing, title: incoming.title, titleSource: incoming.titleSource },
+            summary: merged,
             error: "",
             loadedAt: Date.now(),
         });
@@ -295,9 +302,7 @@ export function subscribeSessionNote(
     };
 }
 
-export type SaveSessionNoteResult =
-    | { status: "ok"; summary: SessionSummary }
-    | { status: "error"; error: string };
+export type SaveSessionNoteResult = { status: "ok"; summary: SessionSummary } | { status: "error"; error: string };
 
 /**
  * 保存 note + tags。

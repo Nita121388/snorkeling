@@ -9,7 +9,7 @@ AI 会话（Agent block / 历史会话详情）当前在「学习回看一个 AI
 | Lane | 子任务 | 优先级 |
 |---|---|---|
 | L1 | AISessions full-load without stalls | P0 |
-| L2 | AISessions annotations on messages and commands | P1 |
+| L2 | AISessions annotations（选区级 `10-19-aisessions-annotate` + 节点级 `10-25-aisessions-annotation-timeline`） | P1 |
 | L3 | AISessions fold subagents into parent timeline | P1 |
 | L4 | AISessions refresh icon and header overlap | P2 |
 | L5 | Preview txt and html multi-mode open | P2 |
@@ -28,7 +28,7 @@ AI 会话（Agent block / 历史会话详情）当前在「学习回看一个 AI
 ## 依赖图
 
 ```
-L1 (full-load) ──> L2 (soft-delete)
+L1 (full-load) ──> L2 (annotations)
 L1 ──> L7 (block separation，复用 detail 加载契约)
 L3、L4、L5、L6 相互独立，可与 L1 并行
 ```

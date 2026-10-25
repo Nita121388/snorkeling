@@ -66,6 +66,28 @@ declare global {
         enabled?: boolean;
     };
 
+    // aisessionsservice.AISessionsAutoGenerateRequest
+    type AISessionsAutoGenerateRequest = {
+        ids: string[];
+        connection?: string;
+        kind: string;
+        force?: boolean;
+        aiMode?: string;
+    };
+
+    // aisessionsservice.AISessionsAutoGenerateResponse
+    type AISessionsAutoGenerateResponse = {
+        queued: string[];
+        skipped: AISessionsAutoGenerateSkip[];
+        errors?: string[];
+    };
+
+    // aisessionsservice.AISessionsAutoGenerateSkip
+    type AISessionsAutoGenerateSkip = {
+        id: string;
+        reason: string;
+    };
+
     // aisessionsservice.AISessionsBackupRequest
     type AISessionsBackupRequest = {
         connection?: string;
@@ -1620,6 +1642,18 @@ declare global {
         configerrors: ConfigError[];
         version: string;
         buildtime: string;
+    };
+
+    // aisessions.GenerationStatusEvent
+    type GenerationStatusEvent = {
+        key: string;
+        kind: string;
+        connection?: string;
+        state: string;
+        attempt: number;
+        maxAttempts: number;
+        error?: string;
+        updatedAt: number;
     };
 
     // agentstatus.HookInstallResult

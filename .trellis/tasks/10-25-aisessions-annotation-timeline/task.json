@@ -1,0 +1,31 @@
+{
+  "id": "aisessions-annotation-timeline",
+  "name": "aisessions-annotation-timeline",
+  "title": "AI 会话节点批注时间线与 AI 生成",
+  "description": "Node-level annotations anchored on Message.ItemKey: left timeline rail in session detail with jump + hover cards, manual note editing (title/body/tags/kind) with AI assist on every field, AI timeline generation as drafts that never overwrite user-edited entries, cross-session annotation library block and Obsidian markdown export",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-25",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-25-aisessions-annotation-store",
+    "10-25-aisessions-annotation-timeline-ui",
+    "10-25-aisessions-annotation-ai",
+    "10-25-aisessions-annotation-export"
+  ],
+  "parent": "10-19-aisessions-ux-perf-overhaul",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

@@ -24,28 +24,28 @@ const (
 )
 
 type SessionSummary struct {
-	Key          string   `json:"key"`
-	ID           string   `json:"id"`
-	Source       string   `json:"source"`
-	Title        string   `json:"title,omitempty"`
-	TitleSource  string   `json:"titleSource,omitempty"`
+	Key         string `json:"key"`
+	ID          string `json:"id"`
+	Source      string `json:"source"`
+	Title       string `json:"title,omitempty"`
+	TitleSource string `json:"titleSource,omitempty"`
 	// 后台 AI 标题自动生成的幂等标记（不暴露给前端）。
 	// AITitleAttemptedAt > 0 表示已经尝试过（无论成功失败），不再自动重试。
-	AITitleAttemptedAt          int64 `json:"-"`
-	AITitleAttemptMessageCount  int   `json:"-"`
-	ProjectPath  string   `json:"projectPath,omitempty"`
-	CreatedAt    int64    `json:"createdAt,omitempty"`
-	UpdatedAt    int64    `json:"updatedAt,omitempty"`
-	MessageCount int      `json:"messageCount,omitempty"`
-	FilePath     string   `json:"filePath,omitempty"`
-	VendorID     string   `json:"vendorid,omitempty"`
-	ConfigDir    string   `json:"configdir,omitempty"`
-	Snippet      string   `json:"snippet,omitempty"`
-	Marked       bool     `json:"marked,omitempty"`
-	Note         string   `json:"note,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
-	Missing      bool     `json:"missing,omitempty"`
-	Live         bool     `json:"live,omitempty"`
+	AITitleAttemptedAt         int64    `json:"-"`
+	AITitleAttemptMessageCount int      `json:"-"`
+	ProjectPath                string   `json:"projectPath,omitempty"`
+	CreatedAt                  int64    `json:"createdAt,omitempty"`
+	UpdatedAt                  int64    `json:"updatedAt,omitempty"`
+	MessageCount               int      `json:"messageCount,omitempty"`
+	FilePath                   string   `json:"filePath,omitempty"`
+	VendorID                   string   `json:"vendorid,omitempty"`
+	ConfigDir                  string   `json:"configdir,omitempty"`
+	Snippet                    string   `json:"snippet,omitempty"`
+	Marked                     bool     `json:"marked,omitempty"`
+	Note                       string   `json:"note,omitempty"`
+	Tags                       []string `json:"tags,omitempty"`
+	Missing                    bool     `json:"missing,omitempty"`
+	Live                       bool     `json:"live,omitempty"`
 	// ParentKey is the session key of the conversation that spawned this one (pi
 	// subagent runs and forks). Empty means the row is a top-level session.
 	ParentKey string `json:"parentKey,omitempty"`
@@ -129,10 +129,26 @@ type ScanStatusEvent struct {
 
 // TitleUpdatedEvent is published as a wps event when the background auto-title
 // worker finishes writing an AI title for a session. The GUI uses it to refresh
-// the affected row / tab title without polling.
+// the affected row / tab title without polling. Metadata generations reuse the
+// same event: the summary carries note/tags, which the GUI merges when defined.
 type TitleUpdatedEvent struct {
 	Connection string         `json:"connection,omitempty"`
 	Summary    SessionSummary `json:"summary"`
+}
+
+// GenerationStatusEvent is published as a wps event on every background
+// generation state transition (queued / running / done / failed). Manual jobs
+// report attempt/maxAttempts so the GUI can show retry progress; automatic jobs
+// always report maxAttempts=1.
+type GenerationStatusEvent struct {
+	Key         string `json:"key"`
+	Kind        string `json:"kind"` // title | metadata | both
+	Connection  string `json:"connection,omitempty"`
+	State       string `json:"state"` // queued | running | done | failed
+	Attempt     int    `json:"attempt"`
+	MaxAttempts int    `json:"maxAttempts"`
+	Error       string `json:"error,omitempty"`
+	UpdatedAt   int64  `json:"updatedAt"`
 }
 
 type SessionFile struct {

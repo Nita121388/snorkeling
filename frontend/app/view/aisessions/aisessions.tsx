@@ -7,26 +7,34 @@ import type { RefreshStatus } from "@/app/element/refresh-status-icon";
 import { RefreshStatusIcon, deriveRefreshStatus } from "@/app/element/refresh-status-icon";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
+import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
+import { isDragMovement, keysUnderRect, rectToCss, type Rect } from "@/util/selectionrect";
 import { cn, fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import "../../session-overview/session-overview.scss";
-import { ExpandAllTagsButton, GroupModeSwitch, IconButton, SortButton, SubSessionsToggle, type ListGroupMode } from "./controls";
-import { SessionBatchBar } from "./session-batch-bar";
+import { autoGenerate } from "./aisession-gen-store";
+import {
+    ExpandAllTagsButton,
+    GroupModeSwitch,
+    IconButton,
+    SortButton,
+    SubSessionsToggle,
+    type ListGroupMode,
+} from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { ScanProgressStrip, SkeletonSessionRows } from "./scan-progress";
 import type { ScanStatus } from "./scan-status-logic";
-import type { BatchCopyKind } from "./utils";
-import { isDragMovement, keysUnderRect, rectToCss, type Rect } from "@/util/selectionrect";
+import { SessionBatchBar } from "./session-batch-bar";
 import { SessionDetailPane } from "./session-detail";
 import { openAISessionDetailFromList, openAISessionNewChatFromList } from "./session-detail-block";
 import {
@@ -42,8 +50,8 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
 import { normalizeSessionTags } from "./session-tags";
-import { collectParentKeys } from "./session-tree";
 import { mergeSessionTimeline } from "./session-timeline-sync";
+import { collectParentKeys } from "./session-tree";
 import { defaultChatSource } from "./sources";
 import type { DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
 import {
@@ -58,6 +66,7 @@ import {
 } from "./types";
 import { useScanStatus } from "./use-scan-status";
 import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
+import type { BatchCopyKind } from "./utils";
 import {
     applySelectionRange,
     buildBatchCopyText,
@@ -75,10 +84,10 @@ import {
     pathFilterEqual,
     pathSelectionsEqual,
     pruneSelectionToVisible,
-    reconcilePathSets,
     readExpandAllTagsPreference,
     readGroupPreference,
     readSortPreference,
+    reconcilePathSets,
     restoreMetaForSession,
     shouldStartEmptyChat,
     sortSessionsByTime,
@@ -131,7 +140,9 @@ export class AiSessionsViewModel implements ViewModel {
     // 选区始终是「当前可见会话」的子集（筛选/刷新后由 pruneSelectionToVisible 裁剪）。
     selectedKeysAtom = jotai.atom<string[]>([]);
     selectionAnchorAtom = jotai.atom<string>("");
-    marqueeRectAtom = jotai.atom<{ left: number; top: number; width: number; height: number } | null>(null) as jotai.PrimitiveAtom<{
+    marqueeRectAtom = jotai.atom<{ left: number; top: number; width: number; height: number } | null>(
+        null
+    ) as jotai.PrimitiveAtom<{
         left: number;
         top: number;
         width: number;
@@ -1256,6 +1267,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const pathExcludes = jotai.useAtomValue(model.pathExcludesAtom);
     const [filtersOpen, setFiltersOpen] = jotai.useAtom(model.filtersOpenAtom);
     const selectedKeys = jotai.useAtomValue(model.selectedKeysAtom);
+    const autoGenService = useMemo(() => new AISessionsServiceType(), []);
     const marqueeRect = jotai.useAtomValue(model.marqueeRectAtom);
     const [copiedKind, setCopiedKind] = useState<BatchCopyKind | null>(null);
     const loading = jotai.useAtomValue(model.loadingAtom);
@@ -1380,8 +1392,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                 setExpandedParents([...base]);
                 setAutoExpandedParents(autoBase);
             }
-            const currentlyExpanded =
-                base.includes(sessionKey) || autoBase.includes(sessionKey);
+            const currentlyExpanded = base.includes(sessionKey) || autoBase.includes(sessionKey);
             // 自动展开不是用户选择：点一下箭头就应该能把它收起来，所以两处都清，
             // 并记进抑制集，避免命中集合变化时又被自动加回来。
             if (currentlyExpanded) {
@@ -1396,9 +1407,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     next.add(sessionKey);
                     return next;
                 });
-                setExpandedParents((current) =>
-                    current.includes(sessionKey) ? current : [...current, sessionKey]
-                );
+                setExpandedParents((current) => (current.includes(sessionKey) ? current : [...current, sessionKey]));
                 return;
             }
             setExpandedParents((current) =>
@@ -1516,8 +1525,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
             : [...new Set([...expandedParents, ...autoExpandedParents])];
     }, [subSessionsOverride, allParentKeys, autoExpandedParents, expandedParents]);
     const allSubSessionsExpanded =
-        allParentKeys.length > 0 &&
-        allParentKeys.every((key) => renderedExpandedParents.includes(key));
+        allParentKeys.length > 0 && allParentKeys.every((key) => renderedExpandedParents.includes(key));
 
     const toggleSubSessions = useCallback(() => {
         const expandedNow =
@@ -1632,6 +1640,20 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         };
         window.addEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
         return () => window.removeEventListener(AiSessionNoteUpdatedEvent, handleNoteUpdated);
+    }, [model]);
+
+    // 后台 AI 生成（标题 / note+tags）完成后后端广播 titleupdated；
+    // 列表需要据此刷新行标题与 note/tags，否则只有已订阅的卡片会变。
+    useEffect(() => {
+        return waveEventSubscribeSingle<"aisessions:titleupdated">({
+            eventType: "aisessions:titleupdated",
+            handler: (event) => {
+                const summary = event.data?.summary;
+                if (summary != null) {
+                    model.replaceSession(summary);
+                }
+            },
+        });
     }, [model]);
 
     const selectedSession = visibleSessions.find((session) => session.key === selectedKey);
@@ -1813,7 +1835,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                 key: (el as HTMLElement).dataset.sessionKey ?? "",
                 el: el as HTMLElement,
             }));
-            const hit = keysUnderRect(rect, rows.filter((row) => row.key !== ""));
+            const hit = keysUnderRect(
+                rect,
+                rows.filter((row) => row.key !== "")
+            );
             const base = marqueeAdditiveRef.current ? marqueeBaseRef.current : [];
             const merged = [...base];
             for (const key of hit) {
@@ -2093,12 +2118,26 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                             ) : null}
                             <SessionBatchBar
                                 selectedCount={selectedKeys.length}
+                                selectedKeys={selectedKeys}
+                                connection={model.getConnection()}
                                 copiedKind={copiedKind}
                                 starred={selectionAllStarred}
                                 onCopy={copySelection}
                                 onStar={() => setStarredForSelection(true)}
                                 onUnstar={() => setStarredForSelection(false)}
                                 onClear={clearSelection}
+                                onAutoGenerate={(kind) => {
+                                    const connection = model.getConnection();
+                                    void autoGenerate(autoGenService, {
+                                        ids: selectedKeys,
+                                        connection,
+                                        kind,
+                                    }).then((result) => {
+                                        if (!result.ok) {
+                                            globalStore.set(model.errorAtom, result.error);
+                                        }
+                                    });
+                                }}
                             />
                             <div
                                 ref={marqueeContainerRef}
@@ -2171,7 +2210,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                     // Shift+点击 = 从锚点到当前行的范围选。
                                                     if (event.shiftKey) {
                                                         const anchor = globalStore.get(model.selectionAnchorAtom);
-                                                        const range = applySelectionRange(selectableKeys, anchor, session.key);
+                                                        const range = applySelectionRange(
+                                                            selectableKeys,
+                                                            anchor,
+                                                            session.key
+                                                        );
                                                         globalStore.set(model.selectedKeysAtom, range);
                                                         globalStore.set(model.selectedKeyAtom, session.key);
                                                         return;

@@ -79,3 +79,38 @@ default                → 整体替换
 - [ ] 改任何 meta 写入路径后，跑 `go test ./pkg/aisessions/`。
 - [ ] 新增 titleSource 值时，同步更新 `autoTitleEligible` 与 `setMetaTx` 合并规则。
 - [ ] 关闭 `ai:sessionautotitle` 时不得产生任何 `GenerateSessionTitle` 调用。
+
+## 7. 手动触发的后台生成（AutoGenerate，2026-10-25）
+
+在 §4 的自动巡检之外，新增**用户显式触发**的同类 job，二者共用同一个 per-index 串行 worker
+（`pkg/aisessions/titleautogen.go` 的 `autoTitleQueue`）：
+
+- **RPC**：`AISessionsService.AutoGenerate({ ids, connection, kind, force, aiMode })`
+  → 立即返回 `{ queued, skipped, errors }`，请求路径零 AI 调用。
+  - `kind`：`title` / `metadata` / `both`（`normalizeGenKind` 白名单）。
+  - 批量上限 `MaxAutoGenerateBatch = 50`，超出整单拒绝（不部分执行）。
+  - skip 原因：`missing` / `no-messages` / `user-title`。
+- **job 语义**：`genJob{kind, manual, force, attempt, connection, aiMode}`；
+  pending 去重键是 `key|kind`（同一会话的 title 与 metadata 可并存）。
+- **入口**：`Manager.EnqueueManualGeneration(reqs)`（O(1) 入队）。
+- **开关**：手动 job **不受** `ai:sessionautotitle` 约束；该开关只 gates 自动巡检入队。
+- **重试**：`manual=true` 失败按 `manualRetryBackoff` = 2s / 5s / 15s 退避，
+  `ManualGenerationMaxAttempts = 3`（首次 + 2 次重试）。配置类错误
+  （`user-title` / feature disabled / missing）**不重试**。
+  自动巡检 job 行为不变：失败写 `ai_title_attempted_at`、不重试。
+- **force**：`titleSource == "user"` 时默认 skip（`user-title`）；`force=true` 才覆盖。
+- **metadata 落库**：`GenerateSessionMetadata` → `Manager.NoteAndTags`（不新增表/列，
+  不影响 `titleSource`）。
+- **状态事件**：每次迁移发布 `aisessions:generationstatus`
+  `{key, kind, connection, state(queued|running|done|failed), attempt, maxAttempts, error, updatedAt}`
+  （`pkg/wps/wpstypes.go`：`Event_AISessionsGenerationStatus`）；
+  成功仍发 `aisessions:titleupdated`（metadata 场景 summary 带 note/tags，前端按字段 merge）。
+- **前端**：`aisession-gen-store.ts` 合并状态驱动按钮三态；
+  列表/详情/Tab 对 `titleSource === "ai"` 显示小魔杖图标；
+  note 静默覆盖提供 10s Undo（`undo-toast.tsx`，以 `updatedAt` 语义做撤销基线）。
+
+新增检查项：
+
+- [ ] 改 worker 时确认自动 job 仍"至多一次"（`titleautogen_test.go` 既有断言不得改）。
+- [ ] `AutoGenerate` 请求路径不得出现 `GenerateSessionTitle` / `GenerateSessionMetadata` 调用。
+- [ ] 新状态事件必须带 `connection`，前端 store key 含 connection。

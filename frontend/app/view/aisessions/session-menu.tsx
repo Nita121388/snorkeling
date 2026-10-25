@@ -60,6 +60,7 @@ export function SessionMoreMenu({
     projectDirectory,
     sessionFilePath,
     sessionId,
+    sessionKey,
     restoreCommand,
     buildMarkdown,
     onRename,
@@ -69,6 +70,7 @@ export function SessionMoreMenu({
     onOpenProjectDirectory,
     onOpenSessionFile,
     onDelete,
+    onGenerate,
     restoring = false,
     refreshing = false,
     deleting = false,
@@ -76,6 +78,7 @@ export function SessionMoreMenu({
     projectDirectory: string;
     sessionFilePath: string;
     sessionId: string;
+    sessionKey?: string;
     restoreCommand: string;
     buildMarkdown: () => string;
     onRename?: () => void;
@@ -85,6 +88,8 @@ export function SessionMoreMenu({
     onOpenProjectDirectory: () => void;
     onOpenSessionFile: () => void;
     onDelete: () => void;
+    /** 一键 AI 生成；不传则不渲染这两个菜单项。 */
+    onGenerate?: (kind: "title" | "metadata" | "both") => void;
     restoring?: boolean;
     refreshing?: boolean;
     deleting?: boolean;
@@ -185,6 +190,24 @@ export function SessionMoreMenu({
                         }
                     />
                     <MenuRow icon="fa-note-sticky" label="Edit note & tags" onClick={() => closeAndRun(onEditNote)} />
+                    {onGenerate != null ? (
+                        <>
+                            <MenuRow
+                                icon="fa-wand-magic-sparkles"
+                                label="Generate title with AI"
+                                disabled={!sessionKey}
+                                disabledReason={sessionKey ? undefined : "Session key unavailable"}
+                                onClick={() => closeAndRun(() => onGenerate("title"))}
+                            />
+                            <MenuRow
+                                icon="fa-wand-magic-sparkles"
+                                label="Generate note & tags with AI"
+                                disabled={!sessionKey}
+                                disabledReason={sessionKey ? undefined : "Session key unavailable"}
+                                onClick={() => closeAndRun(() => onGenerate("metadata"))}
+                            />
+                        </>
+                    ) : null}
                     <MenuRow
                         icon={restoring ? "fa-spinner animate-spin" : "fa-square-terminal"}
                         label={restoring ? "Resuming…" : "Resume to terminal"}
@@ -242,7 +265,11 @@ export function SessionMoreMenu({
                             >
                                 <MenuRow
                                     icon="fa-folder"
-                                    label={hasCopied === true && copiedLabel.includes("directory") ? "Copied ✓" : "Working directory"}
+                                    label={
+                                        hasCopied === true && copiedLabel.includes("directory")
+                                            ? "Copied ✓"
+                                            : "Working directory"
+                                    }
                                     disabled={!projectDirectory}
                                     disabledReason="No working directory"
                                     onClick={() => copyAndClose(projectDirectory, "Copied working directory")}

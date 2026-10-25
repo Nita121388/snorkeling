@@ -21,6 +21,12 @@ export class AISessionsServiceType {
         this.waveEnv = waveEnv;
     }
 
+    // enqueue background AI generation (title / note+tags / both) for sessions
+    // @returns queued session keys plus per-session skip reasons
+    AutoGenerate(request: AISessionsAutoGenerateRequest): Promise<AISessionsAutoGenerateResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "AutoGenerate", Array.from(arguments))
+    }
+
     // list AI session migration backups
     // @returns AI session backup stats
     BackupStats(request: AISessionsBackupRequest): Promise<BackupStats> {

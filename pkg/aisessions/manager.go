@@ -29,17 +29,22 @@ type Manager struct {
 	// writes an AI title. The service layer uses it to publish a UI event so the
 	// list/tab can refresh without polling.
 	OnTitleUpdated func(SessionSummary)
+	// OnGenerationStatus, when set, receives background generation state changes
+	// (queued / running / done / failed) so the GUI can render progress without
+	// polling the worker.
+	OnGenerationStatus func(GenerationStatusEvent)
 	// titleQueue drives background AI title generation; nil until started.
 	titleQueue *autoTitleQueue
 }
 
 type ManagerOptions struct {
-	Providers      []Provider
-	IndexPath      string
-	MetaPath       string
-	SQLitePath     string
-	OnScanProgress func(ScanProgress)
-	OnTitleUpdated func(SessionSummary)
+	Providers          []Provider
+	IndexPath          string
+	MetaPath           string
+	SQLitePath         string
+	OnScanProgress     func(ScanProgress)
+	OnTitleUpdated     func(SessionSummary)
+	OnGenerationStatus func(GenerationStatusEvent)
 }
 
 const (
@@ -96,12 +101,13 @@ func NewManagerWithOptions(opts ManagerOptions) *Manager {
 		}
 	}
 	return &Manager{
-		Providers:      providers,
-		IndexPath:      indexPath,
-		MetaPath:       metaPath,
-		SQLitePath:     sqlitePath,
-		OnScanProgress: opts.OnScanProgress,
-		OnTitleUpdated: opts.OnTitleUpdated,
+		Providers:          providers,
+		IndexPath:          indexPath,
+		MetaPath:           metaPath,
+		SQLitePath:         sqlitePath,
+		OnScanProgress:     opts.OnScanProgress,
+		OnTitleUpdated:     opts.OnTitleUpdated,
+		OnGenerationStatus: opts.OnGenerationStatus,
 	}
 }
 

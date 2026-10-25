@@ -166,6 +166,29 @@ type AISessionsGenerateTitleResponse struct {
 	Suggestion aisessions.TitleSuggestion `json:"suggestion"`
 }
 
+// AISessionsAutoGenerateRequest asks the background worker to generate a title,
+// note+tags, or both for a batch of sessions. The call returns immediately; the
+// GUI follows progress through aisessions:generationstatus events.
+type AISessionsAutoGenerateRequest struct {
+	IDs        []string `json:"ids"`
+	Connection string   `json:"connection,omitempty"`
+	Kind       string   `json:"kind"` // title | metadata | both
+	Force      bool     `json:"force,omitempty"`
+	AIMode     string   `json:"aiMode,omitempty"`
+}
+
+// AISessionsAutoGenerateSkip describes one session that was not queued.
+type AISessionsAutoGenerateSkip struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"` // missing | no-messages | user-title | limit
+}
+
+type AISessionsAutoGenerateResponse struct {
+	Queued  []string                     `json:"queued"`
+	Skipped []AISessionsAutoGenerateSkip `json:"skipped"`
+	Errors  []string                     `json:"errors,omitempty"`
+}
+
 type AISessionsPromptTemplatesRequest struct{}
 
 type AISessionsPromptTemplatesResponse struct {
@@ -266,11 +289,12 @@ func (svc *AISessionsService) managerForConnection(ctx context.Context, connecti
 		return nil, err
 	}
 	return aisessions.NewManagerWithOptions(aisessions.ManagerOptions{
-		Providers:      []aisessions.Provider{provider},
-		MetaPath:       remoteMetaPath(connection),
-		SQLitePath:     remoteSQLitePath(connection),
-		OnScanProgress: makeScanProgressPublisher(connection),
-		OnTitleUpdated: makeTitleUpdatedPublisher(connection),
+		Providers:          []aisessions.Provider{provider},
+		MetaPath:           remoteMetaPath(connection),
+		SQLitePath:         remoteSQLitePath(connection),
+		OnScanProgress:     makeScanProgressPublisher(connection),
+		OnTitleUpdated:     makeTitleUpdatedPublisher(connection),
+		OnGenerationStatus: makeGenerationStatusPublisher(connection),
 	}), nil
 }
 
@@ -278,8 +302,9 @@ func (svc *AISessionsService) managerForConnection(ctx context.Context, connecti
 // GUI can show a skeleton + progress strip while a background scan runs.
 func newLocalManager() *aisessions.Manager {
 	return aisessions.NewManagerWithOptions(aisessions.ManagerOptions{
-		OnScanProgress: makeScanProgressPublisher(""),
-		OnTitleUpdated: makeTitleUpdatedPublisher(""),
+		OnScanProgress:     makeScanProgressPublisher(""),
+		OnTitleUpdated:     makeTitleUpdatedPublisher(""),
+		OnGenerationStatus: makeGenerationStatusPublisher(""),
 	})
 }
 
@@ -293,6 +318,20 @@ func makeTitleUpdatedPublisher(connection string) func(aisessions.SessionSummary
 				Connection: connection,
 				Summary:    summary,
 			},
+		})
+	}
+}
+
+// makeGenerationStatusPublisher forwards background worker state transitions to
+// the GUI. No polling: the frontend merges these into a per-session store.
+func makeGenerationStatusPublisher(connection string) func(aisessions.GenerationStatusEvent) {
+	return func(event aisessions.GenerationStatusEvent) {
+		if strings.TrimSpace(event.Connection) == "" {
+			event.Connection = connection
+		}
+		wps.Broker.Publish(wps.WaveEvent{
+			Event: wps.Event_AISessionsGenerationStatus,
+			Data:  event,
 		})
 	}
 }
@@ -987,11 +1026,7 @@ func (svc *AISessionsService) GenerateMetadata(ctx context.Context, request *AIS
 // full config watcher). A missing file/key yields the zero value, which the
 // registry resolves to the built-in prompt and limits.
 func promptConfigForFeature(feature string) wconfig.AIPromptConfigType {
-	fullConfig := wconfig.GetWatcher().GetFullConfig()
-	if fullConfig.AIPrompts == nil {
-		return wconfig.AIPromptConfigType{}
-	}
-	return fullConfig.AIPrompts[feature]
+	return aisessions.PromptConfigForFeature(feature)
 }
 
 func (svc *AISessionsService) GenerateTitle_Meta() tsgenmeta.MethodMeta {
@@ -1031,6 +1066,80 @@ func (svc *AISessionsService) GenerateTitle(ctx context.Context, request *AISess
 		return nil, err
 	}
 	return &AISessionsGenerateTitleResponse{Summary: detail.Summary, Suggestion: suggestion}, nil
+}
+
+// MaxAutoGenerateBatch caps how many sessions one AutoGenerate call may admit.
+// The worker is serial, so an unbounded batch would block every other session's
+// generation for a long time; the GUI narrows the selection instead.
+const MaxAutoGenerateBatch = 50
+
+func (svc *AISessionsService) AutoGenerate_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "enqueue background AI generation (title / note+tags / both) for sessions",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "queued session keys plus per-session skip reasons",
+	}
+}
+
+func (svc *AISessionsService) AutoGenerate(ctx context.Context, request *AISessionsAutoGenerateRequest) (*AISessionsAutoGenerateResponse, error) {
+	if request == nil {
+		return nil, fmt.Errorf("autogenerate request is required")
+	}
+	kind := strings.TrimSpace(strings.ToLower(request.Kind))
+	switch kind {
+	case aisessions.GenKindTitle, aisessions.GenKindMetadata, aisessions.GenKindBoth:
+	default:
+		return nil, fmt.Errorf("invalid generation kind %q (expected title, metadata or both)", request.Kind)
+	}
+	if len(request.IDs) == 0 {
+		return &AISessionsAutoGenerateResponse{Queued: []string{}, Skipped: []AISessionsAutoGenerateSkip{}}, nil
+	}
+	if len(request.IDs) > MaxAutoGenerateBatch {
+		return nil, fmt.Errorf("too many sessions (%d); the limit is %d per request", len(request.IDs), MaxAutoGenerateBatch)
+	}
+	manager, err := svc.managerForRequest(ctx, request.IDs[0], request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	response := &AISessionsAutoGenerateResponse{Queued: []string{}, Skipped: []AISessionsAutoGenerateSkip{}}
+	var reqs []aisessions.ManualGenerationRequest
+	seen := make(map[string]bool, len(request.IDs))
+	for _, id := range request.IDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		summary, err := manager.Summary(ctx, trimmed, false)
+		if err != nil {
+			response.Errors = append(response.Errors, fmt.Sprintf("%s: %v", trimmed, err))
+			continue
+		}
+		if summary.Missing {
+			response.Skipped = append(response.Skipped, AISessionsAutoGenerateSkip{ID: trimmed, Reason: "missing"})
+			continue
+		}
+		if summary.MessageCount == 0 {
+			response.Skipped = append(response.Skipped, AISessionsAutoGenerateSkip{ID: trimmed, Reason: "no-messages"})
+			continue
+		}
+		if !request.Force && kind != aisessions.GenKindMetadata && summary.TitleSource == "user" {
+			response.Skipped = append(response.Skipped, AISessionsAutoGenerateSkip{ID: trimmed, Reason: "user-title"})
+			continue
+		}
+		reqs = append(reqs, aisessions.ManualGenerationRequest{
+			Key:        summary.Key,
+			Kind:       kind,
+			Connection: request.Connection,
+			Force:      request.Force,
+			AIMode:     request.AIMode,
+		})
+	}
+	response.Queued = append(response.Queued, manager.EnqueueManualGeneration(reqs)...)
+	return response, nil
 }
 
 func (svc *AISessionsService) PromptTemplates_Meta() tsgenmeta.MethodMeta {

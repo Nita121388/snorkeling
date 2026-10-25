@@ -1,40 +1,53 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { type AISessionsServiceType } from "@/app/store/services";
 import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { Modal } from "@/app/modals/modal";
+import { AISessionsServiceType } from "@/app/store/services";
+import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "@/app/view/session-outline-rail";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { cn } from "@/util/util";
-import { Fragment, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+    Fragment,
+    type KeyboardEvent,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { flushSync } from "react-dom";
+import { autoGenerate } from "./aisession-gen-store";
 import { ChatComposer } from "./chat-composer";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
-import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
-import { MessageCard, ToolCallRow } from "./session-message";
-import { SubagentCard } from "./subagent-card";
+import { GenActionButton } from "./gen-action-button";
+import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
+import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
 import { openAISessionDetailFromList } from "./session-detail-block";
 import { SessionDetailSkeleton } from "./session-detail-skeleton";
+import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
+import { MessageCard, ToolCallRow } from "./session-message";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
-import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "@/app/view/session-outline-rail";
 import { SessionTagChips } from "./session-tag-chips";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "./session-tags";
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
-import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
+import { SubagentCard } from "./subagent-card";
 import {
     EstimatedRowHeight,
     VirtualOverscan,
     activeSeqFromVirtualItems,
     buildSeqToIndex,
-    isNearBottom,
     outlineProbeOffset as computeOutlineProbeOffset,
+    isNearBottom,
     shouldVirtualize,
     timelineItemKey,
 } from "./timeline-virtual";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { TitleSourceBadge } from "./title-source-badge";
+import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
 import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
-import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
 
 /**
  * Transient pane shown while the "new chat" placeholder is selected. The
@@ -47,6 +60,14 @@ import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
 // 新会话（detail == null）现由统一的 SessionDetailPane 处理：组件常驻持有 live turn，
 // 首条消息流式内容内联渲染、绑定落地后无缝替换为 canonical，不再有居中浮卡 / loading 闪烁。
 
+import { registerSessionContextResolver, sessionContextAttrs } from "@/app/element/copy-context-contract";
+import {
+    type SessionContextState,
+    type SessionCopyMessage,
+    formatSessionContext,
+    makeSessionContextResolver,
+} from "./copy-context";
+import type { SessionDetailTimelineItem } from "./utils";
 import {
     buildSessionDetailTimeline,
     formatToolCallPreview,
@@ -54,14 +75,6 @@ import {
     outlinePreview,
     restoreCommandForSession,
 } from "./utils";
-import type { SessionDetailTimelineItem } from "./utils";
-import { registerSessionContextResolver, sessionContextAttrs } from "@/app/element/copy-context-contract";
-import {
-    formatSessionContext,
-    makeSessionContextResolver,
-    type SessionContextState,
-    type SessionCopyMessage,
-} from "./copy-context";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const ToolCallPreviewLength = 1200;
@@ -270,8 +283,23 @@ export function SessionDetailPane({
     })();
     const summary = effectiveDetail?.summary ?? null;
     const summaryKey = summary?.key ?? "";
+    // Note 弹窗里的 AI 生成（提案式：填入草稿，由既有保存逻辑落盘）
+    const noteAI = useNoteAIGenerate(summaryKey, connection);
+    const genService = useMemo(() => new AISessionsServiceType(), []);
+    // AI 建议的 tags 先暂存，保存时与 note 内 #tag、summary.tags 合并。
+    const [aiTags, setAiTags] = useState<string[]>([]);
+    const applyNoteAISuggestion = useCallback(
+        (suggestion: { note: string; tags: string[] }) => {
+            latestNoteDraftRef.current = suggestion.note;
+            setNoteDraft(suggestion.note);
+            setAiTags(suggestion.tags);
+            if (noteSaveStatus !== "saving") setNoteSaveStatus("idle");
+            noteAI.dismiss();
+        },
+        [noteAI.dismiss, noteSaveStatus]
+    );
     const parsedNoteDraft = extractSessionTagsFromNote(noteDraft);
-    const nextTags = mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags);
+    const nextTags = mergeSessionTags(mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags), aiTags);
     const noteUnchanged = parsedNoteDraft.note === (summary?.note ?? "") && sessionTagsEqual(nextTags, summary?.tags);
     const noteSaving = noteSaveStatus === "saving";
     const trimmedNoteDraft = noteDraft.trim();
@@ -911,7 +939,7 @@ export function SessionDetailPane({
         async (nextNote: string): Promise<boolean> => {
             if (summary == null || noteSaveStatus === "saving") return false;
             const parsed = extractSessionTagsFromNote(nextNote);
-            const tags = mergeSessionTags(summary.tags ?? [], parsed.tags);
+            const tags = mergeSessionTags(mergeSessionTags(summary.tags ?? [], parsed.tags), aiTags);
             if (parsed.note === (summary.note ?? "") && sessionTagsEqual(tags, summary.tags)) {
                 return true;
             }
@@ -921,7 +949,7 @@ export function SessionDetailPane({
             setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
             return saved && currentDraftSaved;
         },
-        [model, noteSaveStatus, summary]
+        [model, noteSaveStatus, summary, aiTags]
     );
 
     const closeNoteEditor = useCallback(() => {
@@ -1021,12 +1049,7 @@ export function SessionDetailPane({
     }, [virtualEnabled]);
     const fullRenderActiveSeq = useActiveOutlineSeq(detailScrollRef, outlinePrompts, !virtualEnabled);
     const activeOutlineSeq = virtualEnabled
-        ? activeSeqFromVirtualItems(
-              virtualItems,
-              timelineItemSeqs,
-              outlineProbeOffset,
-              outlinePrompts[0]?.seq ?? null
-          )
+        ? activeSeqFromVirtualItems(virtualItems, timelineItemSeqs, outlineProbeOffset, outlinePrompts[0]?.seq ?? null)
         : fullRenderActiveSeq;
     // live turn 追加时消息节点高度变化：显式重测，避免虚拟行高失真。
     useEffect(() => {
@@ -1096,13 +1119,14 @@ export function SessionDetailPane({
         ]
     );
 
-    sessionContextStateRef.current = copySummary == null
-        ? null
-        : {
-              summary: copySummary,
-              messages: detailMessages as SessionCopyMessage[],
-              seqRange: copyRangeRef.current,
-          };
+    sessionContextStateRef.current =
+        copySummary == null
+            ? null
+            : {
+                  summary: copySummary,
+                  messages: detailMessages as SessionCopyMessage[],
+                  seqRange: copyRangeRef.current,
+              };
 
     useEffect(() => {
         const sessionId = summary?.id ?? "";
@@ -1208,7 +1232,10 @@ export function SessionDetailPane({
             projectPath: summary.projectPath,
         };
         for (const toolCall of toolCalls) {
-            map.set(toolCall.seq, sessionContextAttrs({ ...session, toolName: toolCall.name, exitCode: toolCall.exitCode }));
+            map.set(
+                toolCall.seq,
+                sessionContextAttrs({ ...session, toolName: toolCall.name, exitCode: toolCall.exitCode })
+            );
         }
         return map;
     }, [summary?.id, summary?.source, summary?.title, summary?.projectPath, toolCalls]);
@@ -1382,6 +1409,7 @@ export function SessionDetailPane({
                                 onDoubleClick={startRename}
                             >
                                 {summary.title || summary.id}
+                                <TitleSourceBadge titleSource={summary.titleSource} className="ml-1 align-middle" />
                             </div>
                         )}
                         <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full border border-border px-2 text-[11px] text-secondary">
@@ -1400,6 +1428,12 @@ export function SessionDetailPane({
                             </span>
                         ) : null}
                         <div className="flex shrink-0 items-center gap-0.5">
+                            <GenActionButton
+                                sessionKey={summary.key ?? ""}
+                                connection={connection}
+                                kind="title"
+                                titleSource={summary.titleSource}
+                            />
                             <IconButton
                                 icon="fa-magnifying-glass"
                                 label="Search session"
@@ -1419,6 +1453,7 @@ export function SessionDetailPane({
                                 projectDirectory={projectDirectory}
                                 sessionFilePath={sessionFilePath}
                                 sessionId={summary.id}
+                                sessionKey={summary.key}
                                 restoreCommand={restoreCommandForSession(summary)}
                                 onRename={summary.key ? startRename : undefined}
                                 onEditNote={() => setNoteEditorOpen(true)}
@@ -1427,6 +1462,14 @@ export function SessionDetailPane({
                                 onOpenProjectDirectory={() => void model.openProjectDirectory(summary)}
                                 onOpenSessionFile={() => void model.openSessionFile(summary)}
                                 onDelete={() => setDeleteConfirmOpen(true)}
+                                onGenerate={(kind) => {
+                                    if (summary.key == null || summary.key === "") return;
+                                    void autoGenerate(genService, {
+                                        ids: [summary.key],
+                                        connection,
+                                        kind,
+                                    });
+                                }}
                                 restoring={restoring}
                                 refreshing={refreshing}
                                 deleting={deleting}
@@ -1580,8 +1623,14 @@ export function SessionDetailPane({
                                                 </Fragment>
                                             ))
                                         )}
-                                        {liveTurn != null && (activeChatStreamStatus === "sending" || activeChatStreamStatus === "streaming") ? (
-                                            <div className="flex items-center gap-1.5 px-1 py-1 text-xs text-accent" role="status" aria-live="polite">
+                                        {liveTurn != null &&
+                                        (activeChatStreamStatus === "sending" ||
+                                            activeChatStreamStatus === "streaming") ? (
+                                            <div
+                                                className="flex items-center gap-1.5 px-1 py-1 text-xs text-accent"
+                                                role="status"
+                                                aria-live="polite"
+                                            >
                                                 <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
                                                 <span>Working</span>
                                             </div>
@@ -1625,7 +1674,8 @@ export function SessionDetailPane({
                                                                 abortChatStream(activeLiveTurnKey);
                                                                 handleChatSend({
                                                                     source: summary?.source ?? composeSource,
-                                                                    sessionId: summary?.id ?? boundSessionId ?? undefined,
+                                                                    sessionId:
+                                                                        summary?.id ?? boundSessionId ?? undefined,
                                                                     projectPath: summary?.projectPath ?? projectPath,
                                                                     message: lastUserMsg.text,
                                                                 });
@@ -1711,9 +1761,22 @@ export function SessionDetailPane({
                 >
                     <div className="space-y-3 text-primary">
                         <div className="space-y-1 pr-8">
-                            <div className="text-base font-semibold">Session Note</div>
+                            <div className="flex items-center gap-2">
+                                <div className="text-base font-semibold">Session Note</div>
+                                <NoteAIButton status={noteAI.status} onGenerate={() => void noteAI.generate()} />
+                            </div>
                             <div className="truncate text-xs text-secondary">{summary.title || summary.id}</div>
                         </div>
+                        <NoteAISuggestionBar
+                            suggestion={noteAI.suggestion}
+                            status={noteAI.status}
+                            error={noteAI.error}
+                            configError={noteAI.configError}
+                            onApply={applyNoteAISuggestion}
+                            onRegenerate={() => void noteAI.generate()}
+                            onDismiss={noteAI.dismiss}
+                            onOpenSettings={noteAI.openAISettings}
+                        />
                         <SessionTagChips tags={nextTags} />
                         <textarea
                             autoFocus

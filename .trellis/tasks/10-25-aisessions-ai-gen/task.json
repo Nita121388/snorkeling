@@ -1,0 +1,28 @@
+{
+  "id": "aisessions-ai-gen",
+  "name": "aisessions-ai-gen",
+  "title": "AI 会话标题 / Note / Tags 一键生成：后台静默执行、失败重试与视觉区分",
+  "description": "把 AI 标题/Note/Tags 生成从 InfoCard 里的阻塞提案，升级为所有入口（agent card、会话列表行、Session Detail 头栏、批量栏）点击即静默入队、后台串行生成并自动落库、失败退避重试；标题用 titleSource 做视觉区分；Note 静默覆盖带 Undo；编辑器内生成填入草稿。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-25",
+  "completedAt": null,
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-25-aisessions-gen-entries"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

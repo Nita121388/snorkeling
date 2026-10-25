@@ -1,8 +1,8 @@
 {
   "id": "aisessions-annotate",
   "name": "aisessions-annotate",
-  "title": "AISessions soft-delete messages with undo",
-  "description": "Soft-delete failed tool executions and any message (including user messages sent by mistake) from the session detail view, persisted locally with undo; never mutate the pi JSONL",
+  "title": "会话消息文字批注（选区 / 命令 / 工具 / thinking）",
+  "description": "Character-range annotations on session detail content: select any text in a user/assistant message, thinking block or tool call/result and attach a note, re-anchored on reopen via CSS Custom Highlight; session-level fallback when nothing is selected; never mutate provider JSONL",
   "status": "planning",
   "dev_type": null,
   "scope": null,

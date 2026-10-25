@@ -119,6 +119,17 @@ func defaultPromptFor(feature string) string {
 	return ""
 }
 
+// PromptConfigForFeature reads the user's per-feature override from
+// aiprompts.json via the full-config watcher. A missing file/key yields the zero
+// value, which the registry resolves to the built-in prompt and limits.
+func PromptConfigForFeature(feature string) wconfig.AIPromptConfigType {
+	fullConfig := wconfig.GetWatcher().GetFullConfig()
+	if fullConfig.AIPrompts == nil {
+		return wconfig.AIPromptConfigType{}
+	}
+	return fullConfig.AIPrompts[feature]
+}
+
 // PromptEnabled reports whether a feature is enabled. An unset flag means
 // enabled, so existing configs (and a missing aiprompts.json) keep working.
 func PromptEnabled(cfg wconfig.AIPromptConfigType) bool {

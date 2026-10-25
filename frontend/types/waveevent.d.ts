@@ -27,7 +27,8 @@ declare global {
         | "block:jobstatus"
         | "badge"
         | "aisessions:scanstatus"
-        | "aisessions:titleupdated";
+        | "aisessions:titleupdated"
+        | "aisessions:generationstatus";
 
     type WaveEvent = {
         event: WaveEventName;
@@ -58,6 +59,7 @@ declare global {
         | { event: "badge"; data?: BadgeEvent }
         | { event: "aisessions:scanstatus"; data?: ScanStatusEvent }
         | { event: "aisessions:titleupdated"; data?: TitleUpdatedEvent }
+        | { event: "aisessions:generationstatus"; data?: GenerationStatusEvent }
     );
 }
 

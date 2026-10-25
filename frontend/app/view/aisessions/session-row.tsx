@@ -7,6 +7,8 @@ import { cn } from "@/util/util";
 import type { MouseEventHandler, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { CopyIconButton, IconButton } from "./controls";
+import { GenActionButton } from "./gen-action-button";
+import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { SessionTagChips } from "./session-tag-chips";
 import {
@@ -19,6 +21,7 @@ import {
     stripSessionTagHashes,
 } from "./session-tags";
 import { getChatSource } from "./sources";
+import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
 import { describeSessionDates, formatFileSize, restoreCommandForSession } from "./utils";
 
@@ -207,6 +210,8 @@ export function SessionRow({
     const [tagDraft, setTagDraft] = useState<string[]>(() => normalizeSessionTags(session.tags));
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
     const latestDraftRef = useRef(session.note ?? "");
+    // 行内编辑器里的 AI 生成：提案式（不自动落库），空草稿直填、非空走 Apply。
+    const noteAI = useNoteAIGenerate(session.key, connection);
 
     useEffect(() => {
         if (!noteEditing) {
@@ -298,6 +303,21 @@ export function SessionRow({
         return () => window.clearTimeout(handle);
     }, [noteEditing, noteSaving, noteUnchanged, saveNote]);
 
+    // 编辑器内 AI 生成：把建议写进草稿（不直接落库），草稿为空时自动应用。
+    const applyNoteAISuggestion = useCallback((suggestion: { note: string; tags: string[] }) => {
+        latestDraftRef.current = suggestion.note;
+        setNoteDraft(suggestion.note);
+        setTagDraft(suggestion.tags);
+        setNoteSaveStatus("idle");
+    }, []);
+    useEffect(() => {
+        if (!noteEditing || noteAI.status !== "ready" || noteAI.suggestion == null) return;
+        const draftEmpty = noteDraft.trim() === "" && normalizeSessionTags(tagDraft).length === 0;
+        if (!draftEmpty) return;
+        applyNoteAISuggestion(noteAI.suggestion);
+        noteAI.dismiss();
+    }, [applyNoteAISuggestion, noteAI.status, noteAI.suggestion, noteAI.dismiss, noteEditing, noteDraft, tagDraft]);
+
     const toggleNoteEditor = useCallback(async () => {
         if (!noteEditing) {
             setNoteEditing(true);
@@ -331,7 +351,9 @@ export function SessionRow({
                 "group relative cursor-pointer border-b border-border/70 bg-block-solid pl-3 pr-3 hover:bg-hoverbg",
                 isChild ? "bg-transparent py-1.5 text-[13px]" : "py-2 text-sm",
                 // 选区内（多选）：左侧 2px 竖条 + 淡底；当前行（单选）用更实的 accent。
-                inSelection && !selected && "bg-accent/5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent/50",
+                inSelection &&
+                    !selected &&
+                    "bg-accent/5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent/50",
                 selected &&
                     "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
@@ -419,6 +441,7 @@ export function SessionRow({
                             )}
                         >
                             {session.title || session.id}
+                            <TitleSourceBadge titleSource={session.titleSource} className="ml-1 align-middle" />
                         </div>
                         {expandable ? (
                             <button
@@ -453,6 +476,14 @@ export function SessionRow({
                             <i className="fa-sharp fa-solid fa-square-terminal" />
                             <span>Resume</span>
                         </button>
+                        <GenActionButton
+                            sessionKey={session.key}
+                            connection={connection}
+                            kind="title"
+                            titleSource={session.titleSource}
+                            size="xs"
+                            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                        />
                         <span data-row-action="true" className="inline-flex">
                             <CopyIconButton
                                 text={restoreCommandForSession(session)}
@@ -540,9 +571,7 @@ export function SessionRow({
                                 void toggleNoteEditor();
                             }}
                         >
-                            <span
-                                className={cn("flex min-w-0 flex-1 items-center gap-1.5", tagsOpen && "flex-wrap")}
-                            >
+                            <span className={cn("flex min-w-0 flex-1 items-center gap-1.5", tagsOpen && "flex-wrap")}>
                                 {session.note ? (
                                     <span className="min-w-0 flex-1 truncate text-accent">
                                         {stripSessionTagHashes(session.note)}
@@ -636,6 +665,7 @@ export function SessionRow({
                                 }}
                             />
                             <div className="flex items-center gap-2">
+                                <NoteAIButton status={noteAI.status} onGenerate={() => void noteAI.generate()} />
                                 <IconButton
                                     icon="fa-eraser"
                                     label="Clear note"
@@ -675,6 +705,19 @@ export function SessionRow({
                                               : ""}
                                 </span>
                             </div>
+                            <NoteAISuggestionBar
+                                suggestion={noteAI.suggestion}
+                                status={noteAI.status}
+                                error={noteAI.error}
+                                configError={noteAI.configError}
+                                onApply={(suggestion) => {
+                                    applyNoteAISuggestion(suggestion);
+                                    noteAI.dismiss();
+                                }}
+                                onRegenerate={() => void noteAI.generate()}
+                                onDismiss={noteAI.dismiss}
+                                onOpenSettings={noteAI.openAISettings}
+                            />
                         </div>
                     ) : null}
                 </div>

@@ -12,6 +12,7 @@
 // 窄窗口用 flex-wrap 换行，不横向溢出。
 
 import { cn } from "@/util/util";
+import { useBatchGenCounts } from "./aisession-gen-store";
 import type { BatchCopyKind } from "./utils";
 
 type BatchAction = {
@@ -51,14 +52,20 @@ const CopyActions: BatchAction[] = [
 
 export function SessionBatchBar({
     selectedCount,
+    selectedKeys,
+    connection,
     copiedKind,
     starred,
     onCopy,
     onStar,
     onUnstar,
     onClear,
+    onAutoGenerate,
 }: {
     selectedCount: number;
+    /** 选中会话的 key 列表（供批量 AI 生成）。 */
+    selectedKeys?: string[];
+    connection?: string;
     /** 刚刚复制成功的产物类型；null = 无反馈 */
     copiedKind: BatchCopyKind | null;
     /** 选区是否全部已 star；决定显示 Star 还是 Unstar */
@@ -67,10 +74,17 @@ export function SessionBatchBar({
     onStar: () => void;
     onUnstar: () => void;
     onClear: () => void;
+    onAutoGenerate?: (kind: "title" | "metadata") => void;
 }) {
+    const titleGenCounts = useBatchGenCounts(connection, selectedKeys ?? [], "title");
     if (selectedCount <= 0) {
         return null;
     }
+    const overLimit = selectedCount > 50;
+    const genSummary =
+        titleGenCounts.total > 0
+            ? `${titleGenCounts.done}/${titleGenCounts.total} done${titleGenCounts.failed > 0 ? ` · ${titleGenCounts.failed} failed` : ""}`
+            : "";
     return (
         <div
             role="toolbar"
@@ -96,12 +110,7 @@ export function SessionBatchBar({
                                 : "border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
                         )}
                     >
-                        <i
-                            className={cn(
-                                "fa-sharp fa-solid text-[10px]",
-                                copied ? "fa-check" : action.icon
-                            )}
-                        />
+                        <i className={cn("fa-sharp fa-solid text-[10px]", copied ? "fa-check" : action.icon)} />
                         <span>{copied ? "Copied" : action.label}</span>
                     </button>
                 );
@@ -123,6 +132,41 @@ export function SessionBatchBar({
                 <i className={cn("fa-sharp text-[10px]", starred ? "fa-solid fa-star" : "fa-regular fa-star")} />
                 <span>{starred ? "Unstar" : "Star"}</span>
             </button>
+            {onAutoGenerate != null ? (
+                <>
+                    <button
+                        type="button"
+                        title={overLimit ? "Select at most 50 sessions" : "Generate titles with AI"}
+                        aria-label="Generate titles with AI"
+                        disabled={overLimit}
+                        onClick={() => onAutoGenerate("title")}
+                        className={cn(
+                            "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/70 bg-surface px-2 text-[11px] text-secondary transition-colors hover:bg-hover hover:text-primary",
+                            overLimit && "cursor-default opacity-50"
+                        )}
+                    >
+                        <i className="fa-sharp fa-solid fa-wand-magic-sparkles text-[10px]" />
+                        <span>AI title</span>
+                    </button>
+                    <button
+                        type="button"
+                        title={overLimit ? "Select at most 50 sessions" : "Generate note and tags with AI"}
+                        aria-label="Generate note and tags with AI"
+                        disabled={overLimit}
+                        onClick={() => onAutoGenerate("metadata")}
+                        className={cn(
+                            "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/70 bg-surface px-2 text-[11px] text-secondary transition-colors hover:bg-hover hover:text-primary",
+                            overLimit && "cursor-default opacity-50"
+                        )}
+                    >
+                        <i className="fa-sharp fa-solid fa-wand-magic-sparkles text-[10px]" />
+                        <span>AI note</span>
+                    </button>
+                    {genSummary !== "" ? (
+                        <span className="shrink-0 text-[10px] text-secondary tabular-nums">{genSummary}</span>
+                    ) : null}
+                </>
+            ) : null}
             <div className="flex-1" />
             <button
                 type="button"
