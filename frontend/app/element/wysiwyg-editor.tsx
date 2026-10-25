@@ -352,7 +352,10 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
                     return;
                 }
 
-                if (offset != null && offset > 0) {
+                // `offset != null` (NOT `offset > 0`): an offset of 0 means the user
+                // clicked the block's FIRST character, which must place the caret there.
+                // Treating 0 as "no offset" sent the caret to the block's end instead.
+                if (offset != null) {
                     placeCaretByTextOffset(root, offset);
                 } else {
                     root.focus();

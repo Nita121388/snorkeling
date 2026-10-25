@@ -1865,6 +1865,25 @@ const Markdown = ({
     );
     const [collapsedTables, setCollapsedTables] = useState<Set<string>>(() => collapsedTablesProp ?? new Set());
 
+    // Open a collapsed heading. Click-to-edit uses this on the FIRST click over a folded
+    // heading (second click edits the title) so the long-standing "click a folded heading to
+    // open its section" affordance survives without making the title uneditable. Declared up
+    // here, before the click handlers, so they can close over it directly.
+    const expandCollapsedHeading = useCallback(
+        (headingId: string) => {
+            setCollapsedHeadings((prev) => {
+                if (!prev.has(headingId)) {
+                    return prev;
+                }
+                const next = new Set(prev);
+                next.delete(headingId);
+                onCollapsedHeadingsChange?.(next);
+                return next;
+            });
+        },
+        [onCollapsedHeadingsChange]
+    );
+
     // === Presentation mode ================================================================
     const [presentationZoom, setPresentationZoom] = useState(100);
     const [showZoomIndicator, setShowZoomIndicator] = useState(false);
@@ -2042,6 +2061,12 @@ const Markdown = ({
         getViewportEl,
         resetKey: onInlineEditCommit,
     });
+    // `useInlineEdit` hands back a fresh object each render. Callbacks that must stay
+    // referentially stable (they are dependencies of the memoized `markdownComponents` map —
+    // an unstable identity remounts the whole rendered tree every render) read the live
+    // session through this ref instead of closing over the object.
+    const inlineEditRef = useRef(inlineEdit);
+    inlineEditRef.current = inlineEdit;
 
     handleInlineEditCommitImplRef.current = (newFullText, opts) => {
         if (!onInlineEditCommit) {
@@ -2200,14 +2225,12 @@ const Markdown = ({
                 // selection for now; add a branch above to enable a new kind.
                 return null;
             }
-            // Don't intercept on a heading that is currently collapsed. CollapsibleHeading
-            // expresses state via the `collapsed` class (no aria-expanded on the div), so a
-            // click on a folded heading should expand it, not open the editor. For raw <hN>
-            // tags (non-collapsible render path) there's no collapsed class, so this check is a
-            // no-op and the editor opens normally.
-            if (blockKind === "h" && target.classList.contains("collapsed")) {
-                return null;
-            }
+            // A collapsed heading is still resolved as an editable block: its title text is
+            // visible, so "click the heading and type" must work like any other block. The
+            // fold/unfold gesture stays on the chevron, and handleInlineEditClick additionally
+            // expands a folded heading on the FIRST click (see expandCollapsedHeadingOnClick) —
+            // that keeps the old "click a folded heading to open it" affordance without making
+            // the title permanently uneditable, which is what the old `return null` here did.
             return { target, line, blockKind };
         },
         []
@@ -2578,6 +2601,17 @@ const Markdown = ({
             }
             e.preventDefault();
             e.stopPropagation();
+            // Folded heading: the FIRST click just opens the section (the old "click a folded
+            // heading to unfold it" gesture); the next click edits the title. Without this
+            // split, click-to-edit would swallow the unfold intent; without editing at all
+            // (the previous `return null` in resolveEditTargetFromEl) the title stayed dead.
+            if (resolved.blockKind === "h" && resolved.target.classList.contains("collapsed")) {
+                const collapsedHeadingId = resolved.target.dataset.headingId;
+                if (collapsedHeadingId) {
+                    expandCollapsedHeading(collapsedHeadingId);
+                    return;
+                }
+            }
             // Single click = edit at the clicked position (caret lands where the user
             // clicked). Dblclick still select-alls via beginEdit without a caret — the two
             // gestures complement each other.
@@ -2591,6 +2625,7 @@ const Markdown = ({
             getViewportEl,
             text,
             handleInlineEditCommit,
+            expandCollapsedHeading,
         ]
     );
 
@@ -3315,17 +3350,16 @@ const Markdown = ({
     // highlight overlay over it, and opens a native context menu. Block-scoped operations are
     // applied to the markdown source via the same range helpers the editor uses.
     const handleGripMenuClick = useCallback(
-        (e: React.MouseEvent) => {
+        // `anchorEl` lets a non-grip trigger (right-click on a block) reuse the exact same
+        // menu; the grip path resolves the element from the hover anchor.
+        (e: React.MouseEvent, anchorEl?: HTMLElement | null) => {
             // Releasing the hover-lock here too: opening the menu counts as leaving the grip hover.
             pointerOnGripActionsRef.current = false;
             cancelPendingAnchorSwitch();
-            const anchor = insertAnchorRef.current;
-            if (anchor == null) {
-                return;
-            }
             // Whole-block granularity: an LI hover resolves to its parent list (same promotion
             // as the insert path), so copy/duplicate/delete never split a nested list open.
-            const el = resolveBlockAnchorEl(anchor.line);
+            const hoveredLine = insertAnchorRef.current?.line;
+            const el = anchorEl ?? (hoveredLine != null ? resolveBlockAnchorEl(hoveredLine) : null);
             if (el == null) {
                 return;
             }
@@ -3489,6 +3523,38 @@ const Markdown = ({
             handleGroupStartChange,
             resolveGroupContinuation,
         ]
+    );
+
+    // Right-click on a rendered block opens the SAME menu the hover grip opens. Before this
+    // the only entry point was the 4-dot grip on the left edge, so "right-click → 删除" was a
+    // silent no-op (the menu was never mounted and no handler existed on the render root).
+    // Images keep their own image menu (zoom / copy path / delete image).
+    const handleBlockContextMenu = useCallback(
+        (e: React.MouseEvent<HTMLDivElement>) => {
+            if (!onInlineEditCommit) {
+                return; // read-only surfaces (vdom) keep the platform default
+            }
+            const eventTarget = e.target as HTMLElement | null;
+            if (eventTarget?.closest("img") != null) {
+                return; // MarkdownImg handles this itself
+            }
+            if (eventTarget?.closest(".inline-edit-overlay") != null) {
+                return; // the editor's own contenteditable keeps native editing behavior
+            }
+            if (inlineEdit.editSession != null) {
+                return; // a session owns its block; commit first (click elsewhere / Esc)
+            }
+            const target = eventTarget?.closest<HTMLElement>("[data-source-line]:not(img)");
+            if (target == null) {
+                return; // gutter / trailing blank area
+            }
+            const line = Number(target.dataset.sourceLine);
+            if (!Number.isFinite(line) || line < 1) {
+                return;
+            }
+            handleGripMenuClick(e, resolveBlockAnchorEl(line) ?? target);
+        },
+        [onInlineEditCommit, inlineEdit.editSession, resolveBlockAnchorEl, handleGripMenuClick]
     );
 
     // --- Block drag-and-drop handlers ---------------------------------------------------
@@ -4923,11 +4989,24 @@ const Markdown = ({
 
     const shouldHideForInitialScroll = hideUntilInitialScroll && initialScrollReadyKey !== transformedText;
 
+    // 折叠/展开前先落盘编辑草稿：折叠会改 collapsedHeadings → markdownComponents memo 失效 →
+    // 整树 remount，锚点块被 display:none。留着会话不放的话 measureOverlay 只能量到 0×0，
+    // 编辑器浮在 (0,0)，草稿还钉在一个已经不可见的行上（“折叠后编辑器飞到左上角”）。
+    // 必须同步 commit（不能挪到 mousedown，remount 会吃掉这次 click）。
+    // 依赖为空 + 走 inlineEditRef：它被 markdownComponents 捕获，引用必须跨渲染稳定。
+    const commitInlineEditBeforeCollapse = useCallback(() => {
+        const live = inlineEditRef.current;
+        if (live.editSession != null) {
+            live.commit();
+        }
+    }, []);
+
     // useCallback 稳定 toggle 函数：它们被 markdownComponents 的 h1-h6/li/table 组件捕获，
     // 若每次渲染都是新引用，components useMemo 每次失效 → 整树 remount → 拖选中的选中态
     // 被销毁。依赖仅是可选 onChange 回调（preview 侧已 useCallback 稳定）。
     const toggleHeadingCollapse = useCallback(
         (headingId: string) => {
+            commitInlineEditBeforeCollapse();
             setCollapsedHeadings((prev) => {
                 const next = new Set(prev);
                 if (next.has(headingId)) {
@@ -4939,11 +5018,12 @@ const Markdown = ({
                 return next;
             });
         },
-        [onCollapsedHeadingsChange]
+        [commitInlineEditBeforeCollapse, onCollapsedHeadingsChange]
     );
 
     const toggleOrderedListItemCollapse = useCallback(
         (itemId: string) => {
+            commitInlineEditBeforeCollapse();
             setCollapsedOrderedListItems((prev) => {
                 const next = new Set(prev);
                 if (next.has(itemId)) {
@@ -4955,7 +5035,7 @@ const Markdown = ({
                 return next;
             });
         },
-        [onCollapsedOrderedListItemsChange]
+        [commitInlineEditBeforeCollapse, onCollapsedOrderedListItemsChange]
     );
 
     const toggleTableCollapse = useCallback(
@@ -5779,6 +5859,9 @@ const Markdown = ({
                         // button onClick, so e.defaultPrevented / e.target.closest(...) guard
                         // interactive children, and a grown live selection guards drag-select.
                         onClick={handleInlineEditClick}
+                        // Right-click a block → the same Copy / Duplicate / Turn into / Delete menu
+                        // the left-edge grip opens. Without it, 右键 → 删除 did nothing.
+                        onContextMenu={handleBlockContextMenu}
                         onMouseOver={handleRootMouseOver}
                         onMouseLeave={handleRootMouseLeave}
                         onDragOver={handleBlockDragOver}
@@ -5862,6 +5945,14 @@ const Markdown = ({
                                         ? `${inlineEdit.editSession.blockKind}:${inlineEdit.editSession.startLine}:${inlineEdit.editSession.endLine}`
                                         : undefined
                                 }
+                                sessionKey={
+                                    inlineEdit.editSession != null
+                                        ? `${inlineEdit.editSession.blockKind}:${inlineEdit.editSession.startLine}:${inlineEdit.editSession.endLine}`
+                                        : undefined
+                                }
+                                // 单击进入编辑时算出来的点击位置：编辑器首次聚焦必须把光标放这里，
+                                // 否则 WYSIWYG 路径会落到块尾，用户得再点一次才对得上位置。
+                                caretOffset={inlineEdit.editSession?.caretOffset ?? null}
                                 onTextChange={(v, caret) => {
                                     inlineEdit.setDraftText(v);
                                     trackEditorTriggers(v, caret);

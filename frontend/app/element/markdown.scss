@@ -717,6 +717,16 @@
         // visibility (not display) keeps the element's layout box so the overlay dimensions
         // match exactly; an HTML hidden element loses box and the textarea would collapse.
         visibility: hidden;
+
+        // Exception: the heading's collapse chevron must stay clickable while its block is
+        // being edited. Without this it inherits the parent's hidden state, so folding a
+        // section mid-edit silently swallows the click on the editor overlay (which covers
+        // the chevron column) — and even without the overlay the button is not hit-testable.
+        // `visibility` is inheritable-but-overridable, so re-declaring it on the button keeps
+        // the layout box (and therefore the editor's geometry) untouched.
+        .heading-collapse-button {
+            visibility: visible;
+        }
     }
 }
 

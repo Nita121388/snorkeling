@@ -324,7 +324,86 @@ const WYSIWYG_KINDS: ReadonlySet<InlineEditBlockKind> = new Set(["p", "h", "list
  *   - Callout containers (`.markdown-alert`) — the title emoji prefix would be
  *     injected back into source on commit
  */
-function captureWysiwygInfo(
+/**
+ * Build a clean WYSIWYG seed for a list block.
+ *
+ * The rendered list is NOT a plain `<ul>/<ol>`: ordered lists opted into collapsible items
+ * (`collapsibleOrderedLists`, .md previews) render each item as
+ * `<li class="ordered-list-collapsible"><div class="ordered-list-summary-row"><button
+ * class="ordered-list-collapse-button"/>…` and draw the number with a CSS counter instead of
+ * a real marker. Seeding the editor from that raw `outerHTML` produced exactly the reported
+ * "editing an ordered list changes its style" symptom:
+ *   - the collapse button + summary wrappers reappeared inside the editor,
+ *   - a single-item `<li>` had no `<ol>` parent, so the browser painted a BULLET instead of
+ *     the number (default `list-style-type: disc`),
+ *   - and the item's own number (e.g. "3.") was lost because there was no `start`.
+ *
+ * Rebuild semantics-preserving markup instead: strip the chrome, then wrap a bare `<li>` in
+ * an `<ol>`/`<ul>` that carries `start` so the visible number matches the source.
+ */
+export function buildListWysiwygSeed(targetEl: HTMLElement, listMarker: string | undefined): string {
+    const ordered = listMarker != null && /^\d/.test(listMarker);
+    const clone = targetEl.cloneNode(true) as HTMLElement;
+
+    // 1) Drop interactive chrome (collapse toggle lives inside the item).
+    clone.querySelectorAll("button").forEach((button) => button.remove());
+
+    // 2) Unwrap the summary/body wrappers so each <li> keeps only its own content nodes.
+    clone
+        .querySelectorAll(".ordered-list-summary-row, .ordered-list-summary-content, .ordered-list-collapse-body")
+        .forEach((wrapper) => {
+            const parent = wrapper.parentNode;
+            if (parent == null) {
+                return;
+            }
+            while (wrapper.firstChild != null) {
+                parent.insertBefore(wrapper.firstChild, wrapper);
+            }
+            wrapper.remove();
+        });
+
+    // 3) Strip editor-only attributes/classes (they mean nothing inside the editor and the
+    //    `.collapsed` / `.inline-edit-*` ones would leak the preview's state into it).
+    const scrub = (el: Element) => {
+        for (const attr of Array.from(el.attributes)) {
+            // `node` is react-markdown's AST handle leaking through `{...props}` on the rendered
+            // <li>/<ol> (`node="[object Object]"` in devtools) — pure noise inside the editor.
+            if (
+                attr.name.startsWith("data-source-line") ||
+                attr.name === "data-split-group" ||
+                attr.name === "id" ||
+                attr.name === "node"
+            ) {
+                el.removeAttribute(attr.name);
+            }
+        }
+        el.classList.remove(
+            "ordered-list-collapsible",
+            "collapsed",
+            "inline-edit-hidden",
+            "inline-edit-active",
+            "inline-edit-overlay"
+        );
+        if (el.classList.length === 0) {
+            el.removeAttribute("class");
+        }
+    };
+    scrub(clone);
+    clone.querySelectorAll("*").forEach(scrub);
+
+    if (clone.tagName === "LI") {
+        const wrapper = document.createElement(ordered ? "ol" : "ul");
+        const startNumber = ordered && listMarker != null ? parseInt(listMarker, 10) : NaN;
+        if (Number.isFinite(startNumber) && startNumber > 1) {
+            wrapper.setAttribute("start", String(startNumber));
+        }
+        wrapper.appendChild(clone);
+        return wrapper.outerHTML;
+    }
+    return clone.outerHTML;
+}
+
+export function captureWysiwygInfo(
     blockKind: InlineEditBlockKind,
     targetEl: HTMLElement,
     sourceText: string
@@ -333,11 +412,14 @@ function captureWysiwygInfo(
         return null;
     }
     // Eligibility: no images, no links, no callout chrome.
+    // List marker comes from the SOURCE line (the DOM only knows ordered vs bulleted), so it
+    // has to be resolved before the seed is built.
+    const listMarkerMatch = blockKind === "list" ? sourceText.match(/^\s*([-*+]|\d{1,9}[.)])/) : null;
     const html =
         blockKind === "h"
             ? (targetEl.querySelector(".heading-title")?.innerHTML ?? targetEl.innerHTML)
             : blockKind === "list"
-              ? targetEl.outerHTML // <ul>/<ol> outerHTML preserves list structure for the serializer
+              ? buildListWysiwygSeed(targetEl, listMarkerMatch?.[1])
               : blockKind === "blank"
                 ? ""
                 : targetEl.innerHTML;
@@ -374,6 +456,31 @@ function stripCodeFence(source: string): string {
 
 function stripListMarker(source: string): string {
     return source.replace(/^(\s*)(?:\d{1,9}[.)]|[-+*])\s+/, "$1");
+}
+
+/**
+ * Re-apply the source's list indentation to a WYSIWYG list draft.
+ *
+ * The WYSIWYG serializer emits markers and relative nesting depth but knows nothing about the
+ * block's own indent (a nested item's `<li>` is edited as a standalone `<ul>` at depth 0).
+ * Without this, editing a nested item committed it at column 0, silently un-nesting it.
+ * The MINIMUM indent across the original lines is used as the base so the serializer's own
+ * relative indents for nested children stay intact on top of it.
+ */
+export function preserveListIndent(draft: string, originalSource: string): string {
+    const sourceLines = originalSource.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    if (sourceLines.length === 0) {
+        return draft;
+    }
+    const baseIndent = Math.min(...sourceLines.map((line) => (line.match(/^\s*/) ?? [""])[0].length));
+    if (baseIndent === 0) {
+        return draft;
+    }
+    const pad = " ".repeat(baseIndent);
+    return draft
+        .split(/\r?\n/)
+        .map((line) => (line.trim().length === 0 ? line : pad + line))
+        .join("\n");
 }
 
 function wrapListMarker(source: string, original: string): string {
@@ -523,18 +630,25 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         let width = targetRect.width;
         // 左边缘始终锚在渲染块自己身上：以前取 min(target.left, render.left) 会把列表项/
         // 缩进块的编辑器整体左移，双击瞬间文字就水平跳一下。起点不变、只向右扩展即可。
-        const left = targetRect.left;
+        //
+        // 例外：标题行。`.heading` 是 flex，最左一列是折叠 chevron，`.heading-title` 的文字
+        // 从 chevron 之后才开始。用整行的 left 会让编辑器整体左移一个 chevron 槽（≈26px），
+        // 一进编辑文字就横跳；而且那列还压在 chevron 上，编辑中点折叠按钮会被 overlay 吞掉。
+        // 标题改用 .heading-title 的 left（高度/顶边仍取整行，视觉与文字同步不跳动）。
+        const headingTitleEl =
+            editSession.blockKind === "h" ? (target.querySelector<HTMLElement>(".heading-title") ?? target) : null;
+        const left = headingTitleEl?.getBoundingClientRect().left ?? targetRect.left;
         if (renderRoot != null) {
             const renderRect = renderRoot.getBoundingClientRect();
             // 只给“明显窄”的块（列表项、表格单元格）向右扩展到内容区右边缘，保留“打字
             // 连续”的手感；段落/标题/引用/代码块严格用渲染块宽度，宽度一变折行位置就变。
             const shouldExtend = editSession.blockKind === "list" && targetRect.width < renderRect.width * 0.6;
             if (shouldExtend) {
-                width = renderRect.right - targetRect.left;
+                width = renderRect.right - left;
             }
         }
         const viewportRect = viewport.getBoundingClientRect();
-        width = Math.max(0, Math.min(width, viewportRect.right - targetRect.left));
+        width = Math.max(0, Math.min(width, viewportRect.right - left));
         const next = {
             top: targetRect.top,
             left,
@@ -737,7 +851,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     : blockKind === "list"
                       ? stripListMarker(sourceContent)
                       : sourceContent;
-            const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, initialContent);
+            // RAW source, not `initialContent`: list markers are stripped from the draft
+            // (stripListMarker) so passing the stripped text made the marker lookup fail and
+            // every ordered list seeded as a <ul> with bullets.
+            const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, sourceContent);
             const session: InlineEditSession = {
                 blockKind,
                 startLine: safeLine,
@@ -899,11 +1016,18 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                     .split(/\r?\n/)
                     .slice(current.startLine - 1, current.endLine)
                     .join("\n");
+                // WYSIWYG lists serialize WITH their markers ("- x", "2. y"), so re-wrapping
+                // would prefix a second marker onto the first line only and corrupt the list.
+                // Raw-textarea list sessions strip the marker from the draft instead, so they
+                // still need it back. `renumberOrderedListFromLine` normalizes the numbers
+                // afterwards either way (see markdown.tsx).
                 const sourceDraft =
                     current.blockKind === "code"
                         ? wrapCodeFence(committedDraft, originalSource)
                         : current.blockKind === "list"
-                          ? wrapListMarker(committedDraft, originalSource)
+                          ? current.wysiwyg
+                              ? preserveListIndent(committedDraft, originalSource)
+                              : wrapListMarker(committedDraft, originalSource)
                           : committedDraft;
                 newFull = replaceSourceRange(fullTextRef.current, current.startLine, current.endLine, sourceDraft);
             }
@@ -969,6 +1093,20 @@ type InlineEditOverlayProps = {
      * its internal liveKind/headingLevel/DOM seed all reset to block B.
      */
     wysiwygSessionKey?: string;
+    /**
+     * Caret offset (rendered-block text space) captured at the click that opened the session.
+     * Applied on the first focus so a single click lands the caret where the user clicked.
+     * `null`/`undefined` keeps the legacy dblclick behavior (textarea: select-all;
+     * WYSIWYG/code: caret at the block's end).
+     */
+    caretOffset?: number | null;
+    /**
+     * Identity of the current edit session ("kind:startLine:endLine"). Used to place the
+     * caret exactly once per session: this overlay re-renders (and re-runs its focus effect)
+     * on every scroll re-measure / auto-grow, and re-applying `caretOffset` then would drag
+     * the caret back to the original click position after the user already moved it.
+     */
+    sessionKey?: string;
     onTextChange: (v: string, caret: number) => void;
     onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
     onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
@@ -1066,24 +1204,41 @@ export function InlineEditOverlay({
     wysiwygHeadingLevel,
     wysiwygListMarker,
     wysiwygSessionKey,
+    caretOffset,
+    sessionKey,
 }: InlineEditOverlayProps) {
+    const caretPlacedForKeyRef = useRef<string | null>(null);
     useLayoutEffect(() => {
         if (overlayRect == null || blockKind == null) {
             return;
         }
+        // Focus/caret placement happens once per session — see the `sessionKey` prop note.
+        const key = sessionKey ?? wysiwygSessionKey ?? blockKind;
+        if (caretPlacedForKeyRef.current === key) {
+            return;
+        }
+        caretPlacedForKeyRef.current = key;
         const raf = requestAnimationFrame(() => {
             if (wysiwygRef?.current != null) {
-                wysiwygRef.current.focus();
+                // The WYSIWYG editor owns the caret entirely. The hook's own focus+select
+                // effect bails on WYSIWYG (there is no <textarea> to act on), so the click
+                // offset has to travel through HERE — without it every single-click entry
+                // opens the editor with the caret at the block's end, forcing a second click.
+                wysiwygRef.current.focus(caretOffset ?? undefined);
                 return;
             }
             if (blockKind === "code") {
-                codeEditorRef.current?.focus();
+                // Same offset through the code editor's imperative handle, else its focus()
+                // falls back to textLen and the caret jumps to the block's end.
+                codeEditorRef.current?.focus(caretOffset != null ? { start: caretOffset } : undefined);
                 return;
             }
+            // Textarea: the hook's focus+select effect already set the selection from
+            // session.caretOffset; focus() alone must not move it.
             textareaRef.current?.focus({ preventScroll: true });
         });
         return () => cancelAnimationFrame(raf);
-    }, [blockKind, overlayRect, wysiwygSessionKey, wysiwygRef, codeEditorRef, textareaRef]);
+    }, [blockKind, overlayRect, wysiwygSessionKey, sessionKey, wysiwygRef, codeEditorRef, textareaRef, caretOffset]);
 
     if (overlayRect == null || blockKind == null) {
         return null;

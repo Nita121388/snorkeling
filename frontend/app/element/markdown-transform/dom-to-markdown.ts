@@ -226,7 +226,12 @@ export function serializeListDomToMarkdown(rootEl: Element, ordered: boolean, ma
         }
     };
 
-    emitList(rootEl, 0, ordered, 1);
+    // Ordered lists may not start at 1: the rendered `<ol>` carries `start` when the author
+    // wrote "3. 4. 5." (or the block is a split-list group continuing an earlier one). The
+    // editor seed mirrors that attribute, so honoring it here keeps the numbering the user
+    // sees identical to the source instead of silently renumbering from 1.
+    const startAttr = ordered ? Number(rootEl.getAttribute("start") ?? "1") : 1;
+    emitList(rootEl, 0, ordered, Number.isFinite(startAttr) && startAttr > 0 ? startAttr : 1);
     return lines.join("\n");
 }
 
