@@ -85,13 +85,13 @@ export function AnnotationCard({
             <div className="space-y-2">
                 {cluster.items.flatMap((item) =>
                     item.annotations.map((annotation) => (
-                        <div key={annotation.id} className="rounded border border-border/70 bg-surface px-2 py-1.5">
+                        <div key={annotation.id} className="rounded border border-border bg-panel px-2 py-1.5">
                             <div className="flex items-center gap-1.5">
                                 <span
                                     className={cn(
                                         "inline-flex h-4 items-center rounded px-1 text-[9px] uppercase",
                                         annotation.status === "draft"
-                                            ? "border border-dashed border-accent/60 text-accent"
+                                            ? "border border-dashed border-accent text-accent"
                                             : "bg-accent/10 text-accent"
                                     )}
                                 >

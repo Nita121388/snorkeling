@@ -43,12 +43,18 @@ export type AnnotationRailCluster = {
     hasOrphan: boolean;
 };
 
-/** rail 折叠/展开宽度与刻度尺寸（与 session-outline-rail 对齐的视觉规范）。 */
+/** rail 折叠/展开宽度与圆点尺寸（2026-10-26 视觉重构：药丸 → 竖向圆点）。 */
 export const AnnotationRailCollapsedWidth = 16;
-export const AnnotationRailExpandedWidth = 36;
-export const AnnotationRailSlotHeight = 8;
+export const AnnotationRailExpandedWidth = 44;
+export const AnnotationRailSlotHeight = 8; // legacy：密集分支的单槽高度（保留兜底）
 export const AnnotationRailMaxSlots = 40;
 export const AnnotationFlashMs = 1200;
+
+/** 竖向圆点 rail 的视觉常量（design.md §2）。 */
+export const RailDotRestingSize = 10;
+export const RailDotActiveSize = 16;
+export const RailDotGap = 28; // design 的 RailMinDotGap：两态自适应阈值 + 密集分支槽距
+export const RailAxisWidth = 2;
 
 function annotationSortKey(annotation: AnnotationLike): string {
     return `${annotation.anchorKey}|${annotation.seq}`;
@@ -127,6 +133,20 @@ export function clusterRailItems(
         });
     }
     return clusters;
+}
+
+/**
+ * 按 seq 升序给出每项在 rail 全高上的等比 rank（供「少节点铺满」分支使用）。
+ * 返回与入参同序的 `{ rank, maxRank }`；`maxRank === 0` 时表示只有一个节点。
+ */
+export function buildSeqRanks<T extends { seq: number }>(items: T[]): Array<{ rank: number; maxRank: number }> {
+    const order = items.map((item, index) => ({ index, seq: item.seq })).sort((left, right) => left.seq - right.seq);
+    const ranks = new Array(items.length);
+    const maxRank = Math.max(0, items.length - 1);
+    order.forEach((entry, position) => {
+        ranks[entry.index] = { rank: position, maxRank };
+    });
+    return ranks;
 }
 
 export function annotationsForSeq(annotations: AnnotationLike[], seq: number): AnnotationLike[] {

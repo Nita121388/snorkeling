@@ -128,3 +128,34 @@ describe("AnnotationRail pinned card", () => {
         expect(container.querySelector('[aria-label="Close"]')).toBeTruthy();
     });
 });
+
+describe("AnnotationRail dot states (2026-10-26 视觉重构)", () => {
+    function dotClass(annotation: AnnotationLike): string {
+        render({ annotations: [annotation] });
+        const dot = container.querySelector('button[aria-label^="Jump to annotation"] span');
+        expect(dot).toBeTruthy();
+        return dot!.getAttribute("class") ?? "";
+    }
+
+    it("accepted node renders a solid primary dot", () => {
+        const cls = dotClass(makeAnnotation({ status: "accepted" }));
+        expect(cls).toContain("bg-primary");
+    });
+
+    it("draft node renders a hollow accent ring, not a solid pill", () => {
+        const cls = dotClass(makeAnnotation({ status: "draft" }));
+        expect(cls).toContain("border-accent");
+        expect(cls).toContain("bg-transparent");
+    });
+
+    it("orphan node renders a warning dot", () => {
+        const cls = dotClass(makeAnnotation({ status: "draft", orphaned: true }));
+        expect(cls).toContain("bg-warning");
+    });
+
+    it("node mark is a round dot, not the old horizontal pill", () => {
+        const cls = dotClass(makeAnnotation({ status: "accepted" }));
+        expect(cls).toContain("rounded-full");
+        expect(cls).not.toContain("rounded-md");
+    });
+});
