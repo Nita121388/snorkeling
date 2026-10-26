@@ -1,0 +1,32 @@
+{
+  "id": "files-tree-hover-tooltip",
+  "name": "files-tree-hover-tooltip",
+  "title": "Files 树节点悬浮展示文件信息 Tooltip",
+  "description": "Files Block 目录树节点在鼠标悬浮超过设定时长后弹出信息 Tooltip，展示文件大小、最后修改时间、完整路径与类型；Tooltip 视觉遵循 shadcn/ui Nova 风格（柔和描边、圆角、分层排版、入场动效），且不破坏虚拟滚动行布局。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-22",
+  "completedAt": "2026-10-26",
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "frontend/app/treeview/treeview.tsx",
+    "frontend/app/treeview/treeview-file-tooltip.tsx",
+    "frontend/app/view/preview/preview-explorer.tsx",
+    "frontend/app/element/hover-timing.ts",
+    "frontend/util/fileformat.ts"
+  ],
+  "notes": "",
+  "meta": {}
+}

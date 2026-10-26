@@ -1,0 +1,28 @@
+{
+  "id": "files-widget-path-hub",
+  "name": "files-widget-path-hub",
+  "title": "Files 悬浮窗升级为路径中枢（真实最近/常用路径）",
+  "description": "把右侧 WidgetsBar 的 Files 悬浮窗从「假 Recent + 高门槛 Pin」升级为真实路径中枢：持久化真实访问记录、自动学习常用路径、面板内 Pin、搜索过滤；P0 范围，先不改后端协议。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-12",
+  "completedAt": "2026-10-26",
+  "branch": "main",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-21-files-group-addmenu-popup"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
