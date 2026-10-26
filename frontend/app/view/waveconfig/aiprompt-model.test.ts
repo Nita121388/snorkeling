@@ -6,10 +6,10 @@ import {
     buildPromptPayload,
     isEmptyPromptPayload,
     previewPrompt,
-    resolvePromptDraft,
     PROMPT_FEATURE_FALLBACKS,
     PROMPT_FEATURE_SESSION_NOTE_TAGS,
     PROMPT_FEATURE_SESSION_TITLE,
+    resolvePromptDraft,
 } from "./aiprompt-model";
 
 const LIMIT_LINE = "Hard limits: note <= 160 characters; tags <= 5.";
@@ -67,6 +67,8 @@ describe("buildPromptPayload", () => {
                 maxNoteChars: 200,
                 maxTags: 5,
                 maxTitleChars: 0,
+                maxAnnotations: 0,
+                maxBodyChars: 0,
                 enabled: true,
             },
             noteMeta

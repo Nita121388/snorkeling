@@ -12,14 +12,19 @@
 import { atoms } from "@/app/store/global-atoms";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { stringToBase64 } from "@/util/util";
 import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
+import { stringToBase64 } from "@/util/util";
 
 /** Feature keys are backend-defined; keep them in sync with promptregistry.go. */
 export const PROMPT_FEATURE_SESSION_NOTE_TAGS = "session-note-tags";
 export const PROMPT_FEATURE_SESSION_TITLE = "session-title";
+export const PROMPT_FEATURE_SESSION_ANNOTATIONS = "session-annotations";
 
-export const PROMPT_FEATURE_ORDER = [PROMPT_FEATURE_SESSION_NOTE_TAGS, PROMPT_FEATURE_SESSION_TITLE];
+export const PROMPT_FEATURE_ORDER = [
+    PROMPT_FEATURE_SESSION_NOTE_TAGS,
+    PROMPT_FEATURE_SESSION_TITLE,
+    PROMPT_FEATURE_SESSION_ANNOTATIONS,
+];
 
 /** Fallback metadata used before PromptTemplates resolves (and for unknown keys). */
 export const PROMPT_FEATURE_FALLBACKS: Record<string, PromptFeatureMeta> = {
@@ -40,6 +45,17 @@ export const PROMPT_FEATURE_FALLBACKS: Record<string, PromptFeatureMeta> = {
         defaultPrompt: "",
         parameters: [{ key: "maxTitleChars", label: "Max title chars", defaultValue: 40, min: 10, max: 120 }],
     },
+    [PROMPT_FEATURE_SESSION_ANNOTATIONS]: {
+        key: PROMPT_FEATURE_SESSION_ANNOTATIONS,
+        displayName: "Session Annotations",
+        description: "Draft node-level annotations for an agent session; saved as drafts for review.",
+        defaultPrompt: "",
+        parameters: [
+            { key: "maxAnnotations", label: "Max annotations", defaultValue: 12, min: 1, max: 30 },
+            { key: "maxBodyChars", label: "Max body chars", defaultValue: 600, min: 40, max: 2000 },
+            { key: "maxTags", label: "Max tags", defaultValue: 5, min: 1, max: 10 },
+        ],
+    },
 };
 
 export type PromptDraft = {
@@ -49,6 +65,8 @@ export type PromptDraft = {
     maxNoteChars: number;
     maxTags: number;
     maxTitleChars: number;
+    maxAnnotations: number;
+    maxBodyChars: number;
     enabled: boolean;
 };
 
@@ -72,6 +90,8 @@ export function hasPromptOverride(feature: string): boolean {
         (cfg.maxNoteChars ?? 0) !== 0 ||
         (cfg.maxTags ?? 0) !== 0 ||
         (cfg.maxTitleChars ?? 0) !== 0 ||
+        (cfg.maxAnnotations ?? 0) !== 0 ||
+        (cfg.maxBodyChars ?? 0) !== 0 ||
         cfg.enabled === false
     );
 }
@@ -85,6 +105,8 @@ export function resolvePromptDraft(stored: AIPromptConfigType, meta: PromptFeatu
         maxNoteChars: stored.maxNoteChars || parameterDefault(meta, "maxNoteChars"),
         maxTags: stored.maxTags || parameterDefault(meta, "maxTags"),
         maxTitleChars: stored.maxTitleChars || parameterDefault(meta, "maxTitleChars"),
+        maxAnnotations: stored.maxAnnotations || parameterDefault(meta, "maxAnnotations"),
+        maxBodyChars: stored.maxBodyChars || parameterDefault(meta, "maxBodyChars"),
         enabled: stored.enabled !== false,
     };
 }
@@ -117,6 +139,12 @@ export function buildPromptPayload(draft: PromptDraft, meta: PromptFeatureMeta):
     }
     if (draft.maxTitleChars !== parameterDefault(meta, "maxTitleChars") && draft.maxTitleChars > 0) {
         payload.maxTitleChars = draft.maxTitleChars;
+    }
+    if (draft.maxAnnotations !== parameterDefault(meta, "maxAnnotations") && draft.maxAnnotations > 0) {
+        payload.maxAnnotations = draft.maxAnnotations;
+    }
+    if (draft.maxBodyChars !== parameterDefault(meta, "maxBodyChars") && draft.maxBodyChars > 0) {
+        payload.maxBodyChars = draft.maxBodyChars;
     }
     if (!draft.enabled) {
         payload.enabled = false;

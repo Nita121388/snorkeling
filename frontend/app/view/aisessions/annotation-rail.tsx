@@ -51,12 +51,17 @@ export function AnnotationRail({
     onJump,
     activeSeq = null,
     previewBySeq,
+    onGenerateTimeline,
+    generating = false,
 }: {
     annotations: AnnotationLike[];
     onJump: (seq: number) => void;
     activeSeq?: number | null;
     /** seq → 节点原文摘要（截断），用于悬浮卡。 */
     previewBySeq?: Map<number, string>;
+    /** 「✨ 生成时间线」；不传时不渲染按钮。 */
+    onGenerateTimeline?: () => void;
+    generating?: boolean;
 }) {
     const [collapsed, setCollapsed] = React.useState<boolean>(readCollapsedPreference);
     const [hoverIndex, setHoverIndex] = React.useState<number | null>(null);
@@ -108,12 +113,34 @@ export function AnnotationRail({
             className="relative flex shrink-0 flex-col items-start overflow-visible border-r border-border/40"
             style={{ width }}
         >
-            <div
-                className="w-full cursor-pointer px-1 py-1 text-[9px] text-secondary/70 hover:text-primary"
-                onClick={toggleCollapsed}
-                title={collapsed ? "Expand annotation timeline" : "Collapse annotation timeline"}
-            >
-                {collapsed ? "" : "Notes"}
+            <div className="flex w-full flex-col items-start gap-0.5 px-1 py-1">
+                <div
+                    className="w-full cursor-pointer text-[9px] text-secondary/70 hover:text-primary"
+                    onClick={toggleCollapsed}
+                    title={collapsed ? "Expand annotation timeline" : "Collapse annotation timeline"}
+                >
+                    {collapsed ? "" : "Notes"}
+                </div>
+                {!collapsed && onGenerateTimeline != null ? (
+                    <button
+                        type="button"
+                        className="flex h-5 w-full cursor-pointer items-center justify-center gap-1 rounded border border-border/70 text-[9px] text-secondary hover:bg-hover hover:text-accent disabled:opacity-60"
+                        disabled={generating}
+                        title="Generate annotation timeline with AI"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onGenerateTimeline();
+                        }}
+                    >
+                        <i
+                            className={cn(
+                                "fa-sharp fa-solid",
+                                generating ? "fa-spinner animate-spin" : "fa-wand-magic-sparkles"
+                            )}
+                        />
+                        <span>AI</span>
+                    </button>
+                ) : null}
             </div>
             <div className="w-full">
                 {clusters.map((cluster, index) => {

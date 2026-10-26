@@ -21,10 +21,22 @@ export class AISessionsServiceType {
         this.waveEnv = waveEnv;
     }
 
+    // generate AI annotation drafts for one session or one field (never saves)
+    // @returns validated annotation drafts
+    AnnotationAssist(request: AISessionsAnnotationAssistRequest): Promise<AISessionsAnnotationAssistResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "AnnotationAssist", Array.from(arguments))
+    }
+
     // delete one session annotation permanently
     // @returns no return value
     AnnotationDelete(id: number): Promise<void> {
         return callBackendService(this?.waveEnv, "aisessions", "AnnotationDelete", Array.from(arguments))
+    }
+
+    // replace AI-replaceable annotations with drafted annotations (protects user data)
+    // @returns the inserted draft annotations
+    AnnotationReplace(request: AISessionsAnnotationReplaceRequest): Promise<AISessionsAnnotationsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "AnnotationReplace", Array.from(arguments))
     }
 
     // create or update one session annotation

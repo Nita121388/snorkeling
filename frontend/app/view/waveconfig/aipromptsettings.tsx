@@ -9,19 +9,19 @@
 // the serialized writer in aiprompt-model.ts; the backend watcher re-broadcasts
 // the full config, so this page and the generation RPCs read the same source.
 
-import { AISessionsServiceType } from "@/app/store/services";
-import { atoms } from "@/app/store/global-atoms";
 import { Toggle } from "@/app/element/toggle";
+import { atoms } from "@/app/store/global-atoms";
+import { AISessionsServiceType } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import {
     buildPromptPayload,
     flushPromptDraft,
     hasPromptOverride,
+    previewPrompt,
     PROMPT_FEATURE_FALLBACKS,
     PROMPT_FEATURE_ORDER,
     PROMPT_FEATURE_SESSION_TITLE,
-    previewPrompt,
     resolvePromptDraft,
     savePromptConfig,
     type PromptDraft,
@@ -39,11 +39,7 @@ function featureMeta(features: PromptFeatureMeta[], key: string): PromptFeatureM
     return features.find((f) => f.key === key) ?? PROMPT_FEATURE_FALLBACKS[key];
 }
 
-export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({
-    model,
-}: {
-    model: WaveConfigViewModel;
-}) {
+export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ model }: { model: WaveConfigViewModel }) {
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
     const modeConfigs = useAtomValue(atoms.waveaiModeConfigAtom) ?? {};
     const [features, setFeatures] = useState<PromptFeatureMeta[]>([]);
@@ -190,7 +186,7 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({
     const preview = useMemo(() => previewPrompt(draft, meta), [draft, meta]);
     const isCustomized = hasPromptOverride(selectedKey);
 
-    const numberField = (key: "maxNoteChars" | "maxTags" | "maxTitleChars") => {
+    const numberField = (key: "maxNoteChars" | "maxTags" | "maxTitleChars" | "maxAnnotations" | "maxBodyChars") => {
         const param = meta.parameters.find((p) => p.key === key);
         if (param == null) {
             return null;
@@ -236,10 +232,7 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({
                     </p>
                 </div>
                 <span
-                    className={cn(
-                        "shrink-0 text-xxs",
-                        saveState === "error" ? "text-error" : "text-muted"
-                    )}
+                    className={cn("shrink-0 text-xxs", saveState === "error" ? "text-error" : "text-muted")}
                     role="status"
                 >
                     {saveState === "saving"
@@ -384,6 +377,8 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({
                             {numberField("maxNoteChars")}
                             {numberField("maxTags")}
                             {numberField("maxTitleChars")}
+                            {numberField("maxAnnotations")}
+                            {numberField("maxBodyChars")}
                             <label className="flex items-center gap-2 text-xs text-secondary">
                                 <Toggle
                                     checked={draft.enabled}

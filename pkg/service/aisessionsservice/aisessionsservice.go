@@ -197,6 +197,33 @@ type AISessionsAnnotationSessionsRequest struct {
 	Connection      string   `json:"connection,omitempty"`
 }
 
+// AISessionsAnnotationAssistRequest asks the AI for annotation drafts. It never
+// writes to the database; the user decides whether to keep the drafts.
+type AISessionsAnnotationAssistRequest struct {
+	SessionKey string   `json:"sessionKey"`
+	Connection string   `json:"connection,omitempty"`
+	Scope      string   `json:"scope"` // timeline | entry-title | entry-body | entry-tags
+	AnchorKey  string   `json:"anchorKey,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Body       string   `json:"body,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	MaxEntries int      `json:"maxEntries,omitempty"`
+	AIMode     string   `json:"aiMode,omitempty"`
+}
+
+type AISessionsAnnotationAssistResponse struct {
+	Drafts  []aisessions.AnnotationDraft `json:"drafts"`
+	AIModel string                       `json:"aiModel,omitempty"`
+}
+
+// AISessionsAnnotationReplaceRequest replaces every AI-replaceable annotation of
+// a session with the provided drafts (drafts are stored with status=draft).
+type AISessionsAnnotationReplaceRequest struct {
+	SessionKey  string                       `json:"sessionKey"`
+	Connection  string                       `json:"connection,omitempty"`
+	Annotations []aisessions.AnnotationDraft `json:"annotations"`
+}
+
 type AISessionsAnnotationSessionsResponse struct {
 	Sessions []aisessions.AnnotatedSession `json:"sessions"`
 	Total    int                           `json:"total"`
@@ -1296,6 +1323,89 @@ func (svc *AISessionsService) AnnotationSessions(ctx context.Context, request *A
 		sessions = []aisessions.AnnotatedSession{}
 	}
 	return &AISessionsAnnotationSessionsResponse{Sessions: sessions, Total: total}, nil
+}
+
+func (svc *AISessionsService) AnnotationAssist_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "generate AI annotation drafts for one session or one field (never saves)",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "validated annotation drafts",
+	}
+}
+
+func (svc *AISessionsService) AnnotationAssist(ctx context.Context, request *AISessionsAnnotationAssistRequest) (*AISessionsAnnotationAssistResponse, error) {
+	if request == nil || strings.TrimSpace(request.SessionKey) == "" {
+		return nil, fmt.Errorf("session key is required")
+	}
+	promptConfig := aisessions.PromptConfigForFeature(aisessions.PromptFeatureSessionAnnotations)
+	if !aisessions.PromptEnabled(promptConfig) {
+		return nil, fmt.Errorf("session annotation generation is disabled in AI Prompts settings")
+	}
+	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := manager.Load(ctx, request.SessionKey, aisessions.LoadOptions{IncludeTools: true})
+	if err != nil {
+		return nil, err
+	}
+	drafts, model, err := aisessions.GenerateAnnotationDrafts(ctx, aisessions.AnnotationAssistInput{
+		SessionKey:   detail.Summary.Key,
+		Scope:        request.Scope,
+		AnchorKey:    request.AnchorKey,
+		Title:        request.Title,
+		Body:         request.Body,
+		ExistingTags: request.Tags,
+		Messages:     detail.Messages,
+		ToolCalls:    detail.ToolCalls,
+		MaxEntries:   request.MaxEntries,
+		AIMode:       request.AIMode,
+		PromptConfig: promptConfig,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsAnnotationAssistResponse{Drafts: drafts, AIModel: model}, nil
+}
+
+func (svc *AISessionsService) AnnotationReplace_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "replace AI-replaceable annotations with drafted annotations (protects user data)",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "the inserted draft annotations",
+	}
+}
+
+func (svc *AISessionsService) AnnotationReplace(ctx context.Context, request *AISessionsAnnotationReplaceRequest) (*AISessionsAnnotationsResponse, error) {
+	if request == nil || strings.TrimSpace(request.SessionKey) == "" {
+		return nil, fmt.Errorf("session key is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]aisessions.AnnotationRow, 0, len(request.Annotations))
+	for _, draft := range request.Annotations {
+		rows = append(rows, aisessions.AnnotationRow{
+			SessionKey: request.SessionKey,
+			AnchorKey:  draft.AnchorKey,
+			Kind:       draft.Kind,
+			Title:      draft.Title,
+			Body:       draft.Body,
+			Tags:       draft.Tags,
+			Status:     aisessions.AnnotationStatusDraft,
+			Source:     aisessions.AnnotationSourceAI,
+		})
+	}
+	inserted, err := manager.ReplaceReplaceableAnnotations(ctx, request.SessionKey, rows)
+	if err != nil {
+		return nil, err
+	}
+	views := make([]aisessions.AnnotationView, 0, len(inserted))
+	for _, row := range inserted {
+		views = append(views, row.ToView(false))
+	}
+	return &AISessionsAnnotationsResponse{Annotations: views}, nil
 }
 
 func (svc *AISessionsService) PromptTemplates_Meta() tsgenmeta.MethodMeta {

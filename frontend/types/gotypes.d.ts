@@ -63,7 +63,35 @@ declare global {
         maxNoteChars?: number;
         maxTags?: number;
         maxTitleChars?: number;
+        maxAnnotations?: number;
+        maxBodyChars?: number;
         enabled?: boolean;
+    };
+
+    // aisessionsservice.AISessionsAnnotationAssistRequest
+    type AISessionsAnnotationAssistRequest = {
+        sessionKey: string;
+        connection?: string;
+        scope: string;
+        anchorKey?: string;
+        title?: string;
+        body?: string;
+        tags?: string[];
+        maxEntries?: number;
+        aiMode?: string;
+    };
+
+    // aisessionsservice.AISessionsAnnotationAssistResponse
+    type AISessionsAnnotationAssistResponse = {
+        drafts: AnnotationDraft[];
+        aiModel?: string;
+    };
+
+    // aisessionsservice.AISessionsAnnotationReplaceRequest
+    type AISessionsAnnotationReplaceRequest = {
+        sessionKey: string;
+        connection?: string;
+        annotations: AnnotationDraft[];
     };
 
     // aisessionsservice.AISessionsAnnotationSaveRequest
@@ -482,6 +510,15 @@ declare global {
         seq: number;
         role: string;
         hash: string;
+    };
+
+    // aisessions.AnnotationDraft
+    type AnnotationDraft = {
+        anchorKey: string;
+        kind: string;
+        title: string;
+        body: string;
+        tags?: string[];
     };
 
     // aisessions.AnnotationView

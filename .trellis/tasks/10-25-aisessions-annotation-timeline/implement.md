@@ -132,24 +132,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-en
 
 ### D1 prompt feature
 
-- [ ] `promptregistry.go` 加 `PromptFeatureSessionAnnotations`，补 `ListPromptFeatures` / `ResolvePrompt` / `PromptEnabled` 分支
-- [ ] `aiprompts.json` 段支持 `maxAnnotations` / `maxBodyChars` / `maxTags`，夹取范围与 `ai-prompt-config-contract.md` 一致
+- [x] `promptregistry.go` 加 `PromptFeatureSessionAnnotations`，补 `ListPromptFeatures` / `ResolvePrompt` / `PromptEnabled` 分支
+- [x] `aiprompts.json` 段支持 `maxAnnotations` / `maxBodyChars` / `maxTags`，夹取范围与 `ai-prompt-config-contract.md` 一致
 
 ### D2 后端生成
 
-- [ ] `pkg/aisessions/annotation_assist.go`
-  - [ ] `BuildAnchorDigest(messages, toolCalls) []AnchorPoint` —— 压缩清单，带 `anchorKey`
-  - [ ] `ParseAnnotationDrafts(reply, known map[string]bool)` —— JSON 解析 + 非法锚点丢弃 + 计数
+- [x] `pkg/aisessions/annotation_assist.go`
+  - [x] `BuildAnchorDigest(messages, toolCalls) []AnchorPoint` —— 压缩清单，带 `anchorKey`
+  - [x] `ParseAnnotationDrafts(reply, known map[string]bool)` —— JSON 解析 + 非法锚点丢弃 + 计数
   - [ ] 五个 scope 的 prompt 组装
-- [ ] `annotation_assist_test.go`：非法 anchorKey 被丢弃、JSON 破损重试一次、超 maxEntries 截断、kind 枚举校验
+- [x] `annotation_assist_test.go`：非法 anchorKey 被丢弃、JSON 破损重试一次、超 maxEntries 截断、kind 枚举校验
 - [ ] `annotation_assist_queue.go`：per-index-path worker，仿 `autoTitleWorkers`；单条 90s 超时；O(1) 入队
 - [ ] RPC `AnnotationAssist` → jobId；结果事件推送
 
 ### D3 前端
 
 - [ ] `annotation-assist.ts`：字段级状态机 + `context.Cancel` 贯通
-- [ ] `<AIAssistButton>`：**唯一实现**，三处复用（标题 / 正文 / 标签）；会话笔记入口只接线到 `10-25-aisessions-ai-gen`
-- [ ] 未配置模型 → 置灰 + 设置入口
+- [x] `<AIAssistButton>`：**唯一实现**，三处复用（标题 / 正文 / 标签）；会话笔记入口只接线到 `10-25-aisessions-ai-gen`
+- [x] 未配置模型 → 置灰 + 设置入口
 - [ ] 「✨ 生成时间线」→ 确认弹层（含保留/清除选项）→ 进度条（rail 顶部，不阻塞）→ 草稿逐条淡入
 - [ ] 「全部采纳」「全部丢弃」+ 单条采纳/丢弃/重生成
 - [ ] 生成结果的 `AI · 未保存` 角标 + 「撤销 AI 结果」

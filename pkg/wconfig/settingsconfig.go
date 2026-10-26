@@ -104,51 +104,51 @@ type PathUsageEntryType struct {
 
 // ScheduledTask schedule definition
 type ScheduledTaskScheduleType struct {
-	Type       string  `json:"type"`                 // cron / interval / once / daily / weekly
+	Type       string  `json:"type"` // cron / interval / once / daily / weekly
 	CronExpr   string  `json:"cronExpr,omitempty"`
 	IntervalMs *int64  `json:"intervalMs,omitempty"`
 	TimeOfDay  string  `json:"timeOfDay,omitempty"` // HH:MM
-	DayOfWeek  *int    `json:"dayOfWeek,omitempty"`  // 0=Sun
-	RunAt      *string `json:"runAt,omitempty"`      // ISO timestamp (once)
+	DayOfWeek  *int    `json:"dayOfWeek,omitempty"` // 0=Sun
+	RunAt      *string `json:"runAt,omitempty"`     // ISO timestamp (once)
 	Timezone   string  `json:"timezone,omitempty"`
 }
 
 // ScheduledTaskType is a single scheduled task entry persisted under scheduledtasks:items
 type ScheduledTaskType struct {
-	Id               string                      `json:"id"`
-	Name             string                      `json:"name"`
-	Enabled          bool                        `json:"enabled"`
-	AgentProfile     string                      `json:"agentProfile,omitempty"`
-	AgentCmd         *string                     `json:"agentCmd,omitempty"`
-	AgentArgs        []string                    `json:"agentArgs,omitempty"`
-	Provider         string                      `json:"provider,omitempty"`
-	Model            string                      `json:"model,omitempty"`
-	Thinking         string                      `json:"thinking,omitempty"`
-	Prompt           string                      `json:"prompt"`
-	SystemPrompt     *string                     `json:"systemPrompt,omitempty"`
-	Workdir          string                      `json:"workdir,omitempty"`
-	Connection       string                      `json:"connection,omitempty"`
-	Schedule         ScheduledTaskScheduleType   `json:"schedule"`
-	NotifyOnComplete *bool                       `json:"notifyOnComplete,omitempty"`
-	NotifyOnError    *bool                       `json:"notifyOnError,omitempty"`
-	NotificationMode string                      `json:"notificationMode,omitempty"`
-	CreatedAt        string                      `json:"createdAt,omitempty"`
-	UpdatedAt        string                      `json:"updatedAt,omitempty"`
-	LastRunAt        *string                     `json:"lastRunAt,omitempty"`
-	LastRunStatus    *string                     `json:"lastRunStatus,omitempty"`
-	RunCount         int                         `json:"runCount,omitempty"`
-	Tags             []string                    `json:"tags,omitempty"`
-	CreatedBy        string                      `json:"createdBy,omitempty"`
+	Id               string                    `json:"id"`
+	Name             string                    `json:"name"`
+	Enabled          bool                      `json:"enabled"`
+	AgentProfile     string                    `json:"agentProfile,omitempty"`
+	AgentCmd         *string                   `json:"agentCmd,omitempty"`
+	AgentArgs        []string                  `json:"agentArgs,omitempty"`
+	Provider         string                    `json:"provider,omitempty"`
+	Model            string                    `json:"model,omitempty"`
+	Thinking         string                    `json:"thinking,omitempty"`
+	Prompt           string                    `json:"prompt"`
+	SystemPrompt     *string                   `json:"systemPrompt,omitempty"`
+	Workdir          string                    `json:"workdir,omitempty"`
+	Connection       string                    `json:"connection,omitempty"`
+	Schedule         ScheduledTaskScheduleType `json:"schedule"`
+	NotifyOnComplete *bool                     `json:"notifyOnComplete,omitempty"`
+	NotifyOnError    *bool                     `json:"notifyOnError,omitempty"`
+	NotificationMode string                    `json:"notificationMode,omitempty"`
+	CreatedAt        string                    `json:"createdAt,omitempty"`
+	UpdatedAt        string                    `json:"updatedAt,omitempty"`
+	LastRunAt        *string                   `json:"lastRunAt,omitempty"`
+	LastRunStatus    *string                   `json:"lastRunStatus,omitempty"`
+	RunCount         int                       `json:"runCount,omitempty"`
+	Tags             []string                  `json:"tags,omitempty"`
+	CreatedBy        string                    `json:"createdBy,omitempty"`
 }
 
 // ScheduledTaskRunRecord is an execution history entry (Phase 1: kept in memory + optional file)
 type ScheduledTaskRunRecord struct {
-	TaskId    string `json:"taskId"`
-	RunAt     string `json:"runAt"`
-	Status    string `json:"status"` // success / error / timeout / cancelled / skipped
-	DurationMs int64 `json:"durationMs,omitempty"`
-	Error     string `json:"error,omitempty"`
-	Output    string `json:"output,omitempty"`
+	TaskId     string `json:"taskId"`
+	RunAt      string `json:"runAt"`
+	Status     string `json:"status"` // success / error / timeout / cancelled / skipped
+	DurationMs int64  `json:"durationMs,omitempty"`
+	Error      string `json:"error,omitempty"`
+	Output     string `json:"output,omitempty"`
 }
 
 type SettingsType struct {
@@ -327,7 +327,7 @@ type SettingsType struct {
 	TsunamiSdkVersion     string `json:"tsunami:sdkversion,omitempty"`
 	TsunamiGoPath         string `json:"tsunami:gopath,omitempty"`
 
-	ScheduledTasksClear bool                   `json:"scheduledtasks:*,omitempty"`
+	ScheduledTasksClear bool                `json:"scheduledtasks:*,omitempty"`
 	ScheduledTasksItems []ScheduledTaskType `json:"scheduledtasks:items,omitempty"`
 }
 
@@ -484,6 +484,8 @@ type AIPromptConfigType struct {
 	MaxNoteChars      int    `json:"maxNoteChars,omitempty"`
 	MaxTags           int    `json:"maxTags,omitempty"`
 	MaxTitleChars     int    `json:"maxTitleChars,omitempty"`
+	MaxAnnotations    int    `json:"maxAnnotations,omitempty"`
+	MaxBodyChars      int    `json:"maxBodyChars,omitempty"`
 	// Enabled is a pointer so "unset" means enabled; an explicit false disables
 	// the feature's entry point without deleting the prompt.
 	Enabled *bool `json:"enabled,omitempty"`

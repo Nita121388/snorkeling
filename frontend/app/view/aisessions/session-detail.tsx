@@ -20,6 +20,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { autoGenerate } from "./aisession-gen-store";
+import { replaceAnnotationDrafts, requestAnnotationDrafts } from "./annotation-assist";
 import { AnnotationEditor } from "./annotation-editor";
 import { AnnotationFlashMs, annotationCountBySeq, buildAnnotationAnchors } from "./annotation-model";
 import { AnnotationRail } from "./annotation-rail";
@@ -436,6 +437,8 @@ export function SessionDetailPane({
         annotation?: AnnotationView;
     } | null>(null);
     const [activeAnnotationSeq, setActiveAnnotationSeq] = useState<number | null>(null);
+    const [timelineGenerating, setTimelineGenerating] = useState(false);
+    const [annotationError, setAnnotationError] = useState("");
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
     const detailSearchSummary =
         normalizedDetailSearchQuery === ""
@@ -517,6 +520,27 @@ export function SessionDetailPane({
         },
         [scrollToVisibleMessage]
     );
+
+    const generateAnnotationTimeline = useCallback(async () => {
+        if (summaryKey === "" || timelineGenerating) return;
+        setTimelineGenerating(true);
+        try {
+            const drafts = await requestAnnotationDrafts({
+                sessionKey: summaryKey,
+                connection,
+                scope: "timeline",
+                maxEntries: 12,
+            });
+            if (drafts.length > 0) {
+                await replaceAnnotationDrafts(summaryKey, connection, drafts);
+                await reloadAnnotations();
+            }
+        } catch (err) {
+            setAnnotationError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setTimelineGenerating(false);
+        }
+    }, [connection, reloadAnnotations, summaryKey, timelineGenerating]);
 
     // 实时流式 turn（主消息区内联渲染）：assistant_delta/tool 事件累积，turn_end 后由
     // DetailDelta 正式数据替换（先刷新落地再清除，避免空窗闪烁）。
@@ -1561,6 +1585,18 @@ export function SessionDetailPane({
                     </>
                 )}
             </div>
+            {annotationError ? (
+                <div className="flex shrink-0 items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-1 text-[11px] text-warning">
+                    <span className="min-w-0 flex-1 truncate">Annotation AI: {annotationError}</span>
+                    <button
+                        type="button"
+                        className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 hover:bg-warning/10"
+                        onClick={() => setAnnotationError("")}
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            ) : null}
             <div className="relative min-h-0 flex-1">
                 <div className="flex h-full min-h-0">
                     <AnnotationRail
@@ -1568,6 +1604,8 @@ export function SessionDetailPane({
                         onJump={jumpToAnnotationSeq}
                         activeSeq={activeAnnotationSeq}
                         previewBySeq={annotationPreviewBySeq}
+                        onGenerateTimeline={() => void generateAnnotationTimeline()}
+                        generating={timelineGenerating}
                     />
                     <div className="relative flex min-w-0 flex-1 flex-col">
                         {/* 搜索浮层：头栏下方居中弹出（对齐原型 srch-pop） */}

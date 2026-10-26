@@ -87,3 +87,14 @@ ResolveAIMode(cfg): aiusechat.DefaultMetadataAIMode(cfg.AIMode)
 - [ ] `maxNoteChars` / `maxTags` / `maxTitleChars` 越界被夹取
 - [ ] `enabled=false` 时两个生成入口均被拒绝
 - [ ] 设置页保存 → watcher 回广播 → 再生成使用新提示词
+
+## 6. 会话批注 feature（session-annotations，2026-10-25）
+
+- feature key：`session-annotations`。
+- 参数：`maxAnnotations`（夹取 [1,30]，默认 12）、`maxBodyChars`（夹取 [40,2000]，默认 600）、
+  `maxTags`（沿用 `ClampTagCount`）。
+- `ListPromptFeatures` 顺序：`session-note-tags` → `session-title` → `session-annotations`；
+  前端 `PROMPT_FEATURE_ORDER` 必须同步。
+- 生成入口：`AISessionsService.AnnotationAssist`（draft only，不落库）+ `AnnotationReplace`
+  （单事务替换可替换行）。非法 anchorKey / kind 在服务端丢弃，不写半成品。
+

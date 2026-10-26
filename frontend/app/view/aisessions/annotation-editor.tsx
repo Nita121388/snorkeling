@@ -10,6 +10,8 @@
 import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { requestAnnotationDrafts, type AnnotationAssistScope } from "./annotation-assist";
+import { AIAssistButton, AssistFieldState, type AssistFieldStatus } from "./annotation-assist-ui";
 import { deleteAnnotation, saveAnnotation } from "./annotation-store";
 import { normalizeSessionTags } from "./session-tags";
 
@@ -44,6 +46,55 @@ export function AnnotationEditor({
     const [saving, setSaving] = React.useState(false);
     const [deleting, setDeleting] = React.useState(false);
     const [error, setError] = React.useState("");
+    type AssistField = "title" | "body" | "tags";
+    const [assist, setAssist] = React.useState<
+        Record<AssistField, { status: AssistFieldStatus; error: string; previous?: string }>
+    >({
+        title: { status: "idle", error: "" },
+        body: { status: "idle", error: "" },
+        tags: { status: "idle", error: "" },
+    });
+    const assistSeq = React.useRef(0);
+
+    const runAssist = React.useCallback(
+        async (field: AssistField) => {
+            const scope: AnnotationAssistScope =
+                field === "title" ? "entry-title" : field === "body" ? "entry-body" : "entry-tags";
+            const previous = field === "title" ? title : field === "body" ? body : tagsText;
+            const seq = ++assistSeq.current;
+            setAssist((current) => ({ ...current, [field]: { status: "running", error: "", previous } }));
+            try {
+                const drafts = await requestAnnotationDrafts({
+                    sessionKey,
+                    connection,
+                    scope,
+                    anchorKey,
+                    title,
+                    body,
+                    tags: tagsText
+                        .split(/[\s,，]+/)
+                        .map((tag) => tag.replace(/^#+/, "").trim())
+                        .filter(Boolean),
+                });
+                if (seq !== assistSeq.current) return;
+                const draft = drafts[0];
+                if (draft == null) {
+                    throw new Error("AI returned no suggestion");
+                }
+                if (field === "title") setTitle(draft.title);
+                else if (field === "body") setBody(draft.body);
+                else setTagsText((draft.tags ?? []).map((tag) => `#${tag}`).join(" "));
+                setAssist((current) => ({ ...current, [field]: { status: "idle", error: "", previous } }));
+            } catch (err) {
+                if (seq !== assistSeq.current) return;
+                setAssist((current) => ({
+                    ...current,
+                    [field]: { status: "error", error: err instanceof Error ? err.message : String(err) },
+                }));
+            }
+        },
+        [anchorKey, body, connection, sessionKey, tagsText, title]
+    );
 
     const handleSave = React.useCallback(async () => {
         if (saving) return;
@@ -121,6 +172,22 @@ export function AnnotationEditor({
                         </button>
                     ))}
                 </div>
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wide text-secondary">Title</span>
+                    <AIAssistButton status={assist.title.status} onRun={() => void runAssist("title")} />
+                    <AssistFieldState
+                        status={assist.title.status}
+                        error={assist.title.error}
+                        onUndo={
+                            assist.title.previous != null
+                                ? () => {
+                                      setTitle(assist.title.previous ?? "");
+                                      setAssist((current) => ({ ...current, title: { status: "idle", error: "" } }));
+                                  }
+                                : undefined
+                        }
+                    />
+                </div>
                 <input
                     autoFocus
                     className="h-8 w-full rounded border border-border bg-transparent px-2 text-sm outline-none focus:border-accent"
@@ -128,12 +195,44 @@ export function AnnotationEditor({
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
                 />
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wide text-secondary">Body</span>
+                    <AIAssistButton status={assist.body.status} onRun={() => void runAssist("body")} />
+                    <AssistFieldState
+                        status={assist.body.status}
+                        error={assist.body.error}
+                        onUndo={
+                            assist.body.previous != null
+                                ? () => {
+                                      setBody(assist.body.previous ?? "");
+                                      setAssist((current) => ({ ...current, body: { status: "idle", error: "" } }));
+                                  }
+                                : undefined
+                        }
+                    />
+                </div>
                 <textarea
                     className="min-h-[140px] w-full resize-y rounded border border-border bg-transparent px-3 py-2 text-sm leading-5 outline-none focus:border-accent"
                     placeholder="Annotation body"
                     value={body}
                     onChange={(event) => setBody(event.target.value)}
                 />
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wide text-secondary">Tags</span>
+                    <AIAssistButton status={assist.tags.status} onRun={() => void runAssist("tags")} />
+                    <AssistFieldState
+                        status={assist.tags.status}
+                        error={assist.tags.error}
+                        onUndo={
+                            assist.tags.previous != null
+                                ? () => {
+                                      setTagsText(assist.tags.previous ?? "");
+                                      setAssist((current) => ({ ...current, tags: { status: "idle", error: "" } }));
+                                  }
+                                : undefined
+                        }
+                    />
+                </div>
                 <input
                     className="h-8 w-full rounded border border-border bg-transparent px-2 text-xs outline-none focus:border-accent"
                     placeholder="tags (space separated, # optional)"
