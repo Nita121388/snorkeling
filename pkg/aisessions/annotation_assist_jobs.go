@@ -104,17 +104,18 @@ func startAnnotationAssist(key, connection string, input AnnotationAssistInput, 
 			return
 		}
 		emit(GenStateRunning, nil, "", nil)
-		drafts, model, err := GenerateAnnotationDraftsWithContext(jobCtx, input)
+		drafts, model, rawReply, err := GenerateAnnotationDraftsWithContext(jobCtx, input)
 		if err != nil {
 			state := GenStateFailed
 			if jobCtx.Err() != nil {
 				state = "cancelled"
 			}
 			finishAssistAudit(auditID, AuditResult{
-				State:      state,
-				AIModel:    model,
-				Error:      err.Error(),
-				DurationMs: time.Since(startedAt).Milliseconds(),
+				State:       state,
+				AIModel:     model,
+				Error:       err.Error(),
+				DurationMs:  time.Since(startedAt).Milliseconds(),
+				RawResponse: rawReply,
 			})
 			emit(state, nil, model, err)
 			return
@@ -131,6 +132,7 @@ func startAnnotationAssist(key, connection string, input AnnotationAssistInput, 
 			ResultCount: len(drafts),
 			AnchorKept:  kept,
 			DurationMs:  time.Since(startedAt).Milliseconds(),
+			RawResponse: rawReply,
 		})
 		emit(GenStateDone, drafts, model, nil)
 	}()

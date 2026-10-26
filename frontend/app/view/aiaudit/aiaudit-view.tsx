@@ -79,6 +79,11 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
     const detail = jotai.useAtomValue(model.detailAtom);
     const detailLoading = jotai.useAtomValue(model.detailLoadingAtom);
 
+    React.useEffect(() => {
+        void model.load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [model]);
+
     return (
         <div className="flex h-full min-h-0 flex-col bg-block-solid p-3">
             <div className="flex shrink-0 flex-wrap items-center gap-2 pb-2">

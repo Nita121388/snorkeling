@@ -17,8 +17,8 @@ func TestAnnotationAssistEventStates(t *testing.T) {
 	done := make(chan struct{}, 1)
 	// Inject the generator so the test does not depend on a configured model.
 	previous := annotationDraftGenerator
-	annotationDraftGenerator = func(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, error) {
-		return []AnnotationDraft{{AnchorKey: in.AnchorKey, Kind: AnnotationKindNote, Title: "t"}}, "testmodel", nil
+	annotationDraftGenerator = func(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, string, error) {
+		return []AnnotationDraft{{AnchorKey: in.AnchorKey, Kind: AnnotationKindNote, Title: "t"}}, "testmodel", `{"annotations":[]}`, nil
 	}
 	defer func() { annotationDraftGenerator = previous }()
 

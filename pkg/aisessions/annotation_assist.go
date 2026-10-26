@@ -245,24 +245,27 @@ func stripJSONFence(text string) string {
 var annotationDraftGenerator = generateAnnotationDraftsReal
 
 func GenerateAnnotationDrafts(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, error) {
-	return GenerateAnnotationDraftsWithContext(ctx, in)
+	drafts, model, _, err := GenerateAnnotationDraftsWithContext(ctx, in)
+	return drafts, model, err
 }
 
-func GenerateAnnotationDraftsWithContext(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, error) {
+// GenerateAnnotationDraftsRaw also returns the model's raw reply so the audit
+// log can show exactly what came back when parsing fails.
+func GenerateAnnotationDraftsWithContext(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, string, error) {
 	return annotationDraftGenerator(ctx, in)
 }
 
-func generateAnnotationDraftsReal(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, error) {
+func generateAnnotationDraftsReal(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, string, error) {
 	scope := normalizeAnnotationScope(in.Scope)
 	cfg := promptConfigWithFallbackMode(in.PromptConfig, in.AIMode)
 	mode := ResolveAIMode(cfg)
 	opts, err := aiusechat.GetAIOptsForMode(mode, 2048)
 	if err != nil {
-		return nil, "", fmt.Errorf("resolving AI annotation model: %w", err)
+		return nil, "", "", fmt.Errorf("resolving AI annotation model: %w", err)
 	}
 	digest := buildAnnotationDigest(in.Messages, in.ToolCalls)
 	if len(digest) == 0 {
-		return nil, mode, fmt.Errorf("session has no anchorable messages")
+		return nil, mode, "", fmt.Errorf("session has no anchorable messages")
 	}
 	valid := make(map[string]bool, len(digest))
 	for _, entry := range digest {
@@ -273,12 +276,19 @@ func generateAnnotationDraftsReal(ctx context.Context, in AnnotationAssistInput)
 
 	var drafts []AnnotationDraft
 	var lastErr error
+	var lastReply string
 	for attempt := 0; attempt < 2; attempt++ {
-		reply, runErr := aiusechat.RunCompletion(ctx, *opts, systemPrompt, userPrompt)
+		attemptPrompt := userPrompt
+		if attempt > 0 {
+			// 第二次不要原样重发：明确告诉模型上次不是合法 JSON，只输出 JSON。
+			attemptPrompt += "\n\nIMPORTANT: your previous reply was not valid JSON. Reply with ONLY the JSON value, no prose, no markdown fences, no trailing text."
+		}
+		reply, runErr := aiusechat.RunCompletion(ctx, *opts, systemPrompt, attemptPrompt)
 		if runErr != nil {
 			lastErr = runErr
 			continue
 		}
+		lastReply = reply
 		parsed, parseErr := parseAnnotationDraftResponse(reply)
 		if parseErr != nil {
 			lastErr = parseErr
@@ -289,7 +299,12 @@ func generateAnnotationDraftsReal(ctx context.Context, in AnnotationAssistInput)
 		break
 	}
 	if lastErr != nil {
-		return nil, mode, lastErr
+		// 把模型原文塞进错误里（截断），前端审计/横幅能直接看到它回了什么。
+		snippet := truncateAnnotationText(lastReply, 600)
+		if snippet != "" {
+			return nil, mode, lastReply, fmt.Errorf("%w (model replied: %s)", lastErr, snippet)
+		}
+		return nil, mode, lastReply, lastErr
 	}
 
 	maxEntries := ClampAnnotationCount(in.MaxEntries)
@@ -331,5 +346,5 @@ func generateAnnotationDraftsReal(ctx context.Context, in AnnotationAssistInput)
 		}
 		result = append(result, draft)
 	}
-	return result, mode, nil
+	return result, mode, lastReply, nil
 }
