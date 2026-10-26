@@ -387,6 +387,83 @@ func (idx *SQLiteIndex) ReplaceReplaceableAnnotations(ctx context.Context, sessi
 	return inserted, nil
 }
 
+// BulkDraftAction either accepts or discards draft annotations of one session.
+const (
+	AnnotationDraftActionAccept  = "accept"
+	AnnotationDraftActionDiscard = "discard"
+)
+
+// BulkDraftAnnotations accepts (status=accepted) or discards (delete) draft
+// annotations. Only status='draft' rows are touched: accepted rows and
+// user-edited rows are never modified by this path.
+func (idx *SQLiteIndex) BulkDraftAnnotations(ctx context.Context, sessionKey string, ids []int64, action string) (int, error) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return 0, fmt.Errorf("session key is required")
+	}
+	switch action {
+	case AnnotationDraftActionAccept, AnnotationDraftActionDiscard:
+	default:
+		return 0, fmt.Errorf("invalid draft action %q", action)
+	}
+	query := `SELECT id FROM ai_session_annotations WHERE session_key = ? AND status = '` + AnnotationStatusDraft + `'`
+	args := []any{sessionKey}
+	if len(ids) > 0 {
+		parts := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if id <= 0 {
+				continue
+			}
+			parts = append(parts, "?")
+			args = append(args, id)
+		}
+		if len(parts) > 0 {
+			query += " AND id IN (" + strings.Join(parts, ",") + ")"
+		}
+	}
+	var targetIDs []int64
+	if err := idx.db.SelectContext(ctx, &targetIDs, query, args...); err != nil {
+		return 0, err
+	}
+	if len(targetIDs) == 0 {
+		return 0, nil
+	}
+	if action == AnnotationDraftActionDiscard {
+		result, err := idx.db.ExecContext(ctx,
+			`DELETE FROM ai_session_annotations WHERE session_key = ? AND id IN (`+placeholders(len(targetIDs))+`) AND status = '`+AnnotationStatusDraft+`'`,
+			append([]any{sessionKey}, toAnySlice(targetIDs)...)...)
+		if err != nil {
+			return 0, err
+		}
+		affected, _ := result.RowsAffected()
+		return int(affected), nil
+	}
+	result, err := idx.db.ExecContext(ctx,
+		`UPDATE ai_session_annotations SET status = '`+AnnotationStatusAccepted+`', updated_at = ?
+		 WHERE session_key = ? AND id IN (`+placeholders(len(targetIDs))+`) AND status = '`+AnnotationStatusDraft+`'`,
+		append([]any{time.Now().UnixMilli(), sessionKey}, toAnySlice(targetIDs)...)...)
+	if err != nil {
+		return 0, err
+	}
+	affected, _ := result.RowsAffected()
+	return int(affected), nil
+}
+
+func placeholders(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
+}
+
+func toAnySlice(ids []int64) []any {
+	out := make([]any, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id)
+	}
+	return out
+}
+
 // ReanchorAnnotation writes back a resolved anchor after drift detection.
 func (idx *SQLiteIndex) ReanchorAnnotation(ctx context.Context, id int64, anchor AnnotationAnchor) error {
 	if id <= 0 || strings.TrimSpace(anchor.AnchorKey) == "" {
@@ -566,6 +643,17 @@ func (m *Manager) ReplaceReplaceableAnnotations(ctx context.Context, sessionKey 
 		return inner
 	})
 	return result, err
+}
+
+// BulkDraftAnnotations accepts or discards draft annotations of one session.
+func (m *Manager) BulkDraftAnnotations(ctx context.Context, sessionKey string, ids []int64, action string) (int, error) {
+	var affected int
+	err := m.withSQLiteIndex(func(idx *SQLiteIndex) error {
+		var inner error
+		affected, inner = idx.BulkDraftAnnotations(ctx, sessionKey, ids, action)
+		return inner
+	})
+	return affected, err
 }
 
 // ListAnnotatedSessions returns the cross-session annotation list.

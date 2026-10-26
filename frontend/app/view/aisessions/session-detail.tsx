@@ -24,7 +24,7 @@ import { replaceAnnotationDrafts, requestAnnotationDrafts } from "./annotation-a
 import { AnnotationEditor } from "./annotation-editor";
 import { AnnotationFlashMs, annotationCountBySeq, buildAnnotationAnchors } from "./annotation-model";
 import { AnnotationRail } from "./annotation-rail";
-import { useSessionAnnotations } from "./annotation-store";
+import { bulkDraftAnnotations, useSessionAnnotations } from "./annotation-store";
 import { ChatComposer } from "./chat-composer";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
@@ -541,6 +541,19 @@ export function SessionDetailPane({
             setTimelineGenerating(false);
         }
     }, [connection, reloadAnnotations, summaryKey, timelineGenerating]);
+
+    const bulkDrafts = useCallback(
+        async (action: "accept" | "discard", ids?: number[]) => {
+            if (summaryKey === "") return;
+            try {
+                await bulkDraftAnnotations(summaryKey, connection, ids ?? [], action);
+                await reloadAnnotations();
+            } catch (err) {
+                setAnnotationError(err instanceof Error ? err.message : String(err));
+            }
+        },
+        [connection, reloadAnnotations, summaryKey]
+    );
 
     // 实时流式 turn（主消息区内联渲染）：assistant_delta/tool 事件累积，turn_end 后由
     // DetailDelta 正式数据替换（先刷新落地再清除，避免空窗闪烁）。
@@ -1606,6 +1619,10 @@ export function SessionDetailPane({
                         previewBySeq={annotationPreviewBySeq}
                         onGenerateTimeline={() => void generateAnnotationTimeline()}
                         generating={timelineGenerating}
+                        onAccept={(id) => void bulkDrafts("accept", [id])}
+                        onDiscard={(id) => void bulkDrafts("discard", [id])}
+                        onAcceptAllDrafts={() => void bulkDrafts("accept")}
+                        onDiscardAllDrafts={() => void bulkDrafts("discard")}
                     />
                     <div className="relative flex min-w-0 flex-1 flex-col">
                         {/* 搜索浮层：头栏下方居中弹出（对齐原型 srch-pop） */}

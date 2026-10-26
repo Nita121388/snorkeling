@@ -105,6 +105,23 @@ export async function saveAnnotation(request: AISessionsAnnotationSaveRequest): 
     return saved;
 }
 
+/** Accept or discard drafts (empty ids = all drafts of the session). */
+export async function bulkDraftAnnotations(
+    sessionKey: string,
+    connection: string | null | undefined,
+    ids: number[],
+    action: "accept" | "discard"
+): Promise<number> {
+    const response = await service.AnnotationBulkDrafts({
+        sessionKey,
+        connection: normalizeConnection(connection) || undefined,
+        ids,
+        action,
+    });
+    await refreshAnnotations(sessionKey, connection);
+    return response.affected;
+}
+
 export async function deleteAnnotation(id: number, sessionKey: string, connection?: string): Promise<void> {
     await service.AnnotationDelete(id);
     await refreshAnnotations(sessionKey, connection);

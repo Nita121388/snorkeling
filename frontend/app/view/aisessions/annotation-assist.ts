@@ -5,6 +5,7 @@
 // 结果一律是 draft：调用方决定采纳（保存/替换）或丢弃。
 
 import { AISessionsServiceType } from "@/app/store/services";
+import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { resolveMetadataAIMode } from "@/app/view/term/agent-ai-config";
 import type { AnnotationLike } from "./annotation-model";
 
@@ -38,11 +39,86 @@ export function annotationAIAvailability(): AssistAvailability {
 }
 
 /** Generate drafts. Throws with a user-facing message on failure. */
+type PendingAssist = {
+    resolve: (drafts: AnnotationDraftResult[]) => void;
+    reject: (error: Error) => void;
+    timer: number;
+};
+
+let listenerAttached = false;
+const pendingAssists = new Map<string, PendingAssist>();
+const earlyEvents = new Map<string, AnnotationAssistEvent>();
+const activeJobs = new Map<string, string>(); // jobId -> sessionKey
+
+function settleAssist(event: AnnotationAssistEvent): void {
+    const pending = pendingAssists.get(event.jobId);
+    if (pending == null) {
+        earlyEvents.set(event.jobId, event);
+        return;
+    }
+    if (event.state === "queued" || event.state === "running") {
+        return;
+    }
+    window.clearTimeout(pending.timer);
+    pendingAssists.delete(event.jobId);
+    activeJobs.delete(event.jobId);
+    if (event.state === "done") {
+        pending.resolve(
+            (event.drafts ?? []).map((draft) => ({
+                anchorKey: draft.anchorKey,
+                kind: draft.kind,
+                title: draft.title ?? "",
+                body: draft.body ?? "",
+                tags: draft.tags ?? [],
+            }))
+        );
+        return;
+    }
+    pending.reject(new Error(event.error || `annotation generation ${event.state}`));
+}
+
+function ensureAssistListener(): void {
+    if (listenerAttached || typeof window === "undefined") return;
+    listenerAttached = true;
+    try {
+        waveEventSubscribeSingle<"aisessions:annotationassist">({
+            eventType: "aisessions:annotationassist",
+            handler: (event) => {
+                const data = event.data;
+                if (data != null && typeof data.jobId === "string") {
+                    settleAssist(data);
+                }
+            },
+        });
+    } catch {
+        listenerAttached = false;
+    }
+}
+
+/** Cancel every in-flight annotation job for one session (best effort). */
+export function cancelActiveAnnotationAssist(sessionKey: string): void {
+    for (const [jobId, key] of activeJobs) {
+        if (key === sessionKey) {
+            void service.AnnotationAssistCancel(jobId).catch(() => {});
+            const pending = pendingAssists.get(jobId);
+            if (pending != null) {
+                window.clearTimeout(pending.timer);
+                pending.reject(new Error("cancelled"));
+                pendingAssists.delete(jobId);
+            }
+            activeJobs.delete(jobId);
+        }
+    }
+}
+
+/** Generate drafts. The RPC enqueues and returns a job id; this promise resolves
+ *  when the background worker publishes the result. */
 export async function requestAnnotationDrafts(context: AnnotationAssistContext): Promise<AnnotationDraftResult[]> {
     const ai = annotationAIAvailability();
     if (ai.available === false) {
         throw new Error(ai.reason);
     }
+    ensureAssistListener();
     const response = await service.AnnotationAssist({
         sessionKey: context.sessionKey,
         connection: context.connection?.trim() || undefined,
@@ -54,13 +130,21 @@ export async function requestAnnotationDrafts(context: AnnotationAssistContext):
         maxEntries: context.maxEntries,
         aiMode: ai.mode,
     });
-    return (response.drafts ?? []).map((draft) => ({
-        anchorKey: draft.anchorKey,
-        kind: draft.kind,
-        title: draft.title ?? "",
-        body: draft.body ?? "",
-        tags: draft.tags ?? [],
-    }));
+    const jobId = response.jobId;
+    activeJobs.set(jobId, context.sessionKey);
+    return await new Promise<AnnotationDraftResult[]>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+            pendingAssists.delete(jobId);
+            activeJobs.delete(jobId);
+            reject(new Error("annotation generation timed out"));
+        }, 90_000);
+        pendingAssists.set(jobId, { resolve, reject, timer });
+        const early = earlyEvents.get(jobId);
+        if (early != null) {
+            earlyEvents.delete(jobId);
+            settleAssist(early);
+        }
+    });
 }
 
 /** Persist drafts as the session's replaceable annotations (single transaction). */

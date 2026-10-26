@@ -38,6 +38,7 @@ const (
 	Event_AISessionsScanStatus       = "aisessions:scanstatus"       // type: aisessions.ScanStatusEvent
 	Event_AISessionsTitleUpdated     = "aisessions:titleupdated"     // type: aisessions.TitleUpdatedEvent
 	Event_AISessionsGenerationStatus = "aisessions:generationstatus" // type: aisessions.GenerationStatusEvent
+	Event_AISessionsAnnotationAssist = "aisessions:annotationassist" // type: aisessions.AnnotationAssistEvent
 )
 
 var AllEvents []string = []string{
@@ -64,6 +65,7 @@ var AllEvents []string = []string{
 	Event_AISessionsScanStatus,
 	Event_AISessionsTitleUpdated,
 	Event_AISessionsGenerationStatus,
+	Event_AISessionsAnnotationAssist,
 }
 
 type WaveEvent struct {

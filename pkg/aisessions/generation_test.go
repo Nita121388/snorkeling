@@ -5,6 +5,7 @@ package aisessions
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -144,4 +145,45 @@ func TestManualRetrySkipsNonRetryableError(t *testing.T) {
 	if len(q.pending) != 0 {
 		t.Fatalf("skip error must not requeue, got %#v", q.pending)
 	}
+}
+
+func TestQueueStartsBoundedPool(t *testing.T) {
+	previous := autoTitleWorkers.m
+	previousConc := manualRetryBackoff
+	autoTitleWorkers.m = make(map[string]*autoTitleQueue)
+	defer func() {
+		autoTitleWorkers.m = previous
+		manualRetryBackoff = previousConc
+	}()
+
+	dir := t.TempDir()
+	provider := &cacheProvider{source: SourceCodex, summaries: []SessionSummary{}}
+	manager := NewManagerWithOptions(ManagerOptions{
+		Providers:  []Provider{provider},
+		IndexPath:  filepath.Join(dir, "index.json"),
+		MetaPath:   filepath.Join(dir, "meta.json"),
+		SQLitePath: filepath.Join(dir, "index-v2.sqlite"),
+	})
+	q := manager.autoTitleWorker()
+	if q.wake == nil || cap(q.wake) < 1 {
+		t.Fatalf("wake channel must be a buffered work channel, got %#v", q.wake)
+	}
+	// The pool is shared per index path: a second call returns the same queue.
+	if manager.autoTitleWorker() != q {
+		t.Fatalf("worker must be a per-index-path singleton")
+	}
+	// Workers must drain the queue: push and wait for pop.
+	job := genJob{key: "s1", kind: GenKindTitle, manual: true}
+	q.push(job)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		q.mu.Lock()
+		pending := len(q.pending)
+		q.mu.Unlock()
+		if pending == 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("pool did not drain the queue")
 }

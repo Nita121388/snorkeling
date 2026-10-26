@@ -211,9 +211,10 @@ type SettingsType struct {
 	// ai:sessionautotitle — 后台静默为还没有标题的会话生成一次 AI 标题。
 	// 默认关闭（nil 视为 false），避免在用户不知情时消耗模型额度。
 	// intervalms = 两次生成之间的最小间隔（串行限流）；batchsize = 单批上限。
-	AiSessionAutoTitle           *bool  `json:"ai:sessionautotitle,omitempty"`
-	AiSessionAutoTitleIntervalMs *int64 `json:"ai:sessionautotitleintervalms,omitempty"`
-	AiSessionAutoTitleBatchSize  *int64 `json:"ai:sessionautotitlebatchsize,omitempty"`
+	AiSessionAutoTitle            *bool  `json:"ai:sessionautotitle,omitempty"`
+	AiSessionAutoTitleIntervalMs  *int64 `json:"ai:sessionautotitleintervalms,omitempty"`
+	AiSessionAutoTitleBatchSize   *int64 `json:"ai:sessionautotitlebatchsize,omitempty"`
+	AiSessionAutoTitleConcurrency *int64 `json:"ai:sessionautotitleconcurrency,omitempty"`
 
 	WaveAiShowCloudModes bool   `json:"waveai:showcloudmodes,omitempty"`
 	WaveAiDefaultMode    string `json:"waveai:defaultmode,omitempty"`

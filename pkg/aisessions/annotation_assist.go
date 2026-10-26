@@ -172,7 +172,18 @@ func stripJSONFence(text string) string {
 
 // GenerateAnnotationDrafts runs one AI call and returns validated drafts.
 // Invalid anchor keys and kinds are dropped; body/tag lengths are clamped.
+// annotationDraftGenerator is a seam so tests can inject a stub model call.
+var annotationDraftGenerator = generateAnnotationDraftsReal
+
 func GenerateAnnotationDrafts(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, error) {
+	return GenerateAnnotationDraftsWithContext(ctx, in)
+}
+
+func GenerateAnnotationDraftsWithContext(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, error) {
+	return annotationDraftGenerator(ctx, in)
+}
+
+func generateAnnotationDraftsReal(ctx context.Context, in AnnotationAssistInput) ([]AnnotationDraft, string, error) {
 	scope := normalizeAnnotationScope(in.Scope)
 	cfg := promptConfigWithFallbackMode(in.PromptConfig, in.AIMode)
 	mode := ResolveAIMode(cfg)

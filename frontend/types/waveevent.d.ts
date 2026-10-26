@@ -28,7 +28,8 @@ declare global {
         | "badge"
         | "aisessions:scanstatus"
         | "aisessions:titleupdated"
-        | "aisessions:generationstatus";
+        | "aisessions:generationstatus"
+        | "aisessions:annotationassist";
 
     type WaveEvent = {
         event: WaveEventName;
@@ -60,6 +61,7 @@ declare global {
         | { event: "aisessions:scanstatus"; data?: ScanStatusEvent }
         | { event: "aisessions:titleupdated"; data?: TitleUpdatedEvent }
         | { event: "aisessions:generationstatus"; data?: GenerationStatusEvent }
+        | { event: "aisessions:annotationassist"; data?: AnnotationAssistEvent }
     );
 }
 

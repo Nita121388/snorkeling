@@ -83,8 +83,20 @@ declare global {
 
     // aisessionsservice.AISessionsAnnotationAssistResponse
     type AISessionsAnnotationAssistResponse = {
-        drafts: AnnotationDraft[];
-        aiModel?: string;
+        jobId: string;
+    };
+
+    // aisessionsservice.AISessionsAnnotationBulkDraftsRequest
+    type AISessionsAnnotationBulkDraftsRequest = {
+        sessionKey: string;
+        connection?: string;
+        ids?: number[];
+        action: string;
+    };
+
+    // aisessionsservice.AISessionsAnnotationBulkDraftsResponse
+    type AISessionsAnnotationBulkDraftsResponse = {
+        affected: number;
     };
 
     // aisessionsservice.AISessionsAnnotationReplaceRequest
@@ -510,6 +522,19 @@ declare global {
         seq: number;
         role: string;
         hash: string;
+    };
+
+    // aisessions.AnnotationAssistEvent
+    type AnnotationAssistEvent = {
+        jobId: string;
+        key: string;
+        connection?: string;
+        scope: string;
+        state: string;
+        drafts?: AnnotationDraft[];
+        aiModel?: string;
+        error?: string;
+        updatedAt: number;
     };
 
     // aisessions.AnnotationDraft
@@ -2546,6 +2571,7 @@ declare global {
         "ai:sessionautotitle"?: boolean;
         "ai:sessionautotitleintervalms"?: number;
         "ai:sessionautotitlebatchsize"?: number;
+        "ai:sessionautotitleconcurrency"?: number;
         "waveai:showcloudmodes"?: boolean;
         "waveai:defaultmode"?: string;
         "term:*"?: boolean;

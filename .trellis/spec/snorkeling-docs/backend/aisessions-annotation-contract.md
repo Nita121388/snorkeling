@@ -75,3 +75,13 @@ ai_session_annotation_ai_state(session_key PK, ...)  -- M3 预埋，只写不读
 - [ ] `ReplaceReplaceableAnnotations` 单事务，受保护行不被删除
 - [ ] `AnnotationSessions` 只返回 accepted 且带 tag 过滤
 - [ ] `go generate` 后前端 `services.ts` / `gotypes.d.ts` 含新方法
+## 7. AI 异步 job（2026-10-26）
+
+- `AnnotationAssist` 只入队并返回 `jobId`；模型调用在**有界 pool**（并发 3）执行，
+  单条 90s 超时，`AnnotationAssistCancel(jobId)` 取消。
+- 状态经 `aisessions:annotationassist` 事件推送：
+  `{jobId, key, connection, scope, state(queued|running|done|failed|cancelled), drafts, aiModel, error}`。
+- 结果只回给前端作为草稿；**不写库**。写库仍走 `AnnotationReplace`（单事务、保护用户数据）。
+- 批量采纳/丢弃：`AnnotationBulkDrafts` 只触碰 `status='draft'` 的行。
+- 前端 `requestAnnotationDrafts` 用事件解析 Promise；重复点击运行中的 ✨ 会取消该会话的在途 job。
+

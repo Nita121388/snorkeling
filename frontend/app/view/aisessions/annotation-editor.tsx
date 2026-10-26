@@ -10,7 +10,7 @@
 import { Modal } from "@/app/modals/modal";
 import { cn } from "@/util/util";
 import * as React from "react";
-import { requestAnnotationDrafts, type AnnotationAssistScope } from "./annotation-assist";
+import { cancelActiveAnnotationAssist, requestAnnotationDrafts, type AnnotationAssistScope } from "./annotation-assist";
 import { AIAssistButton, AssistFieldState, type AssistFieldStatus } from "./annotation-assist-ui";
 import { deleteAnnotation, saveAnnotation } from "./annotation-store";
 import { normalizeSessionTags } from "./session-tags";
@@ -58,6 +58,11 @@ export function AnnotationEditor({
 
     const runAssist = React.useCallback(
         async (field: AssistField) => {
+            if (assist[field].status === "running") {
+                cancelActiveAnnotationAssist(sessionKey);
+                setAssist((current) => ({ ...current, [field]: { status: "idle", error: "" } }));
+                return;
+            }
             const scope: AnnotationAssistScope =
                 field === "title" ? "entry-title" : field === "body" ? "entry-body" : "entry-tags";
             const previous = field === "title" ? title : field === "body" ? body : tagsText;
@@ -93,7 +98,7 @@ export function AnnotationEditor({
                 }));
             }
         },
-        [anchorKey, body, connection, sessionKey, tagsText, title]
+        [anchorKey, assist, body, connection, sessionKey, tagsText, title]
     );
 
     const handleSave = React.useCallback(async () => {

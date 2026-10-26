@@ -114,3 +114,12 @@ default                → 整体替换
 - [ ] 改 worker 时确认自动 job 仍"至多一次"（`titleautogen_test.go` 既有断言不得改）。
 - [ ] `AutoGenerate` 请求路径不得出现 `GenerateSessionTitle` / `GenerateSessionMetadata` 调用。
 - [ ] 新状态事件必须带 `connection`，前端 store key 含 connection。
+## 8. 并发（2026-10-26）
+
+- worker 是一个**有界 pool**：`autoTitleConcurrency()`（配置 `ai:sessionautotitleconcurrency`，
+  默认 3，上限 8），每个 index path 起 N 个 goroutine。
+- 自动巡检 job 之间保留 `ai:sessionautotitleintervalms` 间隔；**手动 job 只保留 100ms**，
+  让批量 50 条真正并行。
+- SQLite 写仍由单连接/busy_timeout 串行；AI 调用并发、落库排队。
+- 失败重试仍逐 job 退避，不占满 pool。
+

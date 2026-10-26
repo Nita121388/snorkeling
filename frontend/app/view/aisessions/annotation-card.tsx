@@ -17,10 +17,14 @@ export function AnnotationCard({
     cluster,
     nodePreview,
     onJump,
+    onAccept,
+    onDiscard,
 }: {
     cluster: AnnotationRailCluster;
     nodePreview?: string;
     onJump: (seq: number) => void;
+    onAccept?: (id: number) => void;
+    onDiscard?: (id: number) => void;
 }) {
     return (
         <div
@@ -75,6 +79,34 @@ export function AnnotationCard({
                             {annotation.body ? (
                                 <div className="mt-0.5 whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">
                                     {annotation.body}
+                                </div>
+                            ) : null}
+                            {annotation.status === "draft" && (onAccept != null || onDiscard != null) ? (
+                                <div className="mt-1 flex items-center justify-end gap-1.5">
+                                    {onDiscard != null ? (
+                                        <button
+                                            type="button"
+                                            className="cursor-pointer rounded border border-border px-1.5 py-0.5 text-[9px] text-secondary hover:bg-hover"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onDiscard(annotation.id);
+                                            }}
+                                        >
+                                            Discard
+                                        </button>
+                                    ) : null}
+                                    {onAccept != null ? (
+                                        <button
+                                            type="button"
+                                            className="cursor-pointer rounded bg-action px-1.5 py-0.5 text-[9px] text-actiontext hover:bg-actionhover"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onAccept(annotation.id);
+                                            }}
+                                        >
+                                            Accept
+                                        </button>
+                                    ) : null}
                                 </div>
                             ) : null}
                             {(annotation.tags?.length ?? 0) > 0 ? (

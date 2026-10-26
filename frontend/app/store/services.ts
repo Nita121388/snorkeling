@@ -27,6 +27,18 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "AnnotationAssist", Array.from(arguments))
     }
 
+    // cancel a running annotation AI job
+    // @returns no return value
+    AnnotationAssistCancel(jobId: string): Promise<void> {
+        return callBackendService(this?.waveEnv, "aisessions", "AnnotationAssistCancel", Array.from(arguments))
+    }
+
+    // accept or discard draft annotations of one session
+    // @returns number of affected draft annotations
+    AnnotationBulkDrafts(request: AISessionsAnnotationBulkDraftsRequest): Promise<AISessionsAnnotationBulkDraftsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "AnnotationBulkDrafts", Array.from(arguments))
+    }
+
     // delete one session annotation permanently
     // @returns no return value
     AnnotationDelete(id: number): Promise<void> {

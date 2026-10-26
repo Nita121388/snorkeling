@@ -87,6 +87,20 @@ func autoTitleInterval() time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
+// autoTitleConcurrency controls how many jobs run at once per index path. The
+// AI calls are independent; SQLite writes serialize on the busy-timeout.
+func autoTitleConcurrency() int {
+	cfg := wconfig.GetWatcher().GetFullConfig()
+	value := 3
+	if v := cfg.Settings.AiSessionAutoTitleConcurrency; v != nil && *v > 0 {
+		value = int(*v)
+	}
+	if value > 8 {
+		value = 8
+	}
+	return value
+}
+
 func autoTitleBatchSize() int {
 	cfg := wconfig.GetWatcher().GetFullConfig()
 	size := defaultAutoTitleBatchSize
@@ -255,7 +269,7 @@ func (m *Manager) autoTitleWorker() *autoTitleQueue {
 	return autoTitleQueueFor(key, func() *autoTitleQueue {
 		q := &autoTitleQueue{
 			pending:       make(map[string]genJob),
-			wake:          make(chan struct{}, 1),
+			wake:          make(chan struct{}, autoTitleConcurrency()),
 			providers:     append([]Provider(nil), m.Providers...),
 			indexPath:     m.IndexPath,
 			metaPath:      m.MetaPath,
@@ -263,7 +277,7 @@ func (m *Manager) autoTitleWorker() *autoTitleQueue {
 			publish:       m.OnTitleUpdated,
 			publishStatus: m.OnGenerationStatus,
 		}
-		go q.run()
+		q.startWorkers(autoTitleConcurrency())
 		return q
 	})
 }
@@ -279,11 +293,7 @@ func (q *autoTitleQueue) push(job genJob) {
 		q.order = append(q.order, pk)
 	}
 	q.mu.Unlock()
-	// Non-blocking poke: a full channel already means "there is work pending".
-	select {
-	case q.wake <- struct{}{}:
-	default:
-	}
+	q.poke()
 }
 
 func (q *autoTitleQueue) pop() (genJob, bool) {
@@ -300,20 +310,43 @@ func (q *autoTitleQueue) pop() (genJob, bool) {
 	return genJob{}, false
 }
 
-func (q *autoTitleQueue) run() {
-	for range q.wake {
-		batch := autoTitleBatchSize()
-		for i := 0; i < batch; i++ {
-			job, ok := q.pop()
-			if !ok {
-				break
-			}
-			q.runOne(job)
-			if more := q.hasPending(); !more {
-				break
-			}
+// startWorkers boots a bounded pool. Concurrency is intentionally limited:
+// model providers rate-limit aggressively, so 2-4 is the sweet spot.
+func (q *autoTitleQueue) startWorkers(count int) {
+	if count < 1 {
+		count = 1
+	}
+	for i := 0; i < count; i++ {
+		go q.worker()
+	}
+}
+
+func (q *autoTitleQueue) worker() {
+	for {
+		job, ok := q.pop()
+		if !ok {
+			<-q.wake
+			continue
+		}
+		q.runOne(job)
+		// Automatic jobs are paced to avoid burning quota during scans; manual
+		// (user-triggered) jobs only get a tiny gap so a batch of 50 actually
+		// benefits from the pool.
+		if job.manual {
+			time.Sleep(100 * time.Millisecond)
+		} else {
 			time.Sleep(autoTitleInterval())
 		}
+		if q.hasPending() {
+			q.poke()
+		}
+	}
+}
+
+func (q *autoTitleQueue) poke() {
+	select {
+	case q.wake <- struct{}{}:
+	default:
 	}
 }
 

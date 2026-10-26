@@ -53,6 +53,10 @@ export function AnnotationRail({
     previewBySeq,
     onGenerateTimeline,
     generating = false,
+    onAccept,
+    onDiscard,
+    onAcceptAllDrafts,
+    onDiscardAllDrafts,
 }: {
     annotations: AnnotationLike[];
     onJump: (seq: number) => void;
@@ -62,6 +66,10 @@ export function AnnotationRail({
     /** 「✨ 生成时间线」；不传时不渲染按钮。 */
     onGenerateTimeline?: () => void;
     generating?: boolean;
+    onAccept?: (id: number) => void;
+    onDiscard?: (id: number) => void;
+    onAcceptAllDrafts?: () => void;
+    onDiscardAllDrafts?: () => void;
 }) {
     const [collapsed, setCollapsed] = React.useState<boolean>(readCollapsedPreference);
     const [hoverIndex, setHoverIndex] = React.useState<number | null>(null);
@@ -71,6 +79,10 @@ export function AnnotationRail({
 
     const items = React.useMemo(() => buildRailItems(annotations), [annotations]);
     const clusters = React.useMemo(() => clusterRailItems(items), [items]);
+    const draftCount = React.useMemo(
+        () => annotations.filter((annotation) => annotation.status === "draft").length,
+        [annotations]
+    );
     const width = collapsed ? AnnotationRailCollapsedWidth : AnnotationRailExpandedWidth;
 
     const clearTimers = React.useCallback(() => {
@@ -141,6 +153,37 @@ export function AnnotationRail({
                         <span>AI</span>
                     </button>
                 ) : null}
+                {!collapsed && draftCount > 0 ? (
+                    <div className="flex w-full items-center justify-between gap-1 rounded border border-accent/30 bg-accent/5 px-1 py-0.5 text-[9px] text-accent">
+                        <span>{draftCount} drafts</span>
+                        <span className="flex items-center gap-1">
+                            {onDiscardAllDrafts != null ? (
+                                <button
+                                    type="button"
+                                    className="cursor-pointer rounded px-1 hover:bg-accent/10"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        onDiscardAllDrafts();
+                                    }}
+                                >
+                                    Discard
+                                </button>
+                            ) : null}
+                            {onAcceptAllDrafts != null ? (
+                                <button
+                                    type="button"
+                                    className="cursor-pointer rounded px-1 font-medium hover:bg-accent/10"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        onAcceptAllDrafts();
+                                    }}
+                                >
+                                    Accept
+                                </button>
+                            ) : null}
+                        </span>
+                    </div>
+                ) : null}
             </div>
             <div className="w-full">
                 {clusters.map((cluster, index) => {
@@ -205,6 +248,8 @@ export function AnnotationRail({
                                             cluster.items[0]?.annotations[0]?.anchorPreview
                                         }
                                         onJump={onJump}
+                                        onAccept={onAccept}
+                                        onDiscard={onDiscard}
                                     />
                                 </div>
                             ) : null}

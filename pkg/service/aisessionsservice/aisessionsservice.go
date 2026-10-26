@@ -212,8 +212,7 @@ type AISessionsAnnotationAssistRequest struct {
 }
 
 type AISessionsAnnotationAssistResponse struct {
-	Drafts  []aisessions.AnnotationDraft `json:"drafts"`
-	AIModel string                       `json:"aiModel,omitempty"`
+	JobID string `json:"jobId"`
 }
 
 // AISessionsAnnotationReplaceRequest replaces every AI-replaceable annotation of
@@ -222,6 +221,19 @@ type AISessionsAnnotationReplaceRequest struct {
 	SessionKey  string                       `json:"sessionKey"`
 	Connection  string                       `json:"connection,omitempty"`
 	Annotations []aisessions.AnnotationDraft `json:"annotations"`
+}
+
+// AISessionsAnnotationBulkDraftsRequest accepts or discards draft annotations.
+// Empty ids means "all drafts of the session".
+type AISessionsAnnotationBulkDraftsRequest struct {
+	SessionKey string  `json:"sessionKey"`
+	Connection string  `json:"connection,omitempty"`
+	IDs        []int64 `json:"ids,omitempty"`
+	Action     string  `json:"action"` // accept | discard
+}
+
+type AISessionsAnnotationBulkDraftsResponse struct {
+	Affected int `json:"affected"`
 }
 
 type AISessionsAnnotationSessionsResponse struct {
@@ -1349,7 +1361,7 @@ func (svc *AISessionsService) AnnotationAssist(ctx context.Context, request *AIS
 	if err != nil {
 		return nil, err
 	}
-	drafts, model, err := aisessions.GenerateAnnotationDrafts(ctx, aisessions.AnnotationAssistInput{
+	input := aisessions.AnnotationAssistInput{
 		SessionKey:   detail.Summary.Key,
 		Scope:        request.Scope,
 		AnchorKey:    request.AnchorKey,
@@ -1361,11 +1373,34 @@ func (svc *AISessionsService) AnnotationAssist(ctx context.Context, request *AIS
 		MaxEntries:   request.MaxEntries,
 		AIMode:       request.AIMode,
 		PromptConfig: promptConfig,
-	})
-	if err != nil {
-		return nil, err
 	}
-	return &AISessionsAnnotationAssistResponse{Drafts: drafts, AIModel: model}, nil
+	jobID := aisessions.StartAnnotationAssist(ctx, detail.Summary.Key, request.Connection, input, makeAnnotationAssistPublisher(request.Connection))
+	return &AISessionsAnnotationAssistResponse{JobID: jobID}, nil
+}
+
+func (svc *AISessionsService) AnnotationAssistCancel_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "cancel a running annotation AI job",
+		ArgNames:   []string{"ctx", "jobId"},
+		ReturnDesc: "no return value",
+	}
+}
+
+func (svc *AISessionsService) AnnotationAssistCancel(ctx context.Context, jobID string) error {
+	aisessions.CancelAnnotationAssist(jobID)
+	return nil
+}
+
+func makeAnnotationAssistPublisher(connection string) func(aisessions.AnnotationAssistEvent) {
+	return func(event aisessions.AnnotationAssistEvent) {
+		if strings.TrimSpace(event.Connection) == "" {
+			event.Connection = connection
+		}
+		wps.Broker.Publish(wps.WaveEvent{
+			Event: wps.Event_AISessionsAnnotationAssist,
+			Data:  event,
+		})
+	}
 }
 
 func (svc *AISessionsService) AnnotationReplace_Meta() tsgenmeta.MethodMeta {
@@ -1406,6 +1441,29 @@ func (svc *AISessionsService) AnnotationReplace(ctx context.Context, request *AI
 		views = append(views, row.ToView(false))
 	}
 	return &AISessionsAnnotationsResponse{Annotations: views}, nil
+}
+
+func (svc *AISessionsService) AnnotationBulkDrafts_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "accept or discard draft annotations of one session",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "number of affected draft annotations",
+	}
+}
+
+func (svc *AISessionsService) AnnotationBulkDrafts(ctx context.Context, request *AISessionsAnnotationBulkDraftsRequest) (*AISessionsAnnotationBulkDraftsResponse, error) {
+	if request == nil || strings.TrimSpace(request.SessionKey) == "" {
+		return nil, fmt.Errorf("session key is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := manager.BulkDraftAnnotations(ctx, request.SessionKey, request.IDs, request.Action)
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsAnnotationBulkDraftsResponse{Affected: affected}, nil
 }
 
 func (svc *AISessionsService) PromptTemplates_Meta() tsgenmeta.MethodMeta {
