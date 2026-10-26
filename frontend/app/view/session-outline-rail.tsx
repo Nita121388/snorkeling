@@ -9,9 +9,9 @@
 // - hover-intent：150ms 延迟激活；横向掠过重置计时
 // - 动效：140ms ease-out CSS transition（Paseo web 同款，不用 rAF 弹簧）
 
+import { cn } from "@/util/util";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "@/util/util";
 
 const RAIL_WIDTH = 36;
 const SLOT_HEIGHT = 8;
@@ -29,7 +29,7 @@ export type OutlinePrompt = {
 };
 
 /** Dock 式余弦衰减：指针处 1，半径处平滑到 0。 */
-function tickMagnification(slotDistance: number): number {
+export function tickMagnification(slotDistance: number): number {
     const distance = Math.abs(slotDistance);
     if (!Number.isFinite(distance) || distance >= MAGNIFY_RADIUS) return 0;
     return (1 + Math.cos((Math.PI * distance) / MAGNIFY_RADIUS)) / 2;
@@ -120,14 +120,7 @@ type RailTickProps = {
     onJump: (seq: number) => void;
 };
 
-const RailTick = memo(function RailTick({
-    index,
-    prompt,
-    isActive,
-    attentionIndex,
-    onHover,
-    onJump,
-}: RailTickProps) {
+const RailTick = memo(function RailTick({ index, prompt, isActive, attentionIndex, onHover, onJump }: RailTickProps) {
     const hasAttention = index === attentionIndex;
     const magnification =
         attentionIndex === null ? 0 : prefersReducedMotionCached() ? 0 : tickMagnification(index - attentionIndex);
@@ -236,10 +229,13 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
             if (!previewHoveredRef.current && pinnedSeq == null) hoverIntent.current.leave();
         }, 500);
     }, [cancelClose, pinnedSeq]);
-    const handleHover = useCallback((index: number) => {
-        cancelClose();
-        hoverIntent.current.pointAt(index);
-    }, [cancelClose]);
+    const handleHover = useCallback(
+        (index: number) => {
+            cancelClose();
+            hoverIntent.current.pointAt(index);
+        },
+        [cancelClose]
+    );
     const handleJump = useCallback(
         (seq: number) => {
             if (onJump != null) {
@@ -326,7 +322,11 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
                 onMouseMove={(e) => hoverIntent.current.move({ x: e.clientX, y: e.clientY })}
                 onMouseLeave={scheduleClose}
             >
-                <div ref={scrollRef} className="overflow-y-auto max-h-[300px] scrollbar-hide-until-hover" style={{ width: RAIL_WIDTH }}>
+                <div
+                    ref={scrollRef}
+                    className="overflow-y-auto max-h-[300px] scrollbar-hide-until-hover"
+                    style={{ width: RAIL_WIDTH }}
+                >
                     {prompts.map((prompt, index) => (
                         <RailTick
                             key={prompt.seq}
@@ -369,7 +369,9 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
                         }}
                     >
                         <div className="flex items-start gap-2">
-                            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{previewState.preview}</span>
+                            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                                {previewState.preview}
+                            </span>
                             {previewState.pinned ? (
                                 <button
                                     type="button"

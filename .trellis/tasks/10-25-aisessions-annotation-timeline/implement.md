@@ -58,34 +58,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-en
 
 ### B1 纯逻辑
 
-- [ ] `annotation-model.ts`：`buildRailItems(annotations, seqIndex)`、`clusterRailItems(items, maxSlots)`、`railItemAt(y)`、`sortAnnotations`
-- [ ] `annotation-model.test.ts`：只含有批注节点的节点、聚类阈值边界、orphan 排除、多条批注同节点合并
-- [ ] `annotation-store.ts`：模块级缓存 + 订阅（仿 `message-queue-store.ts`），**不要塞进 detail 组件 state**
+- [x] `annotation-model.ts`：`buildRailItems(annotations, seqIndex)`、`clusterRailItems(items, maxSlots)`、`railItemAt(y)`、`sortAnnotations`
+- [x] `annotation-model.test.ts`：只含有批注节点的节点、聚类阈值边界、orphan 排除、多条批注同节点合并
+- [x] `annotation-store.ts`：模块级缓存 + 订阅（仿 `message-queue-store.ts`），**不要塞进 detail 组件 state**
 
 ### B2 rail
 
-- [ ] `annotation-rail.tsx`
-  - [ ] 折叠 16 / 展开 36，点击空白 toggle，偏好写 localStorage
-  - [ ] 复用 `session-outline-rail.tsx` 的 `tickMagnification`（抽成共享导出，不要复制）
-  - [ ] 刻度三种态：有已采纳 / 仅草稿 / orphan
-  - [ ] 空态与 orphan 提示条
+- [x] `annotation-rail.tsx`
+  - [x] 折叠 16 / 展开 36，点击空白 toggle，偏好写 localStorage
+  - [x] 复用 `session-outline-rail.tsx` 的 `tickMagnification`（抽成共享导出，不要复制）
+  - [x] 刻度三种态：有已采纳 / 仅草稿 / orphan
+  - [x] 空态与 orphan 提示条
 - [ ] `annotation-rail.test.tsx`：折叠切换、点击命中、空态
 
 ### B3 悬浮卡
 
-- [ ] `annotation-card.tsx`：节点原文前 120 字 + 全部批注（标题/正文/标签/来源）+ 操作按钮；`max-height: 60vh` 内部滚动
+- [x] `annotation-card.tsx`：节点原文前 120 字 + 全部批注（标题/正文/标签/来源）+ 操作按钮；`max-height: 60vh` 内部滚动
 - [ ] 位置：rail 右缘 +8，越界翻转
 
 ### B4 编辑器
 
-- [ ] `annotation-editor.tsx`（复用 `Modal`，注意 `10-24-aisessions-note-dialog` 的焦点修复结论：block 内 modal 要阻止事件冒泡到 block frame）
+- [x] `annotation-editor.tsx`（复用 `Modal`，注意 `10-24-aisessions-note-dialog` 的焦点修复结论：block 内 modal 要阻止事件冒泡到 block frame）
   - [ ] 类型 chips、标题、正文（`wysiwyg-editor.tsx`）、标签 chips（复用 `session-tag-chips.tsx`）
-  - [ ] 保存 / 取消 / 删除
+  - [x] 保存 / 取消 / 删除
 - [ ] 消息卡 hover 出 `🏷 N ▾`；右键菜单加「添加备注…」
 
 ### B5 跳转与接入
 
-- [ ] `session-detail.tsx`：挂 rail、`scrollToSeq` 走既有 `seqToIndex` + `scrollToIndex`、`flash(seq)` 1200ms
+- [x] `session-detail.tsx`：挂 rail、`scrollToSeq` 走既有 `seqToIndex` + `scrollToIndex`、`flash(seq)` 1200ms
 - [ ] 折叠区目标（subagent / details）先展开再跳
 
 验证：`npx vitest run frontend/app/view/aisessions --reporter=dot`

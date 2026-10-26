@@ -20,6 +20,10 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { autoGenerate } from "./aisession-gen-store";
+import { AnnotationEditor } from "./annotation-editor";
+import { AnnotationFlashMs, annotationCountBySeq, buildAnnotationAnchors } from "./annotation-model";
+import { AnnotationRail } from "./annotation-rail";
+import { useSessionAnnotations } from "./annotation-store";
 import { ChatComposer } from "./chat-composer";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
@@ -413,6 +417,25 @@ export function SessionDetailPane({
     );
     const normalizedDetailSearchQuery = normalizedSearchQuery(detailSearchQuery);
     const toolCalls = effectiveDetail?.toolCalls ?? [];
+    const annotationAnchors = useMemo(
+        () => buildAnnotationAnchors(detailMessages, toolCalls),
+        [detailMessages, toolCalls]
+    );
+    const { annotations, reload: reloadAnnotations } = useSessionAnnotations(summaryKey, connection, annotationAnchors);
+    const annotationCounts = useMemo(() => annotationCountBySeq(annotations), [annotations]);
+    const annotationPreviewBySeq = useMemo(() => {
+        const map = new Map<number, string>();
+        for (const message of detailMessages) {
+            map.set(message.seq, message.text.replace(/^\s+|\s+$/g, "").slice(0, 240));
+        }
+        return map;
+    }, [detailMessages]);
+    const [annotationEditor, setAnnotationEditor] = useState<{
+        seq: number;
+        anchorKey: string;
+        annotation?: AnnotationView;
+    } | null>(null);
+    const [activeAnnotationSeq, setActiveAnnotationSeq] = useState<number | null>(null);
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
     const detailSearchSummary =
         normalizedDetailSearchQuery === ""
@@ -466,6 +489,34 @@ export function SessionDetailPane({
         };
         attemptScroll(0);
     }, []);
+
+    // rail 点击 → 跳到对应消息并高亮 1200ms。
+    const jumpToAnnotationSeq = useCallback(
+        (seq: number) => {
+            setActiveAnnotationSeq(seq);
+            scrollToVisibleMessage(seq, "smooth");
+            const flash = (attempt: number) => {
+                const node = messageRefs.current[seq];
+                if (node == null) {
+                    if (attempt < 8) window.requestAnimationFrame(() => flash(attempt + 1));
+                    return;
+                }
+                const previousOutline = node.style.outline;
+                const previousOffset = node.style.outlineOffset;
+                node.style.outline = "2px solid rgba(120, 150, 255, 0.75)";
+                node.style.outlineOffset = "2px";
+                window.setTimeout(() => {
+                    node.style.outline = previousOutline;
+                    node.style.outlineOffset = previousOffset;
+                }, AnnotationFlashMs);
+            };
+            window.requestAnimationFrame(() => flash(0));
+            window.setTimeout(() => {
+                setActiveAnnotationSeq((current) => (current === seq ? null : current));
+            }, AnnotationFlashMs);
+        },
+        [scrollToVisibleMessage]
+    );
 
     // 实时流式 turn（主消息区内联渲染）：assistant_delta/tool 事件累积，turn_end 后由
     // DetailDelta 正式数据替换（先刷新落地再清除，避免空窗闪烁）。
@@ -1258,6 +1309,21 @@ export function SessionDetailPane({
                         groupStart={isGroupStart}
                         contextAttrs={contextAttrsBySeq.get(item.message.seq)}
                         contextText={contextTextBySeq.get(item.message.seq)}
+                        annotationCount={annotationCounts.get(item.message.seq) ?? 0}
+                        onOpenAnnotations={
+                            item.message.itemKey
+                                ? () => {
+                                      const existing = annotations.find(
+                                          (annotation) => annotation.seq === item.message.seq
+                                      );
+                                      setAnnotationEditor({
+                                          seq: item.message.seq,
+                                          anchorKey: item.message.itemKey!,
+                                          annotation: existing,
+                                      });
+                                  }
+                                : undefined
+                        }
                         registerRef={(node) => {
                             if (node) messageRefs.current[item.message.seq] = node;
                         }}
@@ -1497,6 +1563,12 @@ export function SessionDetailPane({
             </div>
             <div className="relative min-h-0 flex-1">
                 <div className="flex h-full min-h-0">
+                    <AnnotationRail
+                        annotations={annotations}
+                        onJump={jumpToAnnotationSeq}
+                        activeSeq={activeAnnotationSeq}
+                        previewBySeq={annotationPreviewBySeq}
+                    />
                     <div className="relative flex min-w-0 flex-1 flex-col">
                         {/* 搜索浮层：头栏下方居中弹出（对齐原型 srch-pop） */}
                         <div
@@ -1828,6 +1900,17 @@ export function SessionDetailPane({
                         </div>
                     </div>
                 </Modal>
+            ) : null}
+            {annotationEditor != null && summaryKey !== "" ? (
+                <AnnotationEditor
+                    sessionKey={summaryKey}
+                    connection={connection || undefined}
+                    seq={annotationEditor.seq}
+                    anchorKey={annotationEditor.anchorKey}
+                    annotation={annotationEditor.annotation ?? null}
+                    onClose={() => setAnnotationEditor(null)}
+                    onSaved={() => void reloadAnnotations()}
+                />
             ) : null}
             {deleteConfirmOpen && summary != null ? (
                 <Modal
