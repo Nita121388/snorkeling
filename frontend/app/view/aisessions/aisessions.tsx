@@ -26,10 +26,10 @@ import {
     ExpandAllTagsButton,
     GroupModeSwitch,
     IconButton,
-    SortButton,
     SubSessionsToggle,
     type ListGroupMode,
 } from "./controls";
+import { SortMenu } from "./sort-menu";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { ScanProgressStrip, SkeletonSessionRows } from "./scan-progress";
@@ -53,7 +53,14 @@ import { normalizeSessionTags } from "./session-tags";
 import { mergeSessionTimeline } from "./session-timeline-sync";
 import { collectParentKeys } from "./session-tree";
 import { defaultChatSource } from "./sources";
-import type { DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
+import type {
+    DateRangeFilter,
+    MarkedFilter,
+    PathFilter,
+    SessionSortChain,
+    SourceFilter,
+    TagPresenceFilter,
+} from "./types";
 import {
     DefaultDateRange,
     DefaultExcludeTags,
@@ -63,6 +70,8 @@ import {
     DefaultTagPresence,
     NewSessionKey,
     dateRangeToSinceBefore,
+    readSortChain,
+    writeSortChain,
 } from "./types";
 import { useScanStatus } from "./use-scan-status";
 import { useSessionsRunning, type SessionRunningState } from "./use-sessions-running";
@@ -91,9 +100,11 @@ import {
     restoreMetaForSession,
     shouldStartEmptyChat,
     sortSessionsByTime,
+    countSubSessions,
+    makeSessionComparator,
+    sortSessions,
     writeExpandAllTagsPreference,
     writeGroupPreference,
-    writeSortPreference,
 } from "./utils";
 
 function jumpToRunningSessionBlock(runningState: SessionRunningState): void {
@@ -128,6 +139,9 @@ export class AiSessionsViewModel implements ViewModel {
     hideViewName = jotai.atom(true);
     noPadding = jotai.atom(true);
 
+    /** 排序链。空/缺省等价于「新→旧」；localStorage 迁移见 types.readSortChain。 */
+    sortChainAtom = jotai.atom<SessionSortChain>(readSortChain());
+    /** 旧方向 atom 保留：仅用于 loadSessions 选「首个会话」的方向语义，不参与列表排序。 */
     sortDescendingAtom = jotai.atom<boolean>(readSortPreference());
     groupModeAtom = jotai.atom<ListGroupMode>(readGroupPreference());
     sessionsAtom = jotai.atom<SessionSummary[]>([]);
@@ -1289,7 +1303,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const restoring = jotai.useAtomValue(model.restoringAtom);
     const deleting = jotai.useAtomValue(model.deletingAtom);
     const lastSessionsRefreshAt = jotai.useAtomValue(model.lastSessionsRefreshAtAtom);
-    const [sortDescending, setSortDescending] = jotai.useAtom(model.sortDescendingAtom);
+    const [sortChain, setSortChain] = jotai.useAtom(model.sortChainAtom);
+    // 旧方向 atom 只保留读：`loadSessions` 用它决定「自动选中哪个会话」（固定取最新）。
+    const sortDescending = jotai.useAtomValue(model.sortDescendingAtom);
     // 方案 B：全局「展开全部标签」偏好，写入 localStorage 跨会话保持。
     const [expandAllTags, setExpandAllTags] = useState<boolean>(() => readExpandAllTagsPreference());
     useEffect(() => {
@@ -1347,10 +1363,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const sessionsRunning = useSessionsRunning(blockVisible);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
+    // 子会话数（排序键用）在可见结果集上算一次，供排序链与树共用。
+    const subSessionCounts = useMemo(() => countSubSessions(sessions), [sessions]);
+    const sessionComparator = useMemo(
+        () => makeSessionComparator(sortChain, subSessionCounts),
+        [sortChain, subSessionCounts]
+    );
     const visibleSessions = useMemo(() => {
-        const base = sortSessionsByTime(sessions, sortDescending);
+        const base = sortSessions(sessions, sortChain, subSessionCounts);
         return newSession != null ? [newSession, ...base] : base;
-    }, [sessions, sortDescending, newSession]);
+    }, [sessions, sortChain, subSessionCounts, newSession]);
     // 多选集合始终是「当前可见会话」的子集：筛选 / 刷新后消失的会话不该继续
     // 留在选区内，否则批量栏的「复制 5 个 ID」实际只有 2 条在结果里。
     // New Chat 占位没有 id / filePath，进选区只会让复制产物出现空行，排除它。
@@ -1378,8 +1400,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
      */
     const groupedSessions = useMemo(() => {
         const base = newSession != null ? visibleSessions.slice(1) : visibleSessions;
-        return groupSessionsByProject(base, sortDescending);
-    }, [visibleSessions, newSession, sortDescending]);
+        return groupSessionsByProject(base, sortDescending, sessionComparator);
+    }, [visibleSessions, newSession, sortDescending, sessionComparator]);
 
     // 一键展开/全部收起的全局覆盖状态。纯内存态，不落盘：刷新后回到
     // expandedParents（默认空 = 全部折叠），所以一键展开不会变成新的默认行为。
@@ -1627,8 +1649,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     }, [model, query, source, tagFilters, tagPresence, markedFilter, dateRange, pathFilter, sortDescending]);
 
     useEffect(() => {
-        writeSortPreference(sortDescending);
-    }, [sortDescending]);
+        writeSortChain(sortChain);
+    }, [sortChain]);
 
     useEffect(() => {
         writeGroupPreference(groupMode);
@@ -2047,10 +2069,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                             <span>Filters</span>
                                         )}
                                     </button>
-                                    <SortButton
-                                        descending={sortDescending}
-                                        onToggle={() => setSortDescending((current) => !current)}
-                                    />
+                                    <SortMenu chain={sortChain} onChange={setSortChain} />
                                     <SubSessionsToggle
                                         allExpanded={allSubSessionsExpanded}
                                         parentCount={allParentKeys.length}
@@ -2192,6 +2211,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 onToggleExpandParent={toggleExpandParent}
                                                 fullyExpandedParents={fullyExpandedParents}
                                                 expandAllTags={expandAllTags}
+                                                sortChain={sortChain}
                                                 sortDescending={sortDescending}
                                                 selectedKey={selectedKey}
                                                 selectedKeys={selectedKeySet}

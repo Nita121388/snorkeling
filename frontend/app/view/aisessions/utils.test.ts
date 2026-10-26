@@ -13,17 +13,20 @@ import {
     formatSessionDateCompact,
     formatSessionRelativeTime,
     groupSessionsByProject,
+    countSubSessions,
     isReadableMessage,
+    makeSessionComparator,
     pruneSelectionToVisible,
     readExpandAllTagsPreference,
     restoreCommandForSession,
     restoreMetaForSession,
     shouldExpandAllTags,
     shouldStartEmptyChat,
+    sortSessions,
     UnclassifiedGroupName,
     writeExpandAllTagsPreference,
 } from "./utils";
-import { expandAllTagsStorageKey } from "./types";
+import { expandAllTagsStorageKey, sanitizeSortChain, DefaultSortChain, MaxSortChainLength } from "./types";
 
 function makeMessage(seq: number, role: string, text: string): Message {
     return {
@@ -580,5 +583,139 @@ describe("buildBatchCopyText", () => {
         const text = buildBatchCopyText([sessions[0]], "resumeCommands");
         expect(text.length).toBeGreaterThan(0);
         expect(text).toContain("s1");
+    });
+});
+
+describe("countSubSessions", () => {
+    it("counts rows whose parentKey points at a key in the set", () => {
+        const sessions: SessionSummary[] = [
+            { key: "p", id: "p", source: "pi" },
+            { key: "c1", id: "c1", source: "pi", parentKey: "p" },
+            { key: "c2", id: "c2", source: "pi", parentKey: "p" },
+            { key: "orphan", id: "orphan", source: "pi", parentKey: "missing" },
+            { key: "self", id: "self", source: "pi", parentKey: "self" },
+        ] as SessionSummary[];
+        expect([...countSubSessions(sessions).entries()]).toEqual([["p", 2]]);
+    });
+
+    it("ignores blank parentKey", () => {
+        const sessions: SessionSummary[] = [{ key: "p", id: "p", source: "pi" }] as SessionSummary[];
+        expect([...countSubSessions(sessions).entries()]).toEqual([]);
+    });
+});
+
+describe("makeSessionComparator / sortSessions", () => {
+    function s(key: string, over: Partial<SessionSummary> = {}): SessionSummary {
+        return { key, id: key, source: "pi", updatedAt: 0, ...over } as SessionSummary;
+    }
+
+    it("sorts by message count descending", () => {
+        const list = [s("a", { messageCount: 3 }), s("b", { messageCount: 100 }), s("c", { messageCount: 12 })];
+        const sorted = sortSessions(list, [{ field: "messages", desc: true }]);
+        expect(sorted.map((x) => x.key)).toEqual(["b", "c", "a"]);
+    });
+
+    it("sorts by message count ascending", () => {
+        const list = [s("a", { messageCount: 3 }), s("b", { messageCount: 100 }), s("c", { messageCount: 12 })];
+        const sorted = sortSessions(list, [{ field: "messages", desc: false }]);
+        expect(sorted.map((x) => x.key)).toEqual(["a", "c", "b"]);
+    });
+
+    it("sorts by sub-session count descending using injected counts", () => {
+        const list = [s("a"), s("b"), s("c")];
+        const counts = new Map([
+            ["a", 5],
+            ["b", 0],
+            ["c", 2],
+        ]);
+        const sorted = sortSessions(list, [{ field: "subagents", desc: true }], counts);
+        expect(sorted.map((x) => x.key)).toEqual(["a", "c", "b"]);
+    });
+
+    it("falls through to the next chain key on ties", () => {
+        const list = [
+            s("a", { messageCount: 10, updatedAt: 1 }),
+            s("b", { messageCount: 10, updatedAt: 2 }),
+            s("c", { messageCount: 5, updatedAt: 9 }),
+        ];
+        const sorted = sortSessions(list, [
+            { field: "messages", desc: true },
+            { field: "time", desc: true },
+        ]);
+        expect(sorted.map((x) => x.key)).toEqual(["b", "a", "c"]);
+    });
+
+    it("uses implicit updatedAt desc + key asc when all chain keys tie", () => {
+        const list = [
+            s("a", { messageCount: 0, updatedAt: 30, parentKey: "" }),
+            s("b", { messageCount: 0, updatedAt: 10, parentKey: "" }),
+            s("c", { messageCount: 0, updatedAt: 20, parentKey: "" }),
+        ];
+        const sorted = sortSessions(list, [{ field: "subagents", desc: true }]);
+        // 全 0 子会话 → 隐式 updatedAt 降序（不是原插入顺序）。
+        expect(sorted.map((x) => x.key)).toEqual(["a", "c", "b"]);
+    });
+
+    it("is stable on fully identical rows (key asc)", () => {
+        const list = [s("b", { updatedAt: 0 }), s("a", { updatedAt: 0 }), s("c", { updatedAt: 0 })];
+        const sorted = sortSessions(list, [{ field: "messages", desc: true }]);
+        expect(sorted.map((x) => x.key)).toEqual(["a", "b", "c"]);
+    });
+});
+
+describe("sanitizeSortChain", () => {
+    it("drops illegal fields", () => {
+        const chain = sanitizeSortChain([{ field: "bogus", desc: true }, { field: "messages", desc: true }]);
+        expect(chain).toEqual([{ field: "messages", desc: true }]);
+    });
+
+    it("dedupes by field keeping first", () => {
+        const chain = sanitizeSortChain([
+            { field: "messages", desc: true },
+            { field: "messages", desc: false },
+        ]);
+        expect(chain).toEqual([{ field: "messages", desc: true }]);
+    });
+
+    it("truncates to MaxSortChainLength", () => {
+        const chain = sanitizeSortChain([
+            { field: "messages", desc: true },
+            { field: "subagents", desc: true },
+            { field: "time", desc: true },
+            { field: "messages", desc: false },
+        ]);
+        expect(chain).toHaveLength(MaxSortChainLength);
+        expect(chain[0].field).toBe("messages");
+    });
+
+    it("falls back to default on empty after filtering", () => {
+        expect(sanitizeSortChain([])).toEqual(DefaultSortChain);
+        expect(sanitizeSortChain([{ field: "bogus" }])).toEqual(DefaultSortChain);
+    });
+});
+
+describe("groupSessionsByProject with sort chain", () => {
+    function s(key: string, project: string, over: Partial<SessionSummary> = {}): SessionSummary {
+        return { key, id: key, source: "pi", projectPath: project, updatedAt: 0, ...over } as SessionSummary;
+    }
+
+    it("orders groups by most recent activity, not sessions[0]", () => {
+        // 组内先按消息数排（会把新会话排后面），但分组顺序仍看最近活跃时间。
+        const list = [
+            s("a-old", "/p/alpha", { messageCount: 99, updatedAt: 1000 }),
+            s("a-new", "/p/alpha", { messageCount: 1, updatedAt: 5000 }),
+            s("b-only", "/p/beta", { messageCount: 50, updatedAt: 3000 }),
+        ];
+        const groups = groupSessionsByProject(list, true, makeSessionComparator([{ field: "messages", desc: true }], new Map()));
+        expect(groups.map((g) => g.name)).toEqual(["alpha", "beta"]);
+    });
+
+    it("sorts within a group by the supplied comparator", () => {
+        const list = [
+            s("small", "/p/x", { messageCount: 2, updatedAt: 1000 }),
+            s("big", "/p/x", { messageCount: 200, updatedAt: 500 }),
+        ];
+        const groups = groupSessionsByProject(list, true, makeSessionComparator([{ field: "messages", desc: true }], new Map()));
+        expect(groups[0].tree.map((n) => n.session.key)).toEqual(["big", "small"]);
     });
 });

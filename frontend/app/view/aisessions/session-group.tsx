@@ -7,6 +7,7 @@ import type { ListGroupMode } from "./controls";
 import { SessionRow } from "./session-row";
 import { buildSessionTree, hiddenChildCount, visibleChildren, type SessionTreeNode } from "./session-tree";
 import { NewSessionKey } from "./types";
+import { countSubSessions, makeSessionComparator } from "./utils";
 import type { SessionRunningState } from "./use-sessions-running";
 import type { ProjectSessionGroup } from "./utils";
 
@@ -129,8 +130,10 @@ type GroupedSessionListProps = {
     onToggleExpandParent: (sessionKey: string, showAll?: boolean) => void;
     /** 已点过「显示全部」的父会话 key 集合（本次会话内 state，不落盘）。 */
     fullyExpandedParents: Set<string>;
-    /** 列表当前的排序方向（新→旧 / 旧→新）；树必须跟随它，否则排序按钮失效。 */
+    /** 列表当前的排序方向（新→旧 / 旧→新）；仅在未传 sortChain 时生效。 */
     sortDescending: boolean;
+    /** 排序链；传了就按它给组内会话与顶层行排序。 */
+    sortChain?: import("./types").SessionSortChain;
     /** 工具栏「展开全部标签」的全局偏好（方案 B）。 */
     expandAllTags: boolean;
     /** 远端会话连接（供 Note 弹窗编辑 RPC 使用）。 */
@@ -159,6 +162,7 @@ export function GroupedSessionList({
     onToggleExpandParent,
     fullyExpandedParents,
     sortDescending,
+    sortChain,
     expandAllTags,
     connection,
 }: GroupedSessionListProps) {
@@ -166,13 +170,17 @@ export function GroupedSessionList({
 
     // 树在上层（aisessions.tsx）按筛选结果算好后随 grouped / sessions 一起传下来：
     // 这里只负责渲染，避免每个分组各算一遍。见 ProjectSessionGroup.tree。
+    // 时间模式（扁平）：顶层行也要跟随排序链，否则「按消息数排序」只在项目分组里生效。
     const flatTree =
         groupMode === "project"
             ? []
             : buildSessionTree(
                   sessions.filter((s) => s.key !== NewSessionKey),
                   undefined,
-                  sortDescending
+                  sortDescending,
+                  sortChain != null && sortChain.length > 0
+                      ? makeSessionComparator(sortChain, countSubSessions(sessions))
+                      : undefined
               );
 
     /** 渲染一个树节点及其（已展开的）子节点；子会话超过 20 个时追加「显示全部」。 */

@@ -52,21 +52,23 @@ function makeSessionOrder(descending: boolean) {
  * @param rows          列表/筛选结果（平铺）
  * @param matchedKeys   命中本次筛选的行 key 集合。缺省表示「没有生效的筛选」，
  *                      此时 matchedChildCount 恒为 0，父行只显示普通 `+N` 徽标。
- * @param descending    列表当前排序方向。树必须跟随它，否则排序按钮（新→旧／旧→新）
- *                      在成树后失效——成树会重排顶层行与子行。
+ * @param descending    列表当前排序方向（仅在未传 compare 时生效）。
+ * @param compare       可选自定义比较器（排序链）。传入时忽略 descending，
+ *                      顶层行与子行都用它排序；不传保持原有的时间排序。
  *
  * 规则：
  *  - parentKey 为空 / 指向不存在的行 / 指向自己 → 顶层
  *  - 其余挂到父节点下；父不在结果集里的子行提升为顶层（不丢结果）
- *  - 顶层按时间排序；子行按时间排序跟在父行后
+ *  - 顶层按 order 排序；子行按 order 排序跟在父行后
  */
 export function buildSessionTree(
     rows: SessionSummary[],
     matchedKeys?: Set<string>,
-    descending = true
+    descending = true,
+    compare?: (left: SessionSummary, right: SessionSummary) => number
 ): SessionTreeNode[] {
     const allMatched = matchedKeys == null;
-    const order = makeSessionOrder(descending);
+    const order = compare ?? makeSessionOrder(descending);
     const byKey = new Map<string, SessionSummary>();
     for (const row of rows) {
         byKey.set(row.key, row);

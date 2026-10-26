@@ -4,8 +4,9 @@ import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import { formatFileSize } from "@/util/fileformat";
 import { isWindows } from "@/util/platformutil";
 import { buildSessionTree, type SessionTreeNode } from "./session-tree";
-import type { MarkedFilter, PathFilter, SessionGroupMode } from "./types";
+import type { MarkedFilter, PathFilter, SessionGroupMode, SessionSortChain, SessionSortField } from "./types";
 import {
+    DefaultSortChain,
     PathFilterOtherRoot,
     expandAllTagsStorageKey,
     groupPreferenceStorageKey,
@@ -156,6 +157,75 @@ export function sortSessionsByTime(sessions: SessionSummary[], descending: boole
     });
 }
 
+/**
+ * 按可见结果集统计每个会话的子会话数：`parentKey === key` 的行（含 subagent + fork）。
+ *
+ * 与行内 `+N` 徽标（`buildSessionTree` 的 `childCount`）同口径——都在当前结果集上算。
+ */
+export function countSubSessions(sessions: readonly SessionSummary[]): Map<string, number> {
+    const known = new Set<string>();
+    for (const session of sessions) {
+        known.add(session.key);
+    }
+    const out = new Map<string, number>();
+    for (const session of sessions) {
+        const parentKey = (session.parentKey ?? "").trim();
+        // 父不在本结果集时不计（与 buildSessionTree 把孤儿提升为顶层的口径一致）。
+        if (parentKey === "" || parentKey === session.key || !known.has(parentKey)) continue;
+        out.set(parentKey, (out.get(parentKey) ?? 0) + 1);
+    }
+    return out;
+}
+
+function compareByField(
+    left: SessionSummary,
+    right: SessionSummary,
+    field: SessionSortField,
+    subCounts: Map<string, number>
+): number {
+    let leftValue: number;
+    let rightValue: number;
+    if (field === "time") {
+        leftValue = sessionSortTime(left);
+        rightValue = sessionSortTime(right);
+    } else if (field === "messages") {
+        leftValue = left.messageCount ?? 0;
+        rightValue = right.messageCount ?? 0;
+    } else {
+        leftValue = subCounts.get(left.key) ?? 0;
+        rightValue = subCounts.get(right.key) ?? 0;
+    }
+    return leftValue - rightValue;
+}
+
+/**
+ * 构造排序链比较器。
+ *
+ * 规则：逐键比较（链项前者优先级高），每键按 desc 翻向；全相等后隐式兜底——
+ * `updatedAt` 降序（避免大量 0 值 / 相同时「没排序一样」），最后 `key` 升序保证稳定。
+ */
+export function makeSessionComparator(
+    chain: SessionSortChain,
+    subCounts: Map<string, number>
+): (left: SessionSummary, right: SessionSummary) => number {
+    const activeChain = chain.length > 0 ? chain : DefaultSortChain;
+    return (left, right) => {
+        for (const key of activeChain) {
+            const delta = compareByField(left, right, key.field, subCounts) * (key.desc ? -1 : 1);
+            if (delta !== 0) return delta;
+        }
+        const leftTime = sessionSortTime(left);
+        const rightTime = sessionSortTime(right);
+        if (leftTime !== rightTime) return rightTime - leftTime;
+        return left.key.localeCompare(right.key);
+    };
+}
+
+/** 按排序链排序（不修改入参）。subCounts 可省略，省略时子会话数按 0 处理。 */
+export function sortSessions(sessions: SessionSummary[], chain: SessionSortChain, subCounts?: Map<string, number>): SessionSummary[] {
+    return [...sessions].sort(makeSessionComparator(chain, subCounts ?? new Map()));
+}
+
 export function sessionSortTime(session: SessionSummary): number {
     return session.updatedAt || session.createdAt || 0;
 }
@@ -244,12 +314,20 @@ export function basenamePath(path: string): string {
 /**
  * Bucket a flat list of sessions by their project folder.
  *
- * Pure and order-agnostic: the caller hands in sessions already sorted newest
- * first (the flat view's order), and this only cuts them into buckets. Groups
- * come back ordered by their most-recently-touched session, so the project you
- * worked in two minutes ago floats to the top; 未归类 always sinks last.
+ * Pure and order-agnostic: the caller hands in sessions already sorted in the
+ * flat list's order, and this only cuts them into buckets. Groups come back
+ * ordered by their most-recently-touched session, so the project you worked in
+ * two minutes ago floats to the top; 未归类 always sinks last.
+ *
+ * @param descending 旧的方向参数：只在 `compare` 缺省时生效（兼容旧调用点 / 测试）。
+ * @param compare    排序链比较器。传了它，组内会话与顶层行都按它排；
+ *                   **分组顺序仍按最近活跃时间**（不让文件夹随消息数乱跳）。
  */
-export function groupSessionsByProject(sessions: SessionSummary[], descending = true): ProjectSessionGroup[] {
+export function groupSessionsByProject(
+    sessions: SessionSummary[],
+    descending = true,
+    compare?: (left: SessionSummary, right: SessionSummary) => number
+): ProjectSessionGroup[] {
     const buckets = new Map<string, ProjectSessionGroup>();
     for (const session of sessions) {
         const path = (session.projectPath ?? "").trim();
@@ -266,15 +344,16 @@ export function groupSessionsByProject(sessions: SessionSummary[], descending = 
     groups.sort((left, right) => {
         // 未归类 is not a project; it belongs at the very bottom.
         if (left.unclassified !== right.unclassified) return left.unclassified ? 1 : -1;
-        const leftTime = sessionSortTime(left.sessions[0]);
-        const rightTime = sessionSortTime(right.sessions[0]);
+        // 不能假设 sessions[0] 是最新的：组内会话可能按消息数/子会话数重排过，
+        // 分组顺序要的是「这个项目最近一次活跃」，所以取 max(updatedAt)。
+        const leftTime = Math.max(...left.sessions.map(sessionSortTime));
+        const rightTime = Math.max(...right.sessions.map(sessionSortTime));
         return rightTime - leftTime;
     });
     // 每个分组内部再按父子关系成树；父会话必然与子会话同 project（同一目录），
     // 所以树不会跨分组。父不在本组里的子会话由 buildSessionTree 提升为顶层。
-    // descending 必须沿用列表的排序方向，否则成树会把「旧→新」重新排成「新→旧」。
     for (const group of groups) {
-        group.tree = buildSessionTree(group.sessions, undefined, descending);
+        group.tree = buildSessionTree(group.sessions, undefined, descending, compare);
     }
     return groups;
 }

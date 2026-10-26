@@ -110,30 +110,6 @@ export function PiLogo() {
     );
 }
 
-export function SortButton({ descending, onToggle }: { descending: boolean; onToggle: () => void }) {
-    return (
-        <button
-            type="button"
-            className={cn(
-                "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border/70 px-2.5 text-xs transition-colors",
-                descending
-                    ? "bg-background text-primary shadow-sm"
-                    : "bg-surface text-secondary hover:bg-hover hover:text-primary"
-            )}
-            onClick={onToggle}
-            title={descending ? "Newest first" : "Oldest first"}
-            aria-label={descending ? "Newest first" : "Oldest first"}
-        >
-            <i
-                className={cn(
-                    "fa-sharp fa-solid text-[11px]",
-                    descending ? "fa-arrow-down-wide-short" : "fa-arrow-up-short-wide"
-                )}
-            />
-        </button>
-    );
-}
-
 /**
  * 「一键展开 / 全部收起」子会话的全局开关（方案见 design.md §1）。
  *
@@ -205,7 +181,7 @@ export type ListGroupMode = "project" | "time";
 /**
  * The segment switch between Project (folders) and Time (flat newest-first).
  *
- * Same flat, token-only treatment as `SortButton`/`Filters` beside it: an
+ * Same flat, token-only treatment as `SortMenu`/`Filters` beside it: an
  * inline-flex strip whose moving fill is the selected label, so it reads as one
  * control at the same size as its neighbours rather than a second sort affordance.
  */
