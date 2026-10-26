@@ -77,17 +77,25 @@ function settleAssist(event: AnnotationAssistEvent): void {
     pending.reject(new Error(event.error || `annotation generation ${event.state}`));
 }
 
-function ensureAssistListener(): void {
+export function ensureAssistListener(): void {
     if (listenerAttached || typeof window === "undefined") return;
     listenerAttached = true;
+    (window as unknown as { __annotationAssistStates?: string }).__annotationAssistStates = "subscribed";
     try {
         waveEventSubscribeSingle<"aisessions:annotationassist">({
             eventType: "aisessions:annotationassist",
             handler: (event) => {
                 const data = event.data;
-                if (data != null && typeof data.jobId === "string") {
-                    settleAssist(data);
+                if (data == null || typeof data.jobId !== "string") {
+                    return;
                 }
+                console.log("[annotation-ai] event", data);
+                (window as unknown as { __annotationAssistStates?: string }).__annotationAssistStates = "received";
+                if (data.state === "queued" || data.state === "running") {
+                    (window as unknown as { __annotationAssistStates?: string }).__annotationAssistStates = data.state;
+                    return;
+                }
+                settleAssist(data);
             },
         });
     } catch {
@@ -131,13 +139,20 @@ export async function requestAnnotationDrafts(context: AnnotationAssistContext):
         aiMode: ai.mode,
     });
     const jobId = response.jobId;
+    console.log("[annotation-ai] job queued", { jobId, scope: context.scope, sessionKey: context.sessionKey });
     activeJobs.set(jobId, context.sessionKey);
     return await new Promise<AnnotationDraftResult[]>((resolve, reject) => {
         const timer = window.setTimeout(() => {
+            const state = (window as unknown as { __annotationAssistStates?: string }).__annotationAssistStates;
             pendingAssists.delete(jobId);
             activeJobs.delete(jobId);
+            if (state === "none") {
+                // 没收到任何事件：订阅没建立或后端没发布。
+                reject(new Error("AI 生成没有返回任何结果：事件未送达（检查 wps 订阅）"));
+                return;
+            }
             reject(new Error("annotation generation timed out"));
-        }, 90_000);
+        }, 45_000);
         pendingAssists.set(jobId, { resolve, reject, timer });
         const early = earlyEvents.get(jobId);
         if (early != null) {
@@ -152,12 +167,13 @@ export async function replaceAnnotationDrafts(
     sessionKey: string,
     connection: string | null | undefined,
     drafts: AnnotationDraftResult[]
-): Promise<void> {
-    await service.AnnotationReplace({
+): Promise<number> {
+    const response = await service.AnnotationReplace({
         sessionKey,
         connection: connection?.trim() || undefined,
         annotations: drafts,
     });
+    return (response.annotations ?? []).length;
 }
 
 export function draftToAnnotationLike(draft: AnnotationDraftResult, sessionKey: string): AnnotationLike {

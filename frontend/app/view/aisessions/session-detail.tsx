@@ -439,6 +439,8 @@ export function SessionDetailPane({
     const [activeAnnotationSeq, setActiveAnnotationSeq] = useState<number | null>(null);
     const [timelineGenerating, setTimelineGenerating] = useState(false);
     const [annotationError, setAnnotationError] = useState("");
+    // annotationStatus 仅作调试/埋点用途（queued/running/done），不直接渲染。
+    const [annotationStatus, setAnnotationStatus] = useState("");
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
     const detailSearchSummary =
         normalizedDetailSearchQuery === ""
@@ -525,6 +527,8 @@ export function SessionDetailPane({
         if (summaryKey === "" || timelineGenerating) return;
         setTimelineGenerating(true);
         setAnnotationError("");
+        setAnnotationStatus("queued");
+        void annotationStatus;
         try {
             const drafts = await requestAnnotationDrafts({
                 sessionKey: summaryKey,
@@ -532,12 +536,19 @@ export function SessionDetailPane({
                 scope: "timeline",
                 maxEntries: 12,
             });
-            if (drafts.length > 0) {
-                await replaceAnnotationDrafts(summaryKey, connection, drafts);
-                await reloadAnnotations();
+            console.log("[annotation-ai] timeline drafts", drafts);
+            if (drafts.length === 0) {
+                setAnnotationError("AI 没有产出任何批注（可能会话太短或全部锚点被拒）。");
+                return;
             }
+            const inserted = await replaceAnnotationDrafts(summaryKey, connection, drafts);
+            console.log("[annotation-ai] inserted drafts", inserted);
+            await reloadAnnotations();
+            setAnnotationStatus("done");
         } catch (err) {
-            setAnnotationError(err instanceof Error ? err.message : String(err));
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn("[annotation-ai] generate failed", message);
+            setAnnotationError(message);
         } finally {
             setTimelineGenerating(false);
         }
@@ -1599,16 +1610,32 @@ export function SessionDetailPane({
                     </>
                 )}
             </div>
-            {annotationError ? (
-                <div className="flex shrink-0 items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-1 text-[11px] text-warning">
-                    <span className="min-w-0 flex-1 truncate">Annotation AI: {annotationError}</span>
-                    <button
-                        type="button"
-                        className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 hover:bg-warning/10"
-                        onClick={() => setAnnotationError("")}
-                    >
-                        Dismiss
-                    </button>
+            {timelineGenerating || annotationError ? (
+                <div
+                    className={cn(
+                        "flex shrink-0 items-center gap-2 border-b px-3 py-1 text-[11px]",
+                        annotationError
+                            ? "border-warning/40 bg-warning/10 text-warning"
+                            : "border-accent/40 bg-accent/10 text-accent"
+                    )}
+                    role="status"
+                >
+                    {annotationError ? null : <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />}
+                    <span className="min-w-0 flex-1 truncate">
+                        {annotationError ? `Annotation AI: ${annotationError}` : "Annotation AI: generating timeline…"}
+                    </span>
+                    {annotationError ? (
+                        <button
+                            type="button"
+                            className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 hover:bg-warning/10"
+                            onClick={() => {
+                                setAnnotationError("");
+                                setAnnotationStatus("");
+                            }}
+                        >
+                            Dismiss
+                        </button>
+                    ) : null}
                 </div>
             ) : null}
             <div className="relative min-h-0 flex-1">
