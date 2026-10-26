@@ -15,12 +15,21 @@ export function VTabBarPreview() {
     const baseEnv = useWaveEnv();
     const envRef = useRef<MockWaveEnv>(null);
     const [platform, setPlatform] = useState<NodeJS.Platform>(PlatformMacOS);
+    const [overflow, setOverflow] = useState(false);
 
-    const tabEnv = useMemo(() => makeTabBarMockEnv(baseEnv, envRef, platform), [platform]);
+    const tabEnv = useMemo(
+        () => makeTabBarMockEnv(baseEnv, envRef, platform, overflow ? "overflow" : "default"),
+        [baseEnv, envRef, platform, overflow]
+    );
 
     return (
         <WaveEnvContext.Provider value={tabEnv}>
-            <VTabBarPreviewInner platform={platform} setPlatform={setPlatform} />
+            <VTabBarPreviewInner
+                platform={platform}
+                setPlatform={setPlatform}
+                overflow={overflow}
+                setOverflow={setOverflow}
+            />
         </WaveEnvContext.Provider>
     );
 }
@@ -28,9 +37,11 @@ export function VTabBarPreview() {
 type VTabBarPreviewInnerProps = {
     platform: NodeJS.Platform;
     setPlatform: (platform: NodeJS.Platform) => void;
+    overflow: boolean;
+    setOverflow: (overflow: boolean) => void;
 };
 
-function VTabBarPreviewInner({ platform, setPlatform }: VTabBarPreviewInnerProps) {
+function VTabBarPreviewInner({ platform, setPlatform, overflow, setOverflow }: VTabBarPreviewInnerProps) {
     const env = useWaveEnv<VTabBarEnv>();
     const loadBadgesEnv = useWaveEnv<LoadBadgesEnv>();
     const [hideAiButton, setHideAiButton] = useState(false);
@@ -94,6 +105,15 @@ function VTabBarPreviewInner({ platform, setPlatform }: VTabBarPreviewInnerProps
                         onChange={(event) => setWidth(Math.max(100, Math.min(400, Number(event.target.value))))}
                         className="cursor-pointer"
                     />
+                </label>
+                <label className="flex items-center gap-2 text-xs text-muted">
+                    <input
+                        type="checkbox"
+                        checked={overflow}
+                        onChange={(event) => setOverflow(event.target.checked)}
+                        className="cursor-pointer"
+                    />
+                    18 Tabs (overflow)
                 </label>
                 <label className="flex items-center gap-2 text-xs text-muted">
                     <input

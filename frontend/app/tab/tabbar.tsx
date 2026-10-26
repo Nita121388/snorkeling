@@ -1,20 +1,19 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+    getTabsWithUnreadDotsAtom,
+    useAcquireWorkspaceBlockStatuses,
+} from "@/app/agent-status/agent-status-tab-aggregate";
+import { getMinimizedBlockIds } from "@/app/block/block-minimize";
 import { Tooltip } from "@/app/element/tooltip";
-import clsx from "clsx";
 import { SessionOverviewButton } from "@/app/session-overview/session-overview";
 import {
     filterSessionOverviewTabIds,
     mergeVisibleTabIdsWithSessionOverview,
 } from "@/app/session-overview/session-overview-model";
 import { confirmCloseTabIfHasContent, confirmCurrentTabClose } from "@/app/store/global";
-import {
-    getTabsWithUnreadDotsAtom,
-    useAcquireWorkspaceBlockStatuses,
-} from "@/app/agent-status/agent-status-tab-aggregate";
 import { globalStore } from "@/app/store/jotaiStore";
-import { getMinimizedBlockIds } from "@/app/block/block-minimize";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -22,19 +21,22 @@ import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { deleteLayoutModelForTab } from "@/layout/index";
 import { isMacOSTahoeOrLater } from "@/util/platformutil";
 import { fireAndForget } from "@/util/util";
+import clsx from "clsx";
 import { atom, useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
+import { collapseTabIds } from "./tab-collapse-state";
+import { TabMoreMenu } from "./tab-more-menu";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import "./tabbar.scss";
-
-const TAB_HEADER_HOVER_DELAY_MS = 2000;
 import { TabBarEnv } from "./tabbarenv";
 import { UpdateStatusBanner } from "./updatebanner";
 import { WorkspaceSwitcher } from "./workspaceswitcher";
+
+const TAB_HEADER_HOVER_DELAY_MS = 2000;
 
 // fallback atom used when there is no active tab (prevents a null atom for useAtomValue)
 const emptyTabAtom = atom<Tab | null>(null);
@@ -135,6 +137,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     const tabsWrapperRef = useRef<HTMLDivElement>(null);
     const tabRefs = useRef<React.RefObject<HTMLDivElement>[]>([]);
     const addBtnRef = useRef<HTMLButtonElement>(null);
+    const moreMenuWrapRef = useRef<HTMLDivElement>(null);
     const draggingRemovedRef = useRef(false);
     const draggingTabDataRef = useRef({
         tabId: "",
@@ -177,10 +180,16 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
 
     const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     const [isWrapperHovered, setIsWrapperHovered] = useState(false);
+    // 「更多」下拉打开期间, 让被折叠的 Tab 保持展开, 避免面板下方布局突变.
+    const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
     // ── block sidebar expand icon (left-most in tab bar) ──
     const [sidebarExpanded, setSidebarExpanded] = useState(() => {
         if (typeof window === "undefined") return true;
-        try { return localStorage.getItem(`snorkeling:block-sidebar-${activeTabId}:pinned`) !== "false"; } catch { return true; }
+        try {
+            return localStorage.getItem(`snorkeling:block-sidebar-${activeTabId}:pinned`) !== "false";
+        } catch {
+            return true;
+        }
     });
     // ── per-tab minimized block count for the active tab (shown on the sidebar toggle) ──
     const activeTabAtom = useMemo(
@@ -200,7 +209,11 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     }, [activeTabId]);
     useEffect(() => {
         if (typeof window === "undefined") return;
-        try { setSidebarExpanded(localStorage.getItem(`snorkeling:block-sidebar-${activeTabId}:pinned`) !== "false"); } catch { setSidebarExpanded(true); }
+        try {
+            setSidebarExpanded(localStorage.getItem(`snorkeling:block-sidebar-${activeTabId}:pinned`) !== "false");
+        } catch {
+            setSidebarExpanded(true);
+        }
     }, [activeTabId]);
     // ── widget bar expand icon (right-most in tab bar) ──
     const [widgetBarExpanded, setWidgetBarExpanded] = useState(false);
@@ -251,6 +264,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                 return (
                     isActive ||
                     isTabBarHovered ||
+                    isMoreMenuOpen ||
                     headerHovered ||
                     isWrapperHovered ||
                     draggingTab != null ||
@@ -263,6 +277,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             draggingTab,
             headerHovered,
             isTabBarHovered,
+            isMoreMenuOpen,
             isWrapperHovered,
             openedThisLaunchTabIds,
             tabIds,
@@ -271,10 +286,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     );
 
     // RenderedTabIds: tab-only ids, used for drag/reorder.
-    const renderedTabIds = useMemo(
-        () => visibleTabIds,
-        [visibleTabIds]
-    );
+    const renderedTabIds = useMemo(() => visibleTabIds, [visibleTabIds]);
 
     // Update refs when tabIds change
     useEffect(() => {
@@ -329,6 +341,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         const windowDragLeftWidth = draggerLeftRef.current.getBoundingClientRect().width;
         const rightContainerWidth = rightContainerRef.current?.getBoundingClientRect().width ?? 0;
         const addBtnWidth = getOuterWidth(addBtnRef.current);
+        const moreBtnWidth = moreMenuWrapRef.current != null ? getOuterWidth(moreMenuWrapRef.current) : 0;
         const appMenuButtonWidth = appMenuButtonRef.current?.getBoundingClientRect().width ?? 0;
         const workspaceSwitcherWidth = workspaceSwitcherRef.current?.getBoundingClientRect().width ?? 0;
         const waveAIButtonWidth =
@@ -338,6 +351,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             windowDragLeftWidth +
             rightContainerWidth +
             addBtnWidth +
+            moreBtnWidth +
             appMenuButtonWidth +
             workspaceSwitcherWidth +
             waveAIButtonWidth;
@@ -760,6 +774,26 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         saveTabsPosition();
     }, [visibleTabIds, saveTabsPosition]);
 
+    // 「更多」按钮宽度会随隐藏计数 (0 → 2 位数) 变化, 而 window resize 不会触发.
+    // 单独监听它, 保证 spaceForTabs 始终按真实占用计算, Tab 不被遮挡.
+    useEffect(() => {
+        const el = moreMenuWrapRef.current;
+        if (el == null || typeof ResizeObserver === "undefined") {
+            return;
+        }
+        let prevWidth = el.getBoundingClientRect().width;
+        const observer = new ResizeObserver(() => {
+            const nextWidth = el.getBoundingClientRect().width;
+            if (Math.abs(nextWidth - prevWidth) < 0.5) {
+                return;
+            }
+            prevWidth = nextWidth;
+            setSizeAndPosition();
+        });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [visibleTabIds]);
+
     const updateScrollDebounced = useCallback(
         debounce(30, () => {
             if (scrollableRef.current) {
@@ -913,9 +947,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                 aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
             >
                 <i className={clsx("fa fa-solid", sidebarExpanded ? "fa-chevron-left" : "fa-chevron-right")} />
-                {activeMinimizedCount > 0 && (
-                    <span className="block-sidebar-count-badge">{activeMinimizedCount}</span>
-                )}
+                {activeMinimizedCount > 0 && <span className="block-sidebar-count-badge">{activeMinimizedCount}</span>}
             </button>
             <WaveAIButton divRef={waveAIButtonRef} />
             {!noTabs && <SessionOverviewButton />}
@@ -956,7 +988,8 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                         visibleTabIds.map((tabId, segIndex) => {
                             const tabIndex = tabIds.indexOf(tabId);
                             const isActive = activeTabId === tabId;
-                            const showDivider = segIndex !== 0 && !isActive && segIndex !== visibleTabIds.indexOf(activeTabId) - 1;
+                            const showDivider =
+                                segIndex !== 0 && !isActive && segIndex !== visibleTabIds.indexOf(activeTabId) - 1;
                             return (
                                 <TabComponent
                                     key={tabId}
@@ -977,6 +1010,27 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
                             );
                         })}
                 </div>
+            </div>
+            <div ref={moreMenuWrapRef} className="flex items-end mb-1">
+                <TabMoreMenu
+                    tabIds={tabIds}
+                    placement="bottom-end"
+                    variant="horizontal"
+                    onOpenChange={setIsMoreMenuOpen}
+                    onActivateTab={(tabId) => handleSelectTab(tabId)}
+                    onCloseTab={(tabId) => handleCloseTab(null, tabId)}
+                    onNewTab={() => handleAddTab()}
+                    onCollapseInactive={() => {
+                        const targets = tabIds.filter(
+                            (tabId) =>
+                                tabId !== activeTabId &&
+                                wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId) &&
+                                !tabsWithUnreadDots.has(tabId)
+                        );
+                        collapseTabIds(targets);
+                        setSizeAndPosition(true);
+                    }}
+                />
             </div>
             <button
                 ref={addBtnRef}

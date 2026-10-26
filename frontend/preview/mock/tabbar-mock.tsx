@@ -77,6 +77,12 @@ export const TabBarMockTabs: PreviewTabEntry[] = [
     { tabId: "preview-tab-6", tabName: "Preview", flagColor: "#bf55ec" },
 ];
 
+/** 溢出示例用的额外 Tab: 12 个, 让「更多」下拉出现搜索框并暴露折叠 Tab. */
+export const TabBarOverflowTabs: PreviewTabEntry[] = Array.from({ length: 12 }, (_, index) => ({
+    tabId: `preview-tab-overflow-${index + 1}`,
+    tabName: `Overflow ${index + 1}`,
+}));
+
 function makeMockWorkspace(tabIds: string[]): Workspace {
     return {
         otype: "workspace",
@@ -92,13 +98,16 @@ function makeMockWorkspace(tabIds: string[]): Workspace {
 export function makeTabBarMockEnv(
     baseEnv: WaveEnv,
     envRef: React.RefObject<MockWaveEnv>,
-    platform: NodeJS.Platform
+    platform: NodeJS.Platform,
+    /** "overflow" 会额外灌 12 个 Tab, 用来验证「更多」下拉在 Tab 过多时的行为. */
+    variant: "default" | "overflow" = "default"
 ): MockWaveEnv {
-    const initialTabIds = TabBarMockTabs.map((t) => t.tabId);
+    const tabs = variant === "overflow" ? [...TabBarMockTabs, ...TabBarOverflowTabs] : TabBarMockTabs;
+    const initialTabIds = tabs.map((t) => t.tabId);
     const mockWaveObjs: Record<string, WaveObj> = {
         [`workspace:${TabBarMockWorkspaceId}`]: makeMockWorkspace(initialTabIds),
     };
-    for (const tab of TabBarMockTabs) {
+    for (const tab of tabs) {
         mockWaveObjs[`tab:${tab.tabId}`] = makeTabWaveObj(tab);
     }
     const env = applyMockEnvOverrides(baseEnv, {

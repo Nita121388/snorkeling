@@ -3,6 +3,7 @@
 
 import { globalStore } from "@/app/store/jotaiStore";
 import { atom } from "jotai";
+import { expandCollapsedTabId } from "./tab-collapse-state";
 import { tabRecencyStore } from "./tab-recency-store";
 
 function getApi(): ElectronApi | null {
@@ -42,6 +43,8 @@ export function markTabOpenedThisLaunch(tabId: string) {
         return;
     }
     getApi()?.markTabOpenedThisLaunch?.(tabId);
+    // 真正被打开即解除 "收起" 状态 (用户在「更多」下拉里点开它, 主栏应该重新露出).
+    expandCollapsedTabId(tabId);
     // 双写持久化时序: 跨重启保留 "上次打开过的顺序" (按 lastOpenedAt 降序排前).
     // openedThisLaunch 仅本启动有效, 重启即失; recencyStore 走 localStorage 跨重启续命.
     tabRecencyStore.markTabOpened(tabId);

@@ -24,6 +24,9 @@ import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { collapsedTabIdsAtom, collapseTabIds } from "./tab-collapse-state";
+import { isTabHiddenFromBar } from "./tab-more-model";
+import { TabMoreMenu } from "./tab-more-menu";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
@@ -226,6 +229,17 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
     // 有未阅状态点的 tab 集合: 这些 tab 必须强制 keep (不被 isHidden 折叠), 否则 VTabWrapper 不挂载,
     // 用户不切过去就永远看不到状态 (本次修复的核心).
     const tabsWithUnreadDots = useAtomValue(getTabsWithUnreadDotsAtom(tabIds));
+    const collapsedTabIds = useAtomValue(collapsedTabIdsAtom);
+    // 与「更多」下拉共用同一份可见性判定, 避免两处口径漂移.
+    const visibilityCtx = useMemo(
+        () => ({
+            activeTabId,
+            openedThisLaunch: openedThisLaunchTabIds,
+            unreadTabIds: tabsWithUnreadDots,
+            collapsedTabIds,
+        }),
+        [activeTabId, openedThisLaunchTabIds, tabsWithUnreadDots, collapsedTabIds]
+    );
 
     const [orderedTabIds, setOrderedTabIds] = useState<string[]>(tabIds);
     const [dragTabId, setDragTabId] = useState<string | null>(null);
@@ -235,6 +249,8 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
     const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
     const [isNewTabHovered, setIsNewTabHovered] = useState(false);
     const [isTabBarHovered, setIsTabBarHovered] = useState(false);
+    // 「更多」下拉打开期间强制 Tab 栏按展开态渲染, 否则面板刚开出来, 它下方的 Tab 就缩没了.
+    const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
     const dragSourceRef = useRef<string | null>(null);
     // FLIP 平稳换位: 记录上一次布局中每个 tab 的 top 位置, 顺序变化时用 translateY
     // 从旧位置滑到新位置, 消除"点开新 tab 硬跳到顶部"的跳动.
@@ -352,6 +368,39 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
         markTabOpenedThisLaunch(tabId);
     }, []);
 
+    const closeVTab = useCallback(
+        (tabId: string) => {
+            fireAndForget(async () => {
+                if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
+                    return;
+                }
+                if (!(await confirmCloseTabIfHasContent(tabId))) {
+                    return;
+                }
+                await env.electron.closeTab(workspace.oid, tabId, false);
+            });
+        },
+        [activeTabId, env, workspace.oid]
+    );
+
+    /** 「收起未使用的 Tab」: 非激活 + 本次启动已打开 + 无未读点 的全部折叠进「更多」. */
+    const collectVTabCollapseTargets = useCallback(() => {
+        const targets: string[] = [];
+        for (const tabId of orderedTabIds) {
+            if (tabId === activeTabId) {
+                continue;
+            }
+            if (!wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId)) {
+                continue;
+            }
+            if (tabsWithUnreadDots.has(tabId)) {
+                continue;
+            }
+            targets.push(tabId);
+        }
+        return targets;
+    }, [activeTabId, openedThisLaunchTabIds, orderedTabIds, tabsWithUnreadDots]);
+
     useEffect(() => {
         if (activeTabId != null) {
             markTabOpened(activeTabId);
@@ -365,17 +414,14 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
         const visibleGroup: string[] = [];
         const hiddenGroup: string[] = [];
         for (const tabId of orderedTabIds) {
-            const isActive = tabId === activeTabId;
-            const wasOpened = openedThisLaunchTabIds.has(tabId);
-            const hasUnread = tabsWithUnreadDots.has(tabId);
-            if (isActive || wasOpened || hasUnread) {
-                visibleGroup.push(tabId);
-            } else {
+            if (isTabHiddenFromBar(tabId, visibilityCtx)) {
                 hiddenGroup.push(tabId);
+            } else {
+                visibleGroup.push(tabId);
             }
         }
         return [...visibleGroup, ...hiddenGroup];
-    }, [orderedTabIds, activeTabId, openedThisLaunchTabIds, tabsWithUnreadDots]);
+    }, [orderedTabIds, visibilityCtx]);
 
     // FLIP: 当 renderOrderedTabIds / 悬停状态变化导致布局重排后, 把每个 tab 从它的
     // 上—个 top 位置平滑滑动到新位置. 只在非拖拽时启用, 首次挂载不播动画.
@@ -495,15 +541,12 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
                     const nextTabId = renderOrderedTabIds[index + 1];
                     const isNextActive = nextTabId === activeTabId;
                     const isNextHovered = nextTabId === hoveredTabId;
-                    const wasOpened = wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
-                    const hasUnreadDots = tabsWithUnreadDots.has(tabId);
                     const isHidden =
-                        !isActive &&
                         !isTabBarHovered &&
                         !headerHovered &&
-                        !wasOpened &&
+                        !isMoreMenuOpen &&
                         dragTabId == null &&
-                        !hasUnreadDots;
+                        isTabHiddenFromBar(tabId, visibilityCtx);
                     if (isHidden) {
                         return (
                             <div key={tabId}>
@@ -621,18 +664,40 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
                     />
                 )}
             </div>
-            <button
-                type="button"
-                className="group relative flex h-9 w-full shrink-0 cursor-pointer items-center gap-1.5 pl-3 pr-3 text-xs text-secondary/60 transition-colors hover:text-primary select-none whitespace-nowrap"
-                onClick={() => env.electron.createTab()}
-                onMouseEnter={() => setIsNewTabHovered(true)}
-                onMouseLeave={() => setIsNewTabHovered(false)}
-                aria-label="New Tab"
-            >
-                <div className="pointer-events-none absolute inset-x-1 inset-y-[4px] rounded-sm bg-transparent transition-colors group-hover:bg-hover" />
-                <i className="fa fa-solid fa-plus" style={{ fontSize: "10px" }} />
-                <span>New Tab</span>
-            </button>
+            <div className="flex h-9 w-full shrink-0 items-center">
+                <TabMoreMenu
+                    tabIds={orderedTabIds}
+                    placement="top-start"
+                    variant="vertical"
+                    onOpenChange={setIsMoreMenuOpen}
+                    onActivateTab={(tabId) => {
+                        markTabOpened(tabId);
+                        env.electron.setActiveTab(tabId);
+                    }}
+                    onCloseTab={closeVTab}
+                    onNewTab={() => env.electron.createTab()}
+                    onCollapseInactive={() => {
+                        const targets = collectVTabCollapseTargets();
+                        collapseTabIds(targets);
+                        // 收起后主栏宽度不变, 但 hidden 组内容会消失; 直接触发一次 hover reset
+                        // 让 max-h-0 过渡正常播放.
+                        setHoverResetVersion((version) => version + 1);
+                    }}
+                />
+                <button
+                    type="button"
+                    className="group relative flex h-full w-9 shrink-0 cursor-pointer items-center justify-center text-xs text-secondary/60 transition-colors hover:text-primary select-none"
+                    onClick={() => env.electron.createTab()}
+                    onMouseEnter={() => setIsNewTabHovered(true)}
+                    onMouseLeave={() => setIsNewTabHovered(false)}
+                    aria-label="New Tab"
+                    title="New Tab"
+                    style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                >
+                    <div className="pointer-events-none absolute inset-x-1 inset-y-[4px] rounded-sm bg-transparent transition-colors group-hover:bg-hover" />
+                    <i className="fa fa-solid fa-plus relative" style={{ fontSize: "10px" }} />
+                </button>
+            </div>
         </div>
     );
 }

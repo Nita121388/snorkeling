@@ -8,13 +8,18 @@
 
 ## Requirements
 
-### 左 rail
+### 左 rail（2026-10-26 视觉重构，见 design.md）
 
-- 折叠 16px（视觉 12）/ 展开 36px，点击空白 toggle，偏好 localStorage。
-- **只画有批注的节点**；刻度三种态：有已采纳 / 仅草稿 / orphan。
-- 节点数 > 40 时按时间窗分簇，簇内 hover 仍能定位单条。
-- dock 放大**复用** `session-outline-rail.tsx` 的 `tickMagnification`，不得复制一份。
-- 空态：rail 淡竖线 + 展开时显示「还没有批注」。
+- 折叠 16px（视觉 12）/ 展开 44px，点击空白 toggle，偏好 localStorage。
+- **只画有批注的节点**；节点是**圆点**（非横向药丸），三态：accepted 实心圆 / draft 空心环 / orphan 警告色。
+- 2px 竖轴贯穿全高；少节点按 seq 等比铺满，多节点固定 28px 间距 + 内部滚动。
+- **不再复用** `session-outline-rail` 的横向药丸语言（要与信息条视觉区分）；dock 放大改为圆点缩放。
+- 空态：rail 淡竖线 + 展开时显示「✨ 生成时间线」入口。
+- 点击圆点 = 跳转 + 钉住悬浮卡（沿用 `74430cbb` 的 pinned 行为）。
+
+### 弹窗不透明
+
+- 悬浮卡与批注编辑器背景必须是实色，不得出现 `/20` `/30` / `backdrop-blur` 等透明修饰。
 
 ### 悬浮卡
 

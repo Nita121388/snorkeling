@@ -20,12 +20,21 @@ export function TabBarPreview() {
     const baseEnv = useWaveEnv();
     const envRef = useRef<MockWaveEnv>(null);
     const [platform, setPlatform] = useState<NodeJS.Platform>(PlatformMacOS);
+    const [overflow, setOverflow] = useState(false);
 
-    const tabEnv = useMemo(() => makeTabBarMockEnv(baseEnv, envRef, platform), [platform]);
+    const tabEnv = useMemo(
+        () => makeTabBarMockEnv(baseEnv, envRef, platform, overflow ? "overflow" : "default"),
+        [baseEnv, envRef, platform, overflow]
+    );
 
     return (
         <WaveEnvContext.Provider value={tabEnv}>
-            <TabBarPreviewInner platform={platform} setPlatform={setPlatform} />
+            <TabBarPreviewInner
+                platform={platform}
+                setPlatform={setPlatform}
+                overflow={overflow}
+                setOverflow={setOverflow}
+            />
         </WaveEnvContext.Provider>
     );
 }
@@ -33,9 +42,11 @@ export function TabBarPreview() {
 type TabBarPreviewInnerProps = {
     platform: NodeJS.Platform;
     setPlatform: (platform: NodeJS.Platform) => void;
+    overflow: boolean;
+    setOverflow: (overflow: boolean) => void;
 };
 
-function TabBarPreviewInner({ platform, setPlatform }: TabBarPreviewInnerProps) {
+function TabBarPreviewInner({ platform, setPlatform, overflow, setOverflow }: TabBarPreviewInnerProps) {
     const env = useWaveEnv<TabBarEnv>();
     const loadBadgesEnv = useWaveEnv<LoadBadgesEnv>();
     const [showConfigErrors, setShowConfigErrors] = useState(false);
@@ -110,6 +121,15 @@ function TabBarPreviewInner({ platform, setPlatform }: TabBarPreviewInnerProps) 
                         className="cursor-pointer"
                     />
                     Hide Wave AI button
+                </label>
+                <label className="flex items-center gap-2 text-xs text-muted">
+                    <input
+                        type="checkbox"
+                        checked={overflow}
+                        onChange={(event) => setOverflow(event.target.checked)}
+                        className="cursor-pointer"
+                    />
+                    18 Tabs (overflow)
                 </label>
                 <label className="flex items-center gap-2 text-xs text-muted">
                     <input

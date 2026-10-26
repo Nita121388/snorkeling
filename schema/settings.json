@@ -417,6 +417,9 @@
         "ai:sessionautotitlebatchsize": {
           "type": "integer"
         },
+        "ai:sessionautotitleconcurrency": {
+          "type": "integer"
+        },
         "waveai:showcloudmodes": {
           "type": "boolean"
         },
