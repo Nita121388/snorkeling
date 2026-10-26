@@ -50,7 +50,12 @@ export class AiAuditViewModel implements ViewModel {
 
     async load(refresh: boolean = true): Promise<void> {
         if (this.disposed) return;
-        globalStore.set(this.loadingAtom, true);
+        // 后台轮询不点亮“Refreshing…”，否则每 4 秒闪一次。
+        const hasEntries = globalStore.get(this.entriesAtom).length > 0;
+        const silent = !refresh && hasEntries;
+        if (!silent) {
+            globalStore.set(this.loadingAtom, true);
+        }
         globalStore.set(this.errorAtom, "");
         try {
             const [entries, stats] = await Promise.all([
@@ -71,7 +76,7 @@ export class AiAuditViewModel implements ViewModel {
         } catch (e) {
             globalStore.set(this.errorAtom, e instanceof Error ? e.message : String(e));
         } finally {
-            if (!this.disposed) {
+            if (!this.disposed && !silent) {
                 globalStore.set(this.loadingAtom, false);
             }
         }

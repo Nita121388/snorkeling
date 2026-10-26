@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { globalStore } from "@/app/store/jotaiStore";
+import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { copyText } from "@/app/view/aisessions/utils";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
@@ -79,8 +80,29 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
     const detail = jotai.useAtomValue(model.detailAtom);
     const detailLoading = jotai.useAtomValue(model.detailLoadingAtom);
 
+    // 首次加载 + 自动刷新：AI 任务的状态事件会即时触发一次轻量刷新，
+    // 另外每 4 秒兜底轮询一次（worker 在别的进程，事件可能丢）。
     React.useEffect(() => {
         void model.load();
+        const timer = window.setInterval(() => void model.load(false), 4000);
+        const unsubs = [
+            waveEventSubscribeSingle<"aisessions:generationstatus">({
+                eventType: "aisessions:generationstatus",
+                handler: () => void model.load(false),
+            }),
+            waveEventSubscribeSingle<"aisessions:annotationassist">({
+                eventType: "aisessions:annotationassist",
+                handler: () => void model.load(false),
+            }),
+            waveEventSubscribeSingle<"aisessions:titleupdated">({
+                eventType: "aisessions:titleupdated",
+                handler: () => void model.load(false),
+            }),
+        ];
+        return () => {
+            window.clearInterval(timer);
+            for (const unsub of unsubs) unsub();
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [model]);
 
@@ -128,10 +150,12 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                 />
                 <button
                     type="button"
-                    className="h-7 shrink-0 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
+                    className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
+                    disabled={loading}
                     onClick={() => void model.load()}
                 >
-                    Refresh
+                    <i className={cn("fa-sharp fa-solid fa-rotate", loading && "animate-spin")} />
+                    {loading ? "Refreshing…" : "Refresh"}
                 </button>
                 <button
                     type="button"
