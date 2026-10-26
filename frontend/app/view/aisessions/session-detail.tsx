@@ -524,6 +524,7 @@ export function SessionDetailPane({
     const generateAnnotationTimeline = useCallback(async () => {
         if (summaryKey === "" || timelineGenerating) return;
         setTimelineGenerating(true);
+        setAnnotationError("");
         try {
             const drafts = await requestAnnotationDrafts({
                 sessionKey: summaryKey,

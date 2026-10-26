@@ -100,20 +100,59 @@ export function AnnotationRail({
         });
     }, []);
 
+    // 空态：折叠时只是一条竖线；展开时必须给出 ✨ 生成入口——
+    // 否则"没有任何批注"的用户永远找不到怎么开始（PRD 验收第一条）。
     if (items.length === 0) {
         return (
-            <div
-                className="relative flex shrink-0 cursor-pointer flex-col items-center border-r border-border/40"
-                style={{ width }}
-                onClick={toggleCollapsed}
-                title={collapsed ? "Expand annotation timeline" : "Collapse annotation timeline"}
-            >
-                <div className="h-full w-px bg-border/40" />
-                {!collapsed ? (
-                    <span className="absolute top-6 whitespace-nowrap text-[10px] text-secondary [writing-mode:vertical-rl]">
-                        No annotations
-                    </span>
-                ) : null}
+            <div className="relative flex shrink-0 flex-col items-center border-r border-border/40" style={{ width }}>
+                {collapsed ? (
+                    <div
+                        className="flex h-full w-full cursor-pointer items-center justify-center"
+                        onClick={toggleCollapsed}
+                        title="Expand annotation timeline"
+                    >
+                        <div className="h-full w-px bg-border/40" />
+                    </div>
+                ) : (
+                    <div className="flex w-full flex-col items-center gap-2 py-1.5">
+                        <div
+                            className="w-full cursor-pointer text-center text-[9px] text-secondary/70 hover:text-primary"
+                            onClick={toggleCollapsed}
+                            title="Collapse annotation timeline"
+                        >
+                            Notes
+                        </div>
+                        {onGenerateTimeline != null ? (
+                            <button
+                                type="button"
+                                className="flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-accent/40 bg-accent/10 text-accent transition-colors hover:bg-accent/20 disabled:opacity-60"
+                                disabled={generating}
+                                title={generating ? "Generating…" : "Generate annotation timeline with AI"}
+                                aria-label="Generate annotation timeline with AI"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onGenerateTimeline();
+                                }}
+                            >
+                                <i
+                                    className={cn(
+                                        "fa-sharp fa-solid text-[10px]",
+                                        generating ? "fa-spinner animate-spin" : "fa-wand-magic-sparkles"
+                                    )}
+                                />
+                            </button>
+                        ) : null}
+                        {!generating ? (
+                            <span className="text-[9px] leading-3 text-secondary [writing-mode:vertical-rl]">
+                                No annotations
+                            </span>
+                        ) : (
+                            <span className="text-[9px] leading-3 text-accent [writing-mode:vertical-rl]">
+                                Generating
+                            </span>
+                        )}
+                    </div>
+                )}
             </div>
         );
     }
@@ -136,7 +175,7 @@ export function AnnotationRail({
                 {!collapsed && onGenerateTimeline != null ? (
                     <button
                         type="button"
-                        className="flex h-5 w-full cursor-pointer items-center justify-center gap-1 rounded border border-border/70 text-[9px] text-secondary hover:bg-hover hover:text-accent disabled:opacity-60"
+                        className="flex h-5 w-full cursor-pointer items-center justify-center gap-1 rounded border border-accent/40 bg-accent/10 text-[9px] text-accent hover:bg-accent/20 disabled:opacity-60"
                         disabled={generating}
                         title="Generate annotation timeline with AI"
                         onClick={(event) => {
