@@ -155,6 +155,53 @@ type AISessionsGenerateMetadataResponse struct {
 	Suggestion aisessions.MetadataSuggestion `json:"suggestion"`
 }
 
+// AISessionsAnnotationsRequest lists the annotations of one session. anchors is
+// the live message/tool list (anchorKey + seq + role + hash) the frontend has;
+// when supplied, unresolved annotations are marked orphaned and drifted anchors
+// are re-anchored server-side.
+type AISessionsAnnotationsRequest struct {
+	SessionKey string                        `json:"sessionKey"`
+	Connection string                        `json:"connection,omitempty"`
+	Anchors    []aisessions.AnnotationAnchor `json:"anchors,omitempty"`
+}
+
+type AISessionsAnnotationsResponse struct {
+	Annotations []aisessions.AnnotationView `json:"annotations"`
+}
+
+// AISessionsAnnotationSaveRequest creates or updates one annotation. Saving a
+// row that was AI-generated marks it user_edited=1 on the server.
+type AISessionsAnnotationSaveRequest struct {
+	ID         int64    `json:"id,omitempty"`
+	SessionKey string   `json:"sessionKey"`
+	AnchorKey  string   `json:"anchorKey"`
+	Seq        int      `json:"seq,omitempty"`
+	Kind       string   `json:"kind,omitempty"`
+	Title      string   `json:"title"`
+	Body       string   `json:"body"`
+	Tags       []string `json:"tags,omitempty"`
+	Status     string   `json:"status,omitempty"`
+	Source     string   `json:"source,omitempty"`
+	AIModel    string   `json:"aiModel,omitempty"`
+	Connection string   `json:"connection,omitempty"`
+}
+
+// AISessionsAnnotationSessionsRequest lists sessions that have at least one
+// accepted annotation. Drafts are excluded from the cross-session list.
+type AISessionsAnnotationSessionsRequest struct {
+	Query           string   `json:"query,omitempty"`
+	TagFilters      []string `json:"tagFilters,omitempty"`
+	ProjectPrefixes []string `json:"projectPrefixes,omitempty"`
+	Limit           int      `json:"limit,omitempty"`
+	Offset          int      `json:"offset,omitempty"`
+	Connection      string   `json:"connection,omitempty"`
+}
+
+type AISessionsAnnotationSessionsResponse struct {
+	Sessions []aisessions.AnnotatedSession `json:"sessions"`
+	Total    int                           `json:"total"`
+}
+
 type AISessionsGenerateTitleRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
@@ -1140,6 +1187,115 @@ func (svc *AISessionsService) AutoGenerate(ctx context.Context, request *AISessi
 	}
 	response.Queued = append(response.Queued, manager.EnqueueManualGeneration(reqs)...)
 	return response, nil
+}
+
+func (svc *AISessionsService) Annotations_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list node annotations for one AI session, re-anchoring drifted nodes",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "annotation views with orphaned flags",
+	}
+}
+
+func (svc *AISessionsService) Annotations(ctx context.Context, request *AISessionsAnnotationsRequest) (*AISessionsAnnotationsResponse, error) {
+	if request == nil || strings.TrimSpace(request.SessionKey) == "" {
+		return nil, fmt.Errorf("session key is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	views, err := manager.ResolveAnnotationAnchors(ctx, request.SessionKey, request.Anchors)
+	if err != nil {
+		return nil, err
+	}
+	if views == nil {
+		views = []aisessions.AnnotationView{}
+	}
+	return &AISessionsAnnotationsResponse{Annotations: views}, nil
+}
+
+func (svc *AISessionsService) AnnotationSave_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "create or update one session annotation",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "the stored annotation",
+	}
+}
+
+func (svc *AISessionsService) AnnotationSave(ctx context.Context, request *AISessionsAnnotationSaveRequest) (*aisessions.AnnotationView, error) {
+	if request == nil || strings.TrimSpace(request.SessionKey) == "" || strings.TrimSpace(request.AnchorKey) == "" {
+		return nil, fmt.Errorf("session key and anchor key are required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	row, err := manager.SaveAnnotation(ctx, aisessions.AnnotationRow{
+		ID:         request.ID,
+		SessionKey: request.SessionKey,
+		AnchorKey:  request.AnchorKey,
+		Seq:        request.Seq,
+		Kind:       request.Kind,
+		Title:      request.Title,
+		Body:       request.Body,
+		Tags:       request.Tags,
+		Status:     request.Status,
+		Source:     request.Source,
+		AIModel:    request.AIModel,
+	})
+	if err != nil {
+		return nil, err
+	}
+	view := row.ToView(false)
+	return &view, nil
+}
+
+func (svc *AISessionsService) AnnotationDelete_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "delete one session annotation permanently",
+		ArgNames:   []string{"ctx", "id"},
+		ReturnDesc: "no return value",
+	}
+}
+
+func (svc *AISessionsService) AnnotationDelete(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return fmt.Errorf("annotation id is required")
+	}
+	return newLocalManager().DeleteAnnotation(ctx, id)
+}
+
+func (svc *AISessionsService) AnnotationSessions_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list sessions that have at least one accepted annotation",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "annotated sessions plus total count",
+	}
+}
+
+func (svc *AISessionsService) AnnotationSessions(ctx context.Context, request *AISessionsAnnotationSessionsRequest) (*AISessionsAnnotationSessionsResponse, error) {
+	if request == nil {
+		request = &AISessionsAnnotationSessionsRequest{}
+	}
+	manager, err := svc.managerForConnection(ctx, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	sessions, total, err := manager.ListAnnotatedSessions(ctx, aisessions.AnnotatedSessionFilter{
+		Query:           request.Query,
+		TagFilters:      request.TagFilters,
+		ProjectPrefixes: request.ProjectPrefixes,
+		Limit:           request.Limit,
+		Offset:          request.Offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if sessions == nil {
+		sessions = []aisessions.AnnotatedSession{}
+	}
+	return &AISessionsAnnotationSessionsResponse{Sessions: sessions, Total: total}, nil
 }
 
 func (svc *AISessionsService) PromptTemplates_Meta() tsgenmeta.MethodMeta {

@@ -189,6 +189,37 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			indexed_at INTEGER NOT NULL,
 			message_indexed INTEGER NOT NULL DEFAULT 0
 		)`,
+		// Node-level annotations (schema v4). Anchors use Message.ItemKey; seq is
+		// only a drift fallback, never a key. Provider session files are untouched.
+		`CREATE TABLE IF NOT EXISTS ai_session_annotations (
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_key    TEXT    NOT NULL,
+			anchor_key     TEXT    NOT NULL,
+			seq            INTEGER NOT NULL DEFAULT -1,
+			kind           TEXT    NOT NULL DEFAULT 'note',
+			title          TEXT    NOT NULL DEFAULT '',
+			body           TEXT    NOT NULL DEFAULT '',
+			tags_json      TEXT    NOT NULL DEFAULT '[]',
+			status         TEXT    NOT NULL DEFAULT 'accepted',
+			source         TEXT    NOT NULL DEFAULT 'user',
+			user_edited    INTEGER NOT NULL DEFAULT 0,
+			ai_model       TEXT    NOT NULL DEFAULT '',
+			anchor_hash    TEXT    NOT NULL DEFAULT '',
+			anchor_preview TEXT    NOT NULL DEFAULT '',
+			created_at     INTEGER NOT NULL,
+			updated_at     INTEGER NOT NULL
+		)`,
+		// Idempotency bookkeeping for a future automatic annotation pass (M3).
+		// M1 only writes it; nothing reads it yet.
+		`CREATE TABLE IF NOT EXISTS ai_session_annotation_ai_state (
+			session_key        TEXT PRIMARY KEY,
+			last_message_count INTEGER NOT NULL DEFAULT 0,
+			last_max_seq       INTEGER NOT NULL DEFAULT 0,
+			request_hash       TEXT NOT NULL DEFAULT '',
+			model              TEXT NOT NULL DEFAULT '',
+			status             TEXT NOT NULL DEFAULT '',
+			updated_at         INTEGER NOT NULL
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_source_id ON ai_sessions(source, id)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_updated ON ai_sessions(updated_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_messages_session ON ai_session_messages(session_key, seq)`,
@@ -197,6 +228,8 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_list ON ai_sessions(missing, source, updated_at DESC, project_path)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_sessions_search ON ai_sessions(missing, title)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_meta_key ON ai_session_meta(session_key, marked, updated_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_ann_session ON ai_session_annotations(session_key, seq)`,
+		`CREATE INDEX IF NOT EXISTS idx_ann_anchor ON ai_session_annotations(session_key, anchor_key, id)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := idx.db.ExecContext(ctx, stmt); err != nil {
@@ -219,6 +252,9 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 		return err
 	}
 	if err := idx.ensureContentHashColumn(ctx); err != nil {
+		return err
+	}
+	if err := idx.ensureAnnotationColumns(ctx); err != nil {
 		return err
 	}
 	if err := idx.migrateThinkingMessageCache(ctx, existingSchemaVersion); err != nil {
@@ -739,13 +775,13 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 // batchMetaMaps holds preloaded per-session metadata for a list of keys.
 // loaded=true means the meta row existed (otherwise the fields are zero values).
 type batchMetaMaps struct {
-	loaded              map[string]bool
-	marked              map[string]bool
-	note                map[string]string
-	title               map[string]string
-	titleSource         map[string]string
-	aiTitleAttemptedAt  map[string]int64
-	tags                map[string][]string
+	loaded             map[string]bool
+	marked             map[string]bool
+	note               map[string]string
+	title              map[string]string
+	titleSource        map[string]string
+	aiTitleAttemptedAt map[string]int64
+	tags               map[string][]string
 }
 
 // batchMetaForKeys loads metadata for many session keys with 2 queries instead of
@@ -764,12 +800,12 @@ func (idx *SQLiteIndex) batchMetaForKeys(ctx context.Context, keys []string) (ba
 		return result, nil
 	}
 	metaRows := []struct {
-		Key                 string `db:"session_key"`
-		Marked              bool   `db:"marked"`
-		Note                string `db:"note"`
-		Title               string `db:"title"`
-		TitleSource         string `db:"title_source"`
-		AITitleAttemptedAt  int64  `db:"ai_title_attempted_at"`
+		Key                string `db:"session_key"`
+		Marked             bool   `db:"marked"`
+		Note               string `db:"note"`
+		Title              string `db:"title"`
+		TitleSource        string `db:"title_source"`
+		AITitleAttemptedAt int64  `db:"ai_title_attempted_at"`
 	}{}
 	query, args, err := sqlx.In(`SELECT session_key, marked, note, title, title_source, ai_title_attempted_at FROM ai_session_meta WHERE session_key IN (?)`, keys)
 	if err != nil {

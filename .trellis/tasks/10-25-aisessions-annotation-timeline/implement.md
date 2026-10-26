@@ -9,31 +9,31 @@
 ### A1 表与迁移
 
 - [ ] `pkg/aisessions/sqlite_index.go`
-  - [ ] 建表列表追加 `ai_session_annotations` + `ai_session_annotation_ai_state`
-  - [ ] 追加两个索引
-  - [ ] `ensureAnnotationColumns(ctx)`：`pragma_table_info` 守卫，缺失列 ALTER；在 `initSchema` 末尾调用
-  - [ ] schema version +1，确认旧库迁移后 `ai_sessions` 行数不变
+  - [x] 建表列表追加 `ai_session_annotations` + `ai_session_annotation_ai_state`
+  - [x] 追加两个索引
+  - [x] `ensureAnnotationColumns(ctx)`：`pragma_table_info` 守卫，缺失列 ALTER；在 `initSchema` 末尾调用
+  - [x] schema version +1，确认旧库迁移后 `ai_sessions` 行数不变
 
 ### A2 纯逻辑（先写，可单测）
 
-- [ ] 新文件 `pkg/aisessions/annotation_rules.go`
-  - [ ] `CanReplace(a AnnotationRow) bool` —— 覆盖规则的唯一实现
-  - [ ] `AnchorHash(text string) string` —— FNV-1a 64，十进制串
-  - [ ] `PickReanchor(anchors []AnchorPoint, want AnchorPoint) (AnchorPoint, bool)` —— seq±3 + role + hash 相似度
-- [ ] `annotation_rules_test.go`
-  - [ ] 覆盖规则 **8 种组合穷举**（status × source × user_edited）
-  - [ ] anchorHash 稳定性（同文本同值、空白归一）
-  - [ ] 重锚定：精确命中 / 邻近命中 / 多候选取最相似 / 无候选返回 false
+- [x] 新文件 `pkg/aisessions/annotation_rules.go`
+  - [x] `CanReplace(a AnnotationRow) bool` —— 覆盖规则的唯一实现
+  - [x] `AnchorHash(text string) string` —— FNV-1a 64，十进制串
+  - [x] `PickReanchor(anchors []AnchorPoint, want AnchorPoint) (AnchorPoint, bool)` —— seq±3 + role + hash 相似度
+- [x] `annotation_rules_test.go`
+  - [x] 覆盖规则 **8 种组合穷举**（status × source × user_edited）
+  - [x] anchorHash 稳定性（同文本同值、空白归一）
+  - [x] 重锚定：精确命中 / 邻近命中 / 多候选取最相似 / 无候选返回 false
 
 ### A3 CRUD 与查询
 
-- [ ] `pkg/aisessions/annotation_store.go`
-  - [ ] `ListAnnotations(ctx, sessionKey)`
-  - [ ] `UpsertAnnotation(ctx, row)` —— 保存时若 `source='ai'` 则置 `user_edited=1`
-  - [ ] `DeleteAnnotation(ctx, id)`
-  - [ ] `ReplaceReplaceableAnnotations(ctx, sessionKey, rows)` —— 单事务 delete+insert
-  - [ ] `ListAnnotatedSessions(ctx, filter)` —— 单条聚合 SQL，禁止 N+1
-- [ ] `annotation_store_test.go`：事务回滚、并发写串行、tag 数组 JSON 往返、空标题允许、超长 body 截断策略
+- [x] `pkg/aisessions/annotation_store.go`
+  - [x] `ListAnnotations(ctx, sessionKey)`
+  - [x] `UpsertAnnotation(ctx, row)` —— 保存时若 `source='ai'` 则置 `user_edited=1`
+  - [x] `DeleteAnnotation(ctx, id)`
+  - [x] `ReplaceReplaceableAnnotations(ctx, sessionKey, rows)` —— 单事务 delete+insert
+  - [x] `ListAnnotatedSessions(ctx, filter)` —— 单条聚合 SQL，禁止 N+1
+- [x] `annotation_store_test.go`：事务回滚、并发写串行、tag 数组 JSON 往返、空标题允许、超长 body 截断策略
 
 验证：
 ```
@@ -42,11 +42,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-en
 
 ### A4 RPC
 
-- [ ] `pkg/service/aisessionsservice/aisessionsservice.go`
-  - [ ] `Annotations` / `AnnotationSave` / `AnnotationDelete` / `AnnotationSessions` + 各自 `_Meta`（注释即前端 JSDoc）
-  - [ ] 类型定义加到 `pkg/aisessions/types.go`（`AnnotationView` / `AnnotatedSession`）
-- [ ] 跑 tsgen 生成前端类型（按仓库既有命令）
-- [ ] `frontend/app/store/services.ts` 确认新方法已生成
+- [x] `pkg/service/aisessionsservice/aisessionsservice.go`
+  - [x] `Annotations` / `AnnotationSave` / `AnnotationDelete` / `AnnotationSessions` + 各自 `_Meta`（注释即前端 JSDoc）
+  - [x] 类型定义加到 `pkg/aisessions/types.go`（`AnnotationView` / `AnnotatedSession`）
+- [x] 跑 tsgen 生成前端类型（按仓库既有命令）
+- [x] `frontend/app/store/services.ts` 确认新方法已生成
 
 **Gate A**：`go build ./...` + `go test ./pkg/aisessions ./pkg/service/aisessionsservice` 全绿；`npx tsc --noEmit` 无新增错误。
 

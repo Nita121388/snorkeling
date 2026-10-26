@@ -66,6 +66,50 @@ declare global {
         enabled?: boolean;
     };
 
+    // aisessionsservice.AISessionsAnnotationSaveRequest
+    type AISessionsAnnotationSaveRequest = {
+        id?: number;
+        sessionKey: string;
+        anchorKey: string;
+        seq?: number;
+        kind?: string;
+        title: string;
+        body: string;
+        tags?: string[];
+        status?: string;
+        source?: string;
+        aiModel?: string;
+        connection?: string;
+    };
+
+    // aisessionsservice.AISessionsAnnotationSessionsRequest
+    type AISessionsAnnotationSessionsRequest = {
+        query?: string;
+        tagFilters?: string[];
+        projectPrefixes?: string[];
+        limit?: number;
+        offset?: number;
+        connection?: string;
+    };
+
+    // aisessionsservice.AISessionsAnnotationSessionsResponse
+    type AISessionsAnnotationSessionsResponse = {
+        sessions: AnnotatedSession[];
+        total: number;
+    };
+
+    // aisessionsservice.AISessionsAnnotationsRequest
+    type AISessionsAnnotationsRequest = {
+        sessionKey: string;
+        connection?: string;
+        anchors?: AnnotationAnchor[];
+    };
+
+    // aisessionsservice.AISessionsAnnotationsResponse
+    type AISessionsAnnotationsResponse = {
+        annotations: AnnotationView[];
+    };
+
     // aisessionsservice.AISessionsAutoGenerateRequest
     type AISessionsAutoGenerateRequest = {
         ids: string[];
@@ -419,6 +463,45 @@ declare global {
     // wshrpc.AiMessageData
     type AiMessageData = {
         message?: string;
+    };
+
+    // aisessions.AnnotatedSession
+    type AnnotatedSession = {
+        key: string;
+        title: string;
+        source: string;
+        projectPath: string;
+        updatedAt: number;
+        annotationCount: number;
+        lastAnnotationAt: number;
+    };
+
+    // aisessions.AnnotationAnchor
+    type AnnotationAnchor = {
+        anchorKey: string;
+        seq: number;
+        role: string;
+        hash: string;
+    };
+
+    // aisessions.AnnotationView
+    type AnnotationView = {
+        id: number;
+        sessionKey: string;
+        anchorKey: string;
+        seq: number;
+        kind: string;
+        title: string;
+        body: string;
+        tags: string[];
+        status: string;
+        source: string;
+        userEdited: boolean;
+        aiModel?: string;
+        anchorPreview?: string;
+        orphaned?: boolean;
+        createdAt: number;
+        updatedAt: number;
     };
 
     // wshrpc.AppInfo

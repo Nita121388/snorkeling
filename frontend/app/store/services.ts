@@ -21,6 +21,30 @@ export class AISessionsServiceType {
         this.waveEnv = waveEnv;
     }
 
+    // delete one session annotation permanently
+    // @returns no return value
+    AnnotationDelete(id: number): Promise<void> {
+        return callBackendService(this?.waveEnv, "aisessions", "AnnotationDelete", Array.from(arguments))
+    }
+
+    // create or update one session annotation
+    // @returns the stored annotation
+    AnnotationSave(request: AISessionsAnnotationSaveRequest): Promise<AnnotationView> {
+        return callBackendService(this?.waveEnv, "aisessions", "AnnotationSave", Array.from(arguments))
+    }
+
+    // list sessions that have at least one accepted annotation
+    // @returns annotated sessions plus total count
+    AnnotationSessions(request: AISessionsAnnotationSessionsRequest): Promise<AISessionsAnnotationSessionsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "AnnotationSessions", Array.from(arguments))
+    }
+
+    // list node annotations for one AI session, re-anchoring drifted nodes
+    // @returns annotation views with orphaned flags
+    Annotations(request: AISessionsAnnotationsRequest): Promise<AISessionsAnnotationsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "Annotations", Array.from(arguments))
+    }
+
     // enqueue background AI generation (title / note+tags / both) for sessions
     // @returns queued session keys plus per-session skip reasons
     AutoGenerate(request: AISessionsAutoGenerateRequest): Promise<AISessionsAutoGenerateResponse> {

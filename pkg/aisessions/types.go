@@ -286,3 +286,69 @@ func (s SessionSummary) Validate() error {
 	}
 	return nil
 }
+
+// ── Session annotations (schema v4) ──
+//
+// Annotations are node-level notes anchored to a Message.ItemKey. They live only
+// in Snorkeling's SQLite index; provider session files are never modified.
+
+// Annotation kind values.
+const (
+	AnnotationKindNote      = "note"
+	AnnotationKindMilestone = "milestone"
+	AnnotationKindDecision  = "decision"
+	AnnotationKindQuestion  = "question"
+)
+
+// Annotation status values.
+const (
+	AnnotationStatusDraft    = "draft"
+	AnnotationStatusAccepted = "accepted"
+)
+
+// Annotation source values.
+const (
+	AnnotationSourceUser = "user"
+	AnnotationSourceAI   = "ai"
+)
+
+// AnnotationView is the front-end shape of one annotation.
+type AnnotationView struct {
+	ID            int64    `json:"id"`
+	SessionKey    string   `json:"sessionKey"`
+	AnchorKey     string   `json:"anchorKey"`
+	Seq           int      `json:"seq"`
+	Kind          string   `json:"kind"`
+	Title         string   `json:"title"`
+	Body          string   `json:"body"`
+	Tags          []string `json:"tags"`
+	Status        string   `json:"status"`
+	Source        string   `json:"source"`
+	UserEdited    bool     `json:"userEdited"`
+	AIModel       string   `json:"aiModel,omitempty"`
+	AnchorPreview string   `json:"anchorPreview,omitempty"`
+	Orphaned      bool     `json:"orphaned,omitempty"`
+	CreatedAt     int64    `json:"createdAt"`
+	UpdatedAt     int64    `json:"updatedAt"`
+}
+
+// AnnotatedSession is one row of the cross-session annotation list.
+type AnnotatedSession struct {
+	Key              string `json:"key"`
+	Title            string `json:"title"`
+	Source           string `json:"source"`
+	ProjectPath      string `json:"projectPath"`
+	UpdatedAt        int64  `json:"updatedAt"`
+	AnnotationCount  int    `json:"annotationCount"`
+	LastAnnotationAt int64  `json:"lastAnnotationAt"`
+}
+
+// AnnotationAnchor identifies one message/tool node a session exposes to the
+// annotation layer. Hash is the FNV-1a of the node text and is used to detect
+// drift when ItemKey no longer matches.
+type AnnotationAnchor struct {
+	AnchorKey string `json:"anchorKey"`
+	Seq       int    `json:"seq"`
+	Role      string `json:"role"`
+	Hash      string `json:"hash"`
+}
