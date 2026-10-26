@@ -233,23 +233,56 @@ export function getBatchGenCounts(connection: string | null | undefined, session
     return counts;
 }
 
-export function useBatchGenCounts(connection: string | null | undefined, sessionKeys: string[], kind: string) {
-    const sessionKeysKey = sessionKeys.join("\n");
-    const sub = React.useCallback(
-        (listener: () => void) => {
-            // 批量计数没有单一 entry，订阅全部相关 key。
-            const unsubs = sessionKeys.map((key) => subscribe(normalizeConnection(connection), key, kind, listener));
-            const timer = window.setInterval(listener, DoneAutoClearMs);
-            return () => {
-                window.clearInterval(timer);
-                for (const unsub of unsubs) unsub();
-            };
-        },
-        [connection, kind, sessionKeysKey]
+export type BatchGenCounts = {
+    queued: number;
+    running: number;
+    done: number;
+    failed: number;
+    total: number;
+};
+
+function sameBatchGenCounts(left: BatchGenCounts, right: BatchGenCounts): boolean {
+    return (
+        left.queued === right.queued &&
+        left.running === right.running &&
+        left.done === right.done &&
+        left.failed === right.failed &&
+        left.total === right.total
     );
-    const get = React.useCallback(
-        () => getBatchGenCounts(connection, sessionKeys, kind),
-        [connection, kind, sessionKeysKey]
-    );
-    return React.useSyncExternalStore(sub, get, get);
+}
+
+/**
+ * 批量计数用 useState + 订阅更新，而不是 useSyncExternalStore。
+ *
+ * 原因：getBatchGenCounts 每次都会构造一个新对象；把它直接当 getSnapshot
+ * 返回会让 React 认为快照永远在变，触发 "Maximum update depth exceeded"
+ * (#185)。这里在更新时做值比较，只在计数真的变化时换引用。
+ */
+export function useBatchGenCounts(
+    connection: string | null | undefined,
+    sessionKeys: string[],
+    kind: string
+): BatchGenCounts {
+    const sessionKeysKey = JSON.stringify(sessionKeys);
+    const [counts, setCounts] = React.useState<BatchGenCounts>(() => getBatchGenCounts(connection, sessionKeys, kind));
+
+    React.useEffect(() => {
+        ensureGenListener();
+        const conn = normalizeConnection(connection);
+        const update = () => {
+            const next = getBatchGenCounts(conn, sessionKeys, kind);
+            setCounts((prev) => (sameBatchGenCounts(prev, next) ? prev : next));
+        };
+        update();
+        const unsubs = sessionKeys.map((key) => subscribe(conn, key, kind, update));
+        const timer = window.setInterval(update, DoneAutoClearMs);
+        return () => {
+            window.clearInterval(timer);
+            for (const unsub of unsubs) unsub();
+        };
+        // sessionKeysKey 覆盖数组内容变化；不直接依赖 sessionKeys 数组引用。
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [connection, kind, sessionKeysKey]);
+
+    return counts;
 }
