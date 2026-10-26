@@ -156,7 +156,76 @@ func parseAnnotationDraftResponse(reply string) ([]AnnotationDraft, error) {
 	if err := json.Unmarshal([]byte(raw), &single); err == nil {
 		return []AnnotationDraft{single}, nil
 	}
+	// 模型经常在 JSON 前后夹一句解释、或把 JSON 包在 ``` 里。这里按括号
+	// 配对切出第一个完整的对象/数组再试一次，而不是直接判失败。
+	if extracted := extractFirstJSONValue(raw); extracted != "" {
+		var wrapperRetry struct {
+			Annotations []AnnotationDraft `json:"annotations"`
+		}
+		if err := json.Unmarshal([]byte(extracted), &wrapperRetry); err == nil && wrapperRetry.Annotations != nil {
+			return wrapperRetry.Annotations, nil
+		}
+		var listRetry []AnnotationDraft
+		if err := json.Unmarshal([]byte(extracted), &listRetry); err == nil {
+			return listRetry, nil
+		}
+		var singleRetry AnnotationDraft
+		if err := json.Unmarshal([]byte(extracted), &singleRetry); err == nil {
+			return []AnnotationDraft{singleRetry}, nil
+		}
+	}
 	return nil, fmt.Errorf("annotation AI response was not valid JSON")
+}
+
+// extractFirstJSONValue returns the first balanced {...} or [...] substring.
+// It is string-aware so braces inside quoted values do not confuse the scan.
+func extractFirstJSONValue(text string) string {
+	start := -1
+	var open, close byte
+	for i := 0; i < len(text); i++ {
+		switch text[i] {
+		case '{':
+			start, open, close = i, '{', '}'
+		case '[':
+			start, open, close = i, '[', ']'
+		}
+		if start >= 0 {
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(text); i++ {
+		ch := text[i]
+		if inString {
+			if escaped {
+				escaped = false
+			} else if ch == '\\' {
+				escaped = true
+			} else if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+		if ch == '"' {
+			inString = true
+			continue
+		}
+		switch ch {
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return text[start : i+1]
+			}
+		}
+	}
+	return ""
 }
 
 func stripJSONFence(text string) string {

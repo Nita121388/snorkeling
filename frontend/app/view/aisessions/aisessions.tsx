@@ -207,6 +207,16 @@ export class AiSessionsViewModel implements ViewModel {
             return [
                 {
                     elemtype: "iconbutton",
+                    className: "aisessions-audit",
+                    icon: "fa-clipboard-list",
+                    title: "Open AI Audit",
+                    zone: "pinned",
+                    click: () => {
+                        void createBlock({ meta: { view: "aiaudit" } }, false, true);
+                    },
+                },
+                {
+                    elemtype: "iconbutton",
                     className: "aisessions-auto-refresh",
                     icon: (
                         <RefreshStatusIcon
@@ -2132,6 +2142,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         ids: selectedKeys,
                                         connection,
                                         kind,
+                                        source: "batch",
                                     }).then((result) => {
                                         if (!result.ok) {
                                             globalStore.set(model.errorAtom, result.error);

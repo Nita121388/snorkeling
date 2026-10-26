@@ -482,6 +482,7 @@ export function SessionRow({
                             kind="title"
                             titleSource={session.titleSource}
                             size="xs"
+                            source="session-row"
                             className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                         />
                         <span data-row-action="true" className="inline-flex">

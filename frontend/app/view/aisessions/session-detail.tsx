@@ -1548,6 +1548,7 @@ export function SessionDetailPane({
                                 connection={connection}
                                 kind="title"
                                 titleSource={summary.titleSource}
+                                source="detail"
                             />
                             <IconButton
                                 icon="fa-magnifying-glass"

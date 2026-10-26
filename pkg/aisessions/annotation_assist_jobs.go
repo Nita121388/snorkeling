@@ -82,7 +82,10 @@ func startAnnotationAssist(key, connection string, input AnnotationAssistInput, 
 	}
 
 	emit(GenStateQueued, nil, "", nil)
+	auditID, auditErr := beginAssistAudit(key, connection, input)
 	go func() {
+		_ = auditErr
+		startedAt := time.Now()
 		defer func() {
 			cancel()
 			annotationAssistJobs.mu.Lock()
@@ -103,16 +106,57 @@ func startAnnotationAssist(key, connection string, input AnnotationAssistInput, 
 		emit(GenStateRunning, nil, "", nil)
 		drafts, model, err := GenerateAnnotationDraftsWithContext(jobCtx, input)
 		if err != nil {
+			state := GenStateFailed
 			if jobCtx.Err() != nil {
-				emit("cancelled", nil, model, jobCtx.Err())
-				return
+				state = "cancelled"
 			}
-			emit(GenStateFailed, nil, model, err)
+			finishAssistAudit(auditID, AuditResult{
+				State:      state,
+				AIModel:    model,
+				Error:      err.Error(),
+				DurationMs: time.Since(startedAt).Milliseconds(),
+			})
+			emit(state, nil, model, err)
 			return
 		}
+		kept := 0
+		for _, draft := range drafts {
+			if draft.AnchorKey != "" {
+				kept++
+			}
+		}
+		finishAssistAudit(auditID, AuditResult{
+			State:       AuditStateDone,
+			AIModel:     model,
+			ResultCount: len(drafts),
+			AnchorKept:  kept,
+			DurationMs:  time.Since(startedAt).Milliseconds(),
+		})
 		emit(GenStateDone, drafts, model, nil)
 	}()
 	return jobID
+}
+
+func beginAssistAudit(key, connection string, input AnnotationAssistInput) (int64, error) {
+	manager := NewManager("", nil)
+	feature := AuditFeatureAnnotationTimeline
+	if normalizeAnnotationScope(input.Scope) != AnnotationScopeTimeline {
+		feature = AuditFeatureAnnotationField
+	}
+	return manager.AuditBegin(context.Background(), AuditInput{
+		Feature:    feature,
+		Scope:      normalizeAnnotationScope(input.Scope),
+		SessionKey: key,
+		Connection: connection,
+		Trigger:    AuditTriggerManual,
+	})
+}
+
+func finishAssistAudit(id int64, result AuditResult) {
+	if id <= 0 {
+		return
+	}
+	_ = NewManager("", nil).AuditFinish(context.Background(), id, result)
 }
 
 // CancelAnnotationAssist cancels a running/queued job by id. Unknown ids are a no-op.

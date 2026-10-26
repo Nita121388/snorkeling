@@ -150,6 +150,41 @@ declare global {
         annotations: AnnotationView[];
     };
 
+    // aisessionsservice.AISessionsAuditClearRequest
+    type AISessionsAuditClearRequest = {
+        beforeDays?: number;
+        connection?: string;
+    };
+
+    // aisessionsservice.AISessionsAuditListRequest
+    type AISessionsAuditListRequest = {
+        feature?: string;
+        state?: string;
+        sessionKey?: string;
+        query?: string;
+        limit?: number;
+        offset?: number;
+        connection?: string;
+    };
+
+    // aisessionsservice.AISessionsAuditListResponse
+    type AISessionsAuditListResponse = {
+        entries: AuditView[];
+        total: number;
+    };
+
+    // aisessionsservice.AISessionsAuditRetryRequest
+    type AISessionsAuditRetryRequest = {
+        id: number;
+        connection?: string;
+    };
+
+    // aisessionsservice.AISessionsAuditRetryResponse
+    type AISessionsAuditRetryResponse = {
+        jobId: string;
+        kind: string;
+    };
+
     // aisessionsservice.AISessionsAutoGenerateRequest
     type AISessionsAutoGenerateRequest = {
         ids: string[];
@@ -157,6 +192,7 @@ declare global {
         kind: string;
         force?: boolean;
         aiMode?: string;
+        source?: string;
     };
 
     // aisessionsservice.AISessionsAutoGenerateResponse
@@ -587,6 +623,45 @@ declare global {
         shortdesc: string;
         icon: string;
         iconcolor: string;
+    };
+
+    // aisessions.AuditFeatureCount
+    type AuditFeatureCount = {
+        feature: string;
+        count: number;
+    };
+
+    // aisessions.AuditStatsResult
+    type AuditStatsResult = {
+        total24h: number;
+        failed24h: number;
+        done24h: number;
+        avgDurationMs: number;
+        byFeature: AuditFeatureCount[];
+    };
+
+    // aisessions.AuditView
+    type AuditView = {
+        id: number;
+        feature: string;
+        scope: string;
+        sessionKey: string;
+        sessionTitle: string;
+        connection: string;
+        trigger: string;
+        state: string;
+        aiModel: string;
+        jobId: string;
+        anchorTotal: number;
+        anchorKept: number;
+        resultCount: number;
+        durationMs: number;
+        error: string;
+        rawRequest?: string;
+        rawResponse?: string;
+        rawTruncated: boolean;
+        createdAt: number;
+        updatedAt: number;
     };
 
     // wconfig.BackgroundConfigType

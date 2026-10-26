@@ -261,6 +261,7 @@ type AISessionsAutoGenerateRequest struct {
 	Kind       string   `json:"kind"` // title | metadata | both
 	Force      bool     `json:"force,omitempty"`
 	AIMode     string   `json:"aiMode,omitempty"`
+	Source     string   `json:"source,omitempty"`
 }
 
 // AISessionsAutoGenerateSkip describes one session that was not queued.
@@ -1222,6 +1223,7 @@ func (svc *AISessionsService) AutoGenerate(ctx context.Context, request *AISessi
 			Connection: request.Connection,
 			Force:      request.Force,
 			AIMode:     request.AIMode,
+			Source:     request.Source,
 		})
 	}
 	response.Queued = append(response.Queued, manager.EnqueueManualGeneration(reqs)...)
@@ -1464,6 +1466,179 @@ func (svc *AISessionsService) AnnotationBulkDrafts(ctx context.Context, request 
 		return nil, err
 	}
 	return &AISessionsAnnotationBulkDraftsResponse{Affected: affected}, nil
+}
+
+type AISessionsAuditListRequest struct {
+	Feature    string `json:"feature,omitempty"`
+	State      string `json:"state,omitempty"`
+	SessionKey string `json:"sessionKey,omitempty"`
+	Query      string `json:"query,omitempty"`
+	Limit      int    `json:"limit,omitempty"`
+	Offset     int    `json:"offset,omitempty"`
+	Connection string `json:"connection,omitempty"`
+}
+
+type AISessionsAuditListResponse struct {
+	Entries []aisessions.AuditView `json:"entries"`
+	Total   int                    `json:"total"`
+}
+
+func (svc *AISessionsService) AuditList_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list recent AI generation audit entries",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "audit entries plus total count",
+	}
+}
+
+func (svc *AISessionsService) AuditList(ctx context.Context, request *AISessionsAuditListRequest) (*AISessionsAuditListResponse, error) {
+	if request == nil {
+		request = &AISessionsAuditListRequest{}
+	}
+	manager, err := svc.managerForConnection(ctx, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	views, total, err := manager.AuditList(ctx, aisessions.AuditFilter{
+		Feature:    request.Feature,
+		State:      request.State,
+		SessionKey: request.SessionKey,
+		Query:      request.Query,
+		Limit:      request.Limit,
+		Offset:     request.Offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if views == nil {
+		views = []aisessions.AuditView{}
+	}
+	return &AISessionsAuditListResponse{Entries: views, Total: total}, nil
+}
+
+func (svc *AISessionsService) AuditGet_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "get one AI generation audit entry with raw payloads",
+		ArgNames:   []string{"ctx", "id"},
+		ReturnDesc: "the audit entry",
+	}
+}
+
+func (svc *AISessionsService) AuditGet(ctx context.Context, id int64) (*aisessions.AuditView, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("audit id is required")
+	}
+	view, err := newLocalManager().AuditGet(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &view, nil
+}
+
+func (svc *AISessionsService) AuditStats_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "aggregate AI generation activity over the last 24 hours",
+		ArgNames:   []string{"ctx"},
+		ReturnDesc: "audit statistics",
+	}
+}
+
+func (svc *AISessionsService) AuditStats(ctx context.Context) (*aisessions.AuditStatsResult, error) {
+	stats, err := newLocalManager().AuditStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
+type AISessionsAuditClearRequest struct {
+	BeforeDays int    `json:"beforeDays,omitempty"`
+	Connection string `json:"connection,omitempty"`
+}
+
+func (svc *AISessionsService) AuditClear_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "delete audit entries older than the cutoff (default 30 days)",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "number of removed entries",
+	}
+}
+
+func (svc *AISessionsService) AuditClear(ctx context.Context, request *AISessionsAuditClearRequest) (int, error) {
+	days := 30
+	if request != nil && request.BeforeDays > 0 {
+		days = request.BeforeDays
+	}
+	return newLocalManager().AuditClear(ctx, time.Now().Add(-time.Duration(days)*24*time.Hour).UnixMilli())
+}
+
+// AuditRetry re-runs the recorded request for one audit entry. The entry is
+// closed as "cancelled-by-retry" so the operator can see the supersede, and the
+// new job gets its own audit row.
+type AISessionsAuditRetryRequest struct {
+	ID         int64  `json:"id"`
+	Connection string `json:"connection,omitempty"`
+}
+
+type AISessionsAuditRetryResponse struct {
+	JobID string `json:"jobId"`
+	Kind  string `json:"kind"`
+}
+
+func (svc *AISessionsService) AuditRetry_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "re-run a failed AI generation from its audit entry",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "the new job id",
+	}
+}
+
+func (svc *AISessionsService) AuditRetry(ctx context.Context, request *AISessionsAuditRetryRequest) (*AISessionsAuditRetryResponse, error) {
+	if request == nil || request.ID <= 0 {
+		return nil, fmt.Errorf("audit id is required")
+	}
+	manager := newLocalManager()
+	view, err := manager.AuditGet(ctx, request.ID)
+	if err != nil {
+		return nil, err
+	}
+	if view.SessionKey == "" {
+		return nil, fmt.Errorf("audit entry has no session key")
+	}
+	kind := view.Feature
+	if kind == aisessions.AuditFeatureAnnotationTimeline || kind == aisessions.AuditFeatureAnnotationField {
+		promptConfig := aisessions.PromptConfigForFeature(aisessions.PromptFeatureSessionAnnotations)
+		if !aisessions.PromptEnabled(promptConfig) {
+			return nil, fmt.Errorf("session annotation generation is disabled in AI Prompts settings")
+		}
+		detail, err := manager.Load(ctx, view.SessionKey, aisessions.LoadOptions{IncludeTools: true})
+		if err != nil {
+			return nil, err
+		}
+		jobID := aisessions.StartAnnotationAssist(ctx, detail.Summary.Key, view.Connection, aisessions.AnnotationAssistInput{
+			SessionKey:   detail.Summary.Key,
+			Scope:        view.Scope,
+			Messages:     detail.Messages,
+			ToolCalls:    detail.ToolCalls,
+			MaxEntries:   aisessions.ClampAnnotationCount(0),
+			PromptConfig: promptConfig,
+		}, makeAnnotationAssistPublisher(view.Connection))
+		return &AISessionsAuditRetryResponse{JobID: jobID, Kind: kind}, nil
+	}
+	if kind != aisessions.AuditFeatureTitle && kind != aisessions.AuditFeatureMetadata {
+		return nil, fmt.Errorf("audit feature %q is not retryable", view.Feature)
+	}
+	queued := manager.EnqueueManualGeneration([]aisessions.ManualGenerationRequest{{
+		Key:        view.SessionKey,
+		Kind:       kind,
+		Connection: view.Connection,
+		Force:      true,
+		Source:     "audit-retry",
+	}})
+	if len(queued) == 0 {
+		return nil, fmt.Errorf("session was not queued for retry")
+	}
+	return &AISessionsAuditRetryResponse{JobID: view.SessionKey, Kind: kind}, nil
 }
 
 func (svc *AISessionsService) PromptTemplates_Meta() tsgenmeta.MethodMeta {

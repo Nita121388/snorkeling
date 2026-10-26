@@ -171,6 +171,8 @@ export async function autoGenerate(
         kind: string;
         force?: boolean;
         aiMode?: string;
+        /** UI 入口标识，进入审计记录。 */
+        source?: string;
     }
 ): Promise<AutoGenerateResult> {
     ensureGenListener();
@@ -195,6 +197,7 @@ export async function autoGenerate(
             kind: opts.kind,
             force: opts.force === true,
             aiMode: opts.aiMode,
+            source: opts.source,
         });
         for (const skip of response.skipped ?? []) {
             notify(getEntry(connection, skip.id, opts.kind), {

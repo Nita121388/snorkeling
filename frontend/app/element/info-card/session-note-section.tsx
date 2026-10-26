@@ -86,6 +86,7 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                         kind="title"
                         titleSource={summary.titleSource}
                         size="xs"
+                        source="agent-card"
                         onError={setGenError}
                     />
                     <GenActionButton
@@ -93,6 +94,7 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                         connection={connection}
                         kind="metadata"
                         size="xs"
+                        source="agent-card"
                         onBeforeGenerate={() => {
                             prevNoteRef.current = { note: summary.note ?? "", tags: summary.tags ?? [] };
                         }}

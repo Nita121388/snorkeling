@@ -17,6 +17,9 @@ import { cn } from "@/util/util";
 import * as React from "react";
 import { autoGenerate, useSessionGenerationStatus } from "./aisession-gen-store";
 
+/** UI 入口标识，写进审计用于区分"我从哪里点的"。 */
+export type GenActionSource = "agent-card" | "session-row" | "detail" | "batch" | "menu";
+
 export type GenKindValue = "title" | "metadata" | "both";
 
 const serviceByDefault = new AISessionsServiceType();
@@ -44,6 +47,7 @@ export function GenActionButton({
     onBeforeGenerate,
     onError,
     onDone,
+    source,
 }: {
     sessionKey: string;
     connection?: string;
@@ -59,6 +63,7 @@ export function GenActionButton({
     onBeforeGenerate?: () => void;
     onError?: (message: string) => void;
     onDone?: () => void;
+    source?: GenActionSource;
 }) {
     const status = useSessionGenerationStatus(sessionKey, connection, kind);
     const [busy, setBusy] = React.useState(false);
@@ -120,7 +125,7 @@ export function GenActionButton({
                 setBusy(false);
             }
         },
-        [connection, force, kind, onBeforeGenerate, onError, onNeedsForce, running, sessionKey, titleSource]
+        [connection, force, kind, onBeforeGenerate, onError, onNeedsForce, running, sessionKey, source, titleSource]
     );
 
     const tooltip = failed

@@ -84,4 +84,15 @@ ai_session_annotation_ai_state(session_key PK, ...)  -- M3 预埋，只写不读
 - 结果只回给前端作为草稿；**不写库**。写库仍走 `AnnotationReplace`（单事务、保护用户数据）。
 - 批量采纳/丢弃：`AnnotationBulkDrafts` 只触碰 `status='draft'` 的行。
 - 前端 `requestAnnotationDrafts` 用事件解析 Promise；重复点击运行中的 ✨ 会取消该会话的在途 job。
+## 8. AI 审计（ai_audit_log，2026-10-26）
+
+- 记录 feature：`title` / `metadata` / `annotation-timeline` / `annotation-field`（预留 `chat`）。
+- 字段含 `trigger`（manual|auto）、`scope`（UI 来源：agent-card / session-row / detail / batch /
+  auto-scan / audit-retry）、`session_key`、`connection`、`state`、`ai_model`、`anchor_total`、
+  `anchor_kept`、`result_count`、`duration_ms`、`error`、`raw_request`、`raw_response`。
+- 原文单条上限 `AuditRawMaxChars = 200000`，超限截断并置 `raw_truncated`。
+- RPC：`AuditList` / `AuditGet` / `AuditStats`（24h）/ `AuditClear(beforeDays)` /
+  `AuditRetry(id)`（title/metadata 走 AutoGenerate；annotation-* 重建锚点后重新入队）。
+- 前端 Block `view: aiaudit`；AI Sessions 头栏提供入口。
+- 失败行可一键 Retry；重试会产生新的审计行，便于对照。
 

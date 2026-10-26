@@ -133,7 +133,6 @@ func autoTitleEligible(s SessionSummary) bool {
 
 type genJob struct {
 	key          string
-	source       string
 	projectPath  string
 	messageCount int
 	connection   string
@@ -142,6 +141,9 @@ type genJob struct {
 	force        bool
 	attempt      int
 	aiMode       string
+	// source 是 UI 入口（agent-card / session-row / detail / batch / auto-scan），
+	// 写进审计用于回答"我点了哪里"。
+	source string
 }
 
 func genJobPendingKey(job genJob) string {
@@ -194,7 +196,6 @@ func (m *Manager) enqueueAutoTitles(summaries []SessionSummary) {
 		}
 		jobs = append(jobs, genJob{
 			key:          summary.Key,
-			source:       summary.Source,
 			projectPath:  summary.ProjectPath,
 			messageCount: summary.MessageCount,
 			kind:         GenKindTitle,
@@ -218,6 +219,7 @@ type ManualGenerationRequest struct {
 	Connection string
 	Force      bool
 	AIMode     string
+	Source     string
 }
 
 // EnqueueManualGeneration admits user-triggered jobs into the same serial worker
@@ -244,6 +246,7 @@ func (m *Manager) EnqueueManualGeneration(reqs []ManualGenerationRequest) []stri
 			force:      req.Force,
 			connection: strings.TrimSpace(req.Connection),
 			aiMode:     strings.TrimSpace(req.AIMode),
+			source:     strings.TrimSpace(req.Source),
 		}
 		q.push(job)
 		q.status(job, GenStateQueued, nil)
@@ -413,6 +416,16 @@ func (q *autoTitleQueue) runOne(job genJob) {
 
 	q.status(job, GenStateRunning, nil)
 
+	startedAt := time.Now()
+	auditID, _ := m.AuditBegin(ctx, AuditInput{
+		Feature:    job.kind,
+		Scope:      job.source,
+		SessionKey: summary.Key,
+		Connection: job.connection,
+		Trigger:    map[bool]string{true: AuditTriggerManual, false: AuditTriggerAuto}[job.manual],
+		AIModel:    job.aiMode,
+	})
+
 	var runErr error
 	switch job.kind {
 	case GenKindMetadata:
@@ -428,12 +441,23 @@ func (q *autoTitleQueue) runOne(job genJob) {
 	}
 
 	if runErr != nil {
+		_ = m.AuditFinish(context.Background(), auditID, AuditResult{
+			State:      AuditStateFailed,
+			Error:      runErr.Error(),
+			DurationMs: time.Since(startedAt).Milliseconds(),
+		})
 		q.fail(m, summary, job, runErr)
 		return
 	}
 	if !job.manual {
 		_ = m.markAITitleAttempt(context.Background(), summary.Key, summary.MessageCount)
 	}
+	_ = m.AuditFinish(context.Background(), auditID, AuditResult{
+		State:       AuditStateDone,
+		AIModel:     job.aiMode,
+		ResultCount: 1,
+		DurationMs:  time.Since(startedAt).Milliseconds(),
+	})
 	q.status(job, GenStateDone, nil)
 }
 

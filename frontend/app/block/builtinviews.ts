@@ -3,6 +3,7 @@
 
 import { SessionOverviewViewModel } from "@/app/session-overview/session-overview";
 import { AgentViewModel } from "@/app/view/aisessions/agent";
+import { AiAuditViewModel } from "@/app/view/aiaudit/aiaudit-model";
 import { AiFileDiffViewModel } from "@/app/view/aifilediff/aifilediff";
 import { AiSessionsViewModel } from "@/app/view/aisessions/aisessions";
 import { HelpViewModel } from "@/app/view/helpview/helpview";
@@ -41,6 +42,7 @@ const BuiltinViewModels: ReadonlyArray<readonly [string, ViewModelClass]> = [
     ["scheduledtasks", ScheduledTasksViewModel],
     ["processviewer", ProcessViewerViewModel],
     ["aisessions", AiSessionsViewModel],
+    ["aiaudit", AiAuditViewModel],
     ["agent", AgentViewModel],
     ["sessionoverview", SessionOverviewViewModel],
     ["vcs", VcsViewModel],

@@ -69,6 +69,36 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Annotations", Array.from(arguments))
     }
 
+    // delete audit entries older than the cutoff (default 30 days)
+    // @returns number of removed entries
+    AuditClear(request: AISessionsAuditClearRequest): Promise<number> {
+        return callBackendService(this?.waveEnv, "aisessions", "AuditClear", Array.from(arguments))
+    }
+
+    // get one AI generation audit entry with raw payloads
+    // @returns the audit entry
+    AuditGet(id: number): Promise<AuditView> {
+        return callBackendService(this?.waveEnv, "aisessions", "AuditGet", Array.from(arguments))
+    }
+
+    // list recent AI generation audit entries
+    // @returns audit entries plus total count
+    AuditList(request: AISessionsAuditListRequest): Promise<AISessionsAuditListResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "AuditList", Array.from(arguments))
+    }
+
+    // re-run a failed AI generation from its audit entry
+    // @returns the new job id
+    AuditRetry(request: AISessionsAuditRetryRequest): Promise<AISessionsAuditRetryResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "AuditRetry", Array.from(arguments))
+    }
+
+    // aggregate AI generation activity over the last 24 hours
+    // @returns audit statistics
+    AuditStats(): Promise<AuditStatsResult> {
+        return callBackendService(this?.waveEnv, "aisessions", "AuditStats", Array.from(arguments))
+    }
+
     // enqueue background AI generation (title / note+tags / both) for sessions
     // @returns queued session keys plus per-session skip reasons
     AutoGenerate(request: AISessionsAutoGenerateRequest): Promise<AISessionsAutoGenerateResponse> {

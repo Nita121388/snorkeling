@@ -4,6 +4,7 @@
 package aisessions
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -56,5 +57,41 @@ func TestAnnotationScopeNormalization(t *testing.T) {
 	}
 	if normalizeAnnotationScope("nonsense") != AnnotationScopeTimeline {
 		t.Fatalf("unknown scope must fall back to timeline")
+	}
+}
+
+func TestParseAnnotationDraftResponseExtractsEmbeddedJSON(t *testing.T) {
+	raw := `Sure! Here are the annotations:
+{"annotations":[{"anchorKey":"e1:m0","kind":"note","title":"Found it"}]}
+Let me know if you need more.`
+	drafts, err := parseAnnotationDraftResponse(raw)
+	if err != nil {
+		t.Fatalf("expected embedded JSON to parse: %v", err)
+	}
+	if len(drafts) != 1 || drafts[0].AnchorKey != "e1:m0" {
+		t.Fatalf("unexpected drafts: %#v", drafts)
+	}
+}
+
+func TestParseAnnotationDraftResponseExtractsArrayWithBracesInStrings(t *testing.T) {
+	raw := `[{"anchorKey":"e1:m0","body":"use {\"a\":1} here"}]`
+	drafts, err := parseAnnotationDraftResponse(raw)
+	if err != nil {
+		t.Fatalf("expected array to parse: %v", err)
+	}
+	if len(drafts) != 1 || !strings.Contains(drafts[0].Body, "{\"a\":1}") {
+		t.Fatalf("unexpected drafts: %#v", drafts)
+	}
+}
+
+func TestExtractFirstJSONValue(t *testing.T) {
+	if got := extractFirstJSONValue("no json here"); got != "" {
+		t.Fatalf("expected empty, got %q", got)
+	}
+	if got := extractFirstJSONValue("x [1,2] y"); got != "[1,2]" {
+		t.Fatalf("unexpected extraction %q", got)
+	}
+	if got := extractFirstJSONValue("a {\"k\":\"}\"} b"); got != "{\"k\":\"}\"}" {
+		t.Fatalf("brace inside string mishandled: %q", got)
 	}
 }
