@@ -157,6 +157,22 @@ func processChatStream(
 			continue
 		}
 
+		// Provider error frames carry no choices. Surface them instead of
+		// dropping the frame (which used to end as a silent empty reply).
+		if chunk.Error != nil {
+			text := strings.TrimSpace(chunk.Error.Message)
+			if text == "" {
+				text = "provider returned an error"
+			}
+			log.Printf("openaichat: provider error: %s\n", text)
+			_ = sseHandler.AiMsgError(text)
+			return &uctypes.WaveStopReason{
+				Kind:      uctypes.StopKindError,
+				ErrorType: "provider",
+				ErrorText: text,
+			}, nil, fmt.Errorf("openaichat provider error: %s", text)
+		}
+
 		if len(chunk.Choices) == 0 {
 			continue
 		}

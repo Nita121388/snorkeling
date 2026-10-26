@@ -7,6 +7,7 @@ import { copyText } from "@/app/view/aisessions/utils";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { createPortal } from "react-dom";
 import type { AiAuditViewModel } from "./aiaudit-model";
 
 const FeatureLabels: Record<string, string> = {
@@ -265,58 +266,83 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                 {total} total · showing {entries.length}
             </div>
 
-            {detail != null ? (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-                    <div className="flex max-h-[80vh] w-[min(760px,92vw)] flex-col rounded-lg border border-border bg-modalbg p-3 shadow-2xl">
-                        <div className="flex shrink-0 items-center justify-between gap-2 pb-2">
-                            <div className="min-w-0">
-                                <div className="text-sm font-semibold text-primary">
-                                    {FeatureLabels[detail.feature] ?? detail.feature} · {detail.state}
-                                </div>
-                                <div className="truncate text-[11px] text-secondary">
-                                    {detail.sessionTitle || detail.sessionKey} · {formatTime(detail.createdAt)} ·{" "}
-                                    {formatDuration(detail.durationMs)}
-                                </div>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1.5">
-                                {detail.state === "failed" ? (
-                                    <button
-                                        type="button"
-                                        className="h-7 rounded border border-warning/50 px-2 text-xs text-warning hover:bg-warning/10"
-                                        onClick={() => void model.retry(detail.id)}
-                                    >
-                                        Retry
-                                    </button>
-                                ) : null}
-                                <button
-                                    type="button"
-                                    className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                    onClick={() => model.closeDetail()}
-                                >
-                                    Close
-                                </button>
-                            </div>
-                        </div>
-                        {detail.error ? (
-                            <div className="shrink-0 rounded border border-error/40 bg-error/10 px-2 py-1 text-[11px] text-error">
-                                {detail.error}
-                            </div>
-                        ) : null}
-                        <div className="min-h-0 flex-1 space-y-2 overflow-auto pt-2">
-                            <AuditRawBlock label="Request" text={detail.rawRequest} />
-                            <AuditRawBlock label="Response" text={detail.rawResponse} />
-                            {!detail.rawRequest && !detail.rawResponse ? (
-                                <div className="text-[11px] text-secondary">No raw payload stored.</div>
-                            ) : null}
-                        </div>
-                    </div>
-                </div>
-            ) : null}
-            {detailLoading ? (
-                <div className="fixed bottom-4 right-4 rounded bg-modalbg px-2 py-1 text-[11px] text-secondary shadow">
-                    Loading…
-                </div>
-            ) : null}
+            {detail != null
+                ? (() => {
+                      // 弹窗必须挂到 app 级 #main：渲染在 block 子树里时，
+                      // .block 的 overflow:hidden + 状态的 will-change:transform
+                      // 会把 position:fixed 降级为相对 block，弹窗被限制在 Block
+                      // 内、内容被裁。portal 出去后 fixed 才相对视口，宽度按视口算。
+                      const mainEl = typeof document !== "undefined" ? document.getElementById("main") : null;
+                      if (mainEl == null) return null;
+                      return createPortal(
+                          <div
+                              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
+                              role="dialog"
+                              aria-modal="true"
+                              aria-label="AI audit detail"
+                              onMouseDown={(event) => event.stopPropagation()}
+                              onClick={(event) => event.stopPropagation()}
+                          >
+                              <div className="flex max-h-[calc(100vh-2rem)] w-[min(880px,calc(100vw-2rem))] flex-col rounded-lg border border-border bg-modalbg p-3 shadow-2xl">
+                                  <div className="flex shrink-0 items-center justify-between gap-2 pb-2">
+                                      <div className="min-w-0">
+                                          <div className="text-sm font-semibold text-primary">
+                                              {FeatureLabels[detail.feature] ?? detail.feature} · {detail.state}
+                                          </div>
+                                          <div className="truncate text-[11px] text-secondary">
+                                              {detail.sessionTitle || detail.sessionKey} · {formatTime(detail.createdAt)} ·{" "}
+                                              {formatDuration(detail.durationMs)}
+                                          </div>
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-1.5">
+                                          {detail.state === "failed" ? (
+                                              <button
+                                                  type="button"
+                                                  className="h-7 rounded border border-warning/50 px-2 text-xs text-warning hover:bg-warning/10"
+                                                  onClick={() => void model.retry(detail.id)}
+                                              >
+                                                  Retry
+                                              </button>
+                                          ) : null}
+                                          <button
+                                              type="button"
+                                              className="h-7 rounded border border-border px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                              onClick={() => model.closeDetail()}
+                                          >
+                                              Close
+                                          </button>
+                                      </div>
+                                  </div>
+                                  {detail.error ? (
+                                      <div className="shrink-0 rounded border border-error/40 bg-error/10 px-2 py-1 text-[11px] text-error">
+                                          {detail.error}
+                                      </div>
+                                  ) : null}
+                                  <div className="min-h-0 flex-1 space-y-2 overflow-auto pt-2">
+                                      <AuditRawBlock label="Request" text={detail.rawRequest} />
+                                      <AuditRawBlock label="Response" text={detail.rawResponse} />
+                                      {!detail.rawRequest && !detail.rawResponse ? (
+                                          <div className="text-[11px] text-secondary">No raw payload stored.</div>
+                                      ) : null}
+                                  </div>
+                              </div>
+                          </div>,
+                          mainEl
+                      );
+                  })()
+                : null}
+            {detailLoading
+                ? (() => {
+                      const mainEl = typeof document !== "undefined" ? document.getElementById("main") : null;
+                      if (mainEl == null) return null;
+                      return createPortal(
+                          <div className="fixed bottom-4 right-4 rounded bg-modalbg px-2 py-1 text-[11px] text-secondary shadow">
+                              Loading…
+                          </div>,
+                          mainEl
+                      );
+                  })()
+                : null}
         </div>
     );
 }

@@ -183,6 +183,17 @@ type StreamChunk struct {
 	Created int64          `json:"created"`
 	Model   string         `json:"model"`
 	Choices []StreamChoice `json:"choices"`
+	// Error is set on provider error frames, which carry no choices
+	// (e.g. rate limit, invalid model, auth). Previously dropped, turning a
+	// real failure into a silent "empty response".
+	Error *StreamError `json:"error,omitempty"`
+}
+
+// StreamError is the OpenAI-style error object embedded in a stream frame.
+type StreamError struct {
+	Message string `json:"message"`
+	Type    string `json:"type,omitempty"`
+	Code    any    `json:"code,omitempty"`
 }
 
 type StreamChoice struct {
