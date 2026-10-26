@@ -19,32 +19,63 @@ export function AnnotationCard({
     onJump,
     onAccept,
     onDiscard,
+    onPin,
+    onClose,
 }: {
     cluster: AnnotationRailCluster;
     nodePreview?: string;
     onJump: (seq: number) => void;
     onAccept?: (id: number) => void;
     onDiscard?: (id: number) => void;
+    onPin?: () => void;
+    onClose?: () => void;
 }) {
     return (
         <div
             className="w-80 max-w-[min(320px,70vw)] max-h-[60vh] overflow-y-auto overscroll-contain rounded-lg border border-border bg-modalbg p-2.5 text-left shadow-2xl"
             data-row-action="true"
+            // 在卡片里按下鼠标就钉住，防止点按钮途中卡片被 hover 逻辑关掉。
+            onMouseDown={() => onPin?.()}
         >
             <div className="flex items-center justify-between gap-2 pb-1.5">
                 <span className="text-[10px] uppercase tracking-wide text-secondary">
                     {cluster.items.length > 1 ? `Cluster · ${cluster.items.length} nodes` : "Node"}
                 </span>
-                <button
-                    type="button"
-                    className="cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-accent hover:bg-accent/10"
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        onJump(cluster.seq);
-                    }}
-                >
-                    Jump
-                </button>
+                <div className="flex items-center gap-1">
+                    {onClose != null ? (
+                        <span
+                            className="flex items-center gap-0.5 rounded bg-accent/15 px-1 py-0.5 text-[9px] text-accent"
+                            title="Pinned — click Jump's ✕ or the tick again to close"
+                        >
+                            <i className="fa-sharp fa-solid fa-thumbtack" />
+                            pinned
+                        </span>
+                    ) : null}
+                    <button
+                        type="button"
+                        className="cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-accent hover:bg-accent/10"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onJump(cluster.seq);
+                        }}
+                    >
+                        Jump
+                    </button>
+                    {onClose != null ? (
+                        <button
+                            type="button"
+                            className="cursor-pointer rounded px-1 py-0.5 text-[10px] text-secondary hover:bg-hover hover:text-primary"
+                            title="Close"
+                            aria-label="Close"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onClose();
+                            }}
+                        >
+                            <i className="fa-sharp fa-solid fa-xmark" />
+                        </button>
+                    ) : null}
+                </div>
             </div>
             {nodePreview ? (
                 <div className="mb-2 line-clamp-4 whitespace-pre-wrap break-words text-[11px] leading-4 text-secondary">

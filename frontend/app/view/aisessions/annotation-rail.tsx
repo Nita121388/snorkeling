@@ -74,6 +74,8 @@ export function AnnotationRail({
     const [collapsed, setCollapsed] = React.useState<boolean>(readCollapsedPreference);
     const [hoverIndex, setHoverIndex] = React.useState<number | null>(null);
     const [openIndex, setOpenIndex] = React.useState<number | null>(null);
+    // 点击刻度后"钉住"卡片：悬浮卡会因为鼠标移动瞬间消失，导致 Accept 点不到。
+    const [pinnedIndex, setPinnedIndex] = React.useState<number | null>(null);
     const hoverTimer = React.useRef<number | null>(null);
     const closeTimer = React.useRef<number | null>(null);
 
@@ -157,7 +159,8 @@ export function AnnotationRail({
         );
     }
 
-    const hoveredCluster = hoverIndex != null ? clusters[hoverIndex] : null;
+    const cardIndex = pinnedIndex ?? openIndex;
+    const hoveredCluster = cardIndex != null ? clusters[cardIndex] : null;
 
     return (
         <div
@@ -231,7 +234,8 @@ export function AnnotationRail({
                     const restingWidth = isActive ? ActivePillWidth : RestingPillWidth;
                     const pillWidth = restingWidth + magnification * (MagnifiedPillWidth - restingWidth);
                     const pillHeight = RestingPillHeight + magnification * (MagnifiedPillHeight - RestingPillHeight);
-                    const isOpen = openIndex === index;
+                    const isCardOpen = cardIndex === index;
+                    const isPinned = pinnedIndex === index;
                     return (
                         <div
                             key={cluster.key}
@@ -249,7 +253,20 @@ export function AnnotationRail({
                                 type="button"
                                 aria-label={`Jump to annotation at #${cluster.seq}`}
                                 className="flex h-full w-full cursor-pointer items-center pl-1"
-                                onClick={() => onJump(cluster.seq)}
+                                onClick={() => {
+                                    // 钉住卡片，避免鼠标一移开就消失导致点不到 Accept。
+                                    // 已钉住时再次点击则完全收起。
+                                    setPinnedIndex((current) => {
+                                        if (current === index) {
+                                            clearTimers();
+                                            setOpenIndex(null);
+                                            setHoverIndex(null);
+                                            return null;
+                                        }
+                                        return index;
+                                    });
+                                    onJump(cluster.seq);
+                                }}
                             >
                                 <span
                                     className={cn(
@@ -265,23 +282,28 @@ export function AnnotationRail({
                                     style={{ width: pillWidth, height: pillHeight }}
                                 />
                             </button>
-                            {isOpen && hoveredCluster?.key === cluster.key ? (
+                            {isCardOpen && hoveredCluster?.key === cluster.key ? (
                                 <div
-                                    className="absolute left-full top-0 z-50 ml-2"
+                                    // pl-2 而不是 ml-2：留出"鼠标桥"，从刻度移到卡片时
+                                    // 指针不会落到空隙里，卡片不会提前关闭。
+                                    className="absolute left-full top-0 z-50 pl-2"
                                     onMouseEnter={() => {
                                         clearTimers();
                                         setOpenIndex(index);
                                     }}
                                     onMouseLeave={() => {
                                         clearTimers();
+                                        if (isPinned) return; // 钉住的卡片只能点刻度或 Close 关闭
                                         closeTimer.current = window.setTimeout(() => {
                                             setOpenIndex(null);
                                             setHoverIndex(null);
-                                        }, 120);
+                                        }, 320);
                                     }}
                                 >
                                     <AnnotationCard
                                         cluster={cluster}
+                                        onPin={() => setPinnedIndex(index)}
+                                        onClose={isPinned ? () => setPinnedIndex(null) : undefined}
                                         nodePreview={
                                             previewBySeq?.get(cluster.items[0]?.seq ?? -1) ??
                                             cluster.items[0]?.annotations[0]?.anchorPreview
