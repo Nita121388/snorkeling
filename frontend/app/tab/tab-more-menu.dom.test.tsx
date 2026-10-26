@@ -271,3 +271,104 @@ describe("TabMoreMenu footer actions", () => {
         expect(onCollapseInactive).toHaveBeenCalledTimes(1);
     });
 });
+
+
+// 悬浮 Agent Card 接入契约测试。
+//
+// 行是否挂 portal 由 jsdom 下无法渲染完整 AgentHoverCard (它会真发 RPC / 取 uiContext) 决定,
+// 所以这里只断言「数据链路 + 挂载点」: meta 正确收集 agent block, 行带 data-agent-card 标记,
+// portal 容器在未 hover 时不渲染、hover 时尝试渲染 (jsdom 下组件抛错不影响挂载点存在性判定)。
+// 卡片内容由 tab-more-agent-card 单测 / 组件本身保证。
+//
+// 注意: jsdom 下 localStorage 缺失 (Node >=22.11 不再默认提供), 必须走
+// NODE_OPTIONS="--localstorage-file=..." 跑, 否则 SessionOverviewModel 构造即抛.
+describe("TabMoreMenu agent card linkage", () => {
+    // 注意: tab.blockids 存的是裸 OID, mock WOS 的 key 才是 "block:<oid>".
+    function agentBlock(oid: string, sessionId: string): Block {
+        return {
+            otype: "block",
+            oid,
+            version: 1,
+            meta: { "agent:sessionid": sessionId, "agent:provider": "codex" },
+            subblockids: [],
+        } as unknown as Block;
+    }
+    function renderWithBlocks(
+        blocks: Record<string, Block>,
+        subBlocks: Record<string, Block> = {},
+        props?: Partial<React.ComponentProps<typeof TabMoreMenu>>
+    ) {
+        const mockWaveObjs: Record<string, WaveObj> = {
+            "tab:t1": {
+                otype: "tab",
+                oid: "t1",
+                version: 1,
+                name: "AISessions",
+                blockids: Object.keys(blocks),
+                meta: {},
+            } as Tab,
+        };
+        for (const [oid, block] of Object.entries({ ...blocks, ...subBlocks })) {
+            mockWaveObjs[`block:${oid}`] = block;
+        }
+        const env = makeMockWaveEnv({ tabId: "t1", mockWaveObjs });
+        act(() => {
+            root.render(
+                <Provider store={globalStore}>
+                    <WaveEnvContext.Provider value={env}>
+                        <TabMoreMenu
+                            tabIds={["t1"]}
+                            placement="top-start"
+                            variant="vertical"
+                            onActivateTab={() => {}}
+                            onCloseTab={() => {}}
+                            onNewTab={() => {}}
+                            onCollapseInactive={() => {}}
+                            {...props}
+                        />
+                    </WaveEnvContext.Provider>
+                </Provider>
+            );
+        });
+    }
+
+    it("does not flag a tab with no agent block", () => {
+        renderWithBlocks({
+            note1: { otype: "block", oid: "note1", version: 1, meta: { "snorkeling:kind": "note", file: "a.md" }, subblockids: [] } as unknown as Block,
+        });
+        act(() => trigger().click());
+        expect(rows()).toHaveLength(1);
+        expect(rows()[0].getAttribute("data-agent-card")).toBe("false");
+    });
+
+    it("flags a tab with one agent block (single full card on hover path)", () => {
+        renderWithBlocks({ a1: agentBlock("a1", "sess-1") });
+        act(() => trigger().click());
+        expect(rows()).toHaveLength(1);
+        expect(rows()[0].getAttribute("data-agent-card")).toBe("true");
+    });
+
+    it("flags a tab with >=2 agent blocks (multi-agent header path)", () => {
+        renderWithBlocks({ a1: agentBlock("a1", "sess-1"), b1: agentBlock("b1", "sess-2") });
+        act(() => trigger().click());
+        expect(rows()).toHaveLength(1);
+        expect(rows()[0].getAttribute("data-agent-card")).toBe("true");
+    });
+
+    it("includes inline sub-block agent when tab blocks carry subblockids", () => {
+        renderWithBlocks(
+            {
+                p1: {
+                    otype: "block",
+                    oid: "p1",
+                    version: 1,
+                    meta: { view: "preview" },
+                    subblockids: ["sub1"],
+                } as unknown as Block,
+            },
+            { sub1: agentBlock("sub1", "sess-sub") }
+        );
+        act(() => trigger().click());
+        expect(rows()[0].getAttribute("data-agent-card")).toBe("true");
+    });
+});

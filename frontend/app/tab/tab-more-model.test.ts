@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
     buildTabMoreRows,
+    collectTabAgentBlocks,
     collectCollapseTargets,
     countHiddenRows,
     filterTabMoreRows,
@@ -129,5 +130,74 @@ describe("collectCollapseTargets", () => {
     it("collects visible non-active tabs only", () => {
         const rows = buildTabMoreRows(TabIds, Meta, makeCtx());
         expect(collectCollapseTargets(rows)).toEqual(["t2"]);
+    });
+});
+
+describe("collectTabAgentBlocks", () => {
+    const agentMeta = { "agent:sessionid": "s1", "agent:provider": "codex" } as Record<string, unknown>;
+    const noteMeta = { "snorkeling:kind": "note", file: "a.md" } as Record<string, unknown>;
+    const previewMeta = { view: "preview", file: "a.md" } as Record<string, unknown>;
+
+    function block(blockId: string, meta: Record<string, unknown>): Block {
+        return {
+            otype: "block",
+            oid: blockId,
+            version: 1,
+            meta,
+            subblockids: [],
+        } as unknown as Block;
+    }
+
+    const isAgent = (b: Block) => b.meta?.["agent:sessionid"] != null;
+    const getBlock = (map: Record<string, Block>) => (blockId: string) => map[blockId] ?? null;
+    const getUpdatedAt = (map: Record<string, number>) => (blockId: string) => map[blockId] ?? 0;
+
+    it("returns empty for empty blockIds", () => {
+        expect(collectTabAgentBlocks([], getBlock({}), getUpdatedAt({}), isAgent)).toEqual([]);
+        expect(collectTabAgentBlocks(null, getBlock({}), getUpdatedAt({}), isAgent)).toEqual([]);
+    });
+
+    it("filters out non-agent blocks", () => {
+        const blocks = {
+            "block:note": block("block:note", noteMeta),
+            "block:preview": block("block:preview", previewMeta),
+        };
+        expect(collectTabAgentBlocks(["block:note", "block:preview"], getBlock(blocks), getUpdatedAt({}), isAgent)).toEqual([]);
+    });
+
+    it("keeps only agent blocks and dedupes", () => {
+        const blocks = {
+            "block:a": block("block:a", agentMeta),
+        };
+        const refs = collectTabAgentBlocks(
+            ["block:a", "block:a", "block:missing"],
+            getBlock(blocks),
+            getUpdatedAt({}),
+            isAgent
+        );
+        expect(refs).toHaveLength(1);
+        expect(refs[0].blockId).toBe("block:a");
+    });
+
+    it("sorts by updatedAt descending, stable on ties", () => {
+        const blocks = {
+            "block:old": block("block:old", agentMeta),
+            "block:new": block("block:new", agentMeta),
+            "block:mid": block("block:mid", agentMeta),
+        };
+        const times = { "block:old": 100, "block:new": 300, "block:mid": 200 };
+        const refs = collectTabAgentBlocks(
+            ["block:old", "block:new", "block:mid"],
+            getBlock(blocks),
+            getUpdatedAt(times),
+            isAgent
+        );
+        expect(refs.map((r) => r.blockId)).toEqual(["block:new", "block:mid", "block:old"]);
+    });
+
+    it("falls back to 0 for missing updatedAt", () => {
+        const blocks = { "block:a": block("block:a", agentMeta) };
+        const refs = collectTabAgentBlocks(["block:a"], getBlock(blocks), getUpdatedAt({}), isAgent);
+        expect(refs[0].updatedAt).toBe(0);
     });
 });

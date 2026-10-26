@@ -22,6 +22,17 @@ export interface TabMoreMeta {
     badges?: Badge[] | null;
     agentDots?: TabAgentStatusDot[] | null;
     flagColor?: string | null;
+    /** 该 Tab 的顶层 block + inline 子 block id (悬浮卡解析 agent block 用). */
+    blockIds?: string[];
+    /** `blockIds` 里命中 agent block 的子集 (有值才挂悬浮卡). */
+    agentBlockIds?: string[];
+}
+
+/** 一个 Tab 内命中的 agent block 引用 (悬浮卡渲染用). */
+export interface TabAgentBlockRef {
+    blockId: string;
+    /** agent 状态 updatedAt (毫秒); 缺失按 0, 仅用于降序排列. */
+    updatedAt: number;
 }
 
 /** 可见性判定上下文. */
@@ -124,4 +135,39 @@ export function shouldShowTabMoreSearch(rowCount: number): boolean {
 /** 「收起未使用的 Tab」目标: 除激活 Tab 外所有当前可见的 Tab. */
 export function collectCollapseTargets(rows: readonly TabMoreRow[]): string[] {
     return rows.filter((row) => !row.isActive && !row.isHidden).map((row) => row.tabId);
+}
+
+/**
+ * 从 blockIds 里挑出 agent block, 按 agent 状态 updatedAt 降序.
+ *
+ * 纯函数: block 读取与状态时间都通过入参注入, 便于单测.
+ * - `getBlock` 返回 null 的 blockId 直接跳过 (block 已被销毁 / 尚未加载).
+ * - `isAgentBlock` 之外的类型 (note / preview / session detail) 一律不进结果.
+ * - 稳定排序: updatedAt 相同时保持 blockIds 原始顺序.
+ */
+export function collectTabAgentBlocks(
+    blockIds: readonly string[] | null | undefined,
+    getBlock: (blockId: string) => Block | null | undefined,
+    getUpdatedAt: (blockId: string) => number,
+    isAgentBlock: (block: Block) => boolean
+): TabAgentBlockRef[] {
+    if (blockIds == null || blockIds.length === 0) {
+        return [];
+    }
+    const refs: TabAgentBlockRef[] = [];
+    const seen = new Set<string>();
+    for (const blockId of blockIds) {
+        if (seen.has(blockId)) {
+            continue;
+        }
+        seen.add(blockId);
+        const block = getBlock(blockId);
+        if (block == null || !isAgentBlock(block)) {
+            continue;
+        }
+        const rawUpdatedAt = getUpdatedAt(blockId);
+        refs.push({ blockId, updatedAt: Number.isFinite(rawUpdatedAt) ? rawUpdatedAt : 0 });
+    }
+    // Array.prototype.sort 是稳定排序: updatedAt 相同时保留 blockIds 顺序.
+    return refs.sort((left, right) => right.updatedAt - left.updatedAt);
 }

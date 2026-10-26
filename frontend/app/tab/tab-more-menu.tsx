@@ -3,6 +3,7 @@
 
 import { getTabAgentStatusDotsAtom, getTabsWithUnreadDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
 import { getTabBadgeAtom } from "@/app/store/badge";
+import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
 import { makeORef } from "@/app/store/wos";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { validateCssColor } from "@/util/color-validator";
@@ -19,7 +20,9 @@ import {
     useInteractions,
 } from "@floating-ui/react";
 import { atom, Atom, useAtomValue } from "jotai";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
+import { TabMoreAgentCard } from "./tab-more-agent-card";
 import { collapsedTabIdsAtom } from "./tab-collapse-state";
 import {
     buildTabMoreRows,
@@ -40,7 +43,9 @@ type TabMoreMenuEnv = WaveEnvSubset<{
     wos: WaveEnv["wos"];
 }>;
 
-const TabMoreMetaAtomCache = new Map<string, Atom<Record<string, TabMoreMeta>>>();
+// 以 env 为一级键: 缓存只按 tabIds 做键会让新 env (preview / 测试里的 mock env) 复用
+// 上一个 env 的 atom, 读到旧的 tab/block 数据.
+const TabMoreMetaAtomCache = new WeakMap<object, Map<string, Atom<Record<string, TabMoreMeta>>>>();
 
 /**
  * 为「更多」下拉构建 Tab 视觉元信息 (名称 / badges / agent 点 / flag 色).
@@ -50,7 +55,12 @@ const TabMoreMetaAtomCache = new Map<string, Atom<Record<string, TabMoreMeta>>>(
  */
 function getTabMoreMetaAtom(tabIds: readonly string[], env: TabMoreMenuEnv): Atom<Record<string, TabMoreMeta>> {
     const key = tabIds.join(" ");
-    const cached = TabMoreMetaAtomCache.get(key);
+    let byKey = TabMoreMetaAtomCache.get(env);
+    if (byKey == null) {
+        byKey = new Map();
+        TabMoreMetaAtomCache.set(env, byKey);
+    }
+    const cached = byKey.get(key);
     if (cached != null) {
         return cached;
     }
@@ -77,17 +87,58 @@ function getTabMoreMetaAtom(tabIds: readonly string[], env: TabMoreMenuEnv): Ato
                     flagColor = null;
                 }
             }
+            const blockRef = collectTabBlockIds(
+                (blockId) =>
+                    get(env.wos.getWaveObjectAtom<Block>(makeORef("block", blockId))) as Block | null,
+                tab
+            );
             out[entry.tabId] = {
                 name: tab.name ?? "",
                 badges: get(entry.badgeAtom),
                 agentDots: get(entry.dotAtom),
                 flagColor,
+                blockIds: blockRef.blockIds,
+                agentBlockIds: blockRef.agentBlockIds,
             };
         }
         return out;
     });
-    TabMoreMetaAtomCache.set(key, derived);
+    TabMoreMetaAtomCache.get(env)?.set(key, derived);
     return derived;
+}
+
+/**
+ * 收集一个 Tab 的 block id 全集: 顶层 `tab.blockids` + 各 block 的 `subblockids`.
+ *
+ * 只读、去重, 不触发额外 RPC。inline 子 block 也纳入, 因为 agent 会话经常被 tab 化后
+ * 挂在 subblockids 上 (见 block.tsx InlineTabBlock).
+ */
+function collectTabBlockIds(
+    getBlock: (blockId: string) => Block | null,
+    tab: Tab
+): { blockIds: string[]; agentBlockIds: string[] } {
+    const blockIds: string[] = [];
+    const agentBlockIds: string[] = [];
+    const seen = new Set<string>();
+    const push = (blockId: string) => {
+        if (blockId === "" || seen.has(blockId)) {
+            return;
+        }
+        seen.add(blockId);
+        blockIds.push(blockId);
+        const block = getBlock(blockId);
+        if (block != null && isAgentTerminalMeta(block.meta)) {
+            agentBlockIds.push(blockId);
+        }
+    };
+    for (const topId of tab.blockids ?? []) {
+        push(topId);
+        const block = getBlock(topId);
+        for (const subId of block?.subblockids ?? []) {
+            push(subId);
+        }
+    }
+    return { blockIds, agentBlockIds };
 }
 
 export interface TabMoreMenuProps {
@@ -112,12 +163,19 @@ const TabMoreRowItem = memo(
         // 未打开过的 Tab 不进灰色判定: 它可能在主栏可见, 下拉里不该跟折叠的混为一谈.
         // 有未阅点的永远不灰 — 那是用户必须立刻看到的状态.
         const dimmed = row.isHidden && !row.hasUnreadDot;
+        // 悬浮 Agent Card: 只有该 Tab 里确有 agent block 时才挂 portal,
+        // 避免无 agent 的行也建一套 hover 状态。
+        const rowRef = useRef<HTMLDivElement | null>(null);
+        const cardHover = useInfoCardHover({ placement: "right", targetRef: rowRef });
+        const hasAgentCard = (row.agentBlockIds?.length ?? 0) > 0;
         return (
             <div
+                ref={rowRef}
                 role="menuitem"
                 tabIndex={0}
                 data-tabid={row.tabId}
                 data-hidden={row.isHidden ? "true" : "false"}
+                data-agent-card={hasAgentCard ? "true" : "false"}
                 onClick={onActivate}
                 onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -125,6 +183,7 @@ const TabMoreRowItem = memo(
                         onActivate();
                     }
                 }}
+                {...cardHover.targetProps}
                 className={cn(
                     "group relative flex h-[30px] w-full cursor-pointer items-center gap-1.5 rounded pr-1.5 pl-2 text-xs select-none",
                     "transition-colors",
@@ -155,6 +214,11 @@ const TabMoreRowItem = memo(
                 >
                     <i className="fa fa-solid fa-xmark" />
                 </button>
+                {hasAgentCard && (
+                    <InfoCardPortal hover={cardHover}>
+                        <TabMoreAgentCard agentBlockIds={row.agentBlockIds} />
+                    </InfoCardPortal>
+                )}
             </div>
         );
     }
