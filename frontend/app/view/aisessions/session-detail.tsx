@@ -309,6 +309,9 @@ export function SessionDetailPane({
     const latestNoteDraftRef = useRef("");
     const summaryKeyRef = useRef<string | null>(null);
     const summaryNoteRef = useRef("");
+    // contextAttrs 引用稳定缓存：seq → {sig, attrs}；sig 不变复用旧对象引用，
+    // 让 MessageCard memo 在 delta/刷新时挡住未变行。切会话时整体清空（见下方 effect）。
+    const contextAttrsCacheRef = useRef(new Map<number, { sig: string; attrs: Record<string, string> }>());
     // 新建会话时屏蔽旧 detail 的竞态残留：未绑定、或绑定属上一轮 epoch 时一律隐藏；
     // 透传条件缩严为「detail 的 sessionId 恰是本轮绑定的 id」
     const effectiveDetail = (() => {
@@ -395,6 +398,8 @@ export function SessionDetailPane({
         autoScrolledToBottomRef.current = false;
         // Clear any pending queue from the previous session.
         queueStoreRef.current.clearAll();
+        // 切会话：旧 seq 可能复用到别的会话，清掉 contextAttrs 缓存防陈旧 attrs 泄漏。
+        contextAttrsCacheRef.current.clear();
     }, [effectiveDetail?.summary?.key]);
 
     useEffect(() => {
@@ -1404,12 +1409,23 @@ export function SessionDetailPane({
     }, [copySummary, detailMessages]);
 
     const contextAttrsBySeq = useMemo(() => {
-        const map = new Map<number, Record<string, string>>();
         if (summary == null) {
-            return map;
+            contextAttrsCacheRef.current.clear();
+            return new Map<number, Record<string, string>>();
         }
+        const cache = contextAttrsCacheRef.current;
+        const next = new Map<number, Record<string, string>>();
         for (const message of detailMessages) {
-            map.set(message.seq, {
+            const sig = `${summary.id}|${summary.source}|${summary.title}|${summary.projectPath}|${message.model}|${message.seq}|${message.role}|${message.timestamp}|${message.entryId}|${message.itemKey}`;
+            const cached = cache.get(message.seq);
+            // 引用稳定：内容签名未变则复用旧对象，让 MessageCard 的 memo
+            // （previous.contextAttrs === next.contextAttrs）在 delta/刷新时对未变行通过，
+            // 避免每次刷新把所有行整片重渲染。
+            if (cached != null && cached.sig === sig) {
+                next.set(message.seq, cached.attrs);
+                continue;
+            }
+            const attrs: Record<string, string> = {
                 ...sessionContextAttrs({
                     sessionId: summary.id,
                     source: summary.source,
@@ -1423,9 +1439,11 @@ export function SessionDetailPane({
                     itemKey: message.itemKey,
                 }),
                 "data-aisession-seq": String(message.seq),
-            });
+            };
+            cache.set(message.seq, { sig, attrs });
+            next.set(message.seq, attrs);
         }
-        return map;
+        return next;
     }, [summary?.id, summary?.source, summary?.title, summary?.projectPath, detailMessages]);
 
     const toolContextAttrsBySeq = useMemo(() => {
