@@ -53,6 +53,13 @@ AI Sessions 的搜索/筛选在后端完成（`pkg/aisessions/manager.go`、`pkg
 - 支持 `session:<id>` / `id:<id>` / `sessionid:<id>` / `key:<key>` 前缀形式，大小写不敏感。
 - 行 tooltip 显示 `Session ID:`，让用户知道可搜；“复制 Session ID” 产物可以直接粘回搜索框。
 
+### R5 时间维度可选
+
+- 排序菜单的时间字段拆成两个：`Updated`（`updatedAt`，字段名沿用旧值 `time` 以兼容 localStorage）与 `Created`（`createdAt`）；
+- 两者都支持升/降序（Newest/Oldest），并可和消息数、子会话数自由组合成多键排序链；
+- `createdAt` 缺失（老 provider 没解析到 header 时间）时回落到 `updatedAt`，不让这类会话全部沉底；
+- 主排序键在**后端**也生效（在 `limit` 之前排序，`ListOptions.SortField` / `SortDesc`）：“Created · Oldest” 拿到的是整个索引里创建最早的一批，而不是当前页内重排。
+
 ## 验收标准
 
 1. 搜索命中某子代理 → 父行出现在结果里并自动展开，命中子行可见；父行灰显带 `fa-link`。
@@ -63,3 +70,5 @@ AI Sessions 的搜索/筛选在后端完成（`pkg/aisessions/manager.go`、`pkg
 6. 无筛选时列表与改动前逐行一致（无 `attached` 字段）。
 7. `go test ./pkg/aisessions` 与 aisessions 相关前端单测全绿。
 8. 把某个会话的 Session ID（完整或前 8 位）粘进搜索框 → 该会话命中；带 `session:` 前缀也命中。
+9. 排序菜单选 `Created` 降序 → 按创建时间排；切 `Updated` 降序 → 按更新时间排；两者方向切换都生效。
+10. `limit=1` + `Created · Oldest` → 返回整个索引里创建最早的那条（不是最近更新页里的最早）。

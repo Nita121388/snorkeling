@@ -68,6 +68,17 @@ func attachContext(ctx context.Context, rows, allRows []SessionSummary, opts Lis
 - 前端不另做解析：把用户输入原样作为 `query` 发出即可；
 - 行 tooltip 增加 `Session ID:`，搜索框 placeholder 补上 session ID，降低发现成本。
 
+## 4.6 更新 / 创建时间排序
+
+排序链字段扩成 `time`（显示为 Updated）、`created`、`messages`、`subagents`。
+
+- 前端 `sessionCreatedTime` = `createdAt || updatedAt`，缺失不沉底；
+- 多键链仍由前端排；**主排序键额外传给后端**（`sortField` / `sortDesc`），
+  因为 `limit` 发生在后端 —— 只排当前页会让 “Created · Oldest” 只看到「最近更新的
+  200 条里最早创建的」；
+- 后端 `sortSummariesBy`（`pkg/aisessions/providers.go`）在 `limitSummaries` 之前排序；
+  `messages` / `subagents` 后端拿不到派生计数，仍回落到 updated 降序（与改动前一致）。
+
 ## 4. 测试
 
 - `pkg/aisessions/context_attach_test.go`：模式矩阵、limit、父子去重、硬排除、截断、孤儿、缺失行。

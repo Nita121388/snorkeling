@@ -25,7 +25,7 @@ AI Sessions 是 Snorkeling 的本机 AI 会话浏览器，用于在右侧 `Sessi
 
 ## 已支持能力
 
-- 会话列表：按最后更新时间排序，支持 newest/oldest 切换
+- 会话列表：默认按更新时间倒序；排序菜单支持 **Updated（更新时间）/ Created（创建时间）** 两个时间维度，各自可升/降序，可与消息数、子会话数组合成多键排序链；主排序键会随请求下发，由后端在 `limit` 之前排序
 - 来源筛选：All、Codex、Claude Code
 - 搜索：标题、备注、路径等字段
 - 按 session id 筛选：搜索框直接匹配裸 id / id 片段 / 完整 key（`source:id:filePath`），支持 `session:` / `id:` / `key:` 前缀，大小写不敏感

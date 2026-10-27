@@ -197,6 +197,9 @@ function compareByField(
     if (field === "time") {
         leftValue = sessionSortTime(left);
         rightValue = sessionSortTime(right);
+    } else if (field === "created") {
+        leftValue = sessionCreatedTime(left);
+        rightValue = sessionCreatedTime(right);
     } else if (field === "messages") {
         leftValue = left.messageCount ?? 0;
         rightValue = right.messageCount ?? 0;
@@ -241,6 +244,15 @@ export function sortSessions(
 
 export function sessionSortTime(session: SessionSummary): number {
     return session.updatedAt || session.createdAt || 0;
+}
+
+/**
+ * 创建时间排序键。老数据可能只有 updatedAt（provider 没解析到 header.timestamp），
+ * 此时回落到 updatedAt：把“时间信息”而不是 0 作为排序依据，避免这类会话全部
+ * 沉到列表底部或顶部。
+ */
+export function sessionCreatedTime(session: SessionSummary): number {
+    return session.createdAt || session.updatedAt || 0;
 }
 
 export function readSortPreference(): boolean {

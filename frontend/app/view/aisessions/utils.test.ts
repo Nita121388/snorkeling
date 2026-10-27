@@ -751,6 +751,23 @@ describe("makeSessionComparator / sortSessions", () => {
     });
 });
 
+describe("created-time sorting", () => {
+    it("accepts the created field in a sort chain", () => {
+        expect(sanitizeSortChain([{ field: "created", desc: true }])).toEqual([{ field: "created", desc: true }]);
+    });
+
+    it("orders by createdAt, leaving updatedAt for tie-breaking", () => {
+        const rows = [
+            { key: "a", id: "a", source: "pi", createdAt: 300, updatedAt: 100 },
+            { key: "b", id: "b", source: "pi", createdAt: 100, updatedAt: 900 },
+        ] as SessionSummary[];
+        const newestCreated = sortSessions(rows, [{ field: "created", desc: true }]);
+        expect(newestCreated.map((row) => row.key)).toEqual(["a", "b"]);
+        const oldestCreated = sortSessions(rows, [{ field: "created", desc: false }]);
+        expect(oldestCreated.map((row) => row.key)).toEqual(["b", "a"]);
+    });
+});
+
 describe("sanitizeSortChain", () => {
     it("drops illegal fields", () => {
         const chain = sanitizeSortChain([

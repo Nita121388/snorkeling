@@ -422,6 +422,10 @@ export class AiSessionsViewModel implements ViewModel {
         const pathExcludes = globalStore.get(this.pathExcludesAtom);
         const excludeTags = globalStore.get(this.excludeTagsAtom);
         const attachMode = globalStore.get(this.attachModeAtom);
+        // 后端只用主排序键决定「limit 先留下哪些行」；完整多键链仍由前端排。
+        const primarySort = (globalStore.get(this.sortChainAtom) ?? [])[0];
+        const sortField = primarySort?.field ?? "time";
+        const sortDesc = primarySort?.desc ?? true;
         const { since, before } = dateRangeToSinceBefore(dateRange, Date.now());
         // 后台自动同步不把整个面板打进 loading（避免黑屏）；只有用户/首载 refresh 才置 loading。
         if (!background) {
@@ -442,6 +446,8 @@ export class AiSessionsViewModel implements ViewModel {
                 tagPresence,
                 excludeTags,
                 attachMode,
+                sortField,
+                sortDesc,
                 projects: pathSelections,
                 excludeProjects: pathExcludes,
                 includeProjectPaths: true,
@@ -459,7 +465,9 @@ export class AiSessionsViewModel implements ViewModel {
                     pathSelections,
                     pathExcludes,
                     excludeTags,
-                    attachMode
+                    attachMode,
+                    sortField,
+                    sortDesc
                 )
             ) {
                 return;
@@ -546,7 +554,9 @@ export class AiSessionsViewModel implements ViewModel {
                     pathSelections,
                     pathExcludes,
                     excludeTags,
-                    attachMode
+                    attachMode,
+                    sortField,
+                    sortDesc
                 )
             ) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -566,7 +576,9 @@ export class AiSessionsViewModel implements ViewModel {
                     pathSelections,
                     pathExcludes,
                     excludeTags,
-                    attachMode
+                    attachMode,
+                    sortField,
+                    sortDesc
                 )
             ) {
                 globalStore.set(this.loadingAtom, false);
@@ -586,7 +598,9 @@ export class AiSessionsViewModel implements ViewModel {
         pathSelections: string[],
         pathExcludes: string[],
         excludeTags: string[],
-        attachMode: AttachMode
+        attachMode: AttachMode,
+        sortField: string,
+        sortDesc: boolean
     ): boolean {
         const currentDateRange = globalStore.get(this.dateRangeAtom);
         return (
@@ -603,6 +617,8 @@ export class AiSessionsViewModel implements ViewModel {
             pathSelectionsEqual(globalStore.get(this.pathExcludesAtom), pathExcludes) &&
             tagsEqual(globalStore.get(this.excludeTagsAtom), excludeTags) &&
             globalStore.get(this.attachModeAtom) === attachMode &&
+            (globalStore.get(this.sortChainAtom)[0]?.field ?? "time") === sortField &&
+            (globalStore.get(this.sortChainAtom)[0]?.desc ?? true) === sortDesc &&
             currentDateRange.preset === dateRange.preset &&
             (currentDateRange.from ?? 0) === (dateRange.from ?? 0) &&
             (currentDateRange.to ?? 0) === (dateRange.to ?? 0)
@@ -1734,10 +1750,28 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         return () => window.clearInterval(handle);
     }, [autoRefreshEnabled, autoRefreshIntervalMs, blockVisible, model]);
 
+    // 主排序键变化要重新拉取：后端按主键决定 limit 先留下哪些行
+    // （例如 Created·Oldest 必须拿全索引里最早的一批，而不是当前页内重排）。
+    // 只加次排序键不需要重拉，纯前端重排即可。
+    const primarySortField = sortChain[0]?.field ?? "time";
+    const primarySortDesc = sortChain[0]?.desc ?? true;
     useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
         return () => window.clearTimeout(handle);
-    }, [model, query, source, tagFilters, tagPresence, markedFilter, dateRange, pathFilter, sortDescending, attachMode]);
+    }, [
+        model,
+        query,
+        source,
+        tagFilters,
+        tagPresence,
+        markedFilter,
+        dateRange,
+        pathFilter,
+        sortDescending,
+        attachMode,
+        primarySortField,
+        primarySortDesc,
+    ]);
 
     useEffect(() => {
         writeSortChain(sortChain);

@@ -25,6 +25,16 @@
 - [x] `pkg/aisessions/context_attach_test.go`：id / id 片段 / 前缀 / 整条 key 的正反例
 - [x] 搜索框 placeholder 提到 session ID；行 tooltip 显示 `Session ID:`
 
+## 补充：更新 / 创建时间排序
+
+- [x] `types.ts`：`SessionSortField` 增加 `created`，`SortFields` 白名单同步
+- [x] `utils.ts`：`sessionCreatedTime` + `compareByField` 支持 `created`
+- [x] `sort-menu.tsx`：Updated / Created 两个时间字段与方向文案
+- [x] `aisessions.tsx`：主排序键随 List 请求下发，主键变化触发重拉
+- [x] `pkg/aisessions/types.go` + service：`SortField` / `SortDesc` 透传
+- [x] `pkg/aisessions/providers.go`：`sortSummariesBy`（limit 之前排序，created 缺失回落 updated）
+- [x] 测试：前端 comparator + sanitize；后端 limit=1 的 created 升/降序
+
 ## 验证
 
 ```bash

@@ -51,6 +51,10 @@ type AISessionsListRequest struct {
 	// "" / "off" (default), "parent", "children", "both".
 	AttachMode    string `json:"attachMode,omitempty"`
 	AttachMaxRows int    `json:"attachMaxRows,omitempty"`
+	// SortField/SortDesc pick which rows survive Limit: "" / "time" (updatedAt)
+	// or "created" (createdAt). The full multi-key chain still sorts in the UI.
+	SortField string `json:"sortField,omitempty"`
+	SortDesc  bool   `json:"sortDesc,omitempty"`
 }
 
 type AISessionsListResponse struct {
@@ -557,6 +561,8 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		Refresh:         request.Refresh,
 		AttachMode:      request.AttachMode,
 		AttachMaxRows:   request.AttachMaxRows,
+		SortField:       request.SortField,
+		SortDesc:        request.SortDesc,
 	}, request.Query)
 	if err != nil {
 		return nil, err

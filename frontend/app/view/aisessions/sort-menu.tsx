@@ -22,13 +22,16 @@ import {
 } from "./types";
 
 const FieldLabels: Record<SessionSortField, { name: string; icon: string }> = {
-    time: { name: "Time", icon: "fa-clock" },
+    // `time` 沿用旧字段名（localStorage 兼容），显示上明确写成 Updated。
+    time: { name: "Updated", icon: "fa-clock" },
+    created: { name: "Created", icon: "fa-calendar-plus" },
     messages: { name: "Messages", icon: "fa-comment-dots" },
     subagents: { name: "Sub-sessions", icon: "fa-sitemap" },
 };
 
 const DirectionLabels: Record<SessionSortField, { desc: string; asc: string }> = {
-    time: { desc: "Newest first", asc: "Oldest first" },
+    time: { desc: "Newest updated", asc: "Oldest updated" },
+    created: { desc: "Newest created", asc: "Oldest created" },
     messages: { desc: "Most messages", asc: "Fewest messages" },
     subagents: { desc: "Most sub-sessions", asc: "Fewest sub-sessions" },
 };

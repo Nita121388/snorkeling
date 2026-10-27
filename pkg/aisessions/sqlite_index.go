@@ -1546,7 +1546,7 @@ func (idx *SQLiteIndex) ListWithDistributionAndQuery(ctx context.Context, opts L
 		}
 		filtered = matches
 	}
-	sortSummaries(filtered)
+	sortSummariesBy(filtered, opts.SortField, opts.SortDesc)
 	limited := limitSummaries(filtered, opts.Limit)
 	out, truncated := attachContextExcluding(ctx, limited, summaries, opts, nil)
 	return out, summarizeProjectPathsFromMap(dist), truncated, nil
@@ -1568,6 +1568,7 @@ func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]Sessi
 		return nil, err
 	}
 	if query == "" {
+		sortSummariesBy(summaries, opts.SortField, opts.SortDesc)
 		return attachContext(ctx, limitSummaries(summaries, opts.Limit), summaries, ListOptions{
 			ExcludeProjects: opts.ExcludeProjects,
 			ExcludeTags:     opts.ExcludeTags,
@@ -1596,7 +1597,7 @@ func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]Sessi
 			}
 		}
 	}
-	sortSummaries(filtered)
+	sortSummariesBy(filtered, opts.SortField, opts.SortDesc)
 	return attachContext(ctx, limitSummaries(filtered, opts.Limit), summaries, ListOptions{
 		ExcludeProjects: opts.ExcludeProjects,
 		ExcludeTags:     opts.ExcludeTags,

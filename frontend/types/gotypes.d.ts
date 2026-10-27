@@ -291,6 +291,8 @@ declare global {
         includeProjectPaths?: boolean;
         attachMode?: string;
         attachMaxRows?: number;
+        sortField?: string;
+        sortDesc?: boolean;
     };
 
     // aisessionsservice.AISessionsListResponse

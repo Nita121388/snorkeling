@@ -255,6 +255,13 @@ type ListOptions struct {
 	AttachMode string
 	// AttachMaxRows caps how many context rows are added (0 = default 500).
 	AttachMaxRows int
+	// SortField selects the primary key used BEFORE Limit is applied. "" / "time"
+	// (default) = updatedAt desc; "created" = createdAt with SortDesc deciding the
+	// direction. Message/subagent counts are frontend-only sort keys: the backend
+	// has no cheap source for them, so those fall back to the default ordering.
+	SortField string
+	// SortDesc is the direction for SortField (false = ascending).
+	SortDesc bool
 }
 
 type SearchOptions struct {
@@ -270,6 +277,8 @@ type SearchOptions struct {
 	Refresh         bool
 	AttachMode      string
 	AttachMaxRows   int
+	SortField       string
+	SortDesc        bool
 }
 
 func StableKey(source string, id string, filePath string) string {

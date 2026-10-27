@@ -174,6 +174,8 @@ func (m *Manager) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		TagPresence:     opts.TagPresence,
 		AttachMode:      opts.AttachMode,
 		AttachMaxRows:   opts.AttachMaxRows,
+		SortField:       opts.SortField,
+		SortDesc:        opts.SortDesc,
 	}, opts.Query)
 }
 
@@ -295,7 +297,7 @@ func (m *Manager) scanListNow(ctx context.Context, opts ListOptions, query strin
 		}
 		filtered = append(filtered, summary)
 	}
-	sortSummaries(filtered)
+	sortSummariesBy(filtered, opts.SortField, opts.SortDesc)
 	limited := limitSummaries(filtered, opts.Limit)
 	// 全量扫描路径的 summaries 还没有应用 meta（循环里是值拷贝），而排除标签
 	// 判定需要 tags，所以补带时给被带出的行单独补一次。

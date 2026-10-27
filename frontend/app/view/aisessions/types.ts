@@ -96,7 +96,13 @@ export const attachModeStorageKey = "aisessions.attachMode";
  * 多键排序：链项前者优先级高，全相等时用隐式 `updatedAt` 降序 + `key` 升序兜底
  * （见 utils.ts → makeSessionComparator）。
  */
-export type SessionSortField = "time" | "messages" | "subagents";
+/**
+ * 排序字段：
+ * - `time`    按更新时间（updatedAt 降/升）
+ * - `created` 按创建时间（createdAt）；缺失时回落到 updatedAt
+ * - `messages` / `subagents` 按消息数 / 子会话数
+ */
+export type SessionSortField = "time" | "created" | "messages" | "subagents";
 
 export type SessionSortKey = {
     field: SessionSortField;
@@ -112,7 +118,7 @@ export const MaxSortChainLength = 3;
 /** 默认排序：等价改造前的「新→旧」。 */
 export const DefaultSortChain: SessionSortChain = [{ field: "time", desc: true }];
 
-const SortFields: ReadonlySet<string> = new Set(["time", "messages", "subagents"]);
+const SortFields: ReadonlySet<string> = new Set(["time", "created", "messages", "subagents"]);
 
 function isSortField(value: unknown): value is SessionSortField {
     return typeof value === "string" && SortFields.has(value);

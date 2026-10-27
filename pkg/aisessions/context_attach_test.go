@@ -317,3 +317,50 @@ func TestSummaryMatchesQueryBySessionIDAndKey(t *testing.T) {
 		t.Fatal("unrelated query must not match")
 	}
 }
+
+func TestSortSummariesByCreatedBeforeLimit(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := OpenSQLiteIndex(filepath.Join(dir, "index-v2.sqlite"), filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	// old-created but recently updated vs new-created but stale-updated.
+	summaries := []SessionSummary{
+		{Key: "old", ID: "old", Source: "pi", ProjectPath: "/work/x", CreatedAt: 100, UpdatedAt: 900, FilePath: filepath.Join(dir, "old.jsonl")},
+		{Key: "new", ID: "new", Source: "pi", ProjectPath: "/work/x", CreatedAt: 900, UpdatedAt: 100, FilePath: filepath.Join(dir, "new.jsonl")},
+	}
+	if _, errs := idx.SaveScannedSummaries(context.Background(), summaries, true); len(errs) != 0 {
+		t.Fatalf("save errors: %v", errs)
+	}
+
+	// Default ordering (updatedAt desc) + limit 1 keeps "old".
+	out, _, _, err := idx.ListWithDistributionAndQuery(context.Background(), ListOptions{Limit: 1}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Key != "old" {
+		t.Fatalf("default sort should keep the recently updated row, got %v", summaryOfKey(out))
+	}
+
+	// Created desc must pick the newest-created row even though it was updated long ago.
+	out, _, _, err = idx.ListWithDistributionAndQuery(context.Background(),
+		ListOptions{Limit: 1, SortField: SortFieldCreated, SortDesc: true}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Key != "new" {
+		t.Fatalf("created desc should keep the newest-created row, got %v", summaryOfKey(out))
+	}
+
+	// Created asc picks the oldest.
+	out, _, _, err = idx.ListWithDistributionAndQuery(context.Background(),
+		ListOptions{Limit: 1, SortField: SortFieldCreated, SortDesc: false}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Key != "old" {
+		t.Fatalf("created asc should keep the oldest-created row, got %v", summaryOfKey(out))
+	}
+}
