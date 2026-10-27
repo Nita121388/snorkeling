@@ -15,13 +15,84 @@
  */
 
 import { anchorHash, messageAnchorKey, type AnnotationAnchorRequest } from "./annotation-model";
-import type { SessionDetailTimelineItem } from "./utils";
+import type { SessionDetailRow, SessionDetailTimelineItem } from "./utils";
 
 /** 超过这个行数才启用虚拟化；等于或小于时走原有全量渲染。 */
 export const VirtualizeThreshold = 60;
 
 /** 虚拟行的初始估算高度（px）。真实高度由 measureElement 测得后替换。 */
 export const EstimatedRowHeight = 96;
+
+/**
+ * 按行类型估算虚拟行高度（纯函数，便于单测）。
+ *
+ * 为什么要按行类型估，而不是共用 96：真实行高分布是 user 气泡 70~110px、
+ * tool 行 ~44px、assistant markdown 段落 200~800px。共用 96 会让 assistant 段
+ * 误差达 4 倍，快速滚动时未测行先按 96 排、下一帧才被 measureElement 纠正，
+ * 补偿没在一帧内完成的瞬间相邻行内容会叠在一起（重影）。按类型估把误差压到 1.4x 内。
+ */
+export function estimateTimelineRowHeight(item: SessionDetailRow): number {
+    if (item.kind === "toolGroup") return ToolGroupRowHeight;
+    if (item.kind === "tool") return ToolRowHeight;
+    const text = item.message.text ?? "";
+    const lines = Math.ceil(text.length / CharsPerLine) || 1;
+    if (item.message.role === "user") {
+        return Math.min(UserRowMax, UserRowBase + lines * UserRowLine);
+    }
+    return Math.min(AssistantRowMax, AssistantRowBase + lines * AssistantRowLine);
+}
+
+// 估算用的常量：以 12px / 每行约 90 个西文字符的排版密度粗估换行数。
+const CharsPerLine = 90;
+const ToolRowHeight = 44;
+const UserRowBase = 56;
+const UserRowLine = 20;
+const UserRowMax = 260;
+const AssistantRowBase = 40;
+const AssistantRowLine = 19;
+const AssistantRowMax = 900;
+const ToolGroupRowHeight = 32;
+
+/**
+ * 把时间线里连续的工具行折叠成一个分组行，其余行原样保留。
+ *
+ * 为什么：历史详情之前是「一行一个工具卡」，模型跑一串 bash / read 时会把
+ * 视口刷满，滚动成本也高。连续多条工具（>=2）合成一行摘要（如「执行命令 ×3」），
+ * 单条工具保持原样（摘要没有增量价值）。
+ *
+ * 约束：分组只影响渲染行数与顺序，不改变消息行；组内 anchorSeq 取首条工具锚定的
+ * message seq，保证跳转 / 大纲 / 子代理归位仍能定位。
+ */
+export function groupConsecutiveTools(items: SessionDetailTimelineItem[]): SessionDetailRow[] {
+    const rows: SessionDetailRow[] = [];
+    let buffer: Extract<SessionDetailTimelineItem, { kind: "tool" }>[] = [];
+    const flush = () => {
+        if (buffer.length === 0) return;
+        if (buffer.length === 1) {
+            rows.push(buffer[0]);
+        } else {
+            const running = buffer.some((item) => item.liveStatus === "running");
+            const failed = buffer.some((item) => item.liveStatus === "failed");
+            rows.push({
+                kind: "toolGroup",
+                tools: buffer.map((item) => item.toolCall),
+                anchorSeq: buffer[0].anchorSeq,
+                liveStatus: running ? "running" : failed ? "failed" : undefined,
+            });
+        }
+        buffer = [];
+    };
+    for (const item of items) {
+        if (item.kind === "tool") {
+            buffer.push(item);
+        } else {
+            flush();
+            rows.push(item);
+        }
+    }
+    flush();
+    return rows;
+}
 
 /** 虚拟行可视区上下各多渲染几行，避免快速滚动出现空白。 */
 export const VirtualOverscan = 6;
@@ -34,7 +105,7 @@ export function shouldVirtualize(itemCount: number): boolean {
  * 消息 seq → 时间线行号。只映射 kind === "message" 的行（搜索、批注、
  * 大纲跳转都以消息 seq 为目标）。同 seq 只保留第一次出现的行号。
  */
-export function buildSeqToIndex(items: SessionDetailTimelineItem[]): Map<number, number> {
+export function buildSeqToIndex(items: SessionDetailRow[]): Map<number, number> {
     const map = new Map<number, number>();
     items.forEach((item, index) => {
         if (item.kind === "message" && !map.has(item.message.seq)) {
@@ -52,12 +123,19 @@ export function buildSeqToIndex(items: SessionDetailTimelineItem[]): Map<number,
  * 这里用当前的 renderItems 反推 anchorKey 对应的真实 seq，作为 seq 失效时的兜底。
  * 工具行本身没有独立 seq：它挂在 anchorSeq 指向的消息行上。
  */
-export function buildAnchorKeyToSeq(items: SessionDetailTimelineItem[]): Map<string, number> {
+export function buildAnchorKeyToSeq(items: SessionDetailRow[]): Map<string, number> {
     const map = new Map<string, number>();
     for (const item of items) {
         if (item.kind === "message") {
             const key = messageAnchorKey(item.message);
             if (!map.has(key)) map.set(key, item.message.seq);
+            continue;
+        }
+        if (item.kind === "toolGroup") {
+            for (const tool of item.tools) {
+                const key = tool.itemKey?.trim();
+                if (key && !map.has(key)) map.set(key, item.anchorSeq);
+            }
             continue;
         }
         const key = item.toolCall.itemKey?.trim();
@@ -120,9 +198,12 @@ export function isNearBottom(totalSize: number, scrollTop: number, clientHeight:
  * 渲染 key：消息行用 seq（稳定、可跳转），工具行用 anchorSeq+seq+行号
  * （同一锚点下可能挂多个工具行）。
  */
-export function timelineItemKey(item: SessionDetailTimelineItem, index: number): string {
+export function timelineItemKey(item: SessionDetailRow, index: number): string {
     if (item.kind === "message") {
         return `message-${item.message.seq}`;
+    }
+    if (item.kind === "toolGroup") {
+        return `tool-group-${item.anchorSeq}-${item.tools.length}-${index}`;
     }
     return `tool-${item.anchorSeq}-${item.toolCall.seq}-${index}`;
 }

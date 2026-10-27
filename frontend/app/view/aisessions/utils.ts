@@ -84,6 +84,22 @@ export type SessionDetailTimelineItem =
           liveStatus?: "running" | "completed" | "failed";
       };
 
+/**
+ * 连续工具行折叠后的分组行：一句话摘要，展开后逐条 ToolCallCard。
+ * 只用于渲染（分组后行数更少、更不易被“一堆脚本刷屏”）；锚点/批注仍走单条工具行。
+ */
+export type SessionDetailToolGroup = {
+    kind: "toolGroup";
+    tools: ToolCall[];
+    /** 组内首条工具锚定的消息 seq（跳转/大纲/子代理归位都用它）。 */
+    anchorSeq: number;
+    /** 组内任一工具在流式中运行 → 摘要行显示扫光。 */
+    liveStatus?: "running" | "completed" | "failed";
+};
+
+/** 详情时间线的渲染行：单条消息 / 单条工具 / 连续工具折叠组。 */
+export type SessionDetailRow = SessionDetailTimelineItem | SessionDetailToolGroup;
+
 export function buildSessionDetailTimeline(
     allMessages: Message[],
     visibleMessages: Message[],

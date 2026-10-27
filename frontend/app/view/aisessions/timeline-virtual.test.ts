@@ -9,13 +9,15 @@ import {
     buildSeqToIndex,
     buildTimelineAnnotationAnchors,
     createRafCoalescer,
+    estimateTimelineRowHeight,
+    groupConsecutiveTools,
     isNearBottom,
     outlineProbeOffset,
     scrollTargetForSeq,
     shouldVirtualize,
     timelineItemKey,
 } from "./timeline-virtual";
-import type { SessionDetailTimelineItem } from "./utils";
+import type { SessionDetailRow, SessionDetailTimelineItem } from "./utils";
 
 function messageItem(seq: number): SessionDetailTimelineItem {
     return { kind: "message", message: { seq, role: "user", text: `m${seq}`, charCount: 1 } };
@@ -145,6 +147,54 @@ describe("timelineItemKey", () => {
     });
 });
 
+describe("estimateTimelineRowHeight", () => {
+    it("gives tool rows a fixed compact height", () => {
+        expect(estimateTimelineRowHeight(toolItem(1))).toBe(44);
+    });
+
+    it("estimates user bubbles above their base height for long text", () => {
+        const shortUser = estimateTimelineRowHeight(messageItem(1));
+        const longUser = estimateTimelineRowHeight({
+            kind: "message",
+            message: { seq: 2, role: "user", text: "x".repeat(900), charCount: 900 },
+        });
+        expect(longUser).toBeGreaterThan(shortUser);
+    });
+
+    it("treats empty text as a single line", () => {
+        const emptyUser = estimateTimelineRowHeight({
+            kind: "message",
+            message: { seq: 1, role: "user", text: "", charCount: 0 },
+        });
+        const emptyAssistant = estimateTimelineRowHeight({
+            kind: "message",
+            message: { seq: 1, role: "assistant", text: "", charCount: 0 },
+        });
+        expect(emptyUser).toBe(76);
+        expect(emptyAssistant).toBe(59);
+    });
+
+    it("caps very long assistant text so the estimate stays sane", () => {
+        const huge = estimateTimelineRowHeight({
+            kind: "message",
+            message: { seq: 1, role: "assistant", text: "x".repeat(50000), charCount: 50000 },
+        });
+        expect(huge).toBe(900);
+    });
+
+    it("scales assistant height up with text length", () => {
+        const short = estimateTimelineRowHeight({
+            kind: "message",
+            message: { seq: 1, role: "assistant", text: "x".repeat(90), charCount: 90 },
+        });
+        const longText = estimateTimelineRowHeight({
+            kind: "message",
+            message: { seq: 1, role: "assistant", text: "x".repeat(450), charCount: 450 },
+        });
+        expect(longText).toBeGreaterThan(short);
+    });
+});
+
 describe("outlineProbeOffset", () => {
     it("places the probe a quarter down the viewport", () => {
         expect(outlineProbeOffset(800)).toBe(200);
@@ -259,5 +309,81 @@ describe("buildTimelineAnnotationAnchors", () => {
         expect(anchors).toHaveLength(1);
         expect(anchors[0].anchorKey).toBe("seq:411");
         expect(anchors[0].seq).toBe(411);
+    });
+});
+
+describe("groupConsecutiveTools", () => {
+    function toolWith(seq: number, anchorSeq: number, name = "bash", itemKey?: string): SessionDetailTimelineItem {
+        return { kind: "tool", toolCall: { seq, name, itemKey }, anchorSeq };
+    }
+    function msg(seq: number, role = "assistant"): SessionDetailTimelineItem {
+        return { kind: "message", message: { seq, role, text: "hi", charCount: 2 } };
+    }
+
+    it("leaves a lone tool row untouched", () => {
+        const rows = groupConsecutiveTools([toolWith(1, 10)]);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].kind).toBe("tool");
+    });
+
+    it("folds consecutive tools into one group row", () => {
+        const rows = groupConsecutiveTools([toolWith(1, 10), toolWith(2, 10), toolWith(3, 10)]);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].kind).toBe("toolGroup");
+        if (rows[0].kind === "toolGroup") {
+            expect(rows[0].tools).toHaveLength(3);
+            expect(rows[0].anchorSeq).toBe(10);
+        }
+    });
+
+    it("does not merge tools across a message boundary", () => {
+        const rows = groupConsecutiveTools([toolWith(1, 10), toolWith(2, 10), msg(20), toolWith(3, 30)]);
+        expect(rows.map((row) => row.kind)).toEqual(["toolGroup", "message", "tool"]);
+    });
+
+    it("treats a group as running when any tool is running", () => {
+        const running: SessionDetailTimelineItem = {
+            kind: "tool",
+            toolCall: { seq: 2, name: "bash" },
+            anchorSeq: 10,
+            liveStatus: "running",
+        };
+        const rows = groupConsecutiveTools([
+            { kind: "tool", toolCall: { seq: 1, name: "bash" }, anchorSeq: 10 },
+            running,
+        ]);
+        expect(rows[0].kind).toBe("toolGroup");
+        if (rows[0].kind === "toolGroup") {
+            expect(rows[0].liveStatus).toBe("running");
+        }
+    });
+
+    it("keeps groups in order relative to messages", () => {
+        const rows = groupConsecutiveTools([msg(1, "user"), toolWith(2, 1), toolWith(3, 1), msg(4)]);
+        expect(rows.map((row) => row.kind)).toEqual(["message", "toolGroup", "message"]);
+    });
+});
+
+describe("toolGroup helpers", () => {
+    function groupRow(tools: Array<{ seq: number; itemKey?: string }>): SessionDetailRow {
+        return {
+            kind: "toolGroup",
+            tools: tools.map((tool) => ({ seq: tool.seq, name: "bash", itemKey: tool.itemKey })),
+            anchorSeq: 42,
+        };
+    }
+
+    it("estimates a compact collapsed height for groups", () => {
+        expect(estimateTimelineRowHeight(groupRow([{ seq: 1 }, { seq: 2 }]))).toBe(32);
+    });
+
+    it("keys groups by anchor and tool count so they stay stable", () => {
+        expect(timelineItemKey(groupRow([{ seq: 1 }, { seq: 2 }]), 5)).toBe("tool-group-42-2-5");
+    });
+
+    it("maps every tool itemKey in a group to the shared anchor seq", () => {
+        const map = buildAnchorKeyToSeq([groupRow([{ seq: 1, itemKey: "k1" }, { seq: 2, itemKey: "k2" }])]);
+        expect(map.get("k1")).toBe(42);
+        expect(map.get("k2")).toBe(42);
     });
 });

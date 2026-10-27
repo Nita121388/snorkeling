@@ -302,6 +302,12 @@ svg [aria-label="tip"] g path {
 .ly-enter {
     animation: ly-fade-up 200ms ease-out;
 }
+/* 虚拟行容器（data-no-anim=1）：禁播挂载淡入。
+   虚拟化后滚出视口的行被卸载、滚回来重新挂载，每次进入视口都重播淡入就变成
+   快速滚动时的「突然插入一段文字 / 重影」；只有小会话（非虚拟）保留落盘过渡。 */
+[data-no-anim="1"] .ly-enter {
+    animation: none;
+}
 @media (prefers-reduced-motion: reduce) {
     .ly-enter { animation: none; }
 }

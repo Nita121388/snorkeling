@@ -17,6 +17,7 @@ const KIND: Record<string, string> = {
     web_fetch: "抓取网页",
     web_search: "搜索网络",
     task: "派发子任务",
+    subagent: "派发子任务",
     preview: "生成预览",
     symbol: "查找符号",
     skill: "调用技能",
@@ -79,4 +80,20 @@ export function describeRun(calls: ToolCallInfo[]): string {
         }
     }
     return parts.join("、");
+}
+
+/**
+ * 连续工具折叠成一行时的紧凑摘要：同类型给「执行命令 ×3」，混合给「工具 ×5」。
+ *
+ * 与 describeRun 的区别：那个是完整自然语言（带文件名/命令），适合展开前的
+ * 信息展示；折叠组只用「类别 × 数量」，一行高度稳定，避免长文件名把摘要撑成两行。
+ */
+export function describeToolGroupCompact(toolNames: string[]): string {
+    if (toolNames.length === 0) return "";
+    const kinds = new Set(toolNames.map((name) => kindOf(name)));
+    const count = toolNames.length;
+    if (kinds.size === 1) {
+        return `${[...kinds][0]} ×${count}`;
+    }
+    return `工具 ×${count}`;
 }

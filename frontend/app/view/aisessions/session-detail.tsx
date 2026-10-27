@@ -52,19 +52,22 @@ import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
 import { SubagentCard } from "./subagent-card";
 import {
-    EstimatedRowHeight,
     VirtualOverscan,
     activeSeqFromVirtualItems,
     buildAnchorKeyToSeq,
     buildSeqToIndex,
     buildTimelineAnnotationAnchors,
-    outlineProbeOffset as computeOutlineProbeOffset,
     createRafCoalescer,
+    estimateTimelineRowHeight,
+    groupConsecutiveTools,
     isNearBottom,
+    outlineProbeOffset as computeOutlineProbeOffset,
     shouldVirtualize,
     timelineItemKey,
 } from "./timeline-virtual";
 import { TitleSourceBadge } from "./title-source-badge";
+import { describeToolGroupCompact } from "./tool-describe";
+import { ToolGroup } from "./tool-group";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
 import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
 
@@ -86,7 +89,7 @@ import {
     formatSessionContext,
     makeSessionContextResolver,
 } from "./copy-context";
-import type { SessionDetailTimelineItem } from "./utils";
+import type { SessionDetailRow } from "./utils";
 import {
     buildSessionDetailTimeline,
     formatToolCallPreview,
@@ -1196,11 +1199,14 @@ export function SessionDetailPane({
                 )
         );
     }, [timelineItems, liveTimelineItems, subagentMatchesByAnchor, subagentMatchesByKey]);
+    // 连续工具行折叠成「工具 ×N」摘要行：只改变渲染行数与顺序，锚点仍用上面
+    // raw renderItems（单条工具）计算，所以批注 / 子代理归位不受影响。
+    const rows = useMemo(() => groupConsecutiveTools(renderItems), [renderItems]);
     // 大会话走虚拟化：只渲染视口附近的几行，避免 5000+ 个 DOM 节点把滚动拖死。
     // 小会话保持原有全量渲染（行为与改动前一致）。
-    const virtualEnabled = shouldVirtualize(renderItems.length);
-    const seqToIndex = useMemo(() => buildSeqToIndex(renderItems), [renderItems]);
-    const anchorKeyToSeq = useMemo(() => buildAnchorKeyToSeq(renderItems), [renderItems]);
+    const virtualEnabled = shouldVirtualize(rows.length);
+    const seqToIndex = useMemo(() => buildSeqToIndex(rows), [rows]);
+    const anchorKeyToSeq = useMemo(() => buildAnchorKeyToSeq(rows), [rows]);
     // 会话详情里的 Message 来自 SQLite 缓存，ItemKey 为空（表里没有 item_key 列），
     // 所以上面那套基于 messages 的锚点其实是空的。renderItems 里的工具行带
     // anchorSeq，是唯一能把「工具锚点 → 真实 seq」对上号的地方：等它可用后补发一次
@@ -1217,9 +1223,12 @@ export function SessionDetailPane({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [summaryKey, connection, timelineAnnotationAnchorSignature]);
     const virtualizer = useVirtualizer({
-        count: renderItems.length,
+        count: rows.length,
         getScrollElement: () => detailScrollRef.current,
-        estimateSize: () => EstimatedRowHeight,
+        // 按行类型估算（user 气泡 / tool 行 / assistant 段落 / 折叠组），而不是全行共用 96px：
+        // 96px 对 assistant 段落误差高达 4 倍，快速滚动时未测行先按估计高度排、
+        // measureElement 下一帧才纠正，那一帧里相邻行内容会叠在一起（重影）。
+        estimateSize: (index) => estimateTimelineRowHeight(rows[index]),
         overscan: VirtualOverscan,
         enabled: virtualEnabled,
         // offsetHeight 等价于库的默认实现，但不走 transform/滚动相关的 rect 计算路径。
@@ -1236,8 +1245,8 @@ export function SessionDetailPane({
     };
     virtualTotalSizeRef.current = virtualEnabled ? virtualizer.getTotalSize() : 0;
     const timelineItemSeqs = useMemo(
-        () => renderItems.map((item) => (item.kind === "message" ? item.message.seq : null)),
-        [renderItems]
+        () => rows.map((item) => (item.kind === "message" ? item.message.seq : null)),
+        [rows]
     );
     // 大纲轨 active 刻度：虚拟化后改用可见项推导，不再遍历 DOM 节点。
     const [outlineProbeOffset, setOutlineProbeOffset] = useState(0);
@@ -1467,7 +1476,7 @@ export function SessionDetailPane({
     }, [summary?.id, summary?.source, summary?.title, summary?.projectPath, toolCalls]);
     // 渲染单行的共享实现：全量分支与虚拟分支必须长得完全一样，避免两条路径漂移。
     const renderTimelineItem = useCallback(
-        (item: SessionDetailTimelineItem, itemIdx: number, items: SessionDetailTimelineItem[]) => {
+        (item: SessionDetailRow, itemIdx: number, items: SessionDetailRow[]) => {
             const prevItem = itemIdx > 0 ? items[itemIdx - 1] : null;
             const isGroupStart =
                 item.kind !== "message" ||
@@ -1510,6 +1519,27 @@ export function SessionDetailPane({
                               ))
                             : null}
                     </MessageCard>
+                );
+            }
+            if (item.kind === "toolGroup") {
+                const running = item.liveStatus === "running";
+                return (
+                    <ToolGroup
+                        toolNames={item.tools.map((tool) => tool.name)}
+                        summary={describeToolGroupCompact(item.tools.map((tool) => tool.name))}
+                        running={running}
+                    >
+                        {item.tools.map((tool) => (
+                            <div key={`group-tool-${tool.seq}`} {...(toolContextAttrsBySeq.get(tool.seq) ?? {})}>
+                                <ToolCallCard
+                                    toolCall={tool}
+                                    liveStatus={item.liveStatus}
+                                    expanded={Boolean(expandedToolCalls[tool.seq])}
+                                    onToggle={() => toggleToolCallExpanded(tool.seq)}
+                                />
+                            </div>
+                        ))}
+                    </ToolGroup>
                 );
             }
             const subagentMatch = subagentMatchFor(item);
@@ -1836,6 +1866,9 @@ export function SessionDetailPane({
                             <div
                                 ref={detailScrollRef}
                                 className="h-full min-h-0 overflow-auto p-3 pb-10"
+                                // 关掉浏览器自带的 scroll anchoring：行高被重测时它会再调一次
+                                // scrollTop，和 virtualizer 的 scrollAdjustments 叠加 → 抖动/撕裂。
+                                style={{ overflowAnchor: "none" }}
                                 onScroll={handleDetailScroll}
                                 onPointerDown={handleCopyRangePointerDown}
                                 onPointerMove={handleCopyRangePointerMove}
@@ -1868,30 +1901,35 @@ export function SessionDetailPane({
                                                 data-testid="aisessions-virtual-timeline"
                                             >
                                                 {virtualItems.map((virtualItem) => {
-                                                    const item = renderItems[virtualItem.index];
+                                                    const item = rows[virtualItem.index];
                                                     if (item == null) return null;
                                                     return (
                                                         <div
                                                             key={virtualItem.key}
                                                             data-index={virtualItem.index}
+                                                            // 虚拟行重播 ly-enter 淡入就是“突然插入一段文字”的主因，
+                                                            // 这里关掉；小会话（非虚拟）的落盘过渡不受影响。
+                                                            data-no-anim="1"
                                                             ref={virtualizer.measureElement}
                                                             style={{
                                                                 position: "absolute",
                                                                 top: 0,
                                                                 left: 0,
                                                                 width: "100%",
-                                                                transform: `translateY(${virtualItem.start}px)`,
+                                                                // 取整到整数像素：tanstack 的 start 是分数值，
+                                                                // 分数位移 + 12px 小字会在 macOS/Electron 上渲染成亚像素叠影（重影）。
+                                                                transform: `translateY(${Math.round(virtualItem.start)}px)`,
                                                             }}
                                                         >
-                                                            {renderTimelineItem(item, virtualItem.index, renderItems)}
+                                                            {renderTimelineItem(item, virtualItem.index, rows)}
                                                         </div>
                                                     );
                                                 })}
                                             </div>
                                         ) : (
-                                            renderItems.map((item, itemIdx) => (
+                                            rows.map((item, itemIdx) => (
                                                 <Fragment key={timelineItemKey(item, itemIdx)}>
-                                                    {renderTimelineItem(item, itemIdx, renderItems)}
+                                                    {renderTimelineItem(item, itemIdx, rows)}
                                                 </Fragment>
                                             ))
                                         )}

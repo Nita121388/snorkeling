@@ -21,6 +21,8 @@ interface ToolGroupProps {
     removed?: number;
     /** 是否正在运行 */
     running?: boolean;
+    /** 覆盖默认摘要文案（如折叠组的「执行命令 ×3」）；不传时用 describeRun 自然语言。 */
+    summary?: string;
     children: ReactNode;
 }
 
@@ -30,6 +32,7 @@ export const ToolGroup = memo(function ToolGroup({
     added = 0,
     removed = 0,
     running = false,
+    summary: summaryOverride,
     children,
 }: ToolGroupProps) {
     const [open, setOpen] = useState(false);
@@ -51,7 +54,7 @@ export const ToolGroup = memo(function ToolGroup({
         toolName: name,
         subject: toolArgs?.[i] ? subjectOf(toolArgs[i]) : undefined,
     }));
-    const summary = describeRun(calls);
+    const summary = summaryOverride ?? describeRun(calls);
     const hasDiff = added + removed > 0;
 
     return (
