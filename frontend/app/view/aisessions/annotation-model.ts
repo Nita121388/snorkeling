@@ -21,8 +21,32 @@ export type AnnotationLike = {
     userEdited?: boolean;
     orphaned?: boolean;
     anchorPreview?: string;
+    /** 用户手改的「节点原文」副本；空/undefined 表示未覆盖，回落活节点文本。 */
+    nodeText?: string;
     updatedAt?: number;
 };
+
+/**
+ * 一条消息的批注锚点 key。
+ *
+ * 正常情况用 provider 给的 ItemKey；但会话详情里的消息是从 SQLite 缓存读出来的
+ * （`ai_session_messages` 没有 item_key 列），ItemKey 恒为空 —— 此时必须回落到
+ * 一个仍然稳定的标识，否则「手动添加批注」的入口整块消失。消息 seq 来自文件顺序，
+ * 对同一份会话文件是稳定的，用 `seq:<n>` 作合成锚点，前后端都能精确匹配。
+ */
+export function messageAnchorKey(message: { itemKey?: string; seq: number }): string {
+    const key = message.itemKey?.trim();
+    return key != null && key !== "" ? key : `seq:${message.seq}`;
+}
+
+/** 合成锚点 `seq:<n>` → n；不是合成锚点返回 null。 */
+export function seqFromSyntheticAnchorKey(anchorKey: string | undefined): number | null {
+    if (anchorKey == null) return null;
+    const match = /^seq:(\d+)$/.exec(anchorKey.trim());
+    if (match == null) return null;
+    const seq = Number.parseInt(match[1], 10);
+    return Number.isFinite(seq) ? seq : null;
+}
 
 export type AnnotationRailItem = {
     key: string;
@@ -189,24 +213,29 @@ export function buildAnnotationAnchors(
     toolCalls: Array<{ itemKey?: string; seq: number; name?: string; summary?: string }> = []
 ): AnnotationAnchorRequest[] {
     const anchors: AnnotationAnchorRequest[] = [];
+    // 同一 anchorKey 消息优先：provider 会给工具行额外产出「锚点消息」，
+    // 它的 seq 才是时间线真实行号；ToolCall.seq 只是单次加载内的顺序计数。
+    // 工具锚点只贡献 role/hash（与后端 BuildAnnotationAnchors 一致），
+    // 绝不单独产出第二条锚点，也不写 ToolCall.seq。
+    const toolByKey = new Map<string, { name?: string; summary?: string }>();
+    for (const toolCall of toolCalls) {
+        const anchorKey = toolCall.itemKey?.trim();
+        if (!anchorKey || toolByKey.has(anchorKey)) continue;
+        toolByKey.set(anchorKey, toolCall);
+    }
+    const seen = new Set<string>();
     for (const message of messages) {
         const anchorKey = message.itemKey?.trim();
-        if (!anchorKey) continue;
+        if (!anchorKey || seen.has(anchorKey)) continue;
+        seen.add(anchorKey);
+        const toolCall = toolByKey.get(anchorKey);
         anchors.push({
             anchorKey,
             seq: message.seq,
-            role: message.role,
-            hash: anchorHash(message.text ?? message.thinking ?? ""),
-        });
-    }
-    for (const toolCall of toolCalls) {
-        const anchorKey = toolCall.itemKey?.trim();
-        if (!anchorKey) continue;
-        anchors.push({
-            anchorKey,
-            seq: toolCall.seq,
-            role: "tool",
-            hash: anchorHash([toolCall.name, toolCall.summary].filter(Boolean).join("\n")),
+            role: toolCall ? "tool" : message.role,
+            hash: toolCall
+                ? anchorHash([toolCall.name, toolCall.summary].filter(Boolean).join("\n"))
+                : anchorHash(message.text ?? message.thinking ?? ""),
         });
     }
     return anchors;

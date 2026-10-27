@@ -30,6 +30,8 @@ const AnnotationBodyMaxChars = 20000
 func (idx *SQLiteIndex) ensureAnnotationColumns(ctx context.Context) error {
 	wanted := map[string]string{
 		"anchor_preview": "TEXT NOT NULL DEFAULT ''",
+		// node_text：用户手改的「节点原文」副本。空串 = 没覆盖，卡片回落到活节点文本。
+		"node_text": "TEXT NOT NULL DEFAULT ''",
 	}
 	var columns []struct {
 		Name string `db:"name"`
@@ -87,6 +89,17 @@ func clampAnnotationBody(body string) string {
 	return string(runes[:AnnotationBodyMaxChars])
 }
 
+// AnnotationNodeTextMaxChars 限制用户手改的节点原文副本长度。
+const AnnotationNodeTextMaxChars = 8000
+
+func clampAnnotationNodeText(text string) string {
+	runes := []rune(text)
+	if len(runes) <= AnnotationNodeTextMaxChars {
+		return text
+	}
+	return string(runes[:AnnotationNodeTextMaxChars])
+}
+
 func annotationTagsJSON(tags []string) string {
 	normalized := NormalizeSessionTags(tags)
 	if normalized == nil {
@@ -125,6 +138,7 @@ func (row AnnotationRow) view(orphaned bool) AnnotationView {
 		UserEdited:    row.UserEdited,
 		AIModel:       row.AIModel,
 		AnchorPreview: row.AnchorPreview,
+		NodeText:      row.NodeText,
 		Orphaned:      orphaned,
 		CreatedAt:     row.CreatedAt,
 		UpdatedAt:     row.UpdatedAt,
@@ -132,7 +146,7 @@ func (row AnnotationRow) view(orphaned bool) AnnotationView {
 }
 
 const annotationColumns = `id, session_key, anchor_key, seq, kind, title, body, tags_json,
-	status, source, user_edited, ai_model, anchor_hash, anchor_preview, created_at, updated_at`
+	status, source, user_edited, ai_model, anchor_hash, anchor_preview, node_text, created_at, updated_at`
 
 func scanAnnotationRow(scanner interface {
 	Scan(dest ...any) error
@@ -141,7 +155,7 @@ func scanAnnotationRow(scanner interface {
 	err := scanner.Scan(
 		&row.ID, &row.SessionKey, &row.AnchorKey, &row.Seq, &row.Kind, &row.Title, &row.Body, &row.TagsJSON,
 		&row.Status, &row.Source, &row.UserEdited, &row.AIModel, &row.AnchorHash, &row.AnchorPreview,
-		&row.CreatedAt, &row.UpdatedAt,
+		&row.NodeText, &row.CreatedAt, &row.UpdatedAt,
 	)
 	return row, err
 }
@@ -235,11 +249,11 @@ func (idx *SQLiteIndex) UpsertAnnotation(ctx context.Context, row AnnotationRow)
 		row.UpdatedAt = now
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE ai_session_annotations SET anchor_key=?, seq=?, kind=?, title=?, body=?, tags_json=?,
-			 status=?, source=?, user_edited=?, ai_model=?, anchor_hash=?, anchor_preview=?, updated_at=?
+			 status=?, source=?, user_edited=?, ai_model=?, anchor_hash=?, anchor_preview=?, node_text=?, updated_at=?
 			 WHERE id=? AND session_key=?`,
 			row.AnchorKey, row.Seq, row.Kind, row.Title, row.Body, annotationTagsJSON(decodeAnnotationTags(row.TagsJSON)),
 			row.Status, row.Source, annotationBoolToInt(row.UserEdited), row.AIModel, row.AnchorHash, row.AnchorPreview,
-			now, row.ID, row.SessionKey); err != nil {
+			clampAnnotationNodeText(row.NodeText), now, row.ID, row.SessionKey); err != nil {
 			return AnnotationRow{}, err
 		}
 		if err := tx.Commit(); err != nil {
@@ -260,11 +274,12 @@ func (idx *SQLiteIndex) UpsertAnnotation(ctx context.Context, row AnnotationRow)
 	result, err := tx.ExecContext(ctx,
 		`INSERT INTO ai_session_annotations
 			(session_key, anchor_key, seq, kind, title, body, tags_json, status, source, user_edited,
-			 ai_model, anchor_hash, anchor_preview, created_at, updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			 ai_model, anchor_hash, anchor_preview, node_text, created_at, updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		row.SessionKey, row.AnchorKey, row.Seq, row.Kind, row.Title, row.Body,
 		annotationTagsJSON(decodeAnnotationTags(row.TagsJSON)), row.Status, row.Source,
-		annotationBoolToInt(row.UserEdited), row.AIModel, row.AnchorHash, row.AnchorPreview, now, now)
+		annotationBoolToInt(row.UserEdited), row.AIModel, row.AnchorHash, row.AnchorPreview,
+		clampAnnotationNodeText(row.NodeText), now, now)
 	if err != nil {
 		return AnnotationRow{}, err
 	}
@@ -366,11 +381,11 @@ func (idx *SQLiteIndex) ReplaceReplaceableAnnotations(ctx context.Context, sessi
 		result, err := tx.ExecContext(ctx,
 			`INSERT INTO ai_session_annotations
 				(session_key, anchor_key, seq, kind, title, body, tags_json, status, source, user_edited,
-				 ai_model, anchor_hash, anchor_preview, created_at, updated_at)
-			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				 ai_model, anchor_hash, anchor_preview, node_text, created_at, updated_at)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			row.SessionKey, row.AnchorKey, row.Seq, row.Kind, row.Title, row.Body,
 			annotationTagsJSON(decodeAnnotationTags(row.TagsJSON)), row.Status, row.Source,
-			0, row.AIModel, row.AnchorHash, row.AnchorPreview, now, now)
+			0, row.AIModel, row.AnchorHash, row.AnchorPreview, clampAnnotationNodeText(row.NodeText), now, now)
 		if err != nil {
 			return nil, err
 		}
@@ -698,16 +713,24 @@ func (m *Manager) ResolveAnnotationAnchors(ctx context.Context, sessionKey strin
 		for _, row := range rows {
 			want := AnchorPoint{AnchorKey: row.AnchorKey, Seq: row.Seq, Hash: row.AnchorHash}
 			resolved, ok := PickReanchor(points, want)
-			if ok && resolved.AnchorKey != row.AnchorKey {
-				if err := idx.ReanchorAnnotation(ctx, row.ID, AnnotationAnchor{
-					AnchorKey: resolved.AnchorKey,
-					Seq:       resolved.Seq,
-					Role:      resolved.Role,
-					Hash:      resolved.Hash,
-				}); err == nil {
-					row.AnchorKey = resolved.AnchorKey
-					row.Seq = resolved.Seq
-					row.AnchorHash = resolved.Hash
+			if ok {
+				// 两个都要修：换了锚点（key 变）和「key 没变但位置/指纹过期」。
+				// 后者是历史遗留：AI 生成的批注只带 anchorKey 落库，seq 恒为 0，
+				// 不补写的话时间线圆点点了永远不跳转。
+				stalePos := resolved.Seq != row.Seq || (resolved.Hash != "" && resolved.Hash != row.AnchorHash)
+				if resolved.AnchorKey != row.AnchorKey || stalePos {
+					if err := idx.ReanchorAnnotation(ctx, row.ID, AnnotationAnchor{
+						AnchorKey: resolved.AnchorKey,
+						Seq:       resolved.Seq,
+						Role:      resolved.Role,
+						Hash:      resolved.Hash,
+					}); err == nil {
+						row.AnchorKey = resolved.AnchorKey
+						row.Seq = resolved.Seq
+						if resolved.Hash != "" {
+							row.AnchorHash = resolved.Hash
+						}
+					}
 				}
 			}
 			orphaned := !ok

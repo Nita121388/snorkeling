@@ -56,9 +56,11 @@ export function AnnotationRail({
     onDiscard,
     onAcceptAllDrafts,
     onDiscardAllDrafts,
+    onNodeTextSave,
+    bottomInset = 0,
 }: {
     annotations: AnnotationLike[];
-    onJump: (seq: number) => void;
+    onJump: (seq: number, anchorKey?: string) => void;
     activeSeq?: number | null;
     /** seq → 节点原文摘要（截断），用于悬浮卡。 */
     previewBySeq?: Map<number, string>;
@@ -69,6 +71,10 @@ export function AnnotationRail({
     onDiscard?: (id: number) => void;
     onAcceptAllDrafts?: () => void;
     onDiscardAllDrafts?: () => void;
+    /** 卡片 NODE 区就地编辑：保存用户手改的节点原文副本。 */
+    onNodeTextSave?: (annotation: AnnotationLike, nodeText: string) => void;
+    /** 底部让位（composer 高度）：竖轴与圆点不得压到底部输入框上。 */
+    bottomInset?: number;
 }) {
     const [collapsed, setCollapsed] = React.useState<boolean>(readCollapsedPreference);
     const [hoverIndex, setHoverIndex] = React.useState<number | null>(null);
@@ -87,6 +93,10 @@ export function AnnotationRail({
         [annotations]
     );
     const width = collapsed ? AnnotationRailCollapsedWidth : AnnotationRailExpandedWidth;
+    // rail 与「聊天列（滚动区 + composer）」是同级的 stretch 子项：
+    // 用 marginBottom 吃掉 composer 的高度，rail 的 border-r 与竖轴就停在输入框上沿。
+    const inset = Math.max(0, Math.round(bottomInset));
+    const railBoxStyle: React.CSSProperties = { width, marginBottom: inset };
 
     const clearTimers = React.useCallback(() => {
         if (hoverTimer.current != null) window.clearTimeout(hoverTimer.current);
@@ -119,8 +129,8 @@ export function AnnotationRail({
     if (collapsed) {
         return (
             <div
-                className="relative flex shrink-0 cursor-pointer flex-col items-center border-r border-border"
-                style={{ width }}
+                className="relative z-10 flex shrink-0 cursor-pointer flex-col items-center border-r border-border"
+                style={railBoxStyle}
                 onClick={toggleCollapsed}
                 title="Expand annotation timeline"
                 aria-label="Expand annotation timeline"
@@ -134,8 +144,8 @@ export function AnnotationRail({
     if (items.length === 0) {
         return (
             <div
-                className="relative flex shrink-0 flex-col items-center border-r border-border"
-                style={{ width }}
+                className="relative z-10 flex shrink-0 flex-col items-center border-r border-border"
+                style={railBoxStyle}
             >
                 <div className="flex w-full flex-col items-center gap-2 py-1.5">
                     <div
@@ -170,9 +180,7 @@ export function AnnotationRail({
                             No annotations
                         </span>
                     ) : (
-                        <span className="text-[9px] leading-3 text-accent [writing-mode:vertical-rl]">
-                            Generating
-                        </span>
+                        <span className="text-[9px] leading-3 text-accent [writing-mode:vertical-rl]">Generating</span>
                     )}
                 </div>
             </div>
@@ -185,7 +193,8 @@ export function AnnotationRail({
     const count = clusters.length;
     const ranks = buildSeqRanks(clusters);
     // 少节点：节点间距 >= RailDotGap 就铺满全高；否则固定槽 + 内部滚动。
-    const canSpread = count > 0 && bodyHeight > 0 && (count === 1 || bodyHeight - RailDotActiveSize >= (count - 1) * RailDotGap);
+    const canSpread =
+        count > 0 && bodyHeight > 0 && (count === 1 || bodyHeight - RailDotActiveSize >= (count - 1) * RailDotGap);
     const contentHeight = canSpread ? bodyHeight : count * RailDotGap;
 
     const topFor = (index: number): number => {
@@ -199,10 +208,10 @@ export function AnnotationRail({
     };
 
     return (
-        <div
-            className="relative flex shrink-0 flex-col items-start border-r border-border"
-            style={{ width }}
-        >
+        // z-10：rail 必须自成一个 stacking level。簇包裹层带 transform，会把悬浮卡
+        // 的 z-50 困在它自己的层里，于是后出现的聊天列（position:relative）会画在
+        // 卡上面 —— 看起来像弹窗“透明”（卡片文字和消息文字叠在一起），按钮也被盖住。
+        <div className="relative z-10 flex shrink-0 flex-col items-start border-r border-border" style={railBoxStyle}>
             {!collapsed ? (
                 <div className="flex w-full flex-col items-start gap-0.5 px-1 py-1">
                     <div
@@ -232,32 +241,45 @@ export function AnnotationRail({
                             <span>AI</span>
                         </button>
                     ) : null}
+                    {/* 草稿条：rail 展开仅 44px，横排的 "2 drafts Discard Accept" 会溢出 rail
+                        并被右侧聊天列盖住（overflow 部分不可点击）。这里改竖排紧凑版：
+                        第一行计数、第二行两个等宽图标按钮，宽度锁在 rail 内容区内。 */}
                     {draftCount > 0 ? (
-                        <div className="flex w-full items-center justify-between gap-1 rounded border border-accent bg-panel px-1 py-0.5 text-[9px] text-accent">
-                            <span>{draftCount} drafts</span>
-                            <span className="flex items-center gap-1">
+                        <div
+                            className="flex w-full flex-col items-stretch gap-0.5 overflow-hidden rounded border border-accent bg-panel px-0.5 py-0.5 text-[9px] text-accent"
+                            title={`${draftCount} draft annotation${draftCount === 1 ? "" : "s"}`}
+                        >
+                            <span className="flex items-center justify-center gap-0.5 leading-3">
+                                <i className="fa-sharp fa-solid fa-pen-to-square text-[7px]" />
+                                <span>{draftCount}</span>
+                            </span>
+                            <span className="flex items-center justify-center gap-0.5">
                                 {onDiscardAllDrafts != null ? (
                                     <button
                                         type="button"
-                                        className="cursor-pointer rounded px-1 hover:bg-hover"
+                                        className="flex h-3.5 min-w-0 flex-1 cursor-pointer items-center justify-center rounded hover:bg-hover"
+                                        title="Discard all drafts"
+                                        aria-label="Discard all drafts"
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             onDiscardAllDrafts();
                                         }}
                                     >
-                                        Discard
+                                        <i className="fa-sharp fa-solid fa-xmark text-[9px]" />
                                     </button>
                                 ) : null}
                                 {onAcceptAllDrafts != null ? (
                                     <button
                                         type="button"
-                                        className="cursor-pointer rounded px-1 font-medium hover:bg-hover"
+                                        className="flex h-3.5 min-w-0 flex-1 cursor-pointer items-center justify-center rounded font-medium hover:bg-hover"
+                                        title="Accept all drafts"
+                                        aria-label="Accept all drafts"
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             onAcceptAllDrafts();
                                         }}
                                     >
-                                        Accept
+                                        <i className="fa-sharp fa-solid fa-check text-[9px]" />
                                     </button>
                                 ) : null}
                             </span>
@@ -277,8 +299,7 @@ export function AnnotationRail({
                         style={{ width: RailAxisWidth, height: contentHeight }}
                     />
                     {clusters.map((cluster, index) => {
-                        const isActive =
-                            activeSeq != null && cluster.items.some((item) => item.seq === activeSeq);
+                        const isActive = activeSeq != null && cluster.items.some((item) => item.seq === activeSeq);
                         const isHovered = hoverIndex === index;
                         const size = isActive
                             ? RailDotActiveSize
@@ -325,7 +346,7 @@ export function AnnotationRail({
                                             }
                                             return index;
                                         });
-                                        onJump(cluster.seq);
+                                        onJump(cluster.seq, cluster.items[0]?.anchorKey);
                                     }}
                                 >
                                     <span
@@ -366,6 +387,7 @@ export function AnnotationRail({
                                             onJump={onJump}
                                             onAccept={onAccept}
                                             onDiscard={onDiscard}
+                                            onNodeTextSave={onNodeTextSave}
                                         />
                                     </div>
                                 ) : null}

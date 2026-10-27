@@ -129,6 +129,55 @@ describe("AnnotationRail pinned card", () => {
     });
 });
 
+describe("AnnotationRail draft bulk bar (44px rail)", () => {
+    // 回归：drafts 条曾用文字按钮 "Discard / Accept" 横排，min-content 宽度约 84px，
+    // 溢出 44px 的 rail 后被右侧聊天列（DOM 在后、绘制在上）盖住，实际点不到。
+    // 现在必须是图标按钮，文字标签只出现在钉住的批注卡里。
+    it("bulk actions are icon buttons, so no text label overflows the rail", () => {
+        const onAcceptAllDrafts = vi.fn();
+        const onDiscardAllDrafts = vi.fn();
+        act(() => {
+            root.render(
+                <AnnotationRail
+                    annotations={[makeAnnotation()]}
+                    onJump={vi.fn()}
+                    onAcceptAllDrafts={onAcceptAllDrafts}
+                    onDiscardAllDrafts={onDiscardAllDrafts}
+                />
+            );
+        });
+        const accept = container.querySelector('button[aria-label="Accept all drafts"]') as HTMLButtonElement;
+        const discard = container.querySelector('button[aria-label="Discard all drafts"]') as HTMLButtonElement;
+        expect(accept).toBeTruthy();
+        expect(discard).toBeTruthy();
+        // 未打开卡片前，不该存在文字式的 Accept / Discard。
+        expect(findCardButton("Accept")).toBeUndefined();
+        expect(findCardButton("Discard")).toBeUndefined();
+        act(() => {
+            accept.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onAcceptAllDrafts).toHaveBeenCalledTimes(1);
+        act(() => {
+            discard.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onDiscardAllDrafts).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("AnnotationRail bottom inset", () => {
+    // 回归：rail 与「滚动区 + composer」同级 stretch，曾一路铺到 block 底部、
+    // 竖轴和圆点压到输入框上。bottomInset 必须转成 marginBottom 让位。
+    it("reserves composer height at the bottom via marginBottom", () => {
+        act(() => {
+            root.render(
+                <AnnotationRail annotations={[makeAnnotation()]} onJump={vi.fn()} bottomInset={172} />
+            );
+        });
+        const railRoot = container.firstElementChild as HTMLElement;
+        expect(railRoot.style.marginBottom).toBe("172px");
+    });
+});
+
 describe("AnnotationRail dot states (2026-10-26 视觉重构)", () => {
     function dotClass(annotation: AnnotationLike): string {
         render({ annotations: [annotation] });

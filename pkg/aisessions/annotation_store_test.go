@@ -203,6 +203,49 @@ func TestListAnnotatedSessionsAggregatesAcceptedOnly(t *testing.T) {
 	}
 }
 
+func TestResolveAnnotationAnchorsFixesStaleSeqForSameKey(t *testing.T) {
+	// 回归：AI 生成的批注只带 anchorKey 落库，seq 恒为 0。活锚点里同一个 key
+	// 存在但位置不同时，必须把 seq/hash 补写回去，否则时间线圆点永远不跳转。
+	dir := t.TempDir()
+	manager := NewManagerWithOptions(ManagerOptions{
+		IndexPath:  filepath.Join(dir, "index.json"),
+		MetaPath:   filepath.Join(dir, "meta.json"),
+		SQLitePath: filepath.Join(dir, "index-v2.sqlite"),
+	})
+	ctx := context.Background()
+	key := "codex:ann-stale:/tmp/ann-stale.jsonl"
+
+	if _, err := manager.SaveAnnotation(ctx, AnnotationRow{
+		SessionKey: key, AnchorKey: "e1:t0", Seq: 0, Title: "ai draft", AnchorPreview: "bash ls", Source: "ai",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	views, err := manager.ResolveAnnotationAnchors(ctx, key, []AnnotationAnchor{
+		{AnchorKey: "e1:t0", Seq: 7, Role: "tool", Hash: AnchorHash("bash\nls")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(views) != 1 {
+		t.Fatalf("expected 1 view, got %#v", views)
+	}
+	if views[0].Seq != 7 {
+		t.Fatalf("stale seq must be rewritten to the live anchor seq, got %#v", views[0])
+	}
+	if views[0].Orphaned {
+		t.Fatalf("same-key anchor must not be orphaned: %#v", views[0])
+	}
+
+	stored, err := manager.ListAnnotations(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].Seq != 7 {
+		t.Fatalf("seq must be persisted, got %#v", stored)
+	}
+}
+
 func TestResolveAnnotationAnchorsReanchorsAndOrphans(t *testing.T) {
 	dir := t.TempDir()
 	manager := NewManagerWithOptions(ManagerOptions{

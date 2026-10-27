@@ -151,6 +151,8 @@ func beginAssistAudit(key, connection string, input AnnotationAssistInput) (int6
 		SessionKey: key,
 		Connection: connection,
 		Trigger:    AuditTriggerManual,
+		// 审计页要能看出「这次给了多少个候选节点」，否则永远是 0。
+		AnchorTotal: len(buildAnnotationDigest(input.Messages, input.ToolCalls)),
 	})
 }
 

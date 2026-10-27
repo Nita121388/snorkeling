@@ -28,6 +28,7 @@ export function AnnotationEditor({
     seq,
     anchorKey,
     annotation = null,
+    nodePreview,
     onClose,
     onSaved,
 }: {
@@ -36,6 +37,8 @@ export function AnnotationEditor({
     seq: number;
     anchorKey: string;
     annotation?: AnnotationView | null;
+    /** 锚点节点的实时原文（只读提示，NODE 字段留空时的回落值）。 */
+    nodePreview?: string;
     onClose: () => void;
     onSaved?: () => void;
 }) {
@@ -43,6 +46,7 @@ export function AnnotationEditor({
     const [title, setTitle] = React.useState(annotation?.title ?? "");
     const [body, setBody] = React.useState(annotation?.body ?? "");
     const [tagsText, setTagsText] = React.useState((annotation?.tags ?? []).join(" "));
+    const [nodeText, setNodeText] = React.useState(annotation?.nodeText ?? "");
     const [saving, setSaving] = React.useState(false);
     const [deleting, setDeleting] = React.useState(false);
     const [error, setError] = React.useState("");
@@ -127,6 +131,7 @@ export function AnnotationEditor({
                 tags,
                 status: annotation?.status ?? "accepted",
                 source: annotation?.source ?? "user",
+                nodeText: nodeText.trim(),
                 connection: connection?.trim() || undefined,
             });
             onSaved?.();
@@ -177,6 +182,27 @@ export function AnnotationEditor({
                         </button>
                     ))}
                 </div>
+                <div className="flex items-center justify-between gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wide text-secondary">
+                        Node{nodeText.trim() !== "" ? " · edited" : ""}
+                    </span>
+                    {nodeText !== "" ? (
+                        <button
+                            type="button"
+                            className="h-6 cursor-pointer rounded px-1.5 text-[10px] text-secondary hover:bg-hover hover:text-primary"
+                            title="Drop the edited copy and show the live node text"
+                            onClick={() => setNodeText("")}
+                        >
+                            Reset
+                        </button>
+                    ) : null}
+                </div>
+                <textarea
+                    className="min-h-[72px] w-full resize-y rounded border border-border bg-transparent px-3 py-2 text-xs leading-5 outline-none focus:border-accent"
+                    placeholder={nodePreview?.trim() || "Leave empty to use the live node text"}
+                    value={nodeText}
+                    onChange={(event) => setNodeText(event.target.value)}
+                />
                 <div className="flex items-center gap-1.5">
                     <span className="text-[10px] uppercase tracking-wide text-secondary">Title</span>
                     <AIAssistButton status={assist.title.status} onRun={() => void runAssist("title")} />

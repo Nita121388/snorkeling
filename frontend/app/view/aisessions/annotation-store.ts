@@ -8,7 +8,7 @@
 
 import { AISessionsServiceType } from "@/app/store/services";
 import * as React from "react";
-import type { AnnotationAnchorRequest } from "./annotation-model";
+import type { AnnotationAnchorRequest, AnnotationLike } from "./annotation-model";
 
 export type AnnotationStatus = "idle" | "loading" | "loaded" | "error";
 
@@ -92,6 +92,26 @@ async function loadAnnotations(
         entry.inflight = false;
         notify(entry);
     }
+    // 请求进行中又来了新的 anchors（典型：打开会话时先以空锚点加载，消息到齐后
+    // 才带上 anchorKey）：之前这里会直接 return，导致服务端永远拿不到锚点、
+    // 历史批注的 seq 一直是 0。请求结束后用最新锚点补一次。
+    if (entry.lastAnchors !== anchors) {
+        void loadAnnotations(sessionKey, connection, entry.lastAnchors);
+    }
+}
+
+/**
+ * 用调用方提供的锚点强制重载一次。
+ * 典型用途：会话详情的 renderItems 就绪后，用「工具锚点 → anchorSeq」的真实 seq
+ * 覆盖掉先前基于空 ItemKey 的空锚点列表，顺带让服务端把历史 seq=0 的批注补正。
+ */
+export function reloadAnnotationsWithAnchors(
+    sessionKey: string,
+    connection: string | null | undefined,
+    anchors: AnnotationAnchorRequest[]
+): Promise<void> {
+    if (sessionKey === "" || anchors.length === 0) return Promise.resolve();
+    return loadAnnotations(sessionKey, connection, anchors);
 }
 
 /** Force a reload (after an external mutation such as AI regeneration). */
@@ -103,6 +123,34 @@ export async function saveAnnotation(request: AISessionsAnnotationSaveRequest): 
     const saved = await service.AnnotationSave(request);
     await refreshAnnotations(request.sessionKey, request.connection);
     return saved;
+}
+
+/**
+ * 只改一条批注的「节点原文」副本（NODE 区就地编辑）。
+ * 其余字段原样回传，避免把 title/body/tags 冲掉；nodeText 为空串 = 清除覆盖。
+ */
+export async function saveAnnotationNodeText(
+    annotation: AnnotationLike,
+    nodeText: string,
+    sessionKey: string,
+    connection: string | null | undefined
+): Promise<void> {
+    const next = nodeText.trim();
+    if ((annotation.nodeText ?? "") === next) return;
+    await saveAnnotation({
+        id: annotation.id,
+        sessionKey,
+        anchorKey: annotation.anchorKey,
+        seq: annotation.seq,
+        kind: annotation.kind,
+        title: annotation.title,
+        body: annotation.body,
+        tags: annotation.tags ?? [],
+        status: annotation.status,
+        source: annotation.source,
+        nodeText: next,
+        connection: normalizeConnection(connection) || undefined,
+    });
 }
 
 /** Accept or discard drafts (empty ids = all drafts of the session). */

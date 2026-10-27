@@ -36,6 +36,7 @@ type AnnotationRow struct {
 	AIModel       string   `db:"ai_model"`
 	AnchorHash    string   `db:"anchor_hash"`
 	AnchorPreview string   `db:"anchor_preview"`
+	NodeText      string   `db:"node_text"`
 	CreatedAt     int64    `db:"created_at"`
 	UpdatedAt     int64    `db:"updated_at"`
 }
