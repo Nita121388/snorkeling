@@ -172,6 +172,8 @@ func (m *Manager) Search(ctx context.Context, opts SearchOptions) ([]SessionSumm
 		TagFilters:      opts.TagFilters,
 		ExcludeTags:     opts.ExcludeTags,
 		TagPresence:     opts.TagPresence,
+		AttachMode:      opts.AttachMode,
+		AttachMaxRows:   opts.AttachMaxRows,
 	}, opts.Query)
 }
 
@@ -201,19 +203,19 @@ func (m *Manager) ScanListWithDistribution(ctx context.Context, opts ListOptions
 // the index, so the UI paints rows first and fills skeleton gaps later.
 func (m *Manager) ScanListResult(ctx context.Context, opts ListOptions, query string) (ScanListResult, error) {
 	if !opts.Refresh {
-		if summaries, dist, ok, err := m.cachedScanListWithDistribution(ctx, opts, query); ok || err != nil {
+		if summaries, dist, ok, truncated, err := m.cachedScanListWithDistribution(ctx, opts, query); ok || err != nil {
 			m.enqueueAutoTitles(summaries)
-			return ScanListResult{Sessions: summaries, ProjectPaths: dist}, err
+			return ScanListResult{Sessions: summaries, ProjectPaths: dist, AttachTruncated: truncated}, err
 		}
 	}
 	listCtx, cancel := m.listBudgetContext(ctx)
 	defer cancel()
-	summaries, dist, partial, err := m.scanListNow(listCtx, opts, query)
+	summaries, dist, partial, truncated, err := m.scanListNow(listCtx, opts, query)
 	if err != nil {
 		return ScanListResult{}, err
 	}
 	m.enqueueAutoTitles(summaries)
-	result := ScanListResult{Sessions: summaries, ProjectPaths: dist}
+	result := ScanListResult{Sessions: summaries, ProjectPaths: dist, AttachTruncated: truncated}
 	if partial {
 		m.startBackgroundScan()
 		scanned, total, scanning := scanProgressSnapshot(m.scanKey())
@@ -233,11 +235,12 @@ func (m *Manager) listBudgetContext(ctx context.Context) (context.Context, conte
 }
 
 // scanListNow runs one budgeted synchronous full scan and applies the list
-// filters. The trailing bool reports whether the scan was cut short.
-func (m *Manager) scanListNow(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, bool, error) {
+// filters. The two trailing bools report whether the scan was cut short and
+// whether hierarchy context rows were truncated.
+func (m *Manager) scanListNow(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, bool, bool, error) {
 	summaries, errs, partial := m.refreshAllSummaries(ctx, ScanOptions{})
 	if len(errs) > 0 && len(summaries) == 0 {
-		return nil, nil, partial, errs[0]
+		return nil, nil, partial, false, errs[0]
 	}
 	if partial {
 		debugf("Manager.scanListNow partial scan path=%q summaries=%d", m.SQLitePath, len(summaries))
@@ -265,7 +268,7 @@ func (m *Manager) scanListNow(ctx context.Context, opts ListOptions, query strin
 	dist := make(map[string]int, 16)
 	for _, summary := range summaries {
 		if ctx.Err() != nil {
-			return filtered, summarizeProjectPathsFromMap(dist), partial, ctx.Err()
+			return filtered, summarizeProjectPathsFromMap(dist), partial, false, ctx.Err()
 		}
 		if metaIdx != nil {
 			if err := metaIdx.ApplyMeta(ctx, &summary); err != nil {
@@ -294,8 +297,20 @@ func (m *Manager) scanListNow(ctx context.Context, opts ListOptions, query strin
 	}
 	sortSummaries(filtered)
 	limited := limitSummaries(filtered, opts.Limit)
+	// 全量扫描路径的 summaries 还没有应用 meta（循环里是值拷贝），而排除标签
+	// 判定需要 tags，所以补带时给被带出的行单独补一次。
+	applyMeta := func(summary *SessionSummary) error {
+		if metaIdx != nil {
+			return metaIdx.ApplyMeta(ctx, summary)
+		}
+		if meta != nil {
+			meta.Apply(summary)
+		}
+		return nil
+	}
+	limited, truncated := attachContextExcluding(ctx, limited, summaries, opts, applyMeta)
 	m.populateMessageCounts(ctx, limited, opts.Refresh)
-	return limited, summarizeProjectPathsFromMap(dist), partial, nil
+	return limited, summarizeProjectPathsFromMap(dist), partial, truncated, nil
 }
 
 // refreshAllSummaries runs a shared full scan and persists the result. A partial
@@ -389,56 +404,41 @@ func (m *Manager) listFromIndexDebug(ctx context.Context, opts ListOptions, quer
 }
 
 func (m *Manager) cachedScanList(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, bool, error) {
-	summaries, _, ok, err := m.cachedScanListWithDistribution(ctx, opts, query)
+	summaries, _, ok, _, err := m.cachedScanListWithDistribution(ctx, opts, query)
 	return summaries, ok, err
 }
 
-func (m *Manager) cachedScanListWithDistribution(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, bool, error) {
+func (m *Manager) cachedScanListWithDistribution(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, bool, bool, error) {
 	if !m.summaryFileRefreshSupported() {
-		return nil, nil, false, nil
+		return nil, nil, false, false, nil
 	}
 	sqliteIdx, sqliteErr := m.openSQLiteIndex()
 	if sqliteErr != nil {
 		debugf("Manager.cachedScanList sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
-		return nil, nil, false, nil
+		return nil, nil, false, false, nil
 	}
 	defer sqliteIdx.Close()
 	hasScan, scanErr := sqliteIdx.HasSummaryScan(ctx)
 	if scanErr != nil {
 		debugf("Manager.cachedScanList sqlite scan marker error path=%q err=%v", m.SQLitePath, scanErr)
-		return nil, nil, false, nil
+		return nil, nil, false, false, nil
 	}
 	if !hasScan {
 		debugf("Manager.cachedScanList sqlite has no complete summary scan path=%q", m.SQLitePath)
-		return nil, nil, false, nil
+		return nil, nil, false, false, nil
 	}
 	if errs := m.refreshChangedSummaries(ctx, sqliteIdx); len(errs) > 0 {
 		debugf("Manager.cachedScanList changed summary refresh errors=%d firstErr=%v", len(errs), errs[0])
 	}
-	listOpts := opts
-	if strings.TrimSpace(query) != "" {
-		listOpts.Limit = 0
-	}
-	summaries, dist, err := sqliteIdx.ListWithDistribution(ctx, listOpts)
+	// 查询过滤、排序、limit、上下文补带已经在 index 里一次做完（query 必须和
+	// 过滤同处一个函数，attachContext 才能看到完整的候选行）。
+	summaries, dist, truncated, err := sqliteIdx.ListWithDistributionAndQuery(ctx, opts, query)
 	if err != nil {
 		debugf("Manager.cachedScanList sqlite list error path=%q err=%v", m.SQLitePath, err)
-		return nil, nil, false, nil
-	}
-	query = strings.ToLower(strings.TrimSpace(query))
-	if query != "" {
-		filtered := summaries[:0]
-		for _, summary := range summaries {
-			if ctx.Err() != nil {
-				return nil, dist, true, ctx.Err()
-			}
-			if summaryMatchesQuery(summary, query) {
-				filtered = append(filtered, summary)
-			}
-		}
-		summaries = limitSummaries(filtered, opts.Limit)
+		return nil, nil, false, false, nil
 	}
 	m.populateMessageCounts(ctx, summaries, false)
-	return summaries, dist, true, nil
+	return summaries, dist, true, truncated, nil
 }
 
 func (m *Manager) summaryFileRefreshSupported() bool {

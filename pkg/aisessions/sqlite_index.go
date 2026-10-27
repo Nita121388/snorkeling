@@ -206,6 +206,7 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			ai_model       TEXT    NOT NULL DEFAULT '',
 			anchor_hash    TEXT    NOT NULL DEFAULT '',
 			anchor_preview TEXT    NOT NULL DEFAULT '',
+			node_text      TEXT    NOT NULL DEFAULT '',
 			created_at     INTEGER NOT NULL,
 			updated_at     INTEGER NOT NULL
 		)`,
@@ -1463,10 +1464,21 @@ func (idx *SQLiteIndex) List(ctx context.Context, opts ListOptions) ([]SessionSu
 // (distinct projectPath counts over sessions passing the non-project filters),
 // which the path-filter UI uses to navigate the directory tree with true counts.
 func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptions) ([]SessionSummary, []ProjectPathSummary, error) {
+	summaries, dist, _, err := idx.ListWithDistributionAndQuery(ctx, opts, "")
+	return summaries, dist, err
+}
+
+// ListWithDistributionAndQuery runs the whole list pipeline in one place:
+// non-project filters + distribution, project filters, free-text query, sort,
+// limit, then hierarchy context attach. Keeping the query here (instead of in
+// Manager.cachedScanListWithDistribution) is what lets attachContext see the
+// pre-filter row universe: rows that failed the query are exactly the candidates
+// a matching parent's subagents come from.
+func (idx *SQLiteIndex) ListWithDistributionAndQuery(ctx context.Context, opts ListOptions, query string) ([]SessionSummary, []ProjectPathSummary, bool, error) {
 	var rows []sqliteSessionRow
 	err := idx.db.SelectContext(ctx, &rows, `SELECT `+sessionSummaryColumns+` FROM ai_sessions WHERE missing = 0`)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	// --- Pass 1: convert rows to summaries (no meta yet) ---
 	summaries := make([]SessionSummary, 0, len(rows))
@@ -1483,7 +1495,7 @@ func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptio
 		// Fallback: degrade gracefully to per-row ApplyMeta (safe, just slower).
 		for i := range summaries {
 			if err := idx.ApplyMeta(ctx, &summaries[i]); err != nil {
-				return nil, nil, err
+				return nil, nil, false, err
 			}
 		}
 	} else {
@@ -1505,7 +1517,7 @@ func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptio
 	var filtered []SessionSummary
 	for i := range summaries {
 		if ctx.Err() != nil {
-			return filtered, summarizeProjectPathsFromMap(dist), ctx.Err()
+			return nil, nil, false, ctx.Err()
 		}
 		if !summaryMatchesList(summaries[i], baseOpts) {
 			continue
@@ -1525,8 +1537,19 @@ func (idx *SQLiteIndex) ListWithDistribution(ctx context.Context, opts ListOptio
 		}
 		filtered = append(filtered, summaries[i])
 	}
+	if normalizedQuery := strings.ToLower(strings.TrimSpace(query)); normalizedQuery != "" {
+		matches := filtered[:0]
+		for i := range filtered {
+			if summaryMatchesQuery(filtered[i], normalizedQuery) {
+				matches = append(matches, filtered[i])
+			}
+		}
+		filtered = matches
+	}
 	sortSummaries(filtered)
-	return limitSummaries(filtered, opts.Limit), summarizeProjectPathsFromMap(dist), nil
+	limited := limitSummaries(filtered, opts.Limit)
+	out, truncated := attachContextExcluding(ctx, limited, summaries, opts, nil)
+	return out, summarizeProjectPathsFromMap(dist), truncated, nil
 }
 
 func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]SessionSummary, error) {
@@ -1545,7 +1568,12 @@ func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]Sessi
 		return nil, err
 	}
 	if query == "" {
-		return limitSummaries(summaries, opts.Limit), nil
+		return attachContext(ctx, limitSummaries(summaries, opts.Limit), summaries, ListOptions{
+			ExcludeProjects: opts.ExcludeProjects,
+			ExcludeTags:     opts.ExcludeTags,
+			AttachMode:      opts.AttachMode,
+			AttachMaxRows:   opts.AttachMaxRows,
+		}), nil
 	}
 	var filtered []SessionSummary
 	for _, summary := range summaries {
@@ -1569,7 +1597,12 @@ func (idx *SQLiteIndex) Search(ctx context.Context, opts SearchOptions) ([]Sessi
 		}
 	}
 	sortSummaries(filtered)
-	return limitSummaries(filtered, opts.Limit), nil
+	return attachContext(ctx, limitSummaries(filtered, opts.Limit), summaries, ListOptions{
+		ExcludeProjects: opts.ExcludeProjects,
+		ExcludeTags:     opts.ExcludeTags,
+		AttachMode:      opts.AttachMode,
+		AttachMaxRows:   opts.AttachMaxRows,
+	}), nil
 }
 
 func (idx *SQLiteIndex) GetSession(ctx context.Context, identifier string) (SessionSummary, error) {

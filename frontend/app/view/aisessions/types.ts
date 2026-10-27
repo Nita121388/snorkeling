@@ -79,6 +79,18 @@ export const expandAllTagsStorageKey = "aisessions.expandAllTags";
 export type SessionGroupMode = "project" | "time";
 
 /**
+ * 筛选结果的父子上下文补带模式。
+ *
+ * - off      精确：只显示自身命中筛选的行（改动前的行为）
+ * - both     智能：命中子代理时补带父，命中父代理时带出子代理（默认）
+ * - children 只带出子代理：命中父才展开子，命中子不回填父
+ */
+export type AttachMode = "off" | "both" | "children";
+
+export const DefaultAttachMode: AttachMode = "both";
+export const attachModeStorageKey = "aisessions.attachMode";
+
+/**
  * AI Sessions 排序链。
  *
  * 多键排序：链项前者优先级高，全相等时用隐式 `updatedAt` 降序 + `key` 升序兜底

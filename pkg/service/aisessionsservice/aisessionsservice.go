@@ -47,6 +47,10 @@ type AISessionsListRequest struct {
 	ExcludeTags         []string `json:"excludeTags,omitempty"`
 	TagPresence         string   `json:"tagPresence,omitempty"`
 	IncludeProjectPaths bool     `json:"includeProjectPaths,omitempty"`
+	// AttachMode adds hierarchy context rows after the limit is applied:
+	// "" / "off" (default), "parent", "children", "both".
+	AttachMode    string `json:"attachMode,omitempty"`
+	AttachMaxRows int    `json:"attachMaxRows,omitempty"`
 }
 
 type AISessionsListResponse struct {
@@ -57,6 +61,8 @@ type AISessionsListResponse struct {
 	Scanning bool `json:"scanning"`
 	Scanned  int  `json:"scanned"`
 	Total    int  `json:"total"`
+	// AttachTruncated reports that hierarchy context rows hit the cap.
+	AttachTruncated bool `json:"attachTruncated,omitempty"`
 }
 
 type AISessionsTagsRequest struct {
@@ -183,7 +189,9 @@ type AISessionsAnnotationSaveRequest struct {
 	Status     string   `json:"status,omitempty"`
 	Source     string   `json:"source,omitempty"`
 	AIModel    string   `json:"aiModel,omitempty"`
-	Connection string   `json:"connection,omitempty"`
+	// NodeText 是用户在卡片/编辑器里手改的「节点原文」副本；空串清空覆盖。
+	NodeText   string `json:"nodeText,omitempty"`
+	Connection string `json:"connection,omitempty"`
 }
 
 // AISessionsAnnotationSessionsRequest lists sessions that have at least one
@@ -547,15 +555,18 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		ExcludeTags:     request.ExcludeTags,
 		TagPresence:     request.TagPresence,
 		Refresh:         request.Refresh,
+		AttachMode:      request.AttachMode,
+		AttachMaxRows:   request.AttachMaxRows,
 	}, request.Query)
 	if err != nil {
 		return nil, err
 	}
 	response := &AISessionsListResponse{
-		Sessions: result.Sessions,
-		Scanning: result.Scanning,
-		Scanned:  result.Scanned,
-		Total:    result.Total,
+		Sessions:        result.Sessions,
+		Scanning:        result.Scanning,
+		Scanned:         result.Scanned,
+		Total:           result.Total,
+		AttachTruncated: result.AttachTruncated,
 	}
 	if request.IncludeProjectPaths {
 		response.ProjectPaths = result.ProjectPaths
@@ -1272,11 +1283,19 @@ func (svc *AISessionsService) AnnotationSave(ctx context.Context, request *AISes
 	if err != nil {
 		return nil, err
 	}
+	seq := request.Seq
+	// 前端只在拿得到消息行号时才传 seq；传 0（AI 草稿、工具行锚点）时用服务端
+	// 活锚点补真实 seq，否则该批注在时间线上永远跳不过去。
+	if seq <= 0 {
+		if resolved, ok := svc.resolveAnnotationAnchorRow(ctx, manager, request.SessionKey, request.AnchorKey); ok {
+			seq = resolved
+		}
+	}
 	row, err := manager.SaveAnnotation(ctx, aisessions.AnnotationRow{
 		ID:         request.ID,
 		SessionKey: request.SessionKey,
 		AnchorKey:  request.AnchorKey,
-		Seq:        request.Seq,
+		Seq:        seq,
 		Kind:       request.Kind,
 		Title:      request.Title,
 		Body:       request.Body,
@@ -1284,12 +1303,54 @@ func (svc *AISessionsService) AnnotationSave(ctx context.Context, request *AISes
 		Status:     request.Status,
 		Source:     request.Source,
 		AIModel:    request.AIModel,
+		NodeText:   request.NodeText,
 	})
 	if err != nil {
 		return nil, err
 	}
 	view := row.ToView(false)
 	return &view, nil
+}
+
+
+// loadDetailForAnnotations 加载会话详情，并保证拿得到 anchorKey。
+//
+// 坑：会话消息是从 SQLite 缓存的（ai_session_messages 没有 item_key 列），缓存命中时
+// Message.ItemKey 恒为空 —— 于是 BuildAnnotationAnchors 返回 0 条，AI 草稿落库时
+// seq 只能是 0，前端点 Jump 永远跳不动。这里在「锚点为空」时用 Refresh 重解析一次
+// 会话文件（单会话解析，代价可接受），把条目补齐。
+func loadDetailForAnnotations(ctx context.Context, manager *aisessions.Manager, sessionKey string) (aisessions.SessionDetail, error) {
+	detail, err := manager.Load(ctx, sessionKey, aisessions.LoadOptions{IncludeTools: true})
+	if err != nil {
+		return detail, err
+	}
+	if len(aisessions.BuildAnnotationAnchors(detail.Messages, detail.ToolCalls)) > 0 {
+		return detail, nil
+	}
+	refreshed, refreshErr := manager.Load(ctx, sessionKey, aisessions.LoadOptions{IncludeTools: true, Refresh: true})
+	if refreshErr != nil {
+		return detail, nil
+	}
+	return refreshed, nil
+}
+
+// resolveAnnotationAnchorRow 按 anchorKey 在会话当前消息里找出真实 seq。
+// 拿不到（会话未落盘 / 锚点已不存在）时返回 false，调用方保留原 seq。
+func (svc *AISessionsService) resolveAnnotationAnchorRow(ctx context.Context, manager *aisessions.Manager, sessionKey string, anchorKey string) (int, bool) {
+	key := strings.TrimSpace(anchorKey)
+	if key == "" || manager == nil {
+		return 0, false
+	}
+	detail, err := loadDetailForAnnotations(ctx, manager, sessionKey)
+	if err != nil {
+		return 0, false
+	}
+	for _, anchor := range aisessions.BuildAnnotationAnchors(detail.Messages, detail.ToolCalls) {
+		if anchor.AnchorKey == key && anchor.Seq > 0 {
+			return anchor.Seq, true
+		}
+	}
+	return 0, false
 }
 
 func (svc *AISessionsService) AnnotationDelete_Meta() tsgenmeta.MethodMeta {
@@ -1359,7 +1420,7 @@ func (svc *AISessionsService) AnnotationAssist(ctx context.Context, request *AIS
 	if err != nil {
 		return nil, err
 	}
-	detail, err := manager.Load(ctx, request.SessionKey, aisessions.LoadOptions{IncludeTools: true})
+	detail, err := loadDetailForAnnotations(ctx, manager, request.SessionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1433,6 +1494,12 @@ func (svc *AISessionsService) AnnotationReplace(ctx context.Context, request *AI
 			Status:     aisessions.AnnotationStatusDraft,
 			Source:     aisessions.AnnotationSourceAI,
 		})
+	}
+	// AI 只回 anchorKey；seq/hash/preview 必须服务端补，否则 seq=0 -> 时间线点不动。
+	if detail, loadErr := loadDetailForAnnotations(ctx, manager, request.SessionKey); loadErr == nil {
+		anchors := aisessions.BuildAnnotationAnchors(detail.Messages, detail.ToolCalls)
+		previews := aisessions.AnnotationAnchorTextByKey(detail.Messages, detail.ToolCalls)
+		aisessions.ResolveAnnotationRowAnchors(rows, anchors, previews)
 	}
 	inserted, err := manager.ReplaceReplaceableAnnotations(ctx, request.SessionKey, rows)
 	if err != nil {

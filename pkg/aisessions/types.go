@@ -51,7 +51,12 @@ type SessionSummary struct {
 	ParentKey string `json:"parentKey,omitempty"`
 	// Kind is SessionKindSession / SessionKindSubagent / SessionKindFork. Empty
 	// is treated as a top-level session (rows indexed by older binaries).
-	Kind  string `json:"kind,omitempty"`
+	Kind string `json:"kind,omitempty"`
+	// Attached is empty when the row itself matched the list filter. "parent"
+	// means it was pulled in because a matching child needs its parent to hang
+	// under; "child" means it was pulled in because a matching parent needs its
+	// subagent runs shown. Request-scoped derived field: never persisted.
+	Attached string `json:"attached,omitempty"`
 	MTime int64  `json:"-"`
 	Size  int64  `json:"size,omitempty"`
 }
@@ -114,6 +119,9 @@ type ScanListResult struct {
 	Scanning     bool
 	Scanned      int
 	Total        int
+	// AttachTruncated reports that hierarchy context rows were capped, so the
+	// UI can say "some sub-sessions were not shown".
+	AttachTruncated bool
 }
 
 // ScanStatusEvent is published as a wps event so the GUI can move its progress
@@ -242,6 +250,11 @@ type ListOptions struct {
 	ExcludeTags     []string
 	TagPresence     string
 	Refresh         bool
+	// AttachMode controls hierarchy context rows added after Limit is applied:
+	// "" / "off" (default), "parent", "children", or "both".
+	AttachMode string
+	// AttachMaxRows caps how many context rows are added (0 = default 500).
+	AttachMaxRows int
 }
 
 type SearchOptions struct {
@@ -255,6 +268,8 @@ type SearchOptions struct {
 	ExcludeTags     []string
 	TagPresence     string
 	Refresh         bool
+	AttachMode      string
+	AttachMaxRows   int
 }
 
 func StableKey(source string, id string, filePath string) string {
@@ -327,7 +342,9 @@ type AnnotationView struct {
 	UserEdited    bool     `json:"userEdited"`
 	AIModel       string   `json:"aiModel,omitempty"`
 	AnchorPreview string   `json:"anchorPreview,omitempty"`
-	Orphaned      bool     `json:"orphaned,omitempty"`
+	// NodeText 是用户手改的「节点原文」副本；空串表示没覆盖，前端回落到活节点文本。
+	NodeText  string `json:"nodeText,omitempty"`
+	Orphaned  bool   `json:"orphaned,omitempty"`
 	CreatedAt     int64    `json:"createdAt"`
 	UpdatedAt     int64    `json:"updatedAt"`
 }

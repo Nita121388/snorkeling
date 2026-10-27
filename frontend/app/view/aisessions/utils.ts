@@ -4,10 +4,19 @@ import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import { formatFileSize } from "@/util/fileformat";
 import { isWindows } from "@/util/platformutil";
 import { buildSessionTree, type SessionTreeNode } from "./session-tree";
-import type { MarkedFilter, PathFilter, SessionGroupMode, SessionSortChain, SessionSortField } from "./types";
+import type {
+    AttachMode,
+    MarkedFilter,
+    PathFilter,
+    SessionGroupMode,
+    SessionSortChain,
+    SessionSortField,
+} from "./types";
 import {
+    DefaultAttachMode,
     DefaultSortChain,
     PathFilterOtherRoot,
+    attachModeStorageKey,
     expandAllTagsStorageKey,
     groupPreferenceStorageKey,
     sortPreferenceStorageKey,
@@ -222,7 +231,11 @@ export function makeSessionComparator(
 }
 
 /** 按排序链排序（不修改入参）。subCounts 可省略，省略时子会话数按 0 处理。 */
-export function sortSessions(sessions: SessionSummary[], chain: SessionSortChain, subCounts?: Map<string, number>): SessionSummary[] {
+export function sortSessions(
+    sessions: SessionSummary[],
+    chain: SessionSortChain,
+    subCounts?: Map<string, number>
+): SessionSummary[] {
     return [...sessions].sort(makeSessionComparator(chain, subCounts ?? new Map()));
 }
 
@@ -276,6 +289,19 @@ export function writeGroupPreference(mode: SessionGroupMode): void {
     window.localStorage.setItem(groupPreferenceStorageKey, mode);
 }
 
+/** 读取「包含上下文」模式；未知/缺失 → 默认智能。 */
+export function readAttachMode(): AttachMode {
+    if (typeof window === "undefined") return DefaultAttachMode;
+    const raw = window.localStorage.getItem(attachModeStorageKey);
+    if (raw === "off" || raw === "both" || raw === "children") return raw;
+    return DefaultAttachMode;
+}
+
+export function writeAttachMode(mode: AttachMode): void {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(attachModeStorageKey, mode);
+}
+
 /**
  * A project bucket produced by `groupSessionsByProject`.
  *
@@ -326,7 +352,8 @@ export function basenamePath(path: string): string {
 export function groupSessionsByProject(
     sessions: SessionSummary[],
     descending = true,
-    compare?: (left: SessionSummary, right: SessionSummary) => number
+    compare?: (left: SessionSummary, right: SessionSummary) => number,
+    matchedKeys?: Set<string>
 ): ProjectSessionGroup[] {
     const buckets = new Map<string, ProjectSessionGroup>();
     for (const session of sessions) {
@@ -353,7 +380,7 @@ export function groupSessionsByProject(
     // 每个分组内部再按父子关系成树；父会话必然与子会话同 project（同一目录），
     // 所以树不会跨分组。父不在本组里的子会话由 buildSessionTree 提升为顶层。
     for (const group of groups) {
-        group.tree = buildSessionTree(group.sessions, undefined, descending, compare);
+        group.tree = buildSessionTree(group.sessions, matchedKeys, descending, compare);
     }
     return groups;
 }
@@ -388,16 +415,64 @@ export function formatSessionRelativeTime(timestamp: number, now = Date.now()): 
 /**
  * 会话列表用的紧凑日期：与当前时间同一年时省略年份（"03-14"），跨年才带年份
  * （"2025-03-14"）。年份基准是 now 所在的年，所以跨年后无需改代码。
+ * `withTime` 为 true 时追加 " HH:mm"（"03-14 09:34"），列表行要精确到时间点用。
  * 0 / 无效时间戳返回 ""，让调用方可以直接不渲染。
  */
-export function formatSessionDateCompact(timestamp: number, now = Date.now()): string {
+export function formatSessionDateCompact(timestamp: number, now = Date.now(), withTime = false): string {
     if (!timestamp) return "";
     const normalized = normalizeTimestamp(timestamp);
     if (!Number.isFinite(normalized) || normalized <= 0) return "";
     const date = new Date(normalized);
     if (Number.isNaN(date.getTime())) return "";
     const monthDay = `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-    return date.getFullYear() === new Date(now).getFullYear() ? monthDay : `${date.getFullYear()}-${monthDay}`;
+    const datePart =
+        date.getFullYear() === new Date(now).getFullYear() ? monthDay : `${date.getFullYear()}-${monthDay}`;
+    if (!withTime) return datePart;
+    return `${datePart} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+/**
+ * 消息数热力档位阈值（1..5 档的第 1~4 个分界）。
+ *
+ * 按本机真实分布定标（4634 条会话：中位数 5 条、p90 100 条、p99 867 条），
+ * 不是等差数列。长尾分布下线性映射会让 95% 的会话落在同一档，热力就失去信息量。
+ */
+export const MessageHeatThresholds = [5, 20, 100, 500] as const;
+
+/** 文件大小热力档位阈值（字节）。分布同 MessageHeatThresholds：中位 122KB、p90 1.9MB、p99 14MB。 */
+export const SizeHeatThresholds = [100 * 1024, 460 * 1024, 2 * 1024 * 1024, 6 * 1024 * 1024] as const;
+
+/**
+ * 把数值映射成 1..5 的热力档位（1 = 最小，5 = 最大）。
+ * 纯函数 + 显式阈值表：档位边界可以被单测钉死，也不会随渲染次数漂移。
+ */
+export function heatLevel(value: number, thresholds: readonly number[]): number {
+    if (!Number.isFinite(value) || value <= 0) return 1;
+    let level = 1;
+    for (const threshold of thresholds) {
+        if (value >= threshold) level += 1;
+    }
+    return Math.min(level, thresholds.length + 1);
+}
+
+/**
+ * 更新时间的「新鲜度」档位（1 = 最新鲜/最亮，5 = 最陈旧/最淡）。
+ *
+ * 列表行用颜色编码这个维度：越旧越淡，让「刚动过」的会话自然浮出来。
+ * 档位只有 5 档，所以颜色变化本身不需要秒级刷新 —— 行下次重渲染时更新即可。
+ */
+export function freshnessLevel(timestamp: number, now = Date.now()): number {
+    if (!timestamp) return 5;
+    const normalized = normalizeTimestamp(timestamp);
+    if (!Number.isFinite(normalized) || normalized <= 0) return 5;
+    const elapsedMs = Math.max(0, now - normalized);
+    const hour = 60 * 60 * 1000;
+    const day = 24 * hour;
+    if (elapsedMs < hour) return 1;
+    if (elapsedMs < day) return 2;
+    if (elapsedMs < 7 * day) return 3;
+    if (elapsedMs < 30 * day) return 4;
+    return 5;
 }
 
 function sameCalendarDay(left: number, right: number): boolean {
@@ -409,24 +484,37 @@ function sameCalendarDay(left: number, right: number): boolean {
 /**
  * 列表行的「创建 / 最近更新」两段文本。判定逻辑放在这里，JSX 只负责直出：
  *
- * - `updatedText` 形如 "2h ago · 03-15"（相对时间给出新鲜度，紧凑日期给出定点）。
- * - `createdText` 形如 "03-14"；缺省为 0、或与 updatedAt 落在同一自然日时返回 ""
+ * - `updatedText` 形如 "03-15 09:34"（紧凑日期时间，不带 "2h ago" 这种相对描述 ——
+ *   相对新旧改由行内那条迷你进度条的长度表达，文字只负责定点）。
+ * - `createdText` 形如 "03-14 09:30"；缺省为 0、或与 updatedAt 落在同一自然日时返回 ""
  *   （同日不重复渲染，避免 "Created 03-15 / Updated 03-15" 的噪音）。
+ * - `freshnessLevel` 是更新时间的 1..5 档新鲜度（1 最新），列表行据此决定进度条长度。
+ * - `updatedRelative` 形如 "4d ago"：行内不渲染它（否则又回到老文案），只给进度条的
+ *   hover tooltip 用 —— 进度条好看但不知道具体多久，悬停就能读出来。
  * - `updatedFull` / `createdFull` 是秒级完整时间，给 tooltip 用。
  */
 export function describeSessionDates(
     createdAt: number,
     updatedAt: number,
     now = Date.now()
-): { updatedText: string; createdText: string; updatedFull: string; createdFull: string } {
+): {
+    updatedText: string;
+    createdText: string;
+    freshnessLevel: number;
+    updatedRelative: string;
+    updatedFull: string;
+    createdFull: string;
+} {
     const createdBase = createdAt > 0 ? normalizeTimestamp(createdAt) : 0;
     const updatedBase = updatedAt > 0 ? normalizeTimestamp(updatedAt) : createdBase;
-    const updatedDate = formatSessionDateCompact(updatedBase, now);
-    const createdDate = formatSessionDateCompact(createdBase, now);
+    const updatedDate = formatSessionDateCompact(updatedBase, now, true);
+    const createdDate = formatSessionDateCompact(createdBase, now, true);
     const sameDay = createdBase > 0 && updatedBase > 0 && sameCalendarDay(createdBase, updatedBase);
     return {
-        updatedText: updatedDate ? `${formatSessionRelativeTime(updatedBase, now)} · ${updatedDate}` : "",
+        updatedText: updatedDate,
         createdText: createdDate && !sameDay ? createdDate : "",
+        freshnessLevel: freshnessLevel(updatedBase, now),
+        updatedRelative: updatedDate ? formatSessionRelativeTime(updatedBase, now) : "",
         updatedFull: formatDateTimeToSecond(updatedBase),
         createdFull: formatDateTimeToSecond(createdBase),
     };

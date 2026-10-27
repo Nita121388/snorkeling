@@ -28,6 +28,11 @@ AI Sessions 是 Snorkeling 的本机 AI 会话浏览器，用于在右侧 `Sessi
 - 会话列表：按最后更新时间排序，支持 newest/oldest 切换
 - 来源筛选：All、Codex、Claude Code
 - 搜索：标题、备注、路径等字段
+- 按 session id 筛选：搜索框直接匹配裸 id / id 片段 / 完整 key（`source:id:filePath`），支持 `session:` / `id:` / `key:` 前缀，大小写不敏感
+- 筛选结果上下文补带：命中子代理时补带父代理，命中父代理时带出它的直接子代理 / fork。上下文行灰显并带 `fa-link` / `fa-sitemap` 图标。
+  - 三档模式（筛选面板「包含上下文」）：`精确`（只显示命中，等于旧行为）/ `智能`（双向，默认）/ `只带子`（命中父才展开子）
+  - 上下文行不占 `limit` 额度；每父最多 50 个、全局最多 500 个；`exclude` 条件命中时不补带
+  - 结果数只统计命中行，列表尾部显示「(+N 上下文)」；全选与「复制 ID」默认只含命中行
 - 标记：支持 mark/unmark，并可只看 marked 会话
 - 备注：支持 session note，备注也可参与搜索
 - 会话详情：用户消息与 AI 消息分角色展示，时间精确到秒
@@ -62,3 +67,4 @@ AI Sessions 是 Snorkeling 的本机 AI 会话浏览器，用于在右侧 `Sessi
 - 后端 service 在 `pkg/service/aisessionsservice/`
 - 本机 provider 与索引逻辑在 `pkg/aisessions/`
 - `ManagerOptions` 用于后续扩展 provider、index/meta 路径，避免继续扩大 service 层改动面
+- 父子上下文补带在 `pkg/aisessions/context_attach.go`（`attachContextExcluding`）；协议字段 `attachMode` / `attachMaxRows` / `attachTruncated`；行级标记 `SessionSummary.attached`（`parent` / `child`），只在请求期计算、不落库

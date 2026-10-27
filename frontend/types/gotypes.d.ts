@@ -119,6 +119,7 @@ declare global {
         status?: string;
         source?: string;
         aiModel?: string;
+        nodeText?: string;
         connection?: string;
     };
 
@@ -288,6 +289,8 @@ declare global {
         excludeTags?: string[];
         tagPresence?: string;
         includeProjectPaths?: boolean;
+        attachMode?: string;
+        attachMaxRows?: number;
     };
 
     // aisessionsservice.AISessionsListResponse
@@ -297,6 +300,7 @@ declare global {
         scanning: boolean;
         scanned: number;
         total: number;
+        attachTruncated?: boolean;
     };
 
     // aisessionsservice.AISessionsLiveSessionStateRequest
@@ -597,6 +601,7 @@ declare global {
         userEdited: boolean;
         aiModel?: string;
         anchorPreview?: string;
+        nodeText?: string;
         orphaned?: boolean;
         createdAt: number;
         updatedAt: number;
@@ -2601,6 +2606,7 @@ declare global {
         live?: boolean;
         parentKey?: string;
         kind?: string;
+        attached?: string;
         size?: number;
     };
 

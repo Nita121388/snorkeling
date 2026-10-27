@@ -138,6 +138,8 @@ type GroupedSessionListProps = {
     expandAllTags: boolean;
     /** 远端会话连接（供 Note 弹窗编辑 RPC 使用）。 */
     connection?: string;
+    /** 本次筛选的命中集（不含 attached 上下文行）；无筛选时为 undefined。 */
+    matchedKeys?: Set<string>;
 };
 
 export function GroupedSessionList({
@@ -165,6 +167,7 @@ export function GroupedSessionList({
     sortChain,
     expandAllTags,
     connection,
+    matchedKeys,
 }: GroupedSessionListProps) {
     const newSession = sessions.find((session) => session.key === NewSessionKey);
 
@@ -176,7 +179,7 @@ export function GroupedSessionList({
             ? []
             : buildSessionTree(
                   sessions.filter((s) => s.key !== NewSessionKey),
-                  undefined,
+                  matchedKeys,
                   sortDescending,
                   sortChain != null && sortChain.length > 0
                       ? makeSessionComparator(sortChain, countSubSessions(sessions))

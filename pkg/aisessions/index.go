@@ -509,8 +509,38 @@ func summaryMatchesList(summary SessionSummary, opts ListOptions) bool {
 	return true
 }
 
+// sessionIDQueryPrefixes 是用户在搜索框里粘 session id 时可能带的前缀。
+// 复制入口给出的形式不止一种（裸 UUID、“Session ID: xxx”、整条 key
+// `source:id:path`），都归一到裸 id 后再比一次。
+var sessionIDQueryPrefixes = []string{"sessionid:", "session-id:", "session:", "id:", "key:"}
+
+// trimSessionIDQueryPrefix 去掉已知前缀；没有前缀时返回原值。
+func trimSessionIDQueryPrefix(query string) (string, bool) {
+	for _, prefix := range sessionIDQueryPrefixes {
+		if strings.HasPrefix(query, prefix) {
+			rest := strings.TrimSpace(strings.TrimPrefix(query, prefix))
+			if rest == "" {
+				return query, false
+			}
+			return rest, true
+		}
+	}
+	return query, false
+}
+
+// summaryMatchesQuery 判断一行是否命中自由文本搜索。
+//
+// 可搜索字段包含 **session id / session key**：用户经常把某个会话的 id 粘进
+// 搜索框（Session 菜单“Session ID” / 批量栏“Copy session IDs”都产出这个值），
+// 只搜标题和备注会让这个动作看起来失灵。key 是 `source:id:filePath`，把它一并
+// 纳入后整条 key 也能命中。
 func summaryMatchesQuery(summary SessionSummary, query string) bool {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return true
+	}
 	text := strings.ToLower(strings.Join([]string{
+		summary.Key,
 		summary.ID,
 		summary.Source,
 		summary.Title,
@@ -520,7 +550,15 @@ func summaryMatchesQuery(summary SessionSummary, query string) bool {
 		summary.Note,
 		strings.Join(summary.Tags, " "),
 	}, " "))
-	return strings.Contains(text, query)
+	if strings.Contains(text, query) {
+		return true
+	}
+	// `session:<id>` / `id:<id>` / 整条 key 形式：去前缀后再比一次。
+	if stripped, changed := trimSessionIDQueryPrefix(query); changed {
+		return strings.Contains(strings.ToLower(summary.ID), stripped) ||
+			strings.Contains(strings.ToLower(summary.Key), stripped)
+	}
+	return false
 }
 
 func textForSearch(message Message) string {

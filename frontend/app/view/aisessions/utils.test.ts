@@ -4,29 +4,41 @@
 import { PlatformMacOS, PlatformWindows, setPlatform } from "@/util/platformutil";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+    DefaultAttachMode,
+    DefaultSortChain,
+    attachModeStorageKey,
+    expandAllTagsStorageKey,
+    MaxSortChainLength,
+    sanitizeSortChain,
+} from "./types";
+import {
     applySelectionRange,
     buildBatchCopyText,
     buildSessionDetailTimeline,
+    countSubSessions,
     describeSessionDates,
     formatFileSize,
     formatRelativeRefreshTime,
     formatSessionDateCompact,
     formatSessionRelativeTime,
+    freshnessLevel,
     groupSessionsByProject,
-    countSubSessions,
+    heatLevel,
     isReadableMessage,
     makeSessionComparator,
+    MessageHeatThresholds,
     pruneSelectionToVisible,
+    readAttachMode,
     readExpandAllTagsPreference,
     restoreCommandForSession,
     restoreMetaForSession,
     shouldExpandAllTags,
     shouldStartEmptyChat,
+    SizeHeatThresholds,
     sortSessions,
     UnclassifiedGroupName,
     writeExpandAllTagsPreference,
 } from "./utils";
-import { expandAllTagsStorageKey, sanitizeSortChain, DefaultSortChain, MaxSortChainLength } from "./types";
 
 function makeMessage(seq: number, role: string, text: string): Message {
     return {
@@ -165,6 +177,14 @@ describe("AI session detail timeline", () => {
         expect(formatSessionDateCompact(new Date(2025, 11, 31, 23, 0, 0).getTime(), now)).toBe("2025-12-31");
     });
 
+    it("appends the clock time when withTime is requested", () => {
+        const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
+        expect(formatSessionDateCompact(new Date(2026, 2, 14, 9, 5, 0).getTime(), now, true)).toBe("03-14 09:05");
+        expect(formatSessionDateCompact(new Date(2025, 11, 31, 23, 59, 0).getTime(), now, true)).toBe(
+            "2025-12-31 23:59"
+        );
+    });
+
     it("returns an empty compact date for missing or invalid timestamps", () => {
         const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
         expect(formatSessionDateCompact(0, now)).toBe("");
@@ -182,10 +202,39 @@ describe("AI session detail timeline", () => {
         const created = new Date(2026, 2, 14, 9, 0, 0).getTime();
         const updated = new Date(2026, 2, 15, 10, 0, 0).getTime();
         const info = describeSessionDates(created, updated, now);
-        expect(info.updatedText).toBe("2h ago · 03-15");
-        expect(info.createdText).toBe("03-14");
+        expect(info.updatedText).toBe("03-15 10:00");
+        expect(info.createdText).toBe("03-14 09:00");
+        expect(info.freshnessLevel).toBe(2);
+        // 行内不再渲染相对时间，只留给进度条的 hover tooltip。
+        expect(info.updatedRelative).toBe("2h ago");
         expect(info.updatedFull).toBe("2026-03-15 10:00:00");
         expect(info.createdFull).toBe("2026-03-14 09:00:00");
+    });
+
+    it("buckets freshness into five levels for the row colour ramp", () => {
+        const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
+        const minute = 60_000;
+        const hour = 60 * minute;
+        const day = 24 * hour;
+        expect(freshnessLevel(now - 5 * minute, now)).toBe(1);
+        expect(freshnessLevel(now - 3 * hour, now)).toBe(2);
+        expect(freshnessLevel(now - 3 * day, now)).toBe(3);
+        expect(freshnessLevel(now - 10 * day, now)).toBe(4);
+        expect(freshnessLevel(now - 90 * day, now)).toBe(5);
+        expect(freshnessLevel(0, now)).toBe(5);
+    });
+
+    it("maps metrics onto five heat levels using the calibrated thresholds", () => {
+        expect(heatLevel(0, MessageHeatThresholds)).toBe(1);
+        expect(heatLevel(4, MessageHeatThresholds)).toBe(1);
+        expect(heatLevel(5, MessageHeatThresholds)).toBe(2);
+        expect(heatLevel(20, MessageHeatThresholds)).toBe(3);
+        expect(heatLevel(100, MessageHeatThresholds)).toBe(4);
+        expect(heatLevel(500, MessageHeatThresholds)).toBe(5);
+        expect(heatLevel(1_600, MessageHeatThresholds)).toBe(5);
+        expect(heatLevel(2 * 1024 * 1024, SizeHeatThresholds)).toBe(4);
+        expect(heatLevel(-1, SizeHeatThresholds)).toBe(1);
+        expect(heatLevel(Number.NaN, SizeHeatThresholds)).toBe(1);
     });
 
     it("merges created into updated when both land on the same calendar day", () => {
@@ -199,11 +248,13 @@ describe("AI session detail timeline", () => {
         const now = new Date(2026, 2, 15, 12, 0, 0).getTime();
         const created = new Date(2026, 2, 14, 9, 0, 0).getTime();
         const onlyCreated = describeSessionDates(created, 0, now);
-        expect(onlyCreated.updatedText).toBe("1d ago · 03-14");
+        expect(onlyCreated.updatedText).toBe("03-14 09:00");
         expect(onlyCreated.createdText).toBe("");
         expect(describeSessionDates(0, 0, now)).toEqual({
             updatedText: "",
             createdText: "",
+            freshnessLevel: 5,
+            updatedRelative: "",
             updatedFull: "never",
             createdFull: "never",
         });
@@ -428,11 +479,30 @@ describe("groupSessionsByProject", () => {
     });
 
     it("keeps per-group sessions in the caller's newest-first order", () => {
-        const groups = groupSessionsByProject([
-            makeSummary("new", "/work/x", 300),
-            makeSummary("old", "/work/x", 100),
-        ]);
+        const groups = groupSessionsByProject([makeSummary("new", "/work/x", 300), makeSummary("old", "/work/x", 100)]);
         expect(groups[0].sessions.map((s) => s.key)).toEqual(["new", "old"]);
+    });
+
+    it("forwards matchedKeys so context rows stay out of the hit count", () => {
+        const parent = makeSummary("p", "/work/x", 300);
+        const hitChild = { ...makeSummary("c-hit", "/work/x", 200), parentKey: "p", kind: "subagent" };
+        const attachedChild = {
+            ...makeSummary("c-ctx", "/work/x", 100),
+            parentKey: "p",
+            kind: "subagent",
+            attached: "child",
+        };
+        const groups = groupSessionsByProject(
+            [parent, hitChild, attachedChild],
+            true,
+            undefined,
+            new Set(["p", "c-hit"])
+        );
+        const node = groups[0].tree[0];
+        expect(node.session.key).toBe("p");
+        expect(node.childCount).toBe(2);
+        // 只有 c-hit 是命中行；c-ctx 是后端带出的上下文行。
+        expect(node.matchedChildCount).toBe(1);
     });
 });
 
@@ -538,9 +608,27 @@ describe("applySelectionRange", () => {
 
 describe("buildBatchCopyText", () => {
     const sessions: SessionSummary[] = [
-        { key: "k1", id: "s1", source: "codex", filePath: "/a/one.jsonl", projectPath: "/Users/nita/work" } as SessionSummary,
-        { key: "k2", id: "s2", source: "codex", filePath: "/a/two.jsonl", projectPath: "/users/nita/work" } as SessionSummary,
-        { key: "k3", id: "s3", source: "codex", filePath: "/a/three.jsonl", projectPath: "/tmp/scratch" } as SessionSummary,
+        {
+            key: "k1",
+            id: "s1",
+            source: "codex",
+            filePath: "/a/one.jsonl",
+            projectPath: "/Users/nita/work",
+        } as SessionSummary,
+        {
+            key: "k2",
+            id: "s2",
+            source: "codex",
+            filePath: "/a/two.jsonl",
+            projectPath: "/users/nita/work",
+        } as SessionSummary,
+        {
+            key: "k3",
+            id: "s3",
+            source: "codex",
+            filePath: "/a/three.jsonl",
+            projectPath: "/tmp/scratch",
+        } as SessionSummary,
     ];
 
     it("returns an empty string for no sessions", () => {
@@ -665,7 +753,10 @@ describe("makeSessionComparator / sortSessions", () => {
 
 describe("sanitizeSortChain", () => {
     it("drops illegal fields", () => {
-        const chain = sanitizeSortChain([{ field: "bogus", desc: true }, { field: "messages", desc: true }]);
+        const chain = sanitizeSortChain([
+            { field: "bogus", desc: true },
+            { field: "messages", desc: true },
+        ]);
         expect(chain).toEqual([{ field: "messages", desc: true }]);
     });
 
@@ -706,7 +797,11 @@ describe("groupSessionsByProject with sort chain", () => {
             s("a-new", "/p/alpha", { messageCount: 1, updatedAt: 5000 }),
             s("b-only", "/p/beta", { messageCount: 50, updatedAt: 3000 }),
         ];
-        const groups = groupSessionsByProject(list, true, makeSessionComparator([{ field: "messages", desc: true }], new Map()));
+        const groups = groupSessionsByProject(
+            list,
+            true,
+            makeSessionComparator([{ field: "messages", desc: true }], new Map())
+        );
         expect(groups.map((g) => g.name)).toEqual(["alpha", "beta"]);
     });
 
@@ -715,7 +810,37 @@ describe("groupSessionsByProject with sort chain", () => {
             s("small", "/p/x", { messageCount: 2, updatedAt: 1000 }),
             s("big", "/p/x", { messageCount: 200, updatedAt: 500 }),
         ];
-        const groups = groupSessionsByProject(list, true, makeSessionComparator([{ field: "messages", desc: true }], new Map()));
+        const groups = groupSessionsByProject(
+            list,
+            true,
+            makeSessionComparator([{ field: "messages", desc: true }], new Map())
+        );
         expect(groups[0].tree.map((n) => n.session.key)).toEqual(["big", "small"]);
+    });
+});
+
+describe("readAttachMode", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it("defaults to 智能 when nothing is stored", () => {
+        vi.stubGlobal("window", { localStorage: { getItem: () => null, setItem: () => {} } });
+        expect(readAttachMode()).toBe(DefaultAttachMode);
+        expect(DefaultAttachMode).toBe("both");
+    });
+
+    it("keeps a stored 精确 / 只带子代理 choice", () => {
+        for (const stored of ["off", "children"] as const) {
+            vi.stubGlobal("window", {
+                localStorage: { getItem: (key: string) => (key === attachModeStorageKey ? stored : null), setItem: () => {} },
+            });
+            expect(readAttachMode()).toBe(stored);
+        }
+    });
+
+    it("falls back to 智能 for a corrupt value", () => {
+        vi.stubGlobal("window", { localStorage: { getItem: () => "bogus", setItem: () => {} } });
+        expect(readAttachMode()).toBe(DefaultAttachMode);
     });
 });

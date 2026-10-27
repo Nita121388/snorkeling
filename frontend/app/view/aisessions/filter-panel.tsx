@@ -5,7 +5,15 @@ import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { CHAT_SOURCES, getChatSource } from "./sources";
-import type { DatePreset, DateRangeFilter, MarkedFilter, PathFilter, SourceFilter, TagPresenceFilter } from "./types";
+import type {
+    AttachMode,
+    DatePreset,
+    DateRangeFilter,
+    MarkedFilter,
+    PathFilter,
+    SourceFilter,
+    TagPresenceFilter,
+} from "./types";
 import { DefaultPathFilter, DefaultTagPresence, PathFilterOtherRoot } from "./types";
 import type { PathAncestorSegment, PathCountGroup, PathRootOption } from "./utils";
 import { normalizePathPrefix, pathFilterToPrefix, pathPrefixCoveredBy, pathSelectionLabel } from "./utils";
@@ -159,6 +167,8 @@ export function FilterPanel({
     setDateRange,
     source,
     setSource,
+    attachMode,
+    setAttachMode,
     availableTags,
     tagFilters,
     excludeTags,
@@ -183,6 +193,9 @@ export function FilterPanel({
     setDateRange: (value: DateRangeFilter) => void;
     source: SourceFilter;
     setSource: (value: SourceFilter) => void;
+    /** 筛选结果是否补带父子上下文行（精确 / 智能 / 只带子代理）。 */
+    attachMode: AttachMode;
+    setAttachMode: (value: AttachMode) => void;
     availableTags: SessionTagSummary[];
     tagFilters: string[];
     excludeTags: string[];
@@ -293,6 +306,32 @@ export function FilterPanel({
                     {sourceActive ? (
                         <span className="text-[11px] text-secondary">{getChatSource(source).label}</span>
                     ) : null}
+                </div>
+                <div className="flex items-center gap-2.5 border-t border-border/40 py-1.5">
+                    <i className="fa-sharp fa-solid fa-sitemap w-3.5 shrink-0 text-center text-[11px] text-secondary" />
+                    <SegTrack className="flex-1">
+                        <SegButton
+                            active={attachMode === "off"}
+                            title="精确：只显示自身命中筛选的会话"
+                            onClick={() => setAttachMode("off")}
+                        >
+                            <span className="text-xs">精确</span>
+                        </SegButton>
+                        <SegButton
+                            active={attachMode === "both"}
+                            title="智能：命中子代理时补带父，命中父代理时带出子代理"
+                            onClick={() => setAttachMode("both")}
+                        >
+                            <span className="text-xs">智能</span>
+                        </SegButton>
+                        <SegButton
+                            active={attachMode === "children"}
+                            title="只带出子代理：命中父才展开子，命中子不回填父"
+                            onClick={() => setAttachMode("children")}
+                        >
+                            <span className="text-xs">只带子</span>
+                        </SegButton>
+                    </SegTrack>
                 </div>
                 <div className="flex items-center gap-2.5 border-t border-border/40 py-1.5">
                     <i className="fa-sharp fa-regular fa-calendar w-3.5 shrink-0 text-center text-[11px] text-secondary" />
