@@ -11,6 +11,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
     Fragment,
     type KeyboardEvent,
+    type ReactNode,
+    memo,
     useCallback,
     useEffect,
     useLayoutEffect,
@@ -82,6 +84,11 @@ import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
 // 新会话（detail == null）现由统一的 SessionDetailPane 处理：组件常驻持有 live turn，
 // 首条消息流式内容内联渲染、绑定落地后无缝替换为 canonical，不再有居中浮卡 / loading 闪烁。
 
+// 稳定的空时间线数组：liveTurn 为空时若每帧新建 []，会把下方 renderItems/rows/
+// 锚点签名等一串 useMemo 全部打穿（每帧重算 + 对全部消息重算 anchorHash），
+// 滚动时表现为持续的 JS 开销。
+const EmptyTimelineItems: SessionDetailTimelineItem[] = [];
+
 import { registerSessionContextResolver, sessionContextAttrs } from "@/app/element/copy-context-contract";
 import {
     type SessionContextState,
@@ -89,7 +96,7 @@ import {
     formatSessionContext,
     makeSessionContextResolver,
 } from "./copy-context";
-import type { SessionDetailRow } from "./utils";
+import type { SessionDetailRow, SessionDetailTimelineItem } from "./utils";
 import {
     buildSessionDetailTimeline,
     formatToolCallPreview,
@@ -196,6 +203,31 @@ function ToolCallCard({
         </ToolCallRow>
     );
 }
+
+/**
+ * 时间线单行包装组件。
+ *
+ * 为什么要单独 memo：滚动时 virtualizer 每次范围变化都会重渲染整个 SessionDetailPane，
+ * 旧写法直接在 map 里调 renderTimelineItem(...)，等于每帧为所有可见行重建一次元素树
+ * （dev 下 jsxDEV 占滚动脚本开销的 20%+）。
+ *
+ * rows 数组、renderTimelineItem 回调在纯滚动时引用稳定，所以 item/index/items/render
+ * 都不变 → memo 直接跳过；只有当真正影响渲染的依赖变化（搜索词、展开的工具、批注数、
+ * 子代理匹配等）使 renderTimelineItem 换引用时，行才会重渲染。
+ */
+const TimelineRow = memo(function TimelineRow({
+    item,
+    index,
+    items,
+    render,
+}: {
+    item: SessionDetailRow;
+    index: number;
+    items: SessionDetailRow[];
+    render: (item: SessionDetailRow, index: number, items: SessionDetailRow[]) => ReactNode;
+}) {
+    return <>{render(item, index, items)}</>;
+});
 
 export function SessionDetailPane({
     model,
@@ -1169,7 +1201,13 @@ export function SessionDetailPane({
 
     // 实时 turn 转成与历史同款 timeline 项，追加在历史项之后，用同一套
     // MessageCard / ToolCallCard 渲染——保证实时与历史样式完全一致。
-    const liveTimelineItems = liveTurn != null ? liveTurnToTimelineItems(liveTurn, liveUserMessagePersisted) : [];
+    //
+    // 必须 useMemo：liveTurn 为空时返回稳定的 EmptyTimelineItems，否则每帧新建
+    // [] 会让下方 renderItems / rows / 锚点签名全部重算，滚动时白白烧 CPU。
+    const liveTimelineItems = useMemo(
+        () => (liveTurn != null ? liveTurnToTimelineItems(liveTurn, liveUserMessagePersisted) : EmptyTimelineItems),
+        [liveTurn, liveUserMessagePersisted]
+    );
     // 子代理归位：把已匹配的 subagent 工具行从时间线里摘掉，改成发起它的那条消息的
     // 子级内容（MessageCard children）。未匹配的仍按普通工具行降级显示。
     const subagentMatchesByAnchor = useMemo(() => {
@@ -1919,9 +1957,18 @@ export function SessionDetailPane({
                                                                 // 取整到整数像素：tanstack 的 start 是分数值，
                                                                 // 分数位移 + 12px 小字会在 macOS/Electron 上渲染成亚像素叠影（重影）。
                                                                 transform: `translateY(${Math.round(virtualItem.start)}px)`,
+                                                                // contain: layout style 把每行的布局/样式计算限制在行内，
+                                                                // 使 measureElement 的 offsetHeight 强制布局只重排该行，
+                                                                // 而不是整块滚动容器（实测 p90 约减半）。
+                                                                contain: "layout style",
                                                             }}
                                                         >
-                                                            {renderTimelineItem(item, virtualItem.index, rows)}
+                                                            <TimelineRow
+                                                                item={item}
+                                                                index={virtualItem.index}
+                                                                items={rows}
+                                                                render={renderTimelineItem}
+                                                            />
                                                         </div>
                                                     );
                                                 })}
@@ -1929,7 +1976,12 @@ export function SessionDetailPane({
                                         ) : (
                                             rows.map((item, itemIdx) => (
                                                 <Fragment key={timelineItemKey(item, itemIdx)}>
-                                                    {renderTimelineItem(item, itemIdx, rows)}
+                                                    <TimelineRow
+                                                        item={item}
+                                                        index={itemIdx}
+                                                        items={rows}
+                                                        render={renderTimelineItem}
+                                                    />
                                                 </Fragment>
                                             ))
                                         )}

@@ -20,7 +20,9 @@
   "subtasks": [],
   "children": [],
   "parent": "10-19-aisessions-ux-perf-overhaul",
-  "relatedFiles": [],
-  "notes": "",
+  "relatedFiles": [
+    "frontend/app/view/aisessions/session-detail.tsx"
+  ],
+  "notes": "2026-10-27: CDP 实测定位（报告 profile-2026-10-27.md）。已修：liveTimelineItems 每帧新建 [] 打穿 memo 链（ScriptDuration -32%）、虚拟行 contain: layout style（p50 41.9→22.9 / p90 97.6→44.9）、TimelineRow memo 包装。剩余：数据为 dev 构建，需用打包版复测；若仍卡，下一步拆独立虚拟时间线子组件 + AnnotationRail memo + measureElement rAF 批量测量。",
   "meta": {}
 }
