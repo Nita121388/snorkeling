@@ -151,6 +151,13 @@ function makeIconClass(icon: string, fw: boolean, opts?: { spin?: boolean; defau
         }
     }
 
+    // 容忍调用方把 FA 类名前缀一起传进来（"fa-clipboard-list" / "regular@fa-star"）。
+    // 否则会拼出 "fa-fa-xxx" 这种不存在的类，图标静默变成空白。
+    icon = icon.replace(/^(solid@|regular@|brands@|custom@)fa-/, "$1");
+    if (icon.startsWith("fa-")) {
+        icon = icon.slice(3);
+    }
+
     let baseClass: string;
     if (icon.match(/^(solid@)?[a-z0-9-]+$/)) {
         icon = icon.replace(/^solid@/, "");
