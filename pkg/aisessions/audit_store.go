@@ -16,6 +16,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,6 +47,23 @@ const (
 // AuditRawMaxChars caps one stored raw payload so a runaway transcript cannot
 // bloat the table.
 const AuditRawMaxChars = 200_000
+
+// auditStaleMs is how long a row may stay in 'queued' before it is treated as
+// orphaned. AuditBegin only runs when the job actually starts executing, and a
+// single AI call is bounded well below this (90s timeout + <2min retry backoff),
+// so anything older never received its completion callback.
+const auditStaleMs = 30 * 60 * 1000
+
+// auditSweepInterval throttles the orphan sweep to at most once per minute.
+const auditSweepInterval = time.Minute
+
+// auditOrphanError is written onto rows reclaimed by the stale sweep.
+const auditOrphanError = "orphaned: completion callback never arrived"
+
+var (
+	auditSweepMu   sync.Mutex
+	auditLastSweep atomic.Int64
+)
 
 // AuditLogRow is the storage shape.
 type AuditLogRow struct {
@@ -99,7 +118,10 @@ type AuditInput struct {
 	Feature     string
 	Scope       string
 	SessionKey  string
-	Connection  string
+	// SessionTitle 让审计列表能直接看出是哪个会话（历史行都是空串）。
+	// 为空时 AuditBegin 会按 SessionKey 去索引里补。
+	SessionTitle string
+	Connection   string
 	Trigger     string
 	AIModel     string
 	JobID       string
@@ -251,12 +273,55 @@ func (m *Manager) AuditGet(ctx context.Context, id int64) (AuditView, error) {
 	return view, err
 }
 
-// AuditStats returns 24h aggregates.
+// AuditSweepStale marks rows that never received a completion callback as
+// failed so permanent 'queued' entries cannot accumulate. It is throttled per
+// process and safe to call on every read path.
+func (idx *SQLiteIndex) sweepStaleAuditLogs(ctx context.Context) (int, error) {
+	now := time.Now().UnixMilli()
+	last := auditLastSweep.Load()
+	if now-last < auditSweepInterval.Milliseconds() {
+		return 0, nil
+	}
+	if !auditSweepMu.TryLock() {
+		return 0, nil
+	}
+	defer auditSweepMu.Unlock()
+	if cur := auditLastSweep.Load(); now-cur < auditSweepInterval.Milliseconds() {
+		return 0, nil
+	}
+	result, err := idx.db.ExecContext(ctx,
+		`UPDATE ai_audit_log SET state = ?, error = ?, updated_at = ?
+		  WHERE state = ? AND created_at < ?`,
+		AuditStateFailed, auditOrphanError, now,
+		AuditStateQueued, now-auditStaleMs)
+	auditLastSweep.Store(now)
+	if err != nil {
+		return 0, err
+	}
+	affected, _ := result.RowsAffected()
+	return int(affected), nil
+}
+
+// SweepStaleAuditLogs exposes the stale sweep through the manager.
+func (m *Manager) SweepStaleAuditLogs(ctx context.Context) (int, error) {
+	var swept int
+	err := m.withSQLiteIndex(func(idx *SQLiteIndex) error {
+		var inner error
+		swept, inner = idx.sweepStaleAuditLogs(ctx)
+		return inner
+	})
+	return swept, err
+}
+
+// AuditStats returns 24h aggregates. It also reclaims orphaned 'queued' rows
+// (throttled) so a crashed worker cannot leave permanent in-flight entries.
 func (m *Manager) AuditStats(ctx context.Context) (AuditStatsResult, error) {
 	var stats AuditStatsResult
 	err := m.withSQLiteIndex(func(idx *SQLiteIndex) error {
+		swept, _ := idx.sweepStaleAuditLogs(ctx)
 		var inner error
 		stats, inner = idx.AuditStats(ctx)
+		stats.SweptStale = swept
 		return inner
 	})
 	return stats, err
@@ -287,6 +352,10 @@ func (idx *SQLiteIndex) AuditBegin(ctx context.Context, in AuditInput) (int64, e
 		trigger = AuditTriggerManual
 	}
 	rawRequest, truncated := clampAuditRaw(in.RawRequest)
+	sessionTitle := strings.TrimSpace(in.SessionTitle)
+	if sessionTitle == "" {
+		sessionTitle = idx.auditSessionTitle(ctx, in.SessionKey)
+	}
 	now := time.Now().UnixMilli()
 	result, err := idx.db.ExecContext(ctx,
 		`INSERT INTO ai_audit_log
@@ -294,12 +363,29 @@ func (idx *SQLiteIndex) AuditBegin(ctx context.Context, in AuditInput) (int64, e
 			 anchor_total, anchor_kept, result_count, duration_ms, error, raw_request, raw_response,
 			 raw_truncated, created_at, updated_at)
 		 VALUES (?,?,?,?,?,?,?,?,?,?,0,0,0,'',?,'',?,?,?)`,
-		feature, in.Scope, in.SessionKey, "", in.Connection, trigger, AuditStateQueued,
+		feature, in.Scope, in.SessionKey, sessionTitle, in.Connection, trigger, AuditStateQueued,
 		in.AIModel, in.JobID, in.AnchorTotal, rawRequest, boolToAuditInt(truncated), now, now)
 	if err != nil {
 		return 0, err
 	}
 	return result.LastInsertId()
+}
+
+// auditSessionTitle 尽力补上会话标题，失败就算了（审计行不该因此写不进去）。
+func (idx *SQLiteIndex) auditSessionTitle(ctx context.Context, sessionKey string) string {
+	key := strings.TrimSpace(sessionKey)
+	if key == "" {
+		return ""
+	}
+	var title string
+	if err := idx.db.GetContext(ctx, &title, `SELECT COALESCE(title, '') FROM ai_sessions WHERE key = ?`, key); err != nil {
+		return ""
+	}
+	if strings.TrimSpace(title) != "" {
+		return title
+	}
+	_ = idx.db.GetContext(ctx, &title, `SELECT COALESCE(title, '') FROM ai_session_meta WHERE session_key = ?`, key)
+	return title
 }
 
 func boolToAuditInt(value bool) int {
@@ -350,9 +436,12 @@ func (idx *SQLiteIndex) listAuditLogs(ctx context.Context, filter AuditFilter) (
 		args = append(args, key)
 	}
 	if query := strings.TrimSpace(filter.Query); query != "" {
-		where = append(where, "(session_title LIKE ? OR error LIKE ? OR ai_model LIKE ?)")
+		// LOWER() on both sides: SQLite LIKE is ASCII-case-insensitive but the
+		// column may hold mixed case, and lowercasing only the pattern made
+		// uppercase queries miss.
+		where = append(where, "(LOWER(session_title) LIKE ? OR LOWER(error) LIKE ? OR LOWER(ai_model) LIKE ? OR LOWER(session_key) LIKE ?)")
 		pattern := "%" + strings.ToLower(query) + "%"
-		args = append(args, pattern, pattern, pattern)
+		args = append(args, pattern, pattern, pattern, pattern)
 	}
 	whereSQL := " WHERE " + strings.Join(where, " AND ")
 
@@ -401,10 +490,13 @@ func (idx *SQLiteIndex) AuditStats(ctx context.Context) (AuditStatsResult, error
 		AvgMs  int64 `db:"avg_ms"`
 		Oldest int64 `db:"oldest"`
 	}{}
+	// Only completed calls have a meaningful duration; queued/failed rows store
+	// 0 and used to drag the average down.
+	nowMs := time.Now().UnixMilli()
 	err := idx.db.GetContext(ctx, &row, `SELECT COUNT(*) AS total,
 		SUM(CASE WHEN state='failed' THEN 1 ELSE 0 END) AS failed,
 		SUM(CASE WHEN state='done' THEN 1 ELSE 0 END) AS done,
-		CAST(COALESCE(AVG(duration_ms),0) AS INTEGER) AS avg_ms,
+		CAST(COALESCE(AVG(CASE WHEN state='done' AND duration_ms > 0 THEN duration_ms END),0) AS INTEGER) AS avg_ms,
 		COALESCE(MIN(created_at),0) AS oldest
 		FROM ai_audit_log WHERE created_at >= ?`, since)
 	if err != nil {
@@ -428,12 +520,71 @@ func (idx *SQLiteIndex) AuditStats(ctx context.Context) (AuditStatsResult, error
 		}
 		stats.ByFeature = append(stats.ByFeature, AuditFeatureCount{Feature: feature, Count: count})
 	}
-	return stats, featureRows.Err()
+	if err := featureRows.Err(); err != nil {
+		return stats, err
+	}
+	hourlyRows, err := idx.db.QueryContext(ctx,
+		`SELECT created_at, state FROM ai_audit_log WHERE created_at >= ?`, since)
+	if err != nil {
+		return stats, err
+	}
+	defer hourlyRows.Close()
+	scanned := make([]auditBucketRow, 0, stats.Total24h)
+	for hourlyRows.Next() {
+		var createdAt int64
+		var state string
+		if err := hourlyRows.Scan(&createdAt, &state); err != nil {
+			return stats, err
+		}
+		scanned = append(scanned, auditBucketRow{createdAt: createdAt, failed: state == AuditStateFailed})
+	}
+	if err := hourlyRows.Err(); err != nil {
+		return stats, err
+	}
+	stats.Hourly = buildAuditHourBuckets(scanned, nowMs)
+	return stats, nil
+}
+
+type auditBucketRow struct {
+	createdAt int64
+	failed    bool
+}
+
+// buildAuditHourBuckets turns raw rows into a fixed 24-slot hourly histogram so
+// the sparkline never shifts shape between refreshes.
+func buildAuditHourBuckets(rows []auditBucketRow, nowMs int64) []AuditHourBucket {
+	const hourMs = int64(60 * 60 * 1000)
+	const bucketCount = 24
+	endHour := (nowMs / hourMs) * hourMs
+	startHour := endHour - (bucketCount-1)*hourMs
+	buckets := make([]AuditHourBucket, bucketCount)
+	for i := 0; i < bucketCount; i++ {
+		buckets[i] = AuditHourBucket{Hour: startHour + int64(i)*hourMs}
+	}
+	for _, row := range rows {
+		hourStart := (row.createdAt / hourMs) * hourMs
+		idx := int((hourStart - startHour) / hourMs)
+		if idx < 0 || idx >= bucketCount {
+			continue
+		}
+		buckets[idx].Count++
+		if row.failed {
+			buckets[idx].Failed++
+		}
+	}
+	return buckets
 }
 
 type AuditFeatureCount struct {
 	Feature string `json:"feature"`
 	Count   int    `json:"count"`
+}
+
+// AuditHourBucket is one hour of the last 24h activity histogram.
+type AuditHourBucket struct {
+	Hour   int64 `json:"hour"` // bucket start, UnixMilli
+	Count  int   `json:"count"`
+	Failed int   `json:"failed"`
 }
 
 type AuditStatsResult struct {
@@ -442,6 +593,8 @@ type AuditStatsResult struct {
 	Done24h       int                 `json:"done24h"`
 	AvgDurationMs int64               `json:"avgDurationMs"`
 	ByFeature     []AuditFeatureCount `json:"byFeature"`
+	Hourly        []AuditHourBucket   `json:"hourly"`
+	SweptStale    int                 `json:"sweptStale"`
 }
 
 func (idx *SQLiteIndex) deleteAuditLogs(ctx context.Context, before int64) (int, error) {

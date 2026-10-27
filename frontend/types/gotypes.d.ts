@@ -631,6 +631,13 @@ declare global {
         count: number;
     };
 
+    // aisessions.AuditHourBucket
+    type AuditHourBucket = {
+        hour: number;
+        count: number;
+        failed: number;
+    };
+
     // aisessions.AuditStatsResult
     type AuditStatsResult = {
         total24h: number;
@@ -638,6 +645,8 @@ declare global {
         done24h: number;
         avgDurationMs: number;
         byFeature: AuditFeatureCount[];
+        hourly: AuditHourBucket[];
+        sweptStale: number;
     };
 
     // aisessions.AuditView

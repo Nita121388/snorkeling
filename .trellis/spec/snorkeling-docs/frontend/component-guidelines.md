@@ -223,3 +223,25 @@ InfoCard（`frontend/app/element/info-card/`）的显示由 `isHovered || isCard
   必须先跑，否则点外侧会丢草稿。
 
 回归测试：`frontend/app/element/info-card/info-card-hover.dom.test.tsx`。
+
+### 11. 视图根节点必须显式 `w-full`，否则浮窗里只占「内容宽」
+
+`frontend/app/block/block.scss` 的 `.block-content` 是 `display:flex; width:100%`，
+`BlockInner` 的视图组件是它的**直接 flex 子项**。`align-items` 默认 `stretch`
+只作用于交叉轴（高度），主轴（宽度）默认按 `max-content` 收缩 —— 只写
+`h-full` 的根节点会收缩成"最宽的那个子元素"的宽度。
+
+真实事故：AI Audit 视图（`frontend/app/view/aiaudit/aiaudit-view.tsx`）根节点写的是
+`flex h-full min-h-0 flex-col`，漏了 `w-full`；表格 `w-full` 于是等于自身 max-content
+（≈660px）。以 ephemeral 浮窗（视口 80%）打开时，右侧 40%+ 宽度全空，且不报任何错误。
+
+约定：
+
+```tsx
+// 视图组件根节点
+<div className="flex h-full w-full min-h-0 flex-col bg-block-solid">
+```
+
+自检方法：`node scripts/inspect-electron-ui.mjs elements` 里比较视图根节点与
+`.block-content` 的 `getBoundingClientRect().width`，两者应一致（误差 ≤ 2px）。
+横向溢出交给内部 `overflow-auto` 容器，不要靠根节点收缩来"自适应"。
