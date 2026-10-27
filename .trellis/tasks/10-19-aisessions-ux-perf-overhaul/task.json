@@ -29,7 +29,10 @@
     "10-21-aisessions-detail-virtual-scroll",
     "10-21-aisessions-subagent-tree",
     "10-23-aisessions-subsession-fold-toggle",
-    "10-25-aisessions-annotation-timeline"
+    "10-25-aisessions-annotation-timeline",
+    "10-27-aisessions-scroll-perf",
+    "10-27-aisessions-virtual-row-stability",
+    "10-27-aisessions-filter-context-attach"
   ],
   "parent": null,
   "relatedFiles": [],

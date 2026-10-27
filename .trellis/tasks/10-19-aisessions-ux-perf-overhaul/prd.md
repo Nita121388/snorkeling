@@ -15,6 +15,8 @@ AI 会话（Agent block / 历史会话详情）当前在「学习回看一个 AI
 | L5 | Preview txt and html multi-mode open | P2 |
 | L6 | CommonText paste image | P2 |
 | L7 | AISessions list detail block separation | P1 |
+| L8 | `10-27-aisessions-scroll-perf` 详情滚动性能整改（虚拟化重测 / memo / 滚动事件） | P1 |
+| L9 | `10-27-aisessions-virtual-row-stability` 虚拟行视觉稳定性（挂载动画 / 行高估算 / 滚动锚定） | P1 |
 
 ## 全局约束（所有 lane 必须遵守）
 
@@ -30,6 +32,7 @@ AI 会话（Agent block / 历史会话详情）当前在「学习回看一个 AI
 ```
 L1 (full-load) ──> L2 (annotations)
 L1 ──> L7 (block separation，复用 detail 加载契约)
+L1 ──> L8 (scroll perf) ──> L9 (row stability，同文件域，必须串行)
 L3、L4、L5、L6 相互独立，可与 L1 并行
 ```
 
@@ -43,6 +46,8 @@ L3、L4、L5、L6 相互独立，可与 L1 并行
 - [ ] `.txt` 可在 Snorkeling 内预览；`.html` 有三种明确打开方式并按后缀记忆
 - [ ] CommonText 可粘贴图片并落成文件
 - [ ] 会话列表与详情分离：点击开 detail block、再点并入当前 tab、Ctrl+点击新开 block
+- [ ] 大会话（>200 条）详情滚动流畅，滚动过程无行级淡入、视口内容漂移 <8px；流式输出期间可正常滚动
+- [ ] ≤60 条消息的小会话仍保留原有落盘淡入过渡与全量渲染行为
 
 ## 决策记录
 

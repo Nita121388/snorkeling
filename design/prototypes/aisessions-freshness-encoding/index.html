@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AI Sessions 行内「时间新鲜度」编码方案对比</title>
+        <style>
+            :root {
+                --bg: #fffdf8;
+                --panel: #ffffff;
+                --text: #1f1b17;
+                --sub: #635c52;
+                --line: rgba(0, 0, 0, 0.12);
+                --soft: rgba(0, 0, 0, 0.06);
+                --accent: #a76fca;
+                --amber: #e08a2e;
+                --cool: #7d8899;
+            }
+            html[data-theme="dark"] {
+                --bg: #12100e;
+                --panel: #1a1816;
+                --text: #f7f7f7;
+                --sub: #c3c8c2;
+                --line: rgba(255, 255, 255, 0.16);
+                --soft: rgba(255, 255, 255, 0.08);
+                --accent: #b07fd6;
+                --amber: #f0a24d;
+                --cool: #8b96a8;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                padding: 24px 28px 60px;
+                background: var(--bg);
+                color: var(--text);
+                font:
+                    400 13px/1.6 system-ui,
+                    -apple-system,
+                    "Segoe UI",
+                    sans-serif;
+            }
+            h1 {
+                font-size: 17px;
+                margin: 0 0 6px;
+            }
+            .lead {
+                color: var(--sub);
+                font-size: 12px;
+                margin: 0 0 22px;
+                max-width: 780px;
+            }
+            .theme-btn {
+                position: fixed;
+                right: 20px;
+                top: 18px;
+                padding: 6px 12px;
+                border-radius: 6px;
+                border: 1px solid var(--line);
+                background: var(--panel);
+                color: var(--text);
+                cursor: pointer;
+                font-size: 12px;
+            }
+            section {
+                margin: 0 0 22px;
+            }
+            .title {
+                font-weight: 600;
+                font-size: 13px;
+                margin-bottom: 2px;
+            }
+            .note {
+                color: var(--sub);
+                font-size: 11.5px;
+                margin-bottom: 8px;
+                max-width: 760px;
+            }
+            .board {
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                overflow: hidden;
+                background: var(--panel);
+                max-width: 900px;
+            }
+            .r {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 10px;
+                border-bottom: 1px solid var(--line);
+                position: relative;
+            }
+            .r:last-child {
+                border-bottom: 0;
+            }
+            .src {
+                font-size: 12px;
+                color: var(--sub);
+            }
+            .cells {
+                margin-left: auto;
+                display: inline-flex;
+                gap: 4px;
+                align-items: flex-end;
+            }
+            .cell {
+                display: inline-flex;
+                height: 12px;
+                width: 12px;
+                border: 1px solid var(--line);
+                border-radius: 3px;
+                align-items: flex-end;
+                justify-content: center;
+                overflow: hidden;
+            }
+            .cell > i {
+                display: block;
+                width: 100%;
+                background: var(--accent);
+            }
+            .t {
+                font-size: 11px;
+                font-variant-numeric: tabular-nums;
+            }
+            .rail {
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 3px;
+            }
+            .ibar {
+                display: inline-block;
+                width: 3px;
+                height: 10px;
+                border-radius: 1px;
+                margin-right: 6px;
+                vertical-align: -1px;
+            }
+            .mini {
+                display: inline-block;
+                width: 26px;
+                height: 5px;
+                border-radius: 2px;
+                background: var(--soft);
+                overflow: hidden;
+                vertical-align: 1px;
+                margin-right: 6px;
+            }
+            .mini > i {
+                display: block;
+                height: 100%;
+                background: var(--accent);
+            }
+            .dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--accent);
+                display: inline-block;
+                margin-right: 5px;
+                vertical-align: 1px;
+            }
+            .ghead {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 5px 10px;
+                background: var(--soft);
+                border-bottom: 1px solid var(--line);
+            }
+            .ghead b {
+                font-size: 10px;
+                letter-spacing: 0.06em;
+                color: var(--sub);
+                text-transform: uppercase;
+            }
+            .ghead span {
+                font-size: 10px;
+                color: var(--sub);
+                opacity: 0.7;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>AI Sessions 行内「时间新鲜度」编码方案对比</h1>
+        <p class="lead">
+            同一个维度（这行多久没动过）有 7 种画法。每块里 4 行分别代表 2 小时前 / 1 天前 / 4 天前 / 20 天前，
+            用来判断「梯度看不看得出来」。右侧两个小方块是已有的消息数 / 文件大小热力格。
+        </p>
+        <button class="theme-btn" id="theme">切换明暗</button>
+
+        <section>
+            <div class="title">A 现状：文字不透明度渐变（可识别度最低）</div>
+            <div class="note">同一个色相只改透明度：1 → 0.85 → 0.6 → 0.45。11px 小字上抗锯齿会吃掉大部分差异。</div>
+            <div class="board" id="A"></div>
+        </section>
+
+        <section>
+            <div class="title">B 色相温度：新 = 暖橙 → 中 = 品牌紫 → 旧 = 冷灰</div>
+            <div class="note">色相差比明度差更容易察觉。代价是引入第三种颜色语义（紫已经是品牌色）。</div>
+            <div class="board" id="B"></div>
+        </section>
+
+        <section>
+            <div class="title">C 左侧热度竖条（整行高度）+ 文字中性</div>
+            <div class="note">3px 竖条贴行左边缘，面积大、不受文字抗锯齿影响。风险：和「选中 / 多选」的左侧竖条抢同一个位置。</div>
+            <div class="board" id="C"></div>
+        </section>
+
+        <section>
+            <div class="title">C2 文字前小竖条（推荐）</div>
+            <div class="note">把热度竖条缩成 3×10px 放进 meta 行、贴在时间文字前面：不占左侧选区通道，不改变行高，依然靠形状+颜色双编码。</div>
+            <div class="board" id="C2"></div>
+        </section>
+
+        <section>
+            <div class="title">D 信号型：只强调 24 小时内的行</div>
+            <div class="note">完全不做渐变。新鲜的加粗 + 圆点 + 品牌色，其余一律中性灰。信息量最小、噪音最低，但「3 天前 vs 3 周前」不再有区别。</div>
+            <div class="board" id="D"></div>
+        </section>
+
+        <section>
+            <div class="title">E 形状型：26px 迷你条，越新填充越长</div>
+            <div class="note">纯形状编码，色弱和暗色主题都成立；代价是多占约 32px 宽度。</div>
+            <div class="board" id="E"></div>
+        </section>
+
+        <section>
+            <div class="title">F 字重分层：今天加粗 → 越旧越细</div>
+            <div class="note">不依赖颜色，只靠字重和轻微不透明度。几乎零成本，但对比很弱，单独用不够。</div>
+            <div class="board" id="F"></div>
+        </section>
+
+        <section>
+            <div class="title">G 结构型：按「今天 / 昨天 / 本周 / 更早」分组</div>
+            <div class="note">
+                完全不靠颜色，用信息架构承载时间，组头顺带给出计数。扫读效率最高，但虚拟列表要多一层 flatten；
+                且只在按时间排序时成立。
+            </div>
+            <div class="board" id="G"></div>
+        </section>
+
+        <script>
+            const samples = [
+                { rel: "2h ago", date: "10-27 09:41", lvl: 1 },
+                { rel: "1d ago", date: "10-26 15:20", lvl: 2 },
+                { rel: "4d ago", date: "10-23 11:19", lvl: 3 },
+                { rel: "20d ago", date: "10-07 18:02", lvl: 4 },
+            ];
+            const cells =
+                '<span class="cells"><span class="cell"><i style="height:60%;opacity:.6"></i></span><span class="cell"><i style="height:100%;opacity:.9"></i></span></span>';
+            const row = (meta, rail = "") =>
+                `<div class="r">${rail}<span class="src">pi</span>${meta}${cells}</div>`;
+
+            const railColors = ["var(--amber)", "#d8863c", "var(--accent)", "rgba(125,136,153,.45)"];
+            const fills = [1, 0.62, 0.32, 0.1];
+            const hues = ["var(--amber)", "#c9633f", "var(--accent)", "var(--cool)"];
+
+            document.getElementById("A").innerHTML = samples
+                .map((s) => {
+                    const op = [1, 0.85, 0.6, 0.45][s.lvl - 1];
+                    const c = s.lvl <= 3 ? "var(--accent)" : "var(--sub)";
+                    return row(`<span class="t" style="color:${c};opacity:${op}">${s.rel} · ${s.date}</span>`);
+                })
+                .join("");
+
+            document.getElementById("B").innerHTML = samples
+                .map((s) => row(`<span class="t" style="color:${hues[s.lvl - 1]}">${s.rel} · ${s.date}</span>`))
+                .join("");
+
+            document.getElementById("C").innerHTML = samples
+                .map((s) =>
+                    row(
+                        `<span class="t" style="color:var(--sub)">${s.rel} · ${s.date}</span>`,
+                        `<span class="rail" style="background:${railColors[s.lvl - 1]}"></span>`
+                    )
+                )
+                .join("");
+
+            document.getElementById("C2").innerHTML = samples
+                .map((s) =>
+                    row(
+                        `<span style="display:inline-flex;align-items:center"><span class="ibar" style="background:${railColors[s.lvl - 1]}"></span><span class="t" style="color:var(--sub)">${s.rel} · ${s.date}</span></span>`
+                    )
+                )
+                .join("");
+
+            document.getElementById("D").innerHTML = samples
+                .map((s) => {
+                    const fresh = s.lvl <= 2;
+                    return row(
+                        `<span style="display:inline-flex;align-items:center">${fresh ? '<span class="dot"></span>' : ""}<span class="t" style="color:${fresh ? "var(--accent)" : "var(--sub)"};font-weight:${fresh ? 600 : 400}">${s.rel} · ${s.date}</span></span>`
+                    );
+                })
+                .join("");
+
+            document.getElementById("E").innerHTML = samples
+                .map((s) =>
+                    row(
+                        `<span style="display:inline-flex;align-items:center"><span class="mini"><i style="width:${fills[s.lvl - 1] * 100}%;background:${s.lvl >= 4 ? "var(--cool)" : "var(--accent)"}"></i></span><span class="t" style="color:var(--sub)">${s.rel} · ${s.date}</span></span>`
+                    )
+                )
+                .join("");
+
+            document.getElementById("F").innerHTML = samples
+                .map((s) => {
+                    const w = [700, 600, 400, 400][s.lvl - 1];
+                    const op = [1, 1, 0.85, 0.6][s.lvl - 1];
+                    const c = s.lvl === 1 ? "var(--text)" : "var(--sub)";
+                    return row(`<span class="t" style="color:${c};font-weight:${w};opacity:${op}">${s.rel} · ${s.date}</span>`);
+                })
+                .join("");
+
+            const ghead = (label, n) => `<div class="ghead"><b>${label}</b><span>${n}</span></div>`;
+            const grow = (rel) => row(`<span class="t" style="color:var(--sub)">${rel}</span>`);
+            document.getElementById("G").innerHTML =
+                ghead("今天", 3) +
+                grow("2h ago · 09:41") +
+                grow("5h ago · 06:12") +
+                grow("8h ago · 03:20") +
+                ghead("昨天", 2) +
+                grow("1d ago · 15:20") +
+                grow("1d ago · 09:05") +
+                ghead("本周", 6) +
+                grow("3d ago · 11:19") +
+                grow("5d ago · 18:02") +
+                ghead("更早", 12) +
+                grow("20d ago · 10-07") +
+                grow("42d ago · 09-15");
+
+            document.getElementById("theme").addEventListener("click", () => {
+                const root = document.documentElement;
+                root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+            });
+        </script>
+    </body>
+</html>

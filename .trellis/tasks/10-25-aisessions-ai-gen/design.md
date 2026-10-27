@@ -216,3 +216,43 @@ props：`{sessionId, connection, kind, force?, size?, onSkipped?}`。
 | 重试耗尽后用户无感 | 终态 failed 事件 + 按钮 warning + tooltip 带 error |
 | Undo 窗口内又被自动巡检覆盖 | Undo 以 `updatedAt` 做 CAS，过期则拒绝并提示 |
 | 远端 connection 丢失导致状态串台 | 事件与 RPC 都带 `connection`，store key 含 connection |
+
+## 6. 附：批注时间线 AI 生成的失败治理（2026-10-27 实测）
+
+dev 日志里最近三次 `annotation-timeline` 失败（`ai_audit_log` #18/#19/#20，同一大会话
+447 消息 / 688k 字符）根因各不相同，已按下面修掉：
+
+| 现象 | 根因 | 修法 |
+|---|---|---|
+| `not valid JSON`（29.8s） | 输出上限写死 2048 token，12 条 × 600 字 body 写不完，JSON 被切断 | `annotationOutputBudget()` 按条目数/body 长度估预算（2048–8192） |
+| 同上（32.7s） | 同上；第 2 次尝试又撞 429，错误被覆盖 | 截断修复 + 保留 `lastParseErr` 与 `lastTransportErr`（`annotationErrorText`） |
+| 纯英文独白、无 JSON（46.9s） | 思考模型把预算花在推理上 | 剥 `<thinking>`/`</think>`、重试换「只许 JSON」系统提示，错误文案指向换非思考模型 |
+| 即使解析成功也一条不剩 | 模型把 digest 里的 ` seq=618 role=tool` 一起抄进 anchorKey | digest 改「每行一个 JSON 对象」+ `normalizeAnnotationAnchorKey()` 截到首个空白 |
+| 30–47s 延迟 / 429 | digest 200 节点 × 500 字 ≈ 10 万字符 | 降到 60 节点 × 240 字 + 24000 字符上限 |
+
+用真实回复回归：`#18 → 19 条可用草稿`、`#20 → 7 条`、`#19` 正确归类为 `no-json`。
+
+顺带修掉：`AuditInput` 缺 `SessionTitle` 导致 `audit_store_test.go` 编译不过，
+并让 `AuditBegin` 在标题为空时按 sessionKey 回填（历史审计行 session_title 全空）。
+
+### 6.1 后续：waveai@* 云端模式的 400（2026-10-27 13:11 实证）
+
+切到 `waveai@balanced` 后，生成全部失败于：
+
+```
+failed to stream openai-responses chat: openai 400 Bad Request:
+Invalid X-Wave-ClientId header: must be a valid UUID
+```
+
+根因：`pkg/aiusechat/completion.go` 里 headless 补全把 `WaveChatOpts.ClientId` 写成了字面量
+`"completion"`，它会被当成 `X-Wave-ClientId` 发给 Wave AI 网关，而网关要求 UUID。
+交互式聊天用的是 `wstore.GetClientId()`（应用启动时生成的 UUID），所以只有后台生成挂。
+
+修法：`ClientId: wstore.GetClientId()`。**影响面**：标题 / Note / Tags / 批注四类后台生成，
+只要用户选的是 `waveai@*` 云端模式就全挂；自定义 openai 兼容端点不校验该头，所以之前没暴露。
+
+另外 `ai_audit_log.anchor_total` 之前恒为 0（`AuditBegin` 没传），已补成 digest 条目数，
+审计页才能看出「这次给了多少候选节点」。
+
+> 注：`orphaned: completion callback never arrived`（duration 0，model 空）是进程重启时
+> 未完成的排队行被清扫器收尾的结果，属预期行为，不是新的失败。
