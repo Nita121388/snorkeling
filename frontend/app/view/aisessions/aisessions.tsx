@@ -32,8 +32,8 @@ import {
 import { SortMenu } from "./sort-menu";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
-import { ScanProgressStrip, SkeletonSessionRows } from "./scan-progress";
-import type { ScanStatus } from "./scan-status-logic";
+import { SkeletonSessionRows } from "./scan-progress";
+import { mergeScanStatus, type ScanStatus } from "./scan-status-logic";
 import { SessionBatchBar } from "./session-batch-bar";
 import { SessionDetailPane } from "./session-detail";
 import { openAISessionDetailFromList, openAISessionNewChatFromList } from "./session-detail-block";
@@ -51,9 +51,10 @@ import {
 } from "./session-note-events";
 import { normalizeSessionTags } from "./session-tags";
 import { mergeSessionTimeline } from "./session-timeline-sync";
-import { collectParentKeys } from "./session-tree";
+import { collectParentKeys, collectParentsOfMatches } from "./session-tree";
 import { defaultChatSource } from "./sources";
 import type {
+    AttachMode,
     DateRangeFilter,
     MarkedFilter,
     PathFilter,
@@ -93,6 +94,7 @@ import {
     pathFilterEqual,
     pathSelectionsEqual,
     pruneSelectionToVisible,
+    readAttachMode,
     readExpandAllTagsPreference,
     readGroupPreference,
     readSortPreference,
@@ -103,6 +105,7 @@ import {
     countSubSessions,
     makeSessionComparator,
     sortSessions,
+    writeAttachMode,
     writeExpandAllTagsPreference,
     writeGroupPreference,
 } from "./utils";
@@ -167,6 +170,8 @@ export class AiSessionsViewModel implements ViewModel {
     tagFiltersAtom = jotai.atom<string[]>([]);
     tagPresenceAtom = jotai.atom<TagPresenceFilter>(DefaultTagPresence);
     markedFilterAtom = jotai.atom<MarkedFilter>("all");
+    /** 筛选结果的父子上下文补带模式（精确 / 智能 / 只带子代理）。 */
+    attachModeAtom = jotai.atom<AttachMode>(readAttachMode());
     dateRangeAtom = jotai.atom(DefaultDateRange) as jotai.PrimitiveAtom<DateRangeFilter>;
     pathFilterAtom = jotai.atom<PathFilter>(DefaultPathFilter) as jotai.PrimitiveAtom<PathFilter>;
     // 已选目录前缀集合（真正参与过滤）。与 pathFilterAtom（仅浏览位置：面包屑/
@@ -192,6 +197,11 @@ export class AiSessionsViewModel implements ViewModel {
     deletingAtom = jotai.atom<boolean>(false);
     lastSessionsRefreshAtAtom = jotai.atom<number>(0);
     scanStatusAtom = jotai.atom<ScanStatus>({ scanned: 0, total: 0, running: false, done: false, partial: false });
+    /** 后端上下文行被上限截断（每父 50 / 全局 500）。 */
+    attachTruncatedAtom = jotai.atom<boolean>(false);
+    // 后台扫描的实时进度（来自 wps 事件）。扫描进度只用于右上角刷新 icon 的
+    // title / 旋转态，不再在列表里插进度条或骨架。
+    liveScanStatusAtom = jotai.atom<ScanStatus>({ scanned: 0, total: 0, running: false, done: false, partial: false });
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     sessionsLoadSeq = 0;
     detailLoadSeq = 0;
@@ -208,10 +218,15 @@ export class AiSessionsViewModel implements ViewModel {
         this.endIconButtons = jotai.atom((get) => {
             const blockData = get(this.blockAtom);
             const loading = get(this.loadingAtom);
+            // 扫描进度合并到刷新 icon 上：加载/扫描期间只靠这一个 icon 体现，
+            // 列表本身保持安静（不插骨架、不弹进度条文案）。
+            const scanStatus = mergeScanStatus(get(this.scanStatusAtom), get(this.liveScanStatusAtom));
+            const scanning = scanStatus.running && !scanStatus.done;
+            const busy = loading || scanning;
             const autoRefreshMs = normalizeAutoRefreshIntervalMs(blockData?.meta?.[AutoRefreshIntervalMetaKey]);
             const autoRefreshEnabled = this.getConnection() === "";
             const refreshStatus: RefreshStatus = deriveRefreshStatus({
-                loading,
+                loading: busy,
                 autoRefreshEnabled,
                 autoRefreshIntervalMs: autoRefreshMs,
                 lastRefreshAt: get(this.lastSessionsRefreshAtAtom),
@@ -219,16 +234,22 @@ export class AiSessionsViewModel implements ViewModel {
                 now: Date.now(),
             });
             return [
-                {
-                    elemtype: "iconbutton",
-                    className: "aisessions-audit",
-                    icon: "fa-clipboard-list",
-                    title: "Open AI Audit",
-                    zone: "pinned",
-                    click: () => {
-                        void createBlock({ meta: { view: "aiaudit" } }, false, true);
-                    },
-                },
+                // AI Audit 属于偶尔用的诊断视图：默认不占用头栏位置，
+                // 需要时在块设置菜单里勾选显示（或直接点「Open AI Audit」）。
+                ...(getShowAuditButton(blockData?.meta)
+                    ? [
+                          {
+                              elemtype: "iconbutton" as const,
+                              className: "aisessions-audit",
+                              icon: "clipboard-list",
+                              title: "Open AI Audit",
+                              zone: "pinned" as const,
+                              click: () => {
+                                  void createBlock({ meta: { view: "aiaudit" } }, false, true);
+                              },
+                          },
+                      ]
+                    : []),
                 {
                     elemtype: "iconbutton",
                     className: "aisessions-auto-refresh",
@@ -239,8 +260,14 @@ export class AiSessionsViewModel implements ViewModel {
                             autoRefreshIntervalMs={autoRefreshEnabled ? autoRefreshMs : 0}
                         />
                     ),
-                    iconSpin: loading,
-                    title: loading ? "Refreshing sessions…" : "Refresh sessions",
+                    iconSpin: busy,
+                    title: loading
+                        ? "Refreshing sessions…"
+                        : scanning
+                          ? scanStatus.total > 0
+                              ? `Syncing sessions ${scanStatus.scanned}/${scanStatus.total}`
+                              : "Syncing sessions…"
+                          : "Refresh sessions",
                     disabled: loading,
                     zone: "pinned",
                     click: () => {
@@ -273,6 +300,7 @@ export class AiSessionsViewModel implements ViewModel {
 
     getSettingsMenuItems(): ContextMenuItem[] {
         const currentInterval = this.getAutoRefreshIntervalMs();
+        const showAuditButton = getShowAuditButton(globalStore.get(this.blockAtom)?.meta);
         return [
             {
                 label: "Auto Refresh",
@@ -287,7 +315,28 @@ export class AiSessionsViewModel implements ViewModel {
                     ...customAutoRefreshMenuItems(currentInterval, this),
                 ],
             },
+            {
+                label: "Show AI Audit Button",
+                type: "checkbox",
+                checked: showAuditButton,
+                click: () => this.setShowAuditButton(!showAuditButton),
+            },
+            {
+                label: "Open AI Audit",
+                click: () => {
+                    void createBlock({ meta: { view: "aiaudit" } }, false, true);
+                },
+            },
         ];
+    }
+
+    setShowAuditButton(show: boolean): void {
+        void RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: `block:${this.blockId}`,
+            meta: {
+                [ShowAuditButtonMetaKey]: show ? true : null,
+            } as MetaType,
+        });
     }
 
     // Start a transient "new chat" placeholder. The real session id is only
@@ -372,6 +421,7 @@ export class AiSessionsViewModel implements ViewModel {
         const pathSelections = globalStore.get(this.pathSelectionsAtom);
         const pathExcludes = globalStore.get(this.pathExcludesAtom);
         const excludeTags = globalStore.get(this.excludeTagsAtom);
+        const attachMode = globalStore.get(this.attachModeAtom);
         const { since, before } = dateRangeToSinceBefore(dateRange, Date.now());
         // 后台自动同步不把整个面板打进 loading（避免黑屏）；只有用户/首载 refresh 才置 loading。
         if (!background) {
@@ -391,6 +441,7 @@ export class AiSessionsViewModel implements ViewModel {
                 tagFilters,
                 tagPresence,
                 excludeTags,
+                attachMode,
                 projects: pathSelections,
                 excludeProjects: pathExcludes,
                 includeProjectPaths: true,
@@ -407,12 +458,14 @@ export class AiSessionsViewModel implements ViewModel {
                     pathFilter,
                     pathSelections,
                     pathExcludes,
-                    excludeTags
+                    excludeTags,
+                    attachMode
                 )
             ) {
                 return;
             }
             const sessions = response?.sessions ?? [];
+            globalStore.set(this.attachTruncatedAtom, response?.attachTruncated ?? false);
             globalStore.set(this.projectPathsAtom, response?.projectPaths ?? []);
             // 后台扫描仍在补索引：记下进度，列表尾部用骨架行占位。
             globalStore.set(this.scanStatusAtom, {
@@ -492,7 +545,8 @@ export class AiSessionsViewModel implements ViewModel {
                     pathFilter,
                     pathSelections,
                     pathExcludes,
-                    excludeTags
+                    excludeTags,
+                    attachMode
                 )
             ) {
                 globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -511,7 +565,8 @@ export class AiSessionsViewModel implements ViewModel {
                     pathFilter,
                     pathSelections,
                     pathExcludes,
-                    excludeTags
+                    excludeTags,
+                    attachMode
                 )
             ) {
                 globalStore.set(this.loadingAtom, false);
@@ -530,7 +585,8 @@ export class AiSessionsViewModel implements ViewModel {
         pathFilter: PathFilter,
         pathSelections: string[],
         pathExcludes: string[],
-        excludeTags: string[]
+        excludeTags: string[],
+        attachMode: AttachMode
     ): boolean {
         const currentDateRange = globalStore.get(this.dateRangeAtom);
         return (
@@ -546,6 +602,7 @@ export class AiSessionsViewModel implements ViewModel {
             pathSelectionsEqual(globalStore.get(this.pathSelectionsAtom), pathSelections) &&
             pathSelectionsEqual(globalStore.get(this.pathExcludesAtom), pathExcludes) &&
             tagsEqual(globalStore.get(this.excludeTagsAtom), excludeTags) &&
+            globalStore.get(this.attachModeAtom) === attachMode &&
             currentDateRange.preset === dateRange.preset &&
             (currentDateRange.from ?? 0) === (dateRange.from ?? 0) &&
             (currentDateRange.to ?? 0) === (dateRange.to ?? 0)
@@ -1167,6 +1224,12 @@ function findSessionById(sessions: SessionSummary[], sessionId: string): Session
 
 const SessionListWidthStorageKey = "aisessions.sessionListWidth";
 const AutoRefreshIntervalMetaKey = "aisessions:autorefreshintervalms";
+// 头栏「Open AI Audit」图标默认隐藏，仅在块 meta 显式开启时显示。
+const ShowAuditButtonMetaKey = "aisessions:showaudit";
+
+function getShowAuditButton(meta: MetaType | undefined): boolean {
+    return meta?.[ShowAuditButtonMetaKey] === true;
+}
 const DefaultAutoRefreshIntervalMs = 60_000;
 const MinAutoRefreshIntervalMs = 10_000;
 const MaxAutoRefreshIntervalMs = 60 * 60_000;
@@ -1312,6 +1375,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         writeExpandAllTagsPreference(expandAllTags);
     }, [expandAllTags]);
     const [groupMode, setGroupMode] = jotai.useAtom(model.groupModeAtom);
+    const attachMode = jotai.useAtomValue(model.attachModeAtom);
+    useEffect(() => {
+        writeAttachMode(attachMode);
+    }, [attachMode]);
     const [sessionListCollapsed, setSessionListCollapsed] = useState(() => readDefaultSessionListCollapsed(model));
     // 列表 / 详情分离：纯列表块（没有绑定具体会话）不再内嵌详情面板，
     // 点会话时把详情拆到独立块；只有详情块才渲染详情面板。
@@ -1347,6 +1414,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     }, [model, sortDescending]);
     const liveScanStatus = useScanStatus({ enabled: blockVisible, onScanDone: handleScanDone });
     useEffect(() => {
+        // 把事件推来的实时进度同步到 model，供右上角刷新 icon 读取。
+        globalStore.set(model.liveScanStatusAtom, liveScanStatus);
+    }, [model, liveScanStatus]);
+    useEffect(() => {
         return () => {
             if (scanDoneTimerRef.current != null) {
                 window.clearTimeout(scanDoneTimerRef.current);
@@ -1354,11 +1425,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
             }
         };
     }, []);
-    const scanning = responseScanStatus.running || (liveScanStatus.running && !liveScanStatus.done);
-    const scanProgress =
-        liveScanStatus.total > 0
-            ? { scanned: liveScanStatus.scanned, total: liveScanStatus.total }
-            : { scanned: responseScanStatus.scanned, total: responseScanStatus.total };
+    const mergedScanStatus = mergeScanStatus(responseScanStatus, liveScanStatus);
+    const scanning = mergedScanStatus.running && !mergedScanStatus.done;
+    // 静默加载：骨架只在首屏还没有任何会话数据时出现。列表一旦有内容，
+    // 后台扫描/刷新的进度全部交给右上角刷新 icon，不再插骨架或文案。
+    const firstLoadPending = sessions.length === 0 && (loading || scanning);
     const [runningChatSessionIds, setRunningChatSessionIds] = useState<ReadonlySet<string>>(() => new Set());
     const sessionsRunning = useSessionsRunning(blockVisible);
     const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -1376,13 +1447,22 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     // 多选集合始终是「当前可见会话」的子集：筛选 / 刷新后消失的会话不该继续
     // 留在选区内，否则批量栏的「复制 5 个 ID」实际只有 2 条在结果里。
     // New Chat 占位没有 id / filePath，进选区只会让复制产物出现空行，排除它。
-    const selectableKeys = useMemo(
+    const visibleKeys = useMemo(
         () => visibleSessions.filter((session) => session.key !== NewSessionKey).map((session) => session.key),
         [visibleSessions]
     );
+    // Ctrl+A / 「选择全部」只作用于自身命中筛选的行：上下文行是为了保住父子结构
+    // 带出来的脚手架，默认不该进批量复制的产物。
+    const selectableKeys = useMemo(
+        () =>
+            visibleSessions
+                .filter((session) => session.key !== NewSessionKey && !session.attached)
+                .map((session) => session.key),
+        [visibleSessions]
+    );
     useEffect(() => {
-        model.pruneSelection(selectableKeys);
-    }, [model, selectableKeys]);
+        model.pruneSelection(visibleKeys);
+    }, [model, visibleKeys]);
     // 选区内会话（按用户点击顺序，不是列表顺序 —— 决定复制产物的行序）。
     const selectedSessions = useMemo(() => {
         if (selectedKeys.length === 0) return [];
@@ -1393,16 +1473,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     }, [visibleSessions, selectedKeys]);
     const selectedKeySet = useMemo(() => new Set(selectedKeys), [selectedKeys]);
     const selectionAllStarred = selectedSessions.length > 0 && selectedSessions.every((session) => session.marked);
-    /*
-     * The 按项目 cut of the same pool. The New Chat placeholder is pinned above
-     * every group (it has no folder yet), so it is set aside before grouping;
-     * every real session ends up in exactly one bucket, empty buckets never render.
-     */
-    const groupedSessions = useMemo(() => {
-        const base = newSession != null ? visibleSessions.slice(1) : visibleSessions;
-        return groupSessionsByProject(base, sortDescending, sessionComparator);
-    }, [visibleSessions, newSession, sortDescending, sessionComparator]);
-
     // 一键展开/全部收起的全局覆盖状态。纯内存态，不落盘：刷新后回到
     // expandedParents（默认空 = 全部折叠），所以一键展开不会变成新的默认行为。
     // 声明位置在 toggleExpandParent 之前：那个回调的 deps 会立即求值。
@@ -1488,23 +1558,44 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         normalizedExcludeTags.length +
         (tagPresenceActive ? 1 : 0) +
         (source !== "" ? 1 : 0);
-    // 搜索/筛选命中子会话时，自动展开它的父：结果集是后端过滤后的子集，
-    // 「子行命中但父行没命中」在这个集合里只能靠 parentKey 关系反推。
+    // 命中集：attached 为空的行才是自身满足筛选条件的。无筛选时为 null，
+    // 与 buildSessionTree 的 allMatched 语义一致。
+    const matchedKeys = useMemo<Set<string> | null>(() => {
+        if (!filterActive) return null;
+        const keys = new Set<string>();
+        for (const session of sessions) {
+            if (!session.attached) keys.add(session.key);
+        }
+        return keys;
+    }, [filterActive, sessions]);
+    /** 后端为保住父子结构带出来的行数（不计入结果数）。 */
+    const contextRowCount = useMemo(() => sessions.filter((session) => session.attached).length, [sessions]);
+    const attachTruncated = jotai.useAtomValue(model.attachTruncatedAtom);
+
+    /*
+     * The 按项目 cut of the same pool. The New Chat placeholder is pinned above
+     * every group (it has no folder yet), so it is set aside before grouping;
+     * every real session ends up in exactly one bucket, empty buckets never render.
+     */
+    const groupedSessions = useMemo(() => {
+        const base = newSession != null ? visibleSessions.slice(1) : visibleSessions;
+        return groupSessionsByProject(base, sortDescending, sessionComparator, matchedKeys ?? undefined);
+    }, [visibleSessions, newSession, sortDescending, sessionComparator, matchedKeys]);
+
+    // 搜索/筛选命中子会话时自动展开它的父：父可能是后端补带的上下文行
+    // （attached === "parent"），也可能是同样命中的普通父行。只展开「有命中子行」
+    // 的父 —— 命中父生效的是「带出子代理」，子代理没命中，不该自动铺开上百行。
     // 只加不减，避免每次筛选都覆盖用户手动展开/收起的选择。
     const matchedChildParentKeys = useMemo(() => {
-        if (!filterActive) {
+        if (matchedKeys == null) {
             return [] as string[];
         }
         const keys = new Set<string>();
-        const known = new Set(visibleSessions.map((session) => session.key));
-        for (const session of visibleSessions) {
-            const parentKey = (session.parentKey ?? "").trim();
-            if (parentKey !== "" && known.has(parentKey)) {
-                keys.add(parentKey);
-            }
+        for (const group of groupedSessions) {
+            collectParentsOfMatches(group.tree, matchedKeys, keys);
         }
         return [...keys];
-    }, [filterActive, visibleSessions]);
+    }, [matchedKeys, groupedSessions]);
 
     // 用户在筛选期间手动收起的父：自动展开必须尊重它，否则列表 60s 自动刷新一次
     // 就会把刚收起的父行重新撑开。只在筛选条件本身变化时清空。
@@ -1646,7 +1737,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     useEffect(() => {
         const handle = window.setTimeout(() => model.loadSessions(false, sortDescending), 200);
         return () => window.clearTimeout(handle);
-    }, [model, query, source, tagFilters, tagPresence, markedFilter, dateRange, pathFilter, sortDescending]);
+    }, [model, query, source, tagFilters, tagPresence, markedFilter, dateRange, pathFilter, sortDescending, attachMode]);
 
     useEffect(() => {
         writeSortChain(sortChain);
@@ -2026,7 +2117,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         <i className="fa-sharp fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-secondary" />
                                         <input
                                             className="h-8 w-full bg-transparent pl-7 pr-7 text-sm outline-none"
-                                            placeholder="Search title, note, path, tag"
+                                            placeholder="Search title, note, path, tag, session ID"
                                             value={query}
                                             onChange={(e) => setQuery(e.target.value)}
                                             onKeyDown={(e) => {
@@ -2110,6 +2201,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     setDateRange={setDateRange}
                                     source={source}
                                     setSource={setSource}
+                                    attachMode={attachMode}
+                                    setAttachMode={(next) => globalStore.set(model.attachModeAtom, next)}
                                     availableTags={availableTags}
                                     tagFilters={normalizedTagFilters}
                                     excludeTags={normalizedExcludeTags}
@@ -2130,21 +2223,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 />
                             ) : null}
                             <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] text-secondary">
-                                <span className="min-w-0 truncate">{visibleSessions.length} sessions</span>
-                                {loading && !filterActive ? (
-                                    <span className="flex shrink-0 items-center gap-1">
-                                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
-                                        Refreshing
-                                    </span>
-                                ) : lastRefreshLabel !== "" ? (
+                                <span className="min-w-0 truncate">
+                                    {visibleSessions.length - contextRowCount} sessions
+                                    {contextRowCount > 0 ? ` (+${contextRowCount} 上下文${attachTruncated ? "，已截断" : ""})` : ""}
+                                </span>
+                                {lastRefreshLabel !== "" ? (
                                     <span className="shrink-0" title={lastRefreshTitle}>
                                         {lastRefreshLabel}
                                     </span>
                                 ) : null}
                             </div>
-                            {scanning ? (
-                                <ScanProgressStrip scanned={scanProgress.scanned} total={scanProgress.total} />
-                            ) : null}
                             <SessionBatchBar
                                 selectedCount={selectedKeys.length}
                                 selectedKeys={selectedKeys}
@@ -2188,9 +2276,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         }}
                                     />
                                 ) : null}
-                                {loading && visibleSessions.length === 0 && !scanning ? (
-                                    <EmptyState text="Loading sessions..." />
-                                ) : visibleSessions.length === 0 && !scanning ? (
+                                {firstLoadPending ? (
+                                    <SkeletonSessionRows />
+                                ) : visibleSessions.length === 0 ? (
                                     <EmptyState text={emptySessionsText(markedFilter, remoteFilterActive)} />
                                 ) : (
                                     <>
@@ -2213,6 +2301,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 expandAllTags={expandAllTags}
                                                 sortChain={sortChain}
                                                 sortDescending={sortDescending}
+                                                matchedKeys={matchedKeys ?? undefined}
                                                 selectedKey={selectedKey}
                                                 selectedKeys={selectedKeySet}
                                                 onSelectNew={() => {
@@ -2288,7 +2377,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 connection={model.getConnection()}
                                             />
                                         ) : null}
-                                        {scanning ? <SkeletonSessionRows /> : null}
                                     </>
                                 )}
                             </div>

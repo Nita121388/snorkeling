@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
     InitialScanStatus,
+    mergeScanStatus,
     normalizeScanStatusEvent,
     reduceScanStatus,
     shouldNotifyScanDone,
@@ -94,6 +95,25 @@ describe("shouldNotifyScanDone", () => {
         const progress = { scanned: 10, total: 100, running: true, done: false, partial: false };
         expect(shouldNotifyScanDone(prev, progress)).toBe(false);
         expect(shouldNotifyScanDone(prev, null)).toBe(false);
+    });
+});
+
+describe("mergeScanStatus", () => {
+    it("falls back to the snapshot when the live events are empty", () => {
+        const snapshot = { scanned: 120, total: 900, running: true, done: false, partial: true };
+        expect(mergeScanStatus(snapshot, InitialScanStatus)).toBe(snapshot);
+    });
+
+    it("prefers live progress over a stale snapshot", () => {
+        const snapshot = { scanned: 100, total: 900, running: true, done: false, partial: true };
+        const live = { scanned: 640, total: 900, running: true, done: false, partial: true };
+        expect(mergeScanStatus(snapshot, live)).toBe(live);
+    });
+
+    it("keeps the finished live state so the refresh icon stops spinning", () => {
+        const snapshot = { scanned: 900, total: 900, running: true, done: false, partial: true };
+        const live = { scanned: 900, total: 900, running: false, done: true, partial: false };
+        expect(mergeScanStatus(snapshot, live).running).toBe(false);
     });
 });
 

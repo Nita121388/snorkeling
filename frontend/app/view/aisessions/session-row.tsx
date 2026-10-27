@@ -23,7 +23,14 @@ import {
 import { getChatSource } from "./sources";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
-import { describeSessionDates, formatFileSize, restoreCommandForSession } from "./utils";
+import {
+    describeSessionDates,
+    formatFileSize,
+    heatLevel,
+    MessageHeatThresholds,
+    restoreCommandForSession,
+    SizeHeatThresholds,
+} from "./utils";
 
 /**
  * A note's *real* content is whatever survives stripping `#tag` hash-tags.
@@ -37,6 +44,42 @@ function noteHasProse(note: string | null | undefined): boolean {
 
 function sourceDotClass(source: string): string {
     return getChatSource(source).dotClass ?? "bg-secondary";
+}
+
+/**
+ * 更新时间的「新鲜度」进度条填充宽度（索引 = freshnessLevel - 1）。
+ *
+ * 靠**形状**（条长）而不是颜色深浅编码新旧：11px 小字上的透明度差几乎看不出来，
+ * 而 26px 宽「满格 vs 一成」的对比一眼就能区分。档位越旧条越短，
+ * 陈旧会话（5 档，>30 天）只剩一根几乎空的槽位。
+ */
+const RecencyFillByLevel = ["100%", "62%", "32%", "15%", "6%"];
+
+/** 热力方块内部实心块的染色：档位越高越亮（与填充高度双重编码，色弱也能分辨）。 */
+const HeatFillClassByLevel = ["bg-accent/25", "bg-accent/40", "bg-accent/55", "bg-accent/70", "bg-accent/90"];
+
+/**
+ * 热力方块：一个 12x12 的方框，内部实心块高度 + 颜色共同表示档位（1..5）。
+ *
+ * 为什么不是纯色块：暗色主题下 5 档灰阶几乎分不开，色弱用户更是完全失效；
+ * 填充高度是形状编码，不依赖颜色分辨。精确数值放 title/aria-label 供悬停与
+ * 读屏获取 —— 方块的作用是「扫一眼比大小」，不是替代数字。
+ */
+function HeatCell({ level, title }: { level: number; title: string }) {
+    const safeLevel = Math.min(Math.max(level, 1), HeatFillClassByLevel.length);
+    return (
+        <span
+            role="img"
+            aria-label={title}
+            title={title}
+            className="inline-flex h-3 w-3 shrink-0 items-end justify-center overflow-hidden rounded-[3px] border border-border/70"
+        >
+            <span
+                className={cn("w-full rounded-[1px]", HeatFillClassByLevel[safeLevel - 1])}
+                style={{ height: `${safeLevel * 20}%` }}
+            />
+        </span>
+    );
 }
 
 /**
@@ -187,15 +230,31 @@ export function SessionRow({
     connection?: string;
 }) {
     const isChild = depth > 0;
+    // 上下文行（后端为了保住父子结构带出来的行）→ 次要色 + 图标 + tooltip 说明。
+    const attachKind = (session.attached ?? "").trim();
+    const isAttached = attachKind !== "";
+    const attachIcon =
+        attachKind === "parent"
+            ? "fa-sharp fa-solid fa-link"
+            : attachKind === "child"
+              ? "fa-sharp fa-solid fa-sitemap"
+              : "";
+    const attachLabel =
+        attachKind === "parent"
+            ? "上下文父会话（未命中本次筛选）"
+            : attachKind === "child"
+              ? "子代理（未命中本次筛选，父会话命中所致）"
+              : "";
     const childIcon =
         childKind === "fork" ? "fa-sharp fa-solid fa-code-branch" : "fa-sharp fa-solid fa-wand-magic-sparkles";
     // 折叠时显示总数；筛选命中时显示 M/N（信息量更大）。展开后普通总数让位给箭头，
-    // 但命中徽标继续显示，因为它是筛选结论。
-    const childBadge = matchedChildCount > 0 && childCount > 0 ? `${matchedChildCount}/${childCount}` : `${childCount}`;
-    const childBadgeTitle =
-        matchedChildCount > 0 && childCount > 0
-            ? `${matchedChildCount} of ${childCount} sub-sessions match this filter`
-            : `${childCount} sub-session${childCount === 1 ? "" : "s"}`;
+    // 但命中徽标继续显示，因为它是筛选结论。M === N 时（上下文行关闭或全部命中）
+    // 不再显示 N/N：分母已经表达了同一件事，只留纯数字避免列表被徽标噪声填满。
+    const showMatchBadge = matchedChildCount > 0 && childCount > 0 && matchedChildCount < childCount;
+    const childBadge = showMatchBadge ? `${matchedChildCount}/${childCount}` : `${childCount}`;
+    const childBadgeTitle = showMatchBadge
+        ? `${matchedChildCount} of ${childCount} sub-sessions match this filter`
+        : `${childCount} sub-session${childCount === 1 ? "" : "s"}`;
     const [noteEditing, setNoteEditing] = useState(false);
     // 标签展开是纯 UI 态：不落盘、不跨会话记忆，避免行高跳动（design §4）。
     const [tagsExpanded, setTagsExpanded] = useState(false);
@@ -240,8 +299,13 @@ export function SessionRow({
                 session.updatedAt || session.createdAt ? `Updated: ${dateInfo.updatedFull}` : "",
                 session.note ? `Note: ${session.note}` : "",
                 session.tags?.length ? `Tags: ${sessionTagsLabel(session.tags)}` : "",
+                // 消息数已不再直接写在行里（改成热力方块），这里补回精确值。
+                `Messages: ${session.messageCount ?? 0}`,
                 session.size != null ? `Size: ${formatFileSize(session.size)} (${session.size} bytes)` : "",
                 session.projectPath || session.filePath ? `Path: ${session.projectPath || session.filePath}` : "",
+                // 搜索框支持按 session id/key 筛选，所以把 id 放在 tooltip 里方便查看/复制。
+                session.id ? `Session ID: ${session.id}` : "",
+                attachLabel,
             ]
                 .filter(Boolean)
                 .join("\n\n"),
@@ -358,6 +422,8 @@ export function SessionRow({
                     "bg-accent/10 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
             )}
             title={tooltip}
+            data-session-key={session.key}
+            data-attached={attachKind || undefined}
             onClick={(event) => {
                 if (isRowActionTarget(event)) return;
                 onSelect(event);
@@ -432,10 +498,17 @@ export function SessionRow({
                                 title={childKind === "fork" ? "Fork" : "Sub-agent session"}
                             />
                         ) : null}
+                        {isAttached ? (
+                            <i
+                                className={cn(attachIcon, "shrink-0 text-[10px] text-secondary/70")}
+                                title={attachLabel}
+                                data-attached-badge={attachKind}
+                            />
+                        ) : null}
                         <div
                             className={cn(
                                 "min-w-0 flex-1 truncate",
-                                isChild
+                                isChild || isAttached
                                     ? "font-normal text-secondary group-hover:text-primary"
                                     : "font-medium text-primary"
                             )}
@@ -448,11 +521,11 @@ export function SessionRow({
                                 type="button"
                                 className={cn(
                                     "flex h-4 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] tabular-nums transition-colors",
-                                    matchedChildCount > 0
+                                    showMatchBadge
                                         ? "bg-accent/15 text-accent"
                                         : "bg-surface text-secondary hover:text-primary",
                                     // 展开后普通总数不再有意义（箭头已表达状态），但命中徽标保留。
-                                    expanded && matchedChildCount === 0 && "hidden"
+                                    expanded && !showMatchBadge && "hidden"
                                 )}
                                 title={childBadgeTitle}
                                 aria-label={childBadgeTitle}
@@ -514,13 +587,38 @@ export function SessionRow({
                             </span>
                         ) : null}
                         {dateInfo.updatedText ? (
-                            <span title={`Updated: ${dateInfo.updatedFull}`}>{dateInfo.updatedText}</span>
+                            <span
+                                className="inline-flex items-center gap-1.5"
+                                title={`Updated: ${dateInfo.updatedFull}`}
+                            >
+                                {/* 进度条自己带标题：条长只表达“比较新/比较旧”，悬停直接读多久前。 */}
+                                <span
+                                    className="inline-block h-[5px] w-[26px] shrink-0 overflow-hidden rounded-[2px] bg-border"
+                                    title={`Updated ${dateInfo.updatedRelative} · ${dateInfo.updatedFull}`}
+                                >
+                                    <span
+                                        className="block h-full rounded-[2px] bg-accent"
+                                        style={{ width: RecencyFillByLevel[dateInfo.freshnessLevel - 1] ?? "6%" }}
+                                    />
+                                </span>
+                                <span>{dateInfo.updatedText}</span>
+                            </span>
                         ) : null}
                         {dateInfo.createdText ? (
                             <span title={`Created: ${dateInfo.createdFull}`}>Created {dateInfo.createdText}</span>
                         ) : null}
-                        <span>{session.messageCount ?? 0} msgs</span>
-                        {session.size != null ? <span>{formatFileSize(session.size)}</span> : null}
+                        <span className="inline-flex items-center gap-1" data-heat="metrics">
+                            <HeatCell
+                                level={heatLevel(session.messageCount ?? 0, MessageHeatThresholds)}
+                                title={`${session.messageCount ?? 0} messages`}
+                            />
+                            {session.size != null ? (
+                                <HeatCell
+                                    level={heatLevel(session.size, SizeHeatThresholds)}
+                                    title={`${formatFileSize(session.size)} (${session.size} bytes)`}
+                                />
+                            ) : null}
+                        </span>
                     </div>
                     {session.snippet ? (
                         <div className="mt-1 flex items-start gap-1">

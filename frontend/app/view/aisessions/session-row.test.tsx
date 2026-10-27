@@ -199,8 +199,15 @@ describe("note / tag row markup", () => {
 });
 
 describe("created / updated date meta", () => {
-    function renderMeta(createdAt: number, updatedAt: number): string {
-        const session = { key: "k", id: "k", source: "pi", createdAt, updatedAt } as unknown as SessionSummary;
+    function renderMeta(createdAt: number, updatedAt: number, extra: Partial<SessionSummary> = {}): string {
+        const session = {
+            key: "k",
+            id: "k",
+            source: "pi",
+            createdAt,
+            updatedAt,
+            ...extra,
+        } as unknown as SessionSummary;
         return renderToStaticMarkup(
             <SessionRow
                 session={session}
@@ -214,15 +221,38 @@ describe("created / updated date meta", () => {
         );
     }
 
-    it("renders both the created and the updated date when they differ", () => {
+    it("renders both the created and the updated date down to the minute when they differ", () => {
         const created = new Date(2020, 0, 2, 9, 0, 0).getTime();
         const updated = new Date(2021, 5, 7, 10, 30, 0).getTime();
         const markup = renderMeta(created, updated);
-        // 跨年 → 带年份；完整时间在 title 上。
-        expect(markup).toContain("Created 2020-01-02");
-        expect(markup).toContain("2021-06-07");
+        // 跨年 → 带年份；时间点精确到分钟；完整时间（到秒）在 title 上。
+        expect(markup).toContain("Created 2020-01-02 09:00");
+        expect(markup).toContain("2021-06-07 10:30");
         expect(markup).toContain("Created: 2020-01-02 09:00:00");
         expect(markup).toContain("Updated: 2021-06-07 10:30:00");
+    });
+
+    it("encodes freshness as the length of a recency bar, not as text opacity", () => {
+        const created = new Date(2020, 0, 2, 9, 0, 0).getTime();
+        const updated = new Date(2021, 5, 7, 10, 30, 0).getTime();
+        // 两年前 → 最陈旧的第 5 档，进度条只剩 6% 的残余。
+        const stale = renderMeta(created, updated);
+        expect(stale).toContain("width:6%");
+        // 刚刚更新 → 满格。
+        const fresh = renderMeta(created, Date.now());
+        expect(fresh).toContain("width:100%");
+    });
+
+    it("keeps the relative age out of the row text but on the bar tooltip", () => {
+        const created = new Date(2020, 0, 2, 9, 0, 0).getTime();
+        const updated = new Date(2021, 5, 7, 10, 30, 0).getTime();
+        const markup = renderMeta(created, updated);
+        // 行内文字只剩定点：把标签剥掉后不该再出现 “ago”。
+        const textOnly = markup.replace(/<[^>]*>/g, "|");
+        expect(textOnly).not.toMatch(/ago/);
+        expect(textOnly).toContain("2021-06-07 10:30");
+        // 悬停进度条时能读到“多久前” + 完整时间。
+        expect(markup).toMatch(/title="Updated \d+d ago · 2021-06-07 10:30:00"/);
     });
 
     it("omits the created segment when both timestamps share one day", () => {
@@ -238,5 +268,46 @@ describe("created / updated date meta", () => {
         const markup = renderMeta(0, updated);
         expect(markup).not.toContain("Created ");
         expect(markup).toContain("2021-06-07");
+    });
+});
+
+describe("metric heat cells", () => {
+    function renderMetrics(extra: Partial<SessionSummary>): string {
+        const session = {
+            key: "k",
+            id: "k",
+            source: "pi",
+            createdAt: 0,
+            updatedAt: 0,
+            ...extra,
+        } as unknown as SessionSummary;
+        return renderToStaticMarkup(
+            <SessionRow
+                session={session}
+                selected={false}
+                onSelect={() => {}}
+                onMark={() => {}}
+                onNoteSave={() => Promise.resolve(true)}
+                onResume={() => {}}
+                onJumpToBlock={() => {}}
+            />
+        );
+    }
+
+    it("replaces the raw message count and size text with heat cells", () => {
+        const markup = renderMetrics({ messageCount: 500, size: 2 * 1024 * 1024 });
+        // 精确数值不再直接印在行里，而是挂到 aria-label/title 上。
+        expect(markup).not.toContain("500 msgs");
+        expect(markup).toContain("500 messages");
+        expect(markup).toContain(`data-heat="metrics"`);
+        expect(markup).toContain("bytes)");
+        // 消息数 500 是最亮档：整格填满。
+        expect(markup).toContain("height:100%");
+    });
+
+    it("still renders the message cell when size is unknown", () => {
+        const markup = renderMetrics({ messageCount: 3 });
+        expect(markup).toContain("3 messages");
+        expect(markup).toContain("height:20%");
     });
 });

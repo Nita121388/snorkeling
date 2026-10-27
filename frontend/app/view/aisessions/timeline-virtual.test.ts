@@ -5,7 +5,10 @@ import { describe, expect, it } from "vitest";
 import {
     VirtualizeThreshold,
     activeSeqFromVirtualItems,
+    buildAnchorKeyToSeq,
     buildSeqToIndex,
+    buildTimelineAnnotationAnchors,
+    createRafCoalescer,
     isNearBottom,
     outlineProbeOffset,
     scrollTargetForSeq,
@@ -150,5 +153,111 @@ describe("outlineProbeOffset", () => {
     it("returns 0 before the viewport is measured", () => {
         expect(outlineProbeOffset(0)).toBe(0);
         expect(outlineProbeOffset(-10)).toBe(0);
+    });
+});
+
+describe("createRafCoalescer", () => {
+    /** 极简 rAF 替身：手动 flush，记录 cancel。 */
+    function fakeRaf() {
+        const queue: Array<() => void> = [];
+        return {
+            queue,
+            request: (cb: () => void) => {
+                queue.push(cb);
+                return queue.length;
+            },
+            cancel: (handle: number) => {
+                queue[handle - 1] = () => {};
+            },
+            flush: () => {
+                const pending = queue.splice(0, queue.length);
+                for (const cb of pending) cb();
+            },
+        };
+    }
+
+    it("runs the callback at most once per frame", () => {
+        const raf = fakeRaf();
+        const calls: number[] = [];
+        const coalescer = createRafCoalescer(() => calls.push(1), raf.request, raf.cancel);
+        coalescer.schedule();
+        coalescer.schedule();
+        coalescer.schedule();
+        expect(raf.queue).toHaveLength(1);
+        expect(calls).toHaveLength(0);
+        raf.flush();
+        expect(calls).toHaveLength(1);
+    });
+
+    it("allows another run on the next frame", () => {
+        const raf = fakeRaf();
+        let count = 0;
+        const coalescer = createRafCoalescer(() => count++, raf.request, raf.cancel);
+        coalescer.schedule();
+        raf.flush();
+        coalescer.schedule();
+        raf.flush();
+        expect(count).toBe(2);
+    });
+
+    it("drops a queued callback when cancelled (unmount)", () => {
+        const raf = fakeRaf();
+        let count = 0;
+        const coalescer = createRafCoalescer(() => count++, raf.request, raf.cancel);
+        coalescer.schedule();
+        coalescer.cancel();
+        raf.flush();
+        expect(count).toBe(0);
+    });
+});
+
+describe("buildAnchorKeyToSeq", () => {
+    const items: SessionDetailTimelineItem[] = [
+        { kind: "message", message: { seq: 1, role: "user", itemKey: "e1:m0", text: "hi" } as any },
+        // 工具行没有独立 seq：它挂在 anchorSeq 指向的消息行上
+        { kind: "tool", toolCall: { seq: 3, itemKey: "e1:t0", name: "bash" } as any, anchorSeq: 2 },
+    ];
+
+    it("maps message itemKey to its seq", () => {
+        expect(buildAnchorKeyToSeq(items).get("e1:m0")).toBe(1);
+    });
+
+    it("maps tool itemKey to the anchoring message seq, not ToolCall.seq", () => {
+        expect(buildAnchorKeyToSeq(items).get("e1:t0")).toBe(2);
+    });
+
+    it("falls back to the synthetic seq:<n> key when ItemKey is missing", () => {
+        // 缓存消息没有 ItemKey；用合成锚点保证 Jump / 手动加批注都还能定位
+        const map = buildAnchorKeyToSeq([{ kind: "message", message: { seq: 5, role: "user" } as any }]);
+        expect(map.get("seq:5")).toBe(5);
+    });
+});
+
+describe("buildTimelineAnnotationAnchors", () => {
+    // 回归：会话消息从 SQLite 缓存读出时 ItemKey 为空，只有工具行带 itemKey，
+    // 且工具行的 anchorSeq 才是真实消息行号（ToolCall.seq 只是加载顺序）。
+    const items: SessionDetailTimelineItem[] = [
+        { kind: "message", message: { seq: 411, role: "user", text: "hi" } as any },
+        {
+            kind: "tool",
+            toolCall: { seq: 1, itemKey: "e7:t0", name: "bash", summary: "ls" } as any,
+            anchorSeq: 411,
+        },
+    ];
+
+    it("uses the tool row anchorSeq as the anchor seq", () => {
+        const anchors = buildTimelineAnnotationAnchors(items);
+        const tool = anchors.find((anchor) => anchor.anchorKey === "e7:t0");
+        expect(tool?.seq).toBe(411);
+        expect(tool?.role).toBe("tool");
+    });
+
+    it("emits a synthetic seq:<n> anchor for messages without an ItemKey", () => {
+        const anchors = buildTimelineAnnotationAnchors([
+            { kind: "message", message: { seq: 411, role: "user" } as any },
+        ]);
+        expect(anchors).toHaveLength(1);
+        expect(anchors[0].anchorKey).toBe("seq:411");
+        expect(anchors[0].seq).toBe(411);
     });
 });

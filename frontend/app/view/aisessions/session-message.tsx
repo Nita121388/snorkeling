@@ -14,6 +14,7 @@ import { WaveStreamdown } from "@/app/element/streamdown";
 import { cn } from "@/util/util";
 import type { CSSProperties, ReactNode } from "react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { messageAnchorKey } from "./annotation-model";
 import { CopyIconButton } from "./controls";
 import { useDomTextHighlight } from "./use-dom-highlight";
 import { formatDateTimeToSecond } from "./utils";
@@ -347,10 +348,18 @@ export const MessageCard = memo(
         children?: ReactNode;
         /** 该消息节点上的批注条数；0 时仍显示入口（方便新增）。 */
         annotationCount?: number;
-        /** 打开批注编辑器；未提供时不渲染入口。 */
-        onOpenAnnotations?: () => void;
+        /** 打开批注编辑器；未提供或不带 itemKey 时不渲染入口。
+         *
+         * 注意：这个 prop 会参与 memo 比较器（按引用），**必须**由父组件传入稳定函数，
+         * 内部内联闭包会让整行 memo 失效。 */
+        onOpenAnnotations?: (seq: number, anchorKey: string) => void;
     }) {
         const isUser = message.role === "user";
+        // 内联箭头只在本行内部创建，不影响父级传入 prop 的引用稳定性。
+        // 缓存消息没有 ItemKey 时用合成锚点（seq:<n>），否则按钮整块消失，
+        // 用户就没法手动加批注了。
+        const handleOpenAnnotations =
+            onOpenAnnotations != null ? () => onOpenAnnotations(message.seq, messageAnchorKey(message)) : undefined;
         const normalizedSearchQuery = searchQuery?.trim().toLowerCase() ?? "";
         const searchMatched =
             normalizedSearchQuery !== "" && message.text.toLowerCase().includes(normalizedSearchQuery);
@@ -422,7 +431,7 @@ export const MessageCard = memo(
                                 size="xs"
                             />
                         ) : null}
-                        {onOpenAnnotations ? (
+                        {handleOpenAnnotations ? (
                             <button
                                 type="button"
                                 className="flex items-center gap-0.5 rounded px-1 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100"
@@ -430,7 +439,7 @@ export const MessageCard = memo(
                                 aria-label="Annotations"
                                 onClick={(event) => {
                                     event.stopPropagation();
-                                    onOpenAnnotations();
+                                    handleOpenAnnotations();
                                 }}
                             >
                                 <i className="fa-sharp fa-solid fa-tag" />
@@ -463,7 +472,7 @@ export const MessageCard = memo(
                                 size="xs"
                             />
                         ) : null}
-                        {onOpenAnnotations ? (
+                        {handleOpenAnnotations ? (
                             <button
                                 type="button"
                                 className="flex items-center gap-0.5 rounded px-1 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100"
@@ -471,7 +480,7 @@ export const MessageCard = memo(
                                 aria-label="Annotations"
                                 onClick={(event) => {
                                     event.stopPropagation();
-                                    onOpenAnnotations();
+                                    handleOpenAnnotations();
                                 }}
                             >
                                 <i className="fa-sharp fa-solid fa-tag" />

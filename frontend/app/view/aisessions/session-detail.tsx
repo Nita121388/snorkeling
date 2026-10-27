@@ -22,9 +22,20 @@ import { flushSync } from "react-dom";
 import { autoGenerate } from "./aisession-gen-store";
 import { replaceAnnotationDrafts, requestAnnotationDrafts } from "./annotation-assist";
 import { AnnotationEditor } from "./annotation-editor";
-import { AnnotationFlashMs, annotationCountBySeq, buildAnnotationAnchors } from "./annotation-model";
+import {
+    AnnotationFlashMs,
+    type AnnotationLike,
+    annotationCountBySeq,
+    buildAnnotationAnchors,
+    seqFromSyntheticAnchorKey,
+} from "./annotation-model";
 import { AnnotationRail } from "./annotation-rail";
-import { bulkDraftAnnotations, useSessionAnnotations } from "./annotation-store";
+import {
+    bulkDraftAnnotations,
+    reloadAnnotationsWithAnchors,
+    saveAnnotationNodeText,
+    useSessionAnnotations,
+} from "./annotation-store";
 import { ChatComposer } from "./chat-composer";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
@@ -44,8 +55,11 @@ import {
     EstimatedRowHeight,
     VirtualOverscan,
     activeSeqFromVirtualItems,
+    buildAnchorKeyToSeq,
     buildSeqToIndex,
+    buildTimelineAnnotationAnchors,
     outlineProbeOffset as computeOutlineProbeOffset,
+    createRafCoalescer,
     isNearBottom,
     shouldVirtualize,
     timelineItemKey,
@@ -266,12 +280,28 @@ export function SessionDetailPane({
     const virtualScrollRef = useRef<{
         enabled: boolean;
         seqToIndex: Map<number, number>;
+        anchorKeyToSeq: Map<string, number>;
         scrollToIndex: (index: number) => void;
         items: () => Array<{ index: number; start: number }>;
     } | null>(null);
     // 虚拟化下滚动高度来自 virtualizer，供 nearBottom 判定复用。
     const virtualTotalSizeRef = useRef(0);
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
+    // 底部 composer 高度：rail（批注时间线）需要按它让位，避免竖轴压到输入框上。
+    const [composerEl, setComposerEl] = useState<HTMLDivElement | null>(null);
+    const [composerHeight, setComposerHeight] = useState(0);
+    useLayoutEffect(() => {
+        if (composerEl == null) {
+            setComposerHeight(0);
+            return;
+        }
+        const update = () => setComposerHeight(Math.round(composerEl.getBoundingClientRect().height));
+        update();
+        if (typeof ResizeObserver === "undefined") return;
+        const observer = new ResizeObserver(update);
+        observer.observe(composerEl);
+        return () => observer.disconnect();
+    }, [composerEl]);
     // 本 session 是否已经做过"打开时自动滚到底"（流式新消息到来不重复跟随）
     const autoScrolledToBottomRef = useRef(false);
     const bottomDeltaRequestedRef = useRef(false);
@@ -436,6 +466,16 @@ export function SessionDetailPane({
         anchorKey: string;
         annotation?: AnnotationView;
     } | null>(null);
+    // MessageCard 的 memo 比较器会比较 onOpenAnnotations 的**引用**。传入内联闭包会让
+    // 几乎所有带 itemKey 的行 memo 失效，于是每个滚动事件/流式 delta 都会重跑
+    // WaveStreamdown 解析 markdown。这里把「打开批注编辑器」做成引用稳定的回调，
+    // 由 MessageCard 自己带上 seq/anchorKey 调用。annotations 走 ref 读取最新值。
+    const annotationsRef = useRef(annotations);
+    annotationsRef.current = annotations;
+    const openAnnotationsFor = useCallback((seq: number, anchorKey: string) => {
+        const existing = annotationsRef.current.find((annotation) => annotation.seq === seq);
+        setAnnotationEditor({ seq, anchorKey, annotation: existing });
+    }, []);
     const [activeAnnotationSeq, setActiveAnnotationSeq] = useState<number | null>(null);
     const [timelineGenerating, setTimelineGenerating] = useState(false);
     const [annotationError, setAnnotationError] = useState("");
@@ -450,6 +490,23 @@ export function SessionDetailPane({
               : activeSearchIndex >= 0
                 ? `${activeSearchIndex + 1} / ${detailSearchMatches.length}`
                 : `${detailSearchMatches.length} match${detailSearchMatches.length === 1 ? "" : "es"}`;
+
+    // 批注的 seq 可能是历史脏数据（AI 草稿落库时恒为 0）。这里用 anchorKey 反推真实 seq：
+    // 先按 seq 查行号，查不到再用 anchorKey→seq 兜底，避免 Jump 静默失败。
+    const resolveAnnotationTargetSeq = useCallback((seq: number, anchorKey?: string): number | null => {
+        // 合成锚点 seq:<n> 自带行号，直接用（缓存消息没有 ItemKey 时会走这条路）。
+        const synthetic = seqFromSyntheticAnchorKey(anchorKey);
+        if (synthetic != null) return synthetic;
+        const virtual = virtualScrollRef.current;
+        if (virtual != null && virtual.enabled) {
+            if (virtual.seqToIndex.has(seq)) return seq;
+            const mapped = anchorKey ? virtual.anchorKeyToSeq.get(anchorKey) : undefined;
+            return mapped == null ? null : mapped;
+        }
+        if (messageRefs.current[seq] != null) return seq;
+        const mapped = anchorKey ? virtualScrollRef.current?.anchorKeyToSeq.get(anchorKey) : undefined;
+        return mapped == null ? null : mapped;
+    }, []);
 
     const scrollToVisibleMessage = useCallback((seq: number, behavior: ScrollBehavior = "smooth") => {
         const container = detailScrollRef.current;
@@ -497,7 +554,10 @@ export function SessionDetailPane({
 
     // rail 点击 → 跳到对应消息并高亮 1200ms。
     const jumpToAnnotationSeq = useCallback(
-        (seq: number) => {
+        (seq: number, anchorKey?: string) => {
+            const targetSeq = resolveAnnotationTargetSeq(seq, anchorKey);
+            if (targetSeq == null) return;
+            seq = targetSeq;
             setActiveAnnotationSeq(seq);
             scrollToVisibleMessage(seq, "smooth");
             const flash = (attempt: number) => {
@@ -520,7 +580,7 @@ export function SessionDetailPane({
                 setActiveAnnotationSeq((current) => (current === seq ? null : current));
             }, AnnotationFlashMs);
         },
-        [scrollToVisibleMessage]
+        [resolveAnnotationTargetSeq, scrollToVisibleMessage]
     );
 
     const generateAnnotationTimeline = useCallback(async () => {
@@ -565,6 +625,18 @@ export function SessionDetailPane({
             }
         },
         [connection, reloadAnnotations, summaryKey]
+    );
+
+    // 卡片 / 编辑器里的 NODE 就地编辑：只写 node_text（空串 = 清覆盖），
+    // 其余字段由 saveAnnotationNodeText 原样回传，不会冲到 title/body/tags。
+    const handleNodeTextSave = useCallback(
+        (annotation: AnnotationLike, nodeText: string) => {
+            if (summaryKey === "") return;
+            void saveAnnotationNodeText(annotation, nodeText, summaryKey, connection).catch((err) =>
+                setAnnotationError(err instanceof Error ? err.message : String(err))
+            );
+        },
+        [connection, summaryKey]
     );
 
     // 实时流式 turn（主消息区内联渲染）：assistant_delta/tool 事件累积，turn_end 后由
@@ -883,7 +955,11 @@ export function SessionDetailPane({
         handleChatEvent({ type: "turn_end" }, activeLiveTurnKey);
     }, [abortChatStream, activeLiveTurnKey, handleChatEvent]);
 
-    const handleDetailScroll = useCallback(() => {
+    // 滚动提交：读滚动位置 + 一次 setState。通过 ref 让消费方拿到最新的闭包，
+    // 再由 createRafCoalescer 保证一帧内最多执行一次（滚轮一次手势会抛 3~8 个事件）。
+    const commitScrollStateRef = useRef<() => void>(() => {});
+    const scrollCoalescer = useMemo(() => createRafCoalescer(() => commitScrollStateRef.current()), []);
+    commitScrollStateRef.current = () => {
         const node = detailScrollRef.current;
         if (node != null) {
             // 虚拟化后 scrollHeight 只是已渲染窗口的高度，真实内容高度取 virtualizer 总高。
@@ -920,15 +996,19 @@ export function SessionDetailPane({
                 bottomDeltaTimerRef.current = null;
             }, 500);
         });
-    }, [activeChatStreamStatus, deltaLoading, liveTurn, loading, model.loadDetailDelta, requestDetailDelta]);
+    };
+    const handleDetailScroll = useCallback(() => {
+        scrollCoalescer.schedule();
+    }, [scrollCoalescer]);
 
     useEffect(() => {
         return () => {
+            scrollCoalescer.cancel();
             if (bottomDeltaTimerRef.current != null) {
                 window.clearTimeout(bottomDeltaTimerRef.current);
             }
         };
-    }, []);
+    }, [scrollCoalescer]);
 
     const toggleToolCallExpanded = useCallback((seq: number) => {
         setExpandedToolCalls((current) => ({ ...current, [seq]: !current[seq] }));
@@ -1115,18 +1195,37 @@ export function SessionDetailPane({
     // 小会话保持原有全量渲染（行为与改动前一致）。
     const virtualEnabled = shouldVirtualize(renderItems.length);
     const seqToIndex = useMemo(() => buildSeqToIndex(renderItems), [renderItems]);
+    const anchorKeyToSeq = useMemo(() => buildAnchorKeyToSeq(renderItems), [renderItems]);
+    // 会话详情里的 Message 来自 SQLite 缓存，ItemKey 为空（表里没有 item_key 列），
+    // 所以上面那套基于 messages 的锚点其实是空的。renderItems 里的工具行带
+    // anchorSeq，是唯一能把「工具锚点 → 真实 seq」对上号的地方：等它可用后补发一次
+    // 锚点，既修好 Jump，也让服务端把历史 seq=0 的批注回填成真实行号。
+    const timelineAnnotationAnchors = useMemo(() => buildTimelineAnnotationAnchors(renderItems), [renderItems]);
+    const timelineAnnotationAnchorSignature = useMemo(
+        () => timelineAnnotationAnchors.map((anchor) => `${anchor.anchorKey}:${anchor.seq}`).join("|"),
+        [timelineAnnotationAnchors]
+    );
+    useEffect(() => {
+        if (summaryKey === "" || timelineAnnotationAnchors.length === 0) return;
+        void reloadAnnotationsWithAnchors(summaryKey, connection, timelineAnnotationAnchors);
+        // 用签名字符串做依赖，避免数组换引用导致的重复请求。
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [summaryKey, connection, timelineAnnotationAnchorSignature]);
     const virtualizer = useVirtualizer({
         count: renderItems.length,
         getScrollElement: () => detailScrollRef.current,
         estimateSize: () => EstimatedRowHeight,
         overscan: VirtualOverscan,
         enabled: virtualEnabled,
-        measureElement: (element) => element.getBoundingClientRect().height,
+        // offsetHeight 等价于库的默认实现，但不走 transform/滚动相关的 rect 计算路径。
+        measureElement: (element) => (element as HTMLElement).offsetHeight,
     });
     const virtualItems = virtualizer.getVirtualItems();
+    // 非虚拟化时 seqToIndex 不生效，但 anchorKey→seq 兜底同样要用，所以这里始终赋值。
     virtualScrollRef.current = {
         enabled: virtualEnabled,
         seqToIndex,
+        anchorKeyToSeq,
         scrollToIndex: (index: number) => virtualizer.scrollToIndex(index, { align: "start" }),
         items: () => virtualizer.getVirtualItems(),
     };
@@ -1151,11 +1250,20 @@ export function SessionDetailPane({
     const activeOutlineSeq = virtualEnabled
         ? activeSeqFromVirtualItems(virtualItems, timelineItemSeqs, outlineProbeOffset, outlinePrompts[0]?.seq ?? null)
         : fullRenderActiveSeq;
-    // live turn 追加时消息节点高度变化：显式重测，避免虚拟行高失真。
+    // 只允许在「实时 turn 开始 / 结束」两个边界做全量重测。
+    //
+    // 禁止把 liveTurn 对象本身放进依赖：useLiveTurns 每 32ms flush 一次，每次都是新对象，
+    // 会让这个 effect 在流式期间以约 30 次/秒执行；而 virtualizer.measure() 会清空
+    // itemSizeCache（virtual-core `measure()`），等于每秒 30 次把所有行高退回估算值，
+    // 总高度塌陷 → scrollTop 被 clamp → 内容剧烈跳动 + 整页重渲染。
+    //
+    // 流式期间的行高变化由 measureElement 的 ResizeObserver 逐行增量处理，库会对位于
+    // 视口上方的行做 scrollAdjustments 补偿，这才是我们想要的精确行为。
+    const liveTurnActive = liveTurn != null;
     useEffect(() => {
-        if (!virtualEnabled || liveTurn == null) return;
+        if (!virtualEnabled) return;
         virtualizer.measure();
-    }, [virtualEnabled, liveTurn, virtualizer]);
+    }, [virtualEnabled, liveTurnActive, virtualizer]);
     // 打开会话自动置底：虚拟化后用总高度滚动，语义与全量渲染一致。
     useLayoutEffect(() => {
         if (autoScrolledToBottomRef.current) return;
@@ -1359,20 +1467,7 @@ export function SessionDetailPane({
                         contextAttrs={contextAttrsBySeq.get(item.message.seq)}
                         contextText={contextTextBySeq.get(item.message.seq)}
                         annotationCount={annotationCounts.get(item.message.seq) ?? 0}
-                        onOpenAnnotations={
-                            item.message.itemKey
-                                ? () => {
-                                      const existing = annotations.find(
-                                          (annotation) => annotation.seq === item.message.seq
-                                      );
-                                      setAnnotationEditor({
-                                          seq: item.message.seq,
-                                          anchorKey: item.message.itemKey!,
-                                          annotation: existing,
-                                      });
-                                  }
-                                : undefined
-                        }
+                        onOpenAnnotations={openAnnotationsFor}
                         registerRef={(node) => {
                             if (node) messageRefs.current[item.message.seq] = node;
                         }}
@@ -1440,6 +1535,7 @@ export function SessionDetailPane({
             expandedToolCalls,
             model.blockId,
             model.service,
+            openAnnotationsFor,
             subagentMatchFor,
             subagentMatchesByAnchor,
             subagentTabCwd,
@@ -1652,6 +1748,8 @@ export function SessionDetailPane({
                         onDiscard={(id) => void bulkDrafts("discard", [id])}
                         onAcceptAllDrafts={() => void bulkDrafts("accept")}
                         onDiscardAllDrafts={() => void bulkDrafts("discard")}
+                        onNodeTextSave={handleNodeTextSave}
+                        bottomInset={composerHeight}
                     />
                     <div className="relative flex min-w-0 flex-1 flex-col">
                         {/* 搜索浮层：头栏下方居中弹出（对齐原型 srch-pop） */}
@@ -1859,52 +1957,56 @@ export function SessionDetailPane({
                         {summary != null &&
                         summary.id != null &&
                         isSourceAvailable(summary.source, availableChatSources) ? (
-                            <ChatComposer
-                                key={`composer-${summary.id}`}
-                                source={summary.source}
-                                sessionId={summary.id}
-                                availableSources={availableChatSources}
-                                projectPath={summary.projectPath?.trim() || projectPath}
-                                connection={connection}
-                                canChangeDirectory={canChangeDirectory}
-                                onChangeDirectory={onChangeDirectory}
-                                streamStatus={activeChatStreamStatus}
-                                queuedCount={queueSnap.queuedCount}
-                                queueHighCount={queueSnap.highCount}
-                                queueActive={queueSnap.active}
-                                queueItems={queueSnap.items}
-                                onSend={handleChatSend}
-                                onQueue={handleChatQueue}
-                                onAbort={handleChatAbort}
-                                onQueueCancel={(id) => queueStoreRef.current.cancel(id)}
-                                onQueuePromote={(id) => queueStoreRef.current.promote(id)}
-                                onQueueReorder={(id, idx) => queueStoreRef.current.reorder(id, idx)}
-                                contextUsagePercent={contextUsagePercent}
-                                usage={chatUsage}
-                            />
+                            <div ref={setComposerEl} className="shrink-0">
+                                <ChatComposer
+                                    key={`composer-${summary.id}`}
+                                    source={summary.source}
+                                    sessionId={summary.id}
+                                    availableSources={availableChatSources}
+                                    projectPath={summary.projectPath?.trim() || projectPath}
+                                    connection={connection}
+                                    canChangeDirectory={canChangeDirectory}
+                                    onChangeDirectory={onChangeDirectory}
+                                    streamStatus={activeChatStreamStatus}
+                                    queuedCount={queueSnap.queuedCount}
+                                    queueHighCount={queueSnap.highCount}
+                                    queueActive={queueSnap.active}
+                                    queueItems={queueSnap.items}
+                                    onSend={handleChatSend}
+                                    onQueue={handleChatQueue}
+                                    onAbort={handleChatAbort}
+                                    onQueueCancel={(id) => queueStoreRef.current.cancel(id)}
+                                    onQueuePromote={(id) => queueStoreRef.current.promote(id)}
+                                    onQueueReorder={(id, idx) => queueStoreRef.current.reorder(id, idx)}
+                                    contextUsagePercent={contextUsagePercent}
+                                    usage={chatUsage}
+                                />
+                            </div>
                         ) : isNewChat ? (
-                            <ChatComposer
-                                key={`composer-new-${newChatEpoch}`}
-                                source={composeSource}
-                                sessionId=""
-                                availableSources={availableChatSources}
-                                projectPath={projectPath ?? summary?.projectPath}
-                                connection={connection}
-                                canChangeDirectory={canChangeDirectory}
-                                onChangeDirectory={onChangeDirectory}
-                                onSourceChange={setComposeSource}
-                                streamStatus={activeChatStreamStatus}
-                                queuedCount={queueSnap.queuedCount}
-                                queueHighCount={queueSnap.highCount}
-                                queueActive={queueSnap.active}
-                                queueItems={queueSnap.items}
-                                onSend={handleChatSend}
-                                onQueue={handleChatQueue}
-                                onAbort={handleChatAbort}
-                                onQueueCancel={(id) => queueStoreRef.current.cancel(id)}
-                                onQueuePromote={(id) => queueStoreRef.current.promote(id)}
-                                onQueueReorder={(id, idx) => queueStoreRef.current.reorder(id, idx)}
-                            />
+                            <div ref={setComposerEl} className="shrink-0">
+                                <ChatComposer
+                                    key={`composer-new-${newChatEpoch}`}
+                                    source={composeSource}
+                                    sessionId=""
+                                    availableSources={availableChatSources}
+                                    projectPath={projectPath ?? summary?.projectPath}
+                                    connection={connection}
+                                    canChangeDirectory={canChangeDirectory}
+                                    onChangeDirectory={onChangeDirectory}
+                                    onSourceChange={setComposeSource}
+                                    streamStatus={activeChatStreamStatus}
+                                    queuedCount={queueSnap.queuedCount}
+                                    queueHighCount={queueSnap.highCount}
+                                    queueActive={queueSnap.active}
+                                    queueItems={queueSnap.items}
+                                    onSend={handleChatSend}
+                                    onQueue={handleChatQueue}
+                                    onAbort={handleChatAbort}
+                                    onQueueCancel={(id) => queueStoreRef.current.cancel(id)}
+                                    onQueuePromote={(id) => queueStoreRef.current.promote(id)}
+                                    onQueueReorder={(id, idx) => queueStoreRef.current.reorder(id, idx)}
+                                />
+                            </div>
                         ) : null}
                     </div>
                 </div>
@@ -1992,6 +2094,7 @@ export function SessionDetailPane({
                     seq={annotationEditor.seq}
                     anchorKey={annotationEditor.anchorKey}
                     annotation={annotationEditor.annotation ?? null}
+                    nodePreview={annotationPreviewBySeq.get(annotationEditor.seq)}
                     onClose={() => setAnnotationEditor(null)}
                     onSaved={() => void reloadAnnotations()}
                 />

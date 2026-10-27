@@ -72,6 +72,23 @@ export function reduceScanStatus(prev: ScanStatus, incoming: ScanStatus): ScanSt
     return next;
 }
 
+/**
+ * 合并「List 响应快照」与「事件实时进度」。UI 只需要一个状态源时用它，
+ * 避免快照（旧）覆盖掉事件（新）推来的进度。
+ */
+export function mergeScanStatus(snapshot: ScanStatus, live: ScanStatus): ScanStatus {
+    const liveUseful = live.running || live.total > 0;
+    if (!liveUseful) {
+        return snapshot;
+    }
+    const snapshotUseful = snapshot.running || snapshot.total > 0;
+    if (!snapshotUseful) {
+        return live;
+    }
+    // 同一周期内 scanned 单调递增，取更靠后的那条。
+    return live.scanned >= snapshot.scanned ? live : snapshot;
+}
+
 /** 是否应该触发「扫描结束」回调：每个周期只触发一次。 */
 export function shouldNotifyScanDone(prev: ScanStatus, incoming: ScanStatus | null): boolean {
     return incoming != null && incoming.done && !prev.done;

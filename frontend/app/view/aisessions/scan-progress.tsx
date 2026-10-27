@@ -1,14 +1,12 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { cn } from "@/util/util";
-
 /**
- * 会话列表的「扫描中」占位与进度条。
+ * 会话列表首次加载的骨架占位行。
  *
- * 背景：会话历史达到几千个文件时，一次全量 summary 扫描不可能在首屏内完成。
- * 后端因此改成「先返回索引里已有的行 + 后台继续扫」，前端在这里用骨架行占位，
- * 并用一条进度条说明后台还在补齐，避免出现「加载失败/空白」的观感。
+ * 只在「首屏还没有任何会话数据」时出现；一旦列表里有内容，后台扫描补索引
+ * 或手动刷新都不再插骨架（否则会顶动列表、干扰用户阅读）。刷新/扫描的进度
+ * 统一由右上角的刷新 icon 体现。
  *
  * 约定：
  * - 骨架只占位，不参与交互：容器 aria-hidden，永不被聚焦或点击。
@@ -44,39 +42,6 @@ export function SkeletonSessionRows({ rows = 6 }: { rows?: number }) {
             {Array.from({ length: rows }, (_, index) => (
                 <SkeletonSessionRow key={index} index={index} />
             ))}
-        </div>
-    );
-}
-
-/**
- * 后台扫描进度条。`scanned/total` 来自 wps 的 aisessions:scanstatus 事件；
- * total 为 0 时只显示不定态文案，避免出现 "0/0"。
- */
-export function ScanProgressStrip({ scanned, total }: { scanned: number; total: number }) {
-    const percent = total > 0 ? Math.min(100, Math.round((scanned / total) * 100)) : 0;
-    const label = total > 0 ? `Syncing sessions ${scanned}/${total}` : "Syncing sessions";
-    return (
-        <div
-            className="border-b border-border bg-surface/40 px-3 py-1.5"
-            role="status"
-            aria-live="polite"
-            aria-busy="true"
-            data-testid="aisessions-scan-progress"
-        >
-            <div className="flex items-center gap-2 text-[11px] text-secondary tabular-nums">
-                <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">{label}</span>
-                {total > 0 ? <span className="shrink-0">{percent}%</span> : null}
-            </div>
-            <div className="mt-1 h-0.5 w-full overflow-hidden rounded bg-secondary/15">
-                <div
-                    className={cn(
-                        "h-full bg-accent transition-all duration-300",
-                        total > 0 ? "" : "w-1/3 animate-pulse"
-                    )}
-                    style={total > 0 ? { width: `${percent}%` } : undefined}
-                />
-            </div>
         </div>
     );
 }

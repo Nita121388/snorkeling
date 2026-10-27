@@ -245,3 +245,34 @@ InfoCard（`frontend/app/element/info-card/`）的显示由 `isHovered || isCard
 自检方法：`node scripts/inspect-electron-ui.mjs elements` 里比较视图根节点与
 `.block-content` 的 `getBoundingClientRect().width`，两者应一致（误差 ≤ 2px）。
 横向溢出交给内部 `overflow-auto` 容器，不要靠根节点收缩来"自适应"。
+
+### 12. 虚拟化列表里的 `memo`：不要让会变化的回调进 props
+
+`MessageCard`（`frontend/app/view/aisessions/session-message.tsx`）用自定义比较器
+逐项比较 props 引用。它**不比较** `registerRef`（ref 回调天然每帧新建，比较只会误伤），
+但会比较 `onOpenAnnotations`。
+
+于是：父级 `SessionDetail` 每次渲染都传一个新的内联闭包 → 所有带 `itemKey` 的行
+`memo` 全部失效 → 滚动事件（60~120/s）与流式 delta（~30/s）都会让每行重跑
+`WaveStreamdown` 解析 markdown。单条长消息 1~5ms，10 行 × 30 次/秒 ≈ 600ms/s 主线程。
+
+约定：
+
+1. **`memo` 组件接收的回调必须引用稳定**：父级用 `useCallback` + `ref` 读最新状态，
+   参数（seq / key）由子组件自己带上，而不是父级内联闭包捕获。
+2. **需要 live 数据时用 ref 转发**，不要为了拿最新值把依赖写进 `useCallback`：
+   ```tsx
+   const dataRef = useRef(data);
+   dataRef.current = data;
+   const stableHandler = useCallback((id: string) => doWork(dataRef.current, id), []);
+   ```
+3. **写 `memo` 比较器时显式列出忽略项**：像 `registerRef` 这类每帧新建的回调，
+   必须从比较器里排除，否则 memo 等于没开。
+4. **虚拟化列表的自定义比较器是性能契约**，改动它要配一个「父级重渲染不引起子组件
+   重渲染」的回归测试（参考 `session-message.dom.test.tsx` 的 `MessageCard memo contract`）。
+
+同类坑：`@tanstack/react-virtual` 的 `virtualizer.measure()` 会**清空全部**
+`itemSizeCache`。只有当「行集合发生结构性变化」（例如流式 turn 开始/结束）时才能调用；
+把它挂在会高频换引用的对象（如每 32ms flush 的 `liveTurn`）上，等于每秒数十次
+把所有行高退回估算值 —— 总高度塌陷、scrollTop 被 clamp、内容剧烈跳动。
+流式期间的行高变化交给 `measureElement` 的 ResizeObserver 逐行增量处理。
