@@ -16,6 +16,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/web/sse"
+	"github.com/wavetermdev/waveterm/pkg/wstore"
 )
 
 // discardResponseWriter is a no-op http.ResponseWriter that lets the AI backends
@@ -54,8 +55,12 @@ func RunCompletion(ctx context.Context, opts uctypes.AIOptsType, systemPrompt st
 
 	chatId := "completion-" + uuid.NewString()
 	chatOpts := uctypes.WaveChatOpts{
-		ChatId:       chatId,
-		ClientId:     "completion",
+		ChatId: chatId,
+		// ClientId 会作为 X-Wave-ClientId 发给 Wave AI 网关，而网关会校验它必须是
+		// 合法 UUID。之前写的字面量 "completion" 直接 400（Invalid X-Wave-ClientId），
+		// 让标题/Note/Tags/批注这类后台生成在 waveai@* 模式下全量失败。
+		// 复用应用自己的 client id（启动时生成的 UUID），与交互式聊天一致。
+		ClientId:     wstore.GetClientId(),
 		Config:       opts,
 		SystemPrompt: []string{systemPrompt},
 	}
