@@ -33,6 +33,11 @@
     --grey-text-color: #666;
     --main-bg-color: rgb(34, 34, 34);
     --surface-shadow-color: #000000;
+    --deep-text-color: #000000;
+    // 表面层：暗色主题下用白色低透明度叠色（浅色/无彩色主题各自覆盖）
+    --surface-soft-color: rgba(255, 255, 255, 0.04);
+    --surface-color: rgba(255, 255, 255, 0.06);
+    --surface-strong-color: rgba(255, 255, 255, 0.08);
     --border-color: rgba(255, 255, 255, 0.16);
     --accent-color: rgb(88, 193, 66);
     --accent-hover-color: rgb(118, 223, 96);
@@ -228,7 +233,7 @@
 
 [data-theme="light"] {
     color: var(--main-text-color);
-    --main-text-color: #4c3924;
+    --main-text-color: #3a3227;
     // 浅色：代码块用米白底 + 深色字，token 走 GitHub Light 配色
     --codeblock-bg-color: #f7f7f4;
     --codeblock-text-color: #3a3226;
@@ -244,34 +249,36 @@
     --codeblock-diff-add-text: #166534;
     --codeblock-diff-del-bg: #ffe4e6;
     --codeblock-diff-del-text: #9f1239;
-    --secondary-text-color: #675033;
-    --grey-text-color: #777167;
-    --main-bg-color: #ebe5d9;
+    --secondary-text-color: #635c52;
+    --grey-text-color: #78726a;
+    --main-bg-color: #f2eee5;
     --surface-shadow-color: #ddd5c5;
-    --border-color: #ded8ca;
-    --color-surface-soft: #f7f7f4;
-    --color-surface: #f0ede6;
-    --color-surface-strong: #f4f0e7;
-    --accent-color: #a76fca;
-    --accent-hover-color: #955ab8;
-    --accent-bg-color: rgba(167, 111, 202, 0.24);
+    --deep-text-color: #221e19;
+    --border-color: #dcd6c9;
+    // 层次：block #fffdf8 > surface(输入框/抬起) #fffdf8 > panel #faf7f1 > main(轨道/凹陷) #f2eee5
+    --surface-soft-color: #fdfbf6;
+    --surface-color: #fffdf8;
+    --surface-strong-color: #f2eee5;
+    --accent-color: #9e60c5;
+    --accent-hover-color: #8c4cb1;
+    --accent-bg-color: rgba(158, 96, 197, 0.24);
     --accent-color-50: #faf6fd;
     --accent-color-100: #f2e9fa;
     --accent-color-200: #e6d2f5;
-    --accent-color-300: #d6b4e8;
-    --accent-color-500: #955ab8;
-    --accent-color-600: #7c49a1;
-    --accent-color-700: #63387f;
-    --accent-color-800: #4a285c;
-    --accent-color-900: #371d44;
+    --accent-color-300: #cda4e3;
+    --accent-color-500: #8c4cb1;
+    --accent-color-600: #714393;
+    --accent-color-700: #583271;
+    --accent-color-800: #412351;
+    --accent-color-900: #2e1839;
     --action-bg-color: var(--accent-color-600);
     --action-hover-bg-color: var(--accent-color-500);
     --action-text-color: var(--button-text-color);
     --action-soft-bg-color: rgb(from var(--accent-color) r g b / 0.12);
     --action-soft-text-color: var(--accent-color-700);
     --action-soft-border-color: rgb(from var(--accent-color) r g b / 0.3);
-    --panel-bg-color: rgba(243, 239, 228, 0.72);
-    --highlight-bg-color: rgba(167, 111, 202, 0.2);
+    --panel-bg-color: rgba(250, 247, 241, 0.72);
+    --highlight-bg-color: rgba(158, 96, 197, 0.2);
     --error-color: #d32f2f;
     --warning-color: #e65100;
     --success-color: #2e7d32;
@@ -279,41 +286,41 @@
     --agent-working-color: #2563eb;
     --agent-done-color: #2e7d32;
     --agent-stale-color: #a855f7;
-    --hover-bg-color: rgba(167, 111, 202, 0.1);
-    --hover-bg-color-strong: rgba(60, 50, 40, 0.07);
+    --hover-bg-color: rgba(158, 96, 197, 0.1);
+    --hover-bg-color-strong: rgba(58, 50, 39, 0.09);
     --block-bg-color: rgba(255, 253, 248, 0.72);
     --block-bg-solid-color: #fffdf8;
 
-    --overlay-bg-color: #f3efe4;
-    --tabbar-bg-color: rgba(243, 239, 228, 0.72);
-    --modal-backdrop-color: rgba(69, 48, 30, 0.28);
+    --overlay-bg-color: #faf7f1;
+    --tabbar-bg-color: rgba(242, 238, 229, 0.72);
+    --modal-backdrop-color: rgba(34, 30, 25, 0.28);
 
-    --keybinding-color: #374151;
-    --keybinding-bg-color: #f3efe4;
-    --keybinding-border-color: #d6cfbe;
+    --keybinding-color: #3a3227;
+    --keybinding-bg-color: #f5f1e9;
+    --keybinding-border-color: #dcd6c9;
 
-    --scrollbar-thumb-color: rgba(107, 91, 68, 0.24);
-    --scrollbar-thumb-hover-color: rgba(107, 91, 68, 0.5);
-    --scrollbar-thumb-active-color: rgba(107, 91, 68, 0.62);
+    --scrollbar-thumb-color: rgba(90, 84, 74, 0.28);
+    --scrollbar-thumb-hover-color: rgba(90, 84, 74, 0.52);
+    --scrollbar-thumb-active-color: rgba(90, 84, 74, 0.64);
 
     --tab-green: #2e7d32;
 
     --modal-bg-color: #fffdf8;
-    --modal-header-bottom-border-color: #d6cfbe;
-    --modal-border-color: #d6cfbe;
-    --modal-shadow-color: rgba(69, 48, 30, 0.18);
-    --toggle-bg-color: #d6cfbe;
+    --modal-header-bottom-border-color: #dcd6c9;
+    --modal-border-color: #dcd6c9;
+    --modal-shadow-color: rgba(34, 30, 25, 0.18);
+    --toggle-bg-color: #dcd6c9;
     --toggle-thumb-color: #fffdf8;
     --toggle-checked-bg-color: var(--accent-color);
 
-    --link-color: #63387f;
+    --link-color: #583271;
 
-    --form-element-border-color: #d6cfbe;
+    --form-element-border-color: #dcd6c9;
     --form-element-bg-color: #fffdf8;
-    --form-element-text-color: #1f2937;
-    --form-element-primary-text-color: #1f2937;
+    --form-element-text-color: #2a241d;
+    --form-element-primary-text-color: #2a241d;
     --form-element-primary-color: var(--accent-color);
-    --form-element-secondary-color: rgba(167, 111, 202, 0.18);
+    --form-element-secondary-color: rgba(158, 96, 197, 0.18);
     --form-element-error-color: var(--error-color);
 
     --conn-icon-color: #2563eb;
@@ -325,7 +332,7 @@
     --conn-icon-color-6: #c2410c;
     --conn-icon-color-7: #a16207;
     --conn-icon-color-8: #2e7d32;
-    --conn-status-overlay-bg-color: rgba(167, 111, 202, 0.18);
+    --conn-status-overlay-bg-color: rgba(158, 96, 197, 0.18);
 
     --sysinfo-cpu-color: #2e7d32;
     --sysinfo-mem-color: #2563eb;
@@ -408,10 +415,11 @@
     --secondary-text-color: #4a4a4a;
     --grey-text-color: #808080;
     --main-bg-color: #fafafa;
+    --deep-text-color: #0a0a0a;
     --border-color: rgba(0, 0, 0, 0.14);
-    --color-surface-soft: #fafafa;
-    --color-surface: #f5f5f5;
-    --color-surface-strong: #f0f0f0;
+    --surface-soft-color: #fafafa;
+    --surface-color: #f5f5f5;
+    --surface-strong-color: #f0f0f0;
     --accent-color: #1a1a1a;
     --accent-hover-color: #000000;
     --accent-bg-color: rgba(0, 0, 0, 0.08);
@@ -551,10 +559,11 @@
     --grey-text-color: #777167;
     --main-bg-color: #faf7f0;
     --surface-shadow-color: #e8e1d0;
+    --deep-text-color: #221e19;
     --border-color: #d6d3ca;
-    --color-surface-soft: #f7f7f4;
-    --color-surface: #f0ede6;
-    --color-surface-strong: #f4f0e7;
+    --surface-soft-color: #f7f7f4;
+    --surface-color: #f0ede6;
+    --surface-strong-color: #f4f0e7;
     --accent-color: #c38057;
     --accent-hover-color: #c27a45;
     --accent-bg-color: rgba(245, 158, 11, 0.24);

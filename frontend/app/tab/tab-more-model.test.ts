@@ -9,6 +9,7 @@ import {
     countHiddenRows,
     filterTabMoreRows,
     isTabHiddenFromBar,
+    selectBarVisibleTabIds,
     shouldShowTabMoreSearch,
     TabMoreMeta,
     TabMoreVisibilityContext,
@@ -59,6 +60,26 @@ describe("isTabHiddenFromBar", () => {
     it("manual collapse still yields to unread dots", () => {
         const ctx = makeCtx({ collapsedTabIds: new Set(["t2"]), unreadTabIds: new Set(["t2"]) });
         expect(isTabHiddenFromBar("t2", ctx)).toBe(false);
+    });
+});
+
+describe("selectBarVisibleTabIds", () => {
+    it("keeps only tabs the bar may render (hidden ones live in the 更多 dropdown)", () => {
+        expect(selectBarVisibleTabIds(TabIds, makeCtx())).toEqual(["t1", "t2"]);
+    });
+
+    it("never re-adds a hidden tab for unread dots or manual collapse", () => {
+        const ctx = makeCtx({
+            unreadTabIds: new Set(["t4"]),
+            collapsedTabIds: new Set(["t2"]),
+        });
+        // t3 既未打开又无未阅点 → 仍隐藏; t2 被手动收起但无未阅点 → 不再回主栏.
+        expect(selectBarVisibleTabIds(TabIds, ctx)).toEqual(["t1", "t4"]);
+    });
+
+    it("activates a hidden tab into the bar without showing its hidden neighbours", () => {
+        const ctx = makeCtx({ activeTabId: "t4" });
+        expect(selectBarVisibleTabIds(TabIds, ctx)).toEqual(["t1", "t2", "t4"]);
     });
 });
 

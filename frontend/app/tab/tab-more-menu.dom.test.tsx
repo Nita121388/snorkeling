@@ -127,6 +127,33 @@ describe("TabMoreMenu trigger", () => {
         });
         expect(trigger().getAttribute("aria-expanded")).toBe("false");
     });
+
+    // 点亮 = 触发器的常驻 text-primary (忽略 hover:/group-hover: 变体).
+    function isLit(el: HTMLElement) {
+        return el.className
+            .split(/\s+/)
+            .filter((cls) => !cls.includes(":"))
+            .includes("text-primary");
+    }
+
+    it("uses a vertical three-dot icon that only lights up when open", () => {
+        render(["t1", "t2"]);
+        const icon = trigger().querySelector("i")!;
+        expect(icon.className).toContain("fa-ellipsis-vertical");
+        expect(isLit(trigger())).toBe(false);
+        act(() => {
+            trigger().click();
+        });
+        expect(isLit(trigger())).toBe(true);
+    });
+
+    it("uses a horizontal three-dot icon on the horizontal bar", () => {
+        render(["t1", "t2"], { variant: "horizontal", placement: "bottom-end" });
+        const icon = trigger().querySelector("i")!;
+        expect(icon.className).toContain("fa-ellipsis");
+        expect(icon.className).not.toContain("fa-ellipsis-vertical");
+        expect(isLit(trigger())).toBe(false);
+    });
 });
 
 describe("TabMoreMenu rows", () => {
@@ -173,11 +200,30 @@ describe("TabMoreMenu rows", () => {
         const list = rows();
         expect(list).toHaveLength(3);
         expect(list[0].getAttribute("data-hidden")).toBe("false");
+        expect(list[0].getAttribute("data-dimmed")).toBe("false");
         expect(list[0].className).not.toContain("opacity-55");
         expect(list[1].getAttribute("data-hidden")).toBe("true");
+        expect(list[1].getAttribute("data-dimmed")).toBe("true");
         expect(list[1].className).toContain("opacity-55");
         expect(list[2].getAttribute("data-hidden")).toBe("true");
         expect(list[2].className).toContain("opacity-55");
+    });
+
+    it("lights a collapsed tab up once it becomes the active tab", () => {
+        // 置灰只跟随「默认折叠」, 与激活无关: 同一个 Tab 一旦被激活就恢复常态亮度.
+        globalStore.set(openedThisLaunchTabIdsAtom, new Set(["t1"]));
+        globalStore.set(collapsedTabIdsAtom, new Set(["t2"]));
+        render(["t1", "t2"]);
+        act(() => {
+            trigger().click();
+        });
+        const t2 = rows().find((row) => row.getAttribute("data-tabid") === "t2")!;
+        expect(t2.getAttribute("data-hidden")).toBe("true");
+        expect(t2.getAttribute("data-dimmed")).toBe("true");
+        // 激活行永不置灰 (isTabHiddenFromBar 对激活 Tab 恒返回 false, 这里再加一道 isActive 兜底).
+        const t1 = rows().find((row) => row.getAttribute("data-tabid") === "t1")!;
+        expect(t1.getAttribute("data-hidden")).toBe("false");
+        expect(t1.getAttribute("data-dimmed")).toBe("false");
     });
 
     it("closes a tab without activating it", () => {

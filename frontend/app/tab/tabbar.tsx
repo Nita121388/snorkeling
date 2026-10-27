@@ -27,8 +27,9 @@ import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
-import { collapseTabIds } from "./tab-collapse-state";
+import { collapseTabIds, collapsedTabIdsAtom } from "./tab-collapse-state";
 import { TabMoreMenu } from "./tab-more-menu";
+import { selectBarVisibleTabIds, TabMoreVisibilityContext } from "./tab-more-model";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import "./tabbar.scss";
@@ -124,7 +125,7 @@ function strArrayIsEqual(a: string[], b: string[]) {
     return true;
 }
 
-const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: TabBarProps) => {
+const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) => {
     const env = useWaveEnv<TabBarEnv>();
     const [tabIds, setTabIds] = useState<string[]>([]);
     const [dragStartPositions, setDragStartPositions] = useState<number[]>([]);
@@ -175,12 +176,10 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
+    const collapsedTabIds = useAtomValue(collapsedTabIdsAtom);
     // 订阅 recency bump: markTabOpened 后强制重算 setSizeAndPosition 的 pinned 段, 避免切 Tab 期间 stale.
     useAtomValue(tabRecencyBumpAtom);
 
-    const [isTabBarHovered, setIsTabBarHovered] = useState(false);
-    const [isWrapperHovered, setIsWrapperHovered] = useState(false);
-    // 「更多」下拉打开期间, 让被折叠的 Tab 保持展开, 避免面板下方布局突变.
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
     // ── block sidebar expand icon (left-most in tab bar) ──
     const [sidebarExpanded, setSidebarExpanded] = useState(() => {
@@ -222,68 +221,29 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         window.addEventListener("widget-bar:collapse", handler);
         return () => window.removeEventListener("widget-bar:collapse", handler);
     }, []);
-    const hideTabBarHoverTimerRef = useRef<number | null>(null);
     const hideWrapperHoverTimerRef = useRef<number | null>(null);
-    const cancelPendingHideTabBarHover = useCallback(() => {
-        if (hideTabBarHoverTimerRef.current != null) {
-            window.clearTimeout(hideTabBarHoverTimerRef.current);
-            hideTabBarHoverTimerRef.current = null;
-        }
-    }, []);
     const cancelPendingHideWrapperHover = useCallback(() => {
         if (hideWrapperHoverTimerRef.current != null) {
             window.clearTimeout(hideWrapperHoverTimerRef.current);
             hideWrapperHoverTimerRef.current = null;
         }
     }, []);
-    const cancelAllPendingHideHover = useCallback(() => {
-        cancelPendingHideTabBarHover();
-        cancelPendingHideWrapperHover();
-    }, [cancelPendingHideTabBarHover, cancelPendingHideWrapperHover]);
 
-    useEffect(() => {
-        if (draggingTab != null) {
-            cancelAllPendingHideHover();
-        }
-    }, [draggingTab, cancelAllPendingHideHover]);
-
-    useEffect(
-        () => () => {
-            cancelPendingHideTabBarHover();
-            cancelPendingHideWrapperHover();
-        },
-        [cancelPendingHideTabBarHover, cancelPendingHideWrapperHover]
-    );
+    useEffect(() => () => cancelPendingHideWrapperHover(), [cancelPendingHideWrapperHover]);
     let prevDelta: number;
     let prevDragDirection: string;
 
-    const visibleTabIds = useMemo(
-        () =>
-            tabIds.filter((tabId) => {
-                const isActive = activeTabId === tabId;
-                return (
-                    isActive ||
-                    isTabBarHovered ||
-                    isMoreMenuOpen ||
-                    headerHovered ||
-                    isWrapperHovered ||
-                    draggingTab != null ||
-                    wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId) ||
-                    tabsWithUnreadDots.has(tabId)
-                );
-            }),
-        [
+    // 默认隐藏的 Tab 只进「更多」下拉, 不进主栏 (hover / 菜单展开 / 拖拽都不再把它捞回来).
+    const visibilityCtx = useMemo<TabMoreVisibilityContext>(
+        () => ({
             activeTabId,
-            draggingTab,
-            headerHovered,
-            isTabBarHovered,
-            isMoreMenuOpen,
-            isWrapperHovered,
-            openedThisLaunchTabIds,
-            tabIds,
-            tabsWithUnreadDots,
-        ]
+            openedThisLaunch: openedThisLaunchTabIds,
+            unreadTabIds: tabsWithUnreadDots,
+            collapsedTabIds,
+        }),
+        [activeTabId, collapsedTabIds, openedThisLaunchTabIds, tabsWithUnreadDots]
     );
+    const visibleTabIds = useMemo(() => selectBarVisibleTabIds(tabIds, visibilityCtx), [tabIds, visibilityCtx]);
 
     // RenderedTabIds: tab-only ids, used for drag/reorder.
     const renderedTabIds = useMemo(() => visibleTabIds, [visibleTabIds]);
@@ -869,7 +829,6 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
 
     const handleWrapperMouseEnter = useCallback(() => {
         cancelPendingHideWrapperHover();
-        setIsWrapperHovered(true);
         onHeaderHoverChange?.(true);
     }, [onHeaderHoverChange, cancelPendingHideWrapperHover]);
 
@@ -877,7 +836,6 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
         cancelPendingHideWrapperHover();
         hideWrapperHoverTimerRef.current = window.setTimeout(() => {
             hideWrapperHoverTimerRef.current = null;
-            setIsWrapperHovered(false);
             onHeaderHoverChange?.(false);
         }, TAB_HEADER_HOVER_DELAY_MS);
     }, [onHeaderHoverChange, cancelPendingHideWrapperHover]);
@@ -960,22 +918,7 @@ const TabBar = memo(({ workspace, noTabs, headerHovered, onHeaderHoverChange }: 
             >
                 <WorkspaceSwitcher />
             </Tooltip>
-            <div
-                className="tab-bar"
-                ref={tabBarRef}
-                data-overlayscrollbars-initialize
-                onMouseEnter={() => {
-                    cancelPendingHideTabBarHover();
-                    setIsTabBarHovered(true);
-                }}
-                onMouseLeave={() => {
-                    cancelPendingHideTabBarHover();
-                    hideTabBarHoverTimerRef.current = window.setTimeout(() => {
-                        hideTabBarHoverTimerRef.current = null;
-                        setIsTabBarHovered(false);
-                    }, TAB_HEADER_HOVER_DELAY_MS);
-                }}
-            >
+            <div className="tab-bar" ref={tabBarRef} data-overlayscrollbars-initialize>
                 <div
                     className="tabs-wrapper"
                     ref={tabsWrapperRef}

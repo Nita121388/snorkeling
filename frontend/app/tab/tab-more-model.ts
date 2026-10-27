@@ -79,6 +79,16 @@ export function isTabHiddenFromBar(tabId: string, ctx: TabMoreVisibilityContext)
 }
 
 /**
+ * 主栏 (水平 TabBar / 垂直 VTabBar) 实际应渲染的 tabId.
+ *
+ * 隐藏的 Tab (默认折叠 / 手动收起) 只存在于「更多」下拉里, 不再因为 hover /
+ * 下拉展开 / 拖拽被捞回主栏 —— 否则鼠标一移上去又“冒出来”, 与“收进更多”的认知冲突.
+ */
+export function selectBarVisibleTabIds(tabIds: readonly string[], ctx: TabMoreVisibilityContext): string[] {
+    return tabIds.filter((tabId) => !isTabHiddenFromBar(tabId, ctx));
+}
+
+/**
  * 按 tabIds 的物理顺序构建下拉行. 缺失 meta 的 tabId 会被跳过 (例如 Tab 刚被关闭).
  */
 export function buildTabMoreRows(

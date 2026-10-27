@@ -26,7 +26,6 @@ interface VTabProps {
     isDragging: boolean;
     isReordering: boolean;
     unopenedThisLaunch?: boolean;
-    hidden?: boolean;
     onSelect: () => void;
     onClose?: () => void;
     onRename?: (newName: string) => void;
@@ -46,7 +45,6 @@ export function VTab({
     isDragging,
     isReordering,
     unopenedThisLaunch = false,
-    hidden: isHidden = false,
     onSelect,
     onClose,
     onRename,
@@ -173,7 +171,7 @@ export function VTab({
                 active ? "text-primary" : isReordering ? "text-secondary" : "text-secondary hover:text-primary",
                 unopenedThisLaunch && "opacity-45 grayscale",
                 isDragging && "opacity-50",
-                isHidden ? "max-h-0 py-0 my-0 border-0 opacity-0 pointer-events-none" : "max-h-10 h-9",
+                "max-h-10 h-9",
             )}
         >
             {active && (

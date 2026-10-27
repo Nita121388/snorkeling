@@ -159,10 +159,11 @@ export interface TabMoreMenuProps {
 /** 单行: 图标 + 名称 + 关闭. 不参与拖拽. */
 const TabMoreRowItem = memo(
     ({ row, onActivate, onClose }: { row: TabMoreRow; onActivate: () => void; onClose: () => void }) => {
-        // 灰色 = 该 Tab 当前在主栏不可见 (默认折叠 or 用户手动收起).
-        // 未打开过的 Tab 不进灰色判定: 它可能在主栏可见, 下拉里不该跟折叠的混为一谈.
+        // 置灰 = 该 Tab 当前在主栏不可见 (默认折叠 or 用户手动收起).
+        // 未打开过的 Tab 不进置灰判定: 它可能在主栏可见, 下拉里不该跟折叠的混为一谈.
         // 有未阅点的永远不灰 — 那是用户必须立刻看到的状态.
-        const dimmed = row.isHidden && !row.hasUnreadDot;
+        // 激活即点亮: 被点开 (成为当前 Tab) 的行恢复常态亮度, 不再跟折叠状态挂钩.
+        const dimmed = row.isHidden && !row.hasUnreadDot && !row.isActive;
         // 悬浮 Agent Card: 只有该 Tab 里确有 agent block 时才挂 portal,
         // 避免无 agent 的行也建一套 hover 状态。
         const rowRef = useRef<HTMLDivElement | null>(null);
@@ -175,6 +176,7 @@ const TabMoreRowItem = memo(
                 tabIndex={0}
                 data-tabid={row.tabId}
                 data-hidden={row.isHidden ? "true" : "false"}
+                data-dimmed={dimmed ? "true" : "false"}
                 data-agent-card={hasAgentCard ? "true" : "false"}
                 onClick={onActivate}
                 onKeyDown={(event) => {
@@ -323,10 +325,14 @@ export function TabMoreMenu({
 
     const collapseTargets = useMemo(() => collectCollapseTargets(rows), [rows]);
 
-    const triggerClassName =
+    // 触发器: 默认置灰, 菜单展开 (或 hover) 才点亮 —— 与下拉里「默认折叠即置灰、激活才点亮」同一口径.
+    const triggerClassName = cn(
+        "cursor-pointer transition-colors select-none hover:text-primary",
         variant === "vertical"
-            ? "group/trigger relative flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm pr-2 pl-3 text-xs text-secondary/60 transition-colors select-none hover:text-primary"
-            : "flex h-[22px] cursor-pointer items-center gap-1 rounded-md border border-transparent px-1.5 text-[11px] text-secondary transition-colors select-none hover:bg-hoverbg hover:text-primary";
+            ? "group/trigger relative flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-sm pr-2 pl-3 text-xs"
+            : "flex h-[22px] items-center gap-1 rounded-md border border-transparent px-1.5 text-[11px] hover:bg-hoverbg",
+        open ? "text-primary" : variant === "vertical" ? "text-secondary/60" : "text-secondary"
+    );
 
     return (
         <>
@@ -344,7 +350,10 @@ export function TabMoreMenu({
                 {variant === "vertical" && (
                     <div className="pointer-events-none absolute inset-x-1 inset-y-[4px] rounded-sm bg-transparent transition-colors group-hover/trigger:bg-hover" />
                 )}
-                <i className="fa fa-solid fa-layer-group relative" style={{ fontSize: "10px" }} />
+                <i
+                    className={cn("fa relative", variant === "vertical" ? "fa-ellipsis-vertical" : "fa-ellipsis")}
+                    style={{ fontSize: "10px" }}
+                />
                 {variant === "vertical" && (
                     <>
                         <span className="relative">更多</span>
@@ -356,7 +365,14 @@ export function TabMoreMenu({
                     </>
                 )}
                 {variant === "horizontal" && hiddenCount > 0 && (
-                    <span className="rounded-full bg-foreground/10 px-1 text-[10px] leading-[14px]">{hiddenCount}</span>
+                    <span
+                        className={cn(
+                            "rounded-full bg-foreground/10 px-1 text-[10px] leading-[14px]",
+                            open ? "text-primary" : "text-secondary"
+                        )}
+                    >
+                        {hiddenCount}
+                    </span>
                 )}
             </button>
             {open && (

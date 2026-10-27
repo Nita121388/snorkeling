@@ -25,7 +25,7 @@ import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { collapsedTabIdsAtom, collapseTabIds } from "./tab-collapse-state";
-import { isTabHiddenFromBar } from "./tab-more-model";
+import { selectBarVisibleTabIds } from "./tab-more-model";
 import { TabMoreMenu } from "./tab-more-menu";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
@@ -99,7 +99,6 @@ MacOSHeader.displayName = "MacOSHeader";
 interface VTabBarProps {
     workspace: Workspace;
     className?: string;
-    headerHovered?: boolean;
     /** 当前悬浮的 tabId (用于内容区预挂载, 消除切到隐藏 tab 的黑屏). */
     onHoveredTabChange?: (tabId: string | null) => void;
 }
@@ -110,7 +109,6 @@ interface VTabWrapperProps {
     showDivider: boolean;
     isDragging: boolean;
     isReordering: boolean;
-    hidden: boolean;
     hoverResetVersion: number;
     index: number;
     onSelect: () => void;
@@ -129,7 +127,6 @@ function VTabWrapper({
     showDivider,
     isDragging,
     isReordering,
-    hidden: isHidden,
     hoverResetVersion,
     onSelect,
     onClose,
@@ -197,7 +194,6 @@ function VTabWrapper({
             isDragging={isDragging}
             isReordering={isReordering}
             unopenedThisLaunch={unopenedThisLaunch}
-            hidden={isHidden}
             onSelect={onSelect}
             onClose={onClose}
             onRename={onRename}
@@ -212,7 +208,7 @@ function VTabWrapper({
     );
 }
 
-export function VTabBar({ workspace, className, headerHovered, onHoveredTabChange }: VTabBarProps) {
+export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarProps) {
     const env = useWaveEnv<VTabBarEnv>();
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
@@ -226,7 +222,7 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
     // 让本工作区所有 tab (含 inline-tab 子 block) 在 AgentStatusStore 都持有订阅,
     // 非激活 tab 的 agent 状态点才能在 VTab 栏渲染.
     useAcquireWorkspaceBlockStatuses(tabIds);
-    // 有未阅状态点的 tab 集合: 这些 tab 必须强制 keep (不被 isHidden 折叠), 否则 VTabWrapper 不挂载,
+    // 有未阅状态点的 tab 集合: 这些 tab 必须强制 keep (不被折叠), 否则 VTabWrapper 不挂载,
     // 用户不切过去就永远看不到状态 (本次修复的核心).
     const tabsWithUnreadDots = useAtomValue(getTabsWithUnreadDotsAtom(tabIds));
     const collapsedTabIds = useAtomValue(collapsedTabIdsAtom);
@@ -248,7 +244,6 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
     const [hoverResetVersion, setHoverResetVersion] = useState(0);
     const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
     const [isNewTabHovered, setIsNewTabHovered] = useState(false);
-    const [isTabBarHovered, setIsTabBarHovered] = useState(false);
     // 「更多」下拉打开期间强制 Tab 栏按展开态渲染, 否则面板刚开出来, 它下方的 Tab 就缩没了.
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
     const dragSourceRef = useRef<string | null>(null);
@@ -260,15 +255,6 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
     const scrollAnimFrameRef = useRef<number | null>(null);
     const scrollDirectionRef = useRef<number>(0);
     const scrollSpeedRef = useRef<number>(0);
-    const hideHoverTimerRef = useRef<number | null>(null);
-    const cancelPendingHideHover = useCallback(() => {
-        if (hideHoverTimerRef.current != null) {
-            window.clearTimeout(hideHoverTimerRef.current);
-            hideHoverTimerRef.current = null;
-        }
-    }, []);
-
-    useEffect(() => () => cancelPendingHideHover(), [cancelPendingHideHover]);
 
     useEffect(() => {
         setOrderedTabIds(tabIds);
@@ -361,7 +347,6 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
         setDragTabId(null);
         setDropIndex(null);
         setDropLineTop(null);
-        cancelPendingHideHover();
     };
 
     const markTabOpened = useCallback((tabId: string) => {
@@ -408,19 +393,9 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
     }, [activeTabId, markTabOpened]);
 
     const renderOrderedTabIds = useMemo(() => {
-        // 分组排序: 今天打开过的 tab (含 active / unreadDots) 排前面,
-        // 没打开过的排后面. 两组内部均保持物理顺序.
-        // 这样 hover 展开时, 可见 tab 的相对位置不变, 不会发生位置跳变.
-        const visibleGroup: string[] = [];
-        const hiddenGroup: string[] = [];
-        for (const tabId of orderedTabIds) {
-            if (isTabHiddenFromBar(tabId, visibilityCtx)) {
-                hiddenGroup.push(tabId);
-            } else {
-                visibleGroup.push(tabId);
-            }
-        }
-        return [...visibleGroup, ...hiddenGroup];
+        // 默认隐藏的 Tab (本次启动未打开 / 手动收起 / 无未阅点) 只存在于「更多」下拉,
+        // 不再进 Tab 栏 — hover / 菜单展开 / 拖拽都不把它捞回主栏.
+        return selectBarVisibleTabIds(orderedTabIds, visibilityCtx);
     }, [orderedTabIds, visibilityCtx]);
 
     // FLIP: 当 renderOrderedTabIds / 悬停状态变化导致布局重排后, 把每个 tab 从它的
@@ -456,7 +431,7 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
             });
         }
         flipPrevPositionsRef.current = next;
-    }, [renderOrderedTabIds, isTabBarHovered, headerHovered, dragTabId]);
+    }, [renderOrderedTabIds, dragTabId]);
 
     // 向上层汇报当前悬浮的 tab, 便于内容区提前挂载该 tab (消除切换黑屏).
     useEffect(() => {
@@ -507,17 +482,6 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
             <div
                 ref={scrollContainerRef}
                 className="relative flex min-h-0 flex-col overflow-y-auto"
-                onMouseEnter={() => {
-                    cancelPendingHideHover();
-                    setIsTabBarHovered(true);
-                }}
-                onMouseLeave={() => {
-                    cancelPendingHideHover();
-                    hideHoverTimerRef.current = window.setTimeout(() => {
-                        hideHoverTimerRef.current = null;
-                        setIsTabBarHovered(false);
-                    }, 2000);
-                }}
                 onDragOver={(event) => {
                     event.preventDefault();
                     updateScrollFromDragY(event.clientY);
@@ -541,51 +505,6 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
                     const nextTabId = renderOrderedTabIds[index + 1];
                     const isNextActive = nextTabId === activeTabId;
                     const isNextHovered = nextTabId === hoveredTabId;
-                    const isHidden =
-                        !isTabBarHovered &&
-                        !headerHovered &&
-                        !isMoreMenuOpen &&
-                        dragTabId == null &&
-                        isTabHiddenFromBar(tabId, visibilityCtx);
-                    if (isHidden) {
-                        return (
-                            <div key={tabId}>
-                                <VTabWrapper
-                                    tabId={tabId}
-                                    active={isActive}
-                                    showDivider={false}
-                                    isDragging={false}
-                                    isReordering={false}
-                                    hoverResetVersion={hoverResetVersion}
-                                    hidden={true}
-                                    index={index}
-                                    onSelect={() => {
-                                        markTabOpened(tabId);
-                                        env.electron.setActiveTab(tabId);
-                                    }}
-                                    onClose={() =>
-                                        fireAndForget(async () => {
-                                            if (tabId === activeTabId && !(await confirmCurrentTabClose())) {
-                                                return;
-                                            }
-                                            if (!(await confirmCloseTabIfHasContent(tabId))) {
-                                                return;
-                                            }
-                                            await env.electron.closeTab(workspace.oid, tabId, false);
-                                        })
-                                    }
-                                    onRename={(newName) =>
-                                        fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName))
-                                    }
-                                    onDragStart={() => {}}
-                                    onDragOver={() => {}}
-                                    onDrop={() => {}}
-                                    onDragEnd={() => {}}
-                                    onHoverChanged={() => {}}
-                                />
-                            </div>
-                        );
-                    }
                     return (
                         <div key={tabId}>
                             <VTabWrapper
@@ -601,7 +520,6 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
                                 isDragging={dragTabId === tabId}
                                 isReordering={dragTabId != null}
                                 hoverResetVersion={hoverResetVersion}
-                                hidden={false}
                                 index={index}
                                 onSelect={() => {
                                     markTabOpened(tabId);
@@ -629,7 +547,6 @@ export function VTabBar({ workspace, className, headerHovered, onHoveredTabChang
                                     setDragTabId(tabId);
                                     setDropIndex(index);
                                     setDropLineTop(event.currentTarget.offsetTop);
-                                    cancelPendingHideHover();
                                 }}
                                 onDragOver={(event) => {
                                     event.preventDefault();

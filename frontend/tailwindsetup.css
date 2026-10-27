@@ -9,7 +9,8 @@
     --color-background: var(--main-bg-color);
     --color-foreground: var(--main-text-color);
     --color-white: var(--main-text-color);
-    --color-black: var(--surface-shadow-color);
+    /* 真正的深色：浅色主题下 --surface-shadow-color 是浅驼，会让 text-black / bg-black 的叠色反向 */
+    --color-black: var(--deep-text-color);
     --color-primary: var(--main-text-color);
     --color-muted-foreground: var(--secondary-text-color);
     --color-secondary: var(--secondary-text-color);
@@ -49,9 +50,11 @@
     --color-source-claude: #cc685c;
     --color-source-codex: #74a7cb;
     --color-source-pi: #888888;
-    --color-surface-soft: rgba(255, 255, 255, 0.04);
-    --color-surface: rgba(255, 255, 255, 0.06);
-    --color-surface-strong: rgba(255, 255, 255, 0.08);
+    /* 表面层（输入框底 / 胶囊轨道 / 徽标底）必须由主题块提供：
+       写死成白色叠色时，浅色主题里会与 panel 同色，控件彻底失去底面。 */
+    --color-surface-soft: var(--surface-soft-color);
+    --color-surface: var(--surface-color);
+    --color-surface-strong: var(--surface-strong-color);
 
     --font-sans: "Inter", "Microsoft YaHei", sans-serif;
     --font-mono: "Hack", monospace;

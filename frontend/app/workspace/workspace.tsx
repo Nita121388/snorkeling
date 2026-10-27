@@ -178,7 +178,6 @@ const WorkspaceElem = memo(() => {
                                         {showLeftTabBar && (
                                             <VTabBar
                                                 workspace={ws}
-                                                headerHovered={isHeaderHovered}
                                                 onHoveredTabChange={handleHoveredTabChange}
                                             />
                                         )}
