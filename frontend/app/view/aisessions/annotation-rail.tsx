@@ -85,6 +85,10 @@ export function AnnotationRail({
     const closeTimer = React.useRef<number | null>(null);
     const bodyRef = React.useRef<HTMLDivElement | null>(null);
     const [bodyHeight, setBodyHeight] = React.useState(0);
+    // 悬浮卡被上提到 rail 根节点渲染（脱离滚动容器与 dot 包裹层的 transform），
+    // 需要 dot 在 rail 根坐标系里的位置，故跟踪滚动量与体/根偏移。
+    const [bodyScrollTop, setBodyScrollTop] = React.useState(0);
+    const [bodyOffsetTop, setBodyOffsetTop] = React.useState(0);
 
     const items = React.useMemo(() => buildRailItems(annotations), [annotations]);
     const clusters = React.useMemo(() => clusterRailItems(items), [items]);
@@ -107,10 +111,14 @@ export function AnnotationRail({
     React.useEffect(() => () => clearTimers(), [clearTimers]);
 
     // 量 rail 内容区高度，决定「少节点等比铺满 / 多节点固定槽 + 滚动」分支。
+    // 同时记录 bodyRef 相对 rail 根节点的偏移，供悬浮卡定位。
     React.useLayoutEffect(() => {
         const el = bodyRef.current;
         if (el == null) return;
-        const update = () => setBodyHeight(el.clientHeight);
+        const update = () => {
+            setBodyHeight(el.clientHeight);
+            setBodyOffsetTop(el.offsetTop);
+        };
         update();
         if (typeof ResizeObserver === "undefined") return;
         const observer = new ResizeObserver(update);
@@ -207,10 +215,16 @@ export function AnnotationRail({
         return index * RailDotGap + RailDotGap / 2;
     };
 
+    const railContentHeight = bodyOffsetTop + bodyHeight;
+    // 悬浮卡上提到 rail 根节点渲染。dotTop = 圆点中心在 rail 根坐标系里的纵向位置
+    // （减去 body 的滚动量，保证滚动后卡片仍贴着对应圆点）。
+    const cardTop = cardIndex != null ? bodyOffsetTop + topFor(cardIndex) - bodyScrollTop : 0;
+    // 圆点在 rail 上半部 → 卡片向下长；在下半部 → 向上翻转，避免长出 rail 底部。
+    const cardPlaceBelow = cardTop < railContentHeight / 2;
+
     return (
-        // z-10：rail 必须自成一个 stacking level。簇包裹层带 transform，会把悬浮卡
-        // 的 z-50 困在它自己的层里，于是后出现的聊天列（position:relative）会画在
-        // 卡上面 —— 看起来像弹窗“透明”（卡片文字和消息文字叠在一起），按钮也被盖住。
+        // z-10：rail 自成一个 stacking level，悬浮卡（z-50）绘制在右侧聊天列（z-auto）之上。
+        // 约束：本节点禁止 overflow:hidden / transform，否则悬浮卡会再次被裁切或困在局部层叠上下文。
         <div className="relative z-10 flex shrink-0 flex-col items-start border-r border-border" style={railBoxStyle}>
             {!collapsed ? (
                 <div className="flex w-full flex-col items-start gap-0.5 px-1 py-1">
@@ -289,8 +303,10 @@ export function AnnotationRail({
             ) : null}
             <div
                 ref={bodyRef}
+                data-testid="annotation-rail-body"
                 className="relative min-h-0 w-full flex-1"
                 style={{ overflowY: canSpread ? "visible" : "auto", overflowX: "visible" }}
+                onScroll={() => setBodyScrollTop(bodyRef.current?.scrollTop ?? 0)}
             >
                 <div className="relative w-full" style={{ height: contentHeight }}>
                     {/* 2px 竖轴贯穿全高；居中于圆点列。 */}
@@ -306,8 +322,6 @@ export function AnnotationRail({
                             : isHovered
                               ? Math.round(RailDotRestingSize * 1.4)
                               : RailDotRestingSize;
-                        const isCardOpen = cardIndex === index;
-                        const isPinned = pinnedIndex === index;
                         const dotClass = cluster.hasOrphan
                             ? "rounded-full bg-warning"
                             : cluster.hasAccepted
@@ -358,44 +372,58 @@ export function AnnotationRail({
                                         style={{ width: size, height: size }}
                                     />
                                 </button>
-                                {isCardOpen && hoveredCluster?.key === cluster.key ? (
-                                    <div
-                                        // pl-2 而不是 ml-2：留出"鼠标桥"，从圆点移到卡片时
-                                        // 指针不会落到空隙里，卡片不会提前关闭。
-                                        className="absolute left-full top-0 z-50 pl-2"
-                                        onMouseEnter={() => {
-                                            clearTimers();
-                                            setOpenIndex(index);
-                                        }}
-                                        onMouseLeave={() => {
-                                            clearTimers();
-                                            if (isPinned) return; // 钉住的卡片只能点刻度或 Close 关闭
-                                            closeTimer.current = window.setTimeout(() => {
-                                                setOpenIndex(null);
-                                                setHoverIndex(null);
-                                            }, 320);
-                                        }}
-                                    >
-                                        <AnnotationCard
-                                            cluster={cluster}
-                                            onPin={() => setPinnedIndex(index)}
-                                            onClose={isPinned ? () => setPinnedIndex(null) : undefined}
-                                            nodePreview={
-                                                previewBySeq?.get(cluster.items[0]?.seq ?? -1) ??
-                                                cluster.items[0]?.annotations[0]?.anchorPreview
-                                            }
-                                            onJump={onJump}
-                                            onAccept={onAccept}
-                                            onDiscard={onDiscard}
-                                            onNodeTextSave={onNodeTextSave}
-                                        />
-                                    </div>
-                                ) : null}
                             </div>
                         );
                     })}
                 </div>
             </div>
+            {/* 悬浮卡：上提到 rail 根节点渲染，脱离 bodyRef 的 overflow 裁切与 dot 包裹层的
+                transform 层叠上下文。定位按 dotTop 计算，下半区向上翻转。 */}
+            {cardIndex != null && hoveredCluster != null && clusters[cardIndex]?.key === hoveredCluster.key ? (
+                <div
+                    className="absolute left-full z-50 pl-2"
+                    style={
+                        cardPlaceBelow
+                            ? { top: cardTop }
+                            : { top: "auto", bottom: Math.max(0, railContentHeight - cardTop) }
+                    }
+                    onMouseEnter={() => {
+                        clearTimers();
+                        setOpenIndex(cardIndex);
+                    }}
+                    onMouseLeave={() => {
+                        clearTimers();
+                        if (pinnedIndex === cardIndex) return; // 钉住的卡片只能点刻度或 Close 关闭
+                        closeTimer.current = window.setTimeout(() => {
+                            setOpenIndex(null);
+                            setHoverIndex(null);
+                        }, 320);
+                    }}
+                >
+                    <AnnotationCard
+                        cluster={hoveredCluster}
+                        onPin={() => setPinnedIndex(cardIndex)}
+                        onClose={
+                            pinnedIndex === cardIndex
+                                ? () => {
+                                      clearTimers();
+                                      setPinnedIndex(null);
+                                      setOpenIndex(null);
+                                      setHoverIndex(null);
+                                  }
+                                : undefined
+                        }
+                        nodePreview={
+                            previewBySeq?.get(hoveredCluster.items[0]?.seq ?? -1) ??
+                            hoveredCluster.items[0]?.annotations[0]?.anchorPreview
+                        }
+                        onJump={onJump}
+                        onAccept={onAccept}
+                        onDiscard={onDiscard}
+                        onNodeTextSave={onNodeTextSave}
+                    />
+                </div>
+            ) : null}
         </div>
     );
 }

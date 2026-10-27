@@ -208,3 +208,35 @@ describe("AnnotationRail dot states (2026-10-26 视觉重构)", () => {
         expect(cls).not.toContain("rounded-md");
     });
 });
+
+
+describe("AnnotationRail Close fully dismisses card", () => {
+    // 回归：钉住后点 ✕ 只清了 pinnedIndex，没清 openIndex，导致卡片不关、✕ 还消失。
+    it("clicking Close fully closes the pinned card and clears open state", () => {
+        render();
+        clickTick();
+        const close = container.querySelector('[aria-label="Close"]') as HTMLButtonElement;
+        expect(close).toBeTruthy();
+        act(() => {
+            close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        // 卡片彻底关闭：没有 Accept 按钮，且 Close 也再消失。
+        expect(findCardButton("Accept")).toBeUndefined();
+        expect(container.querySelector('[aria-label="Close"]')).toBeNull();
+    });
+});
+
+describe("AnnotationRail card placement (no clipping)", () => {
+    // 回归：悬浮卡曾渲染在 bodyRef 滚动容器内、且在 dot 包裹层 transform 层叠上下文中，
+    // 被 overflow 裁切 / 被聊天列盖住。现在卡片必须挂在 rail 根节点（bodyRef 之外）。
+    it("pinned card is not rendered inside the scroll body", () => {
+        render();
+        clickTick();
+        const card = container.querySelector('[data-row-action="true"]') as HTMLElement;
+        expect(card).toBeTruthy();
+        const body = container.querySelector('[data-testid="annotation-rail-body"]') as HTMLElement;
+        expect(body).toBeTruthy();
+        // 卡片不应是滚动 body 的后代——否则仍会被裁切。
+        expect(card.closest('[data-testid="annotation-rail-body"]')).toBeNull();
+    });
+});
