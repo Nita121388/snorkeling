@@ -15,6 +15,7 @@
  */
 
 import { anchorHash, messageAnchorKey, type AnnotationAnchorRequest } from "./annotation-model";
+import { isSubagentToolName } from "./subagent-detect";
 import type { SessionDetailRow, SessionDetailTimelineItem } from "./utils";
 
 /** 超过这个行数才启用虚拟化；等于或小于时走原有全量渲染。 */
@@ -77,6 +78,8 @@ export function groupConsecutiveTools(items: SessionDetailTimelineItem[]): Sessi
                 kind: "toolGroup",
                 tools: buffer.map((item) => item.toolCall),
                 anchorSeq: buffer[0].anchorSeq,
+                startSeq: buffer[0].anchorSeq,
+                endSeq: buffer[buffer.length - 1].anchorSeq,
                 liveStatus: running ? "running" : failed ? "failed" : undefined,
             });
         }
@@ -84,6 +87,12 @@ export function groupConsecutiveTools(items: SessionDetailTimelineItem[]): Sessi
     };
     for (const item of items) {
         if (item.kind === "tool") {
+            // 子代理派发不参与工具折叠：它是身份卡，必须保持独立行。
+            if (isSubagentToolName(item.toolCall.name)) {
+                flush();
+                rows.push(item);
+                continue;
+            }
             buffer.push(item);
         } else {
             flush();
@@ -188,10 +197,109 @@ export function scrollTargetForSeq(
     return rowStart ?? Math.max(0, rowIndex) * estimatedRowHeight;
 }
 
-/** 是否已接近底部：用于"跳到最新"胶囊与底部增量拉取判定。 */
+/**
+ * 是否已接近底部：用于"跳到最新"胶囊与底部增量拉取判定。 */
 export function isNearBottom(totalSize: number, scrollTop: number, clientHeight: number, threshold = 120): boolean {
     if (clientHeight <= 0) return true;
     return totalSize - scrollTop - clientHeight < threshold;
+}
+
+/** 从消息列表构建 seq → 时间戳（毫秒）；缺失/非正值不入 Map。 */
+export function buildSeqTimestamps(
+    messages: ReadonlyArray<{ seq: number; timestamp?: number }>
+): Map<number, number> {
+    const map = new Map<number, number>();
+    for (const message of messages) {
+        const ts = message.timestamp ?? 0;
+        if (ts > 0) map.set(message.seq, ts);
+    }
+    return map;
+}
+
+/**
+ * 按时间归一化到 [0,1]。
+ *
+ * 时间不可用（任一项缺失，或全部同一时刻 / 跨度为 0）时回落为按下标均分，
+ * 保证旧数据 / 无 timestamp 的会话行为与改造前一致。
+ */
+export function buildTimePositions(items: ReadonlyArray<{ seq: number; ts?: number }>): number[] {
+    const count = items.length;
+    if (count === 0) return [];
+    if (count === 1) return [0.5];
+    const uniform = () => items.map((_, index) => index / (count - 1));
+    const allPresent = items.every((item) => item.ts != null && item.ts > 0);
+    if (!allPresent) return uniform();
+    const values = items.map((item) => item.ts as number);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (!(max > min)) return uniform();
+    return values.map((value) => (value - min) / (max - min));
+}
+
+/**
+ * 最小间距松弛：在 [minY, maxY] 内让相邻位置至少相隔 minGap。
+ *
+ * 时间节点挤在一起（同一秒多次批注）时保持可辨识；有空间时保留相对比例。
+ * 先前向推、再后向收，最后夹紧到区间内。
+ */
+export function relaxTimelinePositions(ideal: number[], minGap: number, minY: number, maxY: number): number[] {
+    const count = ideal.length;
+    if (count === 0) return [];
+    const out = ideal.slice();
+    for (let i = 1; i < count; i++) {
+        if (out[i] < out[i - 1]) out[i] = out[i - 1];
+    }
+    if (out[0] < minY) out[0] = minY;
+    for (let i = 1; i < count; i++) {
+        const lower = out[i - 1] + minGap;
+        if (out[i] < lower) out[i] = lower;
+    }
+    if (out[count - 1] > maxY) {
+        out[count - 1] = maxY;
+        for (let i = count - 2; i >= 0; i--) {
+            const upper = out[i + 1] - minGap;
+            if (out[i] > upper) out[i] = upper;
+        }
+    }
+    for (let i = 0; i < count; i++) {
+        out[i] = Math.max(minY, Math.min(maxY, out[i]));
+    }
+    return out;
+}
+
+/**
+ * 滚动位置映射到"最近一个已批注节点"：返回 sortedSeqs 中 <= target 的最后一项。
+ *
+ * target 落在全部节点之前时返回第一个节点；空数组返回 null。
+ * 用于 rail 跟随滚动高亮（批注 seq 稀疏，不能要求滚动点正好等于批注 seq）。
+ */
+export function nearestAnnotatedSeq(target: number | null, sortedSeqs: readonly number[]): number | null {
+    if (sortedSeqs.length === 0) return null;
+    if (target == null) return null;
+    let low = 0;
+    let high = sortedSeqs.length - 1;
+    let result: number | null = null;
+    while (low <= high) {
+        const mid = (low + high) >> 1;
+        if (sortedSeqs[mid] <= target) {
+            result = sortedSeqs[mid];
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return result ?? sortedSeqs[0];
+}
+
+/** 一组节点的时间跨度；有效时间戳少于两个或跨度为 0 时返回 null。 */
+export function timeRangeOf(
+    items: ReadonlyArray<{ seq: number; ts?: number }>
+): { min: number; max: number } | null {
+    const values = items.map((item) => item.ts).filter((ts): ts is number => ts != null && ts > 0);
+    if (values.length < 2) return null;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return max > min ? { min, max } : null;
 }
 
 /**

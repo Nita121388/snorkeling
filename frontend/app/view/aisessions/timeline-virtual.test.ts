@@ -6,15 +6,20 @@ import {
     VirtualizeThreshold,
     activeSeqFromVirtualItems,
     buildAnchorKeyToSeq,
+    buildSeqTimestamps,
     buildSeqToIndex,
+    buildTimePositions,
     buildTimelineAnnotationAnchors,
     createRafCoalescer,
     estimateTimelineRowHeight,
     groupConsecutiveTools,
     isNearBottom,
+    nearestAnnotatedSeq,
     outlineProbeOffset,
+    relaxTimelinePositions,
     scrollTargetForSeq,
     shouldVirtualize,
+    timeRangeOf,
     timelineItemKey,
 } from "./timeline-virtual";
 import type { SessionDetailRow, SessionDetailTimelineItem } from "./utils";
@@ -370,6 +375,8 @@ describe("toolGroup helpers", () => {
             kind: "toolGroup",
             tools: tools.map((tool) => ({ seq: tool.seq, name: "bash", itemKey: tool.itemKey })),
             anchorSeq: 42,
+            startSeq: 42,
+            endSeq: 42,
         };
     }
 
@@ -385,5 +392,93 @@ describe("toolGroup helpers", () => {
         const map = buildAnchorKeyToSeq([groupRow([{ seq: 1, itemKey: "k1" }, { seq: 2, itemKey: "k2" }])]);
         expect(map.get("k1")).toBe(42);
         expect(map.get("k2")).toBe(42);
+    });
+});
+
+describe("buildSeqTimestamps", () => {
+    it("keeps only positive timestamps", () => {
+        const map = buildSeqTimestamps([
+            { seq: 1, timestamp: 1000 },
+            { seq: 2, timestamp: 0 },
+            { seq: 3 },
+            { seq: 4, timestamp: 4000 },
+        ]);
+        expect(map.get(1)).toBe(1000);
+        expect(map.has(2)).toBe(false);
+        expect(map.has(3)).toBe(false);
+        expect(map.get(4)).toBe(4000);
+    });
+});
+
+describe("buildTimePositions", () => {
+    it("normalizes across the real timestamp span", () => {
+        expect(buildTimePositions([
+            { seq: 1, ts: 0 + 1000 },
+            { seq: 2, ts: 6000 },
+            { seq: 3, ts: 11_000 },
+        ])).toEqual([0, 0.5, 1]);
+    });
+
+    it("centers a single node", () => {
+        expect(buildTimePositions([{ seq: 1, ts: 1000 }])).toEqual([0.5]);
+    });
+
+    it("falls back to uniform spacing when timestamps are missing", () => {
+        expect(buildTimePositions([
+            { seq: 1, ts: 1000 },
+            { seq: 2 },
+            { seq: 3, ts: 3000 },
+        ])).toEqual([0, 0.5, 1]);
+    });
+
+    it("falls back to uniform spacing when the span is zero", () => {
+        expect(buildTimePositions([
+            { seq: 1, ts: 1000 },
+            { seq: 2, ts: 1000 },
+        ])).toEqual([0, 1]);
+    });
+});
+
+describe("relaxTimelinePositions", () => {
+    it("leaves already-spaced positions untouched", () => {
+        expect(relaxTimelinePositions([10, 50, 90], 10, 0, 100)).toEqual([10, 50, 90]);
+    });
+
+    it("pushes overlapping positions apart by the minimum gap", () => {
+        expect(relaxTimelinePositions([10, 12, 14], 10, 0, 100)).toEqual([10, 20, 30]);
+    });
+
+    it("pulls overflowing groups back inside the range", () => {
+        expect(relaxTimelinePositions([80, 90, 99], 10, 0, 100)).toEqual([80, 90, 100]);
+        expect(relaxTimelinePositions([95, 96, 97], 10, 0, 100)).toEqual([80, 90, 100]);
+    });
+});
+
+describe("nearestAnnotatedSeq", () => {
+    const seqs = [5, 10, 20];
+
+    it("returns the last annotated seq at or before the target", () => {
+        expect(nearestAnnotatedSeq(12, seqs)).toBe(10);
+        expect(nearestAnnotatedSeq(20, seqs)).toBe(20);
+    });
+
+    it("returns the first node when the target is before everything", () => {
+        expect(nearestAnnotatedSeq(1, seqs)).toBe(5);
+    });
+
+    it("returns null without nodes or target", () => {
+        expect(nearestAnnotatedSeq(10, [])).toBeNull();
+        expect(nearestAnnotatedSeq(null, seqs)).toBeNull();
+    });
+});
+
+describe("timeRangeOf", () => {
+    it("returns the span when at least two timestamps exist", () => {
+        expect(timeRangeOf([{ seq: 1, ts: 1000 }, { seq: 2, ts: 5000 }])).toEqual({ min: 1000, max: 5000 });
+    });
+
+    it("returns null for a single timestamp or zero span", () => {
+        expect(timeRangeOf([{ seq: 1, ts: 1000 }])).toBeNull();
+        expect(timeRangeOf([{ seq: 1, ts: 1000 }, { seq: 2, ts: 1000 }])).toBeNull();
     });
 });

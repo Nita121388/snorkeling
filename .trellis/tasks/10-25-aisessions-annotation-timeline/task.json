@@ -22,7 +22,10 @@
     "10-25-aisessions-annotation-store",
     "10-25-aisessions-annotation-timeline-ui",
     "10-25-aisessions-annotation-ai",
-    "10-25-aisessions-annotation-export"
+    "10-25-aisessions-annotation-export",
+    "10-28-aisessions-timeline-scroll-position",
+    "10-28-aisessions-timeline-time-distribution",
+    "10-28-aisessions-timeline-perf"
   ],
   "parent": "10-19-aisessions-ux-perf-overhaul",
   "relatedFiles": [],

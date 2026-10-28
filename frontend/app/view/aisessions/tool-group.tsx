@@ -10,6 +10,8 @@ import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import { memo, useEffect, useRef, useState } from "react";
 import { describeRun } from "./tool-describe";
+import { formatDuration } from "./fold-duration";
+import { DurationBar } from "./duration-bar";
 
 interface ToolGroupProps {
     /** 组内工具调用的名称列表 */
@@ -23,6 +25,10 @@ interface ToolGroupProps {
     running?: boolean;
     /** 覆盖默认摘要文案（如折叠组的「执行命令 ×3」）；不传时用 describeRun 自然语言。 */
     summary?: string;
+    /** 本会话最长折叠组时长（ms），用于归一化本组的时长条；0 表示不归一化。 */
+    maxDurationMs?: number;
+    /** 本组总时长（ms）；undefined 不显示时长条。 */
+    durationMs?: number;
     children: ReactNode;
 }
 
@@ -33,6 +39,8 @@ export const ToolGroup = memo(function ToolGroup({
     removed = 0,
     running = false,
     summary: summaryOverride,
+    maxDurationMs = 0,
+    durationMs,
     children,
 }: ToolGroupProps) {
     const [open, setOpen] = useState(false);
@@ -89,6 +97,13 @@ export const ToolGroup = memo(function ToolGroup({
                         <span className="text-error">-{removed}</span>
                     </span>
                 )}
+                {durationMs != null && durationMs > 0 ? (
+                    <DurationBar
+                        durationMs={durationMs}
+                        maxDurationMs={maxDurationMs}
+                        label={`Total ${formatDuration(durationMs)} · ${toolNames.length} tool${toolNames.length === 1 ? "" : "s"}`}
+                    />
+                ) : null}
             </button>
 
             {/* 展开内容：ResizeObserver 实测高度 + transition */}

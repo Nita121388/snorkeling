@@ -449,3 +449,51 @@ export function useActiveOutlineSeq(
 
     return activeSeq;
 }
+
+/**
+ * 与 `useActiveOutlineSeq` 同构，但直接以任意消息 seq 列表做探针（不要求是 user 消息）。
+ *
+ * 用于批注时间线跟随滚动高亮：批注可能落在 assistant 消息上，只探 user 消息会
+ * 在两条 user 消息之间“卡住”。调用方需传入引用稳定的 seqs 数组（useMemo）。
+ */
+export function useActiveMessageSeq(
+    containerRef: React.RefObject<HTMLDivElement | null>,
+    seqs: number[],
+    enabled = true
+): number | null {
+    const [activeSeq, setActiveSeq] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (!enabled) return;
+        const container = containerRef.current;
+        if (container == null || seqs.length === 0) return;
+        let raf = 0;
+        const update = () => {
+            raf = 0;
+            const rect = container.getBoundingClientRect();
+            const probeY = rect.top + rect.height * 0.25;
+            let current: number | null = null;
+            for (const seq of seqs) {
+                const node = document.getElementById(`aisession-message-${seq}`);
+                if (node == null) continue;
+                if (node.getBoundingClientRect().top <= probeY) {
+                    current = seq;
+                } else {
+                    break;
+                }
+            }
+            setActiveSeq(current ?? seqs[0] ?? null);
+        };
+        const onScroll = () => {
+            if (raf === 0) raf = window.requestAnimationFrame(update);
+        };
+        update();
+        container.addEventListener("scroll", onScroll, { passive: true });
+        return () => {
+            container.removeEventListener("scroll", onScroll);
+            if (raf !== 0) window.cancelAnimationFrame(raf);
+        };
+    }, [containerRef, seqs, enabled]);
+
+    return activeSeq;
+}

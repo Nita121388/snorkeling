@@ -1926,6 +1926,7 @@ declare global {
     // ccswitchservice.ImportWaveAIRequest
     type ImportWaveAIRequest = {
         vendorId: string;
+        appType?: string;
         model?: string;
     };
 
@@ -2804,6 +2805,7 @@ declare global {
         sessionId?: string;
         name?: string;
         createdAt?: number;
+        updatedAt?: number;
         parentKey?: string;
         kind?: string;
         runId?: string;
@@ -2814,6 +2816,7 @@ declare global {
         call: SubagentCall;
         status: string;
         sessionKey?: string;
+        updatedAt?: number;
         candidates?: SubagentCandidate[];
     };
 

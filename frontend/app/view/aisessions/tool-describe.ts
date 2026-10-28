@@ -5,26 +5,26 @@
 // 将连续的工具调用合并为一句自然语言描述。
 
 const KIND: Record<string, string> = {
-    write: "创建文件",
-    edit: "修改文件",
-    read: "读取文件",
-    bash: "执行命令",
-    bash_output: "查看输出",
-    glob: "查找文件",
-    grep: "搜索内容",
-    ls: "列出目录",
-    todo_write: "更新清单",
-    web_fetch: "抓取网页",
-    web_search: "搜索网络",
-    task: "派发子任务",
-    subagent: "派发子任务",
-    preview: "生成预览",
-    symbol: "查找符号",
-    skill: "调用技能",
+    write: "Create file",
+    edit: "Edit file",
+    read: "Read file",
+    bash: "Run command",
+    bash_output: "View output",
+    glob: "Find files",
+    grep: "Search content",
+    ls: "List directory",
+    todo_write: "Update list",
+    web_fetch: "Fetch page",
+    web_search: "Search web",
+    task: "Spawn subagent",
+    subagent: "Spawn subagent",
+    preview: "Generate preview",
+    symbol: "Find symbol",
+    skill: "Invoke skill",
 };
 
 function kindOf(toolName: string): string {
-    return KIND[toolName] ?? "使用工具";
+    return KIND[toolName] ?? "Use tool";
 }
 
 function subjectOf(args?: Record<string, unknown>): string | undefined {
@@ -52,9 +52,9 @@ interface ToolCallInfo {
  * 将一组工具调用合并为一句自然语言描述。
  *
  * 示例：
- * - "读取文件 main.ts"
- * - "创建 2 个文件、执行命令"
- * - "读取 3 个文件、修改文件 package.json"
+ * - "Read file main.ts"
+ * - "Create 2 files, Run command"
+ * - "Read 3 files, Edit file package.json"
  */
 export function describeRun(calls: ToolCallInfo[]): string {
     const buckets = new Map<string, string[]>();
@@ -76,10 +76,10 @@ export function describeRun(calls: ToolCallInfo[]): string {
         } else if (count === 1) {
             parts.push(kind);
         } else {
-            parts.push(`${kind} ${count} 个`);
+            parts.push(`${kind} ×${count}`);
         }
     }
-    return parts.join("、");
+    return parts.join(", ");
 }
 
 /**
@@ -95,7 +95,7 @@ export function describeToolGroupCompact(toolNames: string[]): string {
     if (kinds.size === 1) {
         return `${[...kinds][0]} ×${count}`;
     }
-    return `工具 ×${count}`;
+    return `Tool ×${count}`;
 }
 
 /**
@@ -106,5 +106,5 @@ export function describeToolGroupCompact(toolNames: string[]): string {
 export function describeToolGroupKind(toolNames: string[]): string {
     if (toolNames.length === 0) return "";
     const kinds = new Set(toolNames.map((name) => kindOf(name)));
-    return kinds.size === 1 ? [...kinds][0] : "工具";
+    return kinds.size === 1 ? [...kinds][0] : "Tool";
 }

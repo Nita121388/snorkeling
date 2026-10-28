@@ -57,6 +57,8 @@ type SubagentCandidate struct {
 	SessionID  string `json:"sessionId,omitempty"`
 	Name       string `json:"name,omitempty"`
 	CreatedAt  int64  `json:"createdAt,omitempty"`
+	// UpdatedAt is the child session's last-updated time (UnixMilli).
+	UpdatedAt  int64  `json:"updatedAt,omitempty"`
 	// ParentKey 非空表示这个候选是通过磁盘目录结构判定为「父会话的子会话」，
 	// 比 agent 名匹配可靠：子会话文件没有 session_info.name。
 	ParentKey string `json:"parentKey,omitempty"`
@@ -86,6 +88,10 @@ type SubagentMatch struct {
 	Call       SubagentCall        `json:"call"`
 	Status     SubagentMatchStatus `json:"status"`
 	SessionKey string              `json:"sessionKey,omitempty"`
+	// UpdatedAt is the matched child session's last-updated time (UnixMilli).
+	// Used by the UI to show a folded subagent's total duration without
+	// loading the child session: UpdatedAt - Call.Timestamp.
+	UpdatedAt  int64               `json:"updatedAt,omitempty"`
 	Candidates []SubagentCandidate `json:"candidates,omitempty"`
 }
 
@@ -204,6 +210,7 @@ func matchSubagentCalls(calls []SubagentCall, candidates []SubagentCandidate) []
 				Call:       call,
 				Status:     SubagentMatchMatched,
 				SessionKey: hits[0].SessionKey,
+				UpdatedAt:  hits[0].UpdatedAt,
 			})
 		default:
 			sort.SliceStable(hits, func(i, j int) bool { return hits[i].CreatedAt < hits[j].CreatedAt })
@@ -215,6 +222,63 @@ func matchSubagentCalls(calls []SubagentCall, candidates []SubagentCandidate) []
 		}
 	}
 	return matches
+}
+
+// subagentToolNameAliases 是各 provider 派发子代理时可能使用的工具名（小写比较）。
+// 前端 `subagent-detect.ts` 必须保持同一套别名，否则提取到了却链接不上。
+var subagentToolNameAliases = map[string]struct{}{
+	"subagent":       {},
+	"task":           {},
+	"spawn_agent":    {},
+	"spawn_subagent": {},
+	"subagentstart":  {},
+}
+
+// isSubagentToolName 判断一个工具名是否代表子代理派发。
+func isSubagentToolName(name string) bool {
+	_, ok := subagentToolNameAliases[strings.ToLower(strings.TrimSpace(name))]
+	return ok
+}
+
+// subagentArgsMap 把 tool call 的 arguments 规范成 map：既可能是对象，
+// 也可能是 provider 序列化后的 JSON 字符串（codex 的 arguments 就是字符串）。
+func subagentArgsMap(value any) map[string]any {
+	if args, ok := value.(map[string]any); ok {
+		return args
+	}
+	if raw, ok := value.(string); ok && strings.TrimSpace(raw) != "" {
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			return parsed
+		}
+	}
+	return nil
+}
+
+// subagentAgentFromArgs 从不同 provider 的参数命名里取 agent 名。
+func subagentAgentFromArgs(args map[string]any) string {
+	if args == nil {
+		return ""
+	}
+	for _, key := range []string{"agent", "subagent_type", "agent_type"} {
+		if value := strValue(args, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+// subagentTaskFromArgs 从不同 provider 的参数命名里取任务描述。
+func subagentTaskFromArgs(args map[string]any) string {
+	if args == nil {
+		return ""
+	}
+	for _, key := range []string{"task", "prompt", "description", "instructions"} {
+		if value := strValue(args, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // MatchSubagentSessions 是 matchSubagentCalls 的导出包装。
@@ -356,20 +420,14 @@ func subagentCallsInContent(content any, entryID string, at int64) []SubagentCal
 			itemKey = entryID + ":t" + strconv.Itoa(toolIndex)
 		}
 		toolIndex++
-		if !strings.EqualFold(strValue(itemMap, "name"), "subagent") {
+		if !isSubagentToolName(strValue(itemMap, "name")) {
 			continue
 		}
-		args, _ := itemMap["arguments"].(map[string]any)
+		args := subagentArgsMap(itemMap["arguments"])
 		if args == nil {
-			// 有些 provider 把 arguments 序列化成字符串。
-			if raw := strValue(itemMap, "arguments"); raw != "" {
-				var parsed map[string]any
-				if json.Unmarshal([]byte(raw), &parsed) == nil {
-					args = parsed
-				}
-			}
+			args = subagentArgsMap(itemMap["input"])
 		}
-		agent := strValue(args, "agent")
+		agent := subagentAgentFromArgs(args)
 		if agent == "" {
 			continue
 		}
@@ -377,7 +435,7 @@ func subagentCallsInContent(content any, entryID string, at int64) []SubagentCal
 			EntryID:    entryID,
 			ItemKey:    itemKey,
 			Agent:      agent,
-			Task:       strValue(args, "task"),
+			Task:       subagentTaskFromArgs(args),
 			Timestamp:  at,
 			ToolCallID: strValue(itemMap, "id"),
 		})
@@ -476,4 +534,145 @@ func latestSessionInfoName(data []byte) string {
 		}
 	}
 	return ""
+}
+
+// extractSubagentCallsForSource 按 provider 选择子代理调用提取器。
+//
+// 父会话 JSONL 的格式随 provider 不同：pi 是 {type:"message", message:{...}}，
+// claude 是 {type:"assistant", message:{content:[tool_use]}}，codex 是
+// {type:"response_item", payload:{type:"function_call"}}。opencode 存在 SQLite，
+// 没有可扫描的 JSONL，返回空 —— 前端会以 missing 合成卡兜底显示派发本身。
+func extractSubagentCallsForSource(ctx context.Context, source, filePath string) ([]SubagentCall, error) {
+	switch source {
+	case SourceClaude:
+		return extractClaudeSubagentCalls(ctx, filePath)
+	case SourceCodex:
+		return extractCodexSubagentCalls(ctx, filePath)
+	case SourceOpenCode:
+		return nil, nil
+	default:
+		return ExtractSubagentCalls(ctx, filePath)
+	}
+}
+
+// extractClaudeSubagentCalls 从 Claude Code JSONL 提取派发。
+// 子代理工具通常是 `Task`，参数在 message.content[].input。
+func extractClaudeSubagentCalls(ctx context.Context, filePath string) ([]SubagentCall, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var calls []SubagentCall
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return calls, ctx.Err()
+		}
+		var value map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &value); err != nil {
+			continue
+		}
+		if boolValue(value, "isMeta") {
+			continue
+		}
+		message, _ := value["message"].(map[string]any)
+		if message == nil {
+			continue
+		}
+		contentItems, ok := message["content"].([]any)
+		if !ok {
+			continue
+		}
+		at := parseTimestampToMS(value["timestamp"])
+		if at == 0 {
+			at = parseTimestampToMS(message["timestamp"])
+		}
+		entryID := strValue(value, "uuid")
+		if entryID == "" {
+			entryID = strValue(message, "id")
+		}
+		for _, item := range contentItems {
+			itemMap, _ := item.(map[string]any)
+			if itemMap == nil || strValue(itemMap, "type") != "tool_use" {
+				continue
+			}
+			if !isSubagentToolName(strValue(itemMap, "name")) {
+				continue
+			}
+			args := subagentArgsMap(itemMap["input"])
+			agent := subagentAgentFromArgs(args)
+			if agent == "" {
+				continue
+			}
+			id := strValue(itemMap, "id")
+			calls = append(calls, SubagentCall{
+				EntryID:    entryID,
+				ItemKey:    id,
+				Agent:      agent,
+				Task:       subagentTaskFromArgs(args),
+				Timestamp:  at,
+				ToolCallID: id,
+			})
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return calls, err
+	}
+	return calls, nil
+}
+
+// extractCodexSubagentCalls 从 Codex JSONL 提取派发。
+func extractCodexSubagentCalls(ctx context.Context, filePath string) ([]SubagentCall, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var calls []SubagentCall
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return calls, ctx.Err()
+		}
+		var value map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &value); err != nil {
+			continue
+		}
+		if strValue(value, "type") != "response_item" {
+			continue
+		}
+		payload, _ := value["payload"].(map[string]any)
+		if payload == nil || strValue(payload, "type") != "function_call" {
+			continue
+		}
+		if !isSubagentToolName(strValue(payload, "name")) {
+			continue
+		}
+		args := subagentArgsMap(payload["arguments"])
+		agent := subagentAgentFromArgs(args)
+		if agent == "" {
+			continue
+		}
+		callID := strValue(payload, "call_id")
+		at := parseTimestampToMS(value["timestamp"])
+		if at == 0 {
+			at = parseTimestampToMS(payload["timestamp"])
+		}
+		calls = append(calls, SubagentCall{
+			ItemKey:    callID,
+			Agent:      agent,
+			Task:       subagentTaskFromArgs(args),
+			Timestamp:  at,
+			ToolCallID: callID,
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return calls, err
+	}
+	return calls, nil
 }

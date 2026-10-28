@@ -4,7 +4,7 @@
 import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { Modal } from "@/app/modals/modal";
 import { AISessionsServiceType } from "@/app/store/services";
-import { type OutlinePrompt, SessionOutlineRail, useActiveOutlineSeq } from "@/app/view/session-outline-rail";
+import { type OutlinePrompt, SessionOutlineRail, useActiveMessageSeq, useActiveOutlineSeq } from "@/app/view/session-outline-rail";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { cn } from "@/util/util";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -53,6 +53,7 @@ import { SessionTagChips } from "./session-tag-chips";
 import { extractSessionTagsFromNote, mergeSessionTags, removeSessionTagFromNote, sessionTagsEqual } from "./session-tags";
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
 import { SubagentCard } from "./subagent-card";
+import { SubagentPlaceholderCard } from "./subagent-placeholder";
 import {
     VirtualOverscan,
     activeSeqFromVirtualItems,
@@ -69,6 +70,8 @@ import {
 } from "./timeline-virtual";
 import { TitleSourceBadge } from "./title-source-badge";
 import { describeToolGroupKind } from "./tool-describe";
+import { toolGroupDurationMs } from "./fold-duration";
+import { isSubagentToolName, synthesizeSubagentMatch } from "./subagent-detect";
 import { ToolGroup } from "./tool-group";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
 import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
@@ -518,18 +521,29 @@ export function SessionDetailPane({
     );
     const { annotations, reload: reloadAnnotations } = useSessionAnnotations(summaryKey, connection, annotationAnchors);
     const annotationCounts = useMemo(() => annotationCountBySeq(annotations), [annotations]);
-    const annotationPreviewBySeq = useMemo(() => {
-        const map = new Map<number, string>();
-        for (const message of detailMessages) {
-            map.set(message.seq, message.text.replace(/^\s+|\s+$/g, "").slice(0, 240));
-        }
-        return map;
-    }, [detailMessages]);
     const [annotationEditor, setAnnotationEditor] = useState<{
         seq: number;
         anchorKey: string;
         annotation?: AnnotationView;
     } | null>(null);
+    // 只给「真正会被悬浮卡 / 编辑器读取」的 seq 做文本切片。
+    // 之前对整份会话每个消息都 replace+slice，流式 delta 每帧都会 O(N) 重做；
+    // 现在只处理有批注的 seq（加当前打开的编辑器 seq），扫描仍 O(N) 但不切片。
+    const previewNeededSeqs = useMemo(() => {
+        const seqs = new Set<number>();
+        for (const annotation of annotations) seqs.add(annotation.seq);
+        if (annotationEditor != null) seqs.add(annotationEditor.seq);
+        return seqs;
+    }, [annotations, annotationEditor]);
+    const annotationPreviewBySeq = useMemo(() => {
+        const map = new Map<number, string>();
+        if (previewNeededSeqs.size === 0) return map;
+        for (const message of detailMessages) {
+            if (!previewNeededSeqs.has(message.seq)) continue;
+            map.set(message.seq, message.text.replace(/^\s+|\s+$/g, "").slice(0, 240));
+        }
+        return map;
+    }, [detailMessages, previewNeededSeqs]);
     // MessageCard 的 memo 比较器会比较 onOpenAnnotations 的**引用**。传入内联闭包会让
     // 几乎所有带 itemKey 的行 memo 失效，于是每个滚动事件/流式 delta 都会重跑
     // WaveStreamdown 解析 markdown。这里把「打开批注编辑器」做成引用稳定的回调，
@@ -1114,10 +1128,12 @@ export function SessionDetailPane({
         }
         return byKey;
     }, [subagentFold]);
-    // 只有 subagent 工具行才查折叠数据；其余工具保持原卡片。
+    // 只有子代理派发工具行才查折叠数据；其余工具保持原卡片。
     const subagentMatchFor = useCallback(
         (item: { toolCall: ToolCall }) =>
-            item.toolCall.name === "subagent" ? subagentMatchesByKey.get(item.toolCall.itemKey ?? "") : undefined,
+            isSubagentToolName(item.toolCall.name)
+                ? subagentMatchesByKey.get(item.toolCall.itemKey ?? "")
+                : undefined,
         [subagentMatchesByKey]
     );
 
@@ -1275,7 +1291,7 @@ export function SessionDetailPane({
     const subagentMatchesByAnchor = useMemo(() => {
         const byAnchor = new Map<number, SubagentMatch[]>();
         for (const item of timelineItems) {
-            if (item.kind !== "tool" || item.toolCall.name !== "subagent") continue;
+            if (item.kind !== "tool" || !isSubagentToolName(item.toolCall.name)) continue;
             const match = subagentMatchesByKey.get(item.toolCall.itemKey ?? "");
             if (match == null) continue;
             const list = byAnchor.get(item.anchorSeq);
@@ -1294,7 +1310,7 @@ export function SessionDetailPane({
             (item) =>
                 !(
                     item.kind === "tool" &&
-                    item.toolCall.name === "subagent" &&
+                    isSubagentToolName(item.toolCall.name) &&
                     subagentMatchesByKey.has(item.toolCall.itemKey ?? "")
                 )
         );
@@ -1302,6 +1318,40 @@ export function SessionDetailPane({
     // 连续工具行折叠成「工具 ×N」摘要行：只改变渲染行数与顺序，锚点仍用上面
     // raw renderItems（单条工具）计算，所以批注 / 子代理归位不受影响。
     const rows = useMemo(() => groupConsecutiveTools(renderItems), [renderItems]);
+    // 折叠组时长：一条消息 timestamp → O(1) 取组内首尾锚点。建表一次、之后每组 O(1)。
+    const seqTimestamps = useMemo(() => {
+        const map = new Map<number, number>();
+        for (const message of effectiveDetail?.messages ?? []) {
+            if (message.timestamp != null && message.timestamp > 0) {
+                map.set(message.seq, message.timestamp);
+            }
+        }
+        return map;
+    }, [effectiveDetail?.messages]);
+    // 每行之后最近的一条消息 seq（工具组的真实结束时间点）；单趟倒序。
+    const nextMessageSeqByRow = useMemo(() => {
+        const next = new Array<number | null>(rows.length).fill(null);
+        let upcoming: number | null = null;
+        for (let i = rows.length - 1; i >= 0; i--) {
+            next[i] = upcoming;
+            const row = rows[i];
+            if (row.kind === "message") {
+                upcoming = row.message.seq;
+            }
+        }
+        return next;
+    }, [rows]);
+    // 本会话最长工具组时长：归一化时长条宽度，避免每次 render 重算。
+    const maxToolGroupDurationMs = useMemo(() => {
+        let max = 0;
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.kind !== "toolGroup") continue;
+            const duration = toolGroupDurationMs(seqTimestamps, row.startSeq, nextMessageSeqByRow[i] ?? row.endSeq);
+            if (duration != null && duration > max) max = duration;
+        }
+        return max;
+    }, [rows, nextMessageSeqByRow, seqTimestamps]);
     // 大会话走虚拟化：只渲染视口附近的几行，避免 5000+ 个 DOM 节点把滚动拖死。
     // 小会话保持原有全量渲染（行为与改动前一致）。
     const virtualEnabled = shouldVirtualize(rows.length);
@@ -1364,6 +1414,10 @@ export function SessionDetailPane({
     const activeOutlineSeq = virtualEnabled
         ? activeSeqFromVirtualItems(virtualItems, timelineItemSeqs, outlineProbeOffset, outlinePrompts[0]?.seq ?? null)
         : fullRenderActiveSeq;
+    // 批注时间线跟随滚动：探针覆盖所有可读消息（不只 user），虚拟路径复用 activeOutlineSeq。
+    const readableMessageSeqs = useMemo(() => detailMessages.map((message) => message.seq), [detailMessages]);
+    const fullRenderMessageSeq = useActiveMessageSeq(detailScrollRef, readableMessageSeqs, !virtualEnabled);
+    const scrollMessageSeq = virtualEnabled ? activeOutlineSeq : fullRenderMessageSeq;
     // 只允许在「实时 turn 开始 / 结束」两个边界做全量重测。
     //
     // 禁止把 liveTurn 对象本身放进依赖：useLiveTurns 每 32ms flush 一次，每次都是新对象，
@@ -1600,34 +1654,44 @@ export function SessionDetailPane({
                         }}
                     >
                         {foldedSubagents != null && model.service != null
-                            ? foldedSubagents.map((match) => (
-                                  <div key={match.call.itemKey ?? match.sessionKey} className="mt-1">
-                                      <SubagentCard
-                                          match={match}
-                                          service={model.service!}
-                                          connection={connection || undefined}
-                                          onOpenSession={(sessionKey) => {
-                                              if (model.blockId) {
-                                                  // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
-                                                  void openAISessionDetailFromList(sessionKey, model.blockId, {
-                                                      cwd: subagentTabCwd || undefined,
-                                                  });
-                                              }
-                                          }}
-                                      />
-                                  </div>
-                              ))
+                            ? foldedSubagents.map((match) =>
+                                  match.status !== "matched" && match.status !== "ambiguous" ? (
+                                      <div key={match.call.itemKey ?? match.sessionKey} className="mt-1">
+                                          <SubagentPlaceholderCard match={match} />
+                                      </div>
+                                  ) : (
+                                      <div key={match.call.itemKey ?? match.sessionKey} className="mt-1">
+                                          <SubagentCard
+                                              match={match}
+                                              service={model.service!}
+                                              connection={connection || undefined}
+                                              onOpenSession={(sessionKey) => {
+                                                  if (model.blockId) {
+                                                      // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
+                                                      void openAISessionDetailFromList(sessionKey, model.blockId, {
+                                                          cwd: subagentTabCwd || undefined,
+                                                      });
+                                                  }
+                                              }}
+                                          />
+                                      </div>
+                                  )
+                              )
                             : null}
                     </MessageCard>
                 );
             }
             if (item.kind === "toolGroup") {
                 const running = item.liveStatus === "running";
+                const groupEndSeq = nextMessageSeqByRow[itemIdx] ?? item.endSeq;
+                const groupDurationMs = toolGroupDurationMs(seqTimestamps, item.startSeq, groupEndSeq);
                 return (
                     <ToolGroup
                         toolNames={item.tools.map((tool) => tool.name)}
                         summary={describeToolGroupKind(item.tools.map((tool) => tool.name))}
                         running={running}
+                        durationMs={groupDurationMs}
+                        maxDurationMs={maxToolGroupDurationMs}
                     >
                         {item.tools.map((tool) => (
                             <div key={`group-tool-${tool.seq}`} {...(toolContextAttrsBySeq.get(tool.seq) ?? {})}>
@@ -1642,12 +1706,18 @@ export function SessionDetailPane({
                     </ToolGroup>
                 );
             }
-            const subagentMatch = subagentMatchFor(item);
-            if (subagentMatch != null && model.service != null) {
-                return (
-                    <SubagentCard
-                        match={subagentMatch}
-                        service={model.service}
+            const subagentMatch =
+                subagentMatchFor(item) ??
+                (isSubagentToolName(item.toolCall.name) ? synthesizeSubagentMatch(item.toolCall) : undefined);
+            if (subagentMatch != null) {
+                if (subagentMatch.status !== "matched" && subagentMatch.status !== "ambiguous") {
+                    return <SubagentPlaceholderCard match={subagentMatch} />;
+                }
+                if (model.service != null) {
+                    return (
+                        <SubagentCard
+                            match={subagentMatch}
+                            service={model.service}
                         connection={connection || undefined}
                         onOpenSession={(sessionKey) => {
                             if (model.blockId) {
@@ -1659,6 +1729,7 @@ export function SessionDetailPane({
                         }}
                     />
                 );
+                }
             }
             return (
                 // 工具卡也挂 provenance，选区落在里面时才能输出 tool / tool-exit。
@@ -1681,9 +1752,12 @@ export function SessionDetailPane({
             contextTextBySeq,
             detailSearchQuery,
             expandedToolCalls,
+            maxToolGroupDurationMs,
             model.blockId,
             model.service,
+            nextMessageSeqByRow,
             openAnnotationsFor,
+            seqTimestamps,
             subagentMatchFor,
             subagentMatchesByAnchor,
             subagentTabCwd,
@@ -1896,6 +1970,8 @@ export function SessionDetailPane({
                         annotations={annotations}
                         onJump={jumpToAnnotationSeq}
                         activeSeq={activeAnnotationSeq}
+                        scrollSeq={scrollMessageSeq}
+                        seqToTimestamp={seqTimestamps}
                         previewBySeq={annotationPreviewBySeq}
                         onGenerateTimeline={() => void generateAnnotationTimeline()}
                         generating={timelineGenerating}

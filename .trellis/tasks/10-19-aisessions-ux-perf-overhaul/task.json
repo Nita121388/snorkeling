@@ -33,7 +33,8 @@
     "10-27-aisessions-scroll-perf",
     "10-27-aisessions-virtual-row-stability",
     "10-27-aisessions-filter-context-attach",
-    "10-28-aisessions-note-editor-fix"
+    "10-28-aisessions-note-editor-fix",
+    "10-28-aisessions-fold-duration"
   ],
   "parent": null,
   "relatedFiles": [],

@@ -1117,7 +1117,7 @@ func (m *Manager) SubagentFold(ctx context.Context, identifier string) ([]Subage
 	if err != nil {
 		return nil, err
 	}
-	calls, err := ExtractSubagentCalls(ctx, summary.FilePath)
+	calls, err := extractSubagentCallsForSource(ctx, summary.Source, summary.FilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -1160,6 +1160,7 @@ func (m *Manager) subagentCandidates(ctx context.Context, parent SessionSummary,
 			SessionID:  s.ID,
 			Name:       name,
 			CreatedAt:  s.CreatedAt,
+			UpdatedAt:  s.UpdatedAt,
 			ParentKey:  s.ParentKey,
 			Kind:       s.Kind,
 		}

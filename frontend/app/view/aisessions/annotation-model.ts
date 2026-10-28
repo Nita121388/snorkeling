@@ -159,19 +159,6 @@ export function clusterRailItems(
     return clusters;
 }
 
-/**
- * 按 seq 升序给出每项在 rail 全高上的等比 rank（供「少节点铺满」分支使用）。
- * 返回与入参同序的 `{ rank, maxRank }`；`maxRank === 0` 时表示只有一个节点。
- */
-export function buildSeqRanks<T extends { seq: number }>(items: T[]): Array<{ rank: number; maxRank: number }> {
-    const order = items.map((item, index) => ({ index, seq: item.seq })).sort((left, right) => left.seq - right.seq);
-    const ranks = new Array(items.length);
-    const maxRank = Math.max(0, items.length - 1);
-    order.forEach((entry, position) => {
-        ranks[entry.index] = { rank: position, maxRank };
-    });
-    return ranks;
-}
 
 export function annotationsForSeq(annotations: AnnotationLike[], seq: number): AnnotationLike[] {
     return sortAnnotations(annotations.filter((annotation) => annotation.seq === seq));

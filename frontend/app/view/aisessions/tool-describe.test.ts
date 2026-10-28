@@ -6,8 +6,8 @@ import { describeRun, describeToolGroupCompact, describeToolGroupKind } from "./
 
 describe("describeRun", () => {
     it("maps the pi subagent dispatch tool to a readable label", () => {
-        // pi 实际派发工具名是 `subagent`，不是 `task`；漏映射会显示成「使用工具」。
-        expect(describeRun([{ toolName: "subagent" }])).toBe("派发子任务");
+        // pi 实际派发工具名是 `subagent`，不是 `task`；漏映射会显示成「Use tool」。
+        expect(describeRun([{ toolName: "subagent" }])).toBe("Spawn subagent");
     });
 });
 
@@ -17,15 +17,15 @@ describe("describeToolGroupCompact", () => {
     });
 
     it("uses category × count when every tool shares one kind", () => {
-        expect(describeToolGroupCompact(["bash", "bash", "bash"])).toBe("执行命令 ×3");
+        expect(describeToolGroupCompact(["bash", "bash", "bash"])).toBe("Run command ×3");
     });
 
-    it("falls back to 工具 × count for mixed kinds", () => {
-        expect(describeToolGroupCompact(["bash", "read", "grep"])).toBe("工具 ×3");
+    it("falls back to Tool × count for mixed kinds", () => {
+        expect(describeToolGroupCompact(["bash", "read", "grep"])).toBe("Tool ×3");
     });
 
     it("labels subagent dispatches consistently", () => {
-        expect(describeToolGroupCompact(["subagent", "subagent"])).toBe("派发子任务 ×2");
+        expect(describeToolGroupCompact(["subagent", "subagent"])).toBe("Spawn subagent ×2");
     });
 });
 
@@ -35,10 +35,10 @@ describe("describeToolGroupKind", () => {
     });
 
     it("returns the shared kind without a count", () => {
-        expect(describeToolGroupKind(["bash", "bash", "bash"])).toBe("执行命令");
+        expect(describeToolGroupKind(["bash", "bash", "bash"])).toBe("Run command");
     });
 
-    it("falls back to 工具 for mixed kinds", () => {
-        expect(describeToolGroupKind(["bash", "read", "grep"])).toBe("工具");
+    it("falls back to Tool for mixed kinds", () => {
+        expect(describeToolGroupKind(["bash", "read", "grep"])).toBe("Tool");
     });
 });

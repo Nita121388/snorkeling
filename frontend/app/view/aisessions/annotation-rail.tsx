@@ -21,10 +21,16 @@ import {
     RailDotGap,
     RailDotRestingSize,
     buildRailItems,
-    buildSeqRanks,
     clusterRailItems,
     type AnnotationLike,
 } from "./annotation-model";
+import {
+    buildTimePositions,
+    createRafCoalescer,
+    nearestAnnotatedSeq,
+    relaxTimelinePositions,
+    timeRangeOf,
+} from "./timeline-virtual";
 
 const CollapsedStorageKey = "aisessions.annotationRailCollapsed";
 const HoverDelayMs = 150;
@@ -49,6 +55,8 @@ export function AnnotationRail({
     annotations,
     onJump,
     activeSeq = null,
+    scrollSeq = null,
+    seqToTimestamp,
     previewBySeq,
     onGenerateTimeline,
     generating = false,
@@ -62,6 +70,10 @@ export function AnnotationRail({
     annotations: AnnotationLike[];
     onJump: (seq: number, anchorKey?: string) => void;
     activeSeq?: number | null;
+    /** 滚动跟随的当前消息 seq（不是批注 seq）；用于把 rail 高亮到最近批注节点。 */
+    scrollSeq?: number | null;
+    /** 消息 seq → 时间戳（ms）；用于按时间分布节点。缺失时回落均分。 */
+    seqToTimestamp?: Map<number, number>;
     /** seq → 节点原文摘要（截断），用于悬浮卡。 */
     previewBySeq?: Map<number, string>;
     /** 「✨ 生成时间线」；不传时不渲染按钮。 */
@@ -85,6 +97,15 @@ export function AnnotationRail({
     const closeTimer = React.useRef<number | null>(null);
     const bodyRef = React.useRef<HTMLDivElement | null>(null);
     const [bodyHeight, setBodyHeight] = React.useState(0);
+    // 悬浮卡定位需要的 rail 内部滚动量：拖动密集分支时一帧最多提交一次。
+    const railScrollCoalescer = React.useMemo(
+        () =>
+            createRafCoalescer(() => {
+                setBodyScrollTop(bodyRef.current?.scrollTop ?? 0);
+            }),
+        []
+    );
+    React.useEffect(() => () => railScrollCoalescer.cancel(), [railScrollCoalescer]);
     // 悬浮卡被上提到 rail 根节点渲染（脱离滚动容器与 dot 包裹层的 transform），
     // 需要 dot 在 rail 根坐标系里的位置，故跟踪滚动量与体/根偏移。
     const [bodyScrollTop, setBodyScrollTop] = React.useState(0);
@@ -132,6 +153,52 @@ export function AnnotationRail({
             return !current;
         });
     }, []);
+
+    const count = clusters.length;
+    // 节点按真实时间戳分布；时间不可用时 buildTimePositions 回落为均分。
+    const positions = React.useMemo(
+        () =>
+            buildTimePositions(
+                clusters.map((cluster) => ({ seq: cluster.seq, ts: seqToTimestamp?.get(cluster.seq) }))
+            ),
+        [clusters, seqToTimestamp]
+    );
+    const timeRange = React.useMemo(
+        () => timeRangeOf(clusters.map((cluster) => ({ seq: cluster.seq, ts: seqToTimestamp?.get(cluster.seq) }))),
+        [clusters, seqToTimestamp]
+    );
+    const clusterSeqs = React.useMemo(() => clusters.map((cluster) => cluster.seq), [clusters]);
+    // 滚动点（任意消息 seq）→ 最近一个已批注节点。
+    const liveSeq = React.useMemo(() => nearestAnnotatedSeq(scrollSeq, clusterSeqs), [scrollSeq, clusterSeqs]);
+    // 少节点：节点间距 >= RailDotGap 就铺满全高；否则固定槽 + 内部滚动。
+    const canSpread =
+        count > 0 && bodyHeight > 0 && (count === 1 || bodyHeight - RailDotActiveSize >= (count - 1) * RailDotGap);
+    const contentHeight = canSpread ? bodyHeight : count * RailDotGap;
+
+    // 时间分布 + 最小间距松弛：挤在一起的批注不重叠，有空间时保留时间比例。
+    const spreadTops = React.useMemo(() => {
+        if (!canSpread || bodyHeight <= 0) return null;
+        const usable = Math.max(0, bodyHeight - RailDotActiveSize);
+        const ideal = positions.map((position) => RailDotActiveSize / 2 + position * usable);
+        return relaxTimelinePositions(ideal, RailDotGap, RailDotActiveSize / 2, bodyHeight - RailDotActiveSize / 2);
+    }, [canSpread, bodyHeight, positions]);
+
+    const topFor = (index: number): number => {
+        if (canSpread) {
+            return spreadTops?.[index] ?? bodyHeight / 2;
+        }
+        return index * RailDotGap + RailDotGap / 2;
+    };
+
+    // 当前滚动位置在时间轴上的落点：当前消息 timestamp 归一化到批注时间跨度。
+    const playheadTop = React.useMemo(() => {
+        if (!canSpread || timeRange == null || scrollSeq == null || seqToTimestamp == null) return null;
+        const ts = seqToTimestamp.get(scrollSeq);
+        if (ts == null) return null;
+        const fraction = (ts - timeRange.min) / (timeRange.max - timeRange.min);
+        const usable = Math.max(0, bodyHeight - RailDotActiveSize);
+        return RailDotActiveSize / 2 + Math.max(0, Math.min(1, fraction)) * usable;
+    }, [canSpread, timeRange, scrollSeq, seqToTimestamp, bodyHeight]);
 
     // 折叠态：只画一条竖轴细线，不画圆点（design §2.4）。
     if (collapsed) {
@@ -198,22 +265,6 @@ export function AnnotationRail({
     const cardIndex = pinnedIndex ?? openIndex;
     const hoveredCluster = cardIndex != null ? clusters[cardIndex] : null;
 
-    const count = clusters.length;
-    const ranks = buildSeqRanks(clusters);
-    // 少节点：节点间距 >= RailDotGap 就铺满全高；否则固定槽 + 内部滚动。
-    const canSpread =
-        count > 0 && bodyHeight > 0 && (count === 1 || bodyHeight - RailDotActiveSize >= (count - 1) * RailDotGap);
-    const contentHeight = canSpread ? bodyHeight : count * RailDotGap;
-
-    const topFor = (index: number): number => {
-        if (canSpread) {
-            const { rank, maxRank } = ranks[index];
-            if (maxRank === 0) return bodyHeight / 2;
-            const usable = Math.max(0, bodyHeight - RailDotActiveSize);
-            return RailDotActiveSize / 2 + (rank / maxRank) * usable;
-        }
-        return index * RailDotGap + RailDotGap / 2;
-    };
 
     const railContentHeight = bodyOffsetTop + bodyHeight;
     // 悬浮卡上提到 rail 根节点渲染。dotTop = 圆点中心在 rail 根坐标系里的纵向位置
@@ -306,7 +357,7 @@ export function AnnotationRail({
                 data-testid="annotation-rail-body"
                 className="relative min-h-0 w-full flex-1"
                 style={{ overflowY: canSpread ? "visible" : "auto", overflowX: "visible" }}
-                onScroll={() => setBodyScrollTop(bodyRef.current?.scrollTop ?? 0)}
+                onScroll={railScrollCoalescer.schedule}
             >
                 <div className="relative w-full" style={{ height: contentHeight }}>
                     {/* 2px 竖轴贯穿全高；居中于圆点列。 */}
@@ -314,8 +365,21 @@ export function AnnotationRail({
                         className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 bg-border"
                         style={{ width: RailAxisWidth, height: contentHeight }}
                     />
+                    {/* 当前滚动位置的播放头：细线 + 轴上小点，跟随会话详情滚动更新。 */}
+                    {playheadTop != null ? (
+                        <div
+                            className="pointer-events-none absolute left-0 w-full"
+                            style={{ top: playheadTop, transform: "translateY(-50%)" }}
+                            aria-hidden="true"
+                        >
+                            <div className="h-px w-full bg-accent/45" />
+                            <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent ring-2 ring-accent/25" />
+                        </div>
+                    ) : null}
                     {clusters.map((cluster, index) => {
-                        const isActive = activeSeq != null && cluster.items.some((item) => item.seq === activeSeq);
+                        const isActive =
+                            (liveSeq != null && cluster.items.some((item) => item.seq === liveSeq)) ||
+                            (activeSeq != null && cluster.items.some((item) => item.seq === activeSeq));
                         const isHovered = hoverIndex === index;
                         const size = isActive
                             ? RailDotActiveSize

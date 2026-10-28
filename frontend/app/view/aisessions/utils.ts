@@ -93,6 +93,10 @@ export type SessionDetailToolGroup = {
     tools: ToolCall[];
     /** 组内首条工具锚定的消息 seq（跳转/大纲/子代理归位都用它）。 */
     anchorSeq: number;
+    /** 组内首条工具锚定的消息 seq（时长起点）。 */
+    startSeq: number;
+    /** 组内末条工具锚定的消息 seq（没有后继消息时时长终点）。 */
+    endSeq: number;
     /** 组内任一工具在流式中运行 → 摘要行显示扫光。 */
     liveStatus?: "running" | "completed" | "failed";
 };

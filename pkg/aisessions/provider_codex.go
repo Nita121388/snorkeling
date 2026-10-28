@@ -173,6 +173,7 @@ func (p *CodexProvider) LoadToolCalls(ctx context.Context, filePath string) ([]T
 			toolCall := ToolCall{
 				Seq:     len(toolCalls) + 1,
 				Name:    name,
+				ItemKey: callID,
 				Summary: summarizeToolInput(payload["arguments"]),
 			}
 			toolCalls = append(toolCalls, toolCall)

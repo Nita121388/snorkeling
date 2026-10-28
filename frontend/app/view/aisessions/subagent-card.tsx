@@ -7,6 +7,8 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { AnimatedExpand, MessageCard } from "./session-message";
 import { SessionDetailSkeleton } from "./session-detail-skeleton";
 import { CancelledError, SubagentLoadQueue, isCancelled } from "./subagent-load-queue";
+import { DurationBar } from "./duration-bar";
+import { formatDuration, subagentDurationMs } from "./fold-duration";
 
 /** 嵌套深度上限：超过只显示摘要，避免无限展开。 */
 export const MaxSubagentDepth = 3;
@@ -243,6 +245,8 @@ export const SubagentCard = memo(function SubagentCard({
     const agentName = (match.call.agent ?? "").trim() || "subagent";
     const taskText = (match.call.task ?? "").replace(/\s+/g, " ").trim();
     const failed = subagentRowStatus(match) === "failed";
+    // 折叠态即可显示的时长：子会话最后更新时间 - 派发时间。不依赖子会话内容加载。
+    const durationMs = subagentDurationMs(match.call.timestamp, match.updatedAt);
 
     return (
         <div
@@ -282,6 +286,14 @@ export const SubagentCard = memo(function SubagentCard({
                 <span className="shrink-0 text-[11px] font-semibold" style={{ color: "var(--agent-stale-color)" }}>
                     {agentName}
                 </span>
+                {durationMs != null && durationMs > 0 ? (
+                    <DurationBar
+                        durationMs={durationMs}
+                        maxDurationMs={0}
+                        label={`Total ${formatDuration(durationMs)}`}
+                        fillColor="var(--agent-stale-color)"
+                    />
+                ) : null}
                 {taskText !== "" ? (
                     <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">{taskText}</span>
                 ) : (
@@ -299,7 +311,7 @@ export const SubagentCard = memo(function SubagentCard({
                         }}
                     >
                         <i className="fa-sharp fa-solid fa-up-right-from-square text-[9px]" />
-                        打开
+                        Open
                     </button>
                 ) : null}
             </div>
@@ -310,7 +322,7 @@ export const SubagentCard = memo(function SubagentCard({
                 >
                 {match.status === "ambiguous" ? (
                     <div className="space-y-1 py-1">
-                        <div className="text-[10px] text-secondary">匹配到多个候选，请选择正确的子会话：</div>
+                        <div className="text-[10px] text-secondary">Multiple candidates matched. Pick the correct child session:</div>
                         {match.candidates?.map((candidate) => (
                             <button
                                 key={candidate.sessionKey}
@@ -327,7 +339,7 @@ export const SubagentCard = memo(function SubagentCard({
 
                 {match.status === "matched" ? (
                     <div className="space-y-2 py-1">
-                        <div className="text-[10px] text-secondary">子会话内容</div>
+                        <div className="text-[10px] text-secondary">Child session</div>
                         {state.loading ? (
                             // 骨架占位：让用户立刻看到"正在加载"的结构，而不是一行静止文字
                             <SessionDetailSkeleton rows={3} />
@@ -335,7 +347,7 @@ export const SubagentCard = memo(function SubagentCard({
                             <div className="space-y-1.5">
                                 <div className="text-[10px] text-error">{state.error}</div>
                                 {state.detail != null ? (
-                                    <div className="text-[10px] text-secondary">已保留已加载的内容。</div>
+                                    <div className="text-[10px] text-secondary">Loaded content is preserved.</div>
                                 ) : null}
                                 <button
                                     type="button"
@@ -343,7 +355,7 @@ export const SubagentCard = memo(function SubagentCard({
                                     onClick={retry}
                                 >
                                     <i className="fa-sharp fa-solid fa-rotate-right text-[9px]" />
-                                    重试
+                                    Retry
                                 </button>
                             </div>
                         ) : (
@@ -363,7 +375,7 @@ export const SubagentCard = memo(function SubagentCard({
                                         aria-live="polite"
                                     >
                                         <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />
-                                        <span>正在加载更多…</span>
+                                        <span>Loading more…</span>
                                     </div>
                                 ) : null}
                                 {state.nested.map((childMatch) => (

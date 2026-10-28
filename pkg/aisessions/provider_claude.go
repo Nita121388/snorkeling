@@ -170,6 +170,7 @@ func (p *ClaudeProvider) LoadToolCalls(ctx context.Context, filePath string) ([]
 				toolCall := ToolCall{
 					Seq:     len(toolCalls) + 1,
 					Name:    name,
+					ItemKey: strValue(itemMap, "id"),
 					Summary: summarizeToolInput(itemMap["input"]),
 				}
 				toolCalls = append(toolCalls, toolCall)
