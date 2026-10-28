@@ -274,6 +274,15 @@ export const SubagentCard = memo(function SubagentCard({
                         expanded ? "fa-chevron-down" : "fa-chevron-right"
                     )}
                 />
+                {durationMs != null && durationMs > 0 ? (
+                    <DurationBar
+                        durationMs={durationMs}
+                        maxDurationMs={0}
+                        showText
+                        label={`Total ${formatDuration(durationMs)}`}
+                        fillColor="var(--agent-stale-color)"
+                    />
+                ) : null}
                 <span
                     className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px]"
                     style={{
@@ -286,14 +295,6 @@ export const SubagentCard = memo(function SubagentCard({
                 <span className="shrink-0 text-[11px] font-semibold" style={{ color: "var(--agent-stale-color)" }}>
                     {agentName}
                 </span>
-                {durationMs != null && durationMs > 0 ? (
-                    <DurationBar
-                        durationMs={durationMs}
-                        maxDurationMs={0}
-                        label={`Total ${formatDuration(durationMs)}`}
-                        fillColor="var(--agent-stale-color)"
-                    />
-                ) : null}
                 {taskText !== "" ? (
                     <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">{taskText}</span>
                 ) : (

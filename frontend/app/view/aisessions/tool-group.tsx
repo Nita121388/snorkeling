@@ -82,6 +82,14 @@ export const ToolGroup = memo(function ToolGroup({
                         open ? "fa-chevron-down" : "fa-chevron-right"
                     )}
                 />
+                {durationMs != null && durationMs > 0 ? (
+                    <DurationBar
+                        durationMs={durationMs}
+                        maxDurationMs={maxDurationMs}
+                        showText
+                        label={`Total ${formatDuration(durationMs)} · ${toolNames.length} tool${toolNames.length === 1 ? "" : "s"}`}
+                    />
+                ) : null}
                 <span className="shrink-0 rounded bg-accent/15 px-1.5 py-px font-mono text-[10px] font-semibold text-accent-300">
                     {toolNames.length}
                 </span>
@@ -97,13 +105,6 @@ export const ToolGroup = memo(function ToolGroup({
                         <span className="text-error">-{removed}</span>
                     </span>
                 )}
-                {durationMs != null && durationMs > 0 ? (
-                    <DurationBar
-                        durationMs={durationMs}
-                        maxDurationMs={maxDurationMs}
-                        label={`Total ${formatDuration(durationMs)} · ${toolNames.length} tool${toolNames.length === 1 ? "" : "s"}`}
-                    />
-                ) : null}
             </button>
 
             {/* 展开内容：ResizeObserver 实测高度 + transition */}

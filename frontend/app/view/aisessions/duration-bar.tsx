@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as React from "react";
-import { durationBarFraction } from "./fold-duration";
+import { durationBarFraction, formatDuration } from "./fold-duration";
 
 /**
  * 折叠组头部的迷你时长条。
@@ -15,12 +15,15 @@ export function DurationBar({
     durationMs,
     maxDurationMs = 0,
     label,
+    showText = false,
     fillColor = "var(--accent-color)",
     trackClassName = "bg-border/60",
 }: {
     durationMs: number;
     maxDurationMs?: number;
     label: string;
+    /** 在条右侧常驻显示精确时长文字（不依赖 hover）。 */
+    showText?: boolean;
     fillColor?: string;
     trackClassName?: string;
 }) {
@@ -28,7 +31,7 @@ export function DurationBar({
     if (fraction <= 0) return null;
     return (
         <span
-            className="group/dur flex shrink-0 items-center"
+            className="group/dur flex shrink-0 items-center gap-1"
             title={label}
             aria-label={label}
             data-duration-ms={Math.round(durationMs)}
@@ -39,6 +42,9 @@ export function DurationBar({
                     style={{ width: `${Math.round(fraction * 100)}%`, backgroundColor: fillColor }}
                 />
             </span>
+            {showText ? (
+                <span className="font-mono text-[10px] tabular-nums text-secondary">{formatDuration(durationMs)}</span>
+            ) : null}
         </span>
     );
 }
