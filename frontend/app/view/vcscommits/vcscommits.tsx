@@ -305,7 +305,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
 
     return (
         <div className="h-full w-full overflow-hidden p-2">
-            <div className="h-full w-full overflow-auto rounded border border-white/10 bg-black/25 p-2">
+            <div className="h-full w-full overflow-auto rounded border border-border bg-surface-strong p-2">
                 <div className="mb-2 grid grid-cols-1 gap-1.5 md:grid-cols-[1.2fr_auto_auto_auto_auto_auto] md:items-center">
                     <input
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
@@ -376,7 +376,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                             return (
                                 <div
                                     key={`${revision}-${idx}`}
-                                    className="rounded border border-white/10 bg-black/20 px-2 py-1.5"
+                                    className="rounded border border-border bg-surface px-2 py-1.5"
                                 >
                                     <div
                                         className={`flex items-center gap-2 text-xs ${!isBlank(revision) ? "cursor-pointer" : ""}`}
@@ -392,7 +392,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                                     </div>
 
                                     {expanded && (
-                                        <div className="mt-1.5 rounded border border-white/10 bg-black/25">
+                                        <div className="mt-1.5 rounded border border-border bg-surface-strong">
                                             {filesLoading && (
                                                 <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>
                                             )}

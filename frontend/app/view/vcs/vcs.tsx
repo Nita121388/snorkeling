@@ -116,7 +116,7 @@ function OperationDetails({ details }: { details: string }) {
     return (
         <details className="mt-1">
             <summary className="cursor-pointer text-[11px] text-muted">Details</summary>
-            <pre className="mt-1 max-h-[180px] overflow-auto whitespace-pre-wrap rounded bg-black/20 p-2 text-[11px]">
+            <pre className="mt-1 max-h-[180px] overflow-auto whitespace-pre-wrap rounded bg-surface p-2 text-[11px]">
                 {details}
             </pre>
         </details>
@@ -177,7 +177,7 @@ function VcsProgressCard({
             </div>
         );
     } else if (operation.state === "success") {
-        boxClass = "mb-2 rounded border border-white/10 bg-black/25 px-2 py-1.5 text-xs text-secondary";
+        boxClass = "mb-2 rounded border border-border bg-surface-strong px-2 py-1.5 text-xs text-secondary";
         body = (
             <div className="flex items-start gap-2">
                 <i className="fa-sharp fa-solid fa-circle-check text-[11px] text-emerald-400 shrink-0 mt-[1px]" />

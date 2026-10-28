@@ -255,7 +255,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
 
     return (
         <div className="h-full w-full overflow-hidden p-2">
-            <div className="h-full w-full overflow-auto rounded border border-white/10 bg-black/25 p-2">
+            <div className="h-full w-full overflow-auto rounded border border-border bg-surface-strong p-2">
                 {loading && <div className="text-sm text-muted">Loading diff...</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
                 {!loading && !error && (
@@ -300,7 +300,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                     <div className="flex flex-col gap-2">
                         <div className="text-sm text-muted">{renderHint || "No visual diff content available."}</div>
                         {!isBlank(patchText) && (
-                            <pre className="overflow-auto rounded border border-white/10 bg-black/30 p-2 font-mono text-[12px] leading-5 text-secondary whitespace-pre">
+                            <pre className="overflow-auto rounded border border-border bg-surface p-2 font-mono text-[12px] leading-5 text-secondary whitespace-pre">
                                 {patchText}
                             </pre>
                         )}

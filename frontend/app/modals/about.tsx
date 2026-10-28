@@ -166,7 +166,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                             <textarea
                                 readOnly
                                 value={debugLoading && debugText === "" ? "Loading..." : debugText}
-                                className="h-[220px] w-full resize-none rounded border border-border bg-black/30 p-2 font-mono text-[11px] leading-4 outline-none"
+                                className="h-[220px] w-full resize-none rounded border border-border bg-surface p-2 font-mono text-[11px] leading-4 outline-none"
                             />
                         )}
                     </div>

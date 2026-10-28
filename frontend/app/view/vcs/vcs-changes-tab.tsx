@@ -39,7 +39,7 @@ function CollapsibleHeader({
     return (
         <div
             className={`mt-2 flex w-full items-center gap-2 rounded px-2 py-1 text-xs font-medium ${
-                noBorder ? "bg-transparent" : "border border-white/10 bg-black/20"
+                noBorder ? "bg-transparent" : "border border-border bg-surface"
             }`}
         >
             <button

@@ -51,7 +51,7 @@ function FileConflictModal({ filePath, baseContent, myContent, theirsContent, on
                     </div>
                     <div className="border border-border rounded-md px-3 py-2.5 bg-surface flex flex-col gap-1.5 mt-0.5">
                         <div className="flex items-center gap-2.5 text-[12px]">
-                            <span className="w-[52px] text-center text-[10.5px] font-bold rounded bg-white/12 text-secondary">Base</span>
+                            <span className="w-[52px] text-center text-[10.5px] font-bold rounded bg-surface-strong text-secondary">Base</span>
                             <span className="text-secondary">Disk version when you opened the file</span>
                         </div>
                         <div className="flex items-center gap-2.5 text-[12px]">
