@@ -548,6 +548,29 @@ export function describeSessionDates(
     };
 }
 
+/**
+ * 列表行 snippet 的内容类型：自然语言 → 正文体；机器输出（CSV 行 / 日志尾 / markdown 表格）
+ * → 等宽体 + 单行。
+ *
+ * 动机：snippet 是后端从会话里截的原文，可能是日志/表格行。用正文字体 + 两行包裹渲染时，
+ * `=== _exits.csv 尾部 === "2026-10-21 17:06:34",37320,15,0x0000000F,...` 这种行会糊成
+ * 一段散文，反而比标题更抢眼。判定只靠廉价字符特征，不追求准确分类。
+ */
+export type SnippetKind = "prose" | "machine";
+
+export function classifySnippet(snippet: string | null | undefined): SnippetKind {
+    const text = (snippet ?? "").trim();
+    if (!text) return "prose";
+    // 内容标记：等号包边的小标题 / markdown 表格竖线 / 分隔线 / 引号包着的 CSV 字段。
+    if (/^=+\s.*\s=+$/m.test(text)) return "machine";
+    if (/(\|[^|\n]+){3,}\|/.test(text)) return "machine";
+    if (/^[-=_*]{4,}$/m.test(text)) return "machine";
+    if (/"\d{4}-\d{2}-\d{2}[ T][\d:]+"/.test(text)) return "machine";
+    // 字符占比：数字 + 半角标点占比高 → 机器产出。（中文散文里几乎不出现半角引号/分号/等号）
+    const machineChars = (text.match(/[\d=,;:{}[\]()"<>|\\]/g) ?? []).length;
+    return machineChars / text.length >= 0.3 ? "machine" : "prose";
+}
+
 export async function copyText(text: string): Promise<void> {
     await writeTextToClipboard(text);
 }

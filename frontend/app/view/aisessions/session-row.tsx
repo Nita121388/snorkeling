@@ -24,6 +24,7 @@ import { getChatSource } from "./sources";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
 import {
+    classifySnippet,
     describeSessionDates,
     formatFileSize,
     heatLevel,
@@ -72,7 +73,12 @@ function HeatCell({ level, title }: { level: number; title: string }) {
             role="img"
             aria-label={title}
             title={title}
-            className="inline-flex h-3 w-3 shrink-0 items-end justify-center overflow-hidden rounded-[3px] border border-border/70"
+            /*
+             * 槽底而不是边框：格子的 12x12 轮廓必须表达出来，否则 1 档（只填 20% 高）
+             * 就等于消失，热力编码当场失效。但中性灰 border 套在紫色填充外面看起来像
+             * 「被框住的窗口」，所以用与行底色差一档的 surface-strong 当槽，安静但仍占位。
+             */
+            className="inline-flex h-3 w-3 shrink-0 items-end justify-center overflow-hidden rounded-[3px] bg-surface-strong/70"
         >
             <span
                 className={cn("w-full rounded-[1px]", HeatFillClassByLevel[safeLevel - 1])}
@@ -289,6 +295,8 @@ export function SessionRow({
 
     // 创建 / 最近更新时间：相对时间给出新鲜度，紧凑日期给出定点，同年省略年份。
     const dateInfo = describeSessionDates(session.createdAt ?? 0, session.updatedAt ?? 0);
+    // snippet 的字体/行数策略：机器产出单行等宽，散文父子行分别 2 / 1 行。
+    const snippetKind = classifySnippet(session.snippet);
 
     const tooltip = useMemo(
         () =>
@@ -412,8 +420,12 @@ export function SessionRow({
             className={cn(
                 // 层级：父行是组头（py-2 / text-sm / medium），子行是组内条目
                 // （py-1.5 / 13px / 更低对比）。颜色由 design.md §3.2 规定。
-                "group relative cursor-pointer border-b border-border/70 bg-block-solid pl-3 pr-3 hover:bg-hoverbg",
-                isChild ? "bg-transparent py-1.5 text-[13px]" : "py-2 text-sm",
+                /*
+                 * 分隔线只给顶层行：展开的子会话本来就整块落在 bg-surface/25 容器里，
+                 * 每行再画一条底边会把展开区切成十几条横线的表格；容器自身负责块感。
+                 */
+                "group relative cursor-pointer bg-block-solid pl-3 pr-3 hover:bg-hoverbg",
+                isChild ? "border-b-0 bg-transparent py-1.5 text-[13px]" : "border-b border-border/70 py-2 text-sm",
                 // 选区内（多选）：左侧 2px 竖条 + 淡底；当前行（单选）用更实的 accent。
                 inSelection &&
                     !selected &&
@@ -607,7 +619,7 @@ export function SessionRow({
                         {dateInfo.createdText ? (
                             <span title={`Created: ${dateInfo.createdFull}`}>Created {dateInfo.createdText}</span>
                         ) : null}
-                        <span className="inline-flex items-center gap-1" data-heat="metrics">
+                        <span className="inline-flex items-center gap-1.5" data-heat="metrics">
                             <HeatCell
                                 level={heatLevel(session.messageCount ?? 0, MessageHeatThresholds)}
                                 title={`${session.messageCount ?? 0} messages`}
@@ -622,7 +634,16 @@ export function SessionRow({
                     </div>
                     {session.snippet ? (
                         <div className="mt-1 flex items-start gap-1">
-                            <div className="min-w-0 flex-1 line-clamp-2 text-xs leading-5 text-secondary">
+                            <div
+                                className={cn(
+                                    "min-w-0 flex-1 text-secondary",
+                                    // 机器产出（CSV / 日志尾 / 表格）走等宽 + 单行：
+                                    // 用正文字体两行包裹会把这类行糊成段落，反而比标题更抢眼。
+                                    snippetKind === "machine"
+                                        ? "truncate font-mono text-[11px] leading-4"
+                                        : cn("text-xs leading-5", isChild ? "line-clamp-1" : "line-clamp-2")
+                                )}
+                            >
                                 {session.snippet}
                             </div>
                             {!hasNoteInfo && !noteEditing ? (

@@ -50,7 +50,7 @@ import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { MessageCard, ToolCallRow } from "./session-message";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { SessionTagChips } from "./session-tag-chips";
-import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "./session-tags";
+import { extractSessionTagsFromNote, mergeSessionTags, removeSessionTagFromNote, sessionTagsEqual } from "./session-tags";
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
 import { SubagentCard } from "./subagent-card";
 import {
@@ -103,6 +103,7 @@ import {
     isReadableMessage,
     outlinePreview,
     restoreCommandForSession,
+    shortSessionId,
 } from "./utils";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
@@ -277,6 +278,9 @@ export function SessionDetailPane({
     const availableChatSources = useChatSourceAvailability();
     const [noteDraft, setNoteDraft] = useState("");
     const [noteEditorOpen, setNoteEditorOpen] = useState(false);
+    const [noteError, setNoteError] = useState("");
+    const pendingCloseRef = useRef(false);
+    const [dirtyDismiss, setDirtyDismiss] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>("idle");
     const [renaming, setRenaming] = useState(false);
@@ -361,6 +365,8 @@ export function SessionDetailPane({
     const genService = useMemo(() => new AISessionsServiceType(), []);
     // AI 建议的 tags 先暂存，保存时与 note 内 #tag、summary.tags 合并。
     const [aiTags, setAiTags] = useState<string[]>([]);
+    // 本轮编辑里被 × 移除的 tag（summary.tags 里的旧 tag 需要减法，否则保存时会被合并回来）。
+    const [removedTags, setRemovedTags] = useState<string[]>([]);
     const applyNoteAISuggestion = useCallback(
         (suggestion: { note: string; tags: string[] }) => {
             latestNoteDraftRef.current = suggestion.note;
@@ -371,8 +377,21 @@ export function SessionDetailPane({
         },
         [noteAI.dismiss, noteSaveStatus]
     );
+    // chips 上的 ×：同步删除正文 #tag、残留 aiTags，并记入 removedTags 把 summary.tags 里的旧 tag
+    // 也一并减掉；nextTags 统一由 noteDraft + aiTags + removedTags 派生，单一事实源。
+    const handleRemoveTag = useCallback(
+        (tag: string) => {
+            setNoteDraft((d) => removeSessionTagFromNote(d, tag));
+            setAiTags((t) => t.filter((x) => x !== tag));
+            setRemovedTags((r) => (r.includes(tag) ? r : [...r, tag]));
+            if (noteSaveStatus !== "saving") setNoteSaveStatus("idle");
+        },
+        [noteSaveStatus]
+    );
     const parsedNoteDraft = extractSessionTagsFromNote(noteDraft);
-    const nextTags = mergeSessionTags(mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags), aiTags);
+    const nextTags = mergeSessionTags(mergeSessionTags(summary?.tags ?? [], parsedNoteDraft.tags), aiTags).filter(
+        (tag) => !removedTags.includes(tag)
+    );
     const noteUnchanged = parsedNoteDraft.note === (summary?.note ?? "") && sessionTagsEqual(nextTags, summary?.tags);
     const noteSaving = noteSaveStatus === "saving";
     const trimmedNoteDraft = noteDraft.trim();
@@ -426,6 +445,11 @@ export function SessionDetailPane({
         setDeleteConfirmOpen(false);
         setNoteEditorOpen(false);
         setNoteSaveStatus("idle");
+        setNoteError("");
+        setDirtyDismiss(false);
+        setRemovedTags([]);
+        setAiTags([]);
+        pendingCloseRef.current = false;
         setExpandedToolCalls({});
         setDetailSearchQuery("");
         setActiveSearchSeq(null);
@@ -1159,29 +1183,67 @@ export function SessionDetailPane({
         async (nextNote: string): Promise<boolean> => {
             if (summary == null || noteSaveStatus === "saving") return false;
             const parsed = extractSessionTagsFromNote(nextNote);
-            const tags = mergeSessionTags(mergeSessionTags(summary.tags ?? [], parsed.tags), aiTags);
+            const tags = mergeSessionTags(
+                mergeSessionTags(summary.tags ?? [], parsed.tags),
+                aiTags
+            ).filter((tag) => !removedTags.includes(tag));
             if (parsed.note === (summary.note ?? "") && sessionTagsEqual(tags, summary.tags)) {
+                setNoteError("");
+                setRemovedTags([]);
+                if (pendingCloseRef.current) {
+                    pendingCloseRef.current = false;
+                    setNoteEditorOpen(false);
+                }
                 return true;
             }
             setNoteSaveStatus("saving");
+            setNoteError("");
             const saved = await model.updateNote(summary, parsed.note, tags);
             const currentDraftSaved = extractSessionTagsFromNote(latestNoteDraftRef.current).note === parsed.note;
+            if (saved && currentDraftSaved) {
+                // 回写 trim 后的稳定值：消除首尾空格让 unchanged 判定抖动
+                setNoteDraft(parsed.note);
+                latestNoteDraftRef.current = parsed.note;
+                setRemovedTags([]);
+                setAiTags((t) => t.filter((x) => parsed.tags.includes(x)));
+            }
+            if (!saved) {
+                setNoteError("保存失败，请稍后重试");
+            }
             setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
+            if (pendingCloseRef.current) {
+                pendingCloseRef.current = false;
+                if (saved && currentDraftSaved) setNoteEditorOpen(false);
+            }
             return saved && currentDraftSaved;
         },
-        [model, noteSaveStatus, summary, aiTags]
+        [model, noteSaveStatus, summary, aiTags, removedTags]
     );
 
-    const closeNoteEditor = useCallback(() => {
-        if (noteSaving) return;
-        if (!noteUnchanged) {
-            void saveNote(trimmedNoteDraft).then((saved) => {
-                if (saved) setNoteEditorOpen(false);
-            });
+    // Close 按钮：有改动则保存后关闭；saving 中不卡死，改为保存完成后自动关。
+    const saveAndClose = useCallback(() => {
+        if (summary == null) {
+            setNoteEditorOpen(false);
             return;
         }
-        setNoteEditorOpen(false);
-    }, [noteSaving, noteUnchanged, saveNote, trimmedNoteDraft]);
+        if (noteUnchanged) {
+            setNoteEditorOpen(false);
+            return;
+        }
+        pendingCloseRef.current = true;
+        if (noteSaving) return;
+        void saveNote(trimmedNoteDraft);
+    }, [noteSaving, noteUnchanged, saveNote, summary, trimmedNoteDraft]);
+
+    // backdrop / X / ESC：无改动直接关；有改动先提示 dirty，再次触发才丢弃关闭（不静默落盘）。
+    const requestDismiss = useCallback(() => {
+        if (noteUnchanged || dirtyDismiss) {
+            setDirtyDismiss(false);
+            setNoteEditorOpen(false);
+            return;
+        }
+        setDirtyDismiss(true);
+    }, [dirtyDismiss, noteUnchanged]);
 
     // 防抖自动保存：停止输入 NoteAutoSaveDelayMs 后落盘，与列表行/Note 弹窗行为一致。
     useEffect(() => {
@@ -1754,7 +1816,14 @@ export function SessionDetailPane({
                                 sessionKey={summary.key}
                                 restoreCommand={restoreCommandForSession(summary)}
                                 onRename={summary.key ? startRename : undefined}
-                                onEditNote={() => setNoteEditorOpen(true)}
+                                onEditNote={() => {
+                                    setNoteError("");
+                                    setDirtyDismiss(false);
+                                    setRemovedTags([]);
+                                    setAiTags([]);
+                                    pendingCloseRef.current = false;
+                                    setNoteEditorOpen(true);
+                                }}
                                 onResume={() => void model.restoreSession(summary)}
                                 onRefresh={() => void requestDetailDelta("manual")}
                                 onOpenProjectDirectory={() => void model.openProjectDirectory(summary)}
@@ -2122,8 +2191,8 @@ export function SessionDetailPane({
             {noteEditorOpen && summary != null ? (
                 <Modal
                     className="w-[520px] max-w-[calc(100vw-32px)]"
-                    onClose={closeNoteEditor}
-                    onClickBackdrop={closeNoteEditor}
+                    onClose={requestDismiss}
+                    onClickBackdrop={requestDismiss}
                 >
                     <div className="space-y-3 text-primary">
                         <div className="space-y-1 pr-8">
@@ -2131,7 +2200,19 @@ export function SessionDetailPane({
                                 <div className="text-base font-semibold">Session Note</div>
                                 <NoteAIButton status={noteAI.status} onGenerate={() => void noteAI.generate()} />
                             </div>
-                            <div className="truncate text-xs text-secondary">{summary.title || summary.id}</div>
+                            <div className="flex min-w-0 items-center gap-2 text-xs text-secondary">
+                                {summary.source ? (
+                                    <span className="shrink-0 rounded border border-border px-1.5 py-0.5 uppercase">
+                                        {summary.source}
+                                    </span>
+                                ) : null}
+                                {summary.title ? (
+                                    <span className="min-w-0 truncate" title={summary.title}>
+                                        {summary.title}
+                                    </span>
+                                ) : null}
+                                <span className="shrink-0">ID: {shortSessionId(summary.id)}</span>
+                            </div>
                         </div>
                         <NoteAISuggestionBar
                             suggestion={noteAI.suggestion}
@@ -2143,7 +2224,12 @@ export function SessionDetailPane({
                             onDismiss={noteAI.dismiss}
                             onOpenSettings={noteAI.openAISettings}
                         />
-                        <SessionTagChips tags={nextTags} />
+                        <SessionTagChips tags={nextTags} removable onRemove={handleRemoveTag} />
+                        {noteError ? (
+                            <div className="rounded border border-error/40 bg-error/10 p-2 text-xs text-error">
+                                {noteError}
+                            </div>
+                        ) : null}
                         <textarea
                             autoFocus
                             className="min-h-[140px] w-full resize-none rounded border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
@@ -2152,6 +2238,8 @@ export function SessionDetailPane({
                             onChange={(event) => {
                                 latestNoteDraftRef.current = event.target.value;
                                 setNoteDraft(event.target.value);
+                                setNoteError("");
+                                if (dirtyDismiss) setDirtyDismiss(false);
                                 if (noteSaveStatus !== "saving") setNoteSaveStatus("idle");
                             }}
                             onBlur={() => {
@@ -2167,7 +2255,11 @@ export function SessionDetailPane({
                                 )}
                                 aria-live="polite"
                             >
-                                {noteStatusText}
+                                {dirtyDismiss && !noteSaving ? (
+                                    <span className="text-warning">未保存的改动将在关闭时丢弃</span>
+                                ) : (
+                                    noteStatusText
+                                )}
                             </span>
                             <div className="flex items-center gap-2">
                                 <button
@@ -2185,8 +2277,7 @@ export function SessionDetailPane({
                                 <button
                                     type="button"
                                     className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
-                                    disabled={noteSaving}
-                                    onClick={closeNoteEditor}
+                                    onClick={saveAndClose}
                                 >
                                     Close
                                 </button>

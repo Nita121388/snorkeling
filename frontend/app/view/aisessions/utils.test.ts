@@ -15,6 +15,7 @@ import {
     applySelectionRange,
     buildBatchCopyText,
     buildSessionDetailTimeline,
+    classifySnippet,
     countSubSessions,
     describeSessionDates,
     formatFileSize,
@@ -859,5 +860,30 @@ describe("readAttachMode", () => {
     it("falls back to 智能 for a corrupt value", () => {
         vi.stubGlobal("window", { localStorage: { getItem: () => "bogus", setItem: () => {} } });
         expect(readAttachMode()).toBe(DefaultAttachMode);
+    });
+});
+
+describe("classifySnippet", () => {
+    it("flags CSV / log tails as machine output so the row can switch to monospace", () => {
+        expect(
+            classifySnippet(
+                '=== _exits.csv 尾部（台架自己记录退出）=== "2026-10-21 17:06:34",37320,15,0x0000000F,0,"2026-10-21 17:05:55,580"'
+            )
+        ).toBe("machine");
+    });
+
+    it("flags markdown table lines as machine output", () => {
+        expect(classifySnippet("| 阶段 | 时间 | 目标 | 结果 |")).toBe("machine");
+    });
+
+    it("keeps Chinese prose as prose", () => {
+        expect(
+            classifySnippet("下面按时间线把昨晚这一整夜做完的事情完整讲一遍，重点是有没有回落到基线。")
+        ).toBe("prose");
+    });
+
+    it("treats empty snippets as prose", () => {
+        expect(classifySnippet("")).toBe("prose");
+        expect(classifySnippet(null)).toBe("prose");
     });
 });

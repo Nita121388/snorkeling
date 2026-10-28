@@ -100,7 +100,7 @@ export function SessionGroup({
                     )}
                 />
             </button>
-            {collapsed ? null : <div className="border-l border-border/60 pl-2">{children}</div>}
+            {collapsed ? null : <div className="pl-1">{children}</div>}
         </div>
     );
 }
@@ -227,7 +227,8 @@ export function GroupedSessionList({
                     connection={connection}
                 />
                 {children.length > 0 ? (
-                    <div className="bg-surface/25">
+                    // 子会话去掉每行的 border-b，靠容器底边收束整块展开区。
+                    <div className="bg-surface/25 border-b border-border/40">
                         {children.map((child, index) => renderNode(child, index === children.length - 1))}
                     </div>
                 ) : null}
