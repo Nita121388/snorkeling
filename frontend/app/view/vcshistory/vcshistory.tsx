@@ -272,7 +272,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
 
     return (
         <div className="h-full w-full overflow-hidden p-2">
-            <div className="h-full w-full overflow-auto rounded border border-border bg-surface-strong p-2">
+            <div className="h-full w-full overflow-auto p-2">
                 {loading && <div className="text-sm text-muted">Loading path history...</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
                 {!loading && !error && commits.length === 0 && (
@@ -290,7 +290,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                             return (
                                 <div
                                     key={`${revision}-${idx}`}
-                                    className="rounded border border-border px-2 py-1.5 bg-surface"
+                                    className="px-2 py-1.5"
                                 >
                                     <div
                                         className={`flex items-center gap-2 text-xs ${
