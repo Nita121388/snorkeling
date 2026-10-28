@@ -22,16 +22,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import "../../session-overview/session-overview.scss";
 import { autoGenerate } from "./aisession-gen-store";
-import {
-    ExpandAllTagsButton,
-    GroupModeSwitch,
-    IconButton,
-    SubSessionsToggle,
-    type ListGroupMode,
-} from "./controls";
-import { SortMenu } from "./sort-menu";
+import { ExpandAllTagsButton, GroupModeSwitch, IconButton, SubSessionsToggle, type ListGroupMode } from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
+import { FilterPresetMenu } from "./filter-preset-menu";
+import {
+    DefaultFilterPresetFilter,
+    MaxFilterPresets,
+    filterPresetFilterEqual,
+    filterPresetIsDirty,
+    makeFilterPreset,
+    readFilterPresets,
+    writeFilterPresets,
+    type FilterPreset,
+    type FilterPresetFilter,
+    type FilterPresetView,
+} from "./filter-presets";
 import { SkeletonSessionRows } from "./scan-progress";
 import { mergeScanStatus, type ScanStatus } from "./scan-status-logic";
 import { SessionBatchBar } from "./session-batch-bar";
@@ -52,6 +58,7 @@ import {
 import { normalizeSessionTags } from "./session-tags";
 import { mergeSessionTimeline } from "./session-timeline-sync";
 import { collectParentKeys, collectParentsOfMatches } from "./session-tree";
+import { SortMenu } from "./sort-menu";
 import { defaultChatSource } from "./sources";
 import type {
     AttachMode,
@@ -81,6 +88,7 @@ import {
     applySelectionRange,
     buildBatchCopyText,
     copyText,
+    countSubSessions,
     emptySessionsText,
     extractPathChildren,
     extractPathRoots,
@@ -88,6 +96,7 @@ import {
     formatRelativeRefreshTime,
     getErrorMessage,
     groupSessionsByProject,
+    makeSessionComparator,
     normalizePathPrefix,
     normalizePathSelections,
     pathAncestorSegments,
@@ -101,10 +110,8 @@ import {
     reconcilePathSets,
     restoreMetaForSession,
     shouldStartEmptyChat,
-    sortSessionsByTime,
-    countSubSessions,
-    makeSessionComparator,
     sortSessions,
+    sortSessionsByTime,
     writeAttachMode,
     writeExpandAllTagsPreference,
     writeGroupPreference,
@@ -179,6 +186,10 @@ export class AiSessionsViewModel implements ViewModel {
     pathSelectionsAtom = jotai.atom<string[]>(DefaultPathSelections);
     pathExcludesAtom = jotai.atom<string[]>(DefaultPathExcludes);
     excludeTagsAtom = jotai.atom<string[]>(DefaultExcludeTags);
+    /** 已保存的筛选方案（全局，localStorage 持久化）。 */
+    filterPresetsAtom = jotai.atom<FilterPreset[]>(readFilterPresets());
+    /** 当前应用的方案 id；空串 = 未绑定任何方案。 */
+    activePresetIdAtom = jotai.atom<string>("");
     filtersOpenAtom = jotai.atom<boolean>(false);
     availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
     projectPathsAtom = jotai.atom<ProjectPathSummary[]>([]);
@@ -745,6 +756,116 @@ export class AiSessionsViewModel implements ViewModel {
         this.setPathExcludes(
             current.includes(normalized) ? current.filter((item) => item !== normalized) : [...current, normalized]
         );
+    }
+
+    // ── 筛选方案（Filter Presets）──────────────────────────────────
+    // 快照范围见 filter-presets.ts / prd.md：9 个筛选维度 + 可选视图。
+
+    /** 读取当前筛选条件作为快照。 */
+    captureCurrentFilter(): FilterPresetFilter {
+        return {
+            source: globalStore.get(this.sourceAtom),
+            markedFilter: globalStore.get(this.markedFilterAtom),
+            dateRange: { ...globalStore.get(this.dateRangeAtom) },
+            attachMode: globalStore.get(this.attachModeAtom),
+            tagFilters: [...globalStore.get(this.tagFiltersAtom)],
+            excludeTags: [...globalStore.get(this.excludeTagsAtom)],
+            tagPresence: globalStore.get(this.tagPresenceAtom),
+            pathSelections: [...globalStore.get(this.pathSelectionsAtom)],
+            pathExcludes: [...globalStore.get(this.pathExcludesAtom)],
+        };
+    }
+
+    /** 读取当前视图偏好（排序链 + 分组模式）。 */
+    captureCurrentView(): FilterPresetView {
+        const mode = globalStore.get(this.groupModeAtom) === "time" ? "time" : "project";
+        return {
+            sortChain: globalStore.get(this.sortChainAtom).map((key) => ({ ...key })),
+            groupMode: mode,
+        };
+    }
+
+    /** 应用一个方案：一次性 set 全部筛选 atom（可选视图），并重新拉取列表。 */
+    applyFilterPreset(preset: FilterPreset): void {
+        const filter = preset.filter;
+        globalStore.set(this.loadingAtom, true);
+        globalStore.set(this.sourceAtom, filter.source);
+        globalStore.set(this.markedFilterAtom, filter.markedFilter);
+        globalStore.set(this.dateRangeAtom, { ...filter.dateRange });
+        globalStore.set(this.attachModeAtom, filter.attachMode);
+        globalStore.set(this.tagPresenceAtom, filter.tagPresence);
+        globalStore.set(this.tagFiltersAtom, [...filter.tagFilters]);
+        globalStore.set(this.excludeTagsAtom, [...filter.excludeTags]);
+        globalStore.set(this.pathSelectionsAtom, [...filter.pathSelections]);
+        globalStore.set(this.pathExcludesAtom, [...filter.pathExcludes]);
+        globalStore.set(this.pathFilterAtom, DefaultPathFilter);
+        if (preset.view != null) {
+            globalStore.set(
+                this.sortChainAtom,
+                preset.view.sortChain.map((key) => ({ ...key }))
+            );
+            globalStore.set(this.groupModeAtom, preset.view.groupMode);
+            writeSortChain(preset.view.sortChain);
+            writeGroupPreference(preset.view.groupMode);
+        }
+        globalStore.set(this.activePresetIdAtom, preset.id);
+        void this.loadSessions(false, globalStore.get(this.sortDescendingAtom));
+    }
+
+    /**
+     * 保存当前筛选为方案。
+     * - overwriteId 存在：覆盖该方案（保留 id/createdAt，刷新 updatedAt）。
+     * - 否则新建；超过上限返回 false。
+     * 返回保存后的方案 id（失败时为空串）。
+     */
+    saveFilterPreset(name: string, opts: { overwriteId?: string; includeView?: boolean } = {}): string {
+        const filter = this.captureCurrentFilter();
+        const view = opts.includeView === false ? undefined : this.captureCurrentView();
+        const current = globalStore.get(this.filterPresetsAtom);
+        if (opts.overwriteId != null && opts.overwriteId !== "") {
+            const idx = current.findIndex((item) => item.id === opts.overwriteId);
+            if (idx < 0) return "";
+            const existing = current[idx];
+            const updated: FilterPreset = {
+                ...existing,
+                name: name.trim().slice(0, 40) || existing.name,
+                updatedAt: Date.now(),
+                filter,
+                ...(view != null ? { view } : {}),
+            };
+            const next = current.map((item, i) => (i === idx ? updated : item));
+            globalStore.set(this.filterPresetsAtom, next);
+            writeFilterPresets(next);
+            globalStore.set(this.activePresetIdAtom, updated.id);
+            return updated.id;
+        }
+        if (current.length >= MaxFilterPresets) return "";
+        const preset = makeFilterPreset(name, filter, view);
+        if (preset.name === "") return "";
+        const next = [...current, preset];
+        globalStore.set(this.filterPresetsAtom, next);
+        writeFilterPresets(next);
+        globalStore.set(this.activePresetIdAtom, preset.id);
+        return preset.id;
+    }
+
+    deleteFilterPreset(id: string): void {
+        const next = globalStore.get(this.filterPresetsAtom).filter((item) => item.id !== id);
+        globalStore.set(this.filterPresetsAtom, next);
+        writeFilterPresets(next);
+        if (globalStore.get(this.activePresetIdAtom) === id) {
+            globalStore.set(this.activePresetIdAtom, "");
+        }
+    }
+
+    renameFilterPreset(id: string, name: string): void {
+        const trimmed = name.trim().slice(0, 40);
+        if (trimmed === "") return;
+        const next = globalStore
+            .get(this.filterPresetsAtom)
+            .map((item) => (item.id === id ? { ...item, name: trimmed, updatedAt: Date.now() } : item));
+        globalStore.set(this.filterPresetsAtom, next);
+        writeFilterPresets(next);
     }
 
     // ── 多选（batch actions）──────────────────────────────────────
@@ -1369,6 +1490,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const pathSelections = jotai.useAtomValue(model.pathSelectionsAtom);
     const pathExcludes = jotai.useAtomValue(model.pathExcludesAtom);
     const [filtersOpen, setFiltersOpen] = jotai.useAtom(model.filtersOpenAtom);
+    const filterPresets = jotai.useAtomValue(model.filterPresetsAtom);
+    const activePresetId = jotai.useAtomValue(model.activePresetIdAtom);
     const selectedKeys = jotai.useAtomValue(model.selectedKeysAtom);
     const autoGenService = useMemo(() => new AISessionsServiceType(), []);
     const marqueeRect = jotai.useAtomValue(model.marqueeRectAtom);
@@ -1574,6 +1697,39 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         normalizedExcludeTags.length +
         (tagPresenceActive ? 1 : 0) +
         (source !== "" ? 1 : 0);
+    // 当前筛选快照（与 ViewModel.captureCurrentFilter 保持一致，供方案保存/脏检查）。
+    const currentFilterSnapshot = useMemo<FilterPresetFilter>(
+        () => ({
+            source,
+            markedFilter,
+            dateRange,
+            attachMode,
+            tagFilters: normalizedTagFilters,
+            excludeTags: normalizedExcludeTags,
+            tagPresence,
+            pathSelections: normalizedPathSelections,
+            pathExcludes: normalizedPathExcludes,
+        }),
+        [
+            source,
+            markedFilter,
+            dateRange,
+            attachMode,
+            normalizedTagFilters,
+            normalizedExcludeTags,
+            tagPresence,
+            normalizedPathSelections,
+            normalizedPathExcludes,
+        ]
+    );
+    const currentViewSnapshot = useMemo<FilterPresetView>(() => ({ sortChain, groupMode }), [sortChain, groupMode]);
+    const activePreset = useMemo(
+        () => filterPresets.find((preset) => preset.id === activePresetId) ?? null,
+        [filterPresets, activePresetId]
+    );
+    const activePresetDirty =
+        activePreset != null && filterPresetIsDirty(activePreset, currentFilterSnapshot, currentViewSnapshot);
+    const canSavePreset = !filterPresetFilterEqual(currentFilterSnapshot, DefaultFilterPresetFilter);
     // 命中集：attached 为空的行才是自身满足筛选条件的。无筛选时为 null，
     // 与 buildSessionTree 的 allMatched 语义一致。
     const matchedKeys = useMemo<Set<string> | null>(() => {
@@ -2194,6 +2350,21 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                             <span>Filters</span>
                                         )}
                                     </button>
+                                    <FilterPresetMenu
+                                        presets={filterPresets}
+                                        activePresetId={activePresetId}
+                                        activeDirty={activePresetDirty}
+                                        canSave={canSavePreset}
+                                        onApply={(preset) => model.applyFilterPreset(preset)}
+                                        onSaveNew={(name) => {
+                                            model.saveFilterPreset(name);
+                                        }}
+                                        onOverwrite={(id) => {
+                                            model.saveFilterPreset("", { overwriteId: id });
+                                        }}
+                                        onRename={(id, name) => model.renameFilterPreset(id, name)}
+                                        onDelete={(id) => model.deleteFilterPreset(id)}
+                                    />
                                     <SortMenu chain={sortChain} onChange={setSortChain} />
                                     <SubSessionsToggle
                                         allExpanded={allSubSessionsExpanded}
@@ -2259,7 +2430,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                             <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] text-secondary">
                                 <span className="min-w-0 truncate">
                                     {visibleSessions.length - contextRowCount} sessions
-                                    {contextRowCount > 0 ? ` (+${contextRowCount} 上下文${attachTruncated ? "，已截断" : ""})` : ""}
+                                    {contextRowCount > 0
+                                        ? ` (+${contextRowCount} 上下文${attachTruncated ? "，已截断" : ""})`
+                                        : ""}
                                 </span>
                                 {lastRefreshLabel !== "" ? (
                                     <span className="shrink-0" title={lastRefreshTitle}>
