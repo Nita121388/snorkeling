@@ -34,7 +34,8 @@
     "10-27-aisessions-virtual-row-stability",
     "10-27-aisessions-filter-context-attach",
     "10-28-aisessions-note-editor-fix",
-    "10-28-aisessions-fold-duration"
+    "10-28-aisessions-fold-duration",
+    "10-28-aisessions-duration-left"
   ],
   "parent": null,
   "relatedFiles": [],
