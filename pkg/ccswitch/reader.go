@@ -24,6 +24,10 @@ const (
 	CcSwitchProviderAppTypeCodex    = "codex"
 	CcSwitchProviderAppTypeOpenCode = "opencode"
 	CcSwitchProviderAppTypePi       = "pi"
+	// CcSwitchProviderAppTypeHermes is the Hermes agent app type. Like pi, its
+	// settings_config carries a single base_url + api_key + model list, so it maps
+	// 1:1 onto a Wave AI OpenAI-compatible (or Anthropic-messages) mode.
+	CcSwitchProviderAppTypeHermes = "hermes"
 )
 
 // DefaultDBRelPath is the default location of the cc-switch SQLite DB relative to the user's home dir.
@@ -222,6 +226,12 @@ func ListOpenCodeVendors(ctx context.Context) (*VendorList, error) {
 // Mirrors ListClaudeVendors' soft-failure contract (DB-missing → Detected=false, nil err) — never blocks agent launch.
 // ListWaveAIVendors returns redacted OpenAI-compatible provider projections from
 // existing cc-switch app types. It never materializes configs or returns tokens.
+//
+// Only app types that actually store a single base_url + api_key + model list in
+// settings_config are eligible: today that's "pi" (camelCase: baseUrl/api/apiKey/models)
+// and "hermes" (snake_case: base_url/api_mode/api_key/models). The legacy filter that
+// queried app_type IN ('opencode','openclaw','custom') matched no rows in any real
+// cc-switch DB, which is why the import list came back empty ("click does nothing").
 func ListWaveAIVendors(ctx context.Context) (*WaveAIVendorList, error) {
 	path, err := DBPath()
 	if err != nil {
@@ -237,59 +247,107 @@ func ListWaveAIVendors(ctx context.Context) (*WaveAIVendorList, error) {
 	}
 	defer db.Close()
 	var rows []struct {
-		ID, Name, AppType, SettingsJSON, Category string
-		IsCurrent                                 sql.NullBool
+		ID           string         `db:"id"`
+		Name         string         `db:"name"`
+		AppType      string         `db:"app_type"`
+		SettingsJSON string         `db:"settings_config"`
+		Category     sql.NullString `db:"category"`
+		IsCurrent    sql.NullBool   `db:"is_current"`
 	}
-	err = db.SelectContext(ctx, &rows, `SELECT id, name, app_type, settings_config, category, is_current FROM providers WHERE app_type IN (?, ?, ?) ORDER BY name`, CcSwitchProviderAppTypeOpenCode, "openclaw", "custom")
+	// Eligible app types: pi (camelCase) + hermes (snake_case). Both carry a
+	// single base_url/api_key/model list that maps cleanly onto a Wave AI mode.
+	err = db.SelectContext(ctx, &rows, `SELECT id, name, app_type, settings_config, category, is_current FROM providers WHERE app_type IN (?, ?) ORDER BY name`, CcSwitchProviderAppTypePi, CcSwitchProviderAppTypeHermes)
 	if err != nil {
 		return result, nil
 	}
 	for _, row := range rows {
-		var raw struct {
-			BaseURL  string            `json:"baseUrl"`
-			Endpoint string            `json:"endpoint"`
-			APIType  string            `json:"api"`
-			Model    string            `json:"model"`
-			Models   []json.RawMessage `json:"models"`
-		}
-		if json.Unmarshal([]byte(row.SettingsJSON), &raw) != nil {
+		settings, ok := parseWaveAISettings(row.AppType, row.SettingsJSON)
+		if !ok {
 			continue
 		}
-		endpoint := raw.BaseURL
-		if endpoint == "" {
-			endpoint = raw.Endpoint
-		}
-		if endpoint == "" {
-			continue
-		}
-		models := []string{}
-		for _, item := range raw.Models {
-			var s string
-			if json.Unmarshal(item, &s) == nil && s != "" {
-				models = append(models, s)
-				continue
-			}
-			var obj struct {
-				ID    string `json:"id"`
-				Model string `json:"model"`
-				Name  string `json:"name"`
-			}
-			if json.Unmarshal(item, &obj) == nil {
-				for _, v := range []string{obj.ID, obj.Model, obj.Name} {
-					if v != "" {
-						models = append(models, v)
-						break
-					}
-				}
-			}
-		}
-		if raw.Model != "" {
-			models = append([]string{raw.Model}, models...)
-		}
-		result.Vendors = append(result.Vendors, WaveAIVendor{ID: row.ID, Name: row.Name, AppType: row.AppType, Category: row.Category, Endpoint: endpoint, APIType: raw.APIType, Models: uniqueStrings(models), DefaultModel: raw.Model, IsCurrent: row.IsCurrent.Valid && row.IsCurrent.Bool})
+		result.Vendors = append(result.Vendors, WaveAIVendor{ID: row.ID, Name: row.Name, AppType: row.AppType, Category: row.Category.String, Endpoint: settings.Endpoint, APIType: settings.APIType, Models: settings.Models, DefaultModel: settings.DefaultModel, IsCurrent: row.IsCurrent.Valid && row.IsCurrent.Bool})
 	}
 	result.Detected = true
 	return result, nil
+}
+
+// waveAISettings is the normalized, OpenAI-compatible-shaped config extracted from a
+// cc-switch provider's settings_config. It accepts both the pi shape (camelCase:
+// baseUrl/api/apiKey/models) and the hermes shape (snake_case: base_url/api_mode/api_key/models),
+// plus an env block fallback for the API key.
+// The boolean return is false when the provider has no endpoint (not importable).
+type waveAISettings struct {
+	Endpoint     string
+	APIType      string
+	APIKey       string
+	DefaultModel string
+	Models       []string
+}
+
+func normalizeWaveAIApiType(raw string) string {
+	t := strings.TrimSpace(strings.ReplaceAll(raw, "_", "-"))
+	switch t {
+	case "openai-responses", "openai-chat", "anthropic-messages", "google-gemini":
+		return t
+	case "openai-completions":
+		return "openai-chat"
+	}
+	if strings.Contains(t, "anthropic") {
+		return "anthropic-messages"
+	}
+	if strings.Contains(t, "gemini") {
+		return "google-gemini"
+	}
+	return "openai-chat"
+}
+
+func parseWaveAISettings(appType, settingsJSON string) (*waveAISettings, bool) {
+	var raw struct {
+		BaseURL  string            `json:"baseUrl"`
+		BaseURL2 string            `json:"base_url"`
+		Endpoint string            `json:"endpoint"`
+		APIType  string            `json:"api"`
+		APIType2 string            `json:"api_mode"`
+		Model    string            `json:"model"`
+		APIKey   string            `json:"apiKey"`
+		APIKey2  string            `json:"api_key"`
+		Env      map[string]string `json:"env"`
+		Models   json.RawMessage   `json:"models"`
+	}
+	if json.Unmarshal([]byte(settingsJSON), &raw) != nil {
+		return nil, false
+	}
+	endpoint := strings.TrimSpace(raw.BaseURL)
+	if endpoint == "" {
+		endpoint = strings.TrimSpace(raw.BaseURL2)
+	}
+	if endpoint == "" {
+		endpoint = strings.TrimSpace(raw.Endpoint)
+	}
+	if endpoint == "" {
+		return nil, false
+	}
+	apiType := normalizeWaveAIApiType(raw.APIType)
+	if apiType == "openai-chat" && strings.TrimSpace(raw.APIType2) != "" {
+		apiType = normalizeWaveAIApiType(raw.APIType2)
+	}
+	apiKey := strings.TrimSpace(raw.APIKey)
+	if apiKey == "" {
+		apiKey = strings.TrimSpace(raw.APIKey2)
+	}
+	if apiKey == "" {
+		for _, key := range []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "API_KEY"} {
+			if v := strings.TrimSpace(raw.Env[key]); v != "" {
+				apiKey = v
+				break
+			}
+		}
+	}
+	models := extractModelIDs(raw.Models)
+	if strings.TrimSpace(raw.Model) != "" {
+		models = append([]string{strings.TrimSpace(raw.Model)}, models...)
+	}
+	return &waveAISettings{Endpoint: endpoint, APIType: apiType, APIKey: apiKey, DefaultModel: strings.TrimSpace(raw.Model), Models: uniqueStrings(models)}, true
 }
 
 func uniqueStrings(input []string) []string {

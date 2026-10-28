@@ -64,7 +64,10 @@ func extractModelIDs(raw json.RawMessage) []string {
 	return uniqueStrings(models)
 }
 
-func GetWaveAIImportData(ctx context.Context, vendorID string) (*WaveAIImportData, error) {
+// GetWaveAIImportData reads a single provider for import. appType ("pi"/"hermes")
+// disambiguates the vendor id when the same id exists under more than one app type
+// (e.g. "deepseek" exists in both hermes and pi); an empty appType means any eligible type.
+func GetWaveAIImportData(ctx context.Context, vendorID, appType string) (*WaveAIImportData, error) {
 	path, err := DBPath()
 	if err != nil {
 		return nil, err
@@ -75,42 +78,39 @@ func GetWaveAIImportData(ctx context.Context, vendorID string) (*WaveAIImportDat
 	}
 	defer db.Close()
 	var row struct {
-		ID, Name, AppType, SettingsJSON, Category string
-		IsCurrent                                 sql.NullBool
+		ID           string         `db:"id"`
+		Name         string         `db:"name"`
+		AppType      string         `db:"app_type"`
+		SettingsJSON string         `db:"settings_config"`
+		Category     sql.NullString `db:"category"`
+		IsCurrent    sql.NullBool   `db:"is_current"`
 	}
-	if err := db.GetContext(ctx, &row, `SELECT id, name, app_type, settings_config, category, is_current FROM providers WHERE id = ? AND app_type IN (?, ?, ?) LIMIT 1`, vendorID, CcSwitchProviderAppTypeOpenCode, "openclaw", "custom"); err != nil {
+	// Same eligibility set as ListWaveAIVendors: pi (camelCase) + hermes (snake_case).
+	query := `SELECT id, name, app_type, settings_config, category, is_current FROM providers WHERE id = ? AND app_type IN (?, ?) LIMIT 1`
+	args := []any{vendorID, CcSwitchProviderAppTypePi, CcSwitchProviderAppTypeHermes}
+	if trimmed := strings.TrimSpace(appType); trimmed != "" {
+		query = `SELECT id, name, app_type, settings_config, category, is_current FROM providers WHERE id = ? AND app_type = ? LIMIT 1`
+		args = []any{vendorID, trimmed}
+	}
+	if err := db.GetContext(ctx, &row, query, args...); err != nil {
 		return nil, fmt.Errorf("cc-switch provider not found")
 	}
-	var raw struct {
-		BaseURL  string            `json:"baseUrl"`
-		Endpoint string            `json:"endpoint"`
-		APIType  string            `json:"api"`
-		Model    string            `json:"model"`
-		APIKey   string            `json:"apiKey"`
-		Env      map[string]string `json:"env"`
-		Models   json.RawMessage   `json:"models"`
-	}
-	if err := json.Unmarshal([]byte(row.SettingsJSON), &raw); err != nil {
-		return nil, fmt.Errorf("invalid cc-switch provider configuration")
-	}
-	endpoint := raw.BaseURL
-	if endpoint == "" {
-		endpoint = raw.Endpoint
-	}
-	if strings.TrimSpace(endpoint) == "" {
+	settings, ok := parseWaveAISettings(row.AppType, row.SettingsJSON)
+	if !ok {
 		return nil, fmt.Errorf("cc-switch provider has no endpoint")
 	}
-	models := extractModelIDs(raw.Models)
-	if raw.Model != "" {
-		models = append([]string{raw.Model}, models...)
-	}
-	if raw.APIKey == "" {
-		for _, key := range []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "API_KEY"} {
-			if value := strings.TrimSpace(raw.Env[key]); value != "" {
-				raw.APIKey = value
-				break
-			}
-		}
-	}
-	return &WaveAIImportData{Vendor: WaveAIVendor{ID: row.ID, Name: row.Name, AppType: row.AppType, Category: row.Category, Endpoint: endpoint, APIType: raw.APIType, Models: uniqueStrings(models), DefaultModel: raw.Model, IsCurrent: row.IsCurrent.Valid && row.IsCurrent.Bool}, Token: strings.TrimSpace(raw.APIKey)}, nil
+	return &WaveAIImportData{
+		Vendor: WaveAIVendor{
+			ID:           row.ID,
+			Name:         row.Name,
+			AppType:      row.AppType,
+			Category:     row.Category.String,
+			Endpoint:     settings.Endpoint,
+			APIType:      settings.APIType,
+			Models:       settings.Models,
+			DefaultModel: settings.DefaultModel,
+			IsCurrent:    row.IsCurrent.Valid && row.IsCurrent.Bool,
+		},
+		Token: settings.APIKey,
+	}, nil
 }

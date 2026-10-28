@@ -20,6 +20,7 @@ import (
 type CcSwitchService struct{}
 type ImportWaveAIRequest struct {
 	VendorID string `json:"vendorId"`
+	AppType  string `json:"appType,omitempty"`
 	Model    string `json:"model,omitempty"`
 }
 type ImportWaveAIResponse struct {
@@ -35,7 +36,7 @@ func (s *CcSwitchService) ImportWaveAI(ctx context.Context, req *ImportWaveAIReq
 	if req == nil || strings.TrimSpace(req.VendorID) == "" {
 		return nil, fmt.Errorf("vendorId is required")
 	}
-	data, err := ccswitch.GetWaveAIImportData(ctx, strings.TrimSpace(req.VendorID))
+	data, err := ccswitch.GetWaveAIImportData(ctx, strings.TrimSpace(req.VendorID), strings.TrimSpace(req.AppType))
 	if err != nil {
 		return nil, err
 	}
@@ -49,8 +50,10 @@ func (s *CcSwitchService) ImportWaveAI(ctx context.Context, req *ImportWaveAIReq
 	if model == "" {
 		return nil, fmt.Errorf("provider has no model")
 	}
-	key := "ccswitch@" + sanitize(data.Vendor.ID) + "@" + sanitize(model)
-	if key == "ccswitch@@" {
+	// Mode key includes the app type so providers that share an id across app
+	// types (e.g. "deepseek" in both hermes and pi) do not collide.
+	key := "ccswitch@" + sanitize(data.Vendor.AppType) + "@" + sanitize(data.Vendor.ID) + "@" + sanitize(model)
+	if key == "ccswitch@@@" {
 		return nil, fmt.Errorf("invalid provider id")
 	}
 	secretName := ""

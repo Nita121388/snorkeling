@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 )
 
@@ -270,4 +272,121 @@ func TestMaterializePiConfigDirRejectsUnsafeVendorIDs(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatalf("invalid IDs created data: %#v", entries)
 	}
+}
+
+// withTestCcSwitchDB writes a cc-switch SQLite DB (mirroring the real schema) under
+// a temp HOME dir and returns that dir. DBPath() resolves ~/.cc-switch/cc-switch.db
+// against $HOME (via wavebase.ExpandHomeDir → os.UserHomeDir), so overriding HOME
+// in the test keeps the production API untouched.
+func withTestCcSwitchDB(t *testing.T, rows []struct {
+	ID, AppType, Name, Settings string
+}) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dbPath := filepath.Join(home, ".cc-switch", "cc-switch.db")
+	writeTestFile(t, dbPath, nil)
+	if err := os.WriteFile(dbPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Use a writable handle for schema + fixture setup (openReadOnly is mode=ro).
+	db, err := sqlx.Open("sqlite3", "file:"+dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.PingContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(context.Background(), `CREATE TABLE providers (
+		id TEXT NOT NULL, app_type TEXT NOT NULL, name TEXT NOT NULL,
+		settings_config TEXT NOT NULL, category TEXT, is_current BOOLEAN NOT NULL DEFAULT 0,
+		PRIMARY KEY (id, app_type))`); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if _, err := db.ExecContext(context.Background(),
+			`INSERT INTO providers (id, app_type, name, settings_config, category, is_current) VALUES (?,?,?,?,?,0)`,
+			row.ID, row.AppType, row.Name, row.Settings, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return home
+}
+
+func TestListWaveAIVendorsFiltersEligibleAppTypes(t *testing.T) {
+	withTestCcSwitchDB(t, []struct {
+		ID, AppType, Name, Settings string
+	}{
+		{"hermes-glm", "hermes", "GLM", `{"name":"glm","base_url":"https://api.supxh.xin","api_key":"sk-hermes","api_mode":"anthropic_messages","models":[{"id":"glm-5.2","name":"glm-5.2"}]}`},
+		{"pi-deepseek", "pi", "deepseek", `{"baseUrl":"https://api.inferaiapi.com/v1","api":"openai-completions","apiKey":"sk-pi","models":[{"id":"deepseek-v4-pro","name":"deepseek-v4-pro"}]}`},
+		{"mycodex", "codex", "My Codex", `{"auth":{"OPENAI_API_KEY":"sk-x"},"config":"base_url = \"https://x/v1\""}`},
+		{"glm", "claude", "GLM", `{"env":{"ANTHROPIC_BASE_URL":"https://x"}}`},
+	})
+	list, err := ListWaveAIVendors(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !list.Detected {
+		t.Fatal("expected Detected=true when DB exists")
+	}
+	if len(list.Vendors) != 2 {
+		t.Fatalf("expected 2 eligible vendors (pi+hermes), got %d: %#v", len(list.Vendors), list.Vendors)
+	}
+	byID := map[string]WaveAIVendor{}
+	for _, v := range list.Vendors {
+		byID[v.ID+"@"+v.AppType] = v
+	}
+	// hermes (snake_case base_url/api_key/api_mode) must be parsed.
+	h := byID["hermes-glm@hermes"]
+	if h.Endpoint != "https://api.supxh.xin" || h.APIType != "anthropic-messages" {
+		t.Fatalf("hermes parse wrong: %#v", h)
+	}
+	if len(h.Models) != 1 || h.Models[0] != "glm-5.2" {
+		t.Fatalf("hermes models wrong: %#v", h.Models)
+	}
+	// pi (camelCase) must be parsed, and openai-completions normalizes to openai-chat.
+	p := byID["pi-deepseek@pi"]
+	if p.Endpoint != "https://api.inferaiapi.com/v1" || p.APIType != "openai-chat" {
+		t.Fatalf("pi parse wrong: %#v", p)
+	}
+}
+
+func TestGetWaveAIImportDataDisambiguatesByAppType(t *testing.T) {
+	withTestCcSwitchDB(t, []struct {
+		ID, AppType, Name, Settings string
+	}{
+		{"deepseek", "hermes", "mydeepseek", `{"name":"mydeepseek","base_url":"https://api.inferaiapi.com/v1","api_key":"sk-hermes-ds","api_mode":"openai-completions","models":[{"id":"deepseek-v4-pro","name":"deepseek-v4-pro"}]}`},
+		{"deepseek", "pi", "deepseek", `{"baseUrl":"https://api.inferaiapi.com/v1","api":"openai-completions","apiKey":"sk-pi-ds","models":[{"id":"deepseek-v4-flash","name":"deepseek-v4-flash"}]}`},
+	})
+	// Without appType, the pi row wins (ORDER BY name is stable, but both match
+	// the IN clause; the parser must return *one* of them deterministically). We
+	// assert the disambiguated lookups instead.
+	hermes, err := GetWaveAIImportData(context.Background(), "deepseek", "hermes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hermes.Token != "sk-hermes-ds" || !contains(hermes.Vendor.Models, "deepseek-v4-pro") {
+		t.Fatalf("hermes lookup wrong: %#v", hermes)
+	}
+	pi, err := GetWaveAIImportData(context.Background(), "deepseek", "pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pi.Token != "sk-pi-ds" || !contains(pi.Vendor.Models, "deepseek-v4-flash") {
+		t.Fatalf("pi lookup wrong: %#v", pi)
+	}
+	// Unknown appType variant must not match.
+	if _, err := GetWaveAIImportData(context.Background(), "deepseek", "codex"); err == nil {
+		t.Fatal("expected codex appType to not match the deepseek providers")
+	}
+}
+
+func contains(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
