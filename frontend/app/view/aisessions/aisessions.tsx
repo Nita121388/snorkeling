@@ -17,6 +17,7 @@ import { globalStore } from "@/store/jotaiStore";
 import { isDragMovement, keysUnderRect, rectToCss, type Rect } from "@/util/selectionrect";
 import { cn, fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
+import * as React from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
@@ -60,6 +61,8 @@ import { mergeSessionTimeline } from "./session-timeline-sync";
 import { collectParentKeys, collectParentsOfMatches } from "./session-tree";
 import { SortMenu } from "./sort-menu";
 import { defaultChatSource } from "./sources";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
 import type {
     AttachMode,
     DateRangeFilter,
@@ -143,7 +146,30 @@ export class AiSessionsViewModel implements ViewModel {
     service: AISessionsServiceType;
     blockAtom: jotai.Atom<Block>;
     viewType = "aisessions";
-    viewIcon = jotai.atom("comments");
+    viewIcon = jotai.atom((get) => {
+        const detail = get(this.detailAtom);
+        const source = detail?.summary?.source;
+        if (typeof source === "string" && source !== "") {
+            const personas = get(agentPersonaAtom) ?? {};
+            const spec = getAgentIcon(source, { personas });
+            if (spec != null) {
+                if (spec.kind === "emoji") {
+                    return {
+                        elemtype: "iconbutton",
+                        icon: React.createElement("span", { className: "agent-emoji-icon" }, spec.emoji),
+                        className: "agent-brand-icon",
+                    } as IconButtonDecl;
+                }
+                return {
+                    elemtype: "iconbutton",
+                    icon: spec.icon,
+                    iconColor: spec.iconColor,
+                    className: "agent-brand-icon",
+                } as IconButtonDecl;
+            }
+        }
+        return "comments";
+    });
     // 头栏不再显示视图名文字（AI Chat / AI Sessions），仅保留图标
     viewName = jotai.atom("");
     hideViewName = jotai.atom(true);
@@ -1672,7 +1698,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const tagFilterActive = normalizedTagFilters.length > 0;
     const tagPresenceActive = tagPresence !== DefaultTagPresence;
     const markedActive = markedFilter !== "all";
-    const dateActive = dateRange.preset !== "all";
+    const dateActive = dateRange.preset !== DefaultDateRange.preset;
     const pathActive = normalizedPathSelections.length > 0;
     const pathExcludeActive = normalizedPathExcludes.length > 0;
     const excludeTagsActive = normalizedExcludeTags.length > 0;
@@ -2331,11 +2357,15 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     <div className="flex-1" />
                                     <button
                                         type="button"
-                                        title="Filters"
+                                        title={
+                                            activeFilterCount > 0 ? `Filters (${activeFilterCount} active)` : "Filters"
+                                        }
                                         aria-label="Filters"
+                                        aria-pressed={filtersOpen}
                                         onClick={() => setFiltersOpen((current) => !current)}
                                         className={cn(
-                                            "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer",
+                                            "flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors cursor-pointer",
+                                            activeFilterCount > 0 ? "px-2" : "w-7",
                                             filtersOpen
                                                 ? "border border-border/70 bg-background text-primary shadow-sm ring-1 ring-accent/40"
                                                 : "border border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
@@ -2343,12 +2373,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     >
                                         <i className="fa-sharp fa-solid fa-sliders text-[11px]" />
                                         {activeFilterCount > 0 ? (
-                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black">
+                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black tabular-nums">
                                                 {activeFilterCount}
                                             </span>
-                                        ) : (
-                                            <span>Filters</span>
-                                        )}
+                                        ) : null}
                                     </button>
                                     <FilterPresetMenu
                                         presets={filterPresets}

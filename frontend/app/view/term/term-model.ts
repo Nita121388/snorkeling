@@ -56,7 +56,9 @@ import { basename, boundNumber, fireAndForget, stringToBase64 } from "@/util/uti
 import * as jotai from "jotai";
 import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
-import { getAgentLogoByProvider } from "./agent-logo";
+import { getAgentIcon } from "./agent-logo";
+import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import {
@@ -183,13 +185,27 @@ export class TermViewModel implements ViewModel {
                 const commandProvider = resolveAgentSessionId(blockMeta ?? {}).provider;
                 const provider = normalizeAgentProvider(explicitProvider || commandProvider || agentStatus?.provider);
                 if (provider !== "agent") {
-                    const logoInfo = getAgentLogoByProvider(provider);
-                    if (logoInfo != null) {
+                    const personas = get(agentPersonaAtom) ?? {};
+                    const iconSpec = getAgentIcon(provider, { meta: blockMeta, personas });
+                    if (iconSpec != null) {
+                        const openPicker = (e: React.MouseEvent<any>) =>
+                            openAgentEmojiPicker(this.blockId, provider, e.currentTarget.getBoundingClientRect());
+                        if (iconSpec.kind === "emoji") {
+                            return {
+                                elemtype: "iconbutton",
+                                icon: React.createElement("span", { className: "agent-emoji-icon" }, iconSpec.emoji),
+                                className: "agent-brand-icon",
+                                title: "点击设置 emoji 人格",
+                                click: openPicker,
+                            } as IconButtonDecl;
+                        }
                         return {
                             elemtype: "iconbutton",
-                            icon: logoInfo.icon,
-                            iconColor: logoInfo.iconColor,
+                            icon: iconSpec.icon,
+                            iconColor: iconSpec.iconColor,
                             className: "agent-brand-icon",
+                            title: "点击设置 emoji 人格",
+                            click: openPicker,
                         } as IconButtonDecl;
                     }
                 }
