@@ -207,7 +207,10 @@
                     min-width: 17px;
                     align-items: center;
                     gap: 8px;
-                    overflow-x: hidden;
+                    // Both axes hidden: with only `overflow-x: hidden`, the other axis
+                    // computes to `auto` and any 1–2px vertical bleed (emoji font
+                    // metrics) spawns a scrollbar thumb in the icon slot.
+                    overflow: hidden;
 
                     .block-frame-view-icon {
                         font-size: var(--header-icon-size);

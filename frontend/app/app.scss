@@ -119,6 +119,10 @@ a {
 // ── Agent emoji persona (two-level: block meta → provider persona → logo) ──
 // Fixed 13px box: inline-tab marquee/collapse and aisessions virtual rows depend
 // on a stable icon width, so never let the emoji size the box.
+// line-height must match the box height: the emoji font's default line box is
+// ~15px, which overflowed the 13px box and made the parent's `overflow-x: hidden`
+// compute `overflow-y: auto`, painting a stray 4px scrollbar thumb right of the
+// emoji. overflow:hidden clips that 2px bleed (layout overflow) without a scrollbar.
 .agent-emoji-icon {
     display: inline-flex;
     align-items: center;
@@ -126,7 +130,8 @@ a {
     width: 13px;
     min-width: 13px;
     height: 13px;
-    line-height: 1;
+    line-height: 13px;
+    overflow: hidden;
     font-size: 13px;
     font-family:
         "Apple Color Emoji",
@@ -141,6 +146,7 @@ a {
     width: 12px;
     min-width: 12px;
     height: 12px;
+    line-height: 12px;
     font-size: 12px;
 }
 
