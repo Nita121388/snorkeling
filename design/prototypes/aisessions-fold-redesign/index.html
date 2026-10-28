@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AISessions 折叠重设计原型 · Tool Fold / Agent Fold</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    />
+</head>
+<body>
+    <div class="page">
+        <div class="page-head">
+            <h1>会话详情 · 折叠重设计</h1>
+            <p>
+                当前详情里两类聚合元素的可见度都不够：连续工具合并成「工具 ×N」后只是一条 hover 才显箭头的小字；
+                子代理调用则直接复用普通工具行，没有身份区分，匹配不上时还会退化消失。本原型给出两种
+                <b>明显、可扫读、可一键展开</b>的折叠卡方案。
+            </p>
+            <div class="badge-row">
+                <span class="chip chip-accent"><i class="fa-solid fa-wrench"></i> 工具折叠卡</span>
+                <span class="chip chip-agent"><i class="fa-solid fa-robot"></i> 子代理折叠卡</span>
+                <span class="chip chip-muted">状态：▲ 设计活跃（未实现）</span>
+            </div>
+        </div>
+
+        <!-- ============ 第一章：工具折叠 ============ -->
+        <section class="chapter">
+            <h2 class="chapter-title"><span class="num">A</span> 工具数量折叠 → 工具折叠卡</h2>
+            <p class="chapter-desc">
+                把「连续 N 个工具调用」从一行淡文字升级成带左 rail、计数徽标、始终可见 chevron 的卡片。
+                折叠态即可扫读到「做了几件事、各是什么」，展开态逐条可点。
+            </p>
+
+            <div class="note-grid">
+                <div class="note now">
+                    <h4>现状（复刻）</h4>
+                    <ul>
+                        <li>纯文字行，chevron 仅 hover 出现</li>
+                        <li>无计数徽标，N 混在自然语言里</li>
+                        <li>折叠 / 展开无层级缩进</li>
+                        <li>diff 统计（+N/-M）弱存在感</li>
+                    </ul>
+                </div>
+                <div class="note why">
+                    <h4>提议改进</h4>
+                    <ul>
+                        <li><b>左 rail 色条</b>一眼区分「工具块」</li>
+                        <li><b>计数徽标</b> N 独立成视觉锚点</li>
+                        <li><b>始终可见 chevron</b> + 右侧「展开 / 折叠」hint</li>
+                        <li>展开用 grid-rows 平滑展开，单条可 hover</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="demo-label">现状</div>
+            <div class="stage now">
+                <!-- 复刻 ToolGroup 折叠态 -->
+                <div class="legacy-tool-row" title="折叠态，hover 才出箭头">
+                    <i class="fa-solid fa-chevron-right chev"></i>
+                    <span>执行命令 ×3，修改 main.tsx、app.tsx</span>
+                    <span class="diff"><span class="add">+42</span> <span class="del">-8</span></span>
+                </div>
+                <div style="height:6px"></div>
+                <div class="legacy-tool-row">
+                    <i class="fa-solid fa-chevron-right chev"></i>
+                    <span>读取文件 ×5</span>
+                </div>
+            </div>
+
+            <div class="demo-label proposed">提议 · 工具折叠卡</div>
+            <div class="stage" id="tool-stage">
+                <!-- 折叠态（collapsed） -->
+                <div class="fold-card tool" data-fold>
+                    <div class="fold-head" role="button" tabindex="0">
+                        <i class="fa-solid fa-chevron-right fold-chev"></i>
+                        <span class="count-badge">3</span>
+                        <i class="fa-solid fa-wrench fold-icon tool"></i>
+                        <span class="fold-title">工具</span>
+                        <span class="fold-sub">执行命令 ×3 · 改 main.tsx、app.tsx、router.ts</span>
+                        <span class="fold-diff"><span class="add">+42</span> <span class="del">-8</span></span>
+                        <span class="fold-hint"><span class="kbd">↵</span> 展开</span>
+                    </div>
+                    <div class="fold-body">
+                        <div class="fold-body-inner">
+                            <div class="fold-body-pad">
+                                <div class="mini-tool"><span class="mt-icon"><i class="fa-solid fa-terminal"></i></span><span class="mt-name">exec</span><span class="mt-preview">npm run build</span><span class="mt-dur">1.2s</span></div>
+                                <div class="mini-tool"><span class="mt-icon"><i class="fa-solid fa-pen"></i></span><span class="mt-name">edit</span><span class="mt-preview">main.tsx</span><span class="mt-dur">0.4s</span></div>
+                                <div class="mini-tool"><span class="mt-icon"><i class="fa-solid fa-pen"></i></span><span class="mt-name">edit</span><span class="mt-preview">app.tsx</span><span class="mt-dur">0.6s</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 运行中（running） -->
+                <div class="fold-card tool" data-fold>
+                    <div class="fold-head" role="button" tabindex="0">
+                        <i class="fa-solid fa-chevron-right fold-chev"></i>
+                        <span class="count-badge">5</span>
+                        <i class="fa-solid fa-wrench fold-icon tool"></i>
+                        <span class="fold-title">工具</span>
+                        <span class="fold-sub">读取文件 ×5 · 正在运行</span>
+                        <span class="status-dot working"></span>
+                        <span class="status-text">运行中…</span>
+                    </div>
+                    <div class="fold-body">
+                        <div class="fold-body-inner">
+                            <div class="fold-body-pad">
+                                <div class="mini-tool"><span class="mt-icon"><i class="fa-solid fa-file"></i></span><span class="mt-name">read</span><span class="mt-preview">session-detail.tsx</span><span class="mt-dur">…</span></div>
+                                <div class="mini-tool"><span class="mt-icon"><i class="fa-solid fa-file"></i></span><span class="mt-name">read</span><span class="mt-preview">tool-group.tsx</span><span class="mt-dur">…</span></div>
+                                <div class="mini-tool"><span class="mt-icon"><i class="fa-solid fa-file"></i></span><span class="mt-name">read</span><span class="mt-preview">subagent-card.tsx</span><span class="mt-dur">…</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="chapter-desc" style="margin-top:10px;margin-bottom:0">
+                ↑ 点击任意折叠卡头部可展开 / 折叠。计数徽标始终显示本组工具数量；右下角 hint 提示操作。
+            </p>
+        </section>
+
+        <!-- ============ 第二章：子代理折叠 ============ -->
+        <section class="chapter">
+            <h2 class="chapter-title"><span class="num">B</span> 子代理调用 → 子代理折叠卡</h2>
+            <p class="chapter-desc">
+                子代理用<b>紫色身份色</b>与工具绿彻底区分，头部带 agent 头像 + 名称 + 任务摘要 + 状态点 +
+                独立打开入口。展开后走左侧紫色导轨，内联渲染子会话内容，孙代理再嵌套一层。
+            </p>
+
+            <div class="note-grid">
+                <div class="note now">
+                    <h4>现状（复刻）</h4>
+                    <ul>
+                        <li>复用 <code>ToolCallRow</code>，长得和工具一样</li>
+                        <li>名称写死 <code>subagent</code>，无 agent 身份</li>
+                        <li>匹配失败直接降级为普通工具行</li>
+                        <li>「它派了个子代理」毫无存在感</li>
+                    </ul>
+                </div>
+                <div class="note why">
+                    <h4>提议改进</h4>
+                    <ul>
+                        <li><b>紫色左 rail + 头像</b>强身份区分</li>
+                        <li>头部直接显示 <b>agent 名 · 任务</b></li>
+                        <li>状态点：完成 / 工作中 / 失败</li>
+                        <li>内置「打开子会话」按钮</li>
+                        <li>ambiguous 不改写，列出候选</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="demo-label">现状</div>
+            <div class="stage now">
+                <!-- 复刻：subagent 复用 ToolCallRow -->
+                <div class="legacy-subagent-row">
+                    <i class="fa-solid fa-chevron-right chev"></i>
+                    <span class="dot"></span>
+                    <i class="fa-solid fa-robot" style="font-size:10px;color:var(--secondary-text)"></i>
+                    <span class="name">subagent</span>
+                    <span class="preview">orchestrator · 调研并汇总三份日志</span>
+                </div>
+            </div>
+
+            <div class="demo-label proposed">提议 · 子代理折叠卡</div>
+            <div class="stage" id="agent-stage">
+                <!-- 折叠态：完成 -->
+                <div class="fold-card agent" data-fold>
+                    <div class="fold-head" role="button" tabindex="0">
+                        <i class="fa-solid fa-chevron-right fold-chev"></i>
+                        <span class="agent-avatar"><i class="fa-solid fa-robot"></i></span>
+                        <span class="agent-name">orchestrator</span>
+                        <span class="agent-sep">·</span>
+                        <span class="agent-task">调研并汇总三份日志，输出结构化结论</span>
+                        <span class="status-dot done"></span>
+                        <span class="status-text">完成 · 12s</span>
+                        <button class="fold-open-btn" data-open-session><i class="fa-solid fa-arrow-up-right-from-square"></i> 打开</button>
+                    </div>
+                    <div class="fold-body">
+                        <div class="fold-body-inner">
+                            <div class="fold-body-pad agent-body">
+                                <div class="agent-rail">
+                                    <div class="child-msg"><span class="role">user</span>请汇总 build.log / test.log / deploy.log 的失败项</div>
+                                    <div class="child-msg assistant">已读取三份日志，共发现 7 处失败：build 阶段 3 处类型错误，test 阶段 2 处超时，deploy 阶段 2 处权限拒绝。</div>
+                                    <div class="child-msg assistant">结构化结论已写入 summary.md。</div>
+
+                                    <!-- 孙代理 -->
+                                    <div class="nested-agent fold-card agent open" data-fold style="margin-top:4px">
+                                        <div class="fold-head" role="button" tabindex="0">
+                                            <i class="fa-solid fa-chevron-right fold-chev"></i>
+                                            <span class="agent-avatar" style="width:18px;height:18px;font-size:10px"><i class="fa-solid fa-magnifying-glass"></i></span>
+                                            <span class="agent-name" style="font-size:11.5px">log-scanner</span>
+                                            <span class="agent-sep">·</span>
+                                            <span class="agent-task">逐行扫描 deploy.log</span>
+                                            <span class="status-dot done"></span>
+                                            <span class="status-text">完成</span>
+                                        </div>
+                                        <div class="fold-body">
+                                            <div class="fold-body-inner">
+                                                <div class="fold-body-pad agent-body" style="padding-left:24px">
+                                                    <div class="agent-rail">
+                                                        <div class="child-msg"><span class="role">user</span>扫描 deploy.log 的权限拒绝</div>
+                                                        <div class="child-msg assistant">命中 2 处：/var/run 写入被拒绝、systemctl reload 需 root。</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 折叠态：工作中 -->
+                <div class="fold-card agent" data-fold>
+                    <div class="fold-head" role="button" tabindex="0">
+                        <i class="fa-solid fa-chevron-right fold-chev"></i>
+                        <span class="agent-avatar"><i class="fa-solid fa-code"></i></span>
+                        <span class="agent-name">frontend-coder</span>
+                        <span class="agent-sep">·</span>
+                        <span class="agent-task">实现购物车结算页组件</span>
+                        <span class="status-dot working"></span>
+                        <span class="status-text" data-timer>运行中…</span>
+                    </div>
+                    <div class="fold-body">
+                        <div class="fold-body-inner">
+                            <div class="fold-body-pad agent-body">
+                                <div class="agent-rail">
+                                    <div class="child-msg"><span class="role">user</span>用 React + Tailwind 写结算页，含价格汇总与下单按钮</div>
+                                    <div class="child-msg assistant">正在创建 CheckoutPage.tsx …</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 折叠态：ambiguous（多候选，不猜测） -->
+                <div class="fold-card agent" data-fold>
+                    <div class="fold-head" role="button" tabindex="0">
+                        <i class="fa-solid fa-chevron-right fold-chev"></i>
+                        <span class="agent-avatar"><i class="fa-solid fa-robot"></i></span>
+                        <span class="agent-name">reviewer</span>
+                        <span class="agent-sep">·</span>
+                        <span class="agent-task">审查本次改动</span>
+                        <span class="status-dot done"></span>
+                        <span class="status-text">完成 · 匹配 2 个候选</span>
+                        <button class="fold-open-btn" data-open-session><i class="fa-solid fa-arrow-up-right-from-square"></i> 打开</button>
+                    </div>
+                    <div class="fold-body">
+                        <div class="fold-body-inner">
+                            <div class="fold-body-pad agent-body">
+                                <div class="cand-box">
+                                    <div class="cand-hint"><i class="fa-solid fa-triangle-exclamation"></i> 匹配到多个候选，请选择正确的子会话：</div>
+                                    <div class="cand"><i class="fa-solid fa-arrow-up-right-from-square arrow"></i> reviewer · 审查 diff A <span style="margin-left:auto;color:var(--muted-text)">2.1s</span></div>
+                                    <div class="cand"><i class="fa-solid fa-arrow-up-right-from-square arrow"></i> reviewer · 审查 diff B <span style="margin-left:auto;color:var(--muted-text)">1.8s</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="chapter-desc" style="margin-top:10px;margin-bottom:0">
+                ↑ 紫色为子代理身份色（与工具绿彻底区分）。「打开」按钮直接跳转到独立子会话；
+                多候选时不猜测，列出候选供选择；深度上限 3 层，超出只显示摘要。
+            </p>
+        </section>
+
+        <!-- ============ 第三章：同屏对照 ============ -->
+        <section class="chapter">
+            <h2 class="chapter-title"><span class="num">C</span> 同屏对照 · 一段真实时间线</h2>
+            <p class="chapter-desc">
+                两种折叠卡在同一时间线里并排出现，验证视觉层级与扫读清晰度。
+            </p>
+            <div class="demo-label proposed">提议 · 混合时间线</div>
+            <div class="stage" id="mix-stage">
+                <!-- 一条用户消息 -->
+                <div style="font-size:13px;color:var(--main-text);padding:8px 2px 4px">帮我重构 auth 模块，先调研再改代码。</div>
+
+                <!-- 调研子代理 -->
+                <div class="fold-card agent" data-fold>
+                    <div class="fold-head" role="button" tabindex="0">
+                        <i class="fa-solid fa-chevron-right fold-chev"></i>
+                        <span class="agent-avatar"><i class="fa-solid fa-magnifying-glass"></i></span>
+                        <span class="agent-name">researcher</span>
+                        <span class="agent-sep">·</span>
+                        <span class="agent-task">梳理 auth 模块现有调用链</span>
+                        <span class="status-dot done"></span>
+                        <span class="status-text">完成 · 8s</span>
+                        <button class="fold-open-btn" data-open-session><i class="fa-solid fa-arrow-up-right-from-square"></i> 打开</button>
+                    </div>
+                </div>
+
+                <!-- 工具组 -->
+                <div class="fold-card tool" data-fold>
+                    <div class="fold-head" role="button" tabindex="0">
+                        <i class="fa-solid fa-chevron-right fold-chev"></i>
+                        <span class="count-badge">4</span>
+                        <i class="fa-solid fa-wrench fold-icon tool"></i>
+                        <span class="fold-title">工具</span>
+                        <span class="fold-sub">编辑 ×4 · auth.ts、session.ts、middleware.ts</span>
+                        <span class="fold-diff"><span class="add">+88</span> <span class="del">-21</span></span>
+                        <span class="fold-hint"><span class="kbd">↵</span> 展开</span>
+                    </div>
+                </div>
+
+                <!-- 编码子代理 -->
+                <div class="fold-card agent" data-fold>
+                    <div class="fold-head" role="button" tabindex="0">
+                        <i class="fa-solid fa-chevron-right fold-chev"></i>
+                        <span class="agent-avatar"><i class="fa-solid fa-code"></i></span>
+                        <span class="agent-name">refactor-coder</span>
+                        <span class="agent-sep">·</span>
+                        <span class="agent-task">按调研结论重写 session 中间件</span>
+                        <span class="status-dot working"></span>
+                        <span class="status-text" data-timer>运行中…</span>
+                        <button class="fold-open-btn" data-open-session><i class="fa-solid fa-arrow-up-right-from-square"></i> 打开</button>
+                    </div>
+                </div>
+
+                <div style="font-size:13px;color:var(--secondary-text);padding:10px 2px 2px">— 时间线继续 —</div>
+            </div>
+        </section>
+
+        <div class="page-foot">
+            原型仅用于设计评审，所有交互（展开 / 折叠 / 计时）由 <code>script.js</code> 模拟，无真实数据。
+            落地时两类卡片分别复用 / 升级 <code>ToolGroup</code> 与 <code>SubagentCard</code>，颜色 token 取自
+            <code>theme.scss</code>（accent=绿 / agent=紫 #a855f7 / working=蓝）。
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,700 @@
+/* ============================================================
+   AISessions 折叠重设计原型 —— 样式
+   色值取自 frontend/app/theme.scss（暗色主题真实 token）
+   ============================================================ */
+
+:root {
+    /* 主题 token（与 app 对齐） */
+    --main-bg: rgb(34, 34, 34);
+    --panel-bg: #1b1c1b;
+    --main-text: #f7f7f7;
+    --secondary-text: rgb(195, 200, 194);
+    --muted-text: rgba(195, 200, 194, 0.62);
+    --border: rgba(255, 255, 255, 0.16);
+    --border-strong: rgba(255, 255, 255, 0.28);
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --surface: rgba(255, 255, 255, 0.06);
+    --surface-strong: rgba(255, 255, 255, 0.09);
+    --hover: rgba(255, 255, 255, 0.1);
+
+    --accent: rgb(88, 193, 66);
+    --accent-300: rgb(110, 231, 133);
+    --success: rgb(78, 154, 6);
+    --error: rgb(229, 77, 46);
+    --warning: rgb(224, 185, 86);
+    --working: #3b82f6;
+    --agent: #a855f7; /* 子代理身份色，用紫色与工具绿区分 */
+
+    --mono: "JetBrains Mono", "Cascadia Code", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: "Inter", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: var(--main-bg);
+    color: var(--main-text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+.page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+}
+
+/* ---------- 页头 ---------- */
+.page-head {
+    margin-bottom: 36px;
+}
+.page-head h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+}
+.page-head p {
+    margin: 0;
+    color: var(--muted-text);
+    font-size: 13px;
+    max-width: 640px;
+}
+.page-head .badge-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+.chip-accent {
+    color: var(--accent-300);
+    background: rgba(88, 193, 66, 0.14);
+    border-color: rgba(88, 193, 66, 0.32);
+}
+.chip-agent {
+    color: #d8b4fe;
+    background: rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.4);
+}
+.chip-muted {
+    color: var(--secondary-text);
+    background: var(--surface);
+    border-color: var(--border);
+}
+
+/* ---------- 章节 ---------- */
+.chapter {
+    margin-bottom: 48px;
+}
+.chapter-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 700;
+}
+.chapter-title .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--surface-strong);
+    border: 1px solid var(--border);
+    color: var(--secondary-text);
+}
+.chapter-desc {
+    margin: 0 0 18px 32px;
+    color: var(--muted-text);
+    font-size: 12.5px;
+}
+
+/* 说明卡（现状 vs 提议） */
+.note-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+@media (max-width: 680px) {
+    .note-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.note {
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+}
+.note h4 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-text);
+}
+.note.now h4 {
+    color: rgba(229, 77, 46, 0.9);
+}
+.note.why h4 {
+    color: var(--accent-300);
+}
+.note ul {
+    margin: 0;
+    padding-left: 16px;
+    color: var(--secondary-text);
+}
+.note li {
+    margin: 2px 0;
+}
+
+/* 标签：现状 / 提议 */
+.demo-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted-text);
+    margin: 16px 0 8px;
+}
+.demo-label::before {
+    content: "";
+    width: 14px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--border-strong);
+}
+.demo-label.proposed {
+    color: var(--accent-300);
+}
+.demo-label.proposed::before {
+    background: var(--accent);
+}
+
+/* 演示画布 */
+.stage {
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+    padding: 18px 18px 22px;
+    position: relative;
+}
+.stage.now {
+    opacity: 0.92;
+}
+
+/* ============================================================
+   现状：工具汇总行（复刻 ToolGroup 折叠态）
+   ============================================================ */
+.legacy-tool-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    font-size: 11px;
+    color: var(--secondary-text);
+    cursor: pointer;
+    border-radius: 6px;
+    width: fit-content;
+}
+.legacy-tool-row:hover {
+    color: var(--main-text);
+}
+.legacy-tool-row .chev {
+    font-size: 8px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.legacy-tool-row:hover .chev {
+    opacity: 1;
+}
+.legacy-tool-row .diff .add {
+    color: var(--success);
+}
+.legacy-tool-row .diff .del {
+    color: var(--error);
+}
+
+/* 现状：subagent 复用普通工具行 */
+.legacy-subagent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    cursor: pointer;
+}
+.legacy-subagent-row:hover {
+    background: var(--hover);
+}
+.legacy-subagent-row .chev {
+    font-size: 9px;
+    color: var(--secondary-text);
+}
+.legacy-subagent-row .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(88, 193, 66, 0.7);
+}
+.legacy-subagent-row .name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--main-text);
+}
+.legacy-subagent-row .preview {
+    color: var(--secondary-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+}
+
+/* ============================================================
+   提议 A：工具折叠卡（Tool Fold Card）
+   ============================================================ */
+.fold-card {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+    overflow: hidden;
+    transition: border-color 0.18s var(--ease), background 0.18s var(--ease);
+    margin-bottom: 10px;
+}
+.fold-card:hover {
+    border-color: var(--border-strong);
+    background: var(--surface);
+}
+.fold-card.open {
+    background: var(--surface);
+    border-color: var(--border-strong);
+}
+
+/* 左 rail：类型标识条 */
+.fold-card {
+    position: relative;
+}
+.fold-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--border-strong);
+    transition: background 0.18s var(--ease);
+}
+.fold-card.tool::before {
+    background: linear-gradient(180deg, rgba(88, 193, 66, 0.9), rgba(88, 193, 66, 0.35));
+}
+.fold-card.tool.open::before {
+    background: var(--accent);
+}
+.fold-card.agent::before {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.9), rgba(168, 85, 247, 0.3));
+}
+.fold-card.agent.open::before {
+    background: var(--agent);
+}
+
+/* 头部：始终可见的 chevron + 徽标 + 标题 + 摘要 + 右侧 hint */
+.fold-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px 9px 14px;
+    cursor: pointer;
+    user-select: none;
+}
+.fold-head:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+.fold-chev {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--secondary-text);
+    transition: transform 0.22s var(--ease);
+}
+.fold-card.open .fold-chev {
+    transform: rotate(90deg);
+}
+
+/* 计数徽标 */
+.count-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-300);
+    background: rgba(88, 193, 66, 0.14);
+    border: 1px solid rgba(88, 193, 66, 0.3);
+}
+
+/* 类型图标 */
+.fold-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    font-size: 10px;
+}
+.fold-icon.tool {
+    color: var(--accent-300);
+    background: rgba(88, 193, 66, 0.12);
+}
+.fold-icon.agent {
+    color: #d8b4fe;
+    background: rgba(168, 85, 247, 0.16);
+}
+
+.fold-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--main-text);
+    flex-shrink: 0;
+}
+.fold-title.mono {
+    font-family: var(--mono);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+.fold-sub {
+    font-size: 11.5px;
+    color: var(--secondary-text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+.fold-diff {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+}
+.fold-diff .add {
+    color: var(--success);
+}
+.fold-diff .del {
+    color: var(--error);
+}
+
+/* 右侧 hint / 操作 */
+.fold-hint {
+    flex-shrink: 0;
+    font-size: 10.5px;
+    color: var(--muted-text);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.fold-hint .kbd {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--muted-text);
+    background: var(--surface-soft);
+}
+.fold-open-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--accent-300);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.fold-open-btn:hover {
+    background: rgba(88, 193, 66, 0.14);
+    border-color: rgba(88, 193, 66, 0.3);
+}
+
+/* 状态点 */
+.status-dot {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+.status-dot.done {
+    background: var(--success);
+}
+.status-dot.working {
+    background: var(--working);
+    box-shadow: 0 0 6px var(--working);
+    animation: pulse 1.4s infinite;
+}
+.status-dot.failed {
+    background: var(--error);
+    box-shadow: 0 0 6px var(--error);
+}
+.status-text {
+    flex-shrink: 0;
+    font-size: 10.5px;
+    color: var(--muted-text);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 展开体 */
+.fold-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.26s var(--ease);
+}
+.fold-card.open .fold-body {
+    grid-template-rows: 1fr;
+}
+.fold-body-inner {
+    overflow: hidden;
+}
+.fold-body-pad {
+    padding: 2px 12px 12px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* 展开后单条工具行 */
+.mini-tool {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 7px;
+    font-size: 11px;
+    transition: background 0.14s;
+}
+.mini-tool:hover {
+    background: var(--hover);
+}
+.mini-tool .mt-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-size: 9px;
+    color: var(--accent-300);
+    background: rgba(88, 193, 66, 0.1);
+}
+.mini-tool .mt-name {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--main-text);
+}
+.mini-tool .mt-preview {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--secondary-text);
+    font-size: 10.5px;
+}
+.mini-tool .mt-dur {
+    flex-shrink: 0;
+    font-size: 9.5px;
+    color: var(--muted-text);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   提议 B：子代理折叠卡（Agent Fold Card）
+   复用 .fold-card 基础，增加 agent 专属细节
+   ============================================================ */
+.agent-avatar {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    font-size: 12px;
+    background: rgba(168, 85, 247, 0.16);
+    border: 1px solid rgba(168, 85, 247, 0.32);
+}
+.agent-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #d8b4fe;
+    flex-shrink: 0;
+}
+.agent-task {
+    font-size: 11.5px;
+    color: var(--secondary-text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+.agent-sep {
+    color: var(--muted-text);
+    flex-shrink: 0;
+    font-size: 11px;
+}
+
+/* 子代理展开体：左侧缩进导轨（体现层级） */
+.agent-body {
+    padding: 4px 12px 12px 16px;
+}
+.agent-rail {
+    border-left: 2px solid rgba(168, 85, 247, 0.28);
+    padding-left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 子会话里的一条消息 */
+.child-msg {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--secondary-text);
+    padding: 2px 0;
+}
+.child-msg.assistant {
+    color: var(--main-text);
+}
+.child-msg .role {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-text);
+    margin-right: 6px;
+}
+
+/* 孙代理（更深一层） */
+.nested-agent {
+    border-radius: 8px;
+    border: 1px solid rgba(168, 85, 247, 0.26);
+    background: rgba(168, 85, 247, 0.06);
+    overflow: hidden;
+}
+.nested-agent .fold-head {
+    padding: 6px 10px;
+}
+
+/* ambiguous 候选列表 */
+.cand-box {
+    padding: 4px 0 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.cand-hint {
+    font-size: 10.5px;
+    color: var(--warning);
+    margin-bottom: 2px;
+}
+.cand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.14s;
+    color: var(--secondary-text);
+}
+.cand:hover {
+    background: var(--hover);
+    color: var(--main-text);
+}
+.cand .arrow {
+    color: var(--accent-300);
+    font-size: 10px;
+}
+
+/* 页脚 */
+.page-foot {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted-text);
+}
+.page-foot code {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent-300);
+    background: rgba(88, 193, 66, 0.1);
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+/* 动画 */
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}

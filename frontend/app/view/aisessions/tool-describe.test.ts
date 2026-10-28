@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { describeRun, describeToolGroupCompact } from "./tool-describe";
+import { describeRun, describeToolGroupCompact, describeToolGroupKind } from "./tool-describe";
 
 describe("describeRun", () => {
     it("maps the pi subagent dispatch tool to a readable label", () => {
@@ -26,5 +26,19 @@ describe("describeToolGroupCompact", () => {
 
     it("labels subagent dispatches consistently", () => {
         expect(describeToolGroupCompact(["subagent", "subagent"])).toBe("派发子任务 ×2");
+    });
+});
+
+describe("describeToolGroupKind", () => {
+    it("returns an empty string for an empty group", () => {
+        expect(describeToolGroupKind([])).toBe("");
+    });
+
+    it("returns the shared kind without a count", () => {
+        expect(describeToolGroupKind(["bash", "bash", "bash"])).toBe("执行命令");
+    });
+
+    it("falls back to 工具 for mixed kinds", () => {
+        expect(describeToolGroupKind(["bash", "read", "grep"])).toBe("工具");
     });
 });

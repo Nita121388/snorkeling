@@ -111,7 +111,7 @@ function toolIcon(name: string): string {
 }
 
 // ── 可展开详情容器：用 ResizeObserver 实测高度做过渡（Ref: Lyra ToolGroup） ──
-function AnimatedExpand({ open, children }: { open: boolean; children: ReactNode }) {
+export function AnimatedExpand({ open, children }: { open: boolean; children: ReactNode }) {
     const bodyRef = useRef<HTMLDivElement>(null);
     const [height, setHeight] = useState(0);
 

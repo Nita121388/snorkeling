@@ -4,7 +4,7 @@
 import type { AISessionsServiceType } from "@/app/store/services";
 import { cn } from "@/util/util";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { MessageCard, ToolCallRow } from "./session-message";
+import { AnimatedExpand, MessageCard } from "./session-message";
 import { SessionDetailSkeleton } from "./session-detail-skeleton";
 import { CancelledError, SubagentLoadQueue, isCancelled } from "./subagent-load-queue";
 
@@ -231,23 +231,83 @@ export const SubagentCard = memo(function SubagentCard({
         void loadChild(sessionKey);
     }, [loadChild, sessionKey]);
 
+    const toggle = useCallback(() => {
+        if (!expandable) return;
+        setExpanded((current) => {
+            const next = !current;
+            if (!next) cancelInFlight();
+            return next;
+        });
+    }, [expandable, cancelInFlight]);
+
+    const agentName = (match.call.agent ?? "").trim() || "subagent";
+    const taskText = (match.call.task ?? "").replace(/\s+/g, " ").trim();
+    const failed = subagentRowStatus(match) === "failed";
+
     return (
-        <ToolCallRow
-            name="subagent"
-            preview={subagentSummary(match)}
-            status={subagentRowStatus(match)}
-            expanded={expanded}
-            onToggle={() => {
-                if (expandable) {
-                    setExpanded((current) => {
-                        const next = !current;
-                        if (!next) cancelInFlight();
-                        return next;
-                    });
-                }
-            }}
+        <div
+            className={cn(
+                "my-1 min-w-0 overflow-hidden rounded-lg border border-border/60 border-l-2 bg-surface-soft transition-colors hover:bg-surface",
+                !expandable && "opacity-90"
+            )}
+            style={{ borderLeftColor: "var(--agent-stale-color)" }}
         >
-            <div className="ml-4 border-l border-border pl-3 pb-2">
+            <div
+                className="flex w-full items-center gap-2 px-2 py-1 text-left transition-colors hover:bg-hover"
+                role="button"
+                tabIndex={expandable ? 0 : -1}
+                onClick={toggle}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggle();
+                    }
+                }}
+            >
+                <i
+                    className={cn(
+                        "fa-sharp fa-solid shrink-0 text-[9px] text-secondary transition-transform duration-200",
+                        expanded ? "fa-chevron-down" : "fa-chevron-right"
+                    )}
+                />
+                <span
+                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px]"
+                    style={{
+                        color: "var(--agent-stale-color)",
+                        backgroundColor: "color-mix(in srgb, var(--agent-stale-color) 16%, transparent)",
+                    }}
+                >
+                    <i className="fa-sharp fa-solid fa-robot" />
+                </span>
+                <span className="shrink-0 text-[11px] font-semibold" style={{ color: "var(--agent-stale-color)" }}>
+                    {agentName}
+                </span>
+                {taskText !== "" ? (
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">{taskText}</span>
+                ) : (
+                    <span className="flex-1" />
+                )}
+                <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", failed ? "bg-error" : "bg-success")} />
+                {onOpenSession ? (
+                    <button
+                        type="button"
+                        className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-hover"
+                        style={{ color: "var(--agent-stale-color)" }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            openSession(match.sessionKey);
+                        }}
+                    >
+                        <i className="fa-sharp fa-solid fa-up-right-from-square text-[9px]" />
+                        打开
+                    </button>
+                ) : null}
+            </div>
+            <AnimatedExpand open={expanded}>
+                <div
+                    className="ml-2 border-l pl-3 pb-1"
+                    style={{ borderLeftColor: "color-mix(in srgb, var(--agent-stale-color) 35%, transparent)" }}
+                >
                 {match.status === "ambiguous" ? (
                     <div className="space-y-1 py-1">
                         <div className="text-[10px] text-secondary">匹配到多个候选，请选择正确的子会话：</div>
@@ -267,19 +327,7 @@ export const SubagentCard = memo(function SubagentCard({
 
                 {match.status === "matched" ? (
                     <div className="space-y-2 py-1">
-                        <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] text-secondary">子会话内容</span>
-                            {onOpenSession ? (
-                                <button
-                                    type="button"
-                                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-accent transition-colors hover:bg-hover cursor-pointer"
-                                    onClick={() => openSession(match.sessionKey)}
-                                >
-                                    <i className="fa-sharp fa-solid fa-up-right-from-square text-[9px]" />
-                                    打开子会话
-                                </button>
-                            ) : null}
-                        </div>
+                        <div className="text-[10px] text-secondary">子会话内容</div>
                         {state.loading ? (
                             // 骨架占位：让用户立刻看到"正在加载"的结构，而不是一行静止文字
                             <SessionDetailSkeleton rows={3} />
@@ -333,7 +381,8 @@ export const SubagentCard = memo(function SubagentCard({
                     </div>
                 ) : null}
             </div>
-        </ToolCallRow>
+            </AnimatedExpand>
+        </div>
     );
 });
 

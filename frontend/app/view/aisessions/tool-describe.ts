@@ -97,3 +97,14 @@ export function describeToolGroupCompact(toolNames: string[]): string {
     }
     return `工具 ×${count}`;
 }
+
+/**
+ * 折叠组标题用的「类别」标签（不含数量）：同类型返回类别名，混合返回「工具」。
+ *
+ * 数量由 UI 的计数徽标单独呈现，所以这里不再拼 ×N，避免同一行出现两个数字。
+ */
+export function describeToolGroupKind(toolNames: string[]): string {
+    if (toolNames.length === 0) return "";
+    const kinds = new Set(toolNames.map((name) => kindOf(name)));
+    return kinds.size === 1 ? [...kinds][0] : "工具";
+}

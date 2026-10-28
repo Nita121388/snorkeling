@@ -68,7 +68,7 @@ import {
     timelineItemKey,
 } from "./timeline-virtual";
 import { TitleSourceBadge } from "./title-source-badge";
-import { describeToolGroupCompact } from "./tool-describe";
+import { describeToolGroupKind } from "./tool-describe";
 import { ToolGroup } from "./tool-group";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
 import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
@@ -1626,7 +1626,7 @@ export function SessionDetailPane({
                 return (
                     <ToolGroup
                         toolNames={item.tools.map((tool) => tool.name)}
-                        summary={describeToolGroupCompact(item.tools.map((tool) => tool.name))}
+                        summary={describeToolGroupKind(item.tools.map((tool) => tool.name))}
                         running={running}
                     >
                         {item.tools.map((tool) => (
