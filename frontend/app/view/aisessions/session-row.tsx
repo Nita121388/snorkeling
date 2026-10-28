@@ -21,6 +21,8 @@ import {
     stripSessionTagHashes,
 } from "./session-tags";
 import { getChatSource } from "./sources";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
 import {
@@ -352,6 +354,9 @@ export function SessionRow({
                 ? "Save and collapse note and tags"
                 : "Edit note and tags";
 
+    const personaMap = useAgentPersonas();
+    const sourceIcon = getAgentIcon(session.source, { personas: personaMap });
+
     const saveNote = useCallback(async (): Promise<boolean> => {
         if (noteSaveStatus === "saving") return false;
         const parsed = extractSessionTagsFromNote(noteDraft);
@@ -581,7 +586,13 @@ export function SessionRow({
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-secondary tabular-nums">
                         <span className="inline-flex items-center gap-1">
-                            <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(session.source))} />
+                            {sourceIcon?.kind === "emoji" ? (
+                                <span className="agent-emoji-icon agent-emoji-icon--row" title={session.source}>
+                                    {sourceIcon.emoji}
+                                </span>
+                            ) : (
+                                <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(session.source))} />
+                            )}
                             {session.source}
                         </span>
                         {chatRunning ? (

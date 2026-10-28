@@ -37,6 +37,7 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { AppBackground } from "./app-bg";
 import { CommonTextComposeModal } from "./commontext/commontext-compose-modal";
 import { ClipboardFloatActions } from "./element/clipboard-float-actions";
+import { AgentEmojiPickerHost } from "./agent-persona/agent-emoji-picker-host";
 import { CenteredDiv } from "./element/quickelems";
 import {
     getCopyContextTextFromDom,
@@ -445,6 +446,7 @@ const AppInner = () => {
                 <Workspace />
             </DndProvider>
             <ClipboardFloatActions />
+            <AgentEmojiPickerHost />
             <CommonTextComposeModal />
         </div>
     );

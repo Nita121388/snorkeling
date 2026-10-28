@@ -21,7 +21,8 @@ import { makeORef } from "@/app/store/wos";
 import { useAgentStatusForCard } from "@/app/store/session-note-hook";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
-import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
@@ -112,7 +113,8 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
                 : statusState === "error"
                   ? "var(--error-color)"
                   : "var(--secondary-text-color)";
-    const agentLogo = getAgentLogoByProvider(rawProvider === "" ? "agent" : rawProvider);
+    const personas = useAgentPersonas();
+    const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, { meta, personas });
 
     return (
         <div
@@ -121,9 +123,15 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
         >
             <span
                 className="flex h-[14px] w-[14px] shrink-0 items-center justify-center"
-                style={agentLogo?.iconColor != null ? { color: agentLogo.iconColor } : undefined}
+                style={agentIcon?.kind === "logo" && agentIcon.iconColor != null ? { color: agentIcon.iconColor } : undefined}
             >
-                {agentLogo?.icon ?? <i className="fa-sharp fa-solid fa-microchip text-[10px]" />}
+                {agentIcon?.kind === "emoji" ? (
+                    <span className="agent-emoji-icon">{agentIcon.emoji}</span>
+                ) : agentIcon?.kind === "logo" ? (
+                    agentIcon.icon
+                ) : (
+                    <i className="fa-sharp fa-solid fa-microchip text-[10px]" />
+                )}
             </span>
             <span className="shrink-0 truncate text-primary">{provider}</span>
             <span className="min-w-0 flex-1 truncate text-muted">{model || "未指定"}</span>

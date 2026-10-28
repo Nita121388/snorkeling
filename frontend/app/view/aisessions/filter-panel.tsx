@@ -4,7 +4,7 @@
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { CHAT_SOURCES, getChatSource } from "./sources";
+import { CHAT_SOURCES, getChatSource, useChatSourceIcons } from "./sources";
 import type {
     AttachMode,
     DatePreset,
@@ -235,6 +235,7 @@ export function FilterPanel({
     // We visually dim the tag chip row while Untagged is active so the user
     // sees the constraint instead of clicking into a no-op.
     const tagSectionDim = tagPresence === "untagged";
+    const sourceIcons = useChatSourceIcons();
     const hasActive =
         markedActive ||
         dateActive ||
@@ -289,19 +290,22 @@ export function FilterPanel({
                         >
                             <span className="text-xs">All</span>
                         </SegButton>
-                        {CHAT_SOURCES.map((s) => (
-                            <SegButton
-                                key={s.id}
-                                active={source === s.id}
-                                title={s.label}
-                                onClick={() => setSource(s.id as SourceFilter)}
-                            >
-                                {s.icon ? (
-                                    <span className="flex items-center [&_svg]:h-3.5 [&_svg]:w-3.5">{s.icon}</span>
-                                ) : null}
-                                <span className="text-xs">{s.label}</span>
-                            </SegButton>
-                        ))}
+                        {CHAT_SOURCES.map((s) => {
+                            const icon = sourceIcons[s.id];
+                            return (
+                                <SegButton
+                                    key={s.id}
+                                    active={source === s.id}
+                                    title={s.label}
+                                    onClick={() => setSource(s.id as SourceFilter)}
+                                >
+                                    {icon != null ? (
+                                        <span className="flex items-center [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}</span>
+                                    ) : null}
+                                    <span className="text-xs">{s.label}</span>
+                                </SegButton>
+                            );
+                        })}
                     </SegTrack>
                     {sourceActive ? (
                         <span className="text-[11px] text-secondary">{getChatSource(source).label}</span>

@@ -22,8 +22,9 @@ import {
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
-import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { getObjectValue, makeORef } from "@/app/store/wos";
 import * as React from "react";
@@ -69,7 +70,8 @@ function TabAgentRow({ blockId }: { blockId: string }) {
     const meta = (block?.meta ?? {}) as Record<string, unknown>;
     const rawProvider = normalizeAgentProvider(meta.provider ?? meta["agent:provider"]);
     const provider = rawProvider === "" ? "Agent" : rawProvider;
-    const agentLogo = getAgentLogoByProvider(rawProvider === "" ? "agent" : rawProvider);
+    const personas = useAgentPersonas();
+    const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, { meta, personas });
 
     const state = status?.state ?? "unknown";
     const stateColor =
@@ -114,10 +116,17 @@ function TabAgentRow({ blockId }: { blockId: string }) {
                 })}
                 style={{ background: stateColor }}
             />
-            {agentLogo != null ? (
-                <span className="tab-card-agent-logo" style={agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined}>
-                    {agentLogo.icon}
-                </span>
+            {agentIcon != null ? (
+                agentIcon.kind === "emoji" ? (
+                    <span className="agent-emoji-icon tab-card-agent-logo">{agentIcon.emoji}</span>
+                ) : (
+                    <span
+                        className="tab-card-agent-logo"
+                        style={agentIcon.iconColor != null ? { color: agentIcon.iconColor } : undefined}
+                    >
+                        {agentIcon.icon}
+                    </span>
+                )
             ) : (
                 <InfoCardIcon icon="fa-sharp fa-solid fa-microchip" />
             )}

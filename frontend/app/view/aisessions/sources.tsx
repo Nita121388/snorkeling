@@ -1,12 +1,13 @@
 import { getWebServerEndpoint } from "@/util/endpoints";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { ClaudeLogo, OpenAILogo, PiLogo } from "./controls";
+import { useEffect, useMemo, useState } from "react";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
 
 export const CHAT_SOURCES = [
-    { id: "pi", label: "Pi", icon: <PiLogo />, dotClass: "bg-source-pi" },
-    { id: "codex", label: "Codex", icon: <OpenAILogo />, dotClass: "bg-source-codex" },
-    { id: "claude", label: "Claude Code", icon: <ClaudeLogo />, dotClass: "bg-source-claude" },
+    { id: "pi", label: "Pi", dotClass: "bg-source-pi" },
+    { id: "codex", label: "Codex", dotClass: "bg-source-codex" },
+    { id: "claude", label: "Claude Code", dotClass: "bg-source-claude" },
 ] satisfies readonly ChatSourceDef[];
 
 export interface ChatSourceDef {
@@ -67,3 +68,23 @@ export function useChatSourceAvailability(): ReadonlySet<string> {
 
 export const isSourceAvailable = (id: string, availableSources: ReadonlySet<string>): boolean =>
     availableSources.has(id);
+
+/**
+ * Persona-aware icons for the source chips. Lives in a hook (not the module-level
+ * CHAT_SOURCES constant) so switching a provider emoji re-renders the chips.
+ */
+export function useChatSourceIcons(): Record<string, ReactNode> {
+    const personas = useAgentPersonas();
+    return useMemo(() => {
+        const icons: Record<string, ReactNode> = {};
+        for (const source of CHAT_SOURCES) {
+            const spec = getAgentIcon(source.id, { personas });
+            if (spec == null) {
+                continue;
+            }
+            icons[source.id] =
+                spec.kind === "emoji" ? <span className="agent-emoji-icon">{spec.emoji}</span> : spec.icon;
+        }
+        return icons;
+    }, [personas]);
+}

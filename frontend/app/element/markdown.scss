@@ -2384,3 +2384,95 @@
         opacity: 0;
     }
 }
+
+// ── Agent emoji persona picker (scope footer + loading shell) ──
+.markdown-emoji-footer {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+}
+
+.agent-emoji-scope {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.agent-emoji-scope-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--main-text-color, inherit);
+    cursor: pointer;
+
+    &:hover {
+        background: color-mix(in srgb, var(--main-text-color, #888) 10%, transparent);
+    }
+
+    &.is-checked {
+        color: var(--accent-color, #58c4ff);
+    }
+
+    input {
+        accent-color: var(--accent-color, #58c4ff);
+        margin: 0;
+    }
+}
+
+.agent-emoji-reset {
+    align-self: flex-start;
+    margin-top: 2px;
+    padding: 2px 6px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: color-mix(in srgb, var(--main-text-color, #888) 70%, transparent);
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+        color: var(--main-text-color, inherit);
+        background: color-mix(in srgb, var(--main-text-color, #888) 10%, transparent);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: default;
+    }
+}
+
+.agent-emoji-picker-loading {
+    .agent-emoji-loading-search {
+        flex: 1 1 auto;
+        height: 26px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--main-text-color, #888) 12%, transparent);
+    }
+
+    .agent-emoji-loading-grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 4px;
+        padding: 4px 2px;
+    }
+
+    .agent-emoji-loading-cell {
+        height: 24px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--main-text-color, #888) 10%, transparent);
+        animation: agent-emoji-pulse 1.2s ease-in-out infinite;
+    }
+}
+
+@keyframes agent-emoji-pulse {
+    0%,
+    100% {
+        opacity: 0.45;
+    }
+    50% {
+        opacity: 0.9;
+    }
+}

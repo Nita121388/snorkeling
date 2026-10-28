@@ -4,7 +4,8 @@
 import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { BlockServiceType } from "@/app/store/services";
-import { ClaudeLogo, OpenAILogo, OpencodeLogo, PiLogo } from "@/app/view/aisessions/controls";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import type { CcSwitchAppType, CcSwitchVendor } from "@/app/workspace/ccswitch-vendors";
 import { loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
 import { copyText } from "@/util/clipboard";
@@ -38,18 +39,12 @@ function formatHookVersion(version: number | undefined): string {
 }
 
 function AgentProviderIcon({ provider }: { provider: string }) {
-    switch (normalizeProvider(provider)) {
-        case "codex":
-            return <OpenAILogo />;
-        case "claude":
-            return <ClaudeLogo />;
-        case "opencode":
-            return <OpencodeLogo />;
-        case "pi":
-            return <PiLogo />;
-        default:
-            return null;
+    const personas = useAgentPersonas();
+    const spec = getAgentIcon(provider, { personas });
+    if (spec == null) {
+        return null;
     }
+    return spec.kind === "emoji" ? <span className="agent-emoji-icon">{spec.emoji}</span> : spec.icon;
 }
 
 type AgentHookSettingsModalProps = {

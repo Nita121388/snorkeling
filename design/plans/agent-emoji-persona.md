@@ -98,3 +98,19 @@ AgentPersonas map[string]string `json:"agent:personas,omitempty"`
 
 自定义图片 / 颜色 / 昵称、emoji 动画、设置页独立入口、issessions 后端改动、
 `agent:provider` 识别逻辑调整。
+
+## 9. 实现事实（2026-10-28 落地）
+
+- 分支 `feat/agent-emoji-persona`，从 `main` 拉出，独立 worktree 开发。
+- 9 个显示面全部接通：`term-model.viewIcon`(A)、`block.tsx` inline tab + 右键菜单「设置 emoji 人格」(B)、
+  `tab-info-card`(C)、`agent-hover-card`(D，logo 可点击开 picker)、`session-overview`(E)、
+  `sources.tsx` 来源 chip(F，`useChatSourceIcons` 替代模块级 icon 常量)、`session-row`(G)、
+  `widgets.tsx` 右栏(AgentTargetFloatingWindow)(H)、`agenthooksettingsmodal`(I)。
+  额外把文档未列的 `tab-more-agent-card` 也接上了。
+- 两级解析集中在 `agent-logo.tsx` 的 `getAgentIcon()`（`normalizeAgentEmoji` + L2→L1→L3）。
+- L1 store：`agent-persona/persona-store.ts`（localStorage `snorkeling:agent-personas` + storage 事件同步）。
+- picker：`agent-persona/picker-host.ts`（单例状态）+ `agent-view/term/agent-emoji-picker.tsx`
+  （复用 `EmojiPicker` 的 `footer` 插槽放 scope 单选）+ `agent-persona/agent-emoji-picker-host.tsx`（app 根挂载）。
+- 样式：`.agent-emoji-icon` 13px 定宽写在 `app.scss`（跨 view 全局），picker 的 scope/loading 写在 `markdown.scss`。
+- 单测：`agent-logo.test.ts`、`persona-store.test.ts`、`agent-emoji-picker-host.test.tsx`，全过。
+- Phase 2 仍按 §7 预留（store 实现隔离，9 面零改动）。

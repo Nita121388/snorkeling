@@ -12,7 +12,9 @@ import {
 } from "@/app/agent-status/agent-runtime-metadata-store";
 import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
-import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
@@ -92,7 +94,11 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                   ? "var(--error-color)"
                   : "var(--secondary-text-color)";
     const isThinking = agentStatus != null && statusState === "working" && agentStatus.phase === "thinking";
-    const agentLogo = getAgentLogoByProvider(rawProvider === "" ? "agent" : rawProvider);
+    const personas = useAgentPersonas();
+    const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
+        meta: blockData?.meta,
+        personas,
+    });
     const [copyFailed, setCopyFailed] = React.useState(false);
 
     // 失败提示 2.5s 后自清，不留一个常驻的红色 id。
@@ -132,16 +138,28 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
             {showMetaRow && (
                 <InfoCardSection>
                     <div className="agent-card-head">
-                        {agentLogo != null ? (
+                        {agentIcon != null ? (
                             <span
-                                className="agent-card-logo"
+                                className="agent-card-logo agent-card-logo--clickable"
+                                title="设置 emoji 人格"
+                                onClick={(e) =>
+                                    openAgentEmojiPicker(
+                                        blockId,
+                                        rawProvider,
+                                        e.currentTarget.getBoundingClientRect()
+                                    )
+                                }
                                 style={
-                                    agentLogo.iconColor != null
-                                        ? { color: agentLogo.iconColor }
+                                    agentIcon.kind === "logo" && agentIcon.iconColor != null
+                                        ? { color: agentIcon.iconColor }
                                         : undefined
                                 }
                             >
-                                {agentLogo.icon}
+                                {agentIcon.kind === "emoji" ? (
+                                    <span className="agent-emoji-icon">{agentIcon.emoji}</span>
+                                ) : (
+                                    agentIcon.icon
+                                )}
                             </span>
                         ) : (
                             <InfoCardIcon icon="fa-sharp fa-solid fa-microchip" />

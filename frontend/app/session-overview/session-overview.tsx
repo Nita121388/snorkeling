@@ -30,7 +30,8 @@ import {
 } from "@/app/view/aisessions/session-note-events";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
-import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
 import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
@@ -1741,9 +1742,13 @@ function BlockRow({
     const isCurrent = block.blockId === currentBlockId;
     const iconClass = makeIconClass(blockViewToIcon(block.view), false, { defaultIcon: "square" });
     // Agent-like row collapses to "agent brand icon + status chip" only.
-    // Reuses getAgentLogoByProvider so the icon stays consistent with the term block header (term-model.viewIcon);
-    // falls back to the project's shared "robot" generic-agent icon when provider is unknown.
-    const agentLogo = block.isAgentLike ? getAgentLogoByProvider(block.agentProvider) : null;
+    // Reuses getAgentIcon so the icon stays consistent with the term block header (term-model.viewIcon);
+    // honors the provider persona (L1) and block meta persona (L2), then falls back to the
+    // project's shared "robot" generic-agent icon when provider is unknown.
+    const personas = useAgentPersonas();
+    const agentIcon = block.isAgentLike
+        ? getAgentIcon(block.agentProvider, { meta: block.block?.meta, personas })
+        : null;
     const agentStatusUnread = agentStatus != null && isAgentStatusUnread(agentStatus, agentStatusAckedFp);
 
     return (
@@ -1762,9 +1767,19 @@ function BlockRow({
                     {block.isAgentLike ? (
                         <span
                             className="session-overview-block-agent-logo"
-                            style={agentLogo?.iconColor ? { color: agentLogo.iconColor } : undefined}
+                            style={
+                                agentIcon?.kind === "logo" && agentIcon.iconColor
+                                    ? { color: agentIcon.iconColor }
+                                    : undefined
+                            }
                         >
-                            {agentLogo ? agentLogo.icon : <i className={makeIconClass("robot", false)} />}
+                            {agentIcon?.kind === "emoji" ? (
+                                <span className="agent-emoji-icon">{agentIcon.emoji}</span>
+                            ) : agentIcon?.kind === "logo" ? (
+                                agentIcon.icon
+                            ) : (
+                                <i className={makeIconClass("robot", false)} />
+                            )}
                         </span>
                     ) : (
                         <i className={iconClass} />

@@ -7,7 +7,8 @@ import { LaunchHoverOpenDelayMs } from "@/app/element/hover-timing";
 import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
-import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo, PiLogo } from "@/app/view/aisessions/controls";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentDefaultLaunchTargetMetaKey,
@@ -570,14 +571,6 @@ const AgentProfileColors: Record<string, string> = {
     pi: "#888888",
 };
 
-const AgentProfileIcons: Record<string, ReactNode> = {
-    codex: <OpenAILogo />,
-    claude: <ClaudeLogo />,
-    gemini: <GeminiLogo />,
-    opencode: <OpencodeLogo />,
-    pi: <PiLogo />,
-};
-
 function launchTargetSourceLabel(target: AgentLaunchTarget): string {
     switch (target.source) {
         case "files":
@@ -634,6 +627,14 @@ const AgentTargetFloatingWindow = memo(
         currentTabLabel,
         centered,
     }: AgentTargetFloatingWindowProps) => {
+        const personaMap = useAgentPersonas();
+        const profileIcon = (name: string): ReactNode => {
+            const spec = getAgentIcon(name, { personas: personaMap });
+            if (spec == null) {
+                return null;
+            }
+            return spec.kind === "emoji" ? <span className="agent-emoji-icon">{spec.emoji}</span> : spec.icon;
+        };
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
             onOpenChange: onClose,
@@ -942,12 +943,12 @@ const AgentTargetFloatingWindow = memo(
                                                 onClick={() => setSelectedProfile(profile.name)}
                                             >
                                                 {(() => {
-                                                    const ProfileIcon = AgentProfileIcons[profile.name];
+                                                    const ProfileIcon = profileIcon(profile.name);
                                                     if (ProfileIcon != null) {
                                                         return (
                                                             <span
                                                                 className={clsx(
-                                                                    "shrink-0 transition-colors",
+                                                                    "shrink-0 flex items-center justify-center transition-colors",
                                                                     isSelected
                                                                         ? "text-foreground"
                                                                         : "text-muted group-hover:text-secondary"

@@ -115,3 +115,39 @@ a {
         transition-delay: none !important;
     }
 }
+
+// ── Agent emoji persona (two-level: block meta → provider persona → logo) ──
+// Fixed 13px box: inline-tab marquee/collapse and aisessions virtual rows depend
+// on a stable icon width, so never let the emoji size the box.
+.agent-emoji-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    min-width: 13px;
+    height: 13px;
+    line-height: 1;
+    font-size: 13px;
+    font-family:
+        "Apple Color Emoji",
+        "Segoe UI Emoji",
+        "Noto Color Emoji",
+        sans-serif;
+    user-select: none;
+    vertical-align: middle;
+}
+
+.agent-emoji-icon--row {
+    width: 12px;
+    min-width: 12px;
+    height: 12px;
+    font-size: 12px;
+}
+
+.agent-card-logo--clickable {
+    cursor: pointer;
+}
+
+.agent-card-logo--clickable:hover {
+    opacity: 0.75;
+}

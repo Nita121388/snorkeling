@@ -23,7 +23,9 @@ import { useTabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getBlockDirtyAtom } from "@/app/view/preview/preview-dirty-state";
-import { getAgentLogoByProvider } from "@/app/view/term/agent-logo";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { ErrorBoundary } from "@/element/errorboundary";
@@ -290,14 +292,15 @@ const InlineTabLabel = memo(
         // 标题刻意不追加连接名 (实测会把 tab 撑宽 ~55px, 提前触发溢出折叠), 连接名只在
         // hover tooltip (fullPath 已带 connection) 和 badge 的 title 里出现.
         const locality = useMemo(() => blockPathLocality(connection), [connection]);
-        // agent 类 Block: Tab 标签上显示对应 agent 的品牌 logo 而不是通用 terminal 图标
-        const agentLogo = useMemo(() => {
+        // agent 类 Block: Tab 标签上显示对应 agent 的品牌 logo / emoji 人格而不是通用 terminal 图标
+        const personas = useAgentPersonas();
+        const agentIcon = useMemo(() => {
             const meta = blockData?.meta;
             if (!isAgentTerminalMeta(meta)) return null;
             const provider = normalizeAgentProvider(meta?.["agent:provider"]);
             if (provider === "agent") return null;
-            return getAgentLogoByProvider(provider);
-        }, [blockData?.meta]);
+            return getAgentIcon(provider, { meta, personas });
+        }, [blockData?.meta, personas]);
 
         // 读取该 agent block 的 canonical status (复用 TermViewModel 已经订阅好的 atom),
         // 用于在 Tab 标签右侧渲染状态点. R 类 (working/blocked) 显眼状态点亮; 22 号方案新增
@@ -431,6 +434,21 @@ const InlineTabLabel = memo(
                     onMinimizeGroup,
                     waveEnv
                 );
+                if (isAgentTerminalMeta(blockData?.meta)) {
+                    const provider = normalizeAgentProvider(blockData?.meta?.["agent:provider"]);
+                    if (provider !== "agent") {
+                        menu.push({ type: "separator" });
+                        menu.push({
+                            label: "设置 emoji 人格",
+                            click: () => {
+                                const rect = tabRef.current?.getBoundingClientRect();
+                                if (rect != null) {
+                                    openAgentEmojiPicker(blockId, provider, rect);
+                                }
+                            },
+                        });
+                    }
+                }
                 waveEnv.showContextMenu(menu, e);
             },
             [
@@ -445,6 +463,7 @@ const InlineTabLabel = memo(
                 toggleLock,
                 onMinimizeGroup,
                 waveEnv,
+                blockData?.meta,
             ]
         );
 
@@ -497,15 +516,23 @@ const InlineTabLabel = memo(
                             >
                                 {/* 图标槽: 供远程 badge 绝对定位参考, 自身不占额外宽度 */}
                                 <span className="inline-tab-block-tab-iconwrap">
-                                    {agentLogo != null ? (
-                                        <span
-                                            className="agent-brand-icon inline-tab-block-tab-agentlogo"
-                                            style={
-                                                agentLogo.iconColor != null ? { color: agentLogo.iconColor } : undefined
-                                            }
-                                        >
-                                            {agentLogo.icon}
-                                        </span>
+                                    {agentIcon != null ? (
+                                        agentIcon.kind === "emoji" ? (
+                                            <span className="agent-emoji-icon inline-tab-block-tab-agentlogo">
+                                                {agentIcon.emoji}
+                                            </span>
+                                        ) : (
+                                            <span
+                                                className="agent-brand-icon inline-tab-block-tab-agentlogo"
+                                                style={
+                                                    agentIcon.iconColor != null
+                                                        ? { color: agentIcon.iconColor }
+                                                        : undefined
+                                                }
+                                            >
+                                                {agentIcon.icon}
+                                            </span>
+                                        )
                                     ) : (
                                         <i className={iconClass} />
                                     )}

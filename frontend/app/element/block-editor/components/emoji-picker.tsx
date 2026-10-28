@@ -31,6 +31,8 @@ export interface EmojiPickerProps {
     /** Document mode: "Remove emoji" affordance. */
     allowRemove?: boolean;
     onRemove?: () => void;
+    /** Optional extra content rendered at the bottom of the popover (e.g. scope radio). */
+    footer?: React.ReactNode;
 }
 
 /**
@@ -52,6 +54,7 @@ export function EmojiPicker({
     onClose,
     allowRemove,
     onRemove,
+    footer,
 }: EmojiPickerProps) {
     const recents = useMemo(() => getRecentEmojis(), []);
     const items = useMemo(() => buildEmojiPickerItems(catalog, query, recents), [catalog, query, recents]);
@@ -263,6 +266,7 @@ export function EmojiPicker({
                     );
                 })}
             </div>
+            {footer != null ? <div className="markdown-emoji-footer">{footer}</div> : null}
         </div>,
         document.body
     );
