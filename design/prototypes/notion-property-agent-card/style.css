@@ -1,0 +1,975 @@
+/* =========================================================================
+   Notion-style property prototype
+   Deconstructed from Notion (light theme) and rebuilt here so we can learn
+   its exact visual language. Numbers are the ones used by the real page-
+   properties region as closely as we can mirror them.
+   ========================================================================= */
+
+:root {
+    --nt-text: #37352f;
+    --nt-text-secondary: #787774;
+    --nt-text-placeholder: #9b9b9b;
+    --nt-page: #ffffff;
+    --nt-sidebar: #f7f7f5;
+    --nt-hover: rgba(55, 53, 47, 0.06);
+    --nt-hover-strong: #f1f1ef;
+    --nt-border: rgba(55, 53, 47, 0.09);
+    --nt-blue: #2383e2;
+    --nt-shadow: 0 0 0 1px rgba(15, 15, 15, 0.05), 0 3px 6px rgba(15, 15, 15, 0.1),
+        0 9px 24px rgba(15, 15, 15, 0.2);
+    --nt-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+        "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+
+    --nt-gray-bg: #e3e2e0;
+    --nt-gray-fg: #32302c;
+    --nt-brown-bg: #eee0da;
+    --nt-brown-fg: #603b2c;
+    --nt-orange-bg: #fadec9;
+    --nt-orange-fg: #854a2e;
+    --nt-yellow-bg: #fdecc8;
+    --nt-yellow-fg: #6b4e11;
+    --nt-green-bg: #dbeddb;
+    --nt-green-fg: #1c3829;
+    --nt-blue-bg: #d3e5ef;
+    --nt-blue-fg: #183347;
+    --nt-purple-bg: #e8deee;
+    --nt-purple-fg: #412454;
+    --nt-pink-bg: #f5e0e9;
+    --nt-pink-fg: #4c2337;
+    --nt-red-bg: #ffe2dd;
+    --nt-red-fg: #5d1715;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: #efefed;
+    color: var(--nt-text);
+    font-family: var(--nt-font);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* ------------------------------------------------------------------ */
+/* Review scaffold (NOT part of the Notion mirror)                     */
+/* ------------------------------------------------------------------ */
+
+.page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 40px 24px 96px;
+}
+
+.doc-head {
+    margin-bottom: 28px;
+}
+
+.doc-head h1 {
+    margin: 0 0 8px;
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: #37352f;
+}
+
+.subtitle {
+    margin: 0 0 16px;
+    max-width: 860px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: #6b6a66;
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid rgba(55, 53, 47, 0.1);
+    border-radius: 10px;
+    background: #fbfbfa;
+}
+
+.tool-label {
+    font-size: 12px;
+    color: #8a8884;
+    margin-right: 2px;
+}
+
+.tool-sep {
+    width: 1px;
+    height: 18px;
+    background: rgba(55, 53, 47, 0.12);
+    margin: 0 6px;
+}
+
+.seg {
+    border: 1px solid rgba(55, 53, 47, 0.14);
+    background: #fff;
+    color: #37352f;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.seg:hover {
+    background: #f1f1ef;
+}
+
+.seg.active {
+    background: #37352f;
+    color: #fff;
+    border-color: #37352f;
+}
+
+.seg.accent {
+    border-color: rgba(35, 131, 226, 0.35);
+    color: #1a6fc4;
+    background: #eef6fe;
+    font-weight: 600;
+}
+
+.stage {
+    display: flex;
+    justify-content: center;
+}
+
+.card-wrap {
+    background: var(--nt-page);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(15, 15, 15, 0.08), 0 8px 32px rgba(15, 15, 15, 0.08);
+    width: 100%;
+    max-width: 780px;
+    overflow: visible;
+}
+
+/* ------------------------------------------------------------------ */
+/* The Notion page mirror                                              */
+/* ------------------------------------------------------------------ */
+
+.notion-page {
+    padding: 76px 68px 80px;
+    min-height: 560px;
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--nt-text);
+}
+
+.page-icon {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 58px;
+    line-height: 1;
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 4px;
+    transition: background 0.12s ease;
+}
+
+.page-icon:hover {
+    background: var(--nt-hover);
+}
+
+.page-icon.brand {
+    background: #1f1e1c;
+    color: #fff;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.page-icon.brand svg {
+    width: 34px;
+    height: 34px;
+    fill: currentColor;
+}
+
+.page-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.page-title {
+    margin: 6px 0 2px;
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--nt-text);
+    outline: none;
+    border-radius: 4px;
+    padding: 2px 4px;
+    margin-left: -4px;
+}
+
+.page-title:focus {
+    box-shadow: 0 0 0 1px rgba(35, 131, 226, 0.35);
+}
+
+.title-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #7a5c00;
+    background: #fbf3db;
+    border-radius: 3px;
+    padding: 2px 6px;
+    white-space: nowrap;
+    transform: translateY(2px);
+}
+
+.title-source.ai-hidden {
+    opacity: 0;
+}
+
+/* ---- properties grid ---- */
+
+.props {
+    margin-top: 22px;
+    display: flex;
+    flex-direction: column;
+}
+
+.prop {
+    position: relative;
+    display: grid;
+    grid-template-columns: 168px minmax(0, 1fr);
+    column-gap: 10px;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 4px;
+    margin: 0 -4px;
+    border-radius: 4px;
+}
+
+.prop:hover {
+    background: rgba(55, 53, 47, 0.03);
+}
+
+/* Notion shows the grip in the left margin on hover */
+.prop-grip {
+    position: absolute;
+    left: -26px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 22px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: #b7b5b1;
+    cursor: grab;
+}
+
+.prop:hover .prop-grip {
+    display: flex;
+}
+
+.prop-grip:hover {
+    background: var(--nt-hover);
+    color: #6b6a66;
+}
+
+.prop-grip svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+
+.prop-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    height: 28px;
+    padding: 0 2px;
+    border-radius: 4px;
+    cursor: default;
+}
+
+.prop-name:hover {
+    background: var(--nt-hover);
+}
+
+.prop-name-text {
+    font-size: 14px;
+    line-height: 20px;
+    color: #37352f;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.prop-type-glyph {
+    display: none;
+    width: 14px;
+    height: 14px;
+    color: #9b9b9b;
+    flex: 0 0 auto;
+}
+
+.prop-name:hover .prop-type-glyph {
+    display: block;
+}
+
+.prop-value {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    padding: 0 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--nt-text);
+    overflow: hidden;
+}
+
+.prop-value:hover {
+    background: var(--nt-hover);
+}
+
+.prop-value.is-empty::before {
+    content: "Empty";
+    color: var(--nt-text-placeholder);
+    font-size: 14px;
+    line-height: 20px;
+}
+
+.prop-value.is-readonly {
+    cursor: default;
+    color: var(--nt-text-secondary);
+}
+
+.prop-value.is-readonly:hover {
+    background: transparent;
+}
+
+.prop-value.is-readonly .ro-ico {
+    width: 12px;
+    height: 12px;
+    opacity: 0.7;
+}
+
+/* text / number / url */
+
+.val-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.val-number {
+    font-variant-numeric: tabular-nums;
+}
+
+.val-url {
+    color: var(--nt-text);
+    text-decoration: underline;
+    text-decoration-color: rgba(55, 53, 47, 0.35);
+    text-underline-offset: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.val-url:hover {
+    text-decoration-color: var(--nt-text);
+}
+
+/* select pills */
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pill + .pill {
+    margin-left: 0;
+}
+
+.c-gray { background: var(--nt-gray-bg); color: var(--nt-gray-fg); }
+.c-brown { background: var(--nt-brown-bg); color: var(--nt-brown-fg); }
+.c-orange { background: var(--nt-orange-bg); color: var(--nt-orange-fg); }
+.c-yellow { background: var(--nt-yellow-bg); color: var(--nt-yellow-fg); }
+.c-green { background: var(--nt-green-bg); color: var(--nt-green-fg); }
+.c-blue { background: var(--nt-blue-bg); color: var(--nt-blue-fg); }
+.c-purple { background: var(--nt-purple-bg); color: var(--nt-purple-fg); }
+.c-pink { background: var(--nt-pink-bg); color: var(--nt-pink-fg); }
+.c-red { background: var(--nt-red-bg); color: var(--nt-red-fg); }
+
+/* checkbox */
+
+.checkbox {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid rgba(55, 53, 47, 0.4);
+    border-radius: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+.checkbox.checked {
+    background: var(--nt-blue);
+    border-color: var(--nt-blue);
+}
+
+.checkbox svg {
+    width: 10px;
+    height: 10px;
+    fill: none;
+    stroke: #fff;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    display: none;
+}
+
+.checkbox.checked svg {
+    display: block;
+}
+
+/* person */
+
+.person {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    flex: 0 0 auto;
+}
+
+/* date */
+
+.val-date {
+    font-size: 14px;
+}
+
+/* AI source spark */
+
+.ai-flag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #b07d00;
+    margin-left: 2px;
+    cursor: default;
+}
+
+/* fresh AI write animation */
+@keyframes aiPulse {
+    0% { background: rgba(251, 243, 219, 0); }
+    18% { background: rgba(251, 243, 219, 0.95); }
+    100% { background: rgba(251, 243, 219, 0); }
+}
+
+.prop.ai-fresh {
+    animation: aiPulse 1.9s ease;
+}
+
+/* ---- add a property ---- */
+
+.add-prop {
+    height: 32px;
+    display: flex;
+    align-items: center;
+    margin: 2px -4px 0;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 14px;
+    color: var(--nt-text-placeholder);
+    cursor: pointer;
+    user-select: none;
+}
+
+.add-prop:hover {
+    background: var(--nt-hover);
+    color: var(--nt-text-secondary);
+}
+
+/* ---- body placeholder ---- */
+
+.page-body {
+    margin-top: 34px;
+    padding-top: 22px;
+    border-top: 1px solid var(--nt-border);
+}
+
+.body-placeholder {
+    margin: 0;
+    color: #b7b5b1;
+    font-size: 15px;
+}
+
+kbd {
+    font-family: var(--nt-font);
+    font-size: 12px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid rgba(55, 53, 47, 0.15);
+    background: #f7f7f5;
+    color: #6b6a66;
+}
+
+/* ------------------------------------------------------------------ */
+/* Popovers                                                           */
+/* ------------------------------------------------------------------ */
+
+.popover {
+    position: absolute;
+    z-index: 1000;
+    width: 320px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: var(--nt-shadow);
+    padding: 6px;
+    font-family: var(--nt-font);
+    font-size: 14px;
+    color: var(--nt-text);
+}
+
+.popover[hidden] {
+    display: none;
+}
+
+.popover-search {
+    width: 100%;
+    height: 32px;
+    border: none;
+    border-bottom: 1px solid var(--nt-border);
+    outline: none;
+    font: inherit;
+    font-size: 14px;
+    color: var(--nt-text);
+    padding: 0 8px;
+    margin-bottom: 4px;
+    background: transparent;
+}
+
+.popover-search::placeholder {
+    color: var(--nt-text-placeholder);
+}
+
+.popover-group {
+    padding: 8px 8px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--nt-text-placeholder);
+}
+
+.popover-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.popover-row:hover,
+.popover-row.hl {
+    background: var(--nt-hover-strong);
+}
+
+.popover-row .row-ico {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    color: #6b6a66;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.popover-row .row-ico svg {
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+}
+
+.popover-row .row-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px;
+}
+
+.popover-row .row-hint {
+    font-size: 11px;
+    color: var(--nt-text-placeholder);
+}
+
+.popover-empty {
+    padding: 14px 10px;
+    font-size: 13px;
+    color: var(--nt-text-placeholder);
+    text-align: center;
+}
+
+.popover-divider {
+    height: 1px;
+    background: var(--nt-border);
+    margin: 4px 0;
+}
+
+/* multi-select editor: chips + input inline */
+
+.chips-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--nt-border);
+    margin-bottom: 4px;
+    min-height: 36px;
+}
+
+.chips-input input {
+    flex: 1 1 60px;
+    min-width: 60px;
+    border: none;
+    outline: none;
+    font: inherit;
+    font-size: 14px;
+    color: var(--nt-text);
+    background: transparent;
+    height: 24px;
+}
+
+.chips-input .chip-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+    padding: 0 4px 0 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.chip-tag button {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 1px;
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0.65;
+}
+
+.chip-tag button:hover {
+    opacity: 1;
+}
+
+/* date picker */
+
+.date-pop {
+    width: 268px;
+    padding: 10px;
+}
+
+.cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2px 8px;
+}
+
+.cal-title {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.cal-nav {
+    display: flex;
+    gap: 2px;
+}
+
+.cal-nav button {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #6b6a66;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cal-nav button:hover {
+    background: var(--nt-hover);
+}
+
+.cal-week,
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+
+.cal-week span {
+    text-align: center;
+    font-size: 11px;
+    color: var(--nt-text-placeholder);
+    padding: 4px 0;
+}
+
+.cal-cell {
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    width: 30px;
+    margin: 0 auto;
+}
+
+.cal-cell:hover {
+    background: var(--nt-hover);
+}
+
+.cal-cell.muted {
+    color: #d3d1cb;
+}
+
+.cal-cell.today {
+    color: var(--nt-blue);
+    font-weight: 700;
+}
+
+.cal-cell.selected {
+    background: var(--nt-blue);
+    color: #fff;
+    font-weight: 600;
+}
+
+.cal-quick {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding-top: 8px;
+    margin-top: 6px;
+    border-top: 1px solid var(--nt-border);
+}
+
+.cal-quick button {
+    border: 1px solid var(--nt-border);
+    background: #fff;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--nt-text);
+    cursor: pointer;
+}
+
+.cal-quick button:hover {
+    background: var(--nt-hover-strong);
+}
+
+/* inline editor for text/number/url */
+
+.inline-edit {
+    width: 100%;
+    border: none;
+    outline: none;
+    font: inherit;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--nt-text);
+    background: transparent;
+    padding: 0;
+    margin: 0;
+}
+
+/* toast */
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%) translateY(8px);
+    background: #2f2e2b;
+    color: #fff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.28);
+    opacity: 0;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    z-index: 2000;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.toast button {
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-radius: 5px;
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.toast button:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+/* ------------------------------------------------------------------ */
+/* Narrow Agent Card mode                                             */
+/* ------------------------------------------------------------------ */
+
+.card-wrap.narrow {
+    max-width: 400px;
+}
+
+.card-wrap.narrow .notion-page {
+    padding: 34px 28px 40px;
+}
+
+.card-wrap.narrow .page-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 36px;
+}
+
+.card-wrap.narrow .page-icon.brand {
+    font-size: 18px;
+}
+
+.card-wrap.narrow .page-title {
+    font-size: 22px;
+}
+
+.card-wrap.narrow .props {
+    margin-top: 14px;
+}
+
+.card-wrap.narrow .prop {
+    grid-template-columns: 108px minmax(0, 1fr);
+    min-height: 28px;
+}
+
+.card-wrap.narrow .prop-name-text {
+    font-size: 13px;
+}
+
+.card-wrap.narrow .prop-value {
+    font-size: 13px;
+}
+
+.card-wrap.narrow .page-body {
+    display: none;
+}
+
+.more-props {
+    height: 30px;
+    display: flex;
+    align-items: center;
+    margin: 2px -4px 0;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--nt-text-placeholder);
+    cursor: pointer;
+}
+
+.more-props:hover {
+    background: var(--nt-hover);
+    color: var(--nt-text-secondary);
+}
+
+
+/* type glyphs that are text-based (Aa / 123 / ƒ) need to be optically centred
+   inside the same 16px box as the svg icons, or the type-picker rows misalign. */
+.glyph-aa,
+.glyph-num,
+.glyph-f {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: #6b6a66;
+}
+
+.glyph-num {
+    font-size: 9px;
+    letter-spacing: -0.04em;
+}

@@ -1,0 +1,1369 @@
+/* Annotation Card / Rail UX 原型样式
+   配色 token 取自 frontend/app/theme.scss 暗色默认值，确保与原 app 同色。
+
+   目录（按文件顺序）：
+     1. tokens      主题变量（暗 / 亮）
+     2. base        全局重置与 body
+     3. bar         顶部条
+     4. stage       rail + flow 两栏骨架
+     5. rail        左侧轴线 / 圆点 / playhead / tooltip
+     6. flow        消息流与工具行
+     7. card        悬浮卡外壳 / 头 / 节点原文块 / 脚
+     8. annotations 批注分组 / 列表 / 条目
+     9. editor      编辑器 Modal 与按钮
+/* 10. 控件命中 / 按下手感
+    11. a11y        焦点环
+    12. responsive  窄视口与减少动效
+
+   约定：颜色 / 间距 / 字号一律走 token，不要在规则里再写裸色值或散装 px。
+   同级选择器出现两次是有意的（基准态 + 命中态），合并会改掉层叠结果。 */
+
+/* ── 1. tokens ── */
+:root,
+[data-theme="dark"] {
+    --main-bg-color: #222222;
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --accent-color: rgb(88, 193, 66);
+    --accent-color-300: rgb(110, 231, 133);
+    --accent-color-500: rgb(63, 162, 51);
+    --accent-bg-soft: rgba(88, 193, 66, 0.15);
+    --warning-color: rgb(224, 185, 86);
+    --error-color: rgb(229, 77, 46);
+    --success-color: rgb(78, 154, 6);
+    /* 语义色按用途拆开：图形点用原色，正文级文字用提亮版本，保证 WCAG AA(4.5:1)。
+       括号内为实测对比度：暗色基准 bg = #222222 / modal = #232323。 */
+    --accent-text-color: rgb(110, 231, 133); /* 10.05:1 on modal */
+    --error-text-color: rgb(255, 122, 96); /* 6.14:1 on modal；原 error 作为文字仅 4.07:1 */
+    --accent-solid-bg: rgb(88, 193, 66);
+    --accent-solid-text: #10230b; /* 白字在实色 accent 上仅 2.30:1，改用深绿字 7.20:1 */
+    --draft-border-color: color-mix(in srgb, var(--accent-color-300) 70%, transparent); /* 虚线 4.08:1 */
+    --selected-outline-color: color-mix(in srgb, var(--accent-color-300) 68%, transparent); /* 5.38:1 */
+    --focus-ring-color: rgb(110, 231, 133); /* 10.05:1 */
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --surface: rgba(255, 255, 255, 0.06);
+    --panel-bg: rgba(31, 33, 31, 0.5);
+    --modal-bg: #232323;
+    --hover-bg: rgba(255, 255, 255, 0.07);
+    /* 阴影 / 遮罩：原先散落各条规则里的 rgba(0,0,0,α) 收成 token。
+       深色下需要重阴影压住浮层，浅色下同一片深灰会显脏，所以两个主题数值不同。 */
+    /* 三层合成阴影（贴合边 + 主投影 + 环境投影）：单层大模糊在深底上会糊成一团灰雾，
+       分层后浮层边缘仍然清楚贴着背景，远处再慢慢散开。 */
+    --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px -2px rgba(0, 0, 0, 0.35);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -6px rgba(0, 0, 0, 0.45),
+        0 20px 48px -12px rgba(0, 0, 0, 0.5); /* 批注卡 */
+    --shadow-modal: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -8px rgba(0, 0, 0, 0.5),
+        0 32px 72px -16px rgba(0, 0, 0, 0.55); /* 编辑器 modal */
+    --shadow-foot-up: 0 -12px 14px -12px rgba(0, 0, 0, 0.55); /* 可滚卡片脚上方提示阴影 */
+    --overlay-bg: rgba(0, 0, 0, 0.5);
+    /* 折叠渐隐用 mask 做，mask 只吃 alpha，与主题无关；仍收成 token 避免真正的黑被误读成配色。 */
+    --mask-stencil: #000;
+    /* 圆角档位对齐 shadcn 的 6 / 8 / 12：控件取 sm/md，容器取 md/lg/xl，
+       胶囊单独一档。原先 5 / 7 / 9 / 14 四个裸值混用，并排看圆角不齐。 */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 14px;
+    --radius-pill: 999px;
+    /* 控件共用的命中过渡：底色 / 边框 / 字色同时淡入，避免有的按钮有过渡、
+       有的直接跳变（同一屏里两种手感最显廉价）。 */
+    --transition-control: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease,
+        box-shadow 0.12s ease;
+    /* 节点类型色相：message 走中性次级色，tool 走 accent，summary 走 warning。
+       卡片头底色 / 图标徽标 / 原文块 / 流程行都从这三个色相派生 tint，
+       明暗主题自动跟随，不必各写一套颜色。 */
+    --node-type-message: var(--secondary-text-color);
+    --node-type-tool: var(--accent-color);
+    --node-type-summary: var(--warning-color);
+    /* 4/8 间距节奏：卡片内部所有 padding / margin / gap 只用这三档 */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+
+    /* 字体比例：统一 caption / label / title 三档 + 正文，消除散装 px */
+    --fs-display: 15px; /* modal / 区块标题（最重） */
+    --fs-title: 14px; /* 页面 / 卡片标题 */
+    --fs-body: 13px; /* 主要阅读正文 */
+    --fs-label: 12px; /* 按钮 / 控件 / 节点内容 */
+    --fs-caption: 11px; /* 次级文字 / 内容块 */
+    --fs-micro: 10px; /* 大写 label / seq tip / chip */
+    --fw-regular: 400;
+    --fw-semibold: 600;
+    --lh-tight: 1.3;
+    --lh-base: 1.5;
+}
+
+[data-theme="light"] {
+    --main-bg-color: #f5f5f3;
+    --main-text-color: #1c1c1c;
+    --secondary-text-color: #5b615c;
+    --border-color: rgba(0, 0, 0, 0.14);
+    --accent-color: rgb(47, 133, 47);
+    --accent-color-300: rgb(34, 104, 43);
+    --accent-color-500: rgb(47, 133, 47);
+    --accent-bg-soft: rgba(47, 133, 47, 0.14);
+    --warning-color: #8a5c00; /* 5.81:1 on #fff；原 #b07d16 仅 3.63:1 未达 AA */
+    --error-color: #c0392b;
+    --success-color: #3d7d0c;
+    --accent-text-color: rgb(22, 81, 35); /* 9.39:1 on #fff；accent-300 在浅底 chip 上仅 4.73:1 */
+    --error-text-color: #c0392b; /* 5.44:1 on #fff */
+    --accent-solid-bg: rgb(34, 104, 43); /* 白字 6.81:1；原 accent #2f852f 上白字仅 4.65:1 */
+    --accent-solid-text: #ffffff;
+    --draft-border-color: color-mix(in srgb, var(--accent-color-300) 70%, transparent); /* 虚线 3.47:1 */
+    --selected-outline-color: color-mix(in srgb, var(--accent-color-300) 68%, transparent); /* 3.97:1 */
+    --focus-ring-color: rgb(34, 104, 43); /* 6.81:1 */
+    --surface-soft: rgba(0, 0, 0, 0.03);
+    --surface: rgba(0, 0, 0, 0.05);
+    --panel-bg: rgba(255, 255, 255, 0.7);
+    --modal-bg: #ffffff;
+    --hover-bg: rgba(0, 0, 0, 0.05);
+    --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.12);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.08), 0 8px 24px -6px rgba(0, 0, 0, 0.14),
+        0 20px 48px -12px rgba(0, 0, 0, 0.16);
+    --shadow-modal: 0 1px 2px rgba(0, 0, 0, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.16),
+        0 32px 72px -16px rgba(0, 0, 0, 0.18);
+    --shadow-foot-up: 0 -12px 14px -12px rgba(0, 0, 0, 0.16);
+    --overlay-bg: rgba(0, 0, 0, 0.32);
+}
+
+/* ── 2. base ── */
+* {
+    box-sizing: border-box;
+}
+
+/* 图标一律 block：inline svg 按文字基线对齐，放在 flex 行里会让图标比旁边的
+   文字低 1~2px；统一 block 后，垂直对齐完全交给容器的 align-items。
+   同时 flex: 0 0 auto，图标在窄卡片里不会被挤扁。 */
+svg {
+    display: block;
+    flex: 0 0 auto;
+}
+
+body {
+    margin: 0;
+    /* 纵向 flex 而不是给 stage 写死 `calc(100vh - 57px)`：窄视口下顶部条换行变高时，
+       stage 会自动少占一行，不会把 flow 底边顶到视口外。
+       高度必须是「确定值 + overflow:hidden」而不是 min-height：body 高度跟着内容走时
+       .stage 也会被撑到全部内容的高度，flow 的 overflow-y 永远不触发、整页一起滚，
+       playhead 的 scroll 监听收不到事件，卡片也会随页面滚动和圆点错位。 */
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--main-bg-color);
+    color: var(--main-text-color);
+    font-family: "Inter", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: var(--fs-title);
+    font-weight: var(--fw-regular);
+    line-height: var(--lh-base);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── 3. bar（顶部条）── */
+.proto-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* 窄视口放不下时让控件换行，而不是把 title 挤成竖排 */
+    flex-wrap: wrap;
+    row-gap: 8px;
+    flex: 0 0 auto;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--panel-bg);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+.proto-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.dot-mark {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-bg-soft);
+}
+.pt-main {
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-title);
+    line-height: var(--lh-tight);
+}
+.pt-sub {
+    font-size: var(--fs-caption);
+    color: var(--secondary-text-color);
+}
+.proto-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+}
+.proto-hint {
+    font-size: var(--fs-caption);
+    color: var(--secondary-text-color);
+}
+.proto-btn {
+    font-size: var(--fs-label);
+    padding: 5px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--surface);
+    color: var(--main-text-color);
+    cursor: pointer;
+}
+.proto-btn:hover {
+    background: var(--hover-bg);
+}
+
+/* ── 4. stage（rail + flow 骨架）── */
+.stage {
+    display: flex;
+    flex: 1 1 auto;
+    /* flex 子项必须显式 min-height: 0，否则 flow 的 overflow-y 不会生效、整页反而一起滚 */
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ── 5. rail（轴线 / 圆点 / playhead / tooltip）── */
+.rail {
+    width: 44px;
+    flex: 0 0 44px;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    /* tooltip 从 rail 内部伸出、会压住 flow 的首屏；抬一层，避免被后续兄弟节点盖住 */
+    z-index: 3;
+}
+.rail-head {
+    padding: 10px 0 6px;
+    text-align: center;
+}
+.rail-title {
+    font-size: var(--fs-micro);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+}
+.rail-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+.rail-axis {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+    background: var(--border-color);
+}
+/* rail 空态：整段数据都没批注时，轴线之外给一句居中提示，
+   不画圆点、不画 playhead（renderRail 里已经不建 playhead）。 */
+.rail-empty {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    display: flex;
+    justify-content: center;
+    font-size: var(--fs-caption);
+    color: var(--secondary-text-color);
+}
+/* 44px 宽的轨道里横排「No notes」会折成两行、挤成一个方块，
+   改用竖排 + 字距，读起来像一条注记而不是一块残字。 */
+.rail-empty span {
+    writing-mode: vertical-rl;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-size: var(--fs-micro);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 10px 4px;
+}
+/* playhead：随 flow 滚动跟进“当前读到哪个节点”，从轴线向右伸出到 rail 右缘，
+   右端加一顶 2px 短竖标。不从轴线向左（那侧留给 tooltip），也不与圆点重叠。 */
+.rail-playhead {
+    position: absolute;
+    left: 50%;
+    right: 0;
+    height: 2px;
+    margin-left: -1px;
+    background: color-mix(in srgb, var(--accent-color) 45%, transparent);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-50%);
+    /* top 用 decelerate 曲线：滚动时 playhead 是“追”上目标位置而不是匀速滑过去，
+       用 linear/ease 会在停下瞬间还留一点位移，看起来像没收住。 */
+    transition: opacity 0.14s ease, top 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.rail-playhead.show {
+    opacity: 1;
+}
+.rail-playhead::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 50%;
+    width: 2px;
+    height: 10px;
+    border-radius: 1px;
+    transform: translateY(-50%);
+    background: var(--accent-color);
+}
+
+.rail-dot {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    transform: translateY(-50%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.rail-dot button {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    padding: 0;
+    border-radius: 50%;
+}
+/* 基准 10px，命中态 16px；保证 6px 的可见度差，不靠动画时长拉开。
+   width/height/box-shadow/background 同时过渡，命中时先涨一圈光环再涨点。
+   这条 transition 是「收缩」用的（短且直接）；放大在下面的命中/选中规则里换成
+   带轻微回弹的曲线——来回扫一排圆点时，缩得慢会拖出残影。 */
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    transition: width 0.12s cubic-bezier(0.4, 0, 0.7, 1), height 0.12s cubic-bezier(0.4, 0, 0.7, 1),
+        box-shadow 0.15s ease, background 0.15s ease;
+}
+/* 放大曲线：0.17s + 约 4% 过冲（16px → 16.6px 再落回），命中时点先“弹”一下再稳住。
+   写成一个合并规则而不是散在四处，避免以后再加一个命中态时忘了同步曲线。 */
+.rail-dot:hover .dot,
+.rail-dot:focus-within .dot,
+.dot.is-selected,
+.rail-dot:hover .dot.is-selected,
+.rail-dot:focus-within .dot.is-selected {
+    transition: width 0.17s cubic-bezier(0.34, 1.4, 0.64, 1), height 0.17s cubic-bezier(0.34, 1.4, 0.64, 1),
+        box-shadow 0.15s ease, background 0.15s ease;
+}
+/* draft：透明底 + 2px 实色描边（ring 语义），与 accepted 的实心点在首扫即分。
+   描边宽度 2px 与 selection ring 一致，draft 一眼可辨「待确认」。 */
+.dot.is-draft {
+    background: transparent;
+    border: 2px solid var(--accent-color);
+}
+/* orphan：warning 色实心 + 同色细环，和 draft 的「空心 ring」区分开，
+   避免两类非终态互相混淆。 */
+.dot.is-orphan {
+    background: var(--warning-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning-color) 40%, transparent);
+}
+/* 命中（hover / 键盘聚焦）：实心点放大到 16px 并套一环；
+   draft 保留 2px 描边并再叠一圈外环，状态 + 命中双重可读。 */
+.rail-dot:hover .dot,
+.rail-dot:focus-within .dot {
+    width: 16px;
+    height: 16px;
+    box-shadow: 0 0 0 2px var(--accent-color);
+}
+.rail-dot:hover .dot.is-draft,
+.rail-dot:focus-within .dot.is-draft {
+    box-shadow: 0 0 0 2px var(--accent-color), 0 0 0 4px color-mix(in srgb, var(--accent-color-300) 50%, transparent);
+}
+.rail-dot:hover .dot.is-orphan,
+.rail-dot:focus-within .dot.is-orphan {
+    box-shadow: 0 0 0 2px var(--warning-color);
+}
+/* 选中：轮廓色 ring 叠加，与 hover 的 accent ring 区分（选中是“已留住”的状态） */
+.dot.is-selected,
+.rail-dot:hover .dot.is-selected,
+.rail-dot:focus-within .dot.is-selected {
+    width: 16px;
+    height: 16px;
+    box-shadow: 0 0 0 2px var(--selected-outline-color);
+}
+.dot.is-draft.is-selected,
+.rail-dot:hover .dot.is-draft.is-selected,
+.rail-dot:focus-within .dot.is-draft.is-selected {
+    box-shadow: 0 0 0 2px var(--selected-outline-color), 0 0 0 4px color-mix(in srgb, var(--accent-color-300) 50%, transparent);
+}
+/* tooltip：#seq 与 HH:MM 分段显示（seq 提亮加粗、时间次级等宽数字），
+   加实色底 + 1px 边框 + 阴影，11px caption 比原来的 10px 更易扫读。 */
+.rail-dot .seq-tip {
+    position: absolute;
+    left: 38px;
+    top: 50%;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: var(--fs-caption);
+    white-space: nowrap;
+    background: var(--modal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 3px 8px;
+    box-shadow: var(--shadow-pop);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-4px, -50%);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.rail-dot .seq-tip .tip-seq {
+    font-family: ui-monospace, "Hack", monospace;
+    font-weight: var(--fw-semibold);
+    color: var(--accent-text-color);
+}
+.rail-dot .seq-tip .tip-time {
+    font-size: var(--fs-micro);
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
+}
+.rail-dot:hover .seq-tip,
+.rail-dot:focus-within .seq-tip {
+    opacity: 1;
+    transform: translate(0, -50%);
+}
+
+/* ── 6. flow（消息流）── */
+.flow {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 28px 200px;
+    scroll-behavior: smooth;
+}
+.flow-row {
+    max-width: 760px;
+    margin: 0 auto 14px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    scroll-margin-top: 40px;
+    /* 过渡放在基准类上：加/摘 is-target 都有过渡，鼠标移开不会“啪”一下归位 */
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.flow-row.is-target {
+    border-color: var(--selected-outline-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color-300) 30%, transparent);
+}
+/* 双击跳转反馈：目标行自己播一次 1.2s 脉冲（对应 AnnotationFlashMs），
+   不依赖 is-target 的生命周期，所以鼠标一离开圆点、卡片收起也不会把高亮提前抹掉。 */
+.flow-row.is-jump {
+    /* 曲线换成 decelerate（原 ease-out 前段太软，跳转完看不出「到了」的那一下）：
+       光环在约 150ms 内冲到最亮，剩下 1s 慢慢褪成透明，1.2s 后由 JS 摘类。 */
+    animation: rowJump 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes rowJump {
+    0% {
+        border-color: var(--selected-outline-color);
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color-300) 55%, transparent);
+    }
+    18% {
+        border-color: var(--selected-outline-color);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-color-300) 34%, transparent);
+    }
+    100% {
+        border-color: transparent;
+        box-shadow: 0 0 0 12px transparent;
+    }
+}
+.msg {
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    background: var(--surface-soft);
+    border-left: 2px solid color-mix(in srgb, var(--node-type-message) 40%, transparent);
+}
+.msg .role {
+    font-size: var(--fs-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent-text-color);
+    flex: 0 0 52px;
+    padding-top: 2px;
+}
+.msg .body {
+    font-size: var(--fs-body);
+    line-height: var(--lh-base);
+    color: var(--main-text-color);
+    /* flex 子项要能收缩，否则长 URL / 无空格长串会把行撑出容器 */
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.msg .seq-tag {
+    font-size: var(--fs-micro);
+    color: var(--secondary-text-color);
+    font-family: ui-monospace, "Hack", monospace;
+}
+
+/* 工具行（折叠组风格，取自 tool-group.tsx）；summary 复用同一外壳，
+   只换色相，让「执行了一件事」和「总结了一段」在流程里也不同色。 */
+.toolgroup {
+    --tg-hue: var(--node-type-tool);
+    border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--tg-hue) 60%, transparent);
+    border-radius: var(--radius);
+    background: var(--surface-soft);
+    overflow: hidden;
+}
+.toolgroup.kind-summary {
+    --tg-hue: var(--node-type-summary);
+}
+.toolgroup .tg-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: var(--fs-caption);
+    color: var(--secondary-text-color);
+}
+.toolgroup .tg-count {
+    font-family: ui-monospace, "Hack", monospace;
+    font-size: var(--fs-micro);
+    font-weight: var(--fw-semibold);
+    color: var(--accent-text-color);
+    background: var(--accent-bg-soft);
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+}
+.toolgroup .tg-wrench {
+    color: var(--accent-text-color);
+}
+.toolgroup .tg-sum {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.toolgroup .tg-spacer {
+    flex: 1;
+}
+/* 状态圆点：toolgroup 头与卡片内工具行共用一个外观（尺寸 + 三态色），
+   两处只差作用域前缀，合并成组避免两边单独改色差。 */
+.tg-status,
+.tool-row .tstatus {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+.tg-status.running,
+.tool-row .tstatus.running {
+    background: var(--accent-color);
+}
+.tg-status.done,
+.tool-row .tstatus.done {
+    background: var(--success-color); /* 之前缺这条：done 状态的圆点没有任何背景色 */
+}
+.tg-status.failed,
+.tool-row .tstatus.failed {
+    background: var(--error-color);
+}
+
+/* ── 7. card（悬浮卡外壳 / 头 / 节点原文块 / 脚）── */
+.card-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+}
+/* 卡片改为「头 / 中段 / 脚」三段各自带 padding；脚贴底常驻（sticky），
+   内容超出 max-height 时动作按钮仍可见。
+   类型色由 data-type 驱动：--nt-hue 供底色/边框，--nt-text 供文字/图标，
+   两者都取主题里已有的色，避免新造色相。 */
+.acard {
+    --nt-hue: var(--node-type-message);
+    --nt-text: var(--secondary-text-color);
+    position: absolute;
+    /* 窄视口下不超过屏宽：卡片宁可变窄也不能有一半走出屏幕（positionCard 同步做水平夹紧） */
+    width: min(328px, calc(100vw - 16px));
+    max-height: 60vh;
+    overflow-y: auto;
+    pointer-events: auto;
+    background: var(--modal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    /* 入场：0.16s decelerate，从圆点那一侧张开（transform-origin 由 positionCard 按
+       实际展开方向改写）。0.12s ease 那版太软，扫一排圆点时像一帧叠一帧。 */
+    animation: cardIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-origin: left center;
+}
+@keyframes cardIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+/* 退场：与入场对称但更快（0.1s ease-in），只做淡出 + 微量回缩，不位移到别处。
+   时长必须与 script.js 的 CARD_OUT_MS 一致（到点由 JS 摘 DOM）；
+   期间 pointer-events 关掉，避免过去时鼠标正好落在半透明的旧卡上。 */
+.acard.is-leaving {
+    animation: cardOut 0.1s ease-in forwards;
+    pointer-events: none;
+}
+@keyframes cardOut {
+    to {
+        opacity: 0;
+        transform: translateY(-3px) scale(0.985);
+    }
+}
+.acard[data-type="tool"] {
+    --nt-hue: var(--node-type-tool);
+    --nt-text: var(--accent-text-color);
+}
+.acard[data-type="summary"] {
+    --nt-hue: var(--node-type-summary);
+    --nt-text: var(--warning-color);
+}
+.acard.pinned {
+    outline: 2px solid var(--selected-outline-color);
+    outline-offset: -2px;
+}
+/* ✕ 常驻 DOM，未固定时用 visibility 隐藏而不是不渲染：
+   hover → 选中（pinned）切换时页脚不重新排版，卡片不跳位、不闪。 */
+.acard:not(.pinned) [data-close] {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* 卡片头：只承担节点身份（图标 + 类型名 + #seq + 时间），不复写「Node」。
+   类型名做成大写 micro label，和 #seq/时间 区分开，扫读时先认类型再认序号。 */
+.acard-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--nt-hue) 28%, var(--border-color));
+    background: color-mix(in srgb, var(--nt-hue) 9%, transparent);
+}
+.node-name {
+    font-size: var(--fs-micro);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--nt-text);
+    /* 窄卡片下类型名宁可省略号，也不要把 #seq / 时间挤出去 */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.node-type {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--nt-hue) 42%, var(--border-color));
+    background: color-mix(in srgb, var(--nt-hue) 14%, transparent);
+    color: var(--nt-text);
+}
+.node-seq {
+    font-family: ui-monospace, "Hack", monospace;
+    font-size: var(--fs-caption);
+    color: var(--secondary-text-color);
+    flex: 0 0 auto;
+}
+.node-time {
+    font-size: var(--fs-micro);
+    color: var(--secondary-text-color);
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
+}
+.icbtn {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+}
+.icbtn:hover {
+    background: var(--hover-bg);
+    color: var(--main-text-color);
+    border-color: var(--border-color);
+}
+.pin-flag {
+    font-size: var(--fs-micro);
+    color: var(--accent-text-color);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+    background: var(--accent-bg-soft);
+    border-radius: var(--radius-xs);
+    padding: 1px 5px;
+}
+
+/* 节点内容块：被批注的「原文」，色调压一档，让下面的批注成为视觉主体。
+   左侧 2px 类型色条 + 极淡同色底，让头和正文块属于同一个类型。 */
+.node-block {
+    margin: var(--space-3) var(--space-3) 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--nt-hue) 7%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--nt-hue) 55%, transparent);
+}
+/* 原文块的归一行：角色 chip / 工具完成状态 */
+.node-block .nb-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-bottom: var(--space-1);
+    font-size: var(--fs-micro);
+    color: var(--secondary-text-color);
+}
+/* 密集排版：批注 ≥4 条时，原文块与批注正文各收一档行数，
+   降低卡片整体高度、让一屏能扫到更多条目；只动「会撑高」的块，不动结构与字重。 */
+.acard.is-dense .node-block .nb-text.is-clamped {
+    -webkit-line-clamp: 3;
+}
+.acard.is-dense .ann-body.is-clamped {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(180deg, var(--mask-stencil) 64%, transparent 84%);
+    mask-image: linear-gradient(180deg, var(--mask-stencil) 64%, transparent 84%);
+}
+.acard.is-dense .ann {
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
+}
+.node-block .nb-status {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--secondary-text-color);
+}
+.node-block .nb-status.done {
+    color: var(--success-color);
+}
+.node-block .nb-status.failed {
+    color: var(--error-text-color);
+}
+/* summary 节点的章节标题：原文块里唯一的加粗行 */
+.node-block .nb-lead {
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-tight);
+    color: var(--main-text-color);
+    margin-bottom: var(--space-1);
+}
+.chip.role {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.node-block .nb-text {
+    font-size: var(--fs-caption);
+    line-height: var(--lh-base);
+    color: var(--secondary-text-color);
+    /* 固定 5 行上限；是否真被裁由 JS 量 scrollHeight 后加 .is-clamped 决定要不要渐隐 */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    overflow: hidden;
+    /* 长 URL / 无空格长串不能把卡片顶宽 */
+    overflow-wrap: anywhere;
+}
+/* 被裁时底部渐隐：梯度在最后一行「开始之前」就到全透明（5 行盒子里 80% 处是
+   第 5 行顶部），所以裁掉的最后一行整行隐形，不会留下半行浅色「ghost 字」；
+   淡化落在仍可见的那一行下缘，仍然传达「下面还有」。 */
+.node-block .nb-text.is-clamped {
+    -webkit-mask-image: linear-gradient(180deg, var(--mask-stencil) 70%, transparent 82%);
+    mask-image: linear-gradient(180deg, var(--mask-stencil) 70%, transparent 82%);
+}
+/* 工具节点的紧凑行 */
+.node-block .tool-row {
+    padding: 0;
+}
+.tool-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--fs-caption);
+    color: var(--main-text-color);
+}
+.tool-row .tw {
+    color: var(--accent-text-color);
+    /* 16px 而不是 14px：lucide 12px 图在 14px 盒里靠左偏，和后面的工具名不在一条垂直线上 */
+    width: 16px;
+    text-align: center;
+}
+.tool-row .tname {
+    font-weight: var(--fw-semibold);
+}
+.tool-row .tsum {
+    color: var(--secondary-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+/* 卡片内工具行的圆点只留内容位置，尺寸 / 三态色统一在 6. flow 的 .tg-status 合并规则 */
+
+/* ── 8. annotations（批注分组 / 列表 / 条目）── */
+/* 批注分组：与节点块用一条「标题 + 细分隔线」分层，而不是再堆一圈边框 */
+.ann-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: var(--space-3) var(--space-3) 0;
+}
+.ann-group-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--fs-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--secondary-text-color);
+}
+.ann-group-head .ag-count {
+    font-family: ui-monospace, "Hack", monospace;
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0;
+    color: var(--accent-text-color);
+    background: var(--accent-bg-soft);
+    border-radius: var(--radius-xs);
+    padding: 0 4px;
+}
+.ann-group-head .ag-rule {
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+}
+
+/* 批注列表：只用一个容器边框，条目之间一条分隔线；
+   条目内部按「标题 > 正文 > 标签」三档字重/字色排序，扫读先看到标题。 */
+.ann-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.ann {
+    padding: var(--space-2) var(--space-3);
+}
+.ann + .ann {
+    border-top: 1px solid var(--border-color);
+}
+/* 孤儿批注条目：warning 色左边 + 浅 warning 底，与 draft 的 accent 虚线并排时一眼可分。
+   状态优先级在 JS 里是 orphan > draft，CSS 这边也让 orphan 视觉更「警示」。
+   必须排在 .ann:hover 之前：两者同为两重选择器，靠后置让 hover 底色仍能盖住 orphan 底。 */
+.ann.is-orphan {
+    border-left: 2px solid var(--warning-color);
+    background: color-mix(in srgb, var(--warning-color) 10%, transparent);
+}
+.ann:hover {
+    background: var(--surface-soft);
+}
+/* draft 整条加淡色底 + 虚线左边，accepted 保持纯净无边框；
+   两组并排时一眼分出「待确认」与「已确认」。 */
+.ann.is-draft {
+    border-left: 2px dashed var(--draft-border-color);
+    background: color-mix(in srgb, var(--accent-color-300) 8%, transparent);
+}
+/* 元信息行：类型 chip + 状态 chip + 来源，统一最轻一档。
+   列在标题之上，用 margin-bottom 拉开与标题的层级落差。 */
+.ann-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-2);
+}
+.chip {
+    font-size: var(--fs-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    border: 1px solid var(--border-color);
+    color: var(--secondary-text-color);
+}
+.chip.kind {
+    color: var(--accent-text-color);
+    border-color: color-mix(in srgb, var(--accent-color) 50%, transparent);
+    background: var(--accent-bg-soft);
+}
+/* draft 双语言：虚线类型 chip + 独立 Draft 徽标，无需读正文即可辨识「未确认」 */
+.chip.kind.draft {
+    border-style: dashed;
+    border-color: var(--draft-border-color);
+}
+.chip.status-draft {
+    border-style: dashed;
+    border-color: var(--draft-border-color);
+    color: var(--accent-text-color);
+    background: transparent;
+}
+.chip.orphan {
+    color: var(--warning-color);
+    border-color: color-mix(in srgb, var(--warning-color) 60%, transparent);
+}
+.ann-src {
+    font-size: var(--fs-micro);
+    color: var(--secondary-text-color);
+    margin-left: auto;
+}
+/* 标题：批注主体，字重与字色都取最高一档，扫读先落在这里 */
+.ann-title {
+    margin-top: 0;
+    font-size: var(--fs-label);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-tight);
+    color: var(--main-text-color);
+    overflow-wrap: anywhere;
+}
+.ann-body {
+    margin-top: var(--space-1);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-base);
+    color: var(--secondary-text-color);
+    white-space: pre-wrap;
+    /* 单条批注正文也封顶 6 行：真实批注常常是一大段，不封顶时一条就能把卡片撑满。
+       与原文块的 5 行保持一致的处理思路：超限截断 + 底部渐隐（.is-clamped）。 */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 6;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+.ann-body.is-clamped {
+    -webkit-mask-image: linear-gradient(180deg, var(--mask-stencil) 72%, transparent 86%);
+    mask-image: linear-gradient(180deg, var(--mask-stencil) 72%, transparent 86%);
+}
+.ann-tags {
+    margin-top: var(--space-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+}
+.ann-tags .tag {
+    font-size: var(--fs-micro);
+    color: var(--secondary-text-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    /* 单个超长 tag 不能把整行撑宽，换行在标签内部 */
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    padding: 1px 6px;
+}
+
+/* 卡片脚：动作区贴底常驻，与内容用一条分隔线断开 */
+.acard-foot {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--border-color);
+    background: var(--modal-bg);
+}
+/* 卡片内容超出 max-height（批注很多）时，脚会盖住底下滚动的正文，看着像“正文被切成半行”。
+   只在真可滚（JS 量 scrollHeight > clientHeight 后加 .is-scrollable）时，给脚上方加一条
+   向上升的柔和阴影，告诉用户“脚下还有内容”。静态不分情况加阴影，短卡上会像一块脏印。 */
+.acard.is-scrollable .acard-foot {
+    box-shadow: var(--shadow-foot-up);
+}
+.foot-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--surface);
+    color: var(--secondary-text-color);
+    font-family: inherit;
+    font-size: var(--fs-caption);
+    line-height: 1;
+    cursor: pointer;
+}
+.foot-btn:hover {
+    background: var(--hover-bg);
+    color: var(--main-text-color);
+    border-color: var(--selected-outline-color);
+}
+.acard-foot .icbtn {
+    margin-left: auto;
+}
+
+/* ── 9. editor（Modal 与按钮）── */
+.editor-layer {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: var(--overlay-bg);
+    z-index: 80;
+}
+.editor-layer.open {
+    display: flex;
+}
+.editor {
+    width: min(560px, calc(100vw - 32px));
+    max-height: 86vh;
+    overflow-y: auto;
+    background: var(--modal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-modal);
+    padding: 18px;
+    color: var(--main-text-color);
+}
+.editor-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+.editor-head .eh-title {
+    margin: 0;
+    font-size: var(--fs-display);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-tight);
+    color: var(--main-text-color);
+}
+.editor-head .eh-seq {
+    font-size: var(--fs-caption);
+    color: var(--secondary-text-color);
+    font-family: ui-monospace, "Hack", monospace;
+    flex: 0 0 auto;
+}
+/* 分段：Kind / Node / Annotation 三个区块用一条细分隔线分层，
+   每段只有一个小写标题，字段归到所属段落里，避免一长串同权字段。 */
+.e-section {
+    padding: 12px 0;
+    border-top: 1px solid var(--border-color);
+}
+.e-section:first-of-type {
+    border-top: 0;
+}
+.e-section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.e-section-title {
+    font-size: var(--fs-micro);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--secondary-text-color);
+}
+.e-kind {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.e-kind button {
+    height: 26px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: var(--fs-micro);
+    padding: 0 12px;
+    cursor: pointer;
+}
+.e-kind button.on {
+    border-color: var(--draft-border-color);
+    background: var(--accent-bg-soft);
+    color: var(--accent-text-color);
+}
+.e-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--secondary-text-color);
+    margin: 10px 0 4px;
+}
+.e-field {
+    width: 100%;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--main-text-color);
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: var(--fs-body);
+    outline: none;
+}
+.e-field:focus {
+    border-color: var(--accent-color);
+}
+
+textarea.e-field {
+    resize: vertical;
+}
+.e-node-preview {
+    font-size: var(--fs-caption);
+    line-height: var(--lh-base);
+    color: var(--secondary-text-color);
+    background: var(--surface-soft);
+    border-radius: var(--radius-md);
+    padding: 6px 9px;
+    margin-bottom: 4px;
+    max-height: 64px;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+.e-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+}
+.e-actions .right {
+    display: flex;
+    gap: 8px;
+}
+.btn {
+    height: 32px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: var(--fs-label);
+    padding: 0 14px;
+    cursor: pointer;
+}
+.btn:hover {
+    background: var(--hover-bg);
+    color: var(--main-text-color);
+}
+/* 次级动作（Cancel）：无边框、无底色，只在 hover 时浮出背景，
+   把视觉重量让给主按钮，避免「保存 / 取消」两个按钮同等抢眼。 */
+.btn.ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--secondary-text-color);
+}
+.btn.ghost:hover {
+    background: var(--hover-bg);
+    color: var(--main-text-color);
+    border-color: var(--border-color);
+}
+/* 主按钮（Save）：实色 accent + 深一档字色 + 轻微投影 + 更宽命中区，
+   在页脚里一眼可辨是「主操作」。 */
+.btn.primary {
+    background: var(--accent-solid-bg);
+    border-color: var(--accent-solid-bg);
+    color: var(--accent-solid-text);
+    font-weight: var(--fw-semibold);
+    min-width: 88px;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent-solid-bg) 30%, transparent);
+}
+.btn.primary:hover {
+    /* 向字色方向混合：两个主题下对比度只会变大，不会变弱 */
+    background: color-mix(in srgb, var(--accent-solid-bg) 88%, var(--accent-solid-text));
+}
+.btn.danger {
+    color: var(--error-text-color);
+    border-color: color-mix(in srgb, var(--error-color) 50%, transparent);
+}
+
+/* ── 10. controls（按钮共用命中 / 按下手感）── */
+/* 所有可点击控件共用一组过渡和按下微位移：命中时颜色淡入、按下时下沉 0.5px，
+   与 shadcn 的 active:translate-y 手感一致。集中一处，避免新加按钮时漏写过渡。 */
+.proto-btn,
+.icbtn,
+.foot-btn,
+.btn,
+.e-kind button {
+    transition: var(--transition-control);
+}
+.proto-btn:active,
+.icbtn:active,
+.foot-btn:active,
+.btn:active,
+.e-kind button:active {
+    transform: translateY(0.5px);
+}
+/* 按下时底色再深一档（surface 比 hover-bg 重），补上“按下 → 松开回弹”的反馈 */
+.proto-btn:active,
+.icbtn:active,
+.foot-btn:active,
+.btn:active {
+    background-color: var(--surface);
+}
+.btn.primary:active {
+    background-color: color-mix(in srgb, var(--accent-solid-bg) 82%, var(--accent-solid-text));
+}
+
+/* ── 11. a11y（键盘焦点环）── */
+:is(.proto-btn, .icbtn, .foot-btn, .btn, .rail-dot button, .e-kind button):focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+}
+.e-field:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 1px;
+}
+
+/* ── 12. responsive（窄视口 / 减少动效）── */
+/* 窄视口（≤720px）：rail 收窄、flow 内边距压缩，让窄屏下卡片有够宽的展开空间。
+   卡片宽 328px 已经接近小屏，positionCard 会夹到视口内（不再硬翻到左边）。 */
+@media (max-width: 720px) {
+    .rail {
+        width: 34px;
+        flex-basis: 34px;
+    }
+    .flow {
+        padding: 16px 14px 200px;
+    }
+    .flow-row {
+        margin-bottom: 10px;
+    }
+}
+
+/* 更窄（≤560px）：圆点左右都塞不下卡片，硬浮在圆点旁会盖满整个 flow。
+   改成从底部升起的面板（positionCard 同时清掉 inline left/top，位置全部交给这里），
+   上半屏的消息流仍然可见，可追溯到「这张卡说的是哪一段」。 */
+@media (max-width: 560px) {
+    .acard.is-sheet {
+        left: 8px;
+        right: 8px;
+        top: auto;
+        bottom: 8px;
+        width: auto;
+        max-height: 62vh;
+        animation: sheetIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes sheetIn {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+}
+
+/* 手机竖屏（≤520px）：这是本原型真正的最小可用尺寸，三条约束一起收。
+   1) 卡片宽度跟视口走但封顶 320px：calc(100vw - 20px) 保证左右各留 10px，
+      320px 上限保证宽一点的窄屏（340~520px）不会被拉成一条超宽条。
+   2) 卡片高度收到 70vh 并自己滚（.acard 本来就是 overflow-y:auto），
+      这样底部面板上方仍能看到消息流，能对上「这张卡说的是哪一段」。
+   3) 头部提示文字占的位置比它给的信息多，窄屏直接不显示。
+   卡片 left/top 由 script.js 的 positionCard 夹紧，这里只改尺寸，不动定位。 */
+@media (max-width: 520px) {
+    .acard,
+    .acard:not(.is-sheet) {
+        width: min(320px, calc(100vw - 20px));
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    /* 底部面板两侧各留 10px，等价于上面的 min(320px, 100vw - 20px)：
+       左右都锚定时 width:auto 撑满可用宽度，宽屏上限交给 max-width。 */
+    .acard.is-sheet {
+        left: 10px;
+        right: 10px;
+        width: auto;
+        max-width: min(320px, calc(100vw - 20px));
+        margin-inline: auto;
+        max-height: 70vh;
+    }
+    /* rail 收到 40px 作为下限：圆点命中区还够，标签让位给 flow */
+    .rail {
+        width: 40px;
+        flex-basis: 40px;
+    }
+    .flow {
+        padding: 12px 10px 160px;
+    }
+    .flow-row {
+        margin-bottom: 8px;
+    }
+    .proto-hint {
+        display: none;
+    }
+}
+
+/* 降低动效偏好：交互手感不依赖动画，这里只关掉位移/淡入，保留高亮与状态色，
+   避免系统开启「减少动画」时页面还在跳卡/脉冲。 */
+@media (prefers-reduced-motion: reduce) {
+    /* .acard.is-leaving 必须单独列：它的类选择器权重高于 .acard，
+       只写 .acard 会让退场动画在 reduce 下照常播。 */
+    .acard,
+    .acard.is-leaving,
+    .flow-row.is-jump {
+        animation: none;
+    }
+    /* 关动画不等于关反馈：跳转后的 1.2s 高亮改成静态点亮（无脉冲、无扩散），
+       否则 reduce 用户双击圆点后完全看不到「跳到了哪一行」。 */
+    .flow-row.is-jump {
+        border-color: var(--selected-outline-color);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color-300) 30%, transparent);
+    }
+    .flow {
+        scroll-behavior: auto;
+    }
+    /* 圆点的三条 transition（基准收缩 / 命中放大 / 选中放大）都要覆盖，
+       放大规则权重更高，只列 .dot 会留下尺寸过渡。 */
+    .dot,
+    .rail-dot:hover .dot,
+    .rail-dot:focus-within .dot,
+    .dot.is-selected,
+    .rail-dot:hover .dot.is-selected,
+    .rail-dot:focus-within .dot.is-selected,
+    .rail-dot .seq-tip,
+    .rail-playhead,
+    .flow-row {
+        transition: none;
+    }
+    /* 按下位移也关：reduce 用户不要看到按钮“动”，但底色加深保留 */
+    .proto-btn:active,
+    .icbtn:active,
+    .foot-btn:active,
+    .btn:active,
+    .e-kind button:active {
+        transform: none;
+    }
+}

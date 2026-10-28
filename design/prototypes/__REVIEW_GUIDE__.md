@@ -77,6 +77,10 @@
 
 - `ssh-config-edit/` — **▲ 设计活跃**;连接下拉框新增「Edit SSH Config」入口,打开 `~/.ssh/config` 可编辑 preview 视图;真实 `conntypeahead.tsx` 尚未实现。
 
+## `notion-property-agent-card/` — 1 项（自建目录）
+
+- `notion-property-agent-card/` — **▲ 设计活跃**（2026-10-29）；把 Agent / Session 卡片上硬编码的 Note + Tags 升级为 Notion 式「属性 schema + 属性值 + 类型化渲染」的像素级参照原型。覆盖：page icon（品牌 Logo vs emoji 分层覆盖）、40px 标题、属性行（hover `⋮⋮`）、完整类型选择器（Basic/Advanced/System）、Select/Status/Multi-select/Date/Checkbox/Text/Number/URL/Person/Relation/Formula 编辑器、`+ Add a property`、`⋮⋮` 属性菜单（Rename/Change type/Delete）、AI 自动填充 + 新属性提议 + `✨` 来源标 + Undo、窄卡形态（前 5 条 + `+N more`）。镜像源：`frontend/app/element/info-card/session-note-section.tsx`, `frontend/app/view/aisessions/session-row.tsx`, `frontend/app/view/term/agent-hover-card.tsx`, `frontend/app/block/session-detail-info-card.tsx`, `frontend/app/view/preview/plugins/md-properties/frontmatter-block.ts`, `frontend/app/view/term/agent-logo.tsx`；真实组件尚未实现。配套设计文档：`design/plans/aisession-notion-properties.md`。
+
 ## `vcs-header-hover-panel/` — 1 项（自建目录）
 
 - `vcs-header-hover-panel/` — **▲ 设计活跃**;Files Block header 版本管理图标 hover 快捷面板:按 Git/SVN 区分内容(分支/ahead-behind vs Update/远端文件数),8 场景可切换(Git/SVN × 文件/目录、多仓库、非 repo、检测中、解析失败);点击图标本体行为不变。镜像 `preview-model.tsx` endIconButtons + `blockframe-header.tsx`,真实组件尚未实现。
@@ -166,3 +170,7 @@
 | `_to-keep` 内 3 个未登记项 | 超出 42 项清单 | 补入目录或拍板去留 |
 
 > 上述逐项不擅自处理；`audit-sync.mjs`（`docs/sync-audit/audit-sync.mjs`）已能自动标出，后续照此跟进。
+
+## 2026-10-28 新增原型
+
+- `aisessions-annotation-card-ux/` — **▲ 设计活跃**（2026-10-28）；会话详情批注节点悬浮卡重设计：去掉卡片「Node」字样改为「类型图标 + #seq + 时间」身份头；圆点交互从「单击既跳又钉」改为 **单击选中留卡 / 双击跳转高亮**；卡片移除 Jump 按钮与图钉，改为 external-link 直接打开 `AnnotationEditor`；工具节点按 `tool-group.tsx` 画成工具行（wrench + 名称 + summary + 状态点），summary 节点显示截断总结（渐隐），批注的类型/标题/正文/标签分层展示。覆盖 message / tool / summary 三类节点 + 明暗主题。镜像源：`annotation-card.tsx`、`annotation-rail.tsx`、`annotation-model.ts`、`session-detail.tsx`、`tool-group.tsx`，真实组件尚未实现。
