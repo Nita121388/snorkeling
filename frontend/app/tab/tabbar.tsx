@@ -520,6 +520,14 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
     };
 
     const handleMouseMove = (event: MouseEvent) => {
+        // 自愈: mouseup 可能丢失 (拖到窗口外松手 / 焦点落到原生菜单或其它窗口),
+        // 监听会一直挂在 document 上 —— 于是「没按键、鼠标一动 Tab 就跟着跑」。
+        // 这里用按键状态兜底, 一旦左键已释放就立即收尾复位。
+        if (event.buttons !== 1) {
+            handleMouseUp(event);
+            return;
+        }
+
         const { tabId, ref, tabStartX } = draggingTabDataRef.current;
 
         let initialOffsetX = draggingTabDataRef.current.initialOffsetX;
@@ -651,7 +659,7 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
     );
 
     const handleMouseUp = (_event: MouseEvent) => {
-        const { tabIndex, dragged } = draggingTabDataRef.current;
+        const { tabIndex, dragged, engaged } = draggingTabDataRef.current;
 
         if (dragged) {
             // 真实拖拽结束: 拖拽期间布局顺序 == visibleTabIds, 用其计算落点 (原有逻辑不变)
@@ -674,9 +682,20 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
                 ref.current.style.zIndex = "0";
                 ref.current.classList.remove("animate");
             });
+            // 亚阈值拖拽 (engaged 但未越过 dragged 阈值) 期间 handleMouseMove 已经
+            // 写过内联 transform, 这里不清就会把 Tab 永久卡在半路, 看起来像被鼠标拖着。
+            // 重排一次, 让所有 Tab 回到布局计算出的位置。
+            if (engaged) {
+                setSizeAndPosition();
+            }
             // Reset dragging state
             setDraggingTab(null);
         }
+
+        // 拖拽结束标志必须复位: 否则会泄漏到「更多」下拉的点选路径 ——
+        // handleSelectTab 见到 dragged===true 直接 return, 表现为下拉里的 Tab 点不动。
+        draggingTabDataRef.current.dragged = false;
+        draggingTabDataRef.current.engaged = false;
 
         document.removeEventListener("mouseup", handleMouseUp);
         document.removeEventListener("mousemove", handleMouseMove);

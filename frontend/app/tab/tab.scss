@@ -119,16 +119,25 @@ body:not(.nohover) .tab.dragging {
         display: none;
     }
 
-    .tab-inner {
-        border-color: transparent;
-        background: rgb(from var(--main-text-color) r g b / 0.1);
-    }
     .close {
         visibility: visible;
         &:hover {
             color: var(--main-text-color);
         }
     }
+}
+
+// hover 只给淡反馈, 必须明显弱于 .tab.active 的 0.1 ——
+// 之前两者 alpha 相同, 鼠标滑过任意 Tab 都会长得跟激活态一模一样。
+body:not(.nohover) .tab:hover .tab-inner {
+    border-color: transparent;
+    background: rgb(from var(--main-text-color) r g b / 0.055);
+}
+
+// 拖拽中的 Tab 保持和 active 同级的实心感, 表示它正被拿起。
+body:not(.nohover) .tab.dragging .tab-inner {
+    border-color: transparent;
+    background: rgb(from var(--main-text-color) r g b / 0.1);
 }
 
 // When in nohover mode, always show the close button on the active tab. This prevents the close button of the active tab from flickering when nohover is toggled.
