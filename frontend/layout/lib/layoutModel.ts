@@ -514,6 +514,15 @@ export class LayoutModel {
             case LayoutTreeActionType.RemoveNodeFromLayout: {
                 const leaf = this?.getNodeByBlockId(action.blockid);
                 if (leaf) {
+                    // The source node may be an inline tab group holding several blocks.
+                    // Moving a single block out must only remove that block from the
+                    // group, not tear down the whole node (which would delete every
+                    // sibling block from the source tab). Mutate the tree state here
+                    // and let the batch commit (updateTree + persist) pick it up.
+                    if (getLayoutDataBlockIds(leaf.data).length > 1) {
+                        removeBlockIdFromInlineTabNode(leaf, action.blockid);
+                        break;
+                    }
                     this.treeReducer(
                         {
                             type: LayoutTreeActionType.RemoveNodeFromLayout,

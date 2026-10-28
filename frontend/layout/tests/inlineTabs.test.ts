@@ -116,6 +116,22 @@ test("remove block from inline tab node degrades to single block", () => {
     assert.deepEqual(node.data, { blockId: "target" });
 });
 
+test("remove one block keeps sibling blocks in the inline tab group", () => {
+    // Regression for Move-to-Tab tearing down the whole group node: removing a
+    // single block must leave the remaining siblings in place as an inline tab group.
+    const node = newLayoutNode(undefined, undefined, undefined, {
+        blockIds: ["one", "two", "three"],
+        activeBlockId: "one",
+        blockTabTitles: { one: "First", two: "Second", three: "Third" },
+    });
+
+    removeBlockIdFromInlineTabNode(node, "two");
+
+    assert.deepEqual(getLayoutDataBlockIds(node.data), ["one", "three"]);
+    assert(getLayoutDataActiveBlockId(node.data) === "one", "unrelated active block must be preserved");
+    assert.deepEqual(node.data.blockTabTitles, { one: "First", three: "Third" }, "titles of untouched blocks must survive");
+});
+
 test("reorder inline tab block ids preserves active block and titles", () => {
     const node = newLayoutNode(undefined, undefined, undefined, {
         blockIds: ["one", "two", "three"],
