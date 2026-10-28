@@ -9,11 +9,13 @@
 //
 // Storage format is unchanged — this is a UX layer over AIModeConfigType.
 
-import { atoms } from "@/app/store/global-atoms";
+import { CopyButton } from "@/app/element/copybutton";
+import { InlineRenameInput } from "@/app/element/inline-rename-input";
 import { getSettingsKeyAtom } from "@/app/store/global";
-import { useAtomValue } from "jotai";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
+import { atoms } from "@/app/store/global-atoms";
+import { modalsModel } from "@/app/store/modalmodel";
+import { AITestServiceType, CcSwitchServiceType } from "@/app/store/services";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import {
     deleteWaveAIMode,
     renameWaveAIMode,
@@ -21,12 +23,10 @@ import {
     upsertWaveAIMode,
 } from "@/app/view/waveconfig/waveai-modes";
 import { templateModeKey, templateToAIMode, WaveAITemplates } from "@/app/view/waveconfig/waveai-templates";
-import { AITestServiceType, CcSwitchServiceType } from "@/app/store/services";
-import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { modalsModel } from "@/app/store/modalmodel";
-import { CopyButton } from "@/app/element/copybutton";
-import { InlineRenameInput } from "@/app/element/inline-rename-input";
+import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import { cn } from "@/util/util";
+import { useAtomValue } from "jotai";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type TestState =
     | { status: "idle" }
@@ -34,11 +34,7 @@ type TestState =
     | { status: "ok"; latencyMs: number; message: string }
     | { status: "error"; message: string };
 
-type FetchState =
-    | { status: "idle" }
-    | { status: "fetching" }
-    | { status: "ok" }
-    | { status: "error"; message: string };
+type FetchState = { status: "idle" } | { status: "fetching" } | { status: "ok" } | { status: "error"; message: string };
 
 const ApiTypeOptions: { value: string; label: string }[] = [
     { value: "openai-responses", label: "OpenAI Responses" },
@@ -54,11 +50,7 @@ const isBuiltInMode = (key: string) => key.startsWith("waveai@");
 /** Status dot meaning: connected (last test passed) vs never tested vs failed. */
 type ProbeStatus = "none" | "ok" | "error";
 
-export const WaveAIVisualContent = memo(function WaveAIVisualContent({
-    model,
-}: {
-    model: WaveConfigViewModel;
-}) {
+export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: { model: WaveConfigViewModel }) {
     // Live mode map, re-renders on every backend broadcast (including our own writes).
     const modeConfigs = useAtomValue(atoms.waveaiModeConfigAtom) ?? {};
     const defaultMode = useAtomValue(getSettingsKeyAtom("waveai:defaultmode")) ?? "";
@@ -73,6 +65,10 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
     const [adding, setAdding] = useState(false);
     const [ccSwitchVendors, setCcSwitchVendors] = useState<WaveAIVendor[]>([]);
     const [loadingCcSwitch, setLoadingCcSwitch] = useState(false);
+    const [ccSwitchOpen, setCcSwitchOpen] = useState(false);
+    const [expandedVendor, setExpandedVendor] = useState<string | null>(null);
+    const [selectedModels, setSelectedModels] = useState<Record<string, boolean>>({});
+    const [importing, setImporting] = useState(false);
     const [filter, setFilter] = useState("");
     const [error, setError] = useState<string | null>(null);
     // Last probe result per mode key, so the list can show a connection dot.
@@ -88,7 +84,9 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                 .map(([key, config]) => ({ key, config }))
                 .sort((a, b) => {
                     const orderDiff = (a.config["display:order"] ?? 0) - (b.config["display:order"] ?? 0);
-                    return orderDiff !== 0 ? orderDiff : a.config["display:name"].localeCompare(b.config["display:name"]);
+                    return orderDiff !== 0
+                        ? orderDiff
+                        : a.config["display:name"].localeCompare(b.config["display:name"]);
                 }),
         [modeConfigs]
     );
@@ -126,10 +124,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
         void upsertWaveAIMode(model, DEFAULT_MODE_KEY, config).then(() => setDefaultWaveAIMode(DEFAULT_MODE_KEY));
     }, [entries.length, model]);
 
-    const selectedEntry = useMemo(
-        () => entries.find((e) => e.key === selectedKey) ?? null,
-        [entries, selectedKey]
-    );
+    const selectedEntry = useMemo(() => entries.find((e) => e.key === selectedKey) ?? null, [entries, selectedKey]);
 
     // Keep selection valid as the list changes (deletes / external edits).
     useEffect(() => {
@@ -195,32 +190,41 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
             return;
         }
         const label = selectedEntry?.config["display:name"] || selectedKey;
-        modalsModel.pushModal(
-            "ConfirmModal",
-            {
-                title: "Delete AI provider",
-                message: `Delete "${label}"? The entry is removed from waveai.json. Existing sessions that already use it keep working until their mode is switched.`,
-                confirmLabel: "Delete",
-                destructive: true,
-                onResolve: (confirmed: boolean) => {
-                    if (!confirmed) return;
-                    void deleteWaveAIMode(model, selectedKey).catch((err) =>
-                        showError(`Could not delete AI provider: ${errorText(err)}`)
-                    );
-                    if (defaultMode === selectedKey) {
-                        void setDefaultWaveAIMode("");
-                    }
-                },
-            }
-        );
+        modalsModel.pushModal("ConfirmModal", {
+            title: "Delete AI provider",
+            message: `Delete "${label}"? The entry is removed from waveai.json. Existing sessions that already use it keep working until their mode is switched.`,
+            confirmLabel: "Delete",
+            destructive: true,
+            onResolve: (confirmed: boolean) => {
+                if (!confirmed) return;
+                void deleteWaveAIMode(model, selectedKey).catch((err) =>
+                    showError(`Could not delete AI provider: ${errorText(err)}`)
+                );
+                if (defaultMode === selectedKey) {
+                    void setDefaultWaveAIMode("");
+                }
+            },
+        });
     }, [defaultMode, model, selectedEntry, selectedKey, showError]);
 
     const handleLoadCcSwitch = useCallback(async () => {
+        if (ccSwitchOpen) {
+            // Collapse: keep the loaded vendors cached so re-opening is instant.
+            setCcSwitchOpen(false);
+            setExpandedVendor(null);
+            return;
+        }
+        setCcSwitchOpen(true);
+        if (ccSwitchVendors.length > 0) {
+            return;
+        }
         setLoadingCcSwitch(true);
         setError(null);
         try {
             const result = await model.env.rpc.CcSwitchListWaveAIVendorsCommand(TabRpcClient);
             setCcSwitchVendors(result?.vendors ?? []);
+            setExpandedVendor(null);
+            setSelectedModels({});
         } catch (err) {
             const message = `Could not read cc-switch providers: ${errorText(err)}`;
             setError(message);
@@ -228,31 +232,97 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
         } finally {
             setLoadingCcSwitch(false);
         }
-    }, [model, showError]);
+    }, [ccSwitchOpen, ccSwitchVendors, model, showError]);
+
+    const vendorKey = useCallback((vendor: WaveAIVendor) => `${vendor.appType}:${vendor.id}`, []);
+
+    const vendorModels = useCallback(
+        (vendor: WaveAIVendor) =>
+            (vendor.models?.length > 0 ? vendor.models : [vendor.defaultModel || ""]).filter(Boolean),
+        []
+    );
+
+    const toggleVendor = useCallback(
+        (vendor: WaveAIVendor) => {
+            const key = vendorKey(vendor);
+            setExpandedVendor((cur) => (cur === key ? null : key));
+            // Seed the model checkboxes: every model starts checked so a user who
+            // wants "all" can still one-click import, but any can be unticked.
+            setSelectedModels((cur) => {
+                const next = { ...cur };
+                for (const modelId of vendorModels(vendor)) {
+                    const modelKey = `${key}::${modelId}`;
+                    if (next[modelKey] == null) {
+                        next[modelKey] = true;
+                    }
+                }
+                return next;
+            });
+        },
+        [vendorKey, vendorModels]
+    );
+
+    const toggleModel = useCallback((modelKey: string) => {
+        setSelectedModels((cur) => ({ ...cur, [modelKey]: !cur[modelKey] }));
+    }, []);
+
+    const setVendorModelsState = useCallback(
+        (vendor: WaveAIVendor, value: boolean) => {
+            const key = vendorKey(vendor);
+            setSelectedModels((cur) => {
+                const next = { ...cur };
+                for (const modelId of vendorModels(vendor)) {
+                    next[`${key}::${modelId}`] = value;
+                }
+                return next;
+            });
+        },
+        [vendorKey, vendorModels]
+    );
+
+    const selectedModelsFor = useCallback(
+        (vendor: WaveAIVendor) => {
+            const key = vendorKey(vendor);
+            return vendorModels(vendor).filter((modelId) => selectedModels[`${key}::${modelId}`]);
+        },
+        [vendorKey, selectedModels, vendorModels]
+    );
 
     // The import writes through the backend and returns the mode key it created;
-    // the watcher broadcast updates the list, so no reload is needed.
+    // the watcher broadcast updates the list, so no reload is needed. Only the
+    // models the user ticked are imported (selective import, not import-all).
     const handleImportCcSwitch = useCallback(
         async (vendor: WaveAIVendor) => {
-            const models = vendor.models?.length > 0 ? vendor.models : [vendor.defaultModel || ""];
+            const chosen = selectedModelsFor(vendor);
+            if (chosen.length === 0) {
+                return;
+            }
             setError(null);
+            setImporting(true);
             try {
                 let lastKey: string | null = null;
-                for (const modelId of models.filter(Boolean)) {
-                    const result = await ccSwitchService.ImportWaveAI({ vendorId: vendor.id, model: modelId });
+                for (const modelId of chosen) {
+                    const result = await ccSwitchService.ImportWaveAI({
+                        vendorId: vendor.id,
+                        appType: vendor.appType,
+                        model: modelId,
+                    });
                     lastKey = result?.modeKey ?? lastKey;
                 }
                 if (lastKey != null) {
                     setSelectedKey(lastKey);
                 }
                 setAdding(false);
+                setExpandedVendor(null);
             } catch (err) {
                 const message = `Could not import ${vendor.name}: ${errorText(err)}`;
                 setError(message);
                 showError(message);
+            } finally {
+                setImporting(false);
             }
         },
-        [ccSwitchService, showError]
+        [ccSwitchService, selectedModelsFor, showError]
     );
 
     const handleAddFromTemplate = useCallback(
@@ -263,9 +333,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
             }
             const key = templateModeKey(template);
             const existing = modeConfigs[key];
-            const config = existing
-                ? { ...existing, ...templateToAIMode(template) }
-                : templateToAIMode(template);
+            const config = existing ? { ...existing, ...templateToAIMode(template) } : templateToAIMode(template);
             void upsertWaveAIMode(model, key, config).then(() => {
                 setSelectedKey(key);
                 setAdding(false);
@@ -383,35 +451,121 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                     <div className="mb-3 flex flex-wrap gap-1.5">
                         <button
                             type="button"
-                            className="h-7 cursor-pointer rounded border border-border bg-panel px-2.5 text-xs text-secondary hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-50"
+                            className={cn(
+                                "flex h-7 cursor-pointer items-center gap-1.5 rounded border px-2.5 text-xs transition-colors disabled:cursor-default disabled:opacity-60",
+                                ccSwitchOpen
+                                    ? "border-accent bg-accent/10 text-primary"
+                                    : "border-border bg-panel text-secondary hover:bg-hover hover:text-primary"
+                            )}
                             onClick={() => void handleLoadCcSwitch()}
                             disabled={loadingCcSwitch}
+                            aria-expanded={ccSwitchOpen}
+                            title={ccSwitchOpen ? "Hide cc-switch providers" : "Import from cc-switch"}
                         >
                             {loadingCcSwitch ? (
-                                <>
-                                    <i className="fa-sharp fa-solid fa-spinner animate-spin" /> Loading cc-switch…
-                                </>
+                                <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
                             ) : (
-                                "Import from cc-switch"
+                                <i
+                                    className={cn(
+                                        "fa-sharp fa-solid fa-chevron-right text-[9px] transition-transform",
+                                        ccSwitchOpen && "rotate-90"
+                                    )}
+                                    aria-hidden="true"
+                                />
                             )}
+                            <span>cc-switch</span>
                         </button>
                     </div>
-                    {ccSwitchVendors.length > 0 && (
-                        <div className="mb-3 max-h-40 overflow-y-auto rounded border border-border bg-panel p-2">
+                    {ccSwitchOpen && ccSwitchVendors.length === 0 && !loadingCcSwitch && (
+                        <div className="mb-3 rounded border border-border bg-panel px-2.5 py-2 text-xs text-muted-foreground">
+                            No importable cc-switch providers found.
+                        </div>
+                    )}
+                    {ccSwitchOpen && ccSwitchVendors.length > 0 && (
+                        <div className="mb-3 max-h-60 overflow-y-auto rounded border border-border bg-panel p-2">
                             <div className="px-1 pb-1 text-xxs font-medium text-secondary">cc-switch providers</div>
-                            {ccSwitchVendors.map((vendor) => (
-                                <button
-                                    key={`${vendor.appType}:${vendor.id}`}
-                                    type="button"
-                                    className="flex h-7 w-full items-center justify-between rounded px-2 text-left text-xs text-secondary hover:bg-hover hover:text-primary"
-                                    onClick={() => void handleImportCcSwitch(vendor)}
-                                >
-                                    <span className="truncate">{vendor.name}</span>
-                                    <span className="shrink-0 pl-2 text-xxs text-muted-foreground">
-                                        {vendor.models?.length ?? 0} models
-                                    </span>
-                                </button>
-                            ))}
+                            {ccSwitchVendors.map((vendor) => {
+                                const key = vendorKey(vendor);
+                                const models = vendorModels(vendor);
+                                const isExpanded = expandedVendor === key;
+                                const chosen = selectedModelsFor(vendor);
+                                const allChosen = models.length > 0 && chosen.length === models.length;
+                                return (
+                                    <div key={key} className="mb-1 last:mb-0">
+                                        <button
+                                            type="button"
+                                            className="flex h-7 w-full items-center justify-between rounded px-2 text-left text-xs text-secondary hover:bg-hover hover:text-primary"
+                                            aria-expanded={isExpanded}
+                                            onClick={() => toggleVendor(vendor)}
+                                        >
+                                            <span className="flex min-w-0 items-center gap-1.5">
+                                                <i
+                                                    className={cn(
+                                                        "fa-sharp fa-solid fa-chevron-right shrink-0 text-[9px] text-muted-foreground transition-transform",
+                                                        isExpanded && "rotate-90"
+                                                    )}
+                                                    aria-hidden="true"
+                                                />
+                                                <span className="truncate">{vendor.name}</span>
+                                            </span>
+                                            <span className="shrink-0 pl-2 text-xxs text-muted-foreground">
+                                                {chosen.length}/{models.length}
+                                            </span>
+                                        </button>
+                                        {isExpanded && (
+                                            <div className="mx-1 mt-1 rounded border border-border/60 bg-panel p-1.5">
+                                                <div className="mb-1 flex items-center justify-between px-1">
+                                                    <span className="text-xxs text-muted-foreground">
+                                                        Select models to import
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        className="cursor-pointer text-xxs text-accent hover:underline"
+                                                        onClick={() => setVendorModelsState(vendor, !allChosen)}
+                                                    >
+                                                        {allChosen ? "Clear all" : "Select all"}
+                                                    </button>
+                                                </div>
+                                                <div className="mb-1.5 max-h-36 overflow-y-auto">
+                                                    {models.map((modelId) => {
+                                                        const modelKey = `${key}::${modelId}`;
+                                                        const checked = !!selectedModels[modelKey];
+                                                        return (
+                                                            <label
+                                                                key={modelId}
+                                                                className="flex h-6 cursor-pointer items-center gap-2 rounded px-1 text-xs text-secondary hover:bg-hover hover:text-primary"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={checked}
+                                                                    onChange={() => toggleModel(modelKey)}
+                                                                    className="h-3 w-3 shrink-0 cursor-pointer accent-accent"
+                                                                />
+                                                                <span className="truncate font-mono">{modelId}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="flex h-7 w-full cursor-pointer items-center justify-center gap-1.5 rounded bg-action px-2 text-xs text-actiontext hover:bg-actionhover disabled:cursor-default disabled:opacity-50"
+                                                    disabled={chosen.length === 0 || importing}
+                                                    onClick={() => void handleImportCcSwitch(vendor)}
+                                                >
+                                                    {importing ? (
+                                                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
+                                                    ) : (
+                                                        <i className="fa-sharp fa-solid fa-download text-[11px]" />
+                                                    )}
+                                                    {chosen.length === 0
+                                                        ? "Select at least one model"
+                                                        : `Import ${chosen.length}`}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                     <div className="flex flex-wrap gap-1.5">
@@ -546,7 +700,10 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                                                     {selectedEntry.config["display:name"] || selectedEntry.key}
                                                 </button>
                                             )}
-                                            <p className="truncate px-1.5 text-[11px] text-muted-foreground" title={selectedEntry.key}>
+                                            <p
+                                                className="truncate px-1.5 text-[11px] text-muted-foreground"
+                                                title={selectedEntry.key}
+                                            >
                                                 {selectedEntry.key}
                                                 {APITypeLabels[selectedEntry.config["ai:apitype"]]
                                                     ? ` · ${APITypeLabels[selectedEntry.config["ai:apitype"]]}`
@@ -654,12 +811,16 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                                         ) : null}
 
                                         <div>
-                                            <label className="mb-1 text-xs font-medium text-secondary">API key secret</label>
+                                            <label className="mb-1 text-xs font-medium text-secondary">
+                                                API key secret
+                                            </label>
                                             <div className="flex items-center gap-1.5">
                                                 <input
                                                     ref={apiKeyInputRef}
                                                     value={form["ai:apitokensecretname"] ?? ""}
-                                                    onChange={(e) => applyPatch({ "ai:apitokensecretname": e.target.value })}
+                                                    onChange={(e) =>
+                                                        applyPatch({ "ai:apitokensecretname": e.target.value })
+                                                    }
                                                     placeholder="Secret name, e.g. OPENAI_KEY"
                                                     spellCheck={false}
                                                     className="h-8 min-w-0 flex-1 rounded border border-border bg-panel px-2.5 font-mono text-xs text-primary outline-none focus:border-accent"
@@ -698,7 +859,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({
                                                 </button>
                                             </div>
                                             {testState.status === "ok" || testState.status === "error" ? (
-                                        <div className="flex min-w-0 flex-1 items-start gap-1.5">
+                                                <div className="flex min-w-0 flex-1 items-start gap-1.5">
                                                     <p
                                                         className={cn(
                                                             "min-w-0 flex-1 text-xs break-words",
