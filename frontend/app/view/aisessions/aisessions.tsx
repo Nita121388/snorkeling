@@ -160,6 +160,15 @@ export class AiSessionsViewModel implements ViewModel {
     blockAtom: jotai.Atom<Block>;
     viewType = "aisessions";
     viewIcon = jotai.atom((get) => {
+        // 列表块（无 aisessions:sessionid）固定为通用「会话」图标：列表不指向任何具体会话。
+        // 带 aisessions:sessionid 的才是独立的 Session Detail 块，其头图标需跟随该会话
+        // （provider emoji / 会话 emoji / 品牌 logo）——列表块即使内联展开了详情也不应跟着变。
+        const blockData = get(this.blockAtom);
+        const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+        const isDetailBlock = typeof meta["aisessions:sessionid"] === "string" && meta["aisessions:sessionid"].trim() !== "";
+        if (!isDetailBlock) {
+            return "comments";
+        }
         const detail = get(this.detailAtom);
         const source = detail?.summary?.source;
         if (typeof source === "string" && source !== "") {

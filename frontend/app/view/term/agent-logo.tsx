@@ -70,13 +70,19 @@ export function normalizeAgentEmoji(raw: unknown): string | null {
     if (/^[\s\p{Cc}\p{Cf}]+$/u.test(grapheme)) {
         return null;
     }
-    // A ZWJ outside a complete sequence ("🦊\u200d") segments as one grapheme but is
-    // malformed; the persona picker only needs single face/mark emoji, so drop ZWJ.
-    if (grapheme.includes("\u200d")) {
+    // A ZWJ only at the start/end ("🦊\u200d") or doubled is malformed. A ZWJ that
+    // joins two pictographs ("👨\u200d👩\u200d👧", "🏳️\u200d🌈") is a valid single
+    // emoji, so it must NOT be rejected wholesale.
+    if (/^\u200d|\u200d$|\u200d{2,}/u.test(grapheme)) {
         return null;
     }
-    // Require an actual pictograph so a bare letter/number never becomes an agent face.
-    if (!/\p{Extended_Pictographic}/u.test(grapheme)) {
+    // Require the grapheme to actually RENDER as a color emoji, not just live in the
+    // Unicode `Emoji` property set. `Emoji` also contains bare ASCII digits, `#`, `*`
+    // and text-default symbols (©/®/™) which render as plain text on their own —
+    // reject those so a bare "9" never becomes an agent face, while keeping keycaps
+    // (9️⃣ = "9" + VS16 + U+20E3), flags (🇺🇸), and text-default emoji that carry
+    // VS16 (©️) working.
+    if (!/\p{Emoji_Presentation}/u.test(grapheme) && !grapheme.includes("\uFE0F")) {
         return null;
     }
     return grapheme;

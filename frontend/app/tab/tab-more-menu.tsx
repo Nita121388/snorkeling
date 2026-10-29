@@ -4,6 +4,7 @@
 import { getTabAgentStatusDotsAtom, getTabsWithUnreadDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
 import { getTabBadgeAtom } from "@/app/store/badge";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { resolveAgentSessionId } from "@/app/view/term/agent-session";
 import { blockViewToIcon } from "@/app/block/blockutil";
 import { makeORef } from "@/app/store/wos";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
@@ -155,14 +156,25 @@ function collectTabBlockIds(
         }
         if (isAgentTerminalMeta(block.meta)) {
             agentBlockIds.push(blockId);
+            // 与 block header / 内联 tab 一致：provider 与 sessionId 既可能持久化在
+            // `agent:provider` / `agent:sessionid` meta，也可能只在启动命令里
+            // （例：刚绑定的 agent 块、autoresume 块）。只读 meta 会让这类块的
+            // 「更多」下拉行落回 viewIcon（terminal 图标）而不是 agent logo/emoji。
+            const resolved = resolveAgentSessionId((block.meta ?? {}) as Record<string, unknown>);
             if (agentProvider == null) {
-                const provider = normalizeAgentProvider(meta["agent:provider"]);
+                const metaProvider = normalizeAgentProvider(meta["agent:provider"]);
+                const provider =
+                    metaProvider !== "agent" ? metaProvider : normalizeAgentProvider(resolved.provider);
                 if (provider !== "agent") {
                     agentProvider = provider;
                 }
             }
-            if (agentSessionId == null && typeof meta["agent:sessionid"] === "string") {
-                agentSessionId = meta["agent:sessionid"] as string;
+            if (agentSessionId == null) {
+                const metaSessionId = typeof meta["agent:sessionid"] === "string" ? meta["agent:sessionid"] : "";
+                const sessionId = metaSessionId.trim() !== "" ? metaSessionId : resolved.sessionId;
+                if (typeof sessionId === "string" && sessionId !== "") {
+                    agentSessionId = sessionId;
+                }
             }
         }
     };
@@ -192,7 +204,7 @@ export interface TabMoreMenuProps {
 }
 
 
-/** 行首 agent 图标：emoji 优先（仅此会话 > 所有会话），无则退化视图图标。定宽 13px 不抖动。 */
+/** 行首 agent 图标：emoji 优先（仅此会话 > 所有会话），无 emoji 则显示品牌 logo，最后才退化视图图标。定宽 13px 不抖动。 */
 const TabMoreRowIcon = memo(({ row }: { row: TabMoreRow }) => {
     const personas = useAgentPersonas();
     const sessionEmojis = useSessionEmojis();
@@ -207,7 +219,20 @@ const TabMoreRowIcon = memo(({ row }: { row: TabMoreRow }) => {
     if (spec?.kind === "emoji") {
         return <span className="agent-emoji-icon shrink-0" title={row.agentProvider ?? undefined}>{spec.emoji}</span>;
     }
-    // 非 agent 行：渲染视图图标（首列对齐）。agent 行无 emoji 时返回 null（由右侧状态点承载）。
+    // agent 行无 emoji 人格时显示品牌 logo——否则纯 logo 的 agent 行会掉到下面的
+    // viewIcon 分支（或直接 return null），看起来像丢了图标。
+    if (spec?.kind === "logo") {
+        return (
+            <span
+                className="agent-brand-icon flex shrink-0 items-center justify-center text-[11px]"
+                style={spec.iconColor != null ? { color: spec.iconColor } : undefined}
+                title={row.agentProvider ?? undefined}
+            >
+                {spec.icon}
+            </span>
+        );
+    }
+    // 非 agent 行：渲染视图图标（首列对齐）。
     if (spec == null && row.viewIcon != null) {
         return <i className={cn(makeIconClass(row.viewIcon, true, { defaultIcon: "square" }), "shrink-0 text-[11px] text-secondary")} />;
     }
