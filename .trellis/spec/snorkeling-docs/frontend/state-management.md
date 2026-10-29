@@ -84,7 +84,6 @@ this.pinnedDirs = atom((get) => {
 并在 `pagehide` 做 best-effort flush。参考 `frontend/app/view/preview/path-usage-store.ts`。
 
 ### 5. 共享的二级浮窗：close ≠ 「用户关掉了」
-
 多个二级浮窗（Terminal / Agent / Files 目标选择器）共用一个打开位时，
 **打开另一个必须先 close 当前**。如果 close 函数里带「通知发起方」的回调
 （例如 `launch-popup-bus` 的 `onOpenChange(false)`），那么「换浮窗」会被误报成
@@ -106,6 +105,31 @@ closeTerminalTargetSelector();
 
 - 「换浮窗」路径里 **先 close 再设共享状态**（close 常常会把 sink / 选中项重置为 null）；
 - 只有最后一个真正关闭的浮窗负责回传 `onOpenChange(false)`，避免重复通知。
+
+### 6. VM 实例字段当持久状态：Tab 化 Block 切 tab 就丢
+
+`InlineTabBlock` 只挂载当前激活的子块（`frontend/app/block/block.tsx`：`<SingleBlock key={activeBlockId}>`），
+切走会卸载旧块并 `dispose` 它的 ViewModel，切回来是**全新实例**。
+所以「用户配置」若只存在 VM 的 jotai atom 上，切 tab / 重开就会回默认值。
+
+约定：**每个 block 自己的 UI 配置**落 block meta（随布局持久化、随 block 关闭清理），
+**跨 block 的全局偏好**落 localStorage，VM 构造时读回、变更时 debounce 写回：
+
+```ts
+// frontend/app/view/aisessions/aisessions.tsx
+this.restoreFilterState();              // 构造：meta → atom
+this.attachFilterStatePersistence();    // globalStore.sub(atom, debounce(400ms) → SetMetaCommand)
+dispose(): void { /* 退订 + flush 最后一次变化 */ }
+```
+
+另外两点经验：
+
+- **热缓存兜底**：`SetMetaCommand` 是异步 RPC，「块卸载 → 立刻切回」可能读到未落地的旧 meta，
+  所以持久化时同时写一张按 blockId 的内存缓存（`filter-state-persist.ts`），构造时优先读它。
+- **构造时把「当前状态」记为已写基准**（`filter-stateLastWritten`），否则块只是被打开/关闭就会
+  往 meta 里写一份默认值，把「没配置过」和「配置成默认」混为一谈。
+
+参考实现：`frontend/app/view/aisessions/filter-state-persist.ts`（纯函数 + 缓存，可直接单测）。
 
 ---
 

@@ -28,6 +28,15 @@ import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
 import { FilterPresetMenu } from "./filter-preset-menu";
 import {
+    FilterStateMetaKey,
+    buildFilterStateMeta,
+    parseFilterStateMeta,
+    recallFilterState,
+    rememberFilterState,
+    resolveRestoredPresetId,
+    type PersistedFilterState,
+} from "./filter-state-persist";
+import {
     DefaultFilterPresetFilter,
     MaxFilterPresets,
     filterPresetFilterEqual,
@@ -241,6 +250,12 @@ export class AiSessionsViewModel implements ViewModel {
     liveScanStatusAtom = jotai.atom<ScanStatus>({ scanned: 0, total: 0, running: false, done: false, partial: false });
     endIconButtons: jotai.Atom<IconButtonDecl[]>;
     sessionsLoadSeq = 0;
+    // ── 筛选状态持久化（block meta）────────────────────────────────
+    // Tab 化 Block 只挂载激活子块：切 tab 会 dispose 本 VM，切回来是全新实例。
+    // 所以筛选必须落到 block meta，构造时读回。
+    private filterStateUnsubs: (() => void)[] = [];
+    private filterStateTimer: number | null = null;
+    private filterStateLastWritten: string | null = null;
     detailLoadSeq = 0;
     detailToolsLoadSeq = 0;
     markRequestSeqByKey = new Map<string, number>();
@@ -313,6 +328,11 @@ export class AiSessionsViewModel implements ViewModel {
                 },
             ];
         });
+        this.restoreFilterState();
+        this.attachFilterStatePersistence();
+        // 以「当前状态」作为基准：刚打开/无 meta 的块不会被写入一条默认值，
+        // 只有用户真的改了筛选（或应用了方案）才会落盘。
+        this.filterStateLastWritten = buildFilterStateMeta(this.capturePersistedFilterState());
     }
 
     get viewComponent(): ViewComponent {
@@ -811,10 +831,8 @@ export class AiSessionsViewModel implements ViewModel {
         };
     }
 
-    /** 应用一个方案：一次性 set 全部筛选 atom（可选视图），并重新拉取列表。 */
-    applyFilterPreset(preset: FilterPreset): void {
-        const filter = preset.filter;
-        globalStore.set(this.loadingAtom, true);
+    /** 一次性 set 全部筛选 atom（不负责加载）。presets 与持久化恢复共用。 */
+    private applyFilterSnapshot(filter: FilterPresetFilter): void {
         globalStore.set(this.sourceAtom, filter.source);
         globalStore.set(this.markedFilterAtom, filter.markedFilter);
         globalStore.set(this.dateRangeAtom, { ...filter.dateRange });
@@ -825,6 +843,90 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.pathSelectionsAtom, [...filter.pathSelections]);
         globalStore.set(this.pathExcludesAtom, [...filter.pathExcludes]);
         globalStore.set(this.pathFilterAtom, DefaultPathFilter);
+    }
+
+    // ── 筛选状态持久化（block meta）────────────────────────────────
+
+    /** 当前需要落盘的快照（筛选 + 当前绑定方案 id）。 */
+    capturePersistedFilterState(): PersistedFilterState {
+        return {
+            filter: this.captureCurrentFilter(),
+            activePresetId: globalStore.get(this.activePresetIdAtom),
+        };
+    }
+
+    /**
+     * 构造时从 block meta 读回筛选。必须在视图首次 loadSessions 之前执行
+     * （view 的 useEffect 依赖 [model]，构造一定先于它）。
+     */
+    private restoreFilterState(): void {
+        // 内存热缓存优先（块卸载 → 立刻切回时 meta RPC 可能还未落地），其次 block meta。
+        const cached = recallFilterState(this.blockId);
+        const meta = globalStore.get(this.blockAtom)?.meta as Record<string, unknown> | undefined;
+        const saved = cached ?? parseFilterStateMeta(meta?.[FilterStateMetaKey]);
+        if (saved == null) return;
+        this.applyFilterSnapshot(saved.filter);
+        // 方案可能已经被删除：找不到就清空绑定，避免工具栏指向幽灵方案。
+        const presetIds = globalStore.get(this.filterPresetsAtom).map((preset) => preset.id);
+        globalStore.set(this.activePresetIdAtom, resolveRestoredPresetId(saved.activePresetId, presetIds));
+    }
+
+    /** 订阅筛选 atom：任何变化都 debounce 落盘（同时覆盖「应用方案」链路）。 */
+    private attachFilterStatePersistence(): void {
+        const atoms: jotai.Atom<unknown>[] = [
+            this.sourceAtom,
+            this.markedFilterAtom,
+            this.dateRangeAtom,
+            this.attachModeAtom,
+            this.tagPresenceAtom,
+            this.tagFiltersAtom,
+            this.excludeTagsAtom,
+            this.pathSelectionsAtom,
+            this.pathExcludesAtom,
+            this.activePresetIdAtom,
+        ];
+        for (const atom of atoms) {
+            this.filterStateUnsubs.push(globalStore.sub(atom, () => this.schedulePersistFilterState()));
+        }
+    }
+
+    private schedulePersistFilterState(): void {
+        if (this.filterStateTimer != null) window.clearTimeout(this.filterStateTimer);
+        this.filterStateTimer = window.setTimeout(() => {
+            this.filterStateTimer = null;
+            this.persistFilterState();
+        }, FilterStateWriteDebounceMs);
+    }
+
+    private persistFilterState(): void {
+        const state = this.capturePersistedFilterState();
+        // 无论 meta 是否有变化都刷新热缓存：块卸载时它保证「立刻切回」拿到最新值。
+        rememberFilterState(this.blockId, state);
+        const payload = buildFilterStateMeta(state);
+        if (payload === this.filterStateLastWritten) return;
+        this.filterStateLastWritten = payload;
+        void RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: `block:${this.blockId}`,
+            meta: { [FilterStateMetaKey]: payload } as MetaType,
+        });
+    }
+
+    /** 块卸载时会调用：退订、清 timer，并把最后一次变化写出去。 */
+    dispose(): void {
+        for (const unsubscribe of this.filterStateUnsubs) unsubscribe();
+        this.filterStateUnsubs = [];
+        if (this.filterStateTimer != null) {
+            window.clearTimeout(this.filterStateTimer);
+            this.filterStateTimer = null;
+        }
+        this.persistFilterState();
+    }
+
+    /** 应用一个方案：一次性 set 全部筛选 atom（可选视图），并重新拉取列表。 */
+    applyFilterPreset(preset: FilterPreset): void {
+        const filter = preset.filter;
+        globalStore.set(this.loadingAtom, true);
+        this.applyFilterSnapshot(filter);
         if (preset.view != null) {
             globalStore.set(
                 this.sortChainAtom,
@@ -1387,6 +1489,8 @@ function findSessionById(sessions: SessionSummary[], sessionId: string): Session
 
 const SessionListWidthStorageKey = "aisessions.sessionListWidth";
 const AutoRefreshIntervalMetaKey = "aisessions:autorefreshintervalms";
+// 筛选状态变更的落盘 debounce：拖拽/多次点选标签时合并成一次 SetMetaCommand。
+const FilterStateWriteDebounceMs = 400;
 // 头栏「Open AI Audit」图标默认隐藏，仅在块 meta 显式开启时显示。
 const ShowAuditButtonMetaKey = "aisessions:showaudit";
 
