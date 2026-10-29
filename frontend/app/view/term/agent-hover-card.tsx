@@ -14,6 +14,7 @@ import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { copyText } from "@/util/clipboard";
@@ -95,9 +96,11 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                   : "var(--secondary-text-color)";
     const isThinking = agentStatus != null && statusState === "working" && agentStatus.phase === "thinking";
     const personas = useAgentPersonas();
+    const sessionEmojis = useSessionEmojis();
     const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
         meta: blockData?.meta,
         personas,
+        sessionEmojis,
     });
     const [copyFailed, setCopyFailed] = React.useState(false);
 
@@ -142,13 +145,17 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                             <span
                                 className="agent-card-logo agent-card-logo--clickable"
                                 title="设置 emoji 人格"
-                                onClick={(e) =>
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     openAgentEmojiPicker(
                                         blockId,
                                         rawProvider,
-                                        e.currentTarget.getBoundingClientRect()
-                                    )
-                                }
+                                        e.currentTarget.getBoundingClientRect(),
+                                        "session",
+                                        (blockData?.meta?.["agent:sessionid"] as string | undefined) ?? null
+                                    );
+                                }}
                                 style={
                                     agentIcon.kind === "logo" && agentIcon.iconColor != null
                                         ? { color: agentIcon.iconColor }

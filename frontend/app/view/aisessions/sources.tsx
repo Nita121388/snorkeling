@@ -2,6 +2,7 @@ import { getWebServerEndpoint } from "@/util/endpoints";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 
 export const CHAT_SOURCES = [
@@ -75,10 +76,11 @@ export const isSourceAvailable = (id: string, availableSources: ReadonlySet<stri
  */
 export function useChatSourceIcons(): Record<string, ReactNode> {
     const personas = useAgentPersonas();
+    const sessionEmojis = useSessionEmojis();
     return useMemo(() => {
         const icons: Record<string, ReactNode> = {};
         for (const source of CHAT_SOURCES) {
-            const spec = getAgentIcon(source.id, { personas });
+            const spec = getAgentIcon(source.id, { personas, sessionEmojis });
             if (spec == null) {
                 continue;
             }
@@ -86,5 +88,5 @@ export function useChatSourceIcons(): Record<string, ReactNode> {
                 spec.kind === "emoji" ? <span className="agent-emoji-icon">{spec.emoji}</span> : spec.icon;
         }
         return icons;
-    }, [personas]);
+    }, [personas, sessionEmojis]);
 }

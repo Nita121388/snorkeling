@@ -22,6 +22,8 @@ import {
 } from "./session-tags";
 import { getChatSource } from "./sources";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
@@ -355,7 +357,27 @@ export function SessionRow({
                 : "Edit note and tags";
 
     const personaMap = useAgentPersonas();
-    const sourceIcon = getAgentIcon(session.source, { personas: personaMap });
+    const sessionEmojiMap = useSessionEmojis();
+    // Session-level persona: history rows carry the session id (== `agent:sessionid`),
+    // so "仅此会话" set on any surface also shows up here (and vice versa).
+    const sourceIcon = getAgentIcon(session.source, {
+        personas: personaMap,
+        sessionEmojis: sessionEmojiMap,
+        sessionId: session.id,
+    });
+    const openPersonaPicker = useCallback(
+        (event: ReactMouseEvent<HTMLElement>) => {
+            event.stopPropagation();
+            openAgentEmojiPicker(
+                null,
+                session.source,
+                event.currentTarget.getBoundingClientRect(),
+                sourceIcon?.kind === "emoji" ? "session" : "provider",
+                session.id
+            );
+        },
+        [session.source, session.id, sourceIcon?.kind]
+    );
 
     const saveNote = useCallback(async (): Promise<boolean> => {
         if (noteSaveStatus === "saving") return false;
@@ -585,7 +607,14 @@ export function SessionRow({
                         </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-secondary tabular-nums">
-                        <span className="inline-flex items-center gap-1">
+                        <button
+                            type="button"
+                            className="inline-flex cursor-pointer items-center gap-1 rounded border-none bg-transparent p-0 text-left text-inherit hover:text-primary"
+                            title={`设置 ${session.source} 的 emoji 人格`}
+                            aria-label={`Set ${session.source} emoji persona`}
+                            data-row-action="true"
+                            onClick={openPersonaPicker}
+                        >
                             {sourceIcon?.kind === "emoji" ? (
                                 <span className="agent-emoji-icon agent-emoji-icon--row" title={session.source}>
                                     {sourceIcon.emoji}
@@ -594,7 +623,7 @@ export function SessionRow({
                                 <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(session.source))} />
                             )}
                             {session.source}
-                        </span>
+                        </button>
                         {chatRunning ? (
                             <span className="inline-flex items-center gap-1 text-accent" title="GUI Chat is running">
                                 <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />

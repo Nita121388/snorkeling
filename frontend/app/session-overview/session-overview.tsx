@@ -32,6 +32,7 @@ import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
 import { cn, fireAndForget, makeIconClass } from "@/util/util";
 import debug from "debug";
@@ -1746,8 +1747,9 @@ function BlockRow({
     // honors the provider persona (L1) and block meta persona (L2), then falls back to the
     // project's shared "robot" generic-agent icon when provider is unknown.
     const personas = useAgentPersonas();
+    const sessionEmojis = useSessionEmojis();
     const agentIcon = block.isAgentLike
-        ? getAgentIcon(block.agentProvider, { meta: block.block?.meta, personas })
+        ? getAgentIcon(block.agentProvider, { meta: block.block?.meta, personas, sessionEmojis })
         : null;
     const agentStatusUnread = agentStatus != null && isAgentStatusUnread(agentStatus, agentStatusAckedFp);
 

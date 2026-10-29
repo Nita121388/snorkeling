@@ -23,6 +23,7 @@ import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
@@ -114,7 +115,13 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
                   ? "var(--error-color)"
                   : "var(--secondary-text-color)";
     const personas = useAgentPersonas();
-    const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, { meta, personas });
+    const sessionEmojis = useSessionEmojis();
+    const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
+        meta,
+        personas,
+        sessionEmojis,
+        sessionId: (meta["agent:sessionid"] as string | undefined) ?? null,
+    });
 
     return (
         <div

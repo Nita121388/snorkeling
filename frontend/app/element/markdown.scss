@@ -1746,7 +1746,12 @@
 .markdown-emoji-picker {
     position: fixed;
     z-index: 10020;
-    width: 320px;
+    // Width/height are further constrained inline by EmojiPicker (viewport-aware);
+    // these are the CSS-only fallbacks so the popover can never overflow.
+    display: flex;
+    flex-direction: column;
+    width: min(320px, calc(100vw - 24px));
+    max-height: calc(100vh - 24px);
     background: var(--overlay-bg-color, var(--main-bg-color, #1e1e1e));
     border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
     border-radius: 8px;
@@ -1805,10 +1810,17 @@
 
     .markdown-emoji-list {
         display: grid;
-        grid-template-columns: repeat(8, 1fr);
+        // Reflow instead of overflowing: narrow popovers drop columns rather than
+        // growing a horizontal scrollbar. 7 columns keeps the enlarged glyphs roomy.
+        grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
         gap: 2px;
+        // The popover is a flex column with a max-height, so the list takes the
+        // remaining space (and shrinks) instead of a fixed 280px block.
+        flex: 1 1 auto;
+        min-height: 0;
         max-height: 280px;
         overflow-y: auto;
+        overflow-x: hidden;
         scroll-behavior: smooth;
     }
 
@@ -1831,7 +1843,7 @@
         border: 0;
         border-radius: 6px;
         background: transparent;
-        font-size: 18px;
+        font-size: 22px;
         font-family: "Twemoji Country Flags", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
         cursor: pointer;
         line-height: 1;
@@ -1854,15 +1866,10 @@
 // Category tab bar — horizontal row of emoji group icons above the grid.
 .markdown-emoji-categories {
     display: flex;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
     gap: 2px;
     padding: 4px 2px 6px;
-    overflow-x: auto;
-    scrollbar-width: none; // Firefox
-    -ms-overflow-style: none; // IE
-
-    &::-webkit-scrollbar {
-        display: none; // Chrome / Safari
-    }
 }
 
 .markdown-emoji-cat-tab {

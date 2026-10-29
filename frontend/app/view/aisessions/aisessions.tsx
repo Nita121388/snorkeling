@@ -72,6 +72,7 @@ import { SortMenu } from "./sort-menu";
 import { defaultChatSource } from "./sources";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
+import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
 import type {
     AttachMode,
     DateRangeFilter,
@@ -160,7 +161,8 @@ export class AiSessionsViewModel implements ViewModel {
         const source = detail?.summary?.source;
         if (typeof source === "string" && source !== "") {
             const personas = get(agentPersonaAtom) ?? {};
-            const spec = getAgentIcon(source, { personas });
+            const sessionEmojis = get(sessionEmojiAtom) ?? {};
+            const spec = getAgentIcon(source, { personas, sessionEmojis, sessionId: detail?.summary?.id });
             if (spec != null) {
                 if (spec.kind === "emoji") {
                     return {
@@ -1802,7 +1804,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const tagFilterActive = normalizedTagFilters.length > 0;
     const tagPresenceActive = tagPresence !== DefaultTagPresence;
     const markedActive = markedFilter !== "all";
-    const dateActive = dateRange.preset !== DefaultDateRange.preset;
+    const dateActive = dateRange.preset !== "all";
     const pathActive = normalizedPathSelections.length > 0;
     const pathExcludeActive = normalizedPathExcludes.length > 0;
     const excludeTagsActive = normalizedExcludeTags.length > 0;
@@ -2461,15 +2463,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     <div className="flex-1" />
                                     <button
                                         type="button"
-                                        title={
-                                            activeFilterCount > 0 ? `Filters (${activeFilterCount} active)` : "Filters"
-                                        }
+                                        title="Filters"
                                         aria-label="Filters"
-                                        aria-pressed={filtersOpen}
                                         onClick={() => setFiltersOpen((current) => !current)}
                                         className={cn(
-                                            "flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors cursor-pointer",
-                                            activeFilterCount > 0 ? "px-2" : "w-7",
+                                            "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer",
                                             filtersOpen
                                                 ? "border border-border/70 bg-background text-primary shadow-sm ring-1 ring-accent/40"
                                                 : "border border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
@@ -2477,10 +2475,12 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     >
                                         <i className="fa-sharp fa-solid fa-sliders text-[11px]" />
                                         {activeFilterCount > 0 ? (
-                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black tabular-nums">
+                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black">
                                                 {activeFilterCount}
                                             </span>
-                                        ) : null}
+                                        ) : (
+                                            <span>Filters</span>
+                                        )}
                                     </button>
                                     <FilterPresetMenu
                                         presets={filterPresets}

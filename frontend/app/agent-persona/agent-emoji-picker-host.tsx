@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useAtomValue } from "jotai";
+import { atom, useAtomValue } from "jotai";
 import { useSyncExternalStore } from "react";
 import { WOS } from "@/store/global";
 import {
@@ -11,9 +11,17 @@ import {
     type AgentEmojiPickerState,
 } from "./picker-host";
 import { normalizeAgentPersonaKey } from "./persona-store";
+import { getSessionEmojiSnapshot, normalizeSessionEmojiKey } from "./session-persona-store";
 import { useAgentPersonas } from "./use-agent-personas";
 import { AgentEmojiMetaKey, normalizeAgentEmoji } from "@/app/view/term/agent-logo";
 import { AgentEmojiPicker } from "@/app/view/term/agent-emoji-picker";
+import "./agent-persona.scss";
+
+/**
+ * Placeholder atom for surfaces without a blockId. Declared at module scope so the
+ * hook order stays stable when the target flips between block and provider-only.
+ */
+const NoBlockAtom = atom<Block | null>(null);
 
 /**
  * Single global mount point for the agent emoji picker. Rendered once from the
@@ -33,22 +41,27 @@ export function AgentEmojiPickerHost() {
 
 function AgentEmojiPickerHostInner({ state }: { state: NonNullable<AgentEmojiPickerState> }) {
     const personas = useAgentPersonas();
-    const blockAtom = WOS.getWaveObjectAtom<Block>(`block:${state.blockId}`);
-    const block = useAtomValue(blockAtom);
-    const metaEmoji = normalizeAgentEmoji(
-        (block?.meta as Record<string, unknown> | null | undefined)?.[AgentEmojiMetaKey]
-    );
-    const personaEmoji = normalizeAgentEmoji(personas[normalizeAgentPersonaKey(state.provider)]);
+    const blockAtom = state.blockId != null ? WOS.getWaveObjectAtom<Block>(`block:${state.blockId}`) : null;
+    const block = useAtomValue(blockAtom ?? NoBlockAtom);
+    const meta = (block?.meta ?? null) as Record<string, unknown> | null;
 
-    // Enable "remove" when the active scope actually holds an emoji.
+    // Session id: explicit (list rows pass session.id) or resolved from block meta.
+    const sessionId = normalizeSessionEmojiKey(
+        state.sessionId ?? (typeof meta?.["agent:sessionid"] === "string" ? (meta["agent:sessionid"] as string) : "")
+    );
+
+    // `hasCurrentEmoji` is only used to seed the initial scope; the picker recomputes
+    // per-scope as you toggle the radio, so pass the scope-relevant value.
+    const personaEmoji = normalizeAgentEmoji(personas[normalizeAgentPersonaKey(state.provider)]);
+    const sessionEmoji = normalizeAgentEmoji(getSessionEmojiSnapshot()[sessionId]);
     const hasCurrentEmoji =
-        state.initialScope === "block" ? metaEmoji != null : personaEmoji != null;
+        state.initialScope === "session" && sessionId !== "" ? sessionEmoji != null : personaEmoji != null;
 
     return (
         <>
             <div className="markdown-emoji-backdrop" onMouseDown={closeAgentEmojiPicker} />
             <AgentEmojiPicker
-                blockId={state.blockId}
+                sessionId={sessionId === "" ? null : sessionId}
                 provider={state.provider}
                 anchor={state.anchor}
                 placement={state.placement}

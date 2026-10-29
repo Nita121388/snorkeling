@@ -2,68 +2,75 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { normalizeAgentEmoji, getAgentIcon } from "./agent-logo";
+import { getAgentIcon, normalizeAgentEmoji } from "./agent-logo";
 
 describe("normalizeAgentEmoji", () => {
-    it("accepts a single emoji grapheme", () => {
+    it("accepts a single pictographic grapheme", () => {
         expect(normalizeAgentEmoji("🦊")).toBe("🦊");
-        expect(normalizeAgentEmoji("🔥")).toBe("🔥");
-        expect(normalizeAgentEmoji("👍🏻")).toBe("👍🏻");
+        expect(normalizeAgentEmoji("  🐙  ")).toBe("🐙");
+        expect(normalizeAgentEmoji("🦄")).toBe("🦄");
     });
 
-    it("rejects multi-grapheme strings", () => {
+    it("rejects multi-grapheme / non-pictographic / malformed input", () => {
         expect(normalizeAgentEmoji("🦊🦊")).toBeNull();
         expect(normalizeAgentEmoji("ab")).toBeNull();
         expect(normalizeAgentEmoji("42")).toBeNull();
-    });
-
-    it("rejects non-pictographic characters", () => {
-        expect(normalizeAgentEmoji("a")).toBeNull();
-        expect(normalizeAgentEmoji("1")).toBeNull();
-        expect(normalizeAgentEmoji(" ")).toBeNull();
-    });
-
-    it("rejects degenerate ZWJ fragments", () => {
-        // Truncated ZWJ sequence segments as one grapheme but has no pictograph.
-        expect(normalizeAgentEmoji("🦊\u200d")).toBeNull();
-        expect(normalizeAgentEmoji("\u200d")).toBeNull();
-    });
-
-    it("rejects non-string and empty input", () => {
-        expect(normalizeAgentEmoji(null)).toBeNull();
-        expect(normalizeAgentEmoji(undefined)).toBeNull();
-        expect(normalizeAgentEmoji(42)).toBeNull();
         expect(normalizeAgentEmoji("")).toBeNull();
         expect(normalizeAgentEmoji("   ")).toBeNull();
+        expect(normalizeAgentEmoji(null)).toBeNull();
+        expect(normalizeAgentEmoji(42)).toBeNull();
+        // Degenerate ZWJ fragment segments as one grapheme but is malformed.
+        expect(normalizeAgentEmoji("🦊\u200d")).toBeNull();
     });
 });
 
-describe("getAgentIcon priority chain (L2 → L1 → L3)", () => {
-    const meta = { "agent:emoji": "🐙" } as MetaType;
-    const personas = { claude: "🐱" } as Record<string, string>;
-
-    it("L2 block meta overrides everything", () => {
-        const spec = getAgentIcon("claude", { meta, personas });
+describe("getAgentIcon priority", () => {
+    it("session emoji beats provider persona", () => {
+        const spec = getAgentIcon("claude", {
+            sessionEmojis: { "sess-1": "🦊" },
+            personas: { claude: "🐙" },
+        });
+        // No sessionId provided and no meta → falls to provider persona.
         expect(spec).toEqual({ kind: "emoji", emoji: "🐙" });
+
+        const withSession = getAgentIcon("claude", {
+            sessionId: "sess-1",
+            sessionEmojis: { "sess-1": "🦊" },
+            personas: { claude: "🐙" },
+        });
+        expect(withSession).toEqual({ kind: "emoji", emoji: "🦊" });
     });
 
-    it("L1 provider persona beats the logo when no L2", () => {
-        const spec = getAgentIcon("claude", { meta: null, personas });
-        expect(spec).toEqual({ kind: "emoji", emoji: "🐱" });
+    it("resolves the session id from block meta when not passed explicitly", () => {
+        const meta = { "agent:sessionid": "sess-2", "agent:provider": "codex" } as MetaType;
+        const spec = getAgentIcon("codex", {
+            meta,
+            sessionEmojis: { "sess-2": "🧠" },
+            personas: { codex: "🐙" },
+        });
+        expect(spec).toEqual({ kind: "emoji", emoji: "🧠" });
     });
 
-    it("falls back to the brand logo", () => {
-        const spec = getAgentIcon("claude", { meta: null, personas: {} });
+    it("provider persona beats the brand logo", () => {
+        const spec = getAgentIcon("pi", { sessionEmojis: {}, personas: { pi: "🤖" } });
+        expect(spec).toEqual({ kind: "emoji", emoji: "🤖" });
+    });
+
+    it("falls back to the brand logo when no persona is set", () => {
+        const spec = getAgentIcon("claude", { sessionEmojis: {}, personas: {} });
         expect(spec?.kind).toBe("logo");
     });
 
-    it("unknown provider with a block emoji still returns emoji", () => {
-        const spec = getAgentIcon("mystery", { meta: { "agent:emoji": "🦖" } as MetaType, personas });
-        expect(spec).toEqual({ kind: "emoji", emoji: "🦖" });
+    it("returns null for an unknown provider", () => {
+        expect(getAgentIcon("nope", { sessionEmojis: {}, personas: {} })).toBeNull();
     });
 
-    it("rejects a malformed block emoji and falls through", () => {
-        const spec = getAgentIcon("claude", { meta: { "agent:emoji": "ab" } as MetaType, personas: {} });
-        expect(spec?.kind).toBe("logo");
+    it("ignores an invalid session emoji and keeps the provider persona", () => {
+        const spec = getAgentIcon("claude", {
+            sessionId: "sess-3",
+            sessionEmojis: { "sess-3": "🦊🦊" },
+            personas: { claude: "🐙" },
+        });
+        expect(spec).toEqual({ kind: "emoji", emoji: "🐙" });
     });
 });

@@ -25,6 +25,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getBlockDirtyAtom } from "@/app/view/preview/preview-dirty-state";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -294,13 +295,15 @@ const InlineTabLabel = memo(
         const locality = useMemo(() => blockPathLocality(connection), [connection]);
         // agent 类 Block: Tab 标签上显示对应 agent 的品牌 logo / emoji 人格而不是通用 terminal 图标
         const personas = useAgentPersonas();
+        const sessionEmojis = useSessionEmojis();
         const agentIcon = useMemo(() => {
             const meta = blockData?.meta;
             if (!isAgentTerminalMeta(meta)) return null;
             const provider = normalizeAgentProvider(meta?.["agent:provider"]);
             if (provider === "agent") return null;
-            return getAgentIcon(provider, { meta, personas });
-        }, [blockData?.meta, personas]);
+            const sessionId = (meta?.["agent:sessionid"] as string | undefined) ?? null;
+            return getAgentIcon(provider, { meta, personas, sessionEmojis, sessionId });
+        }, [blockData?.meta, personas, sessionEmojis]);
 
         // 读取该 agent block 的 canonical status (复用 TermViewModel 已经订阅好的 atom),
         // 用于在 Tab 标签右侧渲染状态点. R 类 (working/blocked) 显眼状态点亮; 22 号方案新增
@@ -443,7 +446,8 @@ const InlineTabLabel = memo(
                             click: () => {
                                 const rect = tabRef.current?.getBoundingClientRect();
                                 if (rect != null) {
-                                    openAgentEmojiPicker(blockId, provider, rect);
+                                    const sessionId = blockData?.meta?.["agent:sessionid"] as string | undefined;
+                                    openAgentEmojiPicker(blockId, provider, rect, "session", sessionId ?? null);
                                 }
                             },
                         });

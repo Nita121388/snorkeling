@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { setAgentPersona } from "@/app/agent-persona/persona-store";
+import {
+    getSessionEmojiSnapshot,
+    normalizeSessionEmojiKey,
+    setSessionEmoji,
+} from "@/app/agent-persona/session-persona-store";
 import { formatAgentProvider } from "@/app/agent-status/agent-status-derive";
 import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
 import {
@@ -10,17 +15,17 @@ import {
     recordRecentEmoji,
     type EmojiCatalog,
 } from "@/app/element/markdown-transform/emoji";
-import { RpcApi } from "@/app/store/wshclientapi";
-import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { WOS } from "@/store/global";
 import { cn } from "@/util/util";
 import * as React from "react";
-import { AgentEmojiMetaKey } from "./agent-logo";
 
-export type AgentEmojiScope = "block" | "provider";
+export type AgentEmojiScope = "session" | "provider";
 
 export type AgentEmojiPickerProps = {
-    blockId: string;
+    /**
+     * Session id of the conversation being styled. Session scope ("仅此会话") writes
+     * here; without it only the provider scope is offered.
+     */
+    sessionId: string | null;
     provider: string;
     anchor: { top: number; left: number };
     placement: "top" | "bottom";
@@ -52,10 +57,11 @@ function ScopeOption({
 /**
  * Agent persona emoji picker. Reuses the shared `EmojiPicker` (search / groups /
  * recents) in document mode and adds a scope radio so the user can pick between
- * this block only (L2) or every session of this provider (L1).
+ * THIS conversation (session-level, shows everywhere the session appears incl. the
+ * aisessions history list) or every session of this provider (provider-level).
  */
 export function AgentEmojiPicker({
-    blockId,
+    sessionId,
     provider,
     anchor,
     placement,
@@ -66,7 +72,10 @@ export function AgentEmojiPicker({
     const [catalog, setCatalog] = React.useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog());
     const [query, setQuery] = React.useState("");
     const [activeIndex, setActiveIndex] = React.useState(0);
-    const [scope, setScope] = React.useState<AgentEmojiScope>(initialScope);
+    const [scope, setScope] = React.useState<AgentEmojiScope>(
+        sessionId == null ? "provider" : initialScope
+    );
+    const sessionKey = normalizeSessionEmojiKey(sessionId);
 
     React.useEffect(() => {
         if (catalog != null) {
@@ -97,39 +106,59 @@ export function AgentEmojiPicker({
 
     const applyEmoji = React.useCallback(
         (emoji: string | null) => {
-            if (scope === "block") {
-                RpcApi.SetMetaCommand(TabRpcClient, {
-                    oref: WOS.makeORef("block", blockId),
-                    meta: { [AgentEmojiMetaKey]: emoji } as MetaType,
-                });
+            if (scope === "session" && sessionKey !== "") {
+                setSessionEmoji(sessionKey, emoji);
             } else {
                 setAgentPersona(provider, emoji);
             }
             onClose();
         },
-        [scope, blockId, provider, onClose]
+        [scope, sessionKey, provider, onClose]
     );
+    // Per-scope "has emoji" so the remove button reflects the scope you're looking at.
+    const currentHasEmoji = React.useMemo(() => {
+        if (scope === "session" && sessionKey !== "") {
+            return (getSessionEmojiSnapshot()[sessionKey] ?? "") !== "";
+        }
+        return hasCurrentEmoji;
+    }, [scope, sessionKey, hasCurrentEmoji]);
+
+    // Focus the search box ourselves instead of trusting `autoFocus`: the click that
+    // opened the picker also hands focus to the underlying block (xterm re-claims it
+    // a few ms later), so a single autoFocus routinely loses the race.
+    const searchInputRef = React.useRef<HTMLInputElement | null>(null);
+    React.useEffect(() => {
+        const focus = () => searchInputRef.current?.focus();
+        const raf = window.requestAnimationFrame(focus);
+        const retry = window.setTimeout(focus, 80);
+        return () => {
+            window.cancelAnimationFrame(raf);
+            window.clearTimeout(retry);
+        };
+    }, []);
 
     const providerLabel = provider === "" || provider === "agent" ? "此 Agent" : formatAgentProvider(provider);
     const footer = (
         <div className="agent-emoji-scope" role="radiogroup" aria-label="Emoji persona scope">
-            <ScopeOption
-                checked={scope === "block"}
-                label="仅此会话"
-                hint="只覆盖当前这个 block，随 workspace 同步"
-                onChange={() => setScope("block")}
-            />
+            {sessionKey !== "" && (
+                <ScopeOption
+                    checked={scope === "session"}
+                    label="仅此会话"
+                    hint="这一个会话在所有出现的位置都换成此 emoji（含历史列表，resume 后也保留）"
+                    onChange={() => setScope("session")}
+                />
+            )}
             <ScopeOption
                 checked={scope === "provider"}
                 label={`所有 ${providerLabel} 会话`}
-                hint="覆盖此 provider 的所有会话，包括历史会话（保存在本机）"
+                hint={`覆盖所有 ${providerLabel} 会话（仅限该 provider，不影响其它 agent），含历史会话`}
                 onChange={() => setScope("provider")}
             />
             <button
                 type="button"
                 className="agent-emoji-reset"
                 onClick={() => applyEmoji(null)}
-                disabled={!hasCurrentEmoji}
+                disabled={!currentHasEmoji}
                 title="恢复默认品牌 Logo"
             >
                 恢复默认 Logo
@@ -142,7 +171,14 @@ export function AgentEmojiPicker({
         return (
             <div
                 className="markdown-emoji-picker mode-document agent-emoji-picker-loading"
-                style={{ top: anchor.top, left: anchor.left }}
+                style={{
+                    top: anchor.top,
+                    left: Math.min(
+                        Math.max(8, anchor.left),
+                        Math.max(8, window.innerWidth - 320 - 8)
+                    ),
+                    width: Math.min(320, Math.max(220, window.innerWidth - 24)),
+                }}
                 role="dialog"
                 aria-label="Emoji picker loading"
             >
@@ -179,6 +215,7 @@ export function AgentEmojiPicker({
             allowRemove={hasCurrentEmoji}
             onRemove={() => applyEmoji(null)}
             footer={footer}
+            searchInputRef={searchInputRef}
         />
     );
 }

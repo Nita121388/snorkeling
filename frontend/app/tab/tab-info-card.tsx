@@ -24,6 +24,7 @@ import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { getObjectValue, makeORef } from "@/app/store/wos";
@@ -71,7 +72,13 @@ function TabAgentRow({ blockId }: { blockId: string }) {
     const rawProvider = normalizeAgentProvider(meta.provider ?? meta["agent:provider"]);
     const provider = rawProvider === "" ? "Agent" : rawProvider;
     const personas = useAgentPersonas();
-    const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, { meta, personas });
+    const sessionEmojis = useSessionEmojis();
+    const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
+        meta,
+        personas,
+        sessionEmojis,
+        sessionId: (meta["agent:sessionid"] as string | undefined) ?? null,
+    });
 
     const state = status?.state ?? "unknown";
     const stateColor =

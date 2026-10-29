@@ -1,0 +1,138 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// Agent persona (emoji avatar) — shared chrome for every surface that renders an
+// agent icon. Imported once from agent-emoji-picker-host.tsx (mounted at the app
+// root), so the classes are global regardless of which surface uses them.
+
+// Emoji avatar. The BOX stays fixed on purpose: inline tabs rely on the
+// marquee/overflow measurement and the aisessions list uses virtual rows, so a
+// growing box would make rows/columns jitter by a pixel. Only the GLYPH is
+// enlarged (font-size + overflow:visible) — layout width stays 13px.
+.agent-emoji-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    min-width: 13px;
+    height: 13px;
+    line-height: 13px;
+    overflow: visible;
+    font-size: 15.5px;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    user-select: none;
+    vertical-align: middle;
+}
+
+// Compact variant for list rows (aisessions session rows) — same 12px box.
+.agent-emoji-icon--row {
+    width: 12px;
+    min-width: 12px;
+    height: 12px;
+    line-height: 12px;
+    font-size: 14px;
+}
+
+// --- Picker footer (scope radio + "restore default logo") --------------------
+
+.markdown-emoji-footer {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid color-mix(in srgb, var(--main-text-color, #888) 16%, transparent);
+}
+
+.agent-emoji-scope {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.agent-emoji-scope-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--main-text-color, inherit);
+    cursor: pointer;
+}
+
+.agent-emoji-scope-option:hover {
+    background: color-mix(in srgb, var(--main-text-color, #888) 10%, transparent);
+}
+
+.agent-emoji-scope-option.is-checked {
+    color: var(--accent-color, #58c4ff);
+}
+
+.agent-emoji-scope-option input {
+    accent-color: var(--accent-color, #58c4ff);
+    margin: 0;
+}
+
+.agent-emoji-reset {
+    align-self: flex-start;
+    margin-top: 2px;
+    padding: 2px 6px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: color-mix(in srgb, var(--main-text-color, #888) 70%, transparent);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.agent-emoji-reset:hover:not(:disabled) {
+    color: var(--main-text-color, inherit);
+    background: color-mix(in srgb, var(--main-text-color, #888) 10%, transparent);
+}
+
+.agent-emoji-reset:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+// --- Picker loading shell ----------------------------------------------------
+
+.agent-emoji-picker-loading .agent-emoji-loading-search {
+    flex: 1 1 auto;
+    height: 26px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--main-text-color, #888) 12%, transparent);
+}
+
+.agent-emoji-picker-loading .agent-emoji-loading-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+    gap: 4px;
+    padding: 4px 2px;
+}
+
+.agent-emoji-picker-loading .agent-emoji-loading-cell {
+    height: 24px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--main-text-color, #888) 10%, transparent);
+    animation: agent-emoji-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes agent-emoji-pulse {
+    0%,
+    100% {
+        opacity: 0.45;
+    }
+
+    50% {
+        opacity: 0.9;
+    }
+}
+
+// --- Clickable agent icon (hover card) ---------------------------------------
+
+.agent-card-logo--clickable {
+    cursor: pointer;
+}
+
+.agent-card-logo--clickable:hover {
+    opacity: 0.75;
+}

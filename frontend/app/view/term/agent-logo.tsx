@@ -3,11 +3,16 @@
 
 import type { PersonaMap } from "@/app/agent-persona/persona-store";
 import { normalizeAgentPersonaKey } from "@/app/agent-persona/persona-store";
+import type { SessionEmojiMap } from "@/app/agent-persona/session-persona-store";
+import {
+    getSessionEmojiSnapshot,
+    normalizeSessionEmojiKey,
+} from "@/app/agent-persona/session-persona-store";
 import { ClaudeLogo, GeminiLogo, OpenAILogo, OpencodeLogo, PiLogo } from "@/app/view/aisessions/controls";
 import * as React from "react";
 import { normalizeAgentProvider } from "./agent-meta";
 
-/** Block-level (L2) persona meta key. */
+/** Block-level (legacy) persona meta key. Session-level personas supersede it. */
 export const AgentEmojiMetaKey = "agent:emoji";
 
 export type AgentIconSpec =
@@ -16,7 +21,15 @@ export type AgentIconSpec =
 
 export type AgentIconOpts = {
     meta?: MetaType | null;
+    /** L1 provider-level personas. */
     personas?: PersonaMap | null;
+    /** L2 session-level emojis, keyed by sessionId. Defaults to the live store snapshot. */
+    sessionEmojis?: SessionEmojiMap | null;
+    /**
+     * Session id of the conversation being rendered. Falls back to `meta["agent:sessionid"]`
+     * so block-based surfaces don't have to resolve it themselves.
+     */
+    sessionId?: string | null;
 };
 
 /**
@@ -88,14 +101,26 @@ export function getAgentLogoByProvider(provider: string): { icon: React.ReactNod
 
 /**
  * Resolve the icon for an agent, honoring the two-level persona model:
- *   L2 block meta `agent:emoji` → L1 provider persona → L3 brand logo.
+ *   L2 session emoji (by sessionId) → L2 block meta `agent:emoji` (legacy)
+ *   → L1 provider persona → L3 brand logo.
  */
 export function getAgentIcon(provider: string, opts?: AgentIconOpts): AgentIconSpec | null {
     const normalizedProvider = normalizeAgentProvider(provider);
+    const meta = opts?.meta as Record<string, unknown> | null | undefined;
 
-    const metaEmoji = normalizeAgentEmoji(
-        (opts?.meta as Record<string, unknown> | null | undefined)?.[AgentEmojiMetaKey]
+    const sessionId = normalizeSessionEmojiKey(
+        opts?.sessionId ?? (typeof meta?.["agent:sessionid"] === "string" ? (meta["agent:sessionid"] as string) : "")
     );
+    if (sessionId !== "") {
+        const sessionEmojis = opts?.sessionEmojis ?? getSessionEmojiSnapshot();
+        const sessionEmoji = normalizeAgentEmoji(sessionEmojis[sessionId]);
+        if (sessionEmoji != null) {
+            return { kind: "emoji", emoji: sessionEmoji };
+        }
+    }
+
+    // Legacy: older workspaces may have written the block-level `agent:emoji` meta.
+    const metaEmoji = normalizeAgentEmoji(meta?.[AgentEmojiMetaKey]);
     if (metaEmoji != null) {
         return { kind: "emoji", emoji: metaEmoji };
     }

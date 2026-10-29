@@ -15,7 +15,10 @@
 import type { AgentEmojiScope } from "@/app/view/term/agent-emoji-picker";
 
 export type AgentEmojiPickerState = {
-    blockId: string;
+    /** `null` on surfaces that aren't bound to a block (e.g. the aisessions list). */
+    blockId: string | null;
+    /** Session id of the conversation; enables the session ("仅此会话") scope. */
+    sessionId: string | null;
     provider: string;
     anchor: { top: number; left: number };
     placement: "top" | "bottom";
@@ -49,25 +52,33 @@ export function subscribeAgentEmojiPicker(listener: () => void): () => void {
 export type PickerRect = { top: number; bottom: number; left: number };
 
 export function openAgentEmojiPicker(
-    blockId: string,
+    blockId: string | null,
     provider: string,
     rect: PickerRect,
-    initialScope: AgentEmojiScope = "block"
+    initialScope: AgentEmojiScope = "session",
+    sessionId: string | null = null
 ): void {
-    if (typeof window === "undefined" || blockId === "") {
+    if (typeof window === "undefined" || provider.trim() === "") {
         return;
     }
     // Clicking the same icon again toggles the picker closed.
-    if (pickerSnapshot != null && pickerSnapshot.blockId === blockId) {
+    if (
+        pickerSnapshot != null &&
+        pickerSnapshot.blockId === blockId &&
+        pickerSnapshot.provider === provider &&
+        pickerSnapshot.sessionId === sessionId
+    ) {
         closeAgentEmojiPicker();
         return;
     }
+    const scope: AgentEmojiScope = sessionId == null ? "provider" : initialScope;
     const spaceBelow = window.innerHeight - rect.bottom;
     const placeAbove = spaceBelow < POPOVER_HEIGHT_ESTIMATE && rect.top > POPOVER_HEIGHT_ESTIMATE;
     pickerSnapshot = {
         blockId,
+        sessionId,
         provider,
-        initialScope,
+        initialScope: scope,
         placement: placeAbove ? "top" : "bottom",
         anchor: placeAbove
             ? { top: Math.max(GAP, rect.top - GAP), left: rect.left }

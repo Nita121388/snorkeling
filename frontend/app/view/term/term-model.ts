@@ -58,6 +58,7 @@ import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
 import { getAgentIcon } from "./agent-logo";
 import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
+import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
 import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
@@ -186,10 +187,29 @@ export class TermViewModel implements ViewModel {
                 const provider = normalizeAgentProvider(explicitProvider || commandProvider || agentStatus?.provider);
                 if (provider !== "agent") {
                     const personas = get(agentPersonaAtom) ?? {};
-                    const iconSpec = getAgentIcon(provider, { meta: blockMeta, personas });
+                    const sessionEmojis = get(sessionEmojiAtom) ?? {};
+                    const resolvedSessionId = resolveAgentSessionId(blockMeta ?? {}).sessionId;
+                    const iconSpec = getAgentIcon(provider, {
+                        meta: blockMeta,
+                        personas,
+                        sessionEmojis,
+                        sessionId: resolvedSessionId,
+                    });
                     if (iconSpec != null) {
-                        const openPicker = (e: React.MouseEvent<any>) =>
-                            openAgentEmojiPicker(this.blockId, provider, e.currentTarget.getBoundingClientRect());
+                        const openPicker = (e: React.MouseEvent<any>) => {
+                            // The click that opens the picker also bubbles to the block,
+                            // which focuses the terminal and steals focus from the search
+                            // input — swallow it here.
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openAgentEmojiPicker(
+                                this.blockId,
+                                provider,
+                                e.currentTarget.getBoundingClientRect(),
+                                "session",
+                                resolvedSessionId
+                            );
+                        };
                         if (iconSpec.kind === "emoji") {
                             return {
                                 elemtype: "iconbutton",

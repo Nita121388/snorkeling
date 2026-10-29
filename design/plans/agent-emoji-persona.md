@@ -99,18 +99,61 @@ AgentPersonas map[string]string `json:"agent:personas,omitempty"`
 自定义图片 / 颜色 / 昵称、emoji 动画、设置页独立入口、issessions 后端改动、
 `agent:provider` 识别逻辑调整。
 
-## 9. 实现事实（2026-10-28 落地）
+---
 
-- 分支 `feat/agent-emoji-persona`，从 `main` 拉出，独立 worktree 开发。
-- 9 个显示面全部接通：`term-model.viewIcon`(A)、`block.tsx` inline tab + 右键菜单「设置 emoji 人格」(B)、
-  `tab-info-card`(C)、`agent-hover-card`(D，logo 可点击开 picker)、`session-overview`(E)、
-  `sources.tsx` 来源 chip(F，`useChatSourceIcons` 替代模块级 icon 常量)、`session-row`(G)、
-  `widgets.tsx` 右栏(AgentTargetFloatingWindow)(H)、`agenthooksettingsmodal`(I)。
-  额外把文档未列的 `tab-more-agent-card` 也接上了。
-- 两级解析集中在 `agent-logo.tsx` 的 `getAgentIcon()`（`normalizeAgentEmoji` + L2→L1→L3）。
-- L1 store：`agent-persona/persona-store.ts`（localStorage `snorkeling:agent-personas` + storage 事件同步）。
-- picker：`agent-persona/picker-host.ts`（单例状态）+ `agent-view/term/agent-emoji-picker.tsx`
-  （复用 `EmojiPicker` 的 `footer` 插槽放 scope 单选）+ `agent-persona/agent-emoji-picker-host.tsx`（app 根挂载）。
-- 样式：`.agent-emoji-icon` 13px 定宽写在 `app.scss`（跨 view 全局），picker 的 scope/loading 写在 `markdown.scss`。
-- 单测：`agent-logo.test.ts`、`persona-store.test.ts`、`agent-emoji-picker-host.test.tsx`，全过。
-- Phase 2 仍按 §7 预留（store 实现隔离，9 面零改动）。
+## 9. 实现事实（2026-10-29 更新）
+
+本节记录**实际落地**与上文设计的差异，以本节为准。
+
+### 9.1 作用域从「block 级」改为「会话级」
+
+上文 §2 的 L2 定义为 block 级（block meta `agent:emoji`）。实测与用户反馈证明这是错的：
+
+- block 是窗口里的实例，切 tab / 关掉重开 / resume 后人格丢失；
+- aisessions 历史会话是扫盘产物，没有 blockId，永远读不到 L2。
+
+因此 L2 改为 **会话级**，key = `sessionId`（即 block meta 的 `agent:sessionid` /
+aisessions 的 `session.id`）。「仅此会话」现在的语义是：**这个会话出现在任何地方都用同一张脸**。
+
+最终解析链：
+
+```
+会话级 emoji (localStorage snorkeling:agent-session-emojis, key=sessionId)
+  → block meta agent:emoji（仅兼容旧数据）
+  → provider 级 persona (localStorage snorkeling:agent-personas)
+  → 品牌 Logo
+```
+
+### 9.2 新增文件
+
+| 文件 | 作用 |
+|---|---|
+| `app/agent-persona/session-persona-store.ts` | 会话级 store（外部 store + storage 事件同步） |
+| `app/agent-persona/use-session-personas.ts` | `useSessionEmojis()` + `sessionEmojiAtom` jotai 镜像 |
+| `app/agent-persona/agent-persona.scss` | `.agent-emoji-icon` / picker footer / loading 样式 |
+
+### 9.3 尺寸自律（emoji 放大但控件不变）
+
+`.agent-emoji-icon` 盒子固定 13px（`--row` 12px），只放大字形（font-size 15.5 / 14px）
+并 `overflow: visible`；picker 项 18→22px、网格 `minmax(34px,1fr)`。
+因此 inline tab 宽度、aisessions 虚拟行高不会因「有人格」而抖动（遵守 §5 约束 1）。
+
+### 9.4 picker 行为修复
+
+- 搜索框聚焦：mousedown 只对非表单元素 `preventDefault`，输入框用 ref + rAF + 80ms 兜底聚焦；
+  打开入口（block 头 / hover 卡 / 右键菜单 / 列表行）`preventDefault + stopPropagation`。
+- 自适应：宽度 `min(320, 100vw-24)` 且 left 夹到视口内；网格 `auto-fill`；
+  分类栏 `flex-wrap`（不再横向滚动）；高度按锚点上下剩余空间计算。
+- 共享改动，markdown 文档 emoji picker 同享（同一 `EmojiPicker`）。
+
+### 9.5 Tab「更多」下拉
+
+`TabMoreMeta` 增加 `agentProvider / agentSessionId / viewIcon`；行首新增 16px 图标槽：
+会话 emoji → provider emoji → 视图图标（非 agent 行也占位，保证左对齐）。
+hover Agent Card 早已支持 emoji，无需改动。
+
+### 9.6 aisessions 行
+
+来源标签改为按钮：点击直接开 picker（`blockId: null`，同时提供「仅此会话 / 所有 X 会话」），
+`stopPropagation` 避免误触行激活。历史行把 `session.id` 作为 sessionId 传入，
+所以会话级 emoji 在历史列表与 resume 后都成立。

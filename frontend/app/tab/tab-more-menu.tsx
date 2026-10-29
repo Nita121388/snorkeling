@@ -3,11 +3,15 @@
 
 import { getTabAgentStatusDotsAtom, getTabsWithUnreadDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
 import { getTabBadgeAtom } from "@/app/store/badge";
-import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
+import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { blockViewToIcon } from "@/app/block/blockutil";
 import { makeORef } from "@/app/store/wos";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { validateCssColor } from "@/util/color-validator";
-import { cn } from "@/util/util";
+import { cn, makeIconClass } from "@/util/util";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import {
     autoUpdate,
     flip,
@@ -99,6 +103,9 @@ function getTabMoreMetaAtom(tabIds: readonly string[], env: TabMoreMenuEnv): Ato
                 flagColor,
                 blockIds: blockRef.blockIds,
                 agentBlockIds: blockRef.agentBlockIds,
+                agentProvider: blockRef.agentProvider,
+                agentSessionId: blockRef.agentSessionId,
+                viewIcon: blockRef.viewIcon,
             };
         }
         return out;
@@ -116,10 +123,22 @@ function getTabMoreMetaAtom(tabIds: readonly string[], env: TabMoreMenuEnv): Ato
 function collectTabBlockIds(
     getBlock: (blockId: string) => Block | null,
     tab: Tab
-): { blockIds: string[]; agentBlockIds: string[] } {
+): {
+    blockIds: string[];
+    agentBlockIds: string[];
+    /** 首个 agent block 的 provider（含 emoji 人格解析用）；无 agent 时为 null。 */
+    agentProvider: string | null;
+    /** 首个 agent block 的 session id（仅此会话人格解析用）；无则 null。 */
+    agentSessionId: string | null;
+    /** 首个 block 的视图图标名（非 agent 行用它对齐左槽）。 */
+    viewIcon: string | null;
+} {
     const blockIds: string[] = [];
     const agentBlockIds: string[] = [];
     const seen = new Set<string>();
+    let agentProvider: string | null = null;
+    let agentSessionId: string | null = null;
+    let viewIcon: string | null = null;
     const push = (blockId: string) => {
         if (blockId === "" || seen.has(blockId)) {
             return;
@@ -127,8 +146,24 @@ function collectTabBlockIds(
         seen.add(blockId);
         blockIds.push(blockId);
         const block = getBlock(blockId);
-        if (block != null && isAgentTerminalMeta(block.meta)) {
+        if (block == null) {
+            return;
+        }
+        const meta = (block.meta ?? {}) as Record<string, unknown>;
+        if (viewIcon == null && typeof meta.view === "string") {
+            viewIcon = blockViewToIcon(meta.view);
+        }
+        if (isAgentTerminalMeta(block.meta)) {
             agentBlockIds.push(blockId);
+            if (agentProvider == null) {
+                const provider = normalizeAgentProvider(meta["agent:provider"]);
+                if (provider !== "agent") {
+                    agentProvider = provider;
+                }
+            }
+            if (agentSessionId == null && typeof meta["agent:sessionid"] === "string") {
+                agentSessionId = meta["agent:sessionid"] as string;
+            }
         }
     };
     for (const topId of tab.blockids ?? []) {
@@ -138,7 +173,7 @@ function collectTabBlockIds(
             push(subId);
         }
     }
-    return { blockIds, agentBlockIds };
+    return { blockIds, agentBlockIds, agentProvider, agentSessionId, viewIcon };
 }
 
 export interface TabMoreMenuProps {
@@ -155,6 +190,29 @@ export interface TabMoreMenuProps {
     onCollapseInactive: () => void;
     onOpenChange?: (open: boolean) => void;
 }
+
+
+/** 行首 agent 图标：emoji 优先（仅此会话 > 所有会话），无则退化视图图标。定宽 13px 不抖动。 */
+const TabMoreRowIcon = memo(({ row }: { row: TabMoreRow }) => {
+    const personas = useAgentPersonas();
+    const sessionEmojis = useSessionEmojis();
+    const spec =
+        row.agentProvider != null && row.agentProvider !== "agent"
+            ? getAgentIcon(row.agentProvider, {
+                  personas,
+                  sessionEmojis,
+                  sessionId: row.agentSessionId ?? null,
+              })
+            : null;
+    if (spec?.kind === "emoji") {
+        return <span className="agent-emoji-icon shrink-0" title={row.agentProvider ?? undefined}>{spec.emoji}</span>;
+    }
+    // 非 agent 行：渲染视图图标（首列对齐）。agent 行无 emoji 时返回 null（由右侧状态点承载）。
+    if (spec == null && row.viewIcon != null) {
+        return <i className={cn(makeIconClass(row.viewIcon, true, { defaultIcon: "square" }), "shrink-0 text-[11px] text-secondary")} />;
+    }
+    return null;
+});
 
 /** 单行: 图标 + 名称 + 关闭. 不参与拖拽. */
 const TabMoreRowItem = memo(
@@ -196,6 +254,7 @@ const TabMoreRowItem = memo(
                 {row.isActive && (
                     <div className="pointer-events-none absolute inset-y-1 left-0 w-[2px] rounded bg-accent" />
                 )}
+                <TabMoreRowIcon row={row} />
                 <div className="relative flex h-[16px] w-[16px] shrink-0 items-center justify-center">
                     <TabBadges
                         badges={row.badges}

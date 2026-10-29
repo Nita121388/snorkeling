@@ -26,6 +26,12 @@ export interface TabMoreMeta {
     blockIds?: string[];
     /** `blockIds` 里命中 agent block 的子集 (有值才挂悬浮卡). */
     agentBlockIds?: string[];
+    /** 首个 agent block 的 provider（行首 agent 图标用）；无 agent 时为 null。 */
+    agentProvider?: string | null;
+    /** 首个 agent block 的 session id（仅此会话人格用）；无则 null。 */
+    agentSessionId?: string | null;
+    /** 非 agent 行的退化视图图标名（保持行首对齐）。 */
+    viewIcon?: string | null;
 }
 
 /** 一个 Tab 内命中的 agent block 引用 (悬浮卡渲染用). */

@@ -172,3 +172,64 @@ S4 与 S5 无相互依赖，可并行（但同一 cwd 只允许一个写者，�
 
 - `EmojiPicker` 的 `mode="document"` 是否强依赖编辑器上下文（若耦合过重 → 退路：`Popover` + 自绘 grid，见 design.md §6 最后一行）
 - `SetMetaCommand` 传 `null` 在 `blockAtom` 上的实际表现（先写一个最小 e2e 验证，再铺到 5 个面）
+
+---
+
+## S9 实际落地记录（2026-10-29）
+
+### 源码丢失与还原
+
+10-28 的实现只存在于 `0.14.6-...109` 安装包（`app.asar` + sourcemap），从未提交到 git，
+工作区被重置后源码丢失。已从 sourcemap 完整还原 19 个文件 + emoji 样式，
+并单独抽出 `frontend/app/agent-persona/agent-persona.scss`（构建产物里能取到确切规则）。
+
+注意：同一构建里还夹带了**别的任务**的未提交改动（subagent 折叠时长、工具描述英文化、
+filter-panel 调整、asset svg 等），本次只取 emoji 相关 hunk，不夹带。
+
+### 作用域语义纠正（原设计的缺陷）
+
+原设计把「仅此会话」存在 **block meta**（`agent:emoji`）。block 是窗口里的实例，
+所以：切 tab / 关掉重开 / resume 之后失效，aisessions 历史列表（扫盘产物、无 blockId）也读不到。
+用户明确指出「仅此会话 = 这个会话出现的所有地方」。
+
+改为 **三级模型**：
+
+| 层 | 存储 | 解析顺序 |
+|---|---|---|
+| 会话级（仅此会话） | localStorage `snorkeling:agent-session-emojis`，key = sessionId | 1 |
+| block meta `agent:emoji` | 兼容旧数据 | 2 |
+| provider 级（所有 X 会话） | localStorage `snorkeling:agent-personas` | 3 |
+| 品牌 Logo | 代码内置 | 4 |
+
+- 新增 `agent-persona/session-persona-store.ts`（外部 store + storage 事件同步）
+  与 `use-session-personas.ts`（`useSyncExternalStore` + jotai 镜像 `sessionEmojiAtom`）。
+- `getAgentIcon(provider, { meta, personas, sessionEmojis, sessionId })`：
+  sessionId 未显式传入时从 `meta["agent:sessionid"]` 推导。
+- 所有有 sessionId 的面（block 头 / inline tab / tab 卡 / hover 卡 / Session Overview /
+  aisessions 行 / aisessions 详情头）都传入 sessionId，因此一个会话在任何位置都是同一张脸。
+
+### 本次额外修复（用户反馈）
+
+- **搜索框聚焦不上**：`EmojiPicker` 原来对整个弹窗 `onMouseDown={preventDefault}`，
+  输入框永远拿不到焦点；加上打开入口的点击会冒泡到 block 焦点逻辑（xterm 抢焦点）。
+  修法：mousedown 只对非表单元素 preventDefault；picker 内部用 ref + rAF + 80ms 兜底聚焦；
+  各打开入口 `preventDefault + stopPropagation`。
+- **picker 自适应、无横向滚动**：宽度按视口夹取（`min(320, vw-24)`，left 也夹住）、
+  网格 `repeat(auto-fill, minmax(34px,1fr))`、分类栏从横滚改 `flex-wrap`、
+  高度用锚点上下剩余空间；外层 `display:flex; max-height` 让列表自然收缩。
+- **emoji 字形放大但控件尺寸不变**：`.agent-emoji-icon` 盒子仍 13px（`--row` 12px），
+  只放大 font-size（15.5 / 14px）+ `overflow: visible`；picker 项 18→22px、网格 28→34px。
+  这样 inline tab 宽度与虚拟行高不会因有人格而抖动。
+- **Tab「更多」下拉行没有图标槽**：`TabMoreMeta` 增 `agentProvider / agentSessionId / viewIcon`，
+  行首新增定宽图标槽（会话 emoji > provider emoji > 视图图标），与 hover Agent Card 一致。
+- **aisessions 行可点击设 emoji**：来源标签变成按钮，`stopPropagation` 后开 picker
+  （`blockId: null` 的 provider/session 双 scope 模式）。
+
+### 验证
+
+- `npx vitest run frontend/app/view/term/agent-logo.test.ts frontend/app/agent-persona/session-persona-store.test.ts` → 13 passed
+- `npx vitest run frontend/app/tab frontend/app/block frontend/app/session-overview` → 146 passed
+- `npx tsc --noEmit`：本次改动范围无新增错误；`session-overview.tsx(1231) onDeleteBlock` 与
+  `session-overview-model.ts(187)` 两个错误在 HEAD 上同样存在（已用 `git stash` 对比确认）。
+- `frontend/app/view/aisessions/open-sessions.test.ts` 的 4 个失败属于另一个未跟踪任务
+  （`open-sessions.ts` 未纳入本次改动），与本次无关。

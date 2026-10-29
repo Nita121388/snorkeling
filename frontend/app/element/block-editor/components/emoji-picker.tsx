@@ -33,6 +33,12 @@ export interface EmojiPickerProps {
     onRemove?: () => void;
     /** Optional extra content rendered at the bottom of the popover (e.g. scope radio). */
     footer?: React.ReactNode;
+    /**
+     * Optional ref to the document-mode search input. Hosts that open the picker
+     * from a terminal block need it: xterm re-claims focus right after the click
+     * that opened the popover, so the host must be able to re-focus the input.
+     */
+    searchInputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 /**
@@ -55,6 +61,7 @@ export function EmojiPicker({
     allowRemove,
     onRemove,
     footer,
+    searchInputRef,
 }: EmojiPickerProps) {
     const recents = useMemo(() => getRecentEmojis(), []);
     const items = useMemo(() => buildEmojiPickerItems(catalog, query, recents), [catalog, query, recents]);
@@ -162,20 +169,55 @@ export function EmojiPicker({
         [groupFirstIdx, onActiveChange]
     );
 
-    const stopMouse = (e: React.MouseEvent) => e.preventDefault();
+    // Viewport-aware geometry. The old layout hard-coded `width: 320px` and let the
+    // anchor's `left` through untouched, so opening the popover near the right edge
+    // pushed it off-screen; the grid was also pinned to 8 columns, which overflowed
+    // instead of reflowing on narrow windows.
+    const [viewport, setViewport] = useState<{ w: number; h: number }>(() =>
+        typeof window === "undefined" ? { w: 1024, h: 768 } : { w: window.innerWidth, h: window.innerHeight }
+    );
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+    }, []);
+    const popoverWidth = Math.min(320, Math.max(220, viewport.w - 24));
+    const popoverLeft = Math.min(Math.max(8, anchor.left), Math.max(8, viewport.w - popoverWidth - 8));
+    const availableHeight =
+        placement === "top" ? anchor.top - 8 : viewport.h - anchor.top - 8;
+
+    // Never swallow mousedown for real form controls: preventing the default there is
+    // what made the search box unfocusable (you could open the picker but not type).
+    // Everything else still needs the guard so the editor/terminal keeps its selection.
+    const handlePopoverMouseDown = (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest?.("input, textarea, select, label, button")) {
+            e.stopPropagation();
+            return;
+        }
+        e.preventDefault();
+    };
+
     let pickIdx = -1;
 
     return createPortal(
         <div
             className={`markdown-emoji-picker placement-${placement} mode-${mode}`}
-            style={{ top: anchor.top, left: anchor.left }}
-            onMouseDown={stopMouse}
+            style={{
+                top: anchor.top,
+                left: popoverLeft,
+                width: popoverWidth,
+                maxHeight: Math.max(160, availableHeight),
+            }}
+            onMouseDown={handlePopoverMouseDown}
             role="dialog"
             aria-label="Emoji picker"
         >
             {mode === "document" && (
                 <div className="markdown-emoji-searchrow">
                     <input
+                        ref={searchInputRef}
                         autoFocus
                         className="markdown-emoji-search"
                         placeholder="Search emoji…"
