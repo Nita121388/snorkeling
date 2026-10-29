@@ -221,6 +221,10 @@
                         }
                         &.agent-brand-icon {
                             opacity: 1;
+                            // 放大的 emoji 字形会溢出 13px 盒子；
+                            // 父级 iconview 是 overflow-x: hidden（跑马灯用），
+                            // 溢出部分会被硬切出一条竖边。按钮自身裁掉。
+                            overflow: hidden;
                         }
                     }
 

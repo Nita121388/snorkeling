@@ -27,6 +27,7 @@ import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
+import type { OpenLevel } from "./open-sessions";
 import {
     classifySnippet,
     describeSessionDates,
@@ -185,6 +186,7 @@ export function SessionRow({
     onResume,
     resumeDisabled = false,
     runningState = null,
+    openLevel = null,
     chatRunning = false,
     onJumpToBlock,
     depth = 0,
@@ -213,6 +215,8 @@ export function SessionRow({
     onResume: MouseEventHandler<HTMLButtonElement>;
     resumeDisabled?: boolean;
     runningState?: SessionRunningState | null;
+    /** 该会话的打开级别（open/visible/active/focused）；null = 未打开。 */
+    openLevel?: OpenLevel | null;
     chatRunning?: boolean;
     onJumpToBlock: (runningState: SessionRunningState) => void;
     /** 树层级：0 = 顶层会话，1 = 子会话（subagent / fork）。 */
@@ -658,6 +662,30 @@ export function SessionRow({
                         ) : null}
                         {dateInfo.createdText ? (
                             <span title={`Created: ${dateInfo.createdFull}`}>Created {dateInfo.createdText}</span>
+                        ) : null}
+                        {openLevel != null ? (
+                            <span
+                                className={cn(
+                                    "inline-flex h-3 w-3 items-center justify-center text-[12px] leading-none",
+                                    openLevel === "focused" || openLevel === "active"
+                                        ? "text-accent"
+                                        : openLevel === "visible"
+                                          ? "text-secondary"
+                                          : "text-secondary/60"
+                                )}
+                                title={`Open (${openLevel})`}
+                                role="img"
+                                aria-label={`Open (${openLevel})`}
+                            >
+                                <i
+                                    className={cn(
+                                        "fa-sharp",
+                                        openLevel === "focused" || openLevel === "active"
+                                            ? "fa-solid fa-square"
+                                            : "fa-regular fa-square"
+                                    )}
+                                />
+                            </span>
                         ) : null}
                         <span className="inline-flex items-center gap-1.5" data-heat="metrics">
                             <HeatCell

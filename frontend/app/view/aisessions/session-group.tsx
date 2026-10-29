@@ -5,6 +5,7 @@ import { cn } from "@/util/util";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { ListGroupMode } from "./controls";
 import { SessionRow } from "./session-row";
+import type { OpenLevel } from "./open-sessions";
 import { buildSessionTree, hiddenChildCount, visibleChildren, type SessionTreeNode } from "./session-tree";
 import { NewSessionKey } from "./types";
 import { countSubSessions, makeSessionComparator } from "./utils";
@@ -123,6 +124,7 @@ type GroupedSessionListProps = {
     onResume: (session: SessionSummary, event: ReactMouseEvent<HTMLButtonElement>) => void;
     resumeDisabled: boolean;
     runningStateOf: (session: SessionSummary) => SessionRunningState | null;
+    openLevelOf: (session: SessionSummary) => OpenLevel | null;
     chatRunningOf: (session: SessionSummary) => boolean;
     onJumpToBlock: (runningState: SessionRunningState) => void;
     /** 已展开的父会话 key 集合（localStorage 持久化）。 */
@@ -158,6 +160,7 @@ export function GroupedSessionList({
     onResume,
     resumeDisabled,
     runningStateOf,
+    openLevelOf,
     chatRunningOf,
     onJumpToBlock,
     expandedParents,
@@ -213,6 +216,7 @@ export function GroupedSessionList({
                     onResume={(event) => onResume(node.session, event)}
                     resumeDisabled={resumeDisabled}
                     runningState={runningStateOf(node.session)}
+                    openLevel={openLevelOf(node.session)}
                     chatRunning={chatRunningOf(node.session)}
                     onJumpToBlock={onJumpToBlock}
                     depth={node.depth}

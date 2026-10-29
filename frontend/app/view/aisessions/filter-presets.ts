@@ -8,6 +8,7 @@
 // 不包含 pathFilter（浏览位置）和 query（瞬时时搜索词）。
 
 import { normalizeSessionTags } from "./session-tags";
+import { DefaultOpenState, type OpenState } from "./open-sessions";
 import type {
     AttachMode,
     DatePreset,
@@ -27,6 +28,8 @@ export const MaxFilterPresetNameLength = 40;
 
 /** 参与过滤的快照字段（不含浏览位置与搜索词）。 */
 export type FilterPresetFilter = {
+    /** 打开状态筛选（any = 不筛）。 */
+    openState: OpenState;
     source: SourceFilter;
     markedFilter: MarkedFilter;
     dateRange: DateRangeFilter;
@@ -57,10 +60,12 @@ const SourceValues: ReadonlySet<string> = new Set(["", "codex", "claude", "openc
 const MarkedValues: ReadonlySet<string> = new Set(["all", "starred", "unstarred"]);
 const AttachValues: ReadonlySet<string> = new Set(["off", "both", "children"]);
 const TagPresenceValues: ReadonlySet<string> = new Set(["any", "untagged"]);
+const OpenStateValues: ReadonlySet<string> = new Set(["any", "open", "visible", "active"]);
 const DatePresetValues: ReadonlySet<string> = new Set(["all", "today", "7d", "30d", "custom"]);
 const GroupModeValues: ReadonlySet<string> = new Set(["project", "time"]);
 
 export const DefaultFilterPresetFilter: FilterPresetFilter = {
+    openState: DefaultOpenState,
     source: "",
     markedFilter: "all",
     dateRange: DefaultDateRange,
@@ -117,10 +122,15 @@ function sanitizeName(value: unknown): string {
     return value.trim().slice(0, MaxFilterPresetNameLength);
 }
 
+function sanitizeOpenState(value: unknown): OpenState {
+    return typeof value === "string" && OpenStateValues.has(value) ? (value as OpenState) : DefaultOpenState;
+}
+
 export function sanitizeFilterPresetFilter(value: unknown): FilterPresetFilter {
     if (value == null || typeof value !== "object") return { ...DefaultFilterPresetFilter };
     const record = value as Record<string, unknown>;
     return {
+        openState: sanitizeOpenState(record.openState),
         source: sanitizeSource(record.source),
         markedFilter: sanitizeMarked(record.markedFilter),
         dateRange: sanitizeDateRange(record.dateRange),
@@ -234,6 +244,7 @@ function compareDateRange(a: DateRangeFilter, b: DateRangeFilter): boolean {
 /** 两套筛选条件是否等价（集合比较与顺序无关）。 */
 export function filterPresetFilterEqual(a: FilterPresetFilter, b: FilterPresetFilter): boolean {
     return (
+        a.openState === b.openState &&
         a.source === b.source &&
         a.markedFilter === b.markedFilter &&
         a.attachMode === b.attachMode &&

@@ -4,6 +4,7 @@
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { DefaultOpenState, type OpenState } from "./open-sessions";
 import { CHAT_SOURCES, getChatSource, useChatSourceIcons } from "./sources";
 import type {
     AttachMode,
@@ -36,6 +37,13 @@ function dayEndMs(value: string): number {
     const t = new Date(value + "T23:59:59.999").getTime();
     return Number.isFinite(t) ? t : 0;
 }
+
+const OpenStates: { value: OpenState; label: string }[] = [
+    { value: "any", label: "Any" },
+    { value: "open", label: "Open" },
+    { value: "visible", label: "Visible" },
+    { value: "active", label: "Active" },
+];
 
 const DatePresets: { value: DatePreset; label: string }[] = [
     { value: "all", label: "All" },
@@ -161,6 +169,8 @@ function ActiveChip({
 }
 
 export function FilterPanel({
+    openState,
+    setOpenState,
     markedFilter,
     setMarkedFilter,
     dateRange,
@@ -187,6 +197,8 @@ export function FilterPanel({
     pathChildren,
     pathAncestors,
 }: {
+    openState: OpenState;
+    setOpenState: (value: OpenState) => void;
     markedFilter: MarkedFilter;
     setMarkedFilter: (value: MarkedFilter) => void;
     dateRange: DateRangeFilter;
@@ -236,7 +248,9 @@ export function FilterPanel({
     // sees the constraint instead of clicking into a no-op.
     const tagSectionDim = tagPresence === "untagged";
     const sourceIcons = useChatSourceIcons();
+    const openActive = openState !== DefaultOpenState;
     const hasActive =
+        openActive ||
         markedActive ||
         dateActive ||
         pathActive ||
@@ -246,7 +260,7 @@ export function FilterPanel({
         tagPresenceActive ||
         sourceActive;
     return (
-        <div className="m-2.5 overflow-hidden rounded-xl border border-border/60 bg-panel shadow-sm">
+        <div className="m-2.5 overflow-hidden rounded-xl border border-border/60 bg-modalbg shadow-sm">
             <div className="flex items-center justify-end px-2.5 pt-2 pb-1">
                 <button
                     type="button"
@@ -262,6 +276,21 @@ export function FilterPanel({
                 </button>
             </div>
             <div className="px-2.5 pb-1">
+                <div className="flex items-center gap-2.5 py-1.5">
+                    <i className="fa-sharp fa-solid fa-table-cells w-3.5 shrink-0 text-center text-[11px] text-secondary" />
+                    <SegTrack className="flex-1">
+                        {OpenStates.map((opt) => (
+                            <SegButton
+                                key={opt.value}
+                                active={openState === opt.value}
+                                title={opt.label}
+                                onClick={() => setOpenState(opt.value)}
+                            >
+                                <span className="text-xs">{opt.label}</span>
+                            </SegButton>
+                        ))}
+                    </SegTrack>
+                </div>
                 <div className="flex items-center gap-2.5 py-1.5">
                     <i className="fa-sharp fa-solid fa-star w-3.5 shrink-0 text-center text-[11px] text-secondary" />
                     <SegTrack>

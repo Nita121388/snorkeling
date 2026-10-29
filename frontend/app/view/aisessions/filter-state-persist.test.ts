@@ -14,6 +14,7 @@ import {
 } from "./filter-state-persist";
 
 const SampleFilter: FilterPresetFilter = {
+    openState: "any",
     source: "claude",
     markedFilter: "starred",
     dateRange: { preset: "custom", from: 100, to: 200 },

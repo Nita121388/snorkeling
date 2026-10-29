@@ -43,6 +43,7 @@ import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
 import { GenActionButton } from "./gen-action-button";
 import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
+import { useSessionOpenEntry } from "./open-sessions-store";
 import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
 import { openAISessionDetailFromList } from "./session-detail-block";
 import { SessionDetailSkeleton } from "./session-detail-skeleton";
@@ -363,6 +364,9 @@ export function SessionDetailPane({
     })();
     const summary = effectiveDetail?.summary ?? null;
     const summaryKey = summary?.key ?? "";
+    // 多块打开提示：同一会话在多个块里打开时头栏显示 N（仅 N>1）。
+    const openEntry = useSessionOpenEntry(summary?.id ?? "");
+    const openBlockCount = openEntry == null ? 0 : 1 + openEntry.duplicateBlockIds.length;
     // Note 弹窗里的 AI 生成（提案式：填入草稿，由既有保存逻辑落盘）
     const noteAI = useNoteAIGenerate(summaryKey, connection);
     const genService = useMemo(() => new AISessionsServiceType(), []);
@@ -1858,6 +1862,16 @@ export function SessionDetailPane({
                                 title={`Model${actualModels.length > 1 ? ` (multi-model: ${actualModels.join(", ")})` : ""}`}
                             >
                                 {chatAgentModel || actualModel}
+                            </span>
+                        ) : null}
+                        {openBlockCount > 1 ? (
+                            <span
+                                className="inline-flex h-[22px] shrink-0 items-center gap-1 rounded-full border border-border px-2 text-[11px] text-secondary"
+                                title={`Open in ${openBlockCount} blocks`}
+                                aria-label={`Open in ${openBlockCount} blocks`}
+                            >
+                                <i className="fa-sharp fa-solid fa-table-cells text-[10px]" />
+                                {openBlockCount}
                             </span>
                         ) : null}
                         <div className="flex shrink-0 items-center gap-0.5">

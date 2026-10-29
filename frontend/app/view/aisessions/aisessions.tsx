@@ -23,10 +23,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import "../../session-overview/session-overview.scss";
 import { autoGenerate } from "./aisession-gen-store";
-import { ExpandAllTagsButton, GroupModeSwitch, IconButton, SubSessionsToggle, type ListGroupMode } from "./controls";
+import { GroupModeSwitch, IconButton, type ListGroupMode } from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
+import { DefaultOpenState, openSessionMatches, type OpenState } from "./open-sessions";
+import { useOpenSessions } from "./open-sessions-store";
 import { FilterPresetMenu } from "./filter-preset-menu";
+import { FoldMenu, type SubSessionsFold } from "./fold-menu";
 import {
     FilterStateMetaKey,
     buildFilterStateMeta,
@@ -209,6 +212,8 @@ export class AiSessionsViewModel implements ViewModel {
         width: number;
         height: number;
     } | null>;
+    /** 打开状态筛选（any = 不筛）。也是内置 Open 方案的落点。 */
+    openStateAtom = jotai.atom<OpenState>(DefaultOpenState);
     sourceAtom = jotai.atom<SourceFilter>("");
     queryAtom = jotai.atom<string>("");
     tagFiltersAtom = jotai.atom<string[]>([]);
@@ -812,6 +817,7 @@ export class AiSessionsViewModel implements ViewModel {
     /** 读取当前筛选条件作为快照。 */
     captureCurrentFilter(): FilterPresetFilter {
         return {
+            openState: globalStore.get(this.openStateAtom),
             source: globalStore.get(this.sourceAtom),
             markedFilter: globalStore.get(this.markedFilterAtom),
             dateRange: { ...globalStore.get(this.dateRangeAtom) },
@@ -835,6 +841,7 @@ export class AiSessionsViewModel implements ViewModel {
 
     /** 一次性 set 全部筛选 atom（不负责加载）。presets 与持久化恢复共用。 */
     private applyFilterSnapshot(filter: FilterPresetFilter): void {
+        globalStore.set(this.openStateAtom, filter.openState);
         globalStore.set(this.sourceAtom, filter.source);
         globalStore.set(this.markedFilterAtom, filter.markedFilter);
         globalStore.set(this.dateRangeAtom, { ...filter.dateRange });
@@ -876,6 +883,7 @@ export class AiSessionsViewModel implements ViewModel {
     /** 订阅筛选 atom：任何变化都 debounce 落盘（同时覆盖「应用方案」链路）。 */
     private attachFilterStatePersistence(): void {
         const atoms: jotai.Atom<unknown>[] = [
+            this.openStateAtom,
             this.sourceAtom,
             this.markedFilterAtom,
             this.dateRangeAtom,
@@ -1493,6 +1501,21 @@ const SessionListWidthStorageKey = "aisessions.sessionListWidth";
 const AutoRefreshIntervalMetaKey = "aisessions:autorefreshintervalms";
 // 筛选状态变更的落盘 debounce：拖拽/多次点选标签时合并成一次 SetMetaCommand。
 const FilterStateWriteDebounceMs = 400;
+// 子会话折叠偏好（视图偏好，像排序一样走 localStorage，不进筛选链）。
+const SubSessionsFoldStorageKey = "aisessions.subsessionsfold";
+function readSubSessionsFold(): SubSessionsFold {
+    if (typeof window === "undefined") return "smart";
+    const raw = window.localStorage.getItem(SubSessionsFoldStorageKey);
+    return raw === "folded" || raw === "expanded" || raw === "smart" ? raw : "smart";
+}
+function writeSubSessionsFold(value: SubSessionsFold): void {
+    if (typeof window === "undefined") return;
+    try {
+        window.localStorage.setItem(SubSessionsFoldStorageKey, value);
+    } catch {
+        // localStorage 不可用时静默降级。
+    }
+}
 // 头栏「Open AI Audit」图标默认隐藏，仅在块 meta 显式开启时显示。
 const ShowAuditButtonMetaKey = "aisessions:showaudit";
 
@@ -1711,10 +1734,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         () => makeSessionComparator(sortChain, subSessionCounts),
         [sortChain, subSessionCounts]
     );
+    const openState = jotai.useAtomValue(model.openStateAtom);
+    const openSessionsSnapshot = useOpenSessions();
     const visibleSessions = useMemo(() => {
-        const base = sortSessions(sessions, sortChain, subSessionCounts);
+        let base = sortSessions(sessions, sortChain, subSessionCounts);
+        // 打开状态筛选纯前端：后端不知道哪些会话有打开的块。
+        if (openState !== "any") {
+            base = base.filter((session) => openSessionMatches(openSessionsSnapshot, session.id, openState));
+        }
         return newSession != null ? [newSession, ...base] : base;
-    }, [sessions, sortChain, subSessionCounts, newSession]);
+    }, [sessions, sortChain, subSessionCounts, newSession, openState, openSessionsSnapshot]);
     // 多选集合始终是「当前可见会话」的子集：筛选 / 刷新后消失的会话不该继续
     // 留在选区内，否则批量栏的「复制 5 个 ID」实际只有 2 条在结果里。
     // New Chat 占位没有 id / filePath，进选区只会让复制产物出现空行，排除它。
@@ -1748,7 +1777,18 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     // expandedParents（默认空 = 全部折叠），所以一键展开不会变成新的默认行为。
     // 声明位置在 toggleExpandParent 之前：那个回调的 deps 会立即求值。
     type SubSessionsOverride = "expanded" | "collapsed" | null;
-    const [subSessionsOverride, setSubSessionsOverride] = useState<SubSessionsOverride>(null);
+    const [subSessionsFold, setSubSessionsFold] = useState<SubSessionsFold>(() => readSubSessionsFold());
+    // smart 走 null（保持 per-parent 展开 + 命中自动展开）；folded/expanded 走全局覆盖。
+    const subSessionsOverride: SubSessionsOverride =
+        subSessionsFold === "folded" ? "collapsed" : subSessionsFold === "expanded" ? "expanded" : null;
+    const setSubSessionsOverride = useCallback(
+        (next: SubSessionsOverride) => {
+            const mapped: SubSessionsFold = next === "collapsed" ? "folded" : next === "expanded" ? "expanded" : "smart";
+            setSubSessionsFold(mapped);
+            writeSubSessionsFold(mapped);
+        },
+        []
+    );
     const allParentKeys = useMemo(() => [...collectParentKeys(sessions)], [sessions]);
 
     const toggleExpandParent = useCallback(
@@ -1821,6 +1861,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const filterActive = remoteFilterActive;
     const filterBusy = loading && remoteFilterActive;
     const activeFilterCount =
+        (openState !== "any" ? 1 : 0) +
         (markedActive ? 1 : 0) +
         (dateActive ? 1 : 0) +
         normalizedTagFilters.length +
@@ -1832,6 +1873,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     // 当前筛选快照（与 ViewModel.captureCurrentFilter 保持一致，供方案保存/脏检查）。
     const currentFilterSnapshot = useMemo<FilterPresetFilter>(
         () => ({
+            openState,
             source,
             markedFilter,
             dateRange,
@@ -1843,6 +1885,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
             pathExcludes: normalizedPathExcludes,
         }),
         [
+            openState,
             source,
             markedFilter,
             dateRange,
@@ -1951,27 +1994,6 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
             ? expandedParents
             : [...new Set([...expandedParents, ...autoExpandedParents])];
     }, [subSessionsOverride, allParentKeys, autoExpandedParents, expandedParents]);
-    const allSubSessionsExpanded =
-        allParentKeys.length > 0 && allParentKeys.every((key) => renderedExpandedParents.includes(key));
-
-    const toggleSubSessions = useCallback(() => {
-        const expandedNow =
-            allParentKeys.length > 0 && allParentKeys.every((key) => renderedExpandedParents.includes(key));
-        if (expandedNow) {
-            // 全部收起：物化成「空」并压制筛选自动展开，否则下一个筛选条件或 60s
-            // 刷新又会把父行撑开，用户看不到收起效果。
-            setSubSessionsOverride("collapsed");
-            setExpandedParents([]);
-            setFullyExpandedParents(new Set());
-            setAutoExpandedParents([]);
-            for (const key of allParentKeys) {
-                suppressedAutoExpandRef.current.add(key);
-            }
-            return;
-        }
-        setSubSessionsOverride("expanded");
-    }, [allParentKeys, renderedExpandedParents]);
-
     const availablePathRoots = useMemo(() => extractPathRoots(projectPaths), [projectPaths]);
     const pathChildren = useMemo(() => extractPathChildren(pathFilter, projectPaths), [pathFilter, projectPaths]);
     const pathAncestors = useMemo(() => pathAncestorSegments(pathFilter), [pathFilter]);
@@ -2484,10 +2506,12 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     </button>
                                     <FilterPresetMenu
                                         presets={filterPresets}
+                                        openActive={openState !== "any"}
                                         activePresetId={activePresetId}
                                         activeDirty={activePresetDirty}
                                         canSave={canSavePreset}
                                         onApply={(preset) => model.applyFilterPreset(preset)}
+                                        onApplyOpen={() => globalStore.set(model.openStateAtom, "open")}
                                         onSaveNew={(name) => {
                                             model.saveFilterPreset(name);
                                         }}
@@ -2498,14 +2522,14 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         onDelete={(id) => model.deleteFilterPreset(id)}
                                     />
                                     <SortMenu chain={sortChain} onChange={setSortChain} />
-                                    <SubSessionsToggle
-                                        allExpanded={allSubSessionsExpanded}
-                                        parentCount={allParentKeys.length}
-                                        onToggle={toggleSubSessions}
-                                    />
-                                    <ExpandAllTagsButton
-                                        expanded={expandAllTags}
-                                        onToggle={() => setExpandAllTags((current) => !current)}
+                                    <FoldMenu
+                                        subSessionsFold={subSessionsFold}
+                                        tagsFold={expandAllTags ? "expanded" : "folded"}
+                                        onSubSessionsFoldChange={(next) => {
+                                            setSubSessionsFold(next);
+                                            writeSubSessionsFold(next);
+                                        }}
+                                        onTagsFoldChange={(next) => setExpandAllTags(next === "expanded")}
                                     />
                                 </div>
                                 {backupStats != null && backupStats.cleanupCount > 0 ? (
@@ -2532,6 +2556,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                             </div>
                             {filtersOpen ? (
                                 <FilterPanel
+                                    openState={openState}
+                                    setOpenState={(next) => globalStore.set(model.openStateAtom, next)}
                                     markedFilter={markedFilter}
                                     setMarkedFilter={setMarkedFilter}
                                     dateRange={dateRange}
@@ -2707,6 +2733,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                     sessionsRunning.get(session.key) ??
                                                     sessionsRunning.get(session.id) ??
                                                     null
+                                                }
+                                                openLevelOf={(session) =>
+                                                    openSessionsSnapshot.bySessionId.get(session.id)?.level ?? null
                                                 }
                                                 chatRunningOf={(session) =>
                                                     runningChatSessionIds.has(session.key) ||

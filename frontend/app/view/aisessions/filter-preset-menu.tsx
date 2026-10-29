@@ -23,12 +23,15 @@ import type { FilterPreset } from "./filter-presets";
 
 type Props = {
     presets: FilterPreset[];
+    /** 内置 Open 方案是否生效（openState !== "any"）。 */
+    openActive: boolean;
     activePresetId: string;
     /** 当前筛选是否已偏离 active 方案（用于「覆盖」提示与圆环）。 */
     activeDirty: boolean;
     /** 当前是否存在可保存的有效筛选（全默认时禁用保存）。 */
     canSave: boolean;
     onApply: (preset: FilterPreset) => void;
+    onApplyOpen: () => void;
     onSaveNew: (name: string) => void;
     onOverwrite: (id: string) => void;
     onRename: (id: string, name: string) => void;
@@ -43,10 +46,12 @@ const RowMenuHeight = 100;
 
 export function FilterPresetMenu({
     presets,
+    openActive,
     activePresetId,
     activeDirty,
     canSave,
     onApply,
+    onApplyOpen,
     onSaveNew,
     onOverwrite,
     onRename,
@@ -207,6 +212,28 @@ export function FilterPresetMenu({
                                     Save current as…
                                 </button>
                             )}
+                        </div>
+                        <div className="border-b border-border/40 py-1">
+                            <button
+                                type="button"
+                                title="Show only sessions with an open block"
+                                aria-pressed={openActive}
+                                onClick={onApplyOpen}
+                                className={cn(
+                                    "flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs cursor-pointer hover:bg-hover",
+                                    openActive ? "text-primary" : "text-secondary"
+                                )}
+                            >
+                                <i
+                                    className={cn(
+                                        "fa-sharp shrink-0 text-[8px]",
+                                        openActive
+                                            ? "fa-solid fa-circle text-accent"
+                                            : "fa-regular fa-circle text-secondary/40"
+                                    )}
+                                />
+                                <span className="min-w-0 flex-1 truncate">Open</span>
+                            </button>
                         </div>
                         <div className="max-h-72 overflow-y-auto py-1">
                             {presets.length === 0 ? (
