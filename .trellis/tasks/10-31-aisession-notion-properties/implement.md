@@ -76,3 +76,18 @@ go test ./pkg/aisessions/ ./pkg/service/aisessionsservice/
 - P1/P2 前端可整体关闭（feature flag `ai:sessionprops`），回到 Note/Tags 区段。
 - P3 后端 worker 默认关闭（沿用 `ai:sessionautotitle` 开关语义）。
 - 无破坏性数据迁移，`props` 可随时丢弃重建。
+
+## 本次交付状态（实现记录）
+
+已落地（P0 + P1 核心）：
+- [x] Go `SessionSummary.Props` + `PropertyCell`；SQLite `ai_session_props` 表；`PropsForSession` / `SetProps`（合并、nil 删除）；MetaStore 双写；Manager / Service `SetProps` RPC；`generatets` 已同步 TS。
+- [x] `property-model.ts`：类型、`toPropertyDefs` 虚拟映射、类型推断（复用 Obsidian `inferPropertyType`）、格式化、空值判定、`slugifyPropertyKey`。
+- [x] `property-list.tsx`：Notion 式属性行；card/detail 双形态；+N more；AI ✨；只读态；内联编辑（text/number/select/multi/status/date/checkbox/url）；「+ Add a property」；删除自定义属性。
+- [x] `property-store.ts`：内置属性走 NoteAndTags / Mark；自定义属性走 SetProps。
+- [x] `SessionNoteSection` 用 `PropertyList` 替换 note 预览 + tags chips；悬浮卡只读，详情卡可编辑。
+- [x] 测试：Go `props_test.go` 4 项；前端 model/list 19 项；`go build ./...` / `tsc` / vitest 全绿。
+
+未落地（依赖设计文档 §8 的开放问题拍板）：
+- [ ] P2 AI 自动生成属性（后端 worker + `source=ai` + Suggested + Force/Undo）——依赖「AI 新属性是否先进 Suggested」「person 语义」决策。
+- [ ] P3 wconfig 全局 schema + 拖拽排序 + 改名/换类型 UI ——依赖「schema 全局还是按项目」决策。
+- [ ] session-row 行内编辑器与 PropertyList 合并（4 处 draft 去重）——独立重构，风险较高，留作下一步。

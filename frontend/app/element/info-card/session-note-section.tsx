@@ -17,6 +17,7 @@ import type { SessionNoteState } from "@/app/store/session-note-hook";
 import { GenActionButton } from "@/app/view/aisessions/gen-action-button";
 import { PropertyList } from "@/app/view/aisessions/property/property-list";
 import { setSessionProperty } from "@/app/view/aisessions/property/property-store";
+import { humanizeKey, type PropertyDef, type PropertyType, type PropertyValue } from "@/app/view/aisessions/property/property-model";
 import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
 import { UndoNoteBar, useNoteUndo, type NoteUndoSnapshot } from "@/app/view/aisessions/undo-toast";
 import * as React from "react";
@@ -71,6 +72,48 @@ export function SessionNoteSection({
     const undo = useNoteUndo(state.service, sessionKey, connection);
     const prevNoteRef = React.useRef<NoteUndoSnapshot | null>(null);
     const [genError, setGenError] = React.useState("");
+
+    const writeProperty = React.useCallback(
+        (def: PropertyDef, value: PropertyValue) => {
+            if (summary == null) return;
+            void setSessionProperty({
+                service: state.service,
+                sessionId: sessionKey,
+                connection,
+                summary,
+                def,
+                value,
+            });
+        },
+        [connection, sessionKey, state.service, summary]
+    );
+
+    const addProperty = React.useCallback(
+        (key: string, type: PropertyType) => {
+            // 新建的空属性需要非 null 初值才能落库（SetProps 把 null 当删除）。
+            const initial: PropertyValue =
+                type === "multi_select" || type === "person" || type === "relation"
+                    ? []
+                    : type === "checkbox"
+                      ? false
+                      : "";
+            writeProperty(
+                { key, name: humanizeKey(key), type, order: 100, scope: "session", builtin: false },
+                initial
+            );
+        },
+        [writeProperty]
+    );
+
+    const deleteProperty = React.useCallback(
+        (key: string) => {
+            writeProperty(
+                { key, name: humanizeKey(key), type: "text", order: 100, scope: "session", builtin: false },
+                null
+            );
+        },
+        [writeProperty]
+    );
 
     if (summary == null) {
         return null;
@@ -168,8 +211,10 @@ export function SessionNoteSection({
             ) : (
                 <PropertyList
                     summary={summary}
-                    mode="card"
+                    mode={canEditProperties ? "detail" : "card"}
                     canEdit={canEditProperties}
+                    onAddProperty={canEditProperties ? addProperty : undefined}
+                    onDeleteProperty={canEditProperties ? deleteProperty : undefined}
                     onEditNote={() => {
                         setIsEditing(true);
                         window.setTimeout(() => {
@@ -177,16 +222,7 @@ export function SessionNoteSection({
                             inputRef.current?.setSelectionRange(noteDraft.length, noteDraft.length);
                         }, 0);
                     }}
-                    onChange={(key, value, def) => {
-                        void setSessionProperty({
-                            service: state.service,
-                            sessionId: sessionKey,
-                            connection,
-                            summary,
-                            def,
-                            value,
-                        });
-                    }}
+                    onChange={(key, value, def) => writeProperty(def, value)}
                 />
             )}
             {error ? <InfoCardError>{error}</InfoCardError> : null}

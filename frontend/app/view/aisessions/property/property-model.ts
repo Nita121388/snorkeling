@@ -325,3 +325,13 @@ export function typeLabel(type: PropertyType): string {
     };
     return map[type];
 }
+
+/** 把用户输入的属性名转成稳定 key（小写、非字母数字转下划线）。 */
+export function slugifyPropertyKey(name: string): string {
+    return name
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, "_")
+        .replace(/^_+|_+$/g, "")
+        .replace(/_{2,}/g, "_");
+}

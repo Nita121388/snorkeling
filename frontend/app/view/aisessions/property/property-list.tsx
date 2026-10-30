@@ -16,9 +16,12 @@ import {
     formatDateTimeValue,
     formatValue,
     isEmptyValue,
+    slugifyPropertyKey,
+    typeLabel,
     type PropertyDef,
     type PropertyEntry,
     type PropertySource,
+    type PropertyType,
     type PropertyValue,
     type SelectOption,
     toPropertyDefs,
@@ -35,8 +38,14 @@ export type PropertyListProps = {
     onEditNote?: () => void;
     /** 值变更（内置与自定义都走这里，由上层决定写哪个 RPC）。 */
     onChange?: (key: string, value: PropertyValue, def: PropertyDef) => void;
+    /** 新建自定义属性（detail 模式 + canEdit 时展示入口）。 */
+    onAddProperty?: (key: string, type: PropertyType) => void;
+    /** 删除自定义属性（仅 non-builtin）。 */
+    onDeleteProperty?: (key: string) => void;
     canEdit?: boolean;
 };
+
+const CreatableTypes: PropertyType[] = ["text", "number", "select", "multi_select", "status", "date", "person", "checkbox", "url"];
 
 function sourceMarker(source: PropertySource): React.ReactNode {
     if (source !== "ai") return null;
@@ -205,10 +214,96 @@ function InlineEditor({
     );
 }
 
-export function PropertyList({ summary, mode = "card", className, onEditNote, onChange, canEdit = false }: PropertyListProps) {
+function AddPropertyForm({
+    existingKeys,
+    adding,
+    setAdding,
+    onSubmit,
+}: {
+    existingKeys: string[];
+    adding: boolean;
+    setAdding: (value: boolean) => void;
+    onSubmit: (key: string, type: PropertyType) => void;
+}) {
+    const [name, setName] = React.useState("");
+    const [type, setType] = React.useState<PropertyType>("text");
+    const [error, setError] = React.useState("");
+
+    if (!adding) {
+        return (
+            <button type="button" className="property-add" onClick={() => setAdding(true)}>
+                <i className="fa-sharp fa-solid fa-plus" /> Add a property
+            </button>
+        );
+    }
+
+    const submit = () => {
+        const key = slugifyPropertyKey(name);
+        if (key === "") {
+            setError("Name is required");
+            return;
+        }
+        if (existingKeys.includes(key)) {
+            setError("Property already exists");
+            return;
+        }
+        setError("");
+        onSubmit(key, type);
+        setName("");
+        setType("text");
+    };
+
+    return (
+        <div className="property-add-form">
+            <input
+                autoFocus
+                className="property-edit-input"
+                aria-label="Property name"
+                placeholder="Property name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                onKeyDown={(event) => {
+                    if (event.key === "Enter") submit();
+                    if (event.key === "Escape") setAdding(false);
+                }}
+            />
+            <select
+                className="property-select"
+                aria-label="Property type"
+                value={type}
+                onChange={(event) => setType(event.target.value as PropertyType)}
+            >
+                {CreatableTypes.map((t) => (
+                    <option key={t} value={t}>
+                        {typeLabel(t)}
+                    </option>
+                ))}
+            </select>
+            <button type="button" className="property-add-ok" onClick={submit}>
+                Add
+            </button>
+            <button type="button" className="property-add-cancel" onClick={() => setAdding(false)} aria-label="Cancel">
+                <i className="fa-sharp fa-solid fa-xmark" />
+            </button>
+            {error ? <span className="property-add-error">{error}</span> : null}
+        </div>
+    );
+}
+
+export function PropertyList({
+    summary,
+    mode = "card",
+    className,
+    onEditNote,
+    onChange,
+    onAddProperty,
+    onDeleteProperty,
+    canEdit = false,
+}: PropertyListProps) {
     const entries = React.useMemo(() => toPropertyDefs(summary), [summary]);
     const [expanded, setExpanded] = React.useState(false);
     const [editingKey, setEditingKey] = React.useState<string | null>(null);
+    const [adding, setAdding] = React.useState(false);
 
     const visible = React.useMemo(() => {
         if (mode === "detail") return entries;
@@ -237,7 +332,9 @@ export function PropertyList({ summary, mode = "card", className, onEditNote, on
         const isNote = def.key === "note";
         const empty = isEmptyValue(def, cell.value);
         const editable = canEdit && !def.readOnly && onChange != null;
+        const deletable = canEdit && !def.builtin && onDeleteProperty != null;
         const isEditing = editingKey === def.key && editable;
+        void empty;
         return (
             <div
                 key={def.key}
@@ -275,6 +372,20 @@ export function PropertyList({ summary, mode = "card", className, onEditNote, on
                             {empty && mode === "detail" && def.type !== "checkbox" ? null : null}
                         </button>
                     )}
+                    {deletable ? (
+                        <button
+                            type="button"
+                            className="property-row__delete"
+                            aria-label={`Delete ${def.name}`}
+                            title={`Delete ${def.name}`}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDeleteProperty?.(def.key);
+                            }}
+                        >
+                            <i className="fa-sharp fa-solid fa-xmark" />
+                        </button>
+                    ) : null}
                 </span>
             </div>
         );
@@ -302,6 +413,17 @@ export function PropertyList({ summary, mode = "card", className, onEditNote, on
                 <button type="button" className="property-more" onClick={() => setExpanded(true)} aria-label={`Show ${hiddenCount} more properties`}>
                     +{hiddenCount} more {hiddenCount === 1 ? "property" : "properties"}
                 </button>
+            ) : null}
+            {mode === "detail" && canEdit && onAddProperty != null ? (
+                <AddPropertyForm
+                    existingKeys={entries.map((entry) => entry.def.key)}
+                    adding={adding}
+                    setAdding={setAdding}
+                    onSubmit={(key, type) => {
+                        setAdding(false);
+                        onAddProperty(key, type);
+                    }}
+                />
             ) : null}
         </div>
     );

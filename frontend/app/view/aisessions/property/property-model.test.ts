@@ -8,6 +8,7 @@ import {
     formatValue,
     humanizeKey,
     isEmptyValue,
+    slugifyPropertyKey,
     tagToOption,
     toPropertyDefs,
 } from "./property-model";
@@ -132,5 +133,17 @@ describe("formatting", () => {
     it("maps tags to stable colors", () => {
         expect(tagToOption("#Fix").id).toBe("fix");
         expect(tagToOption("fix").color).toBe(tagToOption("Fix").color);
+    });
+});
+
+describe("slugifyPropertyKey", () => {
+    it("lowercases and converts to snake_case", () => {
+        expect(slugifyPropertyKey("Tech Stack")).toBe("tech_stack");
+        expect(slugifyPropertyKey("  Owner Name!! ")).toBe("owner_name");
+        expect(slugifyPropertyKey("due-date")).toBe("due_date");
+    });
+
+    it("returns empty for blank input", () => {
+        expect(slugifyPropertyKey("   ")).toBe("");
     });
 });
