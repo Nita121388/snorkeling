@@ -1,0 +1,30 @@
+{
+  "id": "avatar-tests",
+  "name": "avatar-tests",
+  "title": "单测 + 像素回归 + 跨面一致性",
+  "description": "纯函数：normalizeBadge（合法 1/2/3 字符、含 fg/不含 fg、越界长度、非法色、含 emoji 拒绝、空 text、控制符拒绝）；coerceAvatar（旧字符串往返、混合 map、坏 JSON 回退）；getAgentIcon（badge 压 emoji 压 logo 优先级；badge 缺 fg 自动补 autoFg）；autoFg（深底白字/浅底黑字边界，复用 colord.isDark 阈值）。store：读写往返（含对象值）、坏 JSON 回退、跨窗口 storage 事件。交互：picker 模式切换保留各自值、badge 写入 session/provider 目标、移除分层清除。像素级回归：有人格/有 badge 时 tab 宽、aisessions 行高差 ≤ 1px（复用现有 CDP 截图）。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-29",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-29-agent-avatar-text-badge",
+  "relatedFiles": [
+    "frontend/app/view/term/agent-logo.test.ts",
+    "frontend/app/agent-persona/persona-store.test.ts",
+    "frontend/app/agent-persona/session-persona-store.test.ts"
+  ],
+  "notes": "",
+  "meta": {}
+}

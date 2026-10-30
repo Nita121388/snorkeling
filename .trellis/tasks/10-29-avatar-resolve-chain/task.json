@@ -1,0 +1,28 @@
+{
+  "id": "avatar-resolve-chain",
+  "name": "avatar-resolve-chain",
+  "title": "getAgentIcon 加 badge 分支",
+  "description": "agent-logo.tsx：AgentIconSpec 加 {kind:'badge';text;bg;fg}。getAgentIcon 在 L2(session)→L2(block meta 旧)→L1(provider) 每层命中时：badge 直接返回（fg 缺省补 autoFg(bg)），emoji 返回，两者都压过 logo；非法 badge/emoji 回落下一层（与现有坏值处理一致）。新增 normalizeBadge(o)：text 1–3 grapheme、拒控制符/换行/含 emoji，bg/fg 走 colord.isValid()，否则 null。优先级链与返回值结构保持不变。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-29",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-29-agent-avatar-text-badge",
+  "relatedFiles": [
+    "frontend/app/view/term/agent-logo.tsx"
+  ],
+  "notes": "",
+  "meta": {}
+}

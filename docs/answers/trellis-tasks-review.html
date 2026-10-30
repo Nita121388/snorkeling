@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Trellis 任务梳理（基于 Git 历史）</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 20px;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 10px;
+    }
+
+    h2 {
+      color: #2c3e50;
+      margin-top: 30px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: #fff;
+      margin-bottom: 25px;
+      box-shadow: 0 2px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    th,
+    td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f4f6f7;
+      font-weight: bold;
+    }
+
+    tr:nth-child(even) {
+      background-color: #fcfcfc;
+    }
+
+    .high {
+      color: #27ae60;
+      font-weight: bold;
+    }
+
+    .mid {
+      color: #f39c12;
+      font-weight: bold;
+    }
+
+    .low {
+      color: #7f8c8d;
+      font-weight: bold;
+    }
+
+    code {
+      background-color: #f4f4f4;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: "Consolas", monospace;
+    }
+
+    pre {
+      background-color: #2d2d2d;
+      color: #f8f8f2;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+
+    .note {
+      background-color: #eaf2f8;
+      border-left: 4px solid #3498db;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Trellis 任务梳理（基于 Git 历史）</h1>
+  <p>基于最近的 <code>main</code> 分支提交记录，对比 <code>tasks/</code> 下的活跃任务，判断哪些可以归档。</p>
+
+  <h2>建议优先归档 <span class="high">（高度确定已完成）</span></h2>
+  <table>
+    <thead>
+      <tr>
+        <th>任务</th>
+        <th>对应 Commit</th>
+        <th>说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>10-29-aisessions-filter-state-persist</code></td>
+        <td><code>9bb97a2f</code> - fix(aisessions): 筛选状态按 block 持久化，Tab 切换/重开不再丢</td>
+        <td>PRD 中“切换 Tab / 重开后筛选不丢失”已完整实装。</td>
+      </tr>
+      <tr>
+        <td><code>10-28-aisessions-filter-presets</code></td>
+        <td><code>9263211b</code> - feat(aisessions): 保存筛选方案（Filter Presets）<br><code>65f8696d</code> - fix(aisessions): 筛选方案下拉改用 FloatingPortal，修复被 block 裁剪</td>
+        <td>保存/加载筛选方案功能已合并，后续也已修复下拉被裁剪的问题，基本收尾。</td>
+      </tr>
+      <tr>
+        <td><code>10-29-aisessions-open-sessions-ui</code></td>
+        <td><code>a1f16e39</code> - feat(aisessions): 打开会话查询 + Open 筛选维度 + Fold 下拉</td>
+        <td>功能与任务描述几乎完全对应，已上线。</td>
+      </tr>
+      <tr>
+        <td><code>10-24-agent-emoji-persona</code></td>
+        <td><code>e7a8d1b6</code> (chore: archive) + <code>4e1989a9</code>, <code>2109d401</code>, <code>f1c0aac9</code>, <code>5b72975f</code>, <code>322acc66</code> 等一系列 emoji persona 修复</td>
+        <td>主功能早已合并，近期的提交均为细节修复。实际上曾被归档过，但建议再次确认最终状态。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>建议视情况归档 <span class="mid">（中等确定）</span></h2>
+  <table>
+    <thead>
+      <tr>
+        <th>任务</th>
+        <th>对应 Commit</th>
+        <th>说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>10-28-aisessions-note-editor-fix</code></td>
+        <td>无完全同名 Commit</td>
+        <td>尚未找到直接对应的提交。建议先使用 <code>git log -p --max-count=5 -- "**/aisessions*note*"</code> 查看近期是否有涉及笔记编辑器的改动再决定。</td>
+      </tr>
+      <tr>
+        <td><code>10-27-aisessions-annotation-card-popup-fix</code></td>
+        <td><code>65f8696d</code> - fix(aisessions): 筛选方案下拉改用 FloatingPortal，修复被 block 裁剪</td>
+        <td>方向与“注释卡片/弹窗被裁剪”较为贴近，但不完全等同。建议先对比其 <code>design.md</code> 与 <code>implement.md</code> 后再归档。</td>
+      </tr>
+      <tr>
+        <td><code>10-27-aisessions-filter-context-attach</code></td>
+        <td>间接相关（随 <code>10-29-aisessions-filter-state-persist</code> 一起改动）</td>
+        <td>很大概率已被 <code>filter-state-persist</code> 吸收。可以选择归档，或在已完成的任务中补充说明即可。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>建议暂时保留 <span class="low">（仍在打磨）</span></h2>
+  <table>
+    <thead>
+      <tr>
+        <th>任务</th>
+        <th>说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>10-27-aisessions-scroll-perf</code>、<code>10-27-aisessions-virtual-row-stability</code></td>
+        <td>属于性能与稳定性类优化，往往需要实测长列表、快速滚动等场景才能判定是否足够收尾，暂不建议归档。</td>
+      </tr>
+      <tr>
+        <td><code>10-26-tab-startup-restore</code></td>
+        <td>涉及应用启动时 Tab 恢复，改动较隐蔽。建议先实际跑起应用验证行为是否符合预期再归档。</td>
+      </tr>
+      <tr>
+        <td><code>10-26-app-tab-more-dropdown</code></td>
+        <td>近期 Tab 相关改动多集中于 <code>inline-tab</code> 和 <code>agent-card</code>。若无新的相关提交，可能已合并，但仍建议复核后再决定。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>建议操作</h2>
+  <p>最安全且省事的做法是使用 Trellis 自带的脚本归档。建议首批优先处理高度确定的任务：</p>
+  <pre><code>python .trellis/scripts/task.py archive 10-29-aisessions-filter-state-persist
+python .trellis/scripts/task.py archive 10-28-aisessions-filter-presets
+python .trellis/scripts/task.py archive 10-29-aisessions-open-sessions-ui</code></pre>
+
+  <div class="note">
+    <strong>提示：</strong> 对于中等确定的任务，推荐先通过 <code>git diff main...HEAD -- &lt;相关文件&gt;</code> 对比实际改动，再决定是否归档，能够进一步降低误归档的风险。
+  </div>
+</body>
+
+</html>

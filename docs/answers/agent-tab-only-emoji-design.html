@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Agent Tab仅显示Emoji设计方案</title>
+<style>
+body{background:#1e1e1e;color:#d4d4d4;font-family:monospace;padding:24px;line-height:1.7;max-width:1000px;margin:0 auto}
+h1{color:#fff}
+h2{color:#fff;margin-top:32px}
+code{color:#4fc1ff}
+table{border-collapse:collapse;width:100%}
+td,th{border:1px solid #3c3c3c;padding:8px;text-align:left;font-size:13px}
+th{background:#252526;color:#fff}
+</style>
+</head>
+<body>
+<h1>Agent Tab「仅显示 Emoji」设计方案</h1>
+<p>在 Emoji Picker 中直接设置 · session 级存储 · 实时生效</p>
+
+<h2>1. 目标</h2>
+<p>在点击 Agent 图标打开的 <code>AgentEmojiPicker</code> 底部新增「仅显示 Emoji」开关。开启后，对应的 Inline Tab 只渲染 Emoji（或品牌 Logo），隐藏标题，仅保留状态元素。</p>
+
+<h2>2. 数据模型（推荐）</h2>
+<table>
+<tr><th>方案</th><th>存储</th><th>作用域</th><th>评价</th></tr>
+<tr><td>A. session 级（推荐）</td><td>snorkeling:agent-tab-display-mode</td><td>单个会话（sessionId）</td><td>最贴合「仅此会话」心智，与 session-persona-store 同构</td></tr>
+<tr><td>B. per-block meta</td><td>agent:tab:emojionly</td><td>单个 block 实例</td><td>可行但关联不够自然</td></tr>
+<tr><td>C. provider 级</td><td>扩展 agent-personas</td><td>整个 provider</td><td>太粗</td></tr>
+</table>
+
+<h2>3. 文件改动清单</h2>
+<table>
+<tr><th>路径</th><th>类型</th><th>说明</th></tr>
+<tr><td>frontend/app/agent-persona/tab-display-store.ts</td><td>新增</td><td>仿照 session-persona-store.ts 实现读写、订阅、跨窗口同步</td></tr>
+<tr><td>frontend/app/view/term/agent-emoji-picker.tsx</td><td>修改</td><td>footer 新增「仅显示 Emoji」复选框，仅 sessionKey 非空时显示</td></tr>
+<tr><td>frontend/app/block/block.tsx</td><td>修改</td><td>InlineTabLabel 用 useSyncExternalStore 订阅，条件隐藏标题并加 emoji-only class</td></tr>
+<tr><td>frontend/app/block/block.scss</td><td>修改</td><td>新增 .inline-tab-block-tab.emoji-only 样式</td></tr>
+</table>
+
+<h2>4. 核心要点</h2>
+<ul>
+<li>实时生效：切换后立即更新 Tab</li>
+<li>有图标才隐藏：agentIcon != null 时才应用</li>
+<li>保留状态：脏点、锁定、Agent 状态点、远程圆点都保留</li>
+<li>保留可访问性：aria-label 用完整标题，Tooltip 保留</li>
+<li>仅当有 sessionId 时显示开关</li>
+<li>与换 Emoji 独立，两者互不影响</li>
+</ul>
+
+<h2>5. 实施顺序</h2>
+<ol>
+<li>新建 tab-display-store.ts</li>
+<li>修改 agent-emoji-picker.tsx footer</li>
+<li>修改 block.tsx InlineTabLabel</li>
+<li>修改 block.scss 样式</li>
+<li>自测验证</li>
+</ol>
+</body>
+</html>

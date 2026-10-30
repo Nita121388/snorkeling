@@ -1,0 +1,32 @@
+{
+  "id": "avatar-types-store",
+  "name": "avatar-types-store",
+  "title": "PersonaAvatar 类型 + 两 store 值升级",
+  "description": "新增 agent-persona/persona-types.ts：PersonaAvatar 联合（{kind:'emoji';emoji} | {kind:'badge';text;bg;fg?}）+ coerceAvatar(raw)。persona-store.ts 与 session-persona-store.ts 的 map 值类型从 string 改为 PersonaAvatar；parse 阶段用 coerceAvatar，旧字符串值自动当 emoji，混合 map/坏 JSON 回退。setAgentPersona / setSessionEmoji 入参从 emoji:string 改为 avatar:PersonaAvatar|null（null 仍删键）。新增 util/color.ts 的 autoFg(bg) 包 colord.isDark()。依赖：package.json 加 react-colorful@^5.8.1（colord 已有）。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-29",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-29-agent-avatar-text-badge",
+  "relatedFiles": [
+    "frontend/app/agent-persona/persona-types.ts",
+    "frontend/app/agent-persona/persona-store.ts",
+    "frontend/app/agent-persona/session-persona-store.ts",
+    "frontend/util/color.ts",
+    "package.json"
+  ],
+  "notes": "",
+  "meta": {}
+}

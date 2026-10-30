@@ -3,7 +3,7 @@
   "name": "opencode-provider-scan-fix",
   "title": "OpenCode 扫不到会话：schema 漂移修复与展示对齐",
   "description": "OpenCode provider 扫描整条失败（DB 路径映射错 + 新 schema 列改名 + 消息改存 message/part 表），列表面板看不到 opencode 会话。修复路径发现、schema 解析、模型/子会话字段，并补齐增量加载。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": "snorkeling-docs",
@@ -12,15 +12,19 @@
   "assignee": "nita",
   "createdAt": "2026-10-26",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "snorkeling",
   "worktree_path": null,
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "10-30-opencode-ccswitch-loader-fix",
+    "10-30-opencode-resume-reisolate",
+    "10-30-opencode-hook-verify"
+  ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "后端 provider 重写完成 + 路径探测修复 + LoadMessageDelta 补齐，单测全绿；前端 ccswitch loader bug 已修；OPENCODE_HOME→OPENCODE_CONFIG_DIR 实测修正；恢复隔离存在架构性缺口需产品决策。",
   "meta": {}
 }

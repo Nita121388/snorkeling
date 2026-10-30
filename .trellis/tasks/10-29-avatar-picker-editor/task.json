@@ -1,0 +1,29 @@
+{
+  "id": "avatar-picker-editor",
+  "name": "avatar-picker-editor",
+  "title": "Picker 顶部模式切换 + 文字徽标编辑器",
+  "description": "agent-emoji-picker.tsx：顶部加「😀 Emoji / 🅰 文字徽标」切换；选文字徽标时隐藏 emoji 目录露出编辑器（实时预览 + text maxlength 3 + react-colorful HexColorPicker/HexColorInput 取背景色 + 可折叠手动文字色）。预设色板自己渲染（蓝/绿/粉/橙/紫/红/灰/青）。scope 逻辑（persona-scope.ts）不变——badge 只是 avatar 一种，仍 session/provider 两层写；写入从 applyEmoji(str) 改名 applyAvatar(avatar)。切换两模式保留各自已填值。引入 react-colorful/dist/index.css。emoji-only tab 模式对 badge 同样生效。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-29",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-29-agent-avatar-text-badge",
+  "relatedFiles": [
+    "frontend/app/view/term/agent-emoji-picker.tsx",
+    "frontend/app/agent-persona/persona-scope.ts"
+  ],
+  "notes": "",
+  "meta": {}
+}

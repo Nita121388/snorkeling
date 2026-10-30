@@ -1,0 +1,29 @@
+{
+  "id": "avatar-agenticon-render",
+  "name": "avatar-agenticon-render",
+  "title": "统一 <AgentIcon> 渲染组件 + badge 样式",
+  "description": "新增 agent-persona/AgentIcon.tsx：集中渲染三种 kind（emoji / badge / logo），替代 9 面各自手写分支。badge 锁死 13px 盒（--row 12px）只缩放内部字号（1→10px/2→9px/3→7px，row 对应缩），border-radius 3px，overflow hidden，font-weight 700。agent-persona.scss 加 .agent-badge / .agent-badge--row。必须守住定宽约束：任何 width:auto 都会让 inline tab 跑马灯与 aisessions 虚拟行高抖动。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-29",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-29-agent-avatar-text-badge",
+  "relatedFiles": [
+    "frontend/app/agent-persona/AgentIcon.tsx",
+    "frontend/app/agent-persona/agent-persona.scss"
+  ],
+  "notes": "",
+  "meta": {}
+}

@@ -1,0 +1,38 @@
+{
+  "id": "agent-avatar-text-badge",
+  "name": "agent-avatar-text-badge",
+  "title": "Agent 图标：文字徽标（Text Badge）",
+  "description": "在现有 emoji 人格之上，新增「文字 + 背景色」徽标作为 agent 图标。把两个 persona store 的存储值从 string 升级为结构化 PersonaAvatar 联合（emoji | badge），getAgentIcon 加 badge 分支，抽统一 <AgentIcon> 替换 9 面手写分支，picker 顶部加 Emoji/文字徽标切换 + react-colorful 编辑器。优先级链与存储 key 不变，旧 emoji 字符串读时自动转。设计文档：design/plans/agent-avatar-text-badge.md",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-29",
+  "completedAt": null,
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-29-avatar-types-store",
+    "10-29-avatar-resolve-chain",
+    "10-29-avatar-agenticon-render",
+    "10-29-avatar-picker-editor",
+    "10-29-avatar-nine-surfaces",
+    "10-29-avatar-tests"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    "design/plans/agent-avatar-text-badge.md",
+    "frontend/app/agent-persona/persona-store.ts",
+    "frontend/app/agent-persona/session-persona-store.ts",
+    "frontend/app/view/term/agent-logo.tsx"
+  ],
+  "notes": "",
+  "meta": {}
+}
