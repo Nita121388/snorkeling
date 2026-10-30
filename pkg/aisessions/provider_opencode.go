@@ -17,11 +17,27 @@ import (
 const SourceOpenCode = "opencode"
 
 // OpenCodeProvider reads AI sessions from a single OpenCode SQLite database
-// (typically ~/.cache/opencode/opencode.db or %LOCALAPPDATA%/opencode/opencode.db).
+// (typically ~/.local/share/opencode/opencode.db on Linux/macOS under the XDG
+// data home; the Wave-side default probe also covers %LOCALAPPDATA% style
+// per-platform installs — see DefaultOpenCodeDBPath).
 //
-// OpenCode schemas:
-//   - V2: `session` + `session_message` tables.
-//   - V1 fallback: a `message` table is consulted when `session_message` is empty.
+// Real OpenCode schema (verified against opencode 1.18.x):
+//
+//	session(id, title, directory, path, parent_id, agent, model, time_created, time_updated, ...)
+//	    model is JSON: {"id":..., "providerID":..., "variant":...}
+//	    parent_id non-empty (and != own id) => this row is a subagent child session
+//	message(id, session_id, time_created, time_updated, data)
+//	    data is JSON: {"role":"user"|"assistant"|"system", "modelID":..., "providerID":...}
+//	part(id, message_id, session_id, time_created, time_updated, data)
+//	    data.type in {text, reasoning, patch, tool, step-start, step-finish, compaction, file}
+//	    text part: data.text carries the body
+//	    tool part: data.tool (name) + data.state.input / data.state.output
+//
+// The older `session_message(role, content)` shape this provider originally
+// targeted does not exist in current OpenCode builds (the table exists but has
+// `type/seq/data` columns and, on a live install, zero rows). The legacy
+// role/content readers below are retained only as a defensive fallback for
+// older databases; the primary path is message + part.
 //
 // FilePath on summaries is the dbPath followed by `#<sessionID>`, so the same
 // DB can hold many sessions while keeping a stable key.
@@ -77,14 +93,21 @@ func parseSessionFilePath(filePath string) (string, string, bool) {
 }
 
 // isOpenCodeNoSuchTableError reports whether err indicates the given
-// SQLite table does not exist, so callers can fall back to a V1 schema.
+// SQLite table/column does not exist, so callers can fall back to a legacy
+// schema.
 func isOpenCodeNoSuchTableError(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no such table")
+	return strings.Contains(msg, "no such table") || strings.Contains(msg, "no such column")
 }
+
+// openCodeSessionSelect selects the real OpenCode session columns. Nullable
+// columns are COALESCE'd to '' so the scan targets plain strings.
+const openCodeSessionSelect = `
+SELECT id, title, COALESCE(directory,''), COALESCE(parent_id,''), COALESCE(model,''), time_created, time_updated
+FROM session`
 
 func (p *OpenCodeProvider) List(ctx context.Context) ([]SessionSummary, error) {
 	if ctx.Err() != nil {
@@ -96,11 +119,8 @@ func (p *OpenCodeProvider) List(ctx context.Context) ([]SessionSummary, error) {
 	}
 	defer db.Close()
 
-	rows, err := db.QueryContext(ctx, `
-SELECT id, title, directory, time_created, time_updated, model_provider, model_id
-FROM session
-ORDER BY time_updated DESC
-`)
+	rows, err := db.QueryContext(ctx, openCodeSessionSelect+`
+ORDER BY time_updated DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -112,19 +132,18 @@ ORDER BY time_updated DESC
 			return summaries, ctx.Err()
 		}
 		var (
-			id            string
-			title         string
-			directory     string
-			timeCreated   int64
-			timeUpdated   int64
-			modelProvider string
-			modelID       string
+			id          string
+			title       string
+			directory   string
+			parentID    string
+			modelJSON   string
+			timeCreated int64
+			timeUpdated int64
 		)
-		if err := rows.Scan(&id, &title, &directory, &timeCreated, &timeUpdated, &modelProvider, &modelID); err != nil {
+		if err := rows.Scan(&id, &title, &directory, &parentID, &modelJSON, &timeCreated, &timeUpdated); err != nil {
 			return summaries, err
 		}
-		summary := p.rowToSummary(id, title, directory, timeCreated, timeUpdated, modelProvider, modelID)
-		summaries = append(summaries, summary)
+		summaries = append(summaries, p.rowToSummary(id, title, directory, parentID, modelJSON, timeCreated, timeUpdated))
 	}
 	if err := rows.Err(); err != nil {
 		return summaries, err
@@ -171,90 +190,109 @@ func (p *OpenCodeProvider) ParseSummary(ctx context.Context, file SessionFile) (
 }
 
 func (p *OpenCodeProvider) loadSummaryByID(ctx context.Context, db *sql.DB, sessionID string) (SessionSummary, error) {
-	row := db.QueryRowContext(ctx, `
-SELECT id, title, directory, time_created, time_updated, model_provider, model_id
-FROM session
-WHERE id = ?
-`, sessionID)
+	row := db.QueryRowContext(ctx, openCodeSessionSelect+`
+WHERE id = ?`, sessionID)
 	var (
-		id            string
-		title         string
-		directory     string
-		timeCreated   int64
-		timeUpdated   int64
-		modelProvider string
-		modelID       string
+		id          string
+		title       string
+		directory   string
+		parentID    string
+		modelJSON   string
+		timeCreated int64
+		timeUpdated int64
 	)
-	if err := row.Scan(&id, &title, &directory, &timeCreated, &timeUpdated, &modelProvider, &modelID); err != nil {
+	if err := row.Scan(&id, &title, &directory, &parentID, &modelJSON, &timeCreated, &timeUpdated); err != nil {
 		return SessionSummary{}, err
 	}
-	summary := p.rowToSummary(id, title, directory, timeCreated, timeUpdated, modelProvider, modelID)
+	summary := p.rowToSummary(id, title, directory, parentID, modelJSON, timeCreated, timeUpdated)
 	summary.Snippet = p.loadSnippet(ctx, db, sessionID)
 	return summary, nil
 }
 
-// loadSnippet returns a short content preview for a session, mirroring the
-// codex/claude providers: the last message with readable text, truncated to
-// snippetMaxChars. Uses the V2 session_message table, falling back to the V1
-// message table when the V2 table is absent (same chain as LoadMessages).
+// loadSnippet returns a short content preview: the most recent message that
+// carries readable text, truncated to snippetMaxChars. It reads a bounded slice
+// of the (message JOIN part) rows so a large session does not pull the whole
+// transcript during a scan.
 func (p *OpenCodeProvider) loadSnippet(ctx context.Context, db *sql.DB, sessionID string) string {
-	snippet, ok := p.loadSnippetFromTable(ctx, db, "session_message", sessionID)
-	if ok && snippet != "" {
-		return snippet
+	rows, err := db.QueryContext(ctx, `
+SELECT m.id, m.time_created, p.time_created, p.id, p.data
+FROM message m JOIN part p ON p.message_id = m.id
+WHERE m.session_id = ?
+ORDER BY m.time_created DESC, m.id DESC, p.time_created ASC, p.id ASC
+LIMIT 200`, sessionID)
+	if err != nil {
+		// No message/part tables: fall back to the legacy role/content tables.
+		return p.loadSnippetLegacy(ctx, db, sessionID)
 	}
-	snippet, ok = p.loadSnippetFromTable(ctx, db, "message", sessionID)
-	if ok {
-		return snippet
+	defer rows.Close()
+	curMsg := ""
+	var sb strings.Builder
+	for rows.Next() {
+		if ctx.Err() != nil {
+			return ""
+		}
+		var (
+			mid    string
+			mtc    int64
+			ptc    int64
+			pid    string
+			pdata  string
+		)
+		if err := rows.Scan(&mid, &mtc, &ptc, &pid, &pdata); err != nil {
+			continue
+		}
+		// Newest message first; once we step into an older message, finalize the
+		// current one if it produced text.
+		if curMsg != "" && mid != curMsg {
+			if text := strings.TrimSpace(sb.String()); text != "" {
+				return truncateSummary(text, snippetMaxChars)
+			}
+			sb.Reset()
+		}
+		curMsg = mid
+		var pm map[string]any
+		if json.Unmarshal([]byte(pdata), &pm) != nil {
+			continue
+		}
+		if strValue(pm, "type") != "text" {
+			continue
+		}
+		if t := strValue(pm, "text"); t != "" {
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(t)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ""
+	}
+	if text := strings.TrimSpace(sb.String()); text != "" {
+		return truncateSummary(text, snippetMaxChars)
 	}
 	return ""
 }
 
-func (p *OpenCodeProvider) loadSnippetFromTable(ctx context.Context, db *sql.DB, table, sessionID string) (string, bool) {
-	rows, err := db.QueryContext(ctx, `
-SELECT role, content, time_created
-FROM `+table+`
-WHERE session_id = ?
-ORDER BY time_created DESC, id DESC
-LIMIT 30`, sessionID)
-	if err != nil {
-		// V1-only DBs have no session_message table; let the caller fall back.
-		if table == "session_message" && isOpenCodeNoSuchTableError(err) {
-			return "", false
-		}
-		return "", false
+// parseOpenCodeModel parses the session.model JSON blob into (modelID, providerID).
+// Older / odd shapes fall back to the raw string as the model id.
+func parseOpenCodeModel(raw string) (modelID, providerID string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", ""
 	}
-	defer rows.Close()
-	for rows.Next() {
-		if ctx.Err() != nil {
-			return "", false
-		}
-		var role, content string
-		var timestamp int64
-		if err := rows.Scan(&role, &content, &timestamp); err != nil {
-			return "", false
-		}
-		msg, ok := parseOpenCodeMessageRow(0, role, content, timestamp)
-		if !ok {
-			continue
-		}
-		text := strings.TrimSpace(msg.Text)
-		if text == "" {
-			continue
-		}
-		// A tool-call-only message renders as "[Tool: shell]"; skip it and keep
-		// scanning for the last message that carries real content.
-		if strings.HasPrefix(text, "[Tool: ") {
-			continue
-		}
-		return truncateSummary(text, snippetMaxChars), true
+	var m map[string]any
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return raw, ""
 	}
-	if err := rows.Err(); err != nil {
-		return "", false
+	modelID = strValue(m, "id")
+	if modelID == "" {
+		modelID = strValue(m, "modelID")
 	}
-	return "", true
+	providerID = strValue(m, "providerID")
+	return modelID, providerID
 }
 
-func (p *OpenCodeProvider) rowToSummary(id, title, directory string, timeCreated, timeUpdated int64, modelProvider, modelID string) SessionSummary {
+func (p *OpenCodeProvider) rowToSummary(id, title, directory, parentID, modelJSON string, timeCreated, timeUpdated int64) SessionSummary {
 	title = normalizeTitle(title)
 	titleSource := "source_title"
 	if title == "" {
@@ -266,6 +304,8 @@ func (p *OpenCodeProvider) rowToSummary(id, title, directory string, timeCreated
 		titleSource = "id"
 	}
 
+	_, providerID := parseOpenCodeModel(modelJSON)
+
 	summary := SessionSummary{
 		ID:          id,
 		Source:      SourceOpenCode,
@@ -275,10 +315,150 @@ func (p *OpenCodeProvider) rowToSummary(id, title, directory string, timeCreated
 		CreatedAt:   timeCreated,
 		UpdatedAt:   timeUpdated,
 		FilePath:    p.sessionFilePath(id),
-		VendorID:    modelProvider,
+		VendorID:    providerID,
+	}
+	if parentID != "" && parentID != id {
+		summary.Kind = SessionKindSubagent
+		summary.ParentKey = StableKey(SourceOpenCode, parentID, p.sessionFilePath(parentID))
+	} else {
+		summary.Kind = SessionKindSession
 	}
 	summary.Key = StableKey(summary.Source, summary.ID, summary.FilePath)
 	return summary
+}
+
+// ocMessage is an intermediate message+parts aggregate.
+type ocMessage struct {
+	id          string
+	timeCreated int64
+	role        string
+	model       string
+	text        string
+	tools       []ToolCall
+}
+
+// loadConversation reads all messages for a session in order, aggregating text
+// parts into each message body and collecting tool parts as ToolCall entries.
+func (p *OpenCodeProvider) loadConversation(ctx context.Context, db *sql.DB, sessionID string) ([]*ocMessage, error) {
+	mrows, err := db.QueryContext(ctx, `
+SELECT id, time_created, data
+FROM message
+WHERE session_id = ?
+ORDER BY time_created ASC, id ASC`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	var msgs []*ocMessage
+	index := make(map[string]*ocMessage)
+	for mrows.Next() {
+		if ctx.Err() != nil {
+			mrows.Close()
+			return msgs, ctx.Err()
+		}
+		var (
+			id   string
+			tc   int64
+			data string
+		)
+		if err := mrows.Scan(&id, &tc, &data); err != nil {
+			mrows.Close()
+			return msgs, err
+		}
+		role := ""
+		model := ""
+		if strings.HasPrefix(strings.TrimSpace(data), "{") {
+			var dm map[string]any
+			if json.Unmarshal([]byte(data), &dm) == nil {
+				role = strValue(dm, "role")
+				model = strValue(dm, "modelID")
+				if model == "" {
+					if mo, ok := dm["model"].(map[string]any); ok {
+						model = strValue(mo, "modelID")
+						if model == "" {
+							model = strValue(mo, "id")
+						}
+					}
+				}
+			}
+		}
+		m := &ocMessage{id: id, timeCreated: tc, role: role, model: model}
+		msgs = append(msgs, m)
+		index[id] = m
+	}
+	err = mrows.Err()
+	mrows.Close()
+	if err != nil {
+		return msgs, err
+	}
+
+	prows, err := db.QueryContext(ctx, `
+SELECT message_id, time_created, id, data
+FROM part
+WHERE session_id = ?
+ORDER BY message_id ASC, time_created ASC, id ASC`, sessionID)
+	if err != nil {
+		// A message-only DB (no part table) still yields role/text-less messages;
+		// callers treat empty text as "no body" and skip them.
+		if isOpenCodeNoSuchTableError(err) {
+			return msgs, nil
+		}
+		return nil, err
+	}
+	defer prows.Close()
+	for prows.Next() {
+		if ctx.Err() != nil {
+			return msgs, ctx.Err()
+		}
+		var (
+			mid   string
+			ptc   int64
+			pid   string
+			pdata string
+		)
+		if err := prows.Scan(&mid, &ptc, &pid, &pdata); err != nil {
+			continue
+		}
+		m := index[mid]
+		if m == nil {
+			continue
+		}
+		var pm map[string]any
+		if json.Unmarshal([]byte(pdata), &pm) != nil {
+			continue
+		}
+		switch strValue(pm, "type") {
+		case "text":
+			if t := strValue(pm, "text"); t != "" {
+				if m.text != "" {
+					m.text += "\n"
+				}
+				m.text += t
+			}
+		case "tool":
+			name := strValue(pm, "tool")
+			if name == "" {
+				name = strValue(pm, "name")
+			}
+			if name == "" {
+				name = "unknown"
+			}
+			input := pm["input"]
+			if state, ok := pm["state"].(map[string]any); ok {
+				if v, ok := state["input"]; ok {
+					input = v
+				}
+			}
+			m.tools = append(m.tools, ToolCall{
+				Name:    name,
+				Summary: summarizeToolInput(input),
+				ItemKey: strValue(pm, "callID"),
+			})
+		}
+	}
+	if err := prows.Err(); err != nil {
+		return msgs, err
+	}
+	return msgs, nil
 }
 
 func (p *OpenCodeProvider) LoadMessages(ctx context.Context, filePath string) ([]Message, error) {
@@ -295,49 +475,215 @@ func (p *OpenCodeProvider) LoadMessages(ctx context.Context, filePath string) ([
 	}
 	defer db.Close()
 
-	messages, err := p.loadMessagesV2(ctx, db, sessionID)
+	convo, err := p.loadConversation(ctx, db, sessionID)
+	if err != nil {
+		if isOpenCodeNoSuchTableError(err) {
+			return p.loadMessagesLegacy(ctx, db, sessionID)
+		}
+		return nil, err
+	}
+	var messages []Message
+	seq := 0
+	for _, m := range convo {
+		text := strings.TrimSpace(m.text)
+		if text == "" {
+			continue
+		}
+		seq++
+		messages = append(messages, Message{
+			Seq:       seq,
+			Role:      normalizeRole(m.role),
+			Text:      text,
+			Model:     m.model,
+			Timestamp: m.timeCreated,
+			CharCount: runeCount(text),
+		})
+	}
+	return messages, nil
+}
+
+func (p *OpenCodeProvider) LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	_, sessionID, ok := parseSessionFilePath(filePath)
+	if !ok || sessionID == "" {
+		return nil, fmt.Errorf("opencode provider: cannot parse sessionID from filePath %q", filePath)
+	}
+	db, err := p.openDB()
 	if err != nil {
 		return nil, err
 	}
-	if len(messages) > 0 {
-		return messages, nil
+	defer db.Close()
+
+	convo, err := p.loadConversation(ctx, db, sessionID)
+	if err != nil {
+		if isOpenCodeNoSuchTableError(err) {
+			return p.loadToolCallsLegacy(ctx, db, sessionID)
+		}
+		return nil, err
 	}
-	return p.loadMessagesV1(ctx, db, sessionID)
+	var toolCalls []ToolCall
+	for _, m := range convo {
+		for _, tc := range m.tools {
+			tc.Seq = len(toolCalls) + 1
+			toolCalls = append(toolCalls, tc)
+		}
+	}
+	return toolCalls, nil
 }
 
-func (p *OpenCodeProvider) loadMessagesV2(ctx context.Context, db *sql.DB, sessionID string) ([]Message, error) {
+// LoadMessageDelta implements MessageDeltaProvider for the SQLite-backed
+// OpenCode session. There is no byte stream, so the cursor's LastSeq carries the
+// number of messages already delivered and the frame advances that offset. A
+// count shrink (session truncated) triggers ResetRequired so the client reloads.
+func (p *OpenCodeProvider) LoadMessageDelta(ctx context.Context, filePath string, cursor SessionMessageCursor, maxBytes int64) (MessageDelta, error) {
+	_, sessionID, ok := parseSessionFilePath(filePath)
+	if !ok || sessionID == "" {
+		return MessageDelta{}, fmt.Errorf("opencode provider: cannot parse sessionID from filePath %q", filePath)
+	}
+	db, err := p.openDB()
+	if err != nil {
+		return MessageDelta{}, err
+	}
+	defer db.Close()
+
+	all, err := p.LoadMessages(ctx, filePath)
+	if err != nil {
+		return MessageDelta{}, err
+	}
+	total := len(all)
+	nextCursor := SessionMessageCursor{FileSize: int64(total), MTime: cursor.MTime}
+	if cursor.LastSeq > total {
+		nextCursor.LastSeq = 0
+		return MessageDelta{Messages: []Message{}, Cursor: nextCursor, ResetRequired: true}, nil
+	}
+	offset := cursor.LastSeq
+	if offset < 0 {
+		offset = 0
+	}
+	maxBytes = normalizeMessageDeltaMaxBytes(maxBytes)
+
+	var frame []Message
+	var used int64
+	for _, m := range all[offset:] {
+		if len(frame) > 0 && used+int64(m.CharCount) > maxBytes {
+			break
+		}
+		frame = append(frame, m)
+		used += int64(m.CharCount)
+	}
+	nextOffset := offset + len(frame)
+	nextCursor.LastSeq = nextOffset
+	hasMore := nextOffset < total
+	if frame == nil {
+		frame = []Message{}
+	}
+	summary := SessionSummary{
+		Source:       SourceOpenCode,
+		FilePath:     p.sessionFilePath(sessionID),
+		MTime:        nextCursor.MTime,
+		Size:         nextCursor.FileSize,
+		MessageCount: nextOffset,
+	}
+	return MessageDelta{
+		Summary:  summary,
+		Messages: frame,
+		Cursor:   nextCursor,
+		HasMore:  hasMore,
+	}, nil
+}
+
+// --- legacy role/content fallback (older OpenCode DBs / defensive) ----------
+
+// loadSnippetLegacy reads the last readable message text from the legacy
+// role/content tables (session_message or message), mirroring the historical
+// snippet logic retained in scanOpenCodeMessages.
+func (p *OpenCodeProvider) loadSnippetLegacy(ctx context.Context, db *sql.DB, sessionID string) string {
 	rows, err := db.QueryContext(ctx, `
 SELECT role, content, time_created
 FROM session_message
 WHERE session_id = ?
-ORDER BY time_created ASC, id ASC
-`, sessionID)
+ORDER BY time_created DESC, id DESC
+LIMIT 30`, sessionID)
 	if err != nil {
-		// V1-only DBs have no session_message table; let the caller fall back.
 		if isOpenCodeNoSuchTableError(err) {
+			rows, err = db.QueryContext(ctx, `
+SELECT role, content, time_created
+FROM message
+WHERE session_id = ?
+ORDER BY time_created DESC, id DESC
+LIMIT 30`, sessionID)
+		}
+		if err != nil {
+			return ""
+		}
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if ctx.Err() != nil {
+			return ""
+		}
+		var role, content string
+		var timestamp int64
+		if err := rows.Scan(&role, &content, &timestamp); err != nil {
+			return ""
+		}
+		msg, ok := parseOpenCodeMessageRow(0, role, content, timestamp)
+		if !ok {
+			continue
+		}
+		text := strings.TrimSpace(msg.Text)
+		if text == "" || strings.HasPrefix(text, "[Tool: ") {
+			continue
+		}
+		return truncateSummary(text, snippetMaxChars)
+	}
+	return ""
+}
+
+func (p *OpenCodeProvider) loadMessagesLegacy(ctx context.Context, db *sql.DB, sessionID string) ([]Message, error) {
+	rows, err := db.QueryContext(ctx, `
+SELECT role, content, time_created
+FROM session_message
+WHERE session_id = ?
+ORDER BY time_created ASC, id ASC`, sessionID)
+	if err != nil {
+		rows2, err2 := db.QueryContext(ctx, `
+SELECT role, content, time_created
+FROM message
+WHERE session_id = ?
+ORDER BY time_created ASC, id ASC`, sessionID)
+		if err2 != nil {
 			return nil, nil
 		}
-		return nil, err
+		defer rows2.Close()
+		return scanOpenCodeMessages(ctx, rows2)
 	}
 	defer rows.Close()
 	return scanOpenCodeMessages(ctx, rows)
 }
 
-// loadMessagesV1 is the terminal fallback in the V2→V1 chain: its errors propagate
-// (unlike loadMessagesV2 which swallows `no such table`), because there is no
-// further schema to retry against.
-func (p *OpenCodeProvider) loadMessagesV1(ctx context.Context, db *sql.DB, sessionID string) ([]Message, error) {
+func (p *OpenCodeProvider) loadToolCallsLegacy(ctx context.Context, db *sql.DB, sessionID string) ([]ToolCall, error) {
 	rows, err := db.QueryContext(ctx, `
-SELECT role, content, time_created
-FROM message
-WHERE session_id = ?
-ORDER BY time_created ASC, id ASC
-`, sessionID)
+SELECT role, content
+FROM session_message
+WHERE session_id = ? AND role = 'assistant'
+ORDER BY time_created ASC, id ASC`, sessionID)
 	if err != nil {
-		return nil, err
+		rows2, err2 := db.QueryContext(ctx, `
+SELECT role, content
+FROM message
+WHERE session_id = ? AND role = 'assistant'
+ORDER BY time_created ASC, id ASC`, sessionID)
+		if err2 != nil {
+			return nil, nil
+		}
+		defer rows2.Close()
+		return scanOpenCodeToolCalls(ctx, rows2)
 	}
 	defer rows.Close()
-	return scanOpenCodeMessages(ctx, rows)
+	return scanOpenCodeToolCalls(ctx, rows)
 }
 
 func scanOpenCodeMessages(ctx context.Context, rows *sql.Rows) ([]Message, error) {
@@ -365,10 +711,9 @@ func scanOpenCodeMessages(ctx context.Context, rows *sql.Rows) ([]Message, error
 	return messages, nil
 }
 
-// parseOpenCodeMessageRow turns a (role, content, timestamp) DB row into a Message.
-// `content` is JSON-ish — either a JSON object with role/content, or a JSON array of
-// content items, or a plain string. We re-use extractText/normalizeRole for parity
-// with the codex/claude providers.
+// parseOpenCodeMessageRow turns a legacy (role, content, timestamp) DB row into a
+// Message. `content` is JSON-ish — a JSON object with role/content, a JSON array
+// of content items, or a plain string.
 func parseOpenCodeMessageRow(seq int, role, content string, timestamp int64) (Message, bool) {
 	text := content
 	roleStr := normalizeRole(role)
@@ -386,7 +731,6 @@ func parseOpenCodeMessageRow(seq int, role, content string, timestamp int64) (Me
 			text = extractText(items)
 		}
 	}
-
 	if strings.TrimSpace(text) == "" {
 		return Message{}, false
 	}
@@ -397,62 +741,6 @@ func parseOpenCodeMessageRow(seq int, role, content string, timestamp int64) (Me
 		Timestamp: timestamp,
 		CharCount: runeCount(text),
 	}, true
-}
-
-func (p *OpenCodeProvider) LoadToolCalls(ctx context.Context, filePath string) ([]ToolCall, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-	_, sessionID, ok := parseSessionFilePath(filePath)
-	if !ok || sessionID == "" {
-		return nil, fmt.Errorf("opencode provider: cannot parse sessionID from filePath %q", filePath)
-	}
-	db, err := p.openDB()
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-
-	toolCalls, err := p.loadToolCallsV2(ctx, db, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	if len(toolCalls) > 0 {
-		return toolCalls, nil
-	}
-	return p.loadToolCallsV1(ctx, db, sessionID)
-}
-
-func (p *OpenCodeProvider) loadToolCallsV2(ctx context.Context, db *sql.DB, sessionID string) ([]ToolCall, error) {
-	rows, err := db.QueryContext(ctx, `
-SELECT role, content
-FROM session_message
-WHERE session_id = ? AND role = 'assistant'
-ORDER BY time_created ASC, id ASC
-`, sessionID)
-	if err != nil {
-		// V1-only DBs have no session_message table; let the caller fall back.
-		if isOpenCodeNoSuchTableError(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	defer rows.Close()
-	return scanOpenCodeToolCalls(ctx, rows)
-}
-
-func (p *OpenCodeProvider) loadToolCallsV1(ctx context.Context, db *sql.DB, sessionID string) ([]ToolCall, error) {
-	rows, err := db.QueryContext(ctx, `
-SELECT role, content
-FROM message
-WHERE session_id = ? AND role = 'assistant'
-ORDER BY time_created ASC, id ASC
-`, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanOpenCodeToolCalls(ctx, rows)
 }
 
 func scanOpenCodeToolCalls(ctx context.Context, rows *sql.Rows) ([]ToolCall, error) {
@@ -473,7 +761,6 @@ func scanOpenCodeToolCalls(ctx context.Context, rows *sql.Rows) ([]ToolCall, err
 	return toolCalls, nil
 }
 
-// appendOpenCodeToolCalls parses the assistant message content for toolcall items and appends them.
 func appendOpenCodeToolCalls(toolCalls []ToolCall, content string) []ToolCall {
 	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {

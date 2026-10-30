@@ -1039,7 +1039,10 @@ function createAgentBlockDef(
     } else if (isCodexProvider && selectedVendor != null && !isBlank(selectedVendor.codex_config_dir)) {
         cmdEnv["CODEX_HOME"] = selectedVendor.codex_config_dir;
     } else if (isOpenCodeProvider && selectedVendor != null && !isBlank(selectedVendor.opencode_config_dir)) {
-        cmdEnv["OPENCODE_HOME"] = selectedVendor.opencode_config_dir;
+        // OpenCode reads its per-vendor config from OPENCODE_CONFIG_DIR (NOT OPENCODE_HOME,
+        // which OpenCode does not honor). The materialized dir holds opencode.json with the
+        // vendor env, so injecting this makes the per-block opencode vendor pick actually win.
+        cmdEnv["OPENCODE_CONFIG_DIR"] = selectedVendor.opencode_config_dir;
     } else if (isPiProvider && selectedVendor != null && !isBlank(selectedVendor.pi_config_dir)) {
         cmdEnv["PI_CODING_AGENT_SESSION_DIR"] = selectedVendor.pi_config_dir;
     }

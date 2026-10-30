@@ -342,7 +342,7 @@ describe("AI session detail timeline", () => {
         ).toBe("opencode --session oc-session-456");
     });
 
-    it("injects OPENCODE_HOME into OpenCode resume commands when configdir is set", () => {
+    it("injects OPENCODE_CONFIG_DIR into OpenCode resume commands when configdir is set", () => {
         setPlatform(PlatformMacOS);
         expect(
             restoreCommandForSession({
@@ -352,7 +352,7 @@ describe("AI session detail timeline", () => {
                 configdir: "/tmp/Wave Data/opencode-vendors/vendor-a",
             } as SessionSummary)
         ).toBe(
-            `cd /Users/nita/dev/proj\nOPENCODE_HOME='/tmp/Wave Data/opencode-vendors/vendor-a' opencode --session oc-session-456`
+            `cd /Users/nita/dev/proj\nOPENCODE_CONFIG_DIR='/tmp/Wave Data/opencode-vendors/vendor-a' opencode --session oc-session-456`
         );
         setPlatform(PlatformWindows);
         expect(
@@ -363,7 +363,7 @@ describe("AI session detail timeline", () => {
                 configdir: "C:\\Wave Data\\opencode-vendors\\vendor-a",
             } as SessionSummary)
         ).toBe(
-            `cd "C:\\dev\\proj"\n$env:OPENCODE_HOME = 'C:\\Wave Data\\opencode-vendors\\vendor-a'\nopencode --session oc-session-456`
+            `cd "C:\\dev\\proj"\n$env:OPENCODE_CONFIG_DIR = 'C:\\Wave Data\\opencode-vendors\\vendor-a'\nopencode --session oc-session-456`
         );
         setPlatform(PlatformMacOS);
     });

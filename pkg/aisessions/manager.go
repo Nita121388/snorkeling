@@ -1420,7 +1420,7 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 	})
 	if len(matches) > 1 && matches[0].ID != identifier && matches[0].Key != identifier {
 		debugf("Manager.resolveSession ambiguous id=%q matches=%d duration=%s", identifier, len(matches), time.Since(start))
-		return SessionSummary{}, fmt.Errorf("ambiguous session id prefix %q (%d matches)", identifier, len(matches))
+		return SessionSummary{}, fmt.Errorf("session not found: %s", identifier)
 	}
 
 	if sqliteErr == nil && sqliteIdx != nil {

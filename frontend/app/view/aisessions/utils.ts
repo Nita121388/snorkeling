@@ -653,8 +653,8 @@ export function restoreCommandForSession(summary: SessionSummary): string {
         let resumeCommand = `opencode --session ${summary.id}`;
         if (summary.configdir) {
             resumeCommand = isWindows()
-                ? `$env:OPENCODE_HOME = ${quotePowerShellValue(summary.configdir)}\n${resumeCommand}`
-                : `OPENCODE_HOME=${quoteShellPath(summary.configdir)} ${resumeCommand}`;
+                ? `$env:OPENCODE_CONFIG_DIR = ${quotePowerShellValue(summary.configdir)}\n${resumeCommand}`
+                : `OPENCODE_CONFIG_DIR=${quoteShellPath(summary.configdir)} ${resumeCommand}`;
         }
         if (!summary.projectPath) return resumeCommand;
         const quotedPath = isWindows() ? quoteWindowsPath(summary.projectPath) : quoteShellPath(summary.projectPath);

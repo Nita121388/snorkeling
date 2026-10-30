@@ -15,18 +15,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// opencodeRowV2 holds one row of the OpenCode V2 session table.
-type opencodeRowV2 struct {
-	ID            string
-	Title         string
-	Directory     string
-	TimeCreated   int64
-	TimeUpdated   int64
-	ModelProvider string
-	ModelID       string
-}
-
-// opencodeMessageRowV2 holds one row of the OpenCode V2 session_message table.
+// opencodeMessageRowV2 holds one legacy (role/content) row used for the
+// session_message fallback fixture.
 type opencodeMessageRowV2 struct {
 	SessionID string
 	Role      string
@@ -35,7 +25,41 @@ type opencodeMessageRowV2 struct {
 	ToolCall  string // nullable JSON
 }
 
-// createTestOpenCodeDBV2 builds an in-memory SQLite DB with the V2 schema and two sessions + messages.
+// opencodeSessionRow holds one row of the real OpenCode `session` table.
+type opencodeSessionRow struct {
+	ID          string
+	Title       string
+	Directory   string
+	ParentID    string
+	ModelJSON   string
+	TimeCreated int64
+	TimeUpdated int64
+}
+
+// opencodeMessageRow models a row of the real `message` table.
+type opencodeMessageRow struct {
+	ID          string
+	SessionID   string
+	Role        string
+	ModelID     string
+	TimeCreated int64
+}
+
+// opencodePartRow models a row of the real `part` table.
+type opencodePartRow struct {
+	ID          string
+	MessageID   string
+	SessionID   string
+	Type        string // text | tool | reasoning | ...
+	Text        string // set when Type==text
+	Tool        string // set when Type==tool (tool name)
+	Input       string // set when Type==tool (JSON input)
+	TimeCreated int64
+}
+
+// createTestOpenCodeDBV2 builds an in-memory SQLite DB with the real OpenCode
+// schema (session + message + part) plus a legacy session_message table carrying
+// role/content rows so the fallback readers can be exercised.
 func createTestOpenCodeDBV2(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
@@ -44,29 +68,36 @@ func createTestOpenCodeDBV2(t *testing.T) *sql.DB {
 	}
 	_, err = db.Exec(`
 CREATE TABLE session (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL DEFAULT '',
-    directory TEXT NOT NULL DEFAULT '',
-    time_created INTEGER NOT NULL DEFAULT 0,
-    time_updated INTEGER NOT NULL DEFAULT 0,
-    model_provider TEXT NOT NULL DEFAULT '',
-    model_id TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE session_message (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL DEFAULT '',
-    time_created INTEGER NOT NULL DEFAULT 0,
-    tool_call TEXT
+	id TEXT PRIMARY KEY,
+	title TEXT NOT NULL DEFAULT '',
+	directory TEXT NOT NULL DEFAULT '',
+	parent_id TEXT NOT NULL DEFAULT '',
+	model TEXT NOT NULL DEFAULT '',
+	time_created INTEGER NOT NULL DEFAULT 0,
+	time_updated INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE message (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL DEFAULT '',
-    time_created INTEGER NOT NULL DEFAULT 0,
-    tool_call TEXT
+	id TEXT PRIMARY KEY,
+	session_id TEXT NOT NULL,
+	time_created INTEGER NOT NULL DEFAULT 0,
+	time_updated INTEGER NOT NULL DEFAULT 0,
+	data TEXT NOT NULL
+);
+CREATE TABLE part (
+	id TEXT PRIMARY KEY,
+	message_id TEXT NOT NULL,
+	session_id TEXT NOT NULL,
+	time_created INTEGER NOT NULL DEFAULT 0,
+	time_updated INTEGER NOT NULL DEFAULT 0,
+	data TEXT NOT NULL
+);
+CREATE TABLE session_message (
+	id TEXT PRIMARY KEY,
+	session_id TEXT NOT NULL,
+	role TEXT NOT NULL,
+	content TEXT NOT NULL DEFAULT '',
+	time_created INTEGER NOT NULL DEFAULT 0,
+	tool_call TEXT
 );
 `)
 	if err != nil {
@@ -74,28 +105,69 @@ CREATE TABLE message (
 		t.Fatalf("create schema: %v", err)
 	}
 
-	sessions := []opencodeRowV2{
-		{ID: "session-1", Title: "First session", Directory: "/tmp/project-a", TimeCreated: 1732800000, TimeUpdated: 1732800600, ModelProvider: "anthropic", ModelID: "claude-sonnet-4"},
-		{ID: "session-2", Title: "Second session", Directory: "/tmp/project-b", TimeCreated: 1732900000, TimeUpdated: 1732900600, ModelProvider: "openai", ModelID: "gpt-4o"},
+	sessions := []opencodeSessionRow{
+		{ID: "session-1", Title: "First session", Directory: "/tmp/project-a", ParentID: "", ModelJSON: `{"id":"claude-sonnet-4","providerID":"anthropic"}`, TimeCreated: 1732800000, TimeUpdated: 1732800600},
+		{ID: "session-2", Title: "Sub session", Directory: "/tmp/project-b", ParentID: "session-1", ModelJSON: `{"id":"gpt-4o","providerID":"openai"}`, TimeCreated: 1732900000, TimeUpdated: 1732900600},
 	}
-	for _, s := range sessions {
-		_, err = db.Exec(`INSERT INTO session (id, title, directory, time_created, time_updated, model_provider, model_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			s.ID, s.Title, s.Directory, s.TimeCreated, s.TimeUpdated, s.ModelProvider, s.ModelID)
+	for _, r := range sessions {
+		_, err = db.Exec(`INSERT INTO session (id, title, directory, parent_id, model, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			r.ID, r.Title, r.Directory, r.ParentID, r.ModelJSON, r.TimeCreated, r.TimeUpdated)
 		if err != nil {
 			db.Close()
 			t.Fatalf("insert session: %v", err)
 		}
 	}
 
-	messages := []opencodeMessageRowV2{
-		{SessionID: "session-1", Role: "user", Content: `{"role":"user","content":"plan the work"}`, Time: 1732800010},
-		{SessionID: "session-1", Role: "assistant", Content: `{"role":"assistant","content":[{"type":"text","text":"_OK"},{"type":"toolcall","name":"shell","args":{"cmd":"ls"}}]}`, Time: 1732800020, ToolCall: `{"name":"shell","args":{"cmd":"ls"}}`},
-		{SessionID: "session-2", Role: "user", Content: `{"role":"user","content":"review the work"}`, Time: 1732900010},
-		{SessionID: "session-2", Role: "assistant", Content: `{"role":"assistant","content":"done"}`, Time: 1732900020},
+	messages := []opencodeMessageRow{
+		{ID: "m1", SessionID: "session-1", Role: "user", ModelID: "claude-sonnet-4", TimeCreated: 1732800010},
+		{ID: "m2", SessionID: "session-1", Role: "assistant", ModelID: "claude-sonnet-4", TimeCreated: 1732800020},
+		{ID: "m3", SessionID: "session-2", Role: "user", ModelID: "gpt-4o", TimeCreated: 1732900010},
+		{ID: "m4", SessionID: "session-2", Role: "assistant", ModelID: "gpt-4o", TimeCreated: 1732900020},
 	}
 	for _, m := range messages {
+		data := fmt.Sprintf(`{"role":%q,"modelID":%q}`, m.Role, m.ModelID)
+		_, err = db.Exec(`INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)`,
+			m.ID, m.SessionID, m.TimeCreated, m.TimeCreated, data)
+		if err != nil {
+			db.Close()
+			t.Fatalf("insert message: %v", err)
+		}
+	}
+
+	parts := []opencodePartRow{
+		{ID: "p1", MessageID: "m1", SessionID: "session-1", Type: "text", Text: "plan the work", TimeCreated: 1732800011},
+		{ID: "p2", MessageID: "m2", SessionID: "session-1", Type: "text", Text: "_OK", TimeCreated: 1732800021},
+		{ID: "p3", MessageID: "m2", SessionID: "session-1", Type: "tool", Tool: "shell", Input: `{"cmd":"ls"}`, TimeCreated: 1732800022},
+		{ID: "p4", MessageID: "m3", SessionID: "session-2", Type: "text", Text: "review the work", TimeCreated: 1732900011},
+		{ID: "p5", MessageID: "m4", SessionID: "session-2", Type: "text", Text: "done", TimeCreated: 1732900021},
+		{ID: "p6", MessageID: "m4", SessionID: "session-2", Type: "reasoning", Text: "thinking...", TimeCreated: 1732900022},
+	}
+	for _, pt := range parts {
+		var data string
+		switch pt.Type {
+		case "text":
+			data = fmt.Sprintf(`{"type":"text","text":%q}`, pt.Text)
+		case "tool":
+			data = fmt.Sprintf(`{"type":"tool","tool":%q,"state":{"input":%s}}`, pt.Tool, pt.Input)
+		case "reasoning":
+			data = fmt.Sprintf(`{"type":"reasoning","text":%q}`, pt.Text)
+		}
+		_, err = db.Exec(`INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?, ?)`,
+			pt.ID, pt.MessageID, pt.SessionID, pt.TimeCreated, pt.TimeCreated, data)
+		if err != nil {
+			db.Close()
+			t.Fatalf("insert part: %v", err)
+		}
+	}
+
+	// Legacy role/content rows for the fallback path (session_message).
+	legacy := []opencodeMessageRowV2{
+		{SessionID: "session-1", Role: "user", Content: `{"role":"user","content":"legacy request"}`, Time: 1732800010},
+		{SessionID: "session-1", Role: "assistant", Content: `{"role":"assistant","content":"legacy response"}`, Time: 1732800030},
+	}
+	for _, m := range legacy {
 		_, err = db.Exec(`INSERT INTO session_message (id, session_id, role, content, time_created, tool_call) VALUES (?, ?, ?, ?, ?, ?)`,
-			fmt.Sprintf("%s-%d", m.SessionID, m.Time), m.SessionID, m.Role, m.Content, m.Time, nullableString(m.ToolCall))
+			fmt.Sprintf("%s-%d", m.SessionID, m.Time), m.SessionID, m.Role, m.Content, m.Time, nil)
 		if err != nil {
 			db.Close()
 			t.Fatalf("insert session_message: %v", err)
@@ -105,7 +177,9 @@ CREATE TABLE message (
 	return db
 }
 
-// createTestOpenCodeDBV1 builds an in-memory SQLite DB using only the V1 `message` table.
+// createTestOpenCodeDBV1 builds an in-memory SQLite DB using only the legacy
+// `message(role, content)` table (no message/part), to exercise the legacy
+// fallback reader.
 func createTestOpenCodeDBV1(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
@@ -114,20 +188,20 @@ func createTestOpenCodeDBV1(t *testing.T) *sql.DB {
 	}
 	_, err = db.Exec(`
 CREATE TABLE session (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL DEFAULT '',
-    directory TEXT NOT NULL DEFAULT '',
-    time_created INTEGER NOT NULL DEFAULT 0,
-    time_updated INTEGER NOT NULL DEFAULT 0,
-    model_provider TEXT NOT NULL DEFAULT '',
-    model_id TEXT NOT NULL DEFAULT ''
+	id TEXT PRIMARY KEY,
+	title TEXT NOT NULL DEFAULT '',
+	directory TEXT NOT NULL DEFAULT '',
+	parent_id TEXT NOT NULL DEFAULT '',
+	model TEXT NOT NULL DEFAULT '',
+	time_created INTEGER NOT NULL DEFAULT 0,
+	time_updated INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE message (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL DEFAULT '',
-    time_created INTEGER NOT NULL DEFAULT 0
+	id TEXT PRIMARY KEY,
+	session_id TEXT NOT NULL,
+	role TEXT NOT NULL,
+	content TEXT NOT NULL DEFAULT '',
+	time_created INTEGER NOT NULL DEFAULT 0
 );
 `)
 	if err != nil {
@@ -135,8 +209,8 @@ CREATE TABLE message (
 		t.Fatalf("create schema: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO session (id, title, directory, time_created, time_updated, model_provider, model_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		"session-1", "First session", "/tmp/project-a", 1732800000, 1732800600, "anthropic", "claude-sonnet-4")
+	_, err = db.Exec(`INSERT INTO session (id, title, directory, model, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)`,
+		"session-1", "First session", "/tmp/project-a", `{"id":"claude-sonnet-4","providerID":"anthropic"}`, 1732800000, 1732800600)
 	if err != nil {
 		db.Close()
 		t.Fatalf("insert session: %v", err)
@@ -411,5 +485,102 @@ func TestOpenCodeProvider_MissingDB(t *testing.T) {
 	}
 	if summaries != nil {
 		t.Fatalf("expected nil summaries, got %#v", summaries)
+	}
+}
+
+func TestOpenCodeProvider_ModelAndParentID(t *testing.T) {
+	db := createTestOpenCodeDBV2(t)
+	defer db.Close()
+	path := persistDBToTempFile(t, db)
+
+	p := NewOpenCodeProvider(path)
+	summaries, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	byID := map[string]SessionSummary{}
+	for _, sm := range summaries {
+		byID[sm.ID] = sm
+	}
+	s1, ok := byID["session-1"]
+	if !ok {
+		t.Fatalf("session-1 missing: %#v", byID)
+	}
+	if s1.VendorID != "anthropic" {
+		t.Fatalf("expected vendorID anthropic, got %q", s1.VendorID)
+	}
+	if s1.Kind != SessionKindSession {
+		t.Fatalf("expected session-1 kind session, got %q", s1.Kind)
+	}
+	s2, ok := byID["session-2"]
+	if !ok {
+		t.Fatalf("session-2 missing: %#v", byID)
+	}
+	if s2.Kind != SessionKindSubagent {
+		t.Fatalf("expected session-2 kind subagent, got %q", s2.Kind)
+	}
+	if s2.ParentKey == "" {
+		t.Fatalf("expected non-empty ParentKey for subagent session-2")
+	}
+	if s2.ParentKey != s1.Key {
+		t.Fatalf("expected ParentKey == session-1 Key, got %q vs %q", s2.ParentKey, s1.Key)
+	}
+}
+
+func TestOpenCodeProvider_MessagesCarryModel(t *testing.T) {
+	db := createTestOpenCodeDBV2(t)
+	defer db.Close()
+	path := persistDBToTempFile(t, db)
+
+	p := NewOpenCodeProvider(path)
+	messages, err := p.LoadMessages(context.Background(), p.sessionFilePath("session-1"))
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	if len(messages) == 0 {
+		t.Fatalf("expected messages")
+	}
+	if messages[0].Model != "claude-sonnet-4" {
+		t.Fatalf("expected message model claude-sonnet-4, got %q", messages[0].Model)
+	}
+}
+
+func TestOpenCodeProvider_DeltaIncremental(t *testing.T) {
+	db := createTestOpenCodeDBV2(t)
+	defer db.Close()
+	path := persistDBToTempFile(t, db)
+
+	p := NewOpenCodeProvider(path)
+	fp := p.sessionFilePath("session-1")
+	all, err := p.LoadMessages(context.Background(), fp)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(all))
+	}
+
+	d1, err := p.LoadMessageDelta(context.Background(), fp, SessionMessageCursor{}, 5)
+	if err != nil {
+		t.Fatalf("LoadMessageDelta 1: %v", err)
+	}
+	if len(d1.Messages) != 1 {
+		t.Fatalf("expected 1 message in first frame, got %d", len(d1.Messages))
+	}
+	if !d1.HasMore {
+		t.Fatalf("expected HasMore true after first frame")
+	}
+	d2, err := p.LoadMessageDelta(context.Background(), fp, d1.Cursor, 1<<20)
+	if err != nil {
+		t.Fatalf("LoadMessageDelta 2: %v", err)
+	}
+	if len(d2.Messages) != 1 {
+		t.Fatalf("expected 1 message in second frame, got %d", len(d2.Messages))
+	}
+	if d2.HasMore {
+		t.Fatalf("expected HasMore false after second frame")
+	}
+	if d2.Messages[0].Seq != 2 {
+		t.Fatalf("expected second frame to carry message seq 2, got %d", d2.Messages[0].Seq)
 	}
 }

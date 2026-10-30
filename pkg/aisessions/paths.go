@@ -97,8 +97,8 @@ func DefaultPiSessionsDir() string {
 	return filepath.Join(home, ".pi", "agent", "sessions")
 }
 
-// userCacheDir returns the OS cache dir, or "" when unavailable. OpenCode stores
-// its sqlite db under <userCacheDir>/opencode/opencode.db by default.
+// userCacheDir returns the OS cache dir, or "" when unavailable. Some older
+// Linux opencode installs stored the sqlite db under <userCacheDir>/opencode.
 func userCacheDir() string {
 	dir, err := os.UserCacheDir()
 	if err != nil || dir == "" {
@@ -107,17 +107,42 @@ func userCacheDir() string {
 	return dir
 }
 
-// DefaultOpenCodeDBPath returns the configured/default OpenCode sqlite db path,
-// or "" when neither env nor a cache dir is available.
+// openCodeDBCandidates returns db-path candidates (excluding the OPENCODE_DB
+// override) in priority order. OpenCode stores its sqlite db under the XDG data
+// home rather than the cache dir, which is where the historical code looked.
+// "opencode debug paths" confirms: data=%USERPROFILE%\.local\share\opencode.
+func openCodeDBCandidates() []string {
+	var out []string
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		out = append(out, filepath.Join(xdg, "opencode", "opencode.db"))
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		out = append(out, filepath.Join(home, ".local", "share", "opencode", "opencode.db"))
+	}
+	// Legacy cache-dir fallback kept last so it never masks the real path.
+	if cache := userCacheDir(); cache != "" {
+		out = append(out, filepath.Join(cache, "opencode", "opencode.db"))
+	}
+	return out
+}
+
+// DefaultOpenCodeDBPath returns the OpenCode sqlite db path.
+//
+// OPENCODE_DB is authoritative when set (returned even if the file is currently
+// missing): DefaultProviders gates registration on os.Stat, and an explicit user
+// override must never silently fall back to a different DB elsewhere on disk.
+// When it is unset, the first existing candidate among XDG data home /
+// ~/.local/share / legacy cache dir is returned, or "" when none exists.
 func DefaultOpenCodeDBPath() string {
 	if envPath := os.Getenv("OPENCODE_DB"); envPath != "" {
 		return envPath
 	}
-	cache := userCacheDir()
-	if cache == "" {
-		return ""
+	for _, p := range openCodeDBCandidates() {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return p
+		}
 	}
-	return filepath.Join(cache, "opencode", "opencode.db")
+	return ""
 }
 
 func DefaultProviders() []Provider {

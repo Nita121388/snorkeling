@@ -270,8 +270,9 @@ func (idx *Index) GetSession(ctx context.Context, identifier string) (SessionSum
 		}
 		return summarySortTime(matches[i]) > summarySortTime(matches[j])
 	})
+	// Short prefix matches are ambiguous by nature; return all matches via search UI instead of auto-jumping.
 	if len(matches) > 1 && matches[0].ID != identifier && matches[0].Key != identifier {
-		return SessionSummary{}, fmt.Errorf("ambiguous session id prefix %q (%d matches)", identifier, len(matches))
+		return SessionSummary{}, fmt.Errorf("session not found: %s", identifier)
 	}
 	return matches[0], nil
 }

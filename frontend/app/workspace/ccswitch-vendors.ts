@@ -98,15 +98,30 @@ export function loadCcSwitchVendors(appType: CcSwitchAppType, force: boolean = f
     }
     const promise = (async (): Promise<CcSwitchVendorList> => {
         try {
-            const rtn =
-                appType === "codex"
-                    ? await RpcApi.CcSwitchListCodexVendorsCommand(TabRpcClient)
-                    : await RpcApi.CcSwitchListClaudeVendorsCommand(TabRpcClient);
+            let rtn: VendorList | null = null;
+            switch (appType) {
+                case "codex":
+                    rtn = await RpcApi.CcSwitchListCodexVendorsCommand(TabRpcClient);
+                    break;
+                case "opencode":
+                    rtn = await RpcApi.CcSwitchListOpenCodeVendorsCommand(TabRpcClient);
+                    break;
+                case "pi":
+                    rtn = await RpcApi.CcSwitchListPiVendorsCommand(TabRpcClient);
+                    break;
+                case "claude":
+                default:
+                    rtn = await RpcApi.CcSwitchListClaudeVendorsCommand(TabRpcClient);
+                    break;
+            }
             // Normalize: cc-switch absent → empty vendors + detected=false; ensure arrays exist.
             if (rtn == null) {
                 return { vendors: [], dbpath: "", detected: false };
             }
-            const vendors = Array.isArray(rtn.vendors) ? rtn.vendors : [];
+            // Generated Vendor and the hand-written CcSwitchVendor are structurally
+            // identical at runtime (claude_config_dir is optional on the wire but
+            // required in the local interface); the cast just bridges the two.
+            const vendors = (Array.isArray(rtn.vendors) ? rtn.vendors : []) as CcSwitchVendor[];
             return {
                 vendors,
                 dbpath: typeof rtn.dbpath === "string" ? rtn.dbpath : "",
