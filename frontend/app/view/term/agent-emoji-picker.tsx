@@ -12,6 +12,7 @@ import {
     normalizeSessionEmojiKey,
     setSessionEmoji,
 } from "@/app/agent-persona/session-persona-store";
+import { getTabDisplayMode, setTabDisplayMode } from "@/app/agent-persona/tab-display-store";
 import { formatAgentProvider } from "@/app/agent-status/agent-status-derive";
 import { EmojiPicker } from "@/app/element/block-editor/components/emoji-picker";
 import {
@@ -79,6 +80,9 @@ export function AgentEmojiPicker({
     const [activeIndex, setActiveIndex] = React.useState(0);
     const sessionKey = normalizeSessionEmojiKey(sessionId);
     const [scope, setScope] = React.useState<AgentEmojiScope>(() => resolveAgentEmojiScope(initialScope, sessionKey));
+    const [emojiOnly, setEmojiOnlyState] = React.useState(() =>
+        sessionKey !== "" ? getTabDisplayMode(sessionKey) === "emoji-only" : false
+    );
     // The radio must reflect the scope that will actually be written. When the
     // session id is unknown, "session" is not offered — so show (and write)
     // provider scope instead of silently falling through to a provider-wide write.
@@ -145,25 +149,51 @@ export function AgentEmojiPicker({
         };
     }, []);
 
+    React.useEffect(() => {
+        if (sessionKey === "") {
+            return;
+        }
+        setEmojiOnlyState(getTabDisplayMode(sessionKey) === "emoji-only");
+    }, [sessionKey]);
+
     const providerLabel = provider === "" || provider === "agent" ? "此 Agent" : formatAgentProvider(provider);
     const footer = (
-        <div className="agent-emoji-scope" role="radiogroup" aria-label="Emoji persona scope">
-            {sessionKey !== "" ? (
+        <div className="agent-emoji-picker-footer">
+            <div className="agent-emoji-scope" role="radiogroup" aria-label="Emoji persona scope">
+                {sessionKey !== "" ? (
+                    <ScopeOption
+                        checked={effectiveScope === "session"}
+                        label="仅此会话"
+                        hint="这一个会话在所有出现的位置都换成此 emoji（含历史列表，resume 后也保留）"
+                        onChange={() => setScope("session")}
+                    />
+                ) : (
+                    <div className="agent-emoji-scope-note">未识别到当前会话 ID，只能应用到所有 {providerLabel} 会话</div>
+                )}
                 <ScopeOption
-                    checked={effectiveScope === "session"}
-                    label="仅此会话"
-                    hint="这一个会话在所有出现的位置都换成此 emoji（含历史列表，resume 后也保留）"
-                    onChange={() => setScope("session")}
+                    checked={effectiveScope === "provider"}
+                    label={`所有 ${providerLabel} 会话`}
+                    hint={`覆盖所有 ${providerLabel} 会话（仅限该 provider，不影响其它 agent），含历史会话`}
+                    onChange={() => setScope("provider")}
                 />
-            ) : (
-                <div className="agent-emoji-scope-note">未识别到当前会话 ID，只能应用到所有 {providerLabel} 会话</div>
-            )}
-            <ScopeOption
-                checked={effectiveScope === "provider"}
-                label={`所有 ${providerLabel} 会话`}
-                hint={`覆盖所有 ${providerLabel} 会话（仅限该 provider，不影响其它 agent），含历史会话`}
-                onChange={() => setScope("provider")}
-            />
+            </div>
+            {sessionKey !== "" ? (
+                <div className="agent-emoji-display-row">
+                    <label className="agent-emoji-display-toggle">
+                        <input
+                            type="checkbox"
+                            checked={emojiOnly}
+                            onChange={(e) => {
+                                const next = e.target.checked;
+                                setEmojiOnlyState(next);
+                                setTabDisplayMode(sessionKey, next ? "emoji-only" : "full");
+                            }}
+                        />
+                        <span>仅显示 Emoji</span>
+                    </label>
+                    <span className="agent-emoji-display-hint">隐藏 Tab 标题，仅保留图标与状态</span>
+                </div>
+            ) : null}
             <button
                 type="button"
                 className="agent-emoji-reset"

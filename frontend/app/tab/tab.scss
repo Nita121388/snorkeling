@@ -128,14 +128,19 @@ body:not(.nohover) .tab.dragging {
 }
 
 // hover 只给淡反馈, 必须明显弱于 .tab.active 的 0.1 ——
-// 之前两者 alpha 相同, 鼠标滑过任意 Tab 都会长得跟激活态一模一样。
-body:not(.nohover) .tab:hover .tab-inner {
+body:not(.nohover) .tab:hover:not(.active):not(.dragging) .tab-inner {
     border-color: transparent;
     background: rgb(from var(--main-text-color) r g b / 0.055);
 }
 
 // 拖拽中的 Tab 保持和 active 同级的实心感, 表示它正被拿起。
-body:not(.nohover) .tab.dragging .tab-inner {
+body:not(.nohover) .tab.dragging:not(.active) .tab-inner {
+    border-color: transparent;
+    background: rgb(from var(--main-text-color) r g b / 0.1);
+}
+
+// active + hover: 保持 active 的背景色, 只显示关闭按钮
+body:not(.nohover) .tab.active:hover .tab-inner {
     border-color: transparent;
     background: rgb(from var(--main-text-color) r g b / 0.1);
 }

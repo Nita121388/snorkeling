@@ -4,6 +4,7 @@
 import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import { getTabDisplayMode, subscribeTabDisplayMode } from "@/app/agent-persona/tab-display-store";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
@@ -54,7 +55,7 @@ import { isBlank, makeIconClass, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import type { Atom } from "jotai";
 import { atom, useAtomValue } from "jotai";
-import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { minimizeGroupToFloat } from "./block-minimize";
 import {
@@ -213,6 +214,24 @@ const InlineTabLabel = memo(
         // 只有当前激活的会话类 tab 才拉 summary（可能触发一次 RPC）；背景 tab 只读缓存。
         const summaryTitle = useBlockSessionTitle(tabSessionId, connection ?? "", isActive && isSessionBlock);
 
+        const resolvedTabSessionId =
+            (typeof sessionMeta["agent:sessionid"] === "string" ? sessionMeta["agent:sessionid"] : "") ||
+            bindingResolution.sessionId ||
+            agentStatus?.sessionId ||
+            tabSessionId ||
+            "";
+        const emojiOnlyMode = useSyncExternalStore(
+            subscribeTabDisplayMode,
+            () => {
+                const key = resolvedTabSessionId.trim();
+                if (key === "") {
+                    return false;
+                }
+                return getTabDisplayMode(key) === "emoji-only";
+            },
+            () => false
+        );
+
         const defaultTitle = useMemo(() => {
             // 会话类 Block（会话详情 / GUI Chat）分层标题：
             // 1) 会话标题（user/ai/provider，后端已定优先级）
@@ -288,6 +307,7 @@ const InlineTabLabel = memo(
         }, [customTitle, defaultTitle, fullPath]);
         const displayTitle =
             duplicateIndex != null && duplicateIndex > 1 && !customTitle ? `${title} ${duplicateIndex}` : title;
+        const showTitle = !(emojiOnlyMode && agentIcon != null);
         const iconClass = makeIconClass(blockViewToIcon(blockView), true);
         // 远程 badge: connection 非本地 (ssh:host / wsl://) 时在图标右上角点亮小圆点.
         // 标题刻意不追加连接名 (实测会把 tab 撑宽 ~55px, 提前触发溢出折叠), 连接名只在
@@ -530,6 +550,7 @@ const InlineTabLabel = memo(
                         dragging: isDragging,
                         marquee: isMarquee,
                         "drop-target": isOver,
+                        "emoji-only": emojiOnlyMode && agentIcon != null,
                     })}
                     {...cardHover.targetProps}
                 >
@@ -585,7 +606,7 @@ const InlineTabLabel = memo(
                                         />
                                     )}
                                 </span>
-                                <span>{displayTitle}</span>
+                                {showTitle ? <span>{displayTitle}</span> : null}
                                 {isDirty ? (
                                     <span className="inline-tab-block-tab-dirty-dot" title="未保存的修改" />
                                 ) : null}

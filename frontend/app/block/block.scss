@@ -1119,14 +1119,22 @@
             }
         }
 
-        &:hover {
+        &:hover:not(.active) {
             opacity: 0.9;
-            background: rgb(from var(--main-text-color) r g b / 0.08);
+            background: rgb(from var(--main-text-color) r g b / 0.05);
 
             .inline-tab-block-tab-close {
                 width: 16px;
                 margin-left: 3px;
                 opacity: 0.7;
+            }
+        }
+
+        &.active:hover {
+            .inline-tab-block-tab-close {
+                width: 16px;
+                margin-left: 3px;
+                opacity: 0.72;
             }
         }
 
