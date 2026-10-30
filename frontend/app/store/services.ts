@@ -211,6 +211,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "RestoreContext", Array.from(arguments))
     }
 
+    // merge custom properties into a local AI session
+    // @returns updated AI session summary
+    SetProps(request: AISessionsSetPropsRequest): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "SetProps", Array.from(arguments))
+    }
+
     // stat a local AI session file without loading messages
     // @returns AI session file stat
     Stat(request: AISessionsStatRequest): Promise<AISessionsStatResponse> {

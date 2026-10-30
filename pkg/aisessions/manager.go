@@ -944,6 +944,92 @@ func (m *Manager) NoteAndTags(ctx context.Context, identifier string, note strin
 	return summary, nil
 }
 
+// SetProps merges custom property cells into a session. Built-in properties
+// (note / tags / starred / title) keep using their dedicated RPCs; this path is
+// only for the additive property layer, so note/tags stay single-source.
+func (m *Manager) SetProps(ctx context.Context, identifier string, props map[string]PropertyCell) (SessionSummary, error) {
+	summary, err := m.resolveSessionForMetaWrite(ctx, identifier)
+	if err != nil {
+		return SessionSummary{}, err
+	}
+	if props == nil {
+		props = map[string]PropertyCell{}
+	}
+	now := time.Now().UnixMilli()
+	normalized := make(map[string]PropertyCell, len(props))
+	for key, cell := range props {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if cell.Source == "" {
+			cell.Source = PropertySourceUser
+		}
+		if cell.UpdatedAt == 0 {
+			cell.UpdatedAt = now
+		}
+		normalized[key] = cell
+	}
+	var writeErr error
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.SetProps(ctx, summary.Key, normalized); err != nil {
+			debugf("Manager.SetProps sqlite write error key=%q err=%v", summary.Key, err)
+			writeErr = err
+		}
+	} else if sqliteErr != nil {
+		debugf("Manager.SetProps sqlite open skipped key=%q err=%v", summary.Key, sqliteErr)
+	}
+	if metaDualWriteEnabled() || writeErr != nil || sqliteIdx == nil {
+		meta, err := m.openMeta()
+		if meta == nil {
+			if sqliteIdx != nil && writeErr == nil {
+				if applyErr := sqliteIdx.ApplyMeta(ctx, &summary); applyErr != nil {
+					mergeSessionProps(&summary, normalized)
+				}
+				return summary, nil
+			}
+			return SessionSummary{}, err
+		}
+		defer meta.Close()
+		if err := meta.SetProps(ctx, summary.Key, normalized); err != nil {
+			if writeErr != nil {
+				return SessionSummary{}, fmt.Errorf("cannot write AI session props to sqlite (%v) or meta json (%w)", writeErr, err)
+			}
+			if sqliteIdx == nil {
+				return SessionSummary{}, err
+			}
+			debugf("Manager.SetProps meta json dual-write error key=%q err=%v", summary.Key, err)
+		}
+	}
+	if sqliteIdx != nil {
+		_ = sqliteIdx.ApplyMeta(ctx, &summary)
+	} else {
+		mergeSessionProps(&summary, normalized)
+	}
+	return summary, nil
+}
+
+func mergeSessionProps(summary *SessionSummary, props map[string]PropertyCell) {
+	if summary == nil {
+		return
+	}
+	if summary.Props == nil {
+		summary.Props = make(map[string]PropertyCell, len(props))
+	}
+	for key, cell := range props {
+		if cell.Value == nil {
+			delete(summary.Props, key)
+			continue
+		}
+		summary.Props[key] = cell
+	}
+	if len(summary.Props) == 0 {
+		summary.Props = nil
+	}
+}
+
 // setAutoTitle persists an AI-generated title. Separate from SetTitle so the
 // two write paths never collide on TitleSource, and so a user rename stays
 // distinguishable (and outrankable) from a background generation.

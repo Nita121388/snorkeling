@@ -23,6 +23,27 @@ const (
 	RoleUnknown   = "unknown"
 )
 
+// Property source: who wrote the value. The UI renders AI-sourced values with a
+// distinct marker and the AI worker must not overwrite a user value unless forced.
+const (
+	PropertySourceUser   = "user"
+	PropertySourceAI     = "ai"
+	PropertySourceSystem = "system"
+)
+
+// PropertyCell is one value of one custom property on a session. Built-in
+// properties (note / tags / starred / title_source / dates) are NOT stored here:
+// they stay in their dedicated columns and are virtually mapped by the frontend.
+//
+// Type is carried alongside the value so a property added by the user or the AI
+// is self-describing without a separate per-session schema table.
+type PropertyCell struct {
+	Value     any    `json:"value,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Source    string `json:"source,omitempty"`
+	UpdatedAt int64  `json:"updatedAt,omitempty"`
+}
+
 type SessionSummary struct {
 	Key         string `json:"key"`
 	ID          string `json:"id"`
@@ -63,6 +84,10 @@ type SessionSummary struct {
 	Attached string `json:"attached,omitempty"`
 	MTime int64  `json:"-"`
 	Size  int64  `json:"size,omitempty"`
+	// Props holds user/AI-defined custom properties for this session. It is an
+	// additive layer: legacy fields above remain authoritative for the built-in
+	// properties, so old clients and old data keep working without migration.
+	Props map[string]PropertyCell `json:"props,omitempty"`
 }
 
 type Message struct {

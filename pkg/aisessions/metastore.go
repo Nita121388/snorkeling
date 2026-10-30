@@ -31,6 +31,10 @@ type sessionMeta struct {
 	AITitleAttemptedAt         int64 `json:"aiTitleAttemptedAt,omitempty"`
 	AITitleAttemptMessageCount int   `json:"aiTitleAttemptMessageCount,omitempty"`
 	UpdatedAt                  int64 `json:"updatedAt,omitempty"`
+	// Props mirrors the custom property layer into the JSON meta store so the
+	// legacy fallback keeps note/tags and props consistent when sqlite is
+	// unavailable. Built-in properties are never written here.
+	Props map[string]PropertyCell `json:"props,omitempty"`
 }
 
 type MetaStore struct {
@@ -83,6 +87,9 @@ func (s *MetaStore) Apply(summary *SessionSummary) {
 	}
 	summary.AITitleAttemptedAt = meta.AITitleAttemptedAt
 	summary.AITitleAttemptMessageCount = meta.AITitleAttemptMessageCount
+	if len(meta.Props) > 0 {
+		summary.Props = meta.Props
+	}
 }
 
 // normalizeTitleSource maps an empty legacy value to "user" (hand-written or
@@ -111,6 +118,31 @@ func (s *MetaStore) SetNote(ctx context.Context, key string, note string) error 
 	}
 	meta := s.data.Sessions[key]
 	meta.Note = note
+	meta.UpdatedAt = time.Now().UnixMilli()
+	s.data.Sessions[key] = meta
+	return s.save()
+}
+
+// SetProps merges custom property cells into the JSON meta store. A nil value
+// deletes the property (same contract as SQLiteIndex.SetProps).
+func (s *MetaStore) SetProps(ctx context.Context, key string, props map[string]PropertyCell) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if len(props) == 0 {
+		return nil
+	}
+	meta := s.data.Sessions[key]
+	if meta.Props == nil {
+		meta.Props = make(map[string]PropertyCell, len(props))
+	}
+	for propKey, cell := range props {
+		if cell.Value == nil {
+			delete(meta.Props, propKey)
+			continue
+		}
+		meta.Props[propKey] = cell
+	}
 	meta.UpdatedAt = time.Now().UnixMilli()
 	s.data.Sessions[key] = meta
 	return s.save()

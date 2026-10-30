@@ -398,6 +398,14 @@ declare global {
         configdir?: string;
     };
 
+    // aisessionsservice.AISessionsSetPropsRequest
+    type AISessionsSetPropsRequest = {
+        id: string;
+        connection?: string;
+        props: {[key: string]: PropertyCell};
+        force?: boolean;
+    };
+
     // aisessionsservice.AISessionsStatRequest
     type AISessionsStatRequest = {
         id?: string;
@@ -2366,6 +2374,14 @@ declare global {
         max: number;
     };
 
+    // aisessions.PropertyCell
+    type PropertyCell = {
+        value?: any;
+        type?: string;
+        source?: string;
+        updatedAt?: number;
+    };
+
     // uctypes.RateLimitInfo
     type RateLimitInfo = {
         req: number;
@@ -2660,6 +2676,7 @@ declare global {
         kind?: string;
         attached?: string;
         size?: number;
+        props?: {[key: string]: PropertyCell};
     };
 
     // aisessions.SessionTagSummary

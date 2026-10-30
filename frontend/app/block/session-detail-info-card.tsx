@@ -70,8 +70,8 @@ export function SessionDetailInfoCard({
                 ) : null}
             </InfoCardSection>
 
-            {/* note + tags：summary 未就绪时该段自动隐藏 */}
-            <SessionNoteSection state={state} />
+            {/* note + tags：summary 未就绪时该段自动隐藏；详情卡允许内联编辑全部属性 */}
+            <SessionNoteSection state={state} canEditProperties />
 
             {projectPath !== "" ? (
                 <InfoCardSection>

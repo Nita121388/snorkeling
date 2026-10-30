@@ -15,18 +15,17 @@
 import { createBlock } from "@/app/store/global";
 import type { SessionNoteState } from "@/app/store/session-note-hook";
 import { GenActionButton } from "@/app/view/aisessions/gen-action-button";
+import { PropertyList } from "@/app/view/aisessions/property/property-list";
+import { setSessionProperty } from "@/app/view/aisessions/property/property-store";
 import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
 import { UndoNoteBar, useNoteUndo, type NoteUndoSnapshot } from "@/app/view/aisessions/undo-toast";
 import * as React from "react";
 import {
-    InfoCardEmpty,
     InfoCardError,
     InfoCardHead,
     InfoCardIcon,
     InfoCardInput,
-    InfoCardPreview,
     InfoCardSection,
-    InfoCardText,
 } from "./info-card";
 import { InfoCardMarquee } from "./marquee";
 
@@ -40,7 +39,17 @@ function statusIcon(state: SessionNoteState): string {
             : "fa-tag";
 }
 
-export function SessionNoteSection({ state }: { state: SessionNoteState }) {
+export function SessionNoteSection({
+    state,
+    canEditProperties = false,
+}: {
+    state: SessionNoteState;
+    /**
+     * 是否允许在卡片内联编辑属性（note 总可点进编辑）。
+     * 悬浮卡用 false（hover 即预览，不把整张卡变成编辑器）；详情卡用 true。
+     */
+    canEditProperties?: boolean;
+}) {
     const {
         summary,
         noteDraft,
@@ -49,8 +58,6 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
         setIsEditing,
         inputRef,
         finishEditing,
-        trimmedDraft,
-        previewText,
         title,
         error,
     } = state;
@@ -159,31 +166,28 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                     }}
                 />
             ) : (
-                <InfoCardPreview
-                    onClick={() => {
+                <PropertyList
+                    summary={summary}
+                    mode="card"
+                    canEdit={canEditProperties}
+                    onEditNote={() => {
                         setIsEditing(true);
                         window.setTimeout(() => {
                             inputRef.current?.focus();
                             inputRef.current?.setSelectionRange(noteDraft.length, noteDraft.length);
                         }, 0);
                     }}
-                >
-                    {trimmedDraft === "" && (summary?.note ?? "").trim() === "" ? (
-                        <InfoCardEmpty>Click to add a note...</InfoCardEmpty>
-                    ) : (
-                        <InfoCardText>{previewText}</InfoCardText>
-                    )}
-                </InfoCardPreview>
-            )}
-            {/* Tags chips（有则显示） */}
-            {(summary?.tags?.length ?? 0) > 0 && (
-                <div className="agent-card-tags">
-                    {summary.tags.map((tag, idx) => (
-                        <span key={idx} className="agent-card-tag">
-                            {tag}
-                        </span>
-                    ))}
-                </div>
+                    onChange={(key, value, def) => {
+                        void setSessionProperty({
+                            service: state.service,
+                            sessionId: sessionKey,
+                            connection,
+                            summary,
+                            def,
+                            value,
+                        });
+                    }}
+                />
             )}
             {error ? <InfoCardError>{error}</InfoCardError> : null}
         </InfoCardSection>

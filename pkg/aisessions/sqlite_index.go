@@ -181,6 +181,20 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			created_at INTEGER NOT NULL,
 			PRIMARY KEY(session_key, tag)
 		)`,
+		// Custom session properties (Notion-style). One row per property key.
+		// Value is JSON so any PropertyValue shape round-trips without schema
+		// churn. Built-in properties stay in ai_session_meta and are virtually
+		// mapped by the UI, so this table only ever holds the additive layer.
+		`CREATE TABLE IF NOT EXISTS ai_session_props (
+			session_key TEXT NOT NULL,
+			prop_key TEXT NOT NULL,
+			value_json TEXT NOT NULL DEFAULT 'null',
+			prop_type TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL DEFAULT 'user',
+			updated_at INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY(session_key, prop_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_session_props_session ON ai_session_props(session_key)`,
 		`CREATE TABLE IF NOT EXISTS ai_files (
 			file_path TEXT PRIMARY KEY,
 			source TEXT NOT NULL,
@@ -751,7 +765,18 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 	var aiAttemptCount int
 	err := idx.db.QueryRowxContext(ctx, `SELECT marked, note, title, title_source, ai_title_attempted_at, ai_title_attempt_message_count FROM ai_session_meta WHERE session_key = ?`, summary.Key).
 		Scan(&marked, &note, &title, &titleSource, &aiAttemptedAt, &aiAttemptCount)
+	// No meta row: the session never had note/title/tags written through this
+	// index (e.g. a freshly scanned provider summary that carries its own
+	// Tags). Keep the original contract of not touching those fields, but still
+	// load the additive custom-property layer when it exists.
 	if errors.Is(err, sql.ErrNoRows) {
+		props, perr := idx.PropsForSession(ctx, summary.Key)
+		if perr != nil {
+			return perr
+		}
+		if len(props) > 0 {
+			summary.Props = props
+		}
 		return nil
 	}
 	if err != nil {
@@ -770,6 +795,13 @@ func (idx *SQLiteIndex) ApplyMeta(ctx context.Context, summary *SessionSummary) 
 		return err
 	}
 	summary.Tags = tags
+	props, err := idx.PropsForSession(ctx, summary.Key)
+	if err != nil {
+		return err
+	}
+	if len(props) > 0 {
+		summary.Props = props
+	}
 	return nil
 }
 
@@ -919,6 +951,102 @@ func (idx *SQLiteIndex) SetNoteAndTags(ctx context.Context, key string, note str
 		return err
 	}
 	if err := idx.replaceTagsTx(ctx, tx, key, tags); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// PropsForSession returns the custom property cells stored for a session.
+// Missing / empty is not an error: the caller just sees no custom layer.
+func (idx *SQLiteIndex) PropsForSession(ctx context.Context, key string) (map[string]PropertyCell, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, nil
+	}
+	rows, err := idx.db.QueryxContext(ctx, `SELECT prop_key, value_json, prop_type, source, updated_at FROM ai_session_props WHERE session_key = ?`, key)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	props := make(map[string]PropertyCell)
+	for rows.Next() {
+		var propKey, valueJSON, propType, source string
+		var updatedAt int64
+		if err := rows.Scan(&propKey, &valueJSON, &propType, &source, &updatedAt); err != nil {
+			return nil, err
+		}
+		cell := PropertyCell{Type: propType, Source: source, UpdatedAt: updatedAt}
+		if valueJSON != "" && valueJSON != "null" {
+			var value any
+			if err := json.Unmarshal([]byte(valueJSON), &value); err != nil {
+				return nil, fmt.Errorf("decode prop %q: %w", propKey, err)
+			}
+			cell.Value = value
+		}
+		props[propKey] = cell
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(props) == 0 {
+		return nil, nil
+	}
+	return props, nil
+}
+
+// SetProps upserts the given property cells (merge semantics: keys not present
+// in the map are left untouched). A nil value deletes the property.
+func (idx *SQLiteIndex) SetProps(ctx context.Context, key string, props map[string]PropertyCell) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("session key is required")
+	}
+	if len(props) == 0 {
+		return nil
+	}
+	tx, err := idx.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	now := time.Now().UnixMilli()
+	for propKey, cell := range props {
+		propKey = strings.TrimSpace(propKey)
+		if propKey == "" {
+			continue
+		}
+		if cell.Value == nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_props WHERE session_key = ? AND prop_key = ?`, key, propKey); err != nil {
+				return err
+			}
+			continue
+		}
+		valueJSON, err := json.Marshal(cell.Value)
+		if err != nil {
+			return fmt.Errorf("encode prop %q: %w", propKey, err)
+		}
+		updatedAt := cell.UpdatedAt
+		if updatedAt == 0 {
+			updatedAt = now
+		}
+		source := cell.Source
+		if source == "" {
+			source = PropertySourceUser
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO ai_session_props(session_key, prop_key, value_json, prop_type, source, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?)
+			ON CONFLICT(session_key, prop_key) DO UPDATE SET
+				value_json = excluded.value_json,
+				prop_type = excluded.prop_type,
+				source = excluded.source,
+				updated_at = excluded.updated_at`,
+			key, propKey, string(valueJSON), cell.Type, source, updatedAt); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE ai_session_meta SET updated_at = ? WHERE session_key = ?`, now, key); err != nil {
 		return err
 	}
 	return tx.Commit()

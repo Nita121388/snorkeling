@@ -352,6 +352,62 @@ export async function saveSessionNote(
     }
 }
 
+export type SaveSessionPropsResult = { status: "ok"; summary: SessionSummary } | { status: "error"; error: string };
+
+function mergePropsInto(
+    base: { [key: string]: PropertyCell } | undefined,
+    incoming: { [key: string]: PropertyCell }
+): { [key: string]: PropertyCell } {
+    const merged: { [key: string]: PropertyCell } = { ...(base ?? {}) };
+    for (const [key, cell] of Object.entries(incoming)) {
+        if (cell?.value == null) {
+            delete merged[key];
+            continue;
+        }
+        merged[key] = cell;
+    }
+    return merged;
+}
+
+/**
+ * 保存自定义属性（Notion 式 props）。
+ *
+ * 与 saveSessionNote 相同的乐观更新 + 回滚：先把 props 合并进缓存并派发事件，UI 立即
+ * 反映；RPC 成功用权威 summary 覆写，失败回滚到保存前快照。
+ */
+export async function saveSessionProps(
+    service: AISessionsServiceType,
+    sessionId: string,
+    connection: string | null | undefined,
+    props: { [key: string]: PropertyCell }
+): Promise<SaveSessionPropsResult> {
+    const conn = normalizeConnection(connection);
+    const entry = getEntry(sessionId, conn);
+    const before = entry.snapshot.summary;
+    if (before == null) {
+        return { status: "error", error: "session summary not loaded" };
+    }
+    const optimistic: SessionSummary = { ...before, props: mergePropsInto(before.props, props) };
+    clearRetryTimer(entry);
+    entry.retryCount = 0;
+    setSnapshot(entry, { status: "loaded", summary: optimistic, error: "", loadedAt: Date.now() });
+    dispatchAISessionNoteUpdated(optimistic);
+    try {
+        const updated = await service.SetProps({ id: before.key, connection: conn || undefined, props });
+        clearRetryTimer(entry);
+        entry.retryCount = 0;
+        setSnapshot(entry, { status: "loaded", summary: updated, error: "", loadedAt: Date.now() });
+        dispatchAISessionNoteUpdated(updated);
+        return { status: "ok", summary: updated };
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        dlog("props save failed", { sessionId, error: message });
+        setSnapshot(entry, { status: "loaded", summary: before, error: message, loadedAt: Date.now() });
+        dispatchAISessionNoteUpdated(before);
+        return { status: "error", error: message };
+    }
+}
+
 // 仅供测试使用：清空模块级缓存。
 export function resetSessionNoteCache(): void {
     for (const entry of noteCache.values()) {

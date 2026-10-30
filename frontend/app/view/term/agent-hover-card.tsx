@@ -188,7 +188,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                 </InfoCardSection>
             )}
             {/* Note + tags section（与会话详情卡片共用） */}
-            <SessionNoteSection state={noteState} />
+            <SessionNoteSection state={noteState} canEditProperties={false} />
             {/* Session ID 底行（复制） */}
             {sessionId !== "" && (
                 <div className="agent-card-session-id">

@@ -99,6 +99,16 @@ type AISessionsNoteAndTagsRequest struct {
 	Origin string   `json:"origin,omitempty"`
 }
 
+// AISessionsSetPropsRequest merges custom (Notion-style) properties into a
+// session. Built-in properties keep their dedicated RPCs. Force is reserved for
+// the AI worker: without it, a source=user value must not be overwritten.
+type AISessionsSetPropsRequest struct {
+	ID         string                            `json:"id"`
+	Connection string                            `json:"connection,omitempty"`
+	Props      map[string]aisessions.PropertyCell `json:"props"`
+	Force      bool                              `json:"force,omitempty"`
+}
+
 type AISessionsRenameTagRequest struct {
 	From       string `json:"from"`
 	To         string `json:"to"`
@@ -1113,6 +1123,29 @@ func (svc *AISessionsService) NoteAndTags(ctx context.Context, request *AISessio
 		return nil, err
 	}
 	summary, err := manager.NoteAndTags(ctx, request.ID, request.Note, request.Tags)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
+func (svc *AISessionsService) SetProps_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "merge custom properties into a local AI session",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "updated AI session summary",
+	}
+}
+
+func (svc *AISessionsService) SetProps(ctx context.Context, request *AISessionsSetPropsRequest) (*aisessions.SessionSummary, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.SetProps(ctx, request.ID, request.Props)
 	if err != nil {
 		return nil, err
 	}
