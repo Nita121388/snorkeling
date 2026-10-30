@@ -1,9 +1,14 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { BlockInfoCard } from "@/app/block/block-info-card";
+import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
 import {
     BlockComponentModel2,
     BlockProps,
@@ -12,11 +17,9 @@ import {
     SubBlockProps,
 } from "@/app/block/blocktypes";
 import { BlockLockMetaKey, buildInlineTabContextMenu } from "@/app/block/inlinetab-contextmenu";
-import { BlockInfoCard } from "@/app/block/block-info-card";
-import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
 import { useBlockSessionTitle } from "@/app/block/use-block-session-title";
-import { Tooltip } from "@/app/element/tooltip";
 import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
+import { Tooltip } from "@/app/element/tooltip";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
@@ -24,9 +27,6 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { getBlockDirtyAtom } from "@/app/view/preview/preview-dirty-state";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
-import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
-import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
-import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { resolveAgentSessionId } from "@/app/view/term/agent-session";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -205,8 +205,7 @@ const InlineTabLabel = memo(
         }, [blockId, isLocked]);
 
         const sessionMeta = (blockData?.meta ?? {}) as Record<string, unknown>;
-        const isSessionBlock =
-            isSessionDetailBlockMeta(sessionMeta) || isChatBlockMeta(sessionMeta);
+        const isSessionBlock = isSessionDetailBlockMeta(sessionMeta) || isChatBlockMeta(sessionMeta);
         const tabSessionId =
             typeof sessionMeta["aisessions:sessionid"] === "string"
                 ? (sessionMeta["aisessions:sessionid"] as string)
@@ -304,6 +303,7 @@ const InlineTabLabel = memo(
         );
         const personas = useAgentPersonas();
         const sessionEmojis = useSessionEmojis();
+        const agentStatus = useInlineTabAgentStatus(blockId);
         const agentIcon = useMemo(() => {
             const meta = blockData?.meta;
             if (!isAgentTerminalMeta(meta)) return null;
@@ -315,20 +315,22 @@ const InlineTabLabel = memo(
             // same way — otherwise it falls back to the generic terminal icon.
             const explicitProvider = normalizeAgentProvider(meta?.["agent:provider"]);
             const resolvedProvider =
-                explicitProvider === "agent" ? normalizeAgentProvider(bindingResolution.provider) : explicitProvider;
+                explicitProvider === "agent"
+                    ? normalizeAgentProvider(bindingResolution.provider || agentStatus?.provider)
+                    : explicitProvider;
             if (resolvedProvider === "agent") return null;
-            const sessionId =
-                (typeof meta?.["agent:sessionid"] === "string" && meta["agent:sessionid"] !== ""
+            const sessionId = (
+                typeof meta?.["agent:sessionid"] === "string" && meta["agent:sessionid"] !== ""
                     ? meta["agent:sessionid"]
-                    : (bindingResolution.sessionId || null)) as string | null;
+                    : bindingResolution.sessionId || agentStatus?.sessionId || null
+            ) as string | null;
             return getAgentIcon(resolvedProvider, { meta, personas, sessionEmojis, sessionId });
-        }, [blockData?.meta, personas, sessionEmojis, bindingResolution]);
+        }, [blockData?.meta, personas, sessionEmojis, bindingResolution, agentStatus]);
 
         // 读取该 agent block 的 canonical status (复用 TermViewModel 已经订阅好的 atom),
         // 用于在 Tab 标签右侧渲染状态点. R 类 (working/blocked) 显眼状态点亮; 22 号方案新增
         // D 类 (非 idle → idle 跳变后未阅) 同样点亮, 用绿色呼吸表达"刚跑完可来看结果".
         // idle/unknown 默认不点亮, 但 D 触发后会以 is-done-unread 视觉盖过 is-idle 的灰蓝.
-        const agentStatus = useInlineTabAgentStatus(blockId);
         // 与 Session Overview chip / term header pill 共享同一份 fingerprint atom
         // (SessionOverviewModel 单例上的 agentStatusAckedFpAtom), 任一 surface 点击
         // markAgentStatusAcked 时所有 surface 同帧 re-derive, 三处已读状态天然联动.
@@ -457,7 +459,12 @@ const InlineTabLabel = memo(
                     waveEnv
                 );
                 if (isAgentTerminalMeta(blockData?.meta)) {
-                    const provider = normalizeAgentProvider(blockData?.meta?.["agent:provider"]);
+                    const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
+                    const explicitProvider = normalizeAgentProvider(meta["agent:provider"]);
+                    const provider =
+                        explicitProvider === "agent"
+                            ? normalizeAgentProvider(bindingResolution.provider || agentStatus?.provider)
+                            : explicitProvider;
                     if (provider !== "agent") {
                         menu.push({ type: "separator" });
                         menu.push({
@@ -465,8 +472,17 @@ const InlineTabLabel = memo(
                             click: () => {
                                 const rect = tabRef.current?.getBoundingClientRect();
                                 if (rect != null) {
-                                    const sessionId = blockData?.meta?.["agent:sessionid"] as string | undefined;
-                                    openAgentEmojiPicker(blockId, provider, rect, "session", sessionId ?? null);
+                                    // 与 block header / 标签一致：sessionId 也要走命令兜底，
+                                    // 否则 picker 拿不到会话 id 会退回 provider 级（改一个会话 = 改全部）。
+                                    const explicitSessionId =
+                                        typeof meta["agent:sessionid"] === "string"
+                                            ? (meta["agent:sessionid"] as string)
+                                            : "";
+                                    const sessionId =
+                                        explicitSessionId.trim() !== ""
+                                            ? explicitSessionId
+                                            : bindingResolution.sessionId || agentStatus?.sessionId || null;
+                                    openAgentEmojiPicker(blockId, provider, rect, "session", sessionId);
                                 }
                             },
                         });
@@ -487,6 +503,8 @@ const InlineTabLabel = memo(
                 onMinimizeGroup,
                 waveEnv,
                 blockData?.meta,
+                bindingResolution,
+                agentStatus,
             ]
         );
 
@@ -786,12 +804,41 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                 // 远程: connection 非本地。菜单项 tooltip 用完整路径 + 连接名 (不占菜单宽度)。
                 const locality = blockPathLocality(connection);
                 const fullPath = isBlank(rawPath) ? "" : locality.isRemote ? `${rawPath} · ${connection}` : rawPath;
+                // agent 行的 emoji 人格 / 品牌 logo 解析与标签 (InlineTabLabel) 同源:
+                // provider / sessionId 既要读持久化 meta, 也要用启动命令兜底。
+                let agentProvider: string | null = null;
+                let agentSessionId: string | null = null;
+                if (isAgentTerminalMeta(blockData?.meta)) {
+                    const resolved = resolveAgentSessionId(meta);
+                    const statusAtom = statusStore.peekStatusAtom(blockId);
+                    const status = statusAtom != null ? get(statusAtom) : null;
+                    const explicitProvider = normalizeAgentProvider(meta["agent:provider"]);
+                    const provider =
+                        explicitProvider === "agent"
+                            ? normalizeAgentProvider(resolved.provider || status?.provider)
+                            : explicitProvider;
+                    if (provider !== "agent") {
+                        agentProvider = provider;
+                    }
+                    const explicitSessionId =
+                        typeof meta["agent:sessionid"] === "string" ? (meta["agent:sessionid"] as string) : "";
+                    const sessionId =
+                        explicitSessionId.trim() !== ""
+                            ? explicitSessionId
+                            : resolved.sessionId || status?.sessionId || "";
+                    if (sessionId !== "") {
+                        agentSessionId = sessionId;
+                    }
+                }
 
                 return {
                     id: blockId,
                     title: customTitle || shortName,
                     tooltip: customTitle ? `${customTitle} (${fullPath || shortName})` : fullPath || shortName,
                     icon: blockViewToIcon(blockView),
+                    agentProvider,
+                    agentSessionId,
+                    agentMeta: blockData?.meta ?? null,
                     isActive: blockId === activeBlockId,
                     connection,
                     isRemote: locality.isRemote,
@@ -835,9 +882,7 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const isMagnified = useAtomValue(nodeModel.isMagnified);
     const isHidden = useAtomValue(nodeModel.isHidden);
     // 当前打开 tab 标签的最大宽度 (占 block 容器宽度百分比); 超长内容在标签内部滚动.
-    const inlineTabActiveMaxPct = useAtomValue(
-        waveEnv.getSettingsKeyAtom("block:inlinetabactivemaxwidthpct")
-    );
+    const inlineTabActiveMaxPct = useAtomValue(waveEnv.getSettingsKeyAtom("block:inlinetabactivemaxwidthpct"));
     const inlineTabActiveMaxWidthPct = Math.min(100, Math.max(10, inlineTabActiveMaxPct ?? 60));
 
     // 空间不足时的渐进自动折叠 (能展示全则展示全, 放不下的进「更多」药丸):

@@ -1,6 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
+import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
+import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
 import {
     agentStatusPresentation,
     formatAgentProvider,
@@ -57,9 +60,6 @@ import * as jotai from "jotai";
 import * as React from "react";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "./agent-folder";
 import { getAgentIcon } from "./agent-logo";
-import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
-import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
-import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "./agent-meta";
 import { extractAgentCommandFromTerminalText, resolveAgentSessionId } from "./agent-session";
 import {
@@ -69,8 +69,8 @@ import {
     sessionCopyDebugPreview,
 } from "./session-debug";
 import { getBlockingCommand } from "./shellblocking";
-import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
 import { isFileUrl, terminalFilePath } from "./term-file-url";
+import { getNoteRenderSnapshot, getOutlineRenderSnapshot } from "./term-session-render-snapshot";
 import {
     computeTheme,
     getDefaultTermTheme,
@@ -183,12 +183,17 @@ export class TermViewModel implements ViewModel {
             if (isAgentTerminalMeta(blockMeta) || agentStatus != null) {
                 const explicitProvider =
                     typeof blockMeta?.["agent:provider"] === "string" ? blockMeta["agent:provider"].trim() : "";
-                const commandProvider = resolveAgentSessionId(blockMeta ?? {}).provider;
+                const commandResolution = resolveAgentSessionId(blockMeta ?? {});
+                const commandProvider = commandResolution.provider;
                 const provider = normalizeAgentProvider(explicitProvider || commandProvider || agentStatus?.provider);
                 if (provider !== "agent") {
                     const personas = get(agentPersonaAtom) ?? {};
                     const sessionEmojis = get(sessionEmojiAtom) ?? {};
-                    const resolvedSessionId = resolveAgentSessionId(blockMeta ?? {}).sessionId;
+                    // Hooks can report the session id before it is persisted into
+                    // block meta (e.g. a freshly started session). Use it so
+                    // "仅此会话" stays session-scoped instead of falling back to the
+                    // provider-wide persona.
+                    const resolvedSessionId = commandResolution.sessionId || agentStatus?.sessionId || "";
                     const iconSpec = getAgentIcon(provider, {
                         meta: blockMeta,
                         personas,
@@ -388,9 +393,10 @@ export class TermViewModel implements ViewModel {
         const rawBPAtom = getOverrideConfigAtom(blockId, "term:allowbracketedpaste");
         this.termBPMAtom = jotai.atom((get) => {
             const blockMeta = get(this.blockAtom)?.meta;
-            const provider = typeof blockMeta?.["agent:provider"] === "string"
-                ? blockMeta["agent:provider"].trim().toLowerCase()
-                : "";
+            const provider =
+                typeof blockMeta?.["agent:provider"] === "string"
+                    ? blockMeta["agent:provider"].trim().toLowerCase()
+                    : "";
             if (provider === "pi") {
                 return true; // pi agent block: always enable bracketed paste
             }

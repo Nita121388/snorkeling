@@ -1,6 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+    AgentEmojiScope,
+    resolveAgentEmojiScope,
+    resolveAgentEmojiWriteTarget,
+} from "@/app/agent-persona/persona-scope";
 import { setAgentPersona } from "@/app/agent-persona/persona-store";
 import {
     getSessionEmojiSnapshot,
@@ -18,7 +23,7 @@ import {
 import { cn } from "@/util/util";
 import * as React from "react";
 
-export type AgentEmojiScope = "session" | "provider";
+export type { AgentEmojiScope };
 
 export type AgentEmojiPickerProps = {
     /**
@@ -72,10 +77,12 @@ export function AgentEmojiPicker({
     const [catalog, setCatalog] = React.useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog());
     const [query, setQuery] = React.useState("");
     const [activeIndex, setActiveIndex] = React.useState(0);
-    const [scope, setScope] = React.useState<AgentEmojiScope>(
-        sessionId == null ? "provider" : initialScope
-    );
     const sessionKey = normalizeSessionEmojiKey(sessionId);
+    const [scope, setScope] = React.useState<AgentEmojiScope>(() => resolveAgentEmojiScope(initialScope, sessionKey));
+    // The radio must reflect the scope that will actually be written. When the
+    // session id is unknown, "session" is not offered — so show (and write)
+    // provider scope instead of silently falling through to a provider-wide write.
+    const effectiveScope = resolveAgentEmojiScope(scope, sessionKey);
 
     React.useEffect(() => {
         if (catalog != null) {
@@ -106,22 +113,23 @@ export function AgentEmojiPicker({
 
     const applyEmoji = React.useCallback(
         (emoji: string | null) => {
-            if (scope === "session" && sessionKey !== "") {
-                setSessionEmoji(sessionKey, emoji);
+            const target = resolveAgentEmojiWriteTarget(effectiveScope, sessionKey, provider);
+            if (target.kind === "session") {
+                setSessionEmoji(target.sessionId, emoji);
             } else {
-                setAgentPersona(provider, emoji);
+                setAgentPersona(target.provider, emoji);
             }
             onClose();
         },
-        [scope, sessionKey, provider, onClose]
+        [effectiveScope, sessionKey, provider, onClose]
     );
     // Per-scope "has emoji" so the remove button reflects the scope you're looking at.
     const currentHasEmoji = React.useMemo(() => {
-        if (scope === "session" && sessionKey !== "") {
+        if (effectiveScope === "session" && sessionKey !== "") {
             return (getSessionEmojiSnapshot()[sessionKey] ?? "") !== "";
         }
         return hasCurrentEmoji;
-    }, [scope, sessionKey, hasCurrentEmoji]);
+    }, [effectiveScope, sessionKey, hasCurrentEmoji]);
 
     // Focus the search box ourselves instead of trusting `autoFocus`: the click that
     // opened the picker also hands focus to the underlying block (xterm re-claims it
@@ -140,16 +148,18 @@ export function AgentEmojiPicker({
     const providerLabel = provider === "" || provider === "agent" ? "此 Agent" : formatAgentProvider(provider);
     const footer = (
         <div className="agent-emoji-scope" role="radiogroup" aria-label="Emoji persona scope">
-            {sessionKey !== "" && (
+            {sessionKey !== "" ? (
                 <ScopeOption
-                    checked={scope === "session"}
+                    checked={effectiveScope === "session"}
                     label="仅此会话"
                     hint="这一个会话在所有出现的位置都换成此 emoji（含历史列表，resume 后也保留）"
                     onChange={() => setScope("session")}
                 />
+            ) : (
+                <div className="agent-emoji-scope-note">未识别到当前会话 ID，只能应用到所有 {providerLabel} 会话</div>
             )}
             <ScopeOption
-                checked={scope === "provider"}
+                checked={effectiveScope === "provider"}
                 label={`所有 ${providerLabel} 会话`}
                 hint={`覆盖所有 ${providerLabel} 会话（仅限该 provider，不影响其它 agent），含历史会话`}
                 onChange={() => setScope("provider")}
@@ -173,10 +183,7 @@ export function AgentEmojiPicker({
                 className="markdown-emoji-picker mode-document agent-emoji-picker-loading"
                 style={{
                     top: anchor.top,
-                    left: Math.min(
-                        Math.max(8, anchor.left),
-                        Math.max(8, window.innerWidth - 320 - 8)
-                    ),
+                    left: Math.min(Math.max(8, anchor.left), Math.max(8, window.innerWidth - 320 - 8)),
                     width: Math.min(320, Math.max(220, window.innerWidth - 24)),
                 }}
                 role="dialog"

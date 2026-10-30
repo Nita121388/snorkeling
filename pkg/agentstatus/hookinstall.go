@@ -21,7 +21,7 @@ const (
 	HookTargetPi       = "pi"
 
 	hookInstallBaseName  = "snorkeling-agent-status"
-	hookInstallVersion   = 21
+	hookInstallVersion   = 22
 	codexHomeEnvVar      = "CODEX_HOME"
 	claudeConfigEnvVar   = "CLAUDE_CONFIG_DIR"
 	openCodeConfigEnvVar = "OPENCODE_CONFIG_DIR"
@@ -476,18 +476,22 @@ export default async () => ({
     if (!blockId || !jwt) return;
     const mapped = mapEvent(event);
     if (!mapped) return;
-    report(mapped.state, mapped.phase);
+    report(mapped.state, mapped.phase, mapped.sessionId);
   },
 });
 
 function mapEvent(event) {
   if (!event) return null;
-  if (event.type === "permission.asked") return { state: "blocked", phase: "approval" };
-  if (event.type === "permission.replied") return { state: "working", phase: "thinking" };
+  // OpenCode carries the conversation id on every event's properties. Reporting
+  // it lets Snorkeling resolve session-scoped emoji personas even when the launch
+  // command has no --session flag (fresh sessions, resumptions).
+  const sessionId = typeof event?.properties?.sessionID === "string" ? event.properties.sessionID : "";
+  if (event.type === "permission.asked") return { state: "blocked", phase: "approval", sessionId };
+  if (event.type === "permission.replied") return { state: "working", phase: "thinking", sessionId };
   if (event.type !== "session.status") return null;
   const statusType = event?.properties?.status?.type;
-  if (statusType === "busy" || statusType === "retry") return { state: "working", phase: "thinking" };
-  if (statusType === "idle") return { state: "idle", phase: "none" };
+  if (statusType === "busy" || statusType === "retry") return { state: "working", phase: "thinking", sessionId };
+  if (statusType === "idle") return { state: "idle", phase: "none", sessionId };
   return null;
 }
 
@@ -519,7 +523,7 @@ function exists(p) {
   }
 }
 
-function report(state, phase) {
+function report(state, phase, sessionId) {
   const wsh = resolveWsh();
   const args = [
     "agentstatus", state,
@@ -527,6 +531,7 @@ function report(state, phase) {
     "--source", "hook",
     "--phase", phase,
   ];
+  if (sessionId) args.push("--session-id", sessionId);
   // watchdog: a working report not renewed within 5min decays to stale
   if (state === "working") args.push("--ttl-ms", "300000");
   try {

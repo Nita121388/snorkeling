@@ -1,6 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { isBlank, makeIconClass } from "@/util/util";
 import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from "@floating-ui/react";
 import { memo, useCallback, useEffect, useRef } from "react";
@@ -12,6 +15,12 @@ type TabInfo = {
     /** Full path + connection for the row tooltip; falls back to `title`. */
     tooltip?: string;
     icon: string;
+    /** Agent provider of the row's block; null for non-agent rows. */
+    agentProvider?: string | null;
+    /** Agent session id (session-level persona lookup); null when unresolved. */
+    agentSessionId?: string | null;
+    /** Block meta, for the legacy block-level `agent:emoji` persona. */
+    agentMeta?: MetaType | null;
     isActive: boolean;
     /** Connection meta, used for the remote badge label. */
     connection?: string;
@@ -54,6 +63,8 @@ export const InlineTabDropdownMenu = memo(
         onStatusAck,
     }: InlineTabDropdownMenuProps) => {
         const menuRef = useRef<HTMLDivElement>(null);
+        const personas = useAgentPersonas();
+        const sessionEmojis = useSessionEmojis();
 
         const { refs, floatingStyles } = useFloating({
             open: isOpen,
@@ -191,6 +202,16 @@ export const InlineTabDropdownMenu = memo(
                     {tabs.map((tab) => {
                         const statusDot = tab.statusDot;
                         const ackable = statusDot != null && (statusDot.unread || statusDot.doneUnread);
+                        // agent 行: emoji 人格 > 品牌 logo > 视图图标, 与标签 (InlineTabLabel) 同源。
+                        const agentIcon =
+                            tab.agentProvider != null && tab.agentProvider !== ""
+                                ? getAgentIcon(tab.agentProvider, {
+                                      meta: tab.agentMeta ?? null,
+                                      personas,
+                                      sessionEmojis,
+                                      sessionId: tab.agentSessionId ?? null,
+                                  })
+                                : null;
                         return (
                             <div
                                 key={tab.id}
@@ -202,8 +223,22 @@ export const InlineTabDropdownMenu = memo(
                                 aria-label={tab.title}
                                 onClick={() => handleSelect(tab.id)}
                             >
-                                <span className="dropdown-item-icon">
-                                    <i className={makeIconClass(tab.icon, true)} />
+                                <span className={`dropdown-item-icon ${agentIcon != null ? "is-agent" : ""}`}>
+                                    {agentIcon?.kind === "emoji" ? (
+                                        <span className="agent-emoji-icon" title={tab.agentProvider ?? undefined}>
+                                            {agentIcon.emoji}
+                                        </span>
+                                    ) : agentIcon?.kind === "logo" ? (
+                                        <span
+                                            className="agent-brand-icon flex items-center justify-center [&_svg]:h-3 [&_svg]:w-3"
+                                            style={agentIcon.iconColor != null ? { color: agentIcon.iconColor } : undefined}
+                                            title={tab.agentProvider ?? undefined}
+                                        >
+                                            {agentIcon.icon}
+                                        </span>
+                                    ) : (
+                                        <i className={makeIconClass(tab.icon, true)} />
+                                    )}
                                     {tab.isRemote && (
                                         <span
                                             className="inline-tab-block-dropdown-remote-dot"

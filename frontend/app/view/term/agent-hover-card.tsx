@@ -1,22 +1,22 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { CopyButton } from "@/app/element/copybutton";
-import { InfoCard, InfoCardIcon, InfoCardSection } from "@/app/element/info-card";
-import { SessionNoteSection } from "@/app/element/info-card/session-note-section";
-import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import {
     ensureAgentRuntimeMetadata,
     getAgentRuntimeMetadataSnapshot,
     subscribeAgentRuntimeMetadata,
 } from "@/app/agent-status/agent-runtime-metadata-store";
 import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
-import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
-import { getAgentIcon } from "@/app/view/term/agent-logo";
-import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
-import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
-import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
+import { CopyButton } from "@/app/element/copybutton";
+import { InfoCard, InfoCardIcon, InfoCardSection } from "@/app/element/info-card";
+import { SessionNoteSection } from "@/app/element/info-card/session-note-section";
+import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
 import * as React from "react";
@@ -58,6 +58,9 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
 
     // 模型 + 状态信息（来自 block meta、AgentStatusStore 与 AgentRuntimeMetadataStore）
     const agentStatus = useAgentStatusForCard(blockId);
+    // Persona session key: block meta/command resolution first, then the live
+    // agent status (hooks may know the session id before it is persisted).
+    const personaSessionId = sessionId || agentStatus?.sessionId || "";
     const rawProvider =
         agentStatus?.provider != null && agentStatus.provider.trim() !== ""
             ? agentStatus.provider
@@ -101,6 +104,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
         meta: blockData?.meta,
         personas,
         sessionEmojis,
+        sessionId: personaSessionId || null,
     });
     const [copyFailed, setCopyFailed] = React.useState(false);
 
@@ -124,8 +128,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
         },
         [sessionId]
     );
-    const showMetaRow =
-        (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
+    const showMetaRow = (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
 
     // 会话摘要未就绪时也允许渲染（只要 agent 模型/状态信息可用）；Note 段仅在摘要就绪后显示。
     if (!showMetaRow && summary == null) {
@@ -133,10 +136,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
     }
 
     return (
-        <InfoCard
-            className="agent-card"
-            style={{ "--info-card-accent": statusAccent } as React.CSSProperties}
-        >
+        <InfoCard className="agent-card" style={{ "--info-card-accent": statusAccent } as React.CSSProperties}>
             {/* 模型 + 状态 section */}
             {showMetaRow && (
                 <InfoCardSection>
@@ -153,7 +153,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                                         rawProvider,
                                         e.currentTarget.getBoundingClientRect(),
                                         "session",
-                                        (blockData?.meta?.["agent:sessionid"] as string | undefined) ?? null
+                                        personaSessionId || null
                                     );
                                 }}
                                 style={
@@ -172,9 +172,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                             <InfoCardIcon icon="fa-sharp fa-solid fa-microchip" />
                         )}
                         <span className="agent-card-provider">{provider}</span>
-                        <span className="agent-card-model">
-                            {model || (modelLoading ? "获取中…" : "未指定")}
-                        </span>
+                        <span className="agent-card-model">{model || (modelLoading ? "获取中…" : "未指定")}</span>
                     </div>
                     {statusPres != null && (
                         <div className="agent-card-status-row">

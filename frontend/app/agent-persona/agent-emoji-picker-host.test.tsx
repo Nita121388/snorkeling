@@ -24,7 +24,19 @@ describe("agent emoji picker host store", () => {
         expect(state?.provider).toBe("claude");
         expect(state?.placement).toBe("bottom");
         expect(state?.anchor).toEqual({ top: 124, left: 40 });
-        expect(state?.initialScope).toBe("block");
+        expect(state?.initialScope).toBe("provider");
+    });
+
+    it("opens session scope when a session id is supplied", () => {
+        openAgentEmojiPicker("block-1", "claude", { top: 100, bottom: 120, left: 40 }, "session", "sess-1");
+        expect(getAgentEmojiPickerSnapshot()?.initialScope).toBe("session");
+        expect(getAgentEmojiPickerSnapshot()?.sessionId).toBe("sess-1");
+    });
+
+    it("normalizes a blank session id to provider scope", () => {
+        openAgentEmojiPicker("block-1", "claude", { top: 100, bottom: 120, left: 40 }, "session", "   ");
+        expect(getAgentEmojiPickerSnapshot()?.initialScope).toBe("provider");
+        expect(getAgentEmojiPickerSnapshot()?.sessionId).toBeNull();
     });
 
     it("flips above when the trigger sits near the viewport bottom", () => {

@@ -1941,9 +1941,22 @@
         position: relative;
         width: 14px;
         justify-content: center;
+        align-items: center;
         font-size: 11px;
         opacity: 0.7;
         flex-shrink: 0;
+
+        // agent emoji / 品牌 logo 与标签、block header 保持同亮度, 不跟视图图标一起压暗。
+        &.is-agent {
+            opacity: 1;
+        }
+
+        // 品牌 logo 的 SVG 自带 h-4 w-4 (16px), 塞进 14px 图标槽会溢出到文字;
+        // 这里按行高缩到 12px (提高优先级压过组件内的 tailwind 尺寸类)。
+        .agent-brand-icon svg {
+            width: 12px;
+            height: 12px;
+        }
     }
 
     // 远程 badge: 与 tab 标签同一 mixin, 绝对定位在行图标右上角, 不占菜单宽度。

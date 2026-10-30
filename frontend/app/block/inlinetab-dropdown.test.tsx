@@ -10,6 +10,8 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { __resetAgentPersonasForTests, setAgentPersona } from "@/app/agent-persona/persona-store";
+import { __resetSessionEmojisForTests, setSessionEmoji } from "@/app/agent-persona/session-persona-store";
 import type { InlineTabStatusDot } from "./inlinetab-agent-status";
 import { InlineTabDropdownMenu } from "./inlinetab-dropdown";
 
@@ -139,6 +141,64 @@ describe("InlineTabDropdownMenu delete affordance", () => {
         expect(document.activeElement).toBe(rows[0]);
         // close buttons stay out of the tab order
         expect(document.querySelectorAll<HTMLButtonElement>(".dropdown-item-close")[0].tabIndex).toBe(-1);
+        h.unmount();
+    });
+});
+
+describe("InlineTabDropdownMenu agent icon", () => {
+    afterEach(() => {
+        __resetAgentPersonasForTests();
+        __resetSessionEmojisForTests();
+        document.querySelectorAll(".inline-tab-block-dropdown-menu").forEach((el) => el.remove());
+    });
+
+    test("agent rows without a persona render the brand logo, not the terminal view icon", () => {
+        const h = renderMenu({
+            tabs: [
+                { id: "b1", title: "pi", icon: "terminal", isActive: false, agentProvider: "pi" },
+            ],
+        });
+        const icon = items()[0].querySelector(".dropdown-item-icon");
+        expect(icon.classList.contains("is-agent")).toBe(true);
+        expect(icon.querySelector("svg")).not.toBeNull();
+        expect(icon.querySelector("i.fa-terminal")).toBeNull();
+        h.unmount();
+    });
+
+    test("session and provider emoji personas win over the brand logo", () => {
+        setAgentPersona("pi", "🦊");
+        const h = renderMenu({
+            tabs: [
+                { id: "b1", title: "pi", icon: "terminal", isActive: false, agentProvider: "pi" },
+            ],
+        });
+        expect(items()[0].querySelector(".dropdown-item-icon .agent-emoji-icon")?.textContent).toBe("🦊");
+        h.unmount();
+
+        setSessionEmoji("sess-1", "🐳");
+        const h2 = renderMenu({
+            tabs: [
+                {
+                    id: "b2",
+                    title: "claude",
+                    icon: "terminal",
+                    isActive: false,
+                    agentProvider: "claude",
+                    agentSessionId: "sess-1",
+                },
+            ],
+        });
+        expect(items()[0].querySelector(".dropdown-item-icon .agent-emoji-icon")?.textContent).toBe("🐳");
+        h2.unmount();
+    });
+
+    test("non-agent rows keep the view icon", () => {
+        const h = renderMenu({
+            tabs: [{ id: "b1", title: "shell", icon: "terminal", isActive: false }],
+        });
+        const icon = items()[0].querySelector(".dropdown-item-icon");
+        expect(icon.classList.contains("is-agent")).toBe(false);
+        expect(icon.querySelector("i.fa-terminal")).not.toBeNull();
         h.unmount();
     });
 });

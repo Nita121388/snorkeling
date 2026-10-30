@@ -61,22 +61,25 @@ export function openAgentEmojiPicker(
     if (typeof window === "undefined" || provider.trim() === "") {
         return;
     }
+    // Normalize blank session ids to null so callers can pass "" or "  "
+    // interchangeably without accidentally advertising the session scope.
+    const normalizedSessionId = sessionId?.trim() ? sessionId.trim() : null;
     // Clicking the same icon again toggles the picker closed.
     if (
         pickerSnapshot != null &&
         pickerSnapshot.blockId === blockId &&
         pickerSnapshot.provider === provider &&
-        pickerSnapshot.sessionId === sessionId
+        pickerSnapshot.sessionId === normalizedSessionId
     ) {
         closeAgentEmojiPicker();
         return;
     }
-    const scope: AgentEmojiScope = sessionId == null ? "provider" : initialScope;
+    const scope: AgentEmojiScope = normalizedSessionId == null ? "provider" : initialScope;
     const spaceBelow = window.innerHeight - rect.bottom;
     const placeAbove = spaceBelow < POPOVER_HEIGHT_ESTIMATE && rect.top > POPOVER_HEIGHT_ESTIMATE;
     pickerSnapshot = {
         blockId,
-        sessionId,
+        sessionId: normalizedSessionId,
         provider,
         initialScope: scope,
         placement: placeAbove ? "top" : "bottom",

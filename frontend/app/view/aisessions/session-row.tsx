@@ -1,14 +1,19 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { Tooltip } from "@/app/element/tooltip";
 import { modalsModel } from "@/app/store/modalmodel";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { cn } from "@/util/util";
 import type { MouseEventHandler, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { CopyIconButton, IconButton } from "./controls";
 import { GenActionButton } from "./gen-action-button";
 import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
+import type { OpenLevel } from "./open-sessions";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { SessionTagChips } from "./session-tag-chips";
 import {
@@ -21,13 +26,8 @@ import {
     stripSessionTagHashes,
 } from "./session-tags";
 import { getChatSource } from "./sources";
-import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
-import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
-import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
-import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
-import type { OpenLevel } from "./open-sessions";
 import {
     classifySnippet,
     describeSessionDates,
@@ -372,15 +372,18 @@ export function SessionRow({
     const openPersonaPicker = useCallback(
         (event: ReactMouseEvent<HTMLElement>) => {
             event.stopPropagation();
+            // History rows always know session.id, so default to the "仅此会话"
+            // scope (design §3). Defaulting to provider here made a one-session
+            // click rewrite every session of that provider.
             openAgentEmojiPicker(
                 null,
                 session.source,
                 event.currentTarget.getBoundingClientRect(),
-                sourceIcon?.kind === "emoji" ? "session" : "provider",
+                "session",
                 session.id
             );
         },
-        [session.source, session.id, sourceIcon?.kind]
+        [session.source, session.id]
     );
 
     const saveNote = useCallback(async (): Promise<boolean> => {

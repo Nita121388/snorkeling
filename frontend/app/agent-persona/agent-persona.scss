@@ -62,6 +62,15 @@
     background: color-mix(in srgb, var(--main-text-color, #888) 10%, transparent);
 }
 
+// Shown when the session id is unknown: the session scope is unavailable, so
+// say out loud that the write is provider-wide instead of silently applying it.
+.agent-emoji-scope-note {
+    padding: 2px 4px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--main-text-color, #888) 65%, transparent);
+}
+
 .agent-emoji-scope-option.is-checked {
     color: var(--accent-color, #58c4ff);
 }

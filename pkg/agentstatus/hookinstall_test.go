@@ -368,6 +368,8 @@ func TestInstallOpenCodeHooksWritesPlugin(t *testing.T) {
 		"--provider", "opencode",
 		"agentstatus",
 		"permission.asked",
+		"properties.sessionID",
+		"--session-id",
 	} {
 		if !strings.Contains(string(script), want) {
 			t.Fatalf("plugin missing %q:\n%s", want, string(script))
