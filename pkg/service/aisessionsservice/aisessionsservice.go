@@ -38,6 +38,9 @@ type AISessionsListRequest struct {
 	ExcludeProjects     []string `json:"excludeProjects,omitempty"`
 	Query               string   `json:"query,omitempty"`
 	Connection          string   `json:"connection,omitempty"`
+	// Origin selects a scan root ("" / "local" = this machine, otherwise an
+	// external dump id from the Origins RPC). Takes precedence over Connection.
+	Origin              string   `json:"origin,omitempty"`
 	Limit               int      `json:"limit,omitempty"`
 	Refresh             bool     `json:"refresh,omitempty"`
 	Marked              string   `json:"marked,omitempty"`
@@ -107,6 +110,7 @@ type AISessionsRenameTagResponse struct {
 type AISessionsDetailRequest struct {
 	ID           string `json:"id"`
 	Connection   string `json:"connection,omitempty"`
+	Origin       string `json:"origin,omitempty"`
 	Refresh      bool   `json:"refresh,omitempty"`
 	Tail         int    `json:"tail,omitempty"`
 	IncludeTools bool   `json:"includeTools,omitempty"`
@@ -120,6 +124,7 @@ type AISessionsDetailRequest struct {
 type AISessionsDetailDeltaRequest struct {
 	ID           string                          `json:"id"`
 	Connection   string                          `json:"connection,omitempty"`
+	Origin       string                          `json:"origin,omitempty"`
 	Source       string                          `json:"source,omitempty"`
 	FilePath     string                          `json:"filePath,omitempty"`
 	Cursor       aisessions.SessionMessageCursor `json:"cursor"`
@@ -138,6 +143,7 @@ type AISessionsDetailDeltaRequest struct {
 type AISessionsUserOutlineRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 	Refresh    bool   `json:"refresh,omitempty"`
 	Limit      int    `json:"limit,omitempty"`
 }
@@ -151,6 +157,7 @@ type AISessionsUserOutlineResponse struct {
 type AISessionsSummaryRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 	Refresh    bool   `json:"refresh,omitempty"`
 }
 
@@ -311,6 +318,7 @@ type AISessionsRestoreContextResponse struct {
 type AISessionsStatRequest struct {
 	ID       string `json:"id,omitempty"`
 	FilePath string `json:"filePath,omitempty"`
+	Origin   string `json:"origin,omitempty"`
 }
 
 type AISessionsStatResponse struct {
@@ -326,6 +334,7 @@ type AISessionsStatResponse struct {
 type AISessionsSubagentFoldRequest struct {
 	ID         string `json:"id,omitempty"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 }
 
 type AISessionsSubagentFoldResponse struct {
@@ -542,7 +551,7 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	if limit == 0 {
 		limit = 100
 	}
-	manager, err := svc.managerForConnection(ctx, request.Connection)
+	manager, err := svc.managerForScope(ctx, "", request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -671,7 +680,7 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 	}
 	start := time.Now()
 	aiSessionsDebugf("Detail start id=%q connection=%q refresh=%v tail=%d includeTools=%v loadAll=%v", request.ID, request.Connection, request.Refresh, request.Tail, request.IncludeTools, request.LoadAll)
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		aiSessionsDebugf("Detail manager error id=%q duration=%s err=%v", request.ID, time.Since(start), err)
 		return nil, err
@@ -719,7 +728,7 @@ func (svc *AISessionsService) DetailDelta(ctx context.Context, request *AISessio
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -757,7 +766,7 @@ func (svc *AISessionsService) UserOutline(ctx context.Context, request *AISessio
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -811,7 +820,7 @@ func (svc *AISessionsService) Summary(ctx context.Context, request *AISessionsSu
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -915,10 +924,9 @@ func isKnownAISessionFilePath(filePath string) bool {
 		return false
 	}
 	var roots []string
-	if codexRoot := aisessions.DefaultCodexSessionsDir(); codexRoot != "" {
-		roots = append(roots, codexRoot)
-	}
-	roots = append(roots, aisessions.DefaultClaudeProjectDirs()...)
+	// KnownSessionRoots already covers codex + claude + pi + every configured
+	// external origin, so the whitelist stays in one place.
+	roots = append(roots, aisessions.KnownSessionRoots()...)
 	for _, root := range roots {
 		if strings.TrimSpace(root) == "" {
 			continue
@@ -952,7 +960,13 @@ func (svc *AISessionsService) Stat(ctx context.Context, request *AISessionsStatR
 	}
 	filePath := strings.TrimSpace(request.FilePath)
 	if filePath == "" {
-		summary, err := aisessions.NewManager("", nil).Summary(ctx, request.ID, false)
+		// Resolve the file path through the same manager the rest of the request
+		// routing uses, so an external-origin Stat finds the dump's file too.
+		manager, err := svc.managerForScope(ctx, request.ID, "", request.Origin)
+		if err != nil {
+			return nil, err
+		}
+		summary, err := manager.Summary(ctx, request.ID, false)
 		if err != nil {
 			return nil, err
 		}
@@ -992,7 +1006,7 @@ func (svc *AISessionsService) SubagentFold_Meta() tsgenmeta.MethodMeta {
 }
 
 func (svc *AISessionsService) SubagentFold(ctx context.Context, request *AISessionsSubagentFoldRequest) (*AISessionsSubagentFoldResponse, error) {
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}

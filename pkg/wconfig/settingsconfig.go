@@ -151,6 +151,15 @@ type ScheduledTaskRunRecord struct {
 	Output     string `json:"output,omitempty"`
 }
 
+// AiSessionExternalOriginType 描述一个外部会话扫描根（其它机器 dump 过来的会
+// 话目录）。ReadOnly 缺省为 true，指针类型以便区分“未设置”与“显式 false”。
+type AiSessionExternalOriginType struct {
+	Label    string `json:"label"`
+	Path     string `json:"path"`
+	Source   string `json:"source,omitempty"` // 缺省 pi
+	ReadOnly *bool  `json:"readonly,omitempty"`
+}
+
 type SettingsType struct {
 	AppClear                      bool   `json:"app:*,omitempty"`
 	AppGlobalHotkey               string `json:"app:globalhotkey,omitempty"`
@@ -215,6 +224,10 @@ type SettingsType struct {
 	AiSessionAutoTitleIntervalMs  *int64 `json:"ai:sessionautotitleintervalms,omitempty"`
 	AiSessionAutoTitleBatchSize   *int64 `json:"ai:sessionautotitlebatchsize,omitempty"`
 	AiSessionAutoTitleConcurrency *int64 `json:"ai:sessionautotitleconcurrency,omitempty"`
+
+	// ai:sessions:externalorigins — 额外的只读会话扫描根（其它机器 dump 的会话目录）。
+	// 每一项描述一个 origin；缺失/非法项由 aisessions 层跳过，不影响本机 origin。
+	AiSessionExternalOrigins []AiSessionExternalOriginType `json:"ai:sessions:externalorigins,omitempty"`
 
 	WaveAiShowCloudModes bool   `json:"waveai:showcloudmodes,omitempty"`
 	WaveAiDefaultMode    string `json:"waveai:defaultmode,omitempty"`

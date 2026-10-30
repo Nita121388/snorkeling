@@ -187,6 +187,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "NoteAndTags", Array.from(arguments))
     }
 
+    // list selectable AI session origins (local machine + external dumps)
+    // @returns available AI session origins
+    Origins(request: AISessionsOriginsRequest): Promise<AISessionsOriginsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "Origins", Array.from(arguments))
+    }
+
     // list AI prompt features with their built-in defaults
     // @returns prompt feature metadata for the settings page
     PromptTemplates(request: AISessionsPromptTemplatesRequest): Promise<AISessionsPromptTemplatesResponse> {
