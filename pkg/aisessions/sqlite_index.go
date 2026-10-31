@@ -192,6 +192,8 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 			prop_type TEXT NOT NULL DEFAULT '',
 			source TEXT NOT NULL DEFAULT 'user',
 			updated_at INTEGER NOT NULL DEFAULT 0,
+			prop_name TEXT NOT NULL DEFAULT '',
+			prop_order INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY(session_key, prop_key)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_session_props_session ON ai_session_props(session_key)`,
@@ -272,6 +274,9 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 	if err := idx.ensureAnnotationColumns(ctx); err != nil {
 		return err
 	}
+	if err := idx.ensurePropsColumns(ctx); err != nil {
+		return err
+	}
 	if err := idx.migrateThinkingMessageCache(ctx, existingSchemaVersion); err != nil {
 		return err
 	}
@@ -284,6 +289,35 @@ func (idx *SQLiteIndex) init(ctx context.Context) error {
 	}
 	if tagMigrationComplete {
 		if err := idx.setSchemaMeta(ctx, "schema_version", sqliteIndexSchemaVersion); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensurePropsColumns adds the rename/order columns to ai_session_props for
+// databases created before they existed. CREATE TABLE IF NOT EXISTS does not
+// alter an existing table, so this runtime ALTER is required.
+func (idx *SQLiteIndex) ensurePropsColumns(ctx context.Context) error {
+	var columns []struct {
+		Name string `db:"name"`
+	}
+	if err := idx.db.SelectContext(ctx, &columns, `SELECT name FROM pragma_table_info('ai_session_props')`); err != nil {
+		return err
+	}
+	existing := make(map[string]bool, len(columns))
+	for _, column := range columns {
+		existing[column.Name] = true
+	}
+	wanted := map[string]string{
+		"prop_name":  "TEXT NOT NULL DEFAULT ''",
+		"prop_order": "INTEGER NOT NULL DEFAULT 0",
+	}
+	for name, definition := range wanted {
+		if existing[name] {
+			continue
+		}
+		if _, err := idx.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE ai_session_props ADD COLUMN %s %s", name, definition)); err != nil {
 			return err
 		}
 	}
@@ -968,19 +1002,20 @@ func (idx *SQLiteIndex) PropsForSession(ctx context.Context, key string) (map[st
 	if key == "" {
 		return nil, nil
 	}
-	rows, err := idx.db.QueryxContext(ctx, `SELECT prop_key, value_json, prop_type, source, updated_at FROM ai_session_props WHERE session_key = ?`, key)
+	rows, err := idx.db.QueryxContext(ctx, `SELECT prop_key, value_json, prop_type, source, updated_at, prop_name, prop_order FROM ai_session_props WHERE session_key = ?`, key)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	props := make(map[string]PropertyCell)
 	for rows.Next() {
-		var propKey, valueJSON, propType, source string
+		var propKey, valueJSON, propType, source, propName string
 		var updatedAt int64
-		if err := rows.Scan(&propKey, &valueJSON, &propType, &source, &updatedAt); err != nil {
+		var propOrder int
+		if err := rows.Scan(&propKey, &valueJSON, &propType, &source, &updatedAt, &propName, &propOrder); err != nil {
 			return nil, err
 		}
-		cell := PropertyCell{Type: propType, Source: source, UpdatedAt: updatedAt}
+		cell := PropertyCell{Type: propType, Source: source, UpdatedAt: updatedAt, Name: propName, Order: propOrder}
 		if valueJSON != "" && valueJSON != "null" {
 			var value any
 			if err := json.Unmarshal([]byte(valueJSON), &value); err != nil {
@@ -1040,14 +1075,16 @@ func (idx *SQLiteIndex) SetProps(ctx context.Context, key string, props map[stri
 		if source == "" {
 			source = PropertySourceUser
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO ai_session_props(session_key, prop_key, value_json, prop_type, source, updated_at)
-			VALUES(?, ?, ?, ?, ?, ?)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO ai_session_props(session_key, prop_key, value_json, prop_type, source, updated_at, prop_name, prop_order)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(session_key, prop_key) DO UPDATE SET
 				value_json = excluded.value_json,
 				prop_type = excluded.prop_type,
 				source = excluded.source,
-				updated_at = excluded.updated_at`,
-			key, propKey, string(valueJSON), cell.Type, source, updatedAt); err != nil {
+				updated_at = excluded.updated_at,
+				prop_name = excluded.prop_name,
+				prop_order = excluded.prop_order`,
+			key, propKey, string(valueJSON), cell.Type, source, updatedAt, cell.Name, cell.Order); err != nil {
 			return err
 		}
 	}

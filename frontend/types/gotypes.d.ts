@@ -582,6 +582,17 @@ declare global {
         env?: {[key: string]: string};
     };
 
+    // wconfig.AgentPropertyDefType
+    type AgentPropertyDefType = {
+        key?: string;
+        name?: string;
+        type?: string;
+        options?: string[];
+        order?: number;
+        aiManaged?: boolean;
+        aiInstruction?: string;
+    };
+
     // agentstatus.AgentStatus
     type AgentStatus = {
         blockId: string;
@@ -2408,6 +2419,8 @@ declare global {
         type?: string;
         source?: string;
         updatedAt?: number;
+        name?: string;
+        order?: number;
     };
 
     // aisessions.PropertySuggestion
@@ -2742,6 +2755,7 @@ declare global {
         "agent:*"?: boolean;
         "agent:defaultprofile"?: string;
         "agent:profiles"?: {[key: string]: AgentProfileConfigType};
+        "agent:propertyschema"?: AgentPropertyDefType[];
         "agentstatus:*"?: boolean;
         "agentstatus:osnotify"?: boolean;
         "agentstatus:osnotifydone"?: boolean;

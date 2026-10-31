@@ -61,6 +61,10 @@ export type PropertyCell = {
     updatedAt: number;
     /** 类型冗余在 cell 上，使自定义属性自描述（无需 per-session schema 表）。 */
     type?: PropertyType;
+    /** 用户重命名后的显示名（空则回落 key / 全局模板）。 */
+    name?: string;
+    /** 自定义属性排序（>0 生效）。 */
+    order?: number;
 };
 
 export type PropertyDef = {
@@ -157,7 +161,13 @@ function inferPropertyTypeFor(key: string, value: PropertyValue): PropertyType {
  * - 自定义 props 追加在后面，按其 cell.type 或推断决定 type。
  * - 旧数据：summary 没有 props 时只看到内置属性，UI 与今天等价。
  */
-export function toPropertyDefs(summary: SessionSummary | null | undefined): PropertyEntry[] {
+export type SchemaDef = AgentPropertyDefType;
+
+function schemaKey(def: SchemaDef): string {
+    return slugifyPropertyKey(def.key ?? "");
+}
+
+export function toPropertyDefs(summary: SessionSummary | null | undefined, schema?: SchemaDef[]): PropertyEntry[] {
     if (summary == null) return [];
     const entries: PropertyEntry[] = [];
 
@@ -191,43 +201,90 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined): Prop
     pushBuiltin(BUILTIN_PROP_KEYS.tags, "multi_select", tags, false, tags.map(tagToOption));
     pushBuiltin(BUILTIN_PROP_KEYS.note, "text", summary.note ?? "");
 
-    // 自定义 props（叠加层）。
+    // 全局模板（wconfig agent:propertyschema）按 key 建索引。
+    const schemaByKey = new Map<string, SchemaDef>();
+    for (const def of schema ?? []) {
+        const k = schemaKey(def);
+        if (k !== "") schemaByKey.set(k, def);
+    }
+
+    // 自定义 props（叠加层）。name/order 优先取 per-session 覆盖，其次全局模板。
     const props = summary.props;
-    if (props != null) {
-        let order = 100;
-        const customKeys = Object.keys(props).sort();
-        for (const key of customKeys) {
-            const cell = props[key];
-            if (cell == null) continue;
-            const type: PropertyType =
-                (cell.type as PropertyType) || inferPropertyTypeFor(key, cell.value as PropertyValue);
-            let options: SelectOption[] | undefined;
-            if (type === "select" || type === "status" || type === "multi_select") {
-                const values = Array.isArray(cell.value)
-                    ? (cell.value as string[])
-                    : cell.value != null
-                      ? [String(cell.value)]
-                      : [];
-                options = values.map(tagToOption);
-            }
-            entries.push({
-                def: {
-                    key,
-                    name: humanizeKey(key),
-                    type,
-                    options,
-                    order: order++,
-                    scope: "session",
-                    builtin: false,
-                },
-                cell: {
-                    value: (cell.value as PropertyValue) ?? null,
-                    source: (cell.source as PropertySource) || "user",
-                    updatedAt: cell.updatedAt ?? 0,
-                    type,
-                },
-            });
+    const propsMap: Record<string, any> = props ?? {};
+    const usedSchemaKeys = new Set<string>();
+    let seq = 0;
+    for (const key of Object.keys(propsMap).sort()) {
+        const cell = propsMap[key];
+        if (cell == null) continue;
+        usedSchemaKeys.add(key);
+        const schemaDef = schemaByKey.get(key);
+        const type: PropertyType =
+            (cell.type as PropertyType) ||
+            (schemaDef?.type as PropertyType) ||
+            inferPropertyTypeFor(key, cell.value as PropertyValue);
+        let options: SelectOption[] | undefined;
+        if (type === "select" || type === "status" || type === "multi_select") {
+            const values = Array.isArray(cell.value)
+                ? (cell.value as string[])
+                : cell.value != null
+                  ? [String(cell.value)]
+                  : [];
+            const fromValues = values.map(tagToOption);
+            options = schemaDef?.options?.length
+                ? schemaDef.options.map(tagToOption)
+                : fromValues;
         }
+        const name = (cell.name ?? "").trim() || (schemaDef?.name ?? "").trim() || humanizeKey(key);
+        const baseOrder = typeof cell.order === "number" && cell.order > 0 ? cell.order : seq;
+        const order = 100 + baseOrder;
+        entries.push({
+            def: {
+                key,
+                name,
+                type,
+                options,
+                order,
+                scope: "session",
+                builtin: false,
+                aiManaged: schemaDef?.aiManaged === true,
+                aiInstruction: schemaDef?.aiInstruction,
+                readOnly: type === "formula" || type === "created_time" || type === "updated_time",
+            },
+            cell: {
+                value: (cell.value as PropertyValue) ?? null,
+                source: (cell.source as PropertySource) || "user",
+                updatedAt: cell.updatedAt ?? 0,
+                type,
+            },
+        });
+        seq++;
+    }
+
+    // 模板里定义、但当前会话还没有值的属性：以空值出现（card 隐藏、detail 显示 Empty）。
+    let schemaSeq = 0;
+    for (const [key, schemaDef] of schemaByKey) {
+        if (usedSchemaKeys.has(key)) continue;
+        const type = (schemaDef.type as PropertyType) || "text";
+        entries.push({
+            def: {
+                key,
+                name: (schemaDef.name ?? "").trim() || humanizeKey(key),
+                type,
+                options: schemaDef.options?.length ? schemaDef.options.map(tagToOption) : undefined,
+                order:
+                    100 +
+                    (typeof schemaDef.order === "number" && schemaDef.order > 0
+                        ? schemaDef.order
+                        : 1000 + schemaSeq),
+                scope: "session",
+                builtin: false,
+                aiManaged: schemaDef.aiManaged === true,
+                aiInstruction: schemaDef.aiInstruction,
+                readOnly: type === "formula" || type === "created_time" || type === "updated_time",
+            },
+            cell: { value: null, source: "user", updatedAt: 0, type },
+        });
+        schemaSeq++;
     }
 
     entries.sort((a, b) => a.def.order - b.def.order || a.def.key.localeCompare(b.def.key));

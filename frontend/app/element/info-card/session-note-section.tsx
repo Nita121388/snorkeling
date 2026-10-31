@@ -17,6 +17,10 @@ import type { SessionNoteState } from "@/app/store/session-note-hook";
 import { GenActionButton } from "@/app/view/aisessions/gen-action-button";
 import { PropertyList } from "@/app/view/aisessions/property/property-list";
 import { AIPropertiesButton } from "@/app/view/aisessions/property/property-ai";
+import { usePropertySchema, setPropertySchema, upsertSchemaDef } from "@/app/view/aisessions/property/property-schema";
+import { patchSessionProperty } from "@/app/view/aisessions/property/property-store";
+import { toPropertyDefs } from "@/app/view/aisessions/property/property-model";
+import { saveSessionProps } from "@/app/store/session-note-cache";
 import { setSessionProperty } from "@/app/view/aisessions/property/property-store";
 import { humanizeKey, type PropertyDef, type PropertyType, type PropertyValue } from "@/app/view/aisessions/property/property-model";
 import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
@@ -73,6 +77,7 @@ export function SessionNoteSection({
     const undo = useNoteUndo(state.service, sessionKey, connection);
     const prevNoteRef = React.useRef<NoteUndoSnapshot | null>(null);
     const [genError, setGenError] = React.useState("");
+    const schema = usePropertySchema();
 
     const writeProperty = React.useCallback(
         (def: PropertyDef, value: PropertyValue) => {
@@ -90,7 +95,7 @@ export function SessionNoteSection({
     );
 
     const addProperty = React.useCallback(
-        (key: string, type: PropertyType) => {
+        (key: string, type: PropertyType, saveToTemplate: boolean) => {
             // 新建的空属性需要非 null 初值才能落库（SetProps 把 null 当删除）。
             const initial: PropertyValue =
                 type === "multi_select" || type === "person" || type === "relation"
@@ -102,8 +107,17 @@ export function SessionNoteSection({
                 { key, name: humanizeKey(key), type, order: 100, scope: "session", builtin: false },
                 initial
             );
+            if (saveToTemplate) {
+                const next = upsertSchemaDef(schema, {
+                    key,
+                    name: humanizeKey(key),
+                    type,
+                    order: schema.length + 1,
+                });
+                void setPropertySchema(next);
+            }
         },
-        [writeProperty]
+        [writeProperty, schema]
     );
 
     const deleteProperty = React.useCallback(
@@ -114,6 +128,59 @@ export function SessionNoteSection({
             );
         },
         [writeProperty]
+    );
+
+    const renameProperty = React.useCallback(
+        (key: string, name: string) => {
+            if (summary == null) return;
+            void patchSessionProperty({
+                service: state.service,
+                sessionId: sessionKey,
+                connection,
+                summary,
+                key,
+                name,
+            });
+        },
+        [connection, sessionKey, state.service, summary]
+    );
+
+    const retypeProperty = React.useCallback(
+        (key: string, type: PropertyType) => {
+            if (summary == null) return;
+            void patchSessionProperty({
+                service: state.service,
+                sessionId: sessionKey,
+                connection,
+                summary,
+                key,
+                type,
+            });
+        },
+        [connection, sessionKey, state.service, summary]
+    );
+
+    const moveProperty = React.useCallback(
+        (key: string, direction: -1 | 1) => {
+            if (summary == null) return;
+            const defs = toPropertyDefs(summary, schema).filter(
+                (entry) => !entry.def.builtin && summary.props?.[entry.def.key] != null
+            );
+            const index = defs.findIndex((entry) => entry.def.key === key);
+            const target = index + direction;
+            if (index < 0 || target < 0 || target >= defs.length) return;
+            const keys = defs.map((entry) => entry.def.key);
+            const tmp = keys[index];
+            keys[index] = keys[target];
+            keys[target] = tmp;
+            const next: { [key: string]: PropertyCell } = {};
+            keys.forEach((k, i) => {
+                const existing = summary.props[k];
+                next[k] = { ...existing, order: i + 1, updatedAt: Date.now() };
+            });
+            void saveSessionProps(state.service, sessionKey, connection, next);
+        },
+        [connection, schema, sessionKey, state.service, summary]
     );
 
     if (summary == null) {
@@ -214,8 +281,12 @@ export function SessionNoteSection({
                     summary={summary}
                     mode={canEditProperties ? "detail" : "card"}
                     canEdit={canEditProperties}
+                    schema={schema}
                     onAddProperty={canEditProperties ? addProperty : undefined}
                     onDeleteProperty={canEditProperties ? deleteProperty : undefined}
+                    onRenameProperty={canEditProperties ? renameProperty : undefined}
+                    onRetypeProperty={canEditProperties ? retypeProperty : undefined}
+                    onMoveProperty={canEditProperties ? moveProperty : undefined}
                     footer={
                         canEditProperties ? (
                             <AIPropertiesButton

@@ -147,3 +147,37 @@ describe("slugifyPropertyKey", () => {
         expect(slugifyPropertyKey("   ")).toBe("");
     });
 });
+
+describe("toPropertyDefs with global schema", () => {
+    const schema: AgentPropertyDefType[] = [
+        { key: "tech_stack", name: "Tech Stack", type: "multi_select", order: 1, options: ["go", "react"] },
+        { key: "owner", name: "Owner", type: "person", order: 2 },
+    ];
+
+    it("uses the schema name when the session has no custom name", () => {
+        const entries = toPropertyDefs(
+            makeSummary({ props: { tech_stack: { value: ["go"], type: "multi_select" } } }),
+            schema
+        );
+        const tech = entries.find((entry) => entry.def.key === "tech_stack")!;
+        expect(tech.def.name).toBe("Tech Stack");
+        expect(tech.def.options?.map((o) => o.id)).toEqual(["go", "react"]);
+    });
+
+    it("prefers the per-session name/order override", () => {
+        const entries = toPropertyDefs(
+            makeSummary({ props: { tech_stack: { value: ["go"], type: "multi_select", name: "Stack", order: 9 } } }),
+            schema
+        );
+        const tech = entries.find((entry) => entry.def.key === "tech_stack")!;
+        expect(tech.def.name).toBe("Stack");
+    });
+
+    it("renders schema-only properties with an empty value", () => {
+        const entries = toPropertyDefs(makeSummary({ props: {} }), schema);
+        const owner = entries.find((entry) => entry.def.key === "owner")!;
+        expect(owner.def.name).toBe("Owner");
+        expect(owner.cell.value).toBeNull();
+        expect(owner.def.type).toBe("person");
+    });
+});

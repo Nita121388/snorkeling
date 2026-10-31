@@ -16,6 +16,7 @@ import {
     formatDateTimeValue,
     formatValue,
     isEmptyValue,
+    type SchemaDef,
     slugifyPropertyKey,
     typeLabel,
     type PropertyDef,
@@ -38,10 +39,18 @@ export type PropertyListProps = {
     onEditNote?: () => void;
     /** 值变更（内置与自定义都走这里，由上层决定写哪个 RPC）。 */
     onChange?: (key: string, value: PropertyValue, def: PropertyDef) => void;
-    /** 新建自定义属性（detail 模式 + canEdit 时展示入口）。 */
-    onAddProperty?: (key: string, type: PropertyType) => void;
+    /** 新建自定义属性（detail 模式 + canEdit 时展示入口）。saveToTemplate=true 时同时写入全局模板。 */
+    onAddProperty?: (key: string, type: PropertyType, saveToTemplate: boolean) => void;
     /** 删除自定义属性（仅 non-builtin）。 */
     onDeleteProperty?: (key: string) => void;
+    /** 重命名自定义属性（改显示名，不改 key）。 */
+    onRenameProperty?: (key: string, name: string) => void;
+    /** 修改自定义属性类型。 */
+    onRetypeProperty?: (key: string, type: PropertyType) => void;
+    /** 调整自定义属性顺序（-1 上移 / 1 下移）。 */
+    onMoveProperty?: (key: string, direction: -1 | 1) => void;
+    /** 全局属性模板（wconfig agent:propertyschema）。 */
+    schema?: SchemaDef[];
     /** 尾部插槽（详情卡放 AI 自动填入）。 */
     footer?: React.ReactNode;
     canEdit?: boolean;
@@ -225,10 +234,11 @@ function AddPropertyForm({
     existingKeys: string[];
     adding: boolean;
     setAdding: (value: boolean) => void;
-    onSubmit: (key: string, type: PropertyType) => void;
+    onSubmit: (key: string, type: PropertyType, saveToTemplate: boolean) => void;
 }) {
     const [name, setName] = React.useState("");
     const [type, setType] = React.useState<PropertyType>("text");
+    const [saveToTemplate, setSaveToTemplate] = React.useState(true);
     const [error, setError] = React.useState("");
 
     if (!adding) {
@@ -250,9 +260,10 @@ function AddPropertyForm({
             return;
         }
         setError("");
-        onSubmit(key, type);
+        onSubmit(key, type, saveToTemplate);
         setName("");
         setType("text");
+        setSaveToTemplate(true);
     };
 
     return (
@@ -281,6 +292,14 @@ function AddPropertyForm({
                     </option>
                 ))}
             </select>
+            <label className="property-add-template">
+                <input
+                    type="checkbox"
+                    checked={saveToTemplate}
+                    onChange={(event) => setSaveToTemplate(event.target.checked)}
+                />
+                Save to template
+            </label>
             <button type="button" className="property-add-ok" onClick={submit}>
                 Add
             </button>
@@ -300,13 +319,20 @@ export function PropertyList({
     onChange,
     onAddProperty,
     onDeleteProperty,
+    onRenameProperty,
+    onRetypeProperty,
+    onMoveProperty,
+    schema,
     footer,
     canEdit = false,
 }: PropertyListProps) {
-    const entries = React.useMemo(() => toPropertyDefs(summary), [summary]);
+    const entries = React.useMemo(() => toPropertyDefs(summary, schema), [summary, schema]);
     const [expanded, setExpanded] = React.useState(false);
     const [editingKey, setEditingKey] = React.useState<string | null>(null);
     const [adding, setAdding] = React.useState(false);
+    const [menuKey, setMenuKey] = React.useState<string | null>(null);
+    const [renamingKey, setRenamingKey] = React.useState<string | null>(null);
+    const [retypeKey, setRetypeKey] = React.useState<string | null>(null);
 
     const visible = React.useMemo(() => {
         if (mode === "detail") return entries;
@@ -330,13 +356,21 @@ export function PropertyList({
         onChange?.(entry.def.key, next, entry.def);
     };
 
+    const customKeys = entries.filter((e) => !e.def.builtin).map((e) => e.def.key);
+    const customIndex = (key: string) => customKeys.indexOf(key);
+
     const renderRow = (entry: PropertyEntry) => {
         const { def, cell } = entry;
         const isNote = def.key === "note";
         const empty = isEmptyValue(def, cell.value);
         const editable = canEdit && !def.readOnly && onChange != null;
-        const deletable = canEdit && !def.builtin && onDeleteProperty != null;
+        const manageable = canEdit && !def.builtin && (onDeleteProperty != null || onRenameProperty != null || onRetypeProperty != null);
         const isEditing = editingKey === def.key && editable;
+        const isRenaming = renamingKey === def.key;
+        const isRetyping = retypeKey === def.key;
+        const idx = customIndex(def.key);
+        const canUp = manageable && onMoveProperty != null && idx > 0;
+        const canDown = manageable && onMoveProperty != null && idx >= 0 && idx < customKeys.length - 1;
         void empty;
         return (
             <div
@@ -346,13 +380,36 @@ export function PropertyList({
                     def.readOnly && "is-readonly",
                     isNote && "is-note",
                     editable && "is-editable",
-                    isEditing && "is-editing"
+                    (isEditing || isRenaming || isRetyping) && "is-editing"
                 )}
                 data-property-key={def.key}
                 data-property-type={def.type}
             >
                 <span className="property-row__name" title={def.name}>
-                    {def.name}
+                    {isRenaming ? (
+                        <input
+                            autoFocus
+                            className="property-edit-input"
+                            aria-label={`Rename ${def.name}`}
+                            defaultValue={def.name}
+                            onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                    setRenamingKey(null);
+                                } else if (event.key === "Enter") {
+                                    const next = event.currentTarget.value.trim();
+                                    setRenamingKey(null);
+                                    if (next !== "" && next !== def.name) onRenameProperty?.(def.key, next);
+                                }
+                            }}
+                            onBlur={(event) => {
+                                const next = event.currentTarget.value.trim();
+                                setRenamingKey(null);
+                                if (next !== "" && next !== def.name) onRenameProperty?.(def.key, next);
+                            }}
+                        />
+                    ) : (
+                        def.name
+                    )}
                 </span>
                 <span className="property-row__value">
                     {isEditing ? (
@@ -362,6 +419,25 @@ export function PropertyList({
                             onSubmit={(next) => submit(entry, next)}
                             onCancel={() => setEditingKey(null)}
                         />
+                    ) : isRetyping ? (
+                        <select
+                            autoFocus
+                            className="property-select"
+                            aria-label={`Change type of ${def.name}`}
+                            value={def.type}
+                            onChange={(event) => {
+                                const next = event.target.value as PropertyType;
+                                setRetypeKey(null);
+                                onRetypeProperty?.(def.key, next);
+                            }}
+                            onBlur={() => setRetypeKey(null)}
+                        >
+                            {CreatableTypes.map((t) => (
+                                <option key={t} value={t}>
+                                    {typeLabel(t)}
+                                </option>
+                            ))}
+                        </select>
                     ) : (
                         <button
                             type="button"
@@ -372,22 +448,50 @@ export function PropertyList({
                         >
                             <ValueDisplay def={def} value={cell.value} />
                             {sourceMarker(cell.source)}
-                            {empty && mode === "detail" && def.type !== "checkbox" ? null : null}
                         </button>
                     )}
-                    {deletable ? (
+                    {manageable ? (
                         <button
                             type="button"
-                            className="property-row__delete"
-                            aria-label={`Delete ${def.name}`}
-                            title={`Delete ${def.name}`}
+                            className="property-row__menu-btn"
+                            aria-label={`Property menu for ${def.name}`}
+                            title="Property menu"
                             onClick={(event) => {
                                 event.stopPropagation();
-                                onDeleteProperty?.(def.key);
+                                setMenuKey(menuKey === def.key ? null : def.key);
                             }}
                         >
-                            <i className="fa-sharp fa-solid fa-xmark" />
+                            <i className="fa-sharp fa-solid fa-ellipsis" />
                         </button>
+                    ) : null}
+                    {manageable && menuKey === def.key ? (
+                        <div className="property-row__menu" role="menu">
+                            {onRenameProperty != null ? (
+                                <button type="button" role="menuitem" onClick={() => { setMenuKey(null); setRenamingKey(def.key); }}>
+                                    Rename
+                                </button>
+                            ) : null}
+                            {onRetypeProperty != null ? (
+                                <button type="button" role="menuitem" onClick={() => { setMenuKey(null); setRetypeKey(def.key); }}>
+                                    Change type
+                                </button>
+                            ) : null}
+                            {onMoveProperty != null ? (
+                                <>
+                                    <button type="button" role="menuitem" disabled={!canUp} onClick={() => { setMenuKey(null); onMoveProperty(def.key, -1); }}>
+                                        Move up
+                                    </button>
+                                    <button type="button" role="menuitem" disabled={!canDown} onClick={() => { setMenuKey(null); onMoveProperty(def.key, 1); }}>
+                                        Move down
+                                    </button>
+                                </>
+                            ) : null}
+                            {onDeleteProperty != null ? (
+                                <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuKey(null); onDeleteProperty(def.key); }}>
+                                    Delete
+                                </button>
+                            ) : null}
+                        </div>
                     ) : null}
                 </span>
             </div>
@@ -422,9 +526,9 @@ export function PropertyList({
                     existingKeys={entries.map((entry) => entry.def.key)}
                     adding={adding}
                     setAdding={setAdding}
-                    onSubmit={(key, type) => {
+                    onSubmit={(key, type, saveToTemplate) => {
                         setAdding(false);
-                        onAddProperty(key, type);
+                        onAddProperty(key, type, saveToTemplate);
                     }}
                 />
             ) : null}

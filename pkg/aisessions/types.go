@@ -42,6 +42,10 @@ type PropertyCell struct {
 	Type      string `json:"type,omitempty"`
 	Source    string `json:"source,omitempty"`
 	UpdatedAt int64  `json:"updatedAt,omitempty"`
+	// Name is the user-visible label (rename). Empty falls back to the key.
+	Name string `json:"name,omitempty"`
+	// Order controls custom-property display order (ascending). 0 means unset.
+	Order int `json:"order,omitempty"`
 }
 
 type SessionSummary struct {

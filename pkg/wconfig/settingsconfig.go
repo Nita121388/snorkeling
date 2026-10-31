@@ -75,6 +75,20 @@ type AgentProfileConfigType struct {
 	CmdEnv    map[string]string      `json:"env,omitempty"`
 }
 
+// AgentPropertyDefType is one entry in the global Notion-style property schema
+// (settings.json -> "agent:propertyschema"). It defines a reusable property:
+// its key, label, type, selectable options and display order. Session values
+// live separately in SessionSummary.Props.
+type AgentPropertyDefType struct {
+	Key           string   `json:"key,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	Type          string   `json:"type,omitempty" jsonschema:"enum=text,enum=number,enum=select,enum=multi_select,enum=status,enum=date,enum=person,enum=checkbox,enum=url,enum=formula,enum=relation,enum=created_time,enum=updated_time"`
+	Options       []string `json:"options,omitempty"`
+	Order         int      `json:"order,omitempty"`
+	AIManaged     bool     `json:"aiManaged,omitempty"`
+	AIInstruction string   `json:"aiInstruction,omitempty"`
+}
+
 type CommonTextItemType struct {
 	Id         string   `json:"id,omitempty"`
 	Title      string   `json:"title,omitempty"`
@@ -182,6 +196,11 @@ type SettingsType struct {
 	AgentClear          bool                              `json:"agent:*,omitempty"`
 	AgentDefaultProfile string                            `json:"agent:defaultprofile,omitempty"`
 	AgentProfiles       map[string]AgentProfileConfigType `json:"agent:profiles,omitempty"`
+	// AgentPropertySchema holds the user-managed Notion-style property
+	// definitions (name, type, options, order, scope). It is the global template;
+	// session props are additive values stored per-session. Empty/legacy configs
+	// simply have no custom definitions.
+	AgentPropertySchema []AgentPropertyDefType          `json:"agent:propertyschema,omitempty"`
 
 	// agentstatus:osnotify — system (OS-level) notifications for agent state transitions.
 	// POC scope: done (non-idle → idle completion) and blocked. All flags default true except
