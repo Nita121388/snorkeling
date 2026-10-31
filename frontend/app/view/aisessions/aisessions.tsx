@@ -721,6 +721,7 @@ export class AiSessionsViewModel implements ViewModel {
             const response = await this.service.Tags({
                 source: globalStore.get(this.sourceAtom),
                 connection: this.getConnection(),
+                origin: this.getOrigin(),
                 marked: globalStore.get(this.markedFilterAtom),
                 since,
                 before,

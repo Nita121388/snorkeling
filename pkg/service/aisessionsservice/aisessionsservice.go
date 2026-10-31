@@ -659,6 +659,9 @@ func (svc *AISessionsService) Tags(ctx context.Context, request *AISessionsTagsR
 	if request == nil {
 		request = &AISessionsTagsRequest{}
 	}
+	if strings.TrimSpace(request.Origin) == OriginAllID {
+		return svc.listAllTags(ctx, request)
+	}
 	manager, err := svc.managerForScope(ctx, "", request.Connection, request.Origin)
 	if err != nil {
 		return nil, err

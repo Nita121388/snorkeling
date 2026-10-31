@@ -141,3 +141,50 @@ func externalOriginIDs() []string {
 	}
 	return ids
 }
+
+// listAllTags merges tag counts across every origin for the "All machines" view.
+// Counts are summed by tag name; ordering is count desc then name asc.
+func (svc *AISessionsService) listAllTags(ctx context.Context, request *AISessionsTagsRequest) (*AISessionsTagsResponse, error) {
+	opts := aisessions.ListOptions{
+		Source:          request.Source,
+		Project:         request.Project,
+		Projects:        request.Projects,
+		ExcludeProjects: request.ExcludeProjects,
+		Marked:          request.Marked,
+		Since:           request.Since,
+		Before:          request.Before,
+		TagFilters:      request.TagFilters,
+		ExcludeTags:     request.ExcludeTags,
+		TagPresence:     request.TagPresence,
+		Refresh:         request.Refresh,
+	}
+	originIDs := append([]string{aisessions.OriginLocalID}, externalOriginIDs()...)
+	counts := make(map[string]int)
+	for _, originID := range originIDs {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		manager, _, err := managerForOrigin(ctx, originID)
+		if err != nil {
+			continue
+		}
+		tags, err := manager.ListTags(ctx, opts)
+		if err != nil {
+			continue
+		}
+		for _, tag := range tags {
+			counts[tag.Tag] += tag.Count
+		}
+	}
+	merged := make([]aisessions.SessionTagSummary, 0, len(counts))
+	for tag, count := range counts {
+		merged = append(merged, aisessions.SessionTagSummary{Tag: tag, Count: count})
+	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		if merged[i].Count != merged[j].Count {
+			return merged[i].Count > merged[j].Count
+		}
+		return merged[i].Tag < merged[j].Tag
+	})
+	return &AISessionsTagsResponse{Tags: merged}, nil
+}
