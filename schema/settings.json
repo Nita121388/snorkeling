@@ -60,6 +60,28 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "AiSessionExternalOriginType": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "readonly": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "label",
+        "path"
+      ]
+    },
     "CommonTextItemType": {
       "properties": {
         "id": {
@@ -419,6 +441,12 @@
         },
         "ai:sessionautotitleconcurrency": {
           "type": "integer"
+        },
+        "ai:sessions:externalorigins": {
+          "items": {
+            "$ref": "#/$defs/AiSessionExternalOriginType"
+          },
+          "type": "array"
         },
         "waveai:showcloudmodes": {
           "type": "boolean"

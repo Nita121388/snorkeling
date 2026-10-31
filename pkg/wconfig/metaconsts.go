@@ -55,6 +55,7 @@ const (
 	ConfigKey_AiSessionAutoTitleIntervalMs   = "ai:sessionautotitleintervalms"
 	ConfigKey_AiSessionAutoTitleBatchSize    = "ai:sessionautotitlebatchsize"
 	ConfigKey_AiSessionAutoTitleConcurrency  = "ai:sessionautotitleconcurrency"
+	ConfigKey_AiSessionExternalOrigins       = "ai:sessions:externalorigins"
 
 	ConfigKey_WaveAiShowCloudModes           = "waveai:showcloudmodes"
 	ConfigKey_WaveAiDefaultMode              = "waveai:defaultmode"
