@@ -320,3 +320,110 @@
     color: var(--error-color, #d44c47);
     font-size: 10px;
 }
+
+.property-ai {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 4px 4px 2px;
+    font-size: 11px;
+}
+
+.property-ai-trigger {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border: 1px dashed var(--border-color);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+.property-ai-status {
+    color: var(--secondary-text-color);
+}
+
+.property-ai-proposal {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 6px;
+    background: var(--surface-soft-color, transparent);
+}
+
+.property-ai-proposal-head {
+    color: var(--secondary-text-color);
+    margin-bottom: 2px;
+}
+
+.property-ai-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.property-ai-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.property-ai-key {
+    flex: 0 0 auto;
+    color: var(--main-text-color);
+    font-weight: 500;
+}
+
+.property-ai-type {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+}
+
+.property-ai-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--secondary-text-color);
+}
+
+.property-ai-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.property-ai-undo {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--secondary-text-color);
+
+    button {
+        border: none;
+        background: transparent;
+        color: var(--accent-color);
+        cursor: pointer;
+        padding: 0;
+        font-size: inherit;
+        text-decoration: underline;
+    }
+}
+
+.property-ai-error {
+    color: var(--error-color, #d44c47);
+}

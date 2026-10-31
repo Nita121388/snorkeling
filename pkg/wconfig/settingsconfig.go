@@ -500,6 +500,8 @@ type AIPromptConfigType struct {
 	MaxTitleChars     int    `json:"maxTitleChars,omitempty"`
 	MaxAnnotations    int    `json:"maxAnnotations,omitempty"`
 	MaxBodyChars      int    `json:"maxBodyChars,omitempty"`
+	// MaxProperties bounds how many custom properties one AI pass may propose.
+	MaxProperties int `json:"maxProperties,omitempty"`
 	// Enabled is a pointer so "unset" means enabled; an explicit false disables
 	// the feature's entry point without deleting the prompt.
 	Enabled *bool `json:"enabled,omitempty"`

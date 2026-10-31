@@ -65,6 +65,7 @@ declare global {
         maxTitleChars?: number;
         maxAnnotations?: number;
         maxBodyChars?: number;
+        maxProperties?: number;
         enabled?: boolean;
     };
 
@@ -154,6 +155,20 @@ declare global {
     // aisessionsservice.AISessionsAnnotationsResponse
     type AISessionsAnnotationsResponse = {
         annotations: AnnotationView[];
+    };
+
+    // aisessionsservice.AISessionsApplyPropertiesRequest
+    type AISessionsApplyPropertiesRequest = {
+        id: string;
+        connection?: string;
+        properties: PropertySuggestion[];
+        force?: boolean;
+    };
+
+    // aisessionsservice.AISessionsApplyPropertiesResponse
+    type AISessionsApplyPropertiesResponse = {
+        summary: SessionSummary;
+        skipped?: string[];
     };
 
     // aisessionsservice.AISessionsAuditClearRequest
@@ -266,6 +281,19 @@ declare global {
     type AISessionsGenerateMetadataResponse = {
         summary: SessionSummary;
         suggestion: MetadataSuggestion;
+    };
+
+    // aisessionsservice.AISessionsGeneratePropertiesRequest
+    type AISessionsGeneratePropertiesRequest = {
+        id: string;
+        connection?: string;
+        aiMode?: string;
+    };
+
+    // aisessionsservice.AISessionsGeneratePropertiesResponse
+    type AISessionsGeneratePropertiesResponse = {
+        summary: SessionSummary;
+        properties: PropertySuggestion[];
     };
 
     // aisessionsservice.AISessionsGenerateTitleRequest
@@ -2380,6 +2408,15 @@ declare global {
         type?: string;
         source?: string;
         updatedAt?: number;
+    };
+
+    // aisessions.PropertySuggestion
+    type PropertySuggestion = {
+        key: string;
+        name?: string;
+        type: string;
+        value: any;
+        confidence?: number;
     };
 
     // uctypes.RateLimitInfo

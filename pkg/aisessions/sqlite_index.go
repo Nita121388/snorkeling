@@ -727,14 +727,19 @@ func (idx *SQLiteIndex) upsertMetaTx(ctx context.Context, tx *sqlx.Tx, key strin
 	if err == nil && existing.UpdatedAt > incomingUpdatedAt {
 		return nil
 	}
-	if err == nil && existing.UpdatedAt == incomingUpdatedAt {
+	// Never blank a non-empty sqlite note/title from a JSON entry that simply
+	// does not carry it (e.g. a legacy JSON entry written by a path that did not
+	// include the note). This guards against data loss regardless of timestamps.
+	if err == nil {
 		if item.Note == "" && existing.Note != "" {
 			item.Note = existing.Note
 		}
 		if item.Title == "" && existing.Title != "" {
 			item.Title = existing.Title
 		}
-		item.Marked = item.Marked || existing.Marked
+		if existing.UpdatedAt == incomingUpdatedAt {
+			item.Marked = item.Marked || existing.Marked
+		}
 	}
 	createdAt := existingCreatedAt
 	if createdAt == 0 {

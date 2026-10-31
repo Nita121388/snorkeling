@@ -16,6 +16,7 @@ import { createBlock } from "@/app/store/global";
 import type { SessionNoteState } from "@/app/store/session-note-hook";
 import { GenActionButton } from "@/app/view/aisessions/gen-action-button";
 import { PropertyList } from "@/app/view/aisessions/property/property-list";
+import { AIPropertiesButton } from "@/app/view/aisessions/property/property-ai";
 import { setSessionProperty } from "@/app/view/aisessions/property/property-store";
 import { humanizeKey, type PropertyDef, type PropertyType, type PropertyValue } from "@/app/view/aisessions/property/property-model";
 import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
@@ -215,6 +216,16 @@ export function SessionNoteSection({
                     canEdit={canEditProperties}
                     onAddProperty={canEditProperties ? addProperty : undefined}
                     onDeleteProperty={canEditProperties ? deleteProperty : undefined}
+                    footer={
+                        canEditProperties ? (
+                            <AIPropertiesButton
+                                service={state.service}
+                                sessionId={sessionKey}
+                                connection={connection}
+                                summary={summary}
+                            />
+                        ) : undefined
+                    }
                     onEditNote={() => {
                         setIsEditing(true);
                         window.setTimeout(() => {

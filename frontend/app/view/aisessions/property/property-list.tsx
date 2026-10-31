@@ -42,6 +42,8 @@ export type PropertyListProps = {
     onAddProperty?: (key: string, type: PropertyType) => void;
     /** 删除自定义属性（仅 non-builtin）。 */
     onDeleteProperty?: (key: string) => void;
+    /** 尾部插槽（详情卡放 AI 自动填入）。 */
+    footer?: React.ReactNode;
     canEdit?: boolean;
 };
 
@@ -298,6 +300,7 @@ export function PropertyList({
     onChange,
     onAddProperty,
     onDeleteProperty,
+    footer,
     canEdit = false,
 }: PropertyListProps) {
     const entries = React.useMemo(() => toPropertyDefs(summary), [summary]);
@@ -425,6 +428,7 @@ export function PropertyList({
                     }}
                 />
             ) : null}
+            {footer}
         </div>
     );
 }

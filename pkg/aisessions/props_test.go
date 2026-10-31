@@ -115,37 +115,64 @@ func TestSQLiteIndexApplyMetaLoadsProps(t *testing.T) {
 	}
 }
 
-func TestMetaStoreSetProps(t *testing.T) {
+// 数据安全：自定义属性写入绝不能碰 note / tags / title 这些既有字段。
+func TestSetPropsDoesNotTouchNoteAndTags(t *testing.T) {
 	dir := t.TempDir()
-	store, err := OpenMeta(filepath.Join(dir, "meta.json"))
+	idx, err := OpenSQLiteIndex(filepath.Join(dir, "index.sqlite"), filepath.Join(dir, "meta.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer idx.Close()
 	ctx := context.Background()
-	key := "codex:meta-props:/tmp/meta-props.jsonl"
+	key := "codex:props-safety:/tmp/props.jsonl"
 
-	if err := store.SetProps(ctx, key, map[string]PropertyCell{
-		"a": {Value: "one", Type: "text"},
-		"b": {Value: "two", Type: "text"},
+	if err := idx.SetNoteAndTags(ctx, key, "important note #work", []string{"work", "urgent"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.SetProps(ctx, key, map[string]PropertyCell{
+		"owner": {Value: "nita", Type: "text"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetProps(ctx, key, map[string]PropertyCell{
-		"b": {Value: nil},
-		"c": {Value: true, Type: "checkbox"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+
 	summary := SessionSummary{Key: key}
-	store.Apply(&summary)
-	if summary.Props["a"].Value != "one" {
-		t.Fatalf("expected a to survive, got %#v", summary.Props)
+	if err := idx.ApplyMeta(ctx, &summary); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := summary.Props["b"]; ok {
-		t.Fatalf("expected b to be deleted, got %#v", summary.Props)
+	if summary.Note != "important note #work" {
+		t.Fatalf("note was modified by SetProps: %q", summary.Note)
 	}
-	if summary.Props["c"].Value != true {
-		t.Fatalf("expected c to be set, got %#v", summary.Props)
+	if !reflect.DeepEqual(summary.Tags, []string{"urgent", "work"}) && !reflect.DeepEqual(summary.Tags, []string{"work", "urgent"}) {
+		t.Fatalf("tags were modified by SetProps: %#v", summary.Tags)
+	}
+	if summary.Props["owner"].Value != "nita" {
+		t.Fatalf("props missing: %#v", summary.Props)
+	}
+}
+
+// 数据安全：读路径在没有 props 时不得把旧的虚拟映射值改写成别的。
+func TestApplyMetaLeavesLegacyFieldsWhenNoProps(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := OpenSQLiteIndex(filepath.Join(dir, "index.sqlite"), filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	ctx := context.Background()
+	key := "codex:props-legacy:/tmp/legacy.jsonl"
+
+	providerTags := []string{"legacy-tag"}
+	summary := SessionSummary{Key: key, Tags: providerTags, Note: "provider note"}
+	if err := idx.ApplyMeta(ctx, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if summary.Note != "provider note" {
+		t.Fatalf("provider note overwritten when no meta row: %q", summary.Note)
+	}
+	if !reflect.DeepEqual(summary.Tags, providerTags) {
+		t.Fatalf("provider tags overwritten when no meta row: %#v", summary.Tags)
+	}
+	if summary.Props != nil {
+		t.Fatalf("props should stay nil when none stored: %#v", summary.Props)
 	}
 }
