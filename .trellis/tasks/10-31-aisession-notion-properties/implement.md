@@ -89,7 +89,11 @@ go test ./pkg/aisessions/ ./pkg/service/aisessionsservice/
 
 未落地（依赖设计文档 §8 的开放问题拍板）：
 - [x] P2 AI 自动生成属性：`GenerateSessionProperties`（只提案）+ `ApplyAIProperties`（拒绝内置键 / source=user 默认跳过 / Force 覆盖 / source=ai 落库）+ `GenerateProperties`/`ApplyProperties` RPC + 前端「✨ AI auto-fill」提案→应用→10s Undo。
-- [ ] P3 wconfig 全局 schema + 拖拽排序 + 改名/换类型 UI ——依赖「schema 全局还是按项目」决策。
+- [x] P3（本次按推荐默认实现：全局模板 + 会话级覆盖；`person`=会话 owner 语义）
+      - 全局模板 `agent:propertyschema`（wconfig）读写 + 新建属性「Save to template」
+      - 自定义属性 Rename / Change type / Move up·down / Delete（⋮ 菜单）
+      - `toPropertyDefs` 合并 per-session name/order → 全局模板 → key 推导；模板独有属性 detail 显示 Empty
+      - 说明：未做可视化拖拽（用 ⋮ 菜单 Move up/down 代替）；未做独立的属性模板设置页（临时通过 settings.json / Save to template 维护）。
 
 ### 数据安全加固（P2 期间发现并修复）
 - **真实数据丢失路径**：属性曾双写 JSON meta；props-only 的 JSON 条目 note 为空，下次 `OpenSQLiteIndex` 的 JSON→sqlite 迁移会把 sqlite 真实 note 覆盖成空。修复：属性改为 **sqlite-only**，不再写 JSON meta；并加固 `upsertMetaTx`：JSON 缺 note/title 时绝不清空 sqlite 非空值。
