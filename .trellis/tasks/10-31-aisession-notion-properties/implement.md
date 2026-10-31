@@ -88,6 +88,10 @@ go test ./pkg/aisessions/ ./pkg/service/aisessionsservice/
 - [x] 测试：Go `props_test.go` 4 项；前端 model/list 19 项；`go build ./...` / `tsc` / vitest 全绿。
 
 未落地（依赖设计文档 §8 的开放问题拍板）：
-- [ ] P2 AI 自动生成属性（后端 worker + `source=ai` + Suggested + Force/Undo）——依赖「AI 新属性是否先进 Suggested」「person 语义」决策。
+- [x] P2 AI 自动生成属性：`GenerateSessionProperties`（只提案）+ `ApplyAIProperties`（拒绝内置键 / source=user 默认跳过 / Force 覆盖 / source=ai 落库）+ `GenerateProperties`/`ApplyProperties` RPC + 前端「✨ AI auto-fill」提案→应用→10s Undo。
 - [ ] P3 wconfig 全局 schema + 拖拽排序 + 改名/换类型 UI ——依赖「schema 全局还是按项目」决策。
+
+### 数据安全加固（P2 期间发现并修复）
+- **真实数据丢失路径**：属性曾双写 JSON meta；props-only 的 JSON 条目 note 为空，下次 `OpenSQLiteIndex` 的 JSON→sqlite 迁移会把 sqlite 真实 note 覆盖成空。修复：属性改为 **sqlite-only**，不再写 JSON meta；并加固 `upsertMetaTx`：JSON 缺 note/title 时绝不清空 sqlite 非空值。
+- 回归覆盖：`TestSetPropsDoesNotTouchNoteAndTags`、`TestManagerApplyAIPropertiesSafety`（AI 不动 note/tags、不覆盖 user 值、Force 只影响 user props）、`TestApplyMetaLeavesLegacyFieldsWhenNoProps`。
 - [ ] session-row 行内编辑器与 PropertyList 合并（4 处 draft 去重）——独立重构，风险较高，留作下一步。

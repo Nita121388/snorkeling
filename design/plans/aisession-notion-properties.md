@@ -1,6 +1,6 @@
 # AISession / Agent 属性系统（Notion 化）设计
 
-> 状态：▲ 设计中 · P0/P1 已落地（`feat/aisession-notion-properties`），P2/P3 待 §8 开放问题拍板
+> 状态：▲ 设计中 · P0/P1/P2 已落地（`feat/aisession-notion-properties`），P3（全局 schema/排序/改名）待 §8 开放问题拍板
 > 日期：2026-10-29
 > 原型：`design/prototypes/notion-property-agent-card/`（像素级 Notion 参照）
 > 开发环境：本仓库的 worktree `../snorkeling-notion-properties`（分支 `feat/aisession-notion-properties`），主工作树 `../snorkeling` 保持 `main` 干净；首次开发前在该 worktree 跑 `npm run setup`。
