@@ -59,8 +59,23 @@ func TestOrigins_LocalFirstAndIncludesEnvDump(t *testing.T) {
 	if len(response.Origins) < 2 {
 		t.Fatalf("expected local + dump origins, got %d", len(response.Origins))
 	}
-	if response.Origins[0].ID != aisessions.OriginLocalID || response.Origins[0].Kind != aisessions.OriginKindLocal {
-		t.Fatalf("expected local first, got %#v", response.Origins[0])
+	// All machines is prepended when external dumps exist; the local origin must
+	// still be present and marked local.
+	var local *AISessionsOrigin
+	var all *AISessionsOrigin
+	for i := range response.Origins {
+		switch response.Origins[i].ID {
+		case aisessions.OriginLocalID:
+			local = &response.Origins[i]
+		case OriginAllID:
+			all = &response.Origins[i]
+		}
+	}
+	if local == nil || local.Kind != aisessions.OriginKindLocal {
+		t.Fatalf("expected a local origin, got %#v", response.Origins)
+	}
+	if all == nil || !all.ReadOnly {
+		t.Fatalf("expected a read-only All machines origin, got %#v", response.Origins)
 	}
 	var dump *AISessionsOrigin
 	for i := range response.Origins {
@@ -153,5 +168,53 @@ func TestStat_ExternalOriginById(t *testing.T) {
 	}
 	if stat.FilePath != sessionPath || stat.Size == 0 || stat.Missing {
 		t.Fatalf("unexpected stat: %#v", stat)
+	}
+}
+
+func TestListAllOrigins_MergesAndTagsOrigin(t *testing.T) {
+	dumpDir := t.TempDir()
+	writePiSession(t, filepath.Join(dumpDir, "2026-10-21T10-00-00-000Z_sess-a.jsonl"), "sess-a")
+	writePiSession(t, filepath.Join(dumpDir, "2026-10-21T11-00-00-000Z_sess-b.jsonl"), "sess-b")
+	t.Setenv(aisessions.EnvExtraSessionRoots, dumpDir)
+
+	response, err := (&AISessionsService{}).List(context.Background(), &AISessionsListRequest{
+		Origin: OriginAllID,
+		Limit:  50,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foundDump bool
+	for _, summary := range response.Sessions {
+		if summary.ID == "sess-a" || summary.ID == "sess-b" {
+			foundDump = true
+			if summary.Origin != aisessions.OriginIDForPath(dumpDir) {
+				t.Fatalf("expected dump origin tag, got %q for %q", summary.Origin, summary.ID)
+			}
+		}
+	}
+	if !foundDump {
+		t.Fatalf("expected merged dump sessions, got %#v", response.Sessions)
+	}
+}
+
+func TestListAllOrigins_DeduplicatesByKey(t *testing.T) {
+	// Same origin listed twice in settings must not duplicate rows.
+	dumpDir := t.TempDir()
+	writePiSession(t, filepath.Join(dumpDir, "2026-10-21T10-00-00-000Z_sess-a.jsonl"), "sess-a")
+	t.Setenv(aisessions.EnvExtraSessionRoots, dumpDir)
+
+	response, err := (&AISessionsService{}).List(context.Background(), &AISessionsListRequest{Origin: OriginAllID, Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, summary := range response.Sessions {
+		seen[summary.Key]++
+	}
+	for key, count := range seen {
+		if count > 1 {
+			t.Fatalf("session %q appears %d times in merged view", key, count)
+		}
 	}
 }

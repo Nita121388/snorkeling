@@ -51,6 +51,8 @@ export function GenActionButton({
 }: {
     sessionKey: string;
     connection?: string;
+    /** 选中会话所属 origin（"" = 本机）。 */
+    origin?: string;
     kind: GenKindValue;
     force?: boolean;
     /** 当前会话标题来源；= "user" 且非 force 时先确认覆盖。 */

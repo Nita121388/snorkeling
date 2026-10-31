@@ -168,6 +168,8 @@ export async function autoGenerate(
     opts: {
         ids: string[];
         connection?: string;
+        /** 选中会话所属 origin（"" = 本机）。 */
+        origin?: string;
         kind: string;
         force?: boolean;
         aiMode?: string;
@@ -194,6 +196,7 @@ export async function autoGenerate(
         const response = await service.AutoGenerate({
             ids,
             connection: connection || undefined,
+            origin: opts.origin || undefined,
             kind: opts.kind,
             force: opts.force === true,
             aiMode: opts.aiMode,

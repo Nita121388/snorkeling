@@ -138,6 +138,18 @@ func (svc *AISessionsService) Origins(ctx context.Context, request *AISessionsOr
 			Count:    svc.originCount(ctx, ext.ID, request.IncludeCounts),
 		})
 	}
+	// “All machines” 仅在有外部根时出现；它是内存聚合视图，标记为只读，
+	// 避免用户在混合列表上触发写操作。
+	if len(origins) > 1 {
+		origins = append([]AISessionsOrigin{
+			{
+				ID:       OriginAllID,
+				Label:    "All machines",
+				Kind:     "all",
+				ReadOnly: true,
+			},
+		}, origins...)
+	}
 	return &AISessionsOriginsResponse{Origins: origins}, nil
 }
 

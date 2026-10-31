@@ -14,6 +14,7 @@ import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
+import { modalsModel } from "@/app/store/modalmodel";
 import { isDragMovement, keysUnderRect, rectToCss, type Rect } from "@/util/selectionrect";
 import { cn, fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
@@ -1111,15 +1112,26 @@ export class AiSessionsViewModel implements ViewModel {
     }
 
     /**
-     * 只读闸门：外部 dump 一律拒绝改写类操作，返回 false 并设置错误提示。
-     * 这是“不影响历史数据”的硬约束——即便后端路由发生变动，前端也不会向
-     * dump 发出任何写请求。
+     * 找出某条会话所属的 origin：合并视图里每行自带 origin（后端填充），
+     * 单 origin 视图则回退到当前选中项。空串 = 本机（后端按 local 路由）。
      */
-    private guardWritable(action: string): boolean {
-        if (!this.isOriginReadOnly()) return true;
-        const label = this.activeOrigin()?.label ?? "this origin";
-        globalStore.set(this.errorAtom, `${label} is read-only: ${action} is disabled for imported dumps.`);
-        return false;
+    originForSession(session: SessionSummary): string {
+        const tagged = (session?.origin ?? "").trim();
+        if (tagged !== "") {
+            return tagged === "local" ? "" : tagged;
+        }
+        return this.getOrigin();
+    }
+
+    /**
+     * 某条会话是否来自外部 dump（只读源）。用于禁用“在终端恢复”这类
+     * 在本机无意义（cwd 是 Windows 路径）的操作；元数据编辑/删除仍按 origin
+     * 路由到各自独立存储，功能不削减。
+     */
+    sessionOriginReadOnly(session: SessionSummary): boolean {
+        const originId = this.originForSession(session);
+        if (originId === "") return false;
+        return globalStore.get(this.originsAtom).find((origin) => origin.id === originId)?.readOnly === true;
     }
 
     /** 构造时从热缓存 / block meta 恢复 origin id；列表校验在 loadOrigins。 */
@@ -1127,6 +1139,16 @@ export class AiSessionsViewModel implements ViewModel {
         const meta = globalStore.get(this.blockAtom)?.meta as Record<string, unknown> | undefined;
         const saved = recallOrigin(this.blockId) ?? parseOriginMeta(meta?.[OriginMetaKey]) ?? "";
         globalStore.set(this.selectedOriginIdAtom, saved);
+    }
+
+    /** 打开外部 origin 管理弹窗（保存后重新拉取 origin 列表）。 */
+    openEditOrigins(): void {
+        modalsModel.pushModal("EditOriginsModal", {
+            onSaved: () => {
+                void this.loadOrigins();
+                void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+            },
+        });
     }
 
     /** 拉取可选 origin 列表；校验已恢复的 id 并在需要时触发一次重载。 */
@@ -1411,7 +1433,7 @@ export class AiSessionsViewModel implements ViewModel {
 
     async toggleMark(session: SessionSummary): Promise<void> {
         if (!session?.key) return;
-        if (!this.guardWritable("mark")) return;
+        const origin = this.originForSession(session);
         const currentSession = this.getCurrentSession(session.key) ?? session;
         const nextMarked = !currentSession.marked;
         const requestSeq = (this.markRequestSeqByKey.get(session.key) ?? 0) + 1;
@@ -1419,7 +1441,7 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.errorAtom, "");
         this.setSessionMarked(session.key, nextMarked);
         Promise.resolve()
-            .then(() => this.service.Mark(session.key, nextMarked))
+            .then(() => this.service.Mark(session.key, nextMarked, origin))
             .then((updated) => {
                 if (this.markRequestSeqByKey.get(session.key) !== requestSeq) {
                     return;
@@ -1459,12 +1481,12 @@ export class AiSessionsViewModel implements ViewModel {
 
     async updateNote(session: SessionSummary, note: string, tags?: string[]): Promise<boolean> {
         if (!session?.key) return false;
-        if (!this.guardWritable("edit note/tags")) return false;
+        const origin = this.originForSession(session);
         try {
             const updated =
                 tags == null
-                    ? await this.service.Note(session.key, note)
-                    : await this.service.NoteAndTags({ id: session.key, note, tags });
+                    ? await this.service.Note(session.key, note, origin)
+                    : await this.service.NoteAndTags({ id: session.key, note, tags, origin });
             this.replaceSession(updated);
             dispatchAISessionNoteUpdated(updated);
             void this.loadTags(false);
@@ -1477,9 +1499,9 @@ export class AiSessionsViewModel implements ViewModel {
 
     async updateTitle(session: SessionSummary, title: string): Promise<boolean> {
         if (!session?.key) return false;
-        if (!this.guardWritable("edit title")) return false;
+        const origin = this.originForSession(session);
         try {
-            const updated = await this.service.Title(session.key, title);
+            const updated = await this.service.Title(session.key, title, origin);
             this.replaceSession(updated);
             return true;
         } catch (e) {
@@ -1490,11 +1512,11 @@ export class AiSessionsViewModel implements ViewModel {
 
     async deleteSession(session: SessionSummary): Promise<void> {
         if (!session?.key) return;
-        if (!this.guardWritable("delete")) return;
+        const origin = this.originForSession(session);
         globalStore.set(this.deletingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            await this.service.Delete(session.key);
+            await this.service.Delete(session.key, origin);
             const sessions = globalStore.get(this.sessionsAtom).filter((item) => item.key !== session.key);
             globalStore.set(this.sessionsAtom, sessions);
             globalStore.set(this.detailAtom, null);
@@ -1508,13 +1530,20 @@ export class AiSessionsViewModel implements ViewModel {
 
     async restoreSession(session: SessionSummary): Promise<void> {
         if (!session?.id || !session?.source) return;
-        if (!this.guardWritable("resume to terminal")) return;
+        if (this.sessionOriginReadOnly(session)) {
+            globalStore.set(
+                this.errorAtom,
+                "This session comes from an imported dump; resuming it in a local terminal is not supported."
+            );
+            return;
+        }
         globalStore.set(this.restoringAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
             const context = await this.service.RestoreContext({
                 id: session.key || session.id,
                 connection: this.getConnection(),
+                origin: this.originForSession(session),
             });
             await createBlock({
                 meta: restoreMetaForSession(context),
@@ -2569,6 +2598,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         origins={origins}
                                         selectedId={selectedOriginId}
                                         onSelect={(id) => model.setOrigin(id)}
+                                        onManage={() => model.openEditOrigins()}
                                     />
                                     <div
                                         className={cn(
@@ -2730,14 +2760,31 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 onClear={clearSelection}
                                 onAutoGenerate={(kind) => {
                                     const connection = model.getConnection();
-                                    void autoGenerate(autoGenService, {
-                                        ids: selectedKeys,
-                                        connection,
-                                        kind,
-                                        source: "batch",
-                                    }).then((result) => {
-                                        if (!result.ok) {
-                                            globalStore.set(model.errorAtom, result.error);
+                                    // 合并视图里选中项可能跨多个 origin：按行的 origin 分组，
+                                    // 每组用各自的 manager 路由，而非把 "__all__" 传下去。
+                                    const groups = new Map<string, string[]>();
+                                    const byKey = new Map(sessions.map((s) => [s.key, s] as const));
+                                    for (const key of selectedKeys) {
+                                        const session = byKey.get(key);
+                                        const origin = session ? model.originForSession(session) : model.getOrigin();
+                                        const bucket = groups.get(origin) ?? [];
+                                        bucket.push(key);
+                                        groups.set(origin, bucket);
+                                    }
+                                    void Promise.all(
+                                        [...groups.entries()].map(([origin, ids]) =>
+                                            autoGenerate(autoGenService, {
+                                                ids,
+                                                connection,
+                                                origin,
+                                                kind,
+                                                source: "batch",
+                                            })
+                                        )
+                                    ).then((results) => {
+                                        const failed = results.find((result) => !result.ok);
+                                        if (failed != null) {
+                                            globalStore.set(model.errorAtom, failed.error);
                                         }
                                     });
                                 }}

@@ -1878,6 +1878,7 @@ export function SessionDetailPane({
                             <GenActionButton
                                 sessionKey={summary.key ?? ""}
                                 connection={connection}
+                                origin={summary.origin ?? ""}
                                 kind="title"
                                 titleSource={summary.titleSource}
                                 source="detail"
@@ -1922,6 +1923,7 @@ export function SessionDetailPane({
                                     void autoGenerate(genService, {
                                         ids: [summary.key],
                                         connection,
+                                        origin: summary.origin ?? "",
                                         kind,
                                     });
                                 }}

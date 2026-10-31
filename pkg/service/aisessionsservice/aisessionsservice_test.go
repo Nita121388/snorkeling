@@ -86,7 +86,7 @@ func TestVendorSessionDetailNoteStatAndRestoreContext(t *testing.T) {
 	if err != nil || stat.Missing || stat.Size == 0 {
 		t.Fatalf("unexpected vendor stat: %#v err=%v", stat, err)
 	}
-	noted, err := service.Note(context.Background(), detail.Summary.Key, "restore note")
+	noted, err := service.Note(context.Background(), detail.Summary.Key, "restore note", "")
 	if err != nil || noted.Note != "restore note" {
 		t.Fatalf("unexpected vendor note: %#v err=%v", noted, err)
 	}

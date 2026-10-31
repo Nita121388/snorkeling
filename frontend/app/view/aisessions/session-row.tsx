@@ -598,6 +598,7 @@ export function SessionRow({
                         <GenActionButton
                             sessionKey={session.key}
                             connection={connection}
+                            origin={session.origin ?? ""}
                             kind="title"
                             titleSource={session.titleSource}
                             size="xs"
