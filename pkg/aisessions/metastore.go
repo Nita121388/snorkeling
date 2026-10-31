@@ -31,6 +31,11 @@ type sessionMeta struct {
 	AITitleAttemptedAt         int64 `json:"aiTitleAttemptedAt,omitempty"`
 	AITitleAttemptMessageCount int   `json:"aiTitleAttemptMessageCount,omitempty"`
 	UpdatedAt                  int64 `json:"updatedAt,omitempty"`
+	// NOTE: custom properties are intentionally NOT stored in this legacy JSON
+	// meta store. They live only in sqlite (`ai_session_props`). Mirroring them
+	// here once caused a data-loss hazard: the JSON->sqlite migration could
+	// overwrite a real sqlite note with the empty note of a JSON entry that was
+	// created by a props-only write. Keep props sqlite-only.
 }
 
 type MetaStore struct {
@@ -115,6 +120,7 @@ func (s *MetaStore) SetNote(ctx context.Context, key string, note string) error 
 	s.data.Sessions[key] = meta
 	return s.save()
 }
+
 
 func (s *MetaStore) SetTitle(ctx context.Context, key string, title string) error {
 	if ctx.Err() != nil {

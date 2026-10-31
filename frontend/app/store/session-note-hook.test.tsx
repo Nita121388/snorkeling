@@ -273,7 +273,7 @@ describe("useSessionNoteState — AI title suggestion", () => {
         await act(async () => {
             await current!.applyTitle();
         });
-        expect(titleFn).toHaveBeenCalledWith(key, "Fix the title flow");
+        expect(titleFn).toHaveBeenCalledWith(key, "Fix the title flow", "");
         expect(current?.titleStatus).toBe("idle");
         expect(current?.titleSuggestion).toBe("");
 

@@ -1,0 +1,514 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// PropertyList — Notion 式属性行。
+// 布局/尺寸对齐 design/plans/aisession-notion-properties.md §2.4；颜色尽量复用主题
+// token（--main-text-color / --secondary-text-color / --border-color / --hover-bg-color），
+// select chip 用 Notion 9 色调色板（浅底深字，浅/深主题都可读）。
+
+.property-list {
+    --property-name-width: 168px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 12px;
+    line-height: 20px;
+    min-width: 0;
+
+    &.property-list--card {
+        --property-name-width: 100px;
+        font-size: 11px;
+        line-height: 18px;
+    }
+}
+
+.property-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 28px;
+    padding: 3px 4px;
+    border-radius: 3px;
+    color: var(--main-text-color);
+    min-width: 0;
+
+    &.is-editable:hover,
+    &.is-editing {
+        background: var(--hover-bg-color);
+    }
+
+    &.is-readonly {
+        color: var(--secondary-text-color);
+    }
+
+    &.is-note {
+        align-items: flex-start;
+    }
+}
+
+.property-row__name {
+    flex: 0 0 var(--property-name-width);
+    width: var(--property-name-width);
+    min-width: 0;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    line-height: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.property-row__value {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+}
+
+.property-row__button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:disabled {
+        cursor: default;
+    }
+}
+
+.property-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.property-clamp {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+.property-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+}
+
+.property-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 20px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: var(--surface-soft-color, #e3e2e0);
+    color: var(--main-text-color, #32302c);
+}
+
+.property-chip--gray {
+    background: #e3e2e0;
+    color: #32302c;
+}
+.property-chip--brown {
+    background: #eee0da;
+    color: #603b2c;
+}
+.property-chip--orange {
+    background: #fadec9;
+    color: #854a2e;
+}
+.property-chip--yellow {
+    background: #fdecc8;
+    color: #6b4e11;
+}
+.property-chip--green {
+    background: #dbeddb;
+    color: #1c3829;
+}
+.property-chip--blue {
+    background: #d3e5ef;
+    color: #183347;
+}
+.property-chip--purple {
+    background: #e8deee;
+    color: #412454;
+}
+.property-chip--pink {
+    background: #f5e0e9;
+    color: #4c2337;
+}
+.property-chip--red {
+    background: #ffe2dd;
+    color: #5d1715;
+}
+
+.property-checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    color: #fff;
+    font-size: 9px;
+
+    &.is-checked {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+    }
+}
+
+.property-empty {
+    color: var(--secondary-text-color);
+    font-style: italic;
+    opacity: 0.7;
+}
+
+.property-readonly {
+    color: var(--secondary-text-color);
+    font-style: italic;
+}
+
+.property-url {
+    color: #2383e2;
+    text-decoration: underline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.property-ai-mark {
+    flex: 0 0 auto;
+    font-size: 10px;
+    opacity: 0.9;
+}
+
+.property-more {
+    align-self: flex-start;
+    margin: 2px 4px;
+    padding: 2px 6px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+.property-edit-input,
+.property-select {
+    width: 100%;
+    min-width: 0;
+    padding: 1px 4px;
+    border: 1px solid var(--accent-color);
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+}
+
+.property-row__delete {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease;
+
+    .property-row:hover & {
+        opacity: 1;
+    }
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--error-color, #d44c47);
+    }
+}
+
+.property-add {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 2px 4px;
+    padding: 2px 6px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+.property-add-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin: 2px 4px;
+    font-size: 11px;
+
+    .property-edit-input {
+        flex: 1 1 110px;
+    }
+
+    .property-select {
+        flex: 0 0 auto;
+        width: auto;
+    }
+}
+
+.property-add-ok,
+.property-add-cancel {
+    flex: 0 0 auto;
+    padding: 1px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--main-text-color);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.property-add-ok {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.property-add-error {
+    flex: 1 1 100%;
+    color: var(--error-color, #d44c47);
+    font-size: 10px;
+}
+
+.property-ai {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 4px 4px 2px;
+    font-size: 11px;
+}
+
+.property-ai-trigger {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border: 1px dashed var(--border-color);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+.property-ai-status {
+    color: var(--secondary-text-color);
+}
+
+.property-ai-proposal {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 6px;
+    background: var(--surface-soft-color, transparent);
+}
+
+.property-ai-proposal-head {
+    color: var(--secondary-text-color);
+    margin-bottom: 2px;
+}
+
+.property-ai-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.property-ai-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.property-ai-key {
+    flex: 0 0 auto;
+    color: var(--main-text-color);
+    font-weight: 500;
+}
+
+.property-ai-type {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+}
+
+.property-ai-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--secondary-text-color);
+}
+
+.property-ai-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.property-ai-undo {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--secondary-text-color);
+
+    button {
+        border: none;
+        background: transparent;
+        color: var(--accent-color);
+        cursor: pointer;
+        padding: 0;
+        font-size: inherit;
+        text-decoration: underline;
+    }
+}
+
+.property-ai-error {
+    color: var(--error-color, #d44c47);
+}
+
+.property-row__value {
+    position: relative;
+}
+
+.property-row__menu-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease;
+
+    .property-row:hover &,
+    &:focus {
+        opacity: 1;
+    }
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+.property-row__menu {
+    position: absolute;
+    top: 22px;
+    right: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: 132px;
+    padding: 3px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--block-bg-solid-color, #fff);
+    box-shadow:
+        0 0 0 1px rgba(15, 15, 15, 0.05),
+        0 3px 6px rgba(15, 15, 15, 0.1),
+        0 9px 24px rgba(15, 15, 15, 0.2);
+
+    button {
+        display: block;
+        width: 100%;
+        padding: 3px 8px;
+        border: none;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--main-text-color);
+        font-size: 11px;
+        text-align: left;
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+            background: var(--hover-bg-color);
+        }
+
+        &:disabled {
+            color: var(--secondary-text-color);
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        &.is-danger {
+            color: var(--error-color, #d44c47);
+        }
+    }
+}
+
+.property-add-template {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    cursor: pointer;
+}

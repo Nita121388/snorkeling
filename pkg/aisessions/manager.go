@@ -944,6 +944,112 @@ func (m *Manager) NoteAndTags(ctx context.Context, identifier string, note strin
 	return summary, nil
 }
 
+// SetProps merges custom property cells into a session. Built-in properties
+// (note / tags / starred / title) keep using their dedicated RPCs; this path is
+// only for the additive property layer, so note/tags stay single-source.
+func (m *Manager) SetProps(ctx context.Context, identifier string, props map[string]PropertyCell) (SessionSummary, error) {
+	summary, err := m.resolveSessionForMetaWrite(ctx, identifier)
+	if err != nil {
+		return SessionSummary{}, err
+	}
+	if props == nil {
+		props = map[string]PropertyCell{}
+	}
+	now := time.Now().UnixMilli()
+	normalized := make(map[string]PropertyCell, len(props))
+	for key, cell := range props {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if cell.Source == "" {
+			cell.Source = PropertySourceUser
+		}
+		if cell.UpdatedAt == 0 {
+			cell.UpdatedAt = now
+		}
+		normalized[key] = cell
+	}
+	// Custom properties are sqlite-only on purpose: the legacy JSON meta store
+	// must never carry them, otherwise the JSON->sqlite migration can overwrite
+	// a real note with the empty note of a props-only JSON entry (data loss).
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil || sqliteIdx == nil {
+		return SessionSummary{}, fmt.Errorf("session props require sqlite AI session index: %w", sqliteErr)
+	}
+	defer sqliteIdx.Close()
+	if err := sqliteIdx.SetProps(ctx, summary.Key, normalized); err != nil {
+		return SessionSummary{}, err
+	}
+	if err := sqliteIdx.ApplyMeta(ctx, &summary); err != nil {
+		return SessionSummary{}, err
+	}
+	return summary, nil
+}
+
+// ApplyAIProperties writes AI-proposed custom properties.
+//
+// Safety contract:
+//   - built-in keys (note / tags / starred / title_source / created / updated)
+//     are always rejected, so an AI pass can never touch historical note/tags;
+//   - an existing property with source=user is skipped unless force is set;
+//   - values must pass the type whitelist and shape validation.
+//
+// The returned []string lists the keys that were skipped (reserved, user-owned,
+// or invalid) so the UI can explain why a suggestion was not applied.
+func (m *Manager) ApplyAIProperties(ctx context.Context, identifier string, suggestions []PropertySuggestion, force bool) (SessionSummary, []string, error) {
+	summary, err := m.resolveSessionForMetaWrite(ctx, identifier)
+	if err != nil {
+		return SessionSummary{}, nil, err
+	}
+	existing := map[string]PropertyCell{}
+	if sqliteIdx, sqliteErr := m.openSQLiteIndex(); sqliteErr == nil && sqliteIdx != nil {
+		if props, perr := sqliteIdx.PropsForSession(ctx, summary.Key); perr == nil && props != nil {
+			existing = props
+		}
+		_ = sqliteIdx.Close()
+	}
+	now := time.Now().UnixMilli()
+	cells := map[string]PropertyCell{}
+	var skipped []string
+	for _, suggestion := range suggestions {
+		key := NormalizePropertyKey(suggestion.Key)
+		if key == "" {
+			skipped = append(skipped, suggestion.Key)
+			continue
+		}
+		if _, reserved := reservedPropertyKeys[key]; reserved {
+			skipped = append(skipped, key)
+			continue
+		}
+		if !force {
+			if old, ok := existing[key]; ok && old.Source == PropertySourceUser {
+				skipped = append(skipped, key)
+				continue
+			}
+		}
+		propType := strings.TrimSpace(suggestion.Type)
+		if !ValidPropertyType(propType) {
+			skipped = append(skipped, key)
+			continue
+		}
+		value, ok := ValidatePropertyValue(propType, suggestion.Value)
+		if !ok {
+			skipped = append(skipped, key)
+			continue
+		}
+		cells[key] = PropertyCell{Value: value, Type: propType, Source: PropertySourceAI, UpdatedAt: now}
+	}
+	if len(cells) == 0 {
+		return summary, skipped, nil
+	}
+	updated, err := m.SetProps(ctx, summary.Key, cells)
+	if err != nil {
+		return SessionSummary{}, skipped, err
+	}
+	return updated, skipped, nil
+}
+
 // setAutoTitle persists an AI-generated title. Separate from SetTitle so the
 // two write paths never collide on TitleSource, and so a user rename stays
 // distinguishable (and outrankable) from a background generation.

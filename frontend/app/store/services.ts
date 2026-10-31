@@ -69,6 +69,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Annotations", Array.from(arguments))
     }
 
+    // apply reviewed AI property proposals to a session (skips source=user unless force)
+    // @returns updated AI session summary plus skipped keys
+    ApplyProperties(request: AISessionsApplyPropertiesRequest): Promise<AISessionsApplyPropertiesResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "ApplyProperties", Array.from(arguments))
+    }
+
     // delete audit entries older than the cutoff (default 30 days)
     // @returns number of removed entries
     AuditClear(request: AISessionsAuditClearRequest): Promise<number> {
@@ -151,6 +157,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "GenerateMetadata", Array.from(arguments))
     }
 
+    // generate proposed custom properties for a session without saving
+    // @returns AI property suggestions plus the current session summary
+    GenerateProperties(request: AISessionsGeneratePropertiesRequest): Promise<AISessionsGeneratePropertiesResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "GenerateProperties", Array.from(arguments))
+    }
+
     // generate a proposed AI title for a session without saving
     // @returns AI title suggestion plus the current session summary
     GenerateTitle(request: AISessionsGenerateTitleRequest): Promise<AISessionsGenerateTitleResponse> {
@@ -209,6 +221,12 @@ export class AISessionsServiceType {
     // @returns validated AI session restore context
     RestoreContext(request: AISessionsRestoreContextRequest): Promise<AISessionsRestoreContextResponse> {
         return callBackendService(this?.waveEnv, "aisessions", "RestoreContext", Array.from(arguments))
+    }
+
+    // merge custom properties into a local AI session
+    // @returns updated AI session summary
+    SetProps(request: AISessionsSetPropsRequest): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "SetProps", Array.from(arguments))
     }
 
     // stat a local AI session file without loading messages

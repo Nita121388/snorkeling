@@ -94,15 +94,16 @@ func TestPromptEnabled(t *testing.T) {
 
 func TestListPromptFeatures(t *testing.T) {
 	features := ListPromptFeatures()
-	if len(features) != 3 {
-		t.Fatalf("features = %d, want 3", len(features))
+	if len(features) != 4 {
+		t.Fatalf("features = %d, want 4", len(features))
 	}
 	if features[0].Key != PromptFeatureSessionNoteTags ||
 		features[1].Key != PromptFeatureSessionTitle ||
-		features[2].Key != PromptFeatureSessionAnnotations {
+		features[2].Key != PromptFeatureSessionAnnotations ||
+		features[3].Key != PromptFeatureSessionProperties {
 		t.Fatalf("unexpected feature order: %+v", features)
 	}
-	if features[0].DefaultPrompt == "" || features[1].DefaultPrompt == "" || features[2].DefaultPrompt == "" {
+	if features[0].DefaultPrompt == "" || features[1].DefaultPrompt == "" || features[2].DefaultPrompt == "" || features[3].DefaultPrompt == "" {
 		t.Fatal("default prompts must be populated")
 	}
 	// Raw defaults must not embed hard limits; the settings page appends them

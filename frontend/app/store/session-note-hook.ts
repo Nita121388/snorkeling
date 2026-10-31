@@ -354,7 +354,8 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             return;
         }
         try {
-            const updated = await service.Title(sessionId, nextTitle);
+            // origin 参数：note-cache 场景是本地会话（无远端 origin 变量）。
+            const updated = await service.Title(sessionId, nextTitle, "");
             // 广播后，note-cache 与各个卡片会拿到最新 title，不必本地硬改 summary。
             dispatchAISessionNoteUpdated(updated);
             setTitleStatus("idle");

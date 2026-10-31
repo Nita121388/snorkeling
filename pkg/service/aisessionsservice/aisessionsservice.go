@@ -99,6 +99,16 @@ type AISessionsNoteAndTagsRequest struct {
 	Origin string   `json:"origin,omitempty"`
 }
 
+// AISessionsSetPropsRequest merges custom (Notion-style) properties into a
+// session. Built-in properties keep their dedicated RPCs. Force is reserved for
+// the AI worker: without it, a source=user value must not be overwritten.
+type AISessionsSetPropsRequest struct {
+	ID         string                            `json:"id"`
+	Connection string                            `json:"connection,omitempty"`
+	Props      map[string]aisessions.PropertyCell `json:"props"`
+	Force      bool                              `json:"force,omitempty"`
+}
+
 type AISessionsRenameTagRequest struct {
 	From       string `json:"from"`
 	To         string `json:"to"`
@@ -174,6 +184,34 @@ type AISessionsGenerateMetadataRequest struct {
 type AISessionsGenerateMetadataResponse struct {
 	Summary    aisessions.SessionSummary     `json:"summary"`
 	Suggestion aisessions.MetadataSuggestion `json:"suggestion"`
+}
+
+// AISessionsGeneratePropertiesRequest asks the AI property extractor for
+// proposals. Nothing is written: the caller reviews and then calls
+// ApplyProperties. Built-in keys are never proposed (backend rejects them).
+type AISessionsGeneratePropertiesRequest struct {
+	ID         string `json:"id"`
+	Connection string `json:"connection,omitempty"`
+	AIMode     string `json:"aiMode,omitempty"`
+}
+
+type AISessionsGeneratePropertiesResponse struct {
+	Summary    aisessions.SessionSummary        `json:"summary"`
+	Properties []aisessions.PropertySuggestion `json:"properties"`
+}
+
+// AISessionsApplyPropertiesRequest applies reviewed AI property proposals.
+// Force lets the user overwrite a source=user value; otherwise those are skipped.
+type AISessionsApplyPropertiesRequest struct {
+	ID         string                          `json:"id"`
+	Connection string                          `json:"connection,omitempty"`
+	Properties []aisessions.PropertySuggestion `json:"properties"`
+	Force      bool                            `json:"force,omitempty"`
+}
+
+type AISessionsApplyPropertiesResponse struct {
+	Summary aisessions.SessionSummary `json:"summary"`
+	Skipped []string                  `json:"skipped,omitempty"`
 }
 
 // AISessionsAnnotationsRequest lists the annotations of one session. anchors is
@@ -1117,6 +1155,92 @@ func (svc *AISessionsService) NoteAndTags(ctx context.Context, request *AISessio
 		return nil, err
 	}
 	return &summary, nil
+}
+
+func (svc *AISessionsService) SetProps_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "merge custom properties into a local AI session",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "updated AI session summary",
+	}
+}
+
+func (svc *AISessionsService) SetProps(ctx context.Context, request *AISessionsSetPropsRequest) (*aisessions.SessionSummary, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.SetProps(ctx, request.ID, request.Props)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
+func (svc *AISessionsService) GenerateProperties_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "generate proposed custom properties for a session without saving",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "AI property suggestions plus the current session summary",
+	}
+}
+
+func (svc *AISessionsService) GenerateProperties(ctx context.Context, request *AISessionsGeneratePropertiesRequest) (*AISessionsGeneratePropertiesResponse, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := manager.Load(ctx, request.ID, aisessions.LoadOptions{})
+	if err != nil {
+		return nil, err
+	}
+	promptConfig := promptConfigForFeature(aisessions.PromptFeatureSessionProperties)
+	if !aisessions.PromptEnabled(promptConfig) {
+		return nil, fmt.Errorf("session properties generation is disabled in AI Prompts settings")
+	}
+	genReq := aisessions.PropertyGenerateRequest{
+		SessionKey:    detail.Summary.Key,
+		Source:        detail.Summary.Source,
+		ProjectPath:   detail.Summary.ProjectPath,
+		Messages:      detail.Messages,
+		ExistingProps: detail.Summary.Props,
+		AIMode:        request.AIMode,
+		PromptConfig:  promptConfig,
+	}
+	suggestions, err := aisessions.GenerateSessionProperties(ctx, genReq)
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsGeneratePropertiesResponse{Summary: detail.Summary, Properties: suggestions}, nil
+}
+
+func (svc *AISessionsService) ApplyProperties_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "apply reviewed AI property proposals to a session (skips source=user unless force)",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "updated AI session summary plus skipped keys",
+	}
+}
+
+func (svc *AISessionsService) ApplyProperties(ctx context.Context, request *AISessionsApplyPropertiesRequest) (*AISessionsApplyPropertiesResponse, error) {
+	if request == nil || strings.TrimSpace(request.ID) == "" {
+		return nil, fmt.Errorf("session id is required")
+	}
+	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	if err != nil {
+		return nil, err
+	}
+	summary, skipped, err := manager.ApplyAIProperties(ctx, request.ID, request.Properties, request.Force)
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsApplyPropertiesResponse{Summary: summary, Skipped: skipped}, nil
 }
 
 func (svc *AISessionsService) GenerateMetadata_Meta() tsgenmeta.MethodMeta {

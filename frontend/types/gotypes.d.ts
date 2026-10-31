@@ -65,6 +65,7 @@ declare global {
         maxTitleChars?: number;
         maxAnnotations?: number;
         maxBodyChars?: number;
+        maxProperties?: number;
         enabled?: boolean;
     };
 
@@ -154,6 +155,20 @@ declare global {
     // aisessionsservice.AISessionsAnnotationsResponse
     type AISessionsAnnotationsResponse = {
         annotations: AnnotationView[];
+    };
+
+    // aisessionsservice.AISessionsApplyPropertiesRequest
+    type AISessionsApplyPropertiesRequest = {
+        id: string;
+        connection?: string;
+        properties: PropertySuggestion[];
+        force?: boolean;
+    };
+
+    // aisessionsservice.AISessionsApplyPropertiesResponse
+    type AISessionsApplyPropertiesResponse = {
+        summary: SessionSummary;
+        skipped?: string[];
     };
 
     // aisessionsservice.AISessionsAuditClearRequest
@@ -266,6 +281,19 @@ declare global {
     type AISessionsGenerateMetadataResponse = {
         summary: SessionSummary;
         suggestion: MetadataSuggestion;
+    };
+
+    // aisessionsservice.AISessionsGeneratePropertiesRequest
+    type AISessionsGeneratePropertiesRequest = {
+        id: string;
+        connection?: string;
+        aiMode?: string;
+    };
+
+    // aisessionsservice.AISessionsGeneratePropertiesResponse
+    type AISessionsGeneratePropertiesResponse = {
+        summary: SessionSummary;
+        properties: PropertySuggestion[];
     };
 
     // aisessionsservice.AISessionsGenerateTitleRequest
@@ -396,6 +424,14 @@ declare global {
         vendorid?: string;
         vendorname?: string;
         configdir?: string;
+    };
+
+    // aisessionsservice.AISessionsSetPropsRequest
+    type AISessionsSetPropsRequest = {
+        id: string;
+        connection?: string;
+        props: {[key: string]: PropertyCell};
+        force?: boolean;
     };
 
     // aisessionsservice.AISessionsStatRequest
@@ -544,6 +580,17 @@ declare global {
         models?: AgentModelConfigType[];
         modelflag?: string;
         env?: {[key: string]: string};
+    };
+
+    // wconfig.AgentPropertyDefType
+    type AgentPropertyDefType = {
+        key?: string;
+        name?: string;
+        type?: string;
+        options?: string[];
+        order?: number;
+        aiManaged?: boolean;
+        aiInstruction?: string;
     };
 
     // agentstatus.AgentStatus
@@ -2366,6 +2413,25 @@ declare global {
         max: number;
     };
 
+    // aisessions.PropertyCell
+    type PropertyCell = {
+        value?: any;
+        type?: string;
+        source?: string;
+        updatedAt?: number;
+        name?: string;
+        order?: number;
+    };
+
+    // aisessions.PropertySuggestion
+    type PropertySuggestion = {
+        key: string;
+        name?: string;
+        type: string;
+        value: any;
+        confidence?: number;
+    };
+
     // uctypes.RateLimitInfo
     type RateLimitInfo = {
         req: number;
@@ -2660,6 +2726,7 @@ declare global {
         kind?: string;
         attached?: string;
         size?: number;
+        props?: {[key: string]: PropertyCell};
     };
 
     // aisessions.SessionTagSummary
@@ -2688,6 +2755,7 @@ declare global {
         "agent:*"?: boolean;
         "agent:defaultprofile"?: string;
         "agent:profiles"?: {[key: string]: AgentProfileConfigType};
+        "agent:propertyschema"?: AgentPropertyDefType[];
         "agentstatus:*"?: boolean;
         "agentstatus:osnotify"?: boolean;
         "agentstatus:osnotifydone"?: boolean;

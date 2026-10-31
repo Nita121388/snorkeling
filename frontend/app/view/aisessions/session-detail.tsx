@@ -1374,7 +1374,6 @@ export function SessionDetailPane({
         if (summaryKey === "" || timelineAnnotationAnchors.length === 0) return;
         void reloadAnnotationsWithAnchors(summaryKey, connection, timelineAnnotationAnchors);
         // 用签名字符串做依赖，避免数组换引用导致的重复请求。
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [summaryKey, connection, timelineAnnotationAnchorSignature]);
     const virtualizer = useVirtualizer({
         count: rows.length,

@@ -287,7 +287,6 @@ export function useBatchGenCounts(
             for (const unsub of unsubs) unsub();
         };
         // sessionKeysKey 覆盖数组内容变化；不直接依赖 sessionKeys 数组引用。
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [connection, kind, sessionKeysKey]);
 
     return counts;

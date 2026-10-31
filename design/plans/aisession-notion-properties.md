@@ -1,8 +1,9 @@
 # AISession / Agent 属性系统（Notion 化）设计
 
-> 状态：▲ 设计活跃（未实现，不进入开发）
+> 状态：▲ 已实现 P0–P3（`feat/aisession-notion-properties`）；P3 采用推荐默认（全局模板 + 会话级覆盖，person=owner）
 > 日期：2026-10-29
 > 原型：`design/prototypes/notion-property-agent-card/`（像素级 Notion 参照）
+> 开发环境：本仓库的 worktree `../snorkeling-notion-properties`（分支 `feat/aisession-notion-properties`），主工作树 `../snorkeling` 保持 `main` 干净；首次开发前在该 worktree 跑 `npm run setup`。
 > 镜像源：`frontend/app/element/info-card/session-note-section.tsx`、`frontend/app/view/aisessions/session-row.tsx`、
 > `frontend/app/view/term/agent-hover-card.tsx`、`frontend/app/block/session-detail-info-card.tsx`、
 > `frontend/app/view/preview/plugins/md-properties/frontmatter-block.ts`、`pkg/aisessions/types.go`、
