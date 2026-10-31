@@ -72,6 +72,7 @@ declare global {
     type AISessionsAnnotationAssistRequest = {
         sessionKey: string;
         connection?: string;
+        origin?: string;
         scope: string;
         anchorKey?: string;
         title?: string;
@@ -90,6 +91,7 @@ declare global {
     type AISessionsAnnotationBulkDraftsRequest = {
         sessionKey: string;
         connection?: string;
+        origin?: string;
         ids?: number[];
         action: string;
     };
@@ -103,6 +105,7 @@ declare global {
     type AISessionsAnnotationReplaceRequest = {
         sessionKey: string;
         connection?: string;
+        origin?: string;
         annotations: AnnotationDraft[];
     };
 
@@ -112,6 +115,7 @@ declare global {
         sessionKey: string;
         anchorKey: string;
         seq?: number;
+        origin?: string;
         kind?: string;
         title: string;
         body: string;
@@ -143,6 +147,7 @@ declare global {
     type AISessionsAnnotationsRequest = {
         sessionKey: string;
         connection?: string;
+        origin?: string;
         anchors?: AnnotationAnchor[];
     };
 
@@ -190,6 +195,7 @@ declare global {
     type AISessionsAutoGenerateRequest = {
         ids: string[];
         connection?: string;
+        origin?: string;
         kind: string;
         force?: boolean;
         aiMode?: string;
@@ -226,6 +232,7 @@ declare global {
     type AISessionsDetailDeltaRequest = {
         id: string;
         connection?: string;
+        origin?: string;
         source?: string;
         filePath?: string;
         cursor: SessionMessageCursor;
@@ -240,6 +247,7 @@ declare global {
     type AISessionsDetailRequest = {
         id: string;
         connection?: string;
+        origin?: string;
         refresh?: boolean;
         tail?: number;
         includeTools?: boolean;
@@ -250,6 +258,7 @@ declare global {
     type AISessionsGenerateMetadataRequest = {
         id: string;
         connection?: string;
+        origin?: string;
         aiMode?: string;
     };
 
@@ -263,6 +272,7 @@ declare global {
     type AISessionsGenerateTitleRequest = {
         id: string;
         connection?: string;
+        origin?: string;
         aiMode?: string;
     };
 
@@ -280,6 +290,7 @@ declare global {
         excludeProjects?: string[];
         query?: string;
         connection?: string;
+        origin?: string;
         limit?: number;
         refresh?: boolean;
         marked?: string;
@@ -325,6 +336,28 @@ declare global {
         id: string;
         note: string;
         tags?: string[];
+        origin?: string;
+    };
+
+    // aisessionsservice.AISessionsOrigin
+    type AISessionsOrigin = {
+        id: string;
+        label: string;
+        path?: string;
+        kind: string;
+        source?: string;
+        readOnly: boolean;
+        count: number;
+    };
+
+    // aisessionsservice.AISessionsOriginsRequest
+    type AISessionsOriginsRequest = {
+        includeCounts?: boolean;
+    };
+
+    // aisessionsservice.AISessionsOriginsResponse
+    type AISessionsOriginsResponse = {
+        origins: AISessionsOrigin[];
     };
 
     // aisessionsservice.AISessionsPromptTemplatesRequest
@@ -340,6 +373,7 @@ declare global {
         from: string;
         to: string;
         connection?: string;
+        origin?: string;
     };
 
     // aisessionsservice.AISessionsRenameTagResponse
@@ -351,6 +385,7 @@ declare global {
     type AISessionsRestoreContextRequest = {
         id: string;
         connection?: string;
+        origin?: string;
     };
 
     // aisessionsservice.AISessionsRestoreContextResponse
@@ -367,6 +402,7 @@ declare global {
     type AISessionsStatRequest = {
         id?: string;
         filePath?: string;
+        origin?: string;
     };
 
     // aisessionsservice.AISessionsStatResponse
@@ -382,6 +418,7 @@ declare global {
     type AISessionsSubagentFoldRequest = {
         id?: string;
         connection?: string;
+        origin?: string;
     };
 
     // aisessionsservice.AISessionsSubagentFoldResponse
@@ -393,6 +430,7 @@ declare global {
     type AISessionsSummaryRequest = {
         id: string;
         connection?: string;
+        origin?: string;
         refresh?: boolean;
     };
 
@@ -403,6 +441,7 @@ declare global {
         projects?: string[];
         excludeProjects?: string[];
         connection?: string;
+        origin?: string;
         marked?: string;
         since?: number;
         before?: number;
@@ -421,6 +460,7 @@ declare global {
     type AISessionsUserOutlineRequest = {
         id: string;
         connection?: string;
+        origin?: string;
         refresh?: boolean;
         limit?: number;
     };
@@ -545,6 +585,14 @@ declare global {
     // wshrpc.AiMessageData
     type AiMessageData = {
         message?: string;
+    };
+
+    // wconfig.AiSessionExternalOriginType
+    type AiSessionExternalOriginType = {
+        label: string;
+        path: string;
+        source?: string;
+        readonly?: boolean;
     };
 
     // aisessions.AnnotatedSession
@@ -2592,6 +2640,7 @@ declare global {
         key: string;
         id: string;
         source: string;
+        origin?: string;
         title?: string;
         titleSource?: string;
         projectPath?: string;
@@ -2665,6 +2714,7 @@ declare global {
         "ai:sessionautotitleintervalms"?: number;
         "ai:sessionautotitlebatchsize"?: number;
         "ai:sessionautotitleconcurrency"?: number;
+        "ai:sessions:externalorigins"?: AiSessionExternalOriginType[];
         "waveai:showcloudmodes"?: boolean;
         "waveai:defaultmode"?: string;
         "term:*"?: boolean;

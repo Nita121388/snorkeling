@@ -11,6 +11,12 @@ import { createBlock, getApi } from "@/store/global";
 import { isBlank } from "@/util/util";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+/** 归一化会话所属 origin："local" / 空 = 本机；其余为外部 dump id。 */
+function originOf(session: SessionSummary | null | undefined): string {
+    const tagged = (session?.origin ?? "").trim();
+    return tagged === "" || tagged === "local" ? "" : tagged;
+}
+
 type AISessionDetailModalProps = {
     sessionId: string;
 };
@@ -196,8 +202,8 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                 try {
                     const updated =
                         tags == null
-                            ? await service.Note(session.key, note)
-                            : await service.NoteAndTags({ id: session.key, note, tags });
+                            ? await service.Note(session.key, note, originOf(session))
+                            : await service.NoteAndTags({ id: session.key, note, tags, origin: originOf(session) });
                     replaceSession(updated);
                     dispatchAISessionNoteUpdated(updated);
                     return true;
@@ -212,7 +218,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                 }
                 setError("");
                 try {
-                    const updated = await service.Title(session.key, title);
+                    const updated = await service.Title(session.key, title, originOf(session));
                     replaceSession(updated);
                     return true;
                 } catch (e) {
@@ -227,7 +233,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                 setDeleting(true);
                 setError("");
                 try {
-                    await service.Delete(session.key);
+                    await service.Delete(session.key, originOf(session));
                     setDetail(null);
                 } catch (e) {
                     setError(getErrorMessage(e));
@@ -279,7 +285,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                 }
                 setError("");
                 try {
-                    const updated = await service.Mark(session.key, !session.marked);
+                    const updated = await service.Mark(session.key, !session.marked, originOf(session));
                     replaceSession(updated);
                 } catch (e) {
                     setError(getErrorMessage(e));

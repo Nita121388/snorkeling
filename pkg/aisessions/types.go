@@ -27,6 +27,10 @@ type SessionSummary struct {
 	Key         string `json:"key"`
 	ID          string `json:"id"`
 	Source      string `json:"source"`
+	// Origin tags which scan root surfaced this row in a merged ("All machines")
+	// view. Empty for rows loaded from a single origin, so the frontend can fall
+	// back to its selected origin for routing detail/stat calls.
+	Origin      string `json:"origin,omitempty"`
 	Title       string `json:"title,omitempty"`
 	TitleSource string `json:"titleSource,omitempty"`
 	// 后台 AI 标题自动生成的幂等标记（不暴露给前端）。

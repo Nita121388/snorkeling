@@ -1,0 +1,28 @@
+{
+  "id": "aisessions-origin-switch-backend",
+  "name": "aisessions-origin-switch-backend",
+  "title": "origin 抽象层后端：外部根配置 + provider 注册 + Origins RPC + 白名单修复",
+  "description": "paths.go 增加读 settings.json 的 ai:sessions:externalRoots（{path,label} 数组）+ env 兜底 WAVETERM_AI_SESSIONS_EXTRA_ROOTS；每个外部根注册 provider；新增 Origins RPC 返回可用 origin（id/label/path/kind/local|dump/count/readOnly）；List/Detail/Stat 请求加 Origin 字段并按 origin 路由 manager；isKnownAISessionFilePath 白名单纳入外部根与本机 Pi 根；外部根独立 sqlite/meta 路径。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-30",
+  "completedAt": "2026-10-31",
+  "branch": "feat/aisessions-origin-switch",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-30-aisessions-origin-switch",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "branch": "feat/aisessions-origin-switch"
+  }
+}

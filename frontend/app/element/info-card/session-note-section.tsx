@@ -83,6 +83,7 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                     <GenActionButton
                         sessionKey={sessionKey}
                         connection={connection}
+                        origin={summary.origin ?? ""}
                         kind="title"
                         titleSource={summary.titleSource}
                         size="xs"
@@ -92,6 +93,7 @@ export function SessionNoteSection({ state }: { state: SessionNoteState }) {
                     <GenActionButton
                         sessionKey={sessionKey}
                         connection={connection}
+                        origin={summary.origin ?? ""}
                         kind="metadata"
                         size="xs"
                         source="agent-card"

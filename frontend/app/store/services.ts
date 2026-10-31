@@ -127,9 +127,9 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "CleanupBackups", Array.from(arguments))
     }
 
-    // delete a local AI session by moving its source file to deleted storage
+    // delete an AI session by moving its source file to deleted storage
     // @returns deleted AI session summary
-    Delete(id: string): Promise<SessionSummary> {
+    Delete(id: string, origin: string): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "Delete", Array.from(arguments))
     }
 
@@ -171,13 +171,13 @@ export class AISessionsServiceType {
 
     // mark or unmark a local AI session
     // @returns updated AI session summary
-    Mark(id: string, marked: boolean): Promise<SessionSummary> {
+    Mark(id: string, marked: boolean, origin: string): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "Mark", Array.from(arguments))
     }
 
     // set a local AI session note
     // @returns updated AI session summary
-    Note(id: string, note: string): Promise<SessionSummary> {
+    Note(id: string, note: string, origin: string): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "Note", Array.from(arguments))
     }
 
@@ -185,6 +185,12 @@ export class AISessionsServiceType {
     // @returns updated AI session summary
     NoteAndTags(request: AISessionsNoteAndTagsRequest): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "NoteAndTags", Array.from(arguments))
+    }
+
+    // list selectable AI session origins (local machine + external dumps)
+    // @returns available AI session origins
+    Origins(request: AISessionsOriginsRequest): Promise<AISessionsOriginsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "Origins", Array.from(arguments))
     }
 
     // list AI prompt features with their built-in defaults
@@ -231,7 +237,7 @@ export class AISessionsServiceType {
 
     // set a local AI session title override
     // @returns updated AI session summary
-    Title(id: string, title: string): Promise<SessionSummary> {
+    Title(id: string, title: string, origin: string): Promise<SessionSummary> {
         return callBackendService(this?.waveEnv, "aisessions", "Title", Array.from(arguments))
     }
 

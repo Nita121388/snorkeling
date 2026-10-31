@@ -1,0 +1,32 @@
+{
+  "id": "aisessions-origin-switch",
+  "name": "aisessions-origin-switch",
+  "title": "AI 会话 origin 切换器：外部 dump 会话 + 终端式切换",
+  "description": "引入 origin（扫描根）抽象层，支持把其他电脑的会话 dump（如 ~/Primary/MyData/pi）作为只读来源加入 AI Sessions，左上角 icon popover 切换本机/外部，复用 filter-state-persist 持久化，外部根走 settings.json + env 配置。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-30",
+  "completedAt": "2026-10-31",
+  "branch": "feat/aisessions-origin-switch",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-30-aisessions-origin-switch-backend",
+    "10-30-aisessions-origin-switch-ui",
+    "10-30-aisessions-origin-switch-edit-all"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "branch": "feat/aisessions-origin-switch"
+  }
+}

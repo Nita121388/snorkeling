@@ -16,6 +16,7 @@ import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { CloseTabModal } from "./closetabmodal";
 import { ConfirmModal } from "./confirmmodal";
+import { EditOriginsModal } from "./edit-origins-modal";
 import { FileConflictModal } from "./file-conflict-modal";
 import { NoteDirectoryModal } from "./notedirectorymodal";
 import { RestartConfirmModal } from "./restartconfirmmodal";
@@ -46,6 +47,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [ExportOptionsModal.displayName || "ExportOptionsModal"]: ExportOptionsModal,
     [RestartConfirmModal.displayName || "RestartConfirmModal"]: RestartConfirmModal,
     [ConfirmModal.displayName || "ConfirmModal"]: ConfirmModal,
+    [EditOriginsModal.displayName || "EditOriginsModal"]: EditOriginsModal,
     [ScheduledTaskEditorModal.displayName || "ScheduledTaskEditorModal"]: ScheduledTaskEditorModal,
 };
 

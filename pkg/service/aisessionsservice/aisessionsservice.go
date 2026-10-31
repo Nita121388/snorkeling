@@ -38,6 +38,9 @@ type AISessionsListRequest struct {
 	ExcludeProjects     []string `json:"excludeProjects,omitempty"`
 	Query               string   `json:"query,omitempty"`
 	Connection          string   `json:"connection,omitempty"`
+	// Origin selects a scan root ("" / "local" = this machine, otherwise an
+	// external dump id from the Origins RPC). Takes precedence over Connection.
+	Origin              string   `json:"origin,omitempty"`
 	Limit               int      `json:"limit,omitempty"`
 	Refresh             bool     `json:"refresh,omitempty"`
 	Marked              string   `json:"marked,omitempty"`
@@ -75,6 +78,7 @@ type AISessionsTagsRequest struct {
 	Projects        []string `json:"projects,omitempty"`
 	ExcludeProjects []string `json:"excludeProjects,omitempty"`
 	Connection      string   `json:"connection,omitempty"`
+	Origin          string   `json:"origin,omitempty"`
 	Marked          string   `json:"marked,omitempty"`
 	Since           int64    `json:"since,omitempty"`
 	Before          int64    `json:"before,omitempty"`
@@ -89,15 +93,17 @@ type AISessionsTagsResponse struct {
 }
 
 type AISessionsNoteAndTagsRequest struct {
-	ID   string   `json:"id"`
-	Note string   `json:"note"`
-	Tags []string `json:"tags,omitempty"`
+	ID     string   `json:"id"`
+	Note   string   `json:"note"`
+	Tags   []string `json:"tags,omitempty"`
+	Origin string   `json:"origin,omitempty"`
 }
 
 type AISessionsRenameTagRequest struct {
 	From       string `json:"from"`
 	To         string `json:"to"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 }
 
 type AISessionsRenameTagResponse struct {
@@ -107,6 +113,7 @@ type AISessionsRenameTagResponse struct {
 type AISessionsDetailRequest struct {
 	ID           string `json:"id"`
 	Connection   string `json:"connection,omitempty"`
+	Origin       string `json:"origin,omitempty"`
 	Refresh      bool   `json:"refresh,omitempty"`
 	Tail         int    `json:"tail,omitempty"`
 	IncludeTools bool   `json:"includeTools,omitempty"`
@@ -120,6 +127,7 @@ type AISessionsDetailRequest struct {
 type AISessionsDetailDeltaRequest struct {
 	ID           string                          `json:"id"`
 	Connection   string                          `json:"connection,omitempty"`
+	Origin       string                          `json:"origin,omitempty"`
 	Source       string                          `json:"source,omitempty"`
 	FilePath     string                          `json:"filePath,omitempty"`
 	Cursor       aisessions.SessionMessageCursor `json:"cursor"`
@@ -138,6 +146,7 @@ type AISessionsDetailDeltaRequest struct {
 type AISessionsUserOutlineRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 	Refresh    bool   `json:"refresh,omitempty"`
 	Limit      int    `json:"limit,omitempty"`
 }
@@ -151,12 +160,14 @@ type AISessionsUserOutlineResponse struct {
 type AISessionsSummaryRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 	Refresh    bool   `json:"refresh,omitempty"`
 }
 
 type AISessionsGenerateMetadataRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 	AIMode     string `json:"aiMode,omitempty"`
 }
 
@@ -172,6 +183,7 @@ type AISessionsGenerateMetadataResponse struct {
 type AISessionsAnnotationsRequest struct {
 	SessionKey string                        `json:"sessionKey"`
 	Connection string                        `json:"connection,omitempty"`
+	Origin     string                        `json:"origin,omitempty"`
 	Anchors    []aisessions.AnnotationAnchor `json:"anchors,omitempty"`
 }
 
@@ -186,6 +198,7 @@ type AISessionsAnnotationSaveRequest struct {
 	SessionKey string   `json:"sessionKey"`
 	AnchorKey  string   `json:"anchorKey"`
 	Seq        int      `json:"seq,omitempty"`
+	Origin     string   `json:"origin,omitempty"`
 	Kind       string   `json:"kind,omitempty"`
 	Title      string   `json:"title"`
 	Body       string   `json:"body"`
@@ -214,6 +227,7 @@ type AISessionsAnnotationSessionsRequest struct {
 type AISessionsAnnotationAssistRequest struct {
 	SessionKey string   `json:"sessionKey"`
 	Connection string   `json:"connection,omitempty"`
+	Origin     string   `json:"origin,omitempty"`
 	Scope      string   `json:"scope"` // timeline | entry-title | entry-body | entry-tags
 	AnchorKey  string   `json:"anchorKey,omitempty"`
 	Title      string   `json:"title,omitempty"`
@@ -232,6 +246,7 @@ type AISessionsAnnotationAssistResponse struct {
 type AISessionsAnnotationReplaceRequest struct {
 	SessionKey  string                       `json:"sessionKey"`
 	Connection  string                       `json:"connection,omitempty"`
+	Origin      string                       `json:"origin,omitempty"`
 	Annotations []aisessions.AnnotationDraft `json:"annotations"`
 }
 
@@ -240,6 +255,7 @@ type AISessionsAnnotationReplaceRequest struct {
 type AISessionsAnnotationBulkDraftsRequest struct {
 	SessionKey string  `json:"sessionKey"`
 	Connection string  `json:"connection,omitempty"`
+	Origin     string  `json:"origin,omitempty"`
 	IDs        []int64 `json:"ids,omitempty"`
 	Action     string  `json:"action"` // accept | discard
 }
@@ -256,6 +272,7 @@ type AISessionsAnnotationSessionsResponse struct {
 type AISessionsGenerateTitleRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 	AIMode     string `json:"aiMode,omitempty"`
 }
 
@@ -270,6 +287,7 @@ type AISessionsGenerateTitleResponse struct {
 type AISessionsAutoGenerateRequest struct {
 	IDs        []string `json:"ids"`
 	Connection string   `json:"connection,omitempty"`
+	Origin     string   `json:"origin,omitempty"`
 	Kind       string   `json:"kind"` // title | metadata | both
 	Force      bool     `json:"force,omitempty"`
 	AIMode     string   `json:"aiMode,omitempty"`
@@ -297,6 +315,7 @@ type AISessionsPromptTemplatesResponse struct {
 type AISessionsRestoreContextRequest struct {
 	ID         string `json:"id"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 }
 
 type AISessionsRestoreContextResponse struct {
@@ -311,6 +330,7 @@ type AISessionsRestoreContextResponse struct {
 type AISessionsStatRequest struct {
 	ID       string `json:"id,omitempty"`
 	FilePath string `json:"filePath,omitempty"`
+	Origin   string `json:"origin,omitempty"`
 }
 
 type AISessionsStatResponse struct {
@@ -326,6 +346,7 @@ type AISessionsStatResponse struct {
 type AISessionsSubagentFoldRequest struct {
 	ID         string `json:"id,omitempty"`
 	Connection string `json:"connection,omitempty"`
+	Origin     string `json:"origin,omitempty"`
 }
 
 type AISessionsSubagentFoldResponse struct {
@@ -538,11 +559,15 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	if request == nil {
 		request = &AISessionsListRequest{}
 	}
+	// 合并视图：内存聚合所有 origin，只读、不建共享索引。
+	if strings.TrimSpace(request.Origin) == OriginAllID {
+		return svc.listAllOrigins(ctx, request)
+	}
 	limit := request.Limit
 	if limit == 0 {
 		limit = 100
 	}
-	manager, err := svc.managerForConnection(ctx, request.Connection)
+	manager, err := svc.managerForScope(ctx, "", request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -634,7 +659,10 @@ func (svc *AISessionsService) Tags(ctx context.Context, request *AISessionsTagsR
 	if request == nil {
 		request = &AISessionsTagsRequest{}
 	}
-	manager, err := svc.managerForConnection(ctx, request.Connection)
+	if strings.TrimSpace(request.Origin) == OriginAllID {
+		return svc.listAllTags(ctx, request)
+	}
+	manager, err := svc.managerForScope(ctx, "", request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -671,7 +699,7 @@ func (svc *AISessionsService) Detail(ctx context.Context, request *AISessionsDet
 	}
 	start := time.Now()
 	aiSessionsDebugf("Detail start id=%q connection=%q refresh=%v tail=%d includeTools=%v loadAll=%v", request.ID, request.Connection, request.Refresh, request.Tail, request.IncludeTools, request.LoadAll)
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		aiSessionsDebugf("Detail manager error id=%q duration=%s err=%v", request.ID, time.Since(start), err)
 		return nil, err
@@ -719,7 +747,7 @@ func (svc *AISessionsService) DetailDelta(ctx context.Context, request *AISessio
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -757,7 +785,7 @@ func (svc *AISessionsService) UserOutline(ctx context.Context, request *AISessio
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -811,7 +839,7 @@ func (svc *AISessionsService) Summary(ctx context.Context, request *AISessionsSu
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -834,7 +862,7 @@ func (svc *AISessionsService) RestoreContext(ctx context.Context, request *AISes
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -915,10 +943,9 @@ func isKnownAISessionFilePath(filePath string) bool {
 		return false
 	}
 	var roots []string
-	if codexRoot := aisessions.DefaultCodexSessionsDir(); codexRoot != "" {
-		roots = append(roots, codexRoot)
-	}
-	roots = append(roots, aisessions.DefaultClaudeProjectDirs()...)
+	// KnownSessionRoots already covers codex + claude + pi + every configured
+	// external origin, so the whitelist stays in one place.
+	roots = append(roots, aisessions.KnownSessionRoots()...)
 	for _, root := range roots {
 		if strings.TrimSpace(root) == "" {
 			continue
@@ -952,7 +979,13 @@ func (svc *AISessionsService) Stat(ctx context.Context, request *AISessionsStatR
 	}
 	filePath := strings.TrimSpace(request.FilePath)
 	if filePath == "" {
-		summary, err := aisessions.NewManager("", nil).Summary(ctx, request.ID, false)
+		// Resolve the file path through the same manager the rest of the request
+		// routing uses, so an external-origin Stat finds the dump's file too.
+		manager, err := svc.managerForScope(ctx, request.ID, "", request.Origin)
+		if err != nil {
+			return nil, err
+		}
+		summary, err := manager.Summary(ctx, request.ID, false)
 		if err != nil {
 			return nil, err
 		}
@@ -992,7 +1025,7 @@ func (svc *AISessionsService) SubagentFold_Meta() tsgenmeta.MethodMeta {
 }
 
 func (svc *AISessionsService) SubagentFold(ctx context.Context, request *AISessionsSubagentFoldRequest) (*AISessionsSubagentFoldResponse, error) {
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1006,13 +1039,13 @@ func (svc *AISessionsService) SubagentFold(ctx context.Context, request *AISessi
 func (svc *AISessionsService) Mark_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
 		Desc:       "mark or unmark a local AI session",
-		ArgNames:   []string{"ctx", "id", "marked"},
+		ArgNames:   []string{"ctx", "id", "marked", "origin"},
 		ReturnDesc: "updated AI session summary",
 	}
 }
 
-func (svc *AISessionsService) Mark(ctx context.Context, id string, marked bool) (*aisessions.SessionSummary, error) {
-	manager, err := svc.managerForIdentifier(ctx, id)
+func (svc *AISessionsService) Mark(ctx context.Context, id string, marked bool, origin string) (*aisessions.SessionSummary, error) {
+	manager, err := svc.managerForScope(ctx, id, "", origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1026,13 +1059,13 @@ func (svc *AISessionsService) Mark(ctx context.Context, id string, marked bool) 
 func (svc *AISessionsService) Note_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
 		Desc:       "set a local AI session note",
-		ArgNames:   []string{"ctx", "id", "note"},
+		ArgNames:   []string{"ctx", "id", "note", "origin"},
 		ReturnDesc: "updated AI session summary",
 	}
 }
 
-func (svc *AISessionsService) Note(ctx context.Context, id string, note string) (*aisessions.SessionSummary, error) {
-	manager, err := svc.managerForIdentifier(ctx, id)
+func (svc *AISessionsService) Note(ctx context.Context, id string, note string, origin string) (*aisessions.SessionSummary, error) {
+	manager, err := svc.managerForScope(ctx, id, "", origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1046,13 +1079,13 @@ func (svc *AISessionsService) Note(ctx context.Context, id string, note string) 
 func (svc *AISessionsService) Title_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
 		Desc:       "set a local AI session title override",
-		ArgNames:   []string{"ctx", "id", "title"},
+		ArgNames:   []string{"ctx", "id", "title", "origin"},
 		ReturnDesc: "updated AI session summary",
 	}
 }
 
-func (svc *AISessionsService) Title(ctx context.Context, id string, title string) (*aisessions.SessionSummary, error) {
-	manager, err := svc.managerForIdentifier(ctx, id)
+func (svc *AISessionsService) Title(ctx context.Context, id string, title string, origin string) (*aisessions.SessionSummary, error) {
+	manager, err := svc.managerForScope(ctx, id, "", origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1075,7 +1108,7 @@ func (svc *AISessionsService) NoteAndTags(ctx context.Context, request *AISessio
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForIdentifier(ctx, request.ID)
+	manager, err := svc.managerForScope(ctx, request.ID, "", request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1097,7 +1130,7 @@ func (svc *AISessionsService) GenerateMetadata(ctx context.Context, request *AIS
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1144,7 +1177,7 @@ func (svc *AISessionsService) GenerateTitle(ctx context.Context, request *AISess
 	if request == nil || strings.TrimSpace(request.ID) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.ID, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.ID, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1201,7 +1234,7 @@ func (svc *AISessionsService) AutoGenerate(ctx context.Context, request *AISessi
 	if len(request.IDs) > MaxAutoGenerateBatch {
 		return nil, fmt.Errorf("too many sessions (%d); the limit is %d per request", len(request.IDs), MaxAutoGenerateBatch)
 	}
-	manager, err := svc.managerForRequest(ctx, request.IDs[0], request.Connection)
+	manager, err := svc.managerForScope(ctx, request.IDs[0], request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1259,7 +1292,7 @@ func (svc *AISessionsService) Annotations(ctx context.Context, request *AISessio
 	if request == nil || strings.TrimSpace(request.SessionKey) == "" {
 		return nil, fmt.Errorf("session key is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.SessionKey, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1285,7 +1318,7 @@ func (svc *AISessionsService) AnnotationSave(ctx context.Context, request *AISes
 	if request == nil || strings.TrimSpace(request.SessionKey) == "" || strings.TrimSpace(request.AnchorKey) == "" {
 		return nil, fmt.Errorf("session key and anchor key are required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.SessionKey, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1422,7 +1455,7 @@ func (svc *AISessionsService) AnnotationAssist(ctx context.Context, request *AIS
 	if !aisessions.PromptEnabled(promptConfig) {
 		return nil, fmt.Errorf("session annotation generation is disabled in AI Prompts settings")
 	}
-	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.SessionKey, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1484,7 +1517,7 @@ func (svc *AISessionsService) AnnotationReplace(ctx context.Context, request *AI
 	if request == nil || strings.TrimSpace(request.SessionKey) == "" {
 		return nil, fmt.Errorf("session key is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.SessionKey, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1530,7 +1563,7 @@ func (svc *AISessionsService) AnnotationBulkDrafts(ctx context.Context, request 
 	if request == nil || strings.TrimSpace(request.SessionKey) == "" {
 		return nil, fmt.Errorf("session key is required")
 	}
-	manager, err := svc.managerForRequest(ctx, request.SessionKey, request.Connection)
+	manager, err := svc.managerForScope(ctx, request.SessionKey, request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1737,7 +1770,7 @@ func (svc *AISessionsService) RenameTag(ctx context.Context, request *AISessions
 	if request == nil {
 		return nil, fmt.Errorf("rename tag request is required")
 	}
-	manager, err := svc.managerForConnection(ctx, request.Connection)
+	manager, err := svc.managerForScope(ctx, "", request.Connection, request.Origin)
 	if err != nil {
 		return nil, err
 	}
@@ -1750,14 +1783,18 @@ func (svc *AISessionsService) RenameTag(ctx context.Context, request *AISessions
 
 func (svc *AISessionsService) Delete_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
-		Desc:       "delete a local AI session by moving its source file to deleted storage",
-		ArgNames:   []string{"ctx", "id"},
+		Desc:       "delete an AI session by moving its source file to deleted storage",
+		ArgNames:   []string{"ctx", "id", "origin"},
 		ReturnDesc: "deleted AI session summary",
 	}
 }
 
-func (svc *AISessionsService) Delete(ctx context.Context, id string) (*aisessions.SessionSummary, error) {
-	summary, err := aisessions.NewManager("", nil).Delete(ctx, id)
+func (svc *AISessionsService) Delete(ctx context.Context, id string, origin string) (*aisessions.SessionSummary, error) {
+	manager, err := svc.managerForScope(ctx, id, "", origin)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.Delete(ctx, id)
 	if err != nil {
 		return nil, err
 	}

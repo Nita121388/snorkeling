@@ -533,7 +533,7 @@ export class AgentViewModel implements ViewModel {
         const nextMarked = !currentSession.marked;
         globalStore.set(this.errorAtom, "");
         try {
-            const updated = await this.service.Mark(session.key, nextMarked);
+            const updated = await this.service.Mark(session.key, nextMarked, "");
             this.replaceSession(updated);
         } catch (e) {
             globalStore.set(this.errorAtom, getErrorMessage(e));
@@ -545,8 +545,8 @@ export class AgentViewModel implements ViewModel {
         try {
             const updated =
                 tags == null
-                    ? await this.service.Note(session.key, note)
-                    : await this.service.NoteAndTags({ id: session.key, note, tags });
+                    ? await this.service.Note(session.key, note, "")
+                    : await this.service.NoteAndTags({ id: session.key, note, tags, origin: "" });
             this.replaceSession(updated);
             dispatchAISessionNoteUpdated(updated);
             return true;
@@ -559,7 +559,7 @@ export class AgentViewModel implements ViewModel {
     async updateTitle(session: SessionSummary, title: string): Promise<boolean> {
         if (!session?.key) return false;
         try {
-            const updated = await this.service.Title(session.key, title);
+            const updated = await this.service.Title(session.key, title, "");
             this.replaceSession(updated);
             return true;
         } catch (e) {
@@ -573,7 +573,7 @@ export class AgentViewModel implements ViewModel {
         globalStore.set(this.deletingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            await this.service.Delete(session.key);
+            await this.service.Delete(session.key, "");
             globalStore.set(this.detailAtom, null);
             globalStore.set(this.selectedKeyAtom, "");
             globalStore.set(this.newSessionAtom, null);
@@ -594,6 +594,7 @@ export class AgentViewModel implements ViewModel {
             const context = await this.service.RestoreContext({
                 id: session.key || session.id,
                 connection: this.getConnection(),
+                origin: "",
             });
             const { createBlock } = await import("@/store/global");
             await createBlock({

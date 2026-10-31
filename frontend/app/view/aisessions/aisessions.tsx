@@ -14,6 +14,7 @@ import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
+import { modalsModel } from "@/app/store/modalmodel";
 import { isDragMovement, keysUnderRect, rectToCss, type Rect } from "@/util/selectionrect";
 import { cn, fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
@@ -30,6 +31,15 @@ import { DefaultOpenState, openSessionMatches, type OpenState } from "./open-ses
 import { useOpenSessions } from "./open-sessions-store";
 import { FilterPresetMenu } from "./filter-preset-menu";
 import { FoldMenu, type SubSessionsFold } from "./fold-menu";
+import { OriginSwitcher } from "./origin-switcher";
+import {
+    OriginMetaKey,
+    buildOriginMeta,
+    parseOriginMeta,
+    recallOrigin,
+    rememberOrigin,
+    resolveRestoredOriginId,
+} from "./origin-state";
 import {
     FilterStateMetaKey,
     buildFilterStateMeta,
@@ -242,6 +252,10 @@ export class AiSessionsViewModel implements ViewModel {
     /** 当前应用的方案 id；空串 = 未绑定任何方案。 */
     activePresetIdAtom = jotai.atom<string>("");
     filtersOpenAtom = jotai.atom<boolean>(false);
+    /** 可选的扫描来源（本机 + 外部 dump），由 Origins RPC 填充。 */
+    originsAtom = jotai.atom<AISessionsOrigin[]>([]);
+    /** 当前选中的 origin id；空串 / "local" = 本机。 */
+    selectedOriginIdAtom = jotai.atom<string>("");
     availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
     projectPathsAtom = jotai.atom<ProjectPathSummary[]>([]);
     loadingAtom = jotai.atom<boolean>(true);
@@ -345,6 +359,7 @@ export class AiSessionsViewModel implements ViewModel {
             ];
         });
         this.restoreFilterState();
+        this.restoreOriginId();
         this.attachFilterStatePersistence();
         // 以「当前状态」作为基准：刚打开/无 meta 的块不会被写入一条默认值，
         // 只有用户真的改了筛选（或应用了方案）才会落盘。
@@ -510,6 +525,7 @@ export class AiSessionsViewModel implements ViewModel {
                 source,
                 query,
                 connection: this.getConnection(),
+                origin: this.getOrigin(),
                 limit: 200,
                 refresh,
                 marked,
@@ -705,6 +721,7 @@ export class AiSessionsViewModel implements ViewModel {
             const response = await this.service.Tags({
                 source: globalStore.get(this.sourceAtom),
                 connection: this.getConnection(),
+                origin: this.getOrigin(),
                 marked: globalStore.get(this.markedFilterAtom),
                 since,
                 before,
@@ -1079,6 +1096,96 @@ export class AiSessionsViewModel implements ViewModel {
         return typeof connection === "string" ? connection.trim() : "";
     }
 
+    /** 当前 origin 的请求值：空串 = 本机（后端按 local 路由）。 */
+    getOrigin(): string {
+        const id = globalStore.get(this.selectedOriginIdAtom);
+        return id === "" || id === "local" ? "" : id;
+    }
+
+    activeOrigin(): AISessionsOrigin | undefined {
+        const id = globalStore.get(this.selectedOriginIdAtom) || "local";
+        return globalStore.get(this.originsAtom).find((origin) => origin.id === id);
+    }
+
+    /** 当前 origin 是否只读（外部 dump）。只读时禁用终端/改写类操作。 */
+    isOriginReadOnly(): boolean {
+        return this.activeOrigin()?.readOnly === true;
+    }
+
+    /**
+     * 找出某条会话所属的 origin：合并视图里每行自带 origin（后端填充），
+     * 单 origin 视图则回退到当前选中项。空串 = 本机（后端按 local 路由）。
+     */
+    originForSession(session: SessionSummary): string {
+        const tagged = (session?.origin ?? "").trim();
+        if (tagged !== "") {
+            return tagged === "local" ? "" : tagged;
+        }
+        return this.getOrigin();
+    }
+
+    /**
+     * 某条会话是否来自外部 dump（只读源）。用于禁用“在终端恢复”这类
+     * 在本机无意义（cwd 是 Windows 路径）的操作；元数据编辑/删除仍按 origin
+     * 路由到各自独立存储，功能不削减。
+     */
+    sessionOriginReadOnly(session: SessionSummary): boolean {
+        const originId = this.originForSession(session);
+        if (originId === "") return false;
+        return globalStore.get(this.originsAtom).find((origin) => origin.id === originId)?.readOnly === true;
+    }
+
+    /** 构造时从热缓存 / block meta 恢复 origin id；列表校验在 loadOrigins。 */
+    private restoreOriginId(): void {
+        const meta = globalStore.get(this.blockAtom)?.meta as Record<string, unknown> | undefined;
+        const saved = recallOrigin(this.blockId) ?? parseOriginMeta(meta?.[OriginMetaKey]) ?? "";
+        globalStore.set(this.selectedOriginIdAtom, saved);
+    }
+
+    /** 打开外部 origin 管理弹窗（保存后重新拉取 origin 列表）。 */
+    openEditOrigins(): void {
+        modalsModel.pushModal("EditOriginsModal", {
+            onSaved: () => {
+                void this.loadOrigins();
+                void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+            },
+        });
+    }
+
+    /** 拉取可选 origin 列表；校验已恢复的 id 并在需要时触发一次重载。 */
+    async loadOrigins(): Promise<void> {
+        try {
+            // 不请求 counts：外部 dump 首次扫描很重，弹层打开时不该阻塞列表。
+            const response = await this.service.Origins({ includeCounts: false });
+            const origins = response.origins ?? [];
+            globalStore.set(this.originsAtom, origins);
+            const ids = origins.map((origin) => origin.id);
+            const current = globalStore.get(this.selectedOriginIdAtom);
+            const resolved = resolveRestoredOriginId(current, ids);
+            if (resolved !== current) {
+                globalStore.set(this.selectedOriginIdAtom, resolved);
+                void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+            }
+        } catch {
+            // 列表拉不到时保持本机 origin（originsAtom 为空，控件只显示本机）。
+            globalStore.set(this.originsAtom, []);
+        }
+    }
+
+    /** 切换 origin：落盘 + 重载列表（选中项也随之重置）。 */
+    setOrigin(id: string): void {
+        const normalized = id === "local" ? "" : id;
+        globalStore.set(this.selectedOriginIdAtom, normalized);
+        rememberOrigin(this.blockId, normalized);
+        void RpcApi.SetMetaCommand(TabRpcClient, {
+            oref: `block:${this.blockId}`,
+            meta: { [OriginMetaKey]: buildOriginMeta(normalized) } as MetaType,
+        });
+        globalStore.set(this.selectedKeyAtom, "");
+        globalStore.set(this.detailAtom, null);
+        void this.loadSessions(true, globalStore.get(this.sortDescendingAtom));
+    }
+
     async loadDetail(session: SessionSummary, refresh = false): Promise<void> {
         if (!session?.key) {
             globalStore.set(this.detailAtom, null);
@@ -1092,6 +1199,7 @@ export class AiSessionsViewModel implements ViewModel {
             const detail = await this.service.Detail({
                 id: session.key,
                 connection: this.getConnection(),
+                origin: this.getOrigin(),
                 refresh,
                 includeTools: true,
             });
@@ -1200,6 +1308,7 @@ export class AiSessionsViewModel implements ViewModel {
             const detail = await this.service.Detail({
                 id: currentSummary.key,
                 connection: this.getConnection(),
+                origin: this.getOrigin(),
                 refresh: false,
                 includeTools: true,
             });
@@ -1234,6 +1343,7 @@ export class AiSessionsViewModel implements ViewModel {
             const detail = await this.service.Detail({
                 id: currentSummary.key,
                 connection: this.getConnection(),
+                origin: this.getOrigin(),
                 refresh,
                 includeTools: true,
             });
@@ -1306,6 +1416,7 @@ export class AiSessionsViewModel implements ViewModel {
             const detail = await this.service.Detail({
                 id: trimmedSessionId,
                 connection: this.getConnection(),
+                origin: this.getOrigin(),
                 refresh,
                 includeTools: true,
             });
@@ -1323,6 +1434,7 @@ export class AiSessionsViewModel implements ViewModel {
 
     async toggleMark(session: SessionSummary): Promise<void> {
         if (!session?.key) return;
+        const origin = this.originForSession(session);
         const currentSession = this.getCurrentSession(session.key) ?? session;
         const nextMarked = !currentSession.marked;
         const requestSeq = (this.markRequestSeqByKey.get(session.key) ?? 0) + 1;
@@ -1330,7 +1442,7 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.errorAtom, "");
         this.setSessionMarked(session.key, nextMarked);
         Promise.resolve()
-            .then(() => this.service.Mark(session.key, nextMarked))
+            .then(() => this.service.Mark(session.key, nextMarked, origin))
             .then((updated) => {
                 if (this.markRequestSeqByKey.get(session.key) !== requestSeq) {
                     return;
@@ -1370,11 +1482,12 @@ export class AiSessionsViewModel implements ViewModel {
 
     async updateNote(session: SessionSummary, note: string, tags?: string[]): Promise<boolean> {
         if (!session?.key) return false;
+        const origin = this.originForSession(session);
         try {
             const updated =
                 tags == null
-                    ? await this.service.Note(session.key, note)
-                    : await this.service.NoteAndTags({ id: session.key, note, tags });
+                    ? await this.service.Note(session.key, note, origin)
+                    : await this.service.NoteAndTags({ id: session.key, note, tags, origin });
             this.replaceSession(updated);
             dispatchAISessionNoteUpdated(updated);
             void this.loadTags(false);
@@ -1387,8 +1500,9 @@ export class AiSessionsViewModel implements ViewModel {
 
     async updateTitle(session: SessionSummary, title: string): Promise<boolean> {
         if (!session?.key) return false;
+        const origin = this.originForSession(session);
         try {
-            const updated = await this.service.Title(session.key, title);
+            const updated = await this.service.Title(session.key, title, origin);
             this.replaceSession(updated);
             return true;
         } catch (e) {
@@ -1399,10 +1513,11 @@ export class AiSessionsViewModel implements ViewModel {
 
     async deleteSession(session: SessionSummary): Promise<void> {
         if (!session?.key) return;
+        const origin = this.originForSession(session);
         globalStore.set(this.deletingAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
-            await this.service.Delete(session.key);
+            await this.service.Delete(session.key, origin);
             const sessions = globalStore.get(this.sessionsAtom).filter((item) => item.key !== session.key);
             globalStore.set(this.sessionsAtom, sessions);
             globalStore.set(this.detailAtom, null);
@@ -1416,12 +1531,20 @@ export class AiSessionsViewModel implements ViewModel {
 
     async restoreSession(session: SessionSummary): Promise<void> {
         if (!session?.id || !session?.source) return;
+        if (this.sessionOriginReadOnly(session)) {
+            globalStore.set(
+                this.errorAtom,
+                "This session comes from an imported dump; resuming it in a local terminal is not supported."
+            );
+            return;
+        }
         globalStore.set(this.restoringAtom, true);
         globalStore.set(this.errorAtom, "");
         try {
             const context = await this.service.RestoreContext({
                 id: session.key || session.id,
                 connection: this.getConnection(),
+                origin: this.originForSession(session),
             });
             await createBlock({
                 meta: restoreMetaForSession(context),
@@ -1654,6 +1777,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const pathSelections = jotai.useAtomValue(model.pathSelectionsAtom);
     const pathExcludes = jotai.useAtomValue(model.pathExcludesAtom);
     const [filtersOpen, setFiltersOpen] = jotai.useAtom(model.filtersOpenAtom);
+    const origins = jotai.useAtomValue(model.originsAtom);
+    const selectedOriginId = jotai.useAtomValue(model.selectedOriginIdAtom);
+    const activeOrigin = origins.find((origin) => origin.id === (selectedOriginId || "local"));
+    const originReadOnly = activeOrigin?.readOnly === true;
     const filterPresets = jotai.useAtomValue(model.filterPresetsAtom);
     const activePresetId = jotai.useAtomValue(model.activePresetIdAtom);
     const selectedKeys = jotai.useAtomValue(model.selectedKeysAtom);
@@ -2011,6 +2138,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
 
     useEffect(() => {
         model.loadSessions(false, sortDescending);
+        void model.loadOrigins();
     }, [model]);
 
     const loadBackupStats = useCallback(() => {
@@ -2457,8 +2585,22 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                 >
                     {sessionListCollapsed ? null : (
                         <>
+                            {originReadOnly ? (
+                                <div className="flex shrink-0 items-center gap-1.5 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-[11px] text-secondary">
+                                    <i className="fa-solid fa-lock text-[10px] text-warning" />
+                                    <span className="min-w-0 truncate">
+                                        Imported dump · read-only · edits, delete and terminal actions are disabled
+                                    </span>
+                                </div>
+                            ) : null}
                             <div className="space-y-2 border-b border-border p-3">
                                 <div className="flex items-center gap-2">
+                                    <OriginSwitcher
+                                        origins={origins}
+                                        selectedId={selectedOriginId}
+                                        onSelect={(id) => model.setOrigin(id)}
+                                        onManage={() => model.openEditOrigins()}
+                                    />
                                     <div
                                         className={cn(
                                             "relative min-w-0 flex-1 rounded-lg",
@@ -2619,14 +2761,31 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                 onClear={clearSelection}
                                 onAutoGenerate={(kind) => {
                                     const connection = model.getConnection();
-                                    void autoGenerate(autoGenService, {
-                                        ids: selectedKeys,
-                                        connection,
-                                        kind,
-                                        source: "batch",
-                                    }).then((result) => {
-                                        if (!result.ok) {
-                                            globalStore.set(model.errorAtom, result.error);
+                                    // 合并视图里选中项可能跨多个 origin：按行的 origin 分组，
+                                    // 每组用各自的 manager 路由，而非把 "__all__" 传下去。
+                                    const groups = new Map<string, string[]>();
+                                    const byKey = new Map(sessions.map((s) => [s.key, s] as const));
+                                    for (const key of selectedKeys) {
+                                        const session = byKey.get(key);
+                                        const origin = session ? model.originForSession(session) : model.getOrigin();
+                                        const bucket = groups.get(origin) ?? [];
+                                        bucket.push(key);
+                                        groups.set(origin, bucket);
+                                    }
+                                    void Promise.all(
+                                        [...groups.entries()].map(([origin, ids]) =>
+                                            autoGenerate(autoGenService, {
+                                                ids,
+                                                connection,
+                                                origin,
+                                                kind,
+                                                source: "batch",
+                                            })
+                                        )
+                                    ).then((results) => {
+                                        const failed = results.find((result) => !result.ok);
+                                        if (failed != null) {
+                                            globalStore.set(model.errorAtom, failed.error);
                                         }
                                     });
                                 }}

@@ -1,0 +1,28 @@
+{
+  "id": "aisessions-origin-switch-edit-all",
+  "name": "aisessions-origin-switch-edit-all",
+  "title": "Edit origins dialog + All machines 合并视图",
+  "description": "Edit origins dialog：增删改外部根（name/path/type/readOnly），＋ Add folder；All machines 合并视图：混排按时间 + 每行 origin 徽标 + 按来源分组切换 + (source,id) 去重 + 重复来源标记。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-10-30",
+  "completedAt": "2026-10-31",
+  "branch": "feat/aisessions-origin-switch",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-30-aisessions-origin-switch",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "branch": "feat/aisessions-origin-switch"
+  }
+}
