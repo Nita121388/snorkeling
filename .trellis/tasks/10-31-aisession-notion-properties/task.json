@@ -21,7 +21,7 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "P0-P3 已全部落地（见 implement.md 交付状态）。P2/P3 采用推荐默认：全局模板+会话级覆盖、person=owner。待用户评审后决定是否归档。",
   "meta": {
     "worktree_path": "/Users/nita/Primary/projects/snorkeling-notion-properties"
   }
