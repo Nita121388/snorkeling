@@ -2485,7 +2485,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                     setSelectedBlockId(nextBlock.blockId);
                                     setSessionAction({ deletingSessionId: nextBlock.sessionId, error: "" });
                                     sessionService
-                                        .Delete(nextBlock.sessionId)
+                                        // origin 参数：GUI 会话概览是本地会话。
+                                        .Delete(nextBlock.sessionId, "")
                                         .then(() => {
                                             setSelectedBlockId((current) =>
                                                 current === nextBlock.blockId ? null : current
