@@ -196,7 +196,6 @@ export function useSessionAnnotations(
         if (sessionKey === "") return;
         void loadAnnotations(sessionKey, conn, anchors);
         // anchorsSignature 覆盖数组内容；不依赖数组引用。
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionKey, conn, anchorsSignature]);
 
     const sub = React.useCallback(
