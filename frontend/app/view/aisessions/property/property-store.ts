@@ -54,7 +54,8 @@ export async function setSessionProperty(args: {
             }
             case BUILTIN_PROP_KEYS.starred: {
                 try {
-                    const updated = await service.Mark(summary.key, value === true);
+                    // origin 参数：内置 starred 只在本地会话编辑（origin 字段当前仅外部 dump 用）。
+                    const updated = await service.Mark(summary.key, value === true, "");
                     dispatchAISessionNoteUpdated(updated);
                     return { ok: true };
                 } catch (err) {
