@@ -12,6 +12,7 @@ import { DeleteFileModal, PublishAppModal, RenameFileModal } from "@/builder/bui
 import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
 import { AboutModal } from "./about";
 import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
+import { AgentCardModal } from "./agentcardmodal";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { CloseTabModal } from "./closetabmodal";
@@ -36,6 +37,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [WidgetQuickLaunchModal.displayName || "WidgetQuickLaunchModal"]: WidgetQuickLaunchModal,
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,
+    [AgentCardModal.displayName || "AgentCardModal"]: AgentCardModal,
     [NoteDirectoryModal.displayName || "NoteDirectoryModal"]: NoteDirectoryModal,
     [FileConflictModal.displayName || "FileConflictModal"]: FileConflictModal,
     [UnsavedFileModal.displayName || "UnsavedFileModal"]: UnsavedFileModal,
