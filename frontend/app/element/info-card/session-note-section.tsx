@@ -25,6 +25,7 @@ import { setSessionProperty } from "@/app/view/aisessions/property/property-stor
 import { humanizeKey, type PropertyDef, type PropertyType, type PropertyValue } from "@/app/view/aisessions/property/property-model";
 import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
 import { UndoNoteBar, useNoteUndo, type NoteUndoSnapshot } from "@/app/view/aisessions/undo-toast";
+import { modalsModel } from "@/app/store/modalmodel";
 import * as React from "react";
 import {
     InfoCardError,
@@ -48,6 +49,7 @@ function statusIcon(state: SessionNoteState): string {
 export function SessionNoteSection({
     state,
     canEditProperties = false,
+    onOpenCardDialog,
 }: {
     state: SessionNoteState;
     /**
@@ -55,6 +57,8 @@ export function SessionNoteSection({
      * 悬浮卡用 false（hover 即预览，不把整张卡变成编辑器）；详情卡用 true。
      */
     canEditProperties?: boolean;
+    /** 卡片头部放大按钮（打开整卡放大编辑弹窗）。 */
+    onOpenCardDialog?: () => void;
 }) {
     const {
         summary,
@@ -75,6 +79,15 @@ export function SessionNoteSection({
     const sessionKey = summary?.key ?? state.sessionId;
     const connection = state.connection ?? "";
     const undo = useNoteUndo(state.service, sessionKey, connection);
+
+    // 弹窗编辑 Note（类似 aisessions 列表行）：App 级 modal，不渲染在卡片内。
+    const openNoteDialog = React.useCallback(() => {
+        modalsModel.pushModal("AISessionNoteModal", {
+            sessionId: sessionKey,
+            connection: connection || undefined,
+        });
+    }, [sessionKey, connection]);
+
     const prevNoteRef = React.useRef<NoteUndoSnapshot | null>(null);
     const [genError, setGenError] = React.useState("");
     const schema = usePropertySchema();
@@ -197,6 +210,20 @@ export function SessionNoteSection({
                     <TitleSourceBadge titleSource={summary.titleSource} className="ml-1" />
                 </InfoCardHead>
                 <div className="flex shrink-0 items-center gap-0.5">
+                    {onOpenCardDialog != null ? (
+                        <button
+                            type="button"
+                            className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary focus:opacity-100 group-hover:opacity-100"
+                            title="Open card in dialog"
+                            aria-label="Open card in dialog"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onOpenCardDialog();
+                            }}
+                        >
+                            <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
+                        </button>
+                    ) : null}
                     {/* 一键后台生成：点击即入队，worker 串行生成并直接落库。 */}
                     <GenActionButton
                         sessionKey={sessionKey}
@@ -297,6 +324,7 @@ export function SessionNoteSection({
                             />
                         ) : undefined
                     }
+                    onOpenNoteDialog={openNoteDialog}
                     onEditNote={() => {
                         setIsEditing(true);
                         window.setTimeout(() => {

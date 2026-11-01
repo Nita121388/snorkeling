@@ -459,6 +459,34 @@
     }
 }
 
+/* note 行弹窗编辑按钮（类似 aisessions 列表行的放大 icon，hover 行显示）。 */
+.property-row__dialog-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease;
+
+    .property-row:hover &,
+    &:focus {
+        opacity: 1;
+    }
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
 .property-row__menu {
     position: absolute;
     top: 22px;

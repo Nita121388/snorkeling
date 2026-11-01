@@ -17,6 +17,7 @@ import { SessionNoteSection } from "@/app/element/info-card/session-note-section
 import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { modalsModel } from "@/app/store/modalmodel";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
 import * as React from "react";
@@ -42,9 +43,11 @@ export type AgentHoverCardProps = {
      * TUI 的用户消息列表由 TermAgentMessageRail 的 SessionOutlineRail 承载。
      */
     mode: "gui" | "tui";
+    /** 弹窗内渲染（AgentCardModal）：放大尺寸，不显示悬浮卡底部复制栏。 */
+    embedded?: boolean;
 };
 
-const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardProps) => {
+const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false }: AgentHoverCardProps) => {
     const sessionId = React.useMemo(
         () => resolveBlockSessionId((blockData?.meta ?? {}) as Record<string, unknown>),
         [blockData]
@@ -128,6 +131,13 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
         },
         [sessionId]
     );
+    // 整卡放大编辑：打开 App 级弹窗（AgentCardModal）。悬浮卡内点击放大按钮触发。
+    const openCardDialog = React.useCallback(() => {
+        modalsModel.pushModal("AgentCardModal", {
+            blockId,
+            blockData,
+        });
+    }, [blockId, blockData]);
     const showMetaRow = (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
 
     // 会话摘要未就绪时也允许渲染（只要 agent 模型/状态信息可用）；Note 段仅在摘要就绪后显示。
@@ -136,7 +146,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
     }
 
     return (
-        <InfoCard className="agent-card" style={{ "--info-card-accent": statusAccent } as React.CSSProperties}>
+        <InfoCard className={cn("agent-card", embedded && "agent-card--embedded")} style={{ "--info-card-accent": statusAccent } as React.CSSProperties}>
             {/* 模型 + 状态 section */}
             {showMetaRow && (
                 <InfoCardSection>
@@ -173,6 +183,20 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                         )}
                         <span className="agent-card-provider">{provider}</span>
                         <span className="agent-card-model">{model || (modelLoading ? "获取中…" : "未指定")}</span>
+                        {!embedded ? (
+                            <button
+                                type="button"
+                                className="agent-card-expand-btn"
+                                title="Open card in dialog"
+                                aria-label="Open card in dialog"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openCardDialog();
+                                }}
+                            >
+                                <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
+                            </button>
+                        ) : null}
                     </div>
                     {statusPres != null && (
                         <div className="agent-card-status-row">
@@ -189,7 +213,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
             )}
             {/* Note + tags section（与会话详情卡片共用）；悬浮卡现在也允许内联编辑，
                 编辑时 InfoCardPortal 的 cardProps 焦点保活会防止 hover 离开打断。 */}
-            <SessionNoteSection state={noteState} canEditProperties />
+            <SessionNoteSection state={noteState} canEditProperties onOpenCardDialog={embedded ? undefined : openCardDialog} />
             {/* Session ID 底行（复制） */}
             {sessionId !== "" && (
                 <div className="agent-card-session-id">

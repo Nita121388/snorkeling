@@ -37,6 +37,8 @@ export type PropertyListProps = {
     className?: string;
     /** 内置 note 行被点击（进入既有 note 编辑器）。 */
     onEditNote?: () => void;
+    /** 内置 note 行弹窗编辑按钮（打开放大 Note 弹窗，类似 aisessions 列表）。 */
+    onOpenNoteDialog?: () => void;
     /** 值变更（内置与自定义都走这里，由上层决定写哪个 RPC）。 */
     onChange?: (key: string, value: PropertyValue, def: PropertyDef) => void;
     /** 新建自定义属性（detail 模式 + canEdit 时展示入口）。saveToTemplate=true 时同时写入全局模板。 */
@@ -316,6 +318,7 @@ export function PropertyList({
     mode = "card",
     className,
     onEditNote,
+    onOpenNoteDialog,
     onChange,
     onAddProperty,
     onDeleteProperty,
@@ -450,6 +453,20 @@ export function PropertyList({
                             {sourceMarker(cell.source)}
                         </button>
                     )}
+                    {isNote && onOpenNoteDialog != null ? (
+                        <button
+                            type="button"
+                            className="property-row__dialog-btn"
+                            aria-label="Open note in dialog"
+                            title="Open note in dialog"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onOpenNoteDialog();
+                            }}
+                        >
+                            <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
+                        </button>
+                    ) : null}
                     {manageable ? (
                         <button
                             type="button"

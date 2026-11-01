@@ -247,6 +247,41 @@
     margin-bottom: 4px;
 }
 
+/* 悬浮卡头部放大按钮（弹窗编辑整卡）。 */
+.agent-card-expand-btn {
+    margin-left: auto;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease;
+
+    .agent-card:hover &,
+    &:focus {
+        opacity: 1;
+    }
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+/* 弹窗内（embedded）渲染的 agent 卡：放大尺寸、无悬浮卡窄限制。 */
+.agent-card--embedded {
+    min-width: 520px;
+    max-width: 640px;
+}
+
 .agent-card-logo {
     width: 18px;
     height: 18px;
