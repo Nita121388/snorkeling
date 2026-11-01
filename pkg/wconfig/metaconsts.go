@@ -27,6 +27,7 @@ const (
 	ConfigKey_AgentClear                     = "agent:*"
 	ConfigKey_AgentDefaultProfile            = "agent:defaultprofile"
 	ConfigKey_AgentProfiles                  = "agent:profiles"
+	ConfigKey_AgentPropertySchema            = "agent:propertyschema"
 
 	ConfigKey_AgentStatusClear               = "agentstatus:*"
 	ConfigKey_AgentStatusOsNotify            = "agentstatus:osnotify"

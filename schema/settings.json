@@ -60,6 +60,51 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "AgentPropertyDefType": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "number",
+            "select",
+            "multi_select",
+            "status",
+            "date",
+            "person",
+            "checkbox",
+            "url",
+            "formula",
+            "relation",
+            "created_time",
+            "updated_time"
+          ]
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "aiManaged": {
+          "type": "boolean"
+        },
+        "aiInstruction": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "AiSessionExternalOriginType": {
       "properties": {
         "label": {
@@ -363,6 +408,12 @@
             "$ref": "#/$defs/AgentProfileConfigType"
           },
           "type": "object"
+        },
+        "agent:propertyschema": {
+          "items": {
+            "$ref": "#/$defs/AgentPropertyDefType"
+          },
+          "type": "array"
         },
         "agentstatus:*": {
           "type": "boolean"
