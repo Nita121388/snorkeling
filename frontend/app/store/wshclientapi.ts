@@ -1038,6 +1038,24 @@ export class RpcApiType {
         return client.wshRpcCall("sendtelemetry", null, opts);
     }
 
+    // command "sessionget" [call]
+    SessionGetCommand(client: WshClient, data: SessionGetRequest, opts?: RpcOpts): Promise<SessionLiveRecord> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionget", data, opts);
+        return client.wshRpcCall("sessionget", data, opts);
+    }
+
+    // command "sessionlist" [call]
+    SessionListCommand(client: WshClient, data: SessionListRequest, opts?: RpcOpts): Promise<SessionListResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionlist", data, opts);
+        return client.wshRpcCall("sessionlist", data, opts);
+    }
+
+    // command "sessionlive" [call]
+    SessionLiveCommand(client: WshClient, data: SessionLiveRequest, opts?: RpcOpts): Promise<SessionLiveResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "sessionlive", data, opts);
+        return client.wshRpcCall("sessionlive", data, opts);
+    }
+
     // command "setblockfocus" [call]
     SetBlockFocusCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "setblockfocus", data, opts);

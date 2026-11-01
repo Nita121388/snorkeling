@@ -23,7 +23,7 @@ import (
 // chatManager is the app-wide registry of live GUI chat sessions. It lives at
 // package scope so both the SSE handler and the service control methods
 // (ChatAbort / ChatClose) share one manager.
-var chatManager = chat.NewManager()
+var chatManager = chat.DefaultManager()
 
 // modelsCacheTTL bounds the process-level cache of get_available_models
 // results. The model registry is near-static (pi config/auth), so re-spawning

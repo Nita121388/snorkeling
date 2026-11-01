@@ -6,6 +6,8 @@ package chat
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +33,15 @@ type Manager struct {
 	idle     time.Duration
 	started  bool
 }
+
+// defaultManager is the app-wide GUI chat registry. The service layer started
+// owning a package-level manager; exposing that same instance here lets the
+// agent-control surface enumerate live chat sessions without importing the
+// service package (which would create an import cycle through wshrpc).
+var defaultManager = NewManager()
+
+// DefaultManager returns the shared GUI chat manager.
+func DefaultManager() *Manager { return defaultManager }
 
 // NewManager builds a Manager with the default idle timeout.
 func NewManager() *Manager {
@@ -165,6 +176,48 @@ func (m *Manager) CloseAll() {
 	for _, s := range sessions {
 		_ = s.Close()
 	}
+}
+
+// LiveChatInfo is a read-only snapshot of one live GUI chat session.
+// It deliberately does not call GetState (that is an RPC round-trip); callers
+// that need model/thinking/context info should fetch it explicitly.
+type LiveChatInfo struct {
+	Source      string       `json:"source"`
+	SessionID   string       `json:"sessionID"`
+	State       SessionState `json:"state"`
+	LastUsed    int64        `json:"lastUsed"`
+	Provisional bool         `json:"provisional"`
+}
+
+// ActiveSessions returns every currently live chat session, sorted by
+// source then session id for stable output.
+func (m *Manager) ActiveSessions() []LiveChatInfo {
+	m.mu.Lock()
+	rtn := make([]LiveChatInfo, 0, len(m.sessions))
+	for key, s := range m.sessions {
+		if s == nil || s.State() == StateClosed {
+			continue
+		}
+		source, sessionID, ok := strings.Cut(key, "/")
+		if !ok {
+			continue
+		}
+		rtn = append(rtn, LiveChatInfo{
+			Source:      source,
+			SessionID:   sessionID,
+			State:       s.State(),
+			LastUsed:    s.LastUsed().UnixMilli(),
+			Provisional: strings.HasPrefix(sessionID, "new:"),
+		})
+	}
+	m.mu.Unlock()
+	sort.Slice(rtn, func(i, j int) bool {
+		if rtn[i].Source != rtn[j].Source {
+			return rtn[i].Source < rtn[j].Source
+		}
+		return rtn[i].SessionID < rtn[j].SessionID
+	})
+	return rtn
 }
 
 // ActiveCount returns how many live sessions exist (diagnostics).

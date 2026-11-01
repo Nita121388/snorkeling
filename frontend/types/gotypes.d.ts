@@ -582,6 +582,14 @@ declare global {
         env?: {[key: string]: string};
     };
 
+    // wshrpc.AgentPropValue
+    type AgentPropValue = {
+        type?: string;
+        value?: any;
+        source?: string;
+        updatedat?: number;
+    };
+
     // wconfig.AgentPropertyDefType
     type AgentPropertyDefType = {
         key?: string;
@@ -2691,6 +2699,105 @@ declare global {
         cursor?: SessionMessageCursor;
         hasMore?: boolean;
         nextMessageOffset?: number;
+    };
+
+    // wshrpc.SessionGetRequest
+    type SessionGetRequest = {
+        identifier: string;
+        blockid?: string;
+        includeidle?: boolean;
+    };
+
+    // wshrpc.SessionListRequest
+    type SessionListRequest = {
+        source?: string;
+        query?: string;
+        tag?: string;
+        project?: string;
+        marked?: string;
+        limit?: number;
+    };
+
+    // wshrpc.SessionListResult
+    type SessionListResult = {
+        version: number;
+        generatedat: number;
+        partial?: boolean;
+        records: SessionLiveRecord[];
+        warnings?: string[];
+    };
+
+    // wshrpc.SessionLiveCard
+    type SessionLiveCard = {
+        note?: string;
+        tags?: string[];
+        props?: {[key: string]: AgentPropValue};
+        hash?: string;
+    };
+
+    // wshrpc.SessionLiveChat
+    type SessionLiveChat = {
+        state: string;
+        provisional?: boolean;
+        isstreaming?: boolean;
+        modelprovider?: string;
+        modelid?: string;
+        thinkinglevel?: string;
+        contextusagepct?: number;
+        messagecount?: number;
+        lastusedat?: number;
+    };
+
+    // wshrpc.SessionLiveIssue
+    type SessionLiveIssue = {
+        state: string;
+        prevstate?: string;
+        phase?: string;
+        toolname?: string;
+        message?: string;
+        reason?: string;
+        source?: string;
+        confidence?: string;
+        activesince?: number;
+        updatedat?: number;
+        expiresat?: number;
+        seq?: number;
+        freshness: string;
+    };
+
+    // wshrpc.SessionLiveRecord
+    type SessionLiveRecord = {
+        blockid: string;
+        tabid?: string;
+        windowid?: string;
+        view: string;
+        conn?: string;
+        provider?: string;
+        sessionid?: string;
+        sessionkey?: string;
+        title?: string;
+        titlesource?: string;
+        projectpath?: string;
+        issue: SessionLiveIssue;
+        chat: SessionLiveChat;
+        card: SessionLiveCard;
+        warnings?: string[];
+    };
+
+    // wshrpc.SessionLiveRequest
+    type SessionLiveRequest = {
+        includeidle?: boolean;
+        maxrows?: number;
+        blockids?: string[];
+    };
+
+    // wshrpc.SessionLiveResult
+    type SessionLiveResult = {
+        version: number;
+        generatedat: number;
+        partial?: boolean;
+        records: SessionLiveRecord[];
+        warnings?: string[];
     };
 
     // aisessions.SessionMessageCursor

@@ -86,6 +86,11 @@ type WshRpcInterface interface {
 	BlockInfoCommand(ctx context.Context, blockId string) (*BlockInfoData, error)
 	DebugTermCommand(ctx context.Context, data CommandDebugTermData) (*CommandDebugTermRtnData, error)
 	BlocksListCommand(ctx context.Context, data BlocksListRequest) ([]BlocksListEntry, error)
+
+	// agent control surface (read-only, used by wsh session *)
+	SessionLiveCommand(ctx context.Context, data SessionLiveRequest) (*SessionLiveResult, error)
+	SessionGetCommand(ctx context.Context, data SessionGetRequest) (*SessionLiveRecord, error)
+	SessionListCommand(ctx context.Context, data SessionListRequest) (*SessionListResult, error)
 	WaveInfoCommand(ctx context.Context) (*WaveInfoData, error)
 	MacOSVersionCommand(ctx context.Context) (string, error)
 	WshActivityCommand(ct context.Context, data map[string]int) error
@@ -548,6 +553,110 @@ type BlocksListEntry struct {
 	TabId       string              `json:"tabid"`
 	BlockId     string              `json:"blockid"`
 	Meta        waveobj.MetaMapType `json:"meta"`
+}
+
+// ---- Agent Control Surface: live session DTOs ----
+
+const AgentControlVersion = 1
+
+type SessionLiveRequest struct {
+	IncludeIdle bool     `json:"includeidle,omitempty"`
+	MaxRows     int      `json:"maxrows,omitempty"`
+	BlockIds    []string `json:"blockids,omitempty"`
+}
+
+type SessionLiveIssue struct {
+	State       string `json:"state"`
+	PrevState   string `json:"prevstate,omitempty"`
+	Phase       string `json:"phase,omitempty"`
+	ToolName    string `json:"toolname,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+	Source      string `json:"source,omitempty"`
+	Confidence  string `json:"confidence,omitempty"`
+	ActiveSince int64  `json:"activesince,omitempty"`
+	UpdatedAt   int64  `json:"updatedat,omitempty"`
+	ExpiresAt   int64  `json:"expiresat,omitempty"`
+	Seq         int64  `json:"seq,omitempty"`
+	Freshness   string `json:"freshness"`
+}
+
+type SessionLiveChat struct {
+	State           string   `json:"state"`
+	Provisional     bool     `json:"provisional,omitempty"`
+	IsStreaming     bool     `json:"isstreaming,omitempty"`
+	ModelProvider   string   `json:"modelprovider,omitempty"`
+	ModelId         string   `json:"modelid,omitempty"`
+	ThinkingLevel   string   `json:"thinkinglevel,omitempty"`
+	ContextUsagePct *float64 `json:"contextusagepct,omitempty"`
+	MessageCount    int      `json:"messagecount,omitempty"`
+	LastUsedAt      int64    `json:"lastusedat,omitempty"`
+}
+
+// AgentPropValue is the wire form of aisessions.PropertyCell. It is duplicated
+// here (instead of importing pkg/aisessions) because pkg/aisessions already
+// imports wshrpc; importing it back would create a cycle.
+type AgentPropValue struct {
+	Type      string `json:"type,omitempty"`
+	Value     any    `json:"value,omitempty"`
+	Source    string `json:"source,omitempty"`
+	UpdatedAt int64  `json:"updatedat,omitempty"`
+}
+
+type SessionLiveCard struct {
+	Note  string                    `json:"note,omitempty"`
+	Tags  []string                  `json:"tags,omitempty"`
+	Props map[string]AgentPropValue `json:"props,omitempty"`
+	Hash  string                    `json:"hash,omitempty"`
+}
+
+type SessionLiveRecord struct {
+	BlockId     string            `json:"blockid"`
+	TabId       string            `json:"tabid,omitempty"`
+	WindowId    string            `json:"windowid,omitempty"`
+	View        string            `json:"view"`
+	Conn        string            `json:"conn,omitempty"`
+	Provider    string            `json:"provider,omitempty"`
+	SessionId   string            `json:"sessionid,omitempty"`
+	SessionKey  string            `json:"sessionkey,omitempty"`
+	Title       string            `json:"title,omitempty"`
+	TitleSource string            `json:"titlesource,omitempty"`
+	ProjectPath string            `json:"projectpath,omitempty"`
+	Issue       *SessionLiveIssue `json:"issue"`
+	Chat        *SessionLiveChat  `json:"chat"`
+	Card        *SessionLiveCard  `json:"card"`
+	Warnings    []string          `json:"warnings,omitempty"`
+}
+
+type SessionLiveResult struct {
+	Version     int                 `json:"version"`
+	GeneratedAt int64               `json:"generatedat"`
+	Partial     bool                `json:"partial,omitempty"`
+	Records     []SessionLiveRecord `json:"records"`
+	Warnings    []string            `json:"warnings,omitempty"`
+}
+
+type SessionGetRequest struct {
+	Identifier string `json:"identifier"`
+	BlockId    string `json:"blockid,omitempty"`
+	IncludeIdle bool  `json:"includeidle,omitempty"`
+}
+
+type SessionListRequest struct {
+	Source  string `json:"source,omitempty"`
+	Query   string `json:"query,omitempty"`
+	Tag     string `json:"tag,omitempty"`
+	Project string `json:"project,omitempty"`
+	Marked  string `json:"marked,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+type SessionListResult struct {
+	Version     int                 `json:"version"`
+	GeneratedAt int64               `json:"generatedat"`
+	Partial     bool                `json:"partial,omitempty"`
+	Records     []SessionLiveRecord `json:"records"`
+	Warnings    []string            `json:"warnings,omitempty"`
 }
 
 type AiMessageData struct {

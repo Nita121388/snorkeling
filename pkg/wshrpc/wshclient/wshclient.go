@@ -1035,6 +1035,24 @@ func SendTelemetryCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) error {
 	return err
 }
 
+// command "sessionget", wshserver.SessionGetCommand
+func SessionGetCommand(w *wshutil.WshRpc, data wshrpc.SessionGetRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionLiveRecord, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionLiveRecord](w, "sessionget", data, opts)
+	return resp, err
+}
+
+// command "sessionlist", wshserver.SessionListCommand
+func SessionListCommand(w *wshutil.WshRpc, data wshrpc.SessionListRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionListResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionListResult](w, "sessionlist", data, opts)
+	return resp, err
+}
+
+// command "sessionlive", wshserver.SessionLiveCommand
+func SessionLiveCommand(w *wshutil.WshRpc, data wshrpc.SessionLiveRequest, opts *wshrpc.RpcOpts) (*wshrpc.SessionLiveResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.SessionLiveResult](w, "sessionlive", data, opts)
+	return resp, err
+}
+
 // command "setblockfocus", wshserver.SetBlockFocusCommand
 func SetBlockFocusCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "setblockfocus", data, opts)
