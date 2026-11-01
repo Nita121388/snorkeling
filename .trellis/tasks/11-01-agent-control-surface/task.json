@@ -1,0 +1,29 @@
+{
+  "id": "agent-control-surface",
+  "name": "agent-control-surface",
+  "title": "Agent Control Surface: 本地 Agent 操作 Snorkeling 的控制面",
+  "description": "为本地 Agent（pi/codex/claude/opencode）提供受控、可发现、可审计的控制面：实时会话、会话 agent card、UI 观察/导航、Common Text、外部接入。设计见 design/plans/agent-control-surface.md。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P0",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-01",
+  "completedAt": null,
+  "branch": "feat/agent-control-surface",
+  "base_branch": "main",
+  "worktree_path": "/Users/nita/Primary/projects/snorkeling-agent-control",
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-01-live-session-overview",
+    "11-01-session-agent-card"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
