@@ -187,8 +187,9 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode }: AgentHoverCardP
                     )}
                 </InfoCardSection>
             )}
-            {/* Note + tags section（与会话详情卡片共用） */}
-            <SessionNoteSection state={noteState} canEditProperties={false} />
+            {/* Note + tags section（与会话详情卡片共用）；悬浮卡现在也允许内联编辑，
+                编辑时 InfoCardPortal 的 cardProps 焦点保活会防止 hover 离开打断。 */}
+            <SessionNoteSection state={noteState} canEditProperties />
             {/* Session ID 底行（复制） */}
             {sessionId !== "" && (
                 <div className="agent-card-session-id">
