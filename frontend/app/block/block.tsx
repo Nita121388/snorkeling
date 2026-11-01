@@ -214,6 +214,38 @@ const InlineTabLabel = memo(
         // 只有当前激活的会话类 tab 才拉 summary（可能触发一次 RPC）；背景 tab 只读缓存。
         const summaryTitle = useBlockSessionTitle(tabSessionId, connection ?? "", isActive && isSessionBlock);
 
+        // agent 类 Block: 由 block meta 解析 agent 的 provider / session id。
+        // 必须在 resolvedTabSessionId 之前定义（后者依赖它），否则 TDZ 崩溃。
+        const bindingResolution = useMemo(
+            () => resolveAgentSessionId((blockData?.meta ?? {}) as Record<string, unknown>),
+            [blockData?.meta]
+        );
+        const personas = useAgentPersonas();
+        const sessionEmojis = useSessionEmojis();
+        const agentStatus = useInlineTabAgentStatus(blockId);
+        const agentIcon = useMemo(() => {
+            const meta = blockData?.meta;
+            if (!isAgentTerminalMeta(meta)) return null;
+            // Mirror block header (term-model viewIcon): provider AND session id come
+            // from either the persisted `agent:provider` / `agent:sessionid` meta OR
+            // from the resolved command/agent-status provider. Blocks that haven't
+            // persisted those keys yet (just bound / autoresume) still get their brand
+            // logo (or session emoji) in the header, so the inline tab must resolve the
+            // same way — otherwise it falls back to the generic terminal icon.
+            const explicitProvider = normalizeAgentProvider(meta?.["agent:provider"]);
+            const resolvedProvider =
+                explicitProvider === "agent"
+                    ? normalizeAgentProvider(bindingResolution.provider || agentStatus?.provider)
+                    : explicitProvider;
+            if (resolvedProvider === "agent") return null;
+            const sessionId = (
+                typeof meta?.["agent:sessionid"] === "string" && meta["agent:sessionid"] !== ""
+                    ? meta["agent:sessionid"]
+                    : bindingResolution.sessionId || agentStatus?.sessionId || null
+            ) as string | null;
+            return getAgentIcon(resolvedProvider, { meta, personas, sessionEmojis, sessionId });
+        }, [blockData?.meta, personas, sessionEmojis, bindingResolution, agentStatus]);
+
         const resolvedTabSessionId =
             (typeof sessionMeta["agent:sessionid"] === "string" ? sessionMeta["agent:sessionid"] : "") ||
             bindingResolution.sessionId ||
@@ -314,39 +346,6 @@ const InlineTabLabel = memo(
         // hover tooltip (fullPath 已带 connection) 和 badge 的 title 里出现.
         const locality = useMemo(() => blockPathLocality(connection), [connection]);
         // agent 类 Block: Tab 标签上显示对应 agent 的品牌 logo / emoji 人格而不是通用 terminal 图标
-        // Provider 可能只存在于启动命令/agent-status 而不是已被持久化的 `agent:provider`
-        // meta（例如刚绑定、或 autoresume 块），此时 block header 仍能解析出 logo，
-        // 所以 Tab 标签也要做同样的 command→provider 兜底。
-        const bindingResolution = useMemo(
-            () => resolveAgentSessionId((blockData?.meta ?? {}) as Record<string, unknown>),
-            [blockData?.meta]
-        );
-        const personas = useAgentPersonas();
-        const sessionEmojis = useSessionEmojis();
-        const agentStatus = useInlineTabAgentStatus(blockId);
-        const agentIcon = useMemo(() => {
-            const meta = blockData?.meta;
-            if (!isAgentTerminalMeta(meta)) return null;
-            // Mirror block header (term-model viewIcon): provider AND session id come
-            // from either the persisted `agent:provider` / `agent:sessionid` meta OR
-            // from the resolved command/agent-status provider. Blocks that haven't
-            // persisted those keys yet (just bound / autoresume) still get their brand
-            // logo (or session emoji) in the header, so the inline tab must resolve the
-            // same way — otherwise it falls back to the generic terminal icon.
-            const explicitProvider = normalizeAgentProvider(meta?.["agent:provider"]);
-            const resolvedProvider =
-                explicitProvider === "agent"
-                    ? normalizeAgentProvider(bindingResolution.provider || agentStatus?.provider)
-                    : explicitProvider;
-            if (resolvedProvider === "agent") return null;
-            const sessionId = (
-                typeof meta?.["agent:sessionid"] === "string" && meta["agent:sessionid"] !== ""
-                    ? meta["agent:sessionid"]
-                    : bindingResolution.sessionId || agentStatus?.sessionId || null
-            ) as string | null;
-            return getAgentIcon(resolvedProvider, { meta, personas, sessionEmojis, sessionId });
-        }, [blockData?.meta, personas, sessionEmojis, bindingResolution, agentStatus]);
-
         // 读取该 agent block 的 canonical status (复用 TermViewModel 已经订阅好的 atom),
         // 用于在 Tab 标签右侧渲染状态点. R 类 (working/blocked) 显眼状态点亮; 22 号方案新增
         // D 类 (非 idle → idle 跳变后未阅) 同样点亮, 用绿色呼吸表达"刚跑完可来看结果".
