@@ -174,3 +174,7 @@
 ## 2026-10-28 新增原型
 
 - `aisessions-annotation-card-ux/` — **▲ 设计活跃**（2026-10-28）；会话详情批注节点悬浮卡重设计：去掉卡片「Node」字样改为「类型图标 + #seq + 时间」身份头；圆点交互从「单击既跳又钉」改为 **单击选中留卡 / 双击跳转高亮**；卡片移除 Jump 按钮与图钉，改为 external-link 直接打开 `AnnotationEditor`；工具节点按 `tool-group.tsx` 画成工具行（wrench + 名称 + summary + 状态点），summary 节点显示截断总结（渐隐），批注的类型/标题/正文/标签分层展示。覆盖 message / tool / summary 三类节点 + 明暗主题。镜像源：`annotation-card.tsx`、`annotation-rail.tsx`、`annotation-model.ts`、`session-detail.tsx`、`tool-group.tsx`，真实组件尚未实现。
+
+## 2026-11-02 新增原型
+
+- `tab-card-v2/` — **▲ 设计活跃**（2026-11-02）；Tab 悬浮卡样式与图标重设计。8 套变体同数据对比：GitHub Hovercard / Linear / Raycast / Notion·Things / Vercel Geist·shadcn / Discord 成员列表 / Warp 终端 / Windows Fluent 2，各变体同时换「布局 + 图标容器 + 状态表达」。共同结构主张：计数并入 header、相同 provider 提到分组标题、行内主信息换成状态短语、定宽 268px、无状态不显示 `—`。镜像源：`tab-info-card.tsx`、`info-card.scss`、`tab.tsx`，真实组件尚未改造。

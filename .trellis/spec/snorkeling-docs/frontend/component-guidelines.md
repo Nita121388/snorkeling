@@ -276,3 +276,23 @@ InfoCard（`frontend/app/element/info-card/`）的显示由 `isHovered || isCard
 把它挂在会高频换引用的对象（如每 32ms flush 的 `liveTurn`）上，等于每秒数十次
 把所有行高退回估算值 —— 总高度塌陷、scrollTop 被 clamp、内容剧烈跳动。
 流式期间的行高变化交给 `measureElement` 的 ResizeObserver 逐行增量处理。
+
+### 5. InfoCard 变体：一张卡只保留一条「无内容间隔」的 hairline
+
+`InfoCard` 的变体（`.tab-card` 等）常用 1px 分隔线切分区。踩过的坑：header 下方的
+`.tab-card-rule` 与「属性 chips」区块的 `border-top` 在**无 agent 的卡片**里紧挨着出现，
+中间没有任何内容 —— 视觉上是两条平行线，像渲染坏了。
+
+规则：
+- 卡片内固定只有 header 下一条分隔线；
+- 下游分区（chips / 元数据）的上边框**必须条件渲染**：只有上游真的渲染了内容区块时才加
+  （`tab-info-card.tsx` 用 `agentCount > 0 && "has-agents"` 控制，CSS 里 `.tab-card-props.has-agents`）。
+- 判定「有没有上游内容」要在 TSX 里算，不要在 CSS 用 `:has()` / 相邻选择器猜 —— 分区的 DOM
+  层级是 `section` 套 `section`，相邻选择器匹配不到真正的前序内容。
+
+### 6. InfoCard 变体：定宽 + 状态 pill 不参与宽度竞争
+
+Tab 悬浮卡的旧实现是 `min-width: 200px; max-width: 400px` 自适应，状态文本从 `—` 变成
+`Tool: bash` 时卡片会突然变宽，悬停时视觉抖动。现在 `.info-card.tab-card` 定宽 268px，
+右侧状态 pill 用 `margin-left: auto; flex-shrink: 0; white-space: nowrap` —— 长状态不会撑宽卡片。
+新增同类浮层卡时照此办理：**宽度由卡决定，状态文本只决定 pill 自身宽度**。

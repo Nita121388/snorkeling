@@ -617,11 +617,17 @@
     color: var(--error-color);
 }
 
-/* ── 非 agent 内容构成 chips ── */
+/* ── 非 agent 内容构成 chips ──
+   分隔线只在 agent 清单之后才画。无 agent 的卡片里，chips 就紧跟在 header hairline
+   下方，再画一条上边框会变成“两道横线”。 */
 .tab-card-props {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
+    margin-top: 6px;
+}
+
+.tab-card-props.has-agents {
     margin-top: 8px;
     padding-top: 7px;
     border-top: 1px solid var(--border-color);
