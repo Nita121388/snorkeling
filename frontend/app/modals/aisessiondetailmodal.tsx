@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
 import { SessionDetailController, SessionDetailPane } from "@/app/view/aisessions/session-detail";
@@ -329,9 +329,12 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
     }, [service, sessionId]);
 
     return (
-        <FlexiModal
+        <Modal
             className="h-[min(760px,calc(100vh-56px))] w-[min(1120px,calc(100vw-40px))] overflow-hidden p-0"
             onClickBackdrop={closeModal}
+            // 自带 p-0 全屏面板 + 内部自有滚动容器（会话详情虚拟列表）。
+            padding={false}
+            scrollBody={false}
         >
             <div className="flex h-full min-h-0 w-full flex-col bg-panel text-primary">
                 {error ? (
@@ -352,7 +355,7 @@ function AISessionDetailModal({ sessionId }: AISessionDetailModalProps) {
                     />
                 </div>
             </div>
-        </FlexiModal>
+        </Modal>
     );
 }
 

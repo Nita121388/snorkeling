@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { useRef } from "react";
 
@@ -24,7 +24,7 @@ function CloseTabModal({ blockCount, tabName, onResolve }: CloseTabModalProps) {
     };
 
     return (
-        <FlexiModal
+        <Modal
             className="w-[420px] max-w-[calc(100vw-32px)]"
             onClickBackdrop={() => resolveAndClose("cancel")}
         >
@@ -45,7 +45,7 @@ function CloseTabModal({ blockCount, tabName, onResolve }: CloseTabModalProps) {
                 </Button>
                 <Button onClick={() => resolveAndClose("close")}>Close</Button>
             </div>
-        </FlexiModal>
+        </Modal>
     );
 }
 

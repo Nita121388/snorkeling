@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { useRef } from "react";
 import { buildConflictCopyText } from "@/app/view/preview/conflict-copy";
@@ -33,7 +33,7 @@ function FileConflictModal({ filePath, baseContent, myContent, theirsContent, on
     };
 
     return (
-        <FlexiModal
+        <Modal
             className="w-[470px] max-w-[calc(100vw-32px)]"
             onClickBackdrop={() => resolveAndClose("cancel")}
         >
@@ -79,7 +79,7 @@ function FileConflictModal({ filePath, baseContent, myContent, theirsContent, on
                     <i className="fa-solid fa-floppy-disk" /> Save & overwrite
                 </Button>
             </div>
-        </FlexiModal>
+        </Modal>
     );
 }
 

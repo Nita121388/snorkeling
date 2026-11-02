@@ -326,6 +326,13 @@ export function SessionNoteSection({
                     }
                     onOpenNoteDialog={openNoteDialog}
                     onEditNote={() => {
+                        // 弹窗 / 详情卡：走既有 AISessionNoteModal（有 AI 生成、保存状态、未保存提示）。
+                        // 以前这里会 setIsEditing(true) 把整个属性列表换成 textarea，
+                        // 六行属性瞬间消失且没有返回入口。
+                        if (canEditProperties) {
+                            openNoteDialog();
+                            return;
+                        }
                         setIsEditing(true);
                         window.setTimeout(() => {
                             inputRef.current?.focus();

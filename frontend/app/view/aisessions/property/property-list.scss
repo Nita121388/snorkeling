@@ -7,7 +7,7 @@
 // select chip 用 Notion 9 色调色板（浅底深字，浅/深主题都可读）。
 
 .property-list {
-    --property-name-width: 168px;
+    --property-name-width: 116px;
     display: flex;
     flex-direction: column;
     gap: 1px;
@@ -20,6 +20,14 @@
         font-size: 11px;
         line-height: 18px;
     }
+}
+
+/* 主区 / 副区折叠组之间的细分割线。 */
+.property-divider {
+    height: 1px;
+    margin: 4px 4px 2px;
+    background: var(--border-color);
+    opacity: 0.6;
 }
 
 .property-row {
@@ -64,6 +72,8 @@
     min-width: 0;
     display: flex;
     align-items: flex-start;
+    // 行菜单 / note 弹窗按钮都是相对于值列定位的。
+    position: relative;
 }
 
 .property-row__button {
@@ -329,13 +339,32 @@
     font-size: 11px;
 }
 
+/* 底部两个入口（Add a property / AI auto-fill）合并为一行，
+   同一 ghost 按钮家族：同 padding、同字号、无边框、同 hover。 */
+.property-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 4px 2px;
+
+    .property-add,
+    .property-add-form {
+        margin: 0;
+    }
+
+    .property-ai {
+        margin: 0;
+    }
+}
+
 .property-ai-trigger {
     align-self: flex-start;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 6px;
-    border: 1px dashed var(--border-color);
+    padding: 2px 8px;
+    border: none;
     border-radius: 3px;
     background: transparent;
     color: var(--secondary-text-color);
@@ -426,10 +455,6 @@
 
 .property-ai-error {
     color: var(--error-color, #d44c47);
-}
-
-.property-row__value {
-    position: relative;
 }
 
 .property-row__menu-btn {

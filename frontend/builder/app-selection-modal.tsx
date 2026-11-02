@@ -1,7 +1,7 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { globalStore } from "@/app/store/jotaiStore";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -174,14 +174,14 @@ export function AppSelectionModal() {
 
     if (loading) {
         return (
-            <FlexiModal className="min-w-[600px] w-[600px]">
+            <Modal className="min-w-[600px] w-[600px]">
                 <div className="text-center py-8">Loading apps...</div>
-            </FlexiModal>
+            </Modal>
         );
     }
 
     return (
-        <FlexiModal className="min-w-[600px] w-[600px] max-h-[90vh] overflow-y-auto">
+        <Modal className="min-w-[600px] w-[600px] max-h-[90vh] overflow-y-auto">
             <div className="w-full px-2 pt-0 pb-4">
                 <h2 className="text-2xl mb-2">Select a WaveApp to Edit</h2>
 
@@ -229,6 +229,6 @@ export function AppSelectionModal() {
 
                 <CreateNewWaveApp onCreateApp={handleCreateNew} />
             </div>
-        </FlexiModal>
+        </Modal>
     );
 }

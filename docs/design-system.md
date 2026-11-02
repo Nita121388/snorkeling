@@ -232,7 +232,7 @@ Search results are candidates until the runtime owner and deterministic correcti
 | DS-005 | Candidate | Feature surfaces must use semantic theme tokens | 49 of 202 scanned UI files remained after the initial exception pass | 4 |
 | DS-006 | Confirmed / fixed | Informational announcements use the app action/accent family | `frontend/app/aipanel/byokannouncement.tsx` and telemetry notice used fixed blue surfaces/text | 4 |
 | DS-007 | Confirmed / fixed | Shared feature surfaces and status text use semantic tokens | Onboarding FakeChat, Suggestion, AI Sessions search, Common Text, Durable flyover, WidgetsBar, resize handles, Clipboard, and WebView bookmark empty states | 5 |
-| DS-008 | Confirmed / deferred | Foundational modal border remains a stable `1px` | `frontend/app/modals/modal.scss` uses `0.5px`; global Modal/FlexiModal impact is CRITICAL and is isolated for a dedicated batch | 6 |
+| DS-008 | Confirmed / fixed | Foundational modal border remains a stable `1px` | `frontend/app/modals/modal.scss` was `0.5px`; now `1px`. Re-verified during the modal single-shell consolidation (task 11-02-modal-single-shell-refactor) | 6 |
 | DS-009 | Confirmed / deferred | Shared modal error copy uses `text-error` | `frontend/app/tab/tab-target-modal.tsx` uses `text-red-400`; function impact is HIGH and is isolated for a dedicated batch | 6 |
 | DS-010 | Confirmed / fixed | A surface drawn over scrolling content must use an opaque surface token | `frontend/app/view/aisessions/session-group.tsx` sticky group header and `frontend/app/view/vcs/vcs-repo-switcher.tsx` overflow menu both used translucent `bg-block`; content behind them bled through | 7 |
 
@@ -247,7 +247,7 @@ Candidate DS-005 must be classified into confirmed violation, brand/domain color
 | 3 | AI Sessions and Wave Config confirmed state violations | Complete | `frontend/app/view/aisessions/*`, `frontend/app/view/waveconfig/*`, targeted Vitest |
 | 4 | AI Panel surfaces, announcements, messages, tool states, and violation register | Complete | `frontend/app/aipanel/*`, `docs/ui-violations.md`, Playwright visual checks |
 | 5 | Onboarding, shared suggestion/session/status chrome, WidgetsBar, Clipboard, and WebView empty states | Complete | Targeted Vitest, onboarding Preview screenshots, Electron Light search-state screenshot, production build |
-| 6 | HIGH/CRITICAL shared modal changes | Pending isolated review | `TabTargetModal` HIGH and `Modal/FlexiModal` CRITICAL impact must be reviewed before editing |
+| 6 | HIGH/CRITICAL shared modal changes | Partial | `Modal`/`FlexiModal` consolidated into a single `Modal` shell (header / scrollable content / footer, in-flow close button, `padding` / `scrollBody` escape hatches); `FlexiModal` and dead `element/modal.tsx` removed; DS-008 border already `1px`. Evidence: `frontend/app/modals/modal.dom.test.tsx`, `frontend/app/view/aisessions/property/property-list.dom.test.tsx`, targeted Vitest, `npm run build:prod`. Remaining: DS-009. |
 | 7 | Opaque surfaces over scrolling content | Complete | `frontend/app/view/aisessions/session-group.tsx`, `frontend/app/view/vcs/vcs-repo-switcher.tsx`, targeted Vitest, Electron CDP theme matrix (light / dark / monochrome) and pixel bleed-through comparison |
 
 The current violation register is an audit snapshot, not a permission to replace every palette match. The remaining candidates are tracked in `docs/ui-violations.md` with their runtime owner, exception classification, and next review boundary.

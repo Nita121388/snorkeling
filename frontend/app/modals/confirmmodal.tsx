@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { useRef } from "react";
 
@@ -41,7 +41,7 @@ function ConfirmModal({
     };
 
     return (
-        <FlexiModal className="w-[420px] max-w-[calc(100vw-32px)]" onClickBackdrop={() => resolveAndClose(false)}>
+        <Modal className="w-[420px] max-w-[calc(100vw-32px)]" onClickBackdrop={() => resolveAndClose(false)}>
             <div className="modal-content">
                 <div className="flex flex-col gap-2">
                     <div className="text-[15px] font-semibold text-primary">{title}</div>
@@ -56,7 +56,7 @@ function ConfirmModal({
                     {confirmLabel}
                 </Button>
             </div>
-        </FlexiModal>
+        </Modal>
     );
 }
 

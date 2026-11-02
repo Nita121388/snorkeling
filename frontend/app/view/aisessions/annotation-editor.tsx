@@ -159,12 +159,14 @@ export function AnnotationEditor({
     }, [annotation, connection, deleting, onClose, onSaved, sessionKey]);
 
     return (
-        <Modal className="w-[min(560px,calc(100vw-32px))]" onClose={onClose} onClickBackdrop={onClose}>
+        <Modal
+            className="w-[min(560px,calc(100vw-32px))]"
+            onClose={onClose}
+            onClickBackdrop={onClose}
+            title={annotation ? "Edit annotation" : "Add annotation"}
+            headerExtra={<span className="text-[10px] text-secondary">#{seq}</span>}
+        >
             <div className="space-y-3 text-primary" data-row-action="true" onClick={(event) => event.stopPropagation()}>
-                <div className="flex items-center justify-between gap-2 pr-7">
-                    <div className="text-base font-semibold">{annotation ? "Edit annotation" : "Add annotation"}</div>
-                    <span className="text-[10px] text-secondary">#{seq}</span>
-                </div>
                 <div className="flex flex-wrap gap-1.5">
                     {KindOptions.map((option) => (
                         <button

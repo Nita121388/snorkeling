@@ -266,10 +266,12 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
             className="h-[min(760px,calc(100vh-48px))] w-[680px] max-w-[calc(100vw-32px)]"
             onClose={closeModal}
             onClickBackdrop={closeModal}
+            title="Agent Settings"
+            // 内部已有自己的 overflow-y-auto 列表区 + 固定 footer。
+            scrollBody={false}
         >
             <div className="flex min-h-0 flex-1 flex-col text-primary">
-                <div className="shrink-0 pr-8 pt-1">
-                    <div className="text-sm font-semibold">Agent Settings</div>
+                <div className="shrink-0">
                     <div className="mt-4 flex border-b border-border" role="tablist" aria-label="Agent settings">
                         {(["hooks", "details"] as const).map((tab) => (
                             <button

@@ -127,11 +127,13 @@ export const TabTargetModal = React.memo(
         );
 
         return (
-            <Modal className="w-[420px] max-w-[calc(100vw-32px)] pt-8 pb-4" onClose={onClose} onClickBackdrop={onClose}>
-                <div className="mb-3 pr-8">
-                    <div className="truncate text-base font-semibold text-primary">{title}</div>
-                    <div className="mt-1 truncate text-xs text-secondary">{subtitle}</div>
-                </div>
+            <Modal
+                className="w-[420px] max-w-[calc(100vw-32px)]"
+                onClose={onClose}
+                onClickBackdrop={onClose}
+                title={title}
+                subtitle={subtitle}
+            >
                 <div className="max-h-[320px] w-full overflow-y-auto rounded-md border border-border/50 p-1">
                     {tabIds.length === 0 ? (
                         <div className="px-2 py-6 text-center text-sm text-secondary">{emptyLabel}</div>

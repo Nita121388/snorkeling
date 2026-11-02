@@ -15,6 +15,7 @@ import {
     formatDateValue,
     formatDateTimeValue,
     formatValue,
+    humanizeKey,
     isEmptyValue,
     type SchemaDef,
     slugifyPropertyKey,
@@ -26,10 +27,25 @@ import {
     type PropertyValue,
     type SelectOption,
     toPropertyDefs,
+    BUILTIN_PROP_KEYS,
 } from "./property-model";
 import "./property-list.scss";
 
 const CardPropertyLimit = 5;
+/** detail（弹窗 / 详情卡）的主区行数上限。比悬浮卡大，但不再是无限铺 schema 空属性。 */
+const DetailPropertyLimit = 8;
+
+/**
+ * detail 模式下默认折叠的只读 / 低价值内置行。
+ * 弹窗的主要用途是写 Note/Tags 和看自定义属性，Title Source / Starred / Created / Updated
+ * 常驻占掉 4 行会把真正要用的挤到最底下。
+ */
+const SecondaryBuiltinKeys: ReadonlySet<string> = new Set<string>([
+    BUILTIN_PROP_KEYS.titleSource,
+    BUILTIN_PROP_KEYS.starred,
+    BUILTIN_PROP_KEYS.createdAt,
+    BUILTIN_PROP_KEYS.updatedAt,
+]);
 
 export type PropertyListProps = {
     summary: SessionSummary | null;
@@ -79,7 +95,9 @@ function optionsFor(def: PropertyDef, value: PropertyValue): SelectOption[] {
     const values = Array.isArray(value) ? value : value != null && value !== "" ? [String(value)] : [];
     for (const v of values) {
         if (!known.has(v)) {
-            options.push({ id: v, name: v, color: "default" });
+            // 未在选项表里登记的原始值（如内置 select 的 first_user_message）也要可读，
+            // 不能用下划线原串直接渲染。
+            options.push({ id: v, name: humanizeKey(v), color: "default" });
         }
     }
     return options;
@@ -99,7 +117,7 @@ function ValueDisplay({ def, value }: { def: PropertyDef; value: PropertyValue }
                 return <span className="property-empty">Empty</span>;
             }
             const option = optionsFor(def, value).find((o) => o.id === String(value));
-            return <span className={chipClass(option?.color)}>{option?.name ?? String(value)}</span>;
+            return <span className={chipClass(option?.color)}>{option?.name ?? humanizeKey(String(value))}</span>;
         }
         case "multi_select":
         case "person":
@@ -112,7 +130,7 @@ function ValueDisplay({ def, value }: { def: PropertyDef; value: PropertyValue }
                         const option = optionsFor(def, value).find((o) => o.id === v);
                         return (
                             <span key={v} className={chipClass(option?.color)}>
-                                {option?.name ?? v}
+                                {option?.name ?? humanizeKey(v)}
                             </span>
                         );
                     })}
@@ -136,6 +154,11 @@ function ValueDisplay({ def, value }: { def: PropertyDef; value: PropertyValue }
         case "formula":
             return <span className="property-readonly"><i className="fa-solid fa-function" /> {formatValue(def, value)}</span>;
         default:
+            // 内置 note 为空时与其它属性同形（Tags 空也显示 Empty），
+            // 不再留一个既不显示 Empty、也没有占位文案的空白行。
+            if (def.key === "note" && isEmptyValue(def, value)) {
+                return <span className="property-empty">Empty</span>;
+            }
             return <span className="property-text property-clamp">{formatValue(def, value)}</span>;
     }
 }
@@ -337,16 +360,41 @@ export function PropertyList({
     const [renamingKey, setRenamingKey] = React.useState<string | null>(null);
     const [retypeKey, setRetypeKey] = React.useState<string | null>(null);
 
-    const visible = React.useMemo(() => {
-        if (mode === "detail") return entries;
-        return entries.filter((entry) => !isEmptyValue(entry.def, entry.cell.value));
+    const { primary, secondary } = React.useMemo(() => {
+        if (mode !== "detail") {
+            return { primary: entries.filter((entry) => !isEmptyValue(entry.def, entry.cell.value)), secondary: [] };
+        }
+        // detail：主区 = Tags / Note / 有值的自定义属性；
+        // 副区 = 只读低价值内置行 + 模板里定义但本会话无值的自定义属性（默认折叠）。
+        const primary: PropertyEntry[] = [];
+        const secondary: PropertyEntry[] = [];
+        for (const entry of entries) {
+            if (SecondaryBuiltinKeys.has(entry.def.key)) {
+                secondary.push(entry);
+                continue;
+            }
+            if (entry.def.builtin || !isEmptyValue(entry.def, entry.cell.value)) {
+                primary.push(entry);
+            } else {
+                secondary.push(entry);
+            }
+        }
+        return { primary, secondary };
     }, [entries, mode]);
 
-    const shown = mode === "card" && !expanded ? visible.slice(0, CardPropertyLimit) : visible;
-    const hiddenCount = mode === "card" && !expanded ? Math.max(0, visible.length - CardPropertyLimit) : 0;
+    const limit = mode === "detail" ? DetailPropertyLimit : CardPropertyLimit;
+    const shownPrimary = expanded ? primary : primary.slice(0, limit);
+    const moreCount = expanded ? 0 : Math.max(0, primary.length - limit) + secondary.length;
 
     const startEdit = (entry: PropertyEntry) => {
         if (!canEdit || entry.def.readOnly || onChange == null) return;
+        // checkbox 不是“编辑”而是“切换”：直接落值，不进编辑态。
+        // 以前落入 InlineEditor 的默认 <input type="text">，框里显示字符串 "false"，
+        // 提交后 starred 走 value === true 判断 → 永远勾不上。
+        if (entry.def.type === "checkbox") {
+            onChange(entry.def.key, entry.cell.value !== true, entry.def);
+            return;
+        }
         if (entry.def.key === "note" && onEditNote != null) {
             onEditNote();
             return;
@@ -365,7 +413,7 @@ export function PropertyList({
     const renderRow = (entry: PropertyEntry) => {
         const { def, cell } = entry;
         const isNote = def.key === "note";
-        const empty = isEmptyValue(def, cell.value);
+        const isCheckbox = def.type === "checkbox";
         const editable = canEdit && !def.readOnly && onChange != null;
         const manageable = canEdit && !def.builtin && (onDeleteProperty != null || onRenameProperty != null || onRetypeProperty != null);
         const isEditing = editingKey === def.key && editable;
@@ -374,7 +422,6 @@ export function PropertyList({
         const idx = customIndex(def.key);
         const canUp = manageable && onMoveProperty != null && idx > 0;
         const canDown = manageable && onMoveProperty != null && idx >= 0 && idx < customKeys.length - 1;
-        void empty;
         return (
             <div
                 key={def.key}
@@ -446,6 +493,9 @@ export function PropertyList({
                             type="button"
                             className="property-row__button"
                             aria-label={`Set ${def.name}`}
+                            // checkbox 用 switch 语义：点击即切换，读屏能报出当前状态。
+                            role={isCheckbox ? "switch" : undefined}
+                            aria-checked={isCheckbox ? cell.value === true : undefined}
                             disabled={!editable}
                             onClick={() => startEdit(entry)}
                         >
@@ -515,8 +565,8 @@ export function PropertyList({
         );
     };
 
-    // card 模式全空时：给一个可点的 note 占位，保留"添加备注"的入口（与今天一致）。
-    const showNotePlaceholder = mode === "card" && shown.length === 0;
+    // card 模式全空时：给一个可点的 note 占位，保留“添加备注”的入口（与今天一致）。
+    const showNotePlaceholder = mode === "card" && shownPrimary.length === 0;
     const noteEntry = entries.find((entry) => entry.def.key === "note");
 
     return (
@@ -531,25 +581,42 @@ export function PropertyList({
                     </span>
                 </div>
             ) : (
-                shown.map(renderRow)
+                <>
+                    {shownPrimary.map(renderRow)}
+                    {expanded && secondary.length > 0 ? (
+                        <>
+                            <div className="property-divider" aria-hidden="true" />
+                            {secondary.map(renderRow)}
+                        </>
+                    ) : null}
+                </>
             )}
-            {hiddenCount > 0 ? (
-                <button type="button" className="property-more" onClick={() => setExpanded(true)} aria-label={`Show ${hiddenCount} more properties`}>
-                    +{hiddenCount} more {hiddenCount === 1 ? "property" : "properties"}
+            {moreCount > 0 ? (
+                <button
+                    type="button"
+                    className="property-more"
+                    onClick={() => setExpanded(true)}
+                    aria-label={`Show ${moreCount} more properties`}
+                >
+                    More properties ({moreCount})
                 </button>
             ) : null}
             {mode === "detail" && canEdit && onAddProperty != null ? (
-                <AddPropertyForm
-                    existingKeys={entries.map((entry) => entry.def.key)}
-                    adding={adding}
-                    setAdding={setAdding}
-                    onSubmit={(key, type, saveToTemplate) => {
-                        setAdding(false);
-                        onAddProperty(key, type, saveToTemplate);
-                    }}
-                />
-            ) : null}
-            {footer}
+                <div className="property-actions">
+                    <AddPropertyForm
+                        existingKeys={entries.map((entry) => entry.def.key)}
+                        adding={adding}
+                        setAdding={setAdding}
+                        onSubmit={(key, type, saveToTemplate) => {
+                            setAdding(false);
+                            onAddProperty(key, type, saveToTemplate);
+                        }}
+                    />
+                    {footer != null ? <div className="property-actions__aux">{footer}</div> : null}
+                </div>
+            ) : (
+                footer
+            )}
         </div>
     );
 }

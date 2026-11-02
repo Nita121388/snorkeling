@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { useRef } from "react";
 
@@ -25,7 +25,7 @@ function UnsavedFileModal({ fileName, onResolve }: UnsavedFileModalProps) {
     };
 
     return (
-        <FlexiModal
+        <Modal
             className="w-[420px] max-w-[calc(100vw-32px)]"
             onClickBackdrop={() => resolveAndClose("cancel")}
         >
@@ -46,7 +46,7 @@ function UnsavedFileModal({ fileName, onResolve }: UnsavedFileModalProps) {
                 </Button>
                 <Button onClick={() => resolveAndClose("save")}>Save</Button>
             </div>
-        </FlexiModal>
+        </Modal>
     );
 }
 

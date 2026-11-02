@@ -45,9 +45,15 @@ export type AgentHoverCardProps = {
     mode: "gui" | "tui";
     /** 弹窗内渲染（AgentCardModal）：放大尺寸，不显示悬浮卡底部复制栏。 */
     embedded?: boolean;
+    /**
+     * 无外框形态：不渲染 .info-card 的 border / radius / shadow / 背景，
+     * 让弹窗表面本身充当卡面（design-system §8 禁止 modal 内嵌 card）。
+     * 只做减法，左侧状态色条与状态圆点保留。
+     */
+    frameless?: boolean;
 };
 
-const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false }: AgentHoverCardProps) => {
+const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false, frameless = false }: AgentHoverCardProps) => {
     const sessionId = React.useMemo(
         () => resolveBlockSessionId((blockData?.meta ?? {}) as Record<string, unknown>),
         [blockData]
@@ -146,7 +152,14 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false 
     }
 
     return (
-        <InfoCard className={cn("agent-card", embedded && "agent-card--embedded")} style={{ "--info-card-accent": statusAccent } as React.CSSProperties}>
+        <InfoCard
+            className={cn(
+                "agent-card",
+                embedded && "agent-card--embedded",
+                frameless && "agent-card--frameless"
+            )}
+            style={{ "--info-card-accent": statusAccent } as React.CSSProperties}
+        >
             {/* 模型 + 状态 section */}
             {showMetaRow && (
                 <InfoCardSection>

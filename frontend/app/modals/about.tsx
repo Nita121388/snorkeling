@@ -71,7 +71,12 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
     }, [debugText]);
 
     return (
-        <Modal className="pt-[34px] pb-[34px] overflow-hidden w-[min(720px,calc(100vw-32px))]" onClose={onClose}>
+        <Modal
+            className="pt-[34px] pb-[34px] overflow-hidden w-[min(720px,calc(100vw-32px))]"
+            onClose={onClose}
+            // 自带渐变背景铺满，内边距由本组件的 pt/pb 控制。
+            padding={false}
+        >
             <OnboardingGradientBg />
             <div className="flex flex-col gap-[22px] w-full relative z-10">
                 <div className="flex flex-col items-center justify-center gap-4 self-stretch w-full text-center">

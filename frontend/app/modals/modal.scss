@@ -24,11 +24,17 @@
 }
 
 .modal {
+    // 唯一弹窗壳的内边距基准。落在 design-system §6 的 4/8/12/16/24 刻度上。
+    // 用 CSS 变量而非 Tailwind 类，避免和调用方传入的 p-* / pt-* 打架（后者作用在根节点）。
+    --modal-padding: 16px;
+
     position: relative;
     z-index: var(--zindex-modal);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+    // 内容超长时由 .content-wrapper 吸收溢出，弹窗本身不能长过视口。
+    max-height: min(80vh, calc(100vh - 40px));
     border-radius: 8px;
     border: 1px solid var(--modal-border-color);
     background: var(--modal-bg-color);
@@ -40,6 +46,87 @@
         animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
+    /* ── 结构化 header（新） ──
+       只有传了 title / subtitle / headerExtra 才渲染。✕ 是这里的 flex 子项，
+       不再绝对定位压在内容上，因此调用方不需要再写 pr-7 / pr-8 让位。 */
+    .modal-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        flex: 0 0 auto;
+        width: 100%;
+        padding: var(--modal-padding) var(--modal-padding) 0;
+        box-sizing: border-box;
+    }
+
+    .modal-header__text {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .modal-header__title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--main-text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+
+    .modal-header__subtitle {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+
+    .modal-header__extra {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        min-width: 0;
+    }
+
+    /* 流内关闭按钮：design-system §6 compact icon control = 20px 定宽定高。 */
+    .modal-close {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        cursor: pointer;
+        transition: background 120ms ease, color 120ms ease;
+
+        &:hover {
+            background: var(--hover-bg-color);
+            color: var(--main-text-color);
+        }
+
+        &:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 1px var(--accent-color);
+        }
+    }
+
+    /* ── 老形状的 ✕（绝对定位） ──
+       仅为 20+ 个既有弹窗保留原版式：它们已经围绕这个位置调过 padding。
+       新弹窗请传 title/subtitle 走结构化 header，不要依赖这条。 */
     .modal-close-btn {
         position: absolute;
         right: 8px;
@@ -58,10 +145,15 @@
         width: 100%;
         min-height: 0;
         flex: 1;
+        box-sizing: border-box;
+        padding: var(--modal-padding);
+        // 滚动只发生在这里：header / footer 不参与滚动，滚到底也不外溢到背后的 block。
+        overflow-y: auto;
+        overscroll-behavior: contain;
 
         .modal-content {
             width: 100%;
-            padding: 0px 20px;
+            padding: 0;
             min-height: 0;
             flex: 1;
             display: flex;
@@ -72,13 +164,37 @@
     .modal-footer {
         display: flex;
         justify-content: flex-end;
+        flex: 0 0 auto;
         width: 100%;
-        padding-top: 16px;
+        box-sizing: border-box;
+        padding: 16px var(--modal-padding) var(--modal-padding);
         border-top: 1px solid var(--border-color);
 
         .wave-button:last-child {
             margin-left: 8px;
         }
+    }
+
+    /* padding={false}：调用方自己管内边距（自带 p-*、铺满渐变背景、或 p-0 全屏面板）。 */
+    &.modal--flush {
+        .modal-header,
+        .modal-footer {
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        .content-wrapper {
+            padding: 0;
+        }
+
+        .modal-footer {
+            padding-bottom: 0;
+        }
+    }
+
+    /* scrollBody={false}：调用方自己有滚动容器或固定高度。 */
+    &.modal--no-scroll .content-wrapper {
+        overflow-y: visible;
     }
 }
 

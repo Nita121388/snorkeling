@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { useRef } from "react";
 
@@ -32,7 +32,7 @@ function RestartConfirmModal({ isAgent, onResolve }: RestartConfirmModalProps) {
         : "Restarting the shell will terminate the currently running command and start a new one.";
 
     return (
-        <FlexiModal className="w-[420px] max-w-[calc(100vw-32px)]" onClickBackdrop={() => resolveAndClose(false)}>
+        <Modal className="w-[420px] max-w-[calc(100vw-32px)]" onClickBackdrop={() => resolveAndClose(false)}>
             <div className="modal-content">
                 <div className="flex flex-col gap-2">
                     <div className="text-[15px] font-semibold text-main">{title}</div>
@@ -45,7 +45,7 @@ function RestartConfirmModal({ isAgent, onResolve }: RestartConfirmModalProps) {
                 </Button>
                 <Button onClick={() => resolveAndClose(true)}>Restart</Button>
             </div>
-        </FlexiModal>
+        </Modal>
     );
 }
 
