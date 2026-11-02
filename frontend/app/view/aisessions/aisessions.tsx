@@ -2636,24 +2636,33 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     <div className="flex-1" />
                                     <button
                                         type="button"
-                                        title="Filters"
-                                        aria-label="Filters"
+                                        title={
+                                            activeFilterCount > 0
+                                                ? `Filters: ${activeFilterCount} active`
+                                                : "Filters"
+                                        }
+                                        aria-label={
+                                            activeFilterCount > 0
+                                                ? `Filters: ${activeFilterCount} active`
+                                                : "Filters"
+                                        }
+                                        aria-pressed={filtersOpen}
                                         onClick={() => setFiltersOpen((current) => !current)}
                                         className={cn(
-                                            "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer",
+                                            "flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 transition-colors cursor-pointer",
                                             filtersOpen
                                                 ? "border border-border/70 bg-background text-primary shadow-sm ring-1 ring-accent/40"
-                                                : "border border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
+                                                : activeFilterCount > 0
+                                                  ? "border border-border/70 bg-background text-primary ring-1 ring-accent/40 hover:bg-hover"
+                                                  : "border border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
                                         )}
                                     >
                                         <i className="fa-sharp fa-solid fa-sliders text-[11px]" />
                                         {activeFilterCount > 0 ? (
-                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black">
+                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black tabular-nums">
                                                 {activeFilterCount}
                                             </span>
-                                        ) : (
-                                            <span>Filters</span>
-                                        )}
+                                        ) : null}
                                     </button>
                                     <FilterPresetMenu
                                         presets={filterPresets}

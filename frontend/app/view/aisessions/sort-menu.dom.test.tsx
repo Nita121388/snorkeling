@@ -4,7 +4,8 @@
 // SortMenu 排序链面板 DOM 契约测试。
 //
 // 不渲染整块 AI Sessions（重），只单测下拉的交互语义：
-//  - 默认摘要 = "Newest"
+//  - 触发器 icon-only，摘要只走 title / aria-label
+//  - 默认摘要 = "Newest updated"
 //  - 点未入选项 → 追加到链末
 //  - 点方向 → 只翻该键方向
 //  - 点 ✕ → 移除 + 序号前移
@@ -58,13 +59,16 @@ afterEach(() => {
 });
 
 describe("SortMenu", () => {
-    it("shows Newest when chain is the default", () => {
+    it("keeps the trigger icon-only and moves the summary into title/aria-label", () => {
         const onChange = vi.fn();
         mount([{ field: "time", desc: true }], onChange);
-        expect(trigger().textContent).toContain("Newest");
+        // 触发器不再有可见文本，摘要只走无障碍信息。
+        expect(trigger().textContent?.trim()).toBe("");
+        expect(trigger().getAttribute("aria-label")).toContain("Newest updated");
+        expect(trigger().getAttribute("title")).toContain("Newest updated");
     });
 
-    it("summarizes a multi-key chain", () => {
+    it("summarizes a multi-key chain with a key-count badge", () => {
         const onChange = vi.fn();
         mount(
             [
@@ -73,7 +77,8 @@ describe("SortMenu", () => {
             ],
             onChange
         );
-        expect(trigger().textContent).toContain("Sub-sessions·Messages");
+        expect(trigger().getAttribute("aria-label")).toContain("Sub-sessions·Messages");
+        expect(trigger().textContent?.trim()).toBe("2");
     });
 
     it("appends an unselected field to the chain", () => {

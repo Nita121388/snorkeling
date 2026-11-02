@@ -4,7 +4,8 @@
 // 「折叠」下拉：把子会话折叠与标签行内折叠收进一个和 SortMenu 同形的控件。
 //
 // 与排序正交：排序决定顺序，这里决定结构展开/收起，是纯视图偏好（不进筛选链）。
-// 按钮摘要只显示子会话主状态；标签状态进 title，不拼进按钮文案（避免中点分隔符）。
+// 触发器 icon-only（28×28）：只显示图标；非默认状态（不再是 smart + tags folded）
+// 在右上角点一个小 accent 点，完整状态走 title / aria-label。
 
 import { autoUpdate, flip, FloatingPortal, offset, shift, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
 import { cn } from "@/util/util";
@@ -50,6 +51,12 @@ export function FoldMenu({ subSessionsFold, tagsFold, onSubSessionsFoldChange, o
     const dismiss = useDismiss(context);
     const { getFloatingProps } = useInteractions([dismiss]);
 
+    // 默认组合：子会话 smart + 标签 folded。偏离默认才在按钮上留痕。
+    const isDefaultFold = subSessionsFold === "smart" && tagsFold === "folded";
+    const foldTitle = `Sub-sessions: ${foldSummary(subSessionsFold)} · Tags: ${
+        tagsFold === "expanded" ? "Expanded" : "Folded"
+    }`;
+
     return (
         <>
             <button
@@ -57,19 +64,25 @@ export function FoldMenu({ subSessionsFold, tagsFold, onSubSessionsFoldChange, o
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={open}
-                aria-label={`Fold sub-sessions: ${foldSummary(subSessionsFold)}`}
-                title={`Sub-sessions: ${foldSummary(subSessionsFold)}`}
+                aria-label={foldTitle}
+                title={foldTitle}
                 onClick={() => setOpen((current) => !current)}
                 className={cn(
-                    "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border/70 px-2.5 text-xs transition-colors",
+                    "relative flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border/70 transition-colors",
                     open
-                        ? "bg-background text-primary"
-                        : "bg-surface text-secondary hover:bg-hover hover:text-primary"
+                        ? "bg-background text-primary shadow-sm ring-1 ring-accent/40"
+                        : isDefaultFold
+                          ? "bg-surface text-secondary hover:bg-hover hover:text-primary"
+                          : "bg-background text-primary ring-1 ring-accent/40 hover:bg-hover"
                 )}
             >
                 <i className="fa-sharp fa-solid fa-layer-group text-[11px]" />
-                <span className="max-w-[110px] truncate">{foldSummary(subSessionsFold)}</span>
-                <i className="fa-sharp fa-solid fa-chevron-down text-[8px] opacity-60" />
+                {isDefaultFold ? null : (
+                    <span
+                        aria-hidden="true"
+                        className="absolute right-[2px] top-[2px] h-[5px] w-[5px] rounded-full bg-accent"
+                    />
+                )}
             </button>
             {open ? (
                 <FloatingPortal>

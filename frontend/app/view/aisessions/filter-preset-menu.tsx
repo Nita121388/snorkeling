@@ -144,7 +144,7 @@ export function FilterPresetMenu({
                 aria-label="Filter presets"
                 aria-pressed={triggerActive}
                 className={cn(
-                    "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer",
+                    "flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 transition-colors cursor-pointer",
                     triggerActive
                         ? "border border-border/70 bg-background text-primary shadow-sm ring-1 ring-accent/40"
                         : "border border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
