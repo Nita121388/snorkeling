@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>AISessions 工具栏：按钮太长 → icon-only 方案</title>
+<style>
+  :root{
+    --bg:#14161a; --panel:#191c21; --surface:#22262c; --hover:#2a2f36;
+    --border:#333941; --text:#e6e8ea; --secondary:#a8b0ba; --muted:#6f7883;
+    --accent:#9a7bff; --danger:#e05561; --ok:#4fb477;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 28px 56px;background:var(--bg);color:var(--text);
+       font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;}
+  h1{font-size:19px;margin:0 0 6px}
+  h2{font-size:15px;margin:36px 0 10px;padding-left:9px;border-left:3px solid var(--accent)}
+  p.lead{color:var(--secondary);margin:0 0 8px;max-width:760px}
+  .note{color:var(--muted);font-size:12.5px;margin:6px 0 0}
+  .grid{display:flex;flex-wrap:wrap;gap:22px;margin-top:14px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:0 0 14px;width:300px}
+  .card > .cap{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--secondary)}
+  .card > .cap b{color:var(--text)}
+  .panel{width:278px;margin:12px auto 0;background:#1b1f24;border:1px solid var(--border);border-radius:8px;padding:8px}
+  .panelrow{display:flex;align-items:center;gap:8px;height:32px;margin-bottom:6px}
+  .searchmini{flex:1;height:26px;border:1px solid var(--border);border-radius:6px;background:var(--surface);
+              color:var(--muted);font-size:11px;display:flex;align-items:center;padding:0 8px}
+  .toolbar{display:flex;align-items:center;gap:8px;border:1px dashed #3d434b;border-radius:6px;padding:6px;overflow:hidden}
+  .toolbar.clipped{border-color:rgba(224,85,97,.55)}
+  .spacer{flex:1}
+  /* 现状按钮 */
+  .btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;
+       border:1px solid var(--border);background:var(--surface);color:var(--secondary);
+       font-size:12px;white-space:nowrap;flex:0 0 auto}
+  .btn .ic{font-size:11px;line-height:1}
+  .btn .chev{font-size:8px;opacity:.6}
+  .badge{display:inline-flex;height:16px;min-width:16px;padding:0 4px;align-items:center;justify-content:center;
+         border-radius:999px;background:var(--accent);color:#000;font-size:10px;font-weight:700;line-height:1}
+  .badge.solid{background:var(--surface);color:var(--secondary)}
+  /* 方案按钮 */
+  .ibtn{position:relative;display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;
+        border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--secondary);flex:0 0 auto}
+  .ibtn .ic{font-size:11px;line-height:1}
+  .ibtn.is-set{border-color:rgba(154,123,255,.55);background:#1d1f26;color:var(--text);
+               box-shadow:0 0 0 1px rgba(154,123,255,.4) inset}
+  .ibtn .dir{position:absolute;right:2px;bottom:1px;font-size:7px;color:var(--accent);line-height:1}
+  .ibtn .cnt{position:absolute;right:-4px;top:-4px;display:inline-flex;height:14px;min-width:14px;padding:0 3px;
+             align-items:center;justify-content:center;border-radius:999px;background:var(--accent);
+             color:#000;font-size:9px;font-weight:700;line-height:1}
+  .ibtn .dot{position:absolute;right:2px;top:2px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+  /* 分组胶囊 */
+  .pill{display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+  .pill .ibtn{border:none;background:transparent;height:26px;width:26px}
+  .pill .ibtn.is-set{background:var(--hover)}
+  .pill .ibtn + .ibtn{border-left:1px solid rgba(255,255,255,.06);border-radius:0}
+  .seg{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--border);
+       border-radius:6px;background:var(--surface);flex:0 0 auto}
+  .seg span{display:inline-flex;height:22px;padding:0 7px;align-items:center;font-size:10px;border-radius:4px;color:var(--secondary)}
+  .seg span.on{background:#1b1f24;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.4)}
+  .cut{position:relative}
+  .cutmark{position:absolute;right:0;top:0;bottom:0;width:22px;
+           background:linear-gradient(90deg,transparent,rgba(224,85,97,.18));border-right:2px solid var(--danger)}
+  .err{color:var(--danger);font-size:12px;margin-top:6px}
+  .ok{color:var(--ok);font-size:12px;margin-top:6px}
+  table{border-collapse:collapse;margin-top:10px;font-size:12.5px}
+  th,td{border:1px solid var(--border);padding:6px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel);color:var(--secondary);font-weight:600}
+  code{background:#22262c;border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:12px}
+  .tip{position:relative;display:inline-block}
+  .tipbox{position:absolute;left:50%;transform:translateX(-50%);bottom:36px;background:#2b3038;
+          border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;
+          color:var(--text);white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+  .tipbox::after{content:"";position:absolute;left:50%;margin-left:-4px;bottom:-4px;width:8px;height:8px;
+                 background:#2b3038;border-right:1px solid var(--border);border-bottom:1px solid var(--border);transform:rotate(45deg)}
+  .arrowrow{display:flex;gap:2px;font-size:11px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+
+<h1>AISessions 工具栏：按钮太长，改 icon-only</h1>
+<p class="lead">一句话：<b>按钮上别写字，只留图标；字改成鼠标悬停提示；用图标上的小箭头/小数字补回「当前是什么状态」。</b></p>
+
+<h2>1 · 现在长这样（红框 = 被挤出去）</h2>
+<div class="grid">
+  <div class="card">
+    <div class="cap">列表栏真实宽度 · <b>现在</b></div>
+    <div class="panel">
+      <div class="panelrow">
+        <div class="searchmini">Search sessions…</div>
+        <div class="ibtn"><span class="ic">‹</span></div>
+      </div>
+      <div class="toolbar clipped cut">
+        <div class="seg"><span class="on">📁</span><span>🕐</span></div>
+        <div class="spacer"></div>
+        <div class="btn"><span class="ic">⚙</span><span class="badge">1</span></div>
+        <div class="btn"><span class="ic">🔖</span><span class="badge solid">1</span></div>
+        <div class="btn"><span class="ic">⇅</span>Newest updated<span class="chev">⌄</span></div>
+        <div class="cutmark"></div>
+      </div>
+      <div class="err">✕ 「Folded」按钮被挤出可视区，排序按钮吃掉 ~130px</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cap">四个控件的宽度账</div>
+    <div style="padding:10px 12px">
+      <table>
+        <tr><th>控件</th><th>宽度</th></tr>
+        <tr><td>分组 Project/Time</td><td>~56</td></tr>
+        <tr><td>Filters（带文字）</td><td>~72</td></tr>
+        <tr><td>Presets</td><td>~53</td></tr>
+        <tr><td><b>Sort（最长）</b></td><td><b>~130</b></td></tr>
+        <tr><td>Fold</td><td>~86</td></tr>
+        <tr><td><b>合计</b></td><td><b>~370 > 250 可用</b></td></tr>
+      </table>
+      <p class="note">所以问题不是「Sort 一个太长」，而是"有的按钮带长文字、有的只有图标"混着用，整体装不下。</p>
+    </div>
+  </div>
+</div>
+
+<h2>2 · 改成 icon-only（方案 A）</h2>
+<div class="grid">
+  <div class="card">
+    <div class="cap">A · 每个按钮 28×28 只留图标</div>
+    <div class="panel">
+      <div class="panelrow">
+        <div class="searchmini">Search sessions…</div>
+        <div class="ibtn"><span class="ic">‹</span></div>
+      </div>
+      <div class="toolbar">
+        <div class="seg"><span class="on">📁</span><span>🕐</span></div>
+        <div class="spacer"></div>
+        <div class="ibtn is-set"><span class="ic">⚙</span><span class="cnt">1</span></div>
+        <div class="ibtn"><span class="ic">🔖</span></div>
+        <div class="ibtn is-set"><span class="ic">🕐</span><span class="dir">▼</span></div>
+        <div class="ibtn"><span class="ic">▤</span></div>
+      </div>
+      <div class="ok">✓ 全部放得下，还剩余量；紫色 = 该控件处于「非默认/已启用」状态</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cap">A · 图标怎么表达「现在是什么排序」</div>
+    <div style="padding:12px">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div class="ibtn is-set"><span class="ic">🕐</span><span class="dir">▼</span></div>
+        <div style="font-size:12px;color:var(--secondary)">图标=排依据（时钟=更新时间）<br>右下小箭头=新→旧</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px">
+        <div class="ibtn is-set"><span class="ic">⌨</span><span class="cnt">3</span></div>
+        <div style="font-size:12px;color:var(--secondary)">多个排序键时，角标显示键数</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px">
+        <div class="ibtn"><span class="ic">▤</span></div>
+        <div style="font-size:12px;color:var(--secondary)">折叠保持默认时无任何标记（安静态）</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>3 · 文字没丢：改成悬停提示（hover tooltip）</h2>
+<div class="grid">
+  <div class="card">
+    <div class="cap">B · 鼠标移上去才显示完整文案</div>
+    <div class="panel" style="padding-top:52px">
+      <div class="toolbar">
+        <div class="seg"><span class="on">📁</span><span>🕐</span></div>
+        <div class="spacer"></div>
+        <div class="ibtn is-set"><span class="ic">⚙</span><span class="cnt">1</span></div>
+        <div class="ibtn"><span class="ic">🔖</span></div>
+        <div class="tip"><div class="ibtn is-set"><span class="ic">🕐</span><span class="dir">▼</span></div>
+          <div class="tipbox">Sort by Newest updated</div>
+        </div>
+        <div class="ibtn"><span class="ic">▤</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cap">A+B · 顺带把 4 个图标收成一个胶囊组</div>
+    <div class="panel" style="padding-top:20px">
+      <div class="toolbar">
+        <div class="seg"><span class="on">📁</span><span>🕐</span></div>
+        <div class="spacer"></div>
+        <div class="pill">
+          <div class="ibtn is-set"><span class="ic">⚙</span><span class="cnt">1</span></div>
+          <div class="ibtn"><span class="ic">🔖</span></div>
+          <div class="ibtn is-set"><span class="ic">🕐</span><span class="dir">▼</span></div>
+          <div class="ibtn"><span class="ic">▤</span></div>
+        </div>
+      </div>
+      <div class="ok" style="padding:0 4px">✓ 更像「一个工具栏单元」，也和右边 📁🕐 开关同族</div>
+    </div>
+  </div>
+</div>
+
+<h2>4 · 对比表</h2>
+<table>
+  <tr><th>方案</th><th>做法</th><th>宽度</th><th>代价</th></tr>
+  <tr>
+    <td><b>A（推荐）</b></td>
+    <td>4 个控件全部 icon-only，加小箭头/数字角标表示状态，文案进 hover 提示</td>
+    <td>~136px</td>
+    <td>点击前看不出「按什么排」，靠图标语义 + 悬停补</td>
+  </tr>
+  <tr>
+    <td>A+B</td>
+    <td>同上，且 4 个收进一个带外框的胶囊组</td>
+    <td>~140px</td>
+    <td>再多点实现量，视觉更整</td>
+  </tr>
+  <tr>
+    <td>C（不推荐）</td>
+    <td>只把 Sort 文案缩短成 <code>Updated ▼</code> / <code>T·M·S</code></td>
+    <td>~300px</td>
+    <td>改动最小，但窄栏仍装不下，治不了根</td>
+  </tr>
+</table>
+
+<p class="note" style="margin-top:20px">
+  另外：这一排里「分组 Project/Time」和「标签展开」两个按钮<b>早就是纯图标了</b>，
+  所以 A 不是引入新风格，而是把这排统一到它们的样子。
+</p>
+
+</body>
+</html>
