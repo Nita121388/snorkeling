@@ -5923,6 +5923,7 @@ const Markdown = ({
                                 overlayRect={inlineEdit.overlayRect}
                                 blockKind={inlineEdit.editSession?.blockKind ?? null}
                                 typography={inlineEdit.editSession?.typography}
+                                listIndentPx={inlineEdit.editSession?.listIndentPx}
                                 draftText={inlineEdit.draftText}
                                 textareaRef={inlineEdit.textareaRef}
                                 codeEditorRef={inlineEdit.codeEditorRef}

@@ -318,3 +318,63 @@ callout / 文档 emoji 头 / inline `:emoji` 补全 / slash emoji，以及 `agen
 
 **陷阱**：给浮层里的列表项加 `onContextMenu` 时不要在 `document` 级捕获，
 在格子自身挂监听并 `preventDefault() + stopPropagation()`，避免和宿主/浏览器原生右键菜单叠加。
+
+---
+
+## inline 编辑覆盖层：位置靠实测、高度只是下限（2026-11-03, task 11-03-md-list-inline-edit-geometry）
+
+md 预览的 inline 编辑是一个 `createPortal` 到 `body` 的 `position: fixed` 覆盖层
+（`element/markdown-inline-edit.tsx`）。它最容易出的两类 bug 是「一进编辑文字就跳」和
+「内容被切掉」，原因都在几何取值方式上。
+
+### 1. 覆盖层高度 = 渲染块高度是**下限**，不是定值
+
+`overlayRect.height` 取自渲染块的 `getBoundingClientRect().height`。这个值有两个天然缺口：
+
+- `getBoundingClientRect()` **不含 margin**，而编辑器内容里的 `<ol>/<li>` 有 margin；
+- 内容会增长（多行、多列表项、用户继续换行）。
+
+所以 overlay 必须是 `minHeight: overlayRect.height` + `height: auto`，
+**不能** `height: 固定值`。同时 `overflow` 不能是 `hidden`、`contain` 不能带 `paint`
+—— 两者都会把超出部分裁掉（`paint` containment 的裁剪最隐蔽，改 CSS 时容易漏）。
+
+### 2. 文本起点要用 `Range` 实测，不能用「元素盒子 + padding」推算
+
+`resolveTextOffsetPx()` 用 `Range` 覆盖第一个非空文本节点取 `rect.left`。盒子法在这些情况下会错：
+
+| 锚点形态 | 盒子法误差 | 原因 |
+|---|---|---|
+| 整个 `<ol>`（条目带嵌套子列表时提升到父级） | 1.5px | 文本在 `li` 里，比 `ol` 多一层 `li.paddingLeft` |
+| 折叠式有序列表项 | 13px | 序号是 `.ordered-list-summary-content::before` 内联绘制的，文本墨迹比盒子右移一个序号宽 |
+
+### 3. 列表 marker 必须靠「左扩 overlay + 根 padding」腾位置
+
+渲染态 marker 落在 `<li>` 左边缘**之外**（`ol` 的 margin/padding 区）。把 overlay 左边缘
+锚在 `li.left` 时，任何画在文本左侧的 marker 都会落到覆盖层外被裁掉。可用恒等式：
+
+```
+overlay.left = anchorLeft + textOffset - markerColumn
+root padding-left = markerColumn
+第一层 ul/ol/li 的 margin/padding = 0
+li::before { position: absolute; right: 100%; width: markerColumn }
+⇒ overlay.left + root padding === anchorLeft + textOffset === 渲染态文本 x
+```
+
+`markerColumn` / `textOffset` 都从渲染态 computed / Range 实测，不写死 `1.5em`。
+
+### 4. 折叠内容的块不能进 WYSIWYG
+
+`buildListWysiwygSeed` 会解包 `.ordered-list-collapse-body`，于是阅读态被 `.collapsed`
+隐藏的子内容在编辑器里突然出现（高度暴涨 + 内容被裁）；改成丢弃又会**在提交时丢数据**。
+正确做法是 `captureWysiwygInfo` 早退返回 `null` → 回退 textarea 路径，源文本一字不改。
+
+### 5. `whiteSpace: pre-wrap` 只属于 textarea
+
+textarea 需要它保留源码换行；contentEditable 根节点继承它会把种子 HTML 里的空白文本节点
+变成真实换行 → 多出空行、撑高、被裁。WYSIWYG 根节点用 `normal`（与渲染态一致）。
+
+### 验证方式（别只靠肉眼）
+
+组件预览页 `frontend/preview` 有 markdown 用例（含 editable 列表）。用 CDP 在编辑前后各取一次
+第一个文本节点的 `Range` rect，断言 Δx/Δy ≈ 0，并断言 `overlay.scrollHeight <= clientHeight`。
+把旧 CSS 注入回去做对照，应能重现 ~26px 的偏移 —— 这一步证明测量本身有效。

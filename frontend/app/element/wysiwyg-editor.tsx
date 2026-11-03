@@ -563,7 +563,11 @@ export const WysiwygEditor = forwardRef<WysiwygEditorHandle, WysiwygEditorProps>
             {...dataAttrForKind(liveKind, headingLevel)}
             contentEditable="true"
             suppressContentEditableWarning
-            style={{ ...typography, whiteSpace: "pre-wrap" }}
+            // `pre-wrap` was a textarea-only requirement (keep source newlines and inline
+            // spaces). On a contentEditable root it turns the seed HTML's whitespace text
+            // nodes into REAL line breaks — extra blank rows that inflate the block height and
+            // get clipped by the overlay. The rendered prose tree uses `normal`; mirror it.
+            style={{ ...typography, whiteSpace: "normal" }}
             data-placeholder={placeholder}
             onInput={handleInput}
             onBlur={handleBlur}

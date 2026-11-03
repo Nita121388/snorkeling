@@ -742,8 +742,15 @@
     pointer-events: auto;
     min-width: 0;
     max-width: 100%;
-    overflow: hidden;
-    contain: layout paint;
+    // `overflow: auto` (not hidden) + an auto height: the overlay's height is the rendered
+    // block's height used as a MINIMUM (see InlineEditOverlay), so content that is taller than
+    // the block — multi-line lists, long paragraphs — grows the box instead of being clipped.
+    // The scrollbar only appears for content taller than the viewport (maxHeight cap).
+    overflow: auto;
+    // No `contain: layout paint` here: paint containment CLIPS descendants to the overlay box,
+    // which is exactly the "list items are cut off" symptom. The overlay only lives for the
+    // duration of an edit session, so the isolation it bought is not worth the clipping.
+    contain: layout;
 
     .inline-edit-textarea {
         display: block;
@@ -1050,6 +1057,91 @@
     list-style-type: disc;
 }
 .wysiwyg-editor.wysiwyg-list ol {
+    list-style-type: decimal;
+}
+
+// --- Inline-edit overlay: first-level list geometry ------------------------------------------
+// Entering edit on a list used to shift the text right by ~30px and push it down ~9px. Two
+// stacked indents caused it: the typography snapshot already carries the rendered `<li>`'s
+// padding onto the WYSIWYG root, and these rules added the render tree's
+// `margin-left: 1.5em` + `padding-left: .25em` on top of it.
+//
+// Geometry contract (see resolveOverlayGeometry / resolveListIndentPx / resolveTextOffsetPx):
+//   overlay.left = anchorLeft + textOffset - markerColumn
+//   root padding = markerColumn
+//   first-level ul/ol/li contribute ZERO indent
+//   the marker itself is an absolutely positioned ::before that fills the reserved column
+// → overlay.left + root padding === anchorLeft + textOffset === the rendered text's x.
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-editor {
+    // The marker sits inside the root's padding box; `hidden` would clip it at the boundary.
+    overflow: visible;
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul,
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+// First-level items: no margins and no padding of their own. The marker column is reserved by
+// the WYSIWYG root's padding (see InlineEditOverlay: `paddingLeft = marker column`), so the
+// item's text starts exactly at the root's content edge — which is where the rendered text is.
+// The rendered li's vertical margin is NOT part of its bounding rect, so keeping it here pushed
+// the text down and made the content taller than the overlay's min-height.
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul > li,
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ol > li {
+    position: relative;
+    margin: 0;
+    padding-left: 0;
+    line-height: inherit;
+}
+
+// Marker drawn as a pseudo-element, mirroring the rendered collapsible ordered list
+// (`.ordered-list-summary-content::before`): it fills the reserved column and right-aligns its
+// ink against the text start with the same 0.286em gap and 600 weight.
+//
+// `right: 100%` puts the whole band in the root's padding area (to the left of the text).
+// Absolutely positioned on purpose: a hanging `inline-block` marker would be pushed onto its own
+// line as soon as the item's content is block-level (loose lists render `<li><p>…</p></li>`).
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul > li::before,
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ol > li::before {
+    position: absolute;
+    right: 100%;
+    top: 0;
+    width: var(--inline-edit-list-indent, 1.5em);
+    box-sizing: border-box;
+    padding-right: 0.286em;
+    text-align: right;
+    text-indent: 0;
+    font-weight: 600;
+    font-style: normal;
+    pointer-events: none;
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul > li::before {
+    content: "•";
+    color: var(--secondary-text-color);
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ol > li::before {
+    content: counter(list-item) ".";
+    color: var(--main-text-color);
+}
+
+// Nested levels keep the rendered indent so the hierarchy still reads correctly.
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ul,
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ol {
+    margin: 0.25em 0 0.25em 1.5em;
+    padding-left: 0.25em;
+    list-style-position: outside;
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ul {
+    list-style-type: disc;
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ol {
     list-style-type: decimal;
 }
 
