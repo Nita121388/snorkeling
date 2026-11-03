@@ -8,6 +8,12 @@
  * payload only enters memory on first trigger.
  */
 
+import {
+    emojiBaseCandidates,
+    getEmojiAliasMap,
+    type EmojiAliasMap,
+} from "./emoji-aliases";
+
 export interface EmojiEntry {
     char: string;
     labelEn: string;
@@ -124,17 +130,103 @@ export function getLoadedEmojiCatalog(): EmojiCatalog | null {
 }
 
 /**
- * Search the catalog. Scoring (lower is better):
- *   shortcode prefix (0) > keyword prefix (1) > pinyin prefix (2) > substring (3).
- * Empty query returns the first `limit` entries (group order preserved).
+ * Ordered user-alias hits for a query. Tier 0 = exact alias, 1 = prefix, 2 = substring.
+ * Guarantees one hit per emoji (the strongest tier wins) and skips records whose emoji
+ * is not in the catalog. Shared by `searchEmoji` (ordering) and
+ * `buildEmojiPickerItems` (the "why was it found" hint) so the two never diverge.
  */
-export function searchEmoji(catalog: EmojiCatalog, query: string, limit = 24): EmojiEntry[] {
+export function matchAliasHits(
+    catalog: EmojiCatalog,
+    query: string,
+    aliasMap: EmojiAliasMap
+): Array<{ entry: EmojiEntry; alias: string; tier: number }> {
+    const q = query.trim().toLowerCase();
+    if (q === "") {
+        return [];
+    }
+    // Emoji chars in the catalog may carry a variation selector (✅️) while a stored
+    // alias can hold the bare char (✅), or vice versa. Index every candidate form so
+    // both spellings resolve to the same entry.
+    const byChar = new Map<string, EmojiEntry>();
+    for (const e of catalog.entries) {
+        for (const candidate of emojiBaseCandidates(e.char)) {
+            if (!byChar.has(candidate)) {
+                byChar.set(candidate, e);
+            }
+        }
+        byChar.set(e.char, e);
+    }
+    const best = new Map<string, { entry: EmojiEntry; alias: string; tier: number }>();
+    for (const [storedChar, record] of Object.entries(aliasMap)) {
+        if (record == null || record.aliases.length === 0) {
+            continue;
+        }
+        // A record may be keyed on a skin-tone variant the catalog has no entry for;
+        // resolve through the base-char candidates (design §2 C3).
+        let entry: EmojiEntry | undefined;
+        for (const candidate of emojiBaseCandidates(storedChar)) {
+            entry = byChar.get(candidate);
+            if (entry != null) {
+                break;
+            }
+        }
+        if (entry == null) {
+            continue;
+        }
+        let hit: { alias: string; tier: number } | null = null;
+        for (const alias of record.aliases) {
+            const lowered = alias.toLowerCase();
+            if (lowered === q) {
+                hit = { alias, tier: 0 };
+                break;
+            }
+            if (hit == null && lowered.startsWith(q)) {
+                hit = { alias, tier: 1 };
+            }
+            if (hit == null && lowered.includes(q)) {
+                hit = { alias, tier: 2 };
+            }
+        }
+        if (hit == null) {
+            continue;
+        }
+        const existing = best.get(entry.char);
+        if (existing == null || hit.tier < existing.tier) {
+            best.set(entry.char, { entry, alias: hit.alias, tier: hit.tier });
+        }
+    }
+    const ordered = [...best.values()].sort((a, b) => a.tier - b.tier);
+    return ordered;
+}
+
+/**
+ * Search the catalog. Ordering (best first):
+ *   1. user aliases — exact, then prefix, then substring (always ahead of built-ins)
+ *   2. built-in scores — shortcode exact (-1) > shortcode prefix (0) > keyword prefix (1)
+ *      > pinyin prefix (2) > substring (3)
+ * Empty query returns the first `limit` entries (group order preserved).
+ *
+ * User aliases always outrank built-ins: they are the words the user chose, so a
+ * `done` search should surface its own ✅ entry before catalog entries merely containing "done".
+ */
+export function searchEmoji(
+    catalog: EmojiCatalog,
+    query: string,
+    limit = 24,
+    aliasMap: EmojiAliasMap = getEmojiAliasMap()
+): EmojiEntry[] {
     const q = query.trim().toLowerCase();
     if (q === "") {
         return catalog.entries.slice(0, limit);
     }
+    const aliasHits = matchAliasHits(catalog, q, aliasMap);
+    const aliasSeen = new Set(aliasHits.map((h) => h.entry.char));
+
     const scored: Array<{ e: EmojiEntry; s: number; i: number }> = [];
     catalog.entries.forEach((e, i) => {
+        if (aliasSeen.has(e.char)) {
+            return;
+        }
         let s: number | null = null;
         if (e.shortcode === q) {
             s = -1; // exact shortcode beats every prefix
@@ -152,7 +244,7 @@ export function searchEmoji(catalog: EmojiCatalog, query: string, limit = 24): E
         }
     });
     scored.sort((a, b) => a.s - b.s || a.i - b.i);
-    return scored.slice(0, limit).map((x) => x.e);
+    return [...aliasHits.map((h) => h.entry), ...scored.map((x) => x.e)].slice(0, limit);
 }
 
 // --- Recents (MRU, localStorage) -----------------------------------------------------
@@ -199,18 +291,32 @@ export function recordRecentEmoji(char: string): string[] {
 
 export type EmojiPickerItem =
     | { key: string; header: string }
-    | { key: string; entry: EmojiEntry; recent?: boolean };
+    | { key: string; entry: EmojiEntry; recent?: boolean; alias?: string };
 
 /**
  * Items for the emoji picker grid: search results when a query is present, otherwise a
  * Recent section (if any) followed by per-group sections with headers.
+ *
+ * In the search branch each hit carries the user alias that matched it (if any) so the
+ * grid can explain why an emoji showed up.
  */
-export function buildEmojiPickerItems(catalog: EmojiCatalog, query: string, recents: string[]): EmojiPickerItem[] {
+export function buildEmojiPickerItems(
+    catalog: EmojiCatalog,
+    query: string,
+    recents: string[],
+    aliasMap: EmojiAliasMap = getEmojiAliasMap()
+): EmojiPickerItem[] {
     if (query.trim() !== "") {
-        return searchEmoji(catalog, query, 48).map((entry) => ({
-            key: `s:${entry.char}:${entry.shortcode}`,
-            entry,
-        }));
+        const aliasHints = new Map<string, string>();
+        for (const hit of matchAliasHits(catalog, query, aliasMap)) {
+            aliasHints.set(hit.entry.char, hit.alias);
+        }
+        return searchEmoji(catalog, query, 48, aliasMap).map((entry) => {
+            const alias = aliasHints.get(entry.char);
+            return alias == null
+                ? { key: `s:${entry.char}:${entry.shortcode}`, entry }
+                : { key: `s:${entry.char}:${entry.shortcode}`, entry, alias };
+        });
     }
     const items: EmojiPickerItem[] = [];
     if (recents.length > 0) {
