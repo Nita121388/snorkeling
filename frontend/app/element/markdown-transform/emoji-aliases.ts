@@ -96,9 +96,13 @@ const VARIATION_SELECTOR_RE = /\u{FE0F}/gu;
 
 /**
  * Candidate storage keys for one char, most specific first:
- * `👍🏻` → [`👍🏻`, `👍`]. Used so an alias typed on a skin-tone variant is still
- * reachable from the base emoji and vice versa. `❤️` → [`❤️`, `❤`] covers the
- * variation-selector case.
+ *   `👍🏻` → [`👍🏻`, `👍`]   skin-tone fallback
+ *   `❤️` → [`❤️`, `❤`]     variation-selector strip
+ *   `✅`  → [`✅`, `✅️`]     variation-selector ADD
+ *
+ * The ADD direction is not cosmetic: the catalog spells many symbols WITH VS16
+ * (`white_check_mark` is `✅️`), so a caller holding the bare char would otherwise
+ * never find the record. Both directions are needed.
  */
 export function emojiBaseCandidates(char: string): string[] {
     if (typeof char !== "string" || char === "") {
@@ -113,6 +117,16 @@ export function emojiBaseCandidates(char: string): string[] {
         const noVs = candidate.replace(VARIATION_SELECTOR_RE, "");
         if (noVs !== candidate && !out.includes(noVs)) {
             out.push(noVs);
+        }
+    }
+    for (const candidate of [...out]) {
+        // Adding the emoji presentation selector is harmless for chars that ignore it;
+        // nothing ever stores that spelling, so it cannot create false hits.
+        if (!candidate.includes("\uFE0F")) {
+            const withVs = candidate + "\uFE0F";
+            if (!out.includes(withVs)) {
+                out.push(withVs);
+            }
         }
     }
     return out.length > 0 ? out : [char];

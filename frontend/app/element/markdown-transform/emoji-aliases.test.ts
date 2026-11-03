@@ -82,8 +82,10 @@ describe("splitAliasInput", () => {
 });
 
 describe("emojiBaseCandidates", () => {
-    it("returns the char itself first", () => {
-        expect(emojiBaseCandidates("✅")).toEqual(["✅"]);
+    it("returns the char itself first, then the VS16 form", () => {
+        const candidates = emojiBaseCandidates("✅");
+        expect(candidates[0]).toBe("✅");
+        expect(candidates[1]).toBe("✅️");
     });
 
     it("falls back from a skin-tone variant to the base emoji", () => {
@@ -214,5 +216,31 @@ describe("emoji-aliases store", () => {
         });
         expect(() => setEmojiAliases("✅", { aliases: ["done"] })).not.toThrow();
         expect(getEmojiAlias("✅")?.aliases).toEqual(["done"]);
+    });
+});
+
+describe("variation-selector symmetry", () => {
+    let localStorageMock: ReturnType<typeof makeLocalStorageMock>["localStorage"];
+
+    beforeEach(() => {
+        const mock = makeLocalStorageMock();
+        localStorageMock = mock.localStorage;
+        vi.stubGlobal("window", mock.windowMock);
+        __resetEmojiAliasesForTests();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it("adds the VS16 form so a bare-char lookup finds a VS16-keyed record", () => {
+        expect(emojiBaseCandidates("\u2705")).toContain("\u2705\uFE0F");
+        setEmojiAliases("\u2705\uFE0F", { aliases: ["done"] });
+        expect(getEmojiAlias("\u2705")?.aliases).toEqual(["done"]);
+    });
+
+    it("strips VS16 so a VS16 lookup finds a bare-keyed record", () => {
+        setEmojiAliases("\u2705", { aliases: ["done"] });
+        expect(getEmojiAlias("\u2705\uFE0F")?.aliases).toEqual(["done"]);
     });
 });
