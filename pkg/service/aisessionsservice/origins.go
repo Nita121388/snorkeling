@@ -6,6 +6,7 @@ package aisessionsservice
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
@@ -17,6 +18,26 @@ import (
 // count. Sessions are lightweight summaries; the cap only guards against absurd
 // roots (100k+ files) making the count call heavy.
 const originCountLimit = 100000
+
+// localOriginLabelFor returns the display label for the current machine's origin.
+// It is a pure function of the GOOS string so the mapping is unit-testable.
+// The windows label deliberately matches wshremote.WindowsDrivesDisplayName
+// ("This PC") so the app names the local machine the same way everywhere.
+func localOriginLabelFor(goos string) string {
+	switch goos {
+	case "windows":
+		return "This PC"
+	case "darwin":
+		return "This Mac"
+	default:
+		return "This Machine"
+	}
+}
+
+// localOriginLabel is the platform-correct label for the local origin.
+func localOriginLabel() string {
+	return localOriginLabelFor(runtime.GOOS)
+}
 
 // AISessionsOrigin describes one selectable scan origin for the GUI switcher.
 type AISessionsOrigin struct {
@@ -121,7 +142,7 @@ func (svc *AISessionsService) Origins(ctx context.Context, request *AISessionsOr
 	var origins []AISessionsOrigin
 	origins = append(origins, AISessionsOrigin{
 		ID:       aisessions.OriginLocalID,
-		Label:    "This Mac",
+		Label:    localOriginLabel(),
 		Path:     "",
 		Kind:     aisessions.OriginKindLocal,
 		ReadOnly: false,

@@ -107,8 +107,8 @@ export function OriginSwitcher({ origins, selectedId, onSelect, onEdit, onManage
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={open}
-                aria-label={`Switch AI session origin: ${active?.label ?? "This Mac"}`}
-                title={`Origin: ${active?.label ?? "This Mac"}`}
+                aria-label={`Switch AI session origin: ${active?.label ?? "this machine"}`}
+                title={`Origin: ${active?.label ?? "this machine"}`}
                 onClick={() => setOpen((current) => !current)}
                 className={cn(
                     "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border/70 px-2 text-xs transition-colors",

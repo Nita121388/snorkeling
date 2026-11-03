@@ -40,3 +40,12 @@
      Settings > Secrets store”），不能只回传服务端的裸 401。
    - 会产生副作用的请求（Test connection 会真的跑一次 completion）保留前置拦截，
      但提示要点名是哪个 secret 没找到。
+6. **面向用户的平台文案必须由 `runtime.GOOS` 推导，不得硬编码单一平台。**
+   典型错误：`pkg/service/aisessionsservice/origins.go` 曾把本机 origin 的 label 写死为
+   `"This Mac"`，Windows 用户的下拉里也显示 “This Mac”（2026-11-03 修复）。
+   - 正确做法：抽成纯函数 `localOriginLabelFor(goos string) string` 并用表驱动单测覆盖
+     `windows` / `darwin` / 其他（`Origins()` 只调 `localOriginLabel()`）。
+   - Windows 上本机统一叫 **“This PC”**，与既有 `wshremote.WindowsDrivesDisplayName`
+     （`pkg/wshrpc/wshremote/windows_drives.go`）保持一致；不要另造 “My Computer” 之类新词。
+   - 前端在数据未就绪时的 fallback 文案也要平台中性（`"this machine"`），
+     不要复制后端某个平台的写死值。
