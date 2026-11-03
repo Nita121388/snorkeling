@@ -214,113 +214,83 @@
    仅当 .info-card 同时有 .agent-card 类时生效，不影响其它 InfoCard 场景。
    ─────────────────────────────────────────────────────────────────── */
 
-/*
- * 色条用 ::before 画，不用 border-left。
- * 原因：border-radius 会作用于整张卡的边框盒，把 border-left 在上下圆角处
- * 切成斜段，色条两头向外翻。改成伪元素后，圆角（border-radius: 2px）加在
- * 色条自己身上，头尾是对称圆头；卡片左边同步改为直角，色条才不会被
- * 卡片的圆角缺口切到（右边两角保留 6px 圆角，仍是「挂在左边」的形态）。
- * padding-left 从 12 加到 15（12 + 条宽 3），内容 x 位置与原 border-left 方案一致。
- */
+/* ───────────────────────────────────────────────────────────────────────
+   2026-11-03 重排（task: 11-03-agent-card-hybrid）
+   左侧 3px 通长圆头色条已移除：状态改由「右上角 chip + chip 内圆点 + 标题引用线」
+   三重编码，卡面本身不再挂一条与内容无关的竖色块。相关取舍见
+   design/prototypes/agent-card-hybrid/README.md。
+   ─────────────────────────────────────────────────────────────────────── */
 .info-card.agent-card {
     position: relative;
-    border-radius: 0 6px 6px 0;
-    padding-left: 15px;
+    width: 340px;
+    max-width: min(400px, calc(100vw - 24px));
+    // 底部 padding 交给 footer（.property-footer 自带 8/9px），避免双层留白。
+    padding: 11px 12px 0;
+    border-radius: 9px;
+    transition:
+        border-color 120ms ease,
+        box-shadow 120ms ease;
+
+    &:hover {
+        border-color: color-mix(in srgb, var(--border-color) 55%, var(--secondary-text-color));
+        box-shadow: 0 10px 26px -22px rgba(0, 0, 0, 0.55);
+    }
 }
 
-.info-card.agent-card::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    border-radius: 2px;
-    background: var(--info-card-accent, var(--secondary-text-color));
+/* ── 头部：30px 头像块 + 身份两行 + 右上角三件套 ── */
+.agent-card-head-section {
+    padding-bottom: 0;
 }
 
-/* ── Provider logo 行 ── */
 .agent-card-head {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 4px;
+    align-items: flex-start;
+    gap: 9px;
+    min-width: 0;
 }
 
-/* 悬浮卡头部放大按钮（弹窗编辑整卡）。 */
-.agent-card-expand-btn {
-    margin-left: auto;
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
+.agent-card-avatar {
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
     border: none;
-    border-radius: 3px;
-    background: transparent;
-    color: var(--secondary-text-color);
-    font-size: 11px;
+    border-radius: 9px;
+    background: var(--form-element-bg-color);
+    box-shadow: inset 0 0 0 1px var(--border-color);
+    color: var(--main-text-color);
+    font-size: 16px;
+    line-height: 1;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 120ms ease;
 
-    .agent-card:hover &,
-    &:focus {
-        opacity: 1;
+    // logo 保留厂牌自带色（由 inline style 注入 color），这里只控制尺寸。
+    svg {
+        width: 16px;
+        height: 16px;
     }
 
     &:hover {
-        background: var(--hover-bg-color);
-        color: var(--main-text-color);
+        box-shadow: inset 0 0 0 1px var(--secondary-text-color);
+    }
+
+    // emoji / 文字徽标人格：字形自带颜色，底色退成中性面。
+    &.is-emoji {
+        background: color-mix(in srgb, var(--form-element-bg-color) 70%, transparent);
     }
 }
 
-/* 弹窗内（embedded）渲染的 agent 卡：放大尺寸、无悬浮卡窄限制。 */
-.agent-card--embedded {
-    min-width: 520px;
-    max-width: 640px;
-}
-
-/*
- * frameless：弹窗表面已经是卡面，这里只做减法。
- * design-system §8「Do not place cards inside modal cards; use unframed sections within
- * the modal surface」——否则会出现双层 border / 双层 shadow / 两套圆角 / 两套背景色。
- * 左侧状态色条（::before）与状态圆点保留，它们承载 agent 状态语义。
- */
-.info-card.agent-card.agent-card--frameless {
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
-    background: transparent;
-    // padding-left 留给 ::before 色条（3px 条 + 7px 间距），其余方向由 .content-wrapper 供给。
-    padding: 0 0 0 10px;
+.agent-card-id {
+    flex: 1 1 auto;
     min-width: 0;
-    max-width: none;
-}
-
-.info-card.agent-card.agent-card--frameless::before {
-    left: 0;
-    top: 2px;
-    bottom: 2px;
-    width: 3px;
-}
-
-.agent-card-logo {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    gap: 1px;
+    padding-top: 1px;
 }
 
-.agent-card-logo svg {
-    width: 100%;
-    height: 100%;
-}
-
-.agent-card-provider {
+.agent-card-name {
     font-size: 13px;
     font-weight: 600;
     color: var(--main-text-color);
@@ -329,50 +299,62 @@
     white-space: nowrap;
 }
 
-/* 模型名紧跟 provider，不靠 auto 边距推到最右。
-   之前 .agent-card-model 与 .agent-card-expand-btn 都写了 margin-left:auto，
-   两处 auto 会平分空白：hover 卡里模型被推到中间、expand 在最右；
-   embedded（无 expand）时模型又被推到最右，与 provider 之间空出一大块。 */
-.agent-card-model {
-    margin-left: 8px;
-    font-size: 11px;
+/* 副标题 = model · titleSource：两条低价值元信息压成一行 mono。 */
+.agent-card-sub {
+    font-family: var(--mono-font, Consolas, "Courier New", monospace);
+    font-size: 10.5px;
+    line-height: 1.4;
     color: var(--secondary-text-color);
-    max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-/* ── 状态行：圆点 + label ── */
-.agent-card-status-row {
+.agent-card-actions {
+    flex: 0 0 auto;
+    margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--secondary-text-color);
-    margin-bottom: 6px;
+    gap: 1px;
+}
+
+/* 状态 chip：颜色只染 chip 自身，不染整卡。 */
+.agent-card-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 20px;
+    margin-right: 2px;
+    padding: 0 7px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--info-card-accent, var(--secondary-text-color));
+    background: color-mix(in srgb, var(--info-card-accent, var(--secondary-text-color)) 11%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--info-card-accent, var(--secondary-text-color)) 26%, transparent);
 }
 
 .agent-card-status-dot {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
     border-radius: 50%;
-    flex-shrink: 0;
-    background: var(--info-card-accent, var(--secondary-text-color));
-    transition: background 0.2s ease;
-}
+    background: currentColor;
 
-.agent-card-status-dot.is-working {
-    animation: agent-card-pulse 1.6s ease-in-out infinite;
-}
+    &.is-working {
+        animation: agent-card-pulse 1.6s ease-in-out infinite;
+    }
 
-.agent-card-status-dot.is-thinking {
-    animation-duration: 0.9s;
+    &.is-thinking {
+        animation-duration: 0.9s;
+    }
 }
 
 @keyframes agent-card-pulse {
-    0%, 100% {
-        box-shadow: 0 0 0 0 color-mix(in srgb, var(--info-card-accent) 55%, transparent);
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 50%, transparent);
     }
     50% {
         box-shadow: 0 0 0 4px transparent;
@@ -380,45 +362,88 @@
 }
 
 .agent-card-status-label {
-    color: var(--main-text-color);
     font-weight: 500;
 }
 
-/* ── Tags 行 ── */
-.agent-card-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 2px;
-}
-
-.agent-card-tag {
-    display: inline-block;
-    padding: 0 6px;
-    font-size: 10px;
-    line-height: 16px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--info-card-accent, var(--accent-color)) 12%, transparent);
-    color: var(--info-card-accent, var(--accent-color));
-    border: 1px solid color-mix(in srgb, var(--info-card-accent, var(--accent-color)) 25%, transparent);
-}
-
-/* ── Session ID 底行 ── */
-.agent-card-session-id {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border-color);
-    font-family: Consolas, "Courier New", monospace;
-    font-size: 11px;
+/* 右上角图标按钮（收藏 / 放大）。 */
+.agent-card-icon-btn {
+    flex: 0 0 auto;
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
     color: var(--secondary-text-color);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.8;
+    transition:
+        opacity 120ms ease,
+        background 120ms ease,
+        color 120ms ease;
+
+    &:hover {
+        opacity: 1;
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.5;
+    }
+
+    &.is-star.is-on {
+        color: var(--warning-color, #f59e0b);
+        opacity: 1;
+    }
 }
 
-.agent-card-session-id-text {
-    flex: 1;
+.agent-card-expand-btn {
+    opacity: 0.8;
+
+    .agent-card:hover &,
+    &:focus {
+        opacity: 1;
+    }
+}
+
+/* ── 标题引用块：卡片主体 ── */
+.agent-card-title-wrap {
+    position: relative;
     min-width: 0;
+}
+
+.agent-card-title-block {
+    margin: 10px 0 8px;
+    padding-left: 9px;
+    border-left: 2px solid color-mix(in srgb, var(--info-card-accent, var(--secondary-text-color)) 55%, transparent);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--main-text-color);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+/* ── Session id：footer 右组里的一段（不再单独占一行） ── */
+.agent-card-session {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+
+.agent-card-sid {
+    font-family: var(--mono-font, Consolas, "Courier New", monospace);
+    font-size: 10px;
+    color: var(--secondary-text-color);
+    max-width: 96px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -430,8 +455,8 @@
 }
 
 /*
- * 复制按钮。现在由 CopyButton 渲染（wave-iconbutton + <i> 图标），
- * 所以这里只负责尺寸与状态色，图标颜色沿用 copybutton.scss 的 .copied 规则。
+ * 复制按钮。由 CopyButton 渲染（wave-iconbutton + <i> 图标），
+ * 这里只负责尺寸与状态色，图标颜色沿用 copybutton.scss 的 .copied 规则。
  */
 .agent-card-copy-btn {
     flex-shrink: 0;
@@ -446,7 +471,7 @@
     color: var(--secondary-text-color);
     cursor: pointer;
     padding: 0;
-    opacity: 1; /* 覆写 .wave-iconbutton 的 0.7：这行本来就在底行，不需要再压暗 */
+    opacity: 1; /* 覆写 .wave-iconbutton 的 0.7：这行本来就在 footer，不需要再压暗 */
     transition:
         background 0.15s ease,
         color 0.15s ease;
@@ -464,6 +489,31 @@
 
 .agent-card-copy-btn i {
     font-size: 11px;
+}
+
+/* 弹窗内（embedded）渲染的 agent 卡：放大尺寸、无悬浮卡窄限制。
+   必须带上 .info-card.agent-card 前缀：基类的 width: 340px 是 (0,2,0)，
+   单独 .agent-card--embedded 是 (0,1,0)，压不住基类，弹窗会被压回 340px。 */
+.info-card.agent-card.agent-card--embedded {
+    width: auto;
+    min-width: 520px;
+    max-width: 640px;
+}
+
+/*
+ * frameless：弹窗表面已经是卡面，这里只做减法。
+ * design-system §8「Do not place cards inside modal cards; use unframed sections within
+ * the modal surface」——否则会出现双层 border / 双层 shadow / 两套圆角 / 两套背景色。
+ */
+.info-card.agent-card.agent-card--frameless {
+    width: auto;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
+    min-width: 0;
+    max-width: none;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

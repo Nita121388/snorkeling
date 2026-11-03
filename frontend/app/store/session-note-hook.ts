@@ -69,6 +69,10 @@ export type SessionNoteState = {
     generateTitle: () => Promise<void>;
     applyTitle: () => Promise<void>;
     dismissTitle: () => void;
+    /** 星标（summary.marked）。写库期间为 true，按钮应 disabled。 */
+    starPending: boolean;
+    /** 切换星标：Mark(key, !marked) → dispatchAISessionNoteUpdated。失败写 error。 */
+    toggleStarred: () => Promise<void>;
 };
 
 function firstLine(text: string): string {
@@ -377,6 +381,35 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         setTitleError("");
     }, [sessionId]);
 
+    // ── 星标（hover 卡头部，与 PropertyList 的 starred checkbox 同源） ──
+    // 不本地改 summary：Mark 成功后 dispatchAISessionNoteUpdated，session-note-cache
+    // 会把 marked merge 进快照，所有订阅面（卡片 / 列表 / 详情）一起刷新。
+    const [starPending, setStarPending] = React.useState(false);
+    const starPendingRef = React.useRef(false);
+    const toggleStarred = React.useCallback(async () => {
+        if (summary == null || starPendingRef.current) {
+            return;
+        }
+        const next = summary.marked !== true;
+        starPendingRef.current = true;
+        setStarPending(true);
+        setError("");
+        try {
+            // origin 参数：note-cache 场景是本地会话（与 setSessionProperty 的 starred 分支一致）。
+            const updated = await service.Mark(summary.key, next, "");
+            dispatchAISessionNoteUpdated(updated);
+            setSaveStatus("saved");
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.debug("[session-note] failed to toggle starred", { sessionId, error: message });
+            setSaveStatus("error");
+            setError(message);
+        } finally {
+            starPendingRef.current = false;
+            setStarPending(false);
+        }
+    }, [service, sessionId, summary]);
+
     const trimmedDraft = noteDraft.trim();
     const title = summary?.title || summary?.id || sessionId;
     // 未编辑时优先用 summary.note（草稿可能还没同步上），编辑时才用草稿。
@@ -414,6 +447,8 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         generateTitle,
         applyTitle,
         dismissTitle,
+        starPending,
+        toggleStarred,
     };
 }
 

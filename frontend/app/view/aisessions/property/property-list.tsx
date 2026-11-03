@@ -29,11 +29,14 @@ import {
     toPropertyDefs,
     BUILTIN_PROP_KEYS,
 } from "./property-model";
+import { formatSessionRelativeTime } from "../utils";
 import "./property-list.scss";
 
 const CardPropertyLimit = 5;
 /** detail（弹窗 / 详情卡）的主区行数上限。比悬浮卡大，但不再是无限铺 schema 空属性。 */
 const DetailPropertyLimit = 8;
+/** agent 布局（hover 卡）：4 行内置 + 最多 5 条自定义属性。 */
+const AgentCardRowLimit = 9;
 
 /**
  * detail 模式下默认折叠的只读 / 低价值内置行。
@@ -47,9 +50,34 @@ const SecondaryBuiltinKeys: ReadonlySet<string> = new Set<string>([
     BUILTIN_PROP_KEYS.updatedAt,
 ]);
 
+/**
+ * agent 布局（hover 卡）不渲染的内置行：
+ *  - starred 已搬到卡片右上角；
+ *  - title_source 已并入副标题（model · titleSource）。
+ * 它们的信息没有丢，只是换了承载位置。
+ */
+const AgentHiddenBuiltinKeys: ReadonlySet<string> = new Set<string>([
+    BUILTIN_PROP_KEYS.starred,
+    BUILTIN_PROP_KEYS.titleSource,
+]);
+
+/** agent 布局的行顺序：先「新鲜度」再「标签/备注」，其余按 order。 */
+const AgentBuiltinOrder: Record<string, number> = {
+    [BUILTIN_PROP_KEYS.updatedAt]: 0,
+    [BUILTIN_PROP_KEYS.createdAt]: 1,
+    [BUILTIN_PROP_KEYS.tags]: 2,
+    [BUILTIN_PROP_KEYS.note]: 3,
+};
+
 export type PropertyListProps = {
     summary: SessionSummary | null;
     mode?: "card" | "detail";
+    /**
+     * 行骨架。
+     *  - notion：现状（Notion 属性面板：label 固定宽 + 左对齐值，空值 Empty）；
+     *  - agent：hover 卡紧凑行（icon + label 左 / value 右，空值 —，时间相对化）。
+     */
+    layout?: "notion" | "agent";
     className?: string;
     /** 内置 note 行被点击（进入既有 note 编辑器）。 */
     onEditNote?: () => void;
@@ -103,7 +131,35 @@ function optionsFor(def: PropertyDef, value: PropertyValue): SelectOption[] {
     return options;
 }
 
-function ValueDisplay({ def, value }: { def: PropertyDef; value: PropertyValue }) {
+const AgentRowIcons: Record<string, string> = {
+    [BUILTIN_PROP_KEYS.createdAt]: "fa-calendar",
+    [BUILTIN_PROP_KEYS.updatedAt]: "fa-clock",
+    // 12px 以内单形图标更清楚：双标签 / 便签在 10px 会糊成一团。
+    [BUILTIN_PROP_KEYS.tags]: "fa-tag",
+    [BUILTIN_PROP_KEYS.note]: "fa-align-left",
+};
+
+/** agent 布局的行首图标：内置行固定映射，自定义属性用 hashtag 占位（不抢视觉）。 */
+function agentRowIcon(def: PropertyDef): string {
+    return AgentRowIcons[def.key] ?? (def.builtin ? "fa-circle-small" : "fa-hashtag");
+}
+
+function ValueDisplay({
+    def,
+    value,
+    layout = "notion",
+}: {
+    def: PropertyDef;
+    value: PropertyValue;
+    layout?: "notion" | "agent";
+}) {
+    const isAgent = layout === "agent";
+    // agent 布局用 — 代替 Empty（英文斜体单词在窄卡里是可扫读性负债）。
+    const emptyNode = isAgent ? (
+        <span className="property-empty property-empty--dash">—</span>
+    ) : (
+        <span className="property-empty">Empty</span>
+    );
     switch (def.type) {
         case "checkbox":
             return (
@@ -114,7 +170,7 @@ function ValueDisplay({ def, value }: { def: PropertyDef; value: PropertyValue }
         case "select":
         case "status": {
             if (value == null || value === "") {
-                return <span className="property-empty">Empty</span>;
+                return emptyNode;
             }
             const option = optionsFor(def, value).find((o) => o.id === String(value));
             return <span className={chipClass(option?.color)}>{option?.name ?? humanizeKey(String(value))}</span>;
@@ -123,7 +179,7 @@ function ValueDisplay({ def, value }: { def: PropertyDef; value: PropertyValue }
         case "person":
         case "relation": {
             const values = Array.isArray(value) ? value : value != null && value !== "" ? [String(value)] : [];
-            if (values.length === 0) return <span className="property-empty">Empty</span>;
+            if (values.length === 0) return emptyNode;
             return (
                 <span className="property-chips">
                     {values.map((v) => {
@@ -138,13 +194,26 @@ function ValueDisplay({ def, value }: { def: PropertyDef; value: PropertyValue }
             );
         }
         case "date":
-            return <span className="property-text">{formatDateValue(value) || <span className="property-empty">Empty</span>}</span>;
+            return <span className="property-text">{formatDateValue(value) || emptyNode}</span>;
         case "created_time":
-        case "updated_time":
+        case "updated_time": {
+            if (isAgent) {
+                // hover 卡看「多久以前」；绝对值挂 title，需要精确时间时悬停即得。
+                const ms = typeof value === "number" ? value : Date.parse(String(value ?? ""));
+                if (Number.isFinite(ms)) {
+                    return (
+                        <span className="property-text" title={formatDateTimeValue(value)}>
+                            {formatSessionRelativeTime(ms)}
+                        </span>
+                    );
+                }
+                return emptyNode;
+            }
             return <span className="property-readonly">{formatDateTimeValue(value) || "—"}</span>;
+        }
         case "url": {
             const text = typeof value === "string" ? value : "";
-            if (text === "") return <span className="property-empty">Empty</span>;
+            if (text === "") return emptyNode;
             return (
                 <span className="property-url" title={text}>
                     {text}
@@ -157,7 +226,7 @@ function ValueDisplay({ def, value }: { def: PropertyDef; value: PropertyValue }
             // 内置 note 为空时与其它属性同形（Tags 空也显示 Empty），
             // 不再留一个既不显示 Empty、也没有占位文案的空白行。
             if (def.key === "note" && isEmptyValue(def, value)) {
-                return <span className="property-empty">Empty</span>;
+                return emptyNode;
             }
             return <span className="property-text property-clamp">{formatValue(def, value)}</span>;
     }
@@ -255,11 +324,14 @@ function AddPropertyForm({
     adding,
     setAdding,
     onSubmit,
+    inline = false,
 }: {
     existingKeys: string[];
     adding: boolean;
     setAdding: (value: boolean) => void;
     onSubmit: (key: string, type: PropertyType, saveToTemplate: boolean) => void;
+    /** hover 卡底部单行：触发器文字更短、无内边距，展开后的表单占满一整行。 */
+    inline?: boolean;
 }) {
     const [name, setName] = React.useState("");
     const [type, setType] = React.useState<PropertyType>("text");
@@ -268,8 +340,12 @@ function AddPropertyForm({
 
     if (!adding) {
         return (
-            <button type="button" className="property-add" onClick={() => setAdding(true)}>
-                <i className="fa-sharp fa-solid fa-plus" /> Add a property
+            <button
+                type="button"
+                className={cn("property-add", inline && "property-add--inline")}
+                onClick={() => setAdding(true)}
+            >
+                <i className="fa-sharp fa-solid fa-plus" /> {inline ? "Add property" : "Add a property"}
             </button>
         );
     }
@@ -339,6 +415,7 @@ function AddPropertyForm({
 export function PropertyList({
     summary,
     mode = "card",
+    layout = "notion",
     className,
     onEditNote,
     onOpenNoteDialog,
@@ -352,7 +429,25 @@ export function PropertyList({
     footer,
     canEdit = false,
 }: PropertyListProps) {
-    const entries = React.useMemo(() => toPropertyDefs(summary, schema), [summary, schema]);
+    const isAgent = layout === "agent";
+    const entries = React.useMemo(() => {
+        const all = toPropertyDefs(summary, schema);
+        if (!isAgent) {
+            return all;
+        }
+        // hover 卡：starred / title_source 已搬到头部与副标题，这里不再重复。
+        // 顺序固定为「新鲜度 → 标签/备注 → 自定义」，自定义内部仍按 order 排。
+        return all
+            .filter((entry) => !AgentHiddenBuiltinKeys.has(entry.def.key))
+            .sort((left, right) => {
+                const lo = AgentBuiltinOrder[left.def.key];
+                const ro = AgentBuiltinOrder[right.def.key];
+                if (lo == null && ro == null) return left.def.order - right.def.order;
+                if (lo == null) return 1;
+                if (ro == null) return -1;
+                return lo - ro;
+            });
+    }, [summary, schema, isAgent]);
     const [expanded, setExpanded] = React.useState(false);
     const [editingKey, setEditingKey] = React.useState<string | null>(null);
     const [adding, setAdding] = React.useState(false);
@@ -361,6 +456,10 @@ export function PropertyList({
     const [retypeKey, setRetypeKey] = React.useState<string | null>(null);
 
     const { primary, secondary } = React.useMemo(() => {
+        if (isAgent) {
+            // agent 布局不分组：内置 4 行恒显（空值用 —），自定义行按数量截断。
+            return { primary: entries, secondary: [] };
+        }
         if (mode !== "detail") {
             return { primary: entries.filter((entry) => !isEmptyValue(entry.def, entry.cell.value)), secondary: [] };
         }
@@ -380,9 +479,9 @@ export function PropertyList({
             }
         }
         return { primary, secondary };
-    }, [entries, mode]);
+    }, [entries, mode, isAgent]);
 
-    const limit = mode === "detail" ? DetailPropertyLimit : CardPropertyLimit;
+    const limit = isAgent ? AgentCardRowLimit : mode === "detail" ? DetailPropertyLimit : CardPropertyLimit;
     const shownPrimary = expanded ? primary : primary.slice(0, limit);
     const moreCount = expanded ? 0 : Math.max(0, primary.length - limit) + secondary.length;
 
@@ -427,6 +526,7 @@ export function PropertyList({
                 key={def.key}
                 className={cn(
                     "property-row",
+                    isAgent && "property-row--agent",
                     def.readOnly && "is-readonly",
                     isNote && "is-note",
                     editable && "is-editable",
@@ -435,6 +535,11 @@ export function PropertyList({
                 data-property-key={def.key}
                 data-property-type={def.type}
             >
+                {isAgent ? (
+                    <span className="property-row__icon" aria-hidden="true">
+                        <i className={cn("fa-sharp", "fa-solid", agentRowIcon(def))} />
+                    </span>
+                ) : null}
                 <span className="property-row__name" title={def.name}>
                     {isRenaming ? (
                         <input
@@ -499,7 +604,7 @@ export function PropertyList({
                             disabled={!editable}
                             onClick={() => startEdit(entry)}
                         >
-                            <ValueDisplay def={def} value={cell.value} />
+                            <ValueDisplay def={def} value={cell.value} layout={layout} />
                             {sourceMarker(cell.source)}
                         </button>
                     )}
@@ -566,11 +671,18 @@ export function PropertyList({
     };
 
     // card 模式全空时：给一个可点的 note 占位，保留“添加备注”的入口（与今天一致）。
-    const showNotePlaceholder = mode === "card" && shownPrimary.length === 0;
+    const showNotePlaceholder = !isAgent && mode === "card" && shownPrimary.length === 0;
     const noteEntry = entries.find((entry) => entry.def.key === "note");
 
     return (
-        <div className={cn("property-list", mode === "card" && "property-list--card", className)}>
+        <div
+            className={cn(
+                "property-list",
+                mode === "card" && "property-list--card",
+                isAgent && "property-list--agent",
+                className
+            )}
+        >
             {showNotePlaceholder && noteEntry != null ? (
                 <div className="property-row is-note is-editable" data-property-key="note">
                     <span className="property-row__name">Note</span>
@@ -601,7 +713,23 @@ export function PropertyList({
                     More properties ({moreCount})
                 </button>
             ) : null}
-            {mode === "detail" && canEdit && onAddProperty != null ? (
+            {isAgent ? (
+                <div className="property-footer">
+                    {canEdit && onAddProperty != null ? (
+                        <AddPropertyForm
+                            inline
+                            existingKeys={entries.map((entry) => entry.def.key)}
+                            adding={adding}
+                            setAdding={setAdding}
+                            onSubmit={(key, type, saveToTemplate) => {
+                                setAdding(false);
+                                onAddProperty(key, type, saveToTemplate);
+                            }}
+                        />
+                    ) : null}
+                    {footer != null ? <div className="property-footer__right">{footer}</div> : null}
+                </div>
+            ) : mode === "detail" && canEdit && onAddProperty != null ? (
                 <div className="property-actions">
                     <AddPropertyForm
                         existingKeys={entries.map((entry) => entry.def.key)}

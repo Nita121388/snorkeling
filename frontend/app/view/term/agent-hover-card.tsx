@@ -12,11 +12,12 @@ import {
 import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { CopyButton } from "@/app/element/copybutton";
-import { InfoCard, InfoCardIcon, InfoCardSection } from "@/app/element/info-card";
+import { InfoCard, InfoCardSection } from "@/app/element/info-card";
 import { SessionNoteSection } from "@/app/element/info-card/session-note-section";
 import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { humanizeKey } from "@/app/view/aisessions/property/property-model";
 import { modalsModel } from "@/app/store/modalmodel";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
@@ -145,6 +146,14 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
         });
     }, [blockId, blockData]);
     const showMetaRow = (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
+    // 星标与标题来源从属性区上移：星标进右上角，titleSource 并入副标题。
+    const starred = noteState.summary?.marked === true;
+    const titleSource = noteState.summary?.titleSource ?? "";
+    const modelText = model || (modelLoading ? "获取中…" : "未指定");
+    const subline = titleSource !== "" ? `${modelText} · ${humanizeKey(titleSource)}` : modelText;
+    // session id 只留头尾，全文进 title：340px 宽的 hover 卡放不下完整 uuid。
+    const shortSessionId =
+        sessionId.length > 14 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-4)}` : sessionId;
 
     // 会话摘要未就绪时也允许渲染（只要 agent 模型/状态信息可用）；Note 段仅在摘要就绪后显示。
     if (!showMetaRow && summary == null) {
@@ -160,14 +169,16 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
             )}
             style={{ "--info-card-accent": statusAccent } as React.CSSProperties}
         >
-            {/* 模型 + 状态 section */}
+            {/* 模型 + 状态 section：头像 / 名称 + 副标题 / 右上角三件套 */}
             {showMetaRow && (
-                <InfoCardSection>
+                <InfoCardSection className="agent-card-head-section">
                     <div className="agent-card-head">
                         {agentIcon != null ? (
-                            <span
-                                className="agent-card-logo agent-card-logo--clickable"
+                            <button
+                                type="button"
+                                className={cn("agent-card-avatar", agentIcon.kind === "emoji" && "is-emoji")}
                                 title="设置 emoji 人格"
+                                aria-label="设置 emoji 人格"
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -190,57 +201,98 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                                 ) : (
                                     agentIcon.icon
                                 )}
-                            </span>
-                        ) : (
-                            <InfoCardIcon icon="fa-sharp fa-solid fa-microchip" />
-                        )}
-                        <span className="agent-card-provider">{provider}</span>
-                        <span className="agent-card-model">{model || (modelLoading ? "获取中…" : "未指定")}</span>
-                        {!embedded ? (
-                            <button
-                                type="button"
-                                className="agent-card-expand-btn"
-                                title="Open card in dialog"
-                                aria-label="Open card in dialog"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    openCardDialog();
-                                }}
-                            >
-                                <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
                             </button>
-                        ) : null}
-                    </div>
-                    {statusPres != null && (
-                        <div className="agent-card-status-row">
+                        ) : (
+                            <span className="agent-card-avatar">
+                                <i className="fa-sharp fa-solid fa-microchip" />
+                            </span>
+                        )}
+                        <div className="agent-card-id">
+                            <span className="agent-card-name" title={provider}>
+                                {provider !== "" ? provider : "Agent"}
+                            </span>
                             <span
-                                className={cn("agent-card-status-dot", {
-                                    "is-working": statusState === "working",
-                                    "is-thinking": isThinking,
-                                })}
-                            />
-                            <span className="agent-card-status-label">{statusPres.label}</span>
+                                className="agent-card-sub"
+                                title={titleSource !== "" ? `Title source: ${titleSource}` : modelText}
+                            >
+                                {subline}
+                            </span>
                         </div>
-                    )}
+                        {/* 右上角：状态 / 收藏 / 放大，同一基线右对齐 */}
+                        <div className="agent-card-actions">
+                            {statusPres != null ? (
+                                <span className="agent-card-status-chip" title={statusPres.title}>
+                                    <span
+                                        className={cn("agent-card-status-dot", {
+                                            "is-working": statusState === "working",
+                                            "is-thinking": isThinking,
+                                        })}
+                                    />
+                                    <span className="agent-card-status-label">{statusPres.label}</span>
+                                </span>
+                            ) : null}
+                            {noteState.summary != null ? (
+                                <button
+                                    type="button"
+                                    className={cn("agent-card-icon-btn", "is-star", starred && "is-on")}
+                                    aria-pressed={starred}
+                                    aria-busy={noteState.starPending}
+                                    aria-label={starred ? "取消收藏" : "收藏"}
+                                    title={starred ? "取消收藏" : "收藏"}
+                                    disabled={noteState.starPending}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void noteState.toggleStarred();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-star" />
+                                </button>
+                            ) : null}
+                            {!embedded ? (
+                                <button
+                                    type="button"
+                                    className="agent-card-icon-btn agent-card-expand-btn"
+                                    title="Open card in dialog"
+                                    aria-label="Open card in dialog"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openCardDialog();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
+                                </button>
+                            ) : null}
+                        </div>
+                    </div>
                 </InfoCardSection>
             )}
-            {/* Note + tags section（与会话详情卡片共用）；悬浮卡现在也允许内联编辑，
-                编辑时 InfoCardPortal 的 cardProps 焦点保活会防止 hover 离开打断。 */}
-            <SessionNoteSection state={noteState} canEditProperties onOpenCardDialog={embedded ? undefined : openCardDialog} />
-            {/* Session ID 底行（复制） */}
-            {sessionId !== "" && (
-                <div className="agent-card-session-id">
-                    <span className={cn("agent-card-session-id-text", { "is-error": copyFailed })} title={sessionId}>
-                        {sessionId}
-                    </span>
-                    <CopyButton
-                        className="agent-card-copy-btn"
-                        title={`Copy session id${copyFailed ? " (failed)" : ""}`}
-                        onClick={handleCopySessionId}
-                        onError={() => setCopyFailed(true)}
-                    />
-                </div>
-            )}
+            {/* Note + tags section（与会话详情卡片共用）；悬浮卡也允许内联编辑，
+                编辑时 InfoCardPortal 的 cardProps 焦点保活会防止 hover 离开打断。
+                session id + 复制通过 footerExtra 进到「Add property」同一行。 */}
+            <SessionNoteSection
+                state={noteState}
+                canEditProperties
+                variant="hover"
+                onOpenCardDialog={embedded ? undefined : openCardDialog}
+                footerExtra={
+                    sessionId !== "" ? (
+                        <span className="agent-card-session">
+                            <span
+                                className={cn("agent-card-sid", { "is-error": copyFailed })}
+                                title={sessionId}
+                            >
+                                {shortSessionId}
+                            </span>
+                            <CopyButton
+                                className="agent-card-copy-btn"
+                                title={`Copy session id${copyFailed ? " (failed)" : ""}`}
+                                onClick={handleCopySessionId}
+                                onError={() => setCopyFailed(true)}
+                            />
+                        </span>
+                    ) : null
+                }
+            />
         </InfoCard>
     );
 });

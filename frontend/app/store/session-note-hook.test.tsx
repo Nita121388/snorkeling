@@ -280,3 +280,95 @@ describe("useSessionNoteState — AI title suggestion", () => {
         h.unmount();
     });
 });
+
+describe("useSessionNoteState — starred", () => {
+    beforeEach(() => {
+        current = null;
+        resetSessionNoteCache();
+    });
+
+    afterEach(() => {
+        resetSessionNoteCache();
+        vi.restoreAllMocks();
+    });
+
+    it("marks the session and broadcasts the updated summary", async () => {
+        const key = "star-session";
+        const summary = { ...makeSummary(key, ""), marked: false } as SessionSummary;
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation((async () => summary) as never);
+        const markFn = vi
+            .spyOn(AISessionsServiceType.prototype, "Mark")
+            .mockImplementation((async () => ({ ...summary, marked: true })) as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.marked === false, "summary load");
+
+        await act(async () => {
+            await current!.toggleStarred();
+        });
+
+        expect(markFn).toHaveBeenCalledWith(key, true, "");
+        // dispatchAISessionNoteUpdated → session-note-cache merge → hook summary 刷新
+        expect(current?.summary?.marked).toBe(true);
+        expect(current?.starPending).toBe(false);
+        expect(current?.error).toBe("");
+        h.unmount();
+    });
+
+    it("keeps the previous state and surfaces the error when Mark fails", async () => {
+        const key = "star-fail-session";
+        const summary = { ...makeSummary(key, ""), marked: false } as SessionSummary;
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation((async () => summary) as never);
+        vi.spyOn(AISessionsServiceType.prototype, "Mark").mockImplementation((async () => {
+            throw new Error("rpc unavailable");
+        }) as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.marked === false, "summary load");
+
+        await act(async () => {
+            await current!.toggleStarred();
+        });
+
+        expect(current?.summary?.marked).toBe(false);
+        expect(current?.starPending).toBe(false);
+        expect(current?.error).toContain("rpc unavailable");
+        expect(current?.saveStatus).toBe("error");
+        h.unmount();
+    });
+
+    it("blocks re-entry while the Mark request is in flight", async () => {
+        const key = "star-pending-session";
+        const summary = { ...makeSummary(key, ""), marked: false } as SessionSummary;
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation((async () => summary) as never);
+        let release: (() => void) | null = null;
+        const markFn = vi.spyOn(AISessionsServiceType.prototype, "Mark").mockImplementation((() => {
+            return new Promise<SessionSummary>((resolve) => {
+                release = () => resolve({ ...summary, marked: true });
+            });
+        }) as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.marked === false, "summary load");
+
+        let pending: Promise<void> | null = null;
+        act(() => {
+            pending = current!.toggleStarred();
+        });
+        expect(current?.starPending).toBe(true);
+
+        // 第二次点击（pending 期间）不应再发请求
+        await act(async () => {
+            await current!.toggleStarred();
+        });
+        expect(markFn).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            release?.();
+            await pending;
+        });
+        expect(current?.starPending).toBe(false);
+        expect(current?.summary?.marked).toBe(true);
+        h.unmount();
+    });
+});

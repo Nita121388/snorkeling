@@ -126,3 +126,76 @@ describe("PropertyList interactions", () => {
         expect(button.disabled).toBe(true);
     });
 });
+
+describe("PropertyList — agent 布局（hover 卡）", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+        vi.useRealTimers();
+    });
+
+    const now = Date.now();
+    const agentSummary = () =>
+        makeSummary({
+            titleSource: "first_user_message",
+            marked: true,
+            createdAt: now - 5 * 24 * 60 * 60_000,
+            updatedAt: now - 3 * 60_000,
+            tags: [],
+            note: "",
+        });
+
+    it("星标与 Title Source 不再出现在属性区", () => {
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onChange={vi.fn()} />);
+        expect(row("starred")).toBeNull();
+        expect(row("title_source")).toBeNull();
+    });
+
+    it("固定顺序 Updated → Created → Tags → Note，且带行首图标", () => {
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onChange={vi.fn()} />);
+        const keys = Array.from(document.querySelectorAll("[data-property-key]")).map((el) =>
+            el.getAttribute("data-property-key")
+        );
+        expect(keys).toEqual(["updated_at", "created_at", "tags", "note"]);
+        expect(row("updated_at")!.querySelector(".property-row__icon i")!.className).toContain("fa-clock");
+        expect(row("tags")!.querySelector(".property-row__icon i")!.className).toContain("fa-tag");
+    });
+
+    it("时间显示相对值，绝对时间在 title 上", () => {
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onChange={vi.fn()} />);
+        const value = row("updated_at")!.querySelector(".property-text")!;
+        expect(value.textContent).toBe("3m ago");
+        expect(value.getAttribute("title")).toContain("2026");
+    });
+
+    it("空值渲染 —，不再出现 Empty 英文占位", () => {
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onChange={vi.fn()} />);
+        for (const key of ["tags", "note"]) {
+            const cell = row(key)!;
+            expect(cell.textContent).toContain("—");
+            expect(cell.textContent).not.toContain("Empty");
+        }
+        expect(document.querySelector(".property-empty--dash")).not.toBeNull();
+    });
+
+    it("footer 单行：Add property 在左，footer 插槽在右组", () => {
+        mount(
+            <PropertyList
+                summary={agentSummary()}
+                mode="detail"
+                layout="agent"
+                canEdit
+                onAddProperty={vi.fn()}
+                footer={<span data-testid="footer-extra">3ce67d75…7ca2</span>}
+            />
+        );
+        const footer = document.querySelector(".property-footer");
+        expect(footer).not.toBeNull();
+        const add = footer!.querySelector(".property-add--inline")!;
+        expect(add.textContent).toContain("Add property");
+        expect(footer!.querySelector(".property-footer__right [data-testid='footer-extra']")).not.toBeNull();
+    });
+});

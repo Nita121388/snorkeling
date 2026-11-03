@@ -565,3 +565,157 @@
     font-size: 10px;
     cursor: pointer;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   agent 布局（Agent hover card 专用）
+   ───────────────────────────────────────────────────────────────────────
+   与 notion 布局的差异只在「行骨架」：
+     - 行首 12px 图标 + label 68px + value 右对齐；
+     - 行高 26px，无逐行分割线；
+     - 空值用 —（.property-empty--dash），不显示英文 Empty；
+     - footer 单行：+ Add property 左，AI / session id / copy 右。
+   所有规则都挂在 .property-list--agent 下，notion 布局完全不受影响。
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.property-list--agent {
+    --property-name-width: 68px;
+    gap: 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+
+    .property-row {
+        align-items: center;
+        gap: 7px;
+        min-height: 26px;
+        padding: 0 4px;
+        margin: 0 -4px;
+        border-radius: 4px;
+    }
+
+    .property-row__icon {
+        flex: 0 0 12px;
+        width: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--secondary-text-color);
+        font-size: 10px;
+        opacity: 0.9;
+    }
+
+    .property-row__name {
+        line-height: 26px;
+        color: var(--secondary-text-color);
+    }
+
+    .property-row__value {
+        justify-content: flex-end;
+        text-align: right;
+    }
+
+    .property-row__button {
+        justify-content: flex-end;
+    }
+
+    .property-text,
+    .property-url {
+        min-width: 0;
+        max-width: 68%;
+        text-align: right;
+    }
+
+    /* note 是多行值：label / 图标对齐首行，而不是在 2 行文本中间垂直居中 */
+    .property-row.is-note {
+        align-items: flex-start;
+
+        .property-row__icon,
+        .property-row__name {
+            margin-top: 2px;
+            line-height: 1.45;
+        }
+    }
+
+    .property-row.is-note .property-text {
+        max-width: 74%;
+        line-height: 1.45;
+    }
+
+    .property-chips {
+        justify-content: flex-end;
+    }
+
+    /* 空值 —：不加斜体，颜色仍走次要色（与其它值区分但不过度强调） */
+    .property-empty--dash {
+        font-style: normal;
+        opacity: 1;
+    }
+
+    /* note 的「弹窗编辑」按钮只在行 hover 时出现，避免和右对齐的值抢位 */
+    .property-row__dialog-btn,
+    .property-row__menu-btn,
+    .property-row__delete {
+        opacity: 0;
+    }
+
+    .property-row:hover .property-row__dialog-btn,
+    .property-row:hover .property-row__menu-btn,
+    .property-row:hover .property-row__delete,
+    .property-row.is-editing .property-row__dialog-btn {
+        opacity: 1;
+    }
+
+    .property-more {
+        margin: 2px -4px 0;
+    }
+}
+
+/* 底部单行：Add property 左 / AI + id + copy 右 */
+.property-footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    padding: 8px 0 9px;
+    border-top: 1px solid var(--border-color);
+
+    .property-add--inline {
+        flex: 0 0 auto;
+        margin: 0;
+        padding: 0;
+        font-size: 11px;
+
+        &:hover {
+            background: transparent;
+            color: var(--main-text-color);
+        }
+    }
+
+    .property-add-form {
+        flex: 1 1 100%;
+        margin: 0 0 2px;
+    }
+
+    .property-ai {
+        margin: 0;
+        flex-direction: row;
+        align-items: center;
+    }
+}
+
+.property-footer__right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+
+/* AI auto-fill 的图标态（hover 卡 footer）：只留 ✨，文案进 title / aria-label */
+.property-ai-trigger--icon {
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    justify-content: center;
+    font-size: 11px;
+}

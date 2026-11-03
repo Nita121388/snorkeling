@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh" data-theme="dark">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Agent Card · 美化方案集（参考 7 个成熟产品）</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <header class="topbar">
+            <div class="brand">
+                <span class="pip"></span>
+                <div>
+                    <h1>Agent Card · 美化方案集</h1>
+                    <p>
+                        镜像 <code>frontend/app/view/term/agent-hover-card.tsx</code> +
+                        <code>info-card.scss</code> + <code>session-note-section.tsx</code>；8 张卡 = 现状基线 + 7 套参考成熟产品的信息层级重排
+                    </p>
+                </div>
+            </div>
+            <div class="controls">
+                <div class="seg" id="ctrl-state">
+                    <button data-state="idle" class="active"><span class="sd" style="--st-dot: var(--idle)"></span>Idle</button>
+                    <button data-state="working"><span class="sd" style="--st-dot: var(--working)"></span>Working</button>
+                    <button data-state="done"><span class="sd" style="--st-dot: var(--done)"></span>Done</button>
+                    <button data-state="blocked"><span class="sd" style="--st-dot: var(--blocked)"></span>Blocked</button>
+                    <button data-state="error"><span class="sd" style="--st-dot: var(--error)"></span>Error</button>
+                </div>
+                <div class="seg" id="ctrl-width">
+                    <button data-width="320">320</button>
+                    <button data-width="360" class="active">360</button>
+                    <button data-width="420">420</button>
+                </div>
+                <button class="ghost" id="ctrl-theme">浅色</button>
+                <button class="ghost" id="ctrl-zoom">1.15×</button>
+                <button class="ghost" id="ctrl-guides">标注</button>
+            </div>
+        </header>
+
+        <section class="verdict">
+            <div class="vcard accent">
+                <h3>推荐组合</h3>
+                <p>
+                    <b>A 的层级</b>（相对时间 / 星标上行 / 空值不占行）+ <b>B 的状态条与 mono meta</b> +
+                    <b>E 的指标三列</b>。三者都是 CSS 为主的局部改动，可以分别落地，不冲突。
+                </p>
+            </div>
+            <div class="vcard">
+                <h3>不建议整卡采用</h3>
+                <p>
+                    <b>F 品牌玻璃</b>在一屏十几个 hover 卡里会变成彩色噪声；<b>C Raycast</b> 的分组头在真机上比在原型里重，适合弹窗（AgentCardModal）而不适合 hover 预览。
+                </p>
+            </div>
+            <div class="vcard">
+                <h3>要解决的真问题</h3>
+                <p>
+                    现状 <b>6 行属性 + 2 个按钮 + session id</b> 把卡片撑到 300px 高，而真正会看的只有
+                    <b>标题 / 状态 / 更新时间 / tags</b>。美化 = 砍行 + 让剩下的行有主次，不是加装饰。
+                </p>
+            </div>
+        </section>
+
+        <main class="grid" id="grid"></main>
+
+        <aside class="drawer" id="drawer" aria-hidden="true">
+            <button class="close" id="drawer-close" aria-label="关闭">✕</button>
+            <h2 id="drawer-title"></h2>
+            <div class="ref" id="drawer-ref"></div>
+            <h3>设计要点</h3>
+            <ul id="drawer-notes"></ul>
+            <h3>落地片段</h3>
+            <pre id="drawer-css"></pre>
+            <div class="cost" id="drawer-cost"></div>
+        </aside>
+
+        <script src="script.js"></script>
+    </body>
+</html>

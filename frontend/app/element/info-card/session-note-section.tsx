@@ -50,6 +50,8 @@ export function SessionNoteSection({
     state,
     canEditProperties = false,
     onOpenCardDialog,
+    variant = "detail",
+    footerExtra,
 }: {
     state: SessionNoteState;
     /**
@@ -59,6 +61,14 @@ export function SessionNoteSection({
     canEditProperties?: boolean;
     /** 卡片头部放大按钮（打开整卡放大编辑弹窗）。 */
     onOpenCardDialog?: () => void;
+    /**
+     * 展示形态：
+     *  - detail：详情卡 / 弹窗（现状，InfoCardHead + Notion 属性面板）；
+     *  - hover：agent hover 卡（标题引用块 + agent 行骨架 + 单行 footer）。
+     */
+    variant?: "detail" | "hover";
+    /** hover 卡底部右组的额外内容（session id + 复制），与 AI 按钮同一行右对齐。 */
+    footerExtra?: React.ReactNode;
 }) {
     const {
         summary,
@@ -200,56 +210,70 @@ export function SessionNoteSection({
         return null;
     }
 
+    const titleSourceBadge = <TitleSourceBadge titleSource={summary.titleSource} className="mr-1 align-baseline" />;
+
     return (
         <InfoCardSection>
-            <div className="flex items-center justify-between gap-2">
-                {/* min-w-0 + flex-1：标题行可收缩，长会话名不再把卡片撑破。 */}
-                <InfoCardHead className="min-w-0 flex-1">
-                    <InfoCardIcon icon={`fa-sharp fa-solid ${statusIcon(state)}`} />
-                    <InfoCardMarquee text={title} />
-                    <TitleSourceBadge titleSource={summary.titleSource} className="ml-1" />
-                </InfoCardHead>
-                <div className="flex shrink-0 items-center gap-0.5">
-                    {onOpenCardDialog != null ? (
-                        <button
-                            type="button"
-                            className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary focus:opacity-100 group-hover:opacity-100"
-                            title="Open card in dialog"
-                            aria-label="Open card in dialog"
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onOpenCardDialog();
-                            }}
-                        >
-                            <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
-                        </button>
-                    ) : null}
-                    {/* 一键后台生成：点击即入队，worker 串行生成并直接落库。 */}
-                    <GenActionButton
-                        sessionKey={sessionKey}
-                        connection={connection}
-                        origin={summary.origin ?? ""}
-                        kind="title"
-                        titleSource={summary.titleSource}
-                        size="xs"
-                        source="agent-card"
-                        onError={setGenError}
-                    />
-                    <GenActionButton
-                        sessionKey={sessionKey}
-                        connection={connection}
-                        origin={summary.origin ?? ""}
-                        kind="metadata"
-                        size="xs"
-                        source="agent-card"
-                        onBeforeGenerate={() => {
-                            prevNoteRef.current = { note: summary.note ?? "", tags: summary.tags ?? [] };
-                        }}
-                        onDone={() => undo.capture(prevNoteRef.current)}
-                        onError={setGenError}
-                    />
+            {variant === "hover" ? (
+                /* hover 卡：标题是卡片主体（2 行 + 状态色引用线）。
+                   AI 标题 / metadata 生成属写入操作，留在详情卡与弹窗里；
+                   hover 卡的 AI 入口只有 footer 的 ✨ 属性自动填充。 */
+                <div className="agent-card-title-wrap">
+                    <div className="agent-card-title-block" title={title}>
+                        {titleSourceBadge}
+                        {title}
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="flex items-center justify-between gap-2">
+                    {/* min-w-0 + flex-1：标题行可收缩，长会话名不再把卡片撑破。 */}
+                    <InfoCardHead className="min-w-0 flex-1">
+                        <InfoCardIcon icon={`fa-sharp fa-solid ${statusIcon(state)}`} />
+                        <InfoCardMarquee text={title} />
+                        <TitleSourceBadge titleSource={summary.titleSource} className="ml-1" />
+                    </InfoCardHead>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                        {onOpenCardDialog != null ? (
+                            <button
+                                type="button"
+                                className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary focus:opacity-100 group-hover:opacity-100"
+                                title="Open card in dialog"
+                                aria-label="Open card in dialog"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onOpenCardDialog();
+                                }}
+                            >
+                                <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
+                            </button>
+                        ) : null}
+                        {/* 一键后台生成：点击即入队，worker 串行生成并直接落库。 */}
+                        <GenActionButton
+                            sessionKey={sessionKey}
+                            connection={connection}
+                            origin={summary.origin ?? ""}
+                            kind="title"
+                            titleSource={summary.titleSource}
+                            size="xs"
+                            source="agent-card"
+                            onError={setGenError}
+                        />
+                        <GenActionButton
+                            sessionKey={sessionKey}
+                            connection={connection}
+                            origin={summary.origin ?? ""}
+                            kind="metadata"
+                            size="xs"
+                            source="agent-card"
+                            onBeforeGenerate={() => {
+                                prevNoteRef.current = { note: summary.note ?? "", tags: summary.tags ?? [] };
+                            }}
+                            onDone={() => undo.capture(prevNoteRef.current)}
+                            onError={setGenError}
+                        />
+                    </div>
+                </div>
+            )}
             {genError ? (
                 <div className="flex items-center gap-2 text-[10px] text-warning">
                     <span className="min-w-0 flex-1 break-words">{genError}</span>
@@ -307,6 +331,7 @@ export function SessionNoteSection({
                 <PropertyList
                     summary={summary}
                     mode={canEditProperties ? "detail" : "card"}
+                    layout={variant === "hover" ? "agent" : "notion"}
                     canEdit={canEditProperties}
                     schema={schema}
                     onAddProperty={canEditProperties ? addProperty : undefined}
@@ -315,13 +340,19 @@ export function SessionNoteSection({
                     onRetypeProperty={canEditProperties ? retypeProperty : undefined}
                     onMoveProperty={canEditProperties ? moveProperty : undefined}
                     footer={
-                        canEditProperties ? (
-                            <AIPropertiesButton
-                                service={state.service}
-                                sessionId={sessionKey}
-                                connection={connection}
-                                summary={summary}
-                            />
+                        canEditProperties || footerExtra != null ? (
+                            <>
+                                {canEditProperties ? (
+                                    <AIPropertiesButton
+                                        service={state.service}
+                                        sessionId={sessionKey}
+                                        connection={connection}
+                                        summary={summary}
+                                        compact={variant === "hover"}
+                                    />
+                                ) : null}
+                                {footerExtra}
+                            </>
                         ) : undefined
                     }
                     onOpenNoteDialog={openNoteDialog}

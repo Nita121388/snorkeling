@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh" data-theme="dark">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Agent Card · 合体版（C 的行 + D 的头像 + 右上三件套）</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <header class="topbar">
+            <div class="brand">
+                <span class="pip"></span>
+                <div>
+                    <h1>Agent Card · 合体版</h1>
+                    <p>
+                        <b>C</b> 的 icon + 左右行布局 + 文本简化 &nbsp;·&nbsp; <b>D</b> 的 30px 头像块 + 标题引用块
+                        &nbsp;·&nbsp; 状态 / 收藏 / 放大收进右上角
+                    </p>
+                </div>
+            </div>
+            <div class="controls">
+                <div class="seg" id="ctrl-state">
+                    <button data-state="idle" class="active"><span class="sd" style="--st-dot: var(--idle)"></span>Idle</button>
+                    <button data-state="working"><span class="sd" style="--st-dot: var(--working)"></span>Working</button>
+                    <button data-state="done"><span class="sd" style="--st-dot: var(--done)"></span>Done</button>
+                    <button data-state="blocked"><span class="sd" style="--st-dot: var(--blocked)"></span>Blocked</button>
+                    <button data-state="error"><span class="sd" style="--st-dot: var(--error)"></span>Error</button>
+                </div>
+                <div class="seg" id="ctrl-width">
+                    <button data-width="300">300</button>
+                    <button data-width="340" class="active">340</button>
+                    <button data-width="380">380</button>
+                </div>
+                <button class="ghost" id="ctrl-collapse">折叠属性</button>
+                <button class="ghost" id="ctrl-hover">常显工具</button>
+                <button class="ghost" id="ctrl-theme">浅色</button>
+            </div>
+        </header>
+
+        <main>
+            <section class="stage">
+                <div class="stage-slot" id="stage-slot"></div>
+                <aside class="stage-notes">
+                    <h2>这一版改了什么</h2>
+                    <ul>
+                        <li><b>身份用头像块</b>：30px 圆角方块承载 Logo / emoji / 文字徽标三态，比 18px 裸图标更认得出「谁在说话」。</li>
+                        <li><b>标题变主体</b>：左 2px 状态色竖线做引用块，2 行截断 + hover 全文，不再和属性行同一灰。</li>
+                        <li><b>右上三件套</b>：状态、收藏、放大同一基线右对齐；星标常驻弱色，不再独占一行属性。</li>
+                        <li><b>C 的行骨架</b>：每行「icon + label 左 / value 右」，一行一条信息，去掉逐行分割线与 <code>Empty</code> 斜体。</li>
+                        <li>
+                            <b>文本简化</b>：<code>first_user_message</code> → <code>First message</code> 并归位到副标题（与 model 同行）、<code>Empty</code> → <code>—</code>、绝对时间 → 相对时间（hover 绝对值）、<code>Add property</code> / <code>AI auto-fill</code> 收进底部单行。
+                        </li>
+                        <li><b>结果</b>：同数据下卡高 296px → <span id="inline-hybrid">实测</span>（340 宽、标题 2 行），4 条属性一行不少，但值都可一眼扫完。</li>
+                    </ul>
+                    <div class="metric">
+                        <div><span>现状（实测 @340）</span><b>296px</b><em>6 属性行 + 2 按钮行 + id 行</em></div>
+                        <div><span>合体版（实测 @340）</span><b id="metric-hybrid">—</b><em>4 属性行 + 单行 footer</em></div>
+                    </div>
+                </aside>
+            </section>
+
+            <section class="demos">
+                <div class="sect-head">
+                    <h2>五种状态</h2>
+                    <p>状态色只出现在 6px 圆点、chip 描边与标题引用线上，不染整卡。</p>
+                </div>
+                <div class="grid" id="grid-states"></div>
+            </section>
+
+            <section class="demos">
+                <div class="sect-head">
+                    <h2>宽度与内容形态</h2>
+                    <p>300px 极限窄、380px 舒适宽、有 tags + note 的填充态、以及折叠属性后的极简态。</p>
+                </div>
+                <div class="grid" id="grid-shapes"></div>
+            </section>
+        </main>
+
+        <script src="script.js"></script>
+    </body>
+</html>
