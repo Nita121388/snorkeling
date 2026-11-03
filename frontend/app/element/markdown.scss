@@ -1836,6 +1836,7 @@
     }
 
     .markdown-emoji-item {
+        position: relative;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1851,6 +1852,187 @@
         &:hover,
         &.is-active {
             background: color-mix(in srgb, var(--accent-color, #58c4ff) 18%, transparent);
+        }
+
+        // User assigned a meaning to this emoji (right-click → alias editor).
+        &.has-alias::after {
+            content: "";
+            position: absolute;
+            right: 3px;
+            bottom: 3px;
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--accent-color, #58c4ff) 80%, transparent);
+            pointer-events: none;
+        }
+    }
+
+    // "why did this show up" strip: the user aliases that matched the current query.
+    .markdown-emoji-alias-strip {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 6px;
+        padding: 0 2px;
+        font-size: 10px;
+        color: color-mix(in srgb, var(--main-text-color, #888) 60%, transparent);
+        user-select: none;
+    }
+
+    .markdown-emoji-alias-chip {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        padding: 1px 5px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--accent-color, #58c4ff) 14%, transparent);
+        color: color-mix(in srgb, var(--accent-color, #58c4ff) 85%, var(--main-text-color, #888) 15%);
+        font-size: 10px;
+        line-height: 1.5;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    // Right-click meaning editor — replaces the search row + grid while open.
+    .markdown-emoji-alias-editor {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 4px 4px 2px;
+
+        .markdown-emoji-alias-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .markdown-emoji-alias-head-char {
+            flex: 0 0 auto;
+            font-size: 22px;
+            line-height: 1;
+            font-family: "Twemoji Country Flags", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
+        }
+
+        .markdown-emoji-alias-head-names {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            min-width: 0;
+            font-size: 11px;
+            line-height: 1.3;
+            color: color-mix(in srgb, var(--main-text-color, #888) 65%, transparent);
+
+            .is-primary {
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--main-text-color, inherit);
+            }
+
+            span {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+        }
+
+        .markdown-emoji-alias-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            min-height: 4px;
+        }
+
+        .markdown-emoji-alias-chip.is-editable {
+            gap: 4px;
+            padding-right: 3px;
+
+            button {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 13px;
+                height: 13px;
+                padding: 0;
+                border: 0;
+                border-radius: 50%;
+                background: transparent;
+                color: inherit;
+                font-size: 8px;
+                cursor: pointer;
+                opacity: 0.7;
+
+                &:hover {
+                    opacity: 1;
+                    background: color-mix(in srgb, var(--main-text-color, #888) 18%, transparent);
+                }
+            }
+        }
+
+        input.markdown-emoji-alias-input {
+            width: 100%;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+            background: transparent;
+            color: var(--main-text-color, inherit);
+            font-size: 12px;
+            outline: none;
+
+            &:focus {
+                border-color: var(--accent-color, #58c4ff);
+            }
+        }
+
+        .markdown-emoji-alias-hintrow {
+            font-size: 10px;
+            line-height: 1.4;
+            color: color-mix(in srgb, var(--main-text-color, #888) 50%, transparent);
+            user-select: none;
+        }
+
+        .markdown-emoji-alias-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+
+            .is-spacer {
+                flex: 1 1 auto;
+            }
+
+            button {
+                height: 24px;
+                padding: 0 10px;
+                border-radius: 4px;
+                border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+                background: transparent;
+                color: var(--main-text-color, inherit);
+                font-size: 11px;
+                cursor: pointer;
+
+                &:hover:not(:disabled) {
+                    background: color-mix(in srgb, var(--main-text-color, #888) 12%, transparent);
+                }
+
+                &:disabled {
+                    opacity: 0.35;
+                    cursor: default;
+                }
+
+                &.is-primary {
+                    border-color: var(--accent-color, #58c4ff);
+                    background: color-mix(in srgb, var(--accent-color, #58c4ff) 22%, transparent);
+                    color: var(--accent-color, #58c4ff);
+                    font-weight: 600;
+                }
+
+                &.is-danger {
+                    color: var(--error-color, #e5484d);
+                }
+            }
         }
     }
 
