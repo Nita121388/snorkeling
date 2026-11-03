@@ -39,6 +39,11 @@
 **版本/容错**：读取时 `version !== 1` → 返回空 map 且**不覆写存储**（避免把未来格式冲掉）；
 `JSON.parse` 失败或形状不对 → 空 map。全部包在 `try/catch`（沿用 `emoji.ts` 的 `safeStorage()`）。
 
+**实现期发现的真实数据形态（重要）**：catalog 里的 char **可能带 VS16**，例如 `white_check_mark` 的
+`entry.char` 是 `"✅️"`（U+2705 + U+FE0F），而用户/测试手里常是裸 `"✅"`（U+2705）。
+因此搜索索引必须**双向归一化**：建索引时对每个 `entry.char` 登记它的所有 `emojiBaseCandidates`
+（去皮肤 + 去 VS16），查表时再对存储 key 做同样候选展开。只做单向（存储 → 基座）会漏掉这一大类。
+
 ## 3. 模块 API（`emoji-aliases.ts`）
 
 ```ts
@@ -91,8 +96,13 @@ export function searchEmoji(
 | { key: string; entry: EmojiEntry; recent?: boolean; alias?: string }
 ```
 
-`buildEmojiPickerItems(catalog, query, recents, aliasMap?)` 在搜索分支里回填 `alias`（命中别名原文）。
+`buildEmojiPickerItems(catalog, query, recents, aliasMap?)` 在搜索分支里回填 `alias`（命中别名原文），
+并复用 `matchAliasHits` 生成 hit 表（与 `searchEmoji` 同源，避免排序与提示两条逻辑分叉）。
 非搜索分支不填。空 query 结构不变（C4：不加"我标注的"分组）。
+
+> 实现期调整（相对原设计）：原计划把别名提示渲染在格子下方 10px 文本，实测 34px 网格放不下中文，
+> 改为**搜索结果上方一条 `.markdown-emoji-alias-strip`**（"别名命中 + 最多 4 个 chip"），
+> 格子只保留 `title` 拼串与右下角 3px 圆点。信息量等价，且不压缩网格。
 
 ### 4.3 别名变更后的刷新
 
@@ -148,14 +158,21 @@ const [aliasInput, setAliasInput] = useState("");
 
 新增类（全部挂在 `markdown-emoji-*` 命名空间下，写进 `frontend/app/element/markdown.scss`）：
 
-- `.markdown-emoji-item.has-alias::after`：右下角 2.5px 圆点，`var(--accent-color)` 60% 透明。
-- `.markdown-emoji-alias-hint`：搜索结果格子下方 10px muted 文本（单行省略），体现 R5。
-- `.markdown-emoji-alias-editor`：`display:flex; flex-direction:column; gap:8px; padding:10px 12px;`
-  - 头部：`emoji（18px）+ 内置名（en · zh，muted 11px）`
-  - 别名区：chip 列表 + 输入框（占位 `输入含义，如「已解决」/ done，回车添加`）
-  - note 区：单行 input，占位 `可选：一句话说明`
-  - 底部：`保存`（primary）/ `清除别名`（peek，无别名时 disabled）/ `取消`
-- 有 note 时 `title` 拼为 `中文名 · 别名1 · 别名2 · note`。
+- `.markdown-emoji-item.has-alias::after`：右下角 3px 圆点，`--accent-color` 80% 混合。
+- `.markdown-emoji-alias-strip` + `.markdown-emoji-alias-chip`：搜索结果上方的"别名命中"条（10px muted + accent chip）。
+- `.markdown-emoji-alias-editor`：`flex column`，含头部（emoji + zh 主名 + `en · :shortcode:`）、
+  可删 chip 行、别名输入、note 输入、hint 行、底部动作行（`清除` danger / `取消` / `保存` primary）。
+- 有 note 时 `title` 拼为 `labelEn · 别名1 · 别名2 · note`。
+
+## 6.1 键盘契约（实现终态）
+
+| 位置 | 键 | 行为 |
+|---|---|---|
+| 格子 | `ContextMenu` / `Shift+F10` | 打开编辑面板 |
+| 编辑面板 | `Esc` | 关闭面板（`preventDefault` + `stopPropagation`，不触发宿主的 window 级关闭） |
+| 编辑面板 | `Ctrl/Cmd+Enter` | 保存 |
+| 别名输入 | `Enter` | 提交当前 chip（不保存整体） |
+| 别名输入 | `Backspace`（输入为空） | 回删最后一个 chip |
 
 ## 7. 兼容 / 回滚 / 性能
 

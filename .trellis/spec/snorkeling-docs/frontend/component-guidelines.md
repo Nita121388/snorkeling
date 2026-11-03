@@ -296,3 +296,25 @@ Tab 悬浮卡的旧实现是 `min-width: 200px; max-width: 400px` 自适应，�
 `Tool: bash` 时卡片会突然变宽，悬停时视觉抖动。现在 `.info-card.tab-card` 定宽 268px，
 右侧状态 pill 用 `margin-left: auto; flex-shrink: 0; white-space: nowrap` —— 长状态不会撑宽卡片。
 新增同类浮层卡时照此办理：**宽度由卡决定，状态文本只决定 pill 自身宽度**。
+
+---
+
+## 共享浮层组件的交互扩展：就地内聚，不改宿主（2026-11-03, task 11-02-emoji-alias-picker-search）
+
+`element/block-editor/components/emoji-picker.tsx` 被 5 个渲染点复用（`markdown.tsx` 4 处：
+callout / 文档 emoji 头 / inline `:emoji` 补全 / slash emoji，以及 `agent-emoji-picker.tsx`）。
+给它加新交互（右键设置 emoji 含义）时的做法，可复用到同类共享浮层：
+
+1. **新增状态内聚在组件里**，宿主 props 一个都不加 —— 否则 5 个宿主都要改一遍，且容易漏。
+2. **浮层内部换视图，不新开第二层浮层**：popover 已经按视口算过 `maxHeight` / 边界，
+   嵌套 portal 需要第二套边缘计算，还会和宿主的 backdrop / 焦点逻辑打架。
+3. **键盘事件要显式拦在浮层内**：宿主常在 `window` 上挂 `Escape → onClose`，
+   子视图的 Esc 必须在自己的根节点 `preventDefault() + stopPropagation()`，
+   否则「关子视图」会变成「关整个浮层」。
+4. **右键入口同时提供键盘入口**（`ContextMenu` / `Shift+F10`）。
+5. **`onMouseDown` 的 `preventDefault` 守卫要放行真实表单控件**：判断选择器是
+   `input, textarea, select, label, button`，新加的可聚焦容器要么用这些标签，要么单独白名单，
+   否则输入框点不动、失焦。
+
+**陷阱**：给浮层里的列表项加 `onContextMenu` 时不要在 `document` 级捕获，
+在格子自身挂监听并 `preventDefault() + stopPropagation()`，避免和宿主/浏览器原生右键菜单叠加。

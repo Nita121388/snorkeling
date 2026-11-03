@@ -141,3 +141,27 @@ dispose(): void { /* 退订 + flush 最后一次变化 */ }
   因此可以直接单测，无需 jsdom。参考 `frontend/app/view/preview/path-usage.ts`。
 - `xxx-store.ts` — 有状态适配层：jotai atom、配置持久化、节流。参考 `path-usage-store.ts`。
 - 组件只负责渲染 store 暴露的数据与调用 store 的动作。
+
+---
+
+## localStorage 外部 store 范式（2026-11-03, task 11-02-emoji-alias-picker-search）
+
+「一个模块 + 一个 localStorage 键 + 内存快照 + 单调版本号 + 订阅者」是本项目的标准做法。
+**canonical 实例**：`frontend/app/element/markdown-transform/emoji-aliases.ts`
+（同构的还有 `agent-persona/persona-store.ts`、`agent-persona/session-persona-store.ts`）。
+
+必须遵守的四条：
+
+1. **版本信封**：存 `{ version: 1, ... }` 而不是裸数据。读到不认识的 `version` 时
+   **返回空表但绝不覆写**，否则新版本写的数据会被旧版本静默清掉。
+2. **快照 + 版本号**：`getXxx()` 返回稳定的内存快照（`useSyncExternalStore` 的快照同一性要求），
+   写入时 `snapshot = next; version++`。派生列表把 `version` 放进 `useMemo` 依赖，
+   **不要把整个 map 塞进依赖**（每次写都是新对象，容易连带重算无关逻辑）。
+3. **跨窗口同步**：只注册一次 `window.addEventListener("storage")`，用
+   `event.key === KEY` 与 `event.storageArea !== window.localStorage` 双重过滤，
+   收到外部写入时重读快照 + `version++` + 广播。
+4. **读写全包 `try/catch`，失败降级为内存态**：localStorage 满了 / 隐私模式下，
+   写入失败不能让 UI 操作抛错，本次会话内照常可用。
+
+**禁止**：在渲染路径里直接 `localStorage.getItem`（每次击键都同步读盘，且破坏快照同一性）；
+把派生状态写回同一个键（双写者 → 数据丢失，见上文 `preview:pinned-directories` 反例）。

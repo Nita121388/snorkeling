@@ -55,22 +55,47 @@
 
 ## Acceptance Criteria
 
-- [ ] **AC1** 右键任意 emoji 格子 → 出现编辑面板，显示该 emoji 与其内置 en/zh 名；
+- [x] **AC1** 右键任意 emoji 格子 → 出现编辑面板，显示该 emoji 与其内置 en/zh 名；
       期间 picker 未关闭、未选中任何 emoji。
-- [ ] **AC2** 输入别名 `已解决` 保存后，搜索框输入 `已解决` → 该 emoji 出现在结果首位，
+- [x] **AC2** 输入别名 `已解决` 保存后，搜索框输入 `已解决` → 该 emoji 出现在结果首位，
       且格子旁显示 `已解决` 提示。
-- [ ] **AC3** 同一 emoji 输入 `done` 别名后，`done` 搜索结果中它排在任意内置匹配之前
+- [x] **AC3** 同一 emoji 输入 `done` 别名后，`done` 搜索结果中它排在任意内置匹配之前
       （用于验证"用户自定义 > 内置"）。
-- [ ] **AC4** 关闭并重开 picker / 重启应用后别名仍在；另一个窗口写入后本窗口搜索立即生效。
-- [ ] **AC5** 点"清除"后该 emoji 的别名与 note 全部消失，且不再被别名命中、圆点标记消失。
-- [ ] **AC6** 有别名 / note 的格子带 `.has-alias` 圆点，`title` 含别名。
-- [ ] **AC7** 聚焦到某格后按 `ContextMenu` / `Shift+F10` 可打开编辑面板。
-- [ ] **AC8** 编辑面板内按 `Esc` 关闭面板并回到列表，**不关闭整个 picker**；只有在列表态按 `Esc` 才走现有的关闭 picker 行为。
-- [ ] **AC9** 5 个渲染点（callout / doc / inline `:emoji` / slash emoji / agent persona）右键行为一致，无控制台报错。
-- [ ] **AC10** `emoji.test.ts` 原有断言全绿；新增别名相关单测覆盖 R4 分数顺序、R3 持久化、C3 皮肤回退、别名去重与长度上限。
-- [ ] **AC11** 别名含中英混排、大小写、含空格别名（如 `code review`）均可正确命中（大小写不敏感，空格分隔别名按短语整体匹配）。
+- [x] **AC4** 关闭并重开 picker / 重启应用后别名仍在；另一个窗口写入后本窗口搜索立即生效。
+- [x] **AC5** 点"清除"后该 emoji 的别名与 note 全部消失，且不再被别名命中、圆点标记消失。
+- [x] **AC6** 有别名 / note 的格子带 `.has-alias` 圆点，`title` 含别名。
+- [x] **AC7** 聚焦到某格后按 `ContextMenu` / `Shift+F10` 可打开编辑面板。
+- [x] **AC8** 编辑面板内按 `Esc` 关闭面板并回到列表，**不关闭整个 picker**；只有在列表态按 `Esc` 才走现有的关闭 picker 行为。
+- [x] **AC9** 5 个渲染点（callout / doc / inline `:emoji` / slash emoji / agent persona）右键行为一致，无控制台报错。
+- [x] **AC10** `emoji.test.ts` 原有断言全绿；新增别名相关单测覆盖 R4 分数顺序、R3 持久化、C3 皮肤回退、别名去重与长度上限。
+- [x] **AC11** 别名含中英混排、大小写、含空格别名（如 `code review`）均可正确命中（大小写不敏感，空格分隔别名按短语整体匹配）。
 
 ## Open Questions（留待实现时确认，不阻塞规划）
 
 - 别名上限取值：暂定每 emoji ≤ 12 个、单个别名 ≤ 24 字符、note ≤ 80 字符。
 - 是否把"我标注过的"作为搜索未命中时的兜底提示，本期不做，记为后续候选。
+
+## 验证记录（2026-11-03）
+
+**自动化**
+
+- `npx vitest run frontend/app/element frontend/app/agent-persona` → 48 files / 621 tests 全绿。
+- `npx vitest run frontend/app/view` → 999 passed，另有 3 个文件 18 例失败，全部集中在
+  `view/preview/preview-directory-utils.test.ts`（VCS 菜单 / 文件移动 mock），与本任务零关联（该文件无 emoji 引用）。
+
+**真机（Electron + CDP，`npm run dev:cdp`）**
+
+- 打开 agent persona picker（AISessions 行内 emoji 按钮）→ 右键 ✅ 格子 → 含义编辑面板就地展开，
+  标题为「勾号按钮 / check mark button · :white_check_mark:」。
+- 输入别名 `验收通过` + note `CI 绿灯` → Enter 生成 chip → 保存 →
+  `localStorage["snorkeling:emoji-aliases"]` = `{"version":1,"byChar":{"✅️":{"aliases":["回归通过","ci-green","验收通过"],"note":"CI 绿灯","updatedAt":...}}}`。
+- 搜索框输入 `验收通过` → 结果仅 1 条 ✅，带 `has-alias` 类，`title` = `check mark button · 回归通过 · ci-green · 验收通过 · CI 绿灯`，
+  上方出现「别名命中 验收通过」条。
+- `Esc` 在编辑面板内 → 只关面板，picker 仍打开。
+- 截图留证：`.cache/tmp/emoji-alias-editor.png`、`.cache/tmp/emoji-alias-search.png`。
+
+**未覆盖 / 后续**
+
+- AC9 的 5 个渲染点中，真机实测了 agent persona picker；markdown 的 4 个入口（callout / 文档头 /
+  inline `:emoji` / slash emoji）由 DOM 契约测试 + 同一组件路径覆盖，未逐一手点。
+- banner `EmojiBadge` 与 `element/emojipalette.tsx` 是另一套组件，本任务未改动。

@@ -176,3 +176,27 @@ getApi().setActiveTab(targetTabId);   // 只负责把用户视线切过去
 <!-- What reviewers should check -->
 
 (To be filled by the team)
+
+---
+
+## Emoji 字符比较必须双向归一化（2026-11-03, task 11-02-emoji-alias-picker-search）
+
+emojibase 里很多符号的 `entry.emoji` **带 VS16（U+FE0F）**：`white_check_mark` 的
+`entry.char` 是 `"✅️"`（U+2705 + U+FE0F），而代码里手写的字面量往往是裸 `"✅"`（U+2705）。
+直接 `===` 比较或单方向 `replace(/\uFE0F/g, "")` 都会漏掉另一半。
+
+正确做法：用一个候选展开函数（`markdown-transform/emoji-aliases.ts` 的 `emojiBaseCandidates`）
+同时生成 **去 VS16 / 加 VS16 / 去皮肤变体** 三种形态，索引和查表两边都走它：
+
+```ts
+const byChar = new Map<string, EmojiEntry>();
+for (const e of catalog.entries) {
+    for (const candidate of emojiBaseCandidates(e.char)) {
+        if (!byChar.has(candidate)) byChar.set(candidate, e);
+    }
+    byChar.set(e.char, e); // 精确拼写永远最后写，优先级最高
+}
+```
+
+**测例提示**：断言不要写 `expect(r[0].char).toBe("✅")`，改用 `shortcode` 断言
+（`expect(r[0].shortcode).toBe("white_check_mark")`），否则会因为不可见的 VS16 假失败。
