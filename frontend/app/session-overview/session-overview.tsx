@@ -7,10 +7,11 @@ import {
     aggregateStatusLabel,
     formatAgentProvider,
     isInferredAgentStatus,
-    presentAgentStatus,
 } from "@/app/agent-status/agent-status-derive";
-import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
+import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
+import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
@@ -21,7 +22,6 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType, BlockServiceType, ObjectService } from "@/app/store/services";
-import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "@/app/tab/tab-open-state";
 import {
     AiSessionNoteUpdatedEvent,
@@ -270,130 +270,55 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
     return jotai.useAtomValue(overviewAtom);
 }
 
-function useBlockControllerStatuses(
-    blocks: OverviewBlock[],
-    active: boolean
-): Record<string, BlockControllerRuntimeStatus | null> {
-    const service = useMemo(() => new BlockServiceType(), []);
-    const blockIds = useMemo(
-        () => Array.from(new Set(blocks.filter((block) => block.isAgentLike).map((block) => block.blockId))).sort(),
-        [blocks]
-    );
+/**
+ * Session Overview 唯一的状态来源: 直接读 AgentStatusStore 的统一 presented atom.
+ *
+ * 历史上这里自建 GetAgentStatus 拉取 + agentstatus 订阅, 并额外用 presentAgentStatus
+ * 做 "canonical idle + 未读 session 更新 -> done" 派生. 那条派生路径与 agent Block 头部
+ * (只 applyStaleness) 产出的 state/source 不同 -> 同一个 block 两处文案与 ack 指纹全部不一致
+ * (Overview "Done" vs 头部 "Idle 10m"; 一侧 ack 另一侧复活).
+ *
+ * 现在 done 派生统一收敛到 presentCanonicalAgentStatus (store 内), 这里只负责 acquire 订阅
+ * 并按 blockId 读取, 保证与头部 / inline tab / Tab 圆点读到的是同一个对象、同一个 fingerprint.
+ */
+function useOverviewPresentedStatuses(blockIds: string[], active: boolean): Record<string, AgentStatus | null> {
+    const store = AgentStatusStore.getInstance();
     const blockIdsKey = blockIds.join("\n");
-    const [statuses, setStatuses] = useState<Record<string, BlockControllerRuntimeStatus | null>>({});
-
+    const [atoms, setAtoms] = useState<Record<string, jotai.Atom<AgentStatus | null>>>({});
     useEffect(() => {
         if (!active) {
+            setAtoms({});
             return;
         }
-        let cancelled = false;
-        setStatuses((current) => {
-            const next: Record<string, BlockControllerRuntimeStatus | null> = {};
-            for (const blockId of blockIds) {
-                next[blockId] = current[blockId] ?? null;
+        for (const blockId of blockIds) {
+            store.acquire(blockId);
+        }
+        const next: Record<string, jotai.Atom<AgentStatus | null>> = {};
+        for (const blockId of blockIds) {
+            const presented = store.peekPresentedStatusAtom(blockId);
+            if (presented != null) {
+                next[blockId] = presented;
             }
-            return next;
-        });
-
-        void runOverviewRequests(blockIds, OVERVIEW_STATUS_REQUEST_CONCURRENCY, async (blockId) => {
-            try {
-                const status = await service.GetControllerStatus(blockId);
-                if (cancelled) return;
-                setStatuses((current) => ({ ...current, [blockId]: status }));
-            } catch {
-                if (cancelled) return;
-                setStatuses((current) => ({ ...current, [blockId]: null }));
-            }
-        });
-
-        const unsubscribers = blockIds.map((blockId) =>
-            waveEventSubscribeSingle({
-                eventType: "controllerstatus",
-                scope: WOS.makeORef("block", blockId),
-                handler: (event) => {
-                    if (event.data == null) return;
-                    setStatuses((current) => ({ ...current, [blockId]: event.data as BlockControllerRuntimeStatus }));
-                },
-            })
-        );
-
+        }
+        setAtoms(next);
         return () => {
-            cancelled = true;
-            for (const unsubscribe of unsubscribers) {
-                unsubscribe();
+            for (const blockId of blockIds) {
+                store.release(blockId);
             }
         };
-    }, [active, service, blockIdsKey]);
-
-    return statuses;
-}
-
-function useCanonicalAgentStatuses(blocks: OverviewBlock[], active: boolean): Record<string, AgentStatus | null> {
-    const service = useMemo(() => new BlockServiceType(), []);
-    const blockIds = useMemo(
-        () => Array.from(new Set(blocks.filter((block) => block.isAgentLike).map((block) => block.blockId))).sort(),
-        [blocks]
+    }, [store, active, blockIds, blockIdsKey]);
+    const recordAtom = useMemo(
+        () =>
+            jotai.atom((get) => {
+                const out: Record<string, AgentStatus | null> = {};
+                for (const [blockId, statusAtom] of Object.entries(atoms)) {
+                    out[blockId] = get(statusAtom);
+                }
+                return out;
+            }),
+        [atoms]
     );
-    const blockIdsKey = blockIds.join("\n");
-    const [statuses, setStatuses] = useState<Record<string, AgentStatus | null>>({});
-
-    useEffect(() => {
-        if (!active) {
-            return;
-        }
-        let cancelled = false;
-        setStatuses((current) => {
-            const next: Record<string, AgentStatus | null> = {};
-            for (const blockId of blockIds) {
-                next[blockId] = current[blockId] ?? null;
-            }
-            return next;
-        });
-
-        if (blockIds.length === 0) {
-            setStatuses({});
-            return () => {
-                cancelled = true;
-            };
-        }
-
-        void runOverviewRequests(blockIds, OVERVIEW_STATUS_REQUEST_CONCURRENCY, async (blockId) => {
-            try {
-                const status = await service.GetAgentStatus(blockId);
-                if (cancelled) return;
-                setStatuses((current) => ({ ...current, [blockId]: normalizeCanonicalAgentStatus(status) }));
-            } catch (error) {
-                if (cancelled) return;
-                agentStatusLog("overview canonical status load error", {
-                    blockId,
-                    error: error instanceof Error ? error.message : String(error),
-                });
-                setStatuses((current) => ({ ...current, [blockId]: null }));
-            }
-        });
-
-        const unsubscribers = blockIds.map((blockId) =>
-            waveEventSubscribeSingle({
-                eventType: "agentstatus",
-                scope: WOS.makeORef("block", blockId),
-                handler: (event) => {
-                    setStatuses((current) => ({
-                        ...current,
-                        [blockId]: normalizeCanonicalAgentStatus(event.data),
-                    }));
-                },
-            })
-        );
-
-        return () => {
-            cancelled = true;
-            for (const unsubscribe of unsubscribers) {
-                unsubscribe();
-            }
-        };
-    }, [active, service, blockIdsKey]);
-
-    return statuses;
+    return jotai.useAtomValue(recordAtom);
 }
 
 function normalizeAgentProviderName(provider: string): string {
@@ -409,18 +334,6 @@ const SESSION_HISTORY_PENDING_RETRY_MS = 5_000;
 const SESSION_DETAIL_TRANSIENT_RETRY_MS = 30_000;
 const SESSION_SUMMARY_POLL_MS = 15_000;
 const SESSION_TRANSIENT_FETCH_PENDING_MESSAGE = "Session connection is retrying.";
-const OVERVIEW_STATUS_REQUEST_CONCURRENCY = 4;
-
-async function runOverviewRequests<T>(items: T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
-    let nextIndex = 0;
-    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-        while (nextIndex < items.length) {
-            const item = items[nextIndex++];
-            await task(item);
-        }
-    });
-    await Promise.all(workers);
-}
 
 function isSessionNotFoundMessage(message: string, sessionId: string): boolean {
     const normalized = message.trim().toLowerCase();
@@ -1704,6 +1617,7 @@ function BlockRow({
     now,
     agentStatus,
     agentStatusAckedFp,
+    agentStatusDoneAckedAt,
     onSelectBlock,
     onJumpBlock,
     onToggleSessionNote,
@@ -1725,6 +1639,7 @@ function BlockRow({
     now: number;
     agentStatus: AgentStatus | null;
     agentStatusAckedFp: string | null;
+    agentStatusDoneAckedAt: number;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
     onToggleSessionNote: (block: OverviewBlock) => void;
@@ -1751,7 +1666,10 @@ function BlockRow({
     const agentIcon = block.isAgentLike
         ? getAgentIcon(block.agentProvider, { meta: block.block?.meta, personas, sessionEmojis })
         : null;
-    const agentStatusUnread = agentStatus != null && isAgentStatusUnread(agentStatus, agentStatusAckedFp);
+    const agentStatusUnread =
+        agentStatus != null &&
+        (isAgentStatusUnread(agentStatus, agentStatusAckedFp) ||
+            isAgentDoneUnread(agentStatus, agentStatusDoneAckedAt));
 
     return (
         <div
@@ -1935,6 +1853,7 @@ function TabGroupSection({
     now,
     agentStatuses,
     agentStatusAckedFp,
+    agentStatusDoneAckedAt,
     onSelectBlock,
     onJumpBlock,
     onToggleSessionNote,
@@ -1957,8 +1876,9 @@ function TabGroupSection({
     viewedAt: Record<string, number>;
     currentBlockId: string | null;
     now: number;
-    agentStatuses: Record<string, AgentStatus>;
+    agentStatuses: Record<string, AgentStatus | null>;
     agentStatusAckedFp: Record<string, string>;
+    agentStatusDoneAckedAt: Record<string, number>;
     onSelectBlock: (block: OverviewBlock) => void;
     onJumpBlock: (block: OverviewBlock) => void;
     onToggleSessionNote: (block: OverviewBlock) => void;
@@ -1978,7 +1898,10 @@ function TabGroupSection({
     const tabAgentStatusUnread = group.blocks.some((block) => {
         const status = agentStatuses[block.blockId];
         if (status == null) return false;
-        return isAgentStatusUnread(status, agentStatusAckedFp[block.blockId] ?? null);
+        return (
+            isAgentStatusUnread(status, agentStatusAckedFp[block.blockId] ?? null) ||
+            isAgentDoneUnread(status, agentStatusDoneAckedAt[block.blockId] ?? 0)
+        );
     });
     return (
         <section key={group.tabId} className={cn("session-overview-tab-group", collapsed && "is-collapsed")}>
@@ -2035,6 +1958,7 @@ function TabGroupSection({
                                     now={now}
                                     agentStatus={agentStatuses[block.blockId] ?? null}
                                     agentStatusAckedFp={agentStatusAckedFp[block.blockId] ?? null}
+                                    agentStatusDoneAckedAt={agentStatusDoneAckedAt[block.blockId] ?? 0}
                                     onSelectBlock={onSelectBlock}
                                     onJumpBlock={onJumpBlock}
                                     onToggleSessionNote={onToggleSessionNote}
@@ -2090,7 +2014,6 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const activeTabId = jotai.useAtomValue(atoms.staticTabId);
     const displayLimit = jotai.useAtomValue(overviewModel.displayLimitAtom);
     const viewedAt = jotai.useAtomValue(overviewModel.blockViewedAtAtom);
-    const agentStatusAckedAt = jotai.useAtomValue(overviewModel.agentStatusAckedAtAtom);
     const agentStatusAckedFp = jotai.useAtomValue(overviewModel.agentStatusAckedFpAtom);
     const hideUnopenedTabs = jotai.useAtomValue(overviewModel.hideUnopenedTabsAtom);
     const agentsOnly = jotai.useAtomValue(overviewModel.agentsOnlyAtom);
@@ -2099,8 +2022,6 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const overviewVisible = useCurrentOverviewBlockVisible(blockId);
     const refreshSeq = jotai.useAtomValue(model.refreshSeqAtom);
     const summaries = useSessionSummaries(blocks, overviewVisible);
-    const controllerStatuses = useBlockControllerStatuses(blocks, overviewVisible);
-    const canonicalAgentStatuses = useCanonicalAgentStatuses(blocks, overviewVisible);
     const currentBlockId = jotai.useAtomValue(FocusManager.getInstance().blockFocusAtom);
     const sessionService = useMemo(() => new AISessionsServiceType(), []);
     const now = useNow(overviewVisible);
@@ -2152,27 +2073,17 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         !agentStatusHookInstall.loading &&
         agentStatusHookInstall.status?.supported === true &&
         agentStatusHookInstall.status?.needsInstall === true;
-    const agentStatuses = useMemo(() => {
-        const next: Record<string, AgentStatus> = {};
-        for (const block of blocks) {
-            if (!block.isAgentLike) continue;
-            const sessionUpdatedAtMs = normalizeTimeMs(
-                summaries[block.sessionId]?.summary?.updatedAt ?? details[block.sessionId]?.detail?.summary?.updatedAt
-            );
-            next[block.blockId] = presentAgentStatus({
-                blockId: block.blockId,
-                provider: block.agentProvider,
-                sessionId: block.sessionId,
-                canonicalStatus: canonicalAgentStatuses[block.blockId],
-                controllerStatus: controllerStatuses[block.blockId],
-                sessionUpdatedAtMs,
-                viewedAtMs: viewedAt[block.blockId] ?? 0,
-                nowMs: now,
-            });
-        }
-        return next;
-    }, [blocks, canonicalAgentStatuses, controllerStatuses, details, summaries, viewedAt, now]);
-    const workspaceAgentStatuses = useMemo(() => Object.values(agentStatuses), [agentStatuses]);
+    // 唯一状态来源: AgentStatusStore 的统一 presented atom (与 agent Block 头部 / inline tab 同一份对象).
+    const agentStatusBlockIds = useMemo(
+        () => blocks.filter((block) => block.isAgentLike).map((block) => block.blockId),
+        [blocks]
+    );
+    const agentStatuses = useOverviewPresentedStatuses(agentStatusBlockIds, overviewVisible);
+    const agentStatusDoneAckedAt = jotai.useAtomValue(agentStatusDoneAckStore.doneAckedAtAtom);
+    const workspaceAgentStatuses = useMemo(
+        () => Object.values(agentStatuses).filter((status): status is AgentStatus => status != null),
+        [agentStatuses]
+    );
     const workspaceAgentAggregate = useMemo(
         () => aggregateAgentStatuses(workspaceAgentStatuses),
         [workspaceAgentStatuses]
@@ -2191,48 +2102,28 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             if (previousAgentStatusKeys.current[block.blockId] === key) {
                 continue;
             }
-            const sessionUpdatedAtMs = normalizeTimeMs(
-                summaries[block.sessionId]?.summary?.updatedAt ?? details[block.sessionId]?.detail?.summary?.updatedAt
-            );
-            const controllerStatus = controllerStatuses[block.blockId];
-            const canonicalStatus = canonicalAgentStatuses[block.blockId];
             agentStatusLog("overview presented status", {
                 blockId: block.blockId,
                 title: block.title,
                 provider: block.agentProvider || "agent",
                 sessionId: block.sessionId || null,
-                canonical:
-                    canonicalStatus == null
-                        ? null
-                        : {
-                              state: canonicalStatus.state,
-                              phase: canonicalStatus.phase,
-                              source: canonicalStatus.source,
-                              confidence: canonicalStatus.confidence,
-                              reason: canonicalStatus.reason ?? null,
-                              message: commandPreview(canonicalStatus.message),
-                              toolName: canonicalStatus.toolName ?? null,
-                              updatedAgeMs: ageMs(canonicalStatus.updatedAt, now),
-                              seq: canonicalStatus.seq ?? null,
-                          },
-                controllerStatus: controllerStatus?.shellprocstatus ?? null,
-                controllerVersion: controllerStatus?.version ?? null,
-                sessionUpdatedAgeMs: ageMs(sessionUpdatedAtMs, now),
-                viewedAgeMs: ageMs(viewedAt[block.blockId] ?? 0, now),
-                result: {
+                presented: {
                     state: status.state,
                     phase: status.phase,
                     source: status.source,
                     confidence: status.confidence,
                     reason: status.reason ?? null,
+                    prevState: status.prevState ?? null,
                     message: commandPreview(status.message),
                     toolName: status.toolName ?? null,
                     updatedAgeMs: ageMs(status.updatedAt, now),
+                    completedAgeMs: ageMs(status.completedAt ?? 0, now),
                 },
+                viewedAgeMs: ageMs(viewedAt[block.blockId] ?? 0, now),
             });
         }
         previousAgentStatusKeys.current = nextKeys;
-    }, [agentStatuses, blocks, canonicalAgentStatuses, controllerStatuses, details, summaries, viewedAt, now]);
+    }, [agentStatuses, blocks, now, viewedAt]);
     const [selected, setSelected] = useState<{ block: OverviewBlock; message: Message } | null>(null);
     const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
     const [openNoteBlockId, setOpenNoteBlockId] = useState<string | null>(null);
@@ -2240,20 +2131,27 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const noteSwitchSeqRef = useRef(0);
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
     const tabGroupsKey = useMemo(() => tabGroups.map((group) => group.tabId).join("\n"), [tabGroups]);
+    // ack 必须同时写 R (fingerprint) 与 D (doneAckedAt), 否则另一面会因为只认自己的那份判定而"复活".
     const ackAgentStatus = React.useCallback(
-        (blockId: string, status: AgentStatus) => overviewModel.markAgentStatusAcked(blockId, Date.now(), status),
+        (blockId: string, status: AgentStatus) => {
+            const nowMs = Date.now();
+            overviewModel.markAgentStatusAcked(blockId, nowMs, status);
+            agentStatusDoneAckStore.markDoneAcked(blockId, nowMs, "overview-chip");
+        },
         [overviewModel]
     );
     const ackTabAgentStatuses = React.useCallback(
         (blocks: OverviewBlock[]) => {
+            const nowMs = Date.now();
             for (const block of blocks) {
-                const status = canonicalAgentStatuses[block.blockId];
+                const status = agentStatuses[block.blockId];
                 if (status != null) {
-                    overviewModel.markAgentStatusAcked(block.blockId, Date.now(), status);
+                    overviewModel.markAgentStatusAcked(block.blockId, nowMs, status);
+                    agentStatusDoneAckStore.markDoneAcked(block.blockId, nowMs, "overview-aggregate");
                 }
             }
         },
-        [overviewModel, canonicalAgentStatuses]
+        [overviewModel, agentStatuses]
     );
     useEffect(() => {
         setCollapsedTabIds((current) => {
@@ -2537,6 +2435,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                     setSelected({ block: nextBlock, message });
                                 }}
                                 agentStatusAckedFp={agentStatusAckedFp}
+                                agentStatusDoneAckedAt={agentStatusDoneAckedAt}
                                 onAckAgentStatus={ackAgentStatus}
                                 onAckTabAgentStatuses={() => ackTabAgentStatuses(group.blocks)}
                             />

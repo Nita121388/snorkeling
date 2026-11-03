@@ -20,7 +20,9 @@ import { normalizeTimeMs } from "@/app/agent-status/agent-status-unread";
 // 非 idle 时驱动.
 export function isAgentDoneUnread(status: AgentStatus | null, doneAckedAt: number): boolean {
     if (status == null) return false;
-    if (status.state !== "idle") return false;
+    // 接受 "idle" 与呈现层的 "done"：canonical idle 在 presentCanonicalAgentStatus 里
+    // 会被提升为 "done"，但完成跳变字段 (prevState/completedAt) 仍在，两层要看同一份跳变。
+    if (status.state !== "idle" && status.state !== "done") return false;
     // prevState 缺失 = 主动拉取或开局第一帧, 没有跳变 → 不点亮 (场景 6 边界).
     if (!status.prevState || status.prevState === "idle" || status.prevState === "unknown") {
         return false;
