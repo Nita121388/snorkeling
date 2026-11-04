@@ -468,6 +468,8 @@ export class PreviewModel implements ViewModel {
 
     markdownShowToc: PrimitiveAtom<boolean>;
     presentationMode: PrimitiveAtom<boolean>;
+    /** 图片预览当前缩放倍率（翻页键盘仅 scale===1 时生效）。 */
+    imageScale: PrimitiveAtom<number>;
     // markdown 导出反馈：header 显示一条带样式的瞬态状态文本（成功/失败），3s 后自动清除。
     markdownExportStatus: PrimitiveAtom<{ kind: "ok" | "err"; text: string } | null>;
     liveSourceBlockId: Atom<string | null>;
@@ -537,6 +539,9 @@ export class PreviewModel implements ViewModel {
         });
         this.markdownShowToc = atom(false);
         this.presentationMode = atom(false);
+        // 图片预览当前的缩放倍率：翻页键盘仅在 scale===1 时生效（不抢缩放手势）。
+        // StreamingImagePreview 的 TransformWrapper onZoom 会同步写它。
+        this.imageScale = atom(1);
         this.markdownExportStatus = atom<{ kind: "ok" | "err"; text: string } | null>(null) as PrimitiveAtom<{ kind: "ok" | "err"; text: string } | null>;
         this.filterOutNowsh = atom(true);
         this.monacoRef = createRef();
@@ -1851,6 +1856,21 @@ export class PreviewModel implements ViewModel {
             return false;
         }
         return true;
+    }
+
+    /** 写单个 block meta 键（图片翻页的粘性锚点用）。 */
+    async setBlockMetaValue(key: string, value: unknown): Promise<void> {
+        const blockOref = WOS.makeORef("block", this.blockId);
+        await this.env.services.object.UpdateObjectMeta(blockOref, { [key]: value } as MetaType);
+    }
+
+    /**
+     * 在当前块内新增一个 inline tab 并打开文件（图片翻页的 Alt+←/→ 用）。
+     * 已有同路径 tab 时聚焦它（openPathInCurrentBlockAsTab 自带去重）。
+     */
+    async openPathInNewTab(newPath: string): Promise<boolean> {
+        const connection = await globalStore.get(this.connection);
+        return await this.openPathInCurrentBlockAsTab(newPath, connection, { pathIsDir: false });
     }
 
     private async openPathInCurrentBlockAsTab(
