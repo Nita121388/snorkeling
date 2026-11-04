@@ -16,9 +16,9 @@
 - [x] 2.1 PRD + design 落盘（锚点解析/全序构建/缓存键/回滚开关）
 - [x] 2.2 实现：image-pager-model.ts（纯逻辑）/ image-pager-index.ts（渐进索引）/ image-pager.tsx（UI）+ preview-model/preview-streaming 接线
 - [x] 2.3 真实验证：单测 18/18、tsc 69 基线、真机 27/27 × 连续 3 轮（scripts/verify/image-pager/verify.mjs）
-- [ ] 2.4 子代理审核 + 意见处理（进行中）
-- [ ] 2.5 commit + push
-- [ ] 2.6 发版 0.0.116
+- [x] 2.4 子代理审核：4 阻断全修（截断死锁 / 5000 上限 / Home/End 错层 / Shift+R）+ 7 项建议
+- [x] 2.5 commit + push（53ebc8d3）
+- [x] 2.6 发版 0.0.116（tag 已推）
 
 ## 功能 3 · Overview 看板（11-04-overview-board-kanban）
 
@@ -45,3 +45,4 @@
   规则 09 改为结构化墨迹比较（旧逐像素比例在正常态与坏样本区间重叠，无法设阈值）；新增规则 10 词级内联样式 DOM 签名（已用合成样本证明可抓丢粗体/丢等宽/颜色变/标记被吞）。
   spec 落盘：`.trellis/spec/snorkeling-docs/frontend/preview-edit-harness.md`（含规则语义、盲区、标定记录、产品坑）。
 - 2026-11-05 功能 2 完成：真机验证 27/27 ×3 轮。真机逼出并修复 5 个真问题：站点顺序按异步完成顺序（改确定性 DFS 先序）/ toast 因预览视图重挂丢失（改模块级 store）/ 跨站后本层误用锚点层（每站自带 images，本层=当前目录）/ 缩放守卫失效（onZoom 对程序化缩放不触发 → onTransformed）/ 跨站锚点塌缩（block meta 粘性锚点）。新增可复用真机验证脚本 scripts/verify/image-pager/verify.mjs。
+- 2026-11-05 功能 2 交付：真机 30/30 ×2 轮；索引层 8 单测（含死锁回归）；审核 4 阻断修复。

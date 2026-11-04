@@ -42,6 +42,8 @@ import {
     agentStatusHookProvidersForInstall,
     agentStatusHookStatusesNeedingInstall,
 } from "./session-overview-agent-status";
+import { OVERVIEW_BOARD_ENABLED, overviewViewModeAtom } from "./overview-board-model";
+import { OverviewBoard } from "./overview-board";
 import { SessionOverviewModel } from "./session-overview-model";
 import {
     getCachedSessionDetail,
@@ -2017,6 +2019,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const agentStatusAckedFp = jotai.useAtomValue(overviewModel.agentStatusAckedFpAtom);
     const hideUnopenedTabs = jotai.useAtomValue(overviewModel.hideUnopenedTabsAtom);
     const agentsOnly = jotai.useAtomValue(overviewModel.agentsOnlyAtom);
+    const viewMode = jotai.useAtomValue(overviewViewModeAtom);
     const openedThisLaunchTabIds = jotai.useAtomValue(openedThisLaunchTabIdsAtom);
     const blocks = useOverviewBlocks(workspace);
     const overviewVisible = useCurrentOverviewBlockVisible(blockId);
@@ -2267,6 +2270,21 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const agentSummary = !shouldShowAgentAggregate(workspaceAgentStatuses)
         ? ""
         : ` · ${aggregateStatusLabel(workspaceAgentAggregate)}`;
+    // Board view consumes the same pre-collapse filtered groups as list view, so
+    // agentsOnly / hideUnopenedTabs keep their exact meaning (collapse is list-only)。
+    // 但只保留"列表里会显示成完整行"的 block（agent 会话 / terminal）：其他 block 在
+    // 列表里只是一枚 compact 图标，搬到看板会变成没有 sessionId、点不动的空卡片，
+    // 把「空闲」列塞满（真机验证实测 1 行 vs 5 卡）。
+    const boardBlocks = useMemo(
+        () =>
+            displayedTabGroups
+                .flatMap((group) => group.blocks)
+                .filter((nextBlock) => shouldShowFullOverviewBlock(nextBlock)),
+        [displayedTabGroups]
+    );
+    const toggleViewMode = React.useCallback(() => {
+        globalStore.set(overviewViewModeAtom, globalStore.get(overviewViewModeAtom) === "board" ? "list" : "board");
+    }, []);
 
     return (
         <>
@@ -2306,6 +2324,35 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 </span>
                             </button>
                         ) : null}
+                        {OVERVIEW_BOARD_ENABLED ? (
+                            <Tooltip
+                                content={viewMode === "board" ? "Switch to list view" : "Switch to board view"}
+                                placement="top"
+                                hideOnClick
+                                divClassName="inline-flex"
+                            >
+                                <button
+                                    type="button"
+                                    className={cn(
+                                        "session-overview-icon-button session-overview-view-toggle",
+                                        viewMode === "board" && "is-active"
+                                    )}
+                                    onClick={toggleViewMode}
+                                    aria-pressed={viewMode === "board"}
+                                    // 可访问名描述"这个控件是什么"，动态动作文案只留在 title，
+                                    // 否则 pressed=true + "Switch to list view" 会互相矛盾
+                                    aria-label="Board view"
+                                    title={viewMode === "board" ? "Switch to list view" : "Switch to board view"}
+                                >
+                                    <i
+                                        className={makeIconClass(
+                                            viewMode === "board" ? "table-list" : "table-cells-large",
+                                            false
+                                        )}
+                                    />
+                                </button>
+                            </Tooltip>
+                        ) : null}
                         <div className="session-overview-filter-group" aria-label="Overview filters">
                             <button
                                 type="button"
@@ -2341,7 +2388,42 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     </div>
                 </div>
                 <div className="session-overview-body">
-                    {displayedTabGroups.length === 0 ? (
+                    {OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
+                        displayedTabGroups.length === 0 ? (
+                            <div className="session-overview-empty">
+                                {tabGroups.length === 0 ? "No tabs in this workspace." : emptyMessage}
+                            </div>
+                        ) : (
+                            <OverviewBoard
+                                blocks={boardBlocks}
+                                presentedStatuses={agentStatuses}
+                                now={now}
+                                getPreview={(nextBlock) => {
+                                    const note = summaries[nextBlock.sessionId]?.summary?.note?.trim();
+                                    if (note) return note;
+                                    const messages = readableMessages(
+                                        details[nextBlock.sessionId]?.detail ?? null
+                                    );
+                                    return messages.length > 0
+                                        ? messagePreview(messages[messages.length - 1])
+                                        : "";
+                                }}
+                                getUpdatedAt={(nextBlock) =>
+                                    normalizeTimeMs(
+                                        summaries[nextBlock.sessionId]?.summary?.updatedAt ??
+                                            details[nextBlock.sessionId]?.detail?.summary?.updatedAt
+                                    )
+                                }
+                                onOpenSession={(nextBlock) => {
+                                    setSelectedBlockId(nextBlock.blockId);
+                                    overviewModel.markBlockViewed(nextBlock.blockId);
+                                    if (nextBlock.sessionId) {
+                                        openSessionDetail(nextBlock.sessionId);
+                                    }
+                                }}
+                            />
+                        )
+                    ) : displayedTabGroups.length === 0 ? (
                         <div className="session-overview-empty">
                             {tabGroups.length === 0 ? "No tabs in this workspace." : emptyMessage}
                         </div>

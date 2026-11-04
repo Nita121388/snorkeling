@@ -1291,3 +1291,203 @@
     }
 }
 
+
+/* ---------------------------------------------------------------------------
+   Overview board view (status columns). List view styles above are untouched;
+   every selector here is prefixed `.session-overview-board-*` (plus the toggle).
+   Wide panels get a multi-column card wall; narrow panels stack one column per
+   status section and let the existing body scroll handle overflow.
+   --------------------------------------------------------------------------- */
+
+.session-overview-view-toggle.is-active {
+    color: var(--accent-color);
+    border-color: rgb(from var(--accent-color) r g b / 0.42);
+}
+
+.session-overview-board {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: 1fr;
+    gap: 14px;
+}
+
+.session-overview-board-column {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.session-overview-board-column-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0 2px;
+    color: var(--main-text-color);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.session-overview-board-column-title {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-board-column-count {
+    display: inline-flex;
+    min-width: 18px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: rgb(from var(--main-text-color) r g b / 0.1);
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.session-overview-board-cards {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.session-overview-board-card {
+    display: flex;
+    width: 100%;
+    min-height: 76px;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    appearance: none;
+    background: transparent;
+    box-sizing: border-box;
+    color: var(--main-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease;
+
+    &:hover {
+        background: var(--hover-bg-color-strong);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.session-overview-board-card-head {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+}
+
+.session-overview-board-card-title {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-board-card-age {
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.session-overview-board-card-preview {
+    display: block;
+    overflow: hidden;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-board-card-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.session-overview-board-chip {
+    max-width: 96px;
+    overflow: hidden;
+    padding: 1px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: rgb(from var(--main-text-color) r g b / 0.035);
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Status dots reuse the established agent tokens (same palette as the list chips). */
+.session-overview-board-card-dot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+
+    &.is-blocked {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    &.is-done {
+        background: var(--agent-done-color, var(--success-color));
+    }
+
+    &.is-idle {
+        background: rgb(from var(--main-text-color) r g b / 0.35);
+    }
+
+    &.is-stale {
+        background: var(--agent-stale-color, #a855f7);
+    }
+}
+
+/* Wide panels: card wall. One row, full panel height, per-column scrolling. */
+/* 多列看板：5 列 × minmax(220px) + 4 gap 最少需要约 1156px 内容宽。
+   断点设在 1160px，并在 720–1160px 区间保持纵向堆叠 —— 否则 auto-fit 会折成两行，
+   每列内部再套一层滚动，交互变得别扭（审核指出 720px 断点实际是错区间）。
+   用 auto-flow: column 强制单行等分，列高由 grid-template-rows 撑满面板。 */
+@container (min-width: 1160px) {
+    .session-overview-board {
+        height: 100%;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        grid-template-columns: none;
+        grid-template-rows: minmax(0, 1fr);
+    }
+}
