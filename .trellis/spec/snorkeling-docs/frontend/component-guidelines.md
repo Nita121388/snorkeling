@@ -378,3 +378,63 @@ textarea 需要它保留源码换行；contentEditable 根节点继承它会把�
 组件预览页 `frontend/preview` 有 markdown 用例（含 editable 列表）。用 CDP 在编辑前后各取一次
 第一个文本节点的 `Range` rect，断言 Δx/Δy ≈ 0，并断言 `overlay.scrollHeight <= clientHeight`。
 把旧 CSS 注入回去做对照，应能重现 ~26px 的偏移 —— 这一步证明测量本身有效。
+
+---
+
+## 预览编辑的"机器可判定"验证闭环（2026-11-04, task 11-04-preview-edit-verify-harness）
+
+用户的判据是"看起来对不对"，不是"数字对不对"。所以任何声称"样式已修好"的结论，
+都必须能由脚本产出 **verdict + 证据**，而不是靠人工看图或口头断言。
+
+### 1. 一条命令
+
+```bash
+node scripts/verify/preview-edit/run.mjs --expect=fixed            # 冷启动（重置 verify profile）
+node scripts/verify/preview-edit/run.mjs --attach --expect=fixed   # 复用已起实例，单轮 <10s
+node scripts/verify/preview-edit/run.mjs --expect=broken --legacy-css   # 证明实验台能抓到旧 bug
+node scripts/verify/preview-edit/run.mjs --against=verify-runs/<ts>/report.json   # 收敛判据
+```
+
+产物：`verify-runs/<ts>/report.json`（机器读）、`report.md`（人读、内嵌截图）、每 case 的
+`before / during / afterEsc / diff` 四张 png。
+
+### 2. 三层 oracle
+
+| 层 | 规则 | 判据 |
+|---|---|---|
+| 几何不变量 | `text-zero-shift` / `no-clip` / `single-level-indent` / `marker-drawn` / `clean-exit` | DOM Range 墨迹与 computed 值 |
+| 像素自证 | `pixel-zero-shift` | 逐文本行比较"最左墨迹 x"（§3） |
+| 契约 | `editor-kind` / `no-measure-loop` | 编辑器类型 & 调试环时序 |
+
+### 3. 像素 oracle 为什么不需要 golden baseline
+
+预览编辑的产品契约是"零布局位移"，所以**阅读态自己就是编辑态的基准**：
+取同一个裁切区域，比较编辑前/编辑中每一行文字的**最左墨迹 x**。
+它对字体抗锯齿、颜色、光标闪烁完全不敏感 —— 只测与 bug 直接相关的那个量。
+
+两个必要细节（都踩过）：
+
+- **必须剔除"镀层列"**：`inline-edit-active` 的 accent 竖条整列都是墨迹，
+  会把所有行连成一条、并劫持"最左墨迹" → 列级墨迹占比 ≥ 0.8 的列一律跳过。
+- **裁切必须紧贴块**：裁太高会把上下相邻段落也框进来，行带数量就失去意义。
+
+### 4. 验证台自身的四个坑（都会导致假绿/假红）
+
+1. **别在 mock 页面验证**：组件预览页没有真实主题变量、不是真实 `.md` preview 路径。
+2. **别用合成事件**：`dispatchEvent(new MouseEvent(...))` 绕过命中测试；必须用 CDP
+   `Input.dispatchMouseEvent`（且要 `Emulation.setFocusEmulationEnabled`，
+   窗口在后台时真实指针事件进不到 React）。
+3. **探针必须复刻 app 的锚点提升规则**：`li` 内含子列表时点击锚定父级 `ol/ul`；
+   探针若还锚在 `li` 上，会量出 24px 的假偏移。
+4. **目标要滚进视口再量**：文档很长时目标在折叠线以下，裁切会被夹成空白（行带 0、diff 0）。
+
+### 5. 循环协议（agent 自我进化用）
+
+```
+run --expect=fixed → 读 report.json 的 failing[].id + detail → 只改一个变量
+→ run --against=<上一轮>：newFailures 非空 = 这次改动是坏的，立即回退
+→ 连续 3 轮无改善 → 停，把整个 verify-runs/<ts>/ 当证据包交给人
+→ 修好后把该 bug 抽象成 rules/<new>.mjs，spec 里写明"为什么需要这条规则"
+```
+
+**rules 库只增不减**：每修一个 bug 就多一条常驻判据，覆盖面单调增长。

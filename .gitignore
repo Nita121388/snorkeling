@@ -71,3 +71,6 @@ scripts/cdp-gui-chat-*.mjs
 # Local scratch dirs / Windows junk
 .tmp/
 /nul
+
+# verify-* 是运行产物（截图/报告），不进仓库
+verify-runs/

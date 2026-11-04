@@ -1,0 +1,25 @@
+{
+  "id": "ol-collapsible",
+  "fixture": "list-forms.md",
+  "theme": "dark",
+  "target": {
+    "selector": "li.ordered-list-collapsible",
+    "within": ".markdown-render-root"
+  },
+  "action": {
+    "type": "dblclick",
+    "at": "text-first-line"
+  },
+  "rules": [
+    "text-zero-shift",
+    "pixel-zero-shift",
+    "no-clip",
+    "single-level-indent",
+    "marker-drawn",
+    "clean-exit",
+    "no-measure-loop",
+    "editor-kind"
+  ],
+  "expectEditor": "wysiwyg",
+  "note": "折叠式有序列表的多行条目（序号是 ::before 内联绘制的，盒子法会差 13px）"
+}

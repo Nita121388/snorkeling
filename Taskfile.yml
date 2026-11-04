@@ -56,6 +56,14 @@ tasks:
             WCLOUD_WS_ENDPOINT: "wss://wsapi-dev.waveterm.dev/"
             WAVETERM_NOCONFIRMQUIT: "1"
 
+    verify:preview-edit:
+        desc: Verify md preview inline-edit visually in the REAL app (CDP + real pointer + pixel evidence)
+        cmd: node scripts/verify/preview-edit/run.mjs --expect=fixed
+
+    verify:preview-edit:broken:
+        desc: Prove the verify harness itself catches the pre-fix geometry bug (injects legacy CSS)
+        cmd: node scripts/verify/preview-edit/run.mjs --expect=broken --legacy-css
+
     preview:
         desc: Run the standalone component preview server with HMR (no Electron, no backend).
         dir: frontend/preview
