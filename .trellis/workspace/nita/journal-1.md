@@ -54,3 +54,12 @@ gemini + FetchModels，错误信息加上实际 URL。24 个单测 + openaichat 
   - 中断点：验证时 ol-collapsible 双击打不开；stash 对照证明不是我的改动，是实例状态异常（上一轮 Esc 在编辑器未打开时把 block 关掉了）
 - 待办：① 复跑验证 ② observe 的 Esc 要判 overlay 存在 ③ 关掉我开出的 8 个重复 preview block（用户已提醒）④ 全绿后 check/spec/commit/finish
 - 详见 `.trellis/tasks/11-04-preview-edit-verify-harness/notes.md`
+
+## 2026-11-04 任务盘点（只盘点，未开发）
+
+- 45 个活跃任务逐一用「git log + 源码存在性」核对，不依赖 checkbox。
+- 结论：22 个已落地待归档；5 组该关闭/转形态；真正未开工 8-10 个。
+- 新需求「图片预览跨文件夹翻页」已完成 PRD 级设计（DFS 图库序列 + 锚点目录），未开工。
+- 分支侧：13 个 snorkeling worktree；A 档 7 个可安全删，B 档 4 个需确认，C 档 3 个不可动
+  （含 snorkeling-gui-chat 独立 clone 的 24 个未提交 chat 运行时改动）。
+- 决策稿：Obsidian `My Projects/Snorkling/方案/2026-11-04-任务盘点与下一步编排.md`

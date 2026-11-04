@@ -33,6 +33,74 @@ export function cropPng(png, rect) {
     return out;
 }
 
+/**
+ * 把整窗高清截图归一化到 CSS 像素空间。
+ *
+ * 为什么需要：CDP 的 clip 截图在高分屏/窗口被遮挡时会静默失效，退回整窗 2x 图。
+ * 下游所有规则都用 CSS 坐标（getBoundingClientRect），坐标系统一为 CSS 才成立。
+ * 整窗图 2680px 对应视口 1340px → factor=0.5。
+ *
+ * 缩小用**面积平均**（box filter），不用最近邻：最近邻会把 0.3px 级的亚像素
+ * 错位放大成整像素翻转（抗锯齿边缘整片抖动，实测 parity 假红 5~12%）；
+ * 面积平均让亚像素噪声在降采样时自然抵消，而字形/字重的真实差异保留。
+ */
+export function scalePng(png, factor) {
+    if (!(factor > 0) || Math.abs(factor - 1) < 1e-6) return png;
+    const width = Math.max(1, Math.round(png.width * factor));
+    const height = Math.max(1, Math.round(png.height * factor));
+    const out = new PNG({ width, height });
+    if (factor < 1) {
+        const stepX = png.width / width;
+        const stepY = png.height / height;
+        for (let y = 0; y < height; y++) {
+            const y0 = y * stepY;
+            const y1 = y0 + stepY;
+            const iy0 = Math.floor(y0);
+            const iy1 = Math.min(png.height, Math.max(iy0 + 1, Math.ceil(y1)));
+            for (let x = 0; x < width; x++) {
+                const x0 = x * stepX;
+                const x1 = x0 + stepX;
+                const ix0 = Math.floor(x0);
+                const ix1 = Math.min(png.width, Math.max(ix0 + 1, Math.ceil(x1)));
+                let r = 0, g = 0, b = 0, a = 0, area = 0;
+                for (let sy = iy0; sy < iy1; sy++) {
+                    const wy = Math.min(y1, sy + 1) - Math.max(y0, sy);
+                    for (let sx = ix0; sx < ix1; sx++) {
+                        const wx = Math.min(x1, sx + 1) - Math.max(x0, sx);
+                        const w = wx * wy;
+                        const src = (png.width * sy + sx) << 2;
+                        r += png.data[src] * w;
+                        g += png.data[src + 1] * w;
+                        b += png.data[src + 2] * w;
+                        a += png.data[src + 3] * w;
+                        area += w;
+                    }
+                }
+                const dst = (width * y + x) << 2;
+                out.data[dst] = Math.round(r / area);
+                out.data[dst + 1] = Math.round(g / area);
+                out.data[dst + 2] = Math.round(b / area);
+                out.data[dst + 3] = Math.round(a / area);
+            }
+        }
+        return out;
+    }
+    // 放大保持最近邻（验证台不会走到，仅为类型完备）
+    for (let y = 0; y < height; y++) {
+        const sy = Math.min(png.height - 1, Math.floor(y / factor));
+        for (let x = 0; x < width; x++) {
+            const sx = Math.min(png.width - 1, Math.floor(x / factor));
+            const src = (png.width * sy + sx) << 2;
+            const dst = (width * y + x) << 2;
+            out.data[dst] = png.data[src];
+            out.data[dst + 1] = png.data[src + 1];
+            out.data[dst + 2] = png.data[src + 2];
+            out.data[dst + 3] = png.data[src + 3];
+        }
+    }
+    return out;
+}
+
 function pixelAt(png, x, y) {
     const idx = (png.width * y + x) << 2;
     return {
@@ -241,5 +309,104 @@ export function diffRatio(a, b, { tol = 24, chromeColumnRatio = 0.8 } = {}) {
         diffPixels,
         total,
         chromeColumns,
+    };
+}
+
+/**
+ * 结构化墨迹统计：用于"编辑态看起来是不是同一段文字"的判定。
+ *
+ * 为什么不用逐像素比例：亚像素级的 paint 取整会让抗锯齿边缘整片抖动
+ * （实测多行文本 5~12% 的差异像素，但字形、位置、颜色全部一致；单行 case 只有 0.01%）。
+ * 逐像素比例无法把这种"不可见差异"和真实样式回归分开。
+ *
+ * 实测分离度（--legacy-css 已知坏样本 vs 正常态，见 2026-11-04 标定）：
+ *   墨迹质量比 during/before：正常 1.00~1.11 ｜ 坏样本 0.51 / 0.74 / 1.33
+ *   平均墨迹亮度差：          正常 ≤4.2%      ｜ 坏样本 ≤13%
+ * 所以判定用「质量比 + 行带边缘 + 行数」，像素比例只作证据留档。
+ */
+export function inkBandStats(png, { tol = 32 } = {}) {
+    const bg = detectBackground(png);
+    const isInk = (i) =>
+        Math.abs(png.data[i] - bg.r) + Math.abs(png.data[i + 1] - bg.g) + Math.abs(png.data[i + 2] - bg.b) > tol;
+    const rows = [];
+    let mass = 0;
+    let lumSum = 0;
+    let minX = Infinity;
+    let maxX = -1;
+    for (let y = 0; y < png.height; y++) {
+        let n = 0;
+        let left = -1;
+        let right = -1;
+        for (let x = 0; x < png.width; x++) {
+            const i = (png.width * y + x) << 2;
+            if (!isInk(i)) continue;
+            n++;
+            lumSum += 0.299 * png.data[i] + 0.587 * png.data[i + 1] + 0.114 * png.data[i + 2];
+            if (left < 0) left = x;
+            right = x;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+        }
+        mass += n;
+        rows.push({ y, n, left, right });
+    }
+    // 文本行数：连续有墨迹的行视为一个行带
+    let lines = 0;
+    let inBand = false;
+    const bands = [];
+    let cur = null;
+    for (const r of rows) {
+        if (r.n > 0) {
+            if (!inBand) {
+                lines++;
+                inBand = true;
+                cur = { y0: r.y, y1: r.y, left: r.left, right: r.right, mass: 0 };
+                bands.push(cur);
+            }
+            cur.y1 = r.y;
+            cur.left = Math.min(cur.left, r.left);
+            cur.right = Math.max(cur.right, r.right);
+            cur.mass += r.n;
+        } else {
+            inBand = false;
+        }
+    }
+    return {
+        width: png.width,
+        height: png.height,
+        bg,
+        mass,
+        lines,
+        bands,
+        minX: Number.isFinite(minX) ? minX : 0,
+        maxX: maxX >= 0 ? maxX : 0,
+        meanInkLum: mass > 0 ? lumSum / mass : 0,
+    };
+}
+
+/** 两图的结构化一致性判定（供 pixel-visual-parity 规则使用）。 */
+export function compareInkStructure(beforePng, duringPng, opts = {}) {
+    const massRatioTol = opts.massRatioTol ?? 0.18;
+    const lumRatioTol = opts.lumRatioTol ?? 0.08;
+    const a = inkBandStats(beforePng, opts);
+    const b = inkBandStats(duringPng, opts);
+    const massRatio = a.mass === 0 && b.mass === 0 ? 1 : b.mass / Math.max(1, a.mass);
+    const lumRatio = Math.abs(a.meanInkLum - b.meanInkLum) / Math.max(1, Math.max(a.meanInkLum, b.meanInkLum));
+    const linesEqual = a.lines === b.lines;
+    const massOk = Math.abs(massRatio - 1) <= massRatioTol;
+    const lumOk = lumRatio <= lumRatioTol;
+    const edgesOk = Math.abs(a.minX - b.minX) <= 2 && Math.abs(a.maxX - b.maxX) <= 2;
+    return {
+        pass: linesEqual && massOk && lumOk && edgesOk,
+        linesEqual,
+        massOk,
+        lumOk,
+        edgesOk,
+        massRatio,
+        lumRatio,
+        linesBefore: a.lines,
+        linesDuring: b.lines,
+        before: { mass: a.mass, meanInkLum: a.meanInkLum, minX: a.minX, maxX: a.maxX },
+        during: { mass: b.mass, meanInkLum: b.meanInkLum, minX: b.minX, maxX: b.maxX },
     };
 }

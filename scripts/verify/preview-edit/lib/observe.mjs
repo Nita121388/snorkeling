@@ -4,11 +4,11 @@
 // 观察层：一次 case 采样 = 编辑前 → 真实双击 → 编辑中 → Esc → 退出后，三态截图 + 结构化几何。
 // 产出是 oracle 的唯一输入，也是 report 的证据。
 
-import { writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { waitFor } from "./cdp.mjs";
 import { FIXTURE_SENTINEL, bringFixtureIntoView } from "./open.mjs";
-import { cropPng, readPng, writePng } from "./pixel.mjs";
+import { cropPng, readPng, scalePng, writePng } from "./pixel.mjs";
 
 const SENTINEL = JSON.stringify(FIXTURE_SENTINEL);
 
@@ -35,6 +35,35 @@ function rootExpr() {
     })()`;
 }
 
+/**
+ * 内联标记 token 签名（词级内联样式回归的检测数据）。
+ * 为什么需要：像素/结构化度量对**词级**变化是被稀释的（一个词丢粗体只占整块墨迹 2~5%），
+ * 但 `code` 丢等宽字体、`strong` 丢字重正是这条链路历史上真实踩到的回归。
+ * DOM 级签名零像素噪声，直接比对 font-family / weight / style / color。
+ */
+function inlineTokensJs(scopeExpr) {
+    return `(() => {
+        const scope = ${scopeExpr};
+        if (scope == null) return null;
+        // 过滤无文字内容的元素：图标（折叠钮 chevron 的 <i class="fa…">）没有文本，
+        // 不是文字内联标记；把图标当 token 会把"编辑态没有折叠钮"误报成样式回归。
+        const els = [...scope.querySelectorAll("code, strong, b, em, i, kbd, samp, del, s, mark, a")].filter(
+            (el) => (el.textContent || "").trim() !== ""
+        );
+        return els.map((el) => {
+            const cs = getComputedStyle(el);
+            return {
+                tag: el.tagName.toLowerCase(),
+                text: (el.textContent || "").trim().slice(0, 40),
+                font: String(cs.fontFamily || "").replace(/\s+/g, ""),
+                weight: String(cs.fontWeight || ""),
+                style: String(cs.fontStyle || ""),
+                color: String(cs.color || ""),
+            };
+        });
+    })()`;
+}
+
 function probeTargetJs(caseDef) {
     const target = caseDef.target ?? {};
     return `(() => {
@@ -57,6 +86,27 @@ function probeTargetJs(caseDef) {
             if (parentList != null) el = parentList;
         }
         const rect = el.getBoundingClientRect();
+        // 阅读态的内联标记签名：与编辑态（describeDuringJs）的同源比对，抓词级样式回归
+        const inline = (() => {
+            try {
+                const els = [...el.querySelectorAll("code, strong, b, em, i, kbd, samp, del, s, mark, a")].filter(
+                    (x) => (x.textContent || "").trim() !== ""
+                );
+                return els.map((x) => {
+                    const cs = getComputedStyle(x);
+                    return {
+                        tag: x.tagName.toLowerCase(),
+                        text: (x.textContent || "").trim().slice(0, 40),
+                        font: String(cs.fontFamily || "").replace(/\s+/g, ""),
+                        weight: String(cs.fontWeight || ""),
+                        style: String(cs.fontStyle || ""),
+                        color: String(cs.color || ""),
+                    };
+                });
+            } catch (e) {
+                return null;
+            }
+        })();
         // 第一个非空文本节点的"第一行"墨迹矩形：双击点与零位移基准都取它。
         const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
         let node = null;
@@ -74,6 +124,7 @@ function probeTargetJs(caseDef) {
             cls: el.className,
             rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height, right: rect.right },
             ink,
+            inline,
             scrollHeight: el.scrollHeight,
             overlayPresent: document.querySelector(".inline-edit-overlay") != null,
         };
@@ -104,16 +155,35 @@ function describeDuringJs() {
                 ink = { x: first.left, y: first.top, w: first.width, h: first.height };
             }
         }
-        // marker（::before）没有直接 rect：用 computed width + li 左边缘反推，够做"是否落在 overlay 内"判定。
+        // marker（::before）没有直接 rect：用 computed 的定位属性 + 宽度反推。
+        // 两种模式下定位方式不同，必须分开算（以前硬编码成"在 li 左侧一列"，
+        // 导致 first-line 缩进模式（折叠式有序项）永远被误报 marker 不在 overlay 内）：
+        //   常规模式   → right: 100%，marker 带在 li 左侧的 padding 区
+        //   first-line → left: <px>，marker 带在 li 盒内部
         let marker = null;
         if (firstLi != null) {
             const liRect = firstLi.getBoundingClientRect();
             const width = parseFloat(cs(firstLi, "width", "::before")) || 0;
+            const rawLeft = cs(firstLi, "left", "::before");
+            const rawRight = cs(firstLi, "right", "::before");
+            const leftPx = rawLeft != null && rawLeft !== "auto" ? parseFloat(rawLeft) : NaN;
+            // 绝对定位的 left 相对 containing block 的 padding box（= border box + border-left），
+            // 必须补 border，否则 li 带 border 时 marker 带整体偏移（与 resolveListContinuation 同思路）
+            const borderLeft = parseFloat(cs(firstLi, "border-left-width")) || 0;
+            let bandX = liRect.left - width;
+            let anchor = "left-of-li";
+            if (Number.isFinite(leftPx)) {
+                bandX = liRect.left + borderLeft + leftPx;
+                anchor = "left-var";
+            }
             marker = {
                 content: cs(firstLi, "content", "::before"),
                 width,
                 position: cs(firstLi, "position", "::before"),
-                rect: { x: liRect.left - width, y: liRect.top, w: width, h: liRect.height },
+                cssLeft: rawLeft,
+                cssRight: rawRight,
+                anchor,
+                rect: { x: bandX, y: liRect.top, w: width, h: liRect.height },
             };
         }
         const padBox = {
@@ -134,6 +204,8 @@ function describeDuringJs() {
         return {
             editorKind: ov.getAttribute("data-block-kind"),
             hasTextarea: ov.querySelector("textarea") != null,
+            // 编辑态的内联标记签名（与阅读态 probe.inline 比对，抓词级样式回归）
+            inline: ${inlineTokensJs("ov")},
             overlay: {
                 x: ovRect.x, y: ovRect.y, w: ovRect.width, h: ovRect.height,
                 right: ovRect.right, bottom: ovRect.bottom,
@@ -271,21 +343,91 @@ export async function observeCase(client, caseDef, outDir) {
     };
 
     const img = (name) => path.join(outDir, `${caseDef.id}-${name}.png`);
-    // 全屏截一张、按 crop 裁一张：clip 在 fromSurface:false 下不可用。
+    // 截图层的环境退化告警（逐张收集，进 observation.degradedTrace）
+    const shotWarnings = [];
+    /**
+     * 截图一条路，两条分支必须分开：
+     *
+     *   clip 生效  → 产物**已经是 crop 区域**（可能带 DPR 缩放，实测 2x），
+     *                只需缩放到 CSS 像素后直接落盘。
+     *                这里如果又拿绝对 CSS 坐标 crop 一次，就会越界被 clamp 成 1x1
+     *                （实测：图像 327x89 再按 x=1015 裁 → 1x1，下游全部假红）。
+     *   clip 失效  → 拿到整窗图，先归一到 CSS 宽再按 CSS 坐标裁。
+     */
     const shoot = async (name) => {
-        const shot = await client.screenshot(crop);
-        const buffer = Buffer.isBuffer(shot) ? shot : shot.buffer;
-        const fullViewport = Buffer.isBuffer(shot) ? false : shot.fullViewport;
-        const png = readPng(saveTemp(buffer, outDir, `${caseDef.id}-shot.png`));
-        if (fullViewport) {
-            writePng(img(name), cropPng(png, crop));
-        } else if (png.width !== Math.round(crop.width) || png.height !== Math.round(crop.height)) {
-            // 兜底：万一 clip 被丢弃，也按 crop 裁一次而不是直接存错区域
-            writePng(img(name), cropPng(png, crop));
-        } else {
+        const rawPath = path.join(outDir, `${caseDef.id}-${name}-raw.png`);
+        const cleanRaw = () => {
+            // 原始整窗/2x 截图只在调试时保留（VERIFY_DEBUG_SHOT=1），
+            // 否则是纯堆料（report 不引用它）；处理后的图才是产物。
+            if (process.env.VERIFY_DEBUG_SHOT !== "1") {
+                try {
+                    rmSync(rawPath, { force: true });
+                } catch {}
+            }
+        };
+        try {
+            const shot = await client.screenshot(crop);
+            const buffer = Buffer.isBuffer(shot) ? shot : shot.buffer;
+            if (Array.isArray(shot.degradedTrace) && shot.degradedTrace.length > 0) {
+                shotWarnings.push(`截图(${name})降级: ${shot.degradedTrace.join(" | ")}`);
+            }
+            let png = readPng(saveTemp(buffer, outDir, `${caseDef.id}-${name}-raw.png`));
+            const wantW = Math.max(1, Math.round(crop.width));
+            const wantH = Math.max(1, Math.round(crop.height));
+            const dbg = (msg) => {
+                if (process.env.VERIFY_DEBUG_SHOT === "1") {
+                    console.error(`[shot:${caseDef.id}:${name}] ${msg}`);
+                }
+            };
+            dbg(
+                `crop=${JSON.stringify(crop)} want=${wantW}x${wantH} raw=${png.width}x${png.height} clip=${JSON.stringify(shot.clip ?? null)} full=${shot.fullViewport}`
+            );
+            // 退化守门：crop 本身异常（rect 为 NaN / 目标超出视口）时不许静默落盘。
+            if (!Number.isFinite(crop.width) || !Number.isFinite(crop.height) || wantW <= 2 || wantH <= 2) {
+                const vp = await client.evaluate(`({ w: innerWidth, h: innerHeight })`).catch(() => null);
+                throw new Error(
+                    `crop 退化到 ${wantW}x${wantH}：crop=${JSON.stringify(crop)} viewport=${JSON.stringify(vp)}（目标可能超出视口或 rect 异常）`
+                );
+            }
+
+            if (shot.clip != null) {
+                // clip 路径。但"我们发过 clip"不等于"浏览器真的尊重了 clip"：
+                // Chromium 在窗口不可见等情况下会静默忽略 clip 返回整窗图。
+                // 保真校验：产物宽必须在 clip 宽的 [0.9, 3] 倍内，否则视为 clip 失效走整窗分支。
+                const targetW = Math.max(1, Math.round(shot.clip.width));
+                const clipHonored = png.width >= targetW * 0.9 && png.width <= targetW * 3;
+                if (clipHonored) {
+                    const factor = targetW / png.width;
+                    dbg(`clip-path factor=${factor}`);
+                    png = scalePng(png, factor);
+                } else {
+                    dbg(`clip 未被尊重（raw=${png.width} 期望≈${targetW}），降级整窗路径`);
+                    const vp = await client.evaluate(`({ w: innerWidth, h: innerHeight })`).catch(() => null);
+                    const factor = vp?.w > 0 && png.width >= vp.w * 0.9 ? vp.w / png.width : 1;
+                    png = scalePng(png, factor);
+                    png = cropPng(png, crop);
+                }
+            } else {
+                // 整窗兜底：按视口宽归一，再按 CSS 坐标裁。
+                const vp = await client.evaluate(`({ w: innerWidth, h: innerHeight })`).catch(() => null);
+                const factor = vp?.w > 0 && png.width >= vp.w * 0.9 ? vp.w / png.width : 1;
+                dbg(`full-path vp=${JSON.stringify(vp)} factor=${factor}`);
+                png = scalePng(png, factor);
+                png = cropPng(png, crop);
+            }
+            dbg(`final=${png.width}x${png.height}`);
+            if (png.width <= 2 || png.height <= 2) {
+                throw new Error(
+                    `截图产物退化到 ${png.width}x${png.height}：crop=${JSON.stringify(crop)} clip=${JSON.stringify(shot.clip ?? null)}`
+                );
+            }
             writePng(img(name), png);
+            cleanRaw();
+            return img(name);
+        } catch (err) {
+            cleanRaw();
+            throw new Error(`截图(${name})失败：${String(err?.message ?? err)}`);
         }
-        return img(name);
     };
     await shoot("before");
 
@@ -313,6 +455,13 @@ export async function observeCase(client, caseDef, outDir) {
 
     // 截图前临时把光标/选区抹掉（只作用于覆盖层，截完立刻移除）。
     // 绝不全局隐藏：那样会污染宿主窗口，用户点标题就看不到光标了（真实事故）。
+    // 截图前临时抹掉所有"非内容 UI"（只作用于覆盖层上下文，截完立刻移除）。
+    // 绝不全局隐藏：那样会污染宿主窗口，用户点标题就看不到光标了（真实事故，c8b4b77d）。
+    // 1. 光标/选区高亮 —— 内容在视觉上不该被测量影响。
+    // 2. 选区快捷按钮（data-selection-quick-action，橙色圆角灯泡钮）—— 它是 fixed
+    //    定位的 UI 附件，落在文字行间的空白处，会把 pixel parity 打成假红（实测
+    //    2026-11-04：行间空白被 24x24 圆角块填满，parity 6~12%）。
+    //    它是宿主 UI 不是内容，隐藏仅限截图瞬间，截完即恢复。
     await client
         .evaluate(`(() => {
             document.getElementById("verify-shot-caret")?.remove();
@@ -320,7 +469,8 @@ export async function observeCase(client, caseDef, outDir) {
             style.id = "verify-shot-caret";
             style.textContent =
                 ".inline-edit-overlay textarea,.inline-edit-overlay [contenteditable]{caret-color:transparent!important}" +
-                ".inline-edit-overlay ::selection{background:transparent!important;color:inherit!important}";
+                ".inline-edit-overlay ::selection{background:transparent!important;color:inherit!important}" +
+                "[data-selection-quick-action]{display:none!important}";
             document.head.appendChild(style);
             return true;
         })()`)
@@ -334,11 +484,21 @@ export async function observeCase(client, caseDef, outDir) {
     await shoot("during");
     await client.evaluate(`document.getElementById("verify-shot-caret")?.remove()`).catch(() => {});
 
-    // Esc 退出：优先真实键盘事件，兜底页内合成（真实键盘有时不落在编辑器上）
-    await client.pressKey("Escape");
-    const stillOpen = await client.evaluate(`document.querySelector(".inline-edit-overlay") != null`).catch(() => true);
-    if (stillOpen) {
-        await client.evaluate(escapeAndDescribeJs());
+    // Esc 退出：优先真实键盘事件，兜底页内合成（真实键盘有时不落在编辑器上）。
+    // 空按守卫：只在覆盖层确实存在时才按键 —— Escape 落不到编辑器时会命中 app 全局
+    // 处理（关掉整个 preview block），上一轮就是这么把 fixture 关掉、后续 case 全部
+    // 假红并连环新建重复块的。during 刚校验过覆盖层，但取景/延时期间它可能已被关掉。
+    const overlayPresent = await client
+        .evaluate(`document.querySelector(".inline-edit-overlay") != null`)
+        .catch(() => false);
+    if (overlayPresent) {
+        await client.pressKey("Escape");
+        const stillOpen = await client
+            .evaluate(`document.querySelector(".inline-edit-overlay") != null`)
+            .catch(() => true);
+        if (stillOpen) {
+            await client.evaluate(escapeAndDescribeJs());
+        }
     }
     await waitFor(client, `document.querySelector(".inline-edit-overlay") == null`, {
         timeoutMs: 6000,
@@ -356,6 +516,9 @@ export async function observeCase(client, caseDef, outDir) {
         textAreaCrop,
         during,
         afterEsc,
+        // 截图层的环境退化告警（clip 失败降级到整窗等）——不能静默，
+        // 必须进 report，否则"降级但仍能出图"会掩盖环境异常（审核意见 S3）
+        degradedTrace: shotWarnings,
         images: {
             crop,
             before: img("before"),

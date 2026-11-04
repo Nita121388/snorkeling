@@ -1,26 +1,27 @@
 {
-  "id": "ol-li",
-  "fixture": "list-forms.md",
-  "theme": "dark",
-  "target": {
-    "selector": "ol:nth-of-type(2) > li:nth-child(3)",
-    "within": ".markdown-render-root"
-  },
-  "action": {
-    "type": "dblclick",
-    "at": "text-first-line"
-  },
-  "rules": [
-    "text-zero-shift",
-    "pixel-zero-shift",
-    "no-clip",
-    "pixel-visual-parity",
-    "single-level-indent",
-    "marker-drawn",
-    "clean-exit",
-    "no-measure-loop",
-    "editor-kind"
-  ],
-  "expectEditor": "wysiwyg",
-  "note": "6 项长有序列表的第 3 项"
+    "id": "ol-li",
+    "fixture": "list-forms.md",
+    "theme": "dark",
+    "target": {
+        "selector": "ol:nth-of-type(2) > li:nth-child(3)",
+        "within": ".markdown-render-root"
+    },
+    "action": {
+        "type": "dblclick",
+        "at": "text-first-line"
+    },
+    "rules": [
+        "text-zero-shift",
+        "pixel-zero-shift",
+        "no-clip",
+        "pixel-visual-parity",
+        "single-level-indent",
+        "marker-drawn",
+        "clean-exit",
+        "no-measure-loop",
+        "inline-style-parity",
+        "editor-kind"
+    ],
+    "expectEditor": "wysiwyg",
+    "note": "6 项长有序列表的第 3 项"
 }

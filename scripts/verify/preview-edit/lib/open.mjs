@@ -70,6 +70,16 @@ async function findOpenPreview(client) {
     return res?.ok === true ? res : null;
 }
 
+/** 页面上带 fixture 哨兵的 markdown 根数量（含不可用的），用于重复块诊断。 */
+async function countSentinelRoots(client) {
+    const n = await client.evaluate(`(() => {
+        const sentinel = ${JSON.stringify(FIXTURE_SENTINEL)};
+        return [...document.querySelectorAll(".markdown-render-root")]
+            .filter((r) => (r.textContent || "").includes(sentinel)).length;
+    })()`);
+    return typeof n === "number" ? n : null;
+}
+
 /**
  * 通过渲染进程内的 app store 建一个 preview block。
  * 模块 URL 做候选探测：electron-vite 的 renderer root 是 frontend/，但不同启动方式路径可能不同。
@@ -112,15 +122,30 @@ async function openViaRpc(client, absPath) {
 export async function ensureFixtureOpen(client, absPath) {
     const reuse = await findOpenPreview(client);
     if (reuse != null) {
-        return { openedBy: "reuse", rect: reuse.rect };
+        // reuse.count = 页面上带哨兵的 .markdown-render-root 总数。
+        // >1 说明历史轮次留下过重复 block —— 仍然复用而不新建（把块数刷上去只会更容易被遮挡）。
+        return { openedBy: "reuse", rect: reuse.rect, sentinelRoots: reuse.count ?? null };
     }
 
     const diagnostics = [];
+    const before = await countSentinelRoots(client).catch(() => null);
+    if (before != null && before > 0) {
+        diagnostics.push(`已有 ${before} 个哨兵根但都不可用（不可编辑/尺寸异常），将尝试新建`);
+    }
 
     const rpc = await openViaRpc(client, absPath).catch((err) => ({ ok: false, tried: [String(err.message)] }));
     if (rpc?.ok) {
         const rect = await waitForMarkdownWithSentinel(client).catch(() => null);
-        if (rect != null) return { openedBy: "rpc", rect };
+        if (rect != null) {
+            const total = await countSentinelRoots(client).catch(() => null);
+            if (total != null && total > 1) {
+                console.warn(
+                    `[verify] 注意：页面现有 ${total} 个哨兵 fixture 块（疑似历史轮次重复创建）。` +
+                        `本次复用了其一；如需干净现场，删掉 .runcfg/verify 重跑。`
+                );
+            }
+            return { openedBy: "rpc", rect, sentinelRoots: total ?? null };
+        }
         diagnostics.push("rpc: createBlock 成功但没等到带哨兵的 .markdown-render-root");
     } else {
         diagnostics.push(`rpc: ${JSON.stringify(rpc?.tried ?? [])}`);

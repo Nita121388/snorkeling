@@ -7,6 +7,7 @@ import {
     deleteBlockRange,
     expandBlockSelection,
     isSelectingRange,
+    listAnchorRect,
     makeInlineEditKeydown,
     moveBlockRange,
     replaceSourceRange,
@@ -541,3 +542,59 @@ describe("moveBlockRange (drag-and-drop reorder)", () => {
     });
 });
 
+
+// ---------------------------------------------------------------------------
+// listAnchorRect — 折叠式有序项的 overlay 锚点回归
+//
+// 真实事故（2026-11-04，ol-collapsible case）：measureOverlay 里写了
+// `{ ...targetRect, left, width }`。DOMRect 的 top/left/width/height 是原型上的
+// getter，不是自有可枚举属性，对象展开把它们全丢掉 → next.top 为 undefined →
+// `.toFixed()` 抛 TypeError → 错误边界把整个预览块干掉 → 验证台后续 case 全部
+// no-root 假红。这条测试用「属性在原型上」的 rect 复刻该环境，锁死不再复发。
+// ---------------------------------------------------------------------------
+describe("listAnchorRect (DOMRect spread pitfall)", () => {
+    // 复刻真实 DOMRect：属性全在原型 getter 上（对象展开会丢）。
+    const protoRect = () => {
+        const proto = {
+            get top() {
+                return 111;
+            },
+            get bottom() {
+                return 133;
+            },
+            get left() {
+                return 40;
+            },
+            get right() {
+                return 300;
+            },
+            get width() {
+                return 260;
+            },
+            get height() {
+                return 22;
+            },
+        };
+        return Object.create(proto) as DOMRect;
+    };
+
+    it("keeps top/height when the source rect's fields live on the prototype", () => {
+        const rect = protoRect();
+        // 事故现场的条件：{...rect} 展开后没有任何几何字段
+        expect(Object.keys({ ...rect })).toEqual([]);
+        const anchor = listAnchorRect(rect, { liLeft: 44, liWidth: 256 });
+        expect(anchor).toEqual({ top: 111, left: 44, width: 256, height: 22 });
+        // 下游 measureOverlay 会直接对这些字段 toFixed —— 必须全是有限数
+        for (const v of [anchor.top, anchor.left, anchor.width, anchor.height]) {
+            expect(Number.isFinite(v)).toBe(true);
+        }
+    });
+
+    it("uses the li content-box left/width (first-line indent anchor), not the box rect", () => {
+        const anchor = listAnchorRect({ top: 5, height: 30 } as DOMRect, { liLeft: 77, liWidth: 200 });
+        expect(anchor.left).toBe(77);
+        expect(anchor.width).toBe(200);
+        expect(anchor.top).toBe(5);
+        expect(anchor.height).toBe(30);
+    });
+});

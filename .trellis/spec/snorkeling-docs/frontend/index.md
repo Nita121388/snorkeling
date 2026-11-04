@@ -20,6 +20,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [State Management](./state-management.md) | Local state, global state, server state | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
+| [Preview Edit Harness](./preview-edit-harness.md) | Machine-verifiable inline-edit pixel harness: screenshot pipeline invariants, rule semantics, calibration records | Filled |
 
 ---
 

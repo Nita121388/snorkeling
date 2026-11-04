@@ -1,26 +1,27 @@
 {
-  "id": "bullet-li",
-  "fixture": "list-forms.md",
-  "theme": "dark",
-  "target": {
-    "selector": "ul > li:first-child",
-    "within": ".markdown-render-root"
-  },
-  "action": {
-    "type": "dblclick",
-    "at": "text-first-line"
-  },
-  "rules": [
-    "text-zero-shift",
-    "pixel-zero-shift",
-    "no-clip",
-    "pixel-visual-parity",
-    "single-level-indent",
-    "marker-drawn",
-    "clean-exit",
-    "no-measure-loop",
-    "editor-kind"
-  ],
-  "expectEditor": "wysiwyg",
-  "note": "单个无序列表项（无子列表）→ 锚定 <li>"
+    "id": "bullet-li",
+    "fixture": "list-forms.md",
+    "theme": "dark",
+    "target": {
+        "selector": "ul > li:first-child",
+        "within": ".markdown-render-root"
+    },
+    "action": {
+        "type": "dblclick",
+        "at": "text-first-line"
+    },
+    "rules": [
+        "text-zero-shift",
+        "pixel-zero-shift",
+        "no-clip",
+        "pixel-visual-parity",
+        "single-level-indent",
+        "marker-drawn",
+        "clean-exit",
+        "no-measure-loop",
+        "inline-style-parity",
+        "editor-kind"
+    ],
+    "expectEditor": "wysiwyg",
+    "note": "单个无序列表项（无子列表）→ 锚定 <li>"
 }

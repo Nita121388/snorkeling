@@ -30,7 +30,7 @@ import {
 import { ensureFixtureOpen } from "./lib/open.mjs";
 import { observeCase } from "./lib/observe.mjs";
 import { loadRules, runRules } from "./lib/oracle.mjs";
-import { cropPng, compareInkProfiles, diffPng, diffRatio, readPng, writePng } from "./lib/pixel.mjs";
+import { cropPng, compareInkProfiles, compareInkStructure, diffPng, diffRatio, readPng, writePng } from "./lib/pixel.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
@@ -213,7 +213,7 @@ async function main() {
         const fixtureFile = path.join(fixturesDir, caseDefs[0].fixture);
         const opened = await ensureFixtureOpen(client, fixtureFile);
 
-        const ctx = { outDir: runDir, readPng, cropPng, compareInkProfiles, diffPng, diffRatio, writePng };
+        const ctx = { outDir: runDir, readPng, cropPng, compareInkProfiles, compareInkStructure, diffPng, diffRatio, writePng };
         const caseResults = [];
 
         for (const caseDef of caseDefs) {
@@ -221,18 +221,20 @@ async function main() {
             try {
                 const observation = await observeCase(client, caseDef, runDir);
                 const verdict = await runRules(caseDef.rules ?? [...rules.keys()], { observation, caseDef, ctx });
+                const degraded = Array.isArray(observation.degradedTrace) ? observation.degradedTrace : [];
                 result = {
                     id: caseDef.id,
                     note: caseDef.note,
                     pass: verdict.pass,
                     checks: verdict.checks,
-                    warnings: verdict.warnings,
+                    warnings: [...(verdict.warnings ?? []), ...degraded],
                     images: observation.images,
                     editorKind: observation.during?.editorKind,
                     evidence: {
                         target: observation.target.ink,
                         duringInk: observation.during?.ink,
                         overlay: observation.during?.overlay,
+                        degradedTrace: degraded,
                     },
                 };
             } catch (err) {

@@ -199,25 +199,41 @@ async function connectToTarget(endpoint, target) {
     }
 
     /**
+     * 视口 CSS 尺寸。clip 坐标以 CSS 像素为单位，必须先夹到视口内。
+     * 注意：这里返回的是 CSS 像素；surface 截图的产物可能是 device 像素（2x），
+     * 由调用方归一化（observe 的 shoot / pixel.scalePng）。
+     */
+    async function viewportSize() {
+        const v = await evaluate(`({ w: innerWidth, h: innerHeight })`);
+        return { w: Number(v?.w) || 0, h: Number(v?.h) || 0 };
+    }
+
+    /**
      * 截图。两级策略 + 重试：
      *   A. fromSurface:true + clip —— 窗口可见时最快，且尊重 clip（默认路径）
-     *   B. fromSurface:false 全屏 —— 窗口被遮挡/失焦时合成器不产帧，A 会挂到超时；B 不问合成器
+     *   B. fromSurface:false 全屏 —— A 挂掉时的兼底（产物是整窗图，调用方自行裁）
      *
-     * 返回 { buffer, fullViewport }：fullViewport=true 表示拿到的是整张视口（clip 被忽略），
-     * 调用方需要自己裁。
+     * 返回 { buffer, fullViewport, degradedTrace? }：fullViewport=true 表示拿到的是整张视口
+     * （clip 被忽略），调用方需要自己裁；degradedTrace 非空表示降级过（环境退化告警）。
      */
     async function screenshot(clip) {
         const attempts = [
             { fromSurface: true, clip },
             { fromSurface: false, clip: null },
-            { fromSurface: false, clip: null },
         ];
-        let lastErr;
-        for (const a of attempts) {
+        const trace = [];
+        for (let i = 0; i < attempts.length; i++) {
+            const a = attempts[i];
+            const tag = `#${i}(${a.fromSurface ? "surface" : "nosurface"}${a.clip != null ? "+clip" : "+full"})`;
             try {
                 const params = { format: "png", captureBeyondViewport: false, fromSurface: a.fromSurface };
                 if (a.clip != null) {
                     const vp = await viewportSize();
+                    // 视口尺寸无效（评估失败/0）时不能继续：clip 会被夹成 1x1，
+                    // captureScreenshot 不会报错 → 会伪装成"尝试成功"并把 1x1 图当产物。
+                    if (!(vp.w > 0 && vp.h > 0)) {
+                        throw new Error(`viewportSize 无效（${JSON.stringify(vp)}），clip 不可用`);
+                    }
                     const x = Math.max(0, Math.min(Math.round(a.clip.x), vp.w - 1));
                     const y = Math.max(0, Math.min(Math.round(a.clip.y), vp.h - 1));
                     params.clip = {
@@ -231,12 +247,16 @@ async function connectToTarget(endpoint, target) {
                 await send("Page.bringToFront").catch(() => {});
                 const { data } = await send("Page.captureScreenshot", params, 12000);
                 const buffer = Buffer.from(data, "base64");
-                return { buffer, fullViewport: a.clip == null };
+                if (trace.length > 0) {
+                    // 前几级失败过：把 trace 带出去，避免"静默降级"掩盖环境退化。
+                    return { buffer, fullViewport: a.clip == null, clip: params.clip ?? null, degradedTrace: trace };
+                }
+                return { buffer, fullViewport: a.clip == null, clip: params.clip ?? null };
             } catch (err) {
-                lastErr = err;
+                trace.push(`${tag}:${String(err?.message ?? err).slice(0, 80)}`);
             }
         }
-        throw lastErr ?? new Error("截图失败");
+        throw new Error(`截图失败：${trace.join(" | ")}`);
     }
 
     /** 真实指针单击（关弹窗、聚焦块用）。 */

@@ -22,6 +22,11 @@ import { WysiwygEditor, type WysiwygEditorHandle } from "./wysiwyg-editor";
 
 type InlineEditLogEntry = { t: number; seq: number; msg: string; details: Record<string, unknown> };
 
+/** 调试日志专用的安全数字格式化：undefined/NaN/Infinity 一律降级成 "?"，绝不让 log 崩 app。 */
+function fmtPx(v: unknown): string {
+    return typeof v === "number" && Number.isFinite(v) ? v.toFixed(2) : "?";
+}
+
 function isInlineEditDebugEnabled(): boolean {
     return typeof window !== "undefined" && window.localStorage?.getItem("snorkelingInlineEditDebug") === "1";
 }
@@ -405,6 +410,26 @@ export function resolveTextOffsetPx(targetEl: HTMLElement): number {
 }
 
 export type OverlayGeometry = { top: number; left: number; width: number; height: number };
+
+/**
+ * 折叠式有序项（首行缩进模式）的 overlay 锚点矩形。
+ *
+ * 必须是纯函数且显式逐字段拷贝：`getBoundingClientRect()` 返回的 DOMRect 的
+ * top/left/width/height 是**原型上的 getter**，`{ ...rect, left, width }` 对象展开
+ * 会丢掉 top/height（变成 undefined），下游 `.toFixed()` 直接抛错、错误边界把
+ * 整个预览块整下。这是真实事故（ol-collapsible case），必须留回归单测。
+ */
+export function listAnchorRect(
+    targetRect: Pick<DOMRect, "top" | "height">,
+    continuation: { liLeft: number; liWidth: number }
+): OverlayGeometry {
+    return {
+        top: targetRect.top,
+        left: continuation.liLeft,
+        width: continuation.liWidth,
+        height: targetRect.height,
+    };
+}
 
 export type OverlayGeometryInput = {
     kind: InlineEditBlockKind;
@@ -895,10 +920,12 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         // 首行缩进模式：锚点换成 li 的**内容盒左边**（rect.left 会差 2px 的 padding/border），
         // 并让 textOffset 与缩进等量抵消，使 overlay.left 正好落在内容盒左边。
         const listTextOffsetPx = continuation != null ? continuation.firstLineIndent : resolveTextOffsetPx(target);
+        // 注意：绝不能用 `{ ...targetRect, left, width }` —— DOMRect 的 top/left/width/height
+        // 是原型上的 getter，不是自有可枚举属性，对象展开会把它们全丢掉（top/height 变
+        // undefined），下游 `.toFixed()` 直接抛错、错误边界把整个预览块整下（真实事故）。
+        // 折叠项必须显式构造完整 rect-like 对象。
         const anchorRect =
-            continuation != null
-                ? { ...targetRect, left: continuation.liLeft, width: continuation.liWidth }
-                : targetRect;
+            continuation != null ? listAnchorRect(targetRect, continuation) : targetRect;
         const next = resolveOverlayGeometry({
             kind: editSession.blockKind,
             targetRect: anchorRect,
@@ -926,8 +953,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             skipped = false;
             return next;
         });
+        // 调试日志也不允许把 app 搞崩：任何一个 rect 字段异常时降级成 "?"，
+        // 不许让 measure 路径因为一行 log 抛错（错误边界会连整块一起干掉）。
         inlineEditDebug(
-            `measure scrollTop=${viewport.scrollTop.toFixed(2)} tRectTop=${targetRect.top.toFixed(2)} tRectLeft=${targetRect.left.toFixed(2)} tRectW=${targetRect.width.toFixed(2)} tRectH=${targetRect.height.toFixed(2)} next(t=${next.top.toFixed(2)},l=${next.left.toFixed(2)},w=${next.width.toFixed(2)},h=${next.height.toFixed(2)}) skipped=${skipped} kind=${editSession?.blockKind ?? "?"} line=${editSession?.startLine ?? "?"}`
+            `measure scrollTop=${fmtPx(viewport.scrollTop)} tRectTop=${fmtPx(targetRect.top)} tRectLeft=${fmtPx(targetRect.left)} tRectW=${fmtPx(targetRect.width)} tRectH=${fmtPx(targetRect.height)} next(t=${fmtPx(next.top)},l=${fmtPx(next.left)},w=${fmtPx(next.width)},h=${fmtPx(next.height)}) skipped=${skipped} kind=${editSession?.blockKind ?? "?"} line=${editSession?.startLine ?? "?"}`
         );
     }, [editSession, getViewportEl]);
 
