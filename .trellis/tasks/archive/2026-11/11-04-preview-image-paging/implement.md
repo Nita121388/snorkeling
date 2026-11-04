@@ -22,5 +22,5 @@
 
 ## 发版
 
-- [ ] commit + push
-- [ ] 发版 0.0.116
+- [x] commit + push（53ebc8d3 / e2263ac8）
+- [x] 发版 0.0.116（tag 已推，workflow 起跑）
