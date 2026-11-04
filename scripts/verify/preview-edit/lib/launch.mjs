@@ -186,32 +186,40 @@ export async function enableInlineEditLog(client) {
     return true;
 }
 
-/** 注入"固定观感"样式：禁动效、隐藏光标与选区高亮（否则像素对比会被它们污染）。 */
+/**
+ * 注入"固定观感"样式：禁动效，避免截图/测量期间有过渡在跑。
+ *
+ * 注意：**不要**在这里隐藏光标/选区。曾经为了拍"无光标"截图全局注入
+ * `[contenteditable]{caret-color:transparent}`，跑完没撤 —— 结果用户在同一个窗口里
+ * 点标题看不到光标（真实事故）。光标隐藏只在 establishScreenshotHygiene() 里、只作用于
+ * 覆盖层、且截完立刻移除。
+ */
 export async function injectStabilityCss(client) {
     await client.evaluate(`(() => {
         const id = "verify-stability";
         document.getElementById(id)?.remove();
         const style = document.createElement("style");
         style.id = id;
-        style.textContent = [
-            "*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}",
-            "input,textarea,[contenteditable]{caret-color:transparent!important}",
-            "::selection{background:transparent!important;color:inherit!important}",
-            "::-moz-selection{background:transparent!important;color:inherit!important}",
-        ].join("\\n");
+        style.textContent = "* , *::before, *::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}";
         document.head.appendChild(style);
         return true;
     })()`);
 }
 
-/**
- * 清掉挡路的浮层。实测踩到两类：
- *   1) 残留的空全屏 `.modal-backdrop`（无内容，吃掉所有点击）
- *   2) 首次安装的 Welcome 引导弹窗（`.modal-wrapper`，有内容，必须点它的 Continue）
- *
- * 策略：先点弹窗自己的"关闭类"按钮（白名单文案），再处理空 backdrop；全屏有内容却
- * 找不到关闭按钮 → 直接报错，绝不强删别人的 DOM。
- */
+/** 删掉本验证台注入过的所有样式（跑完必须调用，否则会污染这个窗口）。 */
+export async function removeInjectedStyles(client) {
+    await client
+        .evaluate(`(() => {
+            let n = 0;
+            for (const el of document.querySelectorAll('style[id^="verify-"]')) { el.remove(); n++; }
+            for (const el of document.querySelectorAll(".inline-edit-overlay textarea, .inline-edit-overlay [contenteditable]")) {
+                el.style.removeProperty("caret-color");
+            }
+            return n;
+        })()`)
+        .catch(() => 0);
+}
+
 export async function dismissOverlays(client) {
     const warnings = [];
     // 引导流程是多页向导（Welcome → Wave AI → …），所以按"优先级打分"挑按钮：

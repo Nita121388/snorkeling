@@ -311,30 +311,28 @@ export async function observeCase(client, caseDef, outDir) {
     }
     await new Promise((r) => setTimeout(r, 250));
 
-    // 截图前先把光标/选区从画面上抹掉：caret 是真实存在的墨迹，会污染"视觉一致性"判定。
-    // 只改样式不动内容（不改 selection，避免打断编辑会话）。
+    // 截图前临时把光标/选区抹掉（只作用于覆盖层，截完立刻移除）。
+    // 绝不全局隐藏：那样会污染宿主窗口，用户点标题就看不到光标了（真实事故）。
     await client
         .evaluate(`(() => {
-            const ov = document.querySelector(".inline-edit-overlay");
-            if (ov == null) return false;
-            for (const el of ov.querySelectorAll("textarea, [contenteditable]")) {
-                el.style.setProperty("caret-color", "transparent", "important");
-            }
+            document.getElementById("verify-shot-caret")?.remove();
             const style = document.createElement("style");
-            style.id = "verify-caret-hidden";
-            style.textContent = "::selection{background:transparent!important;color:inherit!important}";
-            document.getElementById("verify-caret-hidden")?.remove();
+            style.id = "verify-shot-caret";
+            style.textContent =
+                ".inline-edit-overlay textarea,.inline-edit-overlay [contenteditable]{caret-color:transparent!important}" +
+                ".inline-edit-overlay ::selection{background:transparent!important;color:inherit!important}";
             document.head.appendChild(style);
             return true;
         })()`)
         .catch(() => false);
-    await new Promise((r) => setTimeout(r, 120));
+    await new Promise((r) => setTimeout(r, 100));
 
     const during = await client.evaluate(describeDuringJs());
     if (during?.error != null) {
         throw new Error(`编辑态观察失败（${caseDef.id}）: ${during.error}`);
     }
     await shoot("during");
+    await client.evaluate(`document.getElementById("verify-shot-caret")?.remove()`).catch(() => {});
 
     // Esc 退出：优先真实键盘事件，兜底页内合成（真实键盘有时不落在编辑器上）
     await client.pressKey("Escape");

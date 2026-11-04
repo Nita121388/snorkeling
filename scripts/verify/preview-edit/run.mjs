@@ -19,11 +19,18 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureInstance, enableInlineEditLog, injectStabilityCss, dismissOverlays, DEFAULTS } from "./lib/launch.mjs";
+import {
+    ensureInstance,
+    enableInlineEditLog,
+    injectStabilityCss,
+    dismissOverlays,
+    removeInjectedStyles,
+    DEFAULTS,
+} from "./lib/launch.mjs";
 import { ensureFixtureOpen } from "./lib/open.mjs";
 import { observeCase } from "./lib/observe.mjs";
 import { loadRules, runRules } from "./lib/oracle.mjs";
-import { cropPng, compareInkProfiles, diffPng, readPng, writePng } from "./lib/pixel.mjs";
+import { cropPng, compareInkProfiles, diffPng, diffRatio, readPng, writePng } from "./lib/pixel.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
@@ -206,7 +213,7 @@ async function main() {
         const fixtureFile = path.join(fixturesDir, caseDefs[0].fixture);
         const opened = await ensureFixtureOpen(client, fixtureFile);
 
-        const ctx = { outDir: runDir, readPng, cropPng, compareInkProfiles, diffPng, writePng };
+        const ctx = { outDir: runDir, readPng, cropPng, compareInkProfiles, diffPng, diffRatio, writePng };
         const caseResults = [];
 
         for (const caseDef of caseDefs) {
@@ -294,6 +301,8 @@ async function main() {
             console.log(`人读报告: ${path.join(runDir, "report.md")}`);
         }
     } finally {
+        // 注入的样式必须撤掉，否则会污染这个窗口（caret/动画/旧 CSS 都会留下）
+        await removeInjectedStyles(client).catch(() => {});
         if (!opts.keepOpen) instance.cleanup();
     }
 
