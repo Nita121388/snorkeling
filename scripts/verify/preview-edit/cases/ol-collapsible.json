@@ -14,6 +14,7 @@
     "text-zero-shift",
     "pixel-zero-shift",
     "no-clip",
+    "pixel-visual-parity",
     "single-level-indent",
     "marker-drawn",
     "clean-exit",

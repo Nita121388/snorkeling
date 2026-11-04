@@ -528,6 +528,59 @@ export function buildListWysiwygSeed(targetEl: HTMLElement, listMarker: string |
     return clone.outerHTML;
 }
 
+/**
+ * 把种子 HTML 里的"软换行"规范化成显式 `<br>`。
+ *
+ * 为什么要这一步：渲染树把 markdown 的软换行渲染成 `<br>` 或文本里的换行符，而编辑器根节点
+ * 用 `whiteSpace: normal`（避免种子里的排版空白变成真实空行）。normal 会把文本节点里的换行符
+ * 折叠成空格 —— 于是一段两行的条目进编辑后**并成一行**，整块看起来完全变样
+ * （实测：折叠式多行条目的换行消失、像素差 7%）。
+ *
+ * 所以在种子阶段就把语义显式化：文本里的换行 → `<br>`，纯排版用的空白文本节点删掉。
+ * 这样根节点可以安全地用 `normal`，软换行也不会丢。
+ */
+export function normalizeWysiwygSeed(html: string): string {
+    if (!/\r|\n/.test(html)) {
+        return html;
+    }
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    let node: Node | null;
+    while ((node = walker.nextNode()) != null) {
+        textNodes.push(node as Text);
+    }
+    for (const textNode of textNodes) {
+        const parent = textNode.parentElement;
+        // 代码里的换行是内容的一部分，不转 <br>
+        if (parent != null && parent.closest("pre, code") != null) {
+            continue;
+        }
+        const value = textNode.nodeValue ?? "";
+        if (value.trim() === "") {
+            // 纯排版空白（标签之间的缩进/换行）→ 直接丢掉
+            textNode.nodeValue = "";
+            continue;
+        }
+        const parts = value.split(/\r?\n/);
+        if (parts.length === 1) {
+            continue;
+        }
+        const frag = document.createDocumentFragment();
+        parts.forEach((part, index) => {
+            if (index > 0) {
+                frag.appendChild(document.createElement("br"));
+            }
+            const trimmed = index === 0 ? part.replace(/\s+$/, "") : part.replace(/^\s+/, "");
+            frag.appendChild(document.createTextNode(trimmed));
+        });
+        textNode.parentNode?.replaceChild(frag, textNode);
+    }
+    host.normalize();
+    return host.innerHTML;
+}
+
 export function captureWysiwygInfo(
     blockKind: InlineEditBlockKind,
     targetEl: HTMLElement,
@@ -579,7 +632,7 @@ export function captureWysiwygInfo(
             listMarker = markerMatch[1];
         }
     }
-    return { html, headingLevel, listMarker };
+    return { html: normalizeWysiwygSeed(html), headingLevel, listMarker };
 }
 
 function stripCodeFence(source: string): string {

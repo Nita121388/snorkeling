@@ -1075,6 +1075,30 @@
 .inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-editor {
     // The marker sits inside the root's padding box; `hidden` would clip it at the boundary.
     overflow: visible;
+
+    // 内联标记必须镜像渲染态：覆盖层 portal 到 body，`.markdown` 作用域下的
+    // code / strong / a 规则根本不会命中它 → 编辑时 `code` 丢等宽字体、字重与颜色变样，
+    // 整行看起来就和阅读态不一样（实测像素差 6~7%）。
+    code {
+        color: var(--main-text-color);
+        font: var(--fixed-font);
+        font-size: var(--markdown-fixed-font-size);
+        border-radius: 4px;
+    }
+
+    strong {
+        color: var(--main-text-color);
+    }
+
+    a {
+        color: #32afff;
+    }
+
+    kbd,
+    samp {
+        font: var(--fixed-font);
+        font-size: var(--markdown-fixed-font-size);
+    }
 }
 
 .inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul,

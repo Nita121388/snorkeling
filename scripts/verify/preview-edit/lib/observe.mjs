@@ -311,6 +311,25 @@ export async function observeCase(client, caseDef, outDir) {
     }
     await new Promise((r) => setTimeout(r, 250));
 
+    // 截图前先把光标/选区从画面上抹掉：caret 是真实存在的墨迹，会污染"视觉一致性"判定。
+    // 只改样式不动内容（不改 selection，避免打断编辑会话）。
+    await client
+        .evaluate(`(() => {
+            const ov = document.querySelector(".inline-edit-overlay");
+            if (ov == null) return false;
+            for (const el of ov.querySelectorAll("textarea, [contenteditable]")) {
+                el.style.setProperty("caret-color", "transparent", "important");
+            }
+            const style = document.createElement("style");
+            style.id = "verify-caret-hidden";
+            style.textContent = "::selection{background:transparent!important;color:inherit!important}";
+            document.getElementById("verify-caret-hidden")?.remove();
+            document.head.appendChild(style);
+            return true;
+        })()`)
+        .catch(() => false);
+    await new Promise((r) => setTimeout(r, 120));
+
     const during = await client.evaluate(describeDuringJs());
     if (during?.error != null) {
         throw new Error(`编辑态观察失败（${caseDef.id}）: ${during.error}`);

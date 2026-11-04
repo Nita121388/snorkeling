@@ -193,3 +193,53 @@ export function diffPng(beforePng, duringPng, { tol = 24 } = {}) {
     }
     return { png: out, diffCount, total: width * height };
 }
+
+/**
+ * 整体视觉一致性：两张同尺寸图里"明显不同"的像素占比。
+ * 用于 pixel-visual-parity —— 只比文字起点 x 会漏掉字体/内联样式/行高等差异（真实踩到：
+ * 编辑器里 code 丢了等宽字体、strong 字重不同，起点却一样）。
+ *
+ * 会剔除"镀层列"（整列几乎全是墨迹的竖线，例如 accent 竖条），否则它会被算成大面积差异。
+ */
+export function diffRatio(a, b, { tol = 24, chromeColumnRatio = 0.8 } = {}) {
+    const width = Math.min(a.width, b.width);
+    const height = Math.min(a.height, b.height);
+    if (width === 0 || height === 0) return { ratio: 0, diffPixels: 0, total: 0, chromeColumns: 0 };
+
+    const inkOf = (png, x, y) => Math.abs(luminance(pixelAt(png, x, y)) - luminance(detectBackground(png))) > tol;
+    const colInkA = new Array(width).fill(0);
+    const colInkB = new Array(width).fill(0);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (inkOf(a, x, y)) colInkA[x]++;
+            if (inkOf(b, x, y)) colInkB[x]++;
+        }
+    }
+    const isChrome = (x) => colInkA[x] / height >= chromeColumnRatio || colInkB[x] / height >= chromeColumnRatio;
+
+    let diffPixels = 0;
+    let total = 0;
+    let chromeColumns = 0;
+    for (let x = 0; x < width; x++) {
+        if (isChrome(x)) {
+            chromeColumns++;
+            continue;
+        }
+        for (let y = 0; y < height; y++) {
+            total++;
+            const pa = pixelAt(a, x, y);
+            const pb = pixelAt(b, x, y);
+            const differs =
+                Math.abs(pa.r - pb.r) > tol ||
+                Math.abs(pa.g - pb.g) > tol ||
+                Math.abs(pa.b - pb.b) > tol;
+            if (differs) diffPixels++;
+        }
+    }
+    return {
+        ratio: total === 0 ? 0 : diffPixels / total,
+        diffPixels,
+        total,
+        chromeColumns,
+    };
+}
