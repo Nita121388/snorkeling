@@ -608,8 +608,12 @@
         color: var(--secondary-text-color);
     }
 
+    /* 右侧统一 18px 操作栏：值一律止于操作栏左侧，hover 图标落在栏内。
+       以前 note 行的放大按钮只是 opacity:0，仍占 18px flex 宽度，
+       把同级 width:100% 的值按钮压缩 → note 的 — 比其它行左移一个图标宽。 */
     .property-row__value {
         justify-content: flex-end;
+        padding-right: 18px;
         text-align: right;
     }
 
@@ -635,6 +639,22 @@
         }
     }
 
+    /* 空 note 的 — 是单行占位，不该套用多行 note 的「贴顶对齐」，
+       否则 26px 行高里的余量全落底部，整行上浮约 6px、与 Tags 行距塌陷。 */
+    .property-row.is-note:has(.property-empty--dash) {
+        align-items: center;
+
+        .property-row__icon,
+        .property-row__name {
+            margin-top: 0;
+            line-height: 26px;
+        }
+
+        .property-row__value {
+            align-items: center;
+        }
+    }
+
     .property-row.is-note .property-text {
         max-width: 74%;
         line-height: 1.45;
@@ -650,10 +670,15 @@
         opacity: 1;
     }
 
-    /* note 的「弹窗编辑」按钮只在行 hover 时出现，避免和右对齐的值抢位 */
+    /* note 的「弹窗编辑」按钮只在行 hover 时出现，避免和右对齐的值抢位。
+       绝对定位进右侧 18px 操作栏，不再参与 flex 计算（否则会压缩值宽度）。 */
     .property-row__dialog-btn,
     .property-row__menu-btn,
     .property-row__delete {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
         opacity: 0;
     }
 

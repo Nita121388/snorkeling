@@ -438,3 +438,39 @@ run --expect=fixed → 读 report.json 的 failing[].id + detail → 只改一�
 ```
 
 **rules 库只增不减**：每修一个 bug 就多一条常驻判据，覆盖面单调增长。
+
+---
+
+## Agent hover 卡属性行（PropertyList `layout="agent"`）
+
+**`opacity: 0` 不等于「不占位」**。行内 hover 才出现的按钮（`property-row__dialog-btn` /
+`property-row__menu-btn` / `property-row__delete`）如果仍留在 flex 流里，就会压缩同级
+`width: 100%` 的值按钮，让该行值右缘比其它行少一个图标宽（实测 18px）。隐藏按钮必须
+绝对定位到预留 gutter：
+
+```scss
+.property-list--agent {
+    .property-row__value { padding-right: 18px; }        /* 统一右侧操作栏 */
+    .property-row__dialog-btn,
+    .property-row__menu-btn,
+    .property-row__delete {
+        position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    }
+}
+```
+
+**空值占位不要继承多行行的对齐**。`.property-row.is-note` 为多行 note 设了
+`align-items: flex-start`（图标/标签对齐首行）；但空 note 的 `—` 是单行占位，套上
+`flex-start` 会把 26px 行高的余量全推到下方，整行上浮约 6px、行距塌到 20px。用
+`:has()` 只在非空时生效：
+
+```scss
+.property-row.is-note:has(.property-empty--dash) {
+    align-items: center;
+    .property-row__icon, .property-row__name { margin-top: 0; line-height: 26px; }
+    .property-row__value { align-items: center; }
+}
+```
+
+**验证方式**（不依赖手看）：`sass` 编译该 scss → Edge headless 渲染复刻 DOM →
+PIL 扫描每行墨迹右缘与 label 中心 y。判定：四行 `value_right` 同一 x、行距恒定。
