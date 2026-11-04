@@ -1153,6 +1153,24 @@
     color: var(--main-text-color);
 }
 
+// 首行缩进模式（折叠式有序项）：渲染态是"首行缩进 + 续行贴 li 左边"。
+// 缩进用 li 的 text-indent（只影响首行）；marker 用 left 定位到它自己的列。
+// 用根 padding 会连续行一起右移 —— 那正是 ol-collapsible 长期红着的 33px 位移根因。
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > li,
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > ul > li,
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > ol > li {
+    padding-left: 0;
+    text-indent: var(--inline-edit-first-line-indent, 0px);
+}
+
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > ul > li::before,
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > ol > li::before {
+    right: auto;
+    left: var(--inline-edit-marker-offset, 0px);
+    width: auto;
+    text-align: left;
+}
+
 // Nested levels keep the rendered indent so the hierarchy still reads correctly.
 .inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ul,
 .inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ol {

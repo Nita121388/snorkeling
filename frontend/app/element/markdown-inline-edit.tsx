@@ -217,6 +217,13 @@ export type InlineEditSession = {
      */
     listIndentPx?: number;
     /**
+     * 列表缩进语义。"first-line" = 折叠式有序项：首行缩进、续行贴 li 左边
+     * （见 resolveListContinuation）。缺省 = 悬挂缩进（两行都对齐文字起点）。
+     */
+    listIndentMode?: "first-line";
+    /** "first-line" 模式下 marker 起点相对 li 内容盒左边的偏移（px）。 */
+    listMarkerOffsetPx?: number;
+    /**
      * Preserved original list marker for WYSIWYG list blocks: the bullet char
      * ("-" | "*" | "+") or the ordered counter head ("1." | "1)"). Kept so commit
      * serialization re-emits the author's marker style, keeping git diffs minimal.
@@ -308,6 +315,69 @@ export function resolveListIndentPx(targetEl: HTMLElement, blockKind: InlineEdit
  * Both cases make a box-based measurement land the editor text on the wrong x (measured residue:
  * 2px for whole-list anchors, 13px for collapsible items).
  */
+/**
+ * 折叠式有序列表项的"续行展平"几何。
+ *
+ * 渲染态结构（CDP 实测）：
+ *   li.ordered-list-collapsible             left = 44   <- li 内容盒左边
+ *     .ordered-list-summary-row (flex)
+ *       button.ordered-list-collapse-button   left = 40
+ *       .ordered-list-summary-content         left = 64   <- ::before 画 "1."，推进 13.03 -> 文字 77.03
+ *     .ordered-list-collapse-body            left = 44   <- 续行从这里开始
+ *
+ * 所以这类条目是**首行缩进**（首行 77，续行回到 44），不是悬挂缩进（两行都在 77）。
+ * 编辑器若沿用悬挂缩进模型，续行会右移 firstLineIndent px —— 实测 33px，这正是
+ * ol-collapsible 一直红着的真正原因（早期误判为 2px / 38px）。
+ *
+ * 返回 null = 不是折叠式条目，调用方保持原有悬挂缩进逻辑。
+ */
+export function resolveListContinuation(
+    targetEl: HTMLElement,
+    blockKind: InlineEditBlockKind,
+): { firstLineIndent: number; markerOffset: number; liLeft: number; liWidth: number } | null {
+    if (blockKind !== "list") {
+        return null;
+    }
+    const li = targetEl.tagName === "LI" ? targetEl : targetEl.querySelector<HTMLElement>("li");
+    if (li == null) {
+        return null;
+    }
+    const summary = li.querySelector<HTMLElement>(".ordered-list-summary-content");
+    if (summary == null) {
+        return null;
+    }
+    const liRect = li.getBoundingClientRect();
+    const cs = getComputedStyle(li);
+    const liLeft = liRect.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+
+    const walker = document.createTreeWalker(summary, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode()) != null) {
+        if ((node.nodeValue ?? "").trim() !== "") {
+            break;
+        }
+    }
+    if (node == null) {
+        return null;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const round = (v: number) => Math.round(v * 100) / 100;
+    const firstLineIndent = round(range.getBoundingClientRect().left - liLeft);
+    const markerOffset = round(summary.getBoundingClientRect().left - liLeft);
+    if (!Number.isFinite(firstLineIndent) || firstLineIndent <= 0) {
+        return null;
+    }
+    // liLeft 是**内容盒**左边（续行/首行缩进的共同基准）；li 自身的 rect.left 会差一个
+    // padding/border（实测 2px），拿它当锚点会让整块左移 2px。
+    return {
+        firstLineIndent,
+        markerOffset: Math.max(0, markerOffset),
+        liLeft,
+        liWidth: liRect.right - liLeft,
+    };
+}
+
 export function resolveTextOffsetPx(targetEl: HTMLElement): number {
     const base = targetEl.getBoundingClientRect().left;
     let inkLeft: number | null = null;
@@ -817,14 +887,25 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         const renderRect = renderRoot?.getBoundingClientRect() ?? null;
         const headingTitleEl =
             editSession.blockKind === "h" ? (target.querySelector<HTMLElement>(".heading-title") ?? target) : null;
-        const listIndentPx = resolveListIndentPx(target, editSession.blockKind) || editSession.listIndentPx || 0;
+        // 折叠式有序项：缩进取"首行缩进"而非 marker 列宽，续行才会贴 li 左边。
+        const continuation = resolveListContinuation(target, editSession.blockKind);
+        const listIndentPx =
+            continuation?.firstLineIndent ??
+            (resolveListIndentPx(target, editSession.blockKind) || editSession.listIndentPx || 0);
+        // 首行缩进模式：锚点换成 li 的**内容盒左边**（rect.left 会差 2px 的 padding/border），
+        // 并让 textOffset 与缩进等量抵消，使 overlay.left 正好落在内容盒左边。
+        const listTextOffsetPx = continuation != null ? continuation.firstLineIndent : resolveTextOffsetPx(target);
+        const anchorRect =
+            continuation != null
+                ? { ...targetRect, left: continuation.liLeft, width: continuation.liWidth }
+                : targetRect;
         const next = resolveOverlayGeometry({
             kind: editSession.blockKind,
-            targetRect,
+            targetRect: anchorRect,
             renderRect,
             viewportRect: viewport.getBoundingClientRect(),
             listIndentPx,
-            listTextOffsetPx: resolveTextOffsetPx(target),
+            listTextOffsetPx,
             headingTextLeft: headingTitleEl?.getBoundingClientRect().left ?? null,
         });
         // Skip the state write when the rect is unchanged so re-measure churn (scroll events,
@@ -1027,6 +1108,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // (stripListMarker) so passing the stripped text made the marker lookup fail and
             // every ordered list seeded as a <ul> with bullets.
             const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, sourceContent);
+            const listContinuation = resolveListContinuation(targetEl, blockKind);
             const session: InlineEditSession = {
                 blockKind,
                 startLine: safeLine,
@@ -1034,7 +1116,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 initialContent,
                 targetEl,
                 typography: captureBlockTypography(targetEl),
-                listIndentPx: resolveListIndentPx(targetEl, blockKind),
+                // 折叠式有序项要按"首行缩进"建模，否则续行右移（见 resolveListContinuation）
+                listIndentPx: listContinuation?.firstLineIndent ?? resolveListIndentPx(targetEl, blockKind),
+                listIndentMode: listContinuation != null ? "first-line" : undefined,
+                listMarkerOffsetPx: listContinuation?.markerOffset,
                 caretOffset,
                 insertRevert,
                 placeholder: placeholder === "inline" ? true : placeholder || undefined,
@@ -1310,6 +1395,10 @@ type InlineEditOverlayProps = {
      * text's x. Also published as the `--inline-edit-list-indent` CSS var for the marker rules.
      */
     listIndentPx?: number;
+    /** 见 InlineEditSession.listIndentMode（"first-line" = 首行缩进 + 续行贴左边）。 */
+    listIndentMode?: "first-line";
+    /** 见 InlineEditSession.listMarkerOffsetPx。 */
+    listMarkerOffsetPx?: number;
 };
 
 /**
@@ -1387,6 +1476,8 @@ export function InlineEditOverlay({
     caretOffset,
     sessionKey,
     listIndentPx,
+    listIndentMode,
+    listMarkerOffsetPx,
 }: InlineEditOverlayProps) {
     const caretPlacedForKeyRef = useRef<string | null>(null);
     useLayoutEffect(() => {
@@ -1447,12 +1538,22 @@ export function InlineEditOverlay({
     // `targetLeft + textOffset - markerColumn`, so padding by the column puts the first character
     // back on `targetLeft + textOffset` — the rendered text's x — while leaving the marker its
     // own band on the left. Non-list kinds keep the typography snapshot untouched.
-    const listIndent = blockKind === "list" ? Math.max(0, listIndentPx ?? 0) : 0;
-    const overlayTypography = listIndent > 0 ? { ...typography, paddingLeft: `${listIndent}px` } : typography;
+    // 首行缩进模式（折叠式有序项）：缩进加在 li 的 text-indent 上，不能加在根 padding 上 ——
+    // 根 padding 会把"首行和续行一起"右移，而渲染态只要首行缩进、续行回到 li 左边。
+    const firstLineIndentMode = blockKind === "list" && listIndentMode === "first-line";
+    const listIndent = blockKind === "list" && !firstLineIndentMode ? Math.max(0, listIndentPx ?? 0) : 0;
+    // 首行缩进模式必须把根 padding 归零：缩进由 li 的 text-indent 承担，若再叠上
+    // captureBlockTypography 量到的 paddingLeft（实测 22px），首行会被双重右移。
+    const overlayTypography = firstLineIndentMode
+        ? { ...typography, paddingLeft: "0px" }
+        : listIndent > 0
+          ? { ...typography, paddingLeft: `${listIndent}px` }
+          : typography;
     return createPortal(
         <div
             className="inline-edit-overlay"
             data-block-kind={wysiwygRef != null && wysiwygHtml != null ? "wysiwyg" : blockKind}
+            data-list-indent-mode={firstLineIndentMode ? "first-line" : undefined}
             style={
                 {
                     position: "fixed",
@@ -1465,6 +1566,8 @@ export function InlineEditOverlay({
                     boxSizing: "border-box",
                     overflow: "auto",
                     "--inline-edit-list-indent": `${listIndent}px`,
+                    "--inline-edit-first-line-indent": `${firstLineIndentMode ? (listIndentPx ?? 0) : 0}px`,
+                    "--inline-edit-marker-offset": `${listMarkerOffsetPx ?? 0}px`,
                 } as React.CSSProperties
             }
             // Prevent the overlay from catching the markdown root's own dblclick/click handlers.
