@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原型 A+ · 多视图</title>
+<style>
+:root{--bg:#0f1014;--col:#16181f;--card:#1d2029;--border:#2a2e3a;--text:#e6e6e6;--subtext:#9b9da6;--accent:#6aa6ff;--ok:#3fb950;--warn:#d29922;--err:#f85149}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;background:var(--bg);color:var(--text)}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border)}
+.left{display:flex;align-items:center;gap:14px}
+h1{margin:0;font-size:14px}
+.tabs{display:flex;gap:6px;background:rgba(255,255,255,0.01);border:1px solid var(--border);border-radius:999px;padding:3px}
+.tab{border:0;background:transparent;color:var(--subtext);font-size:11px;border-radius:999px;padding:4px 10px;cursor:pointer}
+.tab.active{background:rgba(106,166,255,0.18);color:var(--text)}
+.view{display:none;height:calc(100vh - 56px);overflow:hidden;padding:18px 20px}
+.view.active{display:block}
+.board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(320px,360px);gap:14px;overflow-x:auto;align-items:start;height:100%}
+.column{background:var(--col);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;max-height:100%}
+.column-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+.column-title{display:flex;align-items:center;gap:8px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 6px rgba(106,166,255,0.08)}
+.column-title span{font-size:13px}
+.count{color:var(--subtext);font-size:12px}
+.column-body{display:flex;flex-direction:column;gap:10px;padding:12px;overflow-y:auto}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.card:hover{border-color:rgba(106,166,255,0.7)}
+.card-top{display:flex;align-items:center;justify-content:space-between}
+.card-id{display:flex;align-items:center;gap:8px}
+.icon{width:18px;height:18px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 30%,rgba(106,166,255,0.9),rgba(106,166,255,0.4));font-size:10px;flex:none}
+.icon.green{background:radial-gradient(circle at 30% 30%,rgba(63,185,80,0.9),rgba(63,185,80,0.4))}
+.icon.orange{background:radial-gradient(circle at 30% 30%,rgba(210,153,34,0.9),rgba(210,153,34,0.4))}
+.title{font-size:13px}
+.status{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 8px;font-size:11px;border:1px solid rgba(106,166,255,0.5);color:var(--accent);white-space:nowrap}
+.status.warn{border-color:rgba(210,153,34,0.6);color:#d29922}
+.status.ok{border-color:rgba(63,185,80,0.6);color:#3fb950}
+.status.idle{border-color:var(--border);color:var(--subtext)}
+.pulse{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px rgba(106,166,255,0.12)}
+.meta{display:flex;gap:8px;color:var(--subtext);font-size:11px}
+.preview{font-size:12px;color:var(--subtext);line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.note{border-top:1px solid var(--border);padding-top:8px;color:var(--subtext);font-size:11px;display:flex;gap:6px}
+.pill{border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:11px;color:var(--subtext);white-space:nowrap}
+.list{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:6px;height:100%;overflow-y:auto}
+.row{display:grid;grid-template-columns:220px 1fr 120px 110px;gap:16px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+.row:hover{border-color:rgba(106,166,255,0.7)}
+.row-left{display:flex;align-items:center;gap:8px}
+.row-title{font-size:13px}
+.row-sub{color:var(--subtext);font-size:11px}
+.row-preview{color:var(--subtext);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-right{display:flex;align-items:center;justify-content:flex-end;gap:8px;color:var(--subtext);font-size:11px}
+.provider{display:flex;flex-direction:column;gap:18px;height:100%;overflow-y:auto}
+.provider-group{display:flex;flex-direction:column;gap:10px}
+.provider-header{display:flex;align-items:center;justify-content:space-between;padding:0 4px}
+.provider-title{display:flex;align-items:center;gap:8px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="left">
+    <h1>Overview · 原型 A+</h1>
+    <div class="tabs">
+      <button class="tab active" data-view="board">Board by Tab</button>
+      <button class="tab" data-view="status">Board by Status</button>
+      <button class="tab" data-view="list">Compact List</button>
+      <button class="tab" data-view="provider">Group by Provider</button>
+    </div>
+  </div>
+  <a style="border:1px solid var(--border);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--subtext);text-decoration:none" href="./index.html">返回对比页</a>
+</header>
+
+<!-- ============ 视图 1：按 Tab 分列（原型 A 基础） ============ -->
+<section class="view active" id="view-board">
+  <div class="board">
+    <section class="column">
+      <header class="column-header"><div class="column-title"><span class="dot"></span><span>main</span></div><span class="count">3</span></header>
+      <div class="column-body">
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon">C</span><span class="title">Claude · refactor-auth</span></div><div class="status"><span class="pulse"></span>Running</div></div>
+          <div class="meta"><span>Tab: main</span><span>·</span><span>Updated 2m ago</span></div>
+          <div class="preview">正在梳理 auth 中间件的依赖链，计划先拆分 session 校验逻辑并补充单元测试...</div>
+          <div class="note"><span>✎</span><span>先跑类型检查再改动存储层</span></div>
+        </article>
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon green">X</span><span class="title">Codex · fix-preview</span></div><div class="status ok"><span class="pulse"></span>Done</div></div>
+          <div class="meta"><span>Tab: main</span><span>·</span><span>Updated 18m ago</span></div>
+          <div class="preview">已修复预览编辑的软换行丢失问题，新增机器可判定验证台用例并通过本地校验。</div>
+        </article>
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon">G</span><span class="title">Gemini · docs-sync</span></div><div class="status idle">Idle</div></div>
+          <div class="meta"><span>Tab: main</span><span>·</span><span>Updated 1h ago</span></div>
+          <div class="preview">待处理：根据最新 spec 同步 Trellis 文档索引。</div>
+        </article>
+      </div>
+    </section>
+    <section class="column">
+      <header class="column-header"><div class="column-title"><span class="dot" style="background:var(--warn);box-shadow:0 0 0 6px rgba(210,153,34,0.1);"></span><span>feature/overview</span></div><span class="count">2</span></header>
+      <div class="column-body">
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon orange">C</span><span class="title">Claude · overview-kanban</span></div><div class="status warn"><span class="pulse"></span>Waiting for input</div></div>
+          <div class="meta"><span>Tab: feature/overview</span><span>·</span><span>Updated 5m ago</span></div>
+          <div class="preview">需要确认：要用哪套原型落地？A/B/C/D 选定后再继续细化实现细节。</div>
+          <div class="note"><span>✎</span><span>优先参考 Linear 的卡片信息密度</span></div>
+        </article>
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon">X</span><span class="title">Codex · css-polish</span></div><div class="status"><span class="pulse"></span>Running</div></div>
+          <div class="meta"><span>Tab: feature/overview</span><span>·</span><span>Updated 9m ago</span></div>
+          <div class="preview">正在调整列间距、卡片圆角与 hover 边框，尽量贴近现有设计变量。</div>
+        </article>
+      </div>
+    </section>
+    <section class="column">
+      <header class="column-header"><div class="column-title"><span class="dot" style="background:var(--err);box-shadow:0 0 0 6px rgba(248,81,73,0.1);"></span><span>debug/handle-leak</span></div><span class="count">1</span></header>
+      <div class="column-body">
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon orange">C</span><span class="title">Claude · dotnet-dump</span></div><div class="status warn"><span class="pulse"></span>Needs attention</div></div>
+          <div class="meta"><span>Tab: debug/handle-leak</span><span>·</span><span>Updated 1m ago</span></div>
+          <div class="preview">dumpheap 结果显示 ThreadMethodEntry 异常堆积，需要确认是否为 EventWaitHandle 泄漏路径。</div>
+          <div class="note"><span>✎</span><span>先锁定 x86 dotnet-dump 工具链可用性</span></div>
+        </article>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- ============ 视图 2：按状态分列（跨 Tab 聚合） ============ -->
+<section class="view" id="view-status">
+  <div class="board">
+    <section class="column">
+      <header class="column-header"><div class="column-title"><span class="dot"></span><span>Running</span></div><span class="count">2</span></header>
+      <div class="column-body">
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon">C</span><span class="title">Claude · refactor-auth</span></div><span class="pill">main</span></div>
+          <div class="preview">拆分 session 校验、抽取 token 刷新逻辑，正在处理循环依赖...</div>
+        </article>
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon">X</span><span class="title">Codex · css-polish</span></div><span class="pill">feature/overview</span></div>
+          <div class="preview">调整看板列样式，统一间距与圆角。</div>
+        </article>
+      </div>
+    </section>
+    <section class="column">
+      <header class="column-header"><div class="column-title"><span class="dot" style="background:var(--warn);box-shadow:0 0 0 6px rgba(210,153,34,0.1);"></span><span>Waiting for input</span></div><span class="count">1</span></header>
+      <div class="column-body">
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon orange">C</span><span class="title">Claude · overview-kanban</span></div><span class="pill">feature/overview</span></div>
+          <div class="preview">等待确认采用哪套原型方案。</div>
+        </article>
+      </div>
+    </section>
+    <section class="column">
+      <header class="column-header"><div class="column-title"><span class="dot" style="background:var(--err);box-shadow:0 0 0 6px rgba(248,81,73,0.1);"></span><span>Needs attention</span></div><span class="count">1</span></header>
+      <div class="column-body">
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon orange">C</span><span class="title">Claude · dotnet-dump</span></div><span class="pill">debug/handle-leak</span></div>
+          <div class="preview">ThreadMethodEntry 堆积，需要优先处理。</div>
+        </article>
+      </div>
+    </section>
+    <section class="column">
+      <header class="column-header"><div class="column-title"><span class="dot" style="background:#3fb950;box-shadow:0 0 0 6px rgba(63,185,80,0.1);"></span><span>Done</span></div><span class="count">1</span></header>
+      <div class="column-body">
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon green">X</span><span class="title">Codex · fix-preview</span></div><span class="pill">main</span></div>
+          <div class="preview">预览编辑修复已完成。</div>
+        </article>
+      </div>
+    </section>
+    <section class="column">
+      <header class="column-header"><div class="column-title"><span class="dot" style="background:var(--subtext);box-shadow:0 0 0 6px rgba(155,157,166,0.06);"></span><span>Idle</span></div><span class="count">1</span></header>
+      <div class="column-body">
+        <article class="card">
+          <div class="card-top"><div class="card-id"><span class="icon">G</span><span class="title">Gemini · docs-sync</span></div><span class="pill">main</span></div>
+          <div class="preview">等待指令。</div>
+        </article>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- ============ 视图 3：紧凑列表 ============ -->
+<section class="view" id="view-list">
+  <div class="list">
+    <article class="row">
+      <div class="row-left"><span class="icon">C</span><div><div class="row-title">Claude · refactor-auth</div><div class="row-sub">main</div></div></div>
+      <div class="row-preview">拆分 auth 中间件，抽取 session 校验，处理循环依赖...</div>
+      <div class="row-right"><span>2m ago</span></div>
+      <div class="row-right"><div class="status"><span class="pulse"></span>Running</div></div>
+    </article>
+    <article class="row">
+      <div class="row-left"><span class="icon">X</span><div><div class="row-title">Codex · css-polish</div><div class="row-sub">feature/overview</div></div></div>
+      <div class="row-preview">调整列间距、圆角、hover 边框...</div>
+      <div class="row-right"><span>9m ago</span></div>
+      <div class="row-right"><div class="status"><span class="pulse"></span>Running</div></div>
+    </article>
+    <article class="row">
+      <div class="row-left"><span class="icon orange">C</span><div><div class="row-title">Claude · overview-kanban</div><div class="row-sub">feature/overview</div></div></div>
+      <div class="row-preview">等待确认采用哪套原型方案（A/B/C/D）</div>
+      <div class="row-right"><span>5m ago</span></div>
+      <div class="row-right"><div class="status warn"><span class="pulse"></span>Waiting for input</div></div>
+    </article>
+    <article class="row">
+      <div class="row-left"><span class="icon orange">C</span><div><div class="row-title">Claude · dotnet-dump</div><div class="row-sub">debug/handle-leak</div></div></div>
+      <div class="row-preview">ThreadMethodEntry 堆积，需要先确认 dotnet-dump 工具链</div>
+      <div class="row-right"><span>1m ago</span></div>
+      <div class="row-right"><div class="status warn"><span class="pulse"></span>Needs attention</div></div>
+    </article>
+    <article class="row">
+      <div class="row-left"><span class="icon green">X</span><div><div class="row-title">Codex · fix-preview</div><div class="row-sub">main</div></div></div>
+      <div class="row-preview">预览编辑软换行丢失与内联标记样式修复</div>
+      <div class="row-right"><span>18m ago</span></div>
+      <div class="row-right"><div class="status ok"><span class="pulse"></span>Done</div></div>
+    </article>
+    <article class="row">
+      <div class="row-left"><span class="icon">G</span><div><div class="row-title">Gemini · docs-sync</div><div class="row-sub">main</div></div></div>
+      <div class="row-preview">待同步 Trellis 规范文档</div>
+      <div class="row-right"><span>1h ago</span></div>
+      <div class="row-right"><div class="status idle">Idle</div></div>
+    </article>
+  </div>
+</section>
+
+<!-- ============ 视图 4：按 Provider 分组 ============ -->
+<section class="view" id="view-provider">
+  <div class="provider">
+    <div class="provider-group">
+      <header class="provider-header"><div class="provider-title"><span class="icon">C</span><span>Claude</span></div><span class="count">3</span></header>
+      <div class="cards">
+        <article class="card"><div class="card-top"><div class="card-id"><span class="title">refactor-auth</span></div><div class="status"><span class="pulse"></span>Running</div></div><div class="meta"><span>Tab: main</span><span>·</span><span>Updated 2m ago</span></div><div class="preview">拆分 auth 中间件，抽取 session 校验...</div></article>
+        <article class="card"><div class="card-top"><div class="card-id"><span class="title">overview-kanban</span></div><div class="status warn"><span class="pulse"></span>Waiting for input</div></div><div class="meta"><span>Tab: feature/overview</span><span>·</span><span>Updated 5m ago</span></div><div class="preview">需要确认原型方案...</div></article>
+        <article class="card"><div class="card-top"><div class="card-id"><span class="title">dotnet-dump</span></div><div class="status warn"><span class="pulse"></span>Needs attention</div></div><div class="meta"><span>Tab: debug/handle-leak</span><span>·</span><span>Updated 1m ago</span></div><div class="preview">ThreadMethodEntry 堆积...</div></article>
+      </div>
+    </div>
+    <div class="provider-group">
+      <header class="provider-header"><div class="provider-title"><span class="icon green">X</span><span>Codex</span></div><span class="count">2</span></header>
+      <div class="cards">
+        <article class="card"><div class="card-top"><div class="card-id"><span class="title">css-polish</span></div><div class="status"><span class="pulse"></span>Running</div></div><div class="meta"><span>Tab: feature/overview</span><span>·</span><span>Updated 9m ago</span></div><div class="preview">调整列间距、圆角、hover 边框...</div></article>
+        <article class="card"><div class="card-top"><div class="card-id"><span class="title">fix-preview</span></div><div class="status ok"><span class="pulse"></span>Done</div></div><div class="meta"><span>Tab: main</span><span>·</span><span>Updated 18m ago</span></div><div class="preview">预览编辑修复完成。</div></article>
+      </div>
+    </div>
+    <div class="provider-group">
+      <header class="provider-header"><div class="provider-title"><span class="icon">G</span><span>Gemini</span></div><span class="count">1</span></header>
+      <div class="cards">
+        <article class="card"><div class="card-top"><div class="card-id"><span class="title">docs-sync</span></div><div class="status idle">Idle</div></div><div class="meta"><span>Tab: main</span><span>·</span><span>Updated 1h ago</span></div><div class="preview">待同步 Trellis 规范文档。</div></article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.tab');
+  var views = document.querySelectorAll('.view');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener('click', function () {
+      for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
+      for (var k = 0; k < views.length; k++) views[k].classList.remove('active');
+      this.classList.add('active');
+      var target = document.getElementById('view-' + this.getAttribute('data-view'));
+      if (target) target.classList.add('active');
+    });
+  }
+})();
+</script>
+</body>
+</html>

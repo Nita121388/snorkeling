@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Files Block Header · 版本管理增强原型 v2</title>
+  <style>
+    /* 采用 frontend/app/theme.scss 真实暗色主题变量 */
+    :root {
+      --main-text-color: #f7f7f7;
+      --secondary-text-color: rgb(195, 200, 194);
+      --accent-color: rgb(88, 193, 66);
+      --success-color: rgb(78, 154, 6);
+      --warning-color: rgb(224, 185, 86);
+      --error-color: rgb(229, 77, 46);
+      --border-color: rgba(255, 255, 255, 0.16);
+      --bg: #1b1b1d;
+      --bg-elevated: #232326;
+      --bg-hover: rgba(255, 255, 255, 0.07);
+      --muted: rgb(150, 154, 150);
+      /* 干净态路径色：success 混入 secondary。
+         注意：不能用 accent —— 4 套主题 accent 分别是 绿/紫/黑/橙，语义会漂移。 */
+      --clean-path-color: color-mix(in srgb, var(--success-color) 45%, var(--secondary-text-color));
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--main-text-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+    .page { max-width: 980px; margin: 0 auto; padding: 32px 24px 64px; display: grid; gap: 28px; }
+    h1 { margin: 0; font-size: 21px; }
+    .sub { color: var(--secondary-text-color); margin-top: 4px; font-size: 13px; }
+
+    .card {
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      background: var(--bg-elevated);
+      overflow: hidden;
+    }
+    .card-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .card-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+    .card-head .tag {
+      font-size: 11px; padding: 1px 7px; border-radius: 999px;
+      border: 1px solid var(--border-color); color: var(--secondary-text-color);
+    }
+
+    .controls {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 20px;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-color);
+      background: rgba(0,0,0,0.12);
+    }
+    .ctrl { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); }
+    .seg { display: flex; border: 1px solid var(--border-color); border-radius: 999px; overflow: hidden; }
+    .seg button { border: none; background: transparent; color: var(--muted); padding: 4px 12px; cursor: pointer; font-size: 12px; }
+    .seg button.active { color: var(--main-text-color); background: rgba(88,193,66,0.16); }
+
+    /* ── Files Block Header 仿真 ── */
+    .files-header {
+      display: flex; align-items: center; gap: 8px;
+      height: 42px; padding: 0 12px;
+    }
+    .header-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .chev { color: var(--muted); font-size: 12px; }
+    .path {
+      display: inline-block;
+      font-size: 13px;
+      color: var(--secondary-text-color);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      transform-origin: left center;
+      transition: color 140ms ease, font-weight 140ms ease, transform 140ms ease, letter-spacing 140ms ease;
+    }
+    /* 干净态：仅非悬浮生效 */
+    .path.clean:not(:hover) {
+      color: var(--clean-path-color);
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      transform: scale(1.012);
+    }
+    /* 悬浮：一律还原为正常交互态，不与现有 hover 抢 */
+    .path:hover {
+      color: var(--main-text-color);
+      font-weight: 400;
+      letter-spacing: 0;
+      transform: scale(1);
+    }
+
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+    .icon-btn {
+      width: 30px; height: 30px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 6px; color: var(--secondary-text-color);
+      cursor: pointer; position: relative; border: 1px solid transparent;
+      background: transparent;
+    }
+    .icon-btn:hover { background: var(--bg-hover); color: var(--main-text-color); }
+    .icon-btn.has-repo::after {
+      /* 仓库干净时图标上的细绿点，作为路径变色的冗余强化，便于聚焦图标时也可见 */
+      content: ""; position: absolute; right: 5px; top: 5px;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--success-color);
+      box-shadow: 0 0 0 2px var(--bg-elevated);
+    }
+
+    .menu {
+      position: absolute; top: 36px; right: 0; width: 250px;
+      border: 1px solid var(--border-color); border-radius: 10px;
+      background: #2a2a2e;
+      display: none; flex-direction: column; overflow: hidden;
+      box-shadow: 0 18px 40px -18px rgba(0,0,0,0.8);
+      z-index: 20;
+    }
+    .menu.open { display: flex; }
+    .menu-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 9px 14px; color: var(--main-text-color); font-size: 13px;
+      cursor: pointer; border-left: 2px solid transparent;
+    }
+    .menu-item + .menu-item { border-top: 1px solid var(--border-color); }
+    .menu-item.disabled { color: var(--muted); pointer-events: none; }
+    .menu-item:not(.disabled):hover { background: var(--bg-hover); border-left-color: var(--accent-color); }
+    .menu-item .k { color: var(--muted); font-size: 11px; }
+
+    .files-body {
+      height: 150px; display: flex; align-items: center; justify-content: center;
+      color: var(--muted); border-top: 1px solid var(--border-color); font-size: 12px;
+    }
+
+    /* ── 并排对比区 ── */
+    .compare {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+      border-top: 1px solid var(--border-color);
+    }
+    .compare > div {
+      padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+      border-right: 1px solid var(--border-color);
+    }
+    .compare > div:last-child { border-right: none; }
+    .compare .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .compare .demo { font-size: 13px; }
+    .compare .demo.clean-demo {
+      color: var(--clean-path-color); font-weight: 500; letter-spacing: 0.01em;
+      display: inline-block; transform-origin: left center; transform: scale(1.012);
+    }
+    .compare .demo.dirty-demo { color: var(--secondary-text-color); }
+    .compare .demo.hover-demo { color: var(--main-text-color); }
+    .compare .note { font-size: 11px; color: var(--muted); }
+
+    .legend { padding: 16px; display: grid; gap: 8px; font-size: 13px; color: var(--secondary-text-color); border-top: 1px solid var(--border-color); }
+    .legend strong { color: var(--main-text-color); }
+    .legend code { color: var(--accent-color); font-family: ui-monospace, monospace; font-size: 12px; }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%) translateY(12px);
+      background: #2f2f34; border: 1px solid var(--border-color); border-radius: 10px;
+      padding: 10px 18px; font-size: 13px; color: var(--main-text-color);
+      opacity: 0; pointer-events: none; transition: opacity 180ms ease, transform 180ms ease;
+      box-shadow: 0 16px 40px -20px rgba(0,0,0,.9);
+      display: flex; align-items: center; gap: 10px; z-index: 100;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-color); }
+    .toast.err .dot { background: var(--error-color); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div>
+      <h1>Files Block Header · 版本管理增强</h1>
+      <div class="sub">
+        用真实主题变量（accent 实为绿色 <code style="color:var(--accent-color)">rgb(88,193,66)</code>）重做，含三态并排对比与真实菜单反馈
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Files Block Header</h2>
+        <span class="tag">交互演示</span>
+      </div>
+
+      <div class="controls">
+        <div class="ctrl">
+          <span>仓库状态</span>
+          <div class="seg" id="repo-seg">
+            <button data-v="clean" class="active">干净 Clean</button>
+            <button data-v="dirty">有变更 Dirty</button>
+          </div>
+        </div>
+        <div class="ctrl">
+          <span>远端信息</span>
+          <div class="seg" id="remote-seg">
+            <button data-r="yes" class="active">有 browseurl/remoteurl</button>
+            <button data-r="no">无远端</button>
+          </div>
+        </div>
+        <div class="ctrl" style="font-size:12px">
+          右键 <code style="color:var(--accent-color)">code-branch</code> 图标看菜单；悬浮路径看还原
+        </div>
+      </div>
+
+      <div class="files-header">
+        <div class="header-left">
+          <span class="chev">‹</span>
+          <span class="path clean" id="path" title="E:\code\snorkeling">snorkeling</span>
+        </div>
+        <div class="header-right">
+          <div class="icon-btn" title="Show Hidden Files">👁</div>
+          <div class="icon-btn has-repo" id="vcs-icon" title="Version Control (Ctrl/Cmd+Click: new block)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="5" cy="4" r="1.5"/><circle cx="11" cy="6" r="1.5"/><circle cx="6" cy="12" r="1.5"/>
+              <path d="M5.5 5.5v5M10.5 7.2L6.8 10.8" stroke="currentColor" fill="none"/>
+            </svg>
+            <div class="menu" id="menu">
+              <div class="menu-item" id="open-remote">
+                <span>Open Remote Repository</span><span class="k">Browser</span>
+              </div>
+              <div class="menu-item" id="copy-url">
+                <span>Copy Remote URL</span><span class="k">ctrl+c</span>
+              </div>
+              <div class="menu-item" id="copy-path">
+                <span>Copy Repository Path</span><span class="k">ctrl+c</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="files-body">Files 列表区域（略）</div>
+
+      <div class="compare">
+        <div>
+          <span class="label">Clean（干净）</span>
+          <span class="demo clean-demo">snorkeling</span>
+          <span class="note">accent 45% 混 secondary + 字重 500 + scale(1.012)</span>
+        </div>
+        <div>
+          <span class="label">Dirty（有变更）</span>
+          <span class="demo dirty-demo">snorkeling</span>
+          <span class="note">保持默认 secondary，零变化</span>
+        </div>
+        <div>
+          <span class="label">Hover（悬浮）</span>
+          <span class="demo hover-demo">snorkeling</span>
+          <span class="note">统一还原 main-text，交互反馈回归正常</span>
+        </div>
+      </div>
+
+      <div class="legend">
+        <div><strong>为什么这样设计</strong></div>
+        <div>• <strong>颜色</strong>：用 <code>--success-color</code>（4 套主题均为绿系），<code>color-mix(success 45%, secondary)</code> 保留灰调，不像纯绿那样像「新增成功」。<strong>不能用 accent</strong>：暗色绿、浅色紫、极简黑、暖色橙，语义会漂移</div>
+        <div>• <strong>要「变动大小」</strong>：用 <code>font-weight: 500</code> + <code>transform: scale(1.012)</code>，零布局影响，不会挤压右侧图标或提前截断</div>
+        <div>• <strong>不打架</strong>：靠 <code>:not(:hover)</code> 限定，悬浮时彻底还原；只改 color / weight / transform，不碰 background / border</div>
+        <div>• <strong>菜单去噪</strong>：移除「Open VCS Block」disabled 项（左键本来就是它），菜单只留真实可用操作</div>
+        <div>• <strong>冗余强化</strong>：干净时版本管理图标加一个 5px 绿点，路径被截断时也能看出来</div>
+        <div>• <strong>树内同步</strong>：目录树里每个项目文件夹也会显示状态标记，详见 <code>../files-vcs-tree-status/</code></div>
+        <div>• <strong>实时准确</strong>：状态以 <code>repo.status</code>（无变更且无 untracked）为准，复用 VCS 缓存，仅 Git 生效</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"><span class="dot"></span><span id="toast-text"></span></div>
+
+  <script>
+    const repoSeg = document.getElementById('repo-seg');
+    const remoteSeg = document.getElementById('remote-seg');
+    const path = document.getElementById('path');
+    const vcsIcon = document.getElementById('vcs-icon');
+    const menu = document.getElementById('menu');
+    const toast = document.getElementById('toast');
+    const toastText = document.getElementById('toast-text');
+
+    let toastTimer = null;
+    function showToast(text, isErr) {
+      toastText.textContent = text;
+      toast.classList.toggle('err', !!isErr);
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    repoSeg.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') return;
+      [...repoSeg.children].forEach((b) => b.classList.remove('active'));
+      e.target.classList.add('active');
+      const clean = e.target.dataset.v === 'clean';
+      path.classList.toggle('clean', clean);
+      vcsIcon.classList.toggle('has-repo', clean);
+      path.title = clean
+        ? 'Repository clean · E:\\code\\snorkeling'
+        : 'E:\\code\\snorkeling';
+    });
+
+    remoteSeg.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') return;
+      [...remoteSeg.children].forEach((b) => b.classList.remove('active'));
+      e.target.classList.add('active');
+      const has = e.target.dataset.r === 'yes';
+      ['open-remote', 'copy-url'].forEach((id) =>
+        document.getElementById(id).classList.toggle('disabled', !has)
+      );
+    });
+
+    vcsIcon.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      menu.classList.add('open');
+    });
+    document.addEventListener('click', (e) => {
+      if (!vcsIcon.contains(e.target)) menu.classList.remove('open');
+    });
+
+    document.getElementById('open-remote').addEventListener('click', () => {
+      menu.classList.remove('open');
+      showToast('已用系统浏览器打开 https://github.com/wavetermdev/snorkeling');
+    });
+    document.getElementById('copy-url').addEventListener('click', () => {
+      menu.classList.remove('open');
+      showToast('已复制远端 URL: https://github.com/wavetermdev/snorkeling');
+    });
+    document.getElementById('copy-path').addEventListener('click', () => {
+      menu.classList.remove('open');
+      showToast('已复制仓库路径: E:\\code\\snorkeling');
+    });
+  </script>
+</body>
+</html>

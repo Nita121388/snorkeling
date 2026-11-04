@@ -45,3 +45,12 @@ gemini + FetchModels，错误信息加上实际 URL。24 个单测 + openaichat 
 
 5. **agent-status 钩子**：hookinstall 已用 `OPENCODE_CONFIG_DIR`（正确），但插件自动发现
    需 TUI 启动验证事件 payload，non-interactive 探不到，留作 10-30-hook-verify 真机项。
+
+## 2026-11-04 下班快照 · 11-04-preview-edit-verify-harness
+
+- 已提交：验证台骨架(b88a24f9)、软换行+内联标记样式+整块像素判据(62b92ce7)、撤销污染宿主窗口的 caret 注入(c8b4b77d)
+- 工作区未提交/未验证：折叠式有序项的「首行缩进」几何建模（resolveListContinuation + data-list-indent-mode="first-line"）
+  - 真因：渲染态是首行缩进(首行77/续行44)，我原来是悬挂缩进(两行77)，续行右移 33.02px（历史报的 2px/38px 都是墨迹行带假数据）
+  - 中断点：验证时 ol-collapsible 双击打不开；stash 对照证明不是我的改动，是实例状态异常（上一轮 Esc 在编辑器未打开时把 block 关掉了）
+- 待办：① 复跑验证 ② observe 的 Esc 要判 overlay 存在 ③ 关掉我开出的 8 个重复 preview block（用户已提醒）④ 全绿后 check/spec/commit/finish
+- 详见 `.trellis/tasks/11-04-preview-edit-verify-harness/notes.md`

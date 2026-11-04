@@ -1,0 +1,55 @@
+const fs = require('fs');
+const p = 'E:/code/snorkeling/design/prototypes/overview-kanban/prototype-d-linear-board.html';
+const s = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 D · Linear 风格（最现代）</title>
+  <style>
+    :root{--bg:#0f1014;--card:#1b1d26;--border:#262935;--text:#f2f2f3;--subtext:#8f9098;--accent:#7aa2ff;--ok:#4d9f58;--warn:#b98a2a;--err:#d4584d}
+    *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+    header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border)}
+    .header-left{display:flex;align-items:center;gap:12px}
+    .header-title{font-size:13px}.header-sub{color:var(--subtext);font-size:12px}
+    .pill-row{display:flex;gap:6px}
+    .pill{border:1px solid transparent;border-radius:8px;padding:5px 9px;font-size:11px;color:var(--subtext);text-decoration:none}
+    .pill.active{color:var(--text);background:rgba(255,255,255,0.01)}
+    .board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(290px,320px);gap:16px;overflow-x:auto;padding:20px 24px;height:calc(100vh - 54px);align-items:start}
+    .column{display:flex;flex-direction:column;gap:10px}
+    .column-header{display:flex;align-items:center;justify-content:space-between;padding:0 4px}
+    .column-title{display:flex;align-items:center;gap:8px;font-size:12px}
+    .status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+    .status-dot.warn{background:var(--warn)}.status-dot.err{background:var(--err)}.status-dot.ok{background:var(--ok)}.status-dot.idle{background:rgba(143,144,152,0.8)}
+    .column-count{color:var(--subtext)}
+    .column-body{display:flex;flex-direction:column;gap:8px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.01) 0%,transparent 100%),var(--card);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;gap:10px;padding:12px 14px;position:relative}
+    .card:hover{border-color:rgba(122,162,255,0.8)}.card:hover .card-actions{opacity:1}
+    .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+    .card-main{display:flex;align-items:flex-start;gap:10px}
+    .avatar{width:18px;height:18px;border-radius:50%;margin-top:2px;display:inline-flex;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(122,162,255,0.95),rgba(122,162,255,0.4));font-size:9px}
+    .avatar.green{background:radial-gradient(circle,rgba(77,159,88,0.95),rgba(77,159,88,0.4))}
+    .avatar.orange{background:radial-gradient(circle,rgba(185,138,42,0.95),rgba(185,138,42,0.4))}
+    .text-group{display:flex;flex-direction:column;gap:4px}
+    .title{font-size:13px;line-height:1.5}
+    .meta-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--subtext);font-size:11px}
+    .tag{border:1px solid var(--border);border-radius:999px;padding:0 7px;height:18px;display:inline-flex;align-items:center}
+    .card-actions{position:absolute;top:10px;right:10px;display:flex;gap:4px;opacity:0;transition:opacity 120ms ease}
+    .icon-btn{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--subtext)}
+    .preview{font-size:12px;color:var(--subtext);line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .note-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.01);border:1px solid var(--border);color:var(--subtext);font-size:11px}
+    .footer{display:flex;align-items:center;justify-content:space-between;color:var(--subtext);font-size:11px}
+    .unread{display:inline-flex;align-items:center;gap:6px}
+    .unread-dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left"><span class="header-title">Overview</span><span class="header-sub">All agent sessions across tabs</span></div>
+    <div class="pill-row"><span class="pill active">Board</span><span class="pill">List</span><span class="pill">Agents only</span><a class="pill" href="./index.html">返回对比页</a></div>
+  </header>
+  <div class="board">
+    <section class="column"><header class="column-header"><div class="column-title"><span class="status-dot"></span><span>In Progress</span></div><span class="column-count">2</span></header><div class="column-body"><article class="card"><div class="card-actions"><span class="icon-btn">↗</span><span class="icon-btn">×</span></div><div class="card-top"><div class="card-main"><span class="avatar">C</span><div class="text-group"><span class="title">refactor-auth · Claude</span><div class="meta-line"><span class="tag">main</span><span>agent</span><span>·</span><span>2m ago</span></div></div></div></div><div class="preview">拆分 auth 中间件、抽取 session 校验，正在处理循环依赖并补充类型。</div><div class="note-bar"><span>Note</span><span>先跑类型检查再改动存储层</span></div><div class="footer"><span>12 messages</span><div class="unread"><span class="unread-dot"></span><span>unread</span></div></div></article><article class="card"><div class="card-actions"><span class="icon-btn">↗</span><span class="icon-btn">×</span></div><div class="card-top"><div class="card-main"><span class="avatar">X</span><div class="text-group"><span class="title">css-polish · Codex</span><div class="meta-line"><span class="tag">feature/overview</span><span>agent</span><span>·</span><span>9m ago</span></div></div></div></div><div class="preview">统一看板列样式，微调间距、圆角与 hover 效果。</div><div class="footer"><span>6 messages</span></div></article></div></section>
+    <section class="column"><header class="column-header"><div class="column-title"><span class="status-dot warn"></span><span>Needs Review / Input</span></div><span class="column-count">1</span></header><div class="column-body"><article class="card"><div class="card-actions"><span class="icon-btn">↗</span><span class="icon-btn">×</span></div><div class="card-top"><div class="card-main"><span class="avatar orange">C</span><div class="text-group"><span class="title">overview-kanban · Claude</span><div class="meta-line"><span class="tag">feature/overview</span><span>agent</span><span>·</span><span>5m ago</span></div></div></div></div><div class="preview">需要确认采用哪套原型（A/B/C/D），确认后我将进入设计与落地阶段。</div><div class="note-bar"><span>Note</span><span>优先参考 Linear 的卡片信息密度</span></div><div class="footer"><span>4 messages</span><div class="unread"><span class="unread-dot"></span><span>needs input</span></div></div></article></div></section>
+    <section class="column"><header class="column-header"><div class="column-title"><span class="status-dot err"></span><span>Blocked</span></div><span class="column-count">1</span></header><div class="column-body"><article class="card"><div class="card-actions"><span class="icon-btn">↗</span><span class="icon-btn">×</span></div><div class="card-top"><div class="card-main"><span class="avatar orange">C</span><div class="text-group"><span class="title">dotnet-dump · Claude</span><div class="meta-line"><span class="tag">debug/handle-leak</span><span>agent</span><span>·</span><span>1m ago</span></div></div></div></div><div class="preview">ThreadMethodEntry 堆积，需先确认 x86 dotnet-dump 工具链可用性再继续分析。</div><div class="note-bar"><span>Note</span><span>先锁定 x86 dotnet-dump 工具链</span></div><div class="footer"><span>7 messages</span><div class="unread"><span class="unread-dot"></span><span>needs attention</span></div></div></article></div></section>
+    <section class="column"><header class="column-header"><div class="column-title"><span class="status-dot ok"></span><span>Done</span></div><span class="column-count">1</span></header><div class="column-body"><article class="card"><div class="card-actions"><span class="icon-btn">↗</span><span class="icon-btn">×</span></div><div class="card-top"><div class="card-main"><span class="avatar gr

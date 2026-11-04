@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overview 看板原型对比</title>
+  <style>
+    :root {
+      --bg: #0f1014;
+      --panel: #15171d;
+      --card: #1d2029;
+      --border: #2a2e3a;
+      --text: #e6e6e6;
+      --subtext: #9b9da6;
+      --accent: #6aa6ff;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+      --purple: #a371f7;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif; background: radial-gradient(1200px 800px at 50% 0%, #1a1d27, var(--bg)); color: var(--text); }
+    header { padding: 32px 40px 16px; }
+    header h1 { margin: 0 0 8px; font-size: 22px; }
+    header p { margin: 0; color: var(--subtext); }
+    main { display: grid; grid-template-columns: repeat(4, minmax(260px, 1fr)); gap: 16px; padding: 16px 40px 48px; }
+    .card { background: linear-gradient(180deg, rgba(255,255,255,0.01) 0%, transparent 100%), var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 30px 60px -40px rgba(106,166,255,0.6); }
+    .thumb { height: 180px; background: radial-gradient(400px 160px at 50% 0%, rgba(106,166,255,0.12), transparent), var(--bg); position: relative; }
+    .thumb-grid { position: absolute; inset: 18px; display: grid; grid-auto-flow: column; gap: 10px; }
+    .col { background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.02); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+    .col-header { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); }
+    .mini-card { height: 16px; border-radius: 6px; background: linear-gradient(90deg, rgba(106,166,255,0.25) 0%, rgba(255,255,255,0.04) 100%); }
+    .mini-card.alt { background: linear-gradient(90deg, rgba(63,185,80,0.2) 0%, rgba(255,255,255,0.03) 100%); }
+    .mini-card.warn { background: linear-gradient(90deg, rgba(210,153,34,0.24) 0%, rgba(255,255,255,0.03) 100%); }
+    .content { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; }
+    .title-row { display: flex; align-items: baseline; justify-content: space-between; }
+    h2 { margin: 0; font-size: 15px; }
+    .tag { font-size: 11px; color: var(--subtext); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+    p { margin: 0; color: var(--subtext); font-size: 12px; line-height: 1.7; }
+    ul { margin: 0; padding-left: 18px; color: var(--subtext); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+    footer { padding: 0 18px 18px; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 12px; }
+    .btn:hover { border-color: rgba(106,166,255,0.8); }
+    .matrix { margin: 0 40px 64px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .matrix-header { padding: 16px 24px; display: flex; flex-direction: column; gap: 4px; }
+    .matrix-header h2 { font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 10px 24px; border-top: 1px solid var(--border); text-align: left; }
+    th { color: var(--subtext); font-weight: 500; }
+    td:first-child { font-weight: 500; }
+    .good { color: var(--ok); }
+    .mid { color: var(--warn); }
+    .low { color: var(--subtext); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Overview 看板优化 — 原型对比</h1>
+    <p>将 SessionOverview 从列表式布局改造为更贴近看板的形态。建议先对比四套方案，选定后再细化交互并落地到 React 组件。</p>
+  </header>
+  <main>
+    <article class="card">
+      <div class="thumb">
+        <div class="thumb-grid">
+          <div class="col"><div class="col-header"></div><div class="mini-card"></div><div class="mini-card alt"></div></div>
+          <div class="col"><div class="col-header"></div><div class="mini-card warn"></div><div class="mini-card"></div></div>
+          <div class="col"><div class="col-header"></div><div class="mini-card alt"></div></div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="title-row"><h2>A. Tab 列（最保守）</h2><span class="tag">低改动</span></div>
+        <p>每个 Tab 变成一列。几乎保留现有“按 Tab 分组”的心智模型，只是从垂直列表切换到横向列。</p>
+        <ul>
+          <li>最容易迁移现有数据结构</li>
+          <li>保留 Tab 名称、顺序</li>
+          <li>仍能清晰区分“哪个窗口/Tab 的会话”</li>
+        </ul>
+      </div>
+      <footer><a class="btn" href="./prototype-a-tab-columns.html">预览原型 A →</a></footer>
+    </article>
+    <article class="card">
+      <div class="thumb">
+        <div class="thumb-grid">
+          <div class="col"><div class="col-header"></div><div class="mini-card"></div></div>
+          <div class="col"><div class="col-header"></div><div class="mini-card warn"></div><div class="mini-card warn"></div></div>
+          <div class="col"><div class="col-header"></div><div class="mini-card alt"></div></div>
+          <div class="col"><div class="col-header"></div></div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="title-row"><h2>B. 状态列（最像看板）</h2><span class="tag">中高改动</span></div>
+        <p>跨 Tab 聚合，按 Agent 状态划分列：Running、Waiting、Needs attention、Done、Idle。更符合“看板一眼掌握全局进展”的诉求。</p>
+        <ul>
+          <li>一眼识别阻塞点（Needs attention）</li>
+          <li>更适合同时跑多个 Agent 的场景</li>
+          <li>弱化 Tab 边界，强化“任务状态”</li>
+        </ul>
+      </div>
+      <footer><a class="btn" href="./prototype-b-status-columns.html">预览原型 B →</a></footer>
+    </article>
+    <article class="card">
+      <div class="thumb">
+        <div class="thumb-grid" style="grid-template-rows: repeat(2, 1fr); grid-auto-flow: row; grid-auto-columns: 1fr;">
+          <div class="col" style="grid-column: 1 / -1; flex-direction: row; align-items: center;"><div class="col-header" style="width: 80px;"></div><div class="mini-card" style="width: 60px;"></div><div class="mini-card alt" style="width: 60px;"></div></div>
+          <div class="col" style="grid-column: 1 / 2;"><div class="col-header"></div><div class="mini-card"></div></div>
+          <div class="col" style="grid-column: 2 / 3;"><div class="col-header"></div><div class="mini-card warn"></div></div>
+          <div class="col" style="grid-column: 3 / 4;"><div class="col-header"></div><div class="mini-card alt"></div></div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="title-row"><h2>C. 混合泳道（最平衡）</h2><span class="tag">中等改动</span></div>
+        <p>以 Tab 为泳道（Lane），泳道内再按状态分区或直接用看板卡片排布。既能知道“归属”，又能感知“进展”。</p>
+        <ul>
+          <li>兼顾组织归属和执行状态</li>
+          <li>减少从 Tab 到状态的认知切换</li>
+          <li>对现有过滤（Opened Tabs/Agents）也较友好</li>
+        </ul>
+      </div>
+      <footer><a class="btn" href="./prototype-c-hybrid-lane.html">预览原型 C →</a></footer>
+    </article>
+    <article class="card">
+      <div class="thumb">
+        <div class="thumb-grid">
+          <div class="col"><div class="col-header"></div><div class="mini-card" style="height: 22px;"></div><div class="mini-card alt" style="height: 22px;"></div></div>
+          <div class="col"><div class="col-header"></div><div class="mini-card warn" style="height: 22px;"></div></div>
+          <div class="col"><div class="col-header"></div><div class="mini-card" style="height: 22px;"></div></div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="title-row"><h2>D. Linear 风格（最现代）</h2><span class="tag">中高改动</span></div>
+        <p>极简卡片，弱化“块列表”感。突出状态、消息预览、会话备注，操作收纳到 hover。更接近 Linear 的 Issue Board 体验。</p>
+        <ul>
+          <li>最高的可扫视性（信息层级更克制）</li>
+          <li>卡片更像“任务卡”而不是“块条目”</li>
+          <li>视觉更现代，适合长时间使用</li>
+        </ul>
+      </div>
+      <footer><a class="btn" href="./prototype-d-linear-board.html">预览原型 D →</a></footer>
+    </article>
+  </main>
+  <section class="matrix">
+    <div class="matrix-header">
+      <h2>对比矩阵</h2>
+      <p style="margin:0;color:var(--subtext);font-size:12p

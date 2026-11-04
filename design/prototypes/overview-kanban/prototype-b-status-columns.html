@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 B · 状态列（最像看板）</title>
+  <style>
+    :root { --bg:#0f1014; --col:#16181f; --card:#1d2029; --border:#2a2e3a; --text:#e6e6e6; --subtext:#9b9da6; --accent:#6aa6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+    *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;background:var(--bg);color:var(--text)}
+    header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)}
+    header .left{display:flex;align-items:baseline;gap:12px} header h1{margin:0;font-size:14px} header p{margin:0;color:var(--subtext);font-size:12px}
+    .pill-row{display:flex;gap:8px} .pill{border:1px solid var(--border);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--subtext);text-decoration:none}
+    .board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(300px,340px);gap:14px;overflow-x:auto;padding:18px 20px;height:calc(100vh - 58px);align-items:start}
+    .column{background:radial-gradient(600px 200px at 50% 0%,rgba(106,166,255,0.06),transparent),var(--col);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;max-height:100%}
+    .column-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px}
+    .column-title{display:flex;align-items:center;gap:8px}
+    .bar{width:10px;height:10px;border-radius:3px;background:var(--accent);box-shadow:0 0 0 6px rgba(106,166,255,0.08)}
+    .bar.warn{background:var(--warn);box-shadow:0 0 0 6px rgba(210,153,34,0.08)}
+    .bar.err{background:var(--err);box-shadow:0 0 0 6px rgba(248,81,73,0.08)}
+    .bar.ok{background:var(--ok);box-shadow:0 0 0 6px rgba(63,185,80,0.08)}
+    .bar.idle{background:rgba(155,157,166,0.8);box-shadow:0 0 0 6px rgba(155,157,166,0.06)}
+    .column-body{display:flex;flex-direction:column;gap:10px;padding:0 12px 12px;overflow-y:auto}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;gap:10px;padding:12px 14px}
+    .card:hover{border-color:rgba(106,166,255,0.7)}
+    .card-top{display:flex;align-items:center;justify-content:space-between}
+    .card-id{display:flex;align-items:center;gap:8px}
+    .icon{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(106,166,255,0.9),rgba(106,166,255,0.4));font-size:10px}
+    .title{font-size:13px}
+    .tab-pill{border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:11px;color:var(--subtext)}
+    .meta{display:flex;gap:8px;color:var(--subtext);font-size:11px}
+    .preview{font-size:12px;color:var(--subtext);line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .note{display:flex;gap:8px;color:var(--subtext);font-size:11px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="left"><h1>Overview · 原型 B：状态列</h1><p>跨 Tab 聚合，按 Agent 状态划分列（更贴近看板本质）</p></div>
+    <div class="pill-row"><span class="pill">全部</span><span class="pill">仅 Agent</span><span class="pill">仅未读</span><a class="pill" href="./index.html">返回对比页</a></div>
+  </header>
+  <div class="board">
+    <section class="column"><header class="column-header"><div class="column-title"><span class="bar"></span><span>Running</span></div><span class="count">2</span></header><div class="column-body"><article class="card"><div class="card-top"><div class="card-id"><span class="icon">C</span><span class="title">Claude · refactor-auth</span></div><span class="tab-pill">main</span></div><div class="meta"><span>运行中</span><span>·</span><span>2m ago</span></div><div class="preview">拆分 session 校验、抽取 token 刷新逻辑，正在处理循环依赖...</div></article><article class="card"><div class="card-top"><div class="card-id"><span class="icon">X</span><span class="title">Codex · css-polish</span></div><span class="tab-pill">feature/overview</span></div><div class="meta"><span>运行中</span><span>·</span><span>9m ago</span></div><div class="preview">调整看板列样式，统一间距与圆角，准备对比原型效果。</div></article></div></section>
+    <section class="column"><header class="column-header"><div class="column-title"><span class="bar warn"></span><span>Waiting for input</span></div><span class="count">1</span></header><div class="column-body"><article class="card"><div class="card-top"><div class="card-id"><span class="icon">C</span><span class="title">Claude · overview-kanban</span></div><span class="tab-pill">feature/overview</span></div><div class="meta"><span>等待输入</span><span>·</span><span>5m ago</span></div><div class="preview">请确认最终采用哪套原型方案（A/B/C/D），我将基于选定方案产出 design.md + implement.md。</div><div class="note"><span>✎</span><span>倾向 Linear 的信息密度</span></div></article></div></section>
+    <section class="column"><header class="column-header"><div class="column-title"><span class="bar err"></span><span>Needs attention</span></div><span class="count">1</span></header><div class="column-body"><article class="card"><div class="card-top"><div class="card-id"><span class="icon">C</span><span class="title">Claude · dotnet-dump</span></div><span class="tab-pill">debug/handle-leak</span></div><div class="meta"><span>需关注</span><span>·</span><span>1m ago</span></div><div class="preview">ThreadMethodEntry 持续增长，建议先确认 dump 工具链与符号再继续分析。</div><div class="note"><span>✎</span><span>先锁定 x86 dotnet-dump</span></div></article></div></section>
+    <section class="column"><header class="column-header"><div class="column-title"><span class="bar ok"></span><span>Done</span></div><span class="count">1</span></header><div class="column-body"><article class="card"><div class="card-top"><div class="card-id"><span class="icon">X</span><span class="title">Codex · fix-preview</span></div><span class="tab-pill">main</span></div><div class="meta"><span>已完成</span><span>·</span><span>18m ago</span></div><div class="preview">预览编辑软换行与内联标记修复，验证台已补充整体视觉一致性判据。</div></article></div></section>
+    <section class="column"><header class="column-header"><div class="column-title"><span class="bar idle"></span><span>Idle</span></div><span class="count">1</span></header><div class="column-body"><article class="card"><div class="card-top"><div class="card-id"><span class="icon">G</span><span class="title">Gemini · docs-sync</span></div><span class="tab-pill">main</span></div><div class="meta"><span>空闲</span><span>·</span><span>1h ago</span></div><div class="preview">等待指令：同步 Trellis 规范文档。</div></article></div></section>
+  </div>
+</body>
+</html>

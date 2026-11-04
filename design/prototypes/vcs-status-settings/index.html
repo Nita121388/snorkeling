@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VCS Status 设置界面原型</title>
+<style>
+  :root {
+    --main-text-color: rgb(58, 50, 39);
+    --secondary-text-color: #5c5347;
+    --muted: #8b8175;
+    --border-color: rgba(58, 50, 39, 0.14);
+    --bg: #f5f2ec;
+    --bg-panel: #fffdf8;
+    --bg-side: #f0ece5;
+    --bg-hover: rgba(158, 96, 197, 0.08);
+    --bg-selected: rgba(158, 96, 197, 0.15);
+    --accent-color: #9e60c5;
+    --success-color: #2e7d32;
+    --warning-color: #e65100;
+    --error-color: #d32f2f;
+    --icon-folder: #c9a227;
+    --icon-file: #8b8175;
+    --clean-path-color: color-mix(in srgb, var(--success-color) 45%, var(--secondary-text-color));
+  }
+  body.dark {
+    --main-text-color: #eeeeee;
+    --secondary-text-color: rgb(195, 200, 194);
+    --muted: rgb(150, 154, 150);
+    --border-color: rgba(255, 255, 255, 0.14);
+    --bg: #161618;
+    --bg-panel: #1e1e21;
+    --bg-side: #1a1a1d;
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-selected: rgba(255, 255, 255, 0.1);
+    --accent-color: rgb(88, 193, 66);
+    --success-color: rgb(78, 154, 6);
+    --warning-color: rgb(224, 185, 86);
+    --error-color: rgb(229, 77, 46);
+    --icon-file: rgb(150, 154, 150);
+    --clean-path-color: color-mix(in srgb, var(--success-color) 45%, var(--secondary-text-color));
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--main-text-color);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px; line-height: 1.55;
+  }
+  .shell {
+    display: grid; grid-template-columns: 210px 1fr;
+    max-width: 1060px; margin: 22px auto; min-height: 720px;
+    border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden;
+    background: var(--bg-panel);
+    box-shadow: 0 30px 70px -50px rgba(0,0,0,.4);
+  }
+  /* ── 左侧设置导航 ── */
+  .side { background: var(--bg-side); border-right: 1px solid var(--border-color); padding: 14px 10px; }
+  .side-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 4px 8px 8px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 7px;
+    font-size: 12.5px; color: var(--secondary-text-color); cursor: pointer; margin-bottom: 1px;
+  }
+  .nav-item:hover { background: var(--bg-hover); }
+  .nav-item.active { background: var(--bg-selected); color: var(--main-text-color); font-weight: 600; }
+  .nav-item .ico { width: 14px; text-align: center; opacity: .8; }
+  .nav-sep { height: 1px; background: var(--border-color); margin: 8px 6px; }
+
+  /* ── 右侧内容 ── */
+  .content { padding: 20px 24px 40px; overflow-y: auto; max-height: 720px; }
+  .content-head { margin-bottom: 18px; }
+  .content-head h1 { margin: 0 0 3px; font-size: 17px; }
+  .content-head p { margin: 0; color: var(--muted); font-size: 12px; }
+
+  /* live preview */
+  .preview-bar {
+    border: 1px solid var(--border-color); border-radius: 9px;
+    background: var(--bg); padding: 10px 12px; margin-bottom: 20px;
+  }
+  .preview-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
+  .pv-header { display: flex; align-items: center; gap: 6px; height: 30px; }
+  .pv-chev { color: var(--muted); font-size: 11px; }
+  .pv-path {
+    display: inline-block; font-size: 12.5px; color: var(--secondary-text-color);
+    transform-origin: left center;
+    transition: color 140ms ease, font-weight 140ms ease, transform 140ms ease;
+  }
+  .pv-path.clean { color: var(--clean-path-color); font-weight: 500; transform: scale(1.012); }
+  .pv-icons { margin-left: auto; display: flex; gap: 2px; }
+  .pv-icon {
+    width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 5px; color: var(--secondary-text-color); position: relative;
+  }
+  .pv-badge { position: absolute; top: 0; right: -1px; font-size: 9px; font-weight: 700; line-height: 1; padding: 1px 2px; border-radius: 999px; background: var(--bg-panel); color: var(--warning-color); }
+  .pv-badge.clean { padding: 2px; }
+  .pv-badge.clean i { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--success-color); }
+  .pv-tree { margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 8px; }
+  .pv-row { display: flex; align-items: center; gap: 5px; height: 22px; font-size: 12px; }
+  .pv-row .fico { width: 14px; color: var(--icon-folder); display: inline-flex; }
+  .pv-row .fico.file { color: var(--icon-file); }
+  .pv-row .fico svg { width: 12px; height: 12px; }
+  .pv-name { transition: color 140ms ease; }
+  .pv-name.modified { color: var(--warning-color); }
+  .pv-name.untracked { color: var(--success-color); }
+  .pv-row .trail { margin-left: auto; }
+  .pv-cnt { color: var(--warning-color); font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pv-letter { font-size: 10px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .pv-letter.m { color: var(--warning-color); } .pv-letter.u { color: var(--success-color); } .pv-letter.d { color: var(--error-color); }
+  .pv-dot { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--warning-color); }
+  /* 关闭态预览 */
+  body.hide-header .pv-header-row { display: none; }
+  body.hide-tree .pv-tree { display: none; }
+  body.hide-badge .pv-badge { display: none; }
+  body.hide-clean .pv-path.clean { color: var(--secondary-text-color); font-weight: 400; transform: scale(1); }
+  body.hide-clean .pv-dot.clean-dot { display: none; }
+  body.hide-count .pv-cnt { display: none; }
+  body.hide-letters .pv-letter { display: none; }
+  body.marker-letter .pv-dot { display: none; }
+  body.marker-none .pv-dot, body.marker-none .pv-letter, body.marker-none .pv-cnt { display: none; }
+
+  /* ── 设置分组 ── */
+  .group { margin-bottom: 22px; }
+  .group-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
+  .group-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
+  .group-head .desc { font-size: 11.5px; color: var(--muted); }
+  .group-body { border: 1px solid var(--border-color); border-radius: 9px; overflow: hidden; }
+
+  .set-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+  }
+  .set-row:last-child { border-bottom: none; }
+  .set-row .info { flex: 1 1 auto; min-width: 0; }
+  .set-row .t { font-size: 12.5px; }
+  .set-row .d { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .set-row .ctrl { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+
+  /* 开关 */
+  .sw {
+    width: 34px; height: 19px; border-radius: 999px; position: relative;
+    background: var(--border-color); cursor: pointer; transition: background 140ms ease; flex: 0 0 auto;
+  }
+  .sw::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 15px; height: 15px; border-radius: 50%; background: var(--bg-panel);
+    transition: transform 140ms ease; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  }
+  .sw.on { background: var(--success-color); }
+  .sw.on::after { transform: translateX(15px); }
+
+  /* checkbox chips */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border: 1px solid var(--border-color); border-radius: 999px;
+    font-size: 11.5px; color: var(--secondary-text-color); cursor: pointer; user-select: none;
+  }
+  .chip.on { border-color: var(--success-color); color: var(--success-color); background: color-mix(in srgb, var(--success-color) 10%, transparent); }
+  .chip .box { width: 11px; height: 11px; border-radius: 3px; border: 1px solid currentColor; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; }
+  .chip.on .box { background: var(--success-color); color: var(--bg-panel); border-color: var(--success-color); }
+
+  /* select */
+  .sel {
+    appearance: none; border: 1px solid var(--border-color); border-radius: 6px;
+    background: var(--bg-panel); color: var(--main-text-color);
+    font-size: 12px; padding: 4px 26px 4px 9px; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 13px) 52%, calc(100% - 9px) 52%;
+    background-size: 4px 4px, 4px 4px; background-repeat: no-repeat;
+  }
+
+  /* 仓库列表选择器 */
+  .repo-picker { padding: 10px 12px; background: var(--bg); border-top: 1px solid var(--border-color); }
+  .repo-search {
+    width: 100%; border: 1px solid var(--border-color); border-radius: 6px;
+    background: var(--bg-panel); color: var(--main-text-color);
+    font-size: 12px; padding: 5px 9px; margin-bottom: 8px;
+  }
+  .repo-list { max-height: 168px; overflow-y: auto; display: grid; gap: 1px; }
+  .repo-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 7px;
+    border-radius: 5px; font-size: 12px; cursor: pointer;
+  }
+  .repo-item:hover { background: var(--bg-hover); }
+  .repo-item .cb { width: 12px; height: 12px; border: 1px solid var(--border-color); border-radius: 3px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; }
+  .repo-item.on .cb { background: var(--success-color); border-color: var(--success-color); color: var(--bg-panel); }
+  .repo-item .rname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .repo-item .rtype {
+    font-size: 9.5px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border-color);
+    color: var(--muted); text-transform: uppercase; letter-spacing: .03em; flex: 0 0 auto;
+  }
+  .repo-item .rstate { font-size: 10px; flex: 0 0 auto; color: var(--muted); }
+  .repo-item .rstate.clean { color: var(--success-color); }
+  .repo-item .rstate.dirty { color: var(--warning-color); }
+  .repo-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .link { color: var(--accent-color); font-size: 11.5px; cursor: pointer; }
+  .link:hover { text-decoration: underline; }
+
+  /* 样式卡片 */
+  .style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px; }
+  .style-card {
+    border: 1px solid var(--border-color); border-radius: 9px; overflow: hidden;
+    background: var(--bg); cursor: pointer; position: relative;
+  }
+  .style-card.on { border-color: var(--success-color); box-shadow: 0 0 0 1px var(--success-color) inset; }
+  .style-card .mini { padding: 9px 10px; border-bottom: 1px solid var(--border-color); }
+  .style-card .mini .row1 { font-size: 12px; display: flex; align-items: center; gap: 4px; margin-bottom: 5px; }
+  .style-card .mini .row2 { font-size: 11px; display: flex; align-items: center; gap: 5px; color: var(--secondary-text-color); }
+  .style-card .meta { padding: 7px 10px; display: flex; align-items: center; gap: 6px; }
+  .style-card .meta .nm { font-size: 11.5px; font-weight: 600; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .style-card .tag2 { font-size: 9px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border-color); color: var(--muted); }
+  .style-card .del { position: absolute; top: 5px; right: 5px; font-size: 11px; color: var(--muted); }
+  .style-card .del:hover { color: var(--error-color); }
+
+  /* 样式包 A/B/C 的不同渲染 */
+  .sc-default .p { color: var(--secondary-text-color); }
+  .sc-minimal .p { color: var(--secondary-text-color); }
+  .sc-minimal .dirty-mark { width: 4px; height: 4px; border-radius: 50%; background: var(--warning-color); }
+  .sc-contrast .p { color: var(--main-text-color); font-weight: 700; }
+  .sc-contrast .dirty-mark { width: 7px; height: 7px; border-radius: 1px; background: var(--warning-color); }
+
+  /* 高级折叠 */
+  .adv-toggle { display: flex; align-items: center; gap: 6px; padding: 10px 12px; font-size: 12px; color: var(--secondary-text-color); cursor: pointer; }
+  .adv-body { display: none; border-top: 1px solid var(--border-color); }
+  .adv-body.open { display: block; }
+  .mono { font-family: ui-monospace, monospace; font-size: 11px; }
+
+  .notice {
+    display: flex; gap: 8px; padding: 9px 11px; border-radius: 8px;
+    background: color-mix(in srgb, var(--warning-color) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning-color) 30%, transparent);
+    font-size: 11.5px; color: var(--secondary-text-color); margin-bottom: 18px;
+  }
+  .notice b { color: var(--warning-color); }
+
+  .apply-bar {
+    display: flex; align-items: center; gap: 10px; margin-top: 4px;
+    padding-top: 16px; border-top: 1px solid var(--border-color);
+  }
+  .btn {
+    border: 1px solid var(--border-color); background: var(--bg-panel); color: var(--main-text-color);
+    font-size: 12px; padding: 5px 14px; border-radius: 6px; cursor: pointer;
+  }
+  .btn:hover { background: var(--bg-hover); }
+  .btn.primary { background: var(--success-color); border-color: var(--success-color); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .apply-bar .hint { font-size: 11px; color: var(--muted); }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .theme-toggle { display: flex; border: 1px solid var(--border-color); border-radius: 999px; overflow: hidden; }
+  .theme-toggle button { border: none; background: transparent; color: var(--muted); font-size: 11px; padding: 3px 10px; cursor: pointer; }
+  .theme-toggle button.on { background: var(--bg-selected); color: var(--main-text-color); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- 左侧设置导航（复用 waveconfig 条目结构） -->
+  <aside class="side">
+    <div class="side-title">Settings</div>
+    <div class="nav-item"><span class="ico">⚙</span>General</div>
+    <div class="nav-item"><span class="ico">🎨</span>App Theme</div>
+    <div class="nav-item"><span class="ico">🔔</span>Agent Notifications</div>
+    <div class="nav-item">🖧 Connections</div>
+    <div class="nav-item">▦ Sidebar Widgets</div>
+    <div class="nav-item">✦ Wave AI Modes</div>
+    <div class="nav-item">✎ AI Prompts</div>
+    <div class="nav-item">🖼 Tab Backgrounds</div>
+    <div class="nav-sep"></div>
+    <div class="nav-item active"><span class="ico">⑂</span>VCS Status</div>
+    <div class="nav-sep"></div>
+    <div class="nav-item">🔑 Secrets</div>
+  </aside>
+
+  <!-- 右侧内容 -->
+  <main class="content">
+    <div class="topbar">
+      <div class="content-head">
+        <h1>VCS Status</h1>
+        <p>版本状态在 Files Header 与目录树中的显示方式</p>
+      </div>
+      <div class="theme-toggle">
+        <button data-t="light" class="on">浅色</button>
+        <button data-t="dark">暗色</button>
+      </div>
+    </div>
+
+    <!-- 实时预览 -->
+    <div class="preview-bar">
+      <div class="preview-label">Live Preview</div>
+      <div class="pv-header-row">
+        <div class="pv-header">
+          <span class="pv-chev">‹</span>
+          <span class="pv-path clean" id="pv-path">snorkeling</span>
+          <span class="pv-icons">
+            <span class="pv-icon">👁</span>
+            <span class="pv-icon">⑂
+              <span class="pv-badge" id="pv-badge">3</span>
+            </span>
+          </span>
+        </div>
+      </div>
+      <div class="pv-tree">
+        <div class="pv-row">
+          <span class="fico" data-icon="folder"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.2h4.6l1.4 1.9h7v7.9h-13z"/></svg></span>
+          <span class="pv-name">src</span>
+          <span class="trail"><span class="pv-cnt">4</span></span>
+        </div>
+        <div class="pv-row">
+          <span class="fico file"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 1.6h6.3L13.4 5.7v8.7H3z"/></svg></span>
+          <span class="pv-name modified">index.ts</span>
+          <span class="trail"><span class="pv-letter m">M</span></span>
+        </div>
+        <div class="pv-row">
+          <span class="fico file"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 1.6h6.3L13.4 5.7v8.7H3z"/></svg></span>
+          <span class="pv-name untracked">new-file.ts</span>
+          <span class="trail"><span class="pv-letter u">U</span></span>
+        </div>
+        <div class="pv-row">
+          <span class="fico" data-icon="folder"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.2h4.6l1.4 1.9h7v7.9h-13z"/></svg></span>
+          <span class="pv-name">docs</span>
+          <span class="trail"><span class="pv-dot clean-dot" style="background:var(--success-color)"></span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 显示位置 -->
+    <section class="group">
+      <div class="group-head">
+        <h2>显示位置</h2>
+        <span class="desc">决定哪些界面出现版本状态</span>
+      </div>
+      <div class="group-body">
+        <div class="set-row">
+          <div class="info"><div class="t">Files Header 路径高亮</div><div class="d">仓库干净时路径文字变色</div></div>
+          <div class="ctrl"><span class="sw on" data-toggle="hide-header"></span></div>
+        </div>
+        <div class="set-row">
+          <div class="info"><div class="t">目录树行标记</div><div class="d">文件/文件夹行显示变更类型与数量</div></div>
+          <div class="ctrl"><span class="sw on" data-toggle="hide-tree"></span></div>
+        </div>
+        <div class="set-row">
+          <div class="info"><div class="t">版本管理图标角标</div><div class="d">图标右上角显示干净点 / 变更数</div></div>
+          <div class="ctrl"><span class="sw on" data-toggle="hide-badge"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 显示内容 -->
+    <section class="group">
+      <div class="group-head">
+        <h2>显示内容</h2>
+        <span class="desc">标记表达哪些信息</span>
+      </div>
+      <div class="group-body">
+        <div class="set-row">
+          <div class="info"><div class="t">干净高亮</div><div class="d">仓库完全干净时高亮（脏时静默）</div></div>
+          <div class="ctrl"><span class="sw on" data-toggle="hide-clean"></span></div>
+        </div>
+        <div class="set-row">
+          <div class="info"><div class="t">文件夹变更数量</div><div class="d">文件夹行显示该目录下变更文件数</div></div>
+          <div class="ctrl"><span class="sw on" data-toggle="hide-count"></span></div>
+        </div>
+        <div class="set-row">
+          <div class="info"><div class="t">文件变更类型字母</div><div class="d">M / U / D</div></div>
+          <div class="ctrl"><span class="sw on" data-toggle="hide-letters"></span></div>
+        </div>
+        <div class="set-row">
+          <div class="info"><div class="t">标记形态</div><div class="d">行尾标记的表现方式</div></div>
+          <div class="ctrl">
+            <select class="sel" id="marker-style">
+              <option value="letter">字母 + 数量（推荐）</option>
+              <option value="dot">圆点</option>
+              <option value="none">不显示标记</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 仓库类型 -->
+    <section class="group">
+      <div class="group-head">
+        <h2>仓库类型</h2>
+        <span class="desc">只对选中的类型生效</span>
+      </div>
+      <div class="group-body">
+        <div class="set-row">
+          <div class="info"><div class="t">Git</div><div class="d">显示 Git 仓库的版本状态</div></div>
+          <div class="ctrl"><span class="chip on" data-chip="git"><span class="box">✓</span>Git</span></div>
+        </div>
+        <div class="set-row">
+          <div class="info"><div class="t">SVN</div><div class="d">显示 SVN 仓库的版本状态</div></div>
+          <div class="ctrl"><span class="chip" data-chip="svn"><span class="box"></span>SVN</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 仓库范围 -->
+    <section class="group">
+      <div class="group-head">
+        <h2>仓库范围</h2>
+        <span class="desc">是否对全部仓库生效</span>
+      </div>
+      <div class="group-body">
+        <div class="set-row">
+          <div class="info"><div class="t">生效范围</div><div class="d">多仓库目录（如 projects/）下只显示部分</div></div>
+          <div class="ctrl">
+            <select class="sel" id="scope-mode">
+              <option value="all">全部仓库</option>
+              <option value="include">只显示选中</option>
+              <option value="exclude">排除选中</option>
+            </select>
+          </div>
+        </div>
+        <div class="repo-picker" id="repo-picker" style="display:none">
+          <input class="repo-search" id="repo-search" placeholder="搜索仓库名或路径…">
+          <div class="repo-list" id="repo-list"></div>
+          <div class="repo-actions">
+            <span class="link" id="select-all">全选</span>
+            <span class="link" id="select-none">清空</span>
+            <span class="link" id="select-clean">只选干净</span>
+            <span class="link" id="select-dirty">只选有变更</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 外观 / 样式包 -->
+    <section class="group">
+      <div class="group-head">
+        <h2>外观（样式包）</h2>
+        <span class="desc">可安装替换的样式</span>
+      </div>
+      <div class="group-body">
+        <div class="style-grid" id="style-grid">
+          <div class="style-card on sc-default" data-style="default">
+            <div class="mini">
+              <div class="row1"><span style="color:var(--clean-path-color);font-weight:500">snorkeling</span></div>
+              <div class="row2"><span style="color:var(--warning-color)">index.ts</span><span class="dirty-mark" style="width:6px;height:6px;border-radius:50%;background:var(--warning-color)"></span></div>
+            </div>
+            <div class="meta"><span class="nm">Default</span><span class="tag2">内置</span></div>
+          </div>
+          <div class="style-card sc-minimal" data-style="minimal">
+            <div class="mini">
+              <div class="row1"><span style="color:var(--secondary-text-color)">snorkeling</span></div>
+              <div class="row2"><span style="color:var(--secondary-text-color)">index.ts</span><span class="dirty-mark"></span></div>
+            </div>
+            <div class="meta"><span class="nm">Minimal</span><span class="tag2">内置</span></div>
+          </div>
+          <div class="style-card sc-contrast" data-style="contrast">
+            <div class="mini">
+              <div class="row1"><span style="color:var(--main-text-color);font-weight:700">snorkeling</span></div>
+              <div class="row2"><span style="color:var(--main-text-color)">index.ts</span><span class="dirty-mark" style="width:7px;height:7px;border-radius:1px;background:var(--warning-color)"></span></div>
+            </div>
+            <div class="meta"><span class="nm">High Contrast</span><span class="tag2">内置</span></div>
+          </div>
+          <div class="style-card" data-style="nord">
+            <div class="mini">
+              <div class="row1"><span style="color:#88c0d0;font-weight:500">snorkeling</span></div>
+              <div class="row2"><span style="color:#ebcb8b">index.ts</span><span style="width:6px;height:6px;border-radius:50%;background:#ebcb8b"></span></div>
+            </div>
+            <div class="meta"><span class="nm">Nord VCS</span><span class="tag2">社区</span><span class="del">✕</span></div>
+          </div>
+        </div>
+        <div class="set-row">
+          <div class="info">
+            <div class="t">样式包目录</div>
+            <div class="d mono">~/.snorkeling/vcs-styles/</div>
+          </div>
+          <div class="ctrl">
+            <button class="btn">打开目录</button>
+            <button class="btn">安装…</button>
+            <button class="btn">刷新</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="notice">
+      <span>⚠</span>
+      <div>
+        <b>样式包只允许覆盖 <span class="mono">--vcs-*</span> 变量</b>，不能注入任意 CSS。
+        这样任何社区样式都不会破坏布局或注入脚本；完全自由的 CSS 请走「高级」里的自定义样式（仅本机，需显式开启）。
+      </div>
+    </div>
+
+    <!-- 性能 -->
+    <section class="group">
+      <div class="group-head">
+        <h2>性能</h2>
+        <span class="desc">默认值已按「不影响性能」调优</span>
+      </div>
+      <div class="group-body">
+        <div class="adv-toggle" id="adv-toggle"><span>▸</span>高级选项</div>
+        <div class="adv-body" id="adv-body">
+          <div class="set-row">
+            <div class="info"><div class="t">扫描深度</div><div class="d">检测子仓库时向下扫描的层数</div></div>
+            <div class="ctrl"><input class="repo-search" style="width:70px;margin:0" value="2"></div>
+          </div>
+          <div class="set-row">
+            <div class="info"><div class="t">status 上限</div><div class="d">单仓库最多读取的变更条目（后端上限 2000）</div></div>
+            <div class="ctrl"><input class="repo-search" style="width:80px;margin:0" value="2000"></div>
+          </div>
+          <div class="set-row">
+            <div class="info"><div class="t">跳过目录</div><div class="d mono">node_modules, .git, dist, target</div></div>
+            <div class="ctrl"><button class="btn">编辑</button></div>
+          </div>
+          <div class="set-row">
+            <div class="info"><div class="t">刷新时机</div><div class="d">何时重新获取仓库状态</div></div>
+            <div class="ctrl">
+              <select class="sel">
+                <option>目录切换 + VCS 操作后（推荐）</option>
+                <option>加上窗口聚焦</option>
+                <option>手动刷新</option>
+              </select>
+            </div>
+          </div>
+          <div class="set-row">
+            <div class="info"><div class="t">缓存目录状态</div><div class="d">按「连接 + 目录」缓存，仅精准失效</div></div>
+            <div class="ctrl"><span class="sw on"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="apply-bar">
+      <button class="btn primary">应用</button>
+      <button class="btn">重置为默认</button>
+      <span class="hint">设置立即生效，无需重启</span>
+    </div>
+  </main>
+</div>
+
+<script>
+  // ── 主题切换 ──
+  document.querySelectorAll('.theme-toggle button').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.theme-toggle button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      document.body.classList.toggle('dark', b.dataset.t === 'dark');
+    });
+  });
+
+  // ── 开关（改 body class 驱动预览）──
+  document.querySelectorAll('.sw[data-toggle]').forEach((sw) => {
+    sw.addEventListener('click', () => {
+      sw.classList.toggle('on');
+      const cls = sw.dataset.toggle;
+      document.body.classList.toggle(cls, !sw.classList.contains('on'));
+    });
+  });
+
+  // ── chips ──
+  document.querySelectorAll('.chip[data-chip]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      chip.classList.toggle('on');
+      const box = chip.querySelector('.box');
+      box.textContent = chip.classList.contains('on') ? '✓' : '';
+    });
+  });
+
+  // ── 模板大小写 ──
+  const pvPath = document.getElementById('pv-path');
+  const pvBadge = document.getElementById('pv-badge');
+  pvBadge.classList.remove('clean');
+  pvBadge.textContent = '3';
+
+  // ── 标记形态 ──
+  document.getElementById('marker-style').addEventListener('change', (e) => {
+    document.body.classList.remove('marker-letter', 'marker-dot', 'marker-none');
+    const v = e.target.value;
+    if (v === 'dot') document.body.classList.add('marker-dot');
+    if (v === 'none') document.body.classList.add('marker-none');
+  });
+
+  // ── 仓库范围 ──
+  const REPOS = [
+    { name: 'agent-prompt-studio', type: 'git', state: 'clean' },
+    { name: 'ai-usage-monitor', type: 'git', state: 'dirty', count: 2 },
+    { name: 'answer-me-with-html', type: 'git', state: 'clean' },
+    { name: 'data-guardian', type: 'git', state: 'dirty', count: 5 },
+    { name: 'data-guardian-dev', type: 'git', state: 'dirty', count: 1 },
+    { name: 'handle-viz', type: 'git', state: 'clean' },
+    { name: 'i-am-cooking', type: 'git', state: 'dirty', count: 3 },
+    { name: 'pi-session-digest', type: 'git', state: 'clean' },
+    { name: 'pi-session-library', type: 'git', state: 'dirty', count: 1 },
+    { name: 'usb-ssh-setup', type: 'git', state: 'clean' },
+    { name: 'legacy-tools', type: 'svn', state: 'dirty', count: 4 },
+  ];
+  let selected = new Set();
+
+  function renderRepoList() {
+    const q = (document.getElementById('repo-search').value || '').toLowerCase();
+    const list = document.getElementById('repo-list');
+    const rows = REPOS.filter((r) => r.name.toLowerCase().includes(q));
+    list.innerHTML = rows.map((r) => {
+      const on = selected.has(r.name);
+      const stateCls = r.state === 'clean' ? 'clean' : 'dirty';
+      const stateTxt = r.state === 'clean' ? 'clean' : `${r.count} changed`;
+      return `<div class="repo-item ${on ? 'on' : ''}" data-name="${r.name}">
+        <span class="cb">${on ? '✓' : ''}</span>
+        <span class="rname">${r.name}</span>
+        <span class="rtype">${r.type}</span>
+        <span class="rstate ${stateCls}">${stateTxt}</span>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.repo-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        const n = el.dataset.name;
+        if (selected.has(n)) selected.delete(n); else selected.add(n);
+        renderRepoList();
+      });
+    });
+  }
+
+  document.getElementById('scope-mode').addEventListener('change', (e) => {
+    document.getElementById('repo-picker').style.display = e.target.value === 'all' ? 'none' : 'block';
+  });
+  document.getElementById('repo-search').addEventListener('input', renderRepoList);
+  document.getElementById('select-all').addEventListener('click', () => { selected = new Set(REPOS.map((r) => r.name)); renderRepoList(); });
+  document.getElementById('select-none').addEventListener('click', () => { selected.clear(); renderRepoList(); });
+  document.getElementById('select-clean').addEventListener('click', () => { selected = new Set(REPOS.filter((r) => r.state === 'clean').map((r) => r.name)); renderRepoList(); });
+  document.getElementById('select-dirty').addEventListener('click', () => { selected = new Set(REPOS.filter((r) => r.state === 'dirty').map((r) => r.name)); renderRepoList(); });
+  renderRepoList();
+
+  // ── 样式卡片单选 ──
+  document.querySelectorAll('.style-card').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      if (e.target.classList.contains('del')) { card.remove(); return; }
+      document.querySelectorAll('.style-card').forEach((c) => c.classList.remove('on'));
+      card.classList.add('on');
+    });
+  });
+
+  // ── 高级折叠 ──
+  document.getElementById('adv-toggle').addEventListener('click', () => {
+    const body = document.getElementById('adv-body');
+    body.classList.toggle('open');
+    document.getElementById('adv-toggle').firstElementChild.textContent = body.classList.contains('open') ? '▾' : '▸';
+  });
+</script>
+</body>
+</html>
