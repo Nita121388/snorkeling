@@ -50,6 +50,11 @@ export type SessionNoteState = {
     inputRef: React.RefObject<HTMLTextAreaElement | null>;
     /** 结束编辑（失焦/Escape）时落盘。 */
     finishEditing: () => void;
+    /**
+     * 立即落盘任何待保存的草稿：取消防抖定时器，若有未保存修改就立刻写库。
+     * 用于悬浮卡卸载前兜底（避免鼠标快速移出时防抖还没到期就丢编辑）。
+     */
+    flushSave: () => void;
     trimmedDraft: string;
     title: string;
     /** 卡片上展示的一行预览：note 首行 → 标签 → 占位。 */
@@ -102,6 +107,10 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
     const saveSeqRef = React.useRef(0);
     const saveTimerRef = React.useRef<number | null>(null);
     const latestDraftRef = React.useRef("");
+    const dirtyRef = React.useRef(false);
+    // Latest `saveNote` closure, so the unmount cleanup (which only runs once with
+    // the first-render closure) still saves with current summary/connection.
+    const saveNoteRef = React.useRef<((nextNote: string) => void) | null>(null);
 
     // 触发后台加载（幂等）；快照通过 useSyncExternalStore 订阅。
     React.useEffect(() => {
@@ -149,6 +158,10 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
     React.useEffect(() => {
         latestDraftRef.current = noteDraft;
     }, [noteDraft]);
+
+    React.useEffect(() => {
+        dirtyRef.current = dirty;
+    }, [dirty]);
 
     React.useEffect(() => {
         if (saveStatus !== "saved" && saveStatus !== "error") {
@@ -238,8 +251,24 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             window.clearTimeout(saveTimerRef.current);
             saveTimerRef.current = null;
         }
-        saveNote(noteDraft);
-    }, [noteDraft, saveNote]);
+        saveNote(latestDraftRef.current);
+    }, [saveNote]);
+
+    // 立即落盘：取消防抖定时器，有未保存修改就同步发一次保存请求。
+    // 不依赖 isEditing（悬浮卡卸载时编辑态可能已经不存在，但草稿仍需落盘）。
+    const flushSave = React.useCallback(() => {
+        if (saveTimerRef.current != null) {
+            window.clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+        }
+        if (dirtyRef.current) {
+            saveNote(latestDraftRef.current);
+        }
+    }, [saveNote]);
+
+    React.useEffect(() => {
+        saveNoteRef.current = saveNote;
+    }, [saveNote]);
 
     // 防抖自动保存：只在用户真的输入过（dirty）且内容与后端不一致时才落盘。
     // 与列表行 / Note 弹窗一致：编辑态停顿同样会保存，不要求先失焦。
@@ -265,6 +294,8 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         // 同上：用展示字段而不是 summary 对象身份。
     }, [dirty, noteDraft, saveNote, summary?.note, summaryTagsKey]);
 
+    // 卸载兜底：悬浮卡 hover 移出后会立刻卸载，防抖定时器可能还没到期。
+    // 这里先把旧的在途结果作废（seq++），再用最新闭包把未保存草稿落盘一次。
     React.useEffect(() => {
         return () => {
             if (saveTimerRef.current != null) {
@@ -272,6 +303,10 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
                 saveTimerRef.current = null;
             }
             saveSeqRef.current++;
+            if (dirtyRef.current && saveNoteRef.current != null) {
+                // saveNote 内部会再 seq++ 并把结果绑定到新 seq，所以不会被上面那次 ++ 作废。
+                saveNoteRef.current(latestDraftRef.current);
+            }
         };
     }, []);
 
@@ -430,6 +465,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         error,
         inputRef,
         finishEditing,
+        flushSave,
         trimmedDraft,
         title,
         previewText,

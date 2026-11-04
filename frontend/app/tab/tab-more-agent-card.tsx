@@ -15,7 +15,7 @@
 
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import { CopyButton } from "@/app/element/copybutton";
-import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
+import { agentStatusPresentation } from "@/app/agent-status/agent-status-derive";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { makeORef } from "@/app/store/wos";
 import { useAgentStatusForCard } from "@/app/store/session-note-hook";
@@ -24,6 +24,13 @@ import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import {
+    getAgentProviderKey,
+    resolveAgentModel,
+    resolveAgentProviderLabel,
+    resolveAgentVendorName,
+    resolveAnyAgentVendorName,
+} from "@/app/view/term/agent-identity";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
@@ -98,9 +105,13 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
         agentStatus?.provider != null && agentStatus.provider.trim() !== ""
             ? agentStatus.provider
             : normalizeAgentProvider(meta["agent:provider"]);
-    const provider = formatAgentProvider(rawProvider);
-    const model =
+    const providerKey = getAgentProviderKey(rawProvider);
+    const vendorName = resolveAgentVendorName(meta, providerKey) || resolveAnyAgentVendorName(meta);
+    const providerLabel = resolveAgentProviderLabel(meta, agentStatus);
+    const displayProvider = vendorName || providerLabel;
+    const requestedModel =
         (meta["agent:requestedmodel"] as string)?.trim() || (meta["model"] as string)?.trim() || "";
+    const model = resolveAgentModel({ requestedModel });
     const sessionId = resolveBlockSessionId(meta);
     const statusState = agentStatus?.state ?? "unknown";
     const statusLabel = agentStatus != null ? agentStatusPresentation(agentStatus).label : "";
@@ -140,7 +151,7 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
                     <i className="fa-sharp fa-solid fa-microchip text-[10px]" />
                 )}
             </span>
-            <span className="shrink-0 truncate text-primary">{provider}</span>
+            <span className="shrink-0 truncate text-primary">{displayProvider !== "" ? displayProvider : "Agent"}</span>
             <span className="min-w-0 flex-1 truncate text-muted">{model || "未指定"}</span>
             {statusLabel !== "" && (
                 <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted" title={statusLabel}>

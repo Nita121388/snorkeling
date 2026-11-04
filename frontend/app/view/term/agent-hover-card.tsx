@@ -9,7 +9,7 @@ import {
     getAgentRuntimeMetadataSnapshot,
     subscribeAgentRuntimeMetadata,
 } from "@/app/agent-status/agent-runtime-metadata-store";
-import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
+import { agentStatusPresentation } from "@/app/agent-status/agent-status-derive";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { CopyButton } from "@/app/element/copybutton";
 import { InfoCard, InfoCardSection } from "@/app/element/info-card";
@@ -22,6 +22,13 @@ import { modalsModel } from "@/app/store/modalmodel";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
 import * as React from "react";
+import {
+    getAgentProviderKey,
+    resolveAgentModel,
+    resolveAgentProviderLabel,
+    resolveAgentVendorName,
+    resolveAnyAgentVendorName,
+} from "@/app/view/term/agent-identity";
 
 /**
  * AgentHoverCard - 统一的 agent 会话卡片 (note + TUI 模式下的用户消息列表)
@@ -71,11 +78,15 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     // Persona session key: block meta/command resolution first, then the live
     // agent status (hooks may know the session id before it is persisted).
     const personaSessionId = sessionId || agentStatus?.sessionId || "";
+    const metaRecord = (blockData?.meta ?? {}) as Record<string, unknown>;
     const rawProvider =
         agentStatus?.provider != null && agentStatus.provider.trim() !== ""
             ? agentStatus.provider
-            : normalizeAgentProvider(blockData?.meta?.["agent:provider"]);
-    const provider = formatAgentProvider(rawProvider);
+            : normalizeAgentProvider(metaRecord["agent:provider"]);
+    const providerKey = getAgentProviderKey(rawProvider);
+    const vendorName = resolveAgentVendorName(metaRecord, providerKey) || resolveAnyAgentVendorName(metaRecord);
+    const providerLabel = resolveAgentProviderLabel(metaRecord, agentStatus);
+    const displayProvider = vendorName || providerLabel;
 
     // 异步增强真实模型：立即显示请求模型，live 会话模型到达后增量替换；失败保留原值、不阻塞。
     const runtimeEntry = React.useSyncExternalStore(
@@ -88,11 +99,10 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     }, [blockId, sessionId, rawProvider]);
 
     const requestedModel =
-        (blockData?.meta?.["agent:requestedmodel"] as string)?.trim() ||
-        (blockData?.meta?.["model"] as string)?.trim() ||
-        "";
+        (metaRecord["agent:requestedmodel"] as string)?.trim() || (metaRecord["model"] as string)?.trim() || "";
     const liveModel = runtimeEntry?.source === "live" ? runtimeEntry.model : undefined;
-    const model = liveModel || requestedModel;
+    const sessionResolvedModel = runtimeEntry?.source === "session" ? runtimeEntry.model : undefined;
+    const model = resolveAgentModel({ liveModel, requestedModel, sessionModel: sessionResolvedModel });
     const modelLoading = runtimeEntry?.loading ?? false;
     const statusPres = agentStatus != null ? agentStatusPresentation(agentStatus) : null;
     const statusState = agentStatus?.state ?? "unknown";
@@ -145,7 +155,10 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
             blockData,
         });
     }, [blockId, blockData]);
-    const showMetaRow = (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
+    // 头部区只在确实有身份/模型/状态信息时才渲染：providerLabel 的 "Agent" 是
+    // 无任何来源时的兜底展示，不能拿它当“有信息”的判据，否则空会话也会长出空白头。
+    const showMetaRow =
+        providerLabel !== "Agent" || model !== "" || modelLoading || statusPres != null;
     // 星标与标题来源从属性区上移：星标进右上角，titleSource 并入副标题。
     const starred = noteState.summary?.marked === true;
     const titleSource = noteState.summary?.titleSource ?? "";
@@ -208,8 +221,8 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                             </span>
                         )}
                         <div className="agent-card-id">
-                            <span className="agent-card-name" title={provider}>
-                                {provider !== "" ? provider : "Agent"}
+                            <span className="agent-card-name" title={vendorName ? `${vendorName} (${providerLabel})` : providerLabel}>
+                                {displayProvider !== "" ? displayProvider : "Agent"}
                             </span>
                             <span
                                 className="agent-card-sub"

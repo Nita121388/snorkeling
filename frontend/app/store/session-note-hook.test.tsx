@@ -179,6 +179,57 @@ describe("useSessionNoteState", () => {
         h.unmount();
     });
 
+    it("flushes the pending draft immediately when the card unmounts (hover fast-exit)", async () => {
+        const key = "unmount-flush-session";
+        const noteFn = vi.fn(async (req: { note?: string }) => makeSummary(key, req.note ?? "typed then unmounted"));
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation(
+            (async () => makeSummary(key, "backend note")) as never
+        );
+        vi.spyOn(AISessionsServiceType.prototype, "NoteAndTags").mockImplementation(noteFn as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.note === "backend note", "summary load");
+
+        act(() => {
+            current!.setNoteDraft("typed then unmounted");
+        });
+        expect(current?.dirty).toBe(true);
+        // 防抖还没到期就卸载（模拟鼠标快速移出 hover 卡），不应丢编辑。
+        expect(noteFn).not.toHaveBeenCalled();
+        h.unmount();
+
+        await flush(4);
+        expect(noteFn).toHaveBeenCalledTimes(1);
+        expect(noteFn.mock.calls[0][0].note).toBe("typed then unmounted");
+    });
+
+    it("flushSave() cancels the debounce timer and saves only once", async () => {
+        const key = "flush-save-session";
+        const noteFn = vi.fn(async () => makeSummary(key, "typed explicitly"));
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation(
+            (async () => makeSummary(key, "backend note")) as never
+        );
+        vi.spyOn(AISessionsServiceType.prototype, "NoteAndTags").mockImplementation(noteFn as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.note === "backend note", "summary load");
+
+        act(() => {
+            current!.setNoteDraft("typed explicitly");
+        });
+        act(() => {
+            current!.flushSave();
+        });
+        await flush(4);
+        expect(noteFn).toHaveBeenCalledTimes(1);
+
+        // 原本排队的防抖定时器被取消，等过一个防抖周期也不应再触发第二次。
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await flush(4);
+        expect(noteFn).toHaveBeenCalledTimes(1);
+        h.unmount();
+    });
+
     it("does not overwrite the user's draft when a remote event arrives mid-edit", async () => {
         const key = "editing-session";
         vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation(

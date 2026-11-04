@@ -78,6 +78,7 @@ export function SessionNoteSection({
         setIsEditing,
         inputRef,
         finishEditing,
+        flushSave,
         title,
         error,
     } = state;
@@ -319,7 +320,17 @@ export function SessionNoteSection({
                     onChange={(event) => {
                         setNoteDraft(event.target.value);
                     }}
-                    onBlur={finishEditing}
+                    onBlur={
+                        variant === "hover"
+                            ? () => {
+                                  // 悬浮卡：不要求「点卡片外部」。有未保存草稿就立即落盘（
+                                  // 防抖到期与卸载兜底之外再补一条“离开输入框即存”），
+                                  // 然后仅退出编辑态，不额外触发一次重复保存。
+                                  flushSave();
+                                  setIsEditing(false);
+                              }
+                            : finishEditing
+                    }
                     onKeyDown={(event) => {
                         event.stopPropagation();
                         if (event.key === "Escape") {

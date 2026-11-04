@@ -6,7 +6,9 @@ package aisessionsservice
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 )
 
@@ -84,6 +86,10 @@ func (svc *AISessionsService) LiveSessionState_Meta() tsgenmeta.MethodMeta {
 // if one exists for the given source+sessionId. It never spawns an agent: the
 // frontend uses this to enrich the agent hover card's model line asynchronously
 // while immediately showing the requested model from block metadata.
+//
+// For terminal/TUI agent blocks there may be no live GUI chat session; when
+// possible, fall back to the persisted AI session record to resolve the last
+// assistant model so agent cards can display a real model.
 func (svc *AISessionsService) LiveSessionState(ctx context.Context, request *AISessionsLiveSessionStateRequest) (*AISessionsLiveSessionStateResponse, error) {
 	resp := &AISessionsLiveSessionStateResponse{Live: false}
 	if request == nil || request.SessionID == "" {
@@ -94,21 +100,45 @@ func (svc *AISessionsService) LiveSessionState(ctx context.Context, request *AIS
 		source = "pi"
 	}
 	s := chatManager.Get(source, request.SessionID)
-	if s == nil {
+	if s != nil {
+		st, err := s.GetState(ctx)
+		if err == nil {
+			resp.Live = true
+			if st.Model != nil {
+				resp.ModelProvider = st.Model.Provider
+				resp.ModelID = st.Model.ID
+				resp.ModelName = st.Model.Name
+			}
+			resp.ThinkingLevel = st.ThinkingLevel
+			return resp, nil
+		}
+		// A live entry may still be cold / not queryable; fall through to disk resolution.
+	}
+
+	// Disk fallback: resolve from persisted AI session (terminal agents).
+	manager, err := svc.managerForIdentifier(ctx, request.SessionID)
+	if err != nil || manager == nil {
 		return resp, nil
 	}
-	st, err := s.GetState(ctx)
+	summary, err := manager.Summary(ctx, request.SessionID, false)
 	if err != nil {
-		// A live entry may still be cold / not queryable; treat as not-live so
-		// the frontend keeps the requested-model fallback without blocking.
 		return resp, nil
 	}
-	resp.Live = true
-	if st.Model != nil {
-		resp.ModelProvider = st.Model.Provider
-		resp.ModelID = st.Model.ID
-		resp.ModelName = st.Model.Name
+	if strings.TrimSpace(summary.Source) != "" {
+		resp.ModelProvider = summary.Source
 	}
-	resp.ThinkingLevel = st.ThinkingLevel
+	// Try to load messages to find the last assistant message model.
+	detail, err := manager.Load(ctx, request.SessionID, aisessions.LoadOptions{})
+	if err != nil {
+		return resp, nil
+	}
+	for i := len(detail.Messages) - 1; i >= 0; i-- {
+		m := detail.Messages[i]
+		if m.Model != "" {
+			resp.ModelID = m.Model
+			resp.ModelName = m.Model
+			break
+		}
+	}
 	return resp, nil
 }
