@@ -1,5 +1,10 @@
 # Snorkeling Codex Instructions
 
+## 👉 接手先读 `HANDOFF.md`
+
+仓库根目录的 **`HANDOFF.md`** 是当前交接页：四项 UI 功能里 3 项已发版、1 项（Files VCS 标记）已实现待收尾 +
+待发 `0.0.118`。开工前先读它，再读它指向的 `.trellis/tasks/11-04-files-vcs-tree-status/implement.md`。
+
 @.kilocode/rules/rules.md
 
 Read and honor the existing project guidance in `CLAUDE.md` and any referenced skill guides when the task matches them.
