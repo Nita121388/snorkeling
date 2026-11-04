@@ -5,7 +5,7 @@ import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/blo
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { TreeNodeData, TreeView, TreeViewRef } from "@/app/treeview/treeview";
+import { TreeNodeData, TreeView, TreeViewRef, TreeViewRowInfo } from "@/app/treeview/treeview";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { checkKeyPressed, isCharacterKeyEvent } from "@/util/keyutil";
 import { fireAndForget, makeConnRoute } from "@/util/util";
@@ -39,6 +39,8 @@ import {
 } from "./preview-search";
 import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-drives";
 import type { PreviewEnv } from "./previewenv";
+import { FILES_VCS_TREE_STATUS_ENABLED, normalizeVcsPath } from "./vcs-tree-status";
+import { VcsFileMarkTitle, useDirectoryVcsTreeStatus } from "./vcs-tree-status-hook";
 
 const TreeFetchLimit = 1024;
 const TreeMaxEntries = 500;
@@ -181,6 +183,54 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
     const searchActiveRef = useRef(searchActive);
     const directoryIconColor = fullConfig?.mimetypes?.directory?.color ?? "var(--term-bright-blue)";
     const supportsFileCreation = currentDirectoryInfo?.supportsmkdir !== false && !isWindowsDrivesPath(rootPath);
+    // VCS 状态（与目录表格视图共用 hook：一次 RPC + 两套索引，渲染期 O(1) 查表）。
+    // 树的根是 explorerRootPath —— 子目录行用 dirCount 前缀聚合，文件行用 fileMark。
+    const vcsStatus = useDirectoryVcsTreeStatus(model, env.rpc, rootPath, connection, refreshVersion);
+    const getVcsLabelClassName = useCallback(
+        (row: TreeViewRowInfo) => {
+            if (vcsStatus == null || row.isDirectory) {
+                return undefined;
+            }
+            const mark = vcsStatus.fileMark.get(normalizeVcsPath(row.node.path ?? row.id));
+            if (mark == null) {
+                return undefined;
+            }
+            return `dir-vcs-label is-vcs-${mark.toLowerCase()}`;
+        },
+        [vcsStatus]
+    );
+    const renderVcsRowSuffix = useCallback(
+        (row: TreeViewRowInfo) => {
+            if (vcsStatus == null) {
+                return null;
+            }
+            const path = normalizeVcsPath(row.node.path ?? row.id);
+            if (row.isDirectory) {
+                // 目录行：聚合变更数量（干净/非仓库不渲染）
+                const count = vcsStatus.dirCount.get(path) ?? 0;
+                if (count <= 0) {
+                    return null;
+                }
+                const title = `VCS 变更：该目录下 ${count} 个文件有变动`;
+                return (
+                    <span className="dir-vcs-mark dir-vcs-count" title={title} aria-hidden="true">
+                        {count}
+                    </span>
+                );
+            }
+            const mark = vcsStatus.fileMark.get(path);
+            if (mark == null) {
+                return null;
+            }
+            const title = `VCS 变更：${VcsFileMarkTitle[mark]}`;
+            return (
+                <span className={`dir-vcs-mark is-vcs-${mark.toLowerCase()}`} title={title} aria-hidden="true">
+                    {mark}
+                </span>
+            );
+        },
+        [vcsStatus]
+    );
 
     const initialNodes = useMemo(
         () => ({
@@ -1139,6 +1189,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                             setEditingRenameNode(null);
                         }}
                         onRenameCancel={() => setEditingRenameNode(null)}
+                        getLabelClassName={FILES_VCS_TREE_STATUS_ENABLED ? getVcsLabelClassName : undefined}
+                        renderRowSuffix={FILES_VCS_TREE_STATUS_ENABLED ? renderVcsRowSuffix : undefined}
                     />
                 </div>
                 <div

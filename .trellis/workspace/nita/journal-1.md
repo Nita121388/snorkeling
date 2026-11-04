@@ -63,3 +63,9 @@ gemini + FetchModels，错误信息加上实际 URL。24 个单测 + openaichat 
 - 分支侧：13 个 snorkeling worktree；A 档 7 个可安全删，B 档 4 个需确认，C 档 3 个不可动
   （含 snorkeling-gui-chat 独立 clone 的 24 个未提交 chat 运行时改动）。
 - 决策稿：Obsidian `My Projects/Snorkling/方案/2026-11-04-任务盘点与下一步编排.md`
+
+## 2026-11-05 下班快照 · 交付批 4/4（功能 4 未完待接手）
+
+- 已交付发版：0.0.115 验证台 / 0.0.116 图片翻页 / 0.0.117 Overview 看板
+- 功能 4 Files VCS 树标记：实现 + 真机 31/31 已绿，**未发版**；剩余 3 条审核建议 + 发版 0.0.118
+- 接手文档：`.trellis/tasks/11-04-files-vcs-tree-status/implement.md`（剩余 TODO 按优先级排好，含验证命令与发版步骤）

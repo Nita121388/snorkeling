@@ -64,6 +64,13 @@ export interface TreeViewVisibleRow {
     node?: TreeNodeData;
 }
 
+/** 行级装饰回调的入参（只对 `row.kind === "node"` 的行调用）。 */
+export interface TreeViewRowInfo {
+    id: string;
+    node: TreeNodeData;
+    isDirectory: boolean;
+}
+
 export interface TreeViewProps {
     rootIds: string[];
     initialNodes: Record<string, TreeNodeData>;
@@ -98,6 +105,10 @@ export interface TreeViewProps {
     /** Called whenever the set of expanded directory ids changes (user expand/collapse,
      *  collapseAll/expandAll, or reveal). Receives the latest full expanded set. */
     onExpandedChange?: (expandedIds: Set<string>) => void;
+    /** 可选：给行名 span 追加 class（如 VCS 状态着色）。不传时行为零变化。 */
+    getLabelClassName?: (row: TreeViewRowInfo) => string | undefined;
+    /** 可选：在行名 span 之后渲染行尾内容（如 VCS 行尾标记）。不传时行为零变化。 */
+    renderRowSuffix?: (row: TreeViewRowInfo) => React.ReactNode;
 }
 
 export interface TreeViewExpandAllResult {
@@ -449,6 +460,8 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         onRenameCommit,
         onRenameCancel,
         onExpandedChange,
+        getLabelClassName,
+        renderRowSuffix,
     } = props;
     const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(() => normalizeInitialNodes(initialNodes));
     const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(defaultExpandedIds ?? []));
@@ -1234,11 +1247,33 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                                 onCancel={() => onRenameCancel?.(row.id)}
                                             />
                                         ) : (
-                                            <span
-                                                className={clsx("ml-1 truncate", row.node.isReadonly && "text-muted")}
-                                            >
-                                                {row.label}
-                                            </span>
+                                            <>
+                                                <span
+                                                    className={clsx(
+                                                        "ml-1 truncate",
+                                                        row.node.isReadonly && "text-muted",
+                                                        getLabelClassName?.({
+                                                            id: row.id,
+                                                            node: row.node,
+                                                            isDirectory: !!row.isDirectory,
+                                                        })
+                                                    )}
+                                                >
+                                                    {row.label}
+                                                </span>
+                                                {(() => {
+                                                    // clean 行返回 null 时不得留空容器（否则每行多一个
+                                                    // 空 span + 间距，违反"零新增 DOM"预算）
+                                                    if (renderRowSuffix == null) return null;
+                                                    const suffix = renderRowSuffix({
+                                                        id: row.id,
+                                                        node: row.node,
+                                                        isDirectory: !!row.isDirectory,
+                                                    });
+                                                    if (suffix == null) return null;
+                                                    return <span className="shrink-0">{suffix}</span>;
+                                                })()}
+                                            </>
                                         )}
                                     </>
                                 ) : (

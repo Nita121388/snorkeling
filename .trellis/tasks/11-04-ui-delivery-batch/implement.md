@@ -22,21 +22,21 @@
 
 ## 功能 3 · Overview 看板（11-04-overview-board-kanban）
 
-- [ ] 3.1 需求设计：现状痛点 + Linear/Jira 式看板信息架构 + 原型对比，写入任务 design.md
-- [ ] 3.2 实现
-- [ ] 3.3 真实验证（含截图）
-- [ ] 3.4 子代理审核 + 意见处理
-- [ ] 3.5 commit + push
-- [ ] 3.6 发版 0.0.117
+- [x] 3.1 需求设计：按 agent 状态分列卡片墙（design.md 已定稿，含产品决策与回滚开关）
+- [x] 3.2 实现：overview-board-model.ts / overview-board.tsx / 最小接线 / SCSS
+- [x] 3.3 真实验证：真机 CDP 18 项 ×2 轮全绿（scripts/verify/overview-board/verify.mjs）
+- [x] 3.4 子代理审核：无阻断；6 条建议全部处理
+- [x] 3.5 commit + push（a314ca4d）
+- [x] 3.6 发版 0.0.117（tag 已推）
 
 ## 功能 4 · Files 目录树 VCS 标记（11-04-files-vcs-tree-status）
 
-- [ ] 4.1 design 落盘（基于 design/prototypes/files-vcs-tree-status 的 D 方案与性能预算）
-- [ ] 4.2 实现
-- [ ] 4.3 真实验证：真实仓库目录（本项目自身）M/U/D 与文件夹计数正确性 + 截图
-- [ ] 4.4 子代理审核 + 意见处理
-- [ ] 4.5 commit + push
-- [ ] 4.6 发版 0.0.118
+- [x] 4.1 design 落盘（D 方案契约 + 性能预算逐条对齐）
+- [x] 4.2 实现：纯函数层 + hook + 树/表双视图接入 + 全局 VCS 样式
+- [x] 4.3 真实验证：真实 git 仓库 fixture，树/表 31/31 全绿（scripts/verify/vcs-tree-status/verify.mjs）
+- [ ] 4.4 子代理审核 + 意见处理：无阻断；11 条建议已修 6 条，剩 3 条中等项（见任务 implement.md 交接文档）
+- [x] 4.5 commit + push
+- [ ] 4.6 发版 0.0.118（待接手，步骤在任务 implement.md）
 
 ## 进度日志
 
@@ -46,3 +46,5 @@
   spec 落盘：`.trellis/spec/snorkeling-docs/frontend/preview-edit-harness.md`（含规则语义、盲区、标定记录、产品坑）。
 - 2026-11-05 功能 2 完成：真机验证 27/27 ×3 轮。真机逼出并修复 5 个真问题：站点顺序按异步完成顺序（改确定性 DFS 先序）/ toast 因预览视图重挂丢失（改模块级 store）/ 跨站后本层误用锚点层（每站自带 images，本层=当前目录）/ 缩放守卫失效（onZoom 对程序化缩放不触发 → onTransformed）/ 跨站锚点塌缩（block meta 粘性锚点）。新增可复用真机验证脚本 scripts/verify/image-pager/verify.mjs。
 - 2026-11-05 功能 2 交付：真机 30/30 ×2 轮；索引层 8 单测（含死锁回归）；审核 4 阻断修复。
+- 2026-11-05 功能 3 交付：看板 85 单测 + 真机 18 项 ×2 轮；审核 6 建议全修（含多列断点从 720 改 1160、error 归入待我处理、普通 block 不生成空卡片）。
+- 2026-11-05 功能 4 状态：实现完成、真机 31/31，未发版。交接文档落在任务目录 implement.md，另一台机器可直接接手。

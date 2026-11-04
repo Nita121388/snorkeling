@@ -52,8 +52,59 @@ import { resolveExplorerRootPathForOpenInCurrentBlock } from "./preview-navigati
 import { openPreviewEntry } from "./preview-open";
 import { isWindowsDrivesPath } from "./preview-windows-drives";
 import type { PreviewEnv } from "./previewenv";
+import { normalizeVcsPath, type VcsTreeStatus } from "./vcs-tree-status";
+import { VcsFileMarkTitle, useDirectoryVcsTreeStatus } from "./vcs-tree-status-hook";
 
 const PageJumpSize = 20;
+
+interface DirectoryNameCellProps {
+    name: string;
+    finfo: FileInfo;
+    vcsStatus: VcsTreeStatus | null;
+}
+
+/** name 列 cell：只在有 VCS 标记时追加节点，干净行保持原样（完全静默）。 */
+function DirectoryNameCell({ name, finfo, vcsStatus }: DirectoryNameCellProps) {
+    const plainName = <span className="dir-table-name ellipsis">{name}</span>;
+    // `..` 上级行不参与（它不是当前目录树里的条目）
+    if (vcsStatus == null || name === "..") {
+        return plainName;
+    }
+    const path = normalizeVcsPath(finfo?.path ?? "");
+    if (finfo?.isdir) {
+        const count = vcsStatus.dirCount.get(path) ?? 0;
+        if (count <= 0) {
+            return plainName;
+        }
+        const title = `VCS 变更：该目录下 ${count} 个文件有变动`;
+        return (
+            <span className="dir-vcs-name-wrap">
+                <span className="dir-table-name ellipsis" title={title}>
+                    {name}
+                </span>
+                <span className="dir-vcs-mark dir-vcs-count" title={title} aria-hidden="true">
+                    {count}
+                </span>
+            </span>
+        );
+    }
+    const mark = vcsStatus.fileMark.get(path);
+    if (mark == null) {
+        return plainName;
+    }
+    const markClass = `is-vcs-${mark.toLowerCase()}`;
+    const title = `VCS 变更：${VcsFileMarkTitle[mark]}`;
+    return (
+        <span className="dir-vcs-name-wrap">
+            <span className={`dir-table-name ellipsis ${markClass}`} title={title}>
+                {name}
+            </span>
+            <span className={`dir-vcs-mark ${markClass}`} title={title} aria-hidden="true">
+                {mark}
+            </span>
+        </span>
+    );
+}
 
 interface DirectoryTableHeaderCellProps {
     header: Header<FileInfo, unknown>;
@@ -105,6 +156,7 @@ interface DirectoryTableProps {
     editingRenameAtom: PrimitiveAtom<{ path: string; isDir: boolean } | null>;
     newFile: () => void;
     newDirectory: () => void;
+    vcsStatus: VcsTreeStatus | null;
 }
 
 const columnHelper = createColumnHelper<FileInfo>();
@@ -123,6 +175,7 @@ function DirectoryTable({
     editingRenameAtom,
     newFile,
     newDirectory,
+    vcsStatus,
 }: DirectoryTableProps) {
     const env = useWaveEnv<PreviewEnv>();
     const fullConfig = useAtomValue(env.atoms.fullConfigAtom);
@@ -160,7 +213,9 @@ function DirectoryTable({
                 enableSorting: false,
             }),
             columnHelper.accessor("name", {
-                cell: (info) => <span className="dir-table-name ellipsis">{info.getValue()}</span>,
+                cell: (info) => (
+                    <DirectoryNameCell name={info.getValue()} finfo={info.row.original} vcsStatus={vcsStatus} />
+                ),
                 header: () => <span className="dir-table-head-name">Name</span>,
                 sortingFn: "alphanumeric",
                 size: 200,
@@ -196,7 +251,7 @@ function DirectoryTable({
             }),
             columnHelper.accessor("path", {}),
         ],
-        [fullConfig]
+        [fullConfig, vcsStatus]
     );
 
     const setEntryManagerProps = useSetAtom(entryManagerOverlayPropsAtom);
@@ -766,6 +821,9 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
     )[0];
     const editingRename = useAtomValue(editingRenameAtom);
 
+    // VCS 目录树状态（一次 RPC + 两套索引，见 ./vcs-tree-status.ts；与 Explorer 树共用 hook）
+    const vcsStatus = useDirectoryVcsTreeStatus(model, env.rpc, dirPath, conn, refreshVersion);
+
     useEffect(
         () =>
             fireAndForget(async () => {
@@ -1150,6 +1208,7 @@ function DirectoryPreview({ model }: DirectoryPreviewProps) {
                     editingRenameAtom={editingRenameAtom}
                     newFile={newFile}
                     newDirectory={newDirectory}
+                    vcsStatus={vcsStatus}
                 />
             </div>
             {entryManagerProps && (

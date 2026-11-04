@@ -218,3 +218,50 @@
         gap: 10px;
     }
 }
+
+// VCS 变动标记（D 方案）：文件名着色 + 行尾字母/数字。
+// 必须放在不带 .dir-table 前缀的作用域 —— Explorer 树视图（preview-explorer）
+// 渲染在 treeview 容器里，不在 .dir-table 之下，嵌套规则命中不了树里的 span。
+// 表格视图与树视图共用这些 class；干净行与未接入时完全静默（无额外节点）。
+.dir-vcs-name-wrap {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+
+    .dir-table-name {
+        flex: 0 1 auto;
+        min-width: 0;
+    }
+
+    .dir-vcs-mark {
+        flex: 0 0 auto;
+    }
+}
+
+.dir-vcs-mark {
+    flex: 0 0 auto;
+    margin-left: 0.4rem;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.is-vcs-m {
+    color: var(--warning-color);
+}
+.is-vcs-u {
+    color: var(--success-color);
+}
+.is-vcs-d {
+    color: var(--error-color);
+}
+.dir-table-name.is-vcs-d,
+.dir-vcs-label.is-vcs-d {
+    text-decoration: line-through;
+}
+
+.dir-vcs-count {
+    color: var(--warning-color);
+}
