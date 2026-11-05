@@ -295,8 +295,15 @@ const InlineTabLabel = memo(
             if (blockView === "preview" && !isBlank(filePath)) {
                 return basename(filePath);
             }
-            if (blockView === "term" && !isBlank(connection)) {
-                return connection;
+            if (blockView === "term") {
+                if (!isBlank(connection)) {
+                    return connection;
+                }
+                const cwd = typeof blockData?.meta?.["cmd:cwd"] === "string" ? blockData.meta["cmd:cwd"] : "";
+                const folderName = basename(cwd);
+                if (!isBlank(folderName)) {
+                    return folderName;
+                }
             }
             // VCS Block: 显示路径最后一段; 无路径时只显示图标不显示文字
             if (blockView === "vcs") {
