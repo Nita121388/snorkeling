@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "project": "snorkeling",
+  "updatedAt": "2026-11-05T01:54:47Z",
+  "packages": [
+    {
+      "id": "N-1105-loop-ledger",
+      "task": "11-05-day-night-loop",
+      "title": "loop 台账骨架 + 门引擎",
+      "type": "arch",
+      "typeSource": "override",
+      "order": 10,
+      "accept": [
+        {
+          "cmd": "node --test loop/lib/",
+          "expect": "0 failed"
+        },
+        {
+          "cmd": "node loop/queue.mjs self-test",
+          "expect": "0 failed"
+        },
+        {
+          "cmd": "node loop/ledger.mjs self-test",
+          "expect": "0 failed"
+        },
+        {
+          "cmd": "node loop/queue.mjs verify-ledger",
+          "expect": "ledger ok"
+        }
+      ],
+      "touch": [
+        "loop/**",
+        ".trellis/config.yaml"
+      ],
+      "rollback": "rm -rf loop/ && git checkout -- .trellis/config.yaml",
+      "budget": {
+        "minutes": 90,
+        "retries": 2
+      },
+      "gates": {
+        "g1": {
+          "at": "2026-11-05T01:50:10Z",
+          "by": "nita",
+          "verdict": "confirmed",
+          "prdHash": "f2eb2206fbbf"
+        },
+        "g2": {
+          "redProof": "node loop/queue.mjs self-test --expect=broken → 12 failed (expected-red) @ 12eab5dc",
+          "at": "2026-11-05T01:52:10Z"
+        },
+        "g6": {
+          "at": "2026-11-05T01:54:47Z",
+          "by": "nita",
+          "verdict": "confirmed",
+          "planHash": "12d2d7cde95f"
+        },
+        "g5": {
+          "ok": true,
+          "executedAt": "2026-11-05T01:52:41Z",
+          "by": "self"
+        }
+      },
+      "releaseCandidate": false,
+      "createdAt": "2026-11-05T09:40"
+    },
+    {
+      "id": "N-1105-harness-redproof",
+      "task": null,
+      "title": "既有 4 个 harness 登记 red_proof",
+      "type": "chore",
+      "typeSource": "classify",
+      "order": 20,
+      "accept": [
+        {
+          "cmd": "node loop/queue.mjs list --json",
+          "expect": "\"pendingRedProof\": 0"
+        }
+      ],
+      "touch": [
+        "loop/queue.json"
+      ],
+      "rollback": "git checkout -- loop/queue.json",
+      "budget": {
+        "minutes": 45,
+        "retries": 1
+      },
+      "gates": {
+        "g5": {
+          "ok": false,
+          "executedAt": null
+        }
+      },
+      "releaseCandidate": false,
+      "createdAt": "2026-11-05T09:40"
+    },
+    {
+      "id": "N-1105-cleanup-46to22",
+      "task": null,
+      "title": "清账：活跃任务 46 → ≤22（归档清单须人工过）",
+      "type": "arch",
+      "typeSource": "override",
+      "order": 30,
+      "accept": [
+        {
+          "cmd": "python .trellis/scripts/task.py list | grep -c '^\\s*-'",
+          "expect": "<=22"
+        }
+      ],
+      "touch": [
+        ".trellis/tasks/**",
+        "loop/queue.json"
+      ],
+      "rollback": "python .trellis/scripts/task.py list-archive <月> 后逐个还原目录",
+      "budget": {
+        "minutes": 120,
+        "retries": 0
+      },
+      "gates": {
+        "g1": {
+          "at": "2026-11-05T09:36",
+          "by": "nita",
+          "verdict": "confirmed",
+          "prdHash": "c589d4b71e14"
+        }
+      },
+      "releaseCandidate": false,
+      "createdAt": "2026-11-05T09:40"
+    }
+  ],
+  "dropped": []
+}

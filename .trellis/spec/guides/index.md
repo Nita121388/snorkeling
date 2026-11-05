@@ -23,6 +23,7 @@ These guides help you **ask the right questions before coding**.
 |-------|---------|-------------|
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
+| [Day/Night Loop Contract](./day-night-loop-contract.md) | `loop/` 台账的单一写者 / 正交状态 / hash 冻结 / 校准要求 | 改 `loop/**` 或引入新门、新状态、新事件时 |
 
 ---
 

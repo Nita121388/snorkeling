@@ -3,6 +3,18 @@
 > 上一个会话在这里停下。**四项 UI 功能全部完成并发版**（最新 `0.0.118`）。
 > 本文件只有一页；细节在下面指向的任务文档里。读完这页即可开工。
 
+## 新增：昼夜循环工作流（`loop/`）
+
+开发流程已改为「白天决策/验收/原型 + 夜里 agent 执行/发版」，规则与台账在仓库根 `loop/`：
+
+- 开工前读 **`loop/RUNBOOK.md`**（3 分钟）：8 类任务 × 7 道门、证据阶梯、夜班三条铁律、发版 gate
+- 队列状态：`node loop/queue.mjs list` / `derive --json`（看板从这里取）
+- 事件流：`node loop/ledger.mjs tail -20` / `blocked`（晨会第一屏）
+- 契约（改 `loop/**` 前必读）：`.trellis/spec/guides/day-night-loop-contract.md`
+- 任务：`.trellis/tasks/11-05-day-night-loop/`（prd 已签 G1，design/implement 已落）
+
+一句话边界：`.trellis/` 管「任务是什么/怎么做」，`loop/` 管「哪班跑到哪、算不算过」。
+
 ## 现状一句话
 
 主分支 `main` 上 4 个功能的代码都在，工作区干净。`11-04-ui-delivery-batch` 这一批**已全部交付**，

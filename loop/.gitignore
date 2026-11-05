@@ -1,0 +1,3 @@
+.hook-errors.log
+.queue.json.tmp-*
+.state-cache.json
