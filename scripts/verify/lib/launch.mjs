@@ -26,18 +26,30 @@ export function cdpUrl(port = DEFAULTS.cdpPort) {
     return `http://127.0.0.1:${port}`;
 }
 
-/** 端口 → 监听进程 PID（Windows）。返回 null 表示没人监听。 */
+/** 端口 → 监听进程 PID。跨平台：Windows 走 PowerShell，macOS/Linux 走 lsof。返回 null 表示没人监听。 */
 export function findPidByPort(port) {
+    if (process.platform === "win32") {
+        try {
+            const out = execFileSync(
+                "powershell",
+                [
+                    "-NoProfile",
+                    "-Command",
+                    `(Get-NetTCPConnection -LocalPort ${Number(port)} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
+                ],
+                { encoding: "utf8", timeout: 15000, windowsHide: true }
+            ).trim();
+            const pid = Number(out.split(/\s+/)[0]);
+            return Number.isFinite(pid) && pid > 0 ? pid : null;
+        } catch {
+            return null;
+        }
+    }
     try {
-        const out = execFileSync(
-            "powershell",
-            [
-                "-NoProfile",
-                "-Command",
-                `(Get-NetTCPConnection -LocalPort ${Number(port)} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
-            ],
-            { encoding: "utf8", timeout: 15000, windowsHide: true }
-        ).trim();
+        const out = execFileSync("lsof", ["-ti", `tcp:${Number(port)}`, "-sTCP:LISTEN"], {
+            encoding: "utf8",
+            timeout: 15000,
+        }).trim();
         const pid = Number(out.split(/\s+/)[0]);
         return Number.isFinite(pid) && pid > 0 ? pid : null;
     } catch {
@@ -47,11 +59,34 @@ export function findPidByPort(port) {
 
 export function killPid(pid) {
     if (pid == null) return;
+    if (process.platform === "win32") {
+        try {
+            execFileSync("powershell", ["-NoProfile", "-Command", `Stop-Process -Id ${Number(pid)} -Force`], {
+                timeout: 15000,
+                windowsHide: true,
+            });
+        } catch {
+            /* already gone */
+        }
+        return;
+    }
+    // POSIX：先 SIGTERM，2s 内没退再 SIGKILL（Electron 主进程会带走子进程）。
     try {
-        execFileSync("powershell", ["-NoProfile", "-Command", `Stop-Process -Id ${Number(pid)} -Force`], {
-            timeout: 15000,
-            windowsHide: true,
-        });
+        process.kill(Number(pid), "SIGTERM");
+    } catch {
+        return;
+    }
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        try {
+            process.kill(Number(pid), 0);
+        } catch {
+            return;
+        }
+        execFileSync("sleep", ["0.2"], { timeout: 5000 });
+    }
+    try {
+        process.kill(Number(pid), "SIGKILL");
     } catch {
         /* already gone */
     }
@@ -75,6 +110,9 @@ export async function ensureInstance({
     cdpPort = DEFAULTS.cdpPort,
     vitePort = DEFAULTS.vitePort,
     resetProfile = true,
+    // profile 只有档位，不是路径：多 agent 并行时各自一个 profile，避免互相
+    // rm -rf 对方的 .runcfg/<profile> 与抢同一个 Electron SingletonLock。
+    profile = DEFAULTS.profile,
 } = {}) {
     const url = cdpUrl(cdpPort);
 
@@ -96,11 +134,11 @@ export async function ensureInstance({
     // 否则上一轮创建的 preview block 会累积、上次打开的面板可能盖住 markdown，
     // 采样点被别的元素遮挡 → 双击打不开编辑器（实测踩到）。
     if (resetProfile) {
-        rmSync(path.join(repoRoot, ".runcfg", DEFAULTS.profile), { recursive: true, force: true });
+        rmSync(path.join(repoRoot, ".runcfg", profile), { recursive: true, force: true });
     }
 
     mkdirSync(cacheDir, { recursive: true });
-    const logPath = path.join(cacheDir, `launch-${DEFAULTS.profile}.log`);
+    const logPath = path.join(cacheDir, `launch-${profile}.log`);
     // 必须直接把文件描述符交给子进程，不能用 pipe：
     // 用 pipe 时父进程一退出，子进程下一次写 stdout 就 EPIPE 自杀（连带 electron 一起没）。
     const logFd = openSync(logPath, "w");
@@ -110,7 +148,7 @@ export async function ensureInstance({
         [
             path.join(repoRoot, "scripts", "dev-isolated.mjs"),
             "--profile",
-            DEFAULTS.profile,
+            profile,
             "--vite-port",
             String(vitePort),
             "--cdp-port",
@@ -136,7 +174,7 @@ export async function ensureInstance({
         if (exited) {
             throw new Error(
                 `verify 启动器提前退出（exit=${lastExit}）。日志: ${logPath}\n` +
-                    `手工排查: node scripts/dev-isolated.mjs --profile ${DEFAULTS.profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`
+                `手工排查: node scripts/dev-isolated.mjs --profile ${profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`
             );
         }
         try {
@@ -162,7 +200,7 @@ export async function ensureInstance({
     }
     throw new Error(
         `verify 实例启动失败（${url}，spawn pid=${spawnedPid}）。日志: ${logPath}\n${lastErr?.message ?? ""}\n` +
-            `手工排查: node scripts/dev-isolated.mjs --profile ${DEFAULTS.profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`
+            `手工排查: node scripts/dev-isolated.mjs --profile ${profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`
     );
 }
 

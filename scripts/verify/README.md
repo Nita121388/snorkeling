@@ -56,7 +56,11 @@ node scripts/verify/agent-card-seen/verify.mjs --dry        # 只解析参数/�
 2. 只从 `lib/` 拿能力，**不要**再写第二份 CDP client / 截图 / report 逻辑；
 3. 断言命名用 `<面>-<语义>`（`hover-card-unread`、`tab-card-seen`），失败时能直接看出是哪个面；
 4. 有意不覆盖的面写进 `skipped`（进 report.md），不要静默省略；
-5. 跑通后 `index.mjs` 会自动看到它（台账追加）；把入口和一句话说明补进本节下方。
+5. 跑通后 `index.mjs` 会自动看到它（台账追加）；把入口和一句话说明补进本节下方；
+6. **多 agent 并行**：`ensureInstance({ profile, cdpPort, vitePort })` 传自己的档位与端口
+   （默认 `verify` / 9231 是共用的，撞上别人的实例会读到别人的工作区，且 `resetProfile`
+   会 `rm -rf` 别人的 `.runcfg/<profile>`）。新 area 建议 `profile: "verify-<area>"` +
+   独占端口，例：`property-editor` 用 `verify-property-editor` / `9233` / `51801`。
 
 ## 现有 area
 
@@ -64,6 +68,7 @@ node scripts/verify/agent-card-seen/verify.mjs --dry        # 只解析参数/�
 |---|---|---|---|
 | `preview-edit` | `run.mjs` | markdown inline 编辑的几何/像素零位移（rules 库） | ✅ |
 | `image-pager` | `verify.mjs` | 图片翻页与悬停提示 | ✅ |
-| `overview-board` | `verify.mjs` | Session Overview 看板布局 | ✅ |
+| `overview-board` | `verify.mjs` | Session Overview 看板：5 列常显 / 横向 snap / 卡片信息架构（emoji·标题·状态 chip，播种 agent 块验证） | ✅ |
 | `vcs-tree-status` | `verify.mjs` | Files VCS 行标记 | ✅ |
 | `agent-card-seen` | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡） | ✅ |
+| `property-editor` | `verify.mjs` | 属性值下拉编辑器：md 预览浮层（已选标签无描边 + 行尾 ✓）/ agent 悬浮卡浮层 + 「指针移入附属浮层卡片不收起」 | ✅ |

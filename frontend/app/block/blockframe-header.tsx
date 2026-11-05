@@ -13,6 +13,8 @@ import { ConnectionButton } from "@/app/block/connectionbutton";
 import { DurableSessionFlyover } from "@/app/block/durable-session-flyover";
 import {
     claimInfoCard,
+    InfoCardPinProvider,
+    isInAttachedInfoCardLayer,
     isInfoCardClaimedBy,
     releaseInfoCard,
     subscribeInfoCard,
@@ -572,6 +574,8 @@ const BlockFrame_Header = ({
     const hideHoverTimerRef = React.useRef<number | null>(null);
     const hideCardTimerRef = React.useRef<number | null>(null);
     const cardFocusRef = React.useRef(false);
+    /** 附属浮层（属性值下拉等 portal 到 body 的浮层）的 pin 计数：> 0 时不因 hover/失焦收卡。 */
+    const cardPinCountRef = React.useRef(0);
     // 卡片容器（用于「点击外侧」包含判定；header 元素由它 closest 得到）。
     const cardElRef = React.useRef<HTMLDivElement | null>(null);
     const cancelPendingHideHover = React.useCallback(() => {
@@ -590,6 +594,10 @@ const BlockFrame_Header = ({
         cancelPendingHideCard();
         hideCardTimerRef.current = window.setTimeout(() => {
             hideCardTimerRef.current = null;
+            // 定时器挂起期间可能已被钉住（浮层刚打开 / 焦点进卡片），到期时再确认一次。
+            if (cardFocusRef.current || cardPinCountRef.current > 0) {
+                return;
+            }
             cardFocusRef.current = false;
             setIsCardOpen(false);
         }, 300);
@@ -597,10 +605,34 @@ const BlockFrame_Header = ({
     const closeCardNow = React.useCallback(() => {
         cancelPendingHideCard();
         cardFocusRef.current = false;
+        cardPinCountRef.current = 0;
         setIsCardOpen(false);
     }, [cancelPendingHideCard]);
-    // 点击外侧关闭：卡片容器是 header 的直接子节点，两者任一包含点击目标都算「内部」。
+
+    // 附属浮层（portal 到 body 的属性值浮层）保活：打开即 pin，关闭即 release。
+    const pinCard = React.useCallback(() => {
+        cardPinCountRef.current += 1;
+        cancelPendingHideCard();
+        claimInfoCard(claimTokenRef.current);
+        setIsCardOpen(true);
+    }, [cancelPendingHideCard]);
+    const releaseCardPin = React.useCallback(() => {
+        cardPinCountRef.current = Math.max(0, cardPinCountRef.current - 1);
+        if (cardPinCountRef.current > 0) {
+            return;
+        }
+        // 浮层关掉了：焦点不在卡内、指针也不在卡上时，按常规延迟收起。
+        if (cardFocusRef.current || cardElRef.current?.matches(":hover")) {
+            return;
+        }
+        scheduleHideCard();
+    }, [scheduleHideCard]);
+    // 点击外侧关闭：卡片容器是 header 的直接子节点，两者任一包含点击目标都算「内部」；
+    // 附属浮层（portal 到 body 的属性值浮层）也算内部，否则在浮层里点选项会把卡片关掉。
     const isInsideCardOrHeader = React.useCallback((target: Node) => {
+        if (isInAttachedInfoCardLayer(target)) {
+            return true;
+        }
         const cardEl = cardElRef.current;
         if (cardEl == null) {
             return false;
@@ -665,8 +697,8 @@ const BlockFrame_Header = ({
                 }, 2000);
                 // 卡片不跟 header 高亮一起等 2s：指针离开 header 后 300ms 收起。
                 // 指针进了卡片时，卡片自己的 mouseenter 会 cancel 掉这个定时器；
-                // 卡片内有焦点（正在写 note）时保持打开，交给失焦/点击外侧关闭。
-                if (!cardFocusRef.current) {
+                // 卡片内有焦点（正在写 note）或附属浮层开着时保持打开，交给失焦/点击外侧关闭。
+                if (!cardFocusRef.current && cardPinCountRef.current === 0) {
                     scheduleHideCard();
                 }
             }}
@@ -739,8 +771,14 @@ const BlockFrame_Header = ({
                         setIsCardOpen(true);
                     }}
                     onBlurCapture={(event) => {
-                        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) {
-                            return;
+                        if (event.relatedTarget instanceof Node) {
+                            // 附属浮层也是“卡内”：焦点从卡片走进浮层，不算离开。
+                            if (
+                                event.currentTarget.contains(event.relatedTarget) ||
+                                isInAttachedInfoCardLayer(event.relatedTarget)
+                            ) {
+                                return;
+                            }
                         }
                         cardFocusRef.current = false;
                         // 指针还在卡片上就先不关，等 mouseleave；否则焦点走了就该收卡。
@@ -751,14 +789,17 @@ const BlockFrame_Header = ({
                     }}
                     onMouseLeave={() => {
                         cancelPendingHideCard();
-                        // 钉住期间不因鼠标移开而关闭；由「点击外侧」或失焦负责关闭。
-                        if (cardFocusRef.current) {
+                        // 钉住期间（焦点在卡片内 / 附属浮层开着）不因鼠标移开而关闭；
+                        // 由「点击外侧」或失焦负责关闭。
+                        if (cardFocusRef.current || cardPinCountRef.current > 0) {
                             return;
                         }
                         scheduleHideCard();
                     }}
                 >
-                    {BlockInfoCard({ blockId: nodeModel.blockId, blockData: blockData ?? null, mode: "gui" })}
+                    <InfoCardPinProvider pin={pinCard} release={releaseCardPin}>
+                        {BlockInfoCard({ blockId: nodeModel.blockId, blockData: blockData ?? null, mode: "gui" })}
+                    </InfoCardPinProvider>
                 </div>
             )}
         </div>
