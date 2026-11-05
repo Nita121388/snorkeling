@@ -27,6 +27,21 @@ When generating or editing design-related files (designs, prototypes, research d
 - When assigning temporary env vars inside a nested PowerShell `-Command` string, escape `$env:` as `` `$env:FOO='bar'`` so the outer shell does not expand it before the child process starts.
 - Prefer targeted package tests for the touched area first. If the toolchain is still unavailable after `npm run setup` and loading `scripts/use-local-env.ps1`, report those exact checks and blocker.
 
+## 真机验证（自验证，收尾必做）
+
+验证结论必须**可机器判定 + 有证据**，不允许"我看了一下没问题"。
+
+- 改 UI / 交互 / 跨面一致性 → 收尾跑对应验证台；先 `node scripts/verify/index.mjs` 看有哪些 area 和最近结论。
+- 台账 `docs/project/verify-ledger.md` **入库**（一行结论）；明细与截图在 `verify-runs/`（gitignore）。
+- 新 area：复制 `scripts/verify/_template/verify.mjs`，能力只从 `scripts/verify/lib/` 拿
+  （`cdp` / `launch` / `probes` / `report` / `pixel`），别写第二份 CDP client 或 report 逻辑；
+  登记到 `scripts/verify/README.md` 的 area 表。
+- 出口统一：`0` 全绿 / `1` 断言失败 / `2` 环境错误；有意没覆盖的面写进 `skipped`，不要静默省略。
+- 验证实例是**真的 Electron 窗口**：默认跑完自动关（端口→PID），只有 `--keep-open` 才留；
+  不打招呼不要批量起实例。
+- 经验沉淀位置：硬约束进 `.trellis/spec/snorkeling-docs/frontend/quality-guidelines.md`，
+  方法论进 `docs/project/ui-verify-playbook.md`；**每次验证踩到新坑都要回写其中一处**。
+
 ## Electron UI inspection
 
 - For actual Electron UI layout, style, hover/click, and modal overflow issues, inspect the running app through CDP instead of asking the user to open DevTools and report DOM details.

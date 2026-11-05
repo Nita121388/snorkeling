@@ -30,39 +30,43 @@
 //   node scripts/verify/agent-card-seen/verify.mjs --keep-open  # 结束后不关实例
 // 退出码：0 全绿 / 1 断言失败 / 2 环境错误
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { listPageTargets, connectToTarget } from "../preview-edit/lib/cdp.mjs";
-import { ensureInstance, DEFAULTS } from "../preview-edit/lib/launch.mjs";
+import { listPageTargets, connectToTarget } from "../lib/cdp.mjs";
+import { ensureInstance, DEFAULTS } from "../lib/launch.mjs";
+import { createReporter } from "../lib/report.mjs";
+import {
+    CLEAN_TEXT_FN,
+    dismissOnboarding,
+    hoverUntil,
+    normalizeText,
+    pickLiveRenderer,
+    probeButtonByText,
+    sleep,
+    typeTextAndEnter,
+} from "../lib/probes.mjs";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "../../..");
-const runDir = path.join(
-    repoRoot,
-    "verify-runs",
-    `${new Date().toISOString().replace(/[-:.]/g, "").slice(0, 14)}-agent-card-seen`
-);
-mkdirSync(runDir, { recursive: true });
-
+const AREA = "agent-card-seen";
 const argv = process.argv.slice(2);
 const attach = argv.includes("--attach");
 const keepOpen = argv.includes("--keep-open");
+const dry = argv.includes("--dry");
 const userHome = process.env.USERPROFILE || process.env.HOME || "";
 
-const results = [];
-const steps = [];
-const log = (msg) => {
-    steps.push(`${new Date().toISOString().slice(11, 19)} ${msg}`);
-    console.log(msg);
-};
-function check(id, ok, detail) {
-    results.push({ id, ok: !!ok, detail: detail ?? null });
-    const shown = detail == null ? "" : ` — ${typeof detail === "string" ? detail : JSON.stringify(detail)}`;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${id}${shown}`);
-    return ok;
+const reporter = createReporter({
+    area: AREA,
+    endpoint: `http://127.0.0.1:${DEFAULTS.cdpPort}`,
+    mode: attach ? "attach" : "launch+reset",
+    meta: { piDefaultModel: readPiDefaultModel() },
+});
+const { log, check, shot, runDir } = reporter;
+let instance = null;
+
+if (dry) {
+    log("dry-run: 依赖解析成功（未启动 GUI）");
+    check("deps-resolve", true, "lib/{cdp,launch,report,probes}.mjs");
+    reporter.finish({ cleanup: null, ledger: false });
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** pi 的默认 provider/model（报告里记录"本次跑的是哪个模型"）。 */
 function readPiDefaultModel() {
@@ -72,39 +76,6 @@ function readPiDefaultModel() {
         return `${cfg.defaultProvider ?? "?"}/${cfg.defaultModel ?? "?"}`;
     } catch {
         return "unknown";
-    }
-}
-
-/** 连到"真的有工作区"的 renderer（多 Tab renderer 时 0x0 的那些要跳过）。 */
-async function pickAppTarget(endpoint) {
-    const pages = await listPageTargets(endpoint);
-    const probed = [];
-    for (const page of pages) {
-        const client = await connectToTarget(endpoint, page).catch(() => null);
-        if (client == null) continue;
-        const info = await client
-            .evaluate(`(() => ({ w: innerWidth, h: innerHeight, blocks: document.querySelectorAll(".block").length }))()`)
-            .catch(() => null);
-        probed.push({ client, page, info });
-    }
-    const usable = probed.filter((p) => (p.info?.blocks ?? 0) > 0 && (p.info?.w ?? 0) > 0);
-    const best = usable.sort((a, b) => b.info.w * b.info.h - a.info.w * a.info.h)[0];
-    for (const p of probed) if (p !== best) p.client.close();
-    if (best == null) throw new Error(`没有可用的 app renderer（probed=${JSON.stringify(probed.map((p) => p.info))}）`);
-    return { client: best.client, target: best.page, info: best.info };
-}
-
-async function shot(client, name) {
-    try {
-        await client.send("Page.bringToFront", {}).catch(() => {});
-        const { data } = await client.send("Page.captureScreenshot", { format: "png", fromSurface: true }, 20000);
-        const file = path.join(runDir, `${name}.png`);
-        writeFileSync(file, Buffer.from(data, "base64"));
-        log(`screenshot ${path.basename(file)}`);
-        return file;
-    } catch (err) {
-        log(`screenshot ${name} failed: ${String(err?.message ?? err)}`);
-        return null;
     }
 }
 
@@ -226,18 +197,6 @@ const appTabCenterProbe = `(() => {
     return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), label: (el.textContent || "").trim().slice(0, 20) };
 })()`;
 
-/** 反复把指针移到 point 上直到 ready(snapshot) 成立（浮层有 hover 延迟，一次不一定弹出来）。 */
-async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 700 } = {}) {
-    let last = null;
-    for (let i = 0; i < tries; i++) {
-        await client.move(point.x, point.y);
-        await sleep(waitMs);
-        last = await client.evaluate(probe);
-        if (ready(last)) return last;
-    }
-    return last;
-}
-
 async function waitForSurfaces(client, blockId, predicate, { timeoutMs = 180000, intervalMs = 1000, onTick } = {}) {
     const deadline = Date.now() + timeoutMs;
     let last = null;
@@ -252,23 +211,19 @@ async function waitForSurfaces(client, blockId, predicate, { timeoutMs = 180000,
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────
 
-let instance = null;
-
 async function main() {
     const endpoint = `http://127.0.0.1:${DEFAULTS.cdpPort}`;
     instance = await ensureInstance({ attach, resetProfile: !attach });
-    const { client } = await pickAppTarget(endpoint);
+    // 多 Tab renderer 时 ensureInstance 可能连到 0x0 的空壳，重新挑一个真工作区。
+    const pages = await listPageTargets(endpoint);
+    const client = pages.length > 1
+        ? (await pickLiveRenderer(pages, connectToTarget, endpoint)).client
+        : instance.client;
     await client.send("Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
     log(`instance ready (${attach ? "attach" : "launch"}), pi default model = ${readPiDefaultModel()}`);
 
     // 首次启动的引导向导（Welcome → … → Get Started）会盖住 WidgetsBar。
-    for (let i = 0; i < 10; i++) {
-        const btn = await client.evaluate(DismissProbe);
-        if (btn == null) break;
-        await client.click(btn.x, btn.y);
-        log(`dismissed onboarding: ${btn.t}`);
-        await sleep(700);
-    }
+    await dismissOnboarding(client, { log });
 
     // WidgetsBar 收起时图标落在视口外，先展开。
     const expand = await client.evaluate(ExpandWidgetsProbe);
@@ -339,18 +294,7 @@ async function main() {
     if (term == null) throw new Error("agent block 里没有 .xterm");
     await client.click(term.x, term.y);
     await sleep(500);
-    await client.send("Input.insertText", { text: "只回复两个字：完成" });
-    await sleep(300);
-    for (const type of ["rawKeyDown", "char", "keyUp"]) {
-        await client.send("Input.dispatchKeyEvent", {
-            type,
-            key: "Enter",
-            code: "Enter",
-            text: type === "char" ? "\r" : undefined,
-            windowsVirtualKeyCode: 13,
-            nativeVirtualKeyCode: 13,
-        });
-    }
+    await typeTextAndEnter(client, "只回复两个字：完成");
     log("prompt sent to pi TUI");
 
     const seen = [];
@@ -445,77 +389,27 @@ async function main() {
     return finish(client, { seen, blockId });
 }
 
-async function finish(client, extra) {
-    const passed = results.filter((r) => r.ok).length;
+function finish(client, extra) {
     const skipped = [];
-    if (results.every((r) => r.id !== "inline-dot-done-unread")) {
+    if (reporter.results.every((r) => r.id !== "inline-dot-done-unread")) {
         skipped.push("inline tab 圆点（B 面）需要同组多 tab 的工作区形态；read 一致性由 cross-surface 契约测试覆盖");
         skipped.push("Tab「更多」紧凑行（F 面）需要同 Tab ≥2 个 agent；同上");
     }
-    const failed = results.length - passed;
-    const report = {
-        generatedAt: new Date().toISOString(),
-        endpoint: `http://127.0.0.1:${DEFAULTS.cdpPort}`,
-        piDefaultModel: readPiDefaultModel(),
-        mode: attach ? "attach" : "launch+reset",
-        steps,
-        results,
-        skipped,
-        summary: { total: results.length, passed, failed },
+    reporter.finish({
         extra,
-    };
-    writeFileSync(path.join(runDir, "report.json"), JSON.stringify(report, null, 2));
-    const md = [
-        "# Agent 卡片 Done 跟随 seen —— 真机验证",
-        "",
-        `- 时间：${report.generatedAt}`,
-        `- 方式：${report.mode}`,
-        `- pi 默认模型：${report.piDefaultModel}`,
-        `- 结论：**${failed === 0 ? "全绿" : `${failed} 项失败`}**（${passed}/${results.length}）`,
-        "",
-        "## 断言",
-        "",
-        "| 断言 | 结果 | 证据 |",
-        "| --- | --- | --- |",
-        ...results.map(
-            (r) => `| ${r.id} | ${r.ok ? "PASS" : "FAIL"} | ${r.detail == null ? "" : `\`${JSON.stringify(r.detail).slice(0, 160)}\``} |`
-        ),
-        "",
-        "## 状态轨迹",
-        "",
-        "```",
-        ...(extra?.seen ?? []),
-        "```",
-        "",
-        "## 未覆盖（有意）",
-        "",
-        ...(skipped.length > 0 ? skipped.map((s) => `- ${s}`) : ["- 无"]),
-        "",
-        "## 步骤日志",
-        "",
-        "```",
-        ...steps,
-        "```",
-        "",
-        `截图与原始数据：${runDir}`,
-    ];
-    writeFileSync(path.join(runDir, "report.md"), md.join("\n"));
-    client.close();
-    if (instance?.spawned && !keepOpen) instance.cleanup();
-    console.log(`\n${failed === 0 ? "ALL GREEN" : "FAILED"} — ${path.join(runDir, "report.md")}`);
-    process.exit(failed === 0 ? 0 : 1);
+        skipped,
+        cleanup: () => {
+            client.close?.();
+            if (instance?.spawned && !keepOpen) instance.cleanup?.();
+        },
+    });
 }
 
 main().catch((err) => {
-    log(`FATAL: ${String(err?.stack ?? err)}`);
-    writeFileSync(
-        path.join(runDir, "report.json"),
-        JSON.stringify({ steps, results, fatal: String(err?.stack ?? err) }, null, 2)
-    );
-    try {
-        instance?.client?.close?.();
-    } catch {
-        /* ignore */
-    }
-    process.exit(2);
+    reporter.fatal(err, {
+        cleanup: () => {
+            instance?.client?.close?.();
+            if (instance?.spawned && !keepOpen) instance.cleanup?.();
+        },
+    });
 });

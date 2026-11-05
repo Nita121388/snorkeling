@@ -22,10 +22,17 @@
 ## 2. 台子的骨架（照抄这两条命令）
 
 ```bash
+node scripts/verify/agent-card-seen/verify.mjs --dry        # 只解析依赖，不启动 GUI（<1s 自检）
 node scripts/verify/<area>/verify.mjs              # 起干净实例（reset profile）→ 跑 → 自动关
 node scripts/verify/<area>/verify.mjs --attach     # 复用已起实例，单轮 <1min（迭代主力）
 node scripts/verify/<area>/verify.mjs --keep-open  # 断言失败后留下来手工看
+node scripts/verify/index.mjs [--strict] [--json]  # 索引 / 自查：每个 area 最近一次结论
 ```
+
+**不要自己再拼一套**：`scripts/verify/lib/` 已经提供
+`cdp`（连接/多 target 选择）、`launch`（实例生命周期）、`probes`（可见性 / 文本归一化 /
+hoverUntil / 键盘输入 / 引导弹窗）、`report`（verdict + 台账 + 退出码）。新台子从
+`scripts/verify/_template/verify.mjs` 复制。
 
 必备四件产物：
 
@@ -150,4 +157,6 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
 |---|---|
 | 必须遵守的硬约束 + 会再踩的坑 | `.trellis/spec/snorkeling-docs/frontend/quality-guidelines.md`（同名章节） |
 | 可复用的方法论（本文件） | `docs/project/ui-verify-playbook.md` |
-| 某一次的具体证据 | `verify-runs/<ts>-<area>/`（不删，作为"当时真的这么显示"的凭证） |
+| 某一次的具体证据 | `verify-runs/<ts>-<area>/`（gitignore；本地保留作为"当时真的这么显示"的凭证） |
+| 跨机器可查的结论 | `docs/project/verify-ledger.md`（入库，每次跑完自动追加一行） |
+| 索引 / 自查命令 | `node scripts/verify/index.mjs --strict`（任一 area 最近一次失败 → exit 1） |
