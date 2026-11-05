@@ -32,6 +32,7 @@
         "pslog:query": "node scripts/pslog-query.mjs",
         "trace:tab": "node scripts/trace-tab-switch.mjs",
         "test": "vitest",
+        "test:scripts": "node --test \"scripts/**/*.test.mjs\" \"tests/**/*.test.mjs\"",
         "postinstall": "node ./postinstall.cjs",
         "verify:loop": "node --test \"E:/primary/projects/loop/lib/*.test.mjs\" && node E:/primary/projects/loop/bin/loop.mjs queue self-test --root . && node E:/primary/projects/loop/bin/loop.mjs ledger self-test --root . && node E:/primary/projects/loop/bin/loop.mjs queue verify-ledger --root . && node E:/primary/projects/loop/bin/loop.mjs queue g8 --root . && node E:/primary/projects/loop/bin/loop.mjs queue doctor --root ."
     },

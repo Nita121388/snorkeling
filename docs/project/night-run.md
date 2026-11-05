@@ -31,10 +31,10 @@
 |---|---|---|---|---|
 | W0 | 时间线长条形态的机器判定（补掉"要人眼看长条"的缺口） | ✅ 完成 | `overview-timeline` 22/22（`widthRatio=0.563`、`history=98px tail=12px`） | 用 `patchCachedSessionSummary` 播种真实 `createdAt=5h前 / updatedAt=30min前` |
 | W1 | 发布当前已交付批次（看板 v2 A/B/C + 时间线 G1） | ✅ 完成 `0.0.119` | run 42052221548 success（34m59s）+ 三平台产物 + release notes 已手写 | 子代理按 release skill 执行 |
-| W2 | 验证机制补强 | 部分完成 | `check-tsc-baseline.mjs`（69→63）+ vitest 排除 worktree + 时间线长条机器判定 | 端口隔离仍待做 |
+| W2 | 验证机制补强 | 进行中 | tsc 基线闸门（69→63）、vitest 排除 worktree/vendor/prototype、jsdom localStorage 内存实现、非 http fetch 守卫 → **npm test 首次全绿 2521 passed / exit 0**（此前 12 files failed）、截图空白守门 | 端口隔离仍待做 |
 | W3 | 可确认 Bug 清扫 | 进行中 | 已修 5 个（三级菜单崩 / 预览系统打开崩 / 消息弹窗删除崩 / 导出死按钮 / preview 测试红灯） | 提交 c33d00a0 |
 | W4 | i18n 基础（独立 worktree，branch，不阻塞 main） | 计划 | —— | 大件，先出骨架 + 一条端到端 |
-| W5 | md 预览深度优化 | 计划 | —— | 先扫真 bug，再谈优化 |
+| W5 | md 预览深度优化 | 进行中 | preview-edit 5/5 修好（空白截图守门 + callout 非交互导出） | 提交见 git log |
 
 ## 3. 发布记录
 
@@ -51,3 +51,16 @@
   `node scripts/verify/overview-timeline/verify.mjs`（18/18）。
 - 正在改的东西都在 `.trellis/tasks/<slug>/implement.md` 里，别只看这份文件。
 - 任何"我觉得修好了"的结论都必须换成一条断言，否则下一个 agent 会重新踩。
+
+## 5. 夜间追加记录（自动累积）
+
+### 02:2x — 测试与验证台从"恒红"变"可判定"
+
+- `npm test`（vitest）修复前：12 个文件失败、exit 1（幻影失败来自 `.claude/worktrees/**`、`.runcfg/**`
+  第三方 plugin、`design/**` 原型 smoke、`scripts/**/*.test.mjs` 的 node:test 风格）。
+  修复后：**227 files / 2521 tests passed，exit 0**（连续两轮）。
+- 新增 `test/vitest-setup.ts`：Node >= 22.11 的 jsdom 不再自带 localStorage → 内存实现兜底；
+  非 http 占位主机（`http://wave/...`）就地返回 `{data:null}`，避免 fire-and-forget RPC 变成 Unhandled Rejection。
+- `preview-edit` 5/5：真因是 **clip 截图在窗口失焦时静默返回空片**（尺寸完全正确）；
+  新增"文本区墨迹为 0 → 整窗重拍"守门，并给 `inkPixelCount` 补单测。
+  修复前 bullet-li 的像素断言是"0 行带"（假红/假绿），修复后 1→1、2→2、4→4 行带、位移 0。
