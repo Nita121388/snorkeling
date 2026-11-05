@@ -198,6 +198,9 @@ export async function ensureInstance({
         }
         await new Promise((r) => setTimeout(r, 1000));
     }
+    // 启动超时也要清场：已经 spawn 出去的实例如果不关，会留一个脱管的 Electron 窗口
+    // （AGENTS.md：不打招呼不要批量起实例，跑完自动关）。
+    killPid(findPidByPort(cdpPort));
     throw new Error(
         `verify 实例启动失败（${url}，spawn pid=${spawnedPid}）。日志: ${logPath}\n${lastErr?.message ?? ""}\n` +
             `手工排查: node scripts/dev-isolated.mjs --profile ${profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`

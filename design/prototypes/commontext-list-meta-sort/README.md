@@ -1,4 +1,4 @@
-> 同步状态：▲ 设计活跃（未实现）
+> 同步状态：✅ 已落地（2026-11-05，`frontend/app/commontext/`，分支 `feat/commontext-list-meta-sort`）
 > 镜像源：frontend/app/commontext/commontext-compose-modal.tsx, frontend/app/commontext/commontext-model.ts
 > 最后同步：2026-11-05
 
