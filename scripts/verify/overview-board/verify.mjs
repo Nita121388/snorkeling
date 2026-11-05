@@ -69,7 +69,33 @@ const COUNTS = `(() => {
         clientWidth: board == null ? 0 : board.clientWidth,
         snapType: cs == null ? "" : cs.scrollSnapType,
         gridFlow: cs == null ? "" : cs.gridAutoFlow,
+        viewButtons: [...document.querySelectorAll("[data-overview-view]")].map((b) => ({
+            mode: b.getAttribute("data-overview-view"),
+            pressed: b.getAttribute("aria-pressed"),
+        })),
+        groupSelectValue:
+            document.querySelector("[data-overview-group]")?.value ?? null,
+        columnKeys: [...document.querySelectorAll(".session-overview-board-column")].map(
+            (c) => c.getAttribute("data-column-key")
+        ),
     };
+})()`;
+
+/** 点视图分段按钮（list / board）。 */
+const clickView = (mode) => `(() => {
+    const btn = document.querySelector('[data-overview-view="${mode}"]');
+    if (btn == null) return false;
+    btn.click();
+    return true;
+})()`;
+
+/** 切看板分组（原生 select：设 value + 派发 change）。 */
+const setGroup = (group) => `(() => {
+    const sel = document.querySelector("[data-overview-group]");
+    if (sel == null) return false;
+    sel.value = ${JSON.stringify(group)};
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    return sel.value === ${JSON.stringify(group)};
 })()`;
 
 async function shot(client, name, clipOverride = null) {
@@ -147,7 +173,7 @@ async function main() {
 
     // 2) 切到看板
     const clicked = await client.evaluate(`(() => {
-            const btn = document.querySelector("${scope} .session-overview-view-toggle");
+            const btn = document.querySelector("${scope} [data-overview-view='board']");
             if (btn == null) return false;
             btn.click();
             return true;
@@ -166,6 +192,45 @@ async function main() {
     check("board-cards-present", st.cards > 0, `cards=${st.cards}`);
     check("board-hides-list-rows", st.rows === 0, `rows=${st.rows}（看板视图不应同时渲染列表行）`);
     check("toggle-pressed", st.togglePressed === "true", `aria-pressed=${st.togglePressed}`);
+
+    // 2a0) 视图分段切换器 + 分组下拉
+    check(
+      "view-switch-segmented",
+      (st.viewButtons ?? []).length === 2 &&
+        st.viewButtons.some((b) => b.mode === "board" && b.pressed === "true") &&
+        st.viewButtons.some((b) => b.mode === "list" && b.pressed === "false"),
+      `buttons=${JSON.stringify(st.viewButtons)}`
+    );
+    check("group-select-present", st.groupSelectValue === "status", `value=${st.groupSelectValue}`);
+
+    // 2a1) 分组 = Tab：列头换成 Tab 名，且不再出现空列
+    const tabGroupSet = await client.evaluate(setGroup("tab"));
+    await new Promise((r) => setTimeout(r, 700));
+    const tabGroup = await client.evaluate(`(() => {
+            const columns = [...document.querySelectorAll(".session-overview-board-column")];
+            return {
+                titles: columns.map((c) => (c.querySelector(".session-overview-board-column-title")?.textContent || "").trim()),
+                keys: columns.map((c) => c.getAttribute("data-column-key")),
+                empty: document.querySelectorAll(".session-overview-board-empty").length,
+                dots: document.querySelectorAll(".session-overview-board-column-dot").length,
+                cards: document.querySelectorAll(".session-overview-board-card").length,
+            };
+        })()`);
+    check(
+      "group-tab-applied",
+      tabGroupSet === true && tabGroup.titles.length > 0,
+      `列=${JSON.stringify(tabGroup.titles)}`
+    );
+    check(
+      "group-tab-no-empty-columns",
+      tabGroup.empty === 0 && tabGroup.keys.every((key) => (key ?? "").startsWith("tab:")),
+      `empty=${tabGroup.empty} keys=${JSON.stringify(tabGroup.keys)}`
+    );
+    check("group-tab-no-status-dot", tabGroup.dots === 0, `dots=${tabGroup.dots}`);
+    check("group-tab-keeps-cards", tabGroup.cards === st.cards, `cards=${tabGroup.cards}（status 分组 ${st.cards}）`);
+    await shot(client, "02a-group-tab", { x: 520, y: 60, width: 700, height: 480 });
+    await client.evaluate(setGroup("status"));
+    await new Promise((r) => setTimeout(r, 700));
 
     // 2a) 卡片信息架构：头像 / 状态 chip / agent 标题不得是 "Terminal"
     check("board-card-avatars", st.avatars === st.cards, `avatar=${st.avatars} 卡片=${st.cards}`);
@@ -260,17 +325,9 @@ async function main() {
         return out;
     })()`);
     if (seeded?.ok === true) {
-      await client.evaluate(`(() => {
-            const btn = document.querySelector(".session-overview-view-toggle");
-            if (btn != null && btn.getAttribute("aria-pressed") !== "false") btn.click();
-            return true;
-        })()`);
+      await client.evaluate(clickView("list"));
       await new Promise((r) => setTimeout(r, 1200));
-      await client.evaluate(`(() => {
-            const btn = document.querySelector(".session-overview-view-toggle");
-            if (btn != null && btn.getAttribute("aria-pressed") !== "true") btn.click();
-            return true;
-        })()`);
+      await client.evaluate(clickView("board"));
       await new Promise((r) => setTimeout(r, 2000));
       const agentCard = await client.evaluate(`(() => {
             const card = [...document.querySelectorAll(".session-overview-board-card")].find(
@@ -325,6 +382,25 @@ async function main() {
           .catch(() => false);
         await new Promise((r) => setTimeout(r, 600));
         await shot(client, "02c-agent-card", { x: 520, y: 60, width: 700, height: 560 });
+
+        // provider 分组：种子 agent（claude）+ 普通 term → 至少一列标题是 Claude，且没有空列
+        await client.evaluate(setGroup("provider"));
+        await new Promise((r) => setTimeout(r, 700));
+        const providerGroup = await client.evaluate(`(() => {
+                const columns = [...document.querySelectorAll(".session-overview-board-column")];
+                return {
+                    titles: columns.map((c) => (c.querySelector(".session-overview-board-column-title")?.textContent || "").trim()),
+                    empty: document.querySelectorAll(".session-overview-board-empty").length,
+                    cards: document.querySelectorAll(".session-overview-board-card").length,
+                };
+            })()`);
+        check(
+          "group-provider-columns",
+          (providerGroup.titles ?? []).includes("Claude") && providerGroup.empty === 0,
+          `列=${JSON.stringify(providerGroup.titles)} empty=${providerGroup.empty}`
+        );
+        check("group-provider-keeps-cards", providerGroup.cards === 2, `cards=${providerGroup.cards}（claude + term）`);
+        await shot(client, "02d-group-provider", { x: 520, y: 60, width: 700, height: 480 });
       } else {
         skip("agent-card-emoji-avatar", "播种的 agent 卡片没有进入看板（可能被过滤/折叠）");
         skip("agent-card-title-not-terminal", "播种的 agent 卡片没有进入看板");
@@ -372,23 +448,25 @@ async function main() {
       `卡片=${invariants.cards} 空标题=${invariants.emptyTitles}`
     );
 
+    // 播种步骤会把分组切到 provider；这里复位，避免污染后面的回归断言。
+    await client.evaluate(setGroup("status")).catch(() => false);
+    await new Promise((r) => setTimeout(r, 500));
+
     // 2d) 清理后重新取列表基准：播种 agent 块改变了 workspace，最初那次 rows 不再可比。
-    const rebase = await client.evaluate(`(() => {
-        const btn = document.querySelector(".session-overview-view-toggle");
-        if (btn != null && btn.getAttribute("aria-pressed") !== "false") btn.click();
-        return true;
-    })()`);
+    const rebase = await client.evaluate(clickView("list"));
     await new Promise((r) => setTimeout(r, 900));
     const postCleanupRows = await client.evaluate(
       `(() => document.querySelectorAll(".session-overview-block-row").length)()`
     );
-    await client.evaluate(`(() => {
-        const btn = document.querySelector(".session-overview-view-toggle");
-        if (btn != null && btn.getAttribute("aria-pressed") !== "true") btn.click();
-        return true;
-    })()`);
+    await client.evaluate(clickView("board"));
     await new Promise((r) => setTimeout(r, 900));
     check("list-rows-after-cleanup", rebase === true && postCleanupRows >= 1, `清理后列表行=${postCleanupRows}`);
+
+    // 3a) 分组持久化：切到 tab → 写 storage → reload 后保持
+    await client.evaluate(setGroup("tab"));
+    await new Promise((r) => setTimeout(r, 500));
+    const groupStored = await client.evaluate(`localStorage.getItem("snorkeling.overview.boardGroup")`);
+    check("group-persisted-storage", groupStored === "tab", `storage=${groupStored}`);
 
     // 3) 持久化：写入 localStorage 后 reload 仍是看板
     const persisted = await client.evaluate(`localStorage.getItem("snorkeling.overview.viewMode")`);
@@ -397,13 +475,14 @@ async function main() {
     await new Promise((r) => setTimeout(r, 6000));
     st = await client.evaluate(`(() => { const q = ${COUNTS}; return q; })()`);
     check("board-survives-reload", st.board === true && st.cards > 0, `board=${st.board} cards=${st.cards}`);
+    check(
+      "group-survives-reload",
+      st.groupSelectValue === "tab" && (st.columnKeys ?? []).every((key) => (key ?? "").startsWith("tab:")),
+      `value=${st.groupSelectValue} keys=${JSON.stringify(st.columnKeys)}`
+    );
 
     // 4) 切回列表：行数应与初始一致（不回归）
-    await client.evaluate(`(() => {
-            const btn = document.querySelector(".session-overview-view-toggle");
-            if (btn != null) btn.click();
-            return true;
-        })()`);
+    await client.evaluate(clickView("list"));
     await new Promise((r) => setTimeout(r, 900));
     st = await client.evaluate(`(() => { const q = ${COUNTS}; return q; })()`);
     check(

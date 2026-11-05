@@ -5,16 +5,26 @@ import { describe, expect, it } from "vitest";
 import {
     formatBoardAge,
     groupBlocksByStatus,
+    groupOverviewCards,
+    groupOverviewCardsByProvider,
+    groupOverviewCardsByTab,
+    isOverviewBoardGroup,
     isOverviewViewMode,
     normalizeOverviewBoardStatus,
+    OverviewBoardGroupDefault,
+    OverviewBoardGroups,
+    OverviewBoardGroupStorageKey,
+    OverviewBoardProviderFallbackTitle,
     OverviewBoardStatuses,
     OverviewViewModeDefault,
     OverviewViewModeStorageKey,
     projectNameFromPath,
     providerDisplayLabel,
+    readOverviewBoardGroup,
     readOverviewViewMode,
     resolveBoardCardTitle,
     truncateBoardPreview,
+    writeOverviewBoardGroup,
     writeOverviewViewMode,
     type OverviewViewModeStorageLike,
 } from "./overview-board-model";
@@ -345,5 +355,127 @@ describe("truncateBoardPreview", () => {
         const out = truncateBoardPreview("x".repeat(40), 10);
         expect(out.length).toBe(10);
         expect(out.endsWith("...")).toBe(true);
+    });
+});
+
+function card(blockId: string, overrides: Partial<{ tabId: string; tabName: string; providerLabel: string }> = {}) {
+    return {
+        blockId,
+        tabId: overrides.tabId ?? "tab-1",
+        tabName: overrides.tabName ?? "main",
+        providerLabel: overrides.providerLabel ?? "",
+    };
+}
+
+describe("groupOverviewCardsByTab", () => {
+    it("orders columns by first appearance and keeps card order inside a column", () => {
+        const columns = groupOverviewCardsByTab([
+            card("a", { tabId: "t2", tabName: "feature/overview" }),
+            card("b", { tabId: "t1", tabName: "main" }),
+            card("c", { tabId: "t2", tabName: "feature/overview" }),
+        ]);
+        expect(columns.map((column) => column.title)).toEqual(["feature/overview", "main"]);
+        expect(columns[0].blocks.map((b) => b.blockId)).toEqual(["a", "c"]);
+        expect(columns[1].blocks.map((b) => b.blockId)).toEqual(["b"]);
+        expect(columns.map((column) => column.key)).toEqual(["tab:t2", "tab:t1"]);
+    });
+
+    it("never produces empty columns and tolerates blank tab names", () => {
+        const columns = groupOverviewCardsByTab([card("a", { tabId: "t1", tabName: "  " })]);
+        expect(columns).toHaveLength(1);
+        expect(columns[0].title).toBe("Untitled");
+    });
+});
+
+describe("groupOverviewCardsByProvider", () => {
+    it("sorts by card count desc then title asc and folds unknown providers", () => {
+        const columns = groupOverviewCardsByProvider([
+            card("a", { providerLabel: "Claude" }),
+            card("b", { providerLabel: "" }),
+            card("c", { providerLabel: "Codex" }),
+            card("d", { providerLabel: "Claude" }),
+        ]);
+        expect(columns.map((column) => column.title)).toEqual(["Claude", "Codex", OverviewBoardProviderFallbackTitle]);
+        expect(columns[0].blocks.map((b) => b.blockId)).toEqual(["a", "d"]);
+    });
+
+    it("keeps the fallback column last when counts tie", () => {
+        const columns = groupOverviewCardsByProvider([
+            card("a", { providerLabel: "" }),
+            card("b", { providerLabel: "Codex" }),
+            card("c", { providerLabel: "Claude" }),
+        ]);
+        expect(columns.map((column) => column.title)).toEqual(["Claude", "Codex", OverviewBoardProviderFallbackTitle]);
+    });
+});
+
+describe("groupOverviewCards dispatcher", () => {
+    const cards = [card("a", { providerLabel: "Claude" }), card("b", { tabId: "t2", tabName: "wt" })];
+    const statuses = { a: "working", b: "idle" };
+
+    it("status grouping keeps the fixed 5 columns with tone", () => {
+        const columns = groupOverviewCards(cards, statuses, "status", { includeEmpty: true });
+        expect(columns).toHaveLength(OverviewBoardStatuses.length);
+        expect(columns.every((column) => column.tone != null)).toBe(true);
+        expect(columns[0].key).toBe("status:blocked");
+    });
+
+    it("status grouping without includeEmpty only keeps non-empty columns", () => {
+        const columns = groupOverviewCards(cards, statuses, "status");
+        expect(columns.map((column) => column.key)).toEqual(["status:working", "status:idle"]);
+    });
+
+    it("tab and provider grouping have no tone and no empty columns", () => {
+        for (const group of ["tab", "provider"] as const) {
+            const columns = groupOverviewCards(cards, statuses, group);
+            expect(columns.length).toBeGreaterThan(0);
+            expect(columns.every((column) => column.tone == null)).toBe(true);
+            expect(columns.every((column) => column.blocks.length > 0)).toBe(true);
+        }
+    });
+});
+
+describe("board group storage", () => {
+    function fakeStorage(initial: Record<string, string> = {}) {
+        const data = { ...initial };
+        return {
+            data,
+            getItem: (key: string) => data[key] ?? null,
+            setItem: (key: string, value: string) => {
+                data[key] = value;
+            },
+            removeItem: (key: string) => {
+                delete data[key];
+            },
+        };
+    }
+
+    it("accepts the three documented groups only", () => {
+        for (const group of OverviewBoardGroups) {
+            expect(isOverviewBoardGroup(group)).toBe(true);
+        }
+        expect(isOverviewBoardGroup("lane")).toBe(false);
+        expect(isOverviewBoardGroup(null)).toBe(false);
+    });
+
+    it("defaults to status for missing or corrupt values", () => {
+        expect(readOverviewBoardGroup(null)).toBe(OverviewBoardGroupDefault);
+        expect(readOverviewBoardGroup(fakeStorage())).toBe("status");
+        expect(readOverviewBoardGroup(fakeStorage({ [OverviewBoardGroupStorageKey]: "lane" }))).toBe("status");
+    });
+
+    it("round-trips provider and rejects unknown writes", () => {
+        const storage = fakeStorage();
+        expect(writeOverviewBoardGroup(storage, "provider")).toBe("provider");
+        expect(readOverviewBoardGroup(storage)).toBe("provider");
+        expect(writeOverviewBoardGroup(storage, "lane" as never)).toBeNull();
+        expect(readOverviewBoardGroup(storage)).toBe("provider");
+    });
+});
+
+describe("overview view mode — timeline 预留值", () => {
+    it("rejects timeline until the view is implemented (no white screen)", () => {
+        expect(isOverviewViewMode("timeline")).toBe(false);
+        expect(readOverviewViewMode({ getItem: () => "timeline", setItem: () => {} })).toBe("list");
     });
 });

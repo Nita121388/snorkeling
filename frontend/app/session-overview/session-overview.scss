@@ -1298,9 +1298,84 @@
    status section and let the existing body scroll handle overflow.
    --------------------------------------------------------------------------- */
 
+/* 视图分段切换：列表 / 看板（D 追加 时间线），同一枚按钮既是切换器也是状态指示。 */
+.session-overview-view-switch {
+    display: inline-flex;
+    overflow: hidden;
+    align-items: stretch;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+}
+
+.session-overview-view-switch-button {
+    display: inline-flex;
+    height: 26px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border: none;
+    appearance: none;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+
+    & + & {
+        border-left: 1px solid var(--border-color);
+    }
+
+    &:hover {
+        color: var(--main-text-color);
+        background: var(--hover-bg-color-strong);
+    }
+
+    &.is-active {
+        color: var(--accent-color);
+        background: rgb(from var(--accent-color) r g b / 0.12);
+    }
+}
+
 .session-overview-view-toggle.is-active {
     color: var(--accent-color);
     border-color: rgb(from var(--accent-color) r g b / 0.42);
+}
+
+/* 看板分组下拉（仅看板模式渲染）。 */
+.session-overview-group-picker {
+    display: inline-flex;
+    height: 26px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--secondary-text-color);
+}
+
+.session-overview-group-select {
+    height: 22px;
+    border: none;
+    appearance: none;
+    background: transparent;
+    color: var(--main-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+
+    option {
+        background: var(--block-bg-color);
+        color: var(--main-text-color);
+    }
 }
 
 /* 看板永远是「一行多列」，窄面板横向 snap 滑列 —— 不再按宽度退回纵向堆叠

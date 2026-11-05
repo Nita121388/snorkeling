@@ -7,9 +7,10 @@ import { cn } from "@/util/util";
 import { AgentStatusChip } from "./agent-status-chip";
 import {
     formatBoardAge,
-    groupBlocksByStatus,
+    groupOverviewCards,
     type OverviewBoardAvatar,
     type OverviewBoardCard,
+    type OverviewBoardGroup,
     type OverviewBoardStatus,
     type OverviewBoardStatusInput,
 } from "./overview-board-model";
@@ -22,8 +23,8 @@ export type OverviewBoardProps = {
     agentStatuses?: Readonly<Record<string, AgentStatus | null>>;
     /** Total card cap, applied across columns in fixed order. */
     maxTotal?: number;
-    /** Keep every status column visible even when it has no cards. */
-    includeEmpty?: boolean;
+    /** 分组口径：状态（固定 5 列）/ Tab / Provider。 */
+    group?: OverviewBoardGroup;
     now: number;
     onOpenSession: (card: OverviewBoardCard) => void;
     onAckStatus?: (blockId: string, status: AgentStatus) => void;
@@ -124,12 +125,16 @@ export function OverviewBoard({
     presentedStatuses,
     agentStatuses,
     maxTotal,
-    includeEmpty,
+    group = "status",
     now,
     onOpenSession,
     onAckStatus,
 }: OverviewBoardProps) {
-    const columns = groupBlocksByStatus(cards, presentedStatuses, { maxTotal, includeEmpty });
+    // 状态分组常显 5 列（空列给占位）；tab / provider 分组只显示有卡的列。
+    const columns = groupOverviewCards(cards, presentedStatuses, group, {
+        maxTotal,
+        includeEmpty: group === "status",
+    });
     if (columns.length === 0) {
         return <div className="session-overview-empty">No agent sessions match the current filters.</div>;
     }
@@ -137,15 +142,18 @@ export function OverviewBoard({
         <div className="session-overview-board" role="group" aria-label="Overview board">
             {columns.map((column) => (
                 <section
-                    key={column.status}
+                    key={column.key}
                     className={cn("session-overview-board-column", column.blocks.length === 0 && "is-empty")}
+                    data-column-key={column.key}
                     aria-label={`${column.title}，${column.blocks.length} 个会话`}
                 >
                     <h3 className="session-overview-board-column-head">
-                        <span
-                            className={cn("session-overview-board-column-dot", `is-${column.status}`)}
-                            aria-hidden="true"
-                        />
+                        {column.tone != null ? (
+                            <span
+                                className={cn("session-overview-board-column-dot", `is-${column.tone}`)}
+                                aria-hidden="true"
+                            />
+                        ) : null}
                         <span className="session-overview-board-column-title">{column.title}</span>
                         <span className="session-overview-board-column-count" role="status">
                             {column.blocks.length}

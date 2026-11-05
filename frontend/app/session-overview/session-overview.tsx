@@ -41,13 +41,17 @@ import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip"
 import { OverviewBoard } from "./overview-board";
 import {
     OVERVIEW_BOARD_ENABLED,
+    overviewBoardGroupAtom,
     overviewViewModeAtom,
+    OverviewViewModesImplemented,
     projectNameFromPath,
     providerDisplayLabel,
     resolveBoardCardTitle,
     truncateBoardPreview,
     type OverviewBoardAvatar,
     type OverviewBoardCard,
+    type OverviewBoardGroup,
+    type OverviewViewMode,
 } from "./overview-board-model";
 import {
     agentStatusHookProvidersForInstall,
@@ -1999,6 +2003,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const hideUnopenedTabs = jotai.useAtomValue(overviewModel.hideUnopenedTabsAtom);
     const agentsOnly = jotai.useAtomValue(overviewModel.agentsOnlyAtom);
     const viewMode = jotai.useAtomValue(overviewViewModeAtom);
+    const boardGroup = jotai.useAtomValue(overviewBoardGroupAtom);
     const openedThisLaunchTabIds = jotai.useAtomValue(openedThisLaunchTabIdsAtom);
     const blocks = useOverviewBlocks(workspace);
     const overviewVisible = useCurrentOverviewBlockVisible(blockId);
@@ -2302,8 +2307,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             }),
         [boardBlocks, details, personas, sessionEmojis, summaries]
     );
-    const toggleViewMode = React.useCallback(() => {
-        globalStore.set(overviewViewModeAtom, globalStore.get(overviewViewModeAtom) === "board" ? "list" : "board");
+    const setViewMode = React.useCallback((mode: OverviewViewMode) => {
+        globalStore.set(overviewViewModeAtom, mode);
     }, []);
 
     return (
@@ -2345,33 +2350,55 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                             </button>
                         ) : null}
                         {OVERVIEW_BOARD_ENABLED ? (
-                            <Tooltip
-                                content={viewMode === "board" ? "Switch to list view" : "Switch to board view"}
-                                placement="top"
-                                hideOnClick
-                                divClassName="inline-flex"
-                            >
-                                <button
-                                    type="button"
-                                    className={cn(
-                                        "session-overview-icon-button session-overview-view-toggle",
-                                        viewMode === "board" && "is-active"
-                                    )}
-                                    onClick={toggleViewMode}
-                                    aria-pressed={viewMode === "board"}
-                                    // 可访问名描述"这个控件是什么"，动态动作文案只留在 title，
-                                    // 否则 pressed=true + "Switch to list view" 会互相矛盾
-                                    aria-label="Board view"
-                                    title={viewMode === "board" ? "Switch to list view" : "Switch to board view"}
-                                >
-                                    <i
-                                        className={makeIconClass(
-                                            viewMode === "board" ? "table-list" : "table-cells-large",
-                                            false
+                            <div className="session-overview-view-switch" role="group" aria-label="Overview view">
+                                {OverviewViewModesImplemented.map((mode) => (
+                                    <button
+                                        key={mode}
+                                        type="button"
+                                        className={cn(
+                                            "session-overview-view-switch-button",
+                                            // 旧验证脚本/用户习惯用 .session-overview-view-toggle 指"看板"这枚，
+                                            // 保留这个类名做兼容，D 接入 timeline 时不用再改脚本。
+                                            mode === "board" && "session-overview-view-toggle",
+                                            viewMode === mode && "is-active"
                                         )}
-                                    />
-                                </button>
-                            </Tooltip>
+                                        data-overview-view={mode}
+                                        onClick={() => setViewMode(mode)}
+                                        aria-pressed={viewMode === mode}
+                                        aria-label={mode === "board" ? "Board view" : "List view"}
+                                        title={mode === "board" ? "Board view" : "List view"}
+                                    >
+                                        <i
+                                            className={makeIconClass(
+                                                mode === "board" ? "table-cells-large" : "table-list",
+                                                false
+                                            )}
+                                        />
+                                        <span>{mode === "board" ? "看板" : "列表"}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                        {OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
+                            <label className="session-overview-group-picker" title="看板分组方式">
+                                <i className={makeIconClass("layer-group", false)} />
+                                <select
+                                    className="session-overview-group-select"
+                                    data-overview-group
+                                    value={boardGroup}
+                                    aria-label="Board grouping"
+                                    onChange={(event) =>
+                                        globalStore.set(
+                                            overviewBoardGroupAtom,
+                                            event.target.value as OverviewBoardGroup
+                                        )
+                                    }
+                                >
+                                    <option value="status">状态</option>
+                                    <option value="tab">Tab</option>
+                                    <option value="provider">Provider</option>
+                                </select>
+                            </label>
                         ) : null}
                         <div className="session-overview-filter-group" aria-label="Overview filters">
                             <button
@@ -2418,7 +2445,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 cards={boardCards}
                                 presentedStatuses={agentStatuses}
                                 agentStatuses={agentStatuses}
-                                includeEmpty
+                                group={boardGroup}
                                 now={now}
                                 onAckStatus={ackAgentStatus}
                                 onOpenSession={(card) => {

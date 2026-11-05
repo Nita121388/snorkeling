@@ -124,6 +124,109 @@ export function groupBlocksByStatus<T extends OverviewBoardBlockLike>(
 }
 
 // ---------------------------------------------------------------------------
+// Board grouping (status / tab / provider)
+//
+// 渲染层只认 `OverviewBoardColumnModel`：状态分组带 tone（列头色点），
+// tab / provider 分组没有 tone，也不补空列（空列只在"状态列"这种固定列集合里才有意义）。
+// ---------------------------------------------------------------------------
+
+export type OverviewBoardColumnModel<T extends { blockId: string } = OverviewBoardCardRef> = {
+    /** 稳定 key：`status:working` / `tab:<tabId>` / `provider:Claude`。 */
+    key: string;
+    title: string;
+    /** 只有 status 分组有值：决定列头状态色点。 */
+    tone?: OverviewBoardStatus;
+    blocks: T[];
+};
+
+/** 分组函数只需要这三个字段（不依赖卡片其余展示字段）。 */
+export type OverviewBoardCardRef = {
+    blockId: string;
+    tabId: string;
+    tabName: string;
+    providerLabel: string;
+};
+
+export const OverviewBoardProviderFallbackTitle = "非 Agent";
+
+/** 状态分组：沿用固定 5 列 + `includeEmpty` 常显语义。 */
+export function groupOverviewCardsByStatus<T extends OverviewBoardCardRef>(
+    cards: readonly T[],
+    presentedStatuses: Readonly<Record<string, OverviewBoardStatusInput>>,
+    opts: OverviewBoardGroupOptions = {}
+): OverviewBoardColumnModel<T>[] {
+    const columns = groupBlocksByStatus(cards, presentedStatuses, opts);
+    return columns.map((column) => ({
+        key: `status:${column.status}`,
+        title: column.title,
+        tone: column.status,
+        blocks: column.blocks,
+    }));
+}
+
+/** Tab 分组：列序 = 卡片首次出现顺序（caller 传进来的就是 workspace Tab 顺序），不补空列。 */
+export function groupOverviewCardsByTab<T extends OverviewBoardCardRef>(
+    cards: readonly T[]
+): OverviewBoardColumnModel<T>[] {
+    const columns = new Map<string, OverviewBoardColumnModel<T>>();
+    for (const card of cards) {
+        const key = `tab:${card.tabId}`;
+        let column = columns.get(key);
+        if (column == null) {
+            column = { key, title: cleanText(card.tabName) || "Untitled", blocks: [] };
+            columns.set(key, column);
+        }
+        column.blocks.push(card);
+    }
+    return [...columns.values()];
+}
+
+/**
+ * Provider 分组：列序 = 卡片数降序 → 标题升序（最活跃的 agent 排最左）。
+ * 没有 provider 的块（普通 term / 未知）归「非 Agent」，不丢卡。
+ */
+export function groupOverviewCardsByProvider<T extends OverviewBoardCardRef>(
+    cards: readonly T[]
+): OverviewBoardColumnModel<T>[] {
+    const columns = new Map<string, OverviewBoardColumnModel<T>>();
+    for (const card of cards) {
+        const title = cleanText(card.providerLabel) || OverviewBoardProviderFallbackTitle;
+        const key = `provider:${title}`;
+        let column = columns.get(key);
+        if (column == null) {
+            column = { key, title, blocks: [] };
+            columns.set(key, column);
+        }
+        column.blocks.push(card);
+    }
+    return [...columns.values()].sort((a, b) => {
+        // 「非 Agent」永远排最后（普通 term 块不该抢 agent 的位置），再按活跃度降序、名称升序。
+        const aFallback = a.title === OverviewBoardProviderFallbackTitle;
+        const bFallback = b.title === OverviewBoardProviderFallbackTitle;
+        if (aFallback !== bFallback) return aFallback ? 1 : -1;
+        if (b.blocks.length !== a.blocks.length) return b.blocks.length - a.blocks.length;
+        return a.title.localeCompare(b.title);
+    });
+}
+
+/**
+ * 分组分发器。
+ *
+ * - `status`：固定列 + `includeEmpty`（看板常显 5 列）
+ * - `tab` / `provider`：只渲染有卡的列（空列对它们没有语义）
+ */
+export function groupOverviewCards<T extends OverviewBoardCardRef>(
+    cards: readonly T[],
+    presentedStatuses: Readonly<Record<string, OverviewBoardStatusInput>>,
+    group: OverviewBoardGroup,
+    opts: OverviewBoardGroupOptions = {}
+): OverviewBoardColumnModel<T>[] {
+    if (group === "tab") return groupOverviewCardsByTab(cards);
+    if (group === "provider") return groupOverviewCardsByProvider(cards);
+    return groupOverviewCardsByStatus(cards, presentedStatuses, opts);
+}
+
+// ---------------------------------------------------------------------------
 // Board card model + pure display helpers
 //
 // The panel assembles `OverviewBoardCard[]` (identity, status, copy) and the
@@ -254,15 +357,33 @@ export function truncateBoardPreview(text: string | null | undefined, maxLength 
 }
 
 // ---------------------------------------------------------------------------
-// View mode persistence (list | board), following the preview text-mode store.
+// View mode + board grouping persistence
+//
+// 两个枚举都走同一个「localStorage + atomWithStorage + storage 事件跨窗口同步」工厂，
+// 免得每加一个开关就复制 60 行读写/回落/订阅样板。
+//
+// `timeline` 已经写进 ViewMode 联合类型（D 的接口预留），但**不在已实现集合里**：
+// 校验只放行已实现值，未来版本写进来的 timeline 在旧版本降级成 list，而不是白屏。
 // ---------------------------------------------------------------------------
 
-export type OverviewViewMode = "list" | "board";
+export type OverviewViewMode = "list" | "board" | "timeline";
+
+/** 真正有渲染分支的视图；D 接入 timeline 时把 "timeline" 加进来即可。 */
+export const OverviewViewModesImplemented = ["list", "board"] as const;
 
 export const OverviewViewModeStorageKey = "snorkeling.overview.viewMode";
 
 /** Default stays `list` so existing users see no behavior change on upgrade. */
 export const OverviewViewModeDefault: OverviewViewMode = "list";
+
+/** 看板列的分组口径。 */
+export const OverviewBoardGroups = ["status", "tab", "provider"] as const;
+
+export type OverviewBoardGroup = (typeof OverviewBoardGroups)[number];
+
+export const OverviewBoardGroupStorageKey = "snorkeling.overview.boardGroup";
+
+export const OverviewBoardGroupDefault: OverviewBoardGroup = "status";
 
 export type OverviewViewModeStorageLike = {
     getItem(key: string): string | null;
@@ -282,18 +403,82 @@ export function getDefaultOverviewViewModeStorage(): OverviewViewModeStorageLike
 }
 
 export function isOverviewViewMode(value: unknown): value is OverviewViewMode {
-    return value === "list" || value === "board";
+    return typeof value === "string" && (OverviewViewModesImplemented as readonly string[]).includes(value);
 }
+
+export function isOverviewBoardGroup(value: unknown): value is OverviewBoardGroup {
+    return typeof value === "string" && (OverviewBoardGroups as readonly string[]).includes(value);
+}
+
+type PersistedEnum<T extends string> = {
+    key: string;
+    read: (storage: OverviewViewModeStorageLike | null) => T;
+    write: (storage: OverviewViewModeStorageLike | null, value: T) => T | null;
+    subscribe: (callback: () => void, target?: EventTarget | null) => () => void;
+    syncStorage: SyncStorage<T>;
+};
+
+function createPersistedEnum<T extends string>(
+    key: string,
+    isValue: (value: unknown) => value is T,
+    fallback: T
+): PersistedEnum<T> {
+    const read = (storage: OverviewViewModeStorageLike | null): T => {
+        if (storage == null) return fallback;
+        try {
+            const raw = storage.getItem(key);
+            return isValue(raw) ? raw : fallback;
+        } catch {
+            return fallback;
+        }
+    };
+    const write = (storage: OverviewViewModeStorageLike | null, value: T): T | null => {
+        if (storage == null || !isValue(value)) return null;
+        try {
+            storage.setItem(key, value);
+            return value;
+        } catch {
+            return null;
+        }
+    };
+    const subscribe = (
+        callback: () => void,
+        target: EventTarget | null = typeof window === "undefined" ? null : window
+    ): (() => void) => {
+        if (target == null || typeof target.addEventListener !== "function") {
+            return () => {};
+        }
+        const handleStorage = (event: Event) => {
+            const eventKey = (event as StorageEvent).key;
+            if (eventKey != null && eventKey !== key) return;
+            callback();
+        };
+        target.addEventListener("storage", handleStorage);
+        return () => target.removeEventListener("storage", handleStorage);
+    };
+    const syncStorage: SyncStorage<T> = {
+        getItem: () => read(getDefaultOverviewViewModeStorage()),
+        setItem: (_key, value) => {
+            write(getDefaultOverviewViewModeStorage(), value);
+        },
+        removeItem: () => {
+            const storage = getDefaultOverviewViewModeStorage();
+            try {
+                storage?.removeItem?.(key);
+            } catch {
+                // Ignore: a failed cleanup must not break rendering.
+            }
+        },
+        subscribe: (_key, callback) => subscribe(() => callback(read(getDefaultOverviewViewModeStorage()))),
+    };
+    return { key, read, write, subscribe, syncStorage };
+}
+
+const viewModeStorage = createPersistedEnum(OverviewViewModeStorageKey, isOverviewViewMode, OverviewViewModeDefault);
 
 /** Corrupt / missing data falls back to the default, never throws. */
 export function readOverviewViewMode(storage: OverviewViewModeStorageLike | null): OverviewViewMode {
-    if (storage == null) return OverviewViewModeDefault;
-    try {
-        const raw = storage.getItem(OverviewViewModeStorageKey);
-        return isOverviewViewMode(raw) ? raw : OverviewViewModeDefault;
-    } catch {
-        return OverviewViewModeDefault;
-    }
+    return viewModeStorage.read(storage);
 }
 
 /** Persist the mode. Returns the effective mode, or `null` when nothing was written. */
@@ -301,15 +486,7 @@ export function writeOverviewViewMode(
     storage: OverviewViewModeStorageLike | null,
     mode: OverviewViewMode
 ): OverviewViewMode | null {
-    if (storage == null || !isOverviewViewMode(mode)) {
-        return null;
-    }
-    try {
-        storage.setItem(OverviewViewModeStorageKey, mode);
-        return mode;
-    } catch {
-        return null;
-    }
+    return viewModeStorage.write(storage, mode);
 }
 
 /** Cross-window sync: fires on `storage` events for our key (other renderers/windows). */
@@ -317,38 +494,36 @@ export function subscribeOverviewViewMode(
     callback: () => void,
     target: EventTarget | null = typeof window === "undefined" ? null : window
 ): () => void {
-    if (target == null || typeof target.addEventListener !== "function") {
-        return () => {};
-    }
-    const handleStorage = (event: Event) => {
-        const key = (event as StorageEvent).key;
-        if (key != null && key !== OverviewViewModeStorageKey) return;
-        callback();
-    };
-    target.addEventListener("storage", handleStorage);
-    return () => target.removeEventListener("storage", handleStorage);
+    return viewModeStorage.subscribe(callback, target);
 }
-
-const overviewViewModeStorage: SyncStorage<OverviewViewMode> = {
-    getItem: () => readOverviewViewMode(getDefaultOverviewViewModeStorage()),
-    setItem: (_key, value) => {
-        writeOverviewViewMode(getDefaultOverviewViewModeStorage(), value);
-    },
-    removeItem: () => {
-        const storage = getDefaultOverviewViewModeStorage();
-        try {
-            storage?.removeItem?.(OverviewViewModeStorageKey);
-        } catch {
-            // Ignore: a failed cleanup must not break rendering.
-        }
-    },
-    subscribe: (_key, callback) =>
-        subscribeOverviewViewMode(() => callback(readOverviewViewMode(getDefaultOverviewViewModeStorage()))),
-};
 
 export const overviewViewModeAtom = atomWithStorage<OverviewViewMode>(
     OverviewViewModeStorageKey,
     OverviewViewModeDefault,
-    overviewViewModeStorage,
+    viewModeStorage.syncStorage,
+    { getOnInit: true }
+);
+
+const boardGroupStorage = createPersistedEnum(
+    OverviewBoardGroupStorageKey,
+    isOverviewBoardGroup,
+    OverviewBoardGroupDefault
+);
+
+export function readOverviewBoardGroup(storage: OverviewViewModeStorageLike | null): OverviewBoardGroup {
+    return boardGroupStorage.read(storage);
+}
+
+export function writeOverviewBoardGroup(
+    storage: OverviewViewModeStorageLike | null,
+    group: OverviewBoardGroup
+): OverviewBoardGroup | null {
+    return boardGroupStorage.write(storage, group);
+}
+
+export const overviewBoardGroupAtom = atomWithStorage<OverviewBoardGroup>(
+    OverviewBoardGroupStorageKey,
+    OverviewBoardGroupDefault,
+    boardGroupStorage.syncStorage,
     { getOnInit: true }
 );
