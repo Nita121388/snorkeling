@@ -69,3 +69,16 @@ gemini + FetchModels，错误信息加上实际 URL。24 个单测 + openaichat 
 - 已交付发版：0.0.115 验证台 / 0.0.116 图片翻页 / 0.0.117 Overview 看板
 - 功能 4 Files VCS 树标记：实现 + 真机 31/31 已绿，**未发版**；剩余 3 条审核建议 + 发版 0.0.118
 - 接手文档：`.trellis/tasks/11-04-files-vcs-tree-status/implement.md`（剩余 TODO 按优先级排好，含验证命令与发版步骤）
+
+## 2026-11-05 功能 4 收尾 + 0.0.118
+
+- 三条审核建议全部落地（a7c149c7）：中间层符号链接对齐（情形 C 子序列+首尾双锚定）、
+  commit/sync 成功后清 VCS 缓存、树视图行名 title（`getLabelTitle`）。
+- 实现取舍：原计划的「B 分支尾对齐」推导后发现退化成 `resolved=仓库根`，只覆盖一半场景且放松了
+  无关仓库防护；改用子序列双锚定，两方向都覆盖，同级无关目录不产假标记。
+- 验证：vitest 26 例 + treeview 23 例全绿，tsc 69 基线不变，真机 CDP 31/31。
+- 踩坑：真机 verify 在 Windows 上必须用带盘符的 fixture（`VCS_FIXTURE=E:/tmp/vcs-fixture`）——
+  `/tmp` 只有盘符相对语义，git rootpath 带盘符后两边拼写对不上；现象是 rows=0 或 rows 有但
+  marks 全 undefined。已写进 preview-edit-harness spec。
+- 发版：bump 0.0.118（12eab5dc）+ tag `snorkeling-v0.14.6-beta.0-0.0.118` 已推，CI run 41947396042。
+- 观察（未修，非本任务范围）：情形 A 的「共享单个尾部组件」对叶子名相同的同级目录仍会误映射（既有行为）。

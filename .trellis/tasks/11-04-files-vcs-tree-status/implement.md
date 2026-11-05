@@ -52,14 +52,17 @@ VCS_FIXTURE=E:/tmp/vcs-fixture node scripts/verify/vcs-tree-status/verify.mjs   
 
 ### 待办
 
-4. **发版 0.0.118**（`.agents/skills/snorkeling-release/SKILL.md` 的流程）：
-   ```bash
-   node version.cjs 1 && grep '"version"' package.json     # → 0.0.118
-   git ls-remote --tags origin | grep -c 0.0.118           # 必须 0
-   git add package.json package-lock.json && git commit -m "chore: bump ... 0.0.118"
-   git push origin main && git tag -a snorkeling-v0.14.6-beta.0-0.0.118 -m "..." && git push origin <tag>
-   ```
+4. ~~发版 0.0.118~~ **已完成（2026-11-05）**：commit `12eab5dc` + tag `snorkeling-v0.14.6-beta.0-0.0.118`，
+   CI run 41947396042 绿，GitHub Release 已发布三平台产物（dmg/zip/exe/msi/deb/rpm/pacman/AppImage）。
 5. 归档 `11-04-files-vcs-tree-status`，把批任务 `11-04-ui-delivery-batch` 标记完成。
+
+> 下次发版参考命令：
+> ```bash
+> node version.cjs 1 && grep '"version"' package.json     # → 下一个号
+> git ls-remote --tags origin | grep -c 0.0.119           # 必须 0
+> git add package.json package-lock.json && git commit -m "chore: bump ... 0.0.119"
+> git push origin main && git tag -a snorkeling-v0.14.6-beta.0-0.0.119 -m "..." && git push origin <tag>
+> ```
 
 ## 已知设计限制（不要当 bug 修）
 

@@ -42,7 +42,23 @@ repoRoots: Set<string>                     // repositories[].rootpath，用于"�
 ```
 
 - 跳过噪音目录（`node_modules/.git/dist/build/target/.venv`）不参与聚合
-- 缓存 `vcsTreeStatusCache`：key=`conn|dir`，TTL 10s；`Refresh`/VCS 操作成功后失效
+- 缓存 `vcsTreeStatusCache`：key=`conn|dir`，TTL 10s；`Refresh` / VCS 操作（commit / sync）成功后失效
+
+### 路径拼写对齐（`resolveResolvedBaseDir`）
+
+RPC 的 `basepath` 保留输入拼写（只 Clean/ExpandHome），VCS 的 `rootpath` 是 realpath。
+两者对不上时 `isUnderVcsDir` 永远失败、索引全空——必须推测 `baseDir` 的已解析拼写，
+三种情形按顺序尝试（都对不上就返回 null，索引退回原拼写：干净静默，不会错标）：
+
+| 情形 | 关系 | 结果 |
+|---|---|---|
+| B | `rootComps` 以 `baseComps` 的某个**前缀**结尾（前导符号链接，如 `/tmp` ↔ `/private/tmp`） | `rootComps + baseComps.slice(m)` |
+| A | 仓库根在 `baseDir` 之内（视图根在上层，或相等） | `rootComps` 的某个祖先 |
+| C | **中间层**符号链接（macOS iCloud「桌面与文稿」）：两套拼写中间插入了/省略了一段组件 | C1 仓库根是上层拼写 → `rootComps + baseComps.slice(m)`；C2 `baseDir` 就是仓库根 → `rootComps` |
+
+情形 C 用「子序列 + **首尾双锚定**」判定：只要求“是子序列”会把无关仓库错映射进视图（假标记），
+而同一目录的两种拼写一定共享真正的首尾目录层级。注意情形 B 对不上时**不能直接 return null**，
+否则 count 关系恰好落在 B 的 iCloud 子目录场景永远走不到 C。
 
 ## 渲染接入点
 

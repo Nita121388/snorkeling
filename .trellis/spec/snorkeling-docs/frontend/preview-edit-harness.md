@@ -43,6 +43,26 @@ To let an agent answer "did the inline-edit visual fix actually work" without a 
 - Debug/log code paths must format through `fmtPx`-style safe formatting — a log line must never be able to crash the app.
 - Portaled overlays do not inherit `.markdown` scope: inline marks must be mirrored explicitly in `markdown.scss` (`.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-editor`).
 
+## Fixture paths on Windows (bit the VCS tree-status bench)
+
+`scripts/verify/*/verify.mjs` benches that open a **filesystem path** in a preview block cannot use a
+POSIX-style fixture such as `/tmp/vcs-fixture` on Windows: the value travels through the Go backend and
+git, which report `rootpath` with a drive letter (`E:/tmp/...`), so the two spellings can never align and
+every assertion fails with `rows=0` (or rows present but **zero marks**). Symptoms:
+
+- `tree-rows-present — rows=0` → the block itself failed to list the directory (path did not resolve).
+- rows present but all marks `undefined` while `remotevcsrepositories calls=1` → path resolved, but the
+  tree-status alignment refused to map (the alignment logic deliberately skips non-POSIX spellings).
+
+Fix pattern: let the bench take the fixture root from an env override and point it at a real drive path.
+
+```bash
+VCS_FIXTURE=E:/tmp/vcs-fixture node scripts/verify/vcs-tree-status/verify.mjs   # 31/31
+```
+
+`/tmp` in git-bash maps to `%LOCALAPPDATA%\Temp`, which is **not** the same place as the app's `\tmp`
+(drive-relative), so create the fixture under the drive path you pass in, not in git-bash's `/tmp`.
+
 ## Run artifacts
 
 - `verify-runs/<ts>/report.json` (machine), `report.md` (human, embeds before/during/afterEsc/diff), per-case PNGs. Raw capture buffers are deleted unless `VERIFY_DEBUG_SHOT=1`.
