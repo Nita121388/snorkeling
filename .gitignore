@@ -57,6 +57,8 @@ electron-vite
 .gitnexus-tmp/
 
 *.jsonl
+# loop 台账的事件流是真相源，必须入库（*.jsonl 规则对它是误伤）
+!loop/LEDGER-*.jsonl
 
 # Backup files
 .backup/

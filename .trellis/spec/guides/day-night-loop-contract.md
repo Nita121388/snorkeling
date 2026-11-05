@@ -63,3 +63,14 @@ node loop/queue.mjs verify-ledger                     # 台账可解析
 `loadStore()` 早期版本在 `gates.json` 解析失败时返回空对象，等于「夜间队列被静默清空」。
 现在回退 `.gates.last-good.json` 并告警；没有快照才抛错。
 **任何读队列/规则/配置的入口都必须有 last-good 回退或硬失败，二者选一，不许装作空。**
+
+### L-0001 续（2026-11-05 第二次复发）
+
+`rubric_hash` 再次踩同一个坑：在**同一个提交里**给 rubric 追加评审记录，然后又写 hash —— 签字内容与 hash 对不上，
+引擎 `hashMismatch` 直接判 drift，G4 凭据不可验证。评审组第三次复核时抓到。
+
+两条硬规则（写进肌肉记忆）：
+
+1. **hash 永远在最后一次编辑之后取**。凡是要在签完字后追加内容（评审记录、确认行、备注），必须把它放在 hash 覆盖区间**之外**，或者取 hash 之后再单独提交。
+2. **hash 只能由引擎函数产出**：`lib/hash.mjs` 的 `fileHash()` / `prdHash()`（CRLF 归一 + trimEnd）。
+   裸 `sha256sum` 与引擎口径不同，两者混用会让同一份文件出现两个"正确"的 hash。
