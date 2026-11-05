@@ -1375,6 +1375,11 @@ const CommonTextComposeModal = memo(() => {
                                                         );
                                                         // 先把详情区未落盘的草稿写完再计数：两条写路径都是
                                                         // "读全表 → 改 → 写全表"，交错会把用户刚改的正文覆盖掉。
+                                                        // 顺手取消防抖定时器，免得同一份草稿再被写一遍。
+                                                        if (detailSaveTimerRef.current != null) {
+                                                            window.clearTimeout(detailSaveTimerRef.current);
+                                                            detailSaveTimerRef.current = null;
+                                                        }
                                                         await flushDetailSave({ keepDirty: true });
                                                         // 行内插入/无目标回退复制同样是一次使用：与详情 Insert 同口径计数。
                                                         await recordCommonTextUse(item.id);

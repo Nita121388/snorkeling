@@ -306,8 +306,19 @@ try {
   await reporter.shot(client, "02-title-asc");
 
   // ── 5. 搜索态：排序关掉 + 相关度优先 + Enter 打开第一名（回归锁） ─────────────
+  // 前置条件（不做就假绿，实测过两次）：详情必须先落在「搜索后仍留在结果里、且不在第 0 行」的
+  // 条目上。若 detailId 被搜索过滤掉，旧的对齐 bug 会因 findIndex=-1 直接跳过，高亮天然停在 0 —
+  // 那样这条断言对 bug 零分辨力。
+  await clickSelector(client, rowSelector("Standup summary"));
+  const preDetail = await waitForProbe(client, probeSnapshot(), (s) => s?.detailTitle === "Standup summary", {
+    timeoutMs: 15000,
+  });
+  reporter.check("search-precondition-detail-not-top", preDetail?.detailTitle === "Standup summary", preDetail?.detailTitle);
+
   await clickSelector(client, SEARCH_INPUT);
   await client.evaluate(setReactValueExpression(SEARCH_INPUT, "refund processed"));
+  // 等 passive effect 落定：对齐 effect 在 commit 之后跑，读早了会拿到 realign 之前的中间渲染。
+  await sleep(600);
   const searching = await waitForProbe(
     client,
     probeSnapshot(),
