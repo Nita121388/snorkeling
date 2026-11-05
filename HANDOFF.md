@@ -24,7 +24,7 @@
 |---|---|---|---|
 | 1 | 预览编辑验证台（`scripts/verify/preview-edit/`） | ✅ | `0.0.115` ✅ |
 | 2 | 图片预览翻页（`image-pager*.ts(x)`） | ✅ | `0.0.116` ✅ |
-| 3 | Overview 看板（`overview-board*`） | ✅ 看板 v2（卡片信息架构 + 5 列常显 + 横向 snap） | `0.0.117` ✅ / v2 待发 |
+| 3 | Overview 看板（`overview-board*`） | ✅ 看板 v2（卡片信息架构 + 5 列常显 + 横向 snap + 视图切换/三分组）；甘特仅出原型 | `0.0.117` ✅ / v2 待发 |
 | 4 | Files 目录树 VCS 标记（`vcs-tree-status*`） | ✅ 真机 31/31 | `0.0.118` ✅ |
 
 ## 最近这一轮做了什么（功能 4 收尾）
@@ -50,7 +50,7 @@ npx tsc --noEmit -p tsconfig.json | grep -c "error TS"      # 期望 69（这是
 node scripts/verify/preview-edit/run.mjs --keep-open --expect=fixed   # 起隔离 Electron 实例（validate 环境用）
 node scripts/verify/vcs-tree-status/verify.mjs --attach               # 期望 31/31
 node scripts/verify/image-pager/verify.mjs --attach                   # 期望 30/30
-node scripts/verify/overview-board/verify.mjs --attach                # 期望 27/27
+node scripts/verify/overview-board/verify.mjs --attach                # 期望 38/38
 ```
 
 > ⚠️ **Windows 上跑 vcs-tree-status 必须指定带盘符的 fixture**：
