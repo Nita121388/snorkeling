@@ -445,8 +445,12 @@
                 },
             ];
 
-            let mode = "g1";
-            let rangeHours = 2;
+            // 支持 ?mode=g2&range=8，便于分享具体形态（也让截图/评审能直达某一版）。
+            const params = new URLSearchParams(location.search);
+            let mode = params.get("mode") === "g2" ? "g2" : "g1";
+            let rangeHours = [2, 8, 24, 168].includes(Number(params.get("range")))
+                ? Number(params.get("range"))
+                : 2;
             const stateColor = {
                 working: "working",
                 blocked: "blocked",
@@ -569,6 +573,14 @@
                 }
                 render();
             });
+            // 初始按钮态跟 query 对齐
+            for (const btn of document.querySelectorAll("#mode-seg button")) {
+                btn.classList.toggle("is-active", btn.dataset.mode === mode);
+            }
+            for (const btn of document.querySelectorAll("#range-seg button")) {
+                btn.classList.toggle("is-active", Number(btn.dataset.range) === rangeHours);
+            }
+
             document.getElementById("range-seg").addEventListener("click", (event) => {
                 const target = event.target.closest("button");
                 if (target == null) return;
