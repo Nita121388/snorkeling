@@ -26,11 +26,11 @@ scripts/verify/
 
 ## 三份必须统一的契约
 
-| 契约 | 规定 | 落地实现 |
-|---|---|---|
-| **实例生命周期** | `--attach` 复用 / 默认干净实例（reset profile）/ 结束按**端口→PID** 关闭；只有 `--keep-open` 才留 | `lib/launch.mjs` |
+| 契约             | 规定                                                                                                                                            | 落地实现         |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| **实例生命周期** | `--attach` 复用 / 默认干净实例（reset profile）/ 结束按**端口→PID** 关闭；只有 `--keep-open` 才留                                               | `lib/launch.mjs` |
 | **产物与退出码** | `verify-runs/<ts>-<area>/{report.json,report.md,*.png}`；`0` 全绿 / `1` 断言失败 / `2` 环境错误；台账追加一行到 `docs/project/verify-ledger.md` | `lib/report.mjs` |
-| **探针** | 只读语义（class / `data-*` / 文案），不读颜色；文本先归一化（去 LRM）；hover 一律重试 | `lib/probes.mjs` |
+| **探针**         | 只读语义（class / `data-*` / 文案），不读颜色；文本先归一化（去 LRM）；hover 一律重试                                                           | `lib/probes.mjs` |
 
 > **兼容层**：`preview-edit/lib/*.mjs` 现在只是 `export * from "../../lib/…"` 的转发文件，
 > 让 image-pager / overview-board / vcs-tree-status 里既有的 `../preview-edit/lib/…`
@@ -62,6 +62,18 @@ node scripts/verify/agent-card-seen/verify.mjs --dry        # 只解析参数/�
    会 `rm -rf` 别人的 `.runcfg/<profile>`）。新 area 建议 `profile: "verify-<area>"` +
    独占端口，例：`property-editor` 用 `verify-property-editor` / `9233` / `51801`。
 
+   **不想改代码就能错开**：`lib/launch.mjs` 的默认档位支持环境变量覆盖
+   （`VERIFY_PROFILE` / `VERIFY_VITE_PORT` / `VERIFY_CDP_PORT`，纯空白或非法端口自动回落默认，
+   解析逻辑有单测 `lib/launch.test.mjs`）：
+
+   ```bash
+   VERIFY_PROFILE=verify-b VERIFY_VITE_PORT=51899 VERIFY_CDP_PORT=9331 \
+       node scripts/verify/overview-timeline/verify.mjs
+   ```
+
+   并行 checklist：① 每个写者一个 worktree；② 每个实例一套 profile+端口；
+   ③ 验证台自己起的实例默认关（`--keep-open` 才留），别把端口占着给下一轮添堵。
+
 ### `vcs-panel-buttons` 的运行前提
 
 它是**只 attach** 的台子（不自己起实例，避免和并行 agent 抢 `.runcfg/verify`）：
@@ -75,14 +87,14 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 
 ## 现有 area
 
-| area | 入口 | 覆盖什么 | 需要 GUI |
-|---|---|---|---|
-| `preview-edit` | `run.mjs` | markdown inline 编辑的几何/像素零位移（rules 库） | ✅ |
-| `image-pager` | `verify.mjs` | 图片翻页与悬停提示 | ✅ |
-| `overview-board` | `verify.mjs` | Session Overview 看板：5 列常显 / 横向 snap / 卡片信息架构（emoji·标题·状态 chip，播种 agent 块验证） | ✅ |
-| `overview-timeline` | `verify.mjs` | Overview 时间线（Gantt · G1 会话寿命条）：刻度/now 线/当前状态尾巴/时间窗持久化 | ✅ |
-| `vcs-tree-status` | `verify.mjs` | Files VCS 行标记 | ✅ |
-| `vcs-panel-buttons` | `verify.mjs` | 版本管理面板按钮语义：无遗留文字按钮 / icon-only 都有 aria-label / 图标字形解析 / 行内动作 hover 浮现 | ✅ |
-| `agent-card-seen` | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡） | ✅ |
-| `property-editor` | `verify.mjs` | 属性值下拉编辑器：md 预览浮层（已选标签无描边 + 行尾 ✓）/ agent 悬浮卡浮层 + 「指针移入附属浮层卡片不收起」 | ✅ |
-| `commontext-meta-sort` | `verify.mjs` | CommonText 列表元信息列 / 图标排序控件 / 搜索态禁用 / 次数写入（独立 profile + 端口 9251） | ✅ |
+| area                   | 入口         | 覆盖什么                                                                                                    | 需要 GUI |
+| ---------------------- | ------------ | ----------------------------------------------------------------------------------------------------------- | -------- |
+| `preview-edit`         | `run.mjs`    | markdown inline 编辑的几何/像素零位移（rules 库）                                                           | ✅       |
+| `image-pager`          | `verify.mjs` | 图片翻页与悬停提示                                                                                          | ✅       |
+| `overview-board`       | `verify.mjs` | Session Overview 看板：5 列常显 / 横向 snap / 卡片信息架构（emoji·标题·状态 chip，播种 agent 块验证）       | ✅       |
+| `overview-timeline`    | `verify.mjs` | Overview 时间线（Gantt · G1 会话寿命条）：刻度/now 线/当前状态尾巴/时间窗持久化                             | ✅       |
+| `vcs-tree-status`      | `verify.mjs` | Files VCS 行标记                                                                                            | ✅       |
+| `vcs-panel-buttons`    | `verify.mjs` | 版本管理面板按钮语义：无遗留文字按钮 / icon-only 都有 aria-label / 图标字形解析 / 行内动作 hover 浮现       | ✅       |
+| `agent-card-seen`      | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡）                                     | ✅       |
+| `property-editor`      | `verify.mjs` | 属性值下拉编辑器：md 预览浮层（已选标签无描边 + 行尾 ✓）/ agent 悬浮卡浮层 + 「指针移入附属浮层卡片不收起」 | ✅       |
+| `commontext-meta-sort` | `verify.mjs` | CommonText 列表元信息列 / 图标排序控件 / 搜索态禁用 / 次数写入（独立 profile + 端口 9251）                  | ✅       |
