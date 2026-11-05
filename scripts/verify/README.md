@@ -67,3 +67,4 @@ node scripts/verify/agent-card-seen/verify.mjs --dry        # 只解析参数/�
 | `overview-board` | `verify.mjs` | Session Overview 看板布局 | ✅ |
 | `vcs-tree-status` | `verify.mjs` | Files VCS 行标记 | ✅ |
 | `agent-card-seen` | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡） | ✅ |
+| `commontext-meta-sort` | `verify.mjs` | CommonText 列表元信息列 / 图标排序控件 / 搜索态禁用 / 次数写入（独立 profile + 端口 9251） | ✅ |

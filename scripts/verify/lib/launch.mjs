@@ -26,19 +26,29 @@ export function cdpUrl(port = DEFAULTS.cdpPort) {
     return `http://127.0.0.1:${port}`;
 }
 
-/** 端口 → 监听进程 PID（Windows）。返回 null 表示没人监听。 */
+const isWindows = process.platform === "win32";
+
+/**
+ * 端口 → 监听进程 PID。Windows 走 powershell，macOS / Linux 走 lsof。
+ * 返回 null 表示没人监听（或平台工具缺失）——调用方当作「无实例」处理。
+ */
 export function findPidByPort(port) {
     try {
-        const out = execFileSync(
-            "powershell",
-            [
-                "-NoProfile",
-                "-Command",
-                `(Get-NetTCPConnection -LocalPort ${Number(port)} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
-            ],
-            { encoding: "utf8", timeout: 15000, windowsHide: true }
-        ).trim();
-        const pid = Number(out.split(/\s+/)[0]);
+        const out = isWindows
+            ? execFileSync(
+                  "powershell",
+                  [
+                      "-NoProfile",
+                      "-Command",
+                      `(Get-NetTCPConnection -LocalPort ${Number(port)} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
+                  ],
+                  { encoding: "utf8", timeout: 15000, windowsHide: true }
+              )
+            : execFileSync("lsof", ["-ti", `tcp:${Number(port)}`, "-sTCP:LISTEN"], {
+                  encoding: "utf8",
+                  timeout: 15000,
+              });
+        const pid = Number(out.trim().split(/\s+/)[0]);
         return Number.isFinite(pid) && pid > 0 ? pid : null;
     } catch {
         return null;
@@ -48,10 +58,14 @@ export function findPidByPort(port) {
 export function killPid(pid) {
     if (pid == null) return;
     try {
-        execFileSync("powershell", ["-NoProfile", "-Command", `Stop-Process -Id ${Number(pid)} -Force`], {
-            timeout: 15000,
-            windowsHide: true,
-        });
+        if (isWindows) {
+            execFileSync("powershell", ["-NoProfile", "-Command", `Stop-Process -Id ${Number(pid)} -Force`], {
+                timeout: 15000,
+                windowsHide: true,
+            });
+            return;
+        }
+        process.kill(Number(pid), "SIGKILL");
     } catch {
         /* already gone */
     }
@@ -75,6 +89,9 @@ export async function ensureInstance({
     cdpPort = DEFAULTS.cdpPort,
     vitePort = DEFAULTS.vitePort,
     resetProfile = true,
+    // 并行开发时必须能换 profile：默认 verify profile 是共享的，两个 area 同时起实例会
+    // 互相 rmSync 掉对方的 .runcfg（既踩掉正在跑的实例，也抢 Electron 的 SingletonLock）。
+    profile = DEFAULTS.profile,
 } = {}) {
     const url = cdpUrl(cdpPort);
 
@@ -96,11 +113,11 @@ export async function ensureInstance({
     // 否则上一轮创建的 preview block 会累积、上次打开的面板可能盖住 markdown，
     // 采样点被别的元素遮挡 → 双击打不开编辑器（实测踩到）。
     if (resetProfile) {
-        rmSync(path.join(repoRoot, ".runcfg", DEFAULTS.profile), { recursive: true, force: true });
+        rmSync(path.join(repoRoot, ".runcfg", profile), { recursive: true, force: true });
     }
 
     mkdirSync(cacheDir, { recursive: true });
-    const logPath = path.join(cacheDir, `launch-${DEFAULTS.profile}.log`);
+    const logPath = path.join(cacheDir, `launch-${profile}.log`);
     // 必须直接把文件描述符交给子进程，不能用 pipe：
     // 用 pipe 时父进程一退出，子进程下一次写 stdout 就 EPIPE 自杀（连带 electron 一起没）。
     const logFd = openSync(logPath, "w");
@@ -110,7 +127,7 @@ export async function ensureInstance({
         [
             path.join(repoRoot, "scripts", "dev-isolated.mjs"),
             "--profile",
-            DEFAULTS.profile,
+            profile,
             "--vite-port",
             String(vitePort),
             "--cdp-port",
@@ -136,7 +153,7 @@ export async function ensureInstance({
         if (exited) {
             throw new Error(
                 `verify 启动器提前退出（exit=${lastExit}）。日志: ${logPath}\n` +
-                    `手工排查: node scripts/dev-isolated.mjs --profile ${DEFAULTS.profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`
+                    `手工排查: node scripts/dev-isolated.mjs --profile ${profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`
             );
         }
         try {
@@ -162,7 +179,7 @@ export async function ensureInstance({
     }
     throw new Error(
         `verify 实例启动失败（${url}，spawn pid=${spawnedPid}）。日志: ${logPath}\n${lastErr?.message ?? ""}\n` +
-            `手工排查: node scripts/dev-isolated.mjs --profile ${DEFAULTS.profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`
+            `手工排查: node scripts/dev-isolated.mjs --profile ${profile} --vite-port ${vitePort} --cdp-port ${cdpPort}`
     );
 }
 

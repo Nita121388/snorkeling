@@ -48,20 +48,25 @@ npx tsc --noEmit -p tsconfig.json | grep "commontext"   # 期望无输出（不�
 - [x] 更新 `design/prototypes/__REVIEW_GUIDE__.md` 该条状态（设计活跃 → 已落地）
 - [x] 提交 + 写 Obsidian 开发记录
 
-## 真机验证：skipped（有意，非静默省略）
+## 真机验证：✅ 21/21（`scripts/verify/commontext-meta-sort/`）
 
-- 本机是 macOS，`scripts/verify/lib/launch.mjs` 的清理路径（`findPidByPort` / `killPid`）**只实现了 Windows**
-  （powershell `Get-NetTCPConnection` / `Stop-Process`）。在 macOS 上起实例后无法按端口→PID 收尾，
-  会留下脱管 Electron 进程 —— 这比不跑更糟。
-- 干净实例要跑 `scripts/dev-isolated.mjs`，包含 Go 后端 + vite 构建（首次 3~5 分钟），worktree 里没有
-  `.tools` 固定工具链，成本与失败面都高。
-- 本轮改用**机器可判定**的替代证据：`commontext-model.test.ts` 钉死排序/计数语义（含
-  `sortCommonTextItems` 逐位不变、搜索态相关度压过 sortKey、置顶只作 tie-break），
-  `commontext-compose-modal.test.ts` 钉死控件的 a11y 契约（aria-label / aria-disabled / tooltip 文案）
-  与两个计数写入点。
-- **回补路径**：给 `scripts/verify/lib/launch.mjs` 加 macOS 分支（`lsof -ti tcp:<port>` + `kill -9`），
-  再照 `_template/verify.mjs` 建 `scripts/verify/commontext-meta-sort/`：CDP 里
-  `dispatchEvent(new CustomEvent("snorkeling:common-text:open-search", {detail:{}}))` 打开弹窗，
-  断言 `[data-commontext-sort]` 5 个按钮、`[data-commontext-meta]` 行高与 `[data-commontext-usage]`
-  计数可见；种子数据需要在隔离 profile 的 `settings.json` 预写 `commontext:items`。
-- 未覆盖的面：行高零位移的像素级证据、hover 淡出⇄插入按钮的视觉切换、tooltip 实际弹出。
+第一版记的是 skipped，理由成立但不可接受 —— 验证环节的目标是**自证、不依赖人类**。所以本轮把这条路补上了：
+
+1. **`scripts/verify/lib/launch.mjs` 跨平台化**（原实现只有 Windows）：
+   - `findPidByPort`：win32 → powershell 不变；macOS / Linux → `lsof -ti tcp:<port> -sTCP:LISTEN`
+   - `killPid`：win32 → `Stop-Process -Force`；其它平台 → `process.kill(pid, "SIGKILL")`
+   - `ensureInstance` 新增 `profile` 参数：默认 profile 是各 area 共享的，`resetProfile` 会整个
+     `rmSync` 掉它 —— 并行开发时两个 area 同时起实例会互相踩（既杀别人正在跑的实例，也抢
+     Electron 的 SingletonLock）。新 area 一律用独立 profile + 独立端口。
+2. **新 area `scripts/verify/commontext-meta-sort/`**（独立 profile `commontext-meta-sort`，
+   CDP 9251 / Vite 51811），21 条断言全绿，跑完按端口→PID 自动收尾（已验证 9251 端口释放）：
+   弹窗打开 → 用真实 UI 新建 3 条 → 默认「最近使用」为创建倒序（证明新建刷新 `lastusedat`
+   但不计数）→ 新条目次数为 0 → 元信息列 28px 且行高 41px 由标题决定（**不顶高行**）→
+   title-asc 重排 + 偏好落 localStorage → 搜索态 5 个排序键全部 `aria-disabled` + 相关度图标
+   亮起 → 清空恢复 → 详情页脚 4 组元信息 → 行内 hover 插入使该条次数变 1 且文本真的进了 editor。
+3. 有意未覆盖（写进 report 的 skipped）：hover 淡出⇄插入按钮的视觉切换（CDP 合成 hover 不解
+   发 group-hover）、浏览器原生 tooltip 弹出层、跨弹窗生命周期的偏好恢复（写入已断言）。
+4. 环境坑（已记）：worktree 里的 `npm:install` 会把 `node_modules` 从软链换成真实目录，且
+   electron 的 dist 解压可能残缺（缺 `Frameworks/`、`path.txt`）—— 用 `.cache/electron/
+   electron-v41.1.0-darwin-arm64.zip` 手工 `unzip` 到 `node_modules/electron/dist` 并补
+   `path.txt` 即可。

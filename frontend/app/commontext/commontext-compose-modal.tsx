@@ -1020,6 +1020,8 @@ const CommonTextComposeModal = memo(() => {
 
                 <textarea
                     ref={editorRef}
+                    // 验证台靠这个属性稳定拿到 editor（弹窗里还有详情 textarea）。
+                    data-commontext-composer=""
                     // 展开态上限由 editorMaxHeight 动态给（随弹窗高度缩放），不再写死 max-h-[280px]。
                     style={editorExpanded ? { maxHeight: editorMaxHeight } : undefined}
                     className={
@@ -1289,6 +1291,8 @@ const CommonTextComposeModal = memo(() => {
                                     <div
                                         key={item.id}
                                         data-common-text-index={index}
+                                        // 验证台按标题定位行：DOM 次序即真实排序结果，便于断言重排。
+                                        data-commontext-title={item.title}
                                     className={
                                         "group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
                                         (state.selectedIndex === index
