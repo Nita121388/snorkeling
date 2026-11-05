@@ -43,6 +43,16 @@ Questions to answer:
 
 ---
 
+## SCSS / 断言两条硬约束 (2026-11-05, 夜间自主开发)
+
+- **改 SCSS 前先确认锚点唯一**：`@container` 里的选择器列表（`.a,\n.b,\n.c {`）和独立规则长得很像，
+  `oldText` 命中列表会把整段声明块插进选择器位置，静默破坏后面的 `min-width` / `overflow`。
+  实测代价：时间线在 221px 面板里轨道仍 540px 宽（溢出）。改完必须跑对应真机 area。
+- **几何类断言要带数字**：`trackVisible` 这种布尔断言失败时看不出原因。统一输出
+  `{panelW, trackW, dl, dr}` 这类矩形差，下一次不用重新加打印。
+
+---
+
 ## Forbidden Patterns
 
 <!-- Patterns that should never be used and why -->

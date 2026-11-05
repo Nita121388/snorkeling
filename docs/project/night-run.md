@@ -85,3 +85,23 @@
   `node scripts/verify/image-pager/verify.mjs` → **30/31**，唯一红的是 `hover-tooltip-disabled-next`：
   该断言在全树到底之后去 hover「下一站」，而那一刻按钮根本不存在（没有下一站）→ 属于断言自身选错时机。
   建议改成（a）在树中段验证「下一站」hover 提示，（b）末尾只验证可见的 `›` 禁用态提示。
+
+### 04:1x — 现状盘点 + 一处验证台归属争议
+
+| area | 今晚结果 | 说明 |
+|---|---|---|
+| `overview-board` | ✅ 38/38 | 未改行为，仅断言随三视图更新 |
+| `overview-timeline` | ✅ 22/22（隔离 profile/端口各跑一次） | 新增长条宽度机器判定；行数上限单测覆盖 |
+| `preview-edit` | ✅ 5/5 | 空白截图守门修复 |
+| `image-pager` | ⚠️ 30/31 | 唯一红：`hover-tooltip-disabled-next` 在"全树到底"后 hover 不存在的「下一站」→ 断言选错时机；属 `11-05-preview-pager-hover-hint` |
+| `agent-card-seen` | ❌ 起不来 | 全新 profile 下 New Agent 面板没展开（面板选择已改成"右侧 WidgetsBar + provider 兜底"，仍失败）；属 `11-05-agent-card-seen` in_progress |
+
+这两个红都不是"产品坏了"，而是**断言/harness 的时机或选择器问题**，且落在别人正在改的 area 里 —— 今晚按"不抢别人工作面"处理：只把诊断信息做得更可读（provider 列表兜底 + 可见按钮全量打印），不改判定逻辑。
+
+### 04:1x — 一条给自己记的教训（已写进 spec）
+
+CSS 补丁的 `oldText` 命中了**容器查询里的选择器列表**而不是独立规则，结果
+`@container (max-width: 560px)` 的第一条规则被 `.more` 的声明块顶掉 → `.session-overview-timeline-row`
+的 `min-width: 0` 消失 → 窄面板里轨道 540px 溢出 221px 面板。
+真机断言 `timeline-track-visible-narrow` 当场抓住（detail 现在直接带 `{panelW, trackW, dl, dr}`）。
+教训：改 SCSS 时先 `grep -n` 确认锚点唯一；断言里带几何数字，比"true/false"有用得多。
