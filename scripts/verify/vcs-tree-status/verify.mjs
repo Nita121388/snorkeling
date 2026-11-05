@@ -31,7 +31,9 @@ const runDir = path.join(
   `${new Date().toISOString().replace(/[-:.]/g, "").slice(0, 14)}-vcstreestatus`
 );
 mkdirSync(runDir, { recursive: true });
-const fixture = "/tmp/vcs-fixture";
+// Windows 真机：`/tmp` 只有盘符相对语义，git 报的 rootpath 会带盘符，两边拼写不可能对齐
+// （路径对齐逻辑对 Windows 盘符路径是有意跳过的）。用 VCS_FIXTURE 指到真实盘符路径。
+const fixture = process.env.VCS_FIXTURE || "/tmp/vcs-fixture";
 
 const results = [];
 function check(id, ok, detail) {

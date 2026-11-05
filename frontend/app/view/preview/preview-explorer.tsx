@@ -231,6 +231,22 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
         },
         [vcsStatus]
     );
+    // 行尾标记是 aria-hidden：读屏与悬停靠行名 title 拿到 VCS 语义（干净行返回 undefined）
+    const getVcsLabelTitle = useCallback(
+        (row: TreeViewRowInfo) => {
+            if (vcsStatus == null) {
+                return undefined;
+            }
+            const path = normalizeVcsPath(row.node.path ?? row.id);
+            if (row.isDirectory) {
+                const count = vcsStatus.dirCount.get(path) ?? 0;
+                return count > 0 ? `VCS 变更：该目录下 ${count} 个文件有变动` : undefined;
+            }
+            const mark = vcsStatus.fileMark.get(path);
+            return mark == null ? undefined : `VCS 变更：${VcsFileMarkTitle[mark]}`;
+        },
+        [vcsStatus]
+    );
 
     const initialNodes = useMemo(
         () => ({
@@ -1190,6 +1206,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         }}
                         onRenameCancel={() => setEditingRenameNode(null)}
                         getLabelClassName={FILES_VCS_TREE_STATUS_ENABLED ? getVcsLabelClassName : undefined}
+                        getLabelTitle={FILES_VCS_TREE_STATUS_ENABLED ? getVcsLabelTitle : undefined}
                         renderRowSuffix={FILES_VCS_TREE_STATUS_ENABLED ? renderVcsRowSuffix : undefined}
                     />
                 </div>

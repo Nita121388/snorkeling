@@ -5,6 +5,7 @@ import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/blo
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { clearVcsTreeStatusCache } from "@/app/view/preview/vcs-tree-status";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { createBlock, openLink } from "@/store/global";
@@ -456,6 +457,8 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 const output = response.output || "Commit completed.";
                 completeOperation(repo.repoid, opId, "success", output, output);
                 setSelectedFilesByRepo((prev) => ({ ...prev, [repo.repoid]: [] }));
+                // 提交会清掉工作区变动：目录树的 VCS 标记缓存立即失效，不等 10s TTL
+                clearVcsTreeStatusCache(connection);
                 await loadRepositories();
             } else {
                 const resultMsg = response.error || response.output || "Commit failed.";
@@ -484,6 +487,8 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
             if (response.success) {
                 const output = response.output || getSyncCompletionLabel(syncAction);
                 completeOperation(repo.repoid, opId, "success", output, output);
+                // 同步（pull/push 等）会改变工作区状态：目录树标记缓存立即失效
+                clearVcsTreeStatusCache(connection);
                 shouldRefresh = true;
             } else {
                 const resultMsg = response.error || response.output || getSyncFailureLabel(syncAction);

@@ -1,6 +1,6 @@
 # 交接说明 — Files 目录树 VCS 标记（功能 4 / 4）
 
-> 状态：**功能已实现且真机验证通过，未发版**。剩余工作是审核建议里的 3 条中等项 + 发版 0.0.118。
+> 状态：**功能已实现、收尾 3 条已完成、真机 31/31**，待发版 `0.0.118`。
 > 接手环境：`git pull origin main` 后从本文「剩余 TODO」继续；本任务目录里 prd/design/implement 齐全。
 
 ## 已完成
@@ -18,24 +18,40 @@
 
 ```bash
 npm run setup                                  # 本地工具链
-npx vitest run frontend/app/view/preview/vcs-tree-status.test.ts frontend/app/treeview/   # 85 passed
+npx vitest run frontend/app/view/preview/vcs-tree-status.test.ts frontend/app/treeview/   # 49 passed
 npx tsc --noEmit -p tsconfig.json | grep -c "error TS"    # 必须 ≤69（当前基线）
 # 起隔离实例（约 2-4 分钟）后跑真机验证：
 node scripts/verify/preview-edit/run.mjs --keep-open --expect=fixed
 node scripts/verify/vcs-tree-status/verify.mjs --attach    # 期望 31/31
 ```
 
-fixture 由脚本自建：`/tmp/vcs-fixture`（真实 git 仓库：modified.txt=M、untracked.txt=U、clean.txt、sub/ 内 1 个 M）。
+fixture：真实 git 仓库（modified.txt=M、untracked.txt=U、clean.txt、sub/inner2.txt=M、sub/inner.txt=clean）。
+默认路径 `/tmp/vcs-fixture`；**Windows 真机必须用 `VCS_FIXTURE` 指到带盘符的路径**——Windows 下 `/tmp` 只有
+盘符相对语义，git 报的 rootpath 会带盘符，两边拼写不可能对齐（路径对齐逻辑对盘符路径是有意跳过的）：
+
+```bash
+VCS_FIXTURE=E:/tmp/vcs-fixture node scripts/verify/vcs-tree-status/verify.mjs   # 期望 31/31
+```
 
 ## 剩余 TODO（按优先级）
 
-1. **`resolveResolvedBaseDir` 中间层符号链接**（`vcs-tree-status.ts`）
-   现状：只覆盖「拼写差异出现在前导/尾部」，macOS iCloud「桌面与文稿」这类**中间层**符号链接会返回 null → 该视图静默无标记（不会错标）。
-   改法：B 分支补"尾对齐"——找最大的 `k` 使 `rootComps` 以 `baseComps.slice(k)` 结尾。
-2. **VCS 操作成功后主动清缓存**
-   `vcs.tsx` 的 commit / sync 成功分支里调 `clearVcsTreeStatusCache()`（当前只能等 10s TTL 自然过期）。
-3. **树视图文件名 title**
-   `treeview.tsx` 再加可选 `getLabelTitle`（或让 `renderRowSuffix` 回传 title），把 `VcsFileMarkTitle` 挂到行名上——现在 mark 是 `aria-hidden`，读屏拿不到 VCS 语义（表里已做了）。
+### 已完成的收尾（2026-11-05）
+
+| 项 | 实现 | 验证 |
+|---|---|---|
+| 中间层符号链接对齐 | `vcs-tree-status.ts`：情形 B 对不上时**不再直接 return null**，改由新增的情形 C 接管——把 `baseComps` 首部与仓库根按顺序对齐（子序列 + 首尾双锚定），C1 仓库根是 baseDir 上层 → `仓库根 + baseDir 剩余尾部`；C2 baseDir 就是仓库根 → 仓库根拼写 | 新增 3 单测（iCloud 同根 / iCloud 子目录 / 叶子名不同不得映射） |
+| VCS 操作后清缓存 | `vcs.tsx`：commit / sync 成功分支调 `clearVcsTreeStatusCache(connection)` | `clearVcsTreeStatusCache` 从「零调用」变为两处调用 |
+| 树视图行名 title | `treeview.tsx` 新增可选 `getLabelTitle`（`title` 属性，未传/返回 undefined 时不输出属性）；`preview-explorer.tsx` 传入 `getVcsLabelTitle`（文件 → M/U/D 语义，目录 → 聚合数） | 真机 31/31 不回退（clean 行仍无 class/mark） |
+
+> 实现取舍：原计划「B 分支补尾对齐」在推导后发现 `resolved = 仓库根` 的退化形式只覆盖
+> 「baseDir 就是仓库根」一半场景，且会放松对无关仓库的防护；改用子序列 + 首尾双锚定，
+> 同时覆盖两个方向，且同级无关目录不会产生假标记。
+
+> 观察（未处理，非本任务范围）：情形 A 的「共享单个尾部组件」判定对**叶子名相同的同级目录**
+> 仍会产出映射（既有行为，非本次引入）。若要收紧，可在情形 A 里要求匹配到完整 `baseComps`。
+
+### 待办
+
 4. **发版 0.0.118**（`.agents/skills/snorkeling-release/SKILL.md` 的流程）：
    ```bash
    node version.cjs 1 && grep '"version"' package.json     # → 0.0.118

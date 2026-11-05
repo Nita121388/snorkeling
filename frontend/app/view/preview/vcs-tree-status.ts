@@ -153,6 +153,34 @@ function vcsComponentsEndWith(comps: string[], tail: string[]): boolean {
 }
 
 /**
+ * 「两端口锚定」的子序列对齐：`sub` 能否在 `host` 里按顺序找到（首元素对 host[0]、
+ * 末元素对 host[host.length-1]）。返回 host 被消耗到的位置（sub 末元素下标 + 1）。
+ * 对不上返回 -1。
+ *
+ * 锚定两端是刻意的：只要求"是子序列"会把无关仓库错映射进视图（产生假标记），
+ * 而同一目录的两种拼写一定共享真正的首尾目录层级。
+ */
+function alignComponentsAnchored(sub: string[], host: string[]): number {
+    if (sub.length === 0 || sub.length > host.length) {
+        return -1;
+    }
+    if (sub[0] !== host[0] || sub[sub.length - 1] !== host[host.length - 1]) {
+        return -1;
+    }
+    let j = 0;
+    for (let i = 0; i < sub.length; i++) {
+        while (j < host.length && host[j] !== sub[i]) {
+            j++;
+        }
+        if (j >= host.length) {
+            return -1;
+        }
+        j++;
+    }
+    return j;
+}
+
+/**
  * 推测 baseDir 的「已解析」拼写（符号链接展开后的真实路径）。
  *
  * 背景：VCS 后端报的 rootpath 是 realpath（macOS 上 /tmp/... 会被解析成
@@ -184,7 +212,7 @@ function resolveResolvedBaseDir(baseDir: string, repoRootAbs: string): string | 
                 return "/" + [...rootComps, ...baseComps.slice(m)].join("/");
             }
         }
-        return null;
+        // 对不上不直接放弃：中间层符号链接（情形 C）需要继续尝试
     }
     // 情形 A：仓库根在 baseDir 之内——从最深祖先往上找共享尾部。
     for (let len = rootComps.length; len >= 1; len--) {
@@ -193,6 +221,26 @@ function resolveResolvedBaseDir(baseDir: string, repoRootAbs: string): string | 
             if (vcsComponentsEndWith(ancestor, baseComps.slice(k))) {
                 return "/" + ancestor.join("/");
             }
+        }
+    }
+    // 情形 C：中间层符号链接（macOS iCloud「桌面与文稿」：~/Documents 实际指向
+    // ~/Library/Mobile Documents/com~apple~CloudDocs/Documents）。
+    // 差异既不在前导也不在尾部，而是中间一整段组件被插入/省略，两种拼写于是呈现
+    // "顺序对齐但中间有缺口"的关系：把 baseDir 的首部与仓库根按顺序对齐（首尾锚定），
+    // 仓库根消耗到哪一格，剩下的就是视图根相对仓库根的部分。
+    //   情形 C1：仓库根是 baseDir 的**上层**拼写 → resolved = 仓库根 + baseDir 剩余尾部
+    //            （视图根在仓库内的子目录，此时 rootComps 通常更长）
+    //   情形 C2：baseDir 就是仓库根（上层前缀被展开） → resolved = 仓库根
+    for (let m = baseComps.length; m >= 1; m--) {
+        const consumed = alignComponentsAnchored(baseComps.slice(0, m), rootComps);
+        if (consumed >= 0) {
+            return "/" + [...rootComps, ...baseComps.slice(m)].join("/");
+        }
+    }
+    for (let m = rootComps.length; m >= 1; m--) {
+        const consumed = alignComponentsAnchored(rootComps.slice(0, m), baseComps);
+        if (consumed >= 0) {
+            return "/" + [...rootComps, ...baseComps.slice(consumed)].join("/");
         }
     }
     return null;

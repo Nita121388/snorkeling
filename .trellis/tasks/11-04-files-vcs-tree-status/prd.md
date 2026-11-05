@@ -21,12 +21,12 @@ O(1) 查表、TTL 缓存，滚动/悬停零请求。
 ## Acceptance Criteria
 
 - [x] 单测 ≥10：M/U/D 解析、A 归 M、祖先目录聚合计数、噪音跳过、多仓库、clean 静默、
-      符号链接拼写对齐（/tmp ↔ /private/tmp）、缓存 TTL/失效
+      符号链接拼写对齐（/tmp ↔ /private/tmp、iCloud 中间层）、缓存 TTL/失效（共 26 例）
 - [x] 真机 CDP：真实 git 仓库 fixture，树+表双视图 M/U/clean/子目录计数正确、
       树/表语义一致、切视图命中缓存不重复发 RPC、单次 RPC（31 项断言）
 - [x] tsc 不高于 69 基线；treeview 向后兼容（不传新 props 时零行为变化）
-- [ ] 剩余收尾（见 implement.md 剩余 TODO）：中间层符号链接、VCS 操作成功后清缓存、
-      树视图行名 title、发版 0.0.118
+- [x] 收尾：中间层符号链接对齐、VCS 操作成功后主动清缓存、树视图行名 title
+- [ ] 发版 0.0.118
 
 ## 已知设计限制
 

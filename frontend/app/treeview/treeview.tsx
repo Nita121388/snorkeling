@@ -107,6 +107,9 @@ export interface TreeViewProps {
     onExpandedChange?: (expandedIds: Set<string>) => void;
     /** 可选：给行名 span 追加 class（如 VCS 状态着色）。不传时行为零变化。 */
     getLabelClassName?: (row: TreeViewRowInfo) => string | undefined;
+    /** 可选：行名 span 的 title（如 VCS 变更语义）。行尾标记是 aria-hidden，
+     *  读屏与悬停靠这里拿到语义。返回 undefined 时不输出属性（零新增 DOM）。 */
+    getLabelTitle?: (row: TreeViewRowInfo) => string | undefined;
     /** 可选：在行名 span 之后渲染行尾内容（如 VCS 行尾标记）。不传时行为零变化。 */
     renderRowSuffix?: (row: TreeViewRowInfo) => React.ReactNode;
 }
@@ -461,6 +464,7 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
         onRenameCancel,
         onExpandedChange,
         getLabelClassName,
+        getLabelTitle,
         renderRowSuffix,
     } = props;
     const [nodesById, setNodesById] = useState<Map<string, TreeNodeData>>(() => normalizeInitialNodes(initialNodes));
@@ -1258,6 +1262,11 @@ export const TreeView = forwardRef<TreeViewRef, TreeViewProps>((props, ref) => {
                                                             isDirectory: !!row.isDirectory,
                                                         })
                                                     )}
+                                                    title={getLabelTitle?.({
+                                                        id: row.id,
+                                                        node: row.node,
+                                                        isDirectory: !!row.isDirectory,
+                                                    })}
                                                 >
                                                     {row.label}
                                                 </span>

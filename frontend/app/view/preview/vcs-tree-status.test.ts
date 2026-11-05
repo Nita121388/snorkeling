@@ -217,6 +217,41 @@ describe("buildVcsTreeStatus", () => {
         expect(status.repoRoots.has("/tmp/workspace/alpha")).toBe(true);
     });
 
+    it("aligns middle-layer symlink spellings when the dir is the repo root", () => {
+        // macOS「桌面与文稿」：~/Documents 实际是 ~/Library/Mobile Documents/com~apple~CloudDocs/Documents。
+        // 差异在**中间**组件——前导/尾部对齐都拿不到，情形 C2 兜底。
+        const cloudRoot = "/Users/nita/Library/Mobile Documents/com~apple~CloudDocs/Documents/Proj";
+        const status = buildVcsTreeStatus([repo("/Users/nita/Documents/Proj", [file("a.ts", " M")])], {
+            rootDir: cloudRoot,
+            baseDir: cloudRoot,
+        });
+        expect(status.fileMark.get(`${cloudRoot}/a.ts`)).toBe("M");
+        expect(status.dirCount.get(cloudRoot)).toBe(1);
+        expect(status.repoRoots.has(cloudRoot)).toBe(true);
+    });
+
+    it("aligns middle-layer symlink spellings when the dir sits inside the repo", () => {
+        // 视图根在仓库内（外层路径被展开）：仓库根是 baseDir 的上层拼写，情形 C1。
+        const viewRoot = "/Users/nita/Documents/Proj/src";
+        const status = buildVcsTreeStatus(
+            [repo("/Users/nita/Library/Mobile Documents/com~apple~CloudDocs/Documents/Proj", [file("src/a.ts", " M")])],
+            { rootDir: viewRoot, baseDir: viewRoot }
+        );
+        expect(status.fileMark.get(`${viewRoot}/a.ts`)).toBe("M");
+        expect(status.dirCount.get(viewRoot)).toBe(1);
+    });
+
+    it("does not map unrelated dirs that share no tail", () => {
+        // 中间层对齐是子序列匹配，必须首尾锚定：叶子名不同的同级目录不能被映射
+        // （注意：情形 A 的「共享单个尾部组件」是既有行为，不在本用例覆盖范围）。
+        const status = buildVcsTreeStatus([repo("/Users/nita/Documents/ProjB", [file("a.ts", " M")])], {
+            rootDir: "/Users/nita/Desktop/ProjA",
+            baseDir: "/Users/nita/Desktop/ProjA",
+        });
+        expect(status.fileMark.size).toBe(0);
+        expect(status.dirCount.size).toBe(0);
+    });
+
     it("does not invent a mapping for unrelated repo roots", () => {
         // 不共享尾部组件的仓库不应被错映射到视图里（否则会产生假标记）
         const status = buildVcsTreeStatus([repo("/private/opt/other", [file("x.txt", " M")])], {
