@@ -64,3 +64,13 @@
 - `preview-edit` 5/5：真因是 **clip 截图在窗口失焦时静默返回空片**（尺寸完全正确）；
   新增"文本区墨迹为 0 → 整窗重拍"守门，并给 `inkPixelCount` 补单测。
   修复前 bullet-li 的像素断言是"0 行带"（假红/假绿），修复后 1→1、2→2、4→4 行带、位移 0。
+
+### 02:4x — 类型债二次清理（63 → 49）与一个真功能 bug
+
+- `preview-explorer.tsx` 的 "在树里定位" 传的是 `blockData?.id`，而 `Block` 只有 `oid` →
+  条件永远 `null` → **该功能静默失效**（从搜索结果/文件链接打开时不会定位到树）。已改 `oid`。
+- `FileInfoCommand` / `FileRead` / `FileWrite` 的请求体在 Go 侧复用完整 `FileInfo`，TS 因此在十几处
+  报 "mimetype missing"。新增 `frontend/util/fileinfo.ts` 的 `fileInfoRequest()` 集中构造，
+  preview-model / preview-explorer / waveconfig-model 全部改用它（去掉魔法字段与复制）。
+- `showExportModal` 返回 `void` 却被 `fireAndForget` 当 Promise 用 → 改成 `async` 并标注返回类型。
+- tsc 基线 63 → **49**（`docs/project/tsc-baseline.json`）；相关目录单测 478 passed。
