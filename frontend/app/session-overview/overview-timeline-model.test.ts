@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    OverviewTimelineMaxRows,
     OverviewTimelineRangeDefault,
     OverviewTimelineRangeStorageKey,
     OverviewTimelineRanges,
@@ -11,6 +12,7 @@ import {
     buildTimelineTicks,
     formatTimelineRangeLabel,
     readOverviewTimelineRange,
+    splitTimelineRows,
     timelineRangeToMs,
     writeOverviewTimelineRange,
     type OverviewTimelineCardLike,
@@ -232,5 +234,32 @@ describe("timeline range persistence", () => {
             expect(readOverviewTimelineRange(storage)).toBe(range);
         }
         expect(writeOverviewTimelineRange(storage, 5 as never)).toBeNull();
+    });
+});
+
+describe("splitTimelineRows", () => {
+    const rows = Array.from({ length: 55 }, (_, i) => ({ blockId: `b${i}` }));
+
+    it("keeps everything when under the cap", () => {
+        const split = splitTimelineRows(rows.slice(0, 10));
+        expect(split.visible).toHaveLength(10);
+        expect(split.hiddenCount).toBe(0);
+    });
+
+    it("caps visible rows and reports the hidden count", () => {
+        const split = splitTimelineRows(rows);
+        expect(split.visible).toHaveLength(OverviewTimelineMaxRows);
+        expect(split.hiddenCount).toBe(55 - OverviewTimelineMaxRows);
+        // 保留的都是"最新的"（rows 已按最后活动倒序）
+        expect(split.visible[0].blockId).toBe("b0");
+        expect(split.visible[split.visible.length - 1].blockId).toBe(`b${OverviewTimelineMaxRows - 1}`);
+    });
+
+    it("does not mutate the input and handles degenerate caps", () => {
+        const original = [...rows];
+        expect(splitTimelineRows(rows, 0).hiddenCount).toBe(55);
+        expect(splitTimelineRows(rows, 0).visible).toHaveLength(0);
+        expect(splitTimelineRows(rows, Number.NaN).hiddenCount).toBe(0);
+        expect(rows).toEqual(original);
     });
 });

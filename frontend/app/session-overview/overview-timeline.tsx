@@ -11,6 +11,7 @@ import { cn } from "@/util/util";
 import {
     buildTimelineBar,
     buildTimelineTicks,
+    splitTimelineRows,
     timelineRangeToMs,
     type OverviewTimelineRange,
     type OverviewTimelineRow,
@@ -51,6 +52,8 @@ function formatLastActivity(lastActivityAt: number, nowMs: number): string {
 export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTimelineProps) {
     const windowMs = timelineRangeToMs(range);
     const ticks = buildTimelineTicks(range, now);
+    // 行数上限：超出的都是"更早"的会话，用一行汇总而不是继续堆 DOM。
+    const { visible, hiddenCount } = splitTimelineRows(rows);
     if (rows.length === 0) {
         return (
             <div className="session-overview-empty">
@@ -75,7 +78,7 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
                 </div>
             </div>
             <div className="session-overview-timeline-rows">
-                {rows.map((row) => {
+                {visible.map((row) => {
                     const bar = buildTimelineBar(row, { nowMs: now, windowMs });
                     const age = formatLastActivity(row.lastActivityAt, now);
                     const meta = [row.providerLabel, row.projectName, `${row.messageCount} msgs`]
@@ -159,6 +162,11 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
                     );
                 })}
             </div>
+            {hiddenCount > 0 ? (
+                <div className="session-overview-timeline-more" data-hidden-count={hiddenCount}>
+                    还有 {hiddenCount} 个更早的会话未显示（按最后活动倒序，最多显示 40 行）
+                </div>
+            ) : null}
             <div className="session-overview-timeline-legend">
                 <span>
                     <i className="session-overview-timeline-legend-swatch is-history" />

@@ -1853,7 +1853,8 @@
 @container (max-width: 560px) {
     .session-overview-timeline-axis,
     .session-overview-timeline-row,
-    .session-overview-timeline-legend {
+    .session-overview-timeline-legend,
+    .session-overview-timeline-more {
         min-width: 0;
     }
 
@@ -1899,6 +1900,14 @@
     .session-overview-timeline-legend-hint {
         display: none;
     }
+}
+
+/* 行数超过上限时的汇总行（模型侧 splitTimelineRows 截断）。 */
+.session-overview-timeline-more {
+    padding: 8px 10px;
+    border-top: 1px solid var(--border-color);
+    color: var(--secondary-text-color);
+    font-size: 9px;
 }
 
 .session-overview-timeline-legend {

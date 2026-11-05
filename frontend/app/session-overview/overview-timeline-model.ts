@@ -179,6 +179,29 @@ export function buildTimelineRows(
  * 条在窗口里的位置。完全落在窗口左侧（更早）→ `null`（调用方不画）。
  * 跨越窗口左边界的条会被裁到 0%。
  */
+/**
+ * 时间线一次最多画多少行。7d 窗口 + 大量历史会话时行数会爆炸（每行一个 DOM 轨道），
+ * 这里按"最后活动倒序"截断，剩下的用一行汇总（`hiddenCount`），避免滚动卡顿。
+ */
+export const OverviewTimelineMaxRows = 40;
+
+export type OverviewTimelineRowSplit<T> = {
+    visible: T[];
+    hiddenCount: number;
+};
+
+/** 截断行 + 给出隐藏数量（隐藏的都是更早的，因为 rows 已按活动时间倒序）。 */
+export function splitTimelineRows<T>(
+    rows: readonly T[],
+    maxRows = OverviewTimelineMaxRows
+): OverviewTimelineRowSplit<T> {
+    const limit = Number.isFinite(maxRows) ? Math.max(0, Math.floor(maxRows)) : rows.length;
+    if (rows.length <= limit) {
+        return { visible: [...rows], hiddenCount: 0 };
+    }
+    return { visible: rows.slice(0, limit), hiddenCount: rows.length - limit };
+}
+
 /** 最小可见宽度：会话没有时间戳（startUnknown 且 span=0）时也要画出一枚「就发生在现在」的点。 */
 const MinBarWidthPct = 0.9;
 

@@ -98,7 +98,14 @@ function timelineStateProbe(scope) {
             if (track == null) return null;
             const panel = blk.getBoundingClientRect();
             const rect = track.getBoundingClientRect();
-            return rect.left >= panel.left - 1 && rect.right <= panel.right + 1 && rect.width > 60;
+            const ok = rect.left >= panel.left - 1 && rect.right <= panel.right + 1 && rect.width > 60;
+            return {
+                ok,
+                panelW: Math.round(panel.width),
+                trackW: Math.round(rect.width),
+                dl: Math.round(rect.left - panel.left),
+                dr: Math.round(panel.right - rect.right),
+            };
         })(),
         rowStacked: (() => {
             const row = blk.querySelector(".session-overview-timeline-row");
@@ -283,8 +290,8 @@ try {
 
   reporter.check(
     "timeline-track-visible-narrow",
-    st.trackVisible === true && st.rowStacked === true,
-    `trackVisible=${st.trackVisible} rowStacked=${st.rowStacked}（窄面板应为标签+轨道两行，不用横滚找条）`
+    st.trackVisible?.ok === true && st.rowStacked === true,
+    `track=${JSON.stringify(st.trackVisible)} rowStacked=${st.rowStacked}（窄面板应为标签+轨道两行，不用横滚找条）`
   );
   reporter.check(
     "timeline-start-unknown-marked",
