@@ -2,10 +2,11 @@
 
 # QUEUE
 
-> 生成于 2026-11-05T01:54:48Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
+> 生成于 2026-11-05T02:16:23Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
 
 | 包 | 类型 | 门 | 门状态 | 运行 | 说明 |
 |---|---|---|---|---|---|
-| `N-1105-loop-ledger` | arch | 4/4 | clear | queued | loop 台账骨架 + 门引擎 |
+| `N-1105-loop-ledger` | arch | 4/4 | clear | committed | loop 台账骨架 + 门引擎 |
+| `N-1105-queue-failopen` | bug | 1/1 | clear | green | queue.json 解析失败不再静默清空（回退 last-good 快照） |
 | `N-1105-harness-redproof` | chore | 0/1 | blocked:g5 | idle | 合规：not-run |
 | `N-1105-cleanup-46to22` | arch | 1/4 | blocked:g2 | idle | 器具：no-red-proof |

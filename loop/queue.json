@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "snorkeling",
-  "updatedAt": "2026-11-05T01:54:47Z",
+  "updatedAt": "2026-11-05T02:16:06Z",
   "packages": [
     {
       "id": "N-1105-loop-ledger",
@@ -125,6 +125,40 @@
       },
       "releaseCandidate": false,
       "createdAt": "2026-11-05T09:40"
+    },
+    {
+      "id": "N-1105-queue-failopen",
+      "task": null,
+      "title": "queue.json 解析失败不再静默清空（回退 last-good 快照）",
+      "type": "bug",
+      "typeSource": "manual",
+      "order": 15,
+      "accept": [
+        {
+          "cmd": "node --test loop/lib/queue-io.test.mjs",
+          "expect": "5 passed, 0 failed"
+        },
+        {
+          "cmd": "node --test \"loop/lib/*.test.mjs\"",
+          "expect": "67 passed, 0 failed"
+        }
+      ],
+      "touch": [
+        "loop/**"
+      ],
+      "rollback": "git checkout 37db7b96 -- loop/queue.mjs && rm -f loop/lib/queue-io*.mjs",
+      "budget": {
+        "minutes": 40,
+        "retries": 2
+      },
+      "gates": {
+        "g2": {
+          "redProof": "旧实现（解析失败返回空队列）→ node --test loop/lib/queue-io.test.mjs = 3 passed, 2 failed；修复后 5 passed, 0 failed",
+          "at": "2026-11-05T02:16:06Z"
+        }
+      },
+      "releaseCandidate": false,
+      "createdAt": "2026-11-05T02:16:05Z"
     }
   ],
   "dropped": []

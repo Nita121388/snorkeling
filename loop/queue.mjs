@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // queue.mjs — 队列唯一写者 + 只读查询（看板走这里的 --json 契约）
 // 用法见 RUNBOOK §8 / implement.md T3。
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { LOOP_DIR, REPO_ROOT, safeResolve, assertTrellisWritable } from './lib/paths.mjs';
+import { loadQueue, saveQueue } from './lib/queue-io.mjs';
 import { prdHash, fileHash } from './lib/hash.mjs';
 import { classify } from './lib/classify.mjs';
 import { gateStateOf, gateProgress, requiredGates, HUMAN_GATES, GATE_LABEL, TASK_TYPES } from './lib/gates.mjs';
@@ -15,7 +16,6 @@ import { gateCases, classifyCases } from './lib/fixtures.mjs';
 const QUEUE_FILE = join(LOOP_DIR, 'queue.json');
 const argv = process.argv.slice(2);
 const cmd = argv[0] ?? 'help';
-
 function flag(name, def = null) {
     const eq = argv.find((a) => a.startsWith(`--${name}=`));
     if (eq) return eq.slice(name.length + 3);
@@ -28,19 +28,6 @@ const has = (n) => argv.includes(`--${n}`) || argv.some((a) => a.startsWith(`--$
 function die(msg) {
     console.error(`✗ ${msg}`);
     process.exit(1);
-}
-
-// ---------- queue.json IO ----------
-export function loadQueue() {
-    if (!existsSync(QUEUE_FILE)) return { version: 1, project: 'unknown', packages: [], dropped: [] };
-    return JSON.parse(readFileSync(QUEUE_FILE, 'utf8'));
-}
-
-function saveQueue(q) {
-    q.updatedAt = nowIso();
-    const tmp = join(dirname(QUEUE_FILE), `.queue.json.tmp-${process.pid}`);
-    writeFileSync(tmp, JSON.stringify(q, null, 2) + '\n', 'utf8');
-    renameSync(tmp, QUEUE_FILE); // 同盘 rename = 原子
 }
 
 // ---------- 派生上下文（hash 冻结） ----------
