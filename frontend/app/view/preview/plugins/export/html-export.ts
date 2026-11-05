@@ -5,7 +5,9 @@ import { findFrontmatterSpan } from "@/app/element/markdown-transform/doc-meta";
 import { transformBlocks } from "@/app/element/markdown-util";
 import { makeRemarkPlugins } from "@/app/element/remark";
 import type { PreviewMatchContext } from "@/app/view/preview/preview-plugin-registry";
+import GithubSlugger from "github-slugger";
 import rehypeHighlight from "rehype-highlight";
+import rehypeSlug from "rehype-slug";
 import rehypeStringify from "rehype-stringify";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
@@ -68,10 +70,17 @@ export async function markdownToHtml(
         // 静态导出：callout 不要带"加 emoji"按钮（导出的 HTML 里它不可点）。
         .use(makeRemarkPlugins({ contentBlocksMap: new Map(), calloutInteractive: false }))
         .use(remarkRehype, { allowDangerousHtml: true })
+        // 目录锚点：没有这一步，导出的 HTML 里标题没有 id，`#slug` 链接全是死链
+        .use(rehypeSlug)
         .use(rehypeHighlight)
         .use(rehypeStringify, { allowDangerousHtml: true })
         .process(content);
-    return wrapDocument(String(rendered), options, source);
+    const body = String(rendered);
+    // `bodyOnly`（"只导出正文"）此前只存在于弹窗状态里，导出器从没消费 —— 选项实际是个空操作。
+    if (options.bodyOnly === true) {
+        return body;
+    }
+    return wrapDocument(body, options, source);
 }
 
 /**
@@ -79,6 +88,12 @@ export async function markdownToHtml(
  * output self-contained (a single file openable in any browser). `options.darkTheme` toggles the
  * embedded color palette; `options.includeToc` prepends a lightweight table of contents.
  */
+/** 导出文档的 `<title>`：取文件名去掉扩展名（此前恒为空字符串，浏览器标签/收藏都是空白）。 */
+function documentTitle(fileName: string): string {
+    const base = (fileName ?? "").split(/[\\/]/).pop() ?? "";
+    return base.replace(/\.(md|mdx|markdown|html?)$/i, "").trim();
+}
+
 export function wrapDocument(body: string, options: ExportOptions, source: string): string {
     const tocHtml = options.includeToc ? buildTocHtml(source) : "";
     const theme = options.darkTheme ? DARK_CSS : LIGHT_CSS;
@@ -88,7 +103,7 @@ export function wrapDocument(body: string, options: ExportOptions, source: strin
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title></title>
+<title>${escapeHtml(documentTitle(options.fileName))}</title>
 <style>
 ${MARKDOWN_CSS}
 ${theme}
@@ -102,34 +117,42 @@ ${theme}
 }
 
 /**
- * Build a simple table-of-contents from heading lines. Anchors are derived the same way
- * rehype-slug would (kebab-cased text); enough for navigation in the exported file.
+ * Build a simple table-of-contents from heading lines.
+ *
+ * 锚点必须和 `rehype-slug` 产出**完全一致**，否则导出文件里的目录是死链（历史 bug）。
+ * 所以这里直接用 `github-slugger`（rehype-slug 内部用的同一个库）而不是自己搓 slug 规则：
+ * 同文本重复标题的 `-1`/`-2` 后缀、中文/标点归一化都能对齐。
+ *
+ * 另外跳过围栏代码块里的 `# 注释`（按行正则会把它们误当标题）。
  */
 export function buildTocHtml(source: string): string {
     const lines = source.split(/\r?\n/);
     const entries: { level: number; text: string; id: string }[] = [];
+    const slugger = new GithubSlugger();
+    let fence: string | null = null;
     for (const line of lines) {
+        const fenceMatch = line.match(/^\s{0,3}(```+|~~~+)/);
+        if (fenceMatch != null) {
+            if (fence == null) {
+                fence = fenceMatch[1][0];
+            } else if (fenceMatch[1][0] === fence) {
+                fence = null;
+            }
+            continue;
+        }
+        if (fence != null) continue;
         const m = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
         if (m == null) continue;
         const level = m[1].length;
         const text = m[2].trim();
-        entries.push({ level, text, id: slugify(text) });
+        if (text === "") continue;
+        entries.push({ level, text, id: slugger.slug(text) });
     }
     if (entries.length === 0) return "";
     const items = entries
         .map((e) => `<li class="toc-l${e.level}"><a href="#${e.id}">${escapeHtml(e.text)}</a></li>`)
         .join("\n");
     return `<nav class="markdown-toc"><h1>目录</h1><ul>${items}</ul></nav>`;
-}
-
-/** Derive a stable kebab-case slug from heading text (mirrors rehype-slug defaults). */
-function slugify(text: string): string {
-    return text
-        .toLowerCase()
-        .replace(/[^\w\u4e00-\u9fa5\- ]/g, "")
-        .replace(/\s+/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "");
 }
 
 function escapeHtml(s: string): string {

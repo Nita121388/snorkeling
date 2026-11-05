@@ -17,7 +17,9 @@ export type AgentStatusFp = string;
 export function statusFingerprint(status: AgentStatus): AgentStatusFp {
     return JSON.stringify([
         "v2",
-        status.provider,
+        // `provider` 在 Go 生成类型里是可选的；一旦这种形状的对象混进来，
+        // 直接取会让 fingerprint 里出现 null 而不是 ""，与写入时的 "" 不一致 → ack 后仍显示未读。
+        status.provider ?? "",
         status.sessionId ?? "",
         status.source,
         status.seq ?? "",

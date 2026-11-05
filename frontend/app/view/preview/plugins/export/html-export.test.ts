@@ -77,6 +77,35 @@ describe("markdownToHtml", () => {
         expect(html).not.toContain("<button");
     });
 
+    it("gives headings ids that exactly match the TOC anchors (incl. duplicate headings)", async () => {
+        const source = "# 标题\n\n正文\n\n## Sub Title\n\n更多正文\n\n# 标题\n";
+        const html = await markdownToHtml(source, { ...defaultExportOptions, includeToc: true }, ctx);
+        const tocIds = [...html.matchAll(/<a href="#([^"]+)"/g)].map((m) => m[1]);
+        const headingIds = [...html.matchAll(/<h[1-6] id="([^"]+)"/g)].map((m) => m[1]);
+        // 目录锚点与标题 id 必须一一对应，否则导出文件里的目录是死链
+        expect(tocIds.length).toBe(3);
+        expect(headingIds).toEqual(tocIds);
+        expect(tocIds[2]).toBe("标题-1"); // 重名标题走 github-slugger 的 -1 后缀
+    });
+
+    it("ignores headings inside fenced code blocks when building the TOC", () => {
+        const toc = buildTocHtml("# 真标题\n\n```bash\n# 这不是标题\n```\n");
+        expect(toc).toContain("真标题");
+        expect(toc).not.toContain("这不是标题");
+    });
+
+    it("uses the export filename as the document title", async () => {
+        const html = await markdownToHtml("# Hi", { ...defaultExportOptions, fileName: "notes/daily.md" }, ctx);
+        expect(html).toContain("<title>daily</title>");
+    });
+
+    it("honors bodyOnly by returning just the article body (no doctype / styles)", async () => {
+        const html = await markdownToHtml("# Hi", { ...defaultExportOptions, bodyOnly: true }, ctx);
+        expect(html).not.toContain("<!doctype");
+        expect(html).not.toContain("<style>");
+        expect(html).toContain("<h1");
+    });
+
     it("strips frontmatter by default (includeFrontmatter false)", async () => {
         const html = await markdownToHtml(
             "---\ntitle: X\n---\n\n# Body",

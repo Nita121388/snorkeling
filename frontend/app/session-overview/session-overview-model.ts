@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { statusFingerprint } from "@/app/agent-status/agent-status-unread";
 import { BlockModel } from "@/app/block/block-model";
 import { ackBumpAtom } from "@/app/agent-status/agent-status-done-ack-store";
