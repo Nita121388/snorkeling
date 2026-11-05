@@ -6,6 +6,7 @@ import { useWaveEnv } from "@/app/waveenv/waveenv";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { isBlank, makeConnRoute } from "@/util/util";
 import React from "react";
+import { VcsIconButton } from "./vcs-icon-button";
 
 type VcsUiEnv = WaveEnv;
 
@@ -189,18 +190,19 @@ export function VcsHistoryTab({
                         <option value="50">50 / page</option>
                         <option value="100">100 / page</option>
                     </select>
-                    <button
-                        className="rounded border border-accent px-2 py-1 text-xs text-accent hover:bg-accent/10 cursor-pointer"
+                    <VcsIconButton
+                        icon="check"
+                        title="Apply filters"
+                        tone="accent"
+                        className="border border-accent"
                         onClick={applyFilters}
-                    >
-                        Apply
-                    </button>
-                    <button
-                        className="rounded border border-border px-2 py-1 text-xs text-secondary hover:bg-hoverbg cursor-pointer"
+                    />
+                    <VcsIconButton
+                        icon="rotate-left"
+                        title="Reset filters"
+                        className="border border-border"
                         onClick={resetFilters}
-                    >
-                        Reset
-                    </button>
+                    />
                 </div>
 
                 {loading && <div className="text-sm text-muted">Loading commits...</div>}
@@ -255,13 +257,14 @@ export function VcsHistoryTab({
                                                             </span>
                                                             <span className="truncate flex-1">{file.path}</span>
                                                             {onShowFileDiff != null && (
-                                                                <button
-                                                                    className="text-[10px] text-accent hover:underline cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                <VcsIconButton
+                                                                    icon="code-compare"
                                                                     title={`View diff of ${file.path}`}
+                                                                    size="sm"
+                                                                    tone="accent"
+                                                                    reveal="hover"
                                                                     onClick={() => onShowFileDiff(file.path, revision)}
-                                                                >
-                                                                    View Diff
-                                                                </button>
+                                                                />
                                                             )}
                                                         </div>
                                                     ))}
@@ -277,21 +280,21 @@ export function VcsHistoryTab({
 
                 {!loading && !error && (
                     <div className="mt-2 flex items-center justify-end gap-2 text-xs">
-                        <button
-                            className="rounded border border-border px-2 py-1 text-secondary hover:bg-hoverbg disabled:opacity-50 disabled:cursor-default cursor-pointer"
+                        <VcsIconButton
+                            icon="chevron-left"
+                            title="Previous page"
+                            className="border border-border"
                             disabled={page <= 1}
                             onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                        >
-                            Prev
-                        </button>
+                        />
                         <span className="text-muted">Page {page}</span>
-                        <button
-                            className="rounded border border-border px-2 py-1 text-secondary hover:bg-hoverbg disabled:opacity-50 disabled:cursor-default cursor-pointer"
+                        <VcsIconButton
+                            icon="chevron-right"
+                            title="Next page"
+                            className="border border-border"
                             disabled={!hasMore}
                             onClick={() => setPage((prev) => prev + 1)}
-                        >
-                            Next
-                        </button>
+                        />
                     </div>
                 )}
             </div>

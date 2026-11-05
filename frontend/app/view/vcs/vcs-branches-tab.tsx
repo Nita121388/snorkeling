@@ -6,6 +6,7 @@ import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { cn, isBlank, makeConnRoute } from "@/util/util";
 import React from "react";
+import { VcsIconButton } from "./vcs-icon-button";
 
 type VcsUiEnv = WaveEnv;
 
@@ -232,22 +233,22 @@ export function VcsBranchesTab({
                             placeholder="Filter branches"
                         />
                         {filterInput !== "" && (
-                            <button
-                                className="iconbutton !absolute !right-1 !top-1/2 !h-[18px] !w-[18px] -translate-y-1/2 cursor-pointer"
+                            <VcsIconButton
+                                icon="xmark"
                                 title="Clear filter"
+                                size="sm"
+                                className="!absolute !right-1 !top-1/2 -translate-y-1/2"
                                 onClick={() => setFilterInput("")}
-                            >
-                                <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
-                            </button>
+                            />
                         )}
                     </div>
-                    <button
-                        className="h-7 shrink-0 rounded-md border border-border px-2.5 text-xs text-secondary hover:bg-hoverbg cursor-pointer"
+                    <VcsIconButton
+                        icon="arrows-rotate"
                         title="Refresh branch list"
+                        size="lg"
+                        className="border border-border"
                         onClick={() => loadBranches()}
-                    >
-                        <i className="fa-sharp fa-solid fa-arrows-rotate text-[11px]" />
-                    </button>
+                    />
                 </div>
                 <div className="flex items-center gap-2">
                     <input
@@ -261,17 +262,19 @@ export function VcsBranchesTab({
                         placeholder="New branch name..."
                         disabled={createRunning}
                     />
-                    <button
-                        className="h-7 shrink-0 rounded-md bg-action px-3 text-xs text-actiontext font-medium hover:bg-actionhover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                    <VcsIconButton
+                        icon="plus"
+                        title={createRunning ? "Creating…" : "Create and switch to new branch"}
+                        loading={createRunning}
+                        solid
+                        size="lg"
                         disabled={!newBranchName.trim() || createRunning}
                         onClick={handleCreateBranch}
-                    >
-                        {createRunning ? "Creating..." : "Create & Switch"}
-                    </button>
+                    />
                 </div>
                 {/* Inline feedback */}
                 {createError && <div className="text-[11px] text-warning">{createError}</div>}
-                {createSuccess && <div className="text-[11px] text-ok">{createSuccess}</div>}
+                {createSuccess && <div className="text-[11px] text-success">{createSuccess}</div>}
                 {switchError && <div className="text-[11px] text-warning">{switchError}</div>}
                 {deleteError && <div className="text-[11px] text-warning">{deleteError}</div>}
             </div>
@@ -325,12 +328,12 @@ export function VcsBranchesTab({
                                 {shortHash(branch.hash ?? "")}
                             </span>
                             {branch.ahead > 0 && (
-                                <span className="text-[11px] text-ok shrink-0" title={`Ahead by ${branch.ahead}`}>
+                                <span className="text-[11px] text-success shrink-0" title={`Ahead by ${branch.ahead}`}>
                                     {"\u2191"}{branch.ahead}
                                 </span>
                             )}
                             {branch.behind > 0 && (
-                                <span className="text-[11px] text-danger shrink-0" title={`Behind by ${branch.behind}`}>
+                                <span className="text-[11px] text-error shrink-0" title={`Behind by ${branch.behind}`}>
                                     {"\u2193"}{branch.behind}
                                 </span>
                             )}
@@ -342,38 +345,40 @@ export function VcsBranchesTab({
                                     {deletePending ? (
                                         <div className="flex items-center gap-1 shrink-0">
                                             <span className="text-[11px] text-warning mr-0.5">Delete?</span>
-                                            <button
-                                                className="text-[10px] text-danger hover:underline cursor-pointer"
+                                            <VcsIconButton
+                                                icon="check"
+                                                title={`Confirm delete branch ${branch.name}`}
+                                                size="sm"
+                                                tone="danger"
                                                 disabled={isDeleting}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleDeleteBranch(branch.name);
                                                 }}
-                                            >
-                                                Yes
-                                            </button>
-                                            <button
-                                                className="text-[10px] text-muted hover:underline cursor-pointer"
+                                            />
+                                            <VcsIconButton
+                                                icon="xmark"
+                                                title="Cancel delete"
+                                                size="sm"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setDeleteConfirmBranch(null);
                                                 }}
-                                            >
-                                                No
-                                            </button>
+                                            />
                                         </div>
                                     ) : (
                                         canDelete && (
-                                            <button
-                                                className="text-[10px] text-muted hover:text-danger cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                            <VcsIconButton
+                                                icon="trash-can"
                                                 title={`Delete branch ${branch.name}`}
+                                                size="sm"
+                                                tone="danger"
+                                                reveal="hover"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setDeleteConfirmBranch(branch.name);
                                                 }}
-                                            >
-                                                <i className="fa-sharp fa-solid fa-trash-can text-[9px]" />
-                                            </button>
+                                            />
                                         )
                                     )}
                                 </>

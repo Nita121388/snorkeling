@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from "react";
+import { VcsIconButton } from "./vcs-icon-button";
 
 type View = "changes" | "branches" | "pipelines" | "history";
 type VcsSyncAction = "fetch" | "pull" | "push" | "update";
@@ -39,12 +40,10 @@ export function VcsTabBar({
     repo,
     currentView,
     onViewChange,
-    busy,
 }: {
     repo: VcsRepositoryInfo;
     currentView: View;
     onViewChange: (view: View) => void;
-    busy: boolean;
 }) {
     const isGit = repo.repotype === "git";
     const changed = countChanged(repo);
@@ -66,15 +65,16 @@ export function VcsTabBar({
                     <button
                         key={entry.id}
                         type="button"
+                        data-vcs-tab="1"
                         disabled={isDisabled}
                         onClick={() => !isDisabled && onViewChange(entry.id)}
                         aria-label={entry.label}
-                        className={`relative flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-detail transition-colors ${
+                        className={`relative flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-xs transition-colors ${
                             isDisabled ? "opacity-40 cursor-default" : "cursor-pointer"
                         } ${
                             currentView === entry.id
-                                ? "text-ink after:absolute after:inset-x-2 after:bottom-[-1px] after:h-0.5 after:rounded-full after:bg-accent"
-                                : "text-ink-muted hover:bg-hoverbg/60 hover:text-ink"
+                                ? "text-foreground after:absolute after:inset-x-2 after:bottom-[-1px] after:h-0.5 after:rounded-full after:bg-accent"
+                                : "text-muted hover:bg-hoverbg/60 hover:text-secondary"
                         }`}
                     >
                         <i className={`fa-sharp fa-solid ${entry.icon} text-[11px] shrink-0`} />
@@ -115,7 +115,7 @@ export function VcsRepoHeader({
 
     return (
         <div className="flex h-8 shrink-0 items-center gap-1.5 px-2.5">
-            <span className="text-ink-faint text-[12px] shrink-0">⑂</span>
+            <span className="text-muted text-[12px] shrink-0">⑂</span>
             <span className="text-[11px] text-muted truncate min-w-0">{repo.branch || "(no branch)"}</span>
             {repo.repotype === "git" && (ahead > 0 || behind > 0) && (
                 <span className="text-[11px] text-muted tabular-nums shrink-0">
@@ -138,28 +138,20 @@ export function VcsRepoHeader({
                     </span>
                 </>
             )}
-            <button
-                className="rounded border border-border px-2 py-[3px] text-[11px] text-secondary hover:bg-hoverbg cursor-pointer disabled:text-muted disabled:cursor-default disabled:hover:bg-transparent shrink-0 inline-flex items-center gap-1.5"
-                title="Pull"
+            <VcsIconButton
+                icon="arrow-down-to-line"
+                title={syncRunning && syncAction === "pull" ? "Pulling…" : "Pull"}
+                loading={syncRunning && syncAction === "pull"}
                 disabled={syncRunning || !isGit}
+                tone="accent"
                 onClick={onSync}
-            >
-                {syncRunning && syncAction === "pull" ? (
-                    <>
-                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
-                        <span>Pulling…</span>
-                    </>
-                ) : (
-                    "Pull"
-                )}
-            </button>
-            <button
-                className="iconbutton !h-[20px] !w-[20px] cursor-pointer"
+            />
+            <VcsIconButton
+                icon="arrows-rotate"
                 title="Refresh"
+                disabled={syncRunning}
                 onClick={onRefresh}
-            >
-                <i className="fa-sharp fa-solid fa-arrows-rotate text-[11px]" />
-            </button>
+            />
         </div>
     );
 }
