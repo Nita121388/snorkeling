@@ -30,9 +30,9 @@
 | # | 工作流 | 状态 | 证据 | 备注 |
 |---|---|---|---|---|
 | W0 | 时间线长条形态的机器判定（补掉"要人眼看长条"的缺口） | ✅ 完成 | `overview-timeline` 22/22（`widthRatio=0.563`、`history=98px tail=12px`） | 用 `patchCachedSessionSummary` 播种真实 `createdAt=5h前 / updatedAt=30min前` |
-| W1 | 发布当前已交付批次（看板 v2 A/B/C + 时间线 G1） | 待 W0 | —— | 交给子代理按 release skill 执行 |
-| W2 | 验证机制补强（多 area 端口隔离 / 像素断言库 / 台账自检） | 计划 | —— | |
-| W3 | 可确认 Bug 清扫（优先：时间线"更早 n"、aisessions 已知缺陷） | 计划 | —— | 只做有机器判定的 |
+| W1 | 发布当前已交付批次（看板 v2 A/B/C + 时间线 G1） | ✅ 完成 `0.0.119` | run 42052221548 success（34m59s）+ 三平台产物 + release notes 已手写 | 子代理按 release skill 执行 |
+| W2 | 验证机制补强 | 部分完成 | `check-tsc-baseline.mjs`（69→63）+ vitest 排除 worktree + 时间线长条机器判定 | 端口隔离仍待做 |
+| W3 | 可确认 Bug 清扫 | 进行中 | 已修 5 个（三级菜单崩 / 预览系统打开崩 / 消息弹窗删除崩 / 导出死按钮 / preview 测试红灯） | 提交 c33d00a0 |
 | W4 | i18n 基础（独立 worktree，branch，不阻塞 main） | 计划 | —— | 大件，先出骨架 + 一条端到端 |
 | W5 | md 预览深度优化 | 计划 | —— | 先扫真 bug，再谈优化 |
 
@@ -40,7 +40,7 @@
 
 | 版本 | commit | tag | workflow | 结果 |
 |---|---|---|---|---|
-| （待 W1） | | | | |
+| `0.0.119` | `e7ac9f63` | `snorkeling-v0.14.6-beta.0-0.0.119` | 42052221548 | ✅ success 34m59s，三平台产物齐全；release notes 已手写补充（自动 notes 只有 changelog 链接） |
 
 ## 4. 交接要点（给下一个 agent）
 
