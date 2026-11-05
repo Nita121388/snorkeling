@@ -151,7 +151,19 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
 
 ---
 
-## 6. 沉淀位置
+## 6. 共享内核的边界（搬迁时踩到）
+
+内核**不能假设自己住在某个 area 目录下**。本次物理搬迁当场炸出一条隐藏耦合：
+`oracle.mjs` 里写死 `rulesDir = path.join(here, "..", "rules")`——在
+`preview-edit/lib/` 下恰好等于 `preview-edit/rules/`，一搬到 `verify/lib/` 就变成
+`verify/rules/`（ENOENT，整个 area 直接 exit 2）。
+
+规则：内核里凡是"某个 area 私有资源"的路径（rules / cases / fixtures / 截图基线），
+一律**由调用方当参数传进来**；内核只保留"从 repoRoot 推出来的公共路径"。
+搬迁的正确姿势：先搬文件 → `node -e import(...)` 逐个验模块能加载 →
+跑一个**用满这条链**的 area（preview-edit 覆盖 observe/oracle/open/pixel）→ 再提交。
+
+## 7. 沉淀位置
 
 | 内容 | 落点 |
 |---|---|

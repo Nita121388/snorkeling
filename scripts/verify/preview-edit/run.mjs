@@ -183,7 +183,8 @@ async function main() {
     }
 
     const caseDefs = loadCases(opts.cases);
-    const rules = await loadRules();
+    const rulesDir = path.join(here, "rules");
+    const rules = await loadRules(rulesDir);
     const runDir = path.join(runsDir, timestamp());
     mkdirSync(runDir, { recursive: true });
 
@@ -220,7 +221,12 @@ async function main() {
             let result;
             try {
                 const observation = await observeCase(client, caseDef, runDir);
-                const verdict = await runRules(caseDef.rules ?? [...rules.keys()], { observation, caseDef, ctx });
+                const verdict = await runRules(caseDef.rules ?? [...rules.keys()], {
+                    observation,
+                    caseDef,
+                    ctx,
+                    rulesDir,
+                });
                 const degraded = Array.isArray(observation.degradedTrace) ? observation.degradedTrace : [];
                 result = {
                     id: caseDef.id,

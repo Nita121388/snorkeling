@@ -1,74 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// 规则加载器 + 聚合器。每条规则是独立文件、纯函数、可单独启用/禁用。
-//
-// 规则契约：
-//   export default {
-//       id: "text-zero-shift",
-//       why: "为什么需要这条规则（一句话，会出现在 report 里）",
-//       run({ observation, caseDef, ctx }) -> { pass, detail, evidence?, skipped? }
-//   }
-// ctx 提供像素工具（outDir / readPng / cropPng / compareInkProfiles / diffPng / writePng）。
-
-import { readdirSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const rulesDir = path.join(here, "..", "rules");
-
-let cache = null;
-
-export async function loadRules() {
-    if (cache != null) return cache;
-    const files = readdirSync(rulesDir)
-        .filter((f) => f.endsWith(".mjs"))
-        .sort();
-    const map = new Map();
-    for (const file of files) {
-        const mod = await import(pathToFileURL(path.join(rulesDir, file)).href);
-        const rule = mod.default;
-        if (rule == null || typeof rule.run !== "function" || typeof rule.id !== "string") {
-            throw new Error(`规则文件不符合契约: ${file}`);
-        }
-        map.set(rule.id, rule);
-    }
-    cache = map;
-    return map;
-}
-
-/**
- * 跑指定规则。返回 { pass, checks[], warnings[] }。
- * 未在 case 里声明的规则不会跑；声明了但没被任何 case 覆盖的规则由 run.mjs 汇总 warn。
- */
-export async function runRules(ruleIds, context) {
-    const rules = await loadRules();
-    const checks = [];
-    const warnings = [];
-    for (const id of ruleIds) {
-        const rule = rules.get(id);
-        if (rule == null) {
-            checks.push({ id, pass: false, detail: `未知规则 id: ${id}`, unknown: true });
-            continue;
-        }
-        let result;
-        try {
-            result = await rule.run(context);
-        } catch (err) {
-            result = { pass: false, detail: `规则执行抛错: ${err?.message ?? err}` };
-        }
-        if (result?.skipped) {
-            warnings.push({ rule: id, why: result.detail ?? "skipped" });
-            continue;
-        }
-        checks.push({
-            id,
-            why: rule.why,
-            pass: result.pass === true,
-            detail: result.detail ?? "",
-            evidence: result.evidence ?? null,
-        });
-    }
-    return { pass: checks.every((c) => c.pass), checks, warnings };
-}
+// **转发层**（兼容别名）。公共内核已搬到 scripts/verify/lib/。
+// 这里保留是为了不改动既有 area（image-pager / overview-board / vcs-tree-status）
+// 里 `import "../preview-edit/lib/xxx.mjs"` 的路径；新台子请直接 import "../lib/xxx.mjs"。
+export * from "../../lib/oracle.mjs";

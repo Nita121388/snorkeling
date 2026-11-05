@@ -9,16 +9,18 @@
 ```
 scripts/verify/
   index.mjs              # 索引 / 自查：每个 area 最近一次 verdict（读入库台账）
-  lib/                   # 共享内核，新台子只能从这里拿能力
+  lib/                   # 共享内核（唯一真身），新台子只能从这里拿能力
     cdp.mjs              #   CDP 连接（connect / connectToTarget / connectWhere / listPageTargets）
     launch.mjs           #   实例生命周期（ensureInstance / findPidByPort / killPid / dismissOverlays）
     pixel.mjs            #   png 读写 / 缩放 / 像素比对
     observe.mjs          #   几何与像素采样
     oracle.mjs           #   规则执行器
+    open.mjs             #   打开/定位被测对象
     report.mjs           #   verdict 落地：report.json/md + 台账 + 退出码
     probes.mjs           #   页面探针与等待器（visible / 文本归一化 / hoverUntil / 键盘输入）
   _template/verify.mjs   # 新 area 的起点（复制改名即可）
   <area>/verify.mjs      # 场景入口（历史命名 run.mjs 也认）
+  <area>/rules/*.mjs     # 可选：可复用的判据（preview-edit 的 rules 库只增不减）
   <area>/rules/*.mjs     # 可选：可复用的判据（preview-edit 的 rules 库只增不减）
 ```
 
@@ -29,6 +31,10 @@ scripts/verify/
 | **实例生命周期** | `--attach` 复用 / 默认干净实例（reset profile）/ 结束按**端口→PID** 关闭；只有 `--keep-open` 才留 | `lib/launch.mjs` |
 | **产物与退出码** | `verify-runs/<ts>-<area>/{report.json,report.md,*.png}`；`0` 全绿 / `1` 断言失败 / `2` 环境错误；台账追加一行到 `docs/project/verify-ledger.md` | `lib/report.mjs` |
 | **探针** | 只读语义（class / `data-*` / 文案），不读颜色；文本先归一化（去 LRM）；hover 一律重试 | `lib/probes.mjs` |
+
+> **兼容层**：`preview-edit/lib/*.mjs` 现在只是 `export * from "../../lib/…"` 的转发文件，
+> 让 image-pager / overview-board / vcs-tree-status 里既有的 `../preview-edit/lib/…`
+> import 不用改。新代码请写 `../lib/…`；等旧 area 有空再顺手挪。
 
 `verify-runs/` 是 **gitignore** 的（截图太大）；入库的是 `docs/project/verify-ledger.md`
 里的一行结论：`时间 | area | ✅ n/n | 模式 | 证据目录 | commit`。

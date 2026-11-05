@@ -8,7 +8,7 @@
 // 不复用 preview-edit/run.mjs：那个会先跑一遍预览回归。这里只要实例。
 // 进程退出后 Electron 继续活着（不调 cleanup）；关闭用 `--kill` 的端口→PID 路径。
 
-import { ensureInstance, findPidByPort, killPid, DEFAULTS } from "../preview-edit/lib/launch.mjs";
+import { ensureInstance, findPidByPort, killPid, DEFAULTS } from "../lib/launch.mjs";
 
 const argv = process.argv.slice(2);
 
