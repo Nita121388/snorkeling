@@ -28,8 +28,8 @@ queue.json 解析失败返回空队列，等于夜间队列被静默清空。
 
 ## 验收判据
 
-- [ ] `node --test loop/lib/queue-io.test.mjs` → `5 passed, 0 failed`
-- [ ] `node --test "loop/lib/*.test.mjs"` → `67 passed, 0 failed`
+- [ ] `node --test "E:/primary/projects/loop/lib/*.test.mjs"` → `# fail 0`
+- [ ] `node E:/primary/projects/loop/bin/loop.mjs queue verify-ledger --root .` → `ledger ok`
 
 ## 记录
 
