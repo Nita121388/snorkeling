@@ -12,6 +12,8 @@ import { gateStateOf, gateProgress, requiredGates, HUMAN_GATES, GATE_LABEL, TASK
 import { deriveRunStates, RUN_STATES } from './lib/derive.mjs';
 import { appendEvent, readEvents, verifyLedger, nowIso } from './lib/ledger-io.mjs';
 import { gateCases, classifyCases } from './lib/fixtures.mjs';
+import { parseInbox, markDone, readInbox, writeInbox, archiveDone } from './lib/inbox.mjs';
+import { sedimentGate } from './lib/sediment.mjs';
 
 const QUEUE_FILE = join(LOOP_DIR, 'queue.json');
 const argv = process.argv.slice(2);
@@ -73,6 +75,8 @@ function view(pkg, states) {
         lastTs: st.lastTs,
         commit: st.commit,
         releaseCandidate: pkg.releaseCandidate === true,
+        origin: pkg.origin ?? 'internal',
+        reply: pkg.reply ?? 'none',
         pendingRedProof: !(typeof pkg?.gates?.g2?.redProof === 'string' && pkg.gates.g2.redProof.trim() && pkg.gates.g2.redProof !== 'PENDING'),
     };
 }
@@ -142,6 +146,8 @@ function cmdAdd() {
         budget: { minutes: 40, retries: 2 },
         gates: {},
         releaseCandidate: false,
+        origin: String(flag('origin', 'internal')),
+        reply: String(flag('reply', 'none')),
         createdAt: nowIso(),
     };
     q.packages.push(pkg);
@@ -329,6 +335,94 @@ function cmdRender() {
     console.log(`wrote loop/QUEUE.md (${rows.length} packages)`);
 }
 
+// ---------- INBOX：人自己的随手记录 + 分诊 ----------
+function cmdInbox() {
+    const items = parseInbox(readInbox());
+    if (has('json')) return process.stdout.write(JSON.stringify(items, null, 2) + '\n');
+    if (!items.length) return console.log('INBOX 空 ✓');
+    for (const it of items) console.log(`${String(it.n).padStart(2)}. ${it.text}${it.source !== 'self' ? `  @${it.source}` : ''}`);
+    console.log(`\n${items.length} 条待分诊。处置: triage --n <编号> --to-package [--id X --type t] | --to-task | --drop --reason <文本>`);
+}
+
+function generateId(n) {
+    const d = new Date();
+    const mmdd = String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+    return `N-${mmdd}-inbox${n}`;
+}
+
+function cmdTriage() {
+    const n = Number(flag('n'));
+    if (!Number.isInteger(n) || n < 1) die('--n <编号> 必填（先跑 queue.mjs inbox 看编号）');
+    const md = readInbox();
+    const item = parseInbox(md).find((i) => i.n === n);
+    if (!item) die(`INBOX 没有第 ${n} 条未处置项`);
+
+    const markResolved = (verdict, evidence = null) => {
+        const r = markDone(md, n);
+        if (!r) die(`勾掉第 ${n} 条失败（INBOX 可能被并发修改）`);
+        writeInbox(archiveDone(r.text, {}).markdown);
+        appendEvent({ id: null, action: 'note', shift: flag('shift', 'am'), verdict, evidence });
+    };
+
+    if (has('to-package')) {
+        const type = flag('type');
+        if (!type || !TASK_TYPES.includes(type)) die(`--to-package 需要 --type（${TASK_TYPES.join('|')}）`);
+        const q = loadQueue();
+        const id = String(flag('id', generateId(n)));
+        if (q.packages.some((p) => p.id === id)) die(`包 id 已存在：${id}`);
+        q.packages.push({
+            id,
+            task: flag('task', null),
+            title: item.text,
+            type,
+            typeSource: 'inbox',
+            order: Number(flag('order', 100)),
+            accept: [],
+            touch: [],
+            rollback: null,
+            budget: { minutes: 40, retries: 2 },
+            gates: {},
+            releaseCandidate: false,
+            origin: item.source === 'self' ? 'self' : item.source,
+            reply: 'none',
+            createdAt: nowIso(),
+        });
+        saveQueue(q);
+        markResolved(`inbox:to-package:${id}`, 'loop/queue.json');
+        return console.log(`✓ #${n} → 包 ${id}（${type}）。下一步补 accept/touch，再 chain g2 红证`);
+    }
+
+    if (has('to-task')) {
+        const slug = String(item.text).replace(/[^\w\u4e00-\u9fa5]+/g, '-').slice(0, 30).replace(/^-|-$/g, '') || `inbox-${n}`;
+        markResolved(`inbox:to-task:${slug}`);
+        console.log(`✓ #${n} 已移入待建任务。执行下面这行（本工具不代你建任务）：\n\n  python .trellis/scripts/task.py create "${item.text}" --slug ${slug} -p P1 -d "来自 INBOX #${n}（${item.source}）"\n`);
+        return;
+    }
+
+    if (has('drop')) {
+        const reason = flag('reason');
+        if (!reason || reason === true) die('--drop 需要 --reason <文本>（必有归宿）');
+        markResolved(`drop:${reason}`);
+        return console.log(`✗ #${n} 已丢弃：${reason}`);
+    }
+
+    die('必须选一个归宿：--to-package | --to-task | --drop --reason <文本>');
+}
+
+// ---------- G8 沉淀门 ----------
+function cmdG8() {
+    const g = sedimentGate(readEvents());
+    if (has('json')) {
+        process.stdout.write(JSON.stringify(g, null, 2) + '\n');
+    } else if (g.ok) {
+        console.log(`g8 ok ✓（${g.repeated.length} 个重复问题均有沉淀）`);
+    } else {
+        for (const m of g.missing) console.error(`✗ ${m.key} 重复 ${m.count} 次未沉淀（${m.ids.join(', ')}）`);
+        console.error(`  修：node loop/ledger.mjs add --action note --verdict "sediment:${g.missing[0].key}" --evidence <规范路径>`);
+    }
+    process.exit(g.ok ? 0 : 1);
+}
+
 function cmdVerifyLedger() {
     const problems = verifyLedger();
     if (problems.length) {
@@ -398,6 +492,9 @@ const help = `queue.mjs — loop 队列（唯一写者）
   drop --id <id> --reason <text>
   render
   verify-ledger
+  inbox [--json]                      # 你自己的随手记录（loop/INBOX.md）
+  triage --n <编号> --to-package [--id X --type t] | --to-task | --drop --reason <文本>
+  g8 [--json]                         # 沉淀门：同类问题第二次必须先写规范
   self-test [--expect=broken]
 
 类型：${TASK_TYPES.join(' | ')}
@@ -433,6 +530,15 @@ switch (cmd) {
         break;
     case 'verify-ledger':
         cmdVerifyLedger();
+        break;
+    case 'inbox':
+        cmdInbox();
+        break;
+    case 'triage':
+        cmdTriage();
+        break;
+    case 'g8':
+        cmdG8();
         break;
     case 'self-test':
         cmdSelfTest();

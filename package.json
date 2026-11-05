@@ -32,7 +32,8 @@
         "pslog:query": "node scripts/pslog-query.mjs",
         "trace:tab": "node scripts/trace-tab-switch.mjs",
         "test": "vitest",
-        "postinstall": "node ./postinstall.cjs"
+        "postinstall": "node ./postinstall.cjs",
+        "verify:loop": "node --test \"loop/lib/*.test.mjs\" && node loop/queue.mjs self-test && node loop/ledger.mjs self-test && node loop/queue.mjs verify-ledger && node loop/queue.mjs g8"
     },
     "engines": {
         "node": ">=22.12.0"

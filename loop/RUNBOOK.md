@@ -64,7 +64,6 @@
 **冻结与漂移**：G1 签的 `prdHash`、G4 签的 `rubricHash` 对不上 → 该包自动回退 `blocked:g1|g4` 并标 `drift`。
 
 ## 4. 验证优先 · 证据阶梯
-
 | 级 | 证据 | 最低适用于 |
 |---|---|---|
 | L0 | 肉眼"看起来好了" | ❌ 不接受 |
@@ -116,10 +115,65 @@ node loop/ledger.mjs tail -n 30          # 最近事件
 node loop/ledger.mjs blocked             # 所有 parked（晨会第一屏）
 node loop/ledger.mjs render              # 重生成 LEDGER.md
 node loop/queue.mjs verify-ledger        # 台账自检（挂进 npm run verify）
+node loop/queue.mjs inbox                # 我自己的待分诊项
+node loop/queue.mjs g8                   # 沉淀门（重复问题必须先写规范）
 ```
 
-## 9. 每周自检
+## 9. 每周自检 + 三路验收
+
+验收不是一条路，是三条。缺任何一条，夜间产出会脱节或忘记。
+
+| 路 | 对象 | 何时 | 出口 |
+|---|---|---|---|
+| 一 · 包验收（对内） | 夜里跑完的包 | 每天晨会 30min | 通过 / 打回 / 批注，证据按 L0–L5 计级 |
+| 二 · 四面巡检（对外） | GitHub issues、PR、社区、社媒 | 白天分诊，夜里执行 | 每条有归宿：修 / 回信 / 记录后忽略 |
+| 三 · 防腐与长记性 | 技术债、恶意代码、重复犯的错 | 每周一个 `chore` 包 | 清理清单 + 教训入库 |
+
+### 回信义务
+
+来源不是 internal 的包（`origin` 为 issue / pr / community / social）必须带 `reply` 字段。
+验收通过但未回信的包**不许归档**。这是“修完要回去说一句”的落点。
+
+### G8 沉淀门（重复即沉淀）
+
+```bash
+node loop/queue.mjs g8      # 有重复但未沉淀 → exit 1
+```
+
+规则：同一个问题（同类 `park` / `drop` 原因）在 90 天内出现第二次，验收不通过。
+必须先写一条规范：
+
+```bash
+node loop/ledger.mjs add --action note --verdict "sediment:park:human-wall" --evidence .trellis/spec/guides/xxx.md
+```
+
+流程层写 `DECISIONS.md` 一行，代码层写 `.trellis/spec/` 一条。规范条目随路径注入，下次犯同样的错时 agent 当场看见。
+
+### 每周清单
 
 - `loop/RUNBOOK.md` ≤ 120 行、`DECISIONS.md` ≤ 80 行、`queue.json` 包数 ≤ 60 —— 超了说明该沉淀到 `.trellis/spec/`
 - `loop/ledger.mjs blocked` 是否长期非空（长期停泊的包本身就是待办）
 - 器具是否长期全绿（长期绿的器具 ≈ 死器具）
+- `node loop/queue.mjs g8` 是否 exit 0
+
+## 10. 我自己的输入通道（三层摩擦）
+
+有一条想法的时候，用什么通道取决于它有多熟。**不要用重渠道记轻想法**，那样就不记了。
+
+| 想法熟到哪一步 | 记在哪 | 摩擦 | 怎么进流程 |
+|---|---|---|---|
+| 一句话，还没想清 | `loop/INBOX.md` 一行 | 5 秒 | 分诊时变成包/任务/丢弃 |
+| 想清了是个改动，判据能写 | `queue.mjs add --origin self` | 1 分钟 | 直接进队列，补 g2 红证 |
+| 要设计、要先问需求 | `task.py create` | 5 分钟 | 走 G1 需求确认 |
+
+```bash
+printf -- '- [ ] %s 想法\n' "$(date +%F)" >> loop/INBOX.md   # 随手记
+node loop/queue.mjs inbox                                    # 看待分诊
+node loop/queue.mjs triage --n 1 --to-package --type bug      # → 包
+node loop/queue.mjs triage --n 1 --to-task                    # → 打印建任务命令
+node loop/queue.mjs triage --n 1 --drop --reason "重复"        # → 丢弃
+```
+
+**INBOX 允许粗糙**：不分类、不写判据、不写期望值。铁律只有一条：分诊时必须三选一，没有第四条路——这就是“每条输入都有归宿”。
+
+分诊时机：每天晨会后的 10 分钟，或睡前排夜班队列时。绝不能攒过三天。
