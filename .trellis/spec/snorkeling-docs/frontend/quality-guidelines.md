@@ -30,6 +30,19 @@ Questions to answer:
 
 ---
 
+## Overview 看板卡片：钩子与结构约束 (2026-11-05, task 11-05-overview-board-v2)
+
+- **容器不能是 `<button>`**：卡片里嵌状态 chip（内部也是 button），嵌套按钮是非法 HTML 且点击会串。
+  卡片用 `div role="button" tabIndex={0}` + `Enter`/`Space` 处理键盘。
+- **身份解析只走 `getAgentIcon(provider, { meta, sessionId, personas, sessionEmojis })`**（会话 → provider → logo），
+  状态词/颜色/读未读只走 `AgentStatusChip` + `useAgentReadContext`。看板不得新增第三份映射。
+- **标题不得回退成视图名**：agent 卡片走 `resolveBoardCardTitle`（sessionTitle → note → 项目名 → `Provider · tab`），
+  `blockTitle()` 末尾用 `basename(meta["cmd:cwd"])` 兜底，禁止让卡片显示裸 `Terminal`。
+- **看板永远单行多列**：`grid-auto-flow: column` + `minmax(220px,1fr)` + `scroll-snap-type: x`，
+  空列 `includeEmpty: true` 常显。按面板宽度退回纵向堆叠 = 又变回列表（用户已经提过一次）。
+
+---
+
 ## Forbidden Patterns
 
 <!-- Patterns that should never be used and why -->
