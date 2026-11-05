@@ -186,3 +186,7 @@
 ## 2026-11-02 新增原型
 
 - `tab-card-v2/` — **▲ 设计活跃**（2026-11-02）；Tab 悬浮卡样式与图标重设计。8 套变体同数据对比：GitHub Hovercard / Linear / Raycast / Notion·Things / Vercel Geist·shadcn / Discord 成员列表 / Warp 终端 / Windows Fluent 2，各变体同时换「布局 + 图标容器 + 状态表达」。共同结构主张：计数并入 header、相同 provider 提到分组标题、行内主信息换成状态短语、定宽 268px、无状态不显示 `—`。镜像源：`tab-info-card.tsx`、`info-card.scss`、`tab.tsx`，真实组件尚未改造。
+
+## 2026-11-05 新增原型
+
+- `commontext-list-meta-sort/` — **▲ 设计活跃**（2026-11-05）；CommonText 列表要展示创建时间 / 更新时间 / 支持多排序 / 显示使用次数。按真实双栏 Master-Detail 镜像重做（首版窄单栏作废），只加两处新增点：左栏搜索下方的排序控件、列表行右侧的「使用次数 + 更新时间」列（不加行高，完整时间走悬浮提示）。排序控件按项目 UI 原则「能用图标表示的不用文字」做成纯图标按钮组（含义走 title/aria-label），列表行与详情页脚的「时间 / 次数」同样用图标 + 数字。原型同时复刻了「搜索态相关度优先、置顶只作并列次序」的真实行为。README 记录落地前必须定的三件事：排序作用域、使用次数写入点缺失（Copy 与行内插入不计数、新建虚记 1 次）、排序函数需独立注入不改 `sortCommonTextItems`。镜像源：`commontext-compose-modal.tsx`、`commontext-model.ts`，真实组件尚未改造。
