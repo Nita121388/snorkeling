@@ -24,3 +24,4 @@
 | 2026-11-05 14:55 | overview-timeline | ✅ 22/22 | launch+reset | `20261105T14534-overview-timeline` | ed6a61e3 |
 | 2026-11-05 19:19 | overview-timeline | ✅ 22/22 | launch+reset | `20261105T19185-overview-timeline` | 96e6255b |
 | 2026-11-05 20:01 | image-pager | ✅ 32/32 | launch+reset | `20261105T19595-imagepager` | working-tree |
+| 2026-11-05 20:08 | vcs-tree-status | ✅ 31/31 | launch+reset | `20261105T20074-vcstreestatus` | working-tree |
