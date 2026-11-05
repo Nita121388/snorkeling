@@ -10,6 +10,7 @@
 
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { Tooltip } from "@/app/element/tooltip";
 
 import { focusedBlockId } from "@/util/focusutil";
 import { useAtomValue } from "jotai";
@@ -17,9 +18,11 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { formatRemoteUri } from "@/util/waveutil";
 import type { PreviewModel } from "./preview-model";
 import {
+    buildPagerHintTexts,
     displayStationDir,
     getPagerToast,
     resolvePager,
+    resolvePagerAnchor,
     showPagerToast,
     subscribePagerToast,
     type StationInfo,
@@ -53,34 +56,17 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
     // 缩放倍率来自 onTransformed（程序化缩放也触发）；≠1 时键盘不翻页
     const scale = useAtomValue(model.imageScale);
 
-    // 锚点：优先用户进入时的目录预览根；否则图片自身目录。
-    // 锚点解析顺序：用户进入时的目录预览根 → 本块粘性锚点（跨站后仍有效）→ 图片自身目录。
+    // 锚点解析顺序：用户进入时的目录预览根 → 本块粘性锚点（跨站后仍有效）
+    // → 图片自身目录的父目录（提升一级，让同级兄弟文件夹可达；到文件系统根不再提升）。
     // 粘性锚点很关键：翻页会改 file meta，若每次都按当前文件重算锚点，跨站一次后
     // 目录树就"塌缩"成新文件夹，用户再也回不到上一层（真机验证实测踩到）。
-    const idxDir = (p: string) => {
-        const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-        return i > 0 ? p.slice(0, i) : p;
-    };
     const anchor = useMemo(() => {
         const meta = blockMeta as Record<string, unknown>;
-        const rootMeta = meta["preview:explorer-root"];
-        if (typeof rootMeta === "string" && rootMeta !== "") {
-            return rootMeta;
-        }
-        const sticky = meta[IMAGE_PAGER_ANCHOR_META_KEY];
-        if (typeof sticky === "string" && sticky !== "") {
-            // 校验当前图是否还在锚点树下：同一块被外部改写成别的目录的图片时
-            // （块头路径 / open 菜单），旧锚点已无意义，回退到图片自身目录，
-            // 否则计数器恒为 "— / —"、按钮全灰且用户无从理解（审核 S4）。
-            const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+\//g, "/");
-            const np = norm(filePath);
-            const ns = norm(sticky);
-            if (np === ns || np.startsWith(ns.replace(/\/$/, "") + "/")) {
-                return sticky;
-            }
-            return idxDir(filePath);
-        }
-        return idxDir(filePath);
+        return resolvePagerAnchor({
+            explorerRoot: meta["preview:explorer-root"],
+            stickyAnchor: meta[IMAGE_PAGER_ANCHOR_META_KEY],
+            filePath,
+        });
     }, [blockMeta, filePath]);
 
     const key = pagerCacheKey(connKey, anchor, sort);
@@ -114,6 +100,10 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
     // 提示走模块级 store：翻页会重挂预览视图，组件 state 会丢（实测 toast 恒 null）
     const toast = useSyncExternalStore(subscribePagerToast, getPagerToast, getPagerToast);
     const showToast = useCallback((msg: string) => showPagerToast(msg), []);
+
+    // 悬停气泡文案（纯函数，见 image-pager-model.buildPagerHintTexts）：
+    // 禁用态必须解释"为什么点不动"。
+    const hints = useMemo(() => buildPagerHintTexts(res, filePath, anchor), [res, filePath, anchor]);
 
     const persistAnchor = useCallback(async () => {
         const meta = blockMeta as Record<string, unknown>;
@@ -272,41 +262,45 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
                 onClick={stop}
                 onDoubleClick={stop}
             >
-                <button
-                    type="button"
-                    aria-label={prevIsStation ? "上一站" : "上一张"}
-                    className="rounded px-2 py-0.5 hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-not-allowed disabled:opacity-35"
-                    title={prevIsStation ? "上一站（Shift+←）" : "上一张（←）"}
-                    disabled={prevDisabled}
-                    onClick={() => goPrev()}
-                >
-                    {prevIsStation ? "上一站" : "‹"}
-                </button>
-                <span className="min-w-[64px] text-center tabular-nums opacity-80" title={filePath}>
-                    {positionLabel}
-                </span>
-                <button
-                    type="button"
-                    aria-label={nextIsStation ? "下一站" : "下一张"}
-                    className="rounded px-2 py-0.5 hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-not-allowed disabled:opacity-35"
-                    title={nextIsStation ? "下一站（Shift+→）" : "下一张（→）"}
-                    disabled={nextDisabled}
-                    onClick={() => goNext()}
-                >
-                    {nextIsStation ? "下一站" : "›"}
-                </button>
+                <Tooltip content={hints.prev} divClassName="flex">
+                    <button
+                        type="button"
+                        aria-label={prevIsStation ? "上一站" : "上一张"}
+                        className="rounded px-2 py-0.5 hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-not-allowed disabled:opacity-35"
+                        disabled={prevDisabled}
+                        onClick={() => goPrev()}
+                    >
+                        {prevIsStation ? "上一站" : "‹"}
+                    </button>
+                </Tooltip>
+                <Tooltip content={hints.counter} divClassName="flex">
+                    <span className="min-w-[64px] text-center tabular-nums opacity-80">{positionLabel}</span>
+                </Tooltip>
+                <Tooltip content={hints.next} divClassName="flex">
+                    <button
+                        type="button"
+                        aria-label={nextIsStation ? "下一站" : "下一张"}
+                        className="rounded px-2 py-0.5 hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-not-allowed disabled:opacity-35"
+                        disabled={nextDisabled}
+                        onClick={() => goNext()}
+                    >
+                        {nextIsStation ? "下一站" : "›"}
+                    </button>
+                </Tooltip>
                 <span className="mx-1 h-3 w-px bg-[rgba(255,255,255,0.18)]" />
-                <button
-                    type="button"
-                    className="rounded px-1.5 py-0.5 hover:bg-[rgba(255,255,255,0.12)]"
-                    title="重建索引（Shift+R）"
-                    onClick={() => {
-                        invalidatePagerIndex(key);
-                        showToast("索引已失效，正在重建");
-                    }}
-                >
-                    ↻
-                </button>
+                <Tooltip content={hints.refresh} divClassName="flex">
+                    <button
+                        type="button"
+                        aria-label="重建索引"
+                        className="rounded px-1.5 py-0.5 hover:bg-[rgba(255,255,255,0.12)]"
+                        onClick={() => {
+                            invalidatePagerIndex(key);
+                            showToast("索引已失效，正在重建");
+                        }}
+                    >
+                        ↻
+                    </button>
+                </Tooltip>
             </div>
 
             {/* 边界/截断提示：本层到底且仍有下一站时，明确告诉用户去哪儿 */}

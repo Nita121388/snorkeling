@@ -183,8 +183,120 @@ export type PagerResolution = {
 
 /** 当前图片所在目录（路径的父目录，兼容 / 与 \\）。 */
 export function parentDirOf(filePath: string): string {
-    const idx = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
-    return idx > 0 ? filePath.slice(0, idx) : filePath;
+    const p = (filePath ?? "").replace(/\\/g, "/");
+    if (p === "" || p === "/") return "/";
+    // 已是目录（带尾分隔符）保留目录本身
+    const trimmed = p.replace(/\/+$/, "");
+    if (trimmed === "") return "/";
+    if (trimmed === "/") return "/";
+    const idx = trimmed.lastIndexOf("/");
+    if (idx < 0) return trimmed; // 相对路径但无分隔符：把自身当做目录
+    if (idx === 0) return "/"; // 根目录下的文件或目录
+    return trimmed.slice(0, idx);
+}
+
+/** 是否文件系统根（posix `/`、Windows 盘符根 `C:`/`C:\`、UNC `\\server\share`）。 */
+export function isRootPath(path: string): boolean {
+    const s = (path ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+    if (s === "" || s === "/") return true;
+    if (/^[A-Za-z]:$/.test(s)) return true;
+    // UNC：\\server\share 视为根（再往上只剩 \\server 服务器名，无意义）
+    if (/^\/\/[^/]+\/[^/]+$/.test(s)) return true;
+    return false;
+}
+
+/** 末段可读名（根目录回退到自身）。 */
+export function shortDirName(dir: string): string {
+    const s = (dir ?? "").replace(/\\/g, "/").replace(/\/+$/, "");
+    if (s === "" || s === "/") return "/";
+    const idx = s.lastIndexOf("/");
+    return idx >= 0 ? s.slice(idx + 1) || "/" : s;
+}
+
+export type PagerAnchorInput = {
+    /** block meta `preview:explorer-root`：从目录预览进入时的根（最高优先）。 */
+    explorerRoot?: unknown;
+    /** block meta `preview:image-pager-anchor`：上次落盘的粘性锚点。 */
+    stickyAnchor?: unknown;
+    filePath: string;
+    isRoot?: (p: string) => boolean;
+};
+
+/**
+ * 锚点解析（翻页范围的事实来源）。
+ *
+ * 1. `explorer-root` → 用它
+ * 2. 粘性锚点且当前图仍在其子树内 → 用它（跨站后目录树不塌缩）
+ * 3. 否则**提升一级**：图片目录的父目录 —— 让同级兄弟文件夹进入站点序列。
+ *    站点 = 锚点子树，锚点若停在图片目录上，兄弟目录结构性不可达（不是索引没建好）。
+ *    走到文件系统根时不再提升，避免整盘扫描。
+ */
+export function resolvePagerAnchor({ explorerRoot, stickyAnchor, filePath, isRoot = isRootPath }: PagerAnchorInput): string {
+    const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+\//g, "/");
+    const trim = (p: string) => p.replace(/[\\/]+$/, "") || p;
+
+    if (typeof explorerRoot === "string" && explorerRoot.trim() !== "") {
+        return trim(explorerRoot);
+    }
+
+    const dir = parentDirOf(filePath);
+
+    if (typeof stickyAnchor === "string" && stickyAnchor.trim() !== "") {
+        const sticky = trim(stickyAnchor);
+        const np = norm(filePath);
+        const ns = norm(sticky);
+        if (np === ns || np.startsWith(ns.replace(/\/$/, "") + "/")) {
+            return sticky;
+        }
+    }
+
+    const up = parentDirOf(dir);
+    if (up === dir || isRoot(up)) return dir;
+    return up;
+}
+
+/** 气泡文案上下文：只取 resolvePager 结果里的判定位，不依赖索引状态类型（防循环 import）。 */
+export type PagerHintTexts = {
+    prev: string;
+    next: string;
+    refresh: string;
+    counter: string;
+};
+
+/**
+ * 悬停气泡文案（纯函数，单测锁文案）。
+ * 四要素：动作 + 快捷键 + 目标/范围 + 当前状态 —— 置灰态必须解释"为什么点不动"。
+ */
+export function buildPagerHintTexts(res: PagerResolution, filePath: string, anchor: string): PagerHintTexts {
+    const pos = res.position;
+    const size = res.layerSize;
+    const atStart = res.prev == null && res.prevStation == null;
+    const atEnd = res.next == null && res.nextStation == null;
+
+    const prev = res.prev != null
+        ? `上一张（←） · ${pos}/${size}`
+        : res.prevStation != null
+          ? `上一站：${displayStationDir(res.prevStation.dir, anchor)}（${res.prevStation.count} 张） · Shift+←`
+          : atStart
+            ? `本层已是第一张；锚点 ${anchor} 下没有更早的含图片文件夹`
+            : `上一张（←）`;
+
+    const next = res.next != null
+        ? `下一张（→） · ${pos + 2}/${size}`
+        : res.nextStation != null
+          ? `进入下一站：${displayStationDir(res.nextStation.dir, anchor)}（${res.nextStation.count} 张） · 按 → 或 Shift+→`
+          : atEnd
+            ? `本层已是最后一张；锚点 ${anchor} 下没有更多含图片文件夹`
+            : `下一张（→）`;
+
+    const positionText = pos >= 0 ? `第 ${pos + 1}/${size} 张` : "索引中…";
+
+    return {
+        prev,
+        next,
+        refresh: "重建索引（Shift+R） · 缓存 60s",
+        counter: `${positionText} · ${filePath} · 锚点：${shortDirName(anchor)}`,
+    };
 }
 
 export function resolvePager(

@@ -108,6 +108,30 @@ async function clickBarButton(client, scope, text) {
     return ok;
 }
 
+async function hoverBarButton(client, scope, text) {
+    const pos = await client.evaluate(`(() => {
+        const bar = ${barJs(scope)};
+        if (bar == null) return null;
+        const btn = [...bar.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === ${JSON.stringify(text)});
+        if (btn == null) return null;
+        const r = btn.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })()`);
+    if (pos == null) return null;
+    await client.move(pos.x, pos.y);
+    await new Promise((r) => setTimeout(r, 750));
+    const tooltip = await client.evaluate(`(() => {
+        const tips = [...document.querySelectorAll(".bg-overlay")];
+        const visible = tips.find((t) => {
+            const s = getComputedStyle(t);
+            const r = t.getBoundingClientRect();
+            return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
+        });
+        return visible ? (visible.textContent || "").replace(/\s+/g, " ").trim() : null;
+    })()`);
+    return tooltip;
+}
+
 async function clickByTitle(client, title) {
     const ok = await client.evaluate(`(() => {
         const el = [...document.querySelectorAll("button")].find((b) => (b.getAttribute("title") || "") === ${JSON.stringify(title)});
@@ -339,6 +363,10 @@ async function main() {
         const endDisabled = st.buttons.find((b) => b.text === "›")?.disabled;
         check("no-wrap-at-end", endDisabled === true, `› disabled=${endDisabled}`);
         await shot(client, "04-very-end");
+
+        // 11) 悬停提示（统一 Tooltip，禁用态也可悬停）
+        const tDisabled = await hoverBarButton(client, scope, "下一站");
+        check("hover-tooltip-disabled-next", typeof tDisabled === "string" && tDisabled.length > 0, `tip=${tDisabled}`);
 
         const failed = results.filter((r) => !r.ok);
         const report = { fixture, runDir, passed: results.length - failed.length, failed: failed.length, verdict: failed.length === 0 ? "pass" : "fail", results };

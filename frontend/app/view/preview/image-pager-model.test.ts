@@ -4,16 +4,18 @@
 import { sortingFns } from "@tanstack/react-table";
 import { describe, expect, it } from "vitest";
 import {
+    buildLayer,
+    buildPagerHintTexts,
     compareAlphanumeric,
     compareImageNames,
     compareStationPaths,
-    insertStationSorted,
     displayStationDir,
+    insertStationSorted,
     isImagePath,
     isSkipDir,
     orderedSubdirs,
     resolvePager,
-    buildLayer,
+    resolvePagerAnchor,
     type PagerEntry,
 } from "./image-pager-model";
 
@@ -200,5 +202,55 @@ describe("compareStationPaths / insertStationSorted — 确定性 DFS 先序", (
             stations = insertStationSorted(stations, mk(dir));
         }
         expect(stations.map((s) => s.dir)).toEqual(["/a", "/a/b", "/a/sub", "/a/sub/deep", "/a/zz"]);
+    });
+});
+
+describe("resolvePagerAnchor", () => {
+    it("explorer-root 优先级最高", () => {
+        expect(resolvePagerAnchor({ explorerRoot: "/x", filePath: "/a/b.png" })).toBe("/x");
+    });
+    it("无 explorer-root：无 sticky → 锚点取父目录（提升一级）", () => {
+        expect(resolvePagerAnchor({ filePath: "/photos/2024/a.jpg" })).toBe("/photos");
+    });
+    it("文件系统根不再提升", () => {
+        expect(resolvePagerAnchor({ filePath: "/a.jpg" })).toBe("/");
+    });
+    it("sticky 锚点有效且文件在其子树内时保留 sticky（不因提升覆盖）", () => {
+        expect(resolvePagerAnchor({ stickyAnchor: "/photos/2024", filePath: "/photos/2024/sub/a.jpg" })).toBe("/photos/2024");
+    });
+});
+
+describe("buildPagerHintTexts", () => {
+    it("层尾且有下一站：文案含目标文件夹与快捷键", () => {
+        const res = {
+            position: 2,
+            layerSize: 3,
+            next: null,
+            prev: "/a/2.png",
+            nextStation: { dir: "/a/sub", images: ["/a/sub/x.png"], first: "/a/sub/x.png", last: "/a/sub/x.png", count: 2 },
+            prevStation: null,
+            atLayerStart: false,
+            atLayerEnd: true,
+            layer: ["/a/1.png", "/a/2.png", "/a/3.png"],
+        } as any;
+        const h = buildPagerHintTexts(res, "/a/3.png", "/a");
+        expect(h.next).toMatch(/sub/);
+        expect(h.next).toMatch(/Shift|→|按/);
+    });
+    it("全树到底置灰：文案解释锚点下无更多", () => {
+        const res = {
+            position: 0,
+            layerSize: 1,
+            next: null,
+            prev: null,
+            nextStation: null,
+            prevStation: null,
+            atLayerStart: true,
+            atLayerEnd: true,
+            layer: ["/a/only.png"],
+        } as any;
+        const h = buildPagerHintTexts(res, "/a/only.png", "/a");
+        expect(h.next).toMatch(/没有更多|锚点/);
+        expect(h.refresh).toMatch(/Shift/);
     });
 });
