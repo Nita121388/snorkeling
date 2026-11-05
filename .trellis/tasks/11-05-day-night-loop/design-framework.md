@@ -212,3 +212,22 @@ upgrade -> 备份
 三个件：`VERSION`（整数版本）、`migrations/<n>-<slug>.mjs`（必须幂等）、`.backup/<ts>/`（升级前自动备份）。
 
 护栏：迁移本身是 `arch` 类工作项，要走 G1→G6；`doctor` 进 `npm run verify:loop`，schema 与实际文件不一致就红。
+
+## P 每个任务的元数据与时间线 {span=2}
+
+| 要回答的问题 | 数据从哪来 | 人要不要填 |
+|---|---|---|
+| 谁做的 | LEDGER 的 `agent`（hook 从 `PI_MODEL` 等环境变量带入） | 不用 |
+| 在哪次会话 | LEDGER 的 `session`（`PI_SESSION_ID` 等） | 不用 |
+| 花了多久 | 从事件时间戳推导：等待（approve→pick）· 开发（pick→green）· 评审（green→accept） | 不用 |
+| 做得怎么样 | 验收时 `accept --score 1..5 --by`，写进工作项 frontmatter | 一次 |
+
+不设"手填用时"字段，是因为手填的时长会撒谎；事件时间戳不会。
+
+```bash
+queue show --id N-xxx            # 元信息 + 背景 + 时间线
+ledger timeline --id N-xxx       # 阶段耗时 + 逐事件表
+ledger timeline --id N-xxx --json  # 给看板，看板不自己算
+```
+
+评分不是装饰：**同一类任务分数持续走低，就优先复查那条门或那份判据**——这是自省之外的第二条反馈线。
