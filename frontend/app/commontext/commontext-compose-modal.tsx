@@ -22,6 +22,7 @@ import {
 } from "./commontext-paste-image";
 import {
     deleteCommonTextItem,
+    DefaultCommonTextSortKey,
     filterCommonTextItemsByTags,
     getCommonTextItems,
     getCommonTextItemsFromSettings,
@@ -30,12 +31,40 @@ import {
     searchCommonTextComposeItems,
     upsertCommonTextItem,
     type CommonTextItem,
+    type CommonTextSortKey,
 } from "./commontext-model";
 import { extractSessionTagsFromNote, removeSessionTagFromNote } from "@/app/view/aisessions/session-tags";
 import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
+import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/aisessions/utils";
+import { loadCommonTextSortKey, saveCommonTextSortKey } from "./commontext-sort-preference";
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
+
+/** 排序控件：只用图标，含义全走 title / aria-label（不占左栏宽度）。 */
+const CommonTextSortOptions: { key: CommonTextSortKey; icon: string; label: string }[] = [
+    { key: "lastused-desc", icon: "fa-clock-rotate-left", label: "Recently used" },
+    { key: "updated-desc", icon: "fa-pen", label: "Recently updated" },
+    { key: "created-desc", icon: "fa-calendar-plus", label: "Recently created" },
+    { key: "usage-desc", icon: "fa-fire", label: "Most used" },
+    { key: "title-asc", icon: "fa-arrow-down-a-z", label: "Title A to Z" },
+];
+
+/** 时间一律走会话列表同一套口径（formatSessionDateCompact），不另写一套格式化。 */
+function compactCommonTextTime(timestamp: number | undefined, withTime = false): string {
+    if (timestamp == null) return "never";
+    return formatSessionDateCompact(timestamp, Date.now(), withTime) || "never";
+}
+
+/** 列表行与详情页脚的完整时间信息：不可图标化的语义全下沉到 tooltip。 */
+function describeCommonTextTime(item: CommonTextItem): string {
+    return [
+        `Created ${compactCommonTextTime(item.createdat, true)}`,
+        `Updated ${compactCommonTextTime(item.updatedat, true)}`,
+        `Last used ${compactCommonTextTime(item.lastusedat, true)}`,
+        `Used ${item.usagecount ?? 0} time(s)`,
+    ].join("\n");
+}
 
 type ComposeState = {
     open: boolean;
@@ -56,6 +85,8 @@ type ComposeState = {
     detailText: string;
     detailDirty: boolean;
     insertedIds: string[];
+    // 浏览态列表排序键（localStorage 持久化）。搜索态下由相关度接管，这里只当并列 tie-break。
+    sortKey: CommonTextSortKey;
     status: string;
     statusKind: "info" | "ok" | "err";
 };
@@ -110,6 +141,7 @@ const initialOpenState = (manualQuery = ""): ComposeState => ({
     detailText: "",
     detailDirty: false,
     insertedIds: [],
+    sortKey: DefaultCommonTextSortKey,
     status: "",
     statusKind: "info",
 });
@@ -237,6 +269,7 @@ const CommonTextComposeModal = memo(() => {
             untagged: state.untaggedOnly,
             caret: state.editorCaret,
             insertedIds: state.insertedIds,
+            sortKey: state.sortKey,
         });
     }, [
         allItems,
@@ -247,10 +280,14 @@ const CommonTextComposeModal = memo(() => {
         state.manualQuery,
         state.open,
         state.selectedTags,
+        state.sortKey,
         state.untaggedOnly,
     ]);
     const editorFilterActive =
         !state.editorFilterDismissed && state.manualQuery.trim() === "" && state.editor.trim() !== "";
+    // 相关度接管列表次序的两种情形：搜索框有字（手动搜索），或编辑器过滤生效。
+    // 此时排序控件点了也没效果，所以禁用并点亮相关度图标，不留假控件。
+    const relevanceActive = state.manualQuery.trim() !== "" || editorFilterActive;
 
     // 详情区当前展示/编辑的 item。以 detailId 为准；若 detailId 为 null 或已不在
     // 当前筛选结果里（被 tag 过滤掉等），回退到 selectedIndex 指向的行 —— 这样
@@ -282,6 +319,8 @@ const CommonTextComposeModal = memo(() => {
             isComposingRef.current = false;
             // 外部带入 query（选区 overlay 找条目）走全新状态；纯打开尝试还原上次草稿。
             const next = hasExternalQuery ? initialOpenState(manualQuery) : restoreOpenState();
+            // 排序偏好不在草稿里（草稿只存 editor 文本）：每次打开都从 localStorage 读。
+            next.sortKey = loadCommonTextSortKey();
             // 当传入 editItemId 时（灯泡保存后的 Tag 入口）：定位到该条目并打开详情面板，
             // 用户可直接在详情区（含 All tags 面板）补标签；清空 query 保证条目在列表可见。
             if (detail.editItemId != null && detail.editItemId !== "") {
@@ -368,6 +407,19 @@ const CommonTextComposeModal = memo(() => {
             setState((cur) => ({ ...cur, selectedIndex: Math.max(0, filteredItems.length - 1) }));
         }
     }, [filteredItems.length, state.open, state.selectedIndex]);
+
+    // 列表次序变化（切换排序键、条目被过滤）时让行高亮跟上详情区：以 detailId 为准回填
+    // selectedIndex，避免"右侧显示 A、左侧高亮 B"。只读 detailId（不读 selectedIndex 作依赖），
+    // 函数式 setState 保证幂等，不会和 ↑↓ 导航互相打架。
+    useEffect(() => {
+        if (!state.open) return;
+        setState((cur) => {
+            if (cur.detailId == null) return cur;
+            const index = filteredItems.findIndex((it) => it.id === cur.detailId);
+            if (index < 0 || index === cur.selectedIndex) return cur;
+            return { ...cur, selectedIndex: index };
+        });
+    }, [filteredItems, state.open]);
 
     useEffect(() => {
         if (!state.open) return;
@@ -473,6 +525,14 @@ const CommonTextComposeModal = memo(() => {
     };
 
     const setStatus = (status: string, statusKind: "info" | "ok" | "err" = "info") => update({ status, statusKind });
+
+    // 排序键切换：写 localStorage → 列表重排（filteredItems memo 依赖 sortKey）。
+    // 点击时不动 selectedIndex —— 由 detailId 同步 effect 把它带到新位置。
+    const handleSortChange = (sortKey: CommonTextSortKey) => {
+        if (sortKey === state.sortKey) return;
+        saveCommonTextSortKey(sortKey);
+        update({ sortKey });
+    };
 
     // 从 editor 正文里抹掉某个 #tag 字面并保持 caret 在原位置附近。tags 字段不用单独维护：
     // 它始终由 editor 文本派生（extractSessionTagsFromNote），抹掉字面后下一次 memo 自动重算。
@@ -596,6 +656,8 @@ const CommonTextComposeModal = memo(() => {
     const handleListItemCopy = async (item: CommonTextItem) => {
         try {
             await copyCommonText(item.text);
+            // 复制也是一次使用：此前只有 Insert/Send 计数，导致 usagecount 长期偏低。
+            fireAndForget(() => recordCommonTextUse(item.id));
             setStatus("Copied", "ok");
         } catch (err) {
             setStatus(`Copy failed: ${(err as Error).message ?? "unknown"}`, "err");
@@ -754,8 +816,9 @@ const CommonTextComposeModal = memo(() => {
             return;
         }
         // 不再弹独立的 SaveDialog：直接新建一条带 editor 正文的 item，让详情区接管就地编辑。
-        // upsertCommonTextItem 收口 title 派生（normalizeCommonTextTitle）；新建后顺手记一次使用，
-        // 让它在 sortCommonTextItems 的 lastusedat desc 里排到列表第一行（pinned 除外）。
+        // upsertCommonTextItem 收口 title 派生（normalizeCommonTextTitle）；新建后刷新 lastusedat
+        // （让它排在默认「最近使用」排序的前排），但**不计 usagecount** —— 新建不是一次使用，
+        // 之前记 1 次会让列表里的次数虚高。
         fireAndForget(async () => {
             const item = await upsertCommonTextItem({
                 title: "",
@@ -763,7 +826,7 @@ const CommonTextComposeModal = memo(() => {
                 tags: extractSessionTagsFromNote(text).tags,
                 pinned: false,
             });
-            await recordCommonTextUse(item.id);
+            await recordCommonTextUse(item.id, { countUsage: false });
             // 新条目落库后：
             // 1. 清空 editor + 折叠回单行——编辑已完成，左栏角色回到匹配/过滤通道
             // 2. 把新条目拉进详情区就地编辑
@@ -1111,6 +1174,69 @@ const CommonTextComposeModal = memo(() => {
                                 </InputRightElement>
                             </InputGroup>
                             {allItems.length > 0 && (
+                                <div className="mt-2 flex min-w-0 items-center gap-1.5" data-commontext-sort-row="">
+                                    <div
+                                        role="group"
+                                        aria-label="Sort common text list"
+                                        className="inline-flex shrink-0 items-center overflow-hidden rounded-md border border-border"
+                                    >
+                                        {CommonTextSortOptions.map((option) => {
+                                            const active = option.key === state.sortKey;
+                                            return (
+                                                <button
+                                                    key={option.key}
+                                                    type="button"
+                                                    data-commontext-sort={option.key}
+                                                    aria-label={option.label}
+                                                    aria-pressed={active}
+                                                    // 用 aria-disabled 而不是 disabled：disabled 按钮在 Chromium 里
+                                                    // 不派发鼠标事件，tooltip 也跟着失效——用户就看不到"为什么点不动"。
+                                                    aria-disabled={relevanceActive}
+                                                    title={
+                                                        relevanceActive
+                                                            ? "Results are ranked by relevance — clear the search to sort"
+                                                            : option.label
+                                                    }
+                                                    onClick={() => {
+                                                        if (relevanceActive) return;
+                                                        handleSortChange(option.key);
+                                                    }}
+                                                    className={
+                                                        "inline-flex h-6 w-6 items-center justify-center transition-colors " +
+                                                        (relevanceActive
+                                                            ? "text-secondary/30 cursor-default"
+                                                            : active
+                                                              ? "bg-actionsoft text-accent cursor-pointer"
+                                                              : "text-secondary hover:bg-hoverbg hover:text-primary cursor-pointer")
+                                                    }
+                                                >
+                                                    <i className={`fa fa-solid ${option.icon} text-[11px]`} />
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <span
+                                        role="img"
+                                        aria-label="Pinned items stay on top"
+                                        title="Pinned items stay on top"
+                                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-secondary/60"
+                                    >
+                                        <i className="fa fa-solid fa-thumbtack text-[10px]" />
+                                    </span>
+                                    {relevanceActive && (
+                                        <span
+                                            data-commontext-sort-relevance=""
+                                            role="img"
+                                            aria-label="Results ranked by relevance while searching"
+                                            title="Search ranks by relevance — clear the search to sort again"
+                                            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md bg-actionsoft px-1.5 text-accent"
+                                        >
+                                            <i className="fa fa-solid fa-wand-magic-sparkles text-[10px]" />
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            {allItems.length > 0 && (
                                 <div className="mt-2 flex min-w-0 items-center gap-1.5">
                                     <button
                                         type="button"
@@ -1191,25 +1317,58 @@ const CommonTextComposeModal = memo(() => {
                                                 </div>
                                             )}
                                         </div>
-                                        <span
-                                            role="button"
-                                            tabIndex={-1}
-                                            aria-label="Insert this common text into the focused target"
-                                            title="Insert into focused target"
-                                            className="item-insert-btn inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                fireAndForget(async () => {
-                                                    const result = await insertOrCopyCommonText(item.text);
-                                                    setStatus(
-                                                        result === "inserted" ? "Inserted" : "Copied (no target)",
-                                                        result === "inserted" ? "ok" : "info"
-                                                    );
-                                                });
-                                            }}
+                                        {/* 右侧固定宽槽：默认是「次数 + 更新时间」列（图标 + 数字，不新增行高），
+                                            鼠标悬浮时它淡出、插入按钮落在同一位置——不产生布局抖动，也不挤压标题列。 */}
+                                        <div
+                                            className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end"
+                                            data-commontext-meta=""
                                         >
-                                            <i className="fa fa-regular fa-paste text-[12px]" />
-                                        </span>
+                                            <div
+                                                className="flex flex-col items-end gap-0.5 text-[10px] leading-none tabular-nums text-secondary transition-opacity group-hover:opacity-0"
+                                                title={describeCommonTextTime(item)}
+                                            >
+                                                <span
+                                                    data-commontext-usage={item.usagecount ?? 0}
+                                                    className={
+                                                        "inline-flex items-center gap-1 " +
+                                                        ((item.usagecount ?? 0) === 0 ? "text-muted" : "")
+                                                    }
+                                                    title={`Used ${item.usagecount ?? 0} time(s)`}
+                                                >
+                                                    <i className="fa fa-solid fa-repeat text-[9px]" />
+                                                    {item.usagecount ?? 0}
+                                                </span>
+                                                <span
+                                                    data-commontext-updated=""
+                                                    className="inline-flex items-center gap-1"
+                                                    title={describeCommonTextTime(item)}
+                                                >
+                                                    <i className="fa fa-regular fa-clock text-[9px]" />
+                                                    {formatSessionRelativeTime(item.updatedat)}
+                                                </span>
+                                            </div>
+                                            <span
+                                                role="button"
+                                                tabIndex={-1}
+                                                aria-label="Insert this common text into the focused target"
+                                                title="Insert into focused target"
+                                                className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    fireAndForget(async () => {
+                                                        const result = await insertOrCopyCommonText(item.text);
+                                                        // 行内插入/无目标回退复制同样是一次使用：与详情 Insert 同口径计数。
+                                                        await recordCommonTextUse(item.id);
+                                                        setStatus(
+                                                            result === "inserted" ? "Inserted" : "Copied (no target)",
+                                                            result === "inserted" ? "ok" : "info"
+                                                        );
+                                                    });
+                                                }}
+                                            >
+                                                <i className="fa fa-regular fa-paste text-[12px]" />
+                                            </span>
+                                        </div>
                                     </div>
                                 ))
                             )}
@@ -1333,6 +1492,43 @@ const CommonTextComposeModal = memo(() => {
                                         <i className="fa fa-solid fa-arrow-up mr-1" />
                                         Insert
                                     </Button>
+                                    {/* 详情元信息：创建 / 更新 / 最近使用 / 次数。图标 + 数字，完整时间戳走 tooltip。 */}
+                                    <div
+                                        data-commontext-detail-meta=""
+                                        className="flex items-center gap-2 text-[10.5px] leading-none tabular-nums text-secondary"
+                                    >
+                                        <span
+                                            className="inline-flex items-center gap-1"
+                                            title={`Created ${compactCommonTextTime(detailItem.createdat, true)}`}
+                                        >
+                                            <i className="fa fa-regular fa-calendar-plus text-[10px]" />
+                                            {compactCommonTextTime(detailItem.createdat)}
+                                        </span>
+                                        <span
+                                            className="inline-flex items-center gap-1"
+                                            title={`Updated ${compactCommonTextTime(detailItem.updatedat, true)}`}
+                                        >
+                                            <i className="fa fa-solid fa-pen text-[9px]" />
+                                            {formatSessionRelativeTime(detailItem.updatedat)}
+                                        </span>
+                                        <span
+                                            className="inline-flex items-center gap-1"
+                                            title={`Last used ${compactCommonTextTime(detailItem.lastusedat, true)}`}
+                                        >
+                                            <i className="fa fa-solid fa-clock-rotate-left text-[10px]" />
+                                            {detailItem.lastusedat != null
+                                                ? formatSessionRelativeTime(detailItem.lastusedat)
+                                                : "never"}
+                                        </span>
+                                        <span
+                                            data-commontext-detail-usage={detailItem.usagecount ?? 0}
+                                            className="inline-flex items-center gap-1"
+                                            title={`Used ${detailItem.usagecount ?? 0} time(s)`}
+                                        >
+                                            <i className="fa fa-solid fa-repeat text-[9px]" />
+                                            {detailItem.usagecount ?? 0}
+                                        </span>
+                                    </div>
                                     <div className="ml-auto flex items-center gap-2.5">
                                         {saveStatus !== "idle" && (
                                             <span

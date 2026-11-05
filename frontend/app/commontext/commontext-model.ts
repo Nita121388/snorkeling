@@ -126,15 +126,68 @@ export function getCommonTextItems(): CommonTextItem[] {
     return getCommonTextItemsFromSettings(globalStore.get(atoms.settingsAtom));
 }
 
-export function sortCommonTextItems(items: CommonTextItem[]): CommonTextItem[] {
+/**
+ * 列表排序键。`lastused-desc` 是历史行为，也是默认值；其余为用户在弹窗里可主动选的排序。
+ * `created-asc`（Oldest first）不在图标控件里露出——没有既准确又不歧义的图标——但数据层
+ * 保留该分支，需要时可加方向切换按钮。
+ */
+export type CommonTextSortKey =
+    | "lastused-desc"
+    | "updated-desc"
+    | "created-desc"
+    | "created-asc"
+    | "usage-desc"
+    | "title-asc";
+
+export const DefaultCommonTextSortKey: CommonTextSortKey = "lastused-desc";
+
+const CommonTextSortKeys: readonly CommonTextSortKey[] = [
+    "lastused-desc",
+    "updated-desc",
+    "created-desc",
+    "created-asc",
+    "usage-desc",
+    "title-asc",
+];
+
+/** 把来路不明的值（localStorage / 旧版本残留）收口成合法排序键。 */
+export function normalizeCommonTextSortKey(value: unknown): CommonTextSortKey {
+    return typeof value === "string" && (CommonTextSortKeys as readonly string[]).includes(value)
+        ? (value as CommonTextSortKey)
+        : DefaultCommonTextSortKey;
+}
+
+type CommonTextComparator = (a: CommonTextItem, b: CommonTextItem) => number;
+
+const CommonTextPrimaryComparators: Record<CommonTextSortKey, CommonTextComparator> = {
+    "lastused-desc": (a, b) => (b.lastusedat ?? 0) - (a.lastusedat ?? 0),
+    "updated-desc": (a, b) => (b.updatedat ?? 0) - (a.updatedat ?? 0),
+    "created-desc": (a, b) => (b.createdat ?? 0) - (a.createdat ?? 0),
+    "created-asc": (a, b) => (a.createdat ?? 0) - (b.createdat ?? 0),
+    "usage-desc": (a, b) => (b.usagecount ?? 0) - (a.usagecount ?? 0),
+    "title-asc": (a, b) => a.title.localeCompare(b.title),
+};
+
+/**
+ * 用户可选的排序。与 sortCommonTextItems 的两条不变量一致：
+ * 1. `pinned` 恒在最前（浏览态与搜索态都保留该规则）；
+ * 2. 主键并列时回落 `updatedat desc`，再回落 `title`，让「看起来一样新」的条目有稳定次序。
+ *
+ * 注意：不要把它塞进 sortCommonTextItems 的实现里当唯一入口——那个函数还决定
+ * saveCommonTextItems 的写盘顺序与弹窗 selectedIndex / ↑↓ 落点，语义必须保持原样。
+ */
+export function sortCommonTextItemsBy(
+    items: CommonTextItem[],
+    key: CommonTextSortKey = DefaultCommonTextSortKey
+): CommonTextItem[] {
+    const primary = CommonTextPrimaryComparators[normalizeCommonTextSortKey(key)];
     return [...items].sort((a, b) => {
         if ((a.pinned ?? false) !== (b.pinned ?? false)) {
             return a.pinned ? -1 : 1;
         }
-        const aUsed = a.lastusedat ?? 0;
-        const bUsed = b.lastusedat ?? 0;
-        if (aUsed !== bUsed) {
-            return bUsed - aUsed;
+        const primaryDiff = primary(a, b);
+        if (primaryDiff !== 0) {
+            return primaryDiff;
         }
         const aUpdated = a.updatedat ?? 0;
         const bUpdated = b.updatedat ?? 0;
@@ -143,6 +196,10 @@ export function sortCommonTextItems(items: CommonTextItem[]): CommonTextItem[] {
         }
         return a.title.localeCompare(b.title);
     });
+}
+
+export function sortCommonTextItems(items: CommonTextItem[]): CommonTextItem[] {
+    return sortCommonTextItemsBy(items, DefaultCommonTextSortKey);
 }
 
 export function getCommonTextTagSummaries(items: CommonTextItem[]): CommonTextTagSummary[] {
@@ -246,6 +303,8 @@ export type CommonTextComposeSearchOptions = {
     untagged?: boolean;
     caret?: number;
     insertedIds?: string[];
+    // 浏览态（无搜索词）的列表次序。搜索态下由相关度决定，这里只当并列 tie-break。
+    sortKey?: CommonTextSortKey;
 };
 
 type CommonTextSearchFields = {
@@ -328,7 +387,14 @@ export function searchCommonTextComposeItems(
     manualQuery: string,
     options: CommonTextComposeSearchOptions = {}
 ): CommonTextItem[] {
-    const { limit = 40, selectedTags = [], untagged = false, caret = editor.length, insertedIds = [] } = options;
+    const {
+        limit = 40,
+        selectedTags = [],
+        untagged = false,
+        caret = editor.length,
+        insertedIds = [],
+        sortKey = DefaultCommonTextSortKey,
+    } = options;
     const isManualSearch = manualQuery.trim() !== "";
     const tokenWeights = new Map<string, number>();
     if (isManualSearch) {
@@ -338,7 +404,10 @@ export function searchCommonTextComposeItems(
             tokenWeights.set(token, weight);
         }
     }
-    const baseItems = sortCommonTextItems(filterCommonTextItemsByTags(items, selectedTags, { untagged }));
+    const baseItems = sortCommonTextItemsBy(
+        filterCommonTextItemsByTags(items, selectedTags, { untagged }),
+        sortKey
+    );
     if (tokenWeights.size === 0) {
         return baseItems.slice(0, limit);
     }
@@ -460,17 +529,28 @@ export async function deleteCommonTextItem(id: string): Promise<void> {
     await saveCommonTextItems(nextItems, { allowEmpty: nextItems.length === 0 });
 }
 
-export async function recordCommonTextUse(id: string): Promise<void> {
-    const items = getCommonTextItems();
+export type RecordCommonTextUseOptions = {
+    /**
+     * 是否累加 usagecount，默认 true。新建条目时传 false：只刷新 lastusedat，让它排在
+     * 「最近使用」默认排序的前排，但列表里显示的次数仍是 0 —— 新建不是一次使用。
+     */
+    countUsage?: boolean;
+};
+
+/** 纯函数：一次使用只会动 lastusedat（可选 usagecount），与写盘逻辑解耦、可单测。 */
+export function markCommonTextUsed(item: CommonTextItem, now: number, countUsage = true): CommonTextItem {
+    return {
+        ...item,
+        lastusedat: now,
+        usagecount: countUsage ? (item.usagecount ?? 0) + 1 : (item.usagecount ?? 0),
+    };
+}
+
+export async function recordCommonTextUse(id: string, opts: RecordCommonTextUseOptions = {}): Promise<void> {
+    const countUsage = opts.countUsage ?? true;
     const now = Date.now();
-    const nextItems = items.map((item) =>
-        item.id === id
-            ? {
-                  ...item,
-                  lastusedat: now,
-                  usagecount: (item.usagecount ?? 0) + 1,
-              }
-            : item
+    const nextItems = getCommonTextItems().map((item) =>
+        item.id === id ? markCommonTextUsed(item, now, countUsage) : item
     );
     await saveCommonTextItems(nextItems);
 }

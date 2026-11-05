@@ -3,16 +3,22 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    DefaultCommonTextSortKey,
     filterCommonTextItemsByTags,
     findDuplicateCommonText,
     getCommonTextTagSummaries,
+    markCommonTextUsed,
     normalizeCommonTextItem,
+    normalizeCommonTextSortKey,
     normalizeCommonTextTags,
     normalizeCommonTextTitle,
     searchCommonTextComposeItems,
     searchCommonTextItems,
+    sortCommonTextItems,
+    sortCommonTextItemsBy,
     tokenizeCommonTextQuery,
     type CommonTextItem,
+    type CommonTextSortKey,
 } from "./commontext-model";
 
 function makeItem(overrides: Partial<CommonTextItem>): CommonTextItem {
@@ -275,6 +281,190 @@ describe("commontext-model", () => {
                 "pinned",
                 "recent",
             ]);
+        });
+    });
+
+    describe("sortCommonTextItemsBy", () => {
+        const ids = (items: CommonTextItem[]) => items.map((item) => item.id);
+        // 三条同列数据：created / updated / lastused / usage 四个维度的高低位刚好错开，
+        // 任何一个排序键选错都会立刻体现为次序不同。
+        const items = [
+            makeItem({
+                id: "oldest",
+                title: "Zeta",
+                createdat: 100,
+                updatedat: 100,
+                lastusedat: 100,
+                usagecount: 1,
+            }),
+            makeItem({
+                id: "newest",
+                title: "Alpha",
+                createdat: 900,
+                updatedat: 900,
+                lastusedat: 900,
+                usagecount: 9,
+            }),
+            makeItem({
+                id: "middle",
+                title: "Mid",
+                createdat: 500,
+                updatedat: 500,
+                lastusedat: 500,
+                usagecount: 5,
+            }),
+        ];
+
+        it("defaults to recently used", () => {
+            expect(ids(sortCommonTextItemsBy(items))).toEqual(["newest", "middle", "oldest"]);
+            expect(DefaultCommonTextSortKey).toBe("lastused-desc");
+        });
+
+        it("sorts by every user-facing key", () => {
+            expect(ids(sortCommonTextItemsBy(items, "lastused-desc"))).toEqual(["newest", "middle", "oldest"]);
+            expect(ids(sortCommonTextItemsBy(items, "updated-desc"))).toEqual(["newest", "middle", "oldest"]);
+            expect(ids(sortCommonTextItemsBy(items, "created-desc"))).toEqual(["newest", "middle", "oldest"]);
+            expect(ids(sortCommonTextItemsBy(items, "created-asc"))).toEqual(["oldest", "middle", "newest"]);
+            expect(ids(sortCommonTextItemsBy(items, "usage-desc"))).toEqual(["newest", "middle", "oldest"]);
+            expect(ids(sortCommonTextItemsBy(items, "title-asc"))).toEqual(["newest", "middle", "oldest"]);
+        });
+
+        it("keeps pinned items first in every mode", () => {
+            const pinnedLast = [
+                ...items,
+                makeItem({ id: "pinned", title: "Zulu", createdat: 1, updatedat: 1, lastusedat: 1, usagecount: 0, pinned: true }),
+            ];
+            for (const key of [
+                "lastused-desc",
+                "updated-desc",
+                "created-desc",
+                "created-asc",
+                "usage-desc",
+                "title-asc",
+            ] as CommonTextSortKey[]) {
+                expect(ids(sortCommonTextItemsBy(pinnedLast, key))[0]).toBe("pinned");
+            }
+        });
+
+        it("falls back to updatedat then title when the primary key ties", () => {
+            const tied = [
+                makeItem({ id: "b-tie", title: "Beta", createdat: 5, updatedat: 5, usagecount: 3 }),
+                makeItem({ id: "a-tie", title: "Alpha", createdat: 5, updatedat: 5, usagecount: 3 }),
+                makeItem({ id: "fresh", title: "Fresh", createdat: 5, updatedat: 9, usagecount: 3 }),
+            ];
+            expect(ids(sortCommonTextItemsBy(tied, "usage-desc"))).toEqual(["fresh", "a-tie", "b-tie"]);
+        });
+
+        it("treats a missing usage count or last-used stamp as the lowest value", () => {
+            const neverUsed = [
+                makeItem({ id: "used", title: "Used", createdat: 1, updatedat: 1, lastusedat: 10, usagecount: 2 }),
+                makeItem({ id: "fresh", title: "Fresh", createdat: 2, updatedat: 2 }),
+            ];
+            expect(ids(sortCommonTextItemsBy(neverUsed, "lastused-desc"))).toEqual(["used", "fresh"]);
+            expect(ids(sortCommonTextItemsBy(neverUsed, "usage-desc"))).toEqual(["used", "fresh"]);
+        });
+
+        it("normalizes unknown or missing sort keys to the default", () => {
+            expect(normalizeCommonTextSortKey(undefined)).toBe(DefaultCommonTextSortKey);
+            expect(normalizeCommonTextSortKey("bogus")).toBe(DefaultCommonTextSortKey);
+            expect(normalizeCommonTextSortKey(42)).toBe(DefaultCommonTextSortKey);
+            expect(normalizeCommonTextSortKey("usage-desc")).toBe("usage-desc");
+            expect(ids(sortCommonTextItemsBy(items, "bogus" as CommonTextSortKey))).toEqual(
+                ids(sortCommonTextItemsBy(items, DefaultCommonTextSortKey))
+            );
+        });
+
+        it("keeps sortCommonTextItems bit-for-bit equal to the default key", () => {
+            // 这个函数还决定写盘顺序与弹窗 selectedIndex / ↑↓ 落点，语义必须原样保留。
+            expect(sortCommonTextItems(items)).toEqual(sortCommonTextItemsBy(items, DefaultCommonTextSortKey));
+        });
+    });
+
+    describe("markCommonTextUsed", () => {
+        const item = makeItem({ id: "a", lastusedat: 100, usagecount: 2 });
+
+        it("bumps both the last-used stamp and the usage count by default", () => {
+            expect(markCommonTextUsed(item, 500)).toMatchObject({ lastusedat: 500, usagecount: 3 });
+        });
+
+        it("can refresh the last-used stamp without counting a use (new item path)", () => {
+            expect(markCommonTextUsed(item, 500, false)).toMatchObject({ lastusedat: 500, usagecount: 2 });
+        });
+
+        it("defaults a missing usage count to zero", () => {
+            const noCount = makeItem({ id: "b" });
+            expect(markCommonTextUsed(noCount, 500, false).usagecount).toBe(0);
+            expect(markCommonTextUsed(noCount, 500).usagecount).toBe(1);
+        });
+    });
+
+    describe("searchCommonTextComposeItems sortKey", () => {
+        const items = [
+            makeItem({
+                id: "deploy",
+                title: "Deploy server",
+                text: "kubectl apply production",
+                createdat: 3,
+                updatedat: 3,
+                usagecount: 1,
+            }),
+            makeItem({
+                id: "refund",
+                title: "Refund reply",
+                text: "refund processed",
+                createdat: 2,
+                updatedat: 2,
+                usagecount: 7,
+            }),
+            makeItem({
+                id: "standup",
+                title: "Standup",
+                text: "daily team sync",
+                createdat: 1,
+                updatedat: 1,
+                usagecount: 4,
+            }),
+        ];
+
+        it("applies the chosen sort key while browsing", () => {
+            expect(searchCommonTextComposeItems(items, "", "", { sortKey: "title-asc" }).map((item) => item.id)).toEqual(
+                ["deploy", "refund", "standup"]
+            );
+            expect(
+                searchCommonTextComposeItems(items, "", "", { sortKey: "usage-desc" }).map((item) => item.id)
+            ).toEqual(["refund", "standup", "deploy"]);
+            // 默认键不变：仍是最近使用（无 lastusedat 时回落 updatedat desc → createdat 越大越前）
+            expect(searchCommonTextComposeItems(items, "", "").map((item) => item.id)).toEqual([
+                "deploy",
+                "refund",
+                "standup",
+            ]);
+        });
+
+        it("lets relevance beat the chosen key while searching", () => {
+            // 浏览态 title-asc 把 deploy 排第一；搜索 refund 时相关度把 refund 提到最前
+            expect(searchCommonTextComposeItems(items, "", "refund", { sortKey: "title-asc" }).map((item) => item.id)).toEqual([
+                "refund",
+            ]);
+        });
+
+        it("keeps pinned as a tie-breaker only while searching", () => {
+            const pinnedWeak = makeItem({
+                id: "pinned-weak",
+                title: "Refund notes",
+                text: "notes about refunds",
+                pinned: true,
+            });
+            const strongMatch = makeItem({ id: "strong", title: "Refund", text: "refund processed" });
+            const ranked = searchCommonTextComposeItems([pinnedWeak, strongMatch], "", "refund").map((item) => item.id);
+            // 搜索态：相关度更高者在前，置顶不强制最前
+            expect(ranked).toEqual(["strong", "pinned-weak"]);
+            // 浏览态：置顶恒在最前
+            expect(
+                searchCommonTextComposeItems([pinnedWeak, strongMatch], "", "", { sortKey: "title-asc" }).map(
+                    (item) => item.id
+                )
+            ).toEqual(["pinned-weak", "strong"]);
         });
     });
 });
