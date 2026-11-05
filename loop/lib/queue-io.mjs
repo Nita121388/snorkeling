@@ -1,4 +1,5 @@
-// queue.json 读写（唯一写者路径）。抽出来是为了可单测，且保证"解析失败绝不静默清空"。
+// 机器凭据存储（gates.json）：只存 gates 与 dropped。人可读字段在 items/*.md。
+// 解析失败绝不静默清空（回退 last-good 快照），参考 agent-autoloop 的失败策略。
 // 参考 agent-autoloop 的失败策略：规则文件坏了 → 继续按旧规则跑 + 告警，
 // 而不是当作"规则被删光"（那会让夜间队列凭空消失）。
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
@@ -6,12 +7,12 @@ import { join } from 'node:path';
 import { LOOP_DIR } from './paths.mjs';
 import { nowIso } from './ledger-io.mjs';
 
-export const EMPTY_QUEUE = { version: 1, project: 'unknown', packages: [], dropped: [] };
+export const EMPTY_QUEUE = { version: 2, gates: {}, dropped: [] };
 
 export function queuePaths(dir = LOOP_DIR) {
     return {
-        file: join(dir, 'queue.json'),
-        lastGood: join(dir, '.queue.last-good.json'),
+        file: join(dir, 'gates.json'),
+        lastGood: join(dir, '.gates.last-good.json'),
     };
 }
 
@@ -26,7 +27,7 @@ function readJson(file) {
  *
  * @returns {{queue:object, source:'file'|'last-good'|'empty', warning:string|null}}
  */
-export function loadQueueDetailed({ dir = LOOP_DIR } = {}) {
+export function loadStoreDetailed({ dir = LOOP_DIR } = {}) {
     const { file, lastGood } = queuePaths(dir);
 
     if (!existsSync(file)) return { queue: structuredClone(EMPTY_QUEUE), source: 'empty', warning: null };
@@ -34,7 +35,7 @@ export function loadQueueDetailed({ dir = LOOP_DIR } = {}) {
     try {
         return { queue: readJson(file), source: 'file', warning: null };
     } catch (e) {
-        const warning = `queue.json 解析失败（${e.message}）`;
+        const warning = `gates.json 解析失败（${e.message}）`;
         if (existsSync(lastGood)) {
             try {
                 return { queue: readJson(lastGood), source: 'last-good', warning: `${warning} —— 按上次成功快照运行，勿据此入队` };
@@ -47,14 +48,14 @@ export function loadQueueDetailed({ dir = LOOP_DIR } = {}) {
 }
 
 /** 便利包装：只要队列；告警走 onWarn（默认 console.error）。 */
-export function loadQueue({ dir = LOOP_DIR, onWarn = console.error } = {}) {
-    const { queue, warning } = loadQueueDetailed({ dir });
+export function loadStore({ dir = LOOP_DIR, onWarn = console.error } = {}) {
+    const { queue, warning } = loadStoreDetailed({ dir });
     if (warning) onWarn(`✗ ${warning}`);
     return queue;
 }
 
 /** 原子写 + 同步刷新 last-good 快照。 */
-export function saveQueue(queue, { dir = LOOP_DIR } = {}) {
+export function saveStore(queue, { dir = LOOP_DIR } = {}) {
     const { file, lastGood } = queuePaths(dir);
     queue.updatedAt = nowIso();
     const body = JSON.stringify(queue, null, 2) + '\n';

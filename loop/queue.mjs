@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { LOOP_DIR, REPO_ROOT, safeResolve, assertTrellisWritable } from './lib/paths.mjs';
-import { loadQueue, saveQueue } from './lib/queue-io.mjs';
+import { loadQueue, saveQueue, createItem, updateItem, dropItem, PRIORITIES, ORIGINS } from './lib/queue-store.mjs';
 import { prdHash, fileHash } from './lib/hash.mjs';
 import { classify } from './lib/classify.mjs';
 import { gateStateOf, gateProgress, requiredGates, HUMAN_GATES, GATE_LABEL, TASK_TYPES } from './lib/gates.mjs';
@@ -50,6 +50,9 @@ export function ctxOf(pkg) {
     return ctx;
 }
 
+const PRI_RANK = { P0: 0, P1: 1, P2: 2, P3: 3 };
+const byRank = (a, b) => (PRI_RANK[a.priority] ?? 2) - (PRI_RANK[b.priority] ?? 2) || (a.order ?? 0) - (b.order ?? 0);
+
 function view(pkg, states) {
     const ctx = ctxOf(pkg);
     const g = gateStateOf(pkg, ctx);
@@ -61,6 +64,7 @@ function view(pkg, states) {
         title: pkg.title,
         type: pkg.type,
         typeSource: pkg.typeSource,
+        priority: pkg.priority ?? 'P2',
         order: pkg.order ?? 0,
         gateState: g.state,
         blockedBy: g.blockedBy,
@@ -131,28 +135,39 @@ function cmdAdd() {
     const type = flag('type');
     if (!id) die('--id 必填');
     if (!type || !TASK_TYPES.includes(type)) die(`--type 必须是 ${TASK_TYPES.join('|')}`);
+    const priority = String(flag('priority', 'P2'));
     const q = loadQueue();
     if (q.packages.some((p) => p.id === id) || (q.dropped ?? []).some((p) => p.id === id)) die(`id 已存在（不可复用）：${id}`);
-    const pkg = {
+    const item = createItem({
         id,
-        task: flag('task', null),
-        title: flag('title', id),
+        title: String(flag('title', id)),
         type,
-        typeSource: 'manual',
+        priority,
+        origin: String(flag('origin', 'self')),
+        source: flag('source', null),
+        task: flag('task', null),
         order: Number(flag('order', 100)),
-        accept: [],
-        touch: [],
-        rollback: null,
-        budget: { minutes: 40, retries: 2 },
-        gates: {},
-        releaseCandidate: false,
-        origin: String(flag('origin', 'internal')),
-        reply: String(flag('reply', 'none')),
-        createdAt: nowIso(),
-    };
-    q.packages.push(pkg);
-    saveQueue(q);
-    console.log(`+ ${id} (${type})`);
+        touch: has('touch') ? String(flag('touch')).split(',') : [],
+        rollback: flag('rollback', null),
+        background: String(flag('background', '')),
+    });
+    console.log(`+ ${id} (${type} ${item.priority}) → loop/items/${id}.md`);
+    console.log('  下一步：补「背景」与「验收判据」两节，再登记 g2 红证');
+}
+
+function cmdSetPriority() {
+    const id = flag('id');
+    const priority = String(flag('priority', ''));
+    const by = flag('by');
+    if (!priority || !PRIORITIES.includes(priority)) die(`--priority 必须是 ${PRIORITIES.join('|')}`);
+    if (!by) die('--by 必填（优先级手改要留痕）');
+    const q = loadQueue();
+    const pkg = requirePkg(q, id);
+    const from = pkg.priority ?? 'P2';
+    if (from === priority) return console.log(`= ${id} 已是 ${priority}`);
+    updateItem(id, { priority });
+    appendEvent({ id, task: pkg.task, action: 'note', shift: flag('shift', 'pm'), verdict: `priority:${from}->${priority}`, evidence: `by ${by}` });
+    console.log(`✓ ${id} ${from} → ${priority}（已记入台账）`);
 }
 
 function writeConfirmedLine(prdPath, by, at) {
@@ -254,7 +269,7 @@ function cmdApprove() {
 function cmdList() {
     const q = loadQueue();
     const states = deriveRunStates(readEvents());
-    const rows = q.packages.map((p) => view(p, states)).sort((a, b) => a.order - b.order);
+    const rows = q.packages.map((p) => view(p, states)).sort(byRank);
     if (has('json')) return process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
     const pad = (s, n) => String(s ?? '-').padEnd(n);
     for (const r of rows) {
@@ -267,7 +282,7 @@ function cmdList() {
 function cmdDerive() {
     const q = loadQueue();
     const states = deriveRunStates(readEvents());
-    const rows = q.packages.map((p) => view(p, states)).sort((a, b) => a.order - b.order);
+    const rows = q.packages.map((p) => view(p, states)).sort(byRank);
     const summary = {
         total: rows.length,
         blocked: rows.filter((r) => r.gateState !== 'clear').length,
@@ -295,11 +310,8 @@ function cmdOverrideType() {
     const by = flag('by');
     if (!type || !TASK_TYPES.includes(type)) die(`--type 必须是 ${TASK_TYPES.join('|')}`);
     if (!by) die('--by 必填（覆写必须留痕）');
-    pkg.overriddenBy = { at: nowIso(), by, from: pkg.type };
-    pkg.type = type;
-    pkg.typeSource = 'override';
-    saveQueue(q);
-    appendEvent({ id: pkg.id, task: pkg.task, action: 'note', shift: 'pm', verdict: `type-override:${type}` });
+    updateItem(pkg.id, { type, typeSource: 'override', overriddenBy: { at: nowIso(), by, from: pkg.type } });
+    appendEvent({ id: pkg.id, task: pkg.task, action: 'note', shift: 'pm', verdict: `type-override:${type}`, evidence: `by ${by}` });
     console.log(`✓ ${pkg.id} type → ${type} (by ${by})`);
 }
 
@@ -308,31 +320,51 @@ function cmdDrop() {
     const pkg = requirePkg(q, flag('id'));
     const reason = flag('reason');
     if (!reason || reason === true) die('--reason 必填（丢弃必须留原因）');
-    q.packages = q.packages.filter((p) => p !== pkg);
-    q.dropped = q.dropped ?? [];
-    q.dropped.push({ id: pkg.id, task: pkg.task, reason: String(reason), at: nowIso() });
-    saveQueue(q);
+    const to = dropItem(pkg.id, String(reason));
     appendEvent({ id: pkg.id, task: pkg.task, action: 'drop', to: 'dropped', shift: 'pm', verdict: String(reason) });
-    console.log(`✗ ${pkg.id} 已丢弃：${reason}`);
+    console.log(`✗ ${pkg.id} 已丢弃：${reason}\n  归档 → ${to}`);
 }
 
 function cmdRender() {
     const q = loadQueue();
     const states = deriveRunStates(readEvents());
-    const rows = q.packages.map((p) => view(p, states)).sort((a, b) => a.order - b.order);
+    const rows = q.packages.map((p) => view(p, states)).sort(byRank);
     const md =
         `<!-- generated by loop/queue.mjs render — do not edit -->\n\n` +
         `# QUEUE\n\n> 生成于 ${nowIso()} · 真相源 \`loop/queue.json\`（人/看板经 \`queue.mjs\` 写）\n\n` +
-        `| 包 | 类型 | 门 | 门状态 | 运行 | 说明 |\n|---|---|---|---|---|---|\n` +
+        `| 包 | 优先级 | 类型 | 门 | 门状态 | 运行 | 说明 |\n|---|---|---|---|---|---|---|\n` +
         rows
             .map(
                 (r) =>
-                    `| \`${r.id}\` | ${r.type} | ${r.gatesDone}/${r.gatesTotal} | ${r.gateState}${r.drift ? ' ⚠drift' : ''} | ${r.runState} | ${r.blockedBy ? `${GATE_LABEL[r.blockedBy]}：${r.blockedReason}` : r.title ?? ''} |`
+                    `| \`${r.id}\` | ${r.priority ?? 'P2'} | ${r.type} | ${r.gatesDone}/${r.gatesTotal} | ${r.gateState}${r.drift ? ' ⚠drift' : ''} | ${r.runState} | ${r.blockedBy ? `${GATE_LABEL[r.blockedBy]}：${r.blockedReason}` : r.title ?? ''} |`
             )
             .join('\n') +
         `\n`;
     writeFileSync(join(LOOP_DIR, 'QUEUE.md'), md, 'utf8');
-    console.log(`wrote loop/QUEUE.md (${rows.length} packages)`);
+
+    // INDEX.md：按优先级分组的层次结构（人的入口）
+    const groups = new Map();
+    for (const r of rows) {
+        const p = r.priority ?? 'P2';
+        if (!groups.has(p)) groups.set(p, []);
+        groups.get(p).push(r);
+    }
+    const order = ['P0', 'P1', 'P2', 'P3'];
+    const idx =
+        `<!-- generated by loop/queue.mjs render — do not edit -->\n\n# 工作项索引\n\n> 生成于 ${nowIso()} · 真相源 \`loop/items/*.md\`（人写）+ \`loop/gates.json\`（机器写）\n` +
+        order
+            .filter((p) => groups.has(p))
+            .map((p) => {
+                const list = groups.get(p);
+                const lines = list.map((r) => {
+                    const door = r.gateState === 'clear' ? '门已清' : `${GATE_LABEL[r.blockedBy] ?? ''}待办`;
+                    return `- [${r.runState === 'released' ? 'x' : ' '}] \`${r.id}\` — ${r.title ?? ''} · ${r.type} · ${r.origin} · ${door}`;
+                });
+                return `\n## ${p}（${list.length}）\n\n${lines.join('\n')}\n`;
+            })
+            .join('');
+    writeFileSync(join(LOOP_DIR, 'INDEX.md'), idx, 'utf8');
+    console.log(`wrote loop/QUEUE.md + loop/INDEX.md (${rows.length} packages)`);
 }
 
 // ---------- INBOX：人自己的随手记录 + 分诊 ----------
@@ -367,29 +399,23 @@ function cmdTriage() {
     if (has('to-package')) {
         const type = flag('type');
         if (!type || !TASK_TYPES.includes(type)) die(`--to-package 需要 --type（${TASK_TYPES.join('|')}）`);
+        const priority = String(flag('priority', 'P2'));
         const q = loadQueue();
         const id = String(flag('id', generateId(n)));
         if (q.packages.some((p) => p.id === id)) die(`包 id 已存在：${id}`);
-        q.packages.push({
+        createItem({
             id,
-            task: flag('task', null),
             title: item.text,
             type,
-            typeSource: 'inbox',
-            order: Number(flag('order', 100)),
-            accept: [],
-            touch: [],
-            rollback: null,
-            budget: { minutes: 40, retries: 2 },
-            gates: {},
-            releaseCandidate: false,
+            priority,
             origin: item.source === 'self' ? 'self' : item.source,
-            reply: 'none',
-            createdAt: nowIso(),
+            source: `INBOX #${n}（${item.source}）`,
+            task: flag('task', null),
+            order: Number(flag('order', 100)),
+            background: String(flag('note', '')),
         });
-        saveQueue(q);
-        markResolved(`inbox:to-package:${id}`, 'loop/queue.json');
-        return console.log(`✓ #${n} → 包 ${id}（${type}）。下一步补 accept/touch，再 chain g2 红证`);
+        markResolved(`inbox:to-package:${id}`, 'loop/items');
+        return console.log(`✓ #${n} → loop/items/${id}.md（${type} ${priority}）`);
     }
 
     if (has('to-task')) {
@@ -483,7 +509,8 @@ function cmdSelfTest() {
 const help = `queue.mjs — loop 队列（唯一写者）
 
   classify [--base <ref>] [--hint k=v] [--uncertain] [--behavior] [--json]
-  add --id <id> --type <type> [--task <taskdir>] [--title <t>] [--order N]
+  add --id <id> --type <type> [--priority P0..P3] [--origin self|issue|pr|community|social] [--task <d>] [--title <t>] [--order N]
+  set-priority --id <id> --priority P0..P3 --by <who>   # 手改优先级，留痕入台账
   gate --id <id> --gate g1..g7 [--by <who>] [--red-proof <out>] [--ref <dir>] [--rubric <path>] [--fail]
   approve --id <id>              # 门未清零则拒绝（exit 1）
   list [--json]
@@ -539,6 +566,9 @@ switch (cmd) {
         break;
     case 'g8':
         cmdG8();
+        break;
+    case 'set-priority':
+        cmdSetPriority();
         break;
     case 'self-test':
         cmdSelfTest();

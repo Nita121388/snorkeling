@@ -3,51 +3,47 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadQueue, loadQueueDetailed, saveQueue, queuePaths } from './queue-io.mjs';
+import { loadStore, loadStoreDetailed, saveStore, queuePaths } from './queue-io.mjs';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'loop-qio-'));
 
-test('文件不存在 → 空队列（首次使用合法）', () => {
+test('文件不存在 → 空凭据（首次使用合法）', () => {
     const d = dir();
-    const r = loadQueueDetailed({ dir: d });
+    const r = loadStoreDetailed({ dir: d });
     assert.equal(r.source, 'empty');
-    assert.deepEqual(r.queue.packages, []);
+    assert.deepEqual(r.queue.gates, {});
 });
 
 test('正常读取', () => {
     const d = dir();
-    writeFileSync(queuePaths(d).file, JSON.stringify({ version: 1, packages: [{ id: 'a' }] }), 'utf8');
-    const r = loadQueueDetailed({ dir: d });
+    writeFileSync(queuePaths(d).file, JSON.stringify({ version: 2, gates: { a: { g2: {} } } }), 'utf8');
+    const r = loadStoreDetailed({ dir: d });
     assert.equal(r.source, 'file');
-    assert.equal(r.queue.packages.length, 1);
+    assert.ok(r.queue.gates.a);
 });
 
 test('解析失败 + 有 last-good → 回退快照并告警（绝不静默清空）', () => {
     const d = dir();
-    const q = { version: 1, project: 'x', packages: [{ id: 'keep-me' }], dropped: [] };
-    saveQueue(structuredClone(q), { dir: d });
-
-    // 把主文件写坏（模拟手改出错 / 半截写入）
-    writeFileSync(queuePaths(d).file, '{ "version": 1, "packages": [ ', 'utf8');
+    const store = { version: 2, gates: { keep: { g2: { redProof: 'x' } } }, dropped: [] };
+    saveStore(structuredClone(store), { dir: d });
+    writeFileSync(queuePaths(d).file, '{ "version": 2, "gates": { ', 'utf8');
 
     const warnings = [];
-    const got = loadQueue({ dir: d, onWarn: (m) => warnings.push(m) });
-
-    assert.equal(got.packages.length, 1, '必须回退到上次成功快照');
-    assert.equal(got.packages[0].id, 'keep-me');
+    const got = loadStore({ dir: d, onWarn: (m) => warnings.push(m) });
+    assert.ok(got.gates.keep, '必须回退到上次成功快照');
     assert.equal(warnings.length, 1);
     assert.match(warnings[0], /解析失败/);
 });
 
-test('解析失败 + 无 last-good → 抛错（不装作空队列）', () => {
+test('解析失败 + 无 last-good → 抛错（不装作空凭据）', () => {
     const d = dir();
     writeFileSync(queuePaths(d).file, 'not json at all', 'utf8');
-    assert.throws(() => loadQueue({ dir: d, onWarn: () => {} }), /没有可用的 last-good 快照/);
+    assert.throws(() => loadStore({ dir: d, onWarn: () => {} }), /没有可用的 last-good 快照/);
 });
 
-test('saveQueue 原子写 + 刷新 last-good', () => {
+test('saveStore 原子写 + 刷新 last-good', () => {
     const d = dir();
-    saveQueue({ version: 1, project: 'p', packages: [], dropped: [] }, { dir: d });
+    saveStore({ version: 2, gates: {}, dropped: [] }, { dir: d });
     const p = queuePaths(d);
     assert.ok(existsSync(p.file));
     assert.ok(existsSync(p.lastGood));

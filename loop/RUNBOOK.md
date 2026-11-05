@@ -115,6 +115,7 @@ node loop/ledger.mjs tail -n 30          # 最近事件
 node loop/ledger.mjs blocked             # 所有 parked（晨会第一屏）
 node loop/ledger.mjs render              # 重生成 LEDGER.md
 node loop/queue.mjs verify-ledger        # 台账自检（挂进 npm run verify）
+node loop/queue.mjs set-priority --id X --priority P0 --by nita   # 手改优先级（留痕）
 node loop/queue.mjs inbox                # 我自己的待分诊项
 node loop/queue.mjs g8                   # 沉淀门（重复问题必须先写规范）
 ```
@@ -177,3 +178,39 @@ node loop/queue.mjs triage --n 1 --drop --reason "重复"        # → 丢弃
 **INBOX 允许粗糙**：不分类、不写判据、不写期望值。铁律只有一条：分诊时必须三选一，没有第四条路——这就是“每条输入都有归宿”。
 
 分诊时机：每天晨会后的 10 分钟，或睡前排夜班队列时。绝不能攒过三天。
+
+## 11. 工作项笔记（`loop/items/<id>.md`）
+
+每个工作项是**一篇笔记**，不是 JSON 里的一行。人写字段与机器写字段分开存，各只有一个写者。
+
+```
+loop/items/N-1105-xxx.md    人写：标题 / 优先级 / 类型 / 来源 / 背景 / 验收判据
+loop/gates.json             机器写：门凭据（hash / 时间 / 签字人）
+loop/INDEX.md               生成物：按优先级分组的层次结构（人的入口）
+loop/QUEUE.md               生成物：带门状态的表
+```
+
+### 元信息（frontmatter）
+
+| 字段 | 取值 | 说明 |
+|---|---|---|
+| `id` | 稳定 ID | 永不复用 |
+| `title` | 一句话 | 允许漂移，不参与判定 |
+| `type` | 8 类之一 | 决定门链；冻结后 agent 不可改 |
+| `priority` | `P0` `P1` `P2` `P3` | **手改**：`set-priority`，留痕入台账 |
+| `origin` | `self` / `issue` / `pr` / `community` / `social` / `internal` | 来源渠道 |
+| `source` | 一句话 | 从哪来的（INBOX #n / 某个 issue / 谁提的） |
+| `task` | Trellis 任务目录名或 null | 唯一跨系统引用 |
+| `touch` | 路径白名单 | 出界即 abort |
+| `budget` | `{minutes, retries}` | 超预算 park |
+
+### 四个固定小节
+
+| 小节 | 写什么 | 不写什么 |
+|---|---|---|
+| `## 背景` | 为什么做这件事，判断依据 | 代码、函数名、实现细节 |
+| `## 来源` | 谁提的、从哪来、原始链接或编号 | 复述需求正文 |
+| `## 验收判据` | 每行 `- [ ] <反引号命令> → <反引号期望值>` | 自然语言“要做到好用” |
+| `## 记录` | 关键结论与教训（append） | 逐日流水（那是 LEDGER） |
+
+排序：`priority` 升序 → `order` → `id`。所以**改优先级就等于改开工顺序**，不需要动别处。

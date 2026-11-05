@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "project": "snorkeling",
+  "gates": {
+    "N-1105-loop-ledger": {
+      "g1": {
+        "at": "2026-11-05T01:50:10Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "f2eb2206fbbf"
+      },
+      "g2": {
+        "redProof": "node loop/queue.mjs self-test --expect=broken → 12 failed (expected-red) @ 12eab5dc",
+        "at": "2026-11-05T01:52:10Z"
+      },
+      "g6": {
+        "at": "2026-11-05T01:54:47Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "planHash": "12d2d7cde95f"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-05T01:52:41Z",
+        "by": "self"
+      }
+    },
+    "N-1105-harness-redproof": {
+      "g5": {
+        "ok": false,
+        "executedAt": null
+      }
+    },
+    "N-1105-cleanup-46to22": {
+      "g1": {
+        "at": "2026-11-05T09:36",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "c589d4b71e14"
+      }
+    },
+    "N-1105-queue-failopen": {
+      "g2": {
+        "redProof": "旧实现（解析失败返回空队列）→ node --test loop/lib/queue-io.test.mjs = 3 passed, 2 failed；修复后 5 passed, 0 failed",
+        "at": "2026-11-05T02:16:06Z"
+      }
+    }
+  },
+  "dropped": []
+}
