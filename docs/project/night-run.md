@@ -74,3 +74,14 @@
   preview-model / preview-explorer / waveconfig-model 全部改用它（去掉魔法字段与复制）。
 - `showExportModal` 返回 `void` 却被 `fireAndForget` 当 Promise 用 → 改成 `async` 并标注返回类型。
 - tsc 基线 63 → **49**（`docs/project/tsc-baseline.json`）；相关目录单测 478 passed。
+
+### 03:1x — 目录菜单/HTML 打开模式的选项翻译 + image-pager 观察
+
+- 新真 bug：`makeDirectoryEntryMenuItems` 把 `DirectoryEntryMenuOptions`（relativePathRoot/openInCurrentBlock/…）
+  直接当 `OpenPreviewEntryOptions`（forceNewBlock/directoryPath）传给 `openHtmlEntryWithMode` → TS 报"没有共同属性"，
+  实际后果是 `directoryPath` 永远 undefined：**从子目录右键打开 .html 时预览块丢掉目录根**。
+  新增 `menuOptionsToPreviewEntryOptions()` 显式翻译 + 两条纯函数单测；tsc 49 → 48。
+- 观察（未修，属别人 in_progress 任务 `11-05-preview-pager-hover-hint`）：
+  `node scripts/verify/image-pager/verify.mjs` → **30/31**，唯一红的是 `hover-tooltip-disabled-next`：
+  该断言在全树到底之后去 hover「下一站」，而那一刻按钮根本不存在（没有下一站）→ 属于断言自身选错时机。
+  建议改成（a）在树中段验证「下一站」hover 提示，（b）末尾只验证可见的 `›` 禁用态提示。

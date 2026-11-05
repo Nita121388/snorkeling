@@ -1079,3 +1079,18 @@ describe("directory move operations", () => {
         expect(model.refresh).toHaveBeenCalled();
     });
 });
+
+describe("menuOptionsToPreviewEntryOptions", () => {
+    it("translates the menu root into the preview directory root (HTML open modes)", async () => {
+        const { menuOptionsToPreviewEntryOptions } = await loadDirectoryMenuUtils([makeRepo("git")]);
+        expect(menuOptionsToPreviewEntryOptions({ relativePathRoot: "/repo/docs" })).toEqual({
+            forceNewBlock: false,
+            directoryPath: "/repo/docs",
+        });
+    });
+
+    it("falls back to null directory root and current block when no options are given", async () => {
+        const { menuOptionsToPreviewEntryOptions } = await loadDirectoryMenuUtils([makeRepo("git")]);
+        expect(menuOptionsToPreviewEntryOptions(undefined)).toEqual({ forceNewBlock: false, directoryPath: null });
+    });
+});
