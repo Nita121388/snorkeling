@@ -61,9 +61,25 @@ export function ensureLedger() {
     }
 }
 
-export function appendLedgerRow({ at, area, passed, total, mode, runName, commit }) {
+/**
+ * 台账结论文案（纯函数，便于单测）。
+ *
+ * 历史 bug：`fatal()` 的 run 是 passed=0/total=0，`passed === total` 成立 → 台账写成 **✅ 0/0**，
+ * 起不来（环境错误）的验证台在台账里显示成绿色。绝对不能把"没跑起来"记成通过。
+ */
+export function formatLedgerVerdict({ passed, total, fatal = null }) {
+    if (fatal != null && String(fatal).trim() !== "") {
+        return total > 0 ? `❌ ${passed}/${total}（fatal）` : `❌ fatal（未跑）`;
+    }
+    if (total === 0) {
+        return "⚠️ 0/0（无断言）";
+    }
+    return passed === total ? `✅ ${passed}/${total}` : `❌ ${passed}/${total}`;
+}
+
+export function appendLedgerRow({ at, area, passed, total, mode, runName, commit, fatal = null }) {
     ensureLedger();
-    const verdict = passed === total ? `✅ ${passed}/${total}` : `❌ ${passed}/${total}`;
+    const verdict = formatLedgerVerdict({ passed, total, fatal });
     appendFileSync(
         ledgerPath,
         `| ${at.slice(0, 16).replace("T", " ")} | ${area} | ${verdict} | ${mode} | \`${runName}\` | ${commit} |\n`
@@ -155,6 +171,7 @@ export function createReporter({ area, endpoint = "", mode = "launch+reset", met
                 mode,
                 runName,
                 commit,
+                fatal,
             });
         }
         return s;
