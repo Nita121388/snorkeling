@@ -131,24 +131,19 @@ export function getCommonTextItems(): CommonTextItem[] {
  * `created-asc`（Oldest first）不在图标控件里露出——没有既准确又不歧义的图标——但数据层
  * 保留该分支，需要时可加方向切换按钮。
  */
-export type CommonTextSortKey =
-    | "lastused-desc"
-    | "updated-desc"
-    | "created-desc"
-    | "created-asc"
-    | "usage-desc"
-    | "title-asc";
-
-export const DefaultCommonTextSortKey: CommonTextSortKey = "lastused-desc";
-
-const CommonTextSortKeys: readonly CommonTextSortKey[] = [
+const CommonTextSortKeys = [
     "lastused-desc",
     "updated-desc",
     "created-desc",
     "created-asc",
     "usage-desc",
     "title-asc",
-];
+] as const;
+
+// 类型从数组派生，避免"联合类型 + 运行期白名单"两份手写清单各自漂移。
+export type CommonTextSortKey = (typeof CommonTextSortKeys)[number];
+
+export const DefaultCommonTextSortKey: CommonTextSortKey = "lastused-desc";
 
 /** 把来路不明的值（localStorage / 旧版本残留）收口成合法排序键。 */
 export function normalizeCommonTextSortKey(value: unknown): CommonTextSortKey {
@@ -404,10 +399,7 @@ export function searchCommonTextComposeItems(
             tokenWeights.set(token, weight);
         }
     }
-    const baseItems = sortCommonTextItemsBy(
-        filterCommonTextItemsByTags(items, selectedTags, { untagged }),
-        sortKey
-    );
+    const baseItems = sortCommonTextItemsBy(filterCommonTextItemsByTags(items, selectedTags, { untagged }), sortKey);
     if (tokenWeights.size === 0) {
         return baseItems.slice(0, limit);
     }

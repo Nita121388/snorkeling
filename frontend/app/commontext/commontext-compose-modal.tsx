@@ -408,18 +408,22 @@ const CommonTextComposeModal = memo(() => {
         }
     }, [filteredItems.length, state.open, state.selectedIndex]);
 
-    // 列表次序变化（切换排序键、条目被过滤）时让行高亮跟上详情区：以 detailId 为准回填
-    // selectedIndex，避免"右侧显示 A、左侧高亮 B"。只读 detailId（不读 selectedIndex 作依赖），
-    // 函数式 setState 保证幂等，不会和 ↑↓ 导航互相打架。
+    // 切换排序键后让行高亮跟上详情区：以 detailId 为准回填 selectedIndex，避免"右侧显示 A、
+    // 左侧高亮 B"。**必须用 ref 门控成"只在排序键变化时触发"**：无门控版本会在任何
+    // filteredItems 变化时执行，把 setManualQuery / setEditor / toggleTag 们"重置到第 0 行"的
+    // 意图又拽回 detailId —— 搜索态下相关度第一名就不再是高亮行，Enter 会打开错条目（已实测）。
+    const alignedSortKeyRef = useRef<CommonTextSortKey>(state.sortKey);
     useEffect(() => {
         if (!state.open) return;
+        if (alignedSortKeyRef.current === state.sortKey) return;
+        alignedSortKeyRef.current = state.sortKey;
         setState((cur) => {
             if (cur.detailId == null) return cur;
             const index = filteredItems.findIndex((it) => it.id === cur.detailId);
             if (index < 0 || index === cur.selectedIndex) return cur;
             return { ...cur, selectedIndex: index };
         });
-    }, [filteredItems, state.open]);
+    }, [filteredItems, state.sortKey, state.open]);
 
     useEffect(() => {
         if (!state.open) return;
@@ -1287,86 +1291,93 @@ const CommonTextComposeModal = memo(() => {
                                     <div>{allItems.length === 0 ? "No common text yet" : "No matching text"}</div>
                                 </div>
                             ) : (
-                                filteredItems.map((item, index) => (
-                                    <div
-                                        key={item.id}
-                                        data-common-text-index={index}
-                                        // 验证台按标题定位行：DOM 次序即真实排序结果，便于断言重排。
-                                        data-commontext-title={item.title}
-                                    className={
-                                        "group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
-                                        (state.selectedIndex === index
-                                            ? "border-actionsoftborder bg-actionsoft"
-                                            : "border-transparent hover:bg-hoverbg")
-                                    }
-                                    // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
-                                    // 详情随每一行跳变。详情只在 click 时进编辑态。这里绝不能
-                                    // setState(尤 selectedIndex)：每次 setState 触发整弹窗重渲染，
-                                    // 上方 editor 的 textarea 会被 React 重新过一遍 DOM，正在用
-                                    // 中文输入法合到一半的拼音就这一过被打飞，光标丢、字打不进。
-                                    // 视觉上鼠标 hover 走下面 "hover:bg-hoverbg" 兜底，无需这里做事。
-                                    onClick={() => handleListItemClick(item)}
-                                    >
-                                        <div className="pt-0.5 w-4 shrink-0 text-secondary">
-                                            {item.pinned ? <i className="fa fa-solid fa-thumbtack text-[11px]" /> : null}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="text-xs font-medium truncate">{item.title}</div>
-                                            <div className="text-[11px] text-secondary truncate">
-                                                {makePreview(item.text)}
-                                            </div>
-                                            {(item.tags?.length ?? 0) > 0 && (
-                                                <div className="mt-0">
-                                                    <SessionTagChips tags={item.tags?.slice(0, 4)} />
-                                                </div>
-                                            )}
-                                        </div>
-                                        {/* 右侧固定宽槽：默认是「次数 + 更新时间」列（图标 + 数字，不新增行高），
-                                            鼠标悬浮时它淡出、插入按钮落在同一位置——不产生布局抖动，也不挤压标题列。 */}
+                                filteredItems.map((item, index) => {
+                                    // 每行只算一次 tooltip：列表上限 500 行，按键重渲染时不重复格式化日期。
+                                    const metaTooltip = describeCommonTextTime(item);
+                                    return (
                                         <div
-                                            className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end"
-                                            data-commontext-meta=""
+                                            key={item.id}
+                                            data-common-text-index={index}
+                                            // 验证台按标题定位行：DOM 次序即真实排序结果，便于断言重排。
+                                            data-commontext-title={item.title}
+                                        className={
+                                            "group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                                            (state.selectedIndex === index
+                                                ? "border-actionsoftborder bg-actionsoft"
+                                                : "border-transparent hover:bg-hoverbg")
+                                        }
+                                        // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
+                                        // 详情随每一行跳变。详情只在 click 时进编辑态。这里绝不能
+                                        // setState(尤 selectedIndex)：每次 setState 触发整弹窗重渲染，
+                                        // 上方 editor 的 textarea 会被 React 重新过一遍 DOM，正在用
+                                        // 中文输入法合到一半的拼音就这一过被打飞，光标丢、字打不进。
+                                        // 视觉上鼠标 hover 走下面 "hover:bg-hoverbg" 兜底，无需这里做事。
+                                        onClick={() => handleListItemClick(item)}
                                         >
-                                            <div
-                                                className="flex flex-col items-end gap-0.5 text-[10px] leading-none tabular-nums text-secondary transition-opacity group-hover:opacity-0"
-                                                title={describeCommonTextTime(item)}
-                                            >
-                                                <span
-                                                    data-commontext-usage={item.usagecount ?? 0}
-                                                    className={
-                                                        "inline-flex items-center gap-1 " +
-                                                        ((item.usagecount ?? 0) === 0 ? "text-muted" : "")
-                                                    }
-                                                    title={`Used ${item.usagecount ?? 0} time(s)`}
-                                                >
-                                                    <i className="fa fa-solid fa-repeat text-[9px]" />
-                                                    {item.usagecount ?? 0}
-                                                </span>
-                                                <span
-                                                    data-commontext-updated=""
-                                                    className="inline-flex items-center gap-1"
-                                                    title={describeCommonTextTime(item)}
-                                                >
-                                                    <i className="fa fa-regular fa-clock text-[9px]" />
-                                                    {formatSessionRelativeTime(item.updatedat)}
-                                                </span>
+                                            <div className="pt-0.5 w-4 shrink-0 text-secondary">
+                                                {item.pinned ? <i className="fa fa-solid fa-thumbtack text-[11px]" /> : null}
                                             </div>
-                                            <span
-                                                role="button"
-                                                tabIndex={-1}
-                                                aria-label="Insert this common text into the focused target"
-                                                title="Insert into focused target"
-                                                className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    fireAndForget(async () => {
-                                                        const result = await insertOrCopyCommonText(item.text);
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-xs font-medium truncate">{item.title}</div>
+                                                <div className="text-[11px] text-secondary truncate">
+                                                    {makePreview(item.text)}
+                                                </div>
+                                                {(item.tags?.length ?? 0) > 0 && (
+                                                    <div className="mt-0">
+                                                        <SessionTagChips tags={item.tags?.slice(0, 4)} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {/* 右侧固定宽槽：默认是「次数 + 更新时间」列（图标 + 数字，不新增行高），
+                                                鼠标悬浮时它淡出、插入按钮落在同一位置——hover 不产生布局抖动。
+                                                代价是标题列少了这 58px（靠 truncate 兜住，行高因此不变）。 */}
+                                            <div
+                                                className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end"
+                                                data-commontext-meta=""
+                                            >
+                                                <div
+                                                    className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] leading-none tabular-nums text-secondary transition-opacity group-hover:opacity-0"
+                                                    title={metaTooltip}
+                                                >
+                                                    <span
+                                                        data-commontext-usage={item.usagecount ?? 0}
+                                                        className={
+                                                            "inline-flex items-center gap-1 " +
+                                                            ((item.usagecount ?? 0) === 0 ? "text-muted" : "")
+                                                        }
+                                                        title={`Used ${item.usagecount ?? 0} time(s)`}
+                                                    >
+                                                        <i className="fa fa-solid fa-repeat text-[9px]" />
+                                                        {item.usagecount ?? 0}
+                                                    </span>
+                                                    <span
+                                                        data-commontext-updated=""
+                                                        className="inline-flex items-center gap-1"
+                                                        title={metaTooltip}
+                                                    >
+                                                        <i className="fa fa-regular fa-clock text-[9px]" />
+                                                        {formatSessionRelativeTime(item.updatedat)}
+                                                    </span>
+                                                </div>
+                                                <span
+                                                    role="button"
+                                                    tabIndex={-1}
+                                                    aria-label="Insert this common text into the focused target"
+                                                    title="Insert into focused target"
+                                                    className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                            fireAndForget(async () => {
+                                                            const result = await insertOrCopyCommonText(item.text);
+                                                            setStatus(
+                                                                result === "inserted" ? "Inserted" : "Copied (no target)",
+                                                                result === "inserted" ? "ok" : "info"
+                                                        );
+                                                        // 先把详情区未落盘的草稿写完再计数：两条写路径都是
+                                                        // "读全表 → 改 → 写全表"，交错会把用户刚改的正文覆盖掉。
+                                                        await flushDetailSave({ keepDirty: true });
                                                         // 行内插入/无目标回退复制同样是一次使用：与详情 Insert 同口径计数。
                                                         await recordCommonTextUse(item.id);
-                                                        setStatus(
-                                                            result === "inserted" ? "Inserted" : "Copied (no target)",
-                                                            result === "inserted" ? "ok" : "info"
-                                                        );
                                                     });
                                                 }}
                                             >
@@ -1374,7 +1385,8 @@ const CommonTextComposeModal = memo(() => {
                                             </span>
                                         </div>
                                     </div>
-                                ))
+                                    );
+                                })
                             )}
                         </div>
                     </div>

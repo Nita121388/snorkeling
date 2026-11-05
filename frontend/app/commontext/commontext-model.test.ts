@@ -332,7 +332,15 @@ describe("commontext-model", () => {
         it("keeps pinned items first in every mode", () => {
             const pinnedLast = [
                 ...items,
-                makeItem({ id: "pinned", title: "Zulu", createdat: 1, updatedat: 1, lastusedat: 1, usagecount: 0, pinned: true }),
+                makeItem({
+                    id: "pinned",
+                    title: "Zulu",
+                    createdat: 1,
+                    updatedat: 1,
+                    lastusedat: 1,
+                    usagecount: 0,
+                    pinned: true,
+                }),
             ];
             for (const key of [
                 "lastused-desc",
@@ -374,9 +382,25 @@ describe("commontext-model", () => {
             );
         });
 
-        it("keeps sortCommonTextItems bit-for-bit equal to the default key", () => {
-            // 这个函数还决定写盘顺序与弹窗 selectedIndex / ↑↓ 落点，语义必须原样保留。
-            expect(sortCommonTextItems(items)).toEqual(sortCommonTextItemsBy(items, DefaultCommonTextSortKey));
+        it("keeps sortCommonTextItems pinned-first / last-used / updated / title in that order", () => {
+            // 不用"与 sortCommonTextItemsBy 相等"来断言（那是自证：两者现在是委托关系）。
+            // 这里用冻结的期望次序钉住它——它决定写盘顺序、返回顺序与弹窗 ↑↓ 落点。
+            const fixture = [
+                makeItem({ id: "tie-b", title: "Beta", updatedat: 50, lastusedat: 10, pinned: false }),
+                makeItem({ id: "never", title: "Zulu", updatedat: 90, pinned: false }),
+                makeItem({ id: "used", title: "Alpha", updatedat: 10, lastusedat: 80, pinned: false }),
+                makeItem({ id: "pinned-old", title: "Pinned Old", updatedat: 1, lastusedat: 1, pinned: true }),
+                makeItem({ id: "tie-a", title: "Alpha Two", updatedat: 50, lastusedat: 10, pinned: false }),
+            ];
+            expect(sortCommonTextItems(fixture).map((item) => item.id)).toEqual([
+                "pinned-old", // 置顶恒最先，与时间无关
+                "used", // lastusedat 80
+                "tie-a", // lastusedat 10 并列 → updatedat 50 并列 → title 升序
+                "tie-b",
+                "never", // 无 lastusedat 落最后
+            ]);
+            // 默认键等价于显式传 lastused-desc（行为契约，不是实现细节）
+            expect(DefaultCommonTextSortKey).toBe("lastused-desc");
         });
     });
 
@@ -427,9 +451,9 @@ describe("commontext-model", () => {
         ];
 
         it("applies the chosen sort key while browsing", () => {
-            expect(searchCommonTextComposeItems(items, "", "", { sortKey: "title-asc" }).map((item) => item.id)).toEqual(
-                ["deploy", "refund", "standup"]
-            );
+            expect(
+                searchCommonTextComposeItems(items, "", "", { sortKey: "title-asc" }).map((item) => item.id)
+            ).toEqual(["deploy", "refund", "standup"]);
             expect(
                 searchCommonTextComposeItems(items, "", "", { sortKey: "usage-desc" }).map((item) => item.id)
             ).toEqual(["refund", "standup", "deploy"]);
@@ -443,9 +467,9 @@ describe("commontext-model", () => {
 
         it("lets relevance beat the chosen key while searching", () => {
             // 浏览态 title-asc 把 deploy 排第一；搜索 refund 时相关度把 refund 提到最前
-            expect(searchCommonTextComposeItems(items, "", "refund", { sortKey: "title-asc" }).map((item) => item.id)).toEqual([
-                "refund",
-            ]);
+            expect(
+                searchCommonTextComposeItems(items, "", "refund", { sortKey: "title-asc" }).map((item) => item.id)
+            ).toEqual(["refund"]);
         });
 
         it("keeps pinned as a tie-breaker only while searching", () => {
