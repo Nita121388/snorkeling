@@ -473,9 +473,14 @@ describe("board group storage", () => {
     });
 });
 
-describe("overview view mode — timeline 预留值", () => {
-    it("rejects timeline until the view is implemented (no white screen)", () => {
-        expect(isOverviewViewMode("timeline")).toBe(false);
-        expect(readOverviewViewMode({ getItem: () => "timeline", setItem: () => {} })).toBe("list");
+describe("overview view mode — 已实现值与未来值", () => {
+    it("accepts timeline now that the view exists", () => {
+        expect(isOverviewViewMode("timeline")).toBe(true);
+        expect(readOverviewViewMode({ getItem: () => "timeline", setItem: () => {} })).toBe("timeline");
+    });
+
+    it("still rejects values this build does not render (no white screen on downgrade)", () => {
+        expect(isOverviewViewMode("gantt-v2")).toBe(false);
+        expect(readOverviewViewMode({ getItem: () => "gantt-v2", setItem: () => {} })).toBe("list");
     });
 });

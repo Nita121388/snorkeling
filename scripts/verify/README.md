@@ -80,6 +80,7 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `preview-edit` | `run.mjs` | markdown inline 编辑的几何/像素零位移（rules 库） | ✅ |
 | `image-pager` | `verify.mjs` | 图片翻页与悬停提示 | ✅ |
 | `overview-board` | `verify.mjs` | Session Overview 看板：5 列常显 / 横向 snap / 卡片信息架构（emoji·标题·状态 chip，播种 agent 块验证） | ✅ |
+| `overview-timeline` | `verify.mjs` | Overview 时间线（Gantt · G1 会话寿命条）：刻度/now 线/当前状态尾巴/时间窗持久化 | ✅ |
 | `vcs-tree-status` | `verify.mjs` | Files VCS 行标记 | ✅ |
 | `vcs-panel-buttons` | `verify.mjs` | 版本管理面板按钮语义：无遗留文字按钮 / icon-only 都有 aria-label / 图标字形解析 / 行内动作 hover 浮现 | ✅ |
 | `agent-card-seen` | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡） | ✅ |

@@ -52,7 +52,18 @@ import {
     type OverviewBoardCard,
     type OverviewBoardGroup,
     type OverviewViewMode,
+    type OverviewViewModeImplemented,
 } from "./overview-board-model";
+import { OverviewTimeline } from "./overview-timeline";
+import {
+    buildTimelineRows,
+    formatTimelineRangeLabel,
+    overviewTimelineRangeAtom,
+    OverviewTimelineRangeDefault,
+    OverviewTimelineRanges,
+    timelineRangeToMs,
+    type OverviewTimelineRange,
+} from "./overview-timeline-model";
 import {
     agentStatusHookProvidersForInstall,
     agentStatusHookStatusesNeedingInstall,
@@ -1993,6 +2004,13 @@ function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): Tab
     return jotai.useAtomValue(tabGroupsAtom);
 }
 
+/** 视图按钮的图标/文案。新增视图时只改这里 + 渲染分支（顺序即按钮顺序）。 */
+const OverviewViewModeMeta: Record<OverviewViewModeImplemented, { icon: string; label: string; title: string }> = {
+    list: { icon: "table-list", label: "列表", title: "List view" },
+    board: { icon: "table-cells-large", label: "看板", title: "Board view" },
+    timeline: { icon: "chart-gantt", label: "时间线", title: "Timeline view" },
+};
+
 function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOverviewViewModel>) {
     const overviewModel = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
@@ -2004,6 +2022,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const agentsOnly = jotai.useAtomValue(overviewModel.agentsOnlyAtom);
     const viewMode = jotai.useAtomValue(overviewViewModeAtom);
     const boardGroup = jotai.useAtomValue(overviewBoardGroupAtom);
+    const timelineRange = jotai.useAtomValue(overviewTimelineRangeAtom) ?? OverviewTimelineRangeDefault;
     const openedThisLaunchTabIds = jotai.useAtomValue(openedThisLaunchTabIdsAtom);
     const blocks = useOverviewBlocks(workspace);
     const overviewVisible = useCurrentOverviewBlockVisible(blockId);
@@ -2307,6 +2326,37 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
             }),
         [boardBlocks, details, personas, sessionEmojis, summaries]
     );
+    // 时间线行：身份复用看板卡片，时间字段来自 SessionSummary，状态色来自 AgentStatusStore。
+    const timelineRows = useMemo(
+        () =>
+            buildTimelineRows(boardCards, {
+                nowMs: now,
+                windowMs: timelineRangeToMs(timelineRange),
+                sessions: Object.fromEntries(
+                    boardCards
+                        .filter((card) => card.sessionId !== "")
+                        .map((card) => {
+                            const summary = summaries[card.sessionId]?.summary ?? null;
+                            return [
+                                card.sessionId,
+                                {
+                                    createdAt: summary?.createdAt ?? 0,
+                                    updatedAt: summary?.updatedAt ?? card.updatedAt,
+                                    messageCount: summary?.messageCount ?? 0,
+                                    live: summary?.live === true,
+                                },
+                            ];
+                        })
+                ),
+                states: Object.fromEntries(
+                    boardCards.map((card) => [card.blockId, agentStatuses[card.blockId]?.state ?? null])
+                ),
+                activeSince: Object.fromEntries(
+                    boardCards.map((card) => [card.blockId, agentStatuses[card.blockId]?.activeSince ?? null])
+                ),
+            }),
+        [agentStatuses, boardCards, now, summaries, timelineRange]
+    );
     const setViewMode = React.useCallback((mode: OverviewViewMode) => {
         globalStore.set(overviewViewModeAtom, mode);
     }, []);
@@ -2349,6 +2399,29 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 </span>
                             </button>
                         ) : null}
+                        {OVERVIEW_BOARD_ENABLED && viewMode === "timeline" ? (
+                            <label className="session-overview-group-picker" title="时间窗">
+                                <i className={makeIconClass("clock", false)} />
+                                <select
+                                    className="session-overview-group-select"
+                                    data-overview-range
+                                    value={timelineRange}
+                                    aria-label="Timeline range"
+                                    onChange={(event) =>
+                                        globalStore.set(
+                                            overviewTimelineRangeAtom,
+                                            Number(event.target.value) as OverviewTimelineRange
+                                        )
+                                    }
+                                >
+                                    {OverviewTimelineRanges.map((range) => (
+                                        <option key={range} value={range}>
+                                            {formatTimelineRangeLabel(range)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        ) : null}
                         {OVERVIEW_BOARD_ENABLED ? (
                             <div className="session-overview-view-switch" role="group" aria-label="Overview view">
                                 {OverviewViewModesImplemented.map((mode) => (
@@ -2358,23 +2431,18 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                         className={cn(
                                             "session-overview-view-switch-button",
                                             // 旧验证脚本/用户习惯用 .session-overview-view-toggle 指"看板"这枚，
-                                            // 保留这个类名做兼容，D 接入 timeline 时不用再改脚本。
+                                            // 保留这个类名做兼容。
                                             mode === "board" && "session-overview-view-toggle",
                                             viewMode === mode && "is-active"
                                         )}
                                         data-overview-view={mode}
                                         onClick={() => setViewMode(mode)}
                                         aria-pressed={viewMode === mode}
-                                        aria-label={mode === "board" ? "Board view" : "List view"}
-                                        title={mode === "board" ? "Board view" : "List view"}
+                                        aria-label={OverviewViewModeMeta[mode].title}
+                                        title={OverviewViewModeMeta[mode].title}
                                     >
-                                        <i
-                                            className={makeIconClass(
-                                                mode === "board" ? "table-cells-large" : "table-list",
-                                                false
-                                            )}
-                                        />
-                                        <span>{mode === "board" ? "看板" : "列表"}</span>
+                                        <i className={makeIconClass(OverviewViewModeMeta[mode].icon, false)} />
+                                        <span>{OverviewViewModeMeta[mode].label}</span>
                                     </button>
                                 ))}
                             </div>
@@ -2435,7 +2503,20 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     </div>
                 </div>
                 <div className="session-overview-body">
-                    {OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
+                    {OVERVIEW_BOARD_ENABLED && viewMode === "timeline" ? (
+                        <OverviewTimeline
+                            rows={timelineRows}
+                            range={timelineRange}
+                            now={now}
+                            onOpenSession={(row) => {
+                                setSelectedBlockId(row.blockId);
+                                overviewModel.markBlockViewed(row.blockId);
+                                if (row.sessionId) {
+                                    openSessionDetail(row.sessionId);
+                                }
+                            }}
+                        />
+                    ) : OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
                         displayedTabGroups.length === 0 ? (
                             <div className="session-overview-empty">
                                 {tabGroups.length === 0 ? "No tabs in this workspace." : emptyMessage}

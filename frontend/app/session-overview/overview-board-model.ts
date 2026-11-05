@@ -9,9 +9,12 @@
 // panel goes back to the untouched list-only path.
 
 import { basename, formatCompactDuration } from "@/util/util";
-import { atomWithStorage } from "jotai/vanilla/utils";
-import type { SyncStorage } from "jotai/vanilla/utils/atomWithStorage";
 import type { ReactNode } from "react";
+import {
+    createPersistedEnum,
+    getDefaultPersistedEnumStorage,
+    type PersistedEnumStorageLike,
+} from "./persisted-enum";
 
 /** Single-file rollback switch: `false` restores the pure list view. */
 export const OVERVIEW_BOARD_ENABLED = true;
@@ -368,8 +371,10 @@ export function truncateBoardPreview(text: string | null | undefined, maxLength 
 
 export type OverviewViewMode = "list" | "board" | "timeline";
 
-/** 真正有渲染分支的视图；D 接入 timeline 时把 "timeline" 加进来即可。 */
-export const OverviewViewModesImplemented = ["list", "board"] as const;
+/** 真正有渲染分支的视图。新增视图时：这里加值 + panel 加渲染分支 + validator 自动跟着放行。 */
+export const OverviewViewModesImplemented = ["list", "board", "timeline"] as const;
+
+export type OverviewViewModeImplemented = (typeof OverviewViewModesImplemented)[number];
 
 export const OverviewViewModeStorageKey = "snorkeling.overview.viewMode";
 
@@ -385,21 +390,11 @@ export const OverviewBoardGroupStorageKey = "snorkeling.overview.boardGroup";
 
 export const OverviewBoardGroupDefault: OverviewBoardGroup = "status";
 
-export type OverviewViewModeStorageLike = {
-    getItem(key: string): string | null;
-    setItem(key: string, value: string): void;
-    removeItem?(key: string): void;
-};
+/** @deprecated 使用 `persisted-enum.ts` 的 `PersistedEnumStorageLike`；保留别名避免老测试改动。 */
+export type OverviewViewModeStorageLike = PersistedEnumStorageLike;
 
 export function getDefaultOverviewViewModeStorage(): OverviewViewModeStorageLike | null {
-    if (typeof window === "undefined") {
-        return null;
-    }
-    try {
-        return window.localStorage ?? null;
-    } catch {
-        return null;
-    }
+    return getDefaultPersistedEnumStorage();
 }
 
 export function isOverviewViewMode(value: unknown): value is OverviewViewMode {
@@ -410,71 +405,11 @@ export function isOverviewBoardGroup(value: unknown): value is OverviewBoardGrou
     return typeof value === "string" && (OverviewBoardGroups as readonly string[]).includes(value);
 }
 
-type PersistedEnum<T extends string> = {
-    key: string;
-    read: (storage: OverviewViewModeStorageLike | null) => T;
-    write: (storage: OverviewViewModeStorageLike | null, value: T) => T | null;
-    subscribe: (callback: () => void, target?: EventTarget | null) => () => void;
-    syncStorage: SyncStorage<T>;
-};
-
-function createPersistedEnum<T extends string>(
-    key: string,
-    isValue: (value: unknown) => value is T,
-    fallback: T
-): PersistedEnum<T> {
-    const read = (storage: OverviewViewModeStorageLike | null): T => {
-        if (storage == null) return fallback;
-        try {
-            const raw = storage.getItem(key);
-            return isValue(raw) ? raw : fallback;
-        } catch {
-            return fallback;
-        }
-    };
-    const write = (storage: OverviewViewModeStorageLike | null, value: T): T | null => {
-        if (storage == null || !isValue(value)) return null;
-        try {
-            storage.setItem(key, value);
-            return value;
-        } catch {
-            return null;
-        }
-    };
-    const subscribe = (
-        callback: () => void,
-        target: EventTarget | null = typeof window === "undefined" ? null : window
-    ): (() => void) => {
-        if (target == null || typeof target.addEventListener !== "function") {
-            return () => {};
-        }
-        const handleStorage = (event: Event) => {
-            const eventKey = (event as StorageEvent).key;
-            if (eventKey != null && eventKey !== key) return;
-            callback();
-        };
-        target.addEventListener("storage", handleStorage);
-        return () => target.removeEventListener("storage", handleStorage);
-    };
-    const syncStorage: SyncStorage<T> = {
-        getItem: () => read(getDefaultOverviewViewModeStorage()),
-        setItem: (_key, value) => {
-            write(getDefaultOverviewViewModeStorage(), value);
-        },
-        removeItem: () => {
-            const storage = getDefaultOverviewViewModeStorage();
-            try {
-                storage?.removeItem?.(key);
-            } catch {
-                // Ignore: a failed cleanup must not break rendering.
-            }
-        },
-        subscribe: (_key, callback) => subscribe(() => callback(read(getDefaultOverviewViewModeStorage()))),
-    };
-    return { key, read, write, subscribe, syncStorage };
-}
-
-const viewModeStorage = createPersistedEnum(OverviewViewModeStorageKey, isOverviewViewMode, OverviewViewModeDefault);
+const viewModeStorage = createPersistedEnum(
+    OverviewViewModeStorageKey,
+    isOverviewViewMode,
+    OverviewViewModeDefault
+);
 
 /** Corrupt / missing data falls back to the default, never throws. */
 export function readOverviewViewMode(storage: OverviewViewModeStorageLike | null): OverviewViewMode {
@@ -497,14 +432,9 @@ export function subscribeOverviewViewMode(
     return viewModeStorage.subscribe(callback, target);
 }
 
-export const overviewViewModeAtom = atomWithStorage<OverviewViewMode>(
-    OverviewViewModeStorageKey,
-    OverviewViewModeDefault,
-    viewModeStorage.syncStorage,
-    { getOnInit: true }
-);
+export const overviewViewModeAtom = viewModeStorage.atom;
 
-const boardGroupStorage = createPersistedEnum(
+export const boardGroupStorage = createPersistedEnum(
     OverviewBoardGroupStorageKey,
     isOverviewBoardGroup,
     OverviewBoardGroupDefault
@@ -521,9 +451,4 @@ export function writeOverviewBoardGroup(
     return boardGroupStorage.write(storage, group);
 }
 
-export const overviewBoardGroupAtom = atomWithStorage<OverviewBoardGroup>(
-    OverviewBoardGroupStorageKey,
-    OverviewBoardGroupDefault,
-    boardGroupStorage.syncStorage,
-    { getOnInit: true }
-);
+export const overviewBoardGroupAtom = boardGroupStorage.atom;

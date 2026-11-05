@@ -196,9 +196,10 @@ async function main() {
     // 2a0) 视图分段切换器 + 分组下拉
     check(
       "view-switch-segmented",
-      (st.viewButtons ?? []).length === 2 &&
+      // 三枚视图按钮（列表 / 看板 / 时间线）；时间线本身由 area `overview-timeline` 覆盖。
+      (st.viewButtons ?? []).length === 3 &&
         st.viewButtons.some((b) => b.mode === "board" && b.pressed === "true") &&
-        st.viewButtons.some((b) => b.mode === "list" && b.pressed === "false"),
+        st.viewButtons.filter((b) => b.pressed === "false").length === 2,
       `buttons=${JSON.stringify(st.viewButtons)}`
     );
     check("group-select-present", st.groupSelectValue === "status", `value=${st.groupSelectValue}`);

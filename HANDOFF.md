@@ -51,6 +51,7 @@ node scripts/verify/preview-edit/run.mjs --keep-open --expect=fixed   # 起隔�
 node scripts/verify/vcs-tree-status/verify.mjs --attach               # 期望 31/31
 node scripts/verify/image-pager/verify.mjs --attach                   # 期望 30/30
 node scripts/verify/overview-board/verify.mjs --attach                # 期望 38/38
+node scripts/verify/overview-timeline/verify.mjs                        # 期望 18/18（时间线）
 ```
 
 > ⚠️ **Windows 上跑 vcs-tree-status 必须指定带盘符的 fixture**：
