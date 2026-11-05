@@ -1291,7 +1291,6 @@
     }
 }
 
-
 /* ---------------------------------------------------------------------------
    Overview board view (status columns). List view styles above are untouched;
    every selector here is prefixed `.session-overview-board-*` (plus the toggle).
@@ -1304,11 +1303,24 @@
     border-color: rgb(from var(--accent-color) r g b / 0.42);
 }
 
+/* 看板永远是「一行多列」，窄面板横向 snap 滑列 —— 不再按宽度退回纵向堆叠
+   （纵向堆叠 = 状态分组列表，用户 2026-11-05 反馈「不像看板、还是列表化」的根因之一）。
+   列宽下限 220px：任何宽度下都至少露出相邻列的一条边，给出「右侧还有列」的信号。 */
 .session-overview-board {
     display: grid;
+    height: 100%;
     min-width: 0;
-    grid-template-columns: 1fr;
-    gap: 14px;
+    grid-auto-columns: minmax(220px, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
 }
 
 .session-overview-board-column {
@@ -1339,6 +1351,34 @@
     white-space: nowrap;
 }
 
+/* 状态色点由列头承载（卡片状态改由 AgentStatusChip 表达）。 */
+.session-overview-board-column-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+
+    &.is-blocked {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    &.is-done {
+        background: var(--agent-done-color, var(--success-color));
+    }
+
+    &.is-idle {
+        background: rgb(from var(--main-text-color) r g b / 0.35);
+    }
+
+    &.is-stale {
+        background: var(--agent-stale-color, #a855f7);
+    }
+}
+
 .session-overview-board-column-count {
     display: inline-flex;
     min-width: 18px;
@@ -1367,14 +1407,12 @@
 .session-overview-board-card {
     display: flex;
     width: 100%;
-    min-height: 76px;
     flex-direction: column;
     gap: 6px;
     padding: 10px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    appearance: none;
-    background: transparent;
+    background: linear-gradient(180deg, rgb(from var(--main-text-color) r g b / 0.035) 0%, transparent 100%);
     box-sizing: border-box;
     color: var(--main-text-color);
     cursor: pointer;
@@ -1385,6 +1423,7 @@
         border-color 120ms ease;
 
     &:hover {
+        border-color: rgb(from var(--accent-color) r g b / 0.38);
         background: var(--hover-bg-color-strong);
     }
 
@@ -1401,31 +1440,103 @@
     gap: 6px;
 }
 
+/* 定宽头像：emoji 用 13px 定宽（同 agent-persona 契约），logo 用品牌色，缺失时 robot 兜底。 */
+.session-overview-board-card-avatar {
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    background: rgb(from var(--main-text-color) r g b / 0.06);
+    font-size: 12px;
+    line-height: 1;
+
+    .agent-emoji-icon {
+        width: 13px;
+        font-size: 13px;
+        line-height: 1;
+    }
+}
+
 .session-overview-board-card-title {
     min-width: 0;
     flex: 1;
     overflow: hidden;
     font-size: 12px;
     font-weight: 600;
-    line-height: 1.25;
+    line-height: 1.3;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .session-overview-board-card-age {
+    flex: 0 0 auto;
     color: var(--secondary-text-color);
     font-size: 10px;
     white-space: nowrap;
 }
 
+/* 状态 chip + provider/项目 chip 同行；chip 来自共享 AgentStatusChip，这里只做紧凑化。 */
+.session-overview-board-card-meta {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.session-overview-board-card {
+    .session-overview-agent-status {
+        height: 16px;
+        padding: 0 5px;
+        gap: 4px;
+        font-size: 9px;
+    }
+
+    .session-overview-agent-status-age {
+        font-size: 9px;
+    }
+}
+
+.session-overview-board-card-view-label {
+    padding: 1px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
 .session-overview-board-card-preview {
-    display: block;
+    display: -webkit-box;
     overflow: hidden;
     color: var(--secondary-text-color);
     font-size: 11px;
-    line-height: 1.35;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.session-overview-board-card-note {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    line-height: 1.4;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.session-overview-board-card-note-mark {
+    flex: 0 0 auto;
+    opacity: 0.7;
 }
 
 .session-overview-board-card-chips {
@@ -1435,7 +1546,7 @@
 }
 
 .session-overview-board-chip {
-    max-width: 96px;
+    max-width: 120px;
     overflow: hidden;
     padding: 1px 6px;
     border: 1px solid var(--border-color);
@@ -1449,45 +1560,24 @@
     white-space: nowrap;
 }
 
-/* Status dots reuse the established agent tokens (same palette as the list chips). */
-.session-overview-board-card-dot {
-    width: 8px;
-    height: 8px;
-    flex: 0 0 auto;
-    border-radius: 50%;
-
-    &.is-blocked {
-        background: var(--warning-color, #f59e0b);
-    }
-
-    &.is-working {
-        background: var(--agent-working-color);
-    }
-
-    &.is-done {
-        background: var(--agent-done-color, var(--success-color));
-    }
-
-    &.is-idle {
-        background: rgb(from var(--main-text-color) r g b / 0.35);
-    }
-
-    &.is-stale {
-        background: var(--agent-stale-color, #a855f7);
-    }
+/* 列作为 snap 停靠点；列内纵向滚动与 board 横向滚动互不干扰。 */
+.session-overview-board-column {
+    scroll-snap-align: start;
 }
 
-/* Wide panels: card wall. One row, full panel height, per-column scrolling. */
-/* 多列看板：5 列 × minmax(220px) + 4 gap 最少需要约 1156px 内容宽。
-   断点设在 1160px，并在 720–1160px 区间保持纵向堆叠 —— 否则 auto-fit 会折成两行，
-   每列内部再套一层滚动，交互变得别扭（审核指出 720px 断点实际是错区间）。
-   用 auto-flow: column 强制单行等分，列高由 grid-template-rows 撑满面板。 */
-@container (min-width: 1160px) {
-    .session-overview-board {
-        height: 100%;
-        grid-auto-flow: column;
-        grid-auto-columns: minmax(0, 1fr);
-        grid-template-columns: none;
-        grid-template-rows: minmax(0, 1fr);
-    }
+/* 空列占位：列头仍常显（给出「看板有这几列」的结构感），列体给一句 muted 提示。 */
+.session-overview-board-empty {
+    display: flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed rgb(from var(--main-text-color) r g b / 0.12);
+    border-radius: 8px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.session-overview-board-column.is-empty .session-overview-board-cards {
+    overflow-y: hidden;
 }

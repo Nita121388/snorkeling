@@ -8,8 +8,10 @@
 // The single rollout switch lives here: set `OVERVIEW_BOARD_ENABLED = false` and the
 // panel goes back to the untouched list-only path.
 
+import { basename, formatCompactDuration } from "@/util/util";
 import { atomWithStorage } from "jotai/vanilla/utils";
 import type { SyncStorage } from "jotai/vanilla/utils/atomWithStorage";
+import type { ReactNode } from "react";
 
 /** Single-file rollback switch: `false` restores the pure list view. */
 export const OVERVIEW_BOARD_ENABLED = true;
@@ -119,6 +121,136 @@ export function groupBlocksByStatus<T extends OverviewBoardBlockLike>(
         columns.push({ status, title: OverviewBoardColumnTitles[status], blocks: columnBlocks });
     }
     return columns;
+}
+
+// ---------------------------------------------------------------------------
+// Board card model + pure display helpers
+//
+// The panel assembles `OverviewBoardCard[]` (identity, status, copy) and the
+// board stays a dumb renderer. Everything below is pure so the title/name
+// resolution rules are directly unit-testable.
+// ---------------------------------------------------------------------------
+
+/** How a card renders the agent identity (persona chain → brand logo → generic icon). */
+export type OverviewBoardAvatar =
+    | { kind: "emoji"; emoji: string }
+    | { kind: "logo"; icon: ReactNode; color?: string }
+    | { kind: "icon"; iconClass: string };
+
+export type OverviewBoardCard = {
+    blockId: string;
+    tabId: string;
+    /** Agent session id; empty for non-agent blocks. */
+    sessionId: string;
+    /** Already resolved for display: agent blocks carry the session title, never "Terminal". */
+    title: string;
+    isAgentLike: boolean;
+    avatar: OverviewBoardAvatar;
+    /** Display name ("Claude"/"Codex"); empty for non-agent blocks. */
+    providerLabel: string;
+    /** Fallback context chip: project basename, or the tab name when there is no project. */
+    projectName: string;
+    tabName: string;
+    /** Non-agent blocks show their view name ("Terminal") as a muted chip; agents use "". */
+    kindLabel: string;
+    /** Last readable message, one line. Note lives on its own row. */
+    preview: string;
+    note: string;
+    /** Recent-activity timestamp in ms; `0` hides the age label. */
+    updatedAt: number;
+};
+
+export type ResolveBoardCardTitleInput = {
+    isAgentLike: boolean;
+    sessionTitle?: string | null;
+    note?: string | null;
+    projectName?: string | null;
+    tabName?: string | null;
+    providerLabel?: string | null;
+    blockTitle?: string | null;
+};
+
+function cleanText(value: string | null | undefined): string {
+    return value?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+/** Known provider ids → display names. Unknown values are title-cased, never dropped. */
+const ProviderDisplayLabels: Record<string, string> = {
+    claude: "Claude",
+    "claude-code": "Claude",
+    codex: "Codex",
+    openai: "OpenAI",
+    gemini: "Gemini",
+    "gemini-cli": "Gemini",
+    opencode: "OpenCode",
+    pi: "Pi",
+    cursor: "Cursor",
+    copilot: "Copilot",
+    aider: "Aider",
+    amp: "Amp",
+    qwen: "Qwen",
+    droid: "Droid",
+    kimi: "Kimi",
+    grok: "Grok",
+};
+
+export function providerDisplayLabel(provider: string | null | undefined): string {
+    const normalized = cleanText(provider).toLowerCase();
+    if (normalized === "" || normalized === "agent") return "";
+    const known = ProviderDisplayLabels[normalized];
+    if (known != null) return known;
+    return normalized
+        .split(/[-_\s]+/)
+        .filter((part) => part !== "")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+/** `~/projects/snorkeling` → `snorkeling`. Empty path stays empty. */
+export function projectNameFromPath(path: string | null | undefined): string {
+    const raw = cleanText(path);
+    if (raw === "") return "";
+    const name = basename(raw);
+    // `basename("~")` === "~" and `basename("/")` === "/" — neither is a useful chip.
+    if (name === "~" || name === "/" || name === ".") return "";
+    return name;
+}
+
+/**
+ * Agent cards show the session title, never the block view name ("Terminal").
+ *
+ * Chain: `sessionTitle → note → projectName → "Provider · tab" → "Agent"`.
+ * Non-agent blocks keep the block title (which now falls back to the cwd basename).
+ */
+export function resolveBoardCardTitle(input: ResolveBoardCardTitleInput): string {
+    const blockTitle = cleanText(input.blockTitle);
+    const tabName = cleanText(input.tabName);
+    if (!input.isAgentLike) {
+        return blockTitle || tabName || "Untitled";
+    }
+    const sessionTitle = cleanText(input.sessionTitle);
+    if (sessionTitle !== "") return sessionTitle;
+    const note = cleanText(input.note);
+    if (note !== "") return note;
+    const projectName = cleanText(input.projectName);
+    if (projectName !== "") return projectName;
+    const providerLabel = cleanText(input.providerLabel);
+    if (providerLabel !== "" && tabName !== "") return `${providerLabel} · ${tabName}`;
+    return providerLabel || tabName || "Agent";
+}
+
+/** Compact age label for the card head (`now` / `12m` / `3h` / `2d`); "" hides it. */
+export function formatBoardAge(updatedAtMs: number, nowMs: number): string {
+    if (!updatedAtMs || updatedAtMs <= 0) return "";
+    return formatCompactDuration(updatedAtMs, nowMs);
+}
+
+/** One-line preview used by the card body. Returns "" so callers can skip the node. */
+export function truncateBoardPreview(text: string | null | undefined, maxLength = 120): string {
+    const normalized = cleanText(text);
+    if (normalized === "") return "";
+    if (normalized.length <= maxLength) return normalized;
+    return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
 // ---------------------------------------------------------------------------

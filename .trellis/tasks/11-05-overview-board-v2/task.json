@@ -1,0 +1,29 @@
+{
+  "id": "overview-board-v2",
+  "name": "overview-board-v2",
+  "title": "Overview 看板 v2：卡片信息架构 + 多列看板",
+  "description": "把 Overview 看板从「单列堆叠 + Terminal 标题 + 无色点」改造成真正的看板：卡片信息架构（emoji 头像 / 会话标题 / 状态 chip / 预览 / note），6 列常显 + 横向 snap 滑列 + 列头计数。视图切换与 Gantt 不在本批。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-05",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-05-overview-board-card-arch",
+    "11-05-overview-board-columns"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

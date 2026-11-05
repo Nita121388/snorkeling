@@ -1,18 +1,18 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import { ackAgentStatus as ackAgentStatusUnified } from "@/app/agent-status/agent-status-ack";
 import {
-    agentStatusPresentation,
     aggregateAgentStatuses,
     aggregateStatusLabel,
     formatAgentProvider,
-    isInferredAgentStatus,
 } from "@/app/agent-status/agent-status-derive";
+import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
+import { isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { ackAgentStatus as ackAgentStatusUnified } from "@/app/agent-status/agent-status-ack";
-import { isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
-import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
@@ -30,21 +30,29 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "@/app/view/aisessions/session-note-events";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
-import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
-import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
-import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
-import { cn, fireAndForget, makeIconClass } from "@/util/util";
+import { basename, cn, fireAndForget, formatCompactDuration, makeIconClass } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip";
+import { OverviewBoard } from "./overview-board";
+import {
+    OVERVIEW_BOARD_ENABLED,
+    overviewViewModeAtom,
+    projectNameFromPath,
+    providerDisplayLabel,
+    resolveBoardCardTitle,
+    truncateBoardPreview,
+    type OverviewBoardAvatar,
+    type OverviewBoardCard,
+} from "./overview-board-model";
 import {
     agentStatusHookProvidersForInstall,
     agentStatusHookStatusesNeedingInstall,
 } from "./session-overview-agent-status";
-import { OVERVIEW_BOARD_ENABLED, overviewViewModeAtom } from "./overview-board-model";
-import { OverviewBoard } from "./overview-board";
 import { SessionOverviewModel } from "./session-overview-model";
 import {
     getCachedSessionDetail,
@@ -150,13 +158,7 @@ function normalizeTimeMs(timestamp: number | null | undefined): number {
 }
 
 function formatUnreadDuration(startMs: number, nowMs: number): string {
-    const diffMs = Math.max(0, nowMs - startMs);
-    const minutes = Math.floor(diffMs / 60_000);
-    if (minutes < 1) return "now";
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
-    return `${Math.floor(hours / 24)}d`;
+    return formatCompactDuration(startMs, nowMs);
 }
 
 function messagePreview(message: Message | null): string {
@@ -175,7 +177,10 @@ function readableMessages(detail: SessionDetail | null): Message[] {
 
 function blockTitle(block: Block, view: string): string {
     const meta = block?.meta ?? {};
-    return meta["frame:title"] || meta["display:name"] || meta.file || meta.url || blockViewToName(view);
+    // cwd basename 兜底：agent/term 块通常没有 frame:title，直接回退 blockViewToName 会让
+    // Overview 卡片显示成裸 "Terminal"（用户 2026-11-05 反馈）。有 cwd 时用目录名更可辨识。
+    const cwd = typeof meta["cmd:cwd"] === "string" ? basename(meta["cmd:cwd"] as string) : "";
+    return meta["frame:title"] || meta["display:name"] || meta.file || meta.url || cwd || blockViewToName(view);
 }
 
 function isAgentMeta(meta: Record<string, unknown>, view: string): boolean {
@@ -233,6 +238,37 @@ async function deleteOverviewBlock(block: OverviewBlock): Promise<void> {
 
 function shouldShowFullOverviewBlock(block: OverviewBlock): boolean {
     return block.isAgentLike || block.view === "term";
+}
+
+/**
+ * Board card identity: persona chain (session → provider → brand logo) for agents,
+ * plain view icon for other blocks. Single source — same `getAgentIcon` as the list row
+ * and the term block header, so a persona change updates every surface.
+ */
+function resolveBoardAvatar(
+    block: OverviewBlock,
+    personas: Record<string, string>,
+    sessionEmojis: Record<string, string>
+): OverviewBoardAvatar {
+    if (!block.isAgentLike) {
+        return {
+            kind: "icon",
+            iconClass: makeIconClass(blockViewToIcon(block.view), false, { defaultIcon: "square" }),
+        };
+    }
+    const icon = getAgentIcon(block.agentProvider, {
+        meta: block.block?.meta,
+        sessionId: block.sessionId,
+        personas,
+        sessionEmojis,
+    });
+    if (icon?.kind === "emoji") {
+        return { kind: "emoji", emoji: icon.emoji };
+    }
+    if (icon?.kind === "logo") {
+        return { kind: "logo", icon: icon.icon, color: icon.iconColor };
+    }
+    return { kind: "icon", iconClass: makeIconClass("robot", false) };
 }
 
 function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
@@ -470,10 +506,7 @@ const CONSTANT_ZERO = () => 0;
 const GET_REVISION_SUMMARY = () => getSessionOverviewCacheRevision("summary");
 const GET_REVISION_DETAIL = () => getSessionOverviewCacheRevision("detail");
 
-function useSessionOverviewCacheRevision(
-    channel: SessionOverviewCacheChannel,
-    active = true
-): number {
+function useSessionOverviewCacheRevision(channel: SessionOverviewCacheChannel, active = true): number {
     // active=false 时 useSyncExternalStore 用 NOOP_SUBSCRIBE + CONSTANT_ZERO, 不订阅外部 store.
     // active 切回 true 后切回真实 subscribe + getSnapshot, React 会重新订阅并读取最新 revision.
     if (channel === "summary") {
@@ -499,10 +532,7 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number, active: 
     const sessionIdsKey = sessionIds.join("\n");
     // detail 消费者订阅 "detail" 频道; 隐藏 (active=false) 时退订, 节省 React 更新.
     const cacheRevision = useSessionOverviewCacheRevision("detail", active);
-    const cacheSnapshot = useMemo(
-        () => getSessionOverviewCacheSnapshot(sessionIds),
-        [cacheRevision, sessionIdsKey]
-    );
+    const cacheSnapshot = useMemo(() => getSessionOverviewCacheSnapshot(sessionIds), [cacheRevision, sessionIdsKey]);
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
     const refreshSeqRef = useRef(refreshSeq);
@@ -726,10 +756,7 @@ function useSessionSummaries(blocks: OverviewBlock[], active = true): Record<str
     const sessionIdsKey = sessionIds.join("\n");
     // summary 消费者订阅 "summary" 频道; 隐藏 (active=false) 时退订, 节省 React 更新.
     const cacheRevision = useSessionOverviewCacheRevision("summary", active);
-    const cacheSnapshot = useMemo(
-        () => getSessionOverviewCacheSnapshot(sessionIds),
-        [cacheRevision, sessionIdsKey]
-    );
+    const cacheSnapshot = useMemo(() => getSessionOverviewCacheSnapshot(sessionIds), [cacheRevision, sessionIdsKey]);
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
     const [summaries, setSummaries] = useState<Record<string, SummaryState>>(() => {
@@ -897,61 +924,6 @@ function SessionOverviewBadgeIcon({ badge, className }: { badge: Badge | null; c
     );
 }
 
-function statusDurationText(status: AgentStatus, now: number): string {
-    if (status.state === "idle" || status.state === "unknown") return "";
-    const start = status.activeSince ?? status.updatedAt;
-    if (!start) return "";
-    return formatUnreadDuration(start, now);
-}
-
-function AgentStatusChip({
-    status,
-    now,
-    blockId,
-    unread,
-    onAck,
-}: {
-    status: AgentStatus;
-    now: number;
-    blockId: string;
-    unread: boolean;
-    onAck: (blockId: string, status: AgentStatus) => void;
-}) {
-    const presentation = agentStatusPresentation(status);
-    const duration = statusDurationText(status, now);
-    const inferred = isInferredAgentStatus(status);
-    const tooltipText = unread
-        ? `${presentation.label} — click to mark as read`
-        : `${presentation.label} — up to date`;
-    return (
-        <Tooltip content={tooltipText} placement="top" hideOnClick divClassName="inline-flex">
-            <button
-                type="button"
-                className={cn(
-                    "session-overview-agent-status",
-                    `is-${status.state}`,
-                    status.phase !== "none" && `phase-${status.phase}`,
-                    inferred && "is-inferred",
-                    !unread && "is-acked"
-                )}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    onAck(blockId, status);
-                }}
-                aria-label={tooltipText}
-            >
-                <i className={makeIconClass(presentation.icon, false)} />
-                <span className="session-overview-agent-status-label">{presentation.label}</span>
-                {duration ? <span className="session-overview-agent-status-age">{duration}</span> : null}
-            </button>
-        </Tooltip>
-    );
-}
-
-function shouldShowAgentStatusChip(status: AgentStatus): boolean {
-    return status.state !== "idle" && status.state !== "unknown";
-}
-
 function shouldShowAgentAggregate(statuses: AgentStatus[]): boolean {
     return statuses.some(shouldShowAgentStatusChip);
 }
@@ -968,9 +940,7 @@ function AggregateStatusChip({
     if (!shouldShowAgentAggregate(statuses)) return null;
     const aggregate = aggregateAgentStatuses(statuses);
     const label = aggregateStatusLabel(aggregate);
-    const tooltipText = unread
-        ? `${label} — click to mark tab as read`
-        : `${label} — up to date`;
+    const tooltipText = unread ? `${label} — click to mark tab as read` : `${label} — up to date`;
     // Rendered as role="button" span (not <button>) because it sits inside the tab-toggle
     // <button>; nested <button> is invalid HTML. stopPropagation prevents the click from
     // toggling tab collapse.
@@ -979,11 +949,7 @@ function AggregateStatusChip({
             <span
                 role="button"
                 tabIndex={0}
-                className={cn(
-                    "session-overview-agent-aggregate",
-                    `is-${aggregate.state}`,
-                    !unread && "is-acked"
-                )}
+                className={cn("session-overview-agent-aggregate", `is-${aggregate.state}`, !unread && "is-acked")}
                 onClick={(event) => {
                     event.stopPropagation();
                     onAck();
@@ -1681,8 +1647,8 @@ function BlockRow({
                 !block.isAgentLike && "is-plain-block",
                 unread && "has-unread",
                 isCurrent && "is-current",
-                noteEditorOpen && "is-note-editing",
-                )}
+                noteEditorOpen && "is-note-editing"
+            )}
             onClick={() => onSelectBlock(block)}
         >
             <div className="session-overview-block-main">
@@ -1710,13 +1676,21 @@ function BlockRow({
                 </span>
                 <span className="session-overview-block-text">
                     {block.isAgentLike ? (
-                        <>{agentStatus ? <AgentStatusChip status={agentStatus} now={now} blockId={block.blockId} unread={agentStatusUnread} onAck={onAckAgentStatus} /> : null}</>
+                        <>
+                            {agentStatus ? (
+                                <AgentStatusChip
+                                    status={agentStatus}
+                                    now={now}
+                                    blockId={block.blockId}
+                                    unread={agentStatusUnread}
+                                    onAck={onAckAgentStatus}
+                                />
+                            ) : null}
+                        </>
                     ) : (
                         <>
                             <span className="session-overview-block-title">{block.title}</span>
-                            <span className="session-overview-block-meta">
-                                {blockViewToName(block.view)}
-                            </span>
+                            <span className="session-overview-block-meta">{blockViewToName(block.view)}</span>
                         </>
                     )}
                 </span>
@@ -1925,7 +1899,11 @@ function TabGroupSection({
                     <i className={makeIconClass("table-columns", false)} />
                     <span className="session-overview-tab-name">{group.tabName}</span>
                     <strong>{group.blocks.length}</strong>
-                    <AggregateStatusChip statuses={groupAgentStatuses} unread={tabAgentStatusUnread} onAck={onAckTabAgentStatuses} />
+                    <AggregateStatusChip
+                        statuses={groupAgentStatuses}
+                        unread={tabAgentStatusUnread}
+                        onAck={onAckTabAgentStatuses}
+                    />
                     <SessionOverviewBadgeIcon badge={tabBadges?.[0] ?? null} />
                 </button>
                 <button
@@ -2026,6 +2004,9 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const overviewVisible = useCurrentOverviewBlockVisible(blockId);
     const refreshSeq = jotai.useAtomValue(model.refreshSeqAtom);
     const summaries = useSessionSummaries(blocks, overviewVisible);
+    // Persona chain (session emoji → provider emoji → brand logo) for board card avatars.
+    const personas = useAgentPersonas();
+    const sessionEmojis = useSessionEmojis();
     const currentBlockId = jotai.useAtomValue(FocusManager.getInstance().blockFocusAtom);
     const sessionService = useMemo(() => new AISessionsServiceType(), []);
     const now = useNow(overviewVisible);
@@ -2277,6 +2258,50 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                 .filter((nextBlock) => shouldShowFullOverviewBlock(nextBlock)),
         [displayedTabGroups]
     );
+    const boardCards = useMemo<OverviewBoardCard[]>(
+        () =>
+            boardBlocks.map((nextBlock) => {
+                const summary = summaries[nextBlock.sessionId]?.summary ?? null;
+                const detailSummary = details[nextBlock.sessionId]?.detail?.summary ?? null;
+                const meta = (nextBlock.block?.meta ?? {}) as Record<string, unknown>;
+                const providerLabel = nextBlock.isAgentLike ? providerDisplayLabel(nextBlock.agentProvider) : "";
+                const projectName = nextBlock.isAgentLike
+                    ? projectNameFromPath(summary?.projectPath) ||
+                      projectNameFromPath(typeof meta["cmd:cwd"] === "string" ? (meta["cmd:cwd"] as string) : "")
+                    : "";
+                const note = (summary?.note ?? detailSummary?.note ?? "").trim();
+                const messages = readableMessages(details[nextBlock.sessionId]?.detail ?? null);
+                const preview = truncateBoardPreview(
+                    messages.length > 0 ? messagePreview(messages[messages.length - 1]) : "",
+                    160
+                );
+                const sessionTitle = (summary?.title ?? detailSummary?.title ?? "").trim();
+                return {
+                    blockId: nextBlock.blockId,
+                    tabId: nextBlock.tabId,
+                    sessionId: nextBlock.sessionId,
+                    tabName: nextBlock.tabName,
+                    isAgentLike: nextBlock.isAgentLike,
+                    title: resolveBoardCardTitle({
+                        isAgentLike: nextBlock.isAgentLike,
+                        sessionTitle,
+                        note,
+                        projectName,
+                        tabName: nextBlock.tabName,
+                        providerLabel,
+                        blockTitle: nextBlock.title,
+                    }),
+                    avatar: resolveBoardAvatar(nextBlock, personas, sessionEmojis),
+                    providerLabel,
+                    projectName,
+                    kindLabel: nextBlock.isAgentLike ? "" : blockViewToName(nextBlock.view),
+                    preview,
+                    note,
+                    updatedAt: normalizeTimeMs(summary?.updatedAt ?? detailSummary?.updatedAt),
+                } satisfies OverviewBoardCard;
+            }),
+        [boardBlocks, details, personas, sessionEmojis, summaries]
+    );
     const toggleViewMode = React.useCallback(() => {
         globalStore.set(overviewViewModeAtom, globalStore.get(overviewViewModeAtom) === "board" ? "list" : "board");
     }, []);
@@ -2390,30 +2415,17 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                             </div>
                         ) : (
                             <OverviewBoard
-                                blocks={boardBlocks}
+                                cards={boardCards}
                                 presentedStatuses={agentStatuses}
+                                agentStatuses={agentStatuses}
+                                includeEmpty
                                 now={now}
-                                getPreview={(nextBlock) => {
-                                    const note = summaries[nextBlock.sessionId]?.summary?.note?.trim();
-                                    if (note) return note;
-                                    const messages = readableMessages(
-                                        details[nextBlock.sessionId]?.detail ?? null
-                                    );
-                                    return messages.length > 0
-                                        ? messagePreview(messages[messages.length - 1])
-                                        : "";
-                                }}
-                                getUpdatedAt={(nextBlock) =>
-                                    normalizeTimeMs(
-                                        summaries[nextBlock.sessionId]?.summary?.updatedAt ??
-                                            details[nextBlock.sessionId]?.detail?.summary?.updatedAt
-                                    )
-                                }
-                                onOpenSession={(nextBlock) => {
-                                    setSelectedBlockId(nextBlock.blockId);
-                                    overviewModel.markBlockViewed(nextBlock.blockId);
-                                    if (nextBlock.sessionId) {
-                                        openSessionDetail(nextBlock.sessionId);
+                                onAckStatus={ackAgentStatus}
+                                onOpenSession={(card) => {
+                                    setSelectedBlockId(card.blockId);
+                                    overviewModel.markBlockViewed(card.blockId);
+                                    if (card.sessionId) {
+                                        openSessionDetail(card.sessionId);
                                     }
                                 }}
                             />

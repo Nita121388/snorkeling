@@ -3,13 +3,18 @@
 
 import { describe, expect, it } from "vitest";
 import {
-    OverviewBoardStatuses,
-    OverviewViewModeDefault,
-    OverviewViewModeStorageKey,
+    formatBoardAge,
     groupBlocksByStatus,
     isOverviewViewMode,
     normalizeOverviewBoardStatus,
+    OverviewBoardStatuses,
+    OverviewViewModeDefault,
+    OverviewViewModeStorageKey,
+    projectNameFromPath,
+    providerDisplayLabel,
     readOverviewViewMode,
+    resolveBoardCardTitle,
+    truncateBoardPreview,
     writeOverviewViewMode,
     type OverviewViewModeStorageLike,
 } from "./overview-board-model";
@@ -68,16 +73,13 @@ describe("groupBlocksByStatus", () => {
     });
 
     it("groups each status into its own column", () => {
-        const columns = groupBlocksByStatus(
-            [block("a"), block("b"), block("c"), block("d"), block("e")],
-            {
-                a: "blocked",
-                b: "working",
-                c: "done",
-                d: "idle",
-                e: "stale",
-            }
-        );
+        const columns = groupBlocksByStatus([block("a"), block("b"), block("c"), block("d"), block("e")], {
+            a: "blocked",
+            b: "working",
+            c: "done",
+            d: "idle",
+            e: "stale",
+        });
 
         expect(columns.map((column) => [column.status, column.blocks[0].blockId])).toEqual([
             ["blocked", "a"],
@@ -149,9 +151,13 @@ describe("groupBlocksByStatus", () => {
     });
 
     it("honors a custom status order", () => {
-        const columns = groupBlocksByStatus([block("a"), block("b")], { a: "done", b: "working" }, {
-            statuses: ["working", "done"],
-        });
+        const columns = groupBlocksByStatus(
+            [block("a"), block("b")],
+            { a: "done", b: "working" },
+            {
+                statuses: ["working", "done"],
+            }
+        );
 
         expect(columns.map((column) => column.status)).toEqual(["working", "done"]);
     });
@@ -209,5 +215,135 @@ describe("normalizeOverviewBoardStatus — 报警状态不能被灰成空闲", (
         expect(normalizeOverviewBoardStatus("nonsense")).toBe("idle");
         expect(normalizeOverviewBoardStatus(null)).toBe("idle");
         expect(normalizeOverviewBoardStatus(undefined)).toBe("idle");
+    });
+});
+
+describe("providerDisplayLabel", () => {
+    it("maps known providers to their display names", () => {
+        expect(providerDisplayLabel("claude")).toBe("Claude");
+        expect(providerDisplayLabel("claude-code")).toBe("Claude");
+        expect(providerDisplayLabel("CODEX")).toBe("Codex");
+        expect(providerDisplayLabel("opencode")).toBe("OpenCode");
+    });
+
+    it("title-cases unknown providers instead of dropping them", () => {
+        expect(providerDisplayLabel("some-new-agent")).toBe("Some New Agent");
+        expect(providerDisplayLabel("weird_thing")).toBe("Weird Thing");
+    });
+
+    it("returns empty for missing/generic providers", () => {
+        expect(providerDisplayLabel("")).toBe("");
+        expect(providerDisplayLabel(null)).toBe("");
+        expect(providerDisplayLabel(undefined)).toBe("");
+        expect(providerDisplayLabel("agent")).toBe("");
+    });
+});
+
+describe("projectNameFromPath", () => {
+    it("takes the basename for posix and windows paths", () => {
+        expect(projectNameFromPath("/Users/nita/Primary/projects/snorkeling")).toBe("snorkeling");
+        expect(projectNameFromPath("/Users/nita/Primary/projects/snorkeling/")).toBe("snorkeling");
+        expect(projectNameFromPath("E:\\code\\snorkeling")).toBe("snorkeling");
+    });
+
+    it("refuses paths whose basename is not a useful chip", () => {
+        expect(projectNameFromPath("")).toBe("");
+        expect(projectNameFromPath(null)).toBe("");
+        expect(projectNameFromPath("/")).toBe("");
+        expect(projectNameFromPath("~")).toBe("");
+        expect(projectNameFromPath(".")).toBe("");
+    });
+});
+
+describe("resolveBoardCardTitle", () => {
+    it("prefers the session title for agent cards", () => {
+        expect(
+            resolveBoardCardTitle({
+                isAgentLike: true,
+                sessionTitle: "Refactor auth middleware",
+                note: "note text",
+                projectName: "snorkeling",
+                tabName: "main",
+                providerLabel: "Claude",
+                blockTitle: "Terminal",
+            })
+        ).toBe("Refactor auth middleware");
+    });
+
+    it("falls back note → project → provider · tab for agent cards", () => {
+        expect(
+            resolveBoardCardTitle({
+                isAgentLike: true,
+                note: "先跑类型检查",
+                projectName: "snorkeling",
+                tabName: "main",
+                providerLabel: "Claude",
+            })
+        ).toBe("先跑类型检查");
+        expect(
+            resolveBoardCardTitle({
+                isAgentLike: true,
+                projectName: "snorkeling",
+                tabName: "main",
+                providerLabel: "Claude",
+            })
+        ).toBe("snorkeling");
+        expect(resolveBoardCardTitle({ isAgentLike: true, tabName: "main", providerLabel: "Claude" })).toBe(
+            "Claude · main"
+        );
+        expect(resolveBoardCardTitle({ isAgentLike: true })).toBe("Agent");
+    });
+
+    it("never renders the block view name for agent cards", () => {
+        const title = resolveBoardCardTitle({
+            isAgentLike: true,
+            tabName: "main",
+            providerLabel: "Codex",
+            blockTitle: "Terminal",
+        });
+        expect(title).not.toBe("Terminal");
+    });
+
+    it("keeps the block title for non-agent blocks", () => {
+        expect(resolveBoardCardTitle({ isAgentLike: false, blockTitle: "snorkeling", tabName: "main" })).toBe(
+            "snorkeling"
+        );
+        expect(resolveBoardCardTitle({ isAgentLike: false, tabName: "main" })).toBe("main");
+        expect(resolveBoardCardTitle({ isAgentLike: false })).toBe("Untitled");
+    });
+
+    it("collapses whitespace and ignores blank strings", () => {
+        expect(resolveBoardCardTitle({ isAgentLike: true, sessionTitle: "  fix   preview  ", tabName: "main" })).toBe(
+            "fix preview"
+        );
+    });
+});
+
+describe("formatBoardAge", () => {
+    const now = 1_700_000_000_000;
+    it("formats compact ages", () => {
+        expect(formatBoardAge(now - 30_000, now)).toBe("now");
+        expect(formatBoardAge(now - 12 * 60_000, now)).toBe("12m");
+        expect(formatBoardAge(now - 3 * 3_600_000, now)).toBe("3h");
+        expect(formatBoardAge(now - 2 * 86_400_000, now)).toBe("2d");
+    });
+
+    it("hides the age when there is no timestamp", () => {
+        expect(formatBoardAge(0, now)).toBe("");
+        expect(formatBoardAge(-1, now)).toBe("");
+    });
+});
+
+describe("truncateBoardPreview", () => {
+    it("collapses whitespace and keeps short text", () => {
+        expect(truncateBoardPreview("  hello   world ")).toBe("hello world");
+        expect(truncateBoardPreview("")).toBe("");
+        expect(truncateBoardPreview(null)).toBe("");
+    });
+
+    it("ellipsizes long text at the requested length", () => {
+        const out = truncateBoardPreview("x".repeat(40), 10);
+        expect(out.length).toBe(10);
+        expect(out.endsWith("...")).toBe(true);
     });
 });
