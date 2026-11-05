@@ -200,3 +200,44 @@ for (const e of catalog.entries) {
 
 **测例提示**：断言不要写 `expect(r[0].char).toBe("✅")`，改用 `shortcode` 断言
 （`expect(r[0].shortcode).toBe("white_check_mark")`），否则会因为不可见的 VS16 假失败。
+
+---
+
+## Agent 状态类"跨面视觉"问题：必须用真机验证台收尾（2026-11-05, task 11-05-agent-card-done-seen）
+
+「Done 不跟随 seen」这类 bug 的判据是**用户看到的那一眼**，单测只能覆盖 read 判定表，
+覆盖不到"悬浮卡真的换色了吗"。所以每次改 agent 状态呈现层，都要跑一次真机台子：
+
+```bash
+node scripts/verify/agent-card-seen/verify.mjs              # 起干净实例 → 全流程 → 自动关
+node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例（迭代 <1min）
+```
+
+它会真的新建一个 Pi agent block（跑 `~/.pi/agent/settings.json` 的默认 provider/model）、
+发 prompt 等 `working → Done`、断言三个面（头部徽章 / 悬浮卡 / Tab 悬浮卡）的
+`read` 与文案、真点徽章 ack、再断言同帧变 seen，最后把 `report.json` + 7 张截图写进
+`verify-runs/<ts>-agent-card-seen/`。
+
+### 六个必踩的坑（都已写进脚本，别退回去）
+
+1. **首次启动的引导向导**（`Welcome to Snorkeling` → `Next` → `Get Started`）会盖住 WidgetsBar。
+   它只有 ~560px，比 `dismissOverlays()` 的"浮窗 > 50% 视口"阈值小，因此**不会被自动关掉**：
+   要按按钮文案（Continue/Next/Skip/Get Started）循环点，最多 8 轮。
+2. **WidgetsBar 收起时图标落在视口外**：根节点是 `relative w-0`，覆盖层被 `translate(48px)` 推出去，
+   图标 `getBoundingClientRect().x` 会 > `innerWidth`。点击前先点
+   `[aria-label="Expand widgets bar"]`，并在探针里过滤 `cx < innerWidth - 2`。
+3. **多 Tab renderer**：每个 Tab 一个 BrowserView（窗口标题 `Wave Terminal - <tab>`），
+   非激活的可能 `innerWidth === 0`。选 renderer 要按「有 `.block` 且宽高 > 0」挑，不能取第一个。
+4. **block 头部文本带 LRM**：`.agent-status-header` 的 `textContent` 前面有 `\u200e`，
+   `^Done` 直接匹配会失败。断言前统一 `replace(/[\u200b-\u200f\ufeff]/g, "")`。
+5. **elapsed 文案是两段词**：`formatDoneElapsed()` 在 <30s 返回 `"Just now"`，
+   所以"未读 Done 带 elapsed"的判据是 `/^Done\s+\S/`（且 != `"Done"`），不是 `/^Done\s+\S+$/`。
+6. **悬浮卡有 hover 延迟**：一次 `mouseMoved` 不一定弹出来，要"移到锚点 → 等 600ms → 读 DOM"
+   循环到出现为止（最多 ~8s）；读的是 `.agent-card-status-chip[data-agent-read]`，
+   **不要读颜色** —— 颜色随主题变，`read`/`is-seen`/`is-done-unread` 才是契约。
+
+### 收尾纪律（用户窗口别乱开）
+
+验证实例是**真的 Electron 窗口**（深色）。默认 `ensureInstance({resetProfile:true})` + 结束时
+`cleanup()`（端口 → PID 关闭，`windowsHide:true` 避免 PowerShell 闪窗）；
+只有显式 `--keep-open` 才留着。**不要**在没打招呼的时候批量起实例。

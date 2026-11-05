@@ -123,7 +123,7 @@ async function trySmokeTest(wsUrl) {
     }
 }
 
-async function connectToTarget(endpoint, target) {
+export async function connectToTarget(endpoint, target) {
     const ws = new WebSocket(target.webSocketDebuggerUrl, { perMessageDeflate: false });
     const pending = new Map();
     let seq = 0;
@@ -259,6 +259,12 @@ async function connectToTarget(endpoint, target) {
         throw new Error(`截图失败：${trace.join(" | ")}`);
     }
 
+    /** 真实指针移动（仅 mouseMoved，用于 hover 探测）。 */
+    async function move(x, y) {
+        await activate();
+        await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, buttons: 0, pointerType: "mouse" });
+    }
+
     /** 真实指针单击（关弹窗、聚焦块用）。 */
     async function click(x, y) {
         await activate();
@@ -297,6 +303,7 @@ async function connectToTarget(endpoint, target) {
         evaluate,
         activate,
         screenshot,
+        move,
         click,
         dblclick,
         pressKey,
@@ -327,4 +334,21 @@ export async function waitFor(client, expression, { timeoutMs = 20000, intervalM
         await new Promise((r) => setTimeout(r, intervalMs));
     }
     throw new Error(`等待超时（${timeoutMs}ms）：${label}`);
+}
+
+/**
+ * 连到满足 predicate 的那个 page target。
+ * 多 tab renderer（每个 Tab 一个 BrowserView）时，标题会从 "Wave Terminal" 变成
+ * "Wave Terminal - <tabname>"，且非激活窗口可能是 0x0 —— 所以按 DOM 标记挑更稳。
+ */
+export async function connectWhere(endpoint, predicate, { label = "page target" } = {}) {
+    const pages = (await listPageTargets(endpoint)).filter((t) => /index\.html/.test(t.url ?? ""));
+    for (const page of pages) {
+        const client = await connectToTarget(endpoint, page).catch(() => null);
+        if (client == null) continue;
+        const hit = await client.evaluate(`(() => { try { return (${predicate})(window); } catch (e) { return false; } })()`).catch(() => false);
+        if (hit) return client;
+        client.close();
+    }
+    throw new Error(`没有匹配的 ${label}（现有：${pages.map((p) => p.title).join(" | ") || "无"}）`);
 }

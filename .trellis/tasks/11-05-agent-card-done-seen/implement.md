@@ -8,7 +8,9 @@
 - [x] 2. 子任务 `11-05-agent-card-seen-surfaces`：E/F/G 三面接入 view.read + `.is-seen` 样式 + pill ack。
 - [x] 3. 子任务 `11-05-agent-ack-seen-writers`：`ackAgentStatus` / `markAgentSeen` 收口 + 打开会话写 seenAt。
 - [x] 4. 整合验收：7 个面同 read；AC1–AC6 全绿（`agent-status-cross-surface-read.test.ts` 7 条契约用例）。
-- [ ] 5. 真机 CDP 复核（本次未做：检查时 9222 无运行实例，需用户开 `npm run dev:cdp` 后复验视觉）。
+- [x] 5. 真机 CDP 复核：`node scripts/verify/agent-card-seen/verify.mjs` 全自动跑通（新建 Pi agent →
+      等 Done → 断言 3 个面 unread → 点徽章 ack → 断言 3 个面 seen），21/21 全绿。
+      证据包：`verify-runs/20261105T05392-agent-card-seen/`（report.md + 7 张截图）。
 
 ## 验证命令
 
@@ -20,7 +22,8 @@ npx tsc --noEmit -p frontend/tsconfig.json
 ## Review gates
 
 - gate 1（子任务 1 后）：`deriveAgentStatusView` 判定表单测全绿，且 `agent-status-derive.test.ts` 未改动仍全绿。
-- gate 2（子任务 2 后）：CDP 实测 `node scripts/inspect-electron-ui.mjs` 抓 hover 卡的 pill class，确认 ack 前后 `.is-seen` ↔ `is-done-unread` 互斥切换。
+- gate 2（子任务 2 后）：CDP 实测 hover 卡的 pill class，确认 ack 前后 `.is-seen` ↔ `is-done-unread` 互斥切换。
+  **已落地为可重复运行的验证台**：`scripts/verify/agent-card-seen/verify.mjs`（`--attach` 复用实例）。
 - gate 3（子任务 3 后）：`detect_changes` 确认只影响预期符号。
 
 ## Rollback points

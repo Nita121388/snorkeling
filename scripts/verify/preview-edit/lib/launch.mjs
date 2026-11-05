@@ -36,7 +36,7 @@ export function findPidByPort(port) {
                 "-Command",
                 `(Get-NetTCPConnection -LocalPort ${Number(port)} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
             ],
-            { encoding: "utf8", timeout: 15000 }
+            { encoding: "utf8", timeout: 15000, windowsHide: true }
         ).trim();
         const pid = Number(out.split(/\s+/)[0]);
         return Number.isFinite(pid) && pid > 0 ? pid : null;
@@ -50,6 +50,7 @@ export function killPid(pid) {
     try {
         execFileSync("powershell", ["-NoProfile", "-Command", `Stop-Process -Id ${Number(pid)} -Force`], {
             timeout: 15000,
+            windowsHide: true,
         });
     } catch {
         /* already gone */
