@@ -263,3 +263,26 @@ node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例
   不要用"第一个匹配 selector 的元素"（会读到上一轮留下的同类对象 → 假绿）。
 - **等跃迁不等终态**：先等 `working` 系文案、再等 `Done`；只看终态会在"上一轮已经 Done"
   时立刻返回，断言的是旧状态。
+
+---
+
+## Tailwind 类名必须先确认真身 (2026-11-05, task 11-05-vcs-panel-icon-buttons)
+
+`frontend/tailwindsetup.css` 的 `@theme inline` 是**唯一**的 token 来源。写之前先 grep：
+
+- 存在：`foreground / secondary / muted / accent / error / success / warning / action /
+  actiontext / actionhover / hoverbg / surface / block / panel / overlay / border`。
+- **不存在**（曾误用于 VCS 面板，全部是死样式）：`ink / ink-muted / ink-faint / detail /
+  danger / ok`。要红用 `text-error`、要绿用 `text-success`。
+- **`.iconbutton` 这个 class 从未被定义过**。全仓 60 处 `className="iconbutton …"` 只靠同行
+  的尺寸 utility 生效，hover/focus/disabled 态一律缺失。要么用 `<IconButton decl>` /
+  新的 `<VcsIconButton>`，要么自己把 hover 态写全；不要以为写了 `iconbutton` 就有样式。
+
+### icon-only 按钮的硬约束
+
+- `title` 与 `aria-label` **同时**写（读屏只认 aria-label，鼠标只认 title）。
+- hover 才浮现的行内动作必须带 `focus-visible:opacity-100`，否则键盘用户永远看不到它。
+- hover 着色一律用 `enabled:hover:*`，避免 disabled 状态被 hover 破功。
+- 有文字的按钮是**主 CTA / 导航 / 段头折展**的特权；`Diff / History / Reset / Prev / Next`
+  这类重复动作一律图标化（VCS 面板 17 处已收口，见
+  `frontend/app/view/vcs/vcs-panel-buttons.test.ts` 的源码级守卫）。

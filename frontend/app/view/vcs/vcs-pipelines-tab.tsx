@@ -6,6 +6,7 @@ import { useWaveEnv } from "@/app/waveenv/waveenv";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { isBlank, makeConnRoute } from "@/util/util";
 import React from "react";
+import { VcsIconButton } from "./vcs-icon-button";
 
 type VcsUiEnv = WaveEnv;
 
@@ -130,12 +131,11 @@ export function VcsPipelinesTab({
             {/* Header */}
             <div className="flex items-center justify-between px-1 py-1">
                 <span className="text-xs font-medium text-secondary">CI / CD Pipelines</span>
-                <button
-                    className="text-[11px] text-accent hover:underline cursor-pointer"
+                <VcsIconButton
+                    icon="arrows-rotate"
+                    title="Refresh pipelines"
                     onClick={() => loadPipelines()}
-                >
-                    Refresh
-                </button>
+                />
             </div>
 
             {/* Runs list */}

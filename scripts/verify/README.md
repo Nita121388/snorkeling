@@ -62,6 +62,17 @@ node scripts/verify/agent-card-seen/verify.mjs --dry        # 只解析参数/�
    会 `rm -rf` 别人的 `.runcfg/<profile>`）。新 area 建议 `profile: "verify-<area>"` +
    独占端口，例：`property-editor` 用 `verify-property-editor` / `9233` / `51801`。
 
+### `vcs-panel-buttons` 的运行前提
+
+它是**只 attach** 的台子（不自己起实例，避免和并行 agent 抢 `.runcfg/verify`）：
+
+```bash
+# 用专用 profile + 端口起一个实例（与别人的 verify 实例互不干扰）
+node scripts/dev-isolated.mjs --profile verify-vcs-panel-buttons --vite-port 51798 --cdp-port 9232
+# 页面里没有 vcs 块也没关系：台子会用 app 自己的 createBlock 建一个（vcs:path = 本仓库）
+node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
+```
+
 ## 现有 area
 
 | area | 入口 | 覆盖什么 | 需要 GUI |
@@ -70,5 +81,6 @@ node scripts/verify/agent-card-seen/verify.mjs --dry        # 只解析参数/�
 | `image-pager` | `verify.mjs` | 图片翻页与悬停提示 | ✅ |
 | `overview-board` | `verify.mjs` | Session Overview 看板：5 列常显 / 横向 snap / 卡片信息架构（emoji·标题·状态 chip，播种 agent 块验证） | ✅ |
 | `vcs-tree-status` | `verify.mjs` | Files VCS 行标记 | ✅ |
+| `vcs-panel-buttons` | `verify.mjs` | 版本管理面板按钮语义：无遗留文字按钮 / icon-only 都有 aria-label / 图标字形解析 / 行内动作 hover 浮现 | ✅ |
 | `agent-card-seen` | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡） | ✅ |
 | `property-editor` | `verify.mjs` | 属性值下拉编辑器：md 预览浮层（已选标签无描边 + 行尾 ✓）/ agent 悬浮卡浮层 + 「指针移入附属浮层卡片不收起」 | ✅ |
