@@ -3,7 +3,7 @@
 > 这份文件是**夜间无人值守开发的交接页**：任何后续 agent 读这一页就能知道「今晚在做什么、做到哪、
 > 怎么验、下一步是什么」。每完成一个里程碑就更新这里（连同任务目录里的 `implement.md`）。
 >
-> 最近更新：2026-11-05 22:1x（第 1 段）
+> 最近更新：2026-11-06 05:4x（夜间收尾）
 > 运行模式：cooking（无人值守）· 自主等级 autonomous · 呼喊偏好 silence（用户明确要求「不要喊我」）
 
 ## 0. 今晚的目标（用户原话归纳）
@@ -105,3 +105,32 @@ CSS 补丁的 `oldText` 命中了**容器查询里的选择器列表**而不是�
 的 `min-width: 0` 消失 → 窄面板里轨道 540px 溢出 221px 面板。
 真机断言 `timeline-track-visible-narrow` 当场抓住（detail 现在直接带 `{panelW, trackW, dl, dr}`）。
 教训：改 SCSS 时先 `grep -n` 确认锚点唯一；断言里带几何数字，比"true/false"有用得多。
+
+### 05:4x — 收尾盘点（给下一个 agent）
+
+**已发版**：`0.0.119`（看板 v2 + 时间线 G1）、`0.0.120`（质量批次：测试/验证台可机器判定 + 5 个真 bug）、
+`0.0.121`（导出三大修复 + 时间线行数上限 + image-pager 断言修正 + 验证台并行端口）。
+三次 release notes 都**手写覆盖**了自动生成的 changelog 链接（`gh release edit --notes-file`）。
+
+**当前质量门（全部可机器复跑）**
+```bash
+npx vitest run                                   # 227 files / 2532 tests passed
+node --test "scripts/**/*.test.mjs" "tests/**/*.test.mjs"   # 23 passed
+node scripts/check-tsc-baseline.mjs              # 47 = 基线（今晚从 69 降下来）
+node scripts/verify/overview-board/verify.mjs     # 38/38
+node scripts/verify/overview-timeline/verify.mjs  # 22/22（含长条宽度/几何断言）
+node scripts/verify/preview-edit/run.mjs --expect=fixed  # 5/5
+node scripts/verify/image-pager/verify.mjs       # 32/32
+```
+
+**还是红的 / 没做的**
+- `agent-card-seen`：全新 profile 下 New Agent 面板没展开，台子起不来（`11-05-agent-card-seen` in_progress）。
+- 时间线「更早 n」只做到 40 行截断 + 汇总行，没有做"展开查看"交互。
+- `overview-timeline` 的行数上限只有单测覆盖（真机需要 41+ 会话才能触发，本机 fixture 造不出来）。
+- i18n：本机已有 `.claude/worktrees/i18n-snorkeling`（别人在做），**今晚刻意不碰**，避免两个分支撞车。
+
+**并行开发纪律（血的教训，写死在这里）**
+- 一个 worktree 只允许一个写者；主工作区今晚被别的 agent merge 过两次（其中一次把我的
+  `scripts/verify/README.md` 一起提交了）。
+- 验证台并行必须错开 `VERIFY_PROFILE` / `VERIFY_VITE_PORT` / `VERIFY_CDP_PORT`。
+- 提交只按显式路径 `git add <path>`；`loop/INBOX.md`、`package-lock.json` 不是我的，永远不碰。

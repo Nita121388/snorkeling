@@ -1,7 +1,9 @@
-# HANDOFF — 接手必读（2026-11-05）
+# HANDOFF — 接手必读（2026-11-06 凌晨更新）
 
-> 上一个会话在这里停下。**四项 UI 功能全部完成并发版**（最新 `0.0.118`）。
-> 本文件只有一页；细节在下面指向的任务文档里。读完这页即可开工。
+> 上一个会话在这里停下。最新发布 **`0.0.121`**（今晚连续发了 `0.0.119 / 0.0.120 / 0.0.121`）。
+> 本文件只有一页；细节在下面指向的任务文档里。
+> **夜间无人值守开发的逐段记录在 `docs/project/night-run.md`**（计划 / 约束 / 看板 / 已知红灯），
+> 接手先看那一页，再看本页。
 
 ## 新增：昼夜循环工作流（`loop/`）
 
@@ -24,7 +26,8 @@
 |---|---|---|---|
 | 1 | 预览编辑验证台（`scripts/verify/preview-edit/`） | ✅ | `0.0.115` ✅ |
 | 2 | 图片预览翻页（`image-pager*.ts(x)`） | ✅ | `0.0.116` ✅ |
-| 3 | Overview 看板（`overview-board*`） | ✅ 看板 v2（卡片信息架构 + 5 列常显 + 横向 snap + 视图切换/三分组）；甘特仅出原型 | `0.0.117` ✅ / v2 待发 |
+| 3 | Overview 看板（`overview-board*`） | ✅ 看板 v2：卡片信息架构 + 5 列常显 + 横向 snap + 列表/看板/时间线三视图 + 状态/Tab/Provider 三分组 | `0.0.117` → v2 已在 `0.0.119` ✅ |
+| 5 | Overview 时间线（Gantt · G1 会话寿命条，`overview-timeline*`） | ✅ 真机 22/22 | `0.0.119` ✅ |
 | 4 | Files 目录树 VCS 标记（`vcs-tree-status*`） | ✅ 真机 31/31 | `0.0.118` ✅ |
 
 ## 最近这一轮做了什么（功能 4 收尾）
@@ -35,6 +38,30 @@
    （macOS iCloud「桌面与文稿」；子序列 + 首尾双锚定，同级无关目录不会产假标记）
 2. `frontend/app/view/vcs/vcs.tsx` — commit / sync 成功后调 `clearVcsTreeStatusCache(connection)`
 3. `frontend/app/treeview/treeview.tsx` — 新增可选 `getLabelTitle`，行名带上 VCS title（读屏可达性）
+
+## 2026-11-05 夜间批次（已发 `0.0.119 / 0.0.120 / 0.0.121`）
+
+一、**Overview 看板 v2 + 时间线 G1**
+- 卡片信息架构（emoji 头像 / 会话标题链 / 共享 `AgentStatusChip` / note 行）、5 列常显 + 横向 snap、
+  三视图切换 + 三分组；时间线 = 会话寿命条（当前状态色尾巴 + 斜纹历史段 + 2h/8h/24h/7d + 40 行上限汇总）
+
+二、**验证不再依赖人眼**
+- `overview-timeline` 长条形态改为机器判定（播种真实 `createdAt/updatedAt`，断言条宽 0.563 / 斜纹 / 尾巴）
+- `preview-edit` 修掉"clip 截图静默返回空片"→ 假红/假绿（新增文本区墨迹为 0 → 整窗重拍）
+- `npm test` 从「12 files failed / exit 1」变 **227 files / 2532 tests passed / exit 0**
+- 新增 tsc 类型债闸门 `scripts/check-tsc-baseline.mjs`（**69 → 47**）
+- 台账 bug：`fatal()` 曾被记成 `✅ 0/0`（环境错误显示为通过）→ 现在一律 `❌ fatal（未跑）`
+- 验证台默认档位支持 `VERIFY_PROFILE` / `VERIFY_VITE_PORT` / `VERIFY_CDP_PORT` 环境变量（并行跑台子不用改代码）
+
+三、**修掉的真 bug**（都有回归锁）
+- 三级菜单 hover 必崩（`ReferenceError: hoverHandlers`）· 预览「用系统应用打开」必崩（未导入 `getApi`）
+- 消息弹窗「删除块」必崩（没有接 `onDeleteBlock`）· 预览「在树里定位」静默失效（用了 `Block.id` 应为 `oid`）
+- HTML 打开模式丢失目录根（菜单选项被当预览选项）· 导出 HTML 目录全是死链（缺 `rehype-slug`）
+- 导出 `bodyOnly` 是空操作 / `<title>` 恒为空 · 导出产物里混进预览专用「加 emoji」按钮
+
+四、**已知红灯（都不是产品坏了，属各自 in_progress 任务）**
+- `image-pager` ✅ 32/32（已修断言时机）
+- `agent-card-seen` ❌ 起不来：全新 profile 下 New Agent 面板未展开（`11-05-agent-card-seen`）
 
 ## 环境自检（新机器先跑）
 
@@ -51,7 +78,12 @@ node scripts/verify/preview-edit/run.mjs --keep-open --expect=fixed   # 起隔�
 node scripts/verify/vcs-tree-status/verify.mjs --attach               # 期望 31/31
 node scripts/verify/image-pager/verify.mjs --attach                   # 期望 30/30
 node scripts/verify/overview-board/verify.mjs --attach                # 期望 38/38
-node scripts/verify/overview-timeline/verify.mjs                        # 期望 18/18（时间线）
+node scripts/verify/overview-timeline/verify.mjs                        # 期望 22/22（时间线，含长条宽度判定）
+node scripts/verify/preview-edit/run.mjs --expect=fixed                 # 期望 5/5
+node scripts/verify/image-pager/verify.mjs                              # 期望 32/32
+npx vitest run                                                          # 期望 227 files / 2532 passed
+node scripts/check-tsc-baseline.mjs                                     # 期望等于基线（当前 47）
+node --test "scripts/**/*.test.mjs" "tests/**/*.test.mjs"               # 期望 23 passed
 ```
 
 > ⚠️ **Windows 上跑 vcs-tree-status 必须指定带盘符的 fixture**：
