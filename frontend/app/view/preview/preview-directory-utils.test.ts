@@ -67,6 +67,11 @@ async function loadDirectoryMenuUtils(
         showHiddenFiles: atom(true),
         refresh: vi.fn(),
         openBlockDefAsInlineTab,
+        // 目录右键菜单的 Pin / Set as Tab Default 需要这两个方法（接口加过、fixture 漏补，
+        // 曾导致本文件在 main 上直接红）。默认未 pin、未设过默认路径。
+        isPinned: vi.fn(() => false),
+        togglePinnedDir: vi.fn(async () => {}),
+        setTabDefaultPath: vi.fn(async () => {}),
     };
 
     return {

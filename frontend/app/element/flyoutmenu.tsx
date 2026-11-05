@@ -328,8 +328,6 @@ const SubMenu = memo(
                                     subMenuRefs={subMenuRefs}
                                     renderMenu={renderMenu}
                                     renderMenuItem={renderMenuItem}
-                                    hoverHandlers={hoverHandlers}
-                                    hoverMode={hoverMode}
                                 />
                             )}
                         </Fragment>

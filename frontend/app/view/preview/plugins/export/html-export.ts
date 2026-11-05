@@ -1,15 +1,15 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { unified } from "unified";
+import { findFrontmatterSpan } from "@/app/element/markdown-transform/doc-meta";
+import { transformBlocks } from "@/app/element/markdown-util";
+import { makeRemarkPlugins } from "@/app/element/remark";
+import type { PreviewMatchContext } from "@/app/view/preview/preview-plugin-registry";
+import rehypeHighlight from "rehype-highlight";
+import rehypeStringify from "rehype-stringify";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
-import rehypeStringify from "rehype-stringify";
-import rehypeHighlight from "rehype-highlight";
-import { makeRemarkPlugins } from "@/app/element/remark";
-import { transformBlocks } from "@/app/element/markdown-util";
-import { findFrontmatterSpan, parseFrontmatterProperties } from "@/app/element/markdown-transform/doc-meta";
-import type { PreviewMatchContext } from "@/app/view/preview/preview-plugin-registry";
+import { unified } from "unified";
 import type { ExportOptions, SerializedExport } from "./export-provider";
 
 /**
@@ -56,12 +56,17 @@ export function resolveMarkdownUrl(value: string): string {
  * Reuses only the *parse* chain — no React runtime, no DOM rendering — so it is trivially
  * testable and safe to run in a worker / headless context.
  */
-export async function markdownToHtml(source: string, options: ExportOptions, _context: PreviewMatchContext): Promise<string> {
+export async function markdownToHtml(
+    source: string,
+    options: ExportOptions,
+    _context: PreviewMatchContext
+): Promise<string> {
     const cleanSource = stripFrontmatter(source, options.includeFrontmatter);
     const { content } = transformBlocks(cleanSource);
     const rendered = await unified()
         .use(remarkParse)
-        .use(makeRemarkPlugins({ contentBlocksMap: new Map() }))
+        // 静态导出：callout 不要带"加 emoji"按钮（导出的 HTML 里它不可点）。
+        .use(makeRemarkPlugins({ contentBlocksMap: new Map(), calloutInteractive: false }))
         .use(remarkRehype, { allowDangerousHtml: true })
         .use(rehypeHighlight)
         .use(rehypeStringify, { allowDangerousHtml: true })

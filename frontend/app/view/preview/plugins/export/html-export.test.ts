@@ -1,10 +1,17 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
-import { markdownToHtml, stripFrontmatter, findFrontmatterRange, buildTocHtml, wrapDocument, serializeHtml } from "./html-export";
-import { defaultExportOptions } from "./export-provider";
 import type { PreviewMatchContext } from "@/app/view/preview/preview-plugin-registry";
+import { describe, expect, it } from "vitest";
+import { defaultExportOptions } from "./export-provider";
+import {
+    buildTocHtml,
+    findFrontmatterRange,
+    markdownToHtml,
+    serializeHtml,
+    stripFrontmatter,
+    wrapDocument,
+} from "./html-export";
 
 const ctx: PreviewMatchContext = {
     fileInfo: null,
@@ -63,16 +70,28 @@ describe("markdownToHtml", () => {
         expect(html).toContain("<table");
         expect(html).toContain("<code");
         expect(html).toContain("hljs");
-        expect(html).toContain("<blockquote");
+        // 预览管线会把 `>` 引用转成 callout 块（不是裸 blockquote），导出沿用同一套渲染。
+        expect(html).toContain("markdown-alert markdown-alert-quote");
+        // 但静态导出**不能**带预览专用的交互控件：那个"加 emoji"按钮在导出的 HTML 里不可点。
+        expect(html).not.toContain("markdown-alert-emoji-btn");
+        expect(html).not.toContain("<button");
     });
 
     it("strips frontmatter by default (includeFrontmatter false)", async () => {
-        const html = await markdownToHtml("---\ntitle: X\n---\n\n# Body", { ...defaultExportOptions, includeFrontmatter: false }, ctx);
+        const html = await markdownToHtml(
+            "---\ntitle: X\n---\n\n# Body",
+            { ...defaultExportOptions, includeFrontmatter: false },
+            ctx
+        );
         expect(html).not.toContain("title: X");
     });
 
     it("keeps frontmatter text when includeFrontmatter true", async () => {
-        const html = await markdownToHtml("---\ntitle: KeepMe\n---\n\n# Body", { ...defaultExportOptions, includeFrontmatter: true }, ctx);
+        const html = await markdownToHtml(
+            "---\ntitle: KeepMe\n---\n\n# Body",
+            { ...defaultExportOptions, includeFrontmatter: true },
+            ctx
+        );
         expect(html).toContain("KeepMe");
     });
 });

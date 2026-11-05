@@ -12,11 +12,13 @@ import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
+import type { LayoutNode } from "@/layout/lib/types";
 import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
 import {
     createBlock,
     createBlockSplitHorizontally,
     createBlockSplitVertically,
+    getApi,
     getBlockComponentModel,
     getOverrideConfigAtom,
     refocusNode,

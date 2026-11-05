@@ -1081,12 +1081,15 @@ function MessageDialog({
     onClose,
     onJump,
     onEditSessionNote,
+    onDeleteBlock,
 }: {
     message: Message | null;
     block: OverviewBlock | null;
     onClose: () => void;
     onJump: () => void;
     onEditSessionNote: (block: OverviewBlock) => void;
+    /** 从消息弹窗直接删块（与列表行/卡片同一个删除落地）。 */
+    onDeleteBlock: (block: OverviewBlock) => void;
 }) {
     if (message == null || block == null) return null;
     return (
@@ -2655,6 +2658,25 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                 onEditSessionNote={(nextBlock) => {
                     openSessionNoteInline(nextBlock);
                     setSelected(null);
+                }}
+                onDeleteBlock={(nextBlock) => {
+                    setSessionAction((current) => ({ ...current, error: "" }));
+                    deleteOverviewBlock(nextBlock)
+                        .then(() => {
+                            setSelectedBlockId((current) =>
+                                current === nextBlock.blockId ? null : current
+                            );
+                            setSelected((current) =>
+                                current?.block.blockId === nextBlock.blockId ? null : current
+                            );
+                            model.refresh();
+                        })
+                        .catch((error) => {
+                            setSessionAction((current) => ({
+                                ...current,
+                                error: error instanceof Error ? error.message : String(error),
+                            }));
+                        });
                 }}
             />
         </>
