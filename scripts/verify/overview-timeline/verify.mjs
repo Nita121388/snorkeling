@@ -73,7 +73,27 @@ function timelineStateProbe(scope) {
         tailClasses: [...blk.querySelectorAll(".session-overview-timeline-bar-tail")].map((t) => t.className),
         board: blk.querySelector(".session-overview-board") != null,
         listRows: blk.querySelectorAll(".session-overview-block-row").length,
-        trackVisible: (() => {
+        barsGeometry: (() => {
+        const track = blk.querySelector(".session-overview-timeline-track");
+        if (track == null) return [];
+        const trackRect = track.getBoundingClientRect();
+        return [...blk.querySelectorAll(".session-overview-timeline-bar")].map((bar) => {
+            const rect = bar.getBoundingClientRect();
+            const row = bar.closest(".session-overview-timeline-row");
+            const history = bar.querySelector(".session-overview-timeline-bar-history");
+            const tail = bar.querySelector(".session-overview-timeline-bar-tail");
+            return {
+                title: (row?.querySelector(".session-overview-timeline-row-title")?.textContent || "").trim(),
+                state: bar.getAttribute("data-state"),
+                startUnknown: bar.getAttribute("data-start-unknown"),
+                leftRatio: trackRect.width > 0 ? rect.left / trackRect.width - trackRect.left / trackRect.width : 0,
+                widthRatio: trackRect.width > 0 ? rect.width / trackRect.width : 0,
+                historyWidth: history == null ? 0 : Math.round(history.getBoundingClientRect().width),
+                tailWidth: tail == null ? 0 : Math.round(tail.getBoundingClientRect().width),
+            };
+        });
+    })(),
+    trackVisible: (() => {
             const track = blk.querySelector(".session-overview-timeline-track");
             if (track == null) return null;
             const panel = blk.getBoundingClientRect();
@@ -153,7 +173,14 @@ try {
                 const globalMod = await import("/frontend/app/store/global.ts");
                 const services = await import("/frontend/app/store/services.ts");
                 out.blockId = await globalMod.createBlock(
-                    { meta: { view: "term", "agent:provider": "claude", "cmd:cwd": "/tmp/verify-timeline-agent" } },
+                    {
+                        meta: {
+                            view: "term",
+                            "agent:provider": "claude",
+                            "agent:sessionid": "verify-timeline-session",
+                            "cmd:cwd": "/tmp/verify-timeline-agent",
+                        },
+                    },
                     false,
                     false
                 );
@@ -170,6 +197,30 @@ try {
                     out.statusSeeded = true;
                 } catch (err) {
                     out.err = "status:" + String(err && err.message ? err.message : err);
+                }
+                // 播种会话摘要（真实时间跨度）：不播种的话时间线只有"零宽点"，
+                // 「长条形态」就只能靠人眼看 —— 这条 fixture 让长条也能机器判定。
+                try {
+                    const cache = await import(
+                        "/frontend/app/session-overview/session-overview-session-cache.ts"
+                    );
+                    const now = Date.now();
+                    out.span = { startedAt: now - 5 * 3600_000, updatedAt: now - 30 * 60_000 };
+                    cache.patchCachedSessionSummary("verify-timeline-session", {
+                        key: "verify-timeline-session",
+                        id: "verify-timeline-session",
+                        source: "claude",
+                        title: "verify long span session",
+                        createdAt: out.span.startedAt,
+                        updatedAt: out.span.updatedAt,
+                        messageCount: 42,
+                        projectPath: "/tmp/verify-timeline-agent",
+                        live: false,
+                    });
+                    out.summarySeeded = true;
+                } catch (err) {
+                    out.err =
+                        (out.err ? out.err + ";" : "") + "summary:" + String(err && err.message ? err.message : err);
                 }
             } catch (err) {
                 out.err = String(err && err.message ? err.message : err);
@@ -201,6 +252,35 @@ try {
     `now 线离轨道右端=${st.nowRight}px`
   );
   reporter.check("timeline-bar-present", st.bars > 0, `bars=${st.bars}`);
+  // 长条形态的机器判定：播种的会话 createdAt=5h 前、updatedAt=30min 前，
+  // 8h 窗口里条应占 ~56%，且起点已知（start unknown=false）。
+  const longBar = (st.barsGeometry ?? []).find((bar) => bar.title.includes("verify long span session"));
+  reporter.check(
+    "timeline-long-bar-width",
+    longBar != null && longBar.widthRatio > 0.45 && longBar.widthRatio < 0.7,
+    longBar == null
+      ? "没找到播种的长会话条"
+      : `widthRatio=${longBar.widthRatio.toFixed(3)}（期望 0.45~0.70，5h/8h≈0.56）`
+  );
+  reporter.check(
+    "timeline-long-bar-start-known",
+    longBar != null && longBar.startUnknown === "false",
+    `startUnknown=${longBar?.startUnknown}`
+  );
+  reporter.check(
+    "timeline-bar-history-and-tail",
+    longBar != null && longBar.historyWidth > 0 && longBar.tailWidth > 0,
+    longBar == null ? "没找到播种的长会话条" : `history=${longBar.historyWidth}px tail=${longBar.tailWidth}px`
+  );
+  reporter.check(
+    "timeline-bars-inside-window",
+    (st.barsGeometry ?? []).length > 0 &&
+      (st.barsGeometry ?? []).every((bar) => bar.leftRatio >= -0.02 && bar.leftRatio + bar.widthRatio <= 1.05),
+    `bars=${JSON.stringify(
+      (st.barsGeometry ?? []).map((bar) => `${bar.leftRatio.toFixed(2)}+${bar.widthRatio.toFixed(2)}`)
+    )}`
+  );
+
   reporter.check(
     "timeline-track-visible-narrow",
     st.trackVisible === true && st.rowStacked === true,
