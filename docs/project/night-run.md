@@ -134,3 +134,11 @@ node scripts/verify/image-pager/verify.mjs       # 32/32
   `scripts/verify/README.md` 一起提交了）。
 - 验证台并行必须错开 `VERIFY_PROFILE` / `VERIFY_VITE_PORT` / `VERIFY_CDP_PORT`。
 - 提交只按显式路径 `git add <path>`；`loop/INBOX.md`、`package-lock.json` 不是我的，永远不碰。
+
+### 06:2x — 补充：0.0.121 之后还有 3 个**开发侧**提交（不影响用户，未单独发版）
+
+- `542ed824` 台账 fatal 记成 ✅ 的修复（纯 dev-infra）
+- `e82eca14` HANDOFF 收尾
+- `1a0e8653` vcs-tree-status 结论入库 + 九个 area 台账补齐
+
+它们不改变 App 行为，留给下一次正常发版带上，避免为了文档再打一个 tag。
