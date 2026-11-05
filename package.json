@@ -33,7 +33,7 @@
         "trace:tab": "node scripts/trace-tab-switch.mjs",
         "test": "vitest",
         "postinstall": "node ./postinstall.cjs",
-        "verify:loop": "node --test \"loop/lib/*.test.mjs\" && node loop/queue.mjs self-test && node loop/ledger.mjs self-test && node loop/queue.mjs verify-ledger && node loop/queue.mjs g8 && node loop/queue.mjs doctor"
+        "verify:loop": "node --test \"E:/primary/projects/loop/lib/*.test.mjs\" && node E:/primary/projects/loop/bin/loop.mjs queue self-test --root . && node E:/primary/projects/loop/bin/loop.mjs ledger self-test --root . && node E:/primary/projects/loop/bin/loop.mjs queue verify-ledger --root . && node E:/primary/projects/loop/bin/loop.mjs queue g8 --root . && node E:/primary/projects/loop/bin/loop.mjs queue doctor --root ."
     },
     "engines": {
         "node": ">=22.12.0"
