@@ -1,3 +1,11 @@
+---
+description: loop/ 台账的执行契约——单一写者、两维状态、hash 冻结、校准要求、教训与自升级
+paths:
+  - loop/**
+  - .trellis/spec/guides/**
+  - .trellis/tasks/**
+---
+
 # 昼夜循环工作流（loop 台账）— 执行契约
 
 > 操作手册在 `loop/RUNBOOK.md`（每天读的那份）。本文件只记**不可协商的契约**，供改 `loop/` 代码时对照。
@@ -41,3 +49,17 @@ node loop/queue.mjs self-test --expect=broken        # 校准（必须红）
 node loop/ledger.mjs self-test                       # 事件流（沙箱 tmpdir，不污染真台账）
 node loop/queue.mjs verify-ledger                     # 台账可解析
 ```
+
+## 教训条目（索引在 loop/LESSONS.md）
+
+### L-0001 prd_hash 必须锚 `## Goal`
+
+首版规则是「`## G1 签字` 之前全部内容」，签完字在头部补一行 `Confirmed:` 就把自己的 hash 销毁了（当场实测到 DRIFT）。
+现在 `prdHash()` 从 `## Goal` 起切到 `## G1 签字` 前，头部元信息与签名字段都不计入。
+**任何新增的 hash 冻结都要先问一句：签字这个动作本身会不会改变被 hash 的区间。**
+
+### L-0002 解析失败不能静默返回空
+
+`loadStore()` 早期版本在 `gates.json` 解析失败时返回空对象，等于「夜间队列被静默清空」。
+现在回退 `.gates.last-good.json` 并告警；没有快照才抛错。
+**任何读队列/规则/配置的入口都必须有 last-good 回退或硬失败，二者选一，不许装作空。**

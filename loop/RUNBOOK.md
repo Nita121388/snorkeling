@@ -214,3 +214,49 @@ loop/QUEUE.md               生成物：带门状态的表
 | `## 记录` | 关键结论与教训（append） | 逐日流水（那是 LEDGER） |
 
 排序：`priority` 升序 → `order` → `id`。所以**改优先级就等于改开工顺序**，不需要动别处。
+
+## 12. 教训沉淀环境（三档）
+
+教训不是写在一个文件里就完事，要分档：**谁下次会用到，用什么机制让他看见。**
+
+| 档 | 写在哪 | 谁会看到 | 触发时机 |
+|---|---|---|---|
+| 局部 | `loop/items/<id>.md` 的 `## 记录` | 接手这个包的人 | 打开该工作项 |
+| 复用 | `.trellis/spec/**`（frontmatter 带 `paths:`） | **所有碰到同路径文件的 agent** | 读/改该文件时自动注入 |
+| 流程 | `loop/DECISIONS.md` + 本节 | 每个人每天 | 开工读 RUNBOOK |
+
+### 索引与正文分家
+
+```bash
+node loop/queue.mjs lesson add --key park:human-wall   --title "夜间遇到登录墙必须 park" --trigger "需要验证码或真机点击"   --spec .trellis/spec/guides/day-night-loop-contract.md
+node loop/queue.mjs lesson list        # 索引
+node loop/queue.mjs lesson stale       # 90 天零引用 → 该删还是该引
+node loop/queue.mjs lesson search 登录
+```
+
+- **索引**（`loop/LESSONS.md`）只放一行指针：key / 触发 / 规范路径 / 引用数。
+- **正文**写进 spec。`lesson add` 会硬校验那份 spec **有 `paths:` 前缀**，否则拒绝入库——不会被注入的教训等于没写。
+
+### 三条防腐规则
+
+1. **不写索引 = 没人知道**；**不写 spec = 没人看见**。两者缺一，G8 不通过。
+2. **引用计数**：真的靠它避免了一次错误，就给它加一次引用。90 天零引用的条目进 `lesson stale` 清单。
+3. **教训会过期**：机制变了就删或改写，不要留一堆没人读的历史。
+
+## 13. 自升级
+
+台账自身也要能升级，否则第一次改 schema 就会手工搬数据。
+
+```bash
+node loop/queue.mjs upgrade --dry-run   # 看有哪些待应用迁移
+node loop/queue.mjs upgrade             # 备份 → 顺序应用 → 写 VERSION → 记 note 事件
+node loop/queue.mjs doctor              # 一致性体检：items 必填 / 教训可注入 / G8 未结 / 待迁移
+```
+
+| 件 | 作用 |
+|---|---|
+| `loop/VERSION` | 当前 schema 版本（整数） |
+| `loop/migrations/<n>-<slug>.mjs` | 一次升级一个文件，`export default async ({dir, argv}) => {}`，必须幂等 |
+| `loop/.backup/<ts>/` | 升级前自动备份 VERSION / gates.json / LESSONS.md / RUNBOOK.md |
+
+**自升级的护栏**：迁移本身是 `arch` 类工作项，要走 G1→G6；`doctor` 挂进 `npm run verify:loop`，schema 与文件不一致就红。

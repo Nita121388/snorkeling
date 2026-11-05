@@ -174,3 +174,32 @@ gateState 由凭据与 hash 实时推导。runState 由事件流折叠重建。�
 | 事件流自测 | 8 通过，沙箱运行不污染真台账 |
 | 钩子实测 | 临时任务 create 到 archive 三次自动记账 |
 | 待办 | T0 清账、四个 harness 登记红证、首次真实夜班、看板走 G1 到 G4 |
+
+## N 教训沉淀环境：三档 {span=2}
+
+| 档 | 写在哪 | 谁看到 | 机制 |
+|---|---|---|---|
+| 局部 | 工作项的「记录」段 | 接手这个包的人 | 打开即见 |
+| 复用 | `.trellis/spec/**` + `paths:` 前缀 | 碰到同路径文件的 agent | **自动注入** |
+| 流程 | `DECISIONS.md` + RUNBOOK | 所有人每天 | 开工必读 |
+
+索引（`LESSONS.md`）与正文（spec）分家：索引可审计、正文可注入。`lesson add` 硬校验 spec 有 `paths:`——不会被注入的教训等于没写。
+
+90 天零引用的条目进 `lesson stale`。教训也会过期。
+
+## O 自升级 {span=2}
+
+```flow LR
+(VERSION) -> doctor: 读版本
+doctor -> {有待迁移?}
+{有待迁移?} -> upgrade: 是
+upgrade -> 备份
+备份 -> 迁移脚本
+迁移脚本 -> 写 VERSION
+{有待迁移?} --> 一致: 否
+写 VERSION -> 一致
+```
+
+三个件：`VERSION`（整数版本）、`migrations/<n>-<slug>.mjs`（必须幂等）、`.backup/<ts>/`（升级前自动备份）。
+
+护栏：迁移本身是 `arch` 类工作项，要走 G1→G6；`doctor` 进 `npm run verify:loop`，schema 与实际文件不一致就红。

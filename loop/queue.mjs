@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // queue.mjs — 队列唯一写者 + 只读查询（看板走这里的 --json 契约）
 // 用法见 RUNBOOK §8 / implement.md T3。
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { LOOP_DIR, REPO_ROOT, safeResolve, assertTrellisWritable } from './lib/paths.mjs';
@@ -14,6 +14,9 @@ import { appendEvent, readEvents, verifyLedger, nowIso } from './lib/ledger-io.m
 import { gateCases, classifyCases } from './lib/fixtures.mjs';
 import { parseInbox, markDone, readInbox, writeInbox, archiveDone } from './lib/inbox.mjs';
 import { sedimentGate } from './lib/sediment.mjs';
+import { readLessons, appendLesson, nextLessonId, staleLessons, lessonsCovering, specInjectability } from './lib/lesson.mjs';
+import { readItems, validateItem } from './lib/item.mjs';
+import { existsSync as fsExists, readdirSync as fsReaddir } from 'node:fs';
 
 const QUEUE_FILE = join(LOOP_DIR, 'queue.json');
 const argv = process.argv.slice(2);
@@ -449,6 +452,131 @@ function cmdG8() {
     process.exit(g.ok ? 0 : 1);
 }
 
+// ---------- 教训库 ----------
+function cmdLesson() {
+    const sub = argv[1] ?? 'list';
+    const { lessons } = readLessons();
+
+    if (sub === 'add') {
+        const key = flag('key');
+        const title = flag('title');
+        const trigger = flag('trigger');
+        const spec = flag('spec');
+        if (!key || key === true) die('--key 必填（与 G8 问题键对齐，如 park:human-wall）');
+        if (!title || title === true) die('--title 必填（一句话教训）');
+        if (!trigger || trigger === true) die('--trigger 必填（什么情况下会再碰到）');
+        if (!spec || spec === true) die('--spec 必填（正文写在哪份 spec）');
+        const inj = specInjectability(String(spec));
+        if (!inj.ok) die(`spec 不可注入：${inj.reason}。先给该 spec 加 frontmatter paths:`);
+        const id = nextLessonId(readLessons().markdown);
+        appendLesson({ id, title: String(title), key: String(key), trigger: String(trigger), spec: String(spec), at: nowIso().slice(0, 10), refs: 0 });
+        console.log(`✓ ${id} 已入库 → loop/LESSONS.md（正文请在 ${spec} 里写具体条目）`);
+        return;
+    }
+
+    if (sub === 'stale') {
+        const days = Number(flag('days', 90));
+        const stale = staleLessons(lessons, { days });
+        if (has('json')) return process.stdout.write(JSON.stringify(stale, null, 2) + '\n');
+        if (!stale.length) return console.log(`无陈旧教训（${days} 天窗口，零引用才计）`);
+        for (const l of stale) console.log(`⚠ ${l.id} ${l.title} · 入库 ${l.at} · 零引用`);
+        console.log(`\n${stale.length} 条。要么删，要么在下次碰到时加引用。`);
+        return;
+    }
+
+    if (sub === 'search') {
+        const kw = argv.slice(2).filter((a) => !a.startsWith('--')).join(' ').toLowerCase();
+        const hit = lessons.filter((l) => JSON.stringify(l).toLowerCase().includes(kw));
+        for (const l of hit) console.log(`${l.id}  ${l.title}\n    触发 ${l.trigger}\n    规范 ${l.spec} · 引用 ${l.refs}`);
+        if (!hit.length) console.log('无匹配');
+        return;
+    }
+
+    if (has('json')) return process.stdout.write(JSON.stringify(lessons, null, 2) + '\n');
+    for (const l of lessons) console.log(`${l.id}  ${String(l.key).padEnd(18)} ${l.title} · 引用 ${l.refs}`);
+    if (!lessons.length) console.log('教训库空。第一次写：queue.mjs lesson add --key park:human-wall --title "..." --trigger "..." --spec <spec>');
+}
+
+// ---------- doctor：自升级与一致性体检 ----------
+function cmdDoctor() {
+    const problems = [];
+    const notes = [];
+
+    const items = readItems();
+    for (const it of items) for (const p of validateItem(it)) problems.push(`${it.id}: ${p}`);
+
+    const { lessons } = readLessons();
+    for (const l of lessons) {
+        const inj = specInjectability(l.spec ?? '');
+        if (!inj.ok) problems.push(`lesson ${l.id}: 规范不可注入（${inj.reason}）`);
+    }
+
+    const g = sedimentGate(readEvents());
+    for (const m of g.missing) {
+        const covered = lessonsCovering(lessons, m.key);
+        problems.push(`G8 未沉淀：${m.key}（重复 ${m.count} 次）${covered.length ? `，但教训库已有 ${covered[0].id} 待引用` : ''}`);
+    }
+
+    const version = readVersion();
+    const pending = listMigrations().filter((m) => m.n > version);
+    if (pending.length) notes.push(`有 ${pending.length} 个迁移未应用：${pending.map((m) => m.name).join(', ')}（跑 queue.mjs upgrade）`);
+
+    const stale = staleLessons(lessons);
+    if (stale.length) notes.push(`${stale.length} 条教训零引用超 90 天：${stale.map((l) => l.id).join(', ')}`);
+
+    if (has('json')) return process.stdout.write(JSON.stringify({ version, problems, notes }, null, 2) + '\n');
+    console.log(`schema v${version} · items ${items.length} · lessons ${lessons.length}`);
+    for (const n of notes) console.log(`· ${n}`);
+    if (!problems.length) console.log('doctor ok ✓');
+    else for (const p of problems) console.error(`✗ ${p}`);
+    process.exit(problems.length ? 1 : 0);
+}
+
+// ---------- 自升级 ----------
+const VERSION_FILE = join(LOOP_DIR, 'VERSION');
+const MIGRATIONS_DIR = join(LOOP_DIR, 'migrations');
+
+function readVersion() {
+    if (!fsExists(VERSION_FILE)) return 0;
+    return Number(readFileSync(VERSION_FILE, 'utf8').trim()) || 0;
+}
+
+function listMigrations() {
+    if (!fsExists(MIGRATIONS_DIR)) return [];
+    return fsReaddir(MIGRATIONS_DIR)
+        .filter((f) => /^\d+-.+\.mjs$/.test(f))
+        .map((f) => ({ n: Number(f.split('-')[0]), name: f }))
+        .sort((a, b) => a.n - b.n);
+}
+
+async function cmdUpgrade() {
+    const from = readVersion();
+    const all = listMigrations();
+    const todo = all.filter((m) => m.n > from);
+    if (!todo.length) return console.log(`schema 已是最新 v${from}（无待应用迁移）`);
+    console.log(`schema v${from} → v${todo[todo.length - 1].n}，待应用 ${todo.length} 个`);
+    if (has('dry-run')) {
+        for (const m of todo) console.log(`  · ${m.name}`);
+        return;
+    }
+    const backup = join(LOOP_DIR, '.backup', nowIso().replace(/[:.]/g, '-'));
+    mkdirSync(backup, { recursive: true });
+    for (const f of ['VERSION', 'gates.json', 'LESSONS.md', 'RUNBOOK.md']) {
+        const src = join(LOOP_DIR, f);
+        if (fsExists(src)) writeFileSync(join(backup, f), readFileSync(src));
+    }
+    console.log(`已备份 → ${backup}`);
+    for (const m of todo) {
+        const mod = await import(`./migrations/${m.name}`);
+        if (typeof mod.default !== 'function') die(`${m.name} 必须 export default async function({dir, argv})`);
+        await mod.default({ dir: LOOP_DIR, argv });
+        writeFileSync(VERSION_FILE, `${m.n}\n`, 'utf8');
+        console.log(`✓ ${m.name} → v${m.n}`);
+    }
+    appendEvent({ id: null, action: 'note', shift: 'pm', verdict: `schema:${from}->${readVersion()}`, evidence: backup });
+    console.log(`升级完成 v${readVersion()}`);
+}
+
 function cmdVerifyLedger() {
     const problems = verifyLedger();
     if (problems.length) {
@@ -522,6 +650,10 @@ const help = `queue.mjs — loop 队列（唯一写者）
   inbox [--json]                      # 你自己的随手记录（loop/INBOX.md）
   triage --n <编号> --to-package [--id X --type t] | --to-task | --drop --reason <文本>
   g8 [--json]                         # 沉淀门：同类问题第二次必须先写规范
+  lesson add --key <k> --title <t> --trigger <when> --spec <spec 路径>
+  lesson list|search <kw>|stale [--days 90]
+  doctor [--json]                     # 一致性体检（items 必填 / 教训可注入 / G8 未结 / 待迁移）
+  upgrade [--dry-run]                 # 自升级：按 migrations/*.mjs 顺序应用，先备份
   self-test [--expect=broken]
 
 类型：${TASK_TYPES.join(' | ')}
@@ -566,6 +698,15 @@ switch (cmd) {
         break;
     case 'g8':
         cmdG8();
+        break;
+    case 'lesson':
+        cmdLesson();
+        break;
+    case 'doctor':
+        cmdDoctor();
+        break;
+    case 'upgrade':
+        await cmdUpgrade();
         break;
     case 'set-priority':
         cmdSetPriority();
