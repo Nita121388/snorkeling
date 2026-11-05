@@ -361,6 +361,26 @@
     }
 }
 
+.agent-card-status-dot.is-seen {
+    // 已读：停掉脉冲，不再用“刚跑完”的呼吸感催用户。
+    animation: none;
+}
+
+.agent-card-status-chip.is-seen {
+    // read="seen"（ack 过 / 打开看过）时整枚 chip 收敛到 secondary，
+    // 与头部徽章 is-acked 的视觉语言一致：位置不变，只降低注意力。
+    opacity: 0.72;
+}
+
+.agent-card-status-chip.is-ackable {
+    cursor: pointer;
+}
+
+.agent-card-status-dot.is-done-unread {
+    // 未读的 Done：慢呼吸，等价于 block 头部 is-done-unread 的提示强度。
+    animation: agent-card-pulse 2s ease-in-out infinite;
+}
+
 .agent-card-status-label {
     font-weight: 500;
 }
@@ -654,6 +674,13 @@
 .tab-card-agent-row.is-done .tab-card-agent-pill {
     background: rgb(from var(--agent-done-color, #22c55e) r g b / 0.14);
     color: var(--agent-done-color, #22c55e);
+}
+
+/* 已读（ack 过 / 打开看过）的 Done 不再用完成绿；放在 is-done 之后以同 specificity 胜出。 */
+.tab-card-agent-row.is-seen .tab-card-agent-pill {
+    background: var(--form-element-bg-color);
+    color: var(--secondary-text-color);
+    opacity: 0.72;
 }
 
 .tab-card-agent-row.is-blocked .tab-card-agent-pill,

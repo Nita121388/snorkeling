@@ -26,6 +26,7 @@ import {
     InfoCardTitle,
 } from "@/app/element/info-card";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
+import { useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
 import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
@@ -38,7 +39,7 @@ import {
     classifyTabBlock,
     countTabBlocks,
     nonAgentChips,
-    presentAgentState,
+    presentAgentStateFromView,
 } from "./tab-info-card-model";
 import * as React from "react";
 
@@ -62,6 +63,7 @@ function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider:
         return () => store.release(blockId);
     }, [store, blockId]);
     const status = useAtomValueSafe(statusAtom);
+    const statusView = useAgentStatusView(blockId, status);
 
     const block = React.useMemo(() => getObjectValue<Block>(makeORef("block", blockId)), [blockId]);
     const meta = (block?.meta ?? {}) as Record<string, unknown>;
@@ -76,10 +78,17 @@ function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider:
         sessionId: (meta["agent:sessionid"] as string | undefined) ?? null,
     });
 
-    const presentation = presentAgentState(status);
+    const presentation = presentAgentStateFromView(statusView);
 
     return (
-        <div className={cn("tab-card-agent-row", `is-${presentation.kind}`)}>
+        <div
+            className={cn(
+                "tab-card-agent-row",
+                `is-${presentation.kind}`,
+                presentation.read === "seen" ? "is-seen" : "is-unread"
+            )}
+            data-agent-read={presentation.read}
+        >
             {agentIcon != null ? (
                 agentIcon.kind === "emoji" ? (
                     <span className="agent-emoji-icon tab-card-agent-emoji">{agentIcon.emoji}</span>

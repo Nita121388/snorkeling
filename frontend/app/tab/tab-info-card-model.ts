@@ -10,6 +10,7 @@
 // 判定逻辑要先能测，否则只能靠真机截图回归。
 
 import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
+import { agentStatusViewLabel, type AgentStatusView } from "@/app/agent-status/agent-status-view";
 import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import type { AgentDisplayState, AgentPhase } from "@/app/agent-status/agent-status-types";
@@ -102,6 +103,29 @@ export interface AgentStatePresentation {
     kind: AgentStateKind;
     /** UI 文案：`Tool · bash` / `Idle` / `Done` … */
     label: string;
+}
+
+export interface AgentStatePresentationWithRead extends AgentStatePresentation {
+    read: "unread" | "seen";
+}
+
+/**
+ * 由统一呈现层 `AgentStatusView` 转换（推荐入口）。
+ *
+ * 与 `presentAgentState` 的区别：read 维度直接来自 `deriveAgentStatusView`，因此
+ * 卡片上的 Done 会随 ack / 打开会话变灰；旧函数保留给不关心已读的调用方与既有测试。
+ */
+export function presentAgentStateFromView(view: AgentStatusView | null): AgentStatePresentationWithRead {
+    if (view == null) {
+        return { kind: "idle", label: "Idle", read: "seen" };
+    }
+    const kind: AgentStateKind =
+        view.tone === "working" && view.phase === "thinking"
+            ? "thinking"
+            : view.tone === "unknown"
+              ? "idle"
+              : (view.tone as AgentStateKind);
+    return { kind, label: agentStatusViewLabel(view), read: view.read };
 }
 
 /**

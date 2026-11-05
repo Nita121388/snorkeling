@@ -15,7 +15,9 @@
 
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import { CopyButton } from "@/app/element/copybutton";
-import { agentStatusPresentation } from "@/app/agent-status/agent-status-derive";
+import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
+import { agentStatusAccent, agentStatusViewLabel } from "@/app/agent-status/agent-status-view";
+import { useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { makeORef } from "@/app/store/wos";
 import { useAgentStatusForCard } from "@/app/store/session-note-hook";
@@ -113,18 +115,13 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
         (meta["agent:requestedmodel"] as string)?.trim() || (meta["model"] as string)?.trim() || "";
     const model = resolveAgentModel({ requestedModel });
     const sessionId = resolveBlockSessionId(meta);
-    const statusState = agentStatus?.state ?? "unknown";
-    const statusLabel = agentStatus != null ? agentStatusPresentation(agentStatus).label : "";
-    const statusAccent =
-        statusState === "working"
-            ? "var(--agent-working-color)"
-            : statusState === "done"
-              ? "var(--agent-done-color)"
-              : statusState === "blocked" || statusState === "rate-limited"
-                ? "var(--warning-color, #f59e0b)"
-                : statusState === "error"
-                  ? "var(--error-color)"
-                  : "var(--secondary-text-color)";
+    const statusView = useAgentStatusView(blockId, agentStatus);
+    // 与悬浮卡共用同一 read 判定：unread 的 Done 才用 done 绿 + 脉冲，已读收敛到 muted。
+    const statusLabel = statusView != null ? agentStatusViewLabel(statusView) : "";
+    const statusAccent = agentStatusAccent(statusView?.tone ?? "unknown", statusView?.read ?? "seen");
+    const statusPulsing =
+        statusView != null &&
+        (statusView.state === "working" || (statusView.state === "done" && statusView.read === "unread"));
     const personas = useAgentPersonas();
     const sessionEmojis = useSessionEmojis();
     const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
@@ -153,11 +150,26 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
             </span>
             <span className="shrink-0 truncate text-primary">{displayProvider !== "" ? displayProvider : "Agent"}</span>
             <span className="min-w-0 flex-1 truncate text-muted">{model || "未指定"}</span>
-            {statusLabel !== "" && (
-                <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted" title={statusLabel}>
+            {statusView != null && statusLabel !== "" && (
+                <span
+                    data-testid="tab-more-agent-mini-status"
+                    data-agent-read={statusView.read}
+                    className={cn("flex shrink-0 items-center gap-1 text-[10px] text-muted", {
+                        "cursor-pointer": statusView.ackable,
+                    })}
+                    title={statusView.title}
+                    onClick={
+                        statusView.ackable
+                            ? (e) => {
+                                  e.stopPropagation();
+                                  ackAgentStatus(blockId, agentStatus, "card-pill");
+                              }
+                            : undefined
+                    }
+                >
                     <span
                         className={cn("h-1.5 w-1.5 rounded-full", {
-                            "animate-pulse": statusState === "working",
+                            "animate-pulse": statusPulsing,
                         })}
                         style={{ background: statusAccent }}
                     />

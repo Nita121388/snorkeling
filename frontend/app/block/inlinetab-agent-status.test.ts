@@ -77,25 +77,33 @@ describe("buildAgentStatusDot", () => {
 
     test("D-class done-unread lights up even while state is idle, and carries elapsed text", () => {
         const status = makeStatus({ state: "idle", prevState: "working", completedAt: DONE_AT, updatedAt: DONE_AT });
-        // R 指纹已读 + D 未读 → title 走 done 分支 (unread 优先于 doneUnread, 见下方用例)
+        // R 指纹已读 + D 未读 → title 走 done 分支（read 现由 deriveAgentStatusView 单点判定，
+        // idle 带完成跳变只认 D，不再同时把 R 也算成未读）
         const dot = buildAgentStatusDot(status, "b1", { b1: statusFingerprint(status) }, {}, NOW);
         expect(dot).not.toBeNull();
         expect(dot.doneUnread).toBe(true);
         expect(dot.doneElapsedText).not.toBe("");
-        expect(dot.title).toContain("switch to block to dismiss");
+        expect(dot.title).toContain("not seen yet");
     });
 
-    test("unread wording wins over done wording when both apply (既有优先级)", () => {
+    test("R and D flags are mutually exclusive on the same dot (single read source)", () => {
+        // 旧实现里 idle+prevState 会同时把 unread 与 doneUnread 置真，两个消费面各自挑一个用，
+        // 结果 ack 一面另一面复活。现在 read 单点判定：完成态只点亮 D。
         const status = makeStatus({ state: "idle", prevState: "working", completedAt: DONE_AT, updatedAt: DONE_AT });
         const dot = buildAgentStatusDot(status, "b1", {}, {}, NOW);
-        expect(dot.unread).toBe(true);
+        expect(dot.unread).toBe(false);
         expect(dot.doneUnread).toBe(true);
-        expect(dot.title).toContain("mark as read");
+        expect(dot.title).toContain("not seen yet");
     });
 
-    test("D-class suppressed once done-acked", () => {
+    test("D-class goes muted once done-acked", () => {
         const status = makeStatus({ state: "idle", prevState: "working", completedAt: DONE_AT, updatedAt: DONE_AT });
-        expect(buildAgentStatusDot(status, "b1", {}, { b1: NOW - 30_000 }, NOW)).toBeNull();
+        // 已读后不再点亮 D，但点本身留着（is-acked 视觉），与 presented 层 done 的行为一致。
+        const dot = buildAgentStatusDot(status, "b1", {}, { b1: NOW - 30_000 }, NOW);
+        expect(dot).not.toBeNull();
+        expect(dot.doneUnread).toBe(false);
+        expect(dot.unread).toBe(false);
+        expect(dot.doneElapsedText).toBe("");
     });
 
     test("title marks inferred statuses", () => {

@@ -9,12 +9,17 @@ import {
     getAgentRuntimeMetadataSnapshot,
     subscribeAgentRuntimeMetadata,
 } from "@/app/agent-status/agent-runtime-metadata-store";
-import { agentStatusPresentation } from "@/app/agent-status/agent-status-derive";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { CopyButton } from "@/app/element/copybutton";
 import { InfoCard, InfoCardSection } from "@/app/element/info-card";
 import { SessionNoteSection } from "@/app/element/info-card/session-note-section";
 import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
+import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
+import {
+    agentStatusAccent,
+    agentStatusViewLabel,
+} from "@/app/agent-status/agent-status-view";
+import { useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { humanizeKey } from "@/app/view/aisessions/property/property-model";
@@ -104,20 +109,14 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     const sessionResolvedModel = runtimeEntry?.source === "session" ? runtimeEntry.model : undefined;
     const model = resolveAgentModel({ liveModel, requestedModel, sessionModel: sessionResolvedModel });
     const modelLoading = runtimeEntry?.loading ?? false;
-    const statusPres = agentStatus != null ? agentStatusPresentation(agentStatus) : null;
-    const statusState = agentStatus?.state ?? "unknown";
-    // 状态色：原型 agent-id-card 的映射，用现成主题 token。
-    const statusAccent =
-        statusState === "working"
-            ? "var(--agent-working-color)"
-            : statusState === "done"
-              ? "var(--agent-done-color)"
-              : statusState === "blocked" || statusState === "rate-limited"
-                ? "var(--warning-color, #f59e0b)"
-                : statusState === "error"
-                  ? "var(--error-color)"
-                  : "var(--secondary-text-color)";
-    const isThinking = agentStatus != null && statusState === "working" && agentStatus.phase === "thinking";
+    const statusView = useAgentStatusView(blockId, agentStatus);
+    // read 由 AgentStatusView 统一判定（ack 指纹 + Done 完成态已读时刻），
+    // 卡片不再自己拼 "有状态就绿色" —— 那是 Done 永不跟随 seen 的根因。
+    const statusRead = statusView?.read ?? "seen";
+    // 状态色：原型 agent-id-card 的映射，用现成主题 token；已读收敛到 secondary。
+    const statusAccent = agentStatusAccent(statusView?.tone ?? "unknown", statusRead);
+    const isThinking =
+        statusView != null && statusView.state === "working" && statusView.phase === "thinking";
     const personas = useAgentPersonas();
     const sessionEmojis = useSessionEmojis();
     const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
@@ -158,7 +157,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     // 头部区只在确实有身份/模型/状态信息时才渲染：providerLabel 的 "Agent" 是
     // 无任何来源时的兜底展示，不能拿它当“有信息”的判据，否则空会话也会长出空白头。
     const showMetaRow =
-        providerLabel !== "Agent" || model !== "" || modelLoading || statusPres != null;
+        providerLabel !== "Agent" || model !== "" || modelLoading || statusView != null;
     // 星标与标题来源从属性区上移：星标进右上角，titleSource 并入副标题。
     const starred = noteState.summary?.marked === true;
     const titleSource = noteState.summary?.titleSource ?? "";
@@ -233,15 +232,38 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                         </div>
                         {/* 右上角：状态 / 收藏 / 放大，同一基线右对齐 */}
                         <div className="agent-card-actions">
-                            {statusPres != null ? (
-                                <span className="agent-card-status-chip" title={statusPres.title}>
+                            {statusView != null ? (
+                                <span
+                                    className={cn(
+                                        "agent-card-status-chip",
+                                        `is-${statusView.tone}`,
+                                        statusRead === "unread" ? "is-unread" : "is-seen",
+                                        statusView.ackable && "is-ackable"
+                                    )}
+                                    data-agent-read={statusRead}
+                                    title={statusView.title}
+                                    // 卡片也能 ack：与头部徽章走同一个收口函数，
+                                    // 保证 R 指纹与 D 完成态两份 map 同时写。
+                                    onClick={
+                                        statusView.ackable
+                                            ? (e) => {
+                                                  e.stopPropagation();
+                                                  ackAgentStatus(blockId, agentStatus, "card-pill");
+                                              }
+                                            : undefined
+                                    }
+                                >
                                     <span
                                         className={cn("agent-card-status-dot", {
-                                            "is-working": statusState === "working",
+                                            "is-working": statusView.state === "working",
                                             "is-thinking": isThinking,
+                                            "is-done-unread": statusRead === "unread" && statusView.state === "done",
+                                            "is-seen": statusRead === "seen",
                                         })}
                                     />
-                                    <span className="agent-card-status-label">{statusPres.label}</span>
+                                    <span className="agent-card-status-label">
+                                        {agentStatusViewLabel(statusView)}
+                                    </span>
                                 </span>
                             ) : null}
                             {noteState.summary != null ? (

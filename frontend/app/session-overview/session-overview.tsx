@@ -10,6 +10,7 @@ import {
 } from "@/app/agent-status/agent-status-derive";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { ackAgentStatus as ackAgentStatusUnified } from "@/app/agent-status/agent-status-ack";
 import { isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
@@ -2135,26 +2136,20 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const [sessionAction, setSessionAction] = useState<SessionActionState>({ deletingSessionId: "", error: "" });
     const tabGroupsKey = useMemo(() => tabGroups.map((group) => group.tabId).join("\n"), [tabGroups]);
     // ack 必须同时写 R (fingerprint) 与 D (doneAckedAt), 否则另一面会因为只认自己的那份判定而"复活".
-    const ackAgentStatus = React.useCallback(
-        (blockId: string, status: AgentStatus) => {
-            const nowMs = Date.now();
-            overviewModel.markAgentStatusAcked(blockId, nowMs, status);
-            agentStatusDoneAckStore.markDoneAcked(blockId, nowMs, "overview-chip");
-        },
-        [overviewModel]
-    );
+    // 收口到 ackAgentStatusUnified: 本文件不再直接碰两个 store.
+    const ackAgentStatus = React.useCallback((blockId: string, status: AgentStatus) => {
+        ackAgentStatusUnified(blockId, status, "overview-chip");
+    }, []);
     const ackTabAgentStatuses = React.useCallback(
         (blocks: OverviewBlock[]) => {
-            const nowMs = Date.now();
             for (const block of blocks) {
                 const status = agentStatuses[block.blockId];
                 if (status != null) {
-                    overviewModel.markAgentStatusAcked(block.blockId, nowMs, status);
-                    agentStatusDoneAckStore.markDoneAcked(block.blockId, nowMs, "overview-aggregate");
+                    ackAgentStatusUnified(block.blockId, status, "overview-aggregate");
                 }
             }
         },
-        [overviewModel, agentStatuses]
+        [agentStatuses]
     );
     useEffect(() => {
         setCollapsedTabIds((current) => {

@@ -5,6 +5,7 @@ import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { getTabDisplayMode, subscribeTabDisplayMode } from "@/app/agent-persona/tab-display-store";
+import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
@@ -631,22 +632,9 @@ const InlineTabLabel = memo(
                                             statusDot.unread || statusDot.doneUnread
                                                 ? (e) => {
                                                       e.stopPropagation();
-                                                      if (statusDot.unread) {
-                                                          // Pass current status so R fingerprint is stored;
-                                                          // otherwise read sites would still see unread.
-                                                          overviewModel.markAgentStatusAcked(
-                                                              blockId,
-                                                              Date.now(),
-                                                              agentStatus
-                                                          );
-                                                      }
-                                                      if (statusDot.doneUnread) {
-                                                          agentStatusDoneAckStore.markDoneAcked(
-                                                              blockId,
-                                                              Date.now(),
-                                                              "block-header"
-                                                          );
-                                                      }
+                                                      // 收口：一次点击同时 ack R 指纹与 D 完成态，
+                                                      // 不再由本面手写两份 map（写漏就会在另一面“复活”）。
+                                                      ackAgentStatus(blockId, agentStatus, "block-header");
                                                   }
                                                 : undefined
                                         }
@@ -877,8 +865,7 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
     const handleDropdownStatusAck = useCallback((blockId: string) => {
         const rawAtom = AgentStatusStore.getInstance().peekStatusAtom(blockId);
         const status = rawAtom != null ? globalStore.get(rawAtom) : null;
-        SessionOverviewModel.getInstance().markAgentStatusAcked(blockId, Date.now(), status);
-        agentStatusDoneAckStore.markDoneAcked(blockId, Date.now(), "block-header");
+        ackAgentStatus(blockId, status, "block-header");
     }, []);
     // 组内各 block 的锁定标记集合 (block:lock meta). 锁定不拦截正常关闭,
     // 仅用于「关闭其他/全部(锁定除外)」时保留对应标签。

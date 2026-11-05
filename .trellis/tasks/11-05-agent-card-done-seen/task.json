@@ -1,0 +1,30 @@
+{
+  "id": "agent-card-done-seen",
+  "name": "agent-card-done-seen",
+  "title": "Agent 卡片 Done 随 seen 状态联动",
+  "description": "agent 悬浮卡/更多卡/Tab 卡上的 Done 不读 ack 与 seen 状态，永远显示绿色 Done。收敛为单一 AgentStatusView 呈现层，让 6+ 展示面共用同一 read 判定。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-05",
+  "completedAt": null,
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-05-agent-status-view-core",
+    "11-05-agent-card-seen-surfaces",
+    "11-05-agent-ack-seen-writers"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
