@@ -241,3 +241,12 @@ node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例
 验证实例是**真的 Electron 窗口**（深色）。默认 `ensureInstance({resetProfile:true})` + 结束时
 `cleanup()`（端口 → PID 关闭，`windowsHide:true` 避免 PowerShell 闪窗）；
 只有显式 `--keep-open` 才留着。**不要**在没打招呼的时候批量起实例。
+
+方法论层面（台的骨架、六条设计原则、环境纪律）见
+[真机 UI 验证台 Playbook](../../../docs/project/ui-verify-playbook.md)。
+其中最贵的两条教训：
+
+- **确定性优先**：每轮 reset profile；"我刚创建的对象"用 before/after 差集取 id，
+  不要用"第一个匹配 selector 的元素"（会读到上一轮留下的同类对象 → 假绿）。
+- **等跃迁不等终态**：先等 `working` 系文案、再等 `Done`；只看终态会在"上一轮已经 Done"
+  时立刻返回，断言的是旧状态。
