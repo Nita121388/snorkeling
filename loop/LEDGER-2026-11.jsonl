@@ -28,3 +28,4 @@
 {"ts":"2026-11-05T04:48:32Z","shift":"am","id":null,"task":null,"action":"note","from":null,"to":null,"evidence":null,"commit":null,"verdict":"drop:签字 hash 只能由引擎 CLI 产出（裸 sha256sum 口径不同，混用会造成假 drift）","session":null,"agent":null}
 {"ts":"2026-11-05T04:48:33Z","shift":"am","id":null,"task":null,"action":"note","from":null,"to":null,"evidence":null,"commit":null,"verdict":"drop:看板 mergeBoards 自己重算 summary 而非透传引擎 summary，且 g8Ok/drift 在多仓合并时丢失（R4.3 要求显示 g8）","session":null,"agent":null}
 {"ts":"2026-11-05T04:49:13Z","shift":"night","id":null,"task":null,"action":"note","from":null,"to":null,"evidence":null,"commit":null,"verdict":"note: 前两条 drop 是分诊误操作（本想登记成 INBOX 条目），已重新行登记","session":null,"agent":null}
+{"ts":"2026-11-05T04:52:55Z","shift":"night","id":null,"task":null,"action":"note","from":null,"to":null,"evidence":"E:/primary/projects/loop-board/DELIVERY.md","commit":null,"verdict":"note: loop-board v0 交付（三轮评审：打回→打回→打回2项，均已修并复核）","session":null,"agent":null}
