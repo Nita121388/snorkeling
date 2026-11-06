@@ -93,15 +93,30 @@ function AgentStatusChipInner({
             onAck?.(blockId, status);
         }
     };
+    const readAttr = unread ? "unread" : "seen";
     const content = (
         <>
             {showIcon && presentation != null ? <i className={makeIconClass(presentation.icon, false)} /> : null}
-            {showDot ? <span className="agent-status-chip-dot" /> : null}
+            {showDot ? (
+                // 兼容类名（.agent-card-status-dot + is-*）是 verify 探针的契约，
+                // 动画已由 agent-status-chip.scss 的新类名驱动，旧类只作选择器锚点保留。
+                <span
+                    className={cn("agent-status-chip-dot", "agent-card-status-dot", {
+                        "is-working": view.tone === "working",
+                        "is-thinking": view.tone === "working" && status?.phase === "thinking",
+                        "is-done-unread": unread && view.tone === "done",
+                        "is-seen": !unread,
+                    })}
+                />
+            ) : null}
             <span className="agent-status-chip-label">{view.label}</span>
             {showRuntime ? <span className="agent-status-chip-runtime">{view.runtime}</span> : null}
         </>
     );
     const interactive = variant === "aggregate" ? true : onAck != null && status != null;
+    // data-agent-read 必须在**所有**渲染分支上都有：verify 台按它断言 read，
+    // 缺一个分支就会让某一面永远读到 null（实测：ack 后卡片面读到 null 而报红）。
+    const readDataAttr = variant === "aggregate" || variant === "header" ? {} : { "data-agent-read": readAttr };
 
     if (variant === "aggregate") {
         // 嵌在 tab-toggle 的 <button> 里，嵌套 button 非法 → role="button" span。
@@ -129,14 +144,14 @@ function AgentStatusChipInner({
     if (variant === "header") {
         // HeaderElem 走 term-model 的纯文本路径，本分支只服务「测试/预览」等 React 场景。
         return (
-            <span className={rootClass} style={style} title={view.title} aria-label={view.title}>
+            <span className={rootClass} style={style} title={view.title} aria-label={view.title} {...readDataAttr}>
                 {content}
             </span>
         );
     }
     if (!interactive) {
         return (
-            <span className={rootClass} style={style} title={view.title} aria-label={view.title}>
+            <span className={rootClass} style={style} title={view.title} aria-label={view.title} {...readDataAttr}>
                 {content}
             </span>
         );
@@ -149,7 +164,7 @@ function AgentStatusChipInner({
                 style={style}
                 onClick={ackClick}
                 aria-label={view.title}
-                data-agent-read={unread ? "unread" : "seen"}
+                {...readDataAttr}
             >
                 {content}
             </button>

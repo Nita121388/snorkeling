@@ -34,7 +34,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { connectToTarget, listPageTargets } from "../lib/cdp.mjs";
 import { DEFAULTS, ensureInstance } from "../lib/launch.mjs";
-import { dismissOnboarding, hoverUntil, pickLiveRenderer, sleep, typeTextAndEnter } from "../lib/probes.mjs";
+import { dismissOnboarding, hoverUntil, pickLiveRenderer, sleep, typeTextAndEnter, waitForProbe } from "../lib/probes.mjs";
 import { createReporter } from "../lib/report.mjs";
 
 const AREA = "agent-card-seen";
@@ -481,18 +481,34 @@ async function main() {
  */
 async function runTitleEdit(client, badgePoint, blockId) {
   // 悬浮卡上的放大按钮（弹窗入口）。
-  const expandPoint = await client.evaluate(`(() => {
+  //
+  // 坑：走到这一步时卡片通常已经收起了（上一条断言 ack 完指针停在徽章上、
+  // 之后又读了几次 DOM）。必须先重新 hover 到徽章把卡唤出来，否则
+  // `.agent-card-expand-btn` 根本不在 DOM 里 —— 实测就是这条红了。
+  const expandProbe = `(() => {
     const btn = document.querySelector(".agent-card-expand-btn");
     if (!btn) return null;
     const r = btn.getBoundingClientRect();
     if (r.width < 4) return null;
     return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
-  })()`);
+  })()`;
+  let expandPoint = await hoverUntil(client, badgePoint, expandProbe, (p) => p != null);
   if (expandPoint == null) {
-    return { ok: false, detail: "no .agent-card-expand-btn (hover card not open?)" };
+    return { ok: false, detail: "no .agent-card-expand-btn after re-hovering the badge" };
   }
   await client.click(expandPoint.x, expandPoint.y);
-  await sleep(600);
+  // 弹窗是 React 异步挂载 + portal，点完立刻读会拿到空 —— 轮询等它出现。
+  const modalProbe = `(() => {
+    const el = document.querySelector(".modal-header__title");
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 4) return null;
+    return { cls: el.className, html: el.innerHTML.slice(0, 200) };
+  })()`;
+  const modal = await waitForProbe(client, modalProbe, (v) => v != null, { timeoutMs: 8000 });
+  if (modal == null) {
+    return { ok: false, detail: "modal never opened (no .modal-header__title)" };
+  }
 
   // 弹窗 header 里的可编辑标题。
   const titleProbe = `(() => {
@@ -502,9 +518,9 @@ async function runTitleEdit(client, badgePoint, blockId) {
     if (r.width < 4) return null;
     return { x: Math.round(r.x + Math.min(r.width / 2, 80)), y: Math.round(r.y + r.height / 2), text: el.textContent.trim() };
   })()`;
-  const titlePoint = await client.evaluate(titleProbe);
+  const titlePoint = await waitForProbe(client, titleProbe, (v) => v != null, { timeoutMs: 6000 });
   if (titlePoint == null) {
-    return { ok: false, detail: "no editable title in .modal-header__title" };
+    return { ok: false, detail: { reason: "no editable title in .modal-header__title", modal } };
   }
   await client.dblclick(titlePoint.x, titlePoint.y);
   await sleep(400);
@@ -520,18 +536,19 @@ async function runTitleEdit(client, badgePoint, blockId) {
     return { ok: false, detail: "dblclick did not open an input in the modal header" };
   }
   await client.click(inputPoint.x, inputPoint.y);
-  await sleep(200);
-  // 全选后覆盖输入，避免把新名字拼接到旧名字后面。
-  await client.send("Input.dispatchKeyEvent", {
-    type: "rawKeyDown",
-    key: "a",
-    code: "KeyA",
-    windowsVirtualKeyCode: 65,
-    modifiers: 2,
-  });
-  await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: 2 });
-  await typeTextAndEnter(client, "Verify Rename Title");
-  await sleep(1500);
+  await sleep(300);
+  // 直接 select 内容再 insertText：受控 input 上模拟 Cmd+A + 逐字键入不稳，
+  // insertText 是浏览器级替换，能绕开 React 的 value 合成差异。
+  await client.evaluate(`(() => {
+    const el = document.querySelector(".modal-header__title input");
+    if (el) { el.focus(); el.select(); }
+    return el != null;
+  })()`);
+  await client.send("Input.insertText", { text: "Verify Rename Title" });
+  await sleep(400);
+  // Enter 提交：复用 probes 的 typeTextAndEnter（内部已按 rawKeyDown/char/keyUp 三段发）。
+  await typeTextAndEnter(client, "");
+  await sleep(1800);
 
   const after = await client.evaluate(`(() => {
     const title = document.querySelector(".modal-header__title .info-card-title")?.textContent?.trim() ?? null;
