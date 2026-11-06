@@ -3,8 +3,9 @@ name: loop
 description: 昼夜循环工作流引擎（台账 / 7 道门 / 值班取件 / 验收打分 / 教训沉淀）。当用户提到 loop、台账、队列、取件、夜班、门、G1-G7、验收打分、看板数据、工作项包、park、教训沉淀时使用。
 ---
 
-> 安装来源：`E:/primary/projects/loop/skills/loop/SKILL.md`（引擎自带）。
-> 引擎升级后用 `node E:/primary/projects/loop/bin/loop.mjs upgrade --skills` 或直接重新拷贝，别在这里手改。
+> 安装来源：`E:/primary/projects/loop/skills/loop/SKILL.md`（引擎自带，勿在此手改）。
+> 引擎升级后重新拷贝一次即可（没有专门的同步命令）：
+> `cp E:/primary/projects/loop/skills/loop/SKILL.md .agents/skills/loop/SKILL.md`
 
 # loop — 昼夜循环工作流引擎
 
