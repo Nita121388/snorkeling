@@ -2,8 +2,29 @@
 
 ## 👉 接手先读 `HANDOFF.md`
 
-仓库根目录的 **`HANDOFF.md`** 是当前交接页：四项 UI 功能里 3 项已发版、1 项（Files VCS 标记）已实现待收尾 +
-待发 `0.0.118`。开工前先读它，再读它指向的 `.trellis/tasks/11-04-files-vcs-tree-status/implement.md`。
+仓库根目录的 **`HANDOFF.md`** 是当前状态页（哪批功能到哪了、下一步做什么）。开工前先读它。
+
+## 🔁 开发流程 = `loop/` 门链，不是"直接改代码"
+
+**动手之前先确认自己在队列里是哪一包。** 没有工作项就先建，不为"顺手"开工。
+
+```bash
+node loop/queue.mjs list            # 全景：谁在哪个门、今晚队列有哪些
+node loop/queue.mjs pending         # 值班第一步：人写了批注还没人回的（必须逐条三选一）
+node loop/queue.mjs run --id X --dry-run   # 取件前的准入校验；门不清会被直接拒
+node loop/queue.mjs prove --id X    # 跑判据采数字（不接受"我看了一下没问题"）
+```
+
+四条硬规则（违反即停，不要自己找理由绕过）：
+
+1. **门不清不许取件** —— `bug/fix-small` 只要 G2 器具 + G7 人验收；`feature/redesign/new-surface` 还有 H 门等白天签。
+2. **判据必须有数字** —— 新增/修改行为前先写得出「命令 → 期望输出」。写不出 = 该包永远进不了队列。
+3. **白名单外不写** —— 每包有 `touch` 路径白名单，写出界即 `out-of-scope` park。
+4. **子 agent 不记台账、不提交、不动看板** —— 只有主 agent 写。
+
+- 规则全文：`loop/RUNBOOK.md`（3 分钟读完）
+- 契约（改 `loop/**` 前必读）：`.trellis/spec/guides/day-night-loop-contract.md`
+- 看板：`node E:/primary/projects/loop-board/scripts/start.mjs` → `http://127.0.0.1:7799`
 
 @.kilocode/rules/rules.md
 

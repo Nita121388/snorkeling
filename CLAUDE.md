@@ -1,5 +1,16 @@
 @.kilocode/rules/rules.md
 
+## 🔁 开发流程 = `loop/` 门链（与 AGENTS.md 同口径）
+
+动手前先确认自己在队列里是哪一包；没有工作项就先建。
+
+```bash
+node loop/queue.mjs list / pending / run --id X --dry-run / prove --id X
+```
+
+门不清不许取件 · 判据必须有数字 · 白名单外不写 · 子 agent 不记台账。规则见 `loop/RUNBOOK.md`。
+
+
 ---
 
 ## Electron UI inspection

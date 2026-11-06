@@ -12,6 +12,8 @@
 - 事件流：`node loop/ledger.mjs tail -20` / `blocked`（晨会第一屏）
 - 契约（改 `loop/**` 前必读）：`.trellis/spec/guides/day-night-loop-contract.md`
 - 任务：`.trellis/tasks/11-05-day-night-loop/`（prd 已签 G1，design/implement 已落）
+- 看板：`node E:/primary/projects/loop-board/scripts/start.mjs` → `http://127.0.0.1:7799`（只读/读写由 `LB_MODE` 决定）
+- 第一个真实工作项：`N-1105-tab-hover-clip`（Tab 悬浮卡被截断）已走完 G2→prove→commit，停在 G7 等人验收
 
 一句话边界：`.trellis/` 管「任务是什么/怎么做」，`loop/` 管「哪班跑到哪、算不算过」。
 
