@@ -2,3 +2,4 @@
 .queue.json.tmp-*
 .state-cache.json
 .queue.last-good.json
+.gates.last-good.json
