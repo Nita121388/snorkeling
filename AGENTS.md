@@ -24,7 +24,7 @@ node loop/queue.mjs prove --id X    # 跑判据采数字（不接受"我看了�
 
 - 规则全文：`loop/RUNBOOK.md`（3 分钟读完）
 - 契约（改 `loop/**` 前必读）：`.trellis/spec/guides/day-night-loop-contract.md`
-- 看板：`node E:/primary/projects/loop-board/scripts/start.mjs` → `http://127.0.0.1:7799`
+- 看板：`node E:/primary/projects/loop/board/scripts/start.mjs` → `http://127.0.0.1:7799`（引擎与看板同仓，2026-11-06 合并）
 
 @.kilocode/rules/rules.md
 
