@@ -98,6 +98,13 @@ export type PropertyListProps = {
     onMoveProperty?: (key: string, direction: -1 | 1) => void;
     /** 全局属性模板（wconfig agent:propertyschema）。 */
     schema?: SchemaDef[];
+    /**
+     * 全局标签清单（含 count），按属性 key 索引。
+     *
+     * 缺省时候选池与今天完全一致（def.options + 已选值）—— md 预览属性卡与
+     * 所有未接入该通道的调用方行为零变化。
+     */
+    tagCatalog?: Record<string, SessionTagSummary[]>;
     /** 尾部插槽（详情卡放 AI 自动填入）。 */
     footer?: React.ReactNode;
     canEdit?: boolean;
@@ -125,10 +132,19 @@ function itemsFromValue(value: PropertyValue): string[] {
 }
 
 /**
- * 浮层候选：schema 里声明的选项 + 当前值。
- * 去重保序（选项顺序就是 schema 顺序），未登记的自定义值也要在列表里可见。
+ * 浮层候选：当前值 → schema 声明的选项 → 全局清单。
+ * 去重保序，未登记的自定义值也要在列表里可见。
+ *
+ * 顺序决策：
+ *   1. 已选值在前 —— 用户刚输入的新标签不会被清单末尾吞掉，也不因清单缺失而消失；
+ *   2. def.options 次之 —— 保持 md 预览与自定义 select 的既有顺序语义；
+ *   3. 全局清单最后 —— 按 count 降序、同 count 字母序，让「用得多的」浮上来。
  */
-function dropdownOptions(def: PropertyDef, value: PropertyValue): string[] {
+function dropdownOptions(
+    def: PropertyDef,
+    value: PropertyValue,
+    catalog?: SessionTagSummary[]
+): string[] {
     const out: string[] = [];
     const seen = new Set<string>();
     const push = (raw: string) => {
@@ -137,9 +153,33 @@ function dropdownOptions(def: PropertyDef, value: PropertyValue): string[] {
         seen.add(text);
         out.push(text);
     };
-    for (const option of def.options ?? []) push(option.id);
     for (const item of itemsFromValue(value)) push(item);
+    for (const option of def.options ?? []) push(option.id);
+    const catalogTags = Array.isArray(catalog) ? [...catalog] : [];
+    catalogTags.sort((left, right) => {
+        const byCount = (right.count ?? 0) - (left.count ?? 0);
+        return byCount !== 0 ? byCount : String(left.tag).localeCompare(String(right.tag));
+    });
+    for (const entry of catalogTags) push(entry.tag);
     return out;
+}
+
+/**
+ * 浮层候选的 count 映射。
+ *
+ * 只收录清单里确实出现过的 tag —— 已选值 / def.options / 用户新建值没有 count 数据源，
+ * 不伪造 0（编辑器那边对缺失的 key 直接不渲染计数字段）。
+ */
+function optionCountsFor(def: PropertyDef, catalog?: SessionTagSummary[]): Record<string, number> {
+    const counts: Record<string, number> = {};
+    if (Array.isArray(catalog)) {
+        for (const entry of catalog) {
+            if (entry?.tag != null && Number.isFinite(entry.count)) {
+                counts[String(entry.tag)] = entry.count;
+            }
+        }
+    }
+    return counts;
 }
 
 function sourceMarker(source: PropertySource): React.ReactNode {
@@ -436,6 +476,7 @@ export function PropertyList({
     onRetypeProperty,
     onMoveProperty,
     schema,
+    tagCatalog,
     footer,
     canEdit = false,
 }: PropertyListProps) {
@@ -807,7 +848,12 @@ export function PropertyList({
                 <PropertyValuePopover open anchor={popoverAnchor} onClose={closePopover}>
                     <PropertyTagEditor
                         items={itemsFromValue(popoverEntry.cell.value)}
-                        options={dropdownOptions(popoverEntry.def, popoverEntry.cell.value)}
+                        options={dropdownOptions(
+                            popoverEntry.def,
+                            popoverEntry.cell.value,
+                            tagCatalog?.[popoverEntry.def.key]
+                        )}
+                        optionCounts={optionCountsFor(popoverEntry.def, tagCatalog?.[popoverEntry.def.key])}
                         multiple={MultiValueTypes.has(popoverEntry.def.type)}
                         onChange={(items) => commitDropdown(popoverEntry, items)}
                         onClose={closePopover}

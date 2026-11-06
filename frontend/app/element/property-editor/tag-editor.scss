@@ -103,10 +103,29 @@
 
     // 选中态只用行尾 ✓，不再给 chip 加 1px inset 描边：
     // 描边会把同色 chip 变成"另一个控件"，也让 chip 的 20% 底色失去统一的语义。
+    // 行尾组（计数 + ✓）整体靠右：见 .ptag-option-tail。
     .ptag-option-check {
-        margin-left: auto;
         font-size: 12px;
         color: var(--secondary-text-color);
+    }
+
+    // 行尾组：计数与 ✓ 在同一组内右对齐。
+    // 用组而不是给两个元素各加 margin-left:auto —— 那样自由空间会被两个 auto 平分，✓ 会跑到中间。
+    .ptag-option-tail {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+        flex-shrink: 0;
+    }
+
+    // 候选使用次数：小号、等宽数字、右对齐。用主题变量（禁止写死色值，浅色主题会变深底深字）。
+    .ptag-option-count {
+        font-size: 11px;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+        color: var(--secondary-text-color);
+        opacity: 0.85;
     }
 
     .ptag-option-chip {

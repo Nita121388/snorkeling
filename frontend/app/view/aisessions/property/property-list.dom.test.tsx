@@ -275,3 +275,113 @@ describe("PropertyList — 浮层下拉编辑", () => {
         expect(tagEditor()).toBeNull();
     });
 });
+
+// ─── 全局标签清单候选（tagCatalog）───
+//
+// 锁定的回归点：
+//  1. 别的会话用过、本会话没选的标签要出现在候选里（这是本次的核心诉求）。
+//  2. 候选带使用次数；没有 count 数据源的候选（本会话已选值 / 用户新建值）不渲染计数。
+//  3. 候选顺序：已选值 → def.options → 全局清单（count 降序、同 count 字母序）。
+//  4. 不传 tagCatalog 时候选池与改动前完全一致（md 预览属性卡回归门）。
+describe("PropertyList — 全局标签清单候选", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+        document.querySelectorAll(".property-value-popover").forEach((el) => el.remove());
+        vi.useRealTimers();
+    });
+
+    const tagEditor = () => document.querySelector('[data-testid="property-tag-editor"]');
+    const valueButton = (key: string) => row(key)!.querySelector<HTMLButtonElement>(".property-row__button")!;
+    const optionTexts = () =>
+        Array.from(tagEditor()!.querySelectorAll(".ptag-option")).map((el) =>
+            (el.querySelector(".ptag-option-chip")?.textContent ?? "").trim()
+        );
+    const countOf = (tag: string) => {
+        const row = Array.from(tagEditor()!.querySelectorAll(".ptag-option")).find(
+            (el) => (el.querySelector(".ptag-option-chip")?.textContent ?? "").trim() === tag
+        );
+        return row?.querySelector(".ptag-option-count")?.textContent?.trim() ?? null;
+    };
+
+    it("别的会话用过的标签出现在候选里，并带使用次数", () => {
+        mount(
+            <PropertyList
+                summary={makeSummary({ tags: ["fix"] })}
+                mode="detail"
+                canEdit
+                onChange={vi.fn()}
+                tagCatalog={{ tags: [
+                    { tag: "fix", count: 12 },
+                    { tag: "refactor", count: 3 },
+                    { tag: "ui", count: 7 },
+                ] }}
+            />
+        );
+
+        click(valueButton("tags"));
+        const texts = optionTexts();
+        // refactor / ui 本会话没有，但必须出现在候选里
+        expect(texts).toContain("refactor");
+        expect(texts).toContain("ui");
+        expect(countOf("refactor")).toBe("3");
+        expect(countOf("ui")).toBe("7");
+        expect(countOf("fix")).toBe("12");
+    });
+
+    it("顺序：已选值 → 全局清单按 count 降序、同 count 字母序", () => {
+        mount(
+            <PropertyList
+                summary={makeSummary({ tags: ["zzz-mine"] })}
+                mode="detail"
+                canEdit
+                onChange={vi.fn()}
+                tagCatalog={{ tags: [
+                    { tag: "alpha", count: 2 },
+                    { tag: "beta", count: 5 },
+                    { tag: "gamma", count: 2 },
+                ] }}
+            />
+        );
+
+        click(valueButton("tags"));
+        // zzz-mine 是本会话已选值（不在清单里）→ 排最前，且无计数
+        expect(optionTexts()).toEqual(["zzz-mine", "beta", "alpha", "gamma"]);
+        expect(countOf("zzz-mine")).toBeNull();
+    });
+
+    it("全局清单里的标签可点选，写回完整数组", () => {
+        const onChange = vi.fn();
+        mount(
+            <PropertyList
+                summary={makeSummary({ tags: [] })}
+                mode="detail"
+                canEdit
+                onChange={onChange}
+                tagCatalog={{ tags: [{ tag: "refactor", count: 3 }] }}
+            />
+        );
+
+        click(valueButton("tags"));
+        const target = Array.from(tagEditor()!.querySelectorAll(".ptag-option")).find(
+            (el) => (el.querySelector(".ptag-option-chip")?.textContent ?? "").trim() === "refactor"
+        );
+        expect(target).toBeDefined();
+        click(target!);
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][0]).toBe("tags");
+        expect(onChange.mock.calls[0][1]).toEqual(["refactor"]);
+    });
+
+    it("不传 tagCatalog 时候选池与改动前一致（md 预览回归门）", () => {
+        mount(<PropertyList summary={makeSummary({ tags: ["fix", "ui"] })} mode="detail" canEdit onChange={vi.fn()} />);
+
+        click(valueButton("tags"));
+        expect(optionTexts()).toEqual(["fix", "ui"]);
+        expect(document.querySelector(".ptag-option-count")).toBeNull();
+    });
+});

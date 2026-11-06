@@ -23,6 +23,14 @@ export type PropertyTagEditorProps = {
     items: string[];
     /** 候选值（P0：当前值全集；P1：vault 索引）。 */
     options?: string[];
+    /**
+     * 候选值的使用次数（可选）。
+     *
+     * 缺省时渲染结果与加入该参数之前**逐字节等价** —— md 预览属性卡没有 count 数据源，
+     * 不传它就走旧路径。缺失的 key（用户新建的标签、本会话已选值）不渲染计数字段，
+     * 不伪造 0。
+     */
+    optionCounts?: Record<string, number>;
     /** 多选（tags/list）为 true；单选（tag）为 false。 */
     multiple?: boolean;
     placeholder?: string;
@@ -47,6 +55,7 @@ export function canCreateOption(draft: string, options: string[]): boolean {
 export function PropertyTagEditor({
     items,
     options,
+    optionCounts,
     multiple = true,
     placeholder = "搜索或输入选项",
     onChange,
@@ -213,10 +222,23 @@ export function PropertyTagEditor({
                         <span className="ptag-option-chip" style={tagColorVars(option)}>
                             {option}
                         </span>
-                        {/* 选中态用行尾 ✓ 表达：不再给 chip 描边（描边会让同色 chip 看起来像另一个控件）。 */}
-                        {chips.includes(option) && (
-                            <i className="fa-sharp fa-solid fa-check ptag-option-check" aria-hidden="true" />
-                        )}
+                        {/* 行尾组：计数 + 选中 ✓，整体靠右。
+                            用组而不是给两个元素各加 margin-left:auto —— 那样自由空间会被两个 auto 平分，
+                           ✓ 会跑到中间。没有 count 时组里只剩 ✓，视觉与之前一致。 */}
+                        <span className="ptag-option-tail">
+                            {optionCounts?.[option] != null ? (
+                                <span
+                                    className="ptag-option-count"
+                                    aria-label={`${optionCounts[option]} sessions`}
+                                >
+                                    {optionCounts[option]}
+                                </span>
+                            ) : null}
+                            {/* 选中态用行尾 ✓ 表达：不再给 chip 描边（描边会让同色 chip 看起来像另一个控件）。 */}
+                            {chips.includes(option) && (
+                                <i className="fa-sharp fa-solid fa-check ptag-option-check" aria-hidden="true" />
+                            )}
+                        </span>
                     </div>
                 ))}
                 {showCreate && filtered.length === 0 && (

@@ -449,6 +449,56 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-word;
+    // 展示态也是可点进编辑的入口（hover 卡用单击）：给一点“可交互”反馈，
+    // 但不动排版，避免标题在卡片上“跳一下”。
+    &.is-editable {
+        cursor: text;
+        border-radius: 2px;
+        transition: background-color 120ms ease;
+
+        &:hover {
+            background: color-mix(in srgb, var(--main-text-color) 5%, transparent);
+        }
+    }
+}
+
+/*
+ * 卡片标题的编辑态。
+ *
+ * 硬约束：**视觉不得与展示态不同**。具体：
+ *  - 字号 / 行高 / padding-left / 左侧引用线 / margin 全部继承 .agent-card-title-block；
+ *  - 去掉浏览器默认的 textarea 外观（border / outline / resize / 背景 / 内边距）；
+ *  - 行数固定为 2（与 -webkit-line-clamp: 2 一致），不因进编辑而把卡片变高；
+ *  - 宽度 100% + box-sizing，不把 340px 的卡撞破（历史 bug）。
+ *
+ * 这样用户点进标题时看到的就是“文字自己变成了光标”，而不是“凭空多出一个表单框”。
+ */
+.agent-card-title-editor {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    resize: none;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    overflow: hidden;
+    field-sizing: content;
+
+    // 聚焦时只给一条极淡的底色，提示“这里在编辑”，不加描边。
+    &:focus {
+        background: color-mix(in srgb, var(--main-text-color) 4%, transparent);
+        border-radius: 2px;
+    }
+
+    &::placeholder {
+        color: var(--secondary-text-color);
+    }
 }
 
 /* ── Session id：footer 右组里的一段（不再单独占一行） ── */

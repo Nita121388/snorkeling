@@ -97,4 +97,5 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `vcs-panel-buttons`    | `verify.mjs` | 版本管理面板按钮语义：无遗留文字按钮 / icon-only 都有 aria-label / 图标字形解析 / 行内动作 hover 浮现       | ✅       |
 | `agent-card-seen`      | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡）                                     | ✅       |
 | `property-editor`      | `verify.mjs` | 属性值下拉编辑器：md 预览浮层（已选标签无描边 + 行尾 ✓）/ agent 悬浮卡浮层 + 「指针移入附属浮层卡片不收起」 | ✅       |
+| `agent-card-tags`      | `verify.mjs` | Agent 卡片 Tags 候选：全局清单并入（候选含本会话未选标签）+ 候选项数字计数 + hover 卡与 AgentCardModal 候选一致（独立 profile + 端口 9234） | ✅       |
 | `commontext-meta-sort` | `verify.mjs` | CommonText 列表元信息列 / 图标排序控件 / 搜索态禁用 / 次数写入（独立 profile + 端口 9251）                  | ✅       |
