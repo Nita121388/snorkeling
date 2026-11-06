@@ -91,3 +91,82 @@ FontAwesome 计算）。原型页与真实渲染一致。
 - hover 卡不提供 AI 标题 / metadata 生成入口（属写操作，留在详情卡与弹窗；hover 卡只留 `✨` 属性填充）。
 - 弹窗形态的属性区仍用 agent 行骨架（4 行），未切换成 Notion 属性面板；需要更宽的编辑体验时再切。
 - 未做卡片内折叠属性（原型里有开关，真实卡保持 4 行常显）。
+
+## 状态 chip 收口（2026-11-06, task 11-06-agent-card-chip-title）
+
+状态徽章此前有 **4 份互不相干的实现**，只有判定层共享，几何/文案/跑时各写一份：
+
+| 面 | 旧实现 | 旧几何 | 旧跑时 |
+|---|---|---|---|
+| Overview 列表 + 看板 | `session-overview/agent-status-chip.tsx` | 18px / 10px / 圆角 6 | ✅ m/h/d |
+| 悬浮卡 + 放大弹窗 | `agent-hover-card.tsx` + `info-card.scss` | 20px / 10.5px / 胶囊 999 | ❌ 只有未读 Done 的 elapsed |
+| Tab 聚合 | `session-overview.tsx` 的 `AggregateStatusChip` | 18px / 聚合文案 | ❌ |
+| Block 头部 | `term-model.ts` 的 `HeaderElem` 文本 | 纯文本 | ❌ |
+
+**现在只有一个产出地**：
+
+```
+agent-status/agent-status-chip-view.ts   纯函数 buildAgentStatusChipView()  ← label/runtime/title/className 的唯一来源
+        ↑                          ↑
+AgentStatusChip (React)      term-model 的 HeaderElem
+        ↑
+variant = list | board | card | header | aggregate（只决定几何与装饰）
+```
+
+- `variant` 只决定**几何与装饰**（高度 / 字号 / 圆角 / 有无 icon / 有无 dot），判定与文案不分叉。
+- **兼容类名是契约**：`agent-card-status-chip` / `agent-status-header` /
+  `session-overview-agent-status` / `session-overview-agent-aggregate` 仍挂在根节点上，
+  verify 探针依赖它们；新增变体时不要删。
+- `.agent-card-status-dot` 及 `is-working` / `is-thinking` / `is-done-unread` / `is-seen`
+  同理保留（动画已由 `agent-status-chip.scss` 的新类名驱动，旧类只作选择器锚点）。
+- `data-agent-read` 必须出现在**所有**渲染分支（含非交互 span 分支），缺一个分支
+  就会让某一面永远读到 `null`（真机台实测踩过）。
+
+### 运行时长（R2）
+
+| 区间 | 输出 |
+|---|---|
+| `< 60s` | `7s` |
+| `< 60min` | `3min21s` |
+| `< 24h` | `1h12min` |
+| `>= 24h` | `2d3h` |
+
+- 不用 `mm:ss`：`00:07` 读起来像计时器，不像"跑了多久"。
+- 只在 `working` / `blocked` / `stale` 显示；`done` 仍用分钟级 elapsed（`Done 3m`），
+  `idle` / `unknown` 不显示。
+- **刷新机制是性能红线**：`agentStatusSecondTickAtom`（1s 单例，`document.hidden` 跳过写入）
+  **只有 chip 自己订阅**，`React.memo` 包裹。**禁止**把 `SessionOverviewPanel` 的 `useNow`
+  从 30s 改快 —— 它被 `boardCards` / `timelineRows` 两个 memo 与看板 `useLayoutEffect` 依赖，
+  面板级 1s tick 会退化成整树重渲染 + 全量 rect 采样。
+  见 `frontend/app/agent-status/agent-status-second-tick.ts` 的注释。
+
+## 会话标题内联编辑（2026-11-06, 同任务）
+
+- 组件：`element/info-card/editable-title.tsx`（`EditableTitle`）
+  - 弹窗 `enterToEdit="double"`，悬浮卡 `enterToEdit="single"`
+  - `card` 变体用 `<textarea rows={2}>` 复用 `.agent-card-title-block` 的排版，
+    进编辑**不换视觉**（不加边框/背景），避免标题在卡片上"跳一下"
+  - `Escape` 必须 `preventDefault + stopPropagation`：`app.tsx` 在 document 上挂了冒泡期
+    keydown，不拦就会走到 `modalsModel.cancelTopModal()` 把整个弹窗关掉
+- 写入：`useSessionNoteState().renameTitle(next)` → `service.Title(sessionId, next, connection)`
+  → `dispatchAISessionNoteUpdated(updated)` → note-cache merge，所有面同帧刷新
+- **"改名不能让 Done 亮起"**：`SetTitle` 会 bump `UpdatedAt`，而 `presentAgentStatus` 有
+  「canonical idle + 未读 session 活动 + 15 分钟内 → done」的判定。调用面（`AgentHoverCard` /
+  `AgentCardModal`）在改名成功后若当前态是 `done`，立刻
+  `ackAgentStatus(blockId, status, "title-edit")`。hook 本身不接收 blockId，保持通用。
+
+### 真机判据
+
+`node scripts/verify/agent-card-seen/verify.mjs` 新增 4 条：
+
+| 断言 | 判据 |
+|---|---|
+| `hover-card-runtime-visible` | working 态 chip 的 runtime 匹配 `/^(?:\d+s|\d+min\d+s|\d+h\d+min|\d+d\d+h)$/` |
+| `hover-card-chip-centered` | `|labelRect.centerY − chipRect.centerY| <= 1` |
+| `chip-same-label-across-surfaces` | 头部 text 与卡片 label 同源 |
+| `title-edit-in-dialog` | 弹窗内双击标题 → input 出现 → 输入 → Enter → 标题更新 |
+
+> **已知红灯（不在本包范围）**：`title-edit-in-dialog` 目前红。原因是悬浮卡的放大按钮
+> 在真实指针下被 xterm 的 link-layer canvas 盖住（`elementFromPoint` 命中 `CANVAS.xterm-link-layer`，
+> `hitByPointer: false`；JS `click()` 可正常打开弹窗）。属 `info-card` 层级/命中问题，
+> 与 `11-06-tab-hover-clip` 同源，需单独处理。

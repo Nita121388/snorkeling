@@ -19,6 +19,22 @@
 
 一句话边界：`.trellis/` 管「任务是什么/怎么做」，`loop/` 管「哪班跑到哪、算不算过」。
 
+## 2026-11-06 深夜：Agent 卡片统一（chip 收口 + 跑时 + 标题编辑）
+
+任务 `.trellis/tasks/11-06-agent-card-chip-title/`，提交 `1ee8db4b` + `b8550fc2`。
+
+- **状态 chip 从 4 份实现收口成 1 份**：纯函数 `agent-status-chip-view.ts` 出 label/runtime/title/className，
+  `AgentStatusChip` 按 `variant`（list/board/card/header/aggregate）只切几何与装饰；
+  悬浮卡、看板、列表、Tab 聚合、Block 头部全部改读同一份。
+- **运行时长**：`7s` / `3min21s` / `1h12min` / `2d3h`（不用 `00:07` 那种计时器样式）。
+  1s 单例 tick **只有 chip 订阅**，面板 30s `useNow` 不动（那是性能红线）。
+- **标题可编辑**：悬浮卡单击、放大弹窗双击；`renameTitle` → `service.Title` → note-cache 广播。
+  改名成功后 ack `title-edit`，避免 `SetTitle` bump `UpdatedAt` 把 idle 会话误点亮成 Done。
+- 判据：`agent-status` 260 · `view/term` 196 · `store` 100 · `info-card` 53 · `session-overview` 140 · `modals` 39。
+- **已知红灯**：真机台 `agent-card-seen` 25/26 —— `title-edit-in-dialog` 红，因为悬浮卡的放大按钮
+  在真实指针下被 xterm 的 link-layer canvas 盖住（JS `click()` 正常）。属 `info-card` 层级/命中问题
+  （与 `11-06-tab-hover-clip` 同源），需另开包。
+
 ## 现状一句话
 
 主分支 `main` 上 4 个功能的代码都在，工作区干净。`11-04-ui-delivery-batch` 这一批**已全部交付**，

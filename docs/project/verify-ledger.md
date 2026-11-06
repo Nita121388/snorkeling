@@ -46,3 +46,15 @@
 | 2026-11-06 14:53 | agent-card-seen | ❌ 22/26 | launch+reset | `20261106T14521-agent-card-seen` | 1ee8db4b |
 | 2026-11-06 14:54 | overview-board | ❌ 38/43 | launch+reset | `20261106T14532-overviewboard` | working-tree |
 | 2026-11-06 15:03 | agent-card-seen | ❌ 15/26 | launch+reset | `20261106T15013-agent-card-seen` | 1ee8db4b |
+| 2026-11-06 15:14 | agent-card-seen | ❌ 25/26 | launch+reset | `20261106T15065-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:18 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261106T15170-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:19 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261106T15183-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:20 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261106T15202-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:23 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261106T15222-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:28 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261106T15272-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:32 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261106T15313-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:34 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261106T15332-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:36 | agent-card-seen | ❌ 17/26 | attach | `20261106T15354-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:44 | agent-card-seen | ❌ 25/26 | launch+reset | `20261106T15383-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:53 | agent-card-seen | ❌ 25/26 | launch+reset | `20261106T15463-agent-card-seen` | e4e912a4 |
+| 2026-11-06 15:58 | agent-card-seen | ❌ 17/26 | launch+reset | `20261106T15570-agent-card-seen` | e4e912a4 |
