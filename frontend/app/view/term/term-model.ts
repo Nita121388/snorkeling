@@ -5,12 +5,15 @@ import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
 import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
 import { formatAgentProvider } from "@/app/agent-status/agent-status-derive";
+import { buildAgentStatusChipView } from "@/app/agent-status/agent-status-chip-view";
 import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
+import { needsAgentChipRuntime } from "@/app/agent-status/agent-status-runtime";
+import { agentStatusSecondTickAtom } from "@/app/agent-status/agent-status-second-tick";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { agentStatusViewLabel, deriveAgentStatusView } from "@/app/agent-status/agent-status-view";
+import { deriveAgentStatusView } from "@/app/agent-status/agent-status-view";
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";
@@ -660,26 +663,37 @@ export class TermViewModel implements ViewModel {
         if (view == null) {
             return null;
         }
+        // 文案 / 类名 / 跑时全部来自共享纯函数 —— 本文件不再自己拼 label 或 className。
+        // 这与 React 侧的 AgentStatusChip 是同一份产出（agent-status-chip-view.ts），
+        // 所以同一个状态在头部徽章与卡片 chip 上不可能再出现两种说法。
+        const chipView = buildAgentStatusChipView({
+            variant: "header",
+            status,
+            read: view.read,
+            nowMs: Date.now(),
+        });
+        if (chipView == null) {
+            return null;
+        }
         const doneUnread = view.read === "unread" && view.state === "done";
-        // D 完成态 elapsed 自动刷新: 仅在未读 Done 时订阅 nowMinuteTickAtom, 分钟跳变驱动
-        // rederive, "10m" → "11m" 才不会冻结在跳变那一刻的值. 没 D 时跳过订阅, R 或 idle 上
-        // 不必为分钟 tick 付多余 rederive 代价.
+        // 两根 tick 按需订阅，不白付代价：
+        //   - 活跃态跑时（mm:ss）走 1s tick；
+        //   - 未读 Done 的分钟级 elapsed 走 60s tick。
         if (doneUnread) {
             get(nowMinuteTickAtom);
+        }
+        if (needsAgentChipRuntime(status)) {
+            get(agentStatusSecondTickAtom);
         }
         const allRead = view.read === "seen";
         // allRead 灰化: 已读 (点击 ack 或切过去看过) → is-acked 视觉变淡; 无跳变的 idle 上
         // 文案收敛成 "Seen"，其余仍是状态词。
-        const titleText = view.read === "seen"
-            ? view.state === "idle"
-                ? "Seen — up to date"
-                : `${view.label} — up to date`
-            : view.title;
-        const labelText = view.state === "idle" && allRead ? "Seen" : agentStatusViewLabel(view);
+        const titleText = chipView.title;
+        const labelText = view.state === "idle" && allRead ? "Seen" : chipView.label;
         return {
             elemtype: "text",
-            text: labelText,
-            className: `agent-status-header is-${view.state} phase-${view.phase}${view.inferred ? " is-inferred" : ""}${allRead ? " is-acked" : ""}${doneUnread ? " is-done-unread" : ""}`,
+            text: chipView.runtime !== "" ? `${labelText} ${chipView.runtime}` : labelText,
+            className: chipView.className,
             noGrow: true,
             onClick: (e) => {
                 e.stopPropagation();

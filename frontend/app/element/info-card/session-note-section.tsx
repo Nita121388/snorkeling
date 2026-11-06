@@ -21,9 +21,11 @@ import { usePropertySchema, setPropertySchema, upsertSchemaDef } from "@/app/vie
 import { patchSessionProperty } from "@/app/view/aisessions/property/property-store";
 import { toPropertyDefs } from "@/app/view/aisessions/property/property-model";
 import { saveSessionProps } from "@/app/store/session-note-cache";
+import { useAvailableSessionTags } from "@/app/store/use-available-session-tags";
 import { setSessionProperty } from "@/app/view/aisessions/property/property-store";
 import { humanizeKey, type PropertyDef, type PropertyType, type PropertyValue } from "@/app/view/aisessions/property/property-model";
 import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
+import { EditableTitle } from "./editable-title";
 import { UndoNoteBar, useNoteUndo, type NoteUndoSnapshot } from "@/app/view/aisessions/undo-toast";
 import { modalsModel } from "@/app/store/modalmodel";
 import * as React from "react";
@@ -52,6 +54,7 @@ export function SessionNoteSection({
     onOpenCardDialog,
     variant = "detail",
     footerExtra,
+    onRenameTitle,
 }: {
     state: SessionNoteState;
     /**
@@ -69,6 +72,14 @@ export function SessionNoteSection({
     variant?: "detail" | "hover";
     /** hover 卡底部右组的额外内容（session id + 复制），与 AI 按钮同一行右对齐。 */
     footerExtra?: React.ReactNode;
+    /**
+     * 手动改名的提交回调（可选）。
+     *
+     * 未提供时标题降级为**只读展示**（session-detail-info-card 等现有调用点行为不变）；
+     * 由调用面（AgentHoverCard / AgentCardModal）传入 `noteState.renameTitle` 包装版本，
+     * 因为只有它们持有 blockId，能完成「改名不得点亮 Done」的 ack（design.md §3.3）。
+     */
+    onRenameTitle?: (next: string) => Promise<unknown | null>;
 }) {
     const {
         summary,
@@ -89,6 +100,13 @@ export function SessionNoteSection({
 
     const sessionKey = summary?.key ?? state.sessionId;
     const connection = state.connection ?? "";
+    // 全局标签清单（含使用次数）：给 PropertyList 的 Tags 浮层补上「别的会话用过什么标签」。
+    // 首帧为空数组 → 候选池退化为「def.options + 已选值」，与接入前完全一致（渐进增强）。
+    const availableTags = useAvailableSessionTags(connection, summary?.origin ?? "");
+    const tagCatalog = React.useMemo<Record<string, SessionTagSummary[]>>(
+        () => (availableTags.length > 0 ? { tags: availableTags } : {}),
+        [availableTags]
+    );
     const undo = useNoteUndo(state.service, sessionKey, connection);
 
     // 弹窗编辑 Note（类似 aisessions 列表行）：App 级 modal，不渲染在卡片内。
@@ -101,11 +119,15 @@ export function SessionNoteSection({
 
     const prevNoteRef = React.useRef<NoteUndoSnapshot | null>(null);
     const [genError, setGenError] = React.useState("");
+    const [writeError, setWriteError] = React.useState("");
     const schema = usePropertySchema();
 
     const writeProperty = React.useCallback(
         (def: PropertyDef, value: PropertyValue) => {
             if (summary == null) return;
+            // 写失败必须说出来：以前这里 `void setSessionProperty(...)` 把返回值全丢了，
+            // 用户点选/删除标签如果 RPC 失败，屏幕上只看到乐观更新后又被回滚，
+            // 表现为“改了但没保存”且完全没有任何提示。
             void setSessionProperty({
                 service: state.service,
                 sessionId: sessionKey,
@@ -113,6 +135,8 @@ export function SessionNoteSection({
                 summary,
                 def,
                 value,
+            }).then((result) => {
+                setWriteError(result.ok ? "" : `保存失败：${result.error}`);
             });
         },
         [connection, sessionKey, state.service, summary]
@@ -212,26 +236,51 @@ export function SessionNoteSection({
     }
 
     const titleSourceBadge = <TitleSourceBadge titleSource={summary.titleSource} className="mr-1 align-baseline" />;
+    // 标题块：有 onRenameTitle 就可编辑（双击/单击进编辑），否则降级为纯展示。
+    // hover 卡用 single（悬停即预览，单击改名的意图更直接）；detail 用 double（
+    // 与 session-detail 头栏同一手感，避免与选中文字冲突）。
+    //
+    // variant="card" 让 hover 卡的标题直接复用 0.0.121 的 .agent-card-title-block
+    // （12.5px / 2 行 clamp / 左侧状态色引用线），且**编辑态排版零变化** ——
+    // 用户点进标题看到的是“文字变成光标”，不是“凭空多出一个表单框”。
+    const titleNode =
+        onRenameTitle != null ? (
+            <EditableTitle
+                title={title}
+                titleSource={summary.titleSource}
+                variant={variant === "hover" ? "card" : "inline"}
+                enterToEdit={variant === "hover" ? "single" : "double"}
+                onCommit={onRenameTitle}
+            />
+        ) : null;
 
     return (
         <InfoCardSection>
             {variant === "hover" ? (
                 /* hover 卡：标题是卡片主体（2 行 + 状态色引用线）。
                    AI 标题 / metadata 生成属写入操作，留在详情卡与弹窗里；
-                   hover 卡的 AI 入口只有 footer 的 ✨ 属性自动填充。 */
-                <div className="agent-card-title-wrap">
-                    <div className="agent-card-title-block" title={title}>
-                        {titleSourceBadge}
-                        {title}
+                   hover 卡的 AI 入口只有 footer 的 ✨ 属性自动填充。
+                   titleNode 自带 .agent-card-title-wrap + .agent-card-title-block，
+                   不再包一层，否则双层 margin 会把标题推下去。 */
+                titleNode != null ? (
+                    titleNode
+                ) : (
+                    <div className="agent-card-title-wrap">
+                        <div className="agent-card-title-block" title={title}>
+                            {titleSourceBadge}
+                            {title}
+                        </div>
                     </div>
-                </div>
+                )
             ) : (
                 <div className="flex items-center justify-between gap-2">
                     {/* min-w-0 + flex-1：标题行可收缩，长会话名不再把卡片撑破。 */}
                     <InfoCardHead className="min-w-0 flex-1">
                         <InfoCardIcon icon={`fa-sharp fa-solid ${statusIcon(state)}`} />
-                        <InfoCardMarquee text={title} />
-                        <TitleSourceBadge titleSource={summary.titleSource} className="ml-1" />
+                        {titleNode != null ? titleNode : <InfoCardMarquee text={title} />}
+                        {titleNode == null ? (
+                            <TitleSourceBadge titleSource={summary.titleSource} className="ml-1" />
+                        ) : null}
                     </InfoCardHead>
                     <div className="flex shrink-0 items-center gap-0.5">
                         {onOpenCardDialog != null ? (
@@ -345,6 +394,7 @@ export function SessionNoteSection({
                     layout={variant === "hover" ? "agent" : "notion"}
                     canEdit={canEditProperties}
                     schema={schema}
+                    tagCatalog={tagCatalog}
                     onAddProperty={canEditProperties ? addProperty : undefined}
                     onDeleteProperty={canEditProperties ? deleteProperty : undefined}
                     onRenameProperty={canEditProperties ? renameProperty : undefined}
@@ -385,6 +435,24 @@ export function SessionNoteSection({
                 />
             )}
             {error ? <InfoCardError>{error}</InfoCardError> : null}
+            {/* 属性写失败（含标签删除）的提示：不能静默，否则用户只看到“改了又变回去”。 */}
+            {writeError !== "" ? (
+                <div className="flex items-center gap-2 text-[10px] text-warning" role="alert">
+                    <span className="min-w-0 flex-1 break-words">{writeError}</span>
+                    <button
+                        type="button"
+                        className="shrink-0 cursor-pointer text-secondary hover:text-primary"
+                        title="Dismiss"
+                        aria-label="Dismiss save error"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setWriteError("");
+                        }}
+                    >
+                        <i className="fa-sharp fa-solid fa-xmark" />
+                    </button>
+                </div>
+            ) : null}
         </InfoCardSection>
     );
 }

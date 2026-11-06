@@ -15,11 +15,10 @@ import { InfoCard, InfoCardSection } from "@/app/element/info-card";
 import { SessionNoteSection } from "@/app/element/info-card/session-note-section";
 import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
 import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
-import {
-    agentStatusAccent,
-    agentStatusViewLabel,
-} from "@/app/agent-status/agent-status-view";
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { agentStatusAccent } from "@/app/agent-status/agent-status-view";
 import { useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
+import { AgentStatusChip } from "@/app/session-overview/agent-status-chip";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { humanizeKey } from "@/app/view/aisessions/property/property-model";
@@ -115,8 +114,27 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     const statusRead = statusView?.read ?? "seen";
     // 状态色：原型 agent-id-card 的映射，用现成主题 token；已读收敛到 secondary。
     const statusAccent = agentStatusAccent(statusView?.tone ?? "unknown", statusRead);
-    const isThinking =
-        statusView != null && statusView.state === "working" && statusView.phase === "thinking";
+    // 卡片 ack：与头部徽章走同一个收口函数，保证 R 指纹与 D 完成态两份 map 同时写。
+    const handleAckCardStatus = React.useCallback((targetBlockId: string, status: AgentStatus) => {
+        ackAgentStatus(targetBlockId, status, "card-pill");
+    }, []);
+    /**
+     * 手动改名。
+     *
+     * 写入成功 → 如果这个 block 当前已经处于 Done（用户改标题 bump 了 UpdatedAt，
+     * presentAgentStatus 会把 idle + 未读活动提升成 done），立刻 ack 掉：这是用户
+     * 自己制造的更新，不该再提示一次。不改后端行为、不改 derive 规则。
+     */
+    const handleRenameTitle = React.useCallback(
+        async (next: string) => {
+            const updated = await noteState.renameTitle(next);
+            if (updated != null && agentStatus != null && statusView?.state === "done") {
+                ackAgentStatus(blockId, agentStatus, "title-edit");
+            }
+            return updated;
+        },
+        [agentStatus, blockId, noteState, statusView]
+    );
     const personas = useAgentPersonas();
     const sessionEmojis = useSessionEmojis();
     const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
@@ -233,38 +251,17 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                         {/* 右上角：状态 / 收藏 / 放大，同一基线右对齐 */}
                         <div className="agent-card-actions">
                             {statusView != null ? (
-                                <span
-                                    className={cn(
-                                        "agent-card-status-chip",
-                                        `is-${statusView.tone}`,
-                                        statusRead === "unread" ? "is-unread" : "is-seen",
-                                        statusView.ackable && "is-ackable"
-                                    )}
-                                    data-agent-read={statusRead}
-                                    title={statusView.title}
-                                    // 卡片也能 ack：与头部徽章走同一个收口函数，
-                                    // 保证 R 指纹与 D 完成态两份 map 同时写。
-                                    onClick={
-                                        statusView.ackable
-                                            ? (e) => {
-                                                  e.stopPropagation();
-                                                  ackAgentStatus(blockId, agentStatus, "card-pill");
-                                              }
-                                            : undefined
-                                    }
-                                >
-                                    <span
-                                        className={cn("agent-card-status-dot", {
-                                            "is-working": statusView.state === "working",
-                                            "is-thinking": isThinking,
-                                            "is-done-unread": statusRead === "unread" && statusView.state === "done",
-                                            "is-seen": statusRead === "seen",
-                                        })}
-                                    />
-                                    <span className="agent-card-status-label">
-                                        {agentStatusViewLabel(statusView)}
-                                    </span>
-                                </span>
+                                // 共享 chip 的 card 变体：几何（20px 胶囊 + dot）与文案/跑时全部
+                                // 来自 agent-status-chip.scss + buildAgentStatusChipView，
+                                // 本文件不再自己拼 label / class / 动画。
+                                <AgentStatusChip
+                                    variant="card"
+                                    status={agentStatus}
+                                    now={Date.now()}
+                                    blockId={blockId}
+                                    unread={statusRead === "unread"}
+                                    onAck={statusView.ackable ? handleAckCardStatus : undefined}
+                                />
                             ) : null}
                             {noteState.summary != null ? (
                                 <button
@@ -309,6 +306,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                 canEditProperties
                 variant="hover"
                 onOpenCardDialog={embedded ? undefined : openCardDialog}
+                onRenameTitle={handleRenameTitle}
                 footerExtra={
                     sessionId !== "" ? (
                         <span className="agent-card-session">

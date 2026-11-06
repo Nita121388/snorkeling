@@ -91,12 +91,12 @@ function BoardCard({
             <span className="session-overview-board-card-meta">
                 {status != null && onAckStatus != null ? (
                     <AgentStatusChip
+                        variant="board"
                         status={status}
                         now={now}
                         blockId={card.blockId}
                         unread={unread}
                         onAck={onAckStatus}
-                        className="is-board-card"
                     />
                 ) : (
                     <span className="session-overview-board-card-view-label">{card.kindLabel}</span>

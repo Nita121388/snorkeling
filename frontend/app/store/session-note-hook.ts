@@ -74,6 +74,15 @@ export type SessionNoteState = {
     generateTitle: () => Promise<void>;
     applyTitle: () => Promise<void>;
     dismissTitle: () => void;
+    /**
+     * 手动改名（用户直接输入）。与 applyTitle 同一广播通道：
+     * `service.Title` → `dispatchAISessionNoteUpdated` → note-cache merge → 所有面同帧刷新。
+     *
+     * 返回写入后的 summary（null = 没写/失败），调用面据此决定是否退出编辑态。
+     * **本 hook 不接收 blockId**（现有签名只有 sessionId + connection），
+     * 所以「改名不得点亮 Done」的 ack 由调用面负责（见 design.md §3.3）。
+     */
+    renameTitle: (next: string) => Promise<SessionSummary | null>;
     /** 星标（summary.marked）。写库期间为 true，按钮应 disabled。 */
     starPending: boolean;
     /** 切换星标：Mark(key, !marked) → dispatchAISessionNoteUpdated。失败写 error。 */
@@ -409,6 +418,32 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         setTitleSuggestion("");
         setTitleError("");
     }, []);
+    // ── 手动改名（用户直接输入） ──
+    // 与 applyTitle 同一条通道，差别只在于名字来自用户而不是 AI 提案。
+    // trim 后为空 / 与现值相同 一律不发请求（避免白写一次库并 bump UpdatedAt）。
+    const renameTitle = React.useCallback(
+        async (next: string): Promise<SessionSummary | null> => {
+            const nextTitle = next.trim();
+            if (summary == null || sessionId === "" || nextTitle === "") {
+                return null;
+            }
+            if (nextTitle === (summary.title ?? "")) {
+                return null;
+            }
+            try {
+                // origin 传 connection：远端会话要落到对应 origin 的 manager 上。
+                const updated = await service.Title(sessionId, nextTitle, connection || "");
+                // 广播后 note-cache 与所有卡片拿到新 title，不在本地硬改 summary。
+                dispatchAISessionNoteUpdated(updated);
+                setError("");
+                return updated;
+            } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
+                return null;
+            }
+        },
+        [connection, service, sessionId, summary]
+    );
     // 切换会话时清掉上一个会话的标题提案，避免 Apply 到错误会话。
     React.useEffect(() => {
         setTitleSuggestion("");
@@ -483,6 +518,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         generateTitle,
         applyTitle,
         dismissTitle,
+        renameTitle,
         starPending,
         toggleStarred,
     };

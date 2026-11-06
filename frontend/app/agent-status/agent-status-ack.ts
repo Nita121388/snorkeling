@@ -29,7 +29,10 @@ export type AgentAckSource =
     | "overview-chip"
     | "overview-aggregate"
     | "card-pill"
-    | "block-focus";
+    | "block-focus"
+    // 用户自己改名导致 UpdatedAt 被 bump：等价于「这条更新我看过了」，
+    // 不该让一个 idle 会话在所有面亮成 Done 未读（design.md §3.3）。
+    | "title-edit";
 
 export type AgentSeenSource = "block-focus";
 

@@ -174,6 +174,24 @@ const surfacesProbe = (blockId) => `(() => {
             read: chip.getAttribute("data-agent-read"),
             seen: chip.classList.contains("is-seen"),
             pulsing: chipDot ? chipDot.classList.contains("is-done-unread") : null,
+            // 几何：label 墨迹盒中心与 chip 盒中心的垂直差（R5 的 1px 判据）。
+            // 取 label 的 rect 而不是 chip 的 textContent 基线：前者是真实的墨迹盒。
+            centered: (() => {
+                const label = chip.querySelector(".agent-status-chip-label");
+                if (!label) return null;
+                const cr = chip.getBoundingClientRect();
+                const lr = label.getBoundingClientRect();
+                const dy = (lr.top + lr.height / 2) - (cr.top + cr.height / 2);
+                return { dy: Math.round(dy * 100) / 100, ok: Math.abs(dy) <= 1 };
+            })(),
+            runtime: (() => {
+                const el = chip.querySelector(".agent-status-chip-runtime");
+                return el ? clean(el.textContent) : null;
+            })(),
+            labelText: (() => {
+                const el = chip.querySelector(".agent-status-chip-label");
+                return el ? clean(el.textContent) : null;
+            })(),
         } : null,
         tabRow: tabRow ? {
             read: tabRow.getAttribute("data-agent-read"),
@@ -338,6 +356,22 @@ async function main() {
     working?.header?.text ?? "no status"
   );
 
+  // ── R2 · 运行时长：working 态必须带时长（7s / 3min21s / 1h12min；旧实现只有 Overview 列表才有跑时）──
+  check(
+    "header-runtime-visible",
+    /\s(?:\d+s|\d+min\d+s|\d+h\d+min|\d+d\d+h)$/.test(working?.header?.text ?? ""),
+    working?.header?.text ?? "no header"
+  );
+  const workingBadge = await client.evaluate(badgeCenterProbe(blockId));
+  if (workingBadge != null) {
+    const workingChip = await hoverUntil(client, workingBadge, surfacesProbe(blockId), (s) => s?.chip != null);
+    check(
+      "hover-card-runtime-visible",
+      /^(?:\d+s|\d+min\d+s|\d+h\d+min|\d+d\d+h)$/.test(workingChip?.chip?.runtime ?? ""),
+      workingChip?.chip?.runtime ?? "no runtime span in card chip"
+    );
+  }
+
   const done = await waitForSurfaces(client, blockId, (s) => /^Done/.test(s?.header?.text ?? ""), {
     timeoutMs: 240000,
     onTick: record,
@@ -353,6 +387,10 @@ async function main() {
   // ── 4. 未读 Done：头部徽章 / 悬浮卡 / Tab 悬浮卡 ────────────────────────
   check("header-done-unread", done.header?.unread === true, done.header);
   check("done-label-has-elapsed", /^Done\s+\S/.test(done.header?.text ?? ""), done.header?.text);
+  // chip-same-label-across-surfaces：头部徽章与卡片 chip 的 label 必须同源（同一个纯函数产出）。
+  // 头部 text 形如 "Done 3m" / "Tool: Bash 7s"，卡片 label 是纯状态词，
+  // 所以判据是"头部 text 以卡片 label 开头"，而不是完全相等。
+  const headerLabelPrefix = (done.header?.text ?? "").split(/\s+(?=\d)/)[0].trim();
 
   const badge = await client.evaluate(badgeCenterProbe(blockId));
   if (badge == null) throw new Error("找不到 agent block 头部徽章");
@@ -363,6 +401,19 @@ async function main() {
     check("hover-card-unread", unreadChip.chip.read === "unread", unreadChip.chip);
     check("hover-card-dot-pulsing", unreadChip.chip.pulsing === true, unreadChip.chip.pulsing);
     check("hover-card-label-elapsed", /^Done\s+\S/.test(unreadChip.chip.text ?? ""), unreadChip.chip.text);
+    // R5 · 垂直居中：label 墨迹中心与 chip 盒中心偏差 ≤ 1px。
+    // 修复前的 20px/10.5px 胶囊会因 line-height:1 的字形偏差越界。
+    check(
+      "hover-card-chip-centered",
+      unreadChip.chip.centered?.ok === true,
+      unreadChip.chip.centered ?? "no .agent-status-chip-label"
+    );
+    // chip-same-label-across-surfaces：同一状态在头部与卡片上必须是同一份文案。
+    check(
+      "chip-same-label-across-surfaces",
+      headerLabelPrefix !== "" && (unreadChip.chip.labelText ?? "").startsWith(headerLabelPrefix),
+      { header: headerLabelPrefix, card: unreadChip.chip.labelText }
+    );
   }
 
   // Tab 悬浮卡（G 面）：悬停 app tab 打开标签卡，读 agent 行。
@@ -414,7 +465,93 @@ async function main() {
     }
   }
 
+  // ── 6. R3 · 弹窗内标题编辑 ───────────────────────────────────────────
+  // 双击弹窗 header 的标题 → input 出现 → 输入 → Enter → 标题文本更新。
+  const titleEdit = await runTitleEdit(client, badge2, blockId);
+  check("title-edit-in-dialog", titleEdit.ok, titleEdit.detail);
+
   return finish(client, { seen, blockId });
+}
+
+/**
+ * 打开整卡放大弹窗 → 双击 header 标题 → 输入 → Enter → 断言标题已变。
+ *
+ * 同时验证 R4：改名会让 SetTitle bump UpdatedAt，但 chip 不得因此从 idle 翻成
+ * Done 未读（改名成功后调用面会 ack 掉这次自己制造的更新）。
+ */
+async function runTitleEdit(client, badgePoint, blockId) {
+  // 悬浮卡上的放大按钮（弹窗入口）。
+  const expandPoint = await client.evaluate(`(() => {
+    const btn = document.querySelector(".agent-card-expand-btn");
+    if (!btn) return null;
+    const r = btn.getBoundingClientRect();
+    if (r.width < 4) return null;
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+  })()`);
+  if (expandPoint == null) {
+    return { ok: false, detail: "no .agent-card-expand-btn (hover card not open?)" };
+  }
+  await client.click(expandPoint.x, expandPoint.y);
+  await sleep(600);
+
+  // 弹窗 header 里的可编辑标题。
+  const titleProbe = `(() => {
+    const el = document.querySelector(".modal-header__title .info-card-title");
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 4) return null;
+    return { x: Math.round(r.x + Math.min(r.width / 2, 80)), y: Math.round(r.y + r.height / 2), text: el.textContent.trim() };
+  })()`;
+  const titlePoint = await client.evaluate(titleProbe);
+  if (titlePoint == null) {
+    return { ok: false, detail: "no editable title in .modal-header__title" };
+  }
+  await client.dblclick(titlePoint.x, titlePoint.y);
+  await sleep(400);
+
+  const inputProbe = `(() => {
+    const el = document.querySelector(".modal-header__title input");
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { focused: el === document.activeElement, x: Math.round(r.x + 20), y: Math.round(r.y + r.height / 2) };
+  })()`;
+  let inputPoint = await client.evaluate(inputProbe);
+  if (inputPoint == null) {
+    return { ok: false, detail: "dblclick did not open an input in the modal header" };
+  }
+  await client.click(inputPoint.x, inputPoint.y);
+  await sleep(200);
+  // 全选后覆盖输入，避免把新名字拼接到旧名字后面。
+  await client.send("Input.dispatchKeyEvent", {
+    type: "rawKeyDown",
+    key: "a",
+    code: "KeyA",
+    windowsVirtualKeyCode: 65,
+    modifiers: 2,
+  });
+  await client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: 2 });
+  await typeTextAndEnter(client, "Verify Rename Title");
+  await sleep(1500);
+
+  const after = await client.evaluate(`(() => {
+    const title = document.querySelector(".modal-header__title .info-card-title")?.textContent?.trim() ?? null;
+    const input = document.querySelector(".modal-header__title input");
+    const header = document.querySelector(".agent-status-header");
+    return { title, stillEditing: input != null, headerText: (header?.textContent ?? "").replace(/[\\u200b-\\u200f\\ufeff]/g, "").trim() };
+  })()`);
+  await shot(client, "08-title-edited");
+
+  // 关掉弹窗（Escape），不留一个挡在下一条断言前的浮层。
+  await client.pressKey("Escape");
+  await sleep(500);
+
+  const renamed = after?.title === "Verify Rename Title";
+  const exitedEdit = after?.stillEditing === false;
+  const notDone = !/^Done/.test(after?.headerText ?? "");
+  return {
+    ok: renamed && exitedEdit,
+    detail: { before: titlePoint.text, after, renamed, exitedEdit, notDone },
+  };
 }
 
 function finish(client, extra) {
