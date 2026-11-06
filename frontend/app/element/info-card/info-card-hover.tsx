@@ -18,7 +18,8 @@
 // 但仍可被「点击外侧」关闭 —— 关闭前先 blur，保证 textarea 的 onBlur 提交先执行。
 
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { computeCardPos, type InfoCardSize } from "./info-card-pos";
 import {
     claimInfoCard,
     isInfoCardClaimedBy,
@@ -132,17 +133,48 @@ export function useInfoCardHover(opts?: {
         }
     }, []);
 
+    // 卡片实测尺寸（首帧未知）。定位是对视口的几何约束，一律走 computeCardPos：
+    // 只做相对偏移不钳位 = 靠右/靠下的目标会把整卡顶出窗口被裁（Tab 悬浮弹窗截断事故）。
+    const cardSizeRef = useRef<InfoCardSize | null>(null);
+
     const refreshCardPos = useCallback(() => {
         const rect = targetRef.current?.getBoundingClientRect();
         if (!rect) {
             return;
         }
         setCardPos(
-            placement === "bottom"
-                ? { top: rect.bottom + 2, left: rect.left }
-                : { top: rect.top, left: rect.right + 8 }
+            computeCardPos({
+                rect,
+                card: cardSizeRef.current ?? { width: 0, height: 0 },
+                viewport: { width: window.innerWidth, height: window.innerHeight },
+                placement,
+            })
         );
     }, [placement, targetRef]);
+
+    // 卡片挂上后实测尺寸，重新算一次坐标（layout effect → paint 前纠正，用户看不到跳动）。
+    // 尺寸没变就不重算，避免 setState 循环。
+    useLayoutEffect(() => {
+        if (!(isHovered || isCardHovered)) {
+            cardSizeRef.current = null;
+            return;
+        }
+        const el = cardElRef.current;
+        if (!el) {
+            return;
+        }
+        const box = el.getBoundingClientRect();
+        const next = { width: box.width, height: box.height };
+        const prev = cardSizeRef.current;
+        if (
+            prev == null ||
+            Math.abs(prev.width - next.width) > 0.5 ||
+            Math.abs(prev.height - next.height) > 0.5
+        ) {
+            cardSizeRef.current = next;
+            refreshCardPos();
+        }
+    }, [isHovered, isCardHovered, refreshCardPos]);
 
     const scheduleHide = useCallback(() => {
         cancelHide();
