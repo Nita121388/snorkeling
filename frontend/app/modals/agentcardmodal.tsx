@@ -13,6 +13,10 @@
 //   1. 编辑中按 ESC → 只退出编辑，不关弹窗（EditableTitle 里 stopPropagation 拦掉
 //      全局 cancelTopModal，见 editable-title.tsx 的注释）；
 //   2. 未编辑时按 ESC → 照旧关弹窗（走全局 keymodel）。
+//
+// 打开整卡后，卡内底部提供「打开会话详情」入口（data-agent-card-detail），
+// 点击往 modal 栈上再压一层 AISessionDetailModal —— 两级弹窗各自可退一层。
+// 无 sessionId 的块该按钮 disabled（与卡片点击的判定同源）。
 
 import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
@@ -75,6 +79,28 @@ function AgentCardModal({ blockId, blockData }: AgentCardModalProps) {
                 ) : (
                     noteState.title
                 )
+            }
+            footer={
+                <div className="flex w-full items-center gap-2">
+                    <button
+                        type="button"
+                        className="cursor-pointer rounded px-2 py-1 text-[11px] text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                        data-agent-card-detail
+                        disabled={sessionId === ""}
+                        title={sessionId === "" ? "该块没有会话 id" : "打开会话详情"}
+                        aria-label="打开会话详情"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            if (sessionId === "") return;
+                            // 叠在整卡之上：modal 栈天然支持逐层退（详情 ✕ 先退，再退整卡）。
+                            modalsModel.pushModal("AISessionDetailModal", { sessionId });
+                        }}
+                    >
+                        <i className="fa-sharp fa-solid fa-arrow-up-right-from-square mr-1" />
+                        打开会话详情
+                    </button>
+                    <span className="flex-1" />
+                </div>
             }
         >
             <AgentHoverCard blockId={blockId} blockData={blockData} mode="gui" embedded frameless />

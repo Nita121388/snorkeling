@@ -1452,6 +1452,32 @@
     &.is-stale {
         background: var(--agent-stale-color, #a855f7);
     }
+
+    /* 落点高亮：刚有卡片飞进这一列。由 overview-board.tsx 的 `key` 变化驱动（一次性脉冲），
+       其他重渲染不会重播。 */
+    &.is-landing {
+        animation: overview-board-dot-land 700ms ease-out 1;
+    }
+
+    &.is-landing.is-blocked {
+        --overview-board-landing-color: var(--warning-color, #f59e0b);
+    }
+
+    &.is-landing.is-working {
+        --overview-board-landing-color: var(--agent-working-color);
+    }
+
+    &.is-landing.is-done {
+        --overview-board-landing-color: var(--agent-done-color, var(--success-color));
+    }
+
+    &.is-landing.is-idle {
+        --overview-board-landing-color: var(--main-text-color);
+    }
+
+    &.is-landing.is-stale {
+        --overview-board-landing-color: var(--agent-stale-color, #a855f7);
+    }
 }
 
 .session-overview-board-column-count {
@@ -1467,6 +1493,50 @@
     font-size: 9px;
     font-weight: 700;
     line-height: 1;
+
+    /* 计数弹跳：有卡片落到该列时由 `key` 变化重播。 */
+    &.is-bumping {
+        animation: overview-board-count-pop 220ms ease-out 1;
+    }
+}
+
+/* FLIP 飞行：卡片要盖住邻居与列边框，但不能改变布局 —— 只用 transform / z-index，
+   绝不改 position: fixed。 */
+.session-overview-board-card.is-flying {
+    z-index: 2;
+    position: relative;
+}
+
+@keyframes overview-board-dot-land {
+    0% {
+        box-shadow: 0 0 0 0 rgb(from var(--overview-board-landing-color, var(--accent-color)) r g b / 0);
+    }
+    35% {
+        box-shadow: 0 0 0 6px rgb(from var(--overview-board-landing-color, var(--accent-color)) r g b / 0.18);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgb(from var(--overview-board-landing-color, var(--accent-color)) r g b / 0);
+    }
+}
+
+@keyframes overview-board-count-pop {
+    0% {
+        transform: scale(1);
+    }
+    45% {
+        transform: scale(1.16);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* JS 动效层在 reduced motion 下已经直接 return；这两条覆盖纯 CSS 的两个脉冲。 */
+@media (prefers-reduced-motion: reduce) {
+    .session-overview-board-column-dot.is-landing,
+    .session-overview-board-column-count.is-bumping {
+        animation: none;
+    }
 }
 
 .session-overview-board-cards {
@@ -1635,6 +1705,79 @@
     white-space: nowrap;
 }
 
+/* 会话标签 chip：与 aisessions 属性面板的 .property-chip 同一套「浅底 + 无重描边」观感，
+   但按看板 9px 的字号缩小一档；不用 accent 实色，避免和状态 chip 抢注意力。 */
+.session-overview-board-chip.is-tag {
+    max-width: 84px;
+    border-color: transparent;
+    background: rgb(from var(--main-text-color) r g b / 0.075);
+    color: var(--main-text-color);
+    font-weight: 500;
+    opacity: 0.82;
+}
+
+/* 溢出计数：比普通 tag 更弱，只作提示不参与点击语义。 */
+.session-overview-board-chip.is-tag-more {
+    flex: 0 0 auto;
+    border-color: transparent;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-weight: 600;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+/* 卡片底部迷你时间线：3px 高、段间 1px 缝、整条 2px 圆角。
+   段宽由 JS 用 flexGrow 按真实毫秒比例分配（不是等宽）。 */
+.session-overview-board-card-mini {
+    display: flex;
+    height: 3px;
+    gap: 1px;
+    margin-top: 1px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: rgb(from var(--main-text-color) r g b / 0.06);
+}
+
+.session-overview-board-card-mini-seg {
+    height: 100%;
+    min-width: 1px;
+    border-radius: 2px;
+    background: rgb(from var(--main-text-color) r g b / 0.18);
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    &.is-blocked,
+    &.is-error,
+    &.is-rate-limited {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    &.is-done {
+        background: var(--agent-done-color, var(--success-color));
+    }
+
+    &.is-idle {
+        background: var(--secondary-text-color);
+        opacity: 0.45;
+    }
+
+    &.is-stale {
+        background: var(--agent-stale-color, #a371f7);
+    }
+
+    &.is-unknown {
+        /* 斜纹 = 当时在干什么不知道，不谎报状态。 */
+        background: repeating-linear-gradient(
+            135deg,
+            rgb(from var(--main-text-color) r g b / 0.2) 0 2px,
+            rgb(from var(--main-text-color) r g b / 0.08) 2px 4px
+        );
+    }
+}
+
 /* 列作为 snap 停靠点；列内纵向滚动与 board 横向滚动互不干扰。 */
 .session-overview-board-column {
     scroll-snap-align: start;
@@ -1794,19 +1937,86 @@
     background-size: 12.5% 100%;
 }
 
+/* 甘特条：4px 圆角（不再是 9px 胶囊），段间留 1px 缝由 gap 负责。
+   段本身 3px 圆角 —— 相邻段之间靠 1px 透明缝分隔，读起来是「分段」而不是「一条药丸」。 */
 .session-overview-timeline-bar {
     position: absolute;
     top: 8px;
     display: flex;
+    gap: 1px;
     height: 18px;
     overflow: hidden;
-    border-radius: 9px;
+    border-radius: 4px;
     box-shadow: inset 0 0 0 1px rgb(from var(--main-text-color) r g b / 0.08);
 }
 
-/* 历史段：斜纹 = 「当时在干什么不知道」，刻意不用状态色，避免谎报。 */
+/* 分段（G2.1）：一段 = 一个真实状态区间。宽度由模型层算成百分比。 */
+.session-overview-timeline-bar-seg {
+    height: 100%;
+    min-width: 1px;
+    flex: 0 0 auto;
+    border-radius: 3px;
+    background: rgb(from var(--main-text-color) r g b / 0.18);
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    &.is-blocked,
+    &.is-error,
+    &.is-rate-limited {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    &.is-done {
+        background: var(--agent-done-color, var(--success-color));
+    }
+
+    /* idle：中性灰实心段（不再并入斜纹「状态未知」）——「空闲了多久」要能一眼读出来。 */
+    &.is-idle {
+        background: rgb(from var(--main-text-color) r g b / 0.42);
+    }
+
+    &.is-stale {
+        background: var(--agent-stale-color, #a855f7);
+    }
+
+    /* 斜纹 = 「当时在干什么不知道」，刻意不用状态色，避免谎报。 */
+    &.is-unknown {
+        background: repeating-linear-gradient(
+            135deg,
+            rgb(from var(--main-text-color) r g b / 0.16) 0 6px,
+            rgb(from var(--main-text-color) r g b / 0.07) 6px 12px
+        );
+    }
+}
+
+/* 完成点竖刻度：completedAt 的精确位置（细线 + 顶端圆点）。 */
+.session-overview-timeline-bar-completed {
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    width: 1px;
+    background: var(--agent-done-color, var(--success-color));
+    opacity: 0.9;
+    pointer-events: none;
+
+    &::after {
+        content: "";
+        position: absolute;
+        top: -2px;
+        left: -2px;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--agent-done-color, var(--success-color));
+    }
+}
+
+/* 兼容别名（旧渲染路径 + 既有 verify 探针）：与 .bar-seg 同一套几何。 */
 .session-overview-timeline-bar-history {
     height: 100%;
+    border-radius: 3px;
     background: repeating-linear-gradient(
         135deg,
         rgb(from var(--main-text-color) r g b / 0.16) 0 6px,
@@ -1816,6 +2026,7 @@
 
 .session-overview-timeline-bar-tail {
     height: 100%;
+    border-radius: 3px;
 
     &.is-working {
         background: var(--agent-working-color);
@@ -1939,5 +2150,37 @@
 
     &.is-working {
         background: var(--agent-working-color);
+    }
+
+    /* 空闲：中性灰实心（与条上的 idle 段同一色阶）。 */
+    &.is-idle {
+        background: rgb(from var(--main-text-color) r g b / 0.42);
+    }
+
+    /* 完成点：竖线 + 圆点的缩略表达。 */
+    &.is-completed {
+        position: relative;
+        background: transparent;
+
+        &::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 4px;
+            width: 1px;
+            background: var(--agent-done-color, var(--success-color));
+        }
+
+        &::after {
+            content: "";
+            position: absolute;
+            top: 1px;
+            left: 2px;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--agent-done-color, var(--success-color));
+        }
     }
 }

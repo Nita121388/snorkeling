@@ -39,6 +39,17 @@ function stateClass(state: string | null): string {
     }
 }
 
+function pad2(value: number): string {
+    return value < 10 ? `0${value}` : `${value}`;
+}
+
+/** `HH:MM`（完成点 tooltip 用）。0 返回空串，调用方据此跳过。 */
+function formatClock(atMs: number): string {
+    if (!atMs || atMs <= 0) return "";
+    const date = new Date(atMs);
+    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
 function formatLastActivity(lastActivityAt: number, nowMs: number): string {
     if (!lastActivityAt || lastActivityAt <= 0) return "";
     const minutes = Math.floor(Math.max(0, nowMs - lastActivityAt) / 60_000);
@@ -88,6 +99,8 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
                         row.title,
                         meta,
                         bar == null ? "outside window" : `${Math.round(bar.widthPct)}% of window`,
+                        bar != null && bar.segments.length > 1 ? `${bar.segments.length} 段状态` : "",
+                        bar?.completedPct != null ? `${formatClock(row.completedAt)} 完成` : "",
                         row.startUnknown ? "start unknown" : "",
                         row.live ? "live" : "",
                     ]
@@ -137,6 +150,8 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
                                         className="session-overview-timeline-bar"
                                         data-state={row.state ?? "unknown"}
                                         data-start-unknown={row.startUnknown ? "true" : "false"}
+                                        data-segments={bar.segments.length}
+                                        data-completed={bar.completedPct == null ? "none" : "true"}
                                         // 极短会话（无时间戳/刚开始）也要看得见：CSS 侧兜一个 8px 最小宽度，
                                         // left 用 min() 夹住，避免最小宽度的条越过 now 线。
                                         style={{
@@ -144,16 +159,26 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
                                             width: `max(${bar.widthPct}%, 8px)`,
                                         }}
                                     >
-                                        <span
-                                            className="session-overview-timeline-bar-history"
-                                            style={{ width: `${100 - bar.tailPct}%` }}
-                                            aria-hidden="true"
-                                        />
-                                        <span
-                                            className={cn("session-overview-timeline-bar-tail", stateClass(row.state))}
-                                            style={{ width: `${bar.tailPct}%` }}
-                                            aria-hidden="true"
-                                        />
+                                        {bar.segments.map((segment, index) => (
+                                            <span
+                                                key={`${segment.state}-${index}`}
+                                                className={cn(
+                                                    "session-overview-timeline-bar-seg",
+                                                    stateClass(segment.state)
+                                                )}
+                                                style={{ width: `${segment.widthPct}%` }}
+                                                aria-hidden="true"
+                                            />
+                                        ))}
+                                        {/* 完成点竖刻度：completedAt 在窗口内的精确位置。 */}
+                                        {bar.completedPct == null ? null : (
+                                            <span
+                                                className="session-overview-timeline-bar-completed"
+                                                style={{ left: `${bar.completedPct}%` }}
+                                                title="完成时刻"
+                                                aria-hidden="true"
+                                            />
+                                        )}
                                     </div>
                                 )}
                                 <span className="session-overview-timeline-now" aria-hidden="true" />
@@ -169,15 +194,26 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
             ) : null}
             <div className="session-overview-timeline-legend">
                 <span>
+                    <i className="session-overview-timeline-legend-swatch is-working" />
+                    运行
+                </span>
+                <span>
+                    <i className="session-overview-timeline-legend-swatch is-idle" />
+                    空闲
+                </span>
+                <span>
+                    <i className="session-overview-timeline-legend-swatch is-completed" />
+                    完成点
+                </span>
+                <span>
                     <i className="session-overview-timeline-legend-swatch is-history" />
                     状态未知（历史段）
                 </span>
-                <span>
-                    <i className="session-overview-timeline-legend-swatch is-working" />
-                    当前状态
-                </span>
-                <span className="session-overview-timeline-legend-hint">
-                    条长 = 会话寿命（createdAt → updatedAt / now）
+                <span
+                    className="session-overview-timeline-legend-hint"
+                    title="当前状态段的起点来自 AgentStatus.activeSince；多次状态交替需要后端保留转移序列，目前还画不出来。"
+                >
+                    条长 = 会话寿命；当前段起点 = activeSince
                 </span>
             </div>
         </div>

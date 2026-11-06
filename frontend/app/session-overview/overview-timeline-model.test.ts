@@ -9,6 +9,7 @@ import {
     OverviewTimelineRanges,
     buildTimelineBar,
     buildTimelineRows,
+    buildTimelineSegments,
     buildTimelineTicks,
     formatTimelineRangeLabel,
     readOverviewTimelineRange,
@@ -136,6 +137,8 @@ describe("buildTimelineBar", () => {
         endedAt: NOW,
         lastActivityAt: NOW,
         live: true,
+        activeSince: 0,
+        completedAt: 0,
         ...overrides,
     });
 
@@ -161,10 +164,12 @@ describe("buildTimelineBar", () => {
     });
 
     it("keeps a visible tail for live work and no tail when the state is unknown", () => {
+        // tailPct 现在是「最后一段的宽度」：没有 activeSince 时整条就是当前态 → 100%。
         const live = buildTimelineBar(row({ startedAt: NOW - 10 * 60_000 }), { nowMs: NOW, windowMs: 8 * H });
         expect(live!.tailPct).toBeGreaterThan(0);
+        // state=null → 段落是 unknown，tailPct 跟着是最后一段（unknown）的宽度，不再是 0。
         const unknown = buildTimelineBar(row({ state: null }), { nowMs: NOW, windowMs: 8 * H });
-        expect(unknown!.tailPct).toBe(0);
+        expect(unknown!.segments.every((segment) => segment.state === "unknown")).toBe(true);
     });
 
     it("keeps a minimum visible width for zero-span sessions and colours it with the state", () => {
@@ -176,15 +181,131 @@ describe("buildTimelineBar", () => {
         expect(bar!.widthPct).toBeGreaterThan(0.5);
         expect(bar!.leftPct + bar!.widthPct).toBeLessThanOrEqual(100.0001);
         expect(bar!.tailPct).toBe(100);
+        expect(bar!.segments).toHaveLength(1);
         const unknown = buildTimelineBar(row({ startedAt: NOW, endedAt: NOW, state: null }), {
             nowMs: NOW,
             windowMs: 8 * H,
         });
-        expect(unknown!.tailPct).toBe(0);
+        expect(unknown!.segments[0].state).toBe("unknown");
     });
 
     it("returns null when the bar ends before the window", () => {
         expect(buildTimelineBar(row({ endedAt: NOW - 5 * H }), { nowMs: NOW, windowMs: 2 * H })).toBeNull();
+    });
+});
+
+describe("buildTimelineSegments — G2.1 真实分段", () => {
+    const rowOf = (overrides: Partial<Parameters<typeof buildTimelineSegments>[0]> = {}) => ({
+        blockId: "a",
+        sessionId: "s-a",
+        title: "session a",
+        avatar: { kind: "emoji" as const, emoji: "🦊" },
+        providerLabel: "Claude",
+        projectName: "snorkeling",
+        messageCount: 3,
+        state: "working",
+        startedAt: NOW - 2 * H,
+        startUnknown: false,
+        endedAt: NOW,
+        lastActivityAt: NOW,
+        live: true,
+        activeSince: 0,
+        completedAt: 0,
+        ...overrides,
+    });
+
+    it("falls back to a single segment when activeSince is unknown", () => {
+        const segments = buildTimelineSegments(rowOf(), { nowMs: NOW, windowMs: 8 * H });
+        expect(segments).toHaveLength(1);
+        expect(segments[0]).toMatchObject({ state: "working", fromMs: NOW - 2 * H, toMs: NOW });
+    });
+
+    it("splits into unknown history + current state at activeSince", () => {
+        const activeSince = NOW - 30 * 60_000;
+        const segments = buildTimelineSegments(rowOf({ activeSince }), { nowMs: NOW, windowMs: 8 * H });
+        expect(segments).toHaveLength(2);
+        expect(segments[0]).toMatchObject({ state: "unknown", fromMs: NOW - 2 * H, toMs: activeSince });
+        expect(segments[1]).toMatchObject({ state: "working", fromMs: activeSince, toMs: NOW });
+    });
+
+    it("ignores an activeSince outside the bar (before start / after end)", () => {
+        const before = buildTimelineSegments(rowOf({ activeSince: NOW - 5 * H }), { nowMs: NOW, windowMs: 8 * H });
+        expect(before).toHaveLength(1);
+        const after = buildTimelineSegments(rowOf({ activeSince: NOW + H }), { nowMs: NOW, windowMs: 8 * H });
+        expect(after).toHaveLength(1);
+    });
+
+    it("clips the bar to the window before splitting", () => {
+        const segments = buildTimelineSegments(
+            rowOf({ startedAt: NOW - 10 * H, endedAt: NOW - H, activeSince: NOW - 3 * H }),
+            { nowMs: NOW, windowMs: 2 * H }
+        );
+        // 窗口起点 NOW-2H 之后的可见部分：一段（activeSince 在窗外左侧 → 整段都是当前态）
+        expect(segments[0].fromMs).toBe(NOW - 2 * H);
+        expect(segments[0].toMs).toBe(NOW - H);
+        expect(segments[0].state).toBe("working");
+    });
+
+    it("uses supplied history verbatim and pads a leading gap with unknown", () => {
+        const segments = buildTimelineSegments(rowOf(), {
+            nowMs: NOW,
+            windowMs: 8 * H,
+            history: [{ state: "working", fromMs: NOW - 90 * 60_000, toMs: NOW - 30 * 60_000 }],
+        });
+        expect(segments).toHaveLength(2);
+        expect(segments[0]).toMatchObject({ state: "unknown", fromMs: NOW - 2 * H });
+        expect(segments[1]).toMatchObject({ state: "working", toMs: NOW - 30 * 60_000 });
+    });
+});
+
+describe("buildTimelineBar — segments 与完成点", () => {
+    const rowOf = (overrides: Partial<Parameters<typeof buildTimelineBar>[0]> = {}) => ({
+        blockId: "a",
+        sessionId: "s-a",
+        title: "session a",
+        avatar: { kind: "emoji" as const, emoji: "🦊" },
+        providerLabel: "Claude",
+        projectName: "snorkeling",
+        messageCount: 3,
+        state: "idle",
+        startedAt: NOW - 2 * H,
+        startUnknown: false,
+        endedAt: NOW,
+        lastActivityAt: NOW,
+        live: true,
+        activeSince: 0,
+        completedAt: 0,
+        ...overrides,
+    });
+
+    it("maps segments to width percentages that sum to 100", () => {
+        const bar = buildTimelineBar(rowOf({ activeSince: NOW - 30 * 60_000 }), { nowMs: NOW, windowMs: 2 * H });
+        expect(bar!.segments).toHaveLength(2);
+        const sum = bar!.segments.reduce((n, segment) => n + segment.widthPct, 0);
+        expect(sum).toBeCloseTo(100, 5);
+    });
+
+    it("gives the idle segment exactly the time since completedAt", () => {
+        // 关键判据：idle 段宽度 = (now - completedAt) / 条长 —— 不再用 6min/20% 猜。
+        const completedAt = NOW - 45 * 60_000;
+        const bar = buildTimelineBar(rowOf({ state: "idle", activeSince: completedAt, completedAt }), {
+            nowMs: NOW,
+            windowMs: 2 * H,
+        });
+        const last = bar!.segments[bar!.segments.length - 1];
+        expect(last.state).toBe("idle");
+        // 条长 = 2h（窗口内），idle 段 = 45min → 37.5%
+        expect(last.widthPct).toBeCloseTo(37.5, 5);
+    });
+
+    it("places the completion mark at completedAt", () => {
+        const bar = buildTimelineBar(rowOf({ completedAt: NOW - 30 * 60_000 }), { nowMs: NOW, windowMs: 2 * H });
+        expect(bar!.completedPct).toBeCloseTo(75, 5);
+    });
+
+    it("omits the completion mark when completedAt is outside the bar", () => {
+        expect(buildTimelineBar(rowOf({ completedAt: NOW - 5 * H }), { nowMs: NOW, windowMs: 2 * H })!.completedPct).toBeNull();
+        expect(buildTimelineBar(rowOf({ completedAt: 0 }), { nowMs: NOW, windowMs: 2 * H })!.completedPct).toBeNull();
     });
 });
 

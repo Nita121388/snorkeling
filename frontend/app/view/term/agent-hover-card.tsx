@@ -300,12 +300,15 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
             )}
             {/* Note + tags section（与会话详情卡片共用）；悬浮卡也允许内联编辑，
                 编辑时 InfoCardPortal 的 cardProps 焦点保活会防止 hover 离开打断。
-                session id + 复制通过 footerExtra 进到「Add property」同一行。 */}
+                session id + 复制通过 footerExtra 进到「Add property」同一行。
+
+                不传 `onOpenCardDialog`：它只在 SessionNoteSection 的 `variant !== "hover"`
+                分支被消费（session-note-section.tsx:285），本卡恒传 `variant="hover"`，
+                传进去是死代码（旧代码的 `embedded ? undefined : ...` 三元同样从未生效）。 */}
             <SessionNoteSection
                 state={noteState}
                 canEditProperties
                 variant="hover"
-                onOpenCardDialog={embedded ? undefined : openCardDialog}
                 onRenameTitle={handleRenameTitle}
                 footerExtra={
                     sessionId !== "" ? (

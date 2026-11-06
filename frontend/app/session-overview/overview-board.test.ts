@@ -6,16 +6,21 @@ import {
     formatBoardAge,
     groupBlocksByStatus,
     groupOverviewCards,
+    groupOverviewCardsByProject,
     groupOverviewCardsByProvider,
     groupOverviewCardsByTab,
+    groupOverviewCardsByTags,
     isOverviewBoardGroup,
     isOverviewViewMode,
+    normalizeBoardTags,
     normalizeOverviewBoardStatus,
     OverviewBoardGroupDefault,
     OverviewBoardGroups,
     OverviewBoardGroupStorageKey,
+    OverviewBoardProjectFallbackTitle,
     OverviewBoardProviderFallbackTitle,
     OverviewBoardStatuses,
+    OverviewBoardTagFallbackTitle,
     OverviewViewModeDefault,
     OverviewViewModeStorageKey,
     projectNameFromPath,
@@ -23,6 +28,7 @@ import {
     readOverviewBoardGroup,
     readOverviewViewMode,
     resolveBoardCardTitle,
+    resolveBoardTagChips,
     truncateBoardPreview,
     writeOverviewBoardGroup,
     writeOverviewViewMode,
@@ -358,12 +364,23 @@ describe("truncateBoardPreview", () => {
     });
 });
 
-function card(blockId: string, overrides: Partial<{ tabId: string; tabName: string; providerLabel: string }> = {}) {
+function card(
+    blockId: string,
+    overrides: Partial<{
+        tabId: string;
+        tabName: string;
+        providerLabel: string;
+        projectName: string;
+        tags: readonly string[];
+    }> = {}
+) {
     return {
         blockId,
         tabId: overrides.tabId ?? "tab-1",
         tabName: overrides.tabName ?? "main",
         providerLabel: overrides.providerLabel ?? "",
+        projectName: overrides.projectName,
+        tags: overrides.tags,
     };
 }
 
@@ -426,12 +443,106 @@ describe("groupOverviewCards dispatcher", () => {
     });
 
     it("tab and provider grouping have no tone and no empty columns", () => {
-        for (const group of ["tab", "provider"] as const) {
+        for (const group of ["tab", "provider", "project", "tags"] as const) {
             const columns = groupOverviewCards(cards, statuses, group);
             expect(columns.length).toBeGreaterThan(0);
             expect(columns.every((column) => column.tone == null)).toBe(true);
             expect(columns.every((column) => column.blocks.length > 0)).toBe(true);
         }
+    });
+});
+
+describe("groupOverviewCardsByProject — 目录视图", () => {
+    it("groups by project basename and sorts by card count desc then title asc", () => {
+        const columns = groupOverviewCardsByProject([
+            card("a", { projectName: "snorkeling" }),
+            card("b", { projectName: "loop" }),
+            card("c", { projectName: "snorkeling" }),
+        ]);
+        expect(columns.map((column) => column.title)).toEqual(["snorkeling", "loop"]);
+        expect(columns[0].blocks.map((c) => c.blockId)).toEqual(["a", "c"]);
+        expect(columns[0].key).toBe("project:snorkeling");
+    });
+
+    it("folds empty / blank projects into a trailing 无项目 column", () => {
+        const columns = groupOverviewCardsByProject([
+            card("a", { projectName: "" }),
+            card("b", { projectName: "   " }),
+            card("c", { projectName: "snorkeling" }),
+        ]);
+        expect(columns).toHaveLength(2);
+        expect(columns[columns.length - 1].title).toBe(OverviewBoardProjectFallbackTitle);
+        expect(columns[columns.length - 1].blocks.map((c) => c.blockId)).toEqual(["a", "b"]);
+    });
+
+    it("keeps the fallback column last even when it has the most cards", () => {
+        const columns = groupOverviewCardsByProject([
+            card("a"),
+            card("b"),
+            card("c"),
+            card("d", { projectName: "solo" }),
+        ]);
+        // fallback 优先级高于卡片数：哪怕它有 3 张、solo 只有 1 张，仍排最后。
+        expect(columns.map((column) => column.title)).toEqual(["solo", OverviewBoardProjectFallbackTitle]);
+        expect(columns[1].blocks).toHaveLength(3);
+    });
+
+    it("never produces duplicated cards (one card belongs to exactly one project)", () => {
+        const columns = groupOverviewCardsByProject([card("a", { projectName: "p" })]);
+        expect(columns.reduce((n, column) => n + column.blocks.length, 0)).toBe(1);
+    });
+});
+
+describe("groupOverviewCardsByTags — 标签视图", () => {
+    it("puts a multi-tag card in every matching column", () => {
+        const columns = groupOverviewCardsByTags([card("a", { tags: ["重构", "auth"] })]);
+        expect(columns.map((column) => column.title).sort()).toEqual(["auth", "重构"].sort());
+        expect(columns.map((column) => column.blocks.map((c) => c.blockId))).toEqual([["a"], ["a"]]);
+        // 关键不变量：列计数之和 >= 卡片数（多标签跳列）
+        expect(columns.reduce((n, column) => n + column.blocks.length, 0)).toBeGreaterThanOrEqual(1);
+    });
+
+    it("dedupes repeated / hash-prefixed tags before bucketing", () => {
+        const columns = groupOverviewCardsByTags([card("a", { tags: ["#ui", "ui", " ui ", ""] })]);
+        expect(columns).toHaveLength(1);
+        expect(columns[0].title).toBe("ui");
+        expect(columns[0].blocks).toHaveLength(1);
+    });
+
+    it("sorts tag columns alphabetically and keeps 无标签 last", () => {
+        const columns = groupOverviewCardsByTags([
+            card("a"),
+            card("b", { tags: ["zeta"] }),
+            card("c", { tags: ["alpha"] }),
+        ]);
+        expect(columns.map((column) => column.title)).toEqual(["alpha", "zeta", OverviewBoardTagFallbackTitle]);
+        expect(columns[2].blocks.map((c) => c.blockId)).toEqual(["a"]);
+    });
+});
+
+describe("normalizeBoardTags / resolveBoardTagChips", () => {
+    it("strips #, trims, dedupes and keeps order", () => {
+        expect(normalizeBoardTags(["#ui", " ui ", "auth", "#auth", ""])).toEqual(["ui", "auth"]);
+    });
+
+    it("returns an empty list for missing / null tags", () => {
+        expect(normalizeBoardTags(undefined)).toEqual([]);
+        expect(normalizeBoardTags(null)).toEqual([]);
+        expect(normalizeBoardTags([])).toEqual([]);
+    });
+
+    it("shows up to 3 tags and counts the overflow", () => {
+        expect(resolveBoardTagChips(["a"])).toEqual({ visible: ["a"], hiddenCount: 0 });
+        expect(resolveBoardTagChips(["a", "b", "c"])).toEqual({ visible: ["a", "b", "c"], hiddenCount: 0 });
+        expect(resolveBoardTagChips(["a", "b", "c", "d", "e"])).toEqual({
+            visible: ["a", "b", "c"],
+            hiddenCount: 2,
+        });
+    });
+
+    it("honours a custom max, including 0", () => {
+        expect(resolveBoardTagChips(["a", "b"], 0)).toEqual({ visible: [], hiddenCount: 2 });
+        expect(resolveBoardTagChips(["a", "b"], 1)).toEqual({ visible: ["a"], hiddenCount: 1 });
     });
 });
 
@@ -450,10 +561,12 @@ describe("board group storage", () => {
         };
     }
 
-    it("accepts the three documented groups only", () => {
+    it("accepts the documented groups only", () => {
         for (const group of OverviewBoardGroups) {
             expect(isOverviewBoardGroup(group)).toBe(true);
         }
+        expect(OverviewBoardGroups).toContain("project");
+        expect(OverviewBoardGroups).toContain("tags");
         expect(isOverviewBoardGroup("lane")).toBe(false);
         expect(isOverviewBoardGroup(null)).toBe(false);
     });

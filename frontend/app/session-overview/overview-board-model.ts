@@ -142,15 +142,23 @@ export type OverviewBoardColumnModel<T extends { blockId: string } = OverviewBoa
     blocks: T[];
 };
 
-/** 分组函数只需要这三个字段（不依赖卡片其余展示字段）。 */
+/** 分组函数只需要这几个字段（不依赖卡片其余展示字段）。 */
 export type OverviewBoardCardRef = {
     blockId: string;
     tabId: string;
     tabName: string;
     providerLabel: string;
+    /** `basename(projectPath)`；空 = 无项目（目录分组里归「无项目」尾列）。 */
+    projectName?: string;
+    /** 会话 tags（已去 `#` 前缀）；空数组 = 无标签。 */
+    tags?: readonly string[];
 };
 
 export const OverviewBoardProviderFallbackTitle = "非 Agent";
+
+export const OverviewBoardProjectFallbackTitle = "无项目";
+
+export const OverviewBoardTagFallbackTitle = "无标签";
 
 /** 状态分组：沿用固定 5 列 + `includeEmpty` 常显语义。 */
 export function groupOverviewCardsByStatus<T extends OverviewBoardCardRef>(
@@ -213,10 +221,77 @@ export function groupOverviewCardsByProvider<T extends OverviewBoardCardRef>(
 }
 
 /**
+ * 目录分组：列 = `basename(projectPath)`。
+ *
+ * 列序 = 卡片数降序 → 标题升序；「无项目」永远最后（同 provider 的 fallback 规则）。
+ * 不补空列：没有会话的项目不占屏。
+ */
+export function groupOverviewCardsByProject<T extends OverviewBoardCardRef>(
+    cards: readonly T[]
+): OverviewBoardColumnModel<T>[] {
+    const columns = new Map<string, OverviewBoardColumnModel<T>>();
+    for (const card of cards) {
+        const project = cleanText(card.projectName);
+        const title = project === "" ? OverviewBoardProjectFallbackTitle : project;
+        const key = `project:${title}`;
+        let column = columns.get(key);
+        if (column == null) {
+            column = { key, title, blocks: [] };
+            columns.set(key, column);
+        }
+        column.blocks.push(card);
+    }
+    return [...columns.values()].sort((a, b) => {
+        const aFallback = a.title === OverviewBoardProjectFallbackTitle;
+        const bFallback = b.title === OverviewBoardProjectFallbackTitle;
+        if (aFallback !== bFallback) return aFallback ? 1 : -1;
+        if (b.blocks.length !== a.blocks.length) return b.blocks.length - a.blocks.length;
+        return a.title.localeCompare(b.title);
+    });
+}
+
+/**
+ * 标签分组：列 = tags 并集。
+ *
+ * **一张卡可出现在多列**（多标签）：这是与其它分组唯一的语义差别 ——
+ * 因此「列计数之和 = 卡片数」在这个口径下不成立（是 `>=`）。
+ * 列序 = 字母序；「无标签」永远最后。
+ */
+export function groupOverviewCardsByTags<T extends OverviewBoardCardRef>(
+    cards: readonly T[]
+): OverviewBoardColumnModel<T>[] {
+    const columns = new Map<string, OverviewBoardColumnModel<T>>();
+    const add = (card: T, title: string) => {
+        const key = `tag:${title}`;
+        let column = columns.get(key);
+        if (column == null) {
+            column = { key, title, blocks: [] };
+            columns.set(key, column);
+        }
+        // 同一张卡在同一个 tag 列里只出现一次（tags 里去重过了，这里再兜一层）。
+        if (!column.blocks.includes(card)) column.blocks.push(card);
+    };
+    for (const card of cards) {
+        const tags = [...new Set((card.tags ?? []).map((tag) => cleanText(tag).replace(/^#+/, "")).filter((t) => t !== ""))];
+        if (tags.length === 0) {
+            add(card, OverviewBoardTagFallbackTitle);
+            continue;
+        }
+        for (const tag of tags) add(card, tag);
+    }
+    return [...columns.values()].sort((a, b) => {
+        const aFallback = a.title === OverviewBoardTagFallbackTitle;
+        const bFallback = b.title === OverviewBoardTagFallbackTitle;
+        if (aFallback !== bFallback) return aFallback ? 1 : -1;
+        return a.title.localeCompare(b.title);
+    });
+}
+
+/**
  * 分组分发器。
  *
  * - `status`：固定列 + `includeEmpty`（看板常显 5 列）
- * - `tab` / `provider`：只渲染有卡的列（空列对它们没有语义）
+ * - `tab` / `provider` / `project` / `tags`：只渲染有卡的列（空列对它们没有语义）
  */
 export function groupOverviewCards<T extends OverviewBoardCardRef>(
     cards: readonly T[],
@@ -226,6 +301,8 @@ export function groupOverviewCards<T extends OverviewBoardCardRef>(
 ): OverviewBoardColumnModel<T>[] {
     if (group === "tab") return groupOverviewCardsByTab(cards);
     if (group === "provider") return groupOverviewCardsByProvider(cards);
+    if (group === "project") return groupOverviewCardsByProject(cards);
+    if (group === "tags") return groupOverviewCardsByTags(cards);
     return groupOverviewCardsByStatus(cards, presentedStatuses, opts);
 }
 
@@ -256,6 +333,8 @@ export type OverviewBoardCard = {
     providerLabel: string;
     /** Fallback context chip: project basename, or the tab name when there is no project. */
     projectName: string;
+    /** Session tags (no `#` prefix). Empty for non-agent blocks and untagged sessions. */
+    tags: readonly string[];
     tabName: string;
     /** Non-agent blocks show their view name ("Terminal") as a muted chip; agents use "". */
     kindLabel: string;
@@ -345,14 +424,52 @@ export function resolveBoardCardTitle(input: ResolveBoardCardTitleInput): string
     return providerLabel || tabName || "Agent";
 }
 
+/**
+ * 会话 tags 归一：去 `#` 前缀、去空白、去重、保序。
+ *
+ * 与 aisessions 的 `normalizeSessionTags` 同口径（那边是列表/Badge 用），但这里不 import
+ * view 层模块 —— overview 的纯函数不能反向依赖 aisessions。
+ */
+export function normalizeBoardTags(tags: readonly string[] | null | undefined): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of tags ?? []) {
+        const tag = cleanText(raw).replace(/^#+/, "");
+        if (tag === "" || seen.has(tag)) continue;
+        seen.add(tag);
+        result.push(tag);
+    }
+    return result;
+}
+
+export type BoardTagChips = {
+    visible: string[];
+    hiddenCount: number;
+};
+
+/**
+ * 卡片上最多显示几个标签 + 溢出的 `+n` 计数。
+ *
+ * 卡片高度不能因为标签多而跳动（`flex-wrap: nowrap` + 截断），所以这里给硬上限。
+ */
+export function resolveBoardTagChips(
+    tags: readonly string[] | null | undefined,
+    max = 3
+): BoardTagChips {
+    const normalized = normalizeBoardTags(tags);
+    const limit = Number.isFinite(max) ? Math.max(0, Math.floor(max)) : normalized.length;
+    if (normalized.length <= limit) {
+        return { visible: normalized, hiddenCount: 0 };
+    }
+    return { visible: normalized.slice(0, limit), hiddenCount: normalized.length - limit };
+}
+
 /** Compact age label for the card head (`now` / `12m` / `3h` / `2d`); "" hides it. */
-export function formatBoardAge(updatedAtMs: number, nowMs: number): string {
-    if (!updatedAtMs || updatedAtMs <= 0) return "";
+export function formatBoardAge(updatedAtMs: number, nowMs: number): string {    if (!updatedAtMs || updatedAtMs <= 0) return "";
     return formatCompactDuration(updatedAtMs, nowMs);
 }
 
-/** One-line preview used by the card body. Returns "" so callers can skip the node. */
-export function truncateBoardPreview(text: string | null | undefined, maxLength = 120): string {
+/** One-line preview used by the card body. Returns "" so callers can skip the node. */export function truncateBoardPreview(text: string | null | undefined, maxLength = 120): string {
     const normalized = cleanText(text);
     if (normalized === "") return "";
     if (normalized.length <= maxLength) return normalized;
@@ -381,8 +498,8 @@ export const OverviewViewModeStorageKey = "snorkeling.overview.viewMode";
 /** Default stays `list` so existing users see no behavior change on upgrade. */
 export const OverviewViewModeDefault: OverviewViewMode = "list";
 
-/** 看板列的分组口径。 */
-export const OverviewBoardGroups = ["status", "tab", "provider"] as const;
+/** 看板列的分组口径。project / tags 是 2026-11-06 新增的两种“按归属看”的口径。 */
+export const OverviewBoardGroups = ["status", "tab", "provider", "project", "tags"] as const;
 
 export type OverviewBoardGroup = (typeof OverviewBoardGroups)[number];
 

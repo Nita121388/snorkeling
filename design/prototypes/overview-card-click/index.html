@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Overview 卡片点击：三级栈原型</title>
+        <style>
+            :root {
+                --bg: #0f1014;
+                --panel: #15171d;
+                --card: #1b1e26;
+                --border: #2a2e3a;
+                --text: #e6e6e6;
+                --sub: #9b9da6;
+                --accent: #6aa6ff;
+                --working: #3fb950;
+                --blocked: #d29922;
+                --done: #6aa6ff;
+                --idle: #6b7280;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: radial-gradient(1200px 700px at 50% 0%, #1a1d27, var(--bg));
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+            }
+            header {
+                padding: 24px 32px 8px;
+                display: flex;
+                gap: 16px;
+                align-items: flex-start;
+                flex-wrap: wrap;
+            }
+            header h1 {
+                margin: 0 0 6px;
+                font-size: 20px;
+            }
+            header p {
+                margin: 0;
+                color: var(--sub);
+                font-size: 12px;
+                line-height: 1.7;
+                max-width: 760px;
+            }
+            main {
+                padding: 16px 32px 40px;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) 320px;
+                gap: 20px;
+                align-items: start;
+            }
+            .board {
+                display: flex;
+                gap: 10px;
+                overflow-x: auto;
+                padding-bottom: 8px;
+                min-width: 0;
+            }
+            .col {
+                flex: 0 0 220px;
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                background: var(--panel);
+                padding: 10px;
+            }
+            .col-head {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-bottom: 8px;
+                font-size: 11px;
+                color: var(--sub);
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+            }
+            .dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--working);
+            }
+            .card {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                padding: 10px;
+                margin-bottom: 8px;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, transparent 100%);
+                cursor: pointer;
+                transition:
+                    border-color 120ms,
+                    transform 120ms;
+            }
+            .card:hover {
+                border-color: rgb(from var(--accent) r g b / 0.5);
+                transform: translateY(-1px);
+            }
+            .card.is-target {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 1px rgb(from var(--accent) r g b / 0.35);
+            }
+            .card-head {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .avatar {
+                width: 18px;
+                height: 18px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 5px;
+                background: rgba(255, 255, 255, 0.06);
+                font-size: 12px;
+            }
+            .card-title {
+                flex: 1;
+                min-width: 0;
+                font-size: 12px;
+                font-weight: 600;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .card-meta {
+                display: flex;
+                gap: 4px;
+                flex-wrap: nowrap;
+                overflow: hidden;
+            }
+            .chip {
+                padding: 1px 6px;
+                border: 1px solid var(--border);
+                border-radius: 5px;
+                color: var(--sub);
+                font-size: 9px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+            .chip.is-tag {
+                border-color: rgb(from var(--accent) r g b / 0.35);
+                color: rgb(from var(--accent) r g b / 0.9);
+            }
+            .legend-panel {
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                background: var(--panel);
+                padding: 14px 16px;
+            }
+            .legend-panel h2 {
+                margin: 0 0 10px;
+                font-size: 13px;
+            }
+            .step {
+                display: flex;
+                gap: 8px;
+                align-items: baseline;
+                margin-bottom: 10px;
+                font-size: 11.5px;
+                line-height: 1.6;
+                color: var(--sub);
+            }
+            .step b {
+                color: var(--text);
+                font-size: 11px;
+                min-width: 58px;
+            }
+            .step.is-active b {
+                color: var(--accent);
+            }
+            .rules {
+                margin: 14px 0 0;
+                padding-left: 16px;
+                font-size: 11px;
+                line-height: 1.8;
+                color: var(--sub);
+            }
+            .rules li::marker {
+                color: var(--accent);
+            }
+
+            /* ── 弹窗层 ── */
+            .overlay {
+                position: fixed;
+                inset: 0;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                background: rgba(6, 8, 12, 0.62);
+                backdrop-filter: blur(2px);
+                z-index: 10;
+            }
+            .overlay.is-open {
+                display: flex;
+            }
+            .modal {
+                width: min(680px, calc(100vw - 32px));
+                max-height: min(720px, calc(100vh - 64px));
+                display: flex;
+                flex-direction: column;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                background: var(--card);
+                box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+                overflow: hidden;
+            }
+            .modal-head {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 12px 14px;
+                border-bottom: 1px solid var(--border);
+                flex: 0 0 auto;
+            }
+            .modal-title {
+                flex: 1;
+                min-width: 0;
+                font-size: 13px;
+                font-weight: 600;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .modal-close {
+                border: 0;
+                background: transparent;
+                color: var(--sub);
+                cursor: pointer;
+                font-size: 14px;
+                padding: 2px 6px;
+                border-radius: 5px;
+            }
+            .modal-close:hover {
+                background: rgba(255, 255, 255, 0.08);
+                color: var(--text);
+            }
+            .modal-body {
+                flex: 1;
+                min-height: 0;
+                overflow: auto;
+                padding: 14px;
+            }
+            .modal-foot {
+                flex: 0 0 auto;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 14px;
+                border-top: 1px solid var(--border);
+                background: rgba(255, 255, 255, 0.02);
+            }
+            .btn {
+                border: 1px solid var(--border);
+                background: rgba(255, 255, 255, 0.04);
+                color: var(--text);
+                border-radius: 7px;
+                padding: 5px 10px;
+                font-size: 11.5px;
+                cursor: pointer;
+            }
+            .btn:hover {
+                background: rgba(255, 255, 255, 0.08);
+            }
+            .btn.is-primary {
+                border-color: rgb(from var(--accent) r g b / 0.5);
+                background: rgb(from var(--accent) r g b / 0.14);
+                color: var(--accent);
+            }
+            .btn:disabled {
+                opacity: 0.45;
+                cursor: not-allowed;
+            }
+            .agent-card {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .agent-card-head {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .agent-avatar {
+                width: 26px;
+                height: 26px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 7px;
+                background: rgba(255, 255, 255, 0.07);
+                font-size: 16px;
+            }
+            .agent-id {
+                flex: 1;
+                min-width: 0;
+            }
+            .agent-name {
+                display: block;
+                font-size: 12.5px;
+                font-weight: 600;
+            }
+            .agent-sub {
+                display: block;
+                font-size: 10px;
+                color: var(--sub);
+            }
+            .pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 2px 8px;
+                border-radius: 999px;
+                font-size: 10px;
+                border: 1px solid var(--border);
+            }
+            .pill.is-working {
+                border-color: rgb(from var(--working) r g b / 0.45);
+                color: var(--working);
+            }
+            .title-block {
+                padding: 8px 10px;
+                border-left: 2px solid var(--working);
+                border-radius: 0 6px 6px 0;
+                background: rgba(255, 255, 255, 0.03);
+                font-size: 12.5px;
+                line-height: 1.55;
+            }
+            .prop-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 4px 0;
+                font-size: 11.5px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            }
+            .prop-key {
+                min-width: 88px;
+                color: var(--sub);
+                font-size: 10.5px;
+            }
+            .prop-val {
+                flex: 1;
+                min-width: 0;
+            }
+            .detail-modal {
+                width: min(860px, calc(100vw - 32px));
+            }
+            .bubble {
+                margin-bottom: 10px;
+                padding: 9px 11px;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.02);
+                font-size: 11.5px;
+                line-height: 1.65;
+            }
+            .bubble b {
+                display: block;
+                font-size: 10px;
+                color: var(--sub);
+                margin-bottom: 4px;
+                letter-spacing: 0.05em;
+            }
+            .toast {
+                position: fixed;
+                left: 50%;
+                bottom: 22px;
+                transform: translateX(-50%);
+                padding: 7px 14px;
+                border-radius: 999px;
+                background: rgba(20, 24, 32, 0.95);
+                border: 1px solid var(--border);
+                color: var(--sub);
+                font-size: 11px;
+                opacity: 0;
+                transition: opacity 160ms;
+                pointer-events: none;
+                z-index: 40;
+            }
+            .toast.is-on {
+                opacity: 1;
+            }
+            @media (max-width: 900px) {
+                main {
+                    grid-template-columns: minmax(0, 1fr);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div>
+                <h1>Overview 卡片点击：三级栈原型</h1>
+                <p>
+                    点卡片 → <b>整卡弹窗（AgentCardModal）</b> → 卡内点「打开会话详情」→ <b>会话详情弹窗</b>。
+                    两级弹窗叠在 modal 栈上，各自可退一层。非 agent 块（terminal）没有整卡可开，点击仍是「跳转 block」。
+                </p>
+            </div>
+        </header>
+
+        <main>
+            <div>
+                <div class="board">
+                    <div class="col">
+                        <div class="col-head"><span class="dot"></span>进行中</div>
+                        <div class="card is-target" data-block="b1" data-agent="true" data-session="sess-abc123">
+                            <div class="card-head">
+                                <span class="avatar">🦊</span>
+                                <span class="card-title">重构 auth 中间件依赖链</span>
+                            </div>
+                            <div class="card-meta">
+                                <span class="chip">Claude</span>
+                                <span class="chip">snorkeling</span>
+                                <span class="chip is-tag">#重构</span>
+                                <span class="chip is-tag">#auth</span>
+                            </div>
+                        </div>
+                        <div class="card" data-block="b2" data-agent="true" data-session="sess-def456">
+                            <div class="card-head">
+                                <span class="avatar">🧪</span>
+                                <span class="card-title">properties 抽屉回归</span>
+                            </div>
+                            <div class="card-meta">
+                                <span class="chip">Gemini</span>
+                                <span class="chip">snorkeling</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="col-head"><span class="dot" style="background: var(--done)"></span>已完成</div>
+                        <div class="card" data-block="b3" data-agent="true" data-session="sess-ghi789">
+                            <div class="card-head">
+                                <span class="avatar">🐧</span>
+                                <span class="card-title">预览编辑软换行丢失</span>
+                            </div>
+                            <div class="card-meta">
+                                <span class="chip">Codex</span>
+                                <span class="chip">snorkeling</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="col-head"><span class="dot" style="background: var(--idle)"></span>空闲</div>
+                        <div class="card" data-block="b4" data-agent="false">
+                            <div class="card-head">
+                                <span class="avatar">▤</span>
+                                <span class="card-title">Terminal</span>
+                            </div>
+                            <div class="card-meta"><span class="chip">term</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="legend-panel">
+                <h2>点一次看一层</h2>
+                <div class="step" id="step-1"><b>① 卡片</b>点卡片本体 → 整卡弹窗</div>
+                <div class="step" id="step-2"><b>② 整卡</b>卡内「打开会话详情」→ 详情弹窗</div>
+                <div class="step" id="step-3"><b>③ 详情</b>✕ / ESC 逐层退</div>
+                <ul class="rules">
+                    <li>卡内按钮一律 <code>stopPropagation</code>，不会二次触发卡片点击。</li>
+                    <li>弹窗 <code>closeOnBackdrop: false</code>：属性 inline 编辑中误关会丢草稿。</li>
+                    <li>非 agent 块没有整卡：点击 = 选中 + 跳转 block（下方 toast 提示）。</li>
+                    <li>没有 sessionId 的 agent 块，「打开会话详情」按钮 disabled。</li>
+                </ul>
+                <div style="margin-top: 14px">
+                    <button class="btn" id="reset">重置演示</button>
+                </div>
+            </aside>
+        </main>
+
+        <!-- 整卡弹窗 -->
+        <div class="overlay" id="agent-overlay">
+            <div class="modal" role="dialog" aria-label="Agent card">
+                <div class="modal-head">
+                    <span class="modal-title" id="agent-modal-title">重构 auth 中间件依赖链</span>
+                    <button class="modal-close" data-close="agent" aria-label="Close">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="agent-card">
+                        <div class="agent-card-head">
+                            <span class="agent-avatar">🦊</span>
+                            <span class="agent-id">
+                                <span class="agent-name">Claude</span>
+                                <span class="agent-sub">claude-sonnet-4.5 · 会话标题（AI 生成）</span>
+                            </span>
+                            <span class="pill is-working"><span class="dot"></span>Working · 12m</span>
+                        </div>
+                        <div class="title-block">重构 auth 中间件依赖链 —— 把 token 校验从 controller 抽到 middleware。</div>
+                        <div>
+                            <div class="prop-row"><span class="prop-key">Starred</span><span class="prop-val">★ 已收藏</span></div>
+                            <div class="prop-row">
+                                <span class="prop-key">Tags</span>
+                                <span class="prop-val">
+                                    <span class="chip is-tag">#重构</span>
+                                    <span class="chip is-tag">#auth</span>
+                                </span>
+                            </div>
+                            <div class="prop-row"><span class="prop-key">Created</span><span class="prop-val">2026-11-06 14:02</span></div>
+                            <div class="prop-row"><span class="prop-key">Messages</span><span class="prop-val">42</span></div>
+                            <div class="prop-row"><span class="prop-key">Session</span><span class="prop-val">sess-abc123</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <button class="btn is-primary" id="open-detail" data-agent-card-detail>
+                        <span>↗</span> 打开会话详情
+                    </button>
+                    <span style="flex: 1"></span>
+                    <button class="btn" data-close="agent">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 会话详情弹窗 -->
+        <div class="overlay" id="detail-overlay">
+            <div class="modal detail-modal" role="dialog" aria-label="Session detail">
+                <div class="modal-head">
+                    <span class="modal-title">会话详情 · sess-abc123</span>
+                    <button class="modal-close" data-close="detail" aria-label="Close">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="bubble"><b>USER</b>帮我重构一下 auth 中间件，现在 token 校验散在三个 controller 里。</div>
+                    <div class="bubble"><b>ASSISTANT</b>先看现有依赖链：<code>controller → service → token</code>。建议把校验提到 middleware，controller 只保留业务。</div>
+                    <div class="bubble"><b>USER</b>好，按这个来。</div>
+                </div>
+                <div class="modal-foot">
+                    <span style="flex: 1"></span>
+                    <button class="btn" data-close="detail">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="toast" id="toast"></div>
+
+        <script>
+            const agentOverlay = document.getElementById("agent-overlay");
+            const detailOverlay = document.getElementById("detail-overlay");
+            const agentModalTitle = document.getElementById("agent-modal-title");
+            const openDetailBtn = document.getElementById("open-detail");
+            const toast = document.getElementById("toast");
+
+            let currentBlock = null;
+            let toastTimer = 0;
+
+            function showToast(text) {
+                toast.textContent = text;
+                toast.classList.add("is-on");
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => toast.classList.remove("is-on"), 2200);
+            }
+
+            function syncSteps() {
+                const step1 = document.getElementById("step-1");
+                const step2 = document.getElementById("step-2");
+                const step3 = document.getElementById("step-3");
+                step1.classList.toggle("is-active", agentOverlay.classList.contains("is-open"));
+                step2.classList.toggle("is-active", detailOverlay.classList.contains("is-open"));
+                step3.classList.toggle("is-active", detailOverlay.classList.contains("is-open"));
+            }
+
+            function openAgentCard(cardEl) {
+                currentBlock = {
+                    blockId: cardEl.dataset.block,
+                    sessionId: cardEl.dataset.session ?? "",
+                    title: cardEl.querySelector(".card-title").textContent.trim(),
+                };
+                agentModalTitle.textContent = currentBlock.title;
+                // 无 sessionId → 详情按钮 disabled（真实实现里同样的判定）
+                openDetailBtn.disabled = currentBlock.sessionId === "";
+                openDetailBtn.title = currentBlock.sessionId === "" ? "该块没有会话 id" : "";
+                agentOverlay.classList.add("is-open");
+                syncSteps();
+            }
+
+            document.querySelectorAll(".card").forEach((cardEl) => {
+                cardEl.addEventListener("click", () => {
+                    const isAgent = cardEl.dataset.agent === "true";
+                    if (!isAgent) {
+                        // 非 agent 块：没有整卡可开，保持「选中 + 跳转 block」
+                        showToast("非 agent 块 → 选中并跳转 block（不开整卡）");
+                        return;
+                    }
+                    openAgentCard(cardEl);
+                });
+            });
+
+            // 卡内按钮必须 stopPropagation，避免冒泡回卡片
+            openDetailBtn.addEventListener("click", (event) => {
+                event.stopPropagation();
+                if (currentBlock == null || currentBlock.sessionId === "") return;
+                detailOverlay.classList.add("is-open");
+                syncSteps();
+            });
+
+            document.querySelectorAll("[data-close]").forEach((btn) => {
+                btn.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    const which = btn.dataset.close;
+                    if (which === "agent") agentOverlay.classList.remove("is-open");
+                    if (which === "detail") detailOverlay.classList.remove("is-open");
+                    syncSteps();
+                });
+            });
+
+            // ESC 逐层退：先退最上面那层
+            window.addEventListener("keydown", (event) => {
+                if (event.key !== "Escape") return;
+                if (detailOverlay.classList.contains("is-open")) {
+                    detailOverlay.classList.remove("is-open");
+                } else if (agentOverlay.classList.contains("is-open")) {
+                    agentOverlay.classList.remove("is-open");
+                }
+                syncSteps();
+            });
+
+            document.getElementById("reset").addEventListener("click", () => {
+                agentOverlay.classList.remove("is-open");
+                detailOverlay.classList.remove("is-open");
+                syncSteps();
+                showToast("已重置");
+            });
+
+            syncSteps();
+        </script>
+    </body>
+</html>

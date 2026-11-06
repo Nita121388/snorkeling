@@ -345,3 +345,31 @@ node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例
 
 判定方法：在实例里对按钮 rect 中心做 `elementsFromPoint()`，看命中元素是否在按钮内部。
 命中别层 = 层级/遮挡问题（产品）；命中自己但状态没变 = 逻辑问题（代码）。
+
+---
+
+## 多值分组会跨列：计数断言必须写 `>=` (2026-11-06, task 11-06-overview-optimize-1to4)
+
+- `groupOverviewCardsByTags` 把**一张多标签卡放进多列**，所以「各列卡片数之和 = 卡片总数」这条
+  在标签视图下不成立。任何跨分组的计数断言都要按口径分开写：单值口径（status / tab / provider / project）
+  用 `===`，`tags` 用 `>=` 并在 detail 里写明原因。
+- 兜底列（`非 Agent` / `无项目` / `无标签`）的排序优先级**高于卡片数**：哪怕它有 10 张、别的列只有 1 张，
+  它也必须排最后。写断言时别用「按数量降序」去反推兜底列位置。
+
+## 状态历史必须后端记，前端挂事件会漏段 (2026-11-06, task 11-06-overview-optimize-1to4)
+
+- `pkg/agentstatus` 的 `sameStatus()` **故意把 `UpdatedAt` / `ActiveSince` 排除在比较之外**
+  （`agentstatus.go:539` 有注释说明原因）。后果：同一 state 只改了 `ActiveSince` 时 `willEmit=false`，
+  前端收不到 `agentstatus` 事件。
+- 因此「per-block 状态转移历史」**只能在 `statusManager.report()` 内部记**（那里拿得到 prev/next），
+  不能在前端订阅事件自行累积 —— 前端累积会静默漏掉这些不 emit 的转移。
+- 甘特图当前的 G2.1 是**退化实现**：只用 `activeSince` / `completedAt` 两个真实字段切「unknown 历史段 + 当前态段」，
+  画不出多次交替。`overview-timeline.tsx` 的图例 tooltip 已写明这一点；要画多次交替需后端环形历史（另开任务）。
+
+## 甘特条视觉：段 3px / 整条 4px / 段间 1px 缝 (2026-11-06, task 11-06-overview-optimize-1to4)
+
+- 9px 圆角 + 18px 高的条会被读成「胶囊」，而甘特要表达的是**分段区间**。定稿：
+  `.session-overview-timeline-bar { border-radius: 4px; gap: 1px }`，段 `.bar-seg { border-radius: 3px }`。
+- `idle` 段必须是**中性灰实心**，不能并进 `unknown` 的斜纹：斜纹语义是「当时在干什么不知道」，
+  把已知的 idle 画成斜纹等于谎报「不知道」。
+- 真机断言用 `parseFloat(borderTopLeftRadius) <= 4`，不要做字符串比对（不同浏览器会输出 `4px` / `4.000px`）。

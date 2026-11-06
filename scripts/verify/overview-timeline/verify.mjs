@@ -71,6 +71,7 @@ function timelineStateProbe(scope) {
                 ? Math.round(track.getBoundingClientRect().right - nowLine.getBoundingClientRect().right)
                 : null,
         tailClasses: [...blk.querySelectorAll(".session-overview-timeline-bar-tail")].map((t) => t.className),
+        legendText: (blk.querySelector(".session-overview-timeline-legend")?.textContent || "").replace(/\s+/g, " ").trim(),
         board: blk.querySelector(".session-overview-board") != null,
         listRows: blk.querySelectorAll(".session-overview-block-row").length,
         barsGeometry: (() => {
@@ -82,6 +83,8 @@ function timelineStateProbe(scope) {
             const row = bar.closest(".session-overview-timeline-row");
             const history = bar.querySelector(".session-overview-timeline-bar-history");
             const tail = bar.querySelector(".session-overview-timeline-bar-tail");
+            const segs = [...bar.querySelectorAll(".session-overview-timeline-bar-seg")];
+            const completed = bar.querySelector(".session-overview-timeline-bar-completed");
             return {
                 title: (row?.querySelector(".session-overview-timeline-row-title")?.textContent || "").trim(),
                 state: bar.getAttribute("data-state"),
@@ -90,6 +93,15 @@ function timelineStateProbe(scope) {
                 widthRatio: trackRect.width > 0 ? rect.width / trackRect.width : 0,
                 historyWidth: history == null ? 0 : Math.round(history.getBoundingClientRect().width),
                 tailWidth: tail == null ? 0 : Math.round(tail.getBoundingClientRect().width),
+                // G2.1：段数与完成点（新渲染走 .bar-seg / .bar-completed）
+                segCount: segs.length,
+                // unknown 段没有 .is-* 类（基类样式就是斜纹），所以补一个 is-unknown 供断言判。
+                segStates: segs.map(
+                    (el) => [...el.classList].find((c) => c.startsWith("is-")) ?? "is-unknown"
+                ),
+                segWidths: segs.map((el) => Math.round(el.getBoundingClientRect().width)),
+                completedPct: completed == null ? null : completed.getAttribute("style"),
+                barRadius: getComputedStyle(bar).borderTopLeftRadius,
             };
         });
     })(),
@@ -193,6 +205,12 @@ try {
                 );
                 out.ok = true;
                 try {
+                    // reportedAt 显式给成「条尾之前 90 秒」：后端把它存成 activeSince，
+                    // 于是条被切成「unknown 历史段 + working 当前段」两段（G2.1 的可判形态）。
+                    //   · 不给（默认 now）→ 落在条尾之后，只有 1 段（实测踩到）；
+                    //   · 给早了（如 30min）→ thinking 阶段 2 分钟就降级成 stale（AgentThinkStaleThresholdMs），
+                    //     段状态色会变成 stale，timeline-tail-state-color 判不过（也踩到）。
+                    const reportedAt = Date.now() - 90_000;
                     await services.BlockService.ReportAgentStatus({
                         blockId: out.blockId,
                         provider: "claude",
@@ -200,6 +218,7 @@ try {
                         state: "working",
                         phase: "thinking",
                         seq: 1,
+                        reportedAt,
                     });
                     out.statusSeeded = true;
                 } catch (err) {
@@ -212,7 +231,11 @@ try {
                         "/frontend/app/session-overview/session-overview-session-cache.ts"
                     );
                     const now = Date.now();
-                    out.span = { startedAt: now - 5 * 3600_000, updatedAt: now - 30 * 60_000 };
+                    // 条尾放到「刚刚」：activeSince 必须同时满足
+                    //   · 落在条内（否则切不出两段）；
+                    //   · 距今 < 2min（否则 thinking 阶段被降级成 stale）。
+                    // 条尾若停在 30min 前，这两条不可能同时成立（实测踩到）。
+                    out.span = { startedAt: now - 5 * 3600_000, updatedAt: now - 10_000 };
                     cache.patchCachedSessionSummary("verify-timeline-session", {
                         key: "verify-timeline-session",
                         id: "verify-timeline-session",
@@ -274,11 +297,49 @@ try {
     longBar != null && longBar.startUnknown === "false",
     `startUnknown=${longBar?.startUnknown}`
   );
+  // G2.1：不再有 history/tail 两个固定段，改成「unknown 段 + 当前态段」两段。
   reporter.check(
-    "timeline-bar-history-and-tail",
-    longBar != null && longBar.historyWidth > 0 && longBar.tailWidth > 0,
-    longBar == null ? "没找到播种的长会话条" : `history=${longBar.historyWidth}px tail=${longBar.tailWidth}px`
+    "timeline-bar-history-and-current",
+    longBar != null &&
+      longBar.segCount >= 2 &&
+      longBar.segStates.includes("is-unknown") &&
+      longBar.segStates.some((cls) => cls !== "is-unknown"),
+    longBar == null
+      ? "没找到播种的长会话条"
+      : `segs=${longBar.segCount} states=${JSON.stringify(longBar.segStates)} widths=${JSON.stringify(longBar.segWidths)}`
   );
+  // ── G2.1 断言：段渲染 / 小圆角 / 完成点 ──
+  reporter.check(
+    "timeline-bar-small-radius",
+    (st.barsGeometry ?? []).length > 0 &&
+      (st.barsGeometry ?? []).every((bar) => parseFloat(bar.barRadius ?? "99") <= 4),
+    `radius=${JSON.stringify((st.barsGeometry ?? []).map((b) => b.barRadius))}（期望 ≤ 4px，不再是 9px 胶囊）`
+  );
+  reporter.check(
+    "timeline-bar-segments-rendered",
+    (st.barsGeometry ?? []).every((bar) => bar.segCount >= 1) &&
+      (st.barsGeometry ?? []).some((bar) => bar.segCount >= 2),
+    `segCounts=${JSON.stringify((st.barsGeometry ?? []).map((b) => b.segCount))}（至少一条 ≥2 段）`
+  );
+  reporter.check(
+    "timeline-segment-widths-nonzero",
+    (st.barsGeometry ?? []).every((bar) => bar.segWidths.every((w) => w > 0)),
+    `widths=${JSON.stringify((st.barsGeometry ?? []).map((b) => b.segWidths))}`
+  );
+  // 图例四项：运行 / 空闲 / 完成点 / 状态未知（文案随渲染层一起改，防止图例落后于渲染）。
+  reporter.check(
+    "timeline-legend-four-items",
+    ["运行", "空闲", "完成点", "状态未知"].every((word) => (st.legendText ?? "").includes(word)),
+    `legend=${st.legendText}`
+  );
+  // 完成点只在 completedAt 落在窗口内的行上出现；不要求一定有（播种会话未必有完成跳变）。
+  const completedRows = (st.barsGeometry ?? []).filter((bar) => bar.completedPct != null);
+  reporter.check(
+    "timeline-completed-mark-consistent",
+    completedRows.every((bar) => /left:\s*\d+(\.\d+)?%/.test(bar.completedPct ?? "")),
+    `completedRows=${completedRows.length} styles=${JSON.stringify(completedRows.map((b) => b.completedPct))}`
+  );
+
   reporter.check(
     "timeline-bars-inside-window",
     (st.barsGeometry ?? []).length > 0 &&
@@ -301,8 +362,11 @@ try {
   if (seeded?.statusSeeded === true) {
     reporter.check(
       "timeline-tail-state-color",
-      (st.states ?? []).includes("working") && (st.tailClasses ?? []).some((cls) => cls.includes("is-working")),
-      `states=${JSON.stringify(st.states)}`
+      (st.states ?? []).includes("working") &&
+        (st.barsGeometry ?? []).some((bar) => bar.segStates.includes("is-working")),
+      `states=${JSON.stringify(st.states)} segStates=${JSON.stringify(
+        (st.barsGeometry ?? []).map((b) => b.segStates)
+      )}`
     );
   } else {
     skipped.push(`timeline-tail-state-color — 状态播种失败: ${seeded?.err}`);

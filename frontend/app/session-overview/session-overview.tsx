@@ -41,6 +41,7 @@ import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip"
 import { OverviewBoard } from "./overview-board";
 import {
     OVERVIEW_BOARD_ENABLED,
+    normalizeBoardTags,
     overviewBoardGroupAtom,
     overviewViewModeAtom,
     OverviewViewModesImplemented,
@@ -57,12 +58,14 @@ import {
 import { OverviewTimeline } from "./overview-timeline";
 import {
     buildTimelineRows,
+    buildTimelineSegments,
     formatTimelineRangeLabel,
     overviewTimelineRangeAtom,
     OverviewTimelineRangeDefault,
     OverviewTimelineRanges,
     timelineRangeToMs,
     type OverviewTimelineRange,
+    type OverviewTimelineSegment,
 } from "./overview-timeline-model";
 import {
     agentStatusHookProvidersForInstall,
@@ -943,6 +946,8 @@ function shouldShowAgentAggregate(statuses: AgentStatus[]): boolean {
     return statuses.some(shouldShowAgentStatusChip);
 }
 
+// Tab 聚合 chip 现在就是共享 AgentStatusChip 的 aggregate 变体 ——
+// 聚合词、tooltip、ack 语义都在 agent-status-chip-view.ts 里，此处不再自己拼。
 function AggregateStatusChip({
     statuses,
     unread,
@@ -953,34 +958,14 @@ function AggregateStatusChip({
     onAck: () => void;
 }) {
     if (!shouldShowAgentAggregate(statuses)) return null;
-    const aggregate = aggregateAgentStatuses(statuses);
-    const label = aggregateStatusLabel(aggregate);
-    const tooltipText = unread ? `${label} — click to mark tab as read` : `${label} — up to date`;
-    // Rendered as role="button" span (not <button>) because it sits inside the tab-toggle
-    // <button>; nested <button> is invalid HTML. stopPropagation prevents the click from
-    // toggling tab collapse.
     return (
-        <Tooltip content={tooltipText} placement="top" hideOnClick divClassName="inline-flex">
-            <span
-                role="button"
-                tabIndex={0}
-                className={cn("session-overview-agent-aggregate", `is-${aggregate.state}`, !unread && "is-acked")}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    onAck();
-                }}
-                onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onAck();
-                    }
-                }}
-                aria-label={tooltipText}
-            >
-                <span className="session-overview-agent-aggregate-label">{label}</span>
-            </span>
-        </Tooltip>
+        <AgentStatusChip
+            variant="aggregate"
+            aggregate={aggregateAgentStatuses(statuses)}
+            now={0}
+            unread={unread}
+            onAckAggregate={onAck}
+        />
     );
 }
 
@@ -1697,6 +1682,7 @@ function BlockRow({
                         <>
                             {agentStatus ? (
                                 <AgentStatusChip
+                                    variant="list"
                                     status={agentStatus}
                                     now={now}
                                     blockId={block.blockId}
@@ -2321,6 +2307,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     avatar: resolveBoardAvatar(nextBlock, personas, sessionEmojis),
                     providerLabel,
                     projectName,
+                    // tags 去 `#` 前缀并去重：卡片 chip / 标签分组 / 属性面板共用同一份口径。
+                    tags: normalizeBoardTags(summary?.tags ?? detailSummary?.tags),
                     kindLabel: nextBlock.isAgentLike ? "" : blockViewToName(nextBlock.view),
                     preview,
                     note,
@@ -2357,9 +2345,27 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                 activeSince: Object.fromEntries(
                     boardCards.map((card) => [card.blockId, agentStatuses[card.blockId]?.activeSince ?? null])
                 ),
+                completedAt: Object.fromEntries(
+                    boardCards.map((card) => [card.blockId, agentStatuses[card.blockId]?.completedAt ?? null])
+                ),
             }),
         [agentStatuses, boardCards, now, summaries, timelineRange]
     );
+    /**
+     * 卡片底部迷你时间线：复用同一份 timelineRows（排序/窗口/分段规则完全相同），
+     * 只把每行的 segments 按 blockId 发下去 —— 看板卡片自己不做时间推导。
+     *
+     * 每行最多 8 段（卡片只有 ~180px 宽，更多段在像素上已经分不开）。
+     */
+    const miniTimelines = React.useMemo(() => {
+        const result: Record<string, readonly OverviewTimelineSegment[]> = {};
+        const windowMs = timelineRangeToMs(timelineRange);
+        for (const row of timelineRows) {
+            const segments = buildTimelineSegments(row, { nowMs: now, windowMs });
+            result[row.blockId] = segments.length > 8 ? segments.slice(segments.length - 8) : segments;
+        }
+        return result;
+    }, [timelineRows, now, timelineRange]);
     const setViewMode = React.useCallback((mode: OverviewViewMode) => {
         globalStore.set(overviewViewModeAtom, mode);
     }, []);
@@ -2468,6 +2474,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                     <option value="status">状态</option>
                                     <option value="tab">Tab</option>
                                     <option value="provider">Provider</option>
+                                    <option value="project">目录</option>
+                                    <option value="tags">标签</option>
                                 </select>
                             </label>
                         ) : null}
@@ -2530,13 +2538,24 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 presentedStatuses={agentStatuses}
                                 agentStatuses={agentStatuses}
                                 group={boardGroup}
+                                miniTimelines={miniTimelines}
                                 now={now}
                                 onAckStatus={ackAgentStatus}
-                                onOpenSession={(card) => {
+                                onOpenCard={(card) => {
                                     setSelectedBlockId(card.blockId);
                                     overviewModel.markBlockViewed(card.blockId);
-                                    if (card.sessionId) {
-                                        openSessionDetail(card.sessionId);
+                                    const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
+                                    if (card.isAgentLike && block != null) {
+                                        // agent 块：开整卡弹窗（AgentCardModal），卡内再点「打开会话详情」。
+                                        modalsModel.pushModal("AgentCardModal", {
+                                            blockId: card.blockId,
+                                            blockData: block.block,
+                                        });
+                                        return;
+                                    }
+                                    // 非 agent 块（普通 term / 其他 view）：没有整卡可开，保持原「跳转 block」。
+                                    if (block != null) {
+                                        overviewModel.jumpToBlock(block.tabId, block.blockId);
                                     }
                                 }}
                             />

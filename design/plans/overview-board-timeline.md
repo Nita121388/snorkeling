@@ -47,6 +47,31 @@ write: 只在 presented 状态变化时 append（唯一写点，避免高频抖�
 
 **渲染**：与 G1 共用同一份 `segments` 模型 —— G1 就是「单段 unknown + 尾巴当前态」，所以 G2 落地时**组件结构不变**。
 
+## 4.5 G2.1 · 已落地的退化分段（2026-11-06，task 11-06-overview-optimize-1to4）
+
+**结论先说**：G2 需要后端环形历史，但「猜尾巴」这一步**不需要等后端**就能修好。
+G2.1 用三个已有真实字段切段，已实现并通过真机验证（`overview-timeline` ✅ 27/27）。
+
+```
+[startedAt ──── activeSince)   unknown   ← 不知道自己当时在干什么（斜纹）
+[activeSince ── endedAt]       当前状态   ← AgentStatus.activeSince 起算
+```
+
+- `activeSince` 是后端在同一 state 连续上报时**保留的首个时刻**（`agentstatus.go:329`），
+  所以它就是「这个状态真实开始的时间」，不是估算。
+- `completedAt` 进模型，画成竖刻度（`.bar-completed`），hover 显示 `HH:MM 完成`。
+- `idle` 段用中性灰实心，宽度 = `now − completedAt` —— 「空闲多久」终于可读。
+- **替换掉的旧算法**：`tailMsFor = max(6min, min(span*20%, 30min))`（`overview-timeline-model.ts:113`），
+  与真实状态切换无关，是「运行阶段/完成点永远读不对」的根因。
+
+**残留不诚实之处（必须写进 UI）**：仍画不出 `working → idle → working → idle` 的多次交替。
+`overview-timeline.tsx` 的图例 hint 的 tooltip 已写明。要真正画出来需要 §4 的环形历史，
+届时只需给 `buildTimelineSegments` 传 `history` 参数 —— **渲染层与组件结构不用改**（这一点在 §3 就已预留）。
+
+**后端记录点（做 §4 时的唯一正确位置）**：`statusManager.report()` 内部（能拿到 prev/next）。
+**不要在前端订阅 `agentstatus` 事件累积**：`sameStatus()` 把 `UpdatedAt/ActiveSince` 排除在比较外
+（`agentstatus.go:539`），同 state 只改 `ActiveSince` 时 `willEmit=false`，前端会静默漏段。
+
 ## 5. 组件与状态
 
 ```

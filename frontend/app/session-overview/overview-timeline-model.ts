@@ -83,14 +83,52 @@ export type OverviewTimelineRow = {
     endedAt: number;
     lastActivityAt: number;
     live: boolean;
+    /**
+     * 当前状态的起始时刻（`AgentStatus.activeSince`）。0 = 未知。
+     *
+     * 这是**真实报告时刻**，不是从尾巴倒推的估算 —— 分段起点用它，不再用 tailMsFor。
+     */
+    activeSince: number;
+    /**
+     * 最近一次完成跳变时刻（`AgentStatus.completedAt`）。0 = 无 / 已被下一次 working 清空。
+     *
+     * 甘特图上的「完成点竖刻度」与 idle 段起点都用它。
+     */
+    completedAt: number;
+};
+
+/**
+ * 时间线的段（0..100 的宽度百分比）。
+ *
+ * 与 `OverviewTimelineSegment`（毫秒）分开：渲染层只吃百分比，模型层只算毫秒，
+ * 中间换算集中在 `buildTimelineBar` 一处，避免两边各自除窗口宽度。
+ */
+export type OverviewTimelineSegmentPct = {
+    state: string;
+    widthPct: number;
 };
 
 export type OverviewTimelineBar = {
     leftPct: number;
     widthPct: number;
-    /** 当前状态色段占整条宽度的比例（0..100）。 */
+    /** @deprecated G1 的「猜出来的尾巴」。新代码读 `segments`；保留一个版本避免老测试全红。 */
     tailPct: number;
     state: string | null;
+    /** 真实分段（无历史时是「一段 unknown + 一段当前态」两段）。 */
+    segments: OverviewTimelineSegmentPct[];
+    /** `completedAt` 在本行 bar 内的位置（0..100）；null = 无完成点或超窗。 */
+    completedPct: number | null;
+};
+
+/**
+ * 毫秒区间的状态段。
+ *
+ * `state` 为 `"unknown"` 表示「当时在干什么不知道」——画成斜纹，不谎报状态。
+ */
+export type OverviewTimelineSegment = {
+    state: string;
+    fromMs: number;
+    toMs: number;
 };
 
 export type OverviewTimelineTick = {
@@ -131,6 +169,8 @@ export function buildTimelineRows(
         states: Readonly<Record<string, string | null | undefined>>;
         /** 当前状态的起始时刻（AgentStatus.activeSince）：没有会话摘要时用它当条起点。 */
         activeSince?: Readonly<Record<string, number | null | undefined>>;
+        /** 最近一次完成跳变时刻（AgentStatus.completedAt）：画完成点竖刻度。 */
+        completedAt?: Readonly<Record<string, number | null | undefined>>;
     }
 ): OverviewTimelineRow[] {
     const windowStart = opts.nowMs - opts.windowMs;
@@ -146,6 +186,7 @@ export function buildTimelineRows(
         // 没有 createdAt 时优先用「当前状态开始时间」（真实已知的活动起点），
         // 再退回 updatedAt（一个点），最后用 now —— 三者都比编造一个起点诚实。
         const activeSince = positiveOrZero(opts.activeSince?.[card.blockId]);
+        const completedAt = positiveOrZero(opts.completedAt?.[card.blockId]);
         const startedAt = !startUnknown
             ? createdAt
             : activeSince > 0 && activeSince < endedAt
@@ -167,6 +208,8 @@ export function buildTimelineRows(
             endedAt,
             lastActivityAt: updatedAt > 0 ? updatedAt : endedAt,
             live,
+            activeSince,
+            completedAt,
         });
     }
     return rows.sort((a, b) => {
@@ -205,9 +248,73 @@ export function splitTimelineRows<T>(
 /** 最小可见宽度：会话没有时间戳（startUnknown 且 span=0）时也要画出一枚「就发生在现在」的点。 */
 const MinBarWidthPct = 0.9;
 
+/**
+ * 构一段真实状态分段（G2.1）。
+ *
+ * **不做的事**：不编造中间段。没有 per-block 状态历史时，只能给出两段：
+ *
+ * ```
+ * [startedAt ──── activeSince)  unknown（不知道自己当时在干什么）
+ * [activeSince ── endedAt]     当前状态（真实报告时刻起算）
+ * ```
+ *
+ * 三个边界全部来自**已有真实字段**：`startedAt`（会话创建）、`activeSince`
+ * （`AgentStatus.activeSince`，后端在同一 state 连续上报时保留首个时刻）、
+ * `endedAt`（live → now，否则 updatedAt）。
+ *
+ * 与旧的 `tailMsFor` 的区别：旧法尾巴宽度 = `max(6min, min(span*20%, 30min))`，
+ * 与真实状态切换无关，所以「运行阶段多久 / 完成点在哪」永远读不对。
+ *
+ * 局限（必须诚实）：画不出 `working → idle → working` 的多次交替。要画出来需要后端
+ * 环形历史，见 `design/plans/overview-board-timeline.md` §4 的 G2 方案。
+ */
+export function buildTimelineSegments(
+    row: OverviewTimelineRow,
+    opts: { nowMs: number; windowMs: number; history?: readonly OverviewTimelineSegment[] }
+): OverviewTimelineSegment[] {
+    const windowStart = opts.nowMs - opts.windowMs;
+    const from = Math.max(row.startedAt, windowStart);
+    const to = Math.min(row.endedAt, opts.nowMs);
+    if (to <= from) {
+        // 零宽会话：给一个「就发生在 to 这一点」的段，调用方用最小宽度画出来。
+        return [{ state: row.state ?? "unknown", fromMs: to, toMs: to }];
+    }
+
+    // 有历史（目前没有调用方传，留给后端 ring buffer 落地后接）→ 直接裁剪使用。
+    const history = opts.history;
+    if (history != null && history.length > 0) {
+        const clipped: OverviewTimelineSegment[] = [];
+        for (const segment of history) {
+            const segFrom = Math.max(segment.fromMs, from);
+            const segTo = Math.min(segment.toMs, to);
+            if (segTo <= segFrom) continue;
+            clipped.push({ state: segment.state, fromMs: segFrom, toMs: segTo });
+        }
+        if (clipped.length > 0) {
+            // 历史首段之前若有空洞，补 unknown（宁可斜纹，也不谎报状态）。
+            if (clipped[0].fromMs > from) {
+                clipped.unshift({ state: "unknown", fromMs: from, toMs: clipped[0].fromMs });
+            }
+            return clipped;
+        }
+    }
+
+    // 无历史：两段（unknown 历史 + 当前态）。activeSince 必须落在 [from, to] 内才用它。
+    const currentState = row.state ?? "unknown";
+    const currentFrom =
+        row.activeSince > 0 && row.activeSince > from && row.activeSince < to ? row.activeSince : null;
+    if (currentFrom == null) {
+        return [{ state: currentState, fromMs: from, toMs: to }];
+    }
+    return [
+        { state: "unknown", fromMs: from, toMs: currentFrom },
+        { state: currentState, fromMs: currentFrom, toMs: to },
+    ];
+}
+
 export function buildTimelineBar(
     row: OverviewTimelineRow,
-    opts: { nowMs: number; windowMs: number }
+    opts: { nowMs: number; windowMs: number; history?: readonly OverviewTimelineSegment[] }
 ): OverviewTimelineBar | null {
     const windowStart = opts.nowMs - opts.windowMs;
     if (row.endedAt <= windowStart) return null;
@@ -221,19 +328,33 @@ export function buildTimelineBar(
         widthPct = MinBarWidthPct;
         leftPct = clampPct(Math.min(leftPct, 100 - MinBarWidthPct));
     }
-    const tailPct =
-        spanMs <= 0
-            ? row.state == null
-                ? 0
-                : 100
-            : row.state == null
-              ? 0
-              : clampPct((Math.min(tailMsFor(spanMs), spanMs) / spanMs) * 100);
+
+    const segments = buildTimelineSegments(row, opts);
+    const totalMs = spanMs > 0 ? spanMs : 0;
+    const segmentPct: OverviewTimelineSegmentPct[] =
+        totalMs === 0
+            ? [{ state: segments[0]?.state ?? row.state ?? "unknown", widthPct: 100 }]
+            : segments.map((segment) => ({
+                  state: segment.state,
+                  widthPct: clampPct(((segment.toMs - segment.fromMs) / totalMs) * 100),
+              }));
+
+    // 完成点：`completedAt` 落在 [from, to] 内才画（超窗不画，避免误导）。
+    const completedPct =
+        row.completedAt > 0 && row.completedAt >= from && row.completedAt <= to && totalMs > 0
+            ? clampPct(((row.completedAt - from) / totalMs) * 100)
+            : null;
+
+    // 兼容字段：尾巴 = 最后一段的宽度（新渲染不再用它）。
+    const tailPct = segmentPct.length === 0 ? 0 : segmentPct[segmentPct.length - 1].widthPct;
+
     return {
         leftPct,
         widthPct,
         tailPct,
         state: row.state,
+        segments: segmentPct,
+        completedPct,
     };
 }
 

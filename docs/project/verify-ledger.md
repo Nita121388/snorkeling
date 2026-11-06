@@ -58,3 +58,16 @@
 | 2026-11-06 15:44 | agent-card-seen | ❌ 25/26 | launch+reset | `20261106T15383-agent-card-seen` | e4e912a4 |
 | 2026-11-06 15:53 | agent-card-seen | ❌ 25/26 | launch+reset | `20261106T15463-agent-card-seen` | e4e912a4 |
 | 2026-11-06 15:58 | agent-card-seen | ❌ 17/26 | launch+reset | `20261106T15570-agent-card-seen` | e4e912a4 |
+| 2026-11-06 16:08 | overview-board | ❌ 40/47 | launch+reset | `20261106T16071-overviewboard` | working-tree |
+| 2026-11-06 16:11 | agent-card-seen | ❌ 23/26 | launch+reset | `20261106T16094-agent-card-seen` | 022b689e |
+| 2026-11-06 16:11 | overview-board | ❌ 31/47 | launch+reset | `20261106T16110-overviewboard` | working-tree |
+| 2026-11-06 16:14 | overview-board | ❌ 36/47 | launch+reset | `20261106T16121-overviewboard` | working-tree |
+| 2026-11-06 16:21 | overview-board | ❌ 44/47 | launch+reset | `20261106T16145-overviewboard` | working-tree |
+| 2026-11-06 16:28 | overview-board | ✅ 47/47 | launch+reset | `20261106T16225-overviewboard` | working-tree |
+| 2026-11-06 16:41 | overview-board | ✅ 51/51 | launch+reset | `20261106T16354-overviewboard` | working-tree |
+| 2026-11-06 17:07 | overview-board | ✅ 54/54 | launch+reset | `20261106T17012-overviewboard` | working-tree |
+| 2026-11-06 17:12 | overview-timeline | ❌ 24/27 | launch+reset | `20261106T17074-overview-timeline` | aa121542 |
+| 2026-11-06 17:19 | overview-timeline | ❌ 25/27 | launch+reset | `20261106T17141-overview-timeline` | aa121542 |
+| 2026-11-06 17:26 | overview-timeline | ❌ 25/27 | launch+reset | `20261106T17205-overview-timeline` | aa121542 |
+| 2026-11-06 17:32 | overview-timeline | ❌ 26/27 | launch+reset | `20261106T17272-overview-timeline` | aa121542 |
+| 2026-11-06 17:39 | overview-timeline | ✅ 27/27 | launch+reset | `20261106T17332-overview-timeline` | aa121542 |

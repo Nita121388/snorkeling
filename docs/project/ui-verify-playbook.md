@@ -189,3 +189,20 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
 | 某一次的具体证据 | `verify-runs/<ts>-<area>/`（gitignore；本地保留作为"当时真的这么显示"的凭证） |
 | 跨机器可查的结论 | `docs/project/verify-ledger.md`（入库，每次跑完自动追加一行） |
 | 索引 / 自查命令 | `node scripts/verify/index.mjs --strict`（任一 area 最近一次失败 → exit 1） |
+
+## 踩坑记录（2026-11-06, overview 优化 1-4）
+
+- **reload 后固定 sleep 不够**：`overview-board` 的「看板/分组跨 reload 持久化」三条断言长期红，
+  根因不是持久化失效，而是 `location.reload()` 后固定等 6s，dev 模式下 renderer 重新引导 + workspace 回填
+  常超 6s。改法：轮询 `{board:true, cards>0}` 直到成立（上限 60s）。**所有 reload 后的断言一律轮询，不要 sleep。**
+- **复用实例会污染断言**：`--attach` 复用的实例里可能累积了 3 个 sessionoverview 块，
+  `board-columns-all-five` / `group-select-present` 这类「全局 querySelector」断言会串。
+  跑之前先按端口→PID 关掉旧实例，或用 `launch+reset`。
+- **弹窗断言不能 scope 到面板**：`Modal` 通过 `createPortal` 挂到 `#main`，不在 overview block 内。
+  测「点卡片开弹窗」时要查全局 `document.querySelector(".agent-dialog")`，且测完必须 `popModal()` 清栈，
+  否则后续断言被遮罩层挡住。
+- **播种的 `reportedAt` 要同时满足两个窗口**：甘特分段断言要求 `activeSince` 既落在条内、又距今
+  < `AgentThinkStaleThresholdMs`（2 分钟，thinking 阶段）。条尾若停在 30 分钟前，这两个条件不可能同时成立
+  —— 把条尾设成「刚刚」才能稳定切出两段。
+- **verify 脚本里的模板字符串反引号**：在 ``client.evaluate(`...`)`` 的注释里写反引号会截断字符串，
+  报 `SyntaxError: missing ) after argument list`。注释里描述类名用普通文本，不要用反引号。

@@ -174,9 +174,12 @@
                 position: absolute;
                 top: 12px;
                 height: 18px;
-                border-radius: 9px;
+                /* G2.1：默认 4px 圆角（不再是 9px 胶囊），由 --bar-radius 控制，
+                   右上角切换按钮直接改这个变量做 A/B 对比。 */
+                border-radius: var(--bar-radius, 4px);
                 overflow: hidden;
                 display: flex;
+                gap: 1px;
                 box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
                 cursor: pointer;
             }
@@ -185,6 +188,7 @@
             }
             .seg-pill {
                 height: 100%;
+                border-radius: var(--seg-radius, 3px);
                 opacity: 0.9;
             }
             .seg-pill.working {
@@ -200,7 +204,28 @@
                 background: linear-gradient(180deg, #b48bff, #8258d6);
             }
             .seg-pill.idle {
+                /* G2.1：idle 用中性灰实心段，不再并入斜纹「状态未知」。 */
                 background: #4b5563;
+            }
+            /* 完成点：completedAt 的竖刻度（细、贯穿轨道，带 hover 提示）。 */
+            .completed-mark {
+                position: absolute;
+                top: 6px;
+                bottom: 6px;
+                width: 1px;
+                background: var(--done);
+                opacity: 0.85;
+                pointer-events: none;
+            }
+            .completed-mark::after {
+                content: "";
+                position: absolute;
+                left: -2px;
+                top: -2px;
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                background: var(--done);
             }
             .seg-pill.unknown {
                 background: repeating-linear-gradient(135deg, #2b303b 0 6px, #343a46 6px 12px);
@@ -282,6 +307,10 @@
                 color: #e5b13d;
                 border-color: rgba(229, 177, 61, 0.4);
             }
+            .tag.new {
+                color: #6aa6ff;
+                border-color: rgba(106, 166, 255, 0.4);
+            }
         </style>
     </head>
     <body>
@@ -297,6 +326,11 @@
                 <div class="seg" id="mode-seg">
                     <button data-mode="g1" class="is-active">G1 会话寿命条</button>
                     <button data-mode="g2">G2 状态分段</button>
+                    <button data-mode="g21">G2.1 真实分段</button>
+                </div>
+                <div class="seg" id="radius-seg">
+                    <button data-radius="9" class="is-active">圆角 9px</button>
+                    <button data-radius="4">圆角 4px</button>
                 </div>
                 <div class="seg" id="range-seg">
                     <button data-range="2" class="is-active">2h</button>
@@ -337,6 +371,17 @@
                     </ul>
                 </div>
                 <div class="note">
+                    <h3>G2.1 真实分段 <span class="tag new">本任务要落地</span></h3>
+                    <p>不等后端环形历史，先用**已有真实字段**把「猜」换成「有依据」：</p>
+                    <ul>
+                        <li>当前状态段起点 = <code>AgentStatus.activeSince</code>（不是从尾巴倒推的 6 分钟）。</li>
+                        <li>完成点 = <code>AgentStatus.completedAt</code>，画成竖刻度 + 圆点，hover 显示「完成于 N 分钟前」。</li>
+                        <li>idle 段用中性灰实心（不再并入斜纹「状态未知」），宽度 = <code>now − completedAt</code>。</li>
+                        <li>圆角从 9px 收到 4px（段 3px），段间留 1px 缝 —— 右上「圆角」按钮可直接 A/B。</li>
+                        <li><b>残留不诚实</b>：仍画不出「working → idle → working → idle」的多次交替，因为后端只留当前态。这一段写进图例 tooltip，等环形历史落地。</li>
+                    </ul>
+                </div>
+                <div class="note">
                     <h3>共同交互与边界</h3>
                     <ul>
                         <li>时间窗：2h / 8h / 24h / 7d 四档，默认 8h；窗口外不画条，只在行尾给一个「更早」箭头。</li>
@@ -371,6 +416,8 @@
                     stateLabel: "Working",
                     startedAgo: 2.4 * H,
                     lastAgo: 0.02 * H,
+                    activeAgo: 0.55 * H,
+                    completedAgo: null,
                     messages: 42,
                     segments: [
                         ["working", 0.9],
@@ -390,6 +437,8 @@
                     stateLabel: "Done",
                     startedAgo: 5.5 * H,
                     lastAgo: 1.6 * H,
+                    activeAgo: 1.6 * H,
+                    completedAgo: 1.6 * H,
                     messages: 88,
                     segments: [
                         ["working", 1.6],
@@ -407,6 +456,8 @@
                     stateLabel: "Needs input",
                     startedAgo: 3.1 * H,
                     lastAgo: 0.45 * H,
+                    activeAgo: 0.45 * H,
+                    completedAgo: null,
                     messages: 31,
                     segments: [
                         ["working", 1.1],
@@ -423,6 +474,8 @@
                     stateLabel: "Stale",
                     startedAgo: 7.4 * H,
                     lastAgo: 4.2 * H,
+                    activeAgo: 4.2 * H,
+                    completedAgo: 4.2 * H,
                     messages: 12,
                     segments: [
                         ["working", 0.7],
@@ -440,6 +493,8 @@
                     stateLabel: "Idle",
                     startedAgo: 1.1 * H,
                     lastAgo: 0.9 * H,
+                    activeAgo: 0.9 * H,
+                    completedAgo: 0.9 * H,
                     messages: 7,
                     segments: [["idle", 1.1]],
                 },
@@ -447,7 +502,7 @@
 
             // 支持 ?mode=g2&range=8，便于分享具体形态（也让截图/评审能直达某一版）。
             const params = new URLSearchParams(location.search);
-            let mode = params.get("mode") === "g2" ? "g2" : "g1";
+            let mode = ["g1", "g2", "g21"].includes(params.get("mode")) ? params.get("mode") : "g1";
             let rangeHours = [2, 8, 24, 168].includes(Number(params.get("range")))
                 ? Number(params.get("range"))
                 : 2;
@@ -469,6 +524,26 @@
                 const end = Math.min(agent.lastAgo, start);
                 const widthPct = pct(start - end, windowMs);
                 const leftPct = pct(windowMs - start, windowMs);
+                if (mode === "g21") {
+                    // G2.1（本任务要落地的形态）：段边界来自**真实字段**，不是 25% 视觉猜测。
+                    //   历史段 = startedAgo → activeAgo（状态未知，因为后端还没有转移序列）
+                    //   当前段 = activeAgo → lastAgo（当前状态，起点是 AgentStatus.activeSince）
+                    const start = Math.min(agent.startedAgo, windowMs);
+                    const cur = Math.min(agent.activeAgo ?? agent.lastAgo, start);
+                    const end = Math.min(agent.lastAgo, cur);
+                    const total = Math.max(start - end, 1);
+                    const histRatio = (cur - end) / total;
+                    return [
+                        {
+                            left: leftPct,
+                            width: widthPct,
+                            parts: [
+                                { cls: "unknown", ratio: Math.max(0, 1 - histRatio) },
+                                { cls: stateColor[agent.state] ?? "unknown", ratio: histRatio },
+                            ],
+                        },
+                    ];
+                }
                 if (mode === "g1") {
                     // 历史段 unknown + 当前状态尾巴（尾巴 = 最近一次状态变化到现在，G1 里没有精确值，
                     // 用 min(15min, 条长 20%) 的视觉近似，明确写进 tips）。
@@ -544,6 +619,15 @@
                         }
                         track.appendChild(el);
                     }
+                    // 完成点竖刻度：completedAt 在窗口内才画。
+                    const completedAgo = agent.completedAgo;
+                    if (completedAgo != null && completedAgo < windowMs) {
+                        const mark = document.createElement("div");
+                        mark.className = "completed-mark";
+                        mark.style.left = `${pct(windowMs - completedAgo, windowMs)}%`;
+                        mark.title = `完成于 ${Math.round(completedAgo * 60)} 分钟前`;
+                        track.appendChild(mark);
+                    }
                     const now = document.createElement("div");
                     now.className = "now-line";
                     now.style.left = "100%";
@@ -552,7 +636,13 @@
                 }
 
                 legend.innerHTML =
-                    mode === "g1"
+                    mode === "g21"
+                        ? `<span><i style="background:#39404d"></i>历史（状态未知，后端暂无转移序列）</span>
+                           <span><i style="background:#3fb950"></i>当前状态段（起点 = activeSince）</span>
+                           <span><i style="background:#4b5563"></i>idle 实心灰</span>
+                           <span><i style="background:#6aa6ff"></i><b>完成点</b>（completedAt 竖刻度）</span>
+                           <span>条长仍 = 会话寿命；段起点来自真实字段，不再用 6min / 20% 猜</span>`
+                        : mode === "g1"
                         ? `<span><i style="background:#39404d"></i>历史（状态未知）</span>
                            <span><i style="background:#3fb950"></i>当前状态着色（working / blocked / done / idle / stale）</span>
                            <span>长度 = 会话寿命（createdAt → updatedAt / now）</span>`
@@ -563,6 +653,18 @@
                            <span><i style="background:#a371f7"></i>stale</span>
                            <span>每段 = 该状态持续时长（需要历史转移记录）</span>`;
             }
+
+            let barRadius = 9;
+            document.getElementById("radius-seg").addEventListener("click", (event) => {
+                const target = event.target.closest("button");
+                if (target == null) return;
+                barRadius = Number(target.dataset.radius);
+                for (const btn of event.currentTarget.querySelectorAll("button")) {
+                    btn.classList.toggle("is-active", btn === target);
+                }
+                document.documentElement.style.setProperty("--bar-radius", `${barRadius}px`);
+                document.documentElement.style.setProperty("--seg-radius", `${Math.max(2, barRadius - 1)}px`);
+            });
 
             document.getElementById("mode-seg").addEventListener("click", (event) => {
                 const target = event.target.closest("button");
@@ -577,6 +679,12 @@
             for (const btn of document.querySelectorAll("#mode-seg button")) {
                 btn.classList.toggle("is-active", btn.dataset.mode === mode);
             }
+            const initialRadius = Number(params.get("radius")) === 4 ? 4 : 9;
+            for (const btn of document.querySelectorAll("#radius-seg button")) {
+                btn.classList.toggle("is-active", Number(btn.dataset.radius) === initialRadius);
+            }
+            document.documentElement.style.setProperty("--bar-radius", `${initialRadius}px`);
+            document.documentElement.style.setProperty("--seg-radius", `${Math.max(2, initialRadius - 1)}px`);
             for (const btn of document.querySelectorAll("#range-seg button")) {
                 btn.classList.toggle("is-active", Number(btn.dataset.range) === rangeHours);
             }
