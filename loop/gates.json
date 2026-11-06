@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-06T00:26:40Z",
+  "updatedAt": "2026-11-06T00:50:19Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -38,6 +38,12 @@
         "by": "nita",
         "verdict": "confirmed",
         "prdHash": "c589d4b71e14"
+      }
+    },
+    "N-1105-cmd-window-flash": {
+      "g2": {
+        "redProof": "node --test server/lib/spawn-guard.test.mjs → 6 passed；校准 BAD 样本 = 修复前 version.mjs 的真实 execFileSync 行，findMissingWindowsHide 必须抓到（未修复时为红）",
+        "at": "2026-11-06T00:50:19Z"
       }
     },
     "N-1105-tab-hover-clip": {
