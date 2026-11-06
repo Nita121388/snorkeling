@@ -30,6 +30,29 @@ Questions to answer:
 
 ---
 
+## Overview 看板卡片：钩子与结构约束 (2026-11-05, task 11-05-overview-board-v2)
+
+- **容器不能是 `<button>`**：卡片里嵌状态 chip（内部也是 button），嵌套按钮是非法 HTML 且点击会串。
+  卡片用 `div role="button" tabIndex={0}` + `Enter`/`Space` 处理键盘。
+- **身份解析只走 `getAgentIcon(provider, { meta, sessionId, personas, sessionEmojis })`**（会话 → provider → logo），
+  状态词/颜色/读未读只走 `AgentStatusChip` + `useAgentReadContext`。看板不得新增第三份映射。
+- **标题不得回退成视图名**：agent 卡片走 `resolveBoardCardTitle`（sessionTitle → note → 项目名 → `Provider · tab`），
+  `blockTitle()` 末尾用 `basename(meta["cmd:cwd"])` 兜底，禁止让卡片显示裸 `Terminal`。
+- **看板永远单行多列**：`grid-auto-flow: column` + `minmax(220px,1fr)` + `scroll-snap-type: x`，
+  空列 `includeEmpty: true` 常显。按面板宽度退回纵向堆叠 = 又变回列表（用户已经提过一次）。
+
+---
+
+## SCSS / 断言两条硬约束 (2026-11-05, 夜间自主开发)
+
+- **改 SCSS 前先确认锚点唯一**：`@container` 里的选择器列表（`.a,\n.b,\n.c {`）和独立规则长得很像，
+  `oldText` 命中列表会把整段声明块插进选择器位置，静默破坏后面的 `min-width` / `overflow`。
+  实测代价：时间线在 221px 面板里轨道仍 540px 宽（溢出）。改完必须跑对应真机 area。
+- **几何类断言要带数字**：`trackVisible` 这种布尔断言失败时看不出原因。统一输出
+  `{panelW, trackW, dl, dr}` 这类矩形差，下一次不用重新加打印。
+
+---
+
 ## Forbidden Patterns
 
 <!-- Patterns that should never be used and why -->
@@ -250,3 +273,26 @@ node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例
   不要用"第一个匹配 selector 的元素"（会读到上一轮留下的同类对象 → 假绿）。
 - **等跃迁不等终态**：先等 `working` 系文案、再等 `Done`；只看终态会在"上一轮已经 Done"
   时立刻返回，断言的是旧状态。
+
+---
+
+## Tailwind 类名必须先确认真身 (2026-11-05, task 11-05-vcs-panel-icon-buttons)
+
+`frontend/tailwindsetup.css` 的 `@theme inline` 是**唯一**的 token 来源。写之前先 grep：
+
+- 存在：`foreground / secondary / muted / accent / error / success / warning / action /
+  actiontext / actionhover / hoverbg / surface / block / panel / overlay / border`。
+- **不存在**（曾误用于 VCS 面板，全部是死样式）：`ink / ink-muted / ink-faint / detail /
+  danger / ok`。要红用 `text-error`、要绿用 `text-success`。
+- **`.iconbutton` 这个 class 从未被定义过**。全仓 60 处 `className="iconbutton …"` 只靠同行
+  的尺寸 utility 生效，hover/focus/disabled 态一律缺失。要么用 `<IconButton decl>` /
+  新的 `<VcsIconButton>`，要么自己把 hover 态写全；不要以为写了 `iconbutton` 就有样式。
+
+### icon-only 按钮的硬约束
+
+- `title` 与 `aria-label` **同时**写（读屏只认 aria-label，鼠标只认 title）。
+- hover 才浮现的行内动作必须带 `focus-visible:opacity-100`，否则键盘用户永远看不到它。
+- hover 着色一律用 `enabled:hover:*`，避免 disabled 状态被 hover 破功。
+- 有文字的按钮是**主 CTA / 导航 / 段头折展**的特权；`Diff / History / Reset / Prev / Next`
+  这类重复动作一律图标化（VCS 面板 17 处已收口，见
+  `frontend/app/view/vcs/vcs-panel-buttons.test.ts` 的源码级守卫）。

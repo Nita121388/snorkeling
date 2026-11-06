@@ -4,6 +4,7 @@
 import { filterVcsFileStatuses, VcsFileTypeFilterOptions } from "@/app/view/vcs/vcs-filter";
 import { isBlank } from "@/util/util";
 import React from "react";
+import { VcsIconButton } from "./vcs-icon-button";
 
 const DefaultCommitMessage = "chore: update selected files";
 
@@ -88,13 +89,13 @@ function RepoFileFilterBar({
                     placeholder="Search files"
                 />
                 {search.trim() !== "" && (
-                    <button
-                        className="iconbutton !absolute !right-1 !top-1/2 !h-[18px] !w-[18px] -translate-y-1/2 cursor-pointer"
+                    <VcsIconButton
+                        icon="xmark"
                         title="Clear search"
+                        size="sm"
+                        className="!absolute !right-1 !top-1/2 -translate-y-1/2"
                         onClick={() => onChange({ ...filterState, search: "" })}
-                    >
-                        <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
-                    </button>
+                    />
                 )}
             </div>
             <div className="relative w-[118px] shrink-0">
@@ -107,13 +108,13 @@ function RepoFileFilterBar({
                     title="Filter by file extension, e.g. .ts or .tsx,.scss"
                 />
                 {extension.trim() !== "" && (
-                    <button
-                        className="iconbutton !absolute !right-1 !top-1/2 !h-[18px] !w-[18px] -translate-y-1/2 cursor-pointer"
+                    <VcsIconButton
+                        icon="xmark"
                         title="Clear extension"
+                        size="sm"
+                        className="!absolute !right-1 !top-1/2 -translate-y-1/2"
                         onClick={() => onChange({ ...filterState, extension: "" })}
-                    >
-                        <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
-                    </button>
+                    />
                 )}
             </div>
             <label className="flex items-center gap-1.5 text-[11px] text-secondary">
@@ -141,12 +142,12 @@ function RepoFileFilterBar({
             <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-muted">
                 {filtersActive ? `${visibleCount}/${totalCount}` : `${totalCount} files`}
                 {filtersActive && (
-                    <button
-                        className="text-accent hover:underline cursor-pointer"
+                    <VcsIconButton
+                        icon="rotate-left"
+                        title="Reset filters"
+                        size="sm"
                         onClick={() => onChange({ search: "", type: "all", extension: "" })}
-                    >
-                        Reset
-                    </button>
+                    />
                 )}
             </div>
         </div>
@@ -167,29 +168,26 @@ function FileStatusRow({
     onShowHistory: () => void;
 }) {
     return (
-        <div className="flex w-max min-w-full items-center gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0">
+        <div className="group flex w-max min-w-full items-center gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0">
             <input type="checkbox" checked={selected} onChange={onToggleSelected} className="cursor-pointer" />
             <span className="font-mono text-secondary min-w-[20px]">{statusCodeLabel(status.code)}</span>
             <span className="flex-1 min-w-[180px] whitespace-nowrap pr-3">{status.path}</span>
-            <button className="text-[11px] text-accent hover:underline cursor-pointer shrink-0" onClick={onOpenDiff}>
-                Diff
-            </button>
-            <button className="text-[11px] text-accent hover:underline cursor-pointer shrink-0" onClick={onShowHistory}>
-                History
-            </button>
+            <VcsIconButton
+                icon="code-compare"
+                title="Show diff"
+                size="sm"
+                tone="accent"
+                reveal="hover"
+                onClick={onOpenDiff}
+            />
+            <VcsIconButton
+                icon="clock-rotate-left"
+                title="Show file history"
+                size="sm"
+                reveal="hover"
+                onClick={onShowHistory}
+            />
         </div>
-    );
-}
-
-function RemoteActionButton({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick: () => void }) {
-    return (
-        <button
-            className="text-[11px] text-accent hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default"
-            disabled={disabled}
-            onClick={onClick}
-        >
-            {label}
-        </button>
     );
 }
 
@@ -316,8 +314,21 @@ export function VcsChangesTab({
                 noBorder={true}
                 actions={
                     <>
-                        <button className="text-[11px] text-accent hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default" onClick={() => selectAllFor(filteredChangedList)} disabled={filteredChangedList.length === 0}>Select All</button>
-                        <button className="text-[11px] text-secondary hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default" onClick={() => clearAllFor(filteredChangedList)} disabled={filteredChangedList.length === 0}>Select None</button>
+                        <VcsIconButton
+                            icon="square-check"
+                            title="Select all changed files"
+                            size="sm"
+                            tone="accent"
+                            disabled={filteredChangedList.length === 0}
+                            onClick={() => selectAllFor(filteredChangedList)}
+                        />
+                        <VcsIconButton
+                            icon="square"
+                            title="Clear selection"
+                            size="sm"
+                            disabled={filteredChangedList.length === 0}
+                            onClick={() => clearAllFor(filteredChangedList)}
+                        />
                     </>
                 }
             />
@@ -338,8 +349,21 @@ export function VcsChangesTab({
                 noBorder={true}
                 actions={
                     <>
-                        <button className="text-[11px] text-accent hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default" onClick={() => selectAllFor(filteredUntrackedList)} disabled={filteredUntrackedList.length === 0}>Select All</button>
-                        <button className="text-[11px] text-secondary hover:underline cursor-pointer disabled:text-muted disabled:no-underline disabled:cursor-default" onClick={() => clearAllFor(filteredUntrackedList)} disabled={filteredUntrackedList.length === 0}>Select None</button>
+                        <VcsIconButton
+                            icon="square-check"
+                            title="Select all untracked files"
+                            size="sm"
+                            tone="accent"
+                            disabled={filteredUntrackedList.length === 0}
+                            onClick={() => selectAllFor(filteredUntrackedList)}
+                        />
+                        <VcsIconButton
+                            icon="square"
+                            title="Clear selection"
+                            size="sm"
+                            disabled={filteredUntrackedList.length === 0}
+                            onClick={() => clearAllFor(filteredUntrackedList)}
+                        />
                     </>
                 }
             />
@@ -362,18 +386,29 @@ export function VcsChangesTab({
                         noBorder={true}
                         actions={
                             <>
-                                <RemoteActionButton
-                                    label={syncRunning && syncAction === "fetch" ? "Fetching…" : "Fetch"}
+                                <VcsIconButton
+                                    icon="rotate-right"
+                                    title={syncRunning && syncAction === "fetch" ? "Fetching…" : "Fetch"}
+                                    loading={syncRunning && syncAction === "fetch"}
+                                    size="sm"
                                     disabled={syncRunning}
                                     onClick={() => onSyncAction("fetch")}
                                 />
-                                <RemoteActionButton
-                                    label={syncRunning && syncAction === "pull" ? "Pulling…" : "Pull"}
+                                <VcsIconButton
+                                    icon="arrow-down-to-line"
+                                    title={syncRunning && syncAction === "pull" ? "Pulling…" : "Pull"}
+                                    loading={syncRunning && syncAction === "pull"}
+                                    size="sm"
+                                    tone="accent"
                                     disabled={syncRunning || behind <= 0}
                                     onClick={() => onSyncAction("pull")}
                                 />
-                                <RemoteActionButton
-                                    label={syncRunning && syncAction === "push" ? "Pushing…" : "Push"}
+                                <VcsIconButton
+                                    icon="arrow-up-from-bracket"
+                                    title={syncRunning && syncAction === "push" ? "Pushing…" : "Push"}
+                                    loading={syncRunning && syncAction === "push"}
+                                    size="sm"
+                                    tone="accent"
                                     disabled={syncRunning || ahead <= 0}
                                     onClick={() => onSyncAction("push")}
                                 />
@@ -403,8 +438,11 @@ export function VcsChangesTab({
                         onToggle={() => setSectionOpen("remote", !remoteSectionOpen)}
                         noBorder={true}
                         actions={
-                            <RemoteActionButton
-                                label={syncRunning && syncAction === "update" ? "Updating…" : "Update"}
+                            <VcsIconButton
+                                icon="arrow-down"
+                                title={syncRunning && syncAction === "update" ? "Updating…" : "Update remote files"}
+                                loading={syncRunning && syncAction === "update"}
+                                size="sm"
                                 disabled={syncRunning}
                                 onClick={() => onSyncAction("update" as any)}
                             />
@@ -428,10 +466,10 @@ export function VcsChangesTab({
                 <>
                     <textarea className="w-full min-h-[58px] rounded border border-border bg-panel/80 px-2 py-1.5 text-xs outline-none focus:border-accent" value={commitMessage} onChange={(e) => setCommitMessage(e.target.value)} placeholder="Commit message..." />
                     <div className="mt-2 flex items-center gap-2">
-                        <button className="rounded bg-action px-2.5 py-1 text-xs text-actiontext font-semibold hover:bg-actionhover disabled:opacity-50 cursor-pointer disabled:cursor-default" disabled={commitRunning} onClick={onCommit}>
-                            {commitRunning ? "Committing..." : `Commit (${selectedFiles.length})`}
+                        <button className="inline-flex items-center gap-1.5 rounded bg-action px-2.5 py-1 text-xs text-actiontext font-semibold hover:bg-actionhover disabled:opacity-50 cursor-pointer disabled:cursor-default" disabled={commitRunning} onClick={onCommit}>
+                            <i className={commitRunning ? "fa-sharp fa-solid fa-spinner animate-spin text-[11px]" : "fa-sharp fa-solid fa-code-commit text-[11px]"} />
+                            <span>{commitRunning ? "Committing..." : `Commit (${selectedFiles.length})`}</span>
                         </button>
-                        <span className="text-[11px] text-muted">supports multi-select</span>
                     </div>
                 </>
             )}

@@ -366,6 +366,19 @@ type DirectoryEntryMenuOptions = {
     clipboard?: PreviewFileClipboard | null;
 };
 
+/**
+ * 目录菜单的选项（`DirectoryEntryMenuOptions`）与"打开预览"的选项（`OpenPreviewEntryOptions`）
+ * 不是同一套字段。历史实现在 HTML 打开模式里把前者直接当后者传 —— TS 报"没有共同属性"，
+ * 实际后果是 `directoryPath` 永远是 undefined：从子目录右键打开 .html 时，预览块会丢掉目录根。
+ * 这里显式翻译，避免字段名巧合再度失配。
+ */
+export function menuOptionsToPreviewEntryOptions(options?: DirectoryEntryMenuOptions) {
+    return {
+        forceNewBlock: false,
+        directoryPath: options?.relativePathRoot ?? null,
+    };
+}
+
 type DirectoryBackgroundMenuActions = {
     newFile: () => void;
     newDirectory: () => void;
@@ -877,7 +890,10 @@ export async function makeDirectoryEntryMenuItems(
                 label: `HTML: ${entry.label}`,
                 type: "radio",
                 checked: currentMode === entry.id,
-                click: () => fireAndForget(() => openHtmlEntryWithMode(model, finfo, conn, entry.id, options)),
+                click: () =>
+                    fireAndForget(() =>
+                        openHtmlEntryWithMode(model, finfo, conn, entry.id, menuOptionsToPreviewEntryOptions(options))
+                    ),
             });
         }
     }

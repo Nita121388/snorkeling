@@ -19,6 +19,7 @@ import { VcsPipelinesTab } from "./vcs-pipelines-tab";
 import { VcsTabBar, VcsRepoHeader, type View } from "./vcs-tabs";
 import { VcsRepoSwitcher } from "./vcs-repo-switcher";
 import { VcsHistoryTab } from "./vcs-history-tab";
+import { VcsIconButton } from "./vcs-icon-button";
 
 const DefaultCommitMessage = "chore: update selected files";
 const VcsRepositoryRpcTimeoutMs = 60000;
@@ -157,13 +158,7 @@ function VcsProgressCard({
     const summary = isBlank(message) ? "" : firstMeaningfulLine(message);
     const hasDetails = details !== "" && details !== summary;
     const dismissBtn = (
-        <button
-            className="iconbutton !h-[18px] !w-[18px] shrink-0 cursor-pointer"
-            title="Dismiss"
-            onClick={onDismiss}
-        >
-            <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
-        </button>
+        <VcsIconButton icon="xmark" title="Dismiss" size="sm" reveal="always" onClick={onDismiss} />
     );
 
     let body: React.ReactNode;
@@ -623,7 +618,6 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                         repo={activeRepo}
                         currentView={currentView}
                         onViewChange={setCurrentView}
-                        busy={busySync}
                     />
 
                     {/* Shared operation progress card, visible across all tabs */}

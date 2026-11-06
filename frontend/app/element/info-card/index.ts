@@ -17,7 +17,8 @@ export {
     InfoCardText,
     InfoCardTitle,
 } from "./info-card";
-export { InfoCardPortal, useInfoCardDismiss, useInfoCardHover } from "./info-card-hover";
+export { InfoCardPinProvider, InfoCardPortal, isInAttachedInfoCardLayer, useInfoCardDismiss, useInfoCardHover } from "./info-card-hover";
+export type { InfoCardPinHandle } from "./info-card-hover";
 export { InfoCardMarquee, isMarqueeNeeded, marqueeDurationSec } from "./marquee";
 export type { InfoCardMarqueeProps } from "./marquee";
 export type { InfoCardHoverState, InfoCardPlacement } from "./info-card-hover";

@@ -16,65 +16,76 @@ function cloneInlineChildren(children: any[], prefix: RegExp): any[] {
     return cloned.filter((child) => child?.type !== "text" || child.value !== "");
 }
 
-/** Converts blockquotes to callouts without inventing an emoji. */
-export const remarkCalloutAlert: Plugin<[], Root> = () => (tree: any) => {
-    const replacements: { node: Blockquote; index: number; parent: any }[] = [];
-    visit(tree, "blockquote", (node: any, index: any, parent: any) => {
-        if (node && index != null && parent && Array.isArray(parent.children) && Array.isArray(node.children)) {
-            replacements.push({ node, index, parent });
-        }
-    });
+export type CalloutAlertOptions = {
+    /**
+     * 是否渲染「加/换 emoji」按钮。预览里需要（可点），静态导出（HTML 导出、打印）不需要 ——
+     * 导出的文件里塞一个死按钮既不可点也没有意义。
+     */
+    interactive?: boolean;
+};
 
-    for (let i = replacements.length - 1; i >= 0; i--) {
-        const { node, index, parent } = replacements[i];
-        const first = node.children[0] as any;
-        const firstText = first?.children?.find((child: any) => child?.type === "text");
-        const raw = typeof firstText?.value === "string" ? firstText.value : "";
-        const marker = raw.match(alertRegex);
-        const alertType: AlertType = marker ? (marker[1].toLowerCase() as AlertType) : "quote";
-        const afterMarker = marker ? raw.slice(marker[0].length) : raw;
-        const emojiMatch = afterMarker.match(leadingEmojiRegex);
-        const emoji = emojiMatch?.[1] ?? null;
-        const prefix = new RegExp(
-            `^${marker ? alertRegex.source.slice(1, -1) : ""}${emoji ? leadingEmojiRegex.source.slice(1, -1) : ""}`,
-            "iu"
-        );
-        const titleChildren = first?.children ? cloneInlineChildren(first.children, prefix) : [];
-        // Every callout/blockquote gets a fixed emoji affordance. The emoji itself
-        // remains opt-in: an empty button is shown only as an add interaction.
-        // NOTE: the first paragraph is always wrapped in `.markdown-alert-title` — that is
-        // only a positioning context for the emoji affordance. Typography (bold title vs.
-        // normal prose) is scoped in markdown.scss so a plain blockquote stays a quote.
-        const isTitle = true;
-        const button = {
-            type: "emphasis",
-            children: emoji ? [{ type: "text", value: emoji }] : [],
-            data: {
-                hName: "button",
-                hProperties: {
-                    className: `markdown-alert-emoji-btn${emoji == null ? " is-empty" : ""}`,
-                    type: "button",
-                    ariaLabel: emoji == null ? "Add callout emoji" : "Change callout emoji",
-                    dataAlertType: alertType,
-                    dataAlertLine: first?.position?.start?.line ?? "",
-                    dataAlertEmoji: emoji ?? "",
+/** Converts blockquotes to callouts without inventing an emoji. */
+export const remarkCalloutAlert: Plugin<[CalloutAlertOptions?], Root> = (options?: CalloutAlertOptions) => {
+    const interactive = options?.interactive !== false;
+    return (tree: any) => {
+        const replacements: { node: Blockquote; index: number; parent: any }[] = [];
+        visit(tree, "blockquote", (node: any, index: any, parent: any) => {
+            if (node && index != null && parent && Array.isArray(parent.children) && Array.isArray(node.children)) {
+                replacements.push({ node, index, parent });
+            }
+        });
+
+        for (let i = replacements.length - 1; i >= 0; i--) {
+            const { node, index, parent } = replacements[i];
+            const first = node.children[0] as any;
+            const firstText = first?.children?.find((child: any) => child?.type === "text");
+            const raw = typeof firstText?.value === "string" ? firstText.value : "";
+            const marker = raw.match(alertRegex);
+            const alertType: AlertType = marker ? (marker[1].toLowerCase() as AlertType) : "quote";
+            const afterMarker = marker ? raw.slice(marker[0].length) : raw;
+            const emojiMatch = afterMarker.match(leadingEmojiRegex);
+            const emoji = emojiMatch?.[1] ?? null;
+            const prefix = new RegExp(
+                `^${marker ? alertRegex.source.slice(1, -1) : ""}${emoji ? leadingEmojiRegex.source.slice(1, -1) : ""}`,
+                "iu"
+            );
+            const titleChildren = first?.children ? cloneInlineChildren(first.children, prefix) : [];
+            // Every callout/blockquote gets a fixed emoji affordance. The emoji itself
+            // remains opt-in: an empty button is shown only as an add interaction.
+            // NOTE: the first paragraph is always wrapped in `.markdown-alert-title` — that is
+            // only a positioning context for the emoji affordance. Typography (bold title vs.
+            // normal prose) is scoped in markdown.scss so a plain blockquote stays a quote.
+            const isTitle = true;
+            const button = {
+                type: "emphasis",
+                children: emoji ? [{ type: "text", value: emoji }] : [],
+                data: {
+                    hName: "button",
+                    hProperties: {
+                        className: `markdown-alert-emoji-btn${emoji == null ? " is-empty" : ""}`,
+                        type: "button",
+                        ariaLabel: emoji == null ? "Add callout emoji" : "Change callout emoji",
+                        dataAlertType: alertType,
+                        dataAlertLine: first?.position?.start?.line ?? "",
+                        dataAlertEmoji: emoji ?? "",
+                    },
                 },
-            },
-        };
-        const title = isTitle
-            ? {
-                  type: "paragraph",
-                  children: [button, ...titleChildren],
-                  data: { hName: "p", hProperties: { className: "markdown-alert-title" } },
-              }
-            : null;
-        const children = title == null ? node.children : [title, ...node.children.slice(1)];
-        parent.children[index] = {
-            type: "paragraph",
-            children,
-            data: { hName: "div", hProperties: { className: `markdown-alert markdown-alert-${alertType}` } },
-        };
-    }
+            };
+            const title = isTitle
+                ? {
+                      type: "paragraph",
+                      children: [...(interactive ? [button] : []), ...titleChildren],
+                      data: { hName: "p", hProperties: { className: "markdown-alert-title" } },
+                  }
+                : null;
+            const children = title == null ? node.children : [title, ...node.children.slice(1)];
+            parent.children[index] = {
+                type: "paragraph",
+                children,
+                data: { hName: "div", hProperties: { className: `markdown-alert markdown-alert-${alertType}` } },
+            };
+        }
+    };
 };
 
 export default remarkCalloutAlert;

@@ -16,9 +16,24 @@
 //
 // 聚焦钉住语义：卡片内有键盘焦点时，鼠标移开不关卡片（否则 note 编辑被打断），
 // 但仍可被「点击外侧」关闭 —— 关闭前先 blur，保证 textarea 的 onBlur 提交先执行。
+//
+// 附属浮层（attached layer）：属性值编辑浮层等组件会 portal 到 body，DOM 上不是卡片子节点，
+// 但 React 树仍是卡片的子孙。它们做两件事：
+//  1. 根节点标 `data-info-card-attached` →「点卡片内部 / 焦点仍在编辑中」的包含判定把它算作卡内；
+//  2. 通过 `useInfoCardPin()` 在打开期间 pin 住卡片，关闭时 release（见 InfoCardPinContext）。
+// 缺这两条时：鼠标移到浮层上会被判成“离开卡片” → 300ms 收卡 → 锚点消失、编辑器当场消失。
 
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { computeCardPos, type InfoCardSize } from "./info-card-pos";
 import {
     claimInfoCard,
@@ -26,6 +41,37 @@ import {
     releaseInfoCard,
     subscribeInfoCard,
 } from "./info-card-global";
+
+/** 附属浮层的根节点标记（portal 到 body 的浮层用它把自己声明成“卡内”）。 */
+export const InfoCardAttachedAttribute = "data-info-card-attached";
+
+/** 该节点是否落在卡片的附属浮层里（只在 DOM 上判断，不看 React 树）。 */
+export function isInAttachedInfoCardLayer(target: Node | null | undefined): boolean {
+    if (target == null) return false;
+    const el = target instanceof Element ? target : (target as Node).parentElement;
+    return el?.closest(`[${InfoCardAttachedAttribute}]`) != null;
+}
+
+/**
+ * 附属浮层对卡片的保活句柄。
+ * pin / release 必须成对调用（挂载即 pin，卸载或关闭即 release），内部按计数支持嵌套浮层。
+ */
+export type InfoCardPinHandle = {
+    pin: () => void;
+    release: () => void;
+};
+
+const NoopPinHandle: InfoCardPinHandle = { pin: () => {}, release: () => {} };
+
+const InfoCardPinContext = createContext<InfoCardPinHandle>(NoopPinHandle);
+
+/**
+ * 在附属浮层里调用：拿到当前卡片的保活句柄（不在卡片里时是 no-op）。
+ * 默认值刻意是 no-op 而不是 null —— md 预览等非卡片场景不用写判空。
+ */
+export function useInfoCardPin(): InfoCardPinHandle {
+    return useContext(InfoCardPinContext);
+}
 
 export type InfoCardPlacement = "right" | "bottom";
 
@@ -56,6 +102,8 @@ export type InfoCardHoverState = InfoCardRefs & {
     };
     /** 手动刷新卡片坐标（窗口滚动 / resize 后可用）。 */
     refreshCardPos: () => void;
+    /** 附属浮层保活句柄（由 InfoCardPortal 通过 context 下发给浮层）。 */
+    pinHandle: InfoCardPinHandle;
 };
 
 /**
@@ -125,6 +173,8 @@ export function useInfoCardHover(opts?: {
     const targetRef = opts?.targetRef ?? internalRef;
     const hideTimerRef = useRef<number | null>(null);
     const cardFocusRef = useRef(false);
+    /** 附属浮层 pin 计数：> 0 时一律不因 hover / 失焦收起卡片。 */
+    const pinCountRef = useRef(0);
 
     const cancelHide = useCallback(() => {
         if (hideTimerRef.current != null) {
@@ -180,6 +230,10 @@ export function useInfoCardHover(opts?: {
         cancelHide();
         hideTimerRef.current = window.setTimeout(() => {
             hideTimerRef.current = null;
+            // 定时器挂起期间状态可能已经变了（又被钉住 / 浮层刚打开），到期时再确认一次。
+            if (cardFocusRef.current || pinCountRef.current > 0) {
+                return;
+            }
             setIsHovered(false);
             setIsCardHovered(false);
         }, hideDelayMs);
@@ -188,12 +242,41 @@ export function useInfoCardHover(opts?: {
     const closeNow = useCallback(() => {
         cancelHide();
         cardFocusRef.current = false;
+        pinCountRef.current = 0;
         setIsHovered(false);
         setIsCardHovered(false);
     }, [cancelHide]);
 
+    // 附属浮层（portal 到 body）的保活：打开即 pin，关闭即 release。
+    const pinCard = useCallback(() => {
+        pinCountRef.current += 1;
+        cancelHide();
+        claimInfoCard(claimTokenRef.current);
+        setIsHovered(true);
+        setIsCardHovered(true);
+    }, [cancelHide]);
+
+    const releasePin = useCallback(() => {
+        pinCountRef.current = Math.max(0, pinCountRef.current - 1);
+        if (pinCountRef.current > 0) {
+            return;
+        }
+        // 浮层关掉了：焦点不在卡内、指针也不在卡上时，按常规延迟收起。
+        // 指针还在卡上就不抢着关（等 mouseleave，与其它路径一致）。
+        if (cardFocusRef.current || cardElRef.current?.matches(":hover")) {
+            return;
+        }
+        scheduleHide();
+    }, [scheduleHide]);
+
+    const pinHandle = useMemo(() => ({ pin: pinCard, release: releasePin }), [pinCard, releasePin]);
+
     const isInside = useCallback(
-        (target: Node) => cardElRef.current?.contains(target) || targetRef.current?.contains(target) || false,
+        (target: Node) =>
+            cardElRef.current?.contains(target) ||
+            targetRef.current?.contains(target) ||
+            isInAttachedInfoCardLayer(target) ||
+            false,
         [targetRef]
     );
 
@@ -206,6 +289,7 @@ export function useInfoCardHover(opts?: {
                 if (!isInfoCardClaimedBy(claimTokenRef.current)) {
                     cancelHide();
                     cardFocusRef.current = false;
+                    pinCountRef.current = 0;
                     setIsHovered(false);
                     setIsCardHovered(false);
                 }
@@ -250,9 +334,9 @@ export function useInfoCardHover(opts?: {
                 setIsCardHovered(true);
             },
             onMouseLeave: () => {
-                // 卡片内有焦点（正在写 note / 点了复制按钮）时不因鼠标移开而关闭，
+                // 卡片内有焦点（正在写 note / 点了复制按钮）或附属浮层开着时不因鼠标移开而关闭，
                 // 否则编辑会被 300ms 隐藏定时器打断；此时由「点击外侧」或失焦负责关闭。
-                if (cardFocusRef.current) {
+                if (cardFocusRef.current || pinCountRef.current > 0) {
                     return;
                 }
                 scheduleHide();
@@ -265,8 +349,14 @@ export function useInfoCardHover(opts?: {
                 setIsHovered(true);
             },
             onBlurCapture: (e: React.FocusEvent) => {
-                if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) {
-                    return;
+                if (e.relatedTarget instanceof Node) {
+                    // 附属浮层也是“卡内”：焦点从卡片走出去进浮层，不算离开。
+                    if (
+                        e.currentTarget.contains(e.relatedTarget) ||
+                        isInAttachedInfoCardLayer(e.relatedTarget)
+                    ) {
+                        return;
+                    }
                 }
                 cardFocusRef.current = false;
                 // 指针还在卡片上就先不关，等 mouseleave；否则焦点走了就该收卡。
@@ -289,14 +379,33 @@ export function useInfoCardHover(opts?: {
             targetProps,
             cardProps,
             refreshCardPos,
+            pinHandle,
         }),
-        [isHovered, isCardHovered, cardPos, targetProps, cardProps, refreshCardPos, targetRef]
+        [isHovered, isCardHovered, cardPos, targetProps, cardProps, refreshCardPos, targetRef, pinHandle]
     );
 }
 
 /**
+ * InfoCardPinProvider — 把「附属浮层保活」句柄通过 context 下发给卡片内容。
+ * 悬浮卡自己维护 hover/focus 状态时（如 BlockFrame_Header），直接用它包裹卡片内容即可。
+ */
+export function InfoCardPinProvider({
+    pin,
+    release,
+    children,
+}: {
+    pin: () => void;
+    release: () => void;
+    children: React.ReactNode;
+}) {
+    const handle = useMemo(() => ({ pin, release }), [pin, release]);
+    return <InfoCardPinContext.Provider value={handle}>{children}</InfoCardPinContext.Provider>;
+}
+
+/**
  * InfoCardPortal — 把 children portal 到 body，定位在 cardPos（fixed 像素坐标）。
- * portal wrapper 自动绑定 cardProps（保活 + 无障碍）与 cardRef（点击外侧关闭判定）。
+ * portal wrapper 自动绑定 cardProps（保活 + 无障碍）与 cardRef（点击外侧关闭判定），
+ * 并通过 InfoCardPinContext 把 pin 句柄下发给附属浮层（属性值浮层等）。
  */
 export function InfoCardPortal({
     hover,
@@ -320,7 +429,9 @@ export function InfoCardPortal({
             }}
             {...hover.cardProps}
         >
-            {children}
+            <InfoCardPinProvider pin={hover.pinHandle.pin} release={hover.pinHandle.release}>
+                {children}
+            </InfoCardPinProvider>
         </div>,
         document.body
     );

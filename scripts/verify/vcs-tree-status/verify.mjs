@@ -19,6 +19,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { appendLedgerRow } from "../lib/report.mjs";
 import { connect } from "../preview-edit/lib/cdp.mjs";
 import { DEFAULTS, dismissOverlays, ensureInstance } from "../preview-edit/lib/launch.mjs";
 import { readPng, scalePng, writePng } from "../preview-edit/lib/pixel.mjs";
@@ -331,6 +332,16 @@ async function main() {
       results,
     };
     writeFileSync(path.join(runDir, "report.json"), JSON.stringify(report, null, 2));
+    // 结论入库（此前只写自己的 report.json，台账/索引里永远"未跑过"）
+    appendLedgerRow({
+      at: new Date().toISOString(),
+      area: "vcs-tree-status",
+      passed: report.passed,
+      total: results.length,
+      mode: attach ? "attach" : "launch+reset",
+      runName: path.basename(runDir),
+      commit: "working-tree",
+    });
     console.log(`\nverdict=${report.verdict}（${report.passed}/${results.length}）`);
     console.log(`run 目录: ${runDir}`);
     process.exitCode = failed.length === 0 ? 0 : 1;

@@ -161,6 +161,10 @@ function callBackendService(service: string, method: string, args: any[], noUICo
             debugLogBackendCall(methodName, durationStr, args);
             return respData.data;
         });
+    // RPC 失败时若调用方没接住（fire-and-forget / atom 初始化路径很常见），
+    // Node 会把它记成 Unhandled Rejection：测试直接整轮红，Electron 里只剩一条难查的 console 噪音。
+    // 这里挂一条"影子 catch"只吸收告警 —— 真实 `prtn` 仍然 reject，await 它的人照旧拿到错误。
+    void prtn.catch(() => {});
     return prtn;
 }
 
@@ -175,6 +179,8 @@ function reloadWaveObject<T extends WaveObj>(oref: string): Promise<T> {
     const prtn = GetObject<T>(oref);
     prtn.then((val) => {
         globalStore.set(wov.dataAtom, { value: val, loading: false });
+    }).catch(() => {
+        // 同 callBackendService：atom 刷新失败不能变成 unhandled rejection
     });
     return prtn;
 }

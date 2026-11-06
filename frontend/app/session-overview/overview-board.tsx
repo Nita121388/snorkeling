@@ -1,153 +1,184 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { useAgentReadContext } from "@/app/agent-status/use-agent-status-view";
 import { cn } from "@/util/util";
-import { groupBlocksByStatus, type OverviewBoardStatus, type OverviewBoardStatusInput } from "./overview-board-model";
+import { AgentStatusChip } from "./agent-status-chip";
+import {
+    formatBoardAge,
+    groupOverviewCards,
+    type OverviewBoardAvatar,
+    type OverviewBoardCard,
+    type OverviewBoardGroup,
+    type OverviewBoardStatus,
+    type OverviewBoardStatusInput,
+} from "./overview-board-model";
 import "./session-overview.scss";
 
-/**
- * Structural shape the board needs from `OverviewBlock`. Kept local to avoid importing
- * the panel module (and creating a runtime import cycle).
- */
-export type OverviewBoardItem = {
-    tabId: string;
-    tabName: string;
-    blockId: string;
-    view: string;
-    title: string;
-    isAgentLike: boolean;
-    agentProvider: string;
-    sessionId: string;
-};
-
 export type OverviewBoardProps = {
-    blocks: readonly OverviewBoardItem[];
+    cards: readonly OverviewBoardCard[];
     presentedStatuses: Readonly<Record<string, OverviewBoardStatusInput>>;
+    /** Real status objects, used by the status chip (label / elapsed / ack). */
+    agentStatuses?: Readonly<Record<string, AgentStatus | null>>;
     /** Total card cap, applied across columns in fixed order. */
     maxTotal?: number;
+    /** 分组口径：状态（固定 5 列）/ Tab / Provider。 */
+    group?: OverviewBoardGroup;
     now: number;
-    /** Note or last-message preview for a card (already flattened by the caller). */
-    getPreview?: (block: OverviewBoardItem) => string | null | undefined;
-    /** Recent-activity timestamp in ms; `0`/missing hides the age label. */
-    getUpdatedAt?: (block: OverviewBoardItem) => number | null | undefined;
-    onOpenSession: (block: OverviewBoardItem) => void;
+    onOpenSession: (card: OverviewBoardCard) => void;
+    onAckStatus?: (blockId: string, status: AgentStatus) => void;
 };
 
-function formatBoardAge(updatedAtMs: number, nowMs: number): string {
-    if (!updatedAtMs || updatedAtMs <= 0) return "";
-    const diffMs = Math.max(0, nowMs - updatedAtMs);
-    const minutes = Math.floor(diffMs / 60_000);
-    if (minutes < 1) return "now";
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
-    return `${Math.floor(hours / 24)}d`;
-}
-
-function truncatePreview(text: string | null | undefined): string {
-    const normalized = text?.replace(/\s+/g, " ").trim() ?? "";
-    if (!normalized) return "";
-    if (normalized.length <= 120) return normalized;
-    return `${normalized.slice(0, 117)}...`;
+function BoardAvatar({ avatar }: { avatar: OverviewBoardAvatar }) {
+    return (
+        <span className="session-overview-board-card-avatar" data-avatar-kind={avatar.kind} aria-hidden="true">
+            {avatar.kind === "emoji" ? (
+                <span className="agent-emoji-icon">{avatar.emoji}</span>
+            ) : avatar.kind === "logo" ? (
+                <span style={avatar.color ? { color: avatar.color } : undefined}>{avatar.icon}</span>
+            ) : (
+                <i className={avatar.iconClass} />
+            )}
+        </span>
+    );
 }
 
 function BoardCard({
-    block,
+    card,
     status,
     now,
-    preview,
-    updatedAt,
     onOpenSession,
+    onAckStatus,
 }: {
-    block: OverviewBoardItem;
-    status: OverviewBoardStatus;
+    card: OverviewBoardCard;
+    status: AgentStatus | null;
     now: number;
-    preview: string;
-    updatedAt: number;
-    onOpenSession: (block: OverviewBoardItem) => void;
+    onOpenSession: (card: OverviewBoardCard) => void;
+    onAckStatus?: (blockId: string, status: AgentStatus) => void;
 }) {
-    const age = formatBoardAge(updatedAt, now);
-    const chips: string[] = [];
-    if (block.agentProvider) chips.push(block.agentProvider);
-    if (block.tabName) chips.push(block.tabName);
-    if (block.view && block.view !== "term") chips.push(block.view);
-    const visibleChips = chips.slice(0, 3);
+    const age = formatBoardAge(card.updatedAt, now);
+    const readContext = useAgentReadContext(card.blockId, status);
+    const unread = readContext.read === "unread";
+    const chips = [card.providerLabel, card.projectName || card.tabName].filter((chip) => chip !== "");
+    const visibleChips = chips.slice(0, 2);
+
+    // Chip 内部是 <button>，卡片容器不能再是 <button>（嵌套按钮是非法 HTML，点击会串）。
+    const openCard = () => onOpenSession(card);
 
     return (
-        <button
-            type="button"
+        <div
             className="session-overview-board-card"
-            onClick={() => onOpenSession(block)}
-            title={preview ? `${block.title}\n${preview}` : block.title}
-            aria-label={`Open session ${block.title}`}
+            data-block-id={card.blockId}
+            data-agent-like={card.isAgentLike ? "true" : "false"}
+            role="button"
+            tabIndex={0}
+            onClick={openCard}
+            onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openCard();
+                }
+            }}
+            aria-label={`Open session ${card.title}`}
+            title={card.preview ? `${card.title}\n${card.preview}` : card.title}
         >
             <span className="session-overview-board-card-head">
-                <span
-                    className={cn("session-overview-board-card-dot", `is-${status}`)}
-                    aria-hidden="true"
-                />
-                <span className="session-overview-board-card-title">{block.title}</span>
+                <BoardAvatar avatar={card.avatar} />
+                <span className="session-overview-board-card-title">{card.title}</span>
                 {age ? <span className="session-overview-board-card-age">{age}</span> : null}
             </span>
-            {preview ? <span className="session-overview-board-card-preview">{preview}</span> : null}
-            {visibleChips.length > 0 ? (
-                <span className="session-overview-board-card-chips">
-                    {visibleChips.map((chip, index) => (
-                        <span key={`${chip}-${index}`} className="session-overview-board-chip">
-                            {chip}
-                        </span>
-                    ))}
+            <span className="session-overview-board-card-meta">
+                {status != null && onAckStatus != null ? (
+                    <AgentStatusChip
+                        status={status}
+                        now={now}
+                        blockId={card.blockId}
+                        unread={unread}
+                        onAck={onAckStatus}
+                        className="is-board-card"
+                    />
+                ) : (
+                    <span className="session-overview-board-card-view-label">{card.kindLabel}</span>
+                )}
+                {visibleChips.map((chip, index) => (
+                    <span key={`${chip}-${index}`} className="session-overview-board-chip" title={chip}>
+                        {chip}
+                    </span>
+                ))}
+            </span>
+            {card.preview ? <span className="session-overview-board-card-preview">{card.preview}</span> : null}
+            {card.note ? (
+                <span className="session-overview-board-card-note">
+                    <span className="session-overview-board-card-note-mark" aria-hidden="true">
+                        ✎
+                    </span>
+                    {card.note}
                 </span>
             ) : null}
-        </button>
+        </div>
     );
 }
 
 export function OverviewBoard({
-    blocks,
+    cards,
     presentedStatuses,
+    agentStatuses,
     maxTotal,
+    group = "status",
     now,
-    getPreview,
-    getUpdatedAt,
     onOpenSession,
+    onAckStatus,
 }: OverviewBoardProps) {
-    const columns = groupBlocksByStatus(blocks, presentedStatuses, { maxTotal });
+    // 状态分组常显 5 列（空列给占位）；tab / provider 分组只显示有卡的列。
+    const columns = groupOverviewCards(cards, presentedStatuses, group, {
+        maxTotal,
+        includeEmpty: group === "status",
+    });
     if (columns.length === 0) {
         return <div className="session-overview-empty">No agent sessions match the current filters.</div>;
     }
     return (
         <div className="session-overview-board" role="group" aria-label="Overview board">
             {columns.map((column) => (
-                <section key={column.status} className="session-overview-board-column">
-                    <h3
-                        className="session-overview-board-column-head"
-                        aria-label={`${column.title}，${column.blocks.length} 个会话`}
-                    >
-                        <span
-                            className={cn("session-overview-board-card-dot", `is-${column.status}`)}
-                            aria-hidden="true"
-                        />
+                <section
+                    key={column.key}
+                    className={cn("session-overview-board-column", column.blocks.length === 0 && "is-empty")}
+                    data-column-key={column.key}
+                    aria-label={`${column.title}，${column.blocks.length} 个会话`}
+                >
+                    <h3 className="session-overview-board-column-head">
+                        {column.tone != null ? (
+                            <span
+                                className={cn("session-overview-board-column-dot", `is-${column.tone}`)}
+                                aria-hidden="true"
+                            />
+                        ) : null}
                         <span className="session-overview-board-column-title">{column.title}</span>
                         <span className="session-overview-board-column-count" role="status">
                             {column.blocks.length}
                         </span>
                     </h3>
                     <div className="session-overview-board-cards">
-                        {column.blocks.map((block) => (
-                            <BoardCard
-                                key={block.blockId}
-                                block={block}
-                                status={column.status}
-                                now={now}
-                                preview={truncatePreview(getPreview?.(block))}
-                                updatedAt={getUpdatedAt?.(block) ?? 0}
-                                onOpenSession={onOpenSession}
-                            />
-                        ))}
+                        {column.blocks.length === 0 ? (
+                            <div className="session-overview-board-empty">暂无</div>
+                        ) : (
+                            column.blocks.map((card) => (
+                                <BoardCard
+                                    key={card.blockId}
+                                    card={card}
+                                    status={agentStatuses?.[card.blockId] ?? null}
+                                    now={now}
+                                    onOpenSession={onOpenSession}
+                                    onAckStatus={onAckStatus}
+                                />
+                            ))
+                        )}
                     </div>
                 </section>
             ))}
         </div>
     );
 }
+
+export type { OverviewBoardStatus };

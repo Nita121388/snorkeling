@@ -222,6 +222,29 @@ InfoCard（`frontend/app/element/info-card/`）的显示由 `isHovered || isCard
 - 关闭前如果焦点还在卡片内，先 `activeElement.blur()`：textarea 的 `onBlur`（note 提交）
   必须先跑，否则点外侧会丢草稿。
 
+#### 10.1 附属浮层（attached layer）：portal 到 body 的浮层也算「卡内」
+
+卡片里的第二轮浮层（属性值下拉、标签选择器等）必须 `FloatingPortal` 到 body（否则被
+markdown / 卡片 overflow 裁切）。但 DOM 上它已不在卡片里，**三条判定会同时出错**：
+鼠标移到浮层上算「离开卡片」→ 300ms 收卡 → 锚点消失 → 编辑器当场消失。
+
+约定（两个消费者都已经落地：`InfoCardPortal` 与 `BlockFrame_Header` 自维护的那套逻辑）：
+
+1. 浮层根节点标 `data-info-card-attached="true"`，卡片的「点卡片内部」判定用
+   `isInAttachedInfoCardLayer(target)`（`info-card-hover.tsx`）把它算作卡内；
+   `onBlurCapture` 同样：`relatedTarget` 落在附属浮层里 → 不算失焦。
+2. 浮层用 `useInfoCardPin()` 在 `open` 期间 `pin()`、关闭/卸载 `release()`
+   （provider 是 `InfoCardPinProvider`，默认值是 no-op，md 预览等非卡片场景不用判空）。
+   卡片按**计数**处理：`onMouseLeave` 与隐藏定时器到期都要看 `pinCount > 0`。
+3. 只有 `pin` 不够：鼠标停在浮层上时焦点可能不在输入框，所以指针路径（`mouseleave`）
+   和定时器路径都要独立保活；反之 `release()` 时若指针还在卡上就别抢着关（等 `mouseleave`）。
+
+反例（都真实踩过）：只加 `data` 标记不加 pin → 指针移入浮层 300ms 后卡片消失；
+只加 pin 不改 `isInside` → 在浮层里点候选会被当成「点击外侧」，卡片直接关掉。
+
+回归测试：`info-card-hover.dom.test.tsx`（附属浮层 pointerdown 不算外侧 / pin→release 生命周期）、
+真机：`node scripts/verify/property-editor/verify.mjs`（`agent-card-survives-pointer-into-popover`）。
+
 回归测试：`frontend/app/element/info-card/info-card-hover.dom.test.tsx`。
 
 ### 11. 视图根节点必须显式 `w-full`，否则浮窗里只占「内容宽」

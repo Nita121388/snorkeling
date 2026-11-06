@@ -10,6 +10,7 @@
 //  - note 作为长文本单独占行（点击进入既有 note 编辑态）。
 
 import { cn } from "@/util/util";
+import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";
 import * as React from "react";
 import {
     formatDateValue,
@@ -103,6 +104,43 @@ export type PropertyListProps = {
 };
 
 const CreatableTypes: PropertyType[] = ["text", "number", "select", "multi_select", "status", "date", "person", "checkbox", "url"];
+
+/** 多值类型：浮层里点击是 toggle，写回数组。 */
+const MultiValueTypes: ReadonlySet<PropertyType> = new Set<PropertyType>(["multi_select", "person", "relation"]);
+
+/** 用浮层下拉编辑的类型：多值类型 + 单选（select / status）。 */
+const DropdownTypes: ReadonlySet<PropertyType> = new Set<PropertyType>([
+    "multi_select",
+    "person",
+    "relation",
+    "select",
+    "status",
+]);
+
+/** 属性值 → 浮层 chips 的字符串数组（单选也归一成数组）。 */
+function itemsFromValue(value: PropertyValue): string[] {
+    if (Array.isArray(value)) return value.map((v) => String(v)).filter((v) => v !== "");
+    if (value == null || value === "") return [];
+    return [String(value)];
+}
+
+/**
+ * 浮层候选：schema 里声明的选项 + 当前值。
+ * 去重保序（选项顺序就是 schema 顺序），未登记的自定义值也要在列表里可见。
+ */
+function dropdownOptions(def: PropertyDef, value: PropertyValue): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const push = (raw: string) => {
+        const text = String(raw);
+        if (text === "" || seen.has(text)) return;
+        seen.add(text);
+        out.push(text);
+    };
+    for (const option of def.options ?? []) push(option.id);
+    for (const item of itemsFromValue(value)) push(item);
+    return out;
+}
 
 function sourceMarker(source: PropertySource): React.ReactNode {
     if (source !== "ai") return null;
@@ -257,13 +295,6 @@ function InlineEditor({
             const num = Number(trimmed);
             return onSubmit(Number.isFinite(num) ? num : null);
         }
-        if (def.type === "multi_select" || def.type === "person" || def.type === "relation") {
-            const values = draft
-                .split(",")
-                .map((v) => v.trim())
-                .filter((v) => v !== "");
-            return onSubmit(values);
-        }
         if (def.type === "date") {
             if (draft === "") return onSubmit(null);
             const parsed = Date.parse(draft);
@@ -282,27 +313,6 @@ function InlineEditor({
             commit();
         }
     };
-
-    if (def.type === "select" || def.type === "status") {
-        const options = optionsFor(def, value);
-        return (
-            <select
-                autoFocus
-                className="property-select"
-                aria-label={`Edit ${def.name}`}
-                value={value == null ? "" : String(value)}
-                onChange={(event) => onSubmit(event.target.value === "" ? null : event.target.value)}
-                onBlur={onCancel}
-            >
-                <option value="">Empty</option>
-                {options.map((option) => (
-                    <option key={option.id} value={option.id}>
-                        {option.name}
-                    </option>
-                ))}
-            </select>
-        );
-    }
 
     return (
         <input
@@ -450,6 +460,10 @@ export function PropertyList({
     }, [summary, schema, isAgent]);
     const [expanded, setExpanded] = React.useState(false);
     const [editingKey, setEditingKey] = React.useState<string | null>(null);
+    // 浮层下拉编辑（多值标签 / 单选）：锚点用行内值按钮的 DOM，因为浮层要贴在值单元格下方。
+    const [popoverKey, setPopoverKey] = React.useState<string | null>(null);
+    const [popoverAnchor, setPopoverAnchor] = React.useState<HTMLElement | null>(null);
+    const valueBtnRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
     const [adding, setAdding] = React.useState(false);
     const [menuKey, setMenuKey] = React.useState<string | null>(null);
     const [renamingKey, setRenamingKey] = React.useState<string | null>(null);
@@ -485,6 +499,19 @@ export function PropertyList({
     const shownPrimary = expanded ? primary : primary.slice(0, limit);
     const moreCount = expanded ? 0 : Math.max(0, primary.length - limit) + secondary.length;
 
+    const closePopover = React.useCallback(() => {
+        setPopoverKey(null);
+        setPopoverAnchor(null);
+    }, []);
+
+    // 属性被删除 / 列表换会话后，悬空的浮层要自己收起来（锚点已经不在树上）。
+    React.useEffect(() => {
+        if (popoverKey == null) return;
+        if (!entries.some((entry) => entry.def.key === popoverKey)) {
+            closePopover();
+        }
+    }, [entries, popoverKey, closePopover]);
+
     const startEdit = (entry: PropertyEntry) => {
         if (!canEdit || entry.def.readOnly || onChange == null) return;
         // checkbox 不是“编辑”而是“切换”：直接落值，不进编辑态。
@@ -498,12 +525,31 @@ export function PropertyList({
             onEditNote();
             return;
         }
+        // 多值标签 / 单选：走浮层下拉（与 md 预览属性卡同一套 Wolai 风格编辑器），
+        // 不再要求用户在窄卡里手打逗号串。
+        if (DropdownTypes.has(entry.def.type)) {
+            setEditingKey(null);
+            setMenuKey(null);
+            setPopoverAnchor(valueBtnRefs.current[entry.def.key] ?? null);
+            setPopoverKey(entry.def.key);
+            return;
+        }
+        setPopoverKey(null);
         setEditingKey(entry.def.key);
     };
 
     const submit = (entry: PropertyEntry, next: PropertyValue) => {
         setEditingKey(null);
         onChange?.(entry.def.key, next, entry.def);
+    };
+
+    /**
+     * 浮层里的即时写回：多值 → 数组；单选 → 标量（清空 → null）。
+     * 刻意不关浮层（toggle 连着点几个值时不能在第一个值后就消失）。
+     */
+    const commitDropdown = (entry: PropertyEntry, items: string[]) => {
+        const multiple = MultiValueTypes.has(entry.def.type);
+        onChange?.(entry.def.key, multiple ? items : (items[0] ?? null), entry.def);
     };
 
     const customKeys = entries.filter((e) => !e.def.builtin).map((e) => e.def.key);
@@ -516,6 +562,9 @@ export function PropertyList({
         const editable = canEdit && !def.readOnly && onChange != null;
         const manageable = canEdit && !def.builtin && (onDeleteProperty != null || onRenameProperty != null || onRetypeProperty != null);
         const isEditing = editingKey === def.key && editable;
+        // 可下拉编辑（多值标签 / 单选）：当前行的浮层是不是开着。
+        const isDropdown = editable && DropdownTypes.has(def.type);
+        const isPopoverOpen = isDropdown && popoverKey === def.key;
         const isRenaming = renamingKey === def.key;
         const isRetyping = retypeKey === def.key;
         const idx = customIndex(def.key);
@@ -530,7 +579,7 @@ export function PropertyList({
                     def.readOnly && "is-readonly",
                     isNote && "is-note",
                     editable && "is-editable",
-                    (isEditing || isRenaming || isRetyping) && "is-editing"
+                    (isEditing || isPopoverOpen || isRenaming || isRetyping) && "is-editing"
                 )}
                 data-property-key={def.key}
                 data-property-type={def.type}
@@ -597,10 +646,14 @@ export function PropertyList({
                         <button
                             type="button"
                             className="property-row__button"
+                            ref={(el) => {
+                                valueBtnRefs.current[def.key] = el;
+                            }}
                             aria-label={`Set ${def.name}`}
                             // checkbox 用 switch 语义：点击即切换，读屏能报出当前状态。
                             role={isCheckbox ? "switch" : undefined}
                             aria-checked={isCheckbox ? cell.value === true : undefined}
+                            aria-expanded={isDropdown ? popoverKey === def.key : undefined}
                             disabled={!editable}
                             onClick={() => startEdit(entry)}
                         >
@@ -673,6 +726,9 @@ export function PropertyList({
     // card 模式全空时：给一个可点的 note 占位，保留“添加备注”的入口（与今天一致）。
     const showNotePlaceholder = !isAgent && mode === "card" && shownPrimary.length === 0;
     const noteEntry = entries.find((entry) => entry.def.key === "note");
+    // 当前打开的浮层对应的属性行（取最新 entry：值变更后梯子里的值也要跟上）。
+    const popoverEntry =
+        popoverKey == null ? null : (entries.find((entry) => entry.def.key === popoverKey) ?? null);
 
     return (
         <div
@@ -745,6 +801,19 @@ export function PropertyList({
             ) : (
                 footer
             )}
+            {/* 浮层下拉编辑器（共享层，与 md 预览属性卡同源）。
+                挂在列表尾部、portal 到 body：不参与行内布局，不会被窄卡宽度挤压。 */}
+            {popoverEntry != null ? (
+                <PropertyValuePopover open anchor={popoverAnchor} onClose={closePopover}>
+                    <PropertyTagEditor
+                        items={itemsFromValue(popoverEntry.cell.value)}
+                        options={dropdownOptions(popoverEntry.def, popoverEntry.cell.value)}
+                        multiple={MultiValueTypes.has(popoverEntry.def.type)}
+                        onChange={(items) => commitDropdown(popoverEntry, items)}
+                        onClose={closePopover}
+                    />
+                </PropertyValuePopover>
+            ) : null}
         </div>
     );
 }

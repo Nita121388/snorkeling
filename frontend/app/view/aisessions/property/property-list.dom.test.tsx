@@ -199,3 +199,79 @@ describe("PropertyList — agent 布局（hover 卡）", () => {
         expect(footer!.querySelector(".property-footer__right [data-testid='footer-extra']")).not.toBeNull();
     });
 });
+
+// ─── 浮层下拉编辑（多值标签 / 单选）───
+//
+// 锁定回归点：属性行点开是「浮层下拉」（与 md 预览属性卡同源的 Wolai 风格编辑器），
+// 而不是窄卡里的逗号分隔输入框 / 原生 <select>。
+describe("PropertyList — 浮层下拉编辑", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+        document.querySelectorAll(".property-value-popover").forEach((el) => el.remove());
+        vi.useRealTimers();
+    });
+
+    const tagEditor = () => document.querySelector('[data-testid="property-tag-editor"]');
+    const valueButton = (key: string) => row(key)!.querySelector<HTMLButtonElement>(".property-row__button")!;
+
+    it("点 Tags 弹出浮层：当前值作为候选并带 ✓，不再渲染行内输入框", () => {
+        mount(<PropertyList summary={makeSummary({ tags: ["fix"] })} mode="detail" canEdit onChange={vi.fn()} />);
+        const button = valueButton("tags");
+        expect(button.getAttribute("aria-expanded")).toBe("false");
+
+        click(button);
+
+        expect(button.getAttribute("aria-expanded")).toBe("true");
+        expect(tagEditor()).not.toBeNull();
+        // 行内消费：多选不再走 InlineEditor 文本框
+        expect(row("tags")!.querySelector("input.property-edit-input")).toBeNull();
+        const selected = tagEditor()!.querySelector(".ptag-option.is-selected");
+        expect(selected).not.toBeNull();
+        expect(selected!.textContent).toContain("fix");
+        expect(selected!.querySelector(".ptag-option-check")).not.toBeNull();
+    });
+
+    it("浮层里点已选候选 → toggle 写回数组，浮层保持打开", () => {
+        const onChange = vi.fn();
+        mount(<PropertyList summary={makeSummary({ tags: ["fix"] })} mode="detail" canEdit onChange={onChange} />);
+
+        click(valueButton("tags"));
+        click(tagEditor()!.querySelector(".ptag-option.is-selected"));
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][0]).toBe("tags");
+        expect(onChange.mock.calls[0][1]).toEqual([]);
+        expect(tagEditor()).not.toBeNull();
+    });
+
+    it("自定义 select 走单值浮层：点选即替换并关闭", () => {
+        const onChange = vi.fn();
+        const summary = makeSummary({
+            props: { stage: { value: "plan", type: "select", source: "user", updatedAt: 1 } },
+        } as Partial<SessionSummary>);
+        mount(
+            <PropertyList
+                summary={summary}
+                mode="detail"
+                canEdit
+                onChange={onChange}
+                schema={[{ key: "stage", name: "Stage", type: "select", options: ["plan", "build"], order: 1 }]}
+            />
+        );
+
+        click(valueButton("stage"));
+        const build = Array.from(tagEditor()!.querySelectorAll(".ptag-option")).find(
+            (option) => option.textContent?.trim() === "build"
+        );
+        expect(build).toBeDefined();
+        click(build!);
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][1]).toBe("build");
+        expect(tagEditor()).toBeNull();
+    });
+});

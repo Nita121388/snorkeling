@@ -8,8 +8,13 @@
 // The single rollout switch lives here: set `OVERVIEW_BOARD_ENABLED = false` and the
 // panel goes back to the untouched list-only path.
 
-import { atomWithStorage } from "jotai/vanilla/utils";
-import type { SyncStorage } from "jotai/vanilla/utils/atomWithStorage";
+import { basename, formatCompactDuration } from "@/util/util";
+import type { ReactNode } from "react";
+import {
+    createPersistedEnum,
+    getDefaultPersistedEnumStorage,
+    type PersistedEnumStorageLike,
+} from "./persisted-enum";
 
 /** Single-file rollback switch: `false` restores the pure list view. */
 export const OVERVIEW_BOARD_ENABLED = true;
@@ -122,46 +127,293 @@ export function groupBlocksByStatus<T extends OverviewBoardBlockLike>(
 }
 
 // ---------------------------------------------------------------------------
-// View mode persistence (list | board), following the preview text-mode store.
+// Board grouping (status / tab / provider)
+//
+// 渲染层只认 `OverviewBoardColumnModel`：状态分组带 tone（列头色点），
+// tab / provider 分组没有 tone，也不补空列（空列只在"状态列"这种固定列集合里才有意义）。
 // ---------------------------------------------------------------------------
 
-export type OverviewViewMode = "list" | "board";
+export type OverviewBoardColumnModel<T extends { blockId: string } = OverviewBoardCardRef> = {
+    /** 稳定 key：`status:working` / `tab:<tabId>` / `provider:Claude`。 */
+    key: string;
+    title: string;
+    /** 只有 status 分组有值：决定列头状态色点。 */
+    tone?: OverviewBoardStatus;
+    blocks: T[];
+};
+
+/** 分组函数只需要这三个字段（不依赖卡片其余展示字段）。 */
+export type OverviewBoardCardRef = {
+    blockId: string;
+    tabId: string;
+    tabName: string;
+    providerLabel: string;
+};
+
+export const OverviewBoardProviderFallbackTitle = "非 Agent";
+
+/** 状态分组：沿用固定 5 列 + `includeEmpty` 常显语义。 */
+export function groupOverviewCardsByStatus<T extends OverviewBoardCardRef>(
+    cards: readonly T[],
+    presentedStatuses: Readonly<Record<string, OverviewBoardStatusInput>>,
+    opts: OverviewBoardGroupOptions = {}
+): OverviewBoardColumnModel<T>[] {
+    const columns = groupBlocksByStatus(cards, presentedStatuses, opts);
+    return columns.map((column) => ({
+        key: `status:${column.status}`,
+        title: column.title,
+        tone: column.status,
+        blocks: column.blocks,
+    }));
+}
+
+/** Tab 分组：列序 = 卡片首次出现顺序（caller 传进来的就是 workspace Tab 顺序），不补空列。 */
+export function groupOverviewCardsByTab<T extends OverviewBoardCardRef>(
+    cards: readonly T[]
+): OverviewBoardColumnModel<T>[] {
+    const columns = new Map<string, OverviewBoardColumnModel<T>>();
+    for (const card of cards) {
+        const key = `tab:${card.tabId}`;
+        let column = columns.get(key);
+        if (column == null) {
+            column = { key, title: cleanText(card.tabName) || "Untitled", blocks: [] };
+            columns.set(key, column);
+        }
+        column.blocks.push(card);
+    }
+    return [...columns.values()];
+}
+
+/**
+ * Provider 分组：列序 = 卡片数降序 → 标题升序（最活跃的 agent 排最左）。
+ * 没有 provider 的块（普通 term / 未知）归「非 Agent」，不丢卡。
+ */
+export function groupOverviewCardsByProvider<T extends OverviewBoardCardRef>(
+    cards: readonly T[]
+): OverviewBoardColumnModel<T>[] {
+    const columns = new Map<string, OverviewBoardColumnModel<T>>();
+    for (const card of cards) {
+        const title = cleanText(card.providerLabel) || OverviewBoardProviderFallbackTitle;
+        const key = `provider:${title}`;
+        let column = columns.get(key);
+        if (column == null) {
+            column = { key, title, blocks: [] };
+            columns.set(key, column);
+        }
+        column.blocks.push(card);
+    }
+    return [...columns.values()].sort((a, b) => {
+        // 「非 Agent」永远排最后（普通 term 块不该抢 agent 的位置），再按活跃度降序、名称升序。
+        const aFallback = a.title === OverviewBoardProviderFallbackTitle;
+        const bFallback = b.title === OverviewBoardProviderFallbackTitle;
+        if (aFallback !== bFallback) return aFallback ? 1 : -1;
+        if (b.blocks.length !== a.blocks.length) return b.blocks.length - a.blocks.length;
+        return a.title.localeCompare(b.title);
+    });
+}
+
+/**
+ * 分组分发器。
+ *
+ * - `status`：固定列 + `includeEmpty`（看板常显 5 列）
+ * - `tab` / `provider`：只渲染有卡的列（空列对它们没有语义）
+ */
+export function groupOverviewCards<T extends OverviewBoardCardRef>(
+    cards: readonly T[],
+    presentedStatuses: Readonly<Record<string, OverviewBoardStatusInput>>,
+    group: OverviewBoardGroup,
+    opts: OverviewBoardGroupOptions = {}
+): OverviewBoardColumnModel<T>[] {
+    if (group === "tab") return groupOverviewCardsByTab(cards);
+    if (group === "provider") return groupOverviewCardsByProvider(cards);
+    return groupOverviewCardsByStatus(cards, presentedStatuses, opts);
+}
+
+// ---------------------------------------------------------------------------
+// Board card model + pure display helpers
+//
+// The panel assembles `OverviewBoardCard[]` (identity, status, copy) and the
+// board stays a dumb renderer. Everything below is pure so the title/name
+// resolution rules are directly unit-testable.
+// ---------------------------------------------------------------------------
+
+/** How a card renders the agent identity (persona chain → brand logo → generic icon). */
+export type OverviewBoardAvatar =
+    | { kind: "emoji"; emoji: string }
+    | { kind: "logo"; icon: ReactNode; color?: string }
+    | { kind: "icon"; iconClass: string };
+
+export type OverviewBoardCard = {
+    blockId: string;
+    tabId: string;
+    /** Agent session id; empty for non-agent blocks. */
+    sessionId: string;
+    /** Already resolved for display: agent blocks carry the session title, never "Terminal". */
+    title: string;
+    isAgentLike: boolean;
+    avatar: OverviewBoardAvatar;
+    /** Display name ("Claude"/"Codex"); empty for non-agent blocks. */
+    providerLabel: string;
+    /** Fallback context chip: project basename, or the tab name when there is no project. */
+    projectName: string;
+    tabName: string;
+    /** Non-agent blocks show their view name ("Terminal") as a muted chip; agents use "". */
+    kindLabel: string;
+    /** Last readable message, one line. Note lives on its own row. */
+    preview: string;
+    note: string;
+    /** Recent-activity timestamp in ms; `0` hides the age label. */
+    updatedAt: number;
+};
+
+export type ResolveBoardCardTitleInput = {
+    isAgentLike: boolean;
+    sessionTitle?: string | null;
+    note?: string | null;
+    projectName?: string | null;
+    tabName?: string | null;
+    providerLabel?: string | null;
+    blockTitle?: string | null;
+};
+
+function cleanText(value: string | null | undefined): string {
+    return value?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+/** Known provider ids → display names. Unknown values are title-cased, never dropped. */
+const ProviderDisplayLabels: Record<string, string> = {
+    claude: "Claude",
+    "claude-code": "Claude",
+    codex: "Codex",
+    openai: "OpenAI",
+    gemini: "Gemini",
+    "gemini-cli": "Gemini",
+    opencode: "OpenCode",
+    pi: "Pi",
+    cursor: "Cursor",
+    copilot: "Copilot",
+    aider: "Aider",
+    amp: "Amp",
+    qwen: "Qwen",
+    droid: "Droid",
+    kimi: "Kimi",
+    grok: "Grok",
+};
+
+export function providerDisplayLabel(provider: string | null | undefined): string {
+    const normalized = cleanText(provider).toLowerCase();
+    if (normalized === "" || normalized === "agent") return "";
+    const known = ProviderDisplayLabels[normalized];
+    if (known != null) return known;
+    return normalized
+        .split(/[-_\s]+/)
+        .filter((part) => part !== "")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+/** `~/projects/snorkeling` → `snorkeling`. Empty path stays empty. */
+export function projectNameFromPath(path: string | null | undefined): string {
+    const raw = cleanText(path);
+    if (raw === "") return "";
+    const name = basename(raw);
+    // `basename("~")` === "~" and `basename("/")` === "/" — neither is a useful chip.
+    if (name === "~" || name === "/" || name === ".") return "";
+    return name;
+}
+
+/**
+ * Agent cards show the session title, never the block view name ("Terminal").
+ *
+ * Chain: `sessionTitle → note → projectName → "Provider · tab" → "Agent"`.
+ * Non-agent blocks keep the block title (which now falls back to the cwd basename).
+ */
+export function resolveBoardCardTitle(input: ResolveBoardCardTitleInput): string {
+    const blockTitle = cleanText(input.blockTitle);
+    const tabName = cleanText(input.tabName);
+    if (!input.isAgentLike) {
+        return blockTitle || tabName || "Untitled";
+    }
+    const sessionTitle = cleanText(input.sessionTitle);
+    if (sessionTitle !== "") return sessionTitle;
+    const note = cleanText(input.note);
+    if (note !== "") return note;
+    const projectName = cleanText(input.projectName);
+    if (projectName !== "") return projectName;
+    const providerLabel = cleanText(input.providerLabel);
+    if (providerLabel !== "" && tabName !== "") return `${providerLabel} · ${tabName}`;
+    return providerLabel || tabName || "Agent";
+}
+
+/** Compact age label for the card head (`now` / `12m` / `3h` / `2d`); "" hides it. */
+export function formatBoardAge(updatedAtMs: number, nowMs: number): string {
+    if (!updatedAtMs || updatedAtMs <= 0) return "";
+    return formatCompactDuration(updatedAtMs, nowMs);
+}
+
+/** One-line preview used by the card body. Returns "" so callers can skip the node. */
+export function truncateBoardPreview(text: string | null | undefined, maxLength = 120): string {
+    const normalized = cleanText(text);
+    if (normalized === "") return "";
+    if (normalized.length <= maxLength) return normalized;
+    return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+// ---------------------------------------------------------------------------
+// View mode + board grouping persistence
+//
+// 两个枚举都走同一个「localStorage + atomWithStorage + storage 事件跨窗口同步」工厂，
+// 免得每加一个开关就复制 60 行读写/回落/订阅样板。
+//
+// `timeline` 已经写进 ViewMode 联合类型（D 的接口预留），但**不在已实现集合里**：
+// 校验只放行已实现值，未来版本写进来的 timeline 在旧版本降级成 list，而不是白屏。
+// ---------------------------------------------------------------------------
+
+export type OverviewViewMode = "list" | "board" | "timeline";
+
+/** 真正有渲染分支的视图。新增视图时：这里加值 + panel 加渲染分支 + validator 自动跟着放行。 */
+export const OverviewViewModesImplemented = ["list", "board", "timeline"] as const;
+
+export type OverviewViewModeImplemented = (typeof OverviewViewModesImplemented)[number];
 
 export const OverviewViewModeStorageKey = "snorkeling.overview.viewMode";
 
 /** Default stays `list` so existing users see no behavior change on upgrade. */
 export const OverviewViewModeDefault: OverviewViewMode = "list";
 
-export type OverviewViewModeStorageLike = {
-    getItem(key: string): string | null;
-    setItem(key: string, value: string): void;
-    removeItem?(key: string): void;
-};
+/** 看板列的分组口径。 */
+export const OverviewBoardGroups = ["status", "tab", "provider"] as const;
+
+export type OverviewBoardGroup = (typeof OverviewBoardGroups)[number];
+
+export const OverviewBoardGroupStorageKey = "snorkeling.overview.boardGroup";
+
+export const OverviewBoardGroupDefault: OverviewBoardGroup = "status";
+
+/** @deprecated 使用 `persisted-enum.ts` 的 `PersistedEnumStorageLike`；保留别名避免老测试改动。 */
+export type OverviewViewModeStorageLike = PersistedEnumStorageLike;
 
 export function getDefaultOverviewViewModeStorage(): OverviewViewModeStorageLike | null {
-    if (typeof window === "undefined") {
-        return null;
-    }
-    try {
-        return window.localStorage ?? null;
-    } catch {
-        return null;
-    }
+    return getDefaultPersistedEnumStorage();
 }
 
 export function isOverviewViewMode(value: unknown): value is OverviewViewMode {
-    return value === "list" || value === "board";
+    return typeof value === "string" && (OverviewViewModesImplemented as readonly string[]).includes(value);
 }
+
+export function isOverviewBoardGroup(value: unknown): value is OverviewBoardGroup {
+    return typeof value === "string" && (OverviewBoardGroups as readonly string[]).includes(value);
+}
+
+const viewModeStorage = createPersistedEnum(
+    OverviewViewModeStorageKey,
+    isOverviewViewMode,
+    OverviewViewModeDefault
+);
 
 /** Corrupt / missing data falls back to the default, never throws. */
 export function readOverviewViewMode(storage: OverviewViewModeStorageLike | null): OverviewViewMode {
-    if (storage == null) return OverviewViewModeDefault;
-    try {
-        const raw = storage.getItem(OverviewViewModeStorageKey);
-        return isOverviewViewMode(raw) ? raw : OverviewViewModeDefault;
-    } catch {
-        return OverviewViewModeDefault;
-    }
+    return viewModeStorage.read(storage);
 }
 
 /** Persist the mode. Returns the effective mode, or `null` when nothing was written. */
@@ -169,15 +421,7 @@ export function writeOverviewViewMode(
     storage: OverviewViewModeStorageLike | null,
     mode: OverviewViewMode
 ): OverviewViewMode | null {
-    if (storage == null || !isOverviewViewMode(mode)) {
-        return null;
-    }
-    try {
-        storage.setItem(OverviewViewModeStorageKey, mode);
-        return mode;
-    } catch {
-        return null;
-    }
+    return viewModeStorage.write(storage, mode);
 }
 
 /** Cross-window sync: fires on `storage` events for our key (other renderers/windows). */
@@ -185,38 +429,26 @@ export function subscribeOverviewViewMode(
     callback: () => void,
     target: EventTarget | null = typeof window === "undefined" ? null : window
 ): () => void {
-    if (target == null || typeof target.addEventListener !== "function") {
-        return () => {};
-    }
-    const handleStorage = (event: Event) => {
-        const key = (event as StorageEvent).key;
-        if (key != null && key !== OverviewViewModeStorageKey) return;
-        callback();
-    };
-    target.addEventListener("storage", handleStorage);
-    return () => target.removeEventListener("storage", handleStorage);
+    return viewModeStorage.subscribe(callback, target);
 }
 
-const overviewViewModeStorage: SyncStorage<OverviewViewMode> = {
-    getItem: () => readOverviewViewMode(getDefaultOverviewViewModeStorage()),
-    setItem: (_key, value) => {
-        writeOverviewViewMode(getDefaultOverviewViewModeStorage(), value);
-    },
-    removeItem: () => {
-        const storage = getDefaultOverviewViewModeStorage();
-        try {
-            storage?.removeItem?.(OverviewViewModeStorageKey);
-        } catch {
-            // Ignore: a failed cleanup must not break rendering.
-        }
-    },
-    subscribe: (_key, callback) =>
-        subscribeOverviewViewMode(() => callback(readOverviewViewMode(getDefaultOverviewViewModeStorage()))),
-};
+export const overviewViewModeAtom = viewModeStorage.atom;
 
-export const overviewViewModeAtom = atomWithStorage<OverviewViewMode>(
-    OverviewViewModeStorageKey,
-    OverviewViewModeDefault,
-    overviewViewModeStorage,
-    { getOnInit: true }
+export const boardGroupStorage = createPersistedEnum(
+    OverviewBoardGroupStorageKey,
+    isOverviewBoardGroup,
+    OverviewBoardGroupDefault
 );
+
+export function readOverviewBoardGroup(storage: OverviewViewModeStorageLike | null): OverviewBoardGroup {
+    return boardGroupStorage.read(storage);
+}
+
+export function writeOverviewBoardGroup(
+    storage: OverviewViewModeStorageLike | null,
+    group: OverviewBoardGroup
+): OverviewBoardGroup | null {
+    return boardGroupStorage.write(storage, group);
+}
+
+export const overviewBoardGroupAtom = boardGroupStorage.atom;

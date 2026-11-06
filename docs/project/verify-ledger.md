@@ -10,3 +10,20 @@
 | 2026-11-05 06:47 | agent-card-seen | ✅ 21/21 | launch+reset | `20261105T06423-agent-card-seen` | 04ac4722 |
 | 2026-11-05 06:53 | preview-edit | ✅ 5/5 | --expect=fixed / rpc | `20261105-145318` | working-tree |
 | 2026-11-05 08:40 | info-card 悬浮卡定位（新判据，非 verify 台） | ✅ 10/10 + 校准 3 例红 | vitest | `info-card-pos.test.ts` | ec327a59 |
+| 2026-11-05 11:03 | property-editor | ✅ 13/13 | launch+reset | `20261105T11021-property-editor` | working-tree |
+| 2026-11-05 11:59 | overview-board | ✅ 28/28 | launch+reset | `20261105T11582-overviewboard` | working-tree |
+| 2026-11-05 12:04 | vcs-panel-buttons | ❌ 3/5 | attach | `20261105T12044-vcs-panel-buttons` | 2a7f07a0 |
+| 2026-11-05 12:08 | vcs-panel-buttons | ✅ 5/5 | attach | `20261105T12084-vcs-panel-buttons` | 2a7f07a0 |
+| 2026-11-05 12:13 | vcs-panel-buttons | ✅ 14/14 | attach | `20261105T12134-vcs-panel-buttons` | 2a7f07a0 |
+| 2026-11-05 13:06 | overview-board | ✅ 38/38 | launch+reset | `20261105T13054-overviewboard` | working-tree |
+| 2026-11-05 11:55 | commontext-meta-sort | ✅ 21/21 | launch+reset | `20261105T11533-commontext-meta-sort` | 63fa01a5 |
+| 2026-11-05 12:09 | commontext-meta-sort | ✅ 21/21 | launch+reset | `20261105T12083-commontext-meta-sort` | ff717c17 |
+| 2026-11-05 12:21 | commontext-meta-sort | ✅ 27/27 | launch+reset | `20261105T12211-commontext-meta-sort` | ff717c17 |
+| 2026-11-05 13:15 | commontext-meta-sort | ✅ 28/28 | launch+reset | `20261105T13145-commontext-meta-sort` | 87353099 |
+| 2026-11-05 13:20 | commontext-meta-sort | ✅ 28/28 | launch+reset | `20261105T13193-commontext-meta-sort` | 241c296c |
+| 2026-11-05 14:28 | overview-board | ✅ 38/38 | launch+reset | `20261105T14274-overviewboard` | working-tree |
+| 2026-11-05 14:55 | overview-timeline | ✅ 22/22 | launch+reset | `20261105T14534-overview-timeline` | ed6a61e3 |
+| 2026-11-05 19:19 | overview-timeline | ✅ 22/22 | launch+reset | `20261105T19185-overview-timeline` | 96e6255b |
+| 2026-11-05 20:01 | image-pager | ✅ 32/32 | launch+reset | `20261105T19595-imagepager` | working-tree |
+| 2026-11-05 20:08 | vcs-tree-status | ✅ 31/31 | launch+reset | `20261105T20074-vcstreestatus` | working-tree |
+| 2026-11-05 20:20 | overview-board | ✅ 38/38 | launch+reset | `20261105T20185-overviewboard` | working-tree |

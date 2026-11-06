@@ -3,13 +3,28 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    formatBoardAge,
+    groupBlocksByStatus,
+    groupOverviewCards,
+    groupOverviewCardsByProvider,
+    groupOverviewCardsByTab,
+    isOverviewBoardGroup,
+    isOverviewViewMode,
+    normalizeOverviewBoardStatus,
+    OverviewBoardGroupDefault,
+    OverviewBoardGroups,
+    OverviewBoardGroupStorageKey,
+    OverviewBoardProviderFallbackTitle,
     OverviewBoardStatuses,
     OverviewViewModeDefault,
     OverviewViewModeStorageKey,
-    groupBlocksByStatus,
-    isOverviewViewMode,
-    normalizeOverviewBoardStatus,
+    projectNameFromPath,
+    providerDisplayLabel,
+    readOverviewBoardGroup,
     readOverviewViewMode,
+    resolveBoardCardTitle,
+    truncateBoardPreview,
+    writeOverviewBoardGroup,
     writeOverviewViewMode,
     type OverviewViewModeStorageLike,
 } from "./overview-board-model";
@@ -68,16 +83,13 @@ describe("groupBlocksByStatus", () => {
     });
 
     it("groups each status into its own column", () => {
-        const columns = groupBlocksByStatus(
-            [block("a"), block("b"), block("c"), block("d"), block("e")],
-            {
-                a: "blocked",
-                b: "working",
-                c: "done",
-                d: "idle",
-                e: "stale",
-            }
-        );
+        const columns = groupBlocksByStatus([block("a"), block("b"), block("c"), block("d"), block("e")], {
+            a: "blocked",
+            b: "working",
+            c: "done",
+            d: "idle",
+            e: "stale",
+        });
 
         expect(columns.map((column) => [column.status, column.blocks[0].blockId])).toEqual([
             ["blocked", "a"],
@@ -149,9 +161,13 @@ describe("groupBlocksByStatus", () => {
     });
 
     it("honors a custom status order", () => {
-        const columns = groupBlocksByStatus([block("a"), block("b")], { a: "done", b: "working" }, {
-            statuses: ["working", "done"],
-        });
+        const columns = groupBlocksByStatus(
+            [block("a"), block("b")],
+            { a: "done", b: "working" },
+            {
+                statuses: ["working", "done"],
+            }
+        );
 
         expect(columns.map((column) => column.status)).toEqual(["working", "done"]);
     });
@@ -209,5 +225,262 @@ describe("normalizeOverviewBoardStatus — 报警状态不能被灰成空闲", (
         expect(normalizeOverviewBoardStatus("nonsense")).toBe("idle");
         expect(normalizeOverviewBoardStatus(null)).toBe("idle");
         expect(normalizeOverviewBoardStatus(undefined)).toBe("idle");
+    });
+});
+
+describe("providerDisplayLabel", () => {
+    it("maps known providers to their display names", () => {
+        expect(providerDisplayLabel("claude")).toBe("Claude");
+        expect(providerDisplayLabel("claude-code")).toBe("Claude");
+        expect(providerDisplayLabel("CODEX")).toBe("Codex");
+        expect(providerDisplayLabel("opencode")).toBe("OpenCode");
+    });
+
+    it("title-cases unknown providers instead of dropping them", () => {
+        expect(providerDisplayLabel("some-new-agent")).toBe("Some New Agent");
+        expect(providerDisplayLabel("weird_thing")).toBe("Weird Thing");
+    });
+
+    it("returns empty for missing/generic providers", () => {
+        expect(providerDisplayLabel("")).toBe("");
+        expect(providerDisplayLabel(null)).toBe("");
+        expect(providerDisplayLabel(undefined)).toBe("");
+        expect(providerDisplayLabel("agent")).toBe("");
+    });
+});
+
+describe("projectNameFromPath", () => {
+    it("takes the basename for posix and windows paths", () => {
+        expect(projectNameFromPath("/Users/nita/Primary/projects/snorkeling")).toBe("snorkeling");
+        expect(projectNameFromPath("/Users/nita/Primary/projects/snorkeling/")).toBe("snorkeling");
+        expect(projectNameFromPath("E:\\code\\snorkeling")).toBe("snorkeling");
+    });
+
+    it("refuses paths whose basename is not a useful chip", () => {
+        expect(projectNameFromPath("")).toBe("");
+        expect(projectNameFromPath(null)).toBe("");
+        expect(projectNameFromPath("/")).toBe("");
+        expect(projectNameFromPath("~")).toBe("");
+        expect(projectNameFromPath(".")).toBe("");
+    });
+});
+
+describe("resolveBoardCardTitle", () => {
+    it("prefers the session title for agent cards", () => {
+        expect(
+            resolveBoardCardTitle({
+                isAgentLike: true,
+                sessionTitle: "Refactor auth middleware",
+                note: "note text",
+                projectName: "snorkeling",
+                tabName: "main",
+                providerLabel: "Claude",
+                blockTitle: "Terminal",
+            })
+        ).toBe("Refactor auth middleware");
+    });
+
+    it("falls back note → project → provider · tab for agent cards", () => {
+        expect(
+            resolveBoardCardTitle({
+                isAgentLike: true,
+                note: "先跑类型检查",
+                projectName: "snorkeling",
+                tabName: "main",
+                providerLabel: "Claude",
+            })
+        ).toBe("先跑类型检查");
+        expect(
+            resolveBoardCardTitle({
+                isAgentLike: true,
+                projectName: "snorkeling",
+                tabName: "main",
+                providerLabel: "Claude",
+            })
+        ).toBe("snorkeling");
+        expect(resolveBoardCardTitle({ isAgentLike: true, tabName: "main", providerLabel: "Claude" })).toBe(
+            "Claude · main"
+        );
+        expect(resolveBoardCardTitle({ isAgentLike: true })).toBe("Agent");
+    });
+
+    it("never renders the block view name for agent cards", () => {
+        const title = resolveBoardCardTitle({
+            isAgentLike: true,
+            tabName: "main",
+            providerLabel: "Codex",
+            blockTitle: "Terminal",
+        });
+        expect(title).not.toBe("Terminal");
+    });
+
+    it("keeps the block title for non-agent blocks", () => {
+        expect(resolveBoardCardTitle({ isAgentLike: false, blockTitle: "snorkeling", tabName: "main" })).toBe(
+            "snorkeling"
+        );
+        expect(resolveBoardCardTitle({ isAgentLike: false, tabName: "main" })).toBe("main");
+        expect(resolveBoardCardTitle({ isAgentLike: false })).toBe("Untitled");
+    });
+
+    it("collapses whitespace and ignores blank strings", () => {
+        expect(resolveBoardCardTitle({ isAgentLike: true, sessionTitle: "  fix   preview  ", tabName: "main" })).toBe(
+            "fix preview"
+        );
+    });
+});
+
+describe("formatBoardAge", () => {
+    const now = 1_700_000_000_000;
+    it("formats compact ages", () => {
+        expect(formatBoardAge(now - 30_000, now)).toBe("now");
+        expect(formatBoardAge(now - 12 * 60_000, now)).toBe("12m");
+        expect(formatBoardAge(now - 3 * 3_600_000, now)).toBe("3h");
+        expect(formatBoardAge(now - 2 * 86_400_000, now)).toBe("2d");
+    });
+
+    it("hides the age when there is no timestamp", () => {
+        expect(formatBoardAge(0, now)).toBe("");
+        expect(formatBoardAge(-1, now)).toBe("");
+    });
+});
+
+describe("truncateBoardPreview", () => {
+    it("collapses whitespace and keeps short text", () => {
+        expect(truncateBoardPreview("  hello   world ")).toBe("hello world");
+        expect(truncateBoardPreview("")).toBe("");
+        expect(truncateBoardPreview(null)).toBe("");
+    });
+
+    it("ellipsizes long text at the requested length", () => {
+        const out = truncateBoardPreview("x".repeat(40), 10);
+        expect(out.length).toBe(10);
+        expect(out.endsWith("...")).toBe(true);
+    });
+});
+
+function card(blockId: string, overrides: Partial<{ tabId: string; tabName: string; providerLabel: string }> = {}) {
+    return {
+        blockId,
+        tabId: overrides.tabId ?? "tab-1",
+        tabName: overrides.tabName ?? "main",
+        providerLabel: overrides.providerLabel ?? "",
+    };
+}
+
+describe("groupOverviewCardsByTab", () => {
+    it("orders columns by first appearance and keeps card order inside a column", () => {
+        const columns = groupOverviewCardsByTab([
+            card("a", { tabId: "t2", tabName: "feature/overview" }),
+            card("b", { tabId: "t1", tabName: "main" }),
+            card("c", { tabId: "t2", tabName: "feature/overview" }),
+        ]);
+        expect(columns.map((column) => column.title)).toEqual(["feature/overview", "main"]);
+        expect(columns[0].blocks.map((b) => b.blockId)).toEqual(["a", "c"]);
+        expect(columns[1].blocks.map((b) => b.blockId)).toEqual(["b"]);
+        expect(columns.map((column) => column.key)).toEqual(["tab:t2", "tab:t1"]);
+    });
+
+    it("never produces empty columns and tolerates blank tab names", () => {
+        const columns = groupOverviewCardsByTab([card("a", { tabId: "t1", tabName: "  " })]);
+        expect(columns).toHaveLength(1);
+        expect(columns[0].title).toBe("Untitled");
+    });
+});
+
+describe("groupOverviewCardsByProvider", () => {
+    it("sorts by card count desc then title asc and folds unknown providers", () => {
+        const columns = groupOverviewCardsByProvider([
+            card("a", { providerLabel: "Claude" }),
+            card("b", { providerLabel: "" }),
+            card("c", { providerLabel: "Codex" }),
+            card("d", { providerLabel: "Claude" }),
+        ]);
+        expect(columns.map((column) => column.title)).toEqual(["Claude", "Codex", OverviewBoardProviderFallbackTitle]);
+        expect(columns[0].blocks.map((b) => b.blockId)).toEqual(["a", "d"]);
+    });
+
+    it("keeps the fallback column last when counts tie", () => {
+        const columns = groupOverviewCardsByProvider([
+            card("a", { providerLabel: "" }),
+            card("b", { providerLabel: "Codex" }),
+            card("c", { providerLabel: "Claude" }),
+        ]);
+        expect(columns.map((column) => column.title)).toEqual(["Claude", "Codex", OverviewBoardProviderFallbackTitle]);
+    });
+});
+
+describe("groupOverviewCards dispatcher", () => {
+    const cards = [card("a", { providerLabel: "Claude" }), card("b", { tabId: "t2", tabName: "wt" })];
+    const statuses = { a: "working", b: "idle" };
+
+    it("status grouping keeps the fixed 5 columns with tone", () => {
+        const columns = groupOverviewCards(cards, statuses, "status", { includeEmpty: true });
+        expect(columns).toHaveLength(OverviewBoardStatuses.length);
+        expect(columns.every((column) => column.tone != null)).toBe(true);
+        expect(columns[0].key).toBe("status:blocked");
+    });
+
+    it("status grouping without includeEmpty only keeps non-empty columns", () => {
+        const columns = groupOverviewCards(cards, statuses, "status");
+        expect(columns.map((column) => column.key)).toEqual(["status:working", "status:idle"]);
+    });
+
+    it("tab and provider grouping have no tone and no empty columns", () => {
+        for (const group of ["tab", "provider"] as const) {
+            const columns = groupOverviewCards(cards, statuses, group);
+            expect(columns.length).toBeGreaterThan(0);
+            expect(columns.every((column) => column.tone == null)).toBe(true);
+            expect(columns.every((column) => column.blocks.length > 0)).toBe(true);
+        }
+    });
+});
+
+describe("board group storage", () => {
+    function fakeStorage(initial: Record<string, string> = {}) {
+        const data = { ...initial };
+        return {
+            data,
+            getItem: (key: string) => data[key] ?? null,
+            setItem: (key: string, value: string) => {
+                data[key] = value;
+            },
+            removeItem: (key: string) => {
+                delete data[key];
+            },
+        };
+    }
+
+    it("accepts the three documented groups only", () => {
+        for (const group of OverviewBoardGroups) {
+            expect(isOverviewBoardGroup(group)).toBe(true);
+        }
+        expect(isOverviewBoardGroup("lane")).toBe(false);
+        expect(isOverviewBoardGroup(null)).toBe(false);
+    });
+
+    it("defaults to status for missing or corrupt values", () => {
+        expect(readOverviewBoardGroup(null)).toBe(OverviewBoardGroupDefault);
+        expect(readOverviewBoardGroup(fakeStorage())).toBe("status");
+        expect(readOverviewBoardGroup(fakeStorage({ [OverviewBoardGroupStorageKey]: "lane" }))).toBe("status");
+    });
+
+    it("round-trips provider and rejects unknown writes", () => {
+        const storage = fakeStorage();
+        expect(writeOverviewBoardGroup(storage, "provider")).toBe("provider");
+        expect(readOverviewBoardGroup(storage)).toBe("provider");
+        expect(writeOverviewBoardGroup(storage, "lane" as never)).toBeNull();
+        expect(readOverviewBoardGroup(storage)).toBe("provider");
+    });
+});
+
+describe("overview view mode — 已实现值与未来值", () => {
+    it("accepts timeline now that the view exists", () => {
+        expect(isOverviewViewMode("timeline")).toBe(true);
+        expect(readOverviewViewMode({ getItem: () => "timeline", setItem: () => {} })).toBe("timeline");
+    });
+
+    it("still rejects values this build does not render (no white screen on downgrade)", () => {
+        expect(isOverviewViewMode("gantt-v2")).toBe(false);
+        expect(readOverviewViewMode({ getItem: () => "gantt-v2", setItem: () => {} })).toBe("list");
     });
 });

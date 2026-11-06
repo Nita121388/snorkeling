@@ -7,6 +7,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TreeNodeData, TreeView, TreeViewRef, TreeViewRowInfo } from "@/app/treeview/treeview";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { fileInfoRequest } from "@/util/fileinfo";
 import { checkKeyPressed, isCharacterKeyEvent } from "@/util/keyutil";
 import { fireAndForget, makeConnRoute } from "@/util/util";
 import { offset, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
@@ -549,9 +550,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         await env.rpc.FileCreateCommand(
                             TabRpcClient,
                             {
-                                info: {
-                                    path: await model.formatRemoteUri(`${targetDir}/${newName}`, globalStore.get),
-                                },
+                                info: fileInfoRequest(
+                                    await model.formatRemoteUri(`${targetDir}/${newName}`, globalStore.get)
+                                ),
                             },
                             null
                         );
@@ -571,9 +572,9 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 onSave: (newName: string) => {
                     fireAndForget(async () => {
                         await env.rpc.FileMkdirCommand(TabRpcClient, {
-                            info: {
-                                path: await model.formatRemoteUri(`${targetDir}/${newName}`, globalStore.get),
-                            },
+                            info: fileInfoRequest(
+                                await model.formatRemoteUri(`${targetDir}/${newName}`, globalStore.get)
+                            ),
                         });
                         model.refresh();
                     });
@@ -1034,10 +1035,10 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 connection,
                 lineNumber,
                 ...openOptions,
-                revealInTreeBlockId: blockData?.id ?? null,
+                revealInTreeBlockId: blockData?.oid ?? null,
             });
         },
-        [connection, blockData?.id]
+        [connection, blockData?.oid]
     );
 
     const clearSearchClickTimer = useCallback(() => {

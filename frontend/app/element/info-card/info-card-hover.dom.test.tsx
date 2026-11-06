@@ -8,18 +8,29 @@
 //  2. 卡片内聚焦（点过 note textarea / 复制按钮）后指针移开 → 卡片不关（编辑不能被打断）。
 //  3. 聚焦钉住后点击卡片外侧 → 立即关闭（历史上这里没有路径，卡片永久停留）。
 //  4. 点击卡片内部 → 不关闭。
+//  5. 附属浮层（attached layer）：pointerdown 在 portal 出去的浮层里不算「点击外侧」；
+//     浮层 pin 住卡片期间指针移开也不收起，release 后回到常规延迟隐藏。
 //
 // @vitest-environment jsdom
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { InfoCardPortal, useInfoCardHover } from "./info-card-hover";
+import {
+    InfoCardAttachedAttribute,
+    isInAttachedInfoCardLayer,
+    InfoCardPortal,
+    useInfoCardHover,
+    type InfoCardPinHandle,
+} from "./info-card-hover";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+let latestPin: InfoCardPinHandle | null = null;
+
 function Harness() {
     const hover = useInfoCardHover({ hideDelayMs: 300 });
+    latestPin = hover.pinHandle;
     return (
         <>
             <div data-testid="target" {...hover.targetProps}>
@@ -136,5 +147,76 @@ describe("useInfoCardHover (dom)", () => {
         hover(targetEl());
         pointerDown(targetEl());
         expect(cardEl()).not.toBeNull();
+    });
+});
+
+
+// ─── 附属浮层（portal 到 body 的第��方浮层，如属性值编辑浮层）───
+describe("useInfoCardHover — 附属浮层保活", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+        document.querySelectorAll(".attached-layer-test").forEach((el) => el.remove());
+        vi.useRealTimers();
+    });
+
+    /** 造一个「portal 到 body 的附属浮层」：DOM 上不在卡片里，只有 data 标记能认出来。 */
+    function makeAttachedLayer(): HTMLDivElement {
+        const layer = document.createElement("div");
+        layer.className = "attached-layer-test";
+        layer.setAttribute(InfoCardAttachedAttribute, "true");
+        const option = document.createElement("button");
+        option.type = "button";
+        option.textContent = "option";
+        layer.appendChild(option);
+        document.body.appendChild(layer);
+        return layer;
+    }
+
+    it("isInAttachedInfoCardLayer 认得标记元素与其子节点", () => {
+        const layer = makeAttachedLayer();
+        const child = layer.querySelector("button")!;
+        expect(isInAttachedInfoCardLayer(layer)).toBe(true);
+        expect(isInAttachedInfoCardLayer(child)).toBe(true);
+        expect(isInAttachedInfoCardLayer(child.firstChild)).toBe(true); // 文本节点走 parentElement
+        expect(isInAttachedInfoCardLayer(document.body)).toBe(false);
+        expect(isInAttachedInfoCardLayer(null)).toBe(false);
+    });
+
+    it("点附属浮层内部不算「点击外侧」，卡片不关闭", () => {
+        mount();
+        hover(targetEl());
+        const layer = makeAttachedLayer();
+        pointerDown(layer);
+        expect(cardEl()).not.toBeNull();
+    });
+
+    it("浮层 pin 住时指针移开也不收起，release 后按常规延迟收起", () => {
+        mount();
+        hover(targetEl());
+        expect(latestPin).not.toBeNull();
+        act(() => {
+            latestPin!.pin();
+        });
+        leave(cardEl()!);
+        act(() => {
+            vi.advanceTimersByTime(2000);
+        });
+        expect(cardEl()).not.toBeNull();
+
+        act(() => {
+            latestPin!.release();
+        });
+        act(() => {
+            vi.advanceTimersByTime(299);
+        });
+        expect(cardEl()).not.toBeNull();
+        act(() => {
+            vi.advanceTimersByTime(1);
+        });
+        expect(cardEl()).toBeNull();
     });
 });

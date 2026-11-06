@@ -189,4 +189,9 @@
 
 ## 2026-11-05 新增原型
 
-- `commontext-list-meta-sort/` — **▲ 设计活跃**（2026-11-05）；CommonText 列表要展示创建时间 / 更新时间 / 支持多排序 / 显示使用次数。按真实双栏 Master-Detail 镜像重做（首版窄单栏作废），只加两处新增点：左栏搜索下方的排序控件、列表行右侧的「使用次数 + 更新时间」列（不加行高，完整时间走悬浮提示）。排序控件按项目 UI 原则「能用图标表示的不用文字」做成纯图标按钮组（含义走 title/aria-label），列表行与详情页脚的「时间 / 次数」同样用图标 + 数字。原型同时复刻了「搜索态相关度优先、置顶只作并列次序」的真实行为。README 记录落地前必须定的三件事：排序作用域、使用次数写入点缺失（Copy 与行内插入不计数、新建虚记 1 次）、排序函数需独立注入不改 `sortCommonTextItems`。镜像源：`commontext-compose-modal.tsx`、`commontext-model.ts`，真实组件尚未改造。
+- `commontext-list-meta-sort/` — **✅ 已落地**（2026-11-05，`frontend/app/commontext/`，分支 `feat/commontext-list-meta-sort`）；CommonText 列表要展示创建时间 / 更新时间 / 支持多排序 / 显示使用次数。按真实双栏 Master-Detail 镜像重做（首版窄单栏作废），只加两处新增点：左栏搜索下方的排序控件、列表行右侧的「使用次数 + 更新时间」列（不加行高，完整时间走悬浮提示）。排序控件按项目 UI 原则「能用图标表示的不用文字」做成纯图标按钮组（含义走 title/aria-label），列表行与详情页脚的「时间 / 次数」同样用图标 + 数字。原型同时复刻了「搜索态相关度优先、置顶只作并列次序」的真实行为。README 记录落地前必须定的三件事：排序作用域、使用次数写入点缺失（Copy 与行内插入不计数、新建虚记 1 次）、排序函数需独立注入不改 `sortCommonTextItems`。镜像源：`commontext-compose-modal.tsx`、`commontext-model.ts`，真实组件尚未改造。
+
+落地回执：真实组件已按本原型实现两处新增点（列表行右侧「次数 + 更新时间」列、搜索框下方纯图标排序控件）
++ 详情页脚元信息组；三条待定项按原型推荐值定稿——排序作用域（浏览态用用户排序 / 搜索态相关度优先且控件置灰，
+用 `aria-disabled` 保留 tooltip）、使用次数口径（补 Copy 与行内 hover 插入，新建不再虚记 1 次但刷新 `lastusedat`）、
+排序函数独立注入（新增 `sortCommonTextItemsBy`，`sortCommonTextItems` 行为逐位不变）。

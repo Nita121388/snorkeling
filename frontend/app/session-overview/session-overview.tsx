@@ -1,18 +1,18 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import { ackAgentStatus as ackAgentStatusUnified } from "@/app/agent-status/agent-status-ack";
 import {
-    agentStatusPresentation,
     aggregateAgentStatuses,
     aggregateStatusLabel,
     formatAgentProvider,
-    isInferredAgentStatus,
 } from "@/app/agent-status/agent-status-derive";
+import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
+import { isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { ackAgentStatus as ackAgentStatusUnified } from "@/app/agent-status/agent-status-ack";
-import { isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
-import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Tooltip } from "@/app/element/tooltip";
@@ -30,21 +30,44 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "@/app/view/aisessions/session-note-events";
 import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "@/app/view/aisessions/session-tags";
-import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
-import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
-import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
-import { cn, fireAndForget, makeIconClass } from "@/util/util";
+import { basename, cn, fireAndForget, formatCompactDuration, makeIconClass } from "@/util/util";
 import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip";
+import { OverviewBoard } from "./overview-board";
+import {
+    OVERVIEW_BOARD_ENABLED,
+    overviewBoardGroupAtom,
+    overviewViewModeAtom,
+    OverviewViewModesImplemented,
+    projectNameFromPath,
+    providerDisplayLabel,
+    resolveBoardCardTitle,
+    truncateBoardPreview,
+    type OverviewBoardAvatar,
+    type OverviewBoardCard,
+    type OverviewBoardGroup,
+    type OverviewViewMode,
+    type OverviewViewModeImplemented,
+} from "./overview-board-model";
+import { OverviewTimeline } from "./overview-timeline";
+import {
+    buildTimelineRows,
+    formatTimelineRangeLabel,
+    overviewTimelineRangeAtom,
+    OverviewTimelineRangeDefault,
+    OverviewTimelineRanges,
+    timelineRangeToMs,
+    type OverviewTimelineRange,
+} from "./overview-timeline-model";
 import {
     agentStatusHookProvidersForInstall,
     agentStatusHookStatusesNeedingInstall,
 } from "./session-overview-agent-status";
-import { OVERVIEW_BOARD_ENABLED, overviewViewModeAtom } from "./overview-board-model";
-import { OverviewBoard } from "./overview-board";
 import { SessionOverviewModel } from "./session-overview-model";
 import {
     getCachedSessionDetail,
@@ -150,13 +173,7 @@ function normalizeTimeMs(timestamp: number | null | undefined): number {
 }
 
 function formatUnreadDuration(startMs: number, nowMs: number): string {
-    const diffMs = Math.max(0, nowMs - startMs);
-    const minutes = Math.floor(diffMs / 60_000);
-    if (minutes < 1) return "now";
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
-    return `${Math.floor(hours / 24)}d`;
+    return formatCompactDuration(startMs, nowMs);
 }
 
 function messagePreview(message: Message | null): string {
@@ -175,7 +192,10 @@ function readableMessages(detail: SessionDetail | null): Message[] {
 
 function blockTitle(block: Block, view: string): string {
     const meta = block?.meta ?? {};
-    return meta["frame:title"] || meta["display:name"] || meta.file || meta.url || blockViewToName(view);
+    // cwd basename 兜底：agent/term 块通常没有 frame:title，直接回退 blockViewToName 会让
+    // Overview 卡片显示成裸 "Terminal"（用户 2026-11-05 反馈）。有 cwd 时用目录名更可辨识。
+    const cwd = typeof meta["cmd:cwd"] === "string" ? basename(meta["cmd:cwd"] as string) : "";
+    return meta["frame:title"] || meta["display:name"] || meta.file || meta.url || cwd || blockViewToName(view);
 }
 
 function isAgentMeta(meta: Record<string, unknown>, view: string): boolean {
@@ -233,6 +253,37 @@ async function deleteOverviewBlock(block: OverviewBlock): Promise<void> {
 
 function shouldShowFullOverviewBlock(block: OverviewBlock): boolean {
     return block.isAgentLike || block.view === "term";
+}
+
+/**
+ * Board card identity: persona chain (session → provider → brand logo) for agents,
+ * plain view icon for other blocks. Single source — same `getAgentIcon` as the list row
+ * and the term block header, so a persona change updates every surface.
+ */
+function resolveBoardAvatar(
+    block: OverviewBlock,
+    personas: Record<string, string>,
+    sessionEmojis: Record<string, string>
+): OverviewBoardAvatar {
+    if (!block.isAgentLike) {
+        return {
+            kind: "icon",
+            iconClass: makeIconClass(blockViewToIcon(block.view), false, { defaultIcon: "square" }),
+        };
+    }
+    const icon = getAgentIcon(block.agentProvider, {
+        meta: block.block?.meta,
+        sessionId: block.sessionId,
+        personas,
+        sessionEmojis,
+    });
+    if (icon?.kind === "emoji") {
+        return { kind: "emoji", emoji: icon.emoji };
+    }
+    if (icon?.kind === "logo") {
+        return { kind: "logo", icon: icon.icon, color: icon.iconColor };
+    }
+    return { kind: "icon", iconClass: makeIconClass("robot", false) };
 }
 
 function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
@@ -470,10 +521,7 @@ const CONSTANT_ZERO = () => 0;
 const GET_REVISION_SUMMARY = () => getSessionOverviewCacheRevision("summary");
 const GET_REVISION_DETAIL = () => getSessionOverviewCacheRevision("detail");
 
-function useSessionOverviewCacheRevision(
-    channel: SessionOverviewCacheChannel,
-    active = true
-): number {
+function useSessionOverviewCacheRevision(channel: SessionOverviewCacheChannel, active = true): number {
     // active=false 时 useSyncExternalStore 用 NOOP_SUBSCRIBE + CONSTANT_ZERO, 不订阅外部 store.
     // active 切回 true 后切回真实 subscribe + getSnapshot, React 会重新订阅并读取最新 revision.
     if (channel === "summary") {
@@ -499,10 +547,7 @@ function useSessionDetails(blocks: OverviewBlock[], refreshSeq: number, active: 
     const sessionIdsKey = sessionIds.join("\n");
     // detail 消费者订阅 "detail" 频道; 隐藏 (active=false) 时退订, 节省 React 更新.
     const cacheRevision = useSessionOverviewCacheRevision("detail", active);
-    const cacheSnapshot = useMemo(
-        () => getSessionOverviewCacheSnapshot(sessionIds),
-        [cacheRevision, sessionIdsKey]
-    );
+    const cacheSnapshot = useMemo(() => getSessionOverviewCacheSnapshot(sessionIds), [cacheRevision, sessionIdsKey]);
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
     const refreshSeqRef = useRef(refreshSeq);
@@ -726,10 +771,7 @@ function useSessionSummaries(blocks: OverviewBlock[], active = true): Record<str
     const sessionIdsKey = sessionIds.join("\n");
     // summary 消费者订阅 "summary" 频道; 隐藏 (active=false) 时退订, 节省 React 更新.
     const cacheRevision = useSessionOverviewCacheRevision("summary", active);
-    const cacheSnapshot = useMemo(
-        () => getSessionOverviewCacheSnapshot(sessionIds),
-        [cacheRevision, sessionIdsKey]
-    );
+    const cacheSnapshot = useMemo(() => getSessionOverviewCacheSnapshot(sessionIds), [cacheRevision, sessionIdsKey]);
     const requestedRef = useRef(new Set<string>());
     const retryTimersRef = useRef(new Map<string, number>());
     const [summaries, setSummaries] = useState<Record<string, SummaryState>>(() => {
@@ -897,61 +939,6 @@ function SessionOverviewBadgeIcon({ badge, className }: { badge: Badge | null; c
     );
 }
 
-function statusDurationText(status: AgentStatus, now: number): string {
-    if (status.state === "idle" || status.state === "unknown") return "";
-    const start = status.activeSince ?? status.updatedAt;
-    if (!start) return "";
-    return formatUnreadDuration(start, now);
-}
-
-function AgentStatusChip({
-    status,
-    now,
-    blockId,
-    unread,
-    onAck,
-}: {
-    status: AgentStatus;
-    now: number;
-    blockId: string;
-    unread: boolean;
-    onAck: (blockId: string, status: AgentStatus) => void;
-}) {
-    const presentation = agentStatusPresentation(status);
-    const duration = statusDurationText(status, now);
-    const inferred = isInferredAgentStatus(status);
-    const tooltipText = unread
-        ? `${presentation.label} — click to mark as read`
-        : `${presentation.label} — up to date`;
-    return (
-        <Tooltip content={tooltipText} placement="top" hideOnClick divClassName="inline-flex">
-            <button
-                type="button"
-                className={cn(
-                    "session-overview-agent-status",
-                    `is-${status.state}`,
-                    status.phase !== "none" && `phase-${status.phase}`,
-                    inferred && "is-inferred",
-                    !unread && "is-acked"
-                )}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    onAck(blockId, status);
-                }}
-                aria-label={tooltipText}
-            >
-                <i className={makeIconClass(presentation.icon, false)} />
-                <span className="session-overview-agent-status-label">{presentation.label}</span>
-                {duration ? <span className="session-overview-agent-status-age">{duration}</span> : null}
-            </button>
-        </Tooltip>
-    );
-}
-
-function shouldShowAgentStatusChip(status: AgentStatus): boolean {
-    return status.state !== "idle" && status.state !== "unknown";
-}
-
 function shouldShowAgentAggregate(statuses: AgentStatus[]): boolean {
     return statuses.some(shouldShowAgentStatusChip);
 }
@@ -968,9 +955,7 @@ function AggregateStatusChip({
     if (!shouldShowAgentAggregate(statuses)) return null;
     const aggregate = aggregateAgentStatuses(statuses);
     const label = aggregateStatusLabel(aggregate);
-    const tooltipText = unread
-        ? `${label} — click to mark tab as read`
-        : `${label} — up to date`;
+    const tooltipText = unread ? `${label} — click to mark tab as read` : `${label} — up to date`;
     // Rendered as role="button" span (not <button>) because it sits inside the tab-toggle
     // <button>; nested <button> is invalid HTML. stopPropagation prevents the click from
     // toggling tab collapse.
@@ -979,11 +964,7 @@ function AggregateStatusChip({
             <span
                 role="button"
                 tabIndex={0}
-                className={cn(
-                    "session-overview-agent-aggregate",
-                    `is-${aggregate.state}`,
-                    !unread && "is-acked"
-                )}
+                className={cn("session-overview-agent-aggregate", `is-${aggregate.state}`, !unread && "is-acked")}
                 onClick={(event) => {
                     event.stopPropagation();
                     onAck();
@@ -1100,12 +1081,15 @@ function MessageDialog({
     onClose,
     onJump,
     onEditSessionNote,
+    onDeleteBlock,
 }: {
     message: Message | null;
     block: OverviewBlock | null;
     onClose: () => void;
     onJump: () => void;
     onEditSessionNote: (block: OverviewBlock) => void;
+    /** 从消息弹窗直接删块（与列表行/卡片同一个删除落地）。 */
+    onDeleteBlock: (block: OverviewBlock) => void;
 }) {
     if (message == null || block == null) return null;
     return (
@@ -1681,8 +1665,8 @@ function BlockRow({
                 !block.isAgentLike && "is-plain-block",
                 unread && "has-unread",
                 isCurrent && "is-current",
-                noteEditorOpen && "is-note-editing",
-                )}
+                noteEditorOpen && "is-note-editing"
+            )}
             onClick={() => onSelectBlock(block)}
         >
             <div className="session-overview-block-main">
@@ -1710,13 +1694,21 @@ function BlockRow({
                 </span>
                 <span className="session-overview-block-text">
                     {block.isAgentLike ? (
-                        <>{agentStatus ? <AgentStatusChip status={agentStatus} now={now} blockId={block.blockId} unread={agentStatusUnread} onAck={onAckAgentStatus} /> : null}</>
+                        <>
+                            {agentStatus ? (
+                                <AgentStatusChip
+                                    status={agentStatus}
+                                    now={now}
+                                    blockId={block.blockId}
+                                    unread={agentStatusUnread}
+                                    onAck={onAckAgentStatus}
+                                />
+                            ) : null}
+                        </>
                     ) : (
                         <>
                             <span className="session-overview-block-title">{block.title}</span>
-                            <span className="session-overview-block-meta">
-                                {blockViewToName(block.view)}
-                            </span>
+                            <span className="session-overview-block-meta">{blockViewToName(block.view)}</span>
                         </>
                     )}
                 </span>
@@ -1925,7 +1917,11 @@ function TabGroupSection({
                     <i className={makeIconClass("table-columns", false)} />
                     <span className="session-overview-tab-name">{group.tabName}</span>
                     <strong>{group.blocks.length}</strong>
-                    <AggregateStatusChip statuses={groupAgentStatuses} unread={tabAgentStatusUnread} onAck={onAckTabAgentStatuses} />
+                    <AggregateStatusChip
+                        statuses={groupAgentStatuses}
+                        unread={tabAgentStatusUnread}
+                        onAck={onAckTabAgentStatuses}
+                    />
                     <SessionOverviewBadgeIcon badge={tabBadges?.[0] ?? null} />
                 </button>
                 <button
@@ -2011,6 +2007,13 @@ function useTabGroups(workspace: Workspace | null, blocks: OverviewBlock[]): Tab
     return jotai.useAtomValue(tabGroupsAtom);
 }
 
+/** 视图按钮的图标/文案。新增视图时只改这里 + 渲染分支（顺序即按钮顺序）。 */
+const OverviewViewModeMeta: Record<OverviewViewModeImplemented, { icon: string; label: string; title: string }> = {
+    list: { icon: "table-list", label: "列表", title: "List view" },
+    board: { icon: "table-cells-large", label: "看板", title: "Board view" },
+    timeline: { icon: "chart-gantt", label: "时间线", title: "Timeline view" },
+};
+
 function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOverviewViewModel>) {
     const overviewModel = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
@@ -2021,11 +2024,16 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
     const hideUnopenedTabs = jotai.useAtomValue(overviewModel.hideUnopenedTabsAtom);
     const agentsOnly = jotai.useAtomValue(overviewModel.agentsOnlyAtom);
     const viewMode = jotai.useAtomValue(overviewViewModeAtom);
+    const boardGroup = jotai.useAtomValue(overviewBoardGroupAtom);
+    const timelineRange = jotai.useAtomValue(overviewTimelineRangeAtom) ?? OverviewTimelineRangeDefault;
     const openedThisLaunchTabIds = jotai.useAtomValue(openedThisLaunchTabIdsAtom);
     const blocks = useOverviewBlocks(workspace);
     const overviewVisible = useCurrentOverviewBlockVisible(blockId);
     const refreshSeq = jotai.useAtomValue(model.refreshSeqAtom);
     const summaries = useSessionSummaries(blocks, overviewVisible);
+    // Persona chain (session emoji → provider emoji → brand logo) for board card avatars.
+    const personas = useAgentPersonas();
+    const sessionEmojis = useSessionEmojis();
     const currentBlockId = jotai.useAtomValue(FocusManager.getInstance().blockFocusAtom);
     const sessionService = useMemo(() => new AISessionsServiceType(), []);
     const now = useNow(overviewVisible);
@@ -2277,8 +2285,83 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                 .filter((nextBlock) => shouldShowFullOverviewBlock(nextBlock)),
         [displayedTabGroups]
     );
-    const toggleViewMode = React.useCallback(() => {
-        globalStore.set(overviewViewModeAtom, globalStore.get(overviewViewModeAtom) === "board" ? "list" : "board");
+    const boardCards = useMemo<OverviewBoardCard[]>(
+        () =>
+            boardBlocks.map((nextBlock) => {
+                const summary = summaries[nextBlock.sessionId]?.summary ?? null;
+                const detailSummary = details[nextBlock.sessionId]?.detail?.summary ?? null;
+                const meta = (nextBlock.block?.meta ?? {}) as Record<string, unknown>;
+                const providerLabel = nextBlock.isAgentLike ? providerDisplayLabel(nextBlock.agentProvider) : "";
+                const projectName = nextBlock.isAgentLike
+                    ? projectNameFromPath(summary?.projectPath) ||
+                      projectNameFromPath(typeof meta["cmd:cwd"] === "string" ? (meta["cmd:cwd"] as string) : "")
+                    : "";
+                const note = (summary?.note ?? detailSummary?.note ?? "").trim();
+                const messages = readableMessages(details[nextBlock.sessionId]?.detail ?? null);
+                const preview = truncateBoardPreview(
+                    messages.length > 0 ? messagePreview(messages[messages.length - 1]) : "",
+                    160
+                );
+                const sessionTitle = (summary?.title ?? detailSummary?.title ?? "").trim();
+                return {
+                    blockId: nextBlock.blockId,
+                    tabId: nextBlock.tabId,
+                    sessionId: nextBlock.sessionId,
+                    tabName: nextBlock.tabName,
+                    isAgentLike: nextBlock.isAgentLike,
+                    title: resolveBoardCardTitle({
+                        isAgentLike: nextBlock.isAgentLike,
+                        sessionTitle,
+                        note,
+                        projectName,
+                        tabName: nextBlock.tabName,
+                        providerLabel,
+                        blockTitle: nextBlock.title,
+                    }),
+                    avatar: resolveBoardAvatar(nextBlock, personas, sessionEmojis),
+                    providerLabel,
+                    projectName,
+                    kindLabel: nextBlock.isAgentLike ? "" : blockViewToName(nextBlock.view),
+                    preview,
+                    note,
+                    updatedAt: normalizeTimeMs(summary?.updatedAt ?? detailSummary?.updatedAt),
+                } satisfies OverviewBoardCard;
+            }),
+        [boardBlocks, details, personas, sessionEmojis, summaries]
+    );
+    // 时间线行：身份复用看板卡片，时间字段来自 SessionSummary，状态色来自 AgentStatusStore。
+    const timelineRows = useMemo(
+        () =>
+            buildTimelineRows(boardCards, {
+                nowMs: now,
+                windowMs: timelineRangeToMs(timelineRange),
+                sessions: Object.fromEntries(
+                    boardCards
+                        .filter((card) => card.sessionId !== "")
+                        .map((card) => {
+                            const summary = summaries[card.sessionId]?.summary ?? null;
+                            return [
+                                card.sessionId,
+                                {
+                                    createdAt: summary?.createdAt ?? 0,
+                                    updatedAt: summary?.updatedAt ?? card.updatedAt,
+                                    messageCount: summary?.messageCount ?? 0,
+                                    live: summary?.live === true,
+                                },
+                            ];
+                        })
+                ),
+                states: Object.fromEntries(
+                    boardCards.map((card) => [card.blockId, agentStatuses[card.blockId]?.state ?? null])
+                ),
+                activeSince: Object.fromEntries(
+                    boardCards.map((card) => [card.blockId, agentStatuses[card.blockId]?.activeSince ?? null])
+                ),
+            }),
+        [agentStatuses, boardCards, now, summaries, timelineRange]
+    );
+    const setViewMode = React.useCallback((mode: OverviewViewMode) => {
+        globalStore.set(overviewViewModeAtom, mode);
     }, []);
 
     return (
@@ -2319,34 +2402,74 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 </span>
                             </button>
                         ) : null}
-                        {OVERVIEW_BOARD_ENABLED ? (
-                            <Tooltip
-                                content={viewMode === "board" ? "Switch to list view" : "Switch to board view"}
-                                placement="top"
-                                hideOnClick
-                                divClassName="inline-flex"
-                            >
-                                <button
-                                    type="button"
-                                    className={cn(
-                                        "session-overview-icon-button session-overview-view-toggle",
-                                        viewMode === "board" && "is-active"
-                                    )}
-                                    onClick={toggleViewMode}
-                                    aria-pressed={viewMode === "board"}
-                                    // 可访问名描述"这个控件是什么"，动态动作文案只留在 title，
-                                    // 否则 pressed=true + "Switch to list view" 会互相矛盾
-                                    aria-label="Board view"
-                                    title={viewMode === "board" ? "Switch to list view" : "Switch to board view"}
+                        {OVERVIEW_BOARD_ENABLED && viewMode === "timeline" ? (
+                            <label className="session-overview-group-picker" title="时间窗">
+                                <i className={makeIconClass("clock", false)} />
+                                <select
+                                    className="session-overview-group-select"
+                                    data-overview-range
+                                    value={timelineRange}
+                                    aria-label="Timeline range"
+                                    onChange={(event) =>
+                                        globalStore.set(
+                                            overviewTimelineRangeAtom,
+                                            Number(event.target.value) as OverviewTimelineRange
+                                        )
+                                    }
                                 >
-                                    <i
-                                        className={makeIconClass(
-                                            viewMode === "board" ? "table-list" : "table-cells-large",
-                                            false
+                                    {OverviewTimelineRanges.map((range) => (
+                                        <option key={range} value={range}>
+                                            {formatTimelineRangeLabel(range)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        ) : null}
+                        {OVERVIEW_BOARD_ENABLED ? (
+                            <div className="session-overview-view-switch" role="group" aria-label="Overview view">
+                                {OverviewViewModesImplemented.map((mode) => (
+                                    <button
+                                        key={mode}
+                                        type="button"
+                                        className={cn(
+                                            "session-overview-view-switch-button",
+                                            // 旧验证脚本/用户习惯用 .session-overview-view-toggle 指"看板"这枚，
+                                            // 保留这个类名做兼容。
+                                            mode === "board" && "session-overview-view-toggle",
+                                            viewMode === mode && "is-active"
                                         )}
-                                    />
-                                </button>
-                            </Tooltip>
+                                        data-overview-view={mode}
+                                        onClick={() => setViewMode(mode)}
+                                        aria-pressed={viewMode === mode}
+                                        aria-label={OverviewViewModeMeta[mode].title}
+                                        title={OverviewViewModeMeta[mode].title}
+                                    >
+                                        <i className={makeIconClass(OverviewViewModeMeta[mode].icon, false)} />
+                                        <span>{OverviewViewModeMeta[mode].label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                        {OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
+                            <label className="session-overview-group-picker" title="看板分组方式">
+                                <i className={makeIconClass("layer-group", false)} />
+                                <select
+                                    className="session-overview-group-select"
+                                    data-overview-group
+                                    value={boardGroup}
+                                    aria-label="Board grouping"
+                                    onChange={(event) =>
+                                        globalStore.set(
+                                            overviewBoardGroupAtom,
+                                            event.target.value as OverviewBoardGroup
+                                        )
+                                    }
+                                >
+                                    <option value="status">状态</option>
+                                    <option value="tab">Tab</option>
+                                    <option value="provider">Provider</option>
+                                </select>
+                            </label>
                         ) : null}
                         <div className="session-overview-filter-group" aria-label="Overview filters">
                             <button
@@ -2383,37 +2506,37 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     </div>
                 </div>
                 <div className="session-overview-body">
-                    {OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
+                    {OVERVIEW_BOARD_ENABLED && viewMode === "timeline" ? (
+                        <OverviewTimeline
+                            rows={timelineRows}
+                            range={timelineRange}
+                            now={now}
+                            onOpenSession={(row) => {
+                                setSelectedBlockId(row.blockId);
+                                overviewModel.markBlockViewed(row.blockId);
+                                if (row.sessionId) {
+                                    openSessionDetail(row.sessionId);
+                                }
+                            }}
+                        />
+                    ) : OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
                         displayedTabGroups.length === 0 ? (
                             <div className="session-overview-empty">
                                 {tabGroups.length === 0 ? "No tabs in this workspace." : emptyMessage}
                             </div>
                         ) : (
                             <OverviewBoard
-                                blocks={boardBlocks}
+                                cards={boardCards}
                                 presentedStatuses={agentStatuses}
+                                agentStatuses={agentStatuses}
+                                group={boardGroup}
                                 now={now}
-                                getPreview={(nextBlock) => {
-                                    const note = summaries[nextBlock.sessionId]?.summary?.note?.trim();
-                                    if (note) return note;
-                                    const messages = readableMessages(
-                                        details[nextBlock.sessionId]?.detail ?? null
-                                    );
-                                    return messages.length > 0
-                                        ? messagePreview(messages[messages.length - 1])
-                                        : "";
-                                }}
-                                getUpdatedAt={(nextBlock) =>
-                                    normalizeTimeMs(
-                                        summaries[nextBlock.sessionId]?.summary?.updatedAt ??
-                                            details[nextBlock.sessionId]?.detail?.summary?.updatedAt
-                                    )
-                                }
-                                onOpenSession={(nextBlock) => {
-                                    setSelectedBlockId(nextBlock.blockId);
-                                    overviewModel.markBlockViewed(nextBlock.blockId);
-                                    if (nextBlock.sessionId) {
-                                        openSessionDetail(nextBlock.sessionId);
+                                onAckStatus={ackAgentStatus}
+                                onOpenSession={(card) => {
+                                    setSelectedBlockId(card.blockId);
+                                    overviewModel.markBlockViewed(card.blockId);
+                                    if (card.sessionId) {
+                                        openSessionDetail(card.sessionId);
                                     }
                                 }}
                             />
@@ -2535,6 +2658,25 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                 onEditSessionNote={(nextBlock) => {
                     openSessionNoteInline(nextBlock);
                     setSelected(null);
+                }}
+                onDeleteBlock={(nextBlock) => {
+                    setSessionAction((current) => ({ ...current, error: "" }));
+                    deleteOverviewBlock(nextBlock)
+                        .then(() => {
+                            setSelectedBlockId((current) =>
+                                current === nextBlock.blockId ? null : current
+                            );
+                            setSelected((current) =>
+                                current?.block.blockId === nextBlock.blockId ? null : current
+                            );
+                            model.refresh();
+                        })
+                        .catch((error) => {
+                            setSessionAction((current) => ({
+                                ...current,
+                                error: error instanceof Error ? error.message : String(error),
+                            }));
+                        });
                 }}
             />
         </>

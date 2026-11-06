@@ -163,6 +163,23 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
 搬迁的正确姿势：先搬文件 → `node -e import(...)` 逐个验模块能加载 →
 跑一个**用满这条链**的 area（preview-edit 覆盖 observe/oracle/open/pixel）→ 再提交。
 
+## 8. 五条 2026-11-05 新增的坑（overview-board v2 现场）
+
+1. **断言要"播种数据"，不要靠实例碰巧有数据。**
+   全新 profile 里往往只有一个 term 块 —— emoji 头像 / 会话标题 / 状态 chip 这些最关键的断言
+   只能 skipped，等于没验。做法（overview-board 已落地）：`createBlock({ meta: { "agent:provider": "claude" } })`
+   + `BlockService.ReportAgentStatus({ state: "working", ... })` 造一张真卡片，断言跑完再删块清场。
+2. **persona / 外部 store 不能靠写 localStorage 生效。**
+   同文档写 localStorage 不触发 `storage` 事件，已初始化的 store 不会重读 → emoji 断言永远看到 logo。
+   必须调 store 的写入函数（`setAgentPersona("claude", "🦊")`）。
+3. **`connect()` 可能挑到空白窗口。** 多窗口/多 target 场景下先 `waitForApp(client, 30000)`
+   轮询 `.block` 存在再断言，否则整轮 20+ 条断言全打在空 DOM 上（报 `rows=undefined`）。
+4. **自己起的实例要自己关。** 脚本 finally 里调 `instance.cleanup()`（`--keep-open` 才留），
+   否则端口 9231 上累积旧实例，下一轮 attach 到的是上一轮的状态。
+5. **并行开发会撞 scaffold。** 两个 agent 同时跑验证台启动器时，`run-task` 的
+   `mv scaffold/node_modules scaffold/nm/node_modules` 会因竞争失败（exit 1，日志在
+   `.cache/verify/launch-verify.log`）。撞见就等 20s 重试；长期解法是各自 worktree + 独立端口。
+
 ## 7. 沉淀位置
 
 | 内容 | 落点 |
