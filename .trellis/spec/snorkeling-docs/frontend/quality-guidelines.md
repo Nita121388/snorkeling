@@ -1,3 +1,11 @@
+---
+description: 前端质量硬约束——可机器判定的验证判据、跨面一致性、重构收口的契约钩子、常见踩坑
+paths:
+  - frontend/**
+  - scripts/verify/**
+  - docs/project/**
+---
+
 # Quality Guidelines
 
 > Code quality standards for frontend development.
@@ -296,3 +304,44 @@ node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例
 - 有文字的按钮是**主 CTA / 导航 / 段头折展**的特权；`Diff / History / Reset / Prev / Next`
   这类重复动作一律图标化（VCS 面板 17 处已收口，见
   `frontend/app/view/vcs/vcs-panel-buttons.test.ts` 的源码级守卫）。
+
+---
+
+## 重构"多份重复实现 → 单一组件"时的三条硬约束 (2026-11-06, task 11-06-agent-card-chip-title)
+
+把 4 份状态 chip 收口成 1 份时，**功能测试全绿但真机台红 4 条**。红的三条都不是功能缺失，
+而是"重构时把契约钩子弄丢了"。所以收同类包时按这三条自检：
+
+### 1. 探针依赖的 class / data-* 是契约，不是实现细节
+
+旧实现里的类名与属性，哪怕新实现不再用它们做样式，也要继续挂上：
+
+- `.agent-card-status-chip` / `.agent-status-header` / `.session-overview-agent-status` /
+  `.session-overview-agent-aggregate` —— verify 探针按这些选择器找元素；
+- `.agent-card-status-dot` 及 `is-working` / `is-thinking` / `is-done-unread` / `is-seen`
+  —— 脉冲断言读它们；
+- `data-agent-read` —— 跨面 read 一致性的唯一机器可读信号。
+
+做法：新实现把"新类名"与"兼容别名"**同时**放进 class 列表，兼容别名只作选择器锚点，
+样式全由新类驱动。单测里显式断言兼容类存在（写进 chip-view 的 className 用例）。
+
+### 2. `data-*` 必须出现在**所有**渲染分支上
+
+`data-agent-read` 只写在 `<button>` 分支上，非交互分支（`onAck == null` 时渲染 `<span>`）
+没写 → ack 之后卡片面读到 `null`，断言 `hover-card-seen` 红，而肉眼完全看不出差异。
+
+规则：把 `{...dataAttrs}` 提到所有 return 分支上，或用同一个 `<Tag>` 变量承载；
+不要在每个分支里手写一遍。
+
+### 3. 真机台失败先分清"功能坏"还是"钩子丢"
+
+本次 4 条红里：
+
+- 3 条是钩子丢失（上面的 1、2）→ 改组件；
+- 1 条是**既有产品 bug 被新断言抓到**：悬浮卡的放大按钮在真实指针下被 xterm 的
+  link-layer canvas 盖住（`elementFromPoint` 命中 `CANVAS.xterm-link-layer`，
+  JS `click()` 却正常）→ 属 `info-card` 层级/命中问题，不该在本包"顺手改掉"，
+  应登记为独立问题并在文档里写清"已知红灯"。
+
+判定方法：在实例里对按钮 rect 中心做 `elementsFromPoint()`，看命中元素是否在按钮内部。
+命中别层 = 层级/遮挡问题（产品）；命中自己但状态没变 = 逻辑问题（代码）。
