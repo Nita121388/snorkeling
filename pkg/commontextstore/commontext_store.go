@@ -39,13 +39,36 @@ type commonTextDBRow struct {
 	UpdatedAt  int64   `db:"updatedat"`
 	LastUsedAt *int64  `db:"lastusedat"`
 	UsageCount int64   `db:"usagecount"`
+
+	// Sync metadata columns. All nullable: rows written before sync existed keep NULL
+	// and the read path fills defaults (see commonTextItemFromRow).
+	CreatedByKind    *string  `db:"createdby_kind"`
+	CreatedByName    *string  `db:"createdby_name"`
+	OriginDeviceID   *string  `db:"origin_deviceid"`
+	OriginDeviceName *string  `db:"origin_devicename"`
+	OriginPlatform   *string  `db:"origin_platform"`
+	Rev              float64  `db:"rev"`
+	DeletedAt        *float64 `db:"deletedat"`
 }
+
+// commonTextRowColumns is the single column list for every SELECT. Keeping it in one place
+// means adding a column cannot silently desync the three read sites.
+const commonTextRowColumns = `id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount,
+	createdby_kind, createdby_name, origin_deviceid, origin_devicename, origin_platform, rev, deletedat`
 
 type ListOptions struct {
 	Query      string
 	TagFilters []string
 	Limit      int
 	Offset     int
+
+	// CreatorFilter is ""|"all"|"human"|"agent" ("" behaves like "all").
+	CreatorFilter string
+	// DeviceFilter is ""|"any"|<deviceId>. "any" and "" both mean no device constraint.
+	DeviceFilter string
+	// IncludeDeleted returns tombstones too. The default list hides them, because a
+	// tombstone only exists to stop the other machine from resurrecting an item.
+	IncludeDeleted bool
 }
 
 type TagSummary struct {
@@ -138,6 +161,12 @@ func normalizeCommonTextItem(item commonTextItem, nowMs int64) (commonTextItem, 
 		UpdatedAt:  item.UpdatedAt,
 		LastUsedAt: item.LastUsedAt,
 		UsageCount: item.UsageCount,
+		// Sync metadata must survive normalization: dropping it here would silently
+		// erase provenance on every save (this function rebuilds the struct field by field).
+		CreatedBy: item.CreatedBy,
+		Origin:    item.Origin,
+		Rev:       item.Rev,
+		DeletedAt: item.DeletedAt,
 	}
 	if normalized.Id == "" {
 		normalized.Id = uuid.NewString()
@@ -247,6 +276,7 @@ func commonTextItemsToDBRows(items []commonTextItem) []commonTextDBRow {
 			CreatedAt:  int64(item.CreatedAt),
 			UpdatedAt:  int64(item.UpdatedAt),
 			UsageCount: int64(item.UsageCount),
+			Rev:        item.Rev,
 		}
 		if item.Shortcut != "" {
 			shortcut := item.Shortcut
@@ -256,33 +286,94 @@ func commonTextItemsToDBRows(items []commonTextItem) []commonTextDBRow {
 			lastUsedAt := int64(item.LastUsedAt)
 			row.LastUsedAt = &lastUsedAt
 		}
+		if item.CreatedBy != nil {
+			kind := item.CreatedBy.Kind
+			name := item.CreatedBy.Name
+			row.CreatedByKind = &kind
+			row.CreatedByName = &name
+		}
+		if item.Origin != nil {
+			deviceID := item.Origin.DeviceId
+			deviceName := item.Origin.DeviceName
+			platform := item.Origin.Platform
+			row.OriginDeviceID = &deviceID
+			row.OriginDeviceName = &deviceName
+			row.OriginPlatform = &platform
+		}
+		if item.DeletedAt > 0 {
+			deletedAt := item.DeletedAt
+			row.DeletedAt = &deletedAt
+		}
 		rows = append(rows, row)
 	}
 	return rows
 }
 
+// Defaults for rows written before sync metadata existed. Filling them on read (instead of
+// backfilling the table) keeps upgrades free of a write pass and makes the values stable:
+// an old item always reports the same origin, it never "changes machine" after an upgrade.
+const (
+	legacyCreatedByKind    = "human"
+	legacyOriginDeviceID   = "local"
+	legacyOriginDeviceName = "This machine"
+)
+
+func commonTextItemFromRow(row commonTextDBRow) commonTextItem {
+	item := commonTextItem{
+		Id:         row.ID,
+		Title:      row.Title,
+		Text:       row.Text,
+		Pinned:     row.Pinned,
+		CreatedAt:  float64(row.CreatedAt),
+		UpdatedAt:  float64(row.UpdatedAt),
+		UsageCount: float64(row.UsageCount),
+		Rev:        row.Rev,
+	}
+	if row.Shortcut != nil {
+		item.Shortcut = *row.Shortcut
+	}
+	if row.LastUsedAt != nil {
+		item.LastUsedAt = float64(*row.LastUsedAt)
+	}
+	if tags := dbutil.ParseJsonArr[string](row.Tags); len(tags) > 0 {
+		item.Tags = normalizeCommonTextTags(tags)
+	}
+	createdByKind := legacyCreatedByKind
+	if row.CreatedByKind != nil && strings.TrimSpace(*row.CreatedByKind) != "" {
+		createdByKind = *row.CreatedByKind
+	}
+	createdByName := ""
+	if row.CreatedByName != nil {
+		createdByName = *row.CreatedByName
+	}
+	item.CreatedBy = &wconfig.CommonTextCreatedByType{Kind: createdByKind, Name: createdByName}
+	originDeviceID := legacyOriginDeviceID
+	if row.OriginDeviceID != nil && strings.TrimSpace(*row.OriginDeviceID) != "" {
+		originDeviceID = *row.OriginDeviceID
+	}
+	originDeviceName := legacyOriginDeviceName
+	if row.OriginDeviceName != nil && strings.TrimSpace(*row.OriginDeviceName) != "" {
+		originDeviceName = *row.OriginDeviceName
+	}
+	originPlatform := ""
+	if row.OriginPlatform != nil {
+		originPlatform = *row.OriginPlatform
+	}
+	item.Origin = &wconfig.CommonTextOriginType{
+		DeviceId:   originDeviceID,
+		DeviceName: originDeviceName,
+		Platform:   originPlatform,
+	}
+	if row.DeletedAt != nil {
+		item.DeletedAt = *row.DeletedAt
+	}
+	return item
+}
+
 func commonTextItemsFromDBRows(rows []commonTextDBRow) []commonTextItem {
 	items := make([]commonTextItem, 0, len(rows))
 	for _, row := range rows {
-		item := commonTextItem{
-			Id:         row.ID,
-			Title:      row.Title,
-			Text:       row.Text,
-			Pinned:     row.Pinned,
-			CreatedAt:  float64(row.CreatedAt),
-			UpdatedAt:  float64(row.UpdatedAt),
-			UsageCount: float64(row.UsageCount),
-		}
-		if row.Shortcut != nil {
-			item.Shortcut = *row.Shortcut
-		}
-		if row.LastUsedAt != nil {
-			item.LastUsedAt = float64(*row.LastUsedAt)
-		}
-		if tags := dbutil.ParseJsonArr[string](row.Tags); len(tags) > 0 {
-			item.Tags = normalizeCommonTextTags(tags)
-		}
-		items = append(items, item)
+		items = append(items, commonTextItemFromRow(row))
 	}
 	return sortCommonTextItems(items)
 }
@@ -303,6 +394,15 @@ func List(ctx context.Context, opts ListOptions) ([]commonTextItem, error) {
 	for _, item := range items {
 		if ctx.Err() != nil {
 			return filtered, ctx.Err()
+		}
+		if !opts.IncludeDeleted && item.DeletedAt > 0 {
+			continue
+		}
+		if !commonTextItemMatchesCreator(item, opts.CreatorFilter) {
+			continue
+		}
+		if !commonTextItemMatchesDevice(item, opts.DeviceFilter) {
+			continue
 		}
 		if !commonTextItemMatchesTags(item, normalizedTagFilters) {
 			continue
@@ -435,7 +535,7 @@ func RenameTag(ctx context.Context, from string, to string) (int, error) {
 	}
 	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (int, error) {
 		var rows []commonTextDBRow
-		tx.Select(&rows, `SELECT id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount FROM db_common_text`)
+		tx.Select(&rows, `SELECT `+commonTextRowColumns+` FROM db_common_text`)
 		items := commonTextItemsFromDBRows(rows)
 		count := 0
 		now := float64(time.Now().UnixMilli())
@@ -456,6 +556,36 @@ func RenameTag(ctx context.Context, from string, to string) (int, error) {
 		}
 		return count, nil
 	})
+}
+
+// commonTextItemMatchesCreator filters on createdby_kind. "" and "all" both mean no constraint,
+// and an unknown value also falls through to "no constraint" so a typo in settings cannot make
+// the list look empty for no visible reason.
+func commonTextItemMatchesCreator(item commonTextItem, filter string) bool {
+	switch strings.ToLower(strings.TrimSpace(filter)) {
+	case "human", "agent":
+		kind := legacyCreatedByKind
+		if item.CreatedBy != nil && strings.TrimSpace(item.CreatedBy.Kind) != "" {
+			kind = item.CreatedBy.Kind
+		}
+		return strings.EqualFold(kind, filter)
+	default:
+		return true
+	}
+}
+
+// commonTextItemMatchesDevice filters on origin_deviceid. "" and "any" both mean no constraint.
+// Legacy rows carry the "local" default device id, so filtering by "local" finds them.
+func commonTextItemMatchesDevice(item commonTextItem, filter string) bool {
+	normalized := strings.TrimSpace(filter)
+	if normalized == "" || strings.EqualFold(normalized, "any") {
+		return true
+	}
+	deviceID := legacyOriginDeviceID
+	if item.Origin != nil && strings.TrimSpace(item.Origin.DeviceId) != "" {
+		deviceID = item.Origin.DeviceId
+	}
+	return deviceID == normalized
 }
 
 func commonTextItemMatchesTags(item commonTextItem, normalizedTagFilters []string) bool {
@@ -513,6 +643,13 @@ func commonTextNullableString(val *string) any {
 	return *val
 }
 
+func commonTextNullableFloat64(val *float64) any {
+	if val == nil {
+		return nil
+	}
+	return *val
+}
+
 func commonTextNullableInt64(val *int64) any {
 	if val == nil {
 		return nil
@@ -530,7 +667,7 @@ func loadCommonTextItemsFromDBContext(ctx context.Context) ([]commonTextItem, er
 	}
 	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) ([]commonTextItem, error) {
 		var rows []commonTextDBRow
-		query := `SELECT id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount FROM db_common_text`
+		query := `SELECT ` + commonTextRowColumns + ` FROM db_common_text`
 		tx.Select(&rows, query)
 		return commonTextItemsFromDBRows(rows), nil
 	})
@@ -538,7 +675,7 @@ func loadCommonTextItemsFromDBContext(ctx context.Context) ([]commonTextItem, er
 
 func commonTextItemByIDTx(ctx context.Context, tx *wstore.TxWrap, id string) (commonTextItem, bool, error) {
 	var rows []commonTextDBRow
-	tx.Select(&rows, `SELECT id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount FROM db_common_text WHERE id = ?`, id)
+	tx.Select(&rows, `SELECT `+commonTextRowColumns+` FROM db_common_text WHERE id = ?`, id)
 	if ctx.Err() != nil {
 		return commonTextItem{}, false, ctx.Err()
 	}
@@ -584,8 +721,9 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 			ids = append(ids, row.ID)
 			tx.Exec(
 				`INSERT INTO db_common_text (
-					id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount,
+					createdby_kind, createdby_name, origin_deviceid, origin_devicename, origin_platform, rev, deletedat
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(id) DO UPDATE SET
 					title = excluded.title,
 					text = excluded.text,
@@ -595,7 +733,14 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 					createdat = excluded.createdat,
 					updatedat = excluded.updatedat,
 					lastusedat = excluded.lastusedat,
-					usagecount = excluded.usagecount`,
+					usagecount = excluded.usagecount,
+					createdby_kind = excluded.createdby_kind,
+					createdby_name = excluded.createdby_name,
+					origin_deviceid = excluded.origin_deviceid,
+					origin_devicename = excluded.origin_devicename,
+					origin_platform = excluded.origin_platform,
+					rev = excluded.rev,
+					deletedat = excluded.deletedat`,
 				row.ID,
 				row.Title,
 				row.Text,
@@ -606,6 +751,13 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 				row.UpdatedAt,
 				commonTextNullableInt64(row.LastUsedAt),
 				row.UsageCount,
+				commonTextNullableString(row.CreatedByKind),
+				commonTextNullableString(row.CreatedByName),
+				commonTextNullableString(row.OriginDeviceID),
+				commonTextNullableString(row.OriginDeviceName),
+				commonTextNullableString(row.OriginPlatform),
+				row.Rev,
+				commonTextNullableFloat64(row.DeletedAt),
 			)
 		}
 		tx.Exec(`DELETE FROM db_common_text WHERE id NOT IN (SELECT value FROM json_each(?))`, dbutil.QuickJsonArr(ids))

@@ -9,6 +9,21 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 export const CommonTextConfigKey = "commontext:items";
 const CommonTextAllowEmptySaveKey = "commontext:allow-empty-save";
 
+export type CommonTextCreatedBy = {
+    /** human = typed by a person, agent = written by an AI agent. */
+    kind: "human" | "agent";
+    /** OS user name for humans, agent name (pi / claude / codex) for agents. */
+    name: string;
+};
+
+export type CommonTextOrigin = {
+    /** Stable device id: generated once, never changes even if the device is renamed. */
+    deviceid: string;
+    /** Display name at creation time. Historical items keep the name they were created with. */
+    devicename: string;
+    platform: string;
+};
+
 export type CommonTextItem = {
     id: string;
     title: string;
@@ -20,7 +35,19 @@ export type CommonTextItem = {
     updatedat: number;
     lastusedat?: number;
     usagecount?: number;
+    // Sync metadata. Optional because items written before sync existed have none of it;
+    // normalizeCommonTextItem fills the same defaults the Go read path uses.
+    createdby?: CommonTextCreatedBy;
+    origin?: CommonTextOrigin;
+    /** Per-item version used for conflict detection. */
+    rev?: number;
+    /** Tombstone: non-zero means deleted. */
+    deletedat?: number;
 };
+
+/** Defaults for items written before sync metadata existed (mirrors the Go read path). */
+export const LegacyCreatedBy: CommonTextCreatedBy = { kind: "human", name: "" };
+export const LegacyOrigin: CommonTextOrigin = { deviceid: "local", devicename: "This machine", platform: "" };
 
 export type CommonTextDraft = {
     title: string;
@@ -90,6 +117,10 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
         typeof raw.lastusedat === "number" && Number.isFinite(raw.lastusedat) ? raw.lastusedat : undefined;
     const usagecount =
         typeof raw.usagecount === "number" && Number.isFinite(raw.usagecount) ? Math.max(0, raw.usagecount) : 0;
+    const createdby = normalizeCommonTextCreatedBy(raw.createdby);
+    const origin = normalizeCommonTextOrigin(raw.origin);
+    const rev = typeof raw.rev === "number" && Number.isFinite(raw.rev) ? raw.rev : 0;
+    const deletedat = typeof raw.deletedat === "number" && Number.isFinite(raw.deletedat) ? raw.deletedat : undefined;
     return {
         id,
         title,
@@ -101,7 +132,33 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
         updatedat,
         lastusedat,
         usagecount,
+        createdby,
+        origin,
+        rev,
+        deletedat,
     };
+}
+
+function normalizeCommonTextCreatedBy(value: unknown): CommonTextCreatedBy {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) {
+        return { ...LegacyCreatedBy };
+    }
+    const raw = value as Record<string, unknown>;
+    const kind = raw.kind === "agent" ? "agent" : "human";
+    const name = typeof raw.name === "string" ? raw.name : "";
+    return { kind, name };
+}
+
+function normalizeCommonTextOrigin(value: unknown): CommonTextOrigin {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) {
+        return { ...LegacyOrigin };
+    }
+    const raw = value as Record<string, unknown>;
+    const deviceid = typeof raw.deviceid === "string" && raw.deviceid.trim() !== "" ? raw.deviceid : LegacyOrigin.deviceid;
+    const devicename =
+        typeof raw.devicename === "string" && raw.devicename.trim() !== "" ? raw.devicename : LegacyOrigin.devicename;
+    const platform = typeof raw.platform === "string" ? raw.platform : "";
+    return { deviceid, devicename, platform };
 }
 
 export function getCommonTextItemsFromSettings(settings: SettingsType | null | undefined): CommonTextItem[] {
@@ -502,6 +559,12 @@ export async function upsertCommonTextItem(draft: CommonTextDraft, existingId?: 
         updatedat: now,
         lastusedat: existing?.lastusedat,
         usagecount: existing?.usagecount ?? 0,
+        // Provenance is set once at creation and preserved on edit: rewriting it on every save
+        // would make an item look like it moved machines whenever it was touched.
+        createdby: existing?.createdby ?? { ...LegacyCreatedBy },
+        origin: existing?.origin ?? { ...LegacyOrigin },
+        rev: existing?.rev ?? 0,
+        deletedat: existing?.deletedat,
     };
     const nextItems = existing == null ? [item, ...items] : items.map((cur) => (cur.id === item.id ? item : cur));
     await saveCommonTextItems(nextItems);

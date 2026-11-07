@@ -127,6 +127,22 @@
         "path"
       ]
     },
+    "CommonTextCreatedByType": {
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "human",
+            "agent"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "CommonTextItemType": {
       "properties": {
         "id": {
@@ -161,6 +177,38 @@
         },
         "usagecount": {
           "type": "number"
+        },
+        "createdby": {
+          "$ref": "#/$defs/CommonTextCreatedByType"
+        },
+        "origin": {
+          "$ref": "#/$defs/CommonTextOriginType"
+        },
+        "rev": {
+          "type": "number"
+        },
+        "deletedat": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CommonTextOriginType": {
+      "properties": {
+        "deviceid": {
+          "type": "string"
+        },
+        "devicename": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string",
+          "enum": [
+            "win32",
+            "darwin",
+            "linux"
+          ]
         }
       },
       "additionalProperties": false,

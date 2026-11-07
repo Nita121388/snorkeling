@@ -89,6 +89,24 @@ type AgentPropertyDefType struct {
 	AIInstruction string   `json:"aiInstruction,omitempty"`
 }
 
+// CommonTextCreatedByType records who authored an item.
+// Kind is human or agent; Name is the OS user name for humans and the agent name
+// (pi / claude / codex) for agents. Pointer-typed on the item so that legacy JSON
+// without these keys parses to nil instead of a non-nil empty struct.
+type CommonTextCreatedByType struct {
+	Kind string `json:"kind,omitempty" jsonschema:"enum=human,enum=agent"`
+	Name string `json:"name,omitempty"`
+}
+
+// CommonTextOriginType is the snapshot of the machine that created the item.
+// DeviceId is stable and never changes (renaming a device does not rewrite history),
+// DeviceName is the display name at creation time.
+type CommonTextOriginType struct {
+	DeviceId   string `json:"deviceid,omitempty"`
+	DeviceName string `json:"devicename,omitempty"`
+	Platform   string `json:"platform,omitempty" jsonschema:"enum=win32,enum=darwin,enum=linux"`
+}
+
 type CommonTextItemType struct {
 	Id         string   `json:"id,omitempty"`
 	Title      string   `json:"title,omitempty"`
@@ -100,6 +118,16 @@ type CommonTextItemType struct {
 	UpdatedAt  float64  `json:"updatedat,omitempty"`
 	LastUsedAt float64  `json:"lastusedat,omitempty"`
 	UsageCount float64  `json:"usagecount,omitempty"`
+
+	// Sync metadata. All optional: items written before sync existed have none of
+	// these, and the read path fills defaults without rewriting the row.
+	CreatedBy *CommonTextCreatedByType `json:"createdby,omitempty"`
+	Origin    *CommonTextOriginType    `json:"origin,omitempty"`
+	// Rev is the per-item version used for conflict detection.
+	Rev float64 `json:"rev,omitempty"`
+	// DeletedAt is a tombstone: non-zero means deleted. Deletions must sync or the
+	// other machine would resurrect the item.
+	DeletedAt float64 `json:"deletedat,omitempty"`
 }
 
 type PinnedDirectoryType struct {
@@ -200,7 +228,7 @@ type SettingsType struct {
 	// definitions (name, type, options, order, scope). It is the global template;
 	// session props are additive values stored per-session. Empty/legacy configs
 	// simply have no custom definitions.
-	AgentPropertySchema []AgentPropertyDefType          `json:"agent:propertyschema,omitempty"`
+	AgentPropertySchema []AgentPropertyDefType `json:"agent:propertyschema,omitempty"`
 
 	// agentstatus:osnotify — system (OS-level) notifications for agent state transitions.
 	// POC scope: done (non-idle → idle completion) and blocked. All flags default true except

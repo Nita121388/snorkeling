@@ -1655,6 +1655,12 @@ declare global {
         data64: string;
     };
 
+    // wconfig.CommonTextCreatedByType
+    type CommonTextCreatedByType = {
+        kind?: string;
+        name?: string;
+    };
+
     // commontextservice.CommonTextGetRequest
     type CommonTextGetRequest = {
         id: string;
@@ -1678,6 +1684,10 @@ declare global {
         updatedat?: number;
         lastusedat?: number;
         usagecount?: number;
+        createdby?: CommonTextCreatedByType;
+        origin?: CommonTextOriginType;
+        rev?: number;
+        deletedat?: number;
     };
 
     // commontextservice.CommonTextListRequest
@@ -1691,6 +1701,13 @@ declare global {
     // commontextservice.CommonTextListResponse
     type CommonTextListResponse = {
         items: CommonTextItemType[];
+    };
+
+    // wconfig.CommonTextOriginType
+    type CommonTextOriginType = {
+        deviceid?: string;
+        devicename?: string;
+        platform?: string;
     };
 
     // commontextservice.CommonTextRenameTagRequest

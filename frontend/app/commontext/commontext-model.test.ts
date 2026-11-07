@@ -491,4 +491,41 @@ describe("commontext-model", () => {
             ).toEqual(["pinned-weak", "strong"]);
         });
     });
+
+    describe("sync metadata normalize", () => {
+        it("fills legacy defaults when the fields are absent", () => {
+            const item = normalizeCommonTextItem({ id: "legacy", text: "body" });
+            expect(item).not.toBeNull();
+            // 旧条目（同步功能之前写的）读出来必须是稳定兜底值，不能是 undefined
+            expect(item.createdby).toEqual({ kind: "human", name: "" });
+            expect(item.origin).toEqual({ deviceid: "local", devicename: "This machine", platform: "" });
+            expect(item.rev).toBe(0);
+            expect(item.deletedat).toBeUndefined();
+        });
+
+        it("keeps provided metadata intact", () => {
+            const item = normalizeCommonTextItem({
+                id: "agent-1",
+                text: "body",
+                createdby: { kind: "agent", name: "pi" },
+                origin: { deviceid: "dev-home-7c3a", devicename: "Home PC", platform: "win32" },
+                rev: 7,
+                deletedat: 1234,
+            });
+            expect(item.createdby).toEqual({ kind: "agent", name: "pi" });
+            expect(item.origin).toEqual({ deviceid: "dev-home-7c3a", devicename: "Home PC", platform: "win32" });
+            expect(item.rev).toBe(7);
+            expect(item.deletedat).toBe(1234);
+        });
+
+        it("rejects an unknown createdby kind instead of trusting it", () => {
+            const item = normalizeCommonTextItem({ id: "x", text: "body", createdby: { kind: "robot", name: "r2" } });
+            expect(item.createdby).toEqual({ kind: "human", name: "r2" });
+        });
+
+        it("falls back per field when origin is partially missing", () => {
+            const item = normalizeCommonTextItem({ id: "x", text: "body", origin: { platform: "darwin" } });
+            expect(item.origin).toEqual({ deviceid: "local", devicename: "This machine", platform: "darwin" });
+        });
+    });
 });
