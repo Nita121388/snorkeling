@@ -38,6 +38,22 @@ AI Sessions 是 Snorkeling 的本机 AI 会话浏览器，用于在右侧 `Sessi
 - 会话详情：用户消息与 AI 消息分角色展示，时间精确到秒
 - 大纲：按用户消息生成 outline，支持跳转到详情位置
 - 长消息折叠：长对话内容支持双击折叠/展开
+- 运行指示（左粗 / 右细两段，2026-11-07）：
+  - **左列** `RunningDot`（`session-row.tsx`）：6px 单点，working 才 `breathe` 1.6s，颜色取 `--agent-working-color`（蓝）。
+    只回答「这个会话有活着的块」，点击跳转到该 block。旧实现是 4 个 4px 绿点装在 16×16 方框里整体
+    `animate-spin` —— `animate-spin` 在本仓的既定语义是「请求未完成」（restoring / generating / fetching
+    全用它），用在可能持续两小时的运行态上是语义错位；绿色在 agent-status 体系里属于 `done`，同色撞语义。
+  - **右侧** `SessionRunBadge`（`session-run-badge.tsx` + `session-run-badge-view.ts`）：元信息行
+    （`row-meta`）末尾 + `ml-auto`，15px 高 chip，带状态词与跑时，回答「跑到哪一步 + 跑了多久」。
+    呈现数据全部由纯函数 `buildSessionRunBadgeView()` 产出，文案来自共享的 `agentStatusPresentation`，
+    与 block 头部徽章 / Overview chip 不会漂移。三条输入分支：
+    1. 有活跃块 + 该 block 有 `AgentStatus` → `Thinking` / `Tool: Bash` / `Done` / `Stale` + 跑时，可点击
+    2. 有活跃块但 agent 未上报 → 只说 `Running`（不编造 phase），可点击
+    3. 只有 GUI 对话在跑 → `Chat` 标记，不可点击（没有 block 可跳）
+  - 原 `row-meta` 里第二个 `GUI Chat` spinner 已移除：同一行不该出现两个互不知晓的「运行中」标记。
+  - 已知代价：`row-meta` 是 `flex-wrap`，默认 320px 宽度下左侧 5–6 个元素已占满 1 行，所以徽章会把该行
+    撑成 2 行（实测 `15 → 38px`）。零成本替代（`nowrap` 策略 + 左侧截断）见
+    `design/prototypes/aisessions-running-indicator/README.md` 的实测表。
 - 恢复会话：支持打开新 terminal block 并尝试 resume
 - 复制：支持复制 session ID、session folder path、resume command、单条消息
 - 删除：删除前二次确认，源文件移动到 deleted storage

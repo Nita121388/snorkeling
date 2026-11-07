@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh" data-theme="dark">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>AI Sessions · 左侧状态点 × 右侧运行徽章</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <header class="topbar">
+            <div class="brand">
+                <span class="pip"></span>
+                <div>
+                    <h1>AI Sessions · 左侧状态点 × 右侧运行徽章</h1>
+                    <p>
+                        镜像 <code>frontend/app/view/aisessions/session-row.tsx</code>（<code>RunningDot</code> 133-175 行）+
+                        <code>use-sessions-running.ts</code>。<b>左侧保持现状</b>（chevron / 星标 / 粗粒度状态点），
+                        <b>右侧元信息行最右</b>新增细粒度运行徽章（带 label 与跑时）
+                    </p>
+                </div>
+            </div>
+            <div class="controls">
+                <div class="seg" id="ctrl-state">
+                    <button data-state="working" class="active">Working</button>
+                    <button data-state="done">Done</button>
+                    <button data-state="stale">Stale</button>
+                    <button data-state="idle">Idle</button>
+                    <button data-state="none">无活跃块</button>
+                </div>
+                <button class="ghost" id="ctrl-theme">浅色</button>
+                <button class="ghost" id="ctrl-all">全部对比</button>
+            </div>
+        </header>
+
+        <div class="pickers">
+            <div class="picker">
+                <span class="label">左侧状态点</span>
+                <div class="seg" id="ctrl-left">
+                    <button data-left="L0"><span class="idx">0</span>无</button>
+                    <button data-left="L1" class="active"><span class="idx">1</span>单点 ★</button>
+                    <button data-left="L2"><span class="idx">2</span>单点+静态环</button>
+                    <button data-left="L3"><span class="idx">3</span>三点跳动</button>
+                    <button data-left="L4"><span class="idx">4</span>现状 4 点旋转</button>
+                </div>
+            </div>
+            <div class="picker">
+                <span class="label">面板宽度</span>
+                <div class="seg" id="ctrl-width">
+                    <button data-width="240">240 最窄</button>
+                    <button data-width="320">320 默认</button>
+                    <button data-width="384" class="active">384</button>
+                    <button data-width="520">520 最宽</button>
+                </div>
+                <span style="font-size: 10.5px; color: var(--secondary-text); opacity: 0.8">
+                    真实范围 240–520，默认 320（<code>aisessions.tsx:1673-1675</code>）
+                </span>
+            </div>
+            <div class="picker">
+                <span class="label">换行策略</span>
+                <div class="seg" id="ctrl-policy">
+                    <button data-policy="wrap" class="active">wrap 现状（可能 +1 行）</button>
+                    <button data-policy="nowrap">nowrap 强制单行（截断左侧）</button>
+                </div>
+            </div>
+            <div class="picker">
+                <span class="label">右侧运行徽章</span>
+                <div class="seg" id="ctrl-right">
+                    <button data-right="R0"><span class="idx">0</span>无</button>
+                    <button data-right="R1" class="active"><span class="idx">1</span>chip 完整 ★</button>
+                    <button data-right="R2"><span class="idx">2</span>胶囊</button>
+                    <button data-right="R3"><span class="idx">3</span>纯文本</button>
+                    <button data-right="R4"><span class="idx">4</span>扫光条</button>
+                    <button data-right="R5"><span class="idx">5</span>波形条</button>
+                    <button data-right="R6"><span class="idx">6</span>三点</button>
+                    <button data-right="R7"><span class="idx">7</span>跑时优先</button>
+                </div>
+            </div>
+        </div>
+
+        <section class="verdict">
+            <div class="vcard accent">
+                <h3>推荐：L1 + R1</h3>
+                <p>
+                    左侧 6px 单点（working 呼吸）只回答<b>「活着 / 完事 / 闲着」</b>；右侧 chip 回答
+                    <b>「跑到哪一步 + 跑了多久」</b>（Working / Thinking / Tool: Bash + <code>2min14s</code>）。
+                    粗细分工，一眼看左、要细节看右。
+                </p>
+            </div>
+            <div class="vcard">
+                <h3>为什么右侧是元信息行</h3>
+                <p>
+                    元信息行本来就是「这台会话现在什么状况」那一行（来源 / 时间 / 消息数 / 大小）。
+                    运行态属于同一类信息，且右侧是行内唯一不被 hover 才出现的 <code>Resume</code>/<code>Copy</code> 打扰的位置。
+                </p>
+            </div>
+            <div class="vcard">
+                <h3>真代价：默认宽度下 +1 行</h3>
+                <p>
+                    实测元信息行（来源 / GUI Chat / 时间条 / Created / 2 个热度格）在 <b>320px 默认宽度下刚好占满 1 行</b>。
+                    加右侧徽章后：320px <code>15 → 38px</code>、384px <code>15 → 35px</code>，只有 520px 才是 <code>15 → 15</code>。
+                    试过绝对定位 + padding 预留，更差（<code>38 → 73</code>），因为预留宽度直接挤压左侧。
+                    所以这是<b>产品取舍</b>：要零成本就用 nowrap 策略（左侧截断），要信息完整就接受 +1 行。
+                </p>
+            </div>
+            <div class="vcard">
+                <h3>落地 = 一处 span</h3>
+                <p>
+                    真实改动：在 <code>row-meta</code> 末尾追加
+                    <code>&lt;span className="ml-auto inline-flex"&gt;…&lt;/span&gt;</code>，
+                    左侧 <code>RunningDot</code> 只需换成单点。<code>data-*</code> 与 <code>aria-label</code> 契约保留。
+                </p>
+            </div>
+        </section>
+
+        <main class="stage" id="stage">
+            <div class="col">
+                <h2 id="main-caption">L1 单点 + R1 chip 完整</h2>
+                <div class="panel" id="panel-main"></div>
+                <div class="notes plain" id="legend-main" style="width: 384px"></div>
+            </div>
+            <div class="col col-side">
+                <h2>放大镜 · 左 / 右</h2>
+                <div class="zoom" id="zoom"></div>
+                <h2>几何与位置</h2>
+                <div class="spec" id="spec"></div>
+                <h2>取舍说明</h2>
+                <div class="notes" id="notes"></div>
+            </div>
+        </main>
+
+        <div id="allwrap" hidden>
+            <div class="pickers" style="padding-top: 4px">
+                <span class="label" style="font-size: 11px; text-transform: none; letter-spacing: 0; opacity: 1">
+                    左侧状态点（固定右侧 = 当前选择）
+                </span>
+            </div>
+            <section class="allgrid" id="allleft"></section>
+            <div class="pickers" style="padding-top: 4px">
+                <span class="label" style="font-size: 11px; text-transform: none; letter-spacing: 0; opacity: 1">
+                    右侧运行徽章（固定左侧 = 当前选择）
+                </span>
+            </div>
+            <section class="allgrid" id="allright"></section>
+        </div>
+
+        <script src="script.js"></script>
+    </body>
+</html>

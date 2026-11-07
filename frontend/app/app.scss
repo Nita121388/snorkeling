@@ -157,3 +157,40 @@ a {
 .agent-card-logo--clickable:hover {
     opacity: 0.75;
 }
+
+// ── AI Sessions 行内「运行中」指示（左粗 / 右细） ──
+//
+// 左列：session-row.tsx 的 RunningDot —— 单点 6px，只表达「有活着的块」。
+// 右侧：session-run-badge.scss 的 SessionRunBadge —— 状态词 + 跑时。
+// 两者分工见 session-run-badge.tsx 顶部注释。
+
+.session-row-live-dot-slot {
+    align-items: center;
+    justify-content: center;
+}
+
+.session-row-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--agent-working-color);
+    animation: session-row-live-dot-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes session-row-live-dot-breathe {
+    0%,
+    100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgb(from var(--agent-working-color) r g b / 0.42);
+    }
+    50% {
+        opacity: 0.5;
+        box-shadow: 0 0 0 3px rgb(from var(--agent-working-color) r g b / 0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .session-row-live-dot {
+        animation: none !important;
+    }
+}
