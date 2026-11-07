@@ -81,3 +81,74 @@ Never call `Manager.Summary` in a loop over live sessions — each cache miss ru
 5. Advertise the command in `pkg/agentcap` (`GuideText`, `ExternalAgentPrompt`) —
    an undiscoverable capability does not exist.
 6. Extend `pkg/agentcontrol/testdata/session_live.golden.json` if the wire shape changed.
+
+## Session card (P0.1, read/write)
+
+```
+wsh agent card get <sessionKey|sessionId|this> [--block <id>] [--json]
+wsh agent card set <...> [--note <s>] [--title <s>] [--tags-set|--tags-add|--tags-remove <s>...]
+                         [--prop key=type:value]... [--force]
+                         [--dry-run | --yes --expected-hash <hash>]
+```
+
+There is no second write path. `agent card set` translates its flags into one
+`agentdata.Patch` and calls `agentdata.ApplyPatch`, so it inherits validation,
+dry-run, SQLite backup, `patch-audit.jsonl` and `expectedHash` preconditions.
+Note+tags share one `session_note.update` operation (they are stored together and
+must stay atomic); title and props get their own operations so each keeps its own
+force and precondition semantics.
+
+Write safety:
+
+- Dry-run unless `--yes`. A real apply additionally requires `--expected-hash`
+  (or `--expected-updated-at`) taken from a fresh `agent card get`; without it the
+  call fails with `E_USAGE` before touching anything.
+- `titleSource == "user"` is refused with `E_CONFLICT`; `--force` overwrites and
+  lands as `titleSource = "ai"` (title contract: `user > ai`).
+- A custom property whose `source == "user"` is skipped, reported in `skipped[]`;
+  `--force` overwrites.
+- Built-in keys (`note`/`tags`/`starred`/`title_source`/`created_at`/`updated_at`)
+  are refused outright — they are virtually mapped by the UI, never custom props.
+- A stale hash (the user edited the card meanwhile) fails with `E_CONFLICT` and no
+  partial write happens.
+
+`persona` is always `null`: avatar/persona live only in frontend localStorage
+(design §15 D3), so the backend cannot read or write them.
+
+### Precondition semantics (important)
+
+`ApplyPatch` validates every operation's precondition against the **pre-patch**
+state, before applying anything. Per-operation re-validation inside
+`applyOperation` would compare the caller's hash against state already mutated by
+earlier operations of the same patch, which makes multi-operation patches
+impossible to apply. Do not reintroduce it.
+
+## Cross-surface acceptance script
+
+The two P0 surfaces are only useful together: discover a live session, read its
+state, then read/write its card — all with `wsh`, from inside a block.
+
+```bash
+# 1. discover
+wsh session live --json | jq '.records | length'          # matches the UI's running agents
+wsh session live --json | jq '.records[] | {provider, state: .issue.state, phase: .issue.phase, title}'
+
+# 2. resolve the session of the block you are standing in
+wsh session get this --json
+wsh session for-block this --json
+
+# 3. read the card + the hash you need to write it
+wsh agent card get this --json                            # -> .hash
+
+# 4. preview, then write
+wsh agent card set this --note "整理完成" --tags-add 已整理 --dry-run
+wsh agent card set this --note "整理完成" --tags-add 已整理 --yes --expected-hash <hash>
+
+# 5. prove the write is auditable
+wsh data backup list --format summary
+tail -1 <userdata>/agent-data/audit/patch-audit.jsonl
+
+# 6. prove user content is protected
+wsh agent card set this --title "x" --yes --expected-hash <hash>              # user title -> E_CONFLICT
+wsh agent card set this --title "x" --force --yes --expected-hash <hash>      # lands as ai
+```

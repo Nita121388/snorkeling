@@ -19,18 +19,31 @@
 
 ## Acceptance Criteria
 
-- [ ] 同时开「1 个 codex TUI + 1 个 pi GUI chat + 1 个空闲 agent block」时，`session live --json` 的行数/state/phase/title 与 UI 一致。
-- [ ] kill 一个 agent 后，≤ 其 TTL 内该行变 `stale`（`--include-idle` 下仍可见），不静默消失。
-- [ ] `session get this` 在 agent block 内可用；在非 agent block 内返回 `E_NOT_FOUND` 且说明原因。
-- [ ] `session live` 在 10 条会话下 P95 < 300ms（不含首次冷索引扫描）。
-- [ ] 不触发无预算的全量扫描：并发调用 `session live` 不会重复扫描同一 index（遵守 scan contract）。
-- [ ] `--json` 输出通过 golden 快照；字段缺失用 `null` 而非省略（除文档标注的 omitempty 字段）。
+- [ ] 同时开「1 个 codex TUI + 1 个 pi GUI chat + 1 个空闲 agent block」时，`session live --json` 的行数/state/phase/title 与 UI 一致。（真机项，待 GUI 环境验收）
+- [ ] kill 一个 agent 后，≤ 其 TTL 内该行变 `stale`（`--include-idle` 下仍可见），不静默消失。（freshness 语义已由 `TestIssueFreshness` 表驱动锁定；真机 kill 待验）
+- [x] `session get this` 在 agent block 内可用；在非 agent block 内返回 `E_NOT_FOUND` 且说明原因。（`ResolveSessionForBlock` 无会话时返回 `E_NOT_FOUND` + hint，由 `TestResolveSessionIdentifierRequiresBlockForThis` 覆盖 usage 分支）
+- [ ] `session live` 在 10 条会话下 P95 < 300ms（不含首次冷索引扫描）。（待真机基准）
+- [x] 不触发无预算的全量扫描：并发调用 `session live` 不会重复扫描同一 index（遵守 scan contract）。
+      已改为 `aisessions.Manager.ResolveSummaries`：live registry → 一次 SQLite 开库按主键批量 → 仅未知项限流升级。
+      由 `TestResolveSummaries*` 4 个用例锁定。
+- [x] `--json` 输出通过 golden 快照；字段缺失用 `null` 而非省略（除文档标注的 omitempty 字段）。
+      `pkg/agentcontrol/testdata/session_live.golden.json` + `TestSessionLiveJSONNullSemantics`。
 
 ## Non-Goals
 
 - 不做 `session wait`（P0.3）。
 - 不做流式订阅 / watch（P2）。
 - 不解析远程会话摘要（P2）。
+
+## 实现备注
+
+- 落地文件：`pkg/agentcontrol/{live,session,redact,errors}.go`、`pkg/aisessions/summaries_batch.go`、
+  `pkg/aisessions/chat/manager.go`（`ActiveSessions`/`DefaultManager`）、
+  `pkg/wshrpc/wshserver/session_commands.go`、`cmd/wsh/cmd/wshcmd-session.go`。
+- `card.hash` 用 `agentdata.HashSession` 填，可直接作为 `agent card set --expected-hash`。
+- 可发现性：`pkg/agentcap` 的 guide / external prompt 已宣传 `wsh session live|get`，有测试守住。
+- 文档：`docs/project/agent-control-surface.md`。
+- 剩余真机项（需要 GUI + 真实 agent 进程）：行数/状态与 UI 一致、kill 后 stale、10 条会话 P95。
 
 ## Notes
 
