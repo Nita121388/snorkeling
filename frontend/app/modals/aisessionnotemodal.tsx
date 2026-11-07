@@ -142,20 +142,26 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
                   : "";
 
     return (
-        <Modal className="w-[min(680px,calc(100vw-32px))]" onClose={closeModal} onClickBackdrop={closeModal}>
-            <div className="space-y-3 text-primary">
-                <div className="space-y-1 pr-7">
-                    <div className="text-base font-semibold">Session Note</div>
-                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-secondary">
-                        {summary?.source ? (
+        <Modal
+            className="w-[min(680px,calc(100vw-32px))]"
+            onClose={closeModal}
+            onClickBackdrop={closeModal}
+            title="Session Note"
+            subtitle={
+                summary == null ? null : (
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        {summary.source ? (
                             <span className="rounded border border-border px-1.5 py-0.5 uppercase">
                                 {summary.source}
                             </span>
                         ) : null}
                         <span className="min-w-0 truncate">{title}</span>
-                        <span className="shrink-0">ID: {shortSessionId(summary?.id ?? sessionId)}</span>
+                        <span className="shrink-0">ID: {shortSessionId(summary.id ?? sessionId)}</span>
                     </div>
-                </div>
+                )
+            }
+        >
+            <div className="space-y-3 text-primary">
                 {loading ? (
                     <div className="flex h-28 items-center justify-center gap-2 text-sm text-secondary">
                         <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
@@ -168,8 +174,8 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
                 ) : (
                     <>
                         <div className="flex items-center gap-2">
-                            <div className="min-w-0 flex-1 truncate text-base font-semibold text-primary">
-                                Session Note
+                            <div className="min-w-0 flex-1 truncate text-xs font-medium text-secondary">
+                                Note
                             </div>
                             <NoteAIButton status={noteAI.status} onGenerate={() => void noteAI.generate()} />
                         </div>

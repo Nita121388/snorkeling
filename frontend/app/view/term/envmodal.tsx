@@ -229,7 +229,7 @@ export function EnvModalView({
     };
 
     return (
-        <Modal className="env-modal-shell" onClose={close} onClickBackdrop={close}>
+        <Modal className="env-modal-shell" onClose={close} onClickBackdrop={close} padding={false}>
             <div className="env-modal-view">
             <div className="env-modal-header">
                 <div className="env-modal-title">

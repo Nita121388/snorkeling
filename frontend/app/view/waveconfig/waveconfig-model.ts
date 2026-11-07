@@ -6,14 +6,15 @@ import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
-import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
-import { WaveAIVisualContent } from "@/app/view/waveconfig/waveaivisual";
 import { AIPromptsVisualContent } from "@/app/view/waveconfig/aipromptsettings";
+import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
+import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
+import { WaveAIVisualContent } from "@/app/view/waveconfig/waveaivisual";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import { applyVisibleSettingsDefaults } from "@/app/view/waveconfig/waveconfig-settings";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
+import { fileInfoRequest } from "@/util/fileinfo";
 import { base64ToString, stringToBase64 } from "@/util/util";
 import { atom, type Atom, type PrimitiveAtom } from "jotai";
 import type * as MonacoTypes from "monaco-editor";
@@ -236,7 +237,7 @@ export class WaveConfigViewModel implements ViewModel {
         try {
             const fullPath = `${this.configDir}/presets.json`;
             const fileInfo = await this.env.rpc.FileInfoCommand(TabRpcClient, {
-                info: { path: fullPath },
+                info: fileInfoRequest(fullPath),
             });
             if (!fileInfo.notfound) {
                 globalStore.set(this.presetsJsonExistsAtom, true);
@@ -341,7 +342,7 @@ export class WaveConfigViewModel implements ViewModel {
         try {
             const fullPath = `${this.configDir}/${file.path}`;
             const fileData = await this.env.rpc.FileReadCommand(TabRpcClient, {
-                info: { path: fullPath },
+                info: fileInfoRequest(fullPath),
             });
             const content = fileData?.data64 ? base64ToString(fileData.data64) : "";
             const visibleContent = applyVisibleSettingsDefaults(file.path, content);
@@ -380,7 +381,7 @@ export class WaveConfigViewModel implements ViewModel {
             try {
                 const fullPath = `${this.configDir}/${selectedFile.path}`;
                 await this.env.rpc.FileWriteCommand(TabRpcClient, {
-                    info: { path: fullPath },
+                    info: fileInfoRequest(fullPath),
                     data64: stringToBase64(""),
                 });
                 globalStore.set(this.fileContentAtom, "");
@@ -422,7 +423,7 @@ export class WaveConfigViewModel implements ViewModel {
             try {
                 const fullPath = `${this.configDir}/${selectedFile.path}`;
                 await this.env.rpc.FileWriteCommand(TabRpcClient, {
-                    info: { path: fullPath },
+                    info: fileInfoRequest(fullPath),
                     data64: stringToBase64(formatted),
                 });
                 globalStore.set(this.fileContentAtom, formatted);

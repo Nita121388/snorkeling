@@ -179,6 +179,57 @@ describe("useSessionNoteState", () => {
         h.unmount();
     });
 
+    it("flushes the pending draft immediately when the card unmounts (hover fast-exit)", async () => {
+        const key = "unmount-flush-session";
+        const noteFn = vi.fn(async (req: { note?: string }) => makeSummary(key, req.note ?? "typed then unmounted"));
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation(
+            (async () => makeSummary(key, "backend note")) as never
+        );
+        vi.spyOn(AISessionsServiceType.prototype, "NoteAndTags").mockImplementation(noteFn as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.note === "backend note", "summary load");
+
+        act(() => {
+            current!.setNoteDraft("typed then unmounted");
+        });
+        expect(current?.dirty).toBe(true);
+        // 防抖还没到期就卸载（模拟鼠标快速移出 hover 卡），不应丢编辑。
+        expect(noteFn).not.toHaveBeenCalled();
+        h.unmount();
+
+        await flush(4);
+        expect(noteFn).toHaveBeenCalledTimes(1);
+        expect(noteFn.mock.calls[0][0].note).toBe("typed then unmounted");
+    });
+
+    it("flushSave() cancels the debounce timer and saves only once", async () => {
+        const key = "flush-save-session";
+        const noteFn = vi.fn(async () => makeSummary(key, "typed explicitly"));
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation(
+            (async () => makeSummary(key, "backend note")) as never
+        );
+        vi.spyOn(AISessionsServiceType.prototype, "NoteAndTags").mockImplementation(noteFn as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.note === "backend note", "summary load");
+
+        act(() => {
+            current!.setNoteDraft("typed explicitly");
+        });
+        act(() => {
+            current!.flushSave();
+        });
+        await flush(4);
+        expect(noteFn).toHaveBeenCalledTimes(1);
+
+        // 原本排队的防抖定时器被取消，等过一个防抖周期也不应再触发第二次。
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await flush(4);
+        expect(noteFn).toHaveBeenCalledTimes(1);
+        h.unmount();
+    });
+
     it("does not overwrite the user's draft when a remote event arrives mid-edit", async () => {
         const key = "editing-session";
         vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation(
@@ -277,6 +328,98 @@ describe("useSessionNoteState — AI title suggestion", () => {
         expect(current?.titleStatus).toBe("idle");
         expect(current?.titleSuggestion).toBe("");
 
+        h.unmount();
+    });
+});
+
+describe("useSessionNoteState — starred", () => {
+    beforeEach(() => {
+        current = null;
+        resetSessionNoteCache();
+    });
+
+    afterEach(() => {
+        resetSessionNoteCache();
+        vi.restoreAllMocks();
+    });
+
+    it("marks the session and broadcasts the updated summary", async () => {
+        const key = "star-session";
+        const summary = { ...makeSummary(key, ""), marked: false } as SessionSummary;
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation((async () => summary) as never);
+        const markFn = vi
+            .spyOn(AISessionsServiceType.prototype, "Mark")
+            .mockImplementation((async () => ({ ...summary, marked: true })) as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.marked === false, "summary load");
+
+        await act(async () => {
+            await current!.toggleStarred();
+        });
+
+        expect(markFn).toHaveBeenCalledWith(key, true, "");
+        // dispatchAISessionNoteUpdated → session-note-cache merge → hook summary 刷新
+        expect(current?.summary?.marked).toBe(true);
+        expect(current?.starPending).toBe(false);
+        expect(current?.error).toBe("");
+        h.unmount();
+    });
+
+    it("keeps the previous state and surfaces the error when Mark fails", async () => {
+        const key = "star-fail-session";
+        const summary = { ...makeSummary(key, ""), marked: false } as SessionSummary;
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation((async () => summary) as never);
+        vi.spyOn(AISessionsServiceType.prototype, "Mark").mockImplementation((async () => {
+            throw new Error("rpc unavailable");
+        }) as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.marked === false, "summary load");
+
+        await act(async () => {
+            await current!.toggleStarred();
+        });
+
+        expect(current?.summary?.marked).toBe(false);
+        expect(current?.starPending).toBe(false);
+        expect(current?.error).toContain("rpc unavailable");
+        expect(current?.saveStatus).toBe("error");
+        h.unmount();
+    });
+
+    it("blocks re-entry while the Mark request is in flight", async () => {
+        const key = "star-pending-session";
+        const summary = { ...makeSummary(key, ""), marked: false } as SessionSummary;
+        vi.spyOn(AISessionsServiceType.prototype, "Summary").mockImplementation((async () => summary) as never);
+        let release: (() => void) | null = null;
+        const markFn = vi.spyOn(AISessionsServiceType.prototype, "Mark").mockImplementation((() => {
+            return new Promise<SessionSummary>((resolve) => {
+                release = () => resolve({ ...summary, marked: true });
+            });
+        }) as never);
+
+        const h = mount(key);
+        await waitFor(() => current?.summary?.marked === false, "summary load");
+
+        let pending: Promise<void> | null = null;
+        act(() => {
+            pending = current!.toggleStarred();
+        });
+        expect(current?.starPending).toBe(true);
+
+        // 第二次点击（pending 期间）不应再发请求
+        await act(async () => {
+            await current!.toggleStarred();
+        });
+        expect(markFn).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            release?.();
+            await pending;
+        });
+        expect(current?.starPending).toBe(false);
+        expect(current?.summary?.marked).toBe(true);
         h.unmount();
     });
 });

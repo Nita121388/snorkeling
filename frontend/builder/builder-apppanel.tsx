@@ -131,7 +131,7 @@ const PublishAppModal = memo(({ appName }: { appName: string }) => {
 
     if (state === "success") {
         return (
-            <Modal className="p-4" onOk={handleClose} onClose={handleClose} okLabel="OK" cancelLabel="">
+            <Modal className="p-4" onOk={handleClose} onClose={handleClose} okLabel="OK" cancelLabel="" padding={false}>
                 <div className="flex flex-col gap-4 mb-4">
                     <h2 className="text-xl font-semibold flex items-center gap-2">
                         <i className="fa fa-check-circle text-success" />
@@ -149,7 +149,7 @@ const PublishAppModal = memo(({ appName }: { appName: string }) => {
 
     if (state === "error") {
         return (
-            <Modal className="p-4" onOk={handleClose} onClose={handleClose} okLabel="OK" cancelLabel="">
+            <Modal className="p-4" onOk={handleClose} onClose={handleClose} okLabel="OK" cancelLabel="" padding={false}>
                 <div className="flex flex-col gap-4 mb-4">
                     <h2 className="text-xl font-semibold flex items-center gap-2">
                         <i className="fa fa-triangle-exclamation text-error" />
@@ -171,6 +171,7 @@ const PublishAppModal = memo(({ appName }: { appName: string }) => {
             onClose={handleClose}
             okLabel="Publish"
             cancelLabel="Cancel"
+            padding={false}
         >
             <div className="flex flex-col gap-4 mb-4">
                 <h2 className="text-xl font-semibold">Publish App</h2>

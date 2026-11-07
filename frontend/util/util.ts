@@ -509,6 +509,30 @@ function formatRelativeTime(timestamp: number): string {
     }
 }
 
+/**
+ * Compact duration for dense UI chips (`now` / `12m` / `3h` / `2d`).
+ *
+ * Agent status chips, board cards and overview rows all need the same short form;
+ * keeping one implementation avoids three drifting copies (`12 min ago` vs `12m`).
+ */
+function formatCompactDuration(startMs: number, nowMs: number): string {
+    if (!startMs || startMs <= 0) {
+        return "";
+    }
+    const minutes = Math.floor(Math.max(0, nowMs - startMs) / 60_000);
+    if (minutes < 1) {
+        return "now";
+    }
+    if (minutes < 60) {
+        return `${minutes}m`;
+    }
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+        return `${hours}h`;
+    }
+    return `${Math.floor(hours / 24)}d`;
+}
+
 const NaturalStringCollator = new Intl.Collator(undefined, {
     numeric: true,
     sensitivity: "base",
@@ -550,6 +574,7 @@ export {
     deepCompareReturnPrev,
     escapeBytes,
     fireAndForget,
+    formatCompactDuration,
     formatRelativeTime,
     getPrefixedSettings,
     getPromiseState,

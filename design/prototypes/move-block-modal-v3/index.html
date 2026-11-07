@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Move Block to Tab · 菜单收敛 + 弹窗内新建</title>
+<style>
+/* ── 变量取自 frontend/app/theme.scss（dark 默认 / [data-theme="light"] 米黄） ── */
+:root {
+  --main-text-color: #f7f7f7;
+  --secondary-text-color: rgb(195, 200, 194);
+  --grey-text-color: #666;
+  --main-bg-color: rgb(34, 34, 34);
+  --border-color: rgba(255, 255, 255, 0.16);
+  --accent-color: rgb(88, 193, 66);
+  --accent-hover-color: rgb(118, 223, 96);
+  --action-bg-color: var(--accent-color);
+  --action-hover-bg-color: var(--accent-hover-color);
+  --action-text-color: #000000;
+  --hover-bg-color: rgba(255, 255, 255, 0.1);
+  --overlay-bg-color: #212121;
+  --modal-bg-color: #232323;
+  --modal-border-color: rgba(255, 255, 255, 0.12);
+  --modal-backdrop-color: rgba(21, 23, 21, 0.7);
+  --surface-soft-color: rgba(255, 255, 255, 0.04);
+  --surface-color: rgba(255, 255, 255, 0.06);
+  --error-color: #e5484d;
+  --page-bg: #161618;
+}
+body[data-theme="light"] {
+  --main-text-color: #3a3227;
+  --secondary-text-color: #635c52;
+  --grey-text-color: #78726a;
+  --main-bg-color: #f2eee5;
+  --border-color: #dcd6c9;
+  --accent-color: #9e60c5;
+  --accent-hover-color: #8c4cb1;
+  --action-bg-color: #714393;
+  --action-hover-bg-color: #8c4cb1;
+  --action-text-color: #ffffff;
+  --hover-bg-color: rgba(158, 96, 197, 0.1);
+  --overlay-bg-color: #faf7f1;
+  --modal-bg-color: #fffdf8;
+  --modal-border-color: #dcd6c9;
+  --modal-backdrop-color: rgba(34, 30, 25, 0.28);
+  --surface-soft-color: #fdfbf6;
+  --surface-color: #f2eee5;
+  --error-color: #d32f2f;
+  --page-bg: #e7e1d5;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--main-text-color);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  line-height: 1.6;
+  transition: background 160ms ease, color 160ms ease;
+}
+.page { max-width: 1080px; margin: 0 auto; padding: 30px 22px 80px; display: grid; gap: 22px; }
+h1 { margin: 0; font-size: 21px; letter-spacing: -0.01em; }
+h2 { margin: 0 0 2px; font-size: 15px; }
+.sub { color: var(--secondary-text-color); font-size: 13px; }
+.status {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+  border: 1px solid var(--border-color); border-radius: 999px; padding: 2px 9px;
+  color: var(--secondary-text-color); margin-top: 10px;
+}
+.status b { color: var(--accent-color); font-weight: 600; }
+
+.card { border: 1px solid var(--border-color); border-radius: 12px; background: var(--surface-soft-color); overflow: hidden; }
+.card-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--border-color); display: grid; gap: 3px; }
+.card-body { padding: 16px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 860px) { .row2 { grid-template-columns: 1fr; } }
+
+.note { font-size: 12px; color: var(--secondary-text-color); }
+.note b { color: var(--main-text-color); font-weight: 600; }
+.kbd {
+  font-family: "Hack", "Cascadia Mono", monospace; font-size: 11px;
+  border: 1px solid var(--border-color); border-radius: 4px; padding: 0 4px;
+}
+.tag { display: inline-block; font-size: 11px; border-radius: 999px; padding: 0 7px; border: 1px solid var(--border-color); color: var(--secondary-text-color); }
+.tag.ok { color: var(--accent-color); border-color: var(--accent-color); }
+.tag.no { color: var(--error-color); border-color: var(--error-color); }
+.tag.mid { color: #e0a13a; border-color: #e0a13a; }
+
+table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.grid th, table.grid td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+table.grid th { color: var(--secondary-text-color); font-weight: 600; }
+table.grid td.mono { font-family: "Hack", "Cascadia Mono", monospace; font-size: 11px; }
+
+.theme-switch { display: flex; gap: 6px; }
+.theme-switch button {
+  font: inherit; font-size: 12px; cursor: pointer; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border-color); background: transparent; color: var(--secondary-text-color);
+}
+.theme-switch button.active { color: var(--action-text-color); background: var(--action-bg-color); border-color: var(--action-bg-color); }
+
+/* ── 真实 .menu / .menu-item（frontend/app/element/flyoutmenu.scss） ── */
+.menu {
+  display: flex; flex-direction: column; gap: 1px; padding: 2px;
+  min-width: 190px; max-width: 320px; border-radius: 4px;
+  border: 1px solid var(--border-color); background: var(--overlay-bg-color);
+  box-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.45);
+}
+.menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 4px 6px; font-size: 12px; line-height: normal; letter-spacing: -0.12px;
+  border-radius: 2px; cursor: pointer; color: var(--main-text-color);
+}
+.menu-item .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-item:hover { background: var(--accent-color); color: var(--action-text-color); }
+.menu-sep { height: 1px; background: var(--border-color); margin: 3px 4px; }
+.menu-item.disabled { opacity: 0.4; cursor: default; }
+.menu-item.disabled:hover { background: transparent; color: var(--main-text-color); }
+.menu-caption { font-size: 10px; color: var(--secondary-text-color); padding: 4px 6px 2px; letter-spacing: 0.02em; text-transform: uppercase; }
+
+/* ── 真实 .modal 壳（frontend/app/modals/modal.scss） ── */
+.stage { position: relative; border-radius: 10px; background: var(--main-bg-color); border: 1px solid var(--border-color); padding: 22px 18px 46px; display: flex; justify-content: center; }
+.stage.tall { padding: 26px 18px 46px; }
+.stage > .backdrop { position: absolute; inset: 0; background: var(--modal-backdrop-color); border-radius: 10px; }
+.modal {
+  position: relative; z-index: 2; width: 420px; max-width: 100%;
+  display: flex; flex-direction: column; align-items: flex-start;
+  max-height: min(80vh, 460px); border-radius: 8px;
+  border: 1px solid var(--modal-border-color); background: var(--modal-bg-color);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25); overflow: hidden;
+  animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalScaleIn { from { opacity: 0; transform: scale(0.96) translateY(-8px); } to { opacity: 1; transform: none; } }
+.modal-header { display: flex; align-items: flex-start; gap: 8px; flex: 0 0 auto; width: 100%; padding: 16px 16px 0; }
+.modal-header__text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.modal-header__title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-header__subtitle { font-size: 12px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-header__extra { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary-text-color); }
+.modal-close {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: none; border-radius: 4px;
+  background: transparent; color: var(--secondary-text-color); font-size: 12px; cursor: pointer;
+}
+.modal-close:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+.content-wrapper { display: flex; flex-direction: column; gap: 8px; width: 100%; min-height: 0; flex: 1; padding: 16px; overflow-y: auto; }
+.modal-footer { display: flex; justify-content: flex-end; align-items: center; flex: 0 0 auto; width: 100%; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--border-color); }
+
+/* ── 真实 .tab-target-row（tab-target-modal.tsx + tab.scss） ── */
+.target-list {
+  width: 100%; max-height: 320px; overflow-y: auto; border-radius: 6px;
+  border: 1px solid var(--border-color); background: var(--surface-soft-color); padding: 2px;
+}
+.tab-target-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; padding: 8px 12px; border: none; border-radius: 6px; text-align: left;
+  background: transparent; color: var(--main-text-color); font: inherit; cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.tab-target-row:hover { background: var(--hover-bg-color); }
+.tab-target-row:disabled, .tab-target-row.is-working { opacity: 0.55; cursor: default; }
+.tab-target-row .row-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tab-target-row .row-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-target-row .row-hint { font-size: 11px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-target-action { display: inline-flex; align-items: center; justify-content: flex-end; flex: 0 0 auto; }
+.tab-target-action-label { display: block; font-size: 11px; color: var(--secondary-text-color); }
+.tab-target-action-btn {
+  display: none; align-items: center; gap: 5px; height: 26px; padding: 0 12px;
+  font-size: 12px; font-weight: 600; line-height: 1; border-radius: 5px;
+  border: 1px solid var(--action-bg-color); background: var(--action-bg-color);
+  color: var(--action-text-color); cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.05s ease;
+}
+.tab-target-row:hover:not(:disabled):not(.is-working) .tab-target-action-label { display: none; }
+.tab-target-row:hover:not(:disabled):not(.is-working) .tab-target-action-btn { display: inline-flex; }
+.tab-target-spinner {
+  display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--border-color); border-top-color: var(--action-bg-color);
+  animation: tab-target-spin 0.8s linear infinite;
+}
+@keyframes tab-target-spin { to { transform: rotate(360deg); } }
+.list-divider { height: 1px; background: var(--border-color); margin: 2px 6px; }
+.empty-label { padding: 22px 8px; text-align: center; font-size: 13px; color: var(--secondary-text-color); }
+.row-error { font-size: 11px; color: var(--error-color); }
+
+/* ── 新增点：New tab 行 ── */
+.new-tab-row { position: relative; }
+.new-tab-row .plus-box {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 5px; flex: 0 0 auto;
+  border: 1px dashed var(--border-color); color: var(--secondary-text-color);
+  font-size: 12px; line-height: 1;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+/* hover 时实心化：虚线框 → accent 实底 + action-text —— 让「这一行可点」在视觉上坐实 */
+.new-tab-row:hover .plus-box,
+.new-tab-row:focus-visible .plus-box {
+  border-style: solid;
+  border-color: var(--action-bg-color);
+  background: var(--action-bg-color);
+  color: var(--action-text-color);
+}
+.new-tab-row .row-left { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.new-tab-row .row-name { color: var(--action-bg-color); font-weight: 600; }
+
+/* ── 新增点：行内两个图标动作（替代 Move/Copy 分段控件） ── */
+.row-icons {
+  display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto;
+  opacity: 0; transition: opacity 120ms ease;
+}
+.tab-target-row:hover .row-icons,
+.tab-target-row:focus-within .row-icons { opacity: 1; }
+.row-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; border-radius: 5px;
+  border: 1px solid transparent; background: transparent;
+  color: var(--secondary-text-color); cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.row-icon-btn svg { width: 13px; height: 13px; display: block; }
+.row-icon-btn:hover {
+  background: var(--action-bg-color); border-color: var(--action-bg-color); color: var(--action-text-color);
+}
+.row-icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--accent-color); }
+.row-icon-btn:disabled { opacity: 0.4; cursor: default; }
+.row-icon-btn:disabled:hover { background: transparent; border-color: transparent; color: var(--secondary-text-color); }
+.row-icon-btn .tab-target-spinner { width: 12px; height: 12px; border-width: 1.5px; }
+
+/* 行容器不再是 <button>（嵌套按钮非法），改成 div[role=button] */
+.tab-target-row[aria-disabled="true"] { opacity: 0.55; cursor: default; }
+.tab-target-row[aria-disabled="true"]:hover { background: transparent; }
+.tab-target-row:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--accent-color) inset; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 14px;
+  font-size: 12px; font-weight: 600; border-radius: 5px; cursor: pointer; font-family: inherit;
+  border: 1px solid var(--border-color); background: transparent; color: var(--main-text-color);
+}
+.btn.ghost:hover { background: var(--hover-bg-color); }
+.btn.primary { background: var(--action-bg-color); border-color: var(--action-bg-color); color: var(--action-text-color); }
+
+.toast {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  z-index: 3; font-size: 11px; padding: 4px 12px; border-radius: 999px;
+  background: var(--overlay-bg-color); border: 1px solid var(--border-color);
+  color: var(--main-text-color); opacity: 0; transition: opacity 160ms ease; pointer-events: none;
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+
+.badge-flag { font-size: 10px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--accent-color); color: var(--accent-color); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--secondary-text-color); }
+.anno { font-size: 11px; color: var(--secondary-text-color); margin-top: 8px; display: grid; gap: 2px; }
+.anno b { color: var(--main-text-color); }
+.dim { opacity: 0.45; }
+</style>
+</head>
+<body data-theme="dark">
+<div class="page">
+
+  <header>
+    <h1>Move Block to Tab · 菜单 4 条 → 1 条，弹窗内「选择 / 新建」</h1>
+    <div class="sub">
+      结构镜像 <code class="kbd">blockframe-header.tsx</code> ·
+      <code class="kbd">tab-target-modal.tsx</code> ·
+      <code class="kbd">tab.scss</code> · 只加「New tab 行 + 每行双图标」两处新增点，其余逐字段对齐真实代码
+    </div>
+    <div class="status">同步状态 <b>▲ 设计活跃</b> · 最后同步 2026-11-06</div>
+    <div class="theme-switch" style="margin-top:12px">
+      <button data-theme-btn="dark" class="active">Dark</button>
+      <button data-theme-btn="light">Light</button>
+    </div>
+  </header>
+
+  <!-- ══ 0. 决策表 ══ -->
+  <section class="card">
+    <div class="card-head">
+      <h2>0 · 决定（本原型按「推荐列」绘制）</h2>
+      <div class="note">现状问题：<b>「新建」和「选择」被拆成两条菜单</b>，而弹窗自己不能新建 —— 菜单多不是原因，是结果。</div>
+    </div>
+    <div class="card-body">
+      <table class="grid">
+        <tr><th style="width:150px">决定</th><th>推荐</th><th>理由</th></tr>
+        <tr>
+          <td>菜单条数</td>
+          <td>4 条 → <b>1 条</b> <code class="kbd">Move to Tab…</code></td>
+          <td>选哪个 tab、要不要新建，本来就是同一个问题的两个答案，不该在菜单层先分叉。</td>
+        </tr>
+        <tr>
+          <td>Copy 的去留</td>
+          <td>保留，<b>每行两个图标</b>（<code class="kbd">→</code> Move / <code class="kbd">⧉</code> Copy），<b>不做模式切换</b></td>
+          <td>复制 agent 会话块到另一个 tab 是真实用法，但不值得再占一条菜单；做成模式状态反而多一步心理建模。</td>
+        </tr>
+        <tr>
+          <td>New tab 命名</td>
+          <td><b>不输名字</b>，沿用源 tab 名 + 去重（<code class="kbd">My Tab</code> → <code class="kbd">My Tab 1</code>）</td>
+          <td>保持「一次点击完成」。重命名走已有的 tab 重命名，不在这里加第二个输入口。</td>
+        </tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══ 1. 菜单层 ══ -->
+  <section class="card">
+    <div class="card-head">
+      <h2>1 · 菜单层：4 条 → 1 条</h2>
+      <div class="note">下面两个菜单都是真实 <code class="kbd">.menu</code> / <code class="kbd">.menu-item</code> 样式（hover 看效果）。左列是现在的代码产出。</div>
+    </div>
+    <div class="card-body row2">
+      <div>
+        <div class="note" style="margin-bottom:8px"><span class="tag no">现状</span> makeBlockMoveMenuItems() 产出 4 条</div>
+        <div class="menu">
+          <div class="menu-item"><span class="label">Magnify Block</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-item"><span class="label">Copy BlockId</span></div>
+          <div class="menu-item"><span class="label">Minimize to BlockBar</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-item"><span class="label">Move to New Tab</span></div>
+          <div class="menu-item"><span class="label">Move to Existing Tab...</span></div>
+          <div class="menu-item"><span class="label">Copy to New Tab</span></div>
+          <div class="menu-item"><span class="label">Copy to Existing Tab...</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-item"><span class="label">Close Block</span></div>
+        </div>
+        <div class="anno">
+          <div>· 「新建」两条是<b>立刻执行、无确认</b>：点下去 tab 就建好了，名字不可见也不可控</div>
+          <div>· 「选择」两条才开弹窗，但弹窗里<b>没有新建入口</b></div>
+        </div>
+      </div>
+      <div>
+        <div class="note" style="margin-bottom:8px"><span class="tag ok">推荐</span> makeBlockMoveMenuItems() 产出 1 条</div>
+        <div class="menu">
+          <div class="menu-item"><span class="label">Magnify Block</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-item"><span class="label">Copy BlockId</span></div>
+          <div class="menu-item"><span class="label">Minimize to BlockBar</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-item" data-open-modal="rec"><span class="label">Move to Tab…</span></div>
+          <div class="menu-sep"></div>
+          <div class="menu-item"><span class="label">Close Block</span></div>
+        </div>
+        <div class="anno">
+          <div>· 一条入口 = 「选择已有 + 新建」都进弹窗</div>
+          <div>· Copy 进弹窗内每行的 <b>⧉</b> 图标（无模式切换）</div>
+          <div>· 点它 → 见下方 §2 弹窗</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 2. 新弹窗（可交互） ══ -->
+  <section class="card">
+    <div class="card-head">
+      <h2>2 · 新弹窗：New tab 行置顶 + 每行两个图标动作</h2>
+      <div class="note">可交互：hover 任意行看两个图标浮现；点 <b>→</b> 或点行体 = Move，点 <b>⧉</b> = Copy；点 <b>New tab</b> 看建 tab 反馈。无模式切换。</div>
+    </div>
+    <div class="card-body">
+      <div class="stage tall" id="stage-rec">
+        <div class="backdrop"></div>
+        <div class="modal" data-mode="move">
+          <div class="modal-header">
+            <div class="modal-header__text">
+              <div class="modal-header__title" data-title>Move Block</div>
+              <div class="modal-header__subtitle">↳ from «Snorkeling»</div>
+            </div>
+            <button class="modal-close" title="Close (ESC)">✕</button>
+          </div>
+          <div class="content-wrapper">
+            <div class="target-list" data-list>
+              <div class="tab-target-row new-tab-row" role="button" tabindex="0" aria-disabled="false" data-new-tab>
+                <span class="row-left">
+                  <span class="plus-box">＋</span>
+                  <span class="row-main">
+                    <span class="row-name">New tab</span>
+                    <span class="row-hint">Named after «Snorkeling»</span>
+                  </span>
+                </span>
+                <span class="row-icons" data-icons>
+                  <button type="button" class="row-icon-btn" data-act="move" data-target="newtab" title="Move into a new tab" aria-label="Move into a new tab"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h10"/><path d="M8.5 4l4 4-4 4"/></svg></button>
+                  <button type="button" class="row-icon-btn" data-act="copy" data-target="newtab" title="Copy into a new tab" aria-label="Copy into a new tab"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="2.5" width="8" height="8" rx="1.5"/><path d="M10.5 13.5H3.5a1 1 0 0 1-1-1V5.5"/></svg></button>
+                </span>
+              </div>
+              <div class="list-divider"></div>
+              <div class="tab-target-row" role="button" tabindex="0" aria-disabled="false" data-tab-row data-name="Design">
+                <span class="row-main"><span class="row-name">Design</span></span>
+                <span class="row-icons" data-icons>
+                  <button type="button" class="row-icon-btn" data-act="move" title="Move to «Design»" aria-label="Move to Design"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h10"/><path d="M8.5 4l4 4-4 4"/></svg></button>
+                  <button type="button" class="row-icon-btn" data-act="copy" title="Copy to «Design»" aria-label="Copy to Design"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="2.5" width="8" height="8" rx="1.5"/><path d="M10.5 13.5H3.5a1 1 0 0 1-1-1V5.5"/></svg></button>
+                </span>
+              </div>
+              <div class="tab-target-row" role="button" tabindex="0" aria-disabled="false" data-tab-row data-name="Research">
+                <span class="row-main"><span class="row-name">Research</span></span>
+                <span class="row-icons" data-icons>
+                  <button type="button" class="row-icon-btn" data-act="move" title="Move to «Research»" aria-label="Move to Research"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h10"/><path d="M8.5 4l4 4-4 4"/></svg></button>
+                  <button type="button" class="row-icon-btn" data-act="copy" title="Copy to «Research»" aria-label="Copy to Research"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="2.5" width="8" height="8" rx="1.5"/><path d="M10.5 13.5H3.5a1 1 0 0 1-1-1V5.5"/></svg></button>
+                </span>
+              </div>
+              <div class="tab-target-row" role="button" tabindex="0" aria-disabled="false" data-tab-row data-name="Playground">
+                <span class="row-main"><span class="row-name">Playground</span></span>
+                <span class="row-icons" data-icons>
+                  <button type="button" class="row-icon-btn" data-act="move" title="Move to «Playground»" aria-label="Move to Playground"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h10"/><path d="M8.5 4l4 4-4 4"/></svg></button>
+                  <button type="button" class="row-icon-btn" data-act="copy" title="Copy to «Playground»" aria-label="Copy to Playground"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="2.5" width="8" height="8" rx="1.5"/><path d="M10.5 13.5H3.5a1 1 0 0 1-1-1V5.5"/></svg></button>
+                </span>
+              </div>
+            </div>
+            <div class="row-error" data-error style="display:none"></div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn ghost">Cancel</button>
+          </div>
+        </div>
+        <div class="toast" data-toast></div>
+      </div>
+      <div class="anno">
+        <div>· <b>New tab 行置顶且永远 enabled</b> —— 没有其它 tab 时它就是唯一一行，不需要另一条菜单兜底</div>
+        <div>· <b>没有模式状态</b>：hover 行才出现 <code class="kbd">→</code> / <code class="kbd">⧉</code> 两个图标，点哪个就是哪个动作</div>
+        <div>· 行容器是 <code class="kbd">div[role=button]</code>，不是 <code class="kbd">&lt;button&gt;</code>：往按钮里塞按钮是非法嵌套（<code class="kbd">overview-board.tsx:141</code> 踩过）</div>
+        <div>· 点行体 = <b>Move</b>（主路径），<code class="kbd">→</code> 是它的显式 / 键盘可达 affordance，<code class="kbd">⧉</code> 是唯一的 Copy 入口</div>
+        <div>· 两个图标 <code class="kbd">title</code> + <code class="kbd">aria-label</code> 同时写（鼠标只认 title，读屏只认 aria-label）</div>
+        <div>· footer 只有 Cancel：动作发生在行点击，不需要 OK 二次确认</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 3. 空态 ══ -->
+  <section class="card">
+    <div class="card-head">
+      <h2>3 · 空态：当前只有 1 个 tab</h2>
+      <div class="note">现状下 <code class="kbd">canMoveToExistingTab=false</code> 会把两条 <code class="kbd">...Existing Tab...</code> 置灰，用户只剩「立刻新建」两条可点。新结构下它自然退化成一行（那一行仍然带两个图标）。</div>
+    </div>
+    <div class="card-body row2">
+      <div>
+        <div class="note" style="margin-bottom:8px"><span class="tag ok">推荐</span> 只剩 New tab 行（+ 保留空态文案）</div>
+        <div class="stage">
+          <div class="backdrop"></div>
+          <div class="modal">
+            <div class="modal-header">
+              <div class="modal-header__text">
+                <div class="modal-header__title">Move Block</div>
+                <div class="modal-header__subtitle">↳ from «Snorkeling»</div>
+              </div>
+              <button class="modal-close">✕</button>
+            </div>
+            <div class="content-wrapper">
+              <div class="target-list">
+                <div class="tab-target-row new-tab-row" role="button" tabindex="0">
+                  <span class="row-left">
+                    <span class="plus-box">＋</span>
+                    <span class="row-main">
+                      <span class="row-name">New tab</span>
+                      <span class="row-hint">Named after «Snorkeling»</span>
+                    </span>
+                  </span>
+                  <span class="row-icons">
+                    <button type="button" class="row-icon-btn" title="Move into a new tab" aria-label="Move into a new tab"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h10"/><path d="M8.5 4l4 4-4 4"/></svg></button>
+                    <button type="button" class="row-icon-btn" title="Copy into a new tab" aria-label="Copy into a new tab"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="2.5" width="8" height="8" rx="1.5"/><path d="M10.5 13.5H3.5a1 1 0 0 1-1-1V5.5"/></svg></button>
+                  </span>
+                </div>
+                <div class="list-divider"></div>
+                <div class="empty-label">No other tabs</div>
+              </div>
+            </div>
+            <div class="modal-footer"><button class="btn ghost">Cancel</button></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="note" style="margin-bottom:8px"><span class="tag mid">备选</span> 空态时直接隐藏分隔线</div>
+        <div class="stage">
+          <div class="backdrop"></div>
+          <div class="modal">
+            <div class="modal-header">
+              <div class="modal-header__text">
+                <div class="modal-header__title">Move Block</div>
+                <div class="modal-header__subtitle">↳ from «Snorkeling»</div>
+              </div>
+              <button class="modal-close">✕</button>
+            </div>
+            <div class="content-wrapper">
+              <div class="target-list">
+                <div class="tab-target-row new-tab-row" role="button" tabindex="0">
+                  <span class="row-left">
+                    <span class="plus-box">＋</span>
+                    <span class="row-main">
+                      <span class="row-name">New tab</span>
+                      <span class="row-hint">Named after «Snorkeling»</span>
+                    </span>
+                  </span>
+                  <span class="row-icons">
+                    <button type="button" class="row-icon-btn" title="Move into a new tab" aria-label="Move into a new tab"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h10"/><path d="M8.5 4l4 4-4 4"/></svg></button>
+                    <button type="button" class="row-icon-btn" title="Copy into a new tab" aria-label="Copy into a new tab"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="2.5" width="8" height="8" rx="1.5"/><path d="M10.5 13.5H3.5a1 1 0 0 1-1-1V5.5"/></svg></button>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer"><button class="btn ghost">Cancel</button></div>
+          </div>
+        </div>
+        <div class="anno"><div>更安静，但少了「确实没有别的 tab」的说明。</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 4. 覆盖面 ══ -->
+  <section class="card">
+    <div class="card-head">
+      <h2>4 · 为什么现在「像只支持 agent Block」</h2>
+      <div class="note">
+        代码层并不是按 block 类型拦的：<code class="kbd">makeBlockMoveMenuItems</code> 对任何
+        <code class="kbd">!preview &amp;&amp; !ephemeral</code> 的 block 都产出条目。
+        真正的原因是<b>入口依赖各 view 主动接力</b>，谁的右键菜单不吃这一口，谁就「没有 Move」。
+      </div>
+    </div>
+    <div class="card-body">
+      <table class="grid">
+        <tr><th style="width:230px">入口</th><th style="width:90px">现状</th><th>说明</th></tr>
+        <tr><td>Block header <code class="kbd">⋯</code> 菜单</td><td><span class="tag ok">全 block</span></td><td>保底路径。任何非 preview / 非 ephemeral block 都有 → <b>新方案以它为主路径</b></td></tr>
+        <tr><td>Block 框右键（header / 空白区）</td><td><span class="tag ok">全 block</span></td><td><code class="kbd">showBlockContextMenu</code>，但会在 <code class="kbd">.block-content</code> 内提前 return</td></tr>
+        <tr><td class="mono">view/term</td><td><span class="tag ok">有</span></td><td><code class="kbd">appendBlockMoveMenuItems</code> —— agent / 普通终端都走这条，所以「看起来只有 agent」</td></tr>
+        <tr><td class="mono">view/vcs</td><td><span class="tag ok">有</span></td><td>commit / 文件列表右键</td></tr>
+        <tr><td class="mono">view/preview-directory</td><td><span class="tag ok">有</span></td><td>Files 目录树 / 表格</td></tr>
+        <tr><td class="mono">view/preview-explorer</td><td><span class="tag ok">有</span></td><td>Files 树</td></tr>
+        <tr><td class="mono">view/processviewer</td><td><span class="tag ok">有</span></td><td>进程列表</td></tr>
+        <tr><td class="mono">view/preview-model</td><td><span class="tag no">缺</span></td><td>markdown / 图片 / webview 预览块的右键菜单没接 → 这里右键**看不到 Move**</td></tr>
+        <tr><td class="mono">view/aisessions</td><td><span class="tag no">缺</span></td><td>会话列表自己的菜单</td></tr>
+        <tr><td class="mono">view/codeeditor / tsunami / …</td><td><span class="tag no">缺</span></td><td>未接 <code class="kbd">useBlockMoveMenuItems</code></td></tr>
+      </table>
+      <div class="anno" style="margin-top:10px">
+        <div><b>落地口径</b>：<code class="kbd">⋯</code> 菜单做保底（已成立，不改），缺的 4 个 view 逐个补 <code class="kbd">appendBlockMoveMenuItems</code>，
+        并加一条守卫单测，防止以后有人把「新建」又拆回菜单。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 5. 落地要点 ══ -->
+  <section class="card">
+    <div class="card-head"><h2>5 · 落地要点（实现阶段）</h2></div>
+    <div class="card-body">
+      <table class="grid">
+        <tr><th style="width:300px">文件</th><th>改什么</th></tr>
+        <tr><td class="mono">blockframe-header.tsx</td><td><code class="kbd">makeBlockMoveMenuItems</code> 4 → 1 条（<code class="kbd">Move to Tab…</code>）；删除两个 <code class="kbd">Move/Copy to New Tab</code> 分支</td></tr>
+        <tr><td class="mono">blockframe-header.tsx</td><td><code class="kbd">MoveBlockToTabModal</code>：<b>删掉 <code class="kbd">mode</code> prop</b>，改成每行两个动作回调；新增 <code class="kbd">onCreateTab(kind)</code></td></tr>
+        <tr><td class="mono">tab-target-modal.tsx</td><td><code class="kbd">TabTargetRow</code> 由 <code class="kbd">&lt;button&gt;</code> 改 <code class="kbd">div[role=button]</code>（否则图标按钮非法嵌套）；新增可选 <code class="kbd">onCreate?</code> / <code class="kbd">createHint?</code> / <code class="kbd">rowActions?</code>；不传 = 行为与今天完全一致（<code class="kbd">widgets.tsx</code> 的 Create 弹窗零影响）</td></tr>
+        <tr><td class="mono">tab.scss</td><td>新增 <code class="kbd">.new-tab-row</code>（plus-box / accent 名称）、<code class="kbd">.list-divider</code>、<code class="kbd">.row-icons</code> + <code class="kbd">.row-icon-btn</code>（hover / focus-visible 浮现）；删 <code class="kbd">.tab-target-action*</code>（只服务旧单动作行）</td></tr>
+        <tr><td class="mono">view/preview-model · aisessions · codeeditor …</td><td>右键菜单补 <code class="kbd">appendBlockMoveMenuItems</code></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══ 6. 待拍板 ══ -->
+  <section class="card">
+    <div class="card-head"><h2>6 · 还需要你拍板的三件事</h2></div>
+    <div class="card-body">
+      <table class="grid">
+        <tr><th style="width:170px">问题</th><th>选项</th><th style="width:150px">我的建议</th></tr>
+        <tr>
+          <td>Copy 怎么放</td>
+          <td>① <b>每行两个图标</b>（<code class="kbd">→</code> / <code class="kbd">⧉</code>，本原型）<br>② 弹窗 header 分段控件（先选模式再选目标，多一步）<br>③ 菜单保留两条（<code class="kbd">Move to Tab…</code> / <code class="kbd">Copy to Tab…</code>）<br>④ 这次直接砍掉 Copy</td>
+          <td>① —— 一步完成，且无「当前处于什么模式」的隐式状态</td>
+        </tr>
+        <tr>
+          <td>行体点击做什么</td>
+          <td>① 行体 = <b>Move</b>（本原型；<code class="kbd">→</code> 是它的显式 affordance）<br>② 行体不做任何事，只允许点图标</td>
+          <td>① —— 保留「点一下就走」的快路径；② 会让每行都变成两步</td>
+        </tr>
+        <tr>
+          <td>New tab 名字</td>
+          <td>① 自动派生（源 tab 名 + 去重，本原型）<br>② 点行后就地展开输入框（Enter 确认）</td>
+          <td>① —— 想改名用已有 tab 重命名</td>
+        </tr>
+        <tr>
+          <td>空态文案</td>
+          <td>① 保留 <code class="kbd">No other tabs</code>（本原型左）<br>② 隐藏分隔线，只留 New tab 行（右）</td>
+          <td>① —— 明确告诉用户「不是没加载」</td>
+        </tr>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ── 主题 ──
+document.querySelectorAll("[data-theme-btn]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const theme = btn.dataset.themeBtn;
+    document.body.dataset.theme = theme;
+    document.querySelectorAll("[data-theme-btn]").forEach((b) => b.classList.toggle("active", b === btn));
+  });
+});
+
+// ── 主弹窗交互（无模式状态：点行体 = Move，点图标 = 对应动作） ──
+(function () {
+  const stage = document.getElementById("stage-rec");
+  if (!stage) return;
+  const modal = stage.querySelector(".modal");
+  const toast = stage.querySelector("[data-toast]");
+  const errorEl = stage.querySelector("[data-error]");
+  const list = stage.querySelector("[data-list]");
+  let busy = false;
+
+  const verbOf = (act) => (act === "copy" ? "Copy" : "Move");
+  const gerundOf = (act) => (act === "copy" ? "Copying…" : "Moving…");
+
+  function showToast(text) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toast.classList.remove("show"), 1800);
+  }
+
+  function rows() {
+    return [...list.querySelectorAll("[data-tab-row], [data-new-tab]")];
+  }
+
+  function setBusy(next) {
+    busy = next;
+    for (const row of rows()) {
+      if (row.classList.contains("is-working")) continue;
+      row.setAttribute("aria-disabled", next ? "true" : "false");
+      row.querySelectorAll(".row-icon-btn").forEach((b) => (b.disabled = next));
+    }
+  }
+
+  /**
+   * 执行一次动作。哪个行、哪个动作，全部由点击目标决定 —— 没有全局 mode。
+   * working 表现：被点的那一行整行进 is-working，两个图标换成 spinner（因为不知道是哪个，
+   * 实际实现里只把被点的那一个图标换 spinner，这里演示整行状态）。
+   */
+  function runAction(row, act, text) {
+    if (busy) return;
+    setBusy(true);
+    row.classList.add("is-working");
+
+    const icons = row.querySelector(".row-icons");
+    const clickedBtn = row.querySelector(`.row-icon-btn[data-act="${act}"]`);
+    const targetBtn = clickedBtn ?? row.querySelector(".row-icon-btn");
+
+    // 只在被点的那个图标里换 spinner —— 按钮本身保留（data-act / title / aria-label 不能丢，
+    // 否则恢复时识别不出是哪个动作，实测踩到 iconActs 变 [null, "copy"]）。
+    const before = targetBtn.innerHTML;
+    const spinner = document.createElement("span");
+    spinner.className = "tab-target-spinner";
+    spinner.setAttribute("role", "img");
+    spinner.setAttribute("title", gerundOf(act));
+    spinner.setAttribute("aria-label", gerundOf(act));
+    targetBtn.innerHTML = "";
+    targetBtn.appendChild(spinner);
+
+    setTimeout(() => {
+      targetBtn.innerHTML = before;
+      row.classList.remove("is-working");
+      setBusy(false);
+      showToast(text);
+    }, 700);
+  }
+
+  function bindRow(row) {
+    const name = row.dataset.name ?? null;
+    const isNew = row.hasAttribute("data-new-tab");
+
+    // 行体点击 = Move（主路径）
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".row-icon-btn")) return; // 图标自己处理
+      const text = isNew
+        ? `Created new tab «Snorkeling 1» · Move block in`
+        : `Move → «${name}»`;
+      runAction(row, "move", text);
+    });
+    row.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (e.target.closest(".row-icon-btn")) return;
+      e.preventDefault();
+      row.click();
+    });
+
+    // 图标：各自只做自己的动作
+    row.querySelectorAll(".row-icon-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const act = btn.dataset.act ?? "move";
+        const text = isNew
+          ? `Created new tab «Snorkeling 1» · ${verbOf(act)} block in`
+          : `${verbOf(act)} → «${name}»`;
+        runAction(row, act, text);
+      });
+    });
+  }
+
+  rows().forEach(bindRow);
+
+  modal.querySelector(".modal-close").addEventListener("click", () => showToast("closed (ESC / backdrop)"));
+  modal.querySelector(".btn.ghost").addEventListener("click", () => showToast("cancelled"));
+})();
+
+// ── 菜单里的入口点击 → 滚到 §2 ──
+document.querySelectorAll("[data-open-modal]").forEach((el) => {
+  el.addEventListener("click", () => {
+    document.getElementById("stage-rec").scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+});
+</script>
+</body>
+</html>

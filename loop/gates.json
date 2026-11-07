@@ -1,0 +1,138 @@
+{
+  "version": 2,
+  "project": "snorkeling",
+  "updatedAt": "2026-11-06T16:13:17Z",
+  "gates": {
+    "N-1105-loop-ledger": {
+      "g1": {
+        "at": "2026-11-05T01:50:10Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "f2eb2206fbbf"
+      },
+      "g2": {
+        "redProof": "node loop/queue.mjs self-test --expect=broken → 12 failed (expected-red) @ 12eab5dc",
+        "at": "2026-11-05T01:52:10Z"
+      },
+      "g6": {
+        "at": "2026-11-05T01:54:47Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "planHash": "12d2d7cde95f"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-05T01:52:41Z",
+        "by": "self"
+      }
+    },
+    "N-1105-harness-redproof": {
+      "g5": {
+        "ok": false,
+        "executedAt": null
+      }
+    },
+    "N-1106-overview-board-motion": {
+      "g1": {
+        "at": "2026-11-06T01:06:10Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "ce7c1b368431"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-N-1106-overview-board-motion.txt",
+        "at": "2026-11-06T01:09:11Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-06T01:49:54Z",
+        "by": "compliance"
+      }
+    },
+    "F-1106-agent-card-chip-title": {
+      "g1": {
+        "at": "2026-11-06T16:13:16Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "cfe4f781d9dd"
+      },
+      "g2": {
+        "redProof": "npx vitest run 4 个新测试文件 → 4 failed / 54 failed（全部断言红或 not implemented 红，无 0/0 空跑）@ e82e9883",
+        "at": "2026-11-06T07:58:10Z"
+      },
+      "g6": {
+        "at": "2026-11-06T16:13:17Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "planHash": "deaca3a31ce2"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-06T16:12:59Z",
+        "by": "compliance"
+      }
+    },
+    "N-1105-cleanup-46to22": {
+      "g1": {
+        "at": "2026-11-05T09:36",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "c589d4b71e14"
+      }
+    },
+    "F-1106-move-block-tab-menu": {
+      "g1": {
+        "at": "2026-11-06T12:48:46Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "3245ee0340f3"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-F-1106-move-block-tab-menu.txt",
+        "at": "2026-11-06T13:14:27Z"
+      }
+    },
+    "N-1105-cmd-window-flash": {
+      "g2": {
+        "redProof": "node --test server/lib/spawn-guard.test.mjs → 6 passed；校准 BAD 样本 = 修复前 version.mjs 的真实 execFileSync 行，findMissingWindowsHide 必须抓到（未修复时为红）",
+        "at": "2026-11-06T00:50:19Z"
+      }
+    },
+    "N-1105-tab-hover-clip": {
+      "g2": {
+        "redProof": "node --test 等价：npx vitest run frontend/app/element/info-card/info-card-pos.test.ts → 10 passed；校准三例（靠右 Tab / 靠下目标 / placement=right 贴右墙）对旧公式 legacyCardPos 断言 isFullyInside=false，实测出界，判据看得见本 bug",
+        "at": "2026-11-06T00:26:40Z"
+      }
+    },
+    "N-1105-queue-failopen": {
+      "g2": {
+        "redProof": "旧实现（解析失败返回空队列）→ node --test loop/lib/queue-io.test.mjs = 3 passed, 2 failed；修复后 5 passed, 0 failed",
+        "at": "2026-11-05T02:16:06Z"
+      }
+    },
+    "N-1106-agent-tag-catalog": {
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-N-1106-agent-tag-catalog.txt",
+        "at": "2026-11-06T05:35:59Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-06T05:45:29Z",
+        "by": "self"
+      },
+      "g1": {
+        "at": "2026-11-06T07:11:22Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "4664aaf427b3"
+      }
+    }
+  },
+  "dropped": [
+    {
+      "id": "N-1106-agent-card-tag-picker",
+      "reason": "规划前提过期（tags 已是共享 Wolai 浮层编辑器，非逗号文本框）；按实际代码重写 PRD 后重新建包，避免旧判据带错方向",
+      "at": "2026-11-06T05:21:22Z"
+    }
+  ]
+}

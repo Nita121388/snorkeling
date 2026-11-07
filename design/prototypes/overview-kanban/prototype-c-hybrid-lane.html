@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 C · 混合泳道（最平衡）</title>
+  <style>
+    :root { --bg:#0f1014; --lane:#16181f; --card:#1d2029; --border:#2a2e3a; --text:#e6e6e6; --subtext:#9b9da6; --accent:#6aa6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+    *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;background:var(--bg);color:var(--text)}
+    header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)}
+    header .left{display:flex;align-items:baseline;gap:12px} header h1{margin:0;font-size:14px} header p{margin:0;color:var(--subtext);font-size:12px}
+    .pill-row{display:flex;gap:8px} .pill{border:1px solid var(--border);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--subtext);text-decoration:none}
+    .board{display:flex;flex-direction:column;gap:16px;padding:18px 20px;overflow-y:auto;height:calc(100vh - 58px)}
+    .lane{background:var(--lane);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+    .lane-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent)}
+    .lane-title{display:flex;align-items:center;gap:10px}
+    .lane-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+    .lane-name{font-size:13px} .lane-meta{color:var(--subtext);font-size:12px}
+    .lane-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding:14px 16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;gap:10px;padding:12px 14px}
+    .card:hover{border-color:rgba(106,166,255,0.7)}
+    .card-top{display:flex;align-items:center;justify-content:space-between}
+    .card-id{display:flex;align-items:center;gap:8px}
+    .icon{width:18px;height:18px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(106,166,255,0.9),rgba(106,166,255,0.4));font-size:10px}
+    .icon.orange{background:radial-gradient(circle,rgba(210,153,34,0.9),rgba(210,153,34,0.4))}
+    .icon.green{background:radial-gradient(circle,rgba(63,185,80,0.9),rgba(63,185,80,0.4))}
+    .title-group{display:flex;flex-direction:column;gap:2px}
+    .title{font-size:13px} .subtitle{font-size:11px;color:var(--subtext)}
+    .status{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 8px;font-size:11px;border:1px solid rgba(106,166,255,0.5);color:var(--accent)}
+    .status.warn{border-color:rgba(210,153,34,0.6);color:var(--warn)}
+    .status.ok{border-color:rgba(63,185,80,0.6);color:var(--ok)}
+    .status.idle{border-color:var(--border);color:var(--subtext)}
+    .pulse{width:6px;height:6px;border-radius:50%;background:currentColor}
+    .preview{font-size:12px;color:var(--subtext);line-height:1.7}
+    .chips{display:flex;flex-wrap:wrap;gap:6px}
+    .chip{border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:11px;color:var(--subtext)}
+    .note{display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--border);color:var(--subtext);font-size:11px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="left"><h1>Overview · 原型 C：混合泳道</h1><p>以 Tab 为泳道，泳道内用看板卡片自然排布，兼顾归属与进展</p></div>
+    <div class="pill-row"><span class="pill">Hide unopened</span><span class="pill">Agents only</span><a class="pill" href="./index.html">返回对比页</a></div>
+  </header>
+  <div class="board">
+    <section class="lane"><header class="lane-header"><div class="lane-title"><span class="lane-dot"></span><span class="lane-name">main</span><span class="lane-meta">3 sessions</span></div><span class="lane-meta">Updated 2m ago</span></header><div class="lane-body"><article class="card"><div class="card-top"><div class="card-id"><span class="icon">C</span><div class="title-group"><span class="title">Claude · refactor-auth</span><span class="subtitle">agent</span></div></div><div class="status"><span class="pulse"></span>Running</div></div><div class="preview">梳理 auth 中间件依赖链，计划拆分 session 校验并补充测试。</div><div class="chips"><span class="chip">auth</span><span class="chip">refactor</span></div><div class="note"><span>✎</span><span>先跑类型检查再改动存储层</span></div></article><article class="card"><div class="card-top"><div class="card-id"><span class="icon green">X</span><div class="title-group"><span class="title">Codex · fix-preview</span><span class="subtitle">agent</span></div></div><div class="status ok">Done</div></div><div class="preview">预览编辑软换行丢失 + 内联标记样式修复完成。</div><div class="chips"><span class="chip">preview</span><span class="chip">markdown</span></div></article><article class="card"><div class="card-top"><div class="card-id"><span class="icon">G</span><div class="title-group"><span class="title">Gemini · docs-sync</span><span class="subtitle">agent</span></div></div><div class="status idle">Idle</div></div><div class="preview">待同步 Trellis 规范文档。</div><div class="chips"><span class="chip">docs</span></div></article></div></section>
+    <section class="lane"><header class="lane-header"><div class="lane-title"><span class="lane-dot" style="background:var(--warn)"></span><span class="lane-name">feature/overview</span><span class="lane-meta">2 sessions</span></div><span class="lane-meta">Updated 5m ago</span></header><div class="lane-body"><article class="card"><div class="card-top"><div class="card-id"><span class="icon orange">C</span><div class="title-group"><span class="title">Claude · overview-kanban</span><span class="subtitle">agent</span></div></div><div class="status warn"><span class="pulse"></span>Waiting for input</div></div><div class="preview">等待选择原型方案 A/B/C/D，用于后续设计与落地。</div><div class="chips"><span class="chip">ui</span><span class="chip">kanban</span></div><div class="note"><span>✎</span><span>优先参考 Linear 的卡片信息密度</span></div></article><article class="card"><div class="card-top"><div class="card-id"><span class="icon">X</span><div class="title-group"><span class="title">Codex · css-polish</span><span class="subtitle">agent</span></div></div><div class="status"><span class="pulse"></span>Running</div></div><div class="preview">调整列间距、hover、边框，贴近现有 CSS 变量。</div><div class="chips"><span class="chip">css</span></div></article></div></section>
+    <section class="lane"><header class="lane-header"><div class="lane-title"><span class="lane-dot" style="background:var(--err)"></span><span class="lane-name">debug/handle-leak</span><span class="lane-meta">1 session</span></div><span class="lane-meta">Updated 1m ago</span></header><div class="lane-body"><article class="card"><div class="card-top"><div class="card-id"><span class="icon orange">C</span><div class="title-group"><span class="title">Claude · dotnet-dump</span><span class="subtitle">agent</span></div></div><div class="status warn"><span class="pulse"></span>Needs attention</div></div><div class="preview">ThreadMethodEntry 堆积，需要先验证 dotnet-dump 在 x86 环境可用性。</div><div class="chips"><span class="chip">dotnet</span><span class="chip">handle-leak</span></div><div class="note"><span>✎</span><span>先锁定 x86 dotnet-dump 工具链</span></div></article></div></section>
+  </div>
+</body>
+</html>

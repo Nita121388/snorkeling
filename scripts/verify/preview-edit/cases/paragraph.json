@@ -1,0 +1,25 @@
+{
+    "id": "paragraph",
+    "fixture": "list-forms.md",
+    "theme": "dark",
+    "target": {
+        "selector": ".paragraph:not(.blank-spacer)",
+        "within": ".markdown-render-root"
+    },
+    "action": {
+        "type": "dblclick",
+        "at": "text-first-line"
+    },
+    "rules": [
+        "text-zero-shift",
+        "pixel-zero-shift",
+        "no-clip",
+        "pixel-visual-parity",
+        "clean-exit",
+        "no-measure-loop",
+        "inline-style-parity",
+        "editor-kind"
+    ],
+    "expectEditor": "wysiwyg",
+    "note": "段落回归（确保不是只对列表成立）"
+}

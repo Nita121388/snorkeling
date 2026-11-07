@@ -1,0 +1,148 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+ [32m✓[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mreturns nothing without a previous snapshot[32m 6[2mms[22m[39m
+ [32m✓[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mreturns nothing when the container width changed (resize, not a card move)[32m 1[2mms[22m[39m
+ [31m×[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mmarks a status-column change as a move with the rect delta[32m 24[2mms[22m[39m
+[31m   → expected [] to deeply equal [ Array(1) ][39m
+ [31m×[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mmarks a positional shift without a status change as a reflow[32m 4[2mms[22m[39m
+[31m   → expected [] to deeply equal [ { blockId: 'a', …(3) } ][39m
+ [31m×[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mmarks a block absent from the previous snapshot as an enter (no delta)[32m 3[2mms[22m[39m
+[31m   → expected [] to deeply equal [ { blockId: 'b', …(3) } ][39m
+ [32m✓[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mdrops blocks that disappeared instead of animating them[32m 1[2mms[22m[39m
+ [32m✓[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mignores sub-pixel drift[32m 1[2mms[22m[39m
+ [32m✓[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mignores per-axis displacement larger than the viewport (layout rebuild, not a move)[32m 1[2mms[22m[39m
+ [31m×[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mdemotes moves beyond maxMoves to reflow instead of dropping them[32m 11[2mms[22m[39m
+[31m   → expected [] to have a length of 15 but got +0[39m
+ [31m×[39m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22memits moves before reflows and enters[32m 2[2mms[22m[39m
+[31m   → expected [] to deeply equal [ 'move', 'reflow', 'enter' ][39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 5 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mmarks a status-column change as a move with the rect delta
+[31m[1mAssertionError[22m: expected [] to deeply equal [ Array(1) ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   {[39m
+[32m-     "blockId": "a",[39m
+[32m-     "dx": 400,[39m
+[32m-     "dy": -80,[39m
+[32m-     "kind": "move",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m frontend/app/session-overview/overview-board-motion.test.ts:[2m40:55[22m[39m
+    [90m 38| [39m        [35mconst[39m prev [33m=[39m [34msnapshot[39m({ a[33m:[39m [34mitem[39m([34m10[39m[33m,[39m [34m120[39m[33m,[39m [32m"working"[39m) })[33m;[39m
+    [90m 39| [39m        [35mconst[39m next [33m=[39m [34msnapshot[39m({ a[33m:[39m [34mitem[39m([34m410[39m[33m,[39m [34m40[39m[33m,[39m [32m"done"[39m) })[33m;[39m
+    [90m 40| [39m        [34mexpect[39m([34mdiffBoardLayout[39m(prev[33m,[39m next[33m,[39m [33mVIEWPORT[39m))[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                                      [31m^[39m
+    [90m 41| [39m            { blockId[33m:[39m [32m"a"[39m[33m,[39m kind[33m:[39m [32m"move"[39m[33m,[39m dx[33m:[39m [34m400[39m[33m,[39m dy[33m:[39m [33m-[39m[34m80[39m }[33m,[39m
+    [90m 42| [39m        ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mmarks a positional shift without a status change as a reflow
+[31m[1mAssertionError[22m: expected [] to deeply equal [ { blockId: 'a', …(3) } ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   {[39m
+[32m-     "blockId": "a",[39m
+[32m-     "dx": 0,[39m
+[32m-     "dy": -80,[39m
+[32m-     "kind": "reflow",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m frontend/app/session-overview/overview-board-motion.test.ts:[2m48:55[22m[39m
+    [90m 46| [39m        [35mconst[39m prev [33m=[39m [34msnapshot[39m({ a[33m:[39m [34mitem[39m([34m10[39m[33m,[39m [34m120[39m[33m,[39m [32m"working"[39m) })[33m;[39m
+    [90m 47| [39m        [35mconst[39m next [33m=[39m [34msnapshot[39m({ a[33m:[39m [34mitem[39m([34m10[39m[33m,[39m [34m40[39m[33m,[39m [32m"working"[39m) })[33m;[39m
+    [90m 48| [39m        [34mexpect[39m([34mdiffBoardLayout[39m(prev[33m,[39m next[33m,[39m [33mVIEWPORT[39m))[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                                      [31m^[39m
+    [90m 49| [39m            { blockId[33m:[39m [32m"a"[39m[33m,[39m kind[33m:[39m [32m"reflow"[39m[33m,[39m dx[33m:[39m [34m0[39m[33m,[39m dy[33m:[39m [33m-[39m[34m80[39m }[33m,[39m
+    [90m 50| [39m        ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mmarks a block absent from the previous snapshot as an enter (no delta)
+[31m[1mAssertionError[22m: expected [] to deeply equal [ { blockId: 'b', …(3) } ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   {[39m
+[32m-     "blockId": "b",[39m
+[32m-     "dx": 0,[39m
+[32m-     "dy": 0,[39m
+[32m-     "kind": "enter",[39m
+[32m-   },[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m frontend/app/session-overview/overview-board-motion.test.ts:[2m56:55[22m[39m
+    [90m 54| [39m        [35mconst[39m prev [33m=[39m [34msnapshot[39m({ a[33m:[39m [34mitem[39m([34m10[39m[33m,[39m [34m10[39m[33m,[39m [32m"working"[39m) })[33m;[39m
+    [90m 55| [39m        const next = snapshot({ a: item(10, 10, "working"), b: item(10…
+    [90m 56| [39m        [34mexpect[39m([34mdiffBoardLayout[39m(prev[33m,[39m next[33m,[39m [33mVIEWPORT[39m))[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                                                      [31m^[39m
+    [90m 57| [39m            { blockId[33m:[39m [32m"b"[39m[33m,[39m kind[33m:[39m [32m"enter"[39m[33m,[39m dx[33m:[39m [34m0[39m[33m,[39m dy[33m:[39m [34m0[39m }[33m,[39m
+    [90m 58| [39m        ])[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22mdemotes moves beyond maxMoves to reflow instead of dropping them
+[31m[1mAssertionError[22m: expected [] to have a length of 15 but got +0[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 15[39m
+[31m+ 0[39m
+
+[36m [2m❯[22m frontend/app/session-overview/overview-board-motion.test.ts:[2m91:23[22m[39m
+    [90m 89| [39m            maxMoves[33m:[39m [34m12[39m[33m,[39m
+    [90m 90| [39m        })[33m;[39m
+    [90m 91| [39m        [34mexpect[39m(moves)[33m.[39m[34mtoHaveLength[39m([34m15[39m)[33m;[39m
+    [90m   | [39m                      [31m^[39m
+    [90m 92| [39m        expect(moves.filter((m) => m.kind === "move")).toHaveLength(12…
+    [90m 93| [39m        expect(moves.filter((m) => m.kind === "reflow")).toHaveLength(…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board-motion.test.ts[2m > [22mdiffBoardLayout[2m > [22memits moves before reflows and enters
+[31m[1mAssertionError[22m: expected [] to deeply equal [ 'move', 'reflow', 'enter' ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   "move",[39m
+[32m-   "reflow",[39m
+[32m-   "enter",[39m
+[32m- ][39m
+[31m+ [][39m
+
+[36m [2m❯[22m frontend/app/session-overview/overview-board-motion.test.ts:[2m107:23[22m[39m
+    [90m105| [39m        })[33m;[39m
+    [90m106| [39m        const kinds = diffBoardLayout(prev, next, VIEWPORT).map((m) =>…
+    [90m107| [39m        [34mexpect[39m(kinds)[33m.[39m[34mtoEqual[39m([[32m"move"[39m[33m,[39m [32m"reflow"[39m[33m,[39m [32m"enter"[39m])[33m;[39m
+    [90m   | [39m                      [31m^[39m
+    [90m108| [39m    })[33m;[39m
+    [90m109| [39m})[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (10)[39m
+[2m   Start at [22m 09:08:10
+[2m   Duration [22m 2.51s[2m (transform 126ms, setup 0ms, collect 146ms, tests 59ms, environment 0ms, prepare 416ms)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml

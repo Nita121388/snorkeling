@@ -57,6 +57,8 @@ electron-vite
 .gitnexus-tmp/
 
 *.jsonl
+# loop 台账的事件流是真相源，必须入库（*.jsonl 规则对它是误伤）
+!loop/LEDGER-*.jsonl
 
 # Backup files
 .backup/
@@ -71,3 +73,6 @@ scripts/cdp-gui-chat-*.mjs
 # Local scratch dirs / Windows junk
 .tmp/
 /nul
+
+# verify-* 是运行产物（截图/报告），不进仓库
+verify-runs/

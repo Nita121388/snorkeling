@@ -13,6 +13,8 @@ import { ConnectionButton } from "@/app/block/connectionbutton";
 import { DurableSessionFlyover } from "@/app/block/durable-session-flyover";
 import {
     claimInfoCard,
+    InfoCardPinProvider,
+    isInAttachedInfoCardLayer,
     isInfoCardClaimedBy,
     releaseInfoCard,
     subscribeInfoCard,
@@ -30,7 +32,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { TabTargetModal } from "@/app/tab/tab-target-modal";
+import { NewTabRowKey, TabRowAction, TabTargetModal } from "@/app/tab/tab-target-modal";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term/agent-folder";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { isAgentCardMeta } from "@/app/block/block-info-card-meta";
@@ -55,9 +57,8 @@ export type MoveBlockMenuContext = {
     currentTabId: string;
     sourceTabName: string;
     workspace: Workspace;
-    canMoveToExistingTab: boolean;
-    onMoveToExistingTab: () => void;
-    onCopyToExistingTab: () => void;
+    /** 打开统一的「Move to Tab…」弹窗（选择已有 + 新建，动作在弹窗内选）。 */
+    onOpenMoveModal: () => void;
     onMoved: (targetTabId: string) => void;
     onCopied: (targetTabId: string, blockId: string) => void;
 };
@@ -158,39 +159,13 @@ export function makeBlockMoveMenuItems(
     if (!moveContext) {
         return [];
     }
-    return [
-        {
-            label: "Move to New Tab",
-            click: () => {
-                util.fireAndForget(async () => {
-                    const targetTabId = await blockEnv.services.object.MoveBlockToNewTab(
-                        blockId,
-                        moveContext.sourceTabName
-                    );
-                    moveContext.onMoved(targetTabId);
-                });
-            },
-        },
-        {
-            label: "Move to Existing Tab...",
-            enabled: moveContext.canMoveToExistingTab,
-            click: () => moveContext.onMoveToExistingTab(),
-        },
-        {
-            label: "Copy to New Tab",
-            click: () => {
-                util.fireAndForget(async () => {
-                    const result = await blockEnv.services.object.CopyBlockToNewTab(blockId, moveContext.sourceTabName);
-                    moveContext.onCopied(result.tabid, result.blockid);
-                });
-            },
-        },
-        {
-            label: "Copy to Existing Tab...",
-            enabled: moveContext.canMoveToExistingTab,
-            click: () => moveContext.onCopyToExistingTab(),
-        },
-    ];
+    // 一条入口。历史上有 4 条（Move/Copy × New/Existing）：两条「新建」立刻执行、tab 名字不可见，
+    // 两条「选择」才开弹窗而弹窗自己不能新建。收敛后由弹窗同时承担「选已有」与「建新的」，
+    // 动作（Move / Copy）也在弹窗内按行选 —— 菜单层不再分叉。
+    // blockEnv 保留在签名里是为了不动所有调用点（覆盖各 view 右键 / header ⋯ / 框右键）。
+    void blockId;
+    void blockEnv;
+    return [{ label: "Move to Tab…", click: () => moveContext.onOpenMoveModal() }];
 }
 
 type HeaderTextElemsProps = {
@@ -407,10 +382,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
 });
 HeaderEndIcons.displayName = "HeaderEndIcons";
 
-type BlockTabActionMode = "move" | "copy";
-
 type MoveBlockToTabModalProps = {
-    mode: BlockTabActionMode;
     blockId: string;
     currentTabId: string;
     workspace: Workspace;
@@ -420,45 +392,77 @@ type MoveBlockToTabModalProps = {
     onCopied: (targetTabId: string, blockId: string) => void;
 };
 
+/**
+ * 「把 block 送到某个 tab」的唯一弹窗。
+ *
+ * 没有 Move / Copy 模式状态 —— 每行两个图标（→ Move / ⧉ Copy），点哪个就是哪个动作；
+ * 点行体 = Move（快路径）。New tab 行置顶且永远可用，动作走同一个图标对
+ * （后端 `MoveBlockToNewTab` / `CopyBlockToNewTab`）。
+ */
 const MoveBlockToTabModal = React.memo(
-    ({
-        mode,
-        blockId,
-        currentTabId,
-        workspace,
-        sourceTabName,
-        onClose,
-        onMoved,
-        onCopied,
-    }: MoveBlockToTabModalProps) => {
+    ({ blockId, currentTabId, workspace, sourceTabName, onClose, onMoved, onCopied }: MoveBlockToTabModalProps) => {
         const waveEnv = useWaveEnv<BlockEnv>();
-        const title = mode === "move" ? "Move Block" : "Copy Block";
-        const actionLabel = mode === "move" ? "Move" : "Copy";
-        const workingLabel = mode === "move" ? "Moving..." : "Copying...";
 
-        const runTabAction = React.useCallback(
+        const runMove = React.useCallback(
             async (targetTabId: string) => {
-                if (mode === "move") {
-                    await waveEnv.services.object.MoveBlockToTab(blockId, targetTabId, false);
-                    onMoved(targetTabId);
+                if (targetTabId === NewTabRowKey) {
+                    const createdTabId = await waveEnv.services.object.MoveBlockToNewTab(blockId, sourceTabName);
+                    onMoved(createdTabId);
+                    return;
+                }
+                await waveEnv.services.object.MoveBlockToTab(blockId, targetTabId, false);
+                onMoved(targetTabId);
+            },
+            [waveEnv, blockId, sourceTabName, onMoved]
+        );
+
+        const runCopy = React.useCallback(
+            async (targetTabId: string) => {
+                if (targetTabId === NewTabRowKey) {
+                    const result = await waveEnv.services.object.CopyBlockToNewTab(blockId, sourceTabName);
+                    onCopied(result.tabid, result.blockid);
                     return;
                 }
                 const newBlockId = await waveEnv.services.object.CopyBlockToTab(blockId, targetTabId, false);
                 onCopied(targetTabId, newBlockId);
             },
-            [waveEnv, mode, blockId, onMoved, onCopied]
+            [waveEnv, blockId, sourceTabName, onCopied]
+        );
+
+        const rowActions = React.useMemo<TabRowAction[]>(
+            () => [
+                {
+                    key: "move",
+                    label: `Move block to «${sourceTabName}» target tab`,
+                    icon: <i className={makeIconClass("arrow-right", true)} />,
+                    primary: true,
+                    run: ({ targetTabId }) => runMove(targetTabId),
+                },
+                {
+                    key: "copy",
+                    label: `Copy block to «${sourceTabName}» target tab`,
+                    icon: <i className={makeIconClass("clone", true)} />,
+                    run: ({ targetTabId }) => runCopy(targetTabId),
+                },
+            ],
+            [sourceTabName, runMove, runCopy]
         );
 
         return (
             <TabTargetModal
                 workspace={workspace}
                 currentTabId={currentTabId}
-                title={title}
-                subtitle={sourceTabName}
-                actionLabel={actionLabel}
-                workingLabel={workingLabel}
+                title="Move Block"
+                subtitle={`↳ from «${sourceTabName}»`}
+                actionLabel="Move"
+                workingLabel="Moving..."
                 onClose={onClose}
-                onSelect={runTabAction}
+                onSelect={async () => {}}
+                onCreate={async () => {
+                    await runMove(NewTabRowKey);
+                }}
+                createHint={`Named after «${sourceTabName}»`}
+                rowActions={rowActions}
             />
         );
     }
@@ -469,8 +473,7 @@ export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, pre
     const waveEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
     const workspace = jotai.useAtomValue(waveEnv.atoms.workspace);
-    const [tabActionModalMode, setTabActionModalMode] = React.useState<BlockTabActionMode>(null);
-    const canMoveToExistingTab = (workspace?.tabids ?? []).some((tabId) => tabId !== tabModel.tabId);
+    const [moveModalOpen, setMoveModalOpen] = React.useState(false);
     const handleMoved = React.useCallback(
         (targetTabId: string) => {
             waveEnv.electron.setActiveTab(targetTabId);
@@ -495,25 +498,22 @@ export function useBlockMoveMenu(nodeModel: NodeModel, viewModel: ViewModel, pre
                       currentTabId: tabModel.tabId,
                       sourceTabName: sourceTabName || "Tab",
                       workspace,
-                      canMoveToExistingTab,
-                      onMoveToExistingTab: () => setTabActionModalMode("move"),
-                      onCopyToExistingTab: () => setTabActionModalMode("copy"),
+                      onOpenMoveModal: () => setMoveModalOpen(true),
                       onMoved: handleMoved,
                       onCopied: handleCopied,
                   }
                 : null,
-        [preview, workspace, tabModel.tabId, sourceTabName, canMoveToExistingTab, handleMoved, handleCopied]
+        [preview, workspace, tabModel.tabId, sourceTabName, handleMoved, handleCopied]
     );
 
     const moveTabModal =
-        tabActionModalMode && moveContext ? (
+        moveModalOpen && moveContext ? (
             <MoveBlockToTabModal
-                mode={tabActionModalMode}
                 blockId={nodeModel.blockId}
                 currentTabId={moveContext.currentTabId}
                 workspace={moveContext.workspace}
                 sourceTabName={moveContext.sourceTabName}
-                onClose={() => setTabActionModalMode(null)}
+                onClose={() => setMoveModalOpen(false)}
                 onMoved={handleMoved}
                 onCopied={handleCopied}
             />
@@ -572,6 +572,8 @@ const BlockFrame_Header = ({
     const hideHoverTimerRef = React.useRef<number | null>(null);
     const hideCardTimerRef = React.useRef<number | null>(null);
     const cardFocusRef = React.useRef(false);
+    /** 附属浮层（属性值下拉等 portal 到 body 的浮层）的 pin 计数：> 0 时不因 hover/失焦收卡。 */
+    const cardPinCountRef = React.useRef(0);
     // 卡片容器（用于「点击外侧」包含判定；header 元素由它 closest 得到）。
     const cardElRef = React.useRef<HTMLDivElement | null>(null);
     const cancelPendingHideHover = React.useCallback(() => {
@@ -590,6 +592,10 @@ const BlockFrame_Header = ({
         cancelPendingHideCard();
         hideCardTimerRef.current = window.setTimeout(() => {
             hideCardTimerRef.current = null;
+            // 定时器挂起期间可能已被钉住（浮层刚打开 / 焦点进卡片），到期时再确认一次。
+            if (cardFocusRef.current || cardPinCountRef.current > 0) {
+                return;
+            }
             cardFocusRef.current = false;
             setIsCardOpen(false);
         }, 300);
@@ -597,10 +603,34 @@ const BlockFrame_Header = ({
     const closeCardNow = React.useCallback(() => {
         cancelPendingHideCard();
         cardFocusRef.current = false;
+        cardPinCountRef.current = 0;
         setIsCardOpen(false);
     }, [cancelPendingHideCard]);
-    // 点击外侧关闭：卡片容器是 header 的直接子节点，两者任一包含点击目标都算「内部」。
+
+    // 附属浮层（portal 到 body 的属性值浮层）保活：打开即 pin，关闭即 release。
+    const pinCard = React.useCallback(() => {
+        cardPinCountRef.current += 1;
+        cancelPendingHideCard();
+        claimInfoCard(claimTokenRef.current);
+        setIsCardOpen(true);
+    }, [cancelPendingHideCard]);
+    const releaseCardPin = React.useCallback(() => {
+        cardPinCountRef.current = Math.max(0, cardPinCountRef.current - 1);
+        if (cardPinCountRef.current > 0) {
+            return;
+        }
+        // 浮层关掉了：焦点不在卡内、指针也不在卡上时，按常规延迟收起。
+        if (cardFocusRef.current || cardElRef.current?.matches(":hover")) {
+            return;
+        }
+        scheduleHideCard();
+    }, [scheduleHideCard]);
+    // 点击外侧关闭：卡片容器是 header 的直接子节点，两者任一包含点击目标都算「内部」；
+    // 附属浮层（portal 到 body 的属性值浮层）也算内部，否则在浮层里点选项会把卡片关掉。
     const isInsideCardOrHeader = React.useCallback((target: Node) => {
+        if (isInAttachedInfoCardLayer(target)) {
+            return true;
+        }
         const cardEl = cardElRef.current;
         if (cardEl == null) {
             return false;
@@ -665,8 +695,8 @@ const BlockFrame_Header = ({
                 }, 2000);
                 // 卡片不跟 header 高亮一起等 2s：指针离开 header 后 300ms 收起。
                 // 指针进了卡片时，卡片自己的 mouseenter 会 cancel 掉这个定时器；
-                // 卡片内有焦点（正在写 note）时保持打开，交给失焦/点击外侧关闭。
-                if (!cardFocusRef.current) {
+                // 卡片内有焦点（正在写 note）或附属浮层开着时保持打开，交给失焦/点击外侧关闭。
+                if (!cardFocusRef.current && cardPinCountRef.current === 0) {
                     scheduleHideCard();
                 }
             }}
@@ -739,8 +769,14 @@ const BlockFrame_Header = ({
                         setIsCardOpen(true);
                     }}
                     onBlurCapture={(event) => {
-                        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) {
-                            return;
+                        if (event.relatedTarget instanceof Node) {
+                            // 附属浮层也是“卡内”：焦点从卡片走进浮层，不算离开。
+                            if (
+                                event.currentTarget.contains(event.relatedTarget) ||
+                                isInAttachedInfoCardLayer(event.relatedTarget)
+                            ) {
+                                return;
+                            }
                         }
                         cardFocusRef.current = false;
                         // 指针还在卡片上就先不关，等 mouseleave；否则焦点走了就该收卡。
@@ -751,14 +787,17 @@ const BlockFrame_Header = ({
                     }}
                     onMouseLeave={() => {
                         cancelPendingHideCard();
-                        // 钉住期间不因鼠标移开而关闭；由「点击外侧」或失焦负责关闭。
-                        if (cardFocusRef.current) {
+                        // 钉住期间（焦点在卡片内 / 附属浮层开着）不因鼠标移开而关闭；
+                        // 由「点击外侧」或失焦负责关闭。
+                        if (cardFocusRef.current || cardPinCountRef.current > 0) {
                             return;
                         }
                         scheduleHideCard();
                     }}
                 >
-                    {BlockInfoCard({ blockId: nodeModel.blockId, blockData: blockData ?? null, mode: "gui" })}
+                    <InfoCardPinProvider pin={pinCard} release={releaseCardPin}>
+                        {BlockInfoCard({ blockId: nodeModel.blockId, blockData: blockData ?? null, mode: "gui" })}
+                    </InfoCardPinProvider>
                 </div>
             )}
         </div>

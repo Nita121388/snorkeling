@@ -51,7 +51,7 @@ describe("PropertyList", () => {
         expect(markup).toContain("v0");
         expect(markup).toContain("v4");
         expect(markup).not.toContain("v5");
-        expect(markup).toContain("+2 more properties");
+        expect(markup).toContain("More properties (2)");
     });
 
     it("marks AI-sourced values", () => {
@@ -70,12 +70,44 @@ describe("PropertyList", () => {
         expect(markup).toContain("✨");
     });
 
-    it("renders read-only properties without an enabled edit button", () => {
+    it("detail 模式把只读低价值内置行折叠到 More properties 之后", () => {
         const markup = renderToStaticMarkup(
-            <PropertyList summary={makeSummary({ createdAt: 1767225600000 })} mode="detail" canEdit />
+            <PropertyList
+                summary={makeSummary({ createdAt: 1767225600000, updatedAt: 1767225600000 })}
+                mode="detail"
+                canEdit
+            />
         );
-        expect(markup).toContain("Created");
-        expect(markup).toContain("property-readonly");
+        // Title Source / Starred / Created / Updated 四行默认折叠。
+        expect(markup).not.toContain('data-property-key="created_at"');
+        expect(markup).not.toContain('data-property-key="updated_at"');
+        expect(markup).toContain("More properties (3)");
+    });
+
+    it("detail 模式给空的 Note 一个与其它属性一致的空态", () => {
+        const markup = renderToStaticMarkup(<PropertyList summary={makeSummary({ note: "" })} mode="detail" />);
+        expect(markup).toContain('data-property-key="note"');
+        expect(markup).toContain("property-empty");
+        // 不再只在 card 模式才出现占位文案。
+        expect(markup).not.toContain("Click to add a note...");
+    });
+
+    it("select 类型内置值按 humanize 显示而不是原始枚举", () => {
+        const markup = renderToStaticMarkup(
+            <PropertyList summary={makeSummary({ titleSource: "first_user_message" })} mode="card" />
+        );
+        expect(markup).toContain("First User Message");
+    });
+
+    it("detail 模式不铺出本会话无值的模板属性", () => {
+        const markup = renderToStaticMarkup(
+            <PropertyList
+                summary={makeSummary({ note: "n" })}
+                mode="detail"
+                schema={[{ key: "tech_stack", name: "Tech Stack", type: "multi_select", order: 1 }]}
+            />
+        );
+        expect(markup).not.toContain("Tech Stack");
     });
 
     it("invokes onEditNote when the note row is clicked", () => {

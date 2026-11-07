@@ -1,8 +1,12 @@
-> 同步状态：◐ 部分落地（方案 E 已实现于 2026-05-20，A/B/C/D/F/G 仍为备选）
+> 同步状态：▼ 过时（2026-11-03 被 `agent-card-hybrid` 取代：左侧 3px 色条已从 `info-card.scss` 移除，状态改由右上 chip + 标题引用线表达）
 > 镜像源：frontend/app/view/term/agent-hover-card.tsx, frontend/app/element/info-card/info-card.scss
-> 最后同步：2026-05-20
+> 最后同步：2026-11-03
 
 # Agent Card 强调线改造（两头弯曲 → 通长圆头直条）
+
+> **后续（2026-11-03）**：方案 E（左侧通长圆头色条）已在整个卡片重构中**移除**。
+> 背景与原因见 `../agent-card-hybrid/README.md` 与 `docs/project/agent-card-layout.md`；
+> 本目录保留作为「色条圆角裁切」问题的历史记录。
 
 ## 问题
 

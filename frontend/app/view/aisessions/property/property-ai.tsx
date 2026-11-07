@@ -33,12 +33,15 @@ export function AIPropertiesButton({
     connection,
     summary,
     onApplied,
+    compact = false,
 }: {
     service: AISessionsServiceType;
     sessionId: string;
     connection: string;
     summary: SessionSummary | null;
     onApplied?: () => void;
+    /** hover 卡 footer：只渲染 ✨ 图标按钮，文案进 title / aria-label。 */
+    compact?: boolean;
 }) {
     const [status, setStatus] = React.useState<"idle" | "loading" | "ready" | "applying">("idle");
     const [suggestions, setSuggestions] = React.useState<PropertySuggestion[]>([]);
@@ -127,8 +130,14 @@ export function AIPropertiesButton({
     return (
         <div className="property-ai">
             {status === "idle" && suggestions.length === 0 ? (
-                <button type="button" className="property-ai-trigger" onClick={() => void generate()}>
-                    ✨ AI auto-fill
+                <button
+                    type="button"
+                    className={cn("property-ai-trigger", compact && "property-ai-trigger--icon")}
+                    title="AI auto-fill"
+                    aria-label="AI auto-fill"
+                    onClick={() => void generate()}
+                >
+                    ✨{compact ? null : " AI auto-fill"}
                 </button>
             ) : null}
             {status === "loading" ? <span className="property-ai-status">Generating…</span> : null}

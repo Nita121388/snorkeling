@@ -9,18 +9,30 @@ import {
     getAgentRuntimeMetadataSnapshot,
     subscribeAgentRuntimeMetadata,
 } from "@/app/agent-status/agent-runtime-metadata-store";
-import { agentStatusPresentation, formatAgentProvider } from "@/app/agent-status/agent-status-derive";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
 import { CopyButton } from "@/app/element/copybutton";
-import { InfoCard, InfoCardIcon, InfoCardSection } from "@/app/element/info-card";
+import { InfoCard, InfoCardSection } from "@/app/element/info-card";
 import { SessionNoteSection } from "@/app/element/info-card/session-note-section";
 import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
+import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
+import { agentStatusAccent } from "@/app/agent-status/agent-status-view";
+import { useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
+import { AgentStatusChip } from "@/app/session-overview/agent-status-chip";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { humanizeKey } from "@/app/view/aisessions/property/property-model";
 import { modalsModel } from "@/app/store/modalmodel";
 import { copyText } from "@/util/clipboard";
 import { cn } from "@/util/util";
 import * as React from "react";
+import {
+    getAgentProviderKey,
+    resolveAgentModel,
+    resolveAgentProviderLabel,
+    resolveAgentVendorName,
+    resolveAnyAgentVendorName,
+} from "@/app/view/term/agent-identity";
 
 /**
  * AgentHoverCard - 统一的 agent 会话卡片 (note + TUI 模式下的用户消息列表)
@@ -45,9 +57,15 @@ export type AgentHoverCardProps = {
     mode: "gui" | "tui";
     /** 弹窗内渲染（AgentCardModal）：放大尺寸，不显示悬浮卡底部复制栏。 */
     embedded?: boolean;
+    /**
+     * 无外框形态：不渲染 .info-card 的 border / radius / shadow / 背景，
+     * 让弹窗表面本身充当卡面（design-system §8 禁止 modal 内嵌 card）。
+     * 只做减法，左侧状态色条与状态圆点保留。
+     */
+    frameless?: boolean;
 };
 
-const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false }: AgentHoverCardProps) => {
+const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false, frameless = false }: AgentHoverCardProps) => {
     const sessionId = React.useMemo(
         () => resolveBlockSessionId((blockData?.meta ?? {}) as Record<string, unknown>),
         [blockData]
@@ -64,11 +82,15 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false 
     // Persona session key: block meta/command resolution first, then the live
     // agent status (hooks may know the session id before it is persisted).
     const personaSessionId = sessionId || agentStatus?.sessionId || "";
+    const metaRecord = (blockData?.meta ?? {}) as Record<string, unknown>;
     const rawProvider =
         agentStatus?.provider != null && agentStatus.provider.trim() !== ""
             ? agentStatus.provider
-            : normalizeAgentProvider(blockData?.meta?.["agent:provider"]);
-    const provider = formatAgentProvider(rawProvider);
+            : normalizeAgentProvider(metaRecord["agent:provider"]);
+    const providerKey = getAgentProviderKey(rawProvider);
+    const vendorName = resolveAgentVendorName(metaRecord, providerKey) || resolveAnyAgentVendorName(metaRecord);
+    const providerLabel = resolveAgentProviderLabel(metaRecord, agentStatus);
+    const displayProvider = vendorName || providerLabel;
 
     // 异步增强真实模型：立即显示请求模型，live 会话模型到达后增量替换；失败保留原值、不阻塞。
     const runtimeEntry = React.useSyncExternalStore(
@@ -81,26 +103,38 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false 
     }, [blockId, sessionId, rawProvider]);
 
     const requestedModel =
-        (blockData?.meta?.["agent:requestedmodel"] as string)?.trim() ||
-        (blockData?.meta?.["model"] as string)?.trim() ||
-        "";
+        (metaRecord["agent:requestedmodel"] as string)?.trim() || (metaRecord["model"] as string)?.trim() || "";
     const liveModel = runtimeEntry?.source === "live" ? runtimeEntry.model : undefined;
-    const model = liveModel || requestedModel;
+    const sessionResolvedModel = runtimeEntry?.source === "session" ? runtimeEntry.model : undefined;
+    const model = resolveAgentModel({ liveModel, requestedModel, sessionModel: sessionResolvedModel });
     const modelLoading = runtimeEntry?.loading ?? false;
-    const statusPres = agentStatus != null ? agentStatusPresentation(agentStatus) : null;
-    const statusState = agentStatus?.state ?? "unknown";
-    // 状态色：原型 agent-id-card 的映射，用现成主题 token。
-    const statusAccent =
-        statusState === "working"
-            ? "var(--agent-working-color)"
-            : statusState === "done"
-              ? "var(--agent-done-color)"
-              : statusState === "blocked" || statusState === "rate-limited"
-                ? "var(--warning-color, #f59e0b)"
-                : statusState === "error"
-                  ? "var(--error-color)"
-                  : "var(--secondary-text-color)";
-    const isThinking = agentStatus != null && statusState === "working" && agentStatus.phase === "thinking";
+    const statusView = useAgentStatusView(blockId, agentStatus);
+    // read 由 AgentStatusView 统一判定（ack 指纹 + Done 完成态已读时刻），
+    // 卡片不再自己拼 "有状态就绿色" —— 那是 Done 永不跟随 seen 的根因。
+    const statusRead = statusView?.read ?? "seen";
+    // 状态色：原型 agent-id-card 的映射，用现成主题 token；已读收敛到 secondary。
+    const statusAccent = agentStatusAccent(statusView?.tone ?? "unknown", statusRead);
+    // 卡片 ack：与头部徽章走同一个收口函数，保证 R 指纹与 D 完成态两份 map 同时写。
+    const handleAckCardStatus = React.useCallback((targetBlockId: string, status: AgentStatus) => {
+        ackAgentStatus(targetBlockId, status, "card-pill");
+    }, []);
+    /**
+     * 手动改名。
+     *
+     * 写入成功 → 如果这个 block 当前已经处于 Done（用户改标题 bump 了 UpdatedAt，
+     * presentAgentStatus 会把 idle + 未读活动提升成 done），立刻 ack 掉：这是用户
+     * 自己制造的更新，不该再提示一次。不改后端行为、不改 derive 规则。
+     */
+    const handleRenameTitle = React.useCallback(
+        async (next: string) => {
+            const updated = await noteState.renameTitle(next);
+            if (updated != null && agentStatus != null && statusView?.state === "done") {
+                ackAgentStatus(blockId, agentStatus, "title-edit");
+            }
+            return updated;
+        },
+        [agentStatus, blockId, noteState, statusView]
+    );
     const personas = useAgentPersonas();
     const sessionEmojis = useSessionEmojis();
     const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
@@ -138,7 +172,18 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false 
             blockData,
         });
     }, [blockId, blockData]);
-    const showMetaRow = (provider !== "" && provider !== "Agent") || model !== "" || modelLoading || statusPres != null;
+    // 头部区只在确实有身份/模型/状态信息时才渲染：providerLabel 的 "Agent" 是
+    // 无任何来源时的兜底展示，不能拿它当“有信息”的判据，否则空会话也会长出空白头。
+    const showMetaRow =
+        providerLabel !== "Agent" || model !== "" || modelLoading || statusView != null;
+    // 星标与标题来源从属性区上移：星标进右上角，titleSource 并入副标题。
+    const starred = noteState.summary?.marked === true;
+    const titleSource = noteState.summary?.titleSource ?? "";
+    const modelText = model || (modelLoading ? "获取中…" : "未指定");
+    const subline = titleSource !== "" ? `${modelText} · ${humanizeKey(titleSource)}` : modelText;
+    // session id 只留头尾，全文进 title：340px 宽的 hover 卡放不下完整 uuid。
+    const shortSessionId =
+        sessionId.length > 14 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-4)}` : sessionId;
 
     // 会话摘要未就绪时也允许渲染（只要 agent 模型/状态信息可用）；Note 段仅在摘要就绪后显示。
     if (!showMetaRow && summary == null) {
@@ -146,15 +191,24 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false 
     }
 
     return (
-        <InfoCard className={cn("agent-card", embedded && "agent-card--embedded")} style={{ "--info-card-accent": statusAccent } as React.CSSProperties}>
-            {/* 模型 + 状态 section */}
+        <InfoCard
+            className={cn(
+                "agent-card",
+                embedded && "agent-card--embedded",
+                frameless && "agent-card--frameless"
+            )}
+            style={{ "--info-card-accent": statusAccent } as React.CSSProperties}
+        >
+            {/* 模型 + 状态 section：头像 / 名称 + 副标题 / 右上角三件套 */}
             {showMetaRow && (
-                <InfoCardSection>
+                <InfoCardSection className="agent-card-head-section">
                     <div className="agent-card-head">
                         {agentIcon != null ? (
-                            <span
-                                className="agent-card-logo agent-card-logo--clickable"
+                            <button
+                                type="button"
+                                className={cn("agent-card-avatar", agentIcon.kind === "emoji" && "is-emoji")}
                                 title="设置 emoji 人格"
+                                aria-label="设置 emoji 人格"
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -177,57 +231,104 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false 
                                 ) : (
                                     agentIcon.icon
                                 )}
-                            </span>
-                        ) : (
-                            <InfoCardIcon icon="fa-sharp fa-solid fa-microchip" />
-                        )}
-                        <span className="agent-card-provider">{provider}</span>
-                        <span className="agent-card-model">{model || (modelLoading ? "获取中…" : "未指定")}</span>
-                        {!embedded ? (
-                            <button
-                                type="button"
-                                className="agent-card-expand-btn"
-                                title="Open card in dialog"
-                                aria-label="Open card in dialog"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    openCardDialog();
-                                }}
-                            >
-                                <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
                             </button>
-                        ) : null}
-                    </div>
-                    {statusPres != null && (
-                        <div className="agent-card-status-row">
+                        ) : (
+                            <span className="agent-card-avatar">
+                                <i className="fa-sharp fa-solid fa-microchip" />
+                            </span>
+                        )}
+                        <div className="agent-card-id">
+                            <span className="agent-card-name" title={vendorName ? `${vendorName} (${providerLabel})` : providerLabel}>
+                                {displayProvider !== "" ? displayProvider : "Agent"}
+                            </span>
                             <span
-                                className={cn("agent-card-status-dot", {
-                                    "is-working": statusState === "working",
-                                    "is-thinking": isThinking,
-                                })}
-                            />
-                            <span className="agent-card-status-label">{statusPres.label}</span>
+                                className="agent-card-sub"
+                                title={titleSource !== "" ? `Title source: ${titleSource}` : modelText}
+                            >
+                                {subline}
+                            </span>
                         </div>
-                    )}
+                        {/* 右上角：状态 / 收藏 / 放大，同一基线右对齐 */}
+                        <div className="agent-card-actions">
+                            {statusView != null ? (
+                                // 共享 chip 的 card 变体：几何（20px 胶囊 + dot）与文案/跑时全部
+                                // 来自 agent-status-chip.scss + buildAgentStatusChipView，
+                                // 本文件不再自己拼 label / class / 动画。
+                                <AgentStatusChip
+                                    variant="card"
+                                    status={agentStatus}
+                                    now={Date.now()}
+                                    blockId={blockId}
+                                    unread={statusRead === "unread"}
+                                    onAck={statusView.ackable ? handleAckCardStatus : undefined}
+                                />
+                            ) : null}
+                            {noteState.summary != null ? (
+                                <button
+                                    type="button"
+                                    className={cn("agent-card-icon-btn", "is-star", starred && "is-on")}
+                                    aria-pressed={starred}
+                                    aria-busy={noteState.starPending}
+                                    aria-label={starred ? "取消收藏" : "收藏"}
+                                    title={starred ? "取消收藏" : "收藏"}
+                                    disabled={noteState.starPending}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void noteState.toggleStarred();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-star" />
+                                </button>
+                            ) : null}
+                            {!embedded ? (
+                                <button
+                                    type="button"
+                                    className="agent-card-icon-btn agent-card-expand-btn"
+                                    title="Open card in dialog"
+                                    aria-label="Open card in dialog"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openCardDialog();
+                                    }}
+                                >
+                                    <i className="fa-sharp fa-solid fa-up-right-and-down-left-from-center" />
+                                </button>
+                            ) : null}
+                        </div>
+                    </div>
                 </InfoCardSection>
             )}
-            {/* Note + tags section（与会话详情卡片共用）；悬浮卡现在也允许内联编辑，
-                编辑时 InfoCardPortal 的 cardProps 焦点保活会防止 hover 离开打断。 */}
-            <SessionNoteSection state={noteState} canEditProperties onOpenCardDialog={embedded ? undefined : openCardDialog} />
-            {/* Session ID 底行（复制） */}
-            {sessionId !== "" && (
-                <div className="agent-card-session-id">
-                    <span className={cn("agent-card-session-id-text", { "is-error": copyFailed })} title={sessionId}>
-                        {sessionId}
-                    </span>
-                    <CopyButton
-                        className="agent-card-copy-btn"
-                        title={`Copy session id${copyFailed ? " (failed)" : ""}`}
-                        onClick={handleCopySessionId}
-                        onError={() => setCopyFailed(true)}
-                    />
-                </div>
-            )}
+            {/* Note + tags section（与会话详情卡片共用）；悬浮卡也允许内联编辑，
+                编辑时 InfoCardPortal 的 cardProps 焦点保活会防止 hover 离开打断。
+                session id + 复制通过 footerExtra 进到「Add property」同一行。
+
+                不传 `onOpenCardDialog`：它只在 SessionNoteSection 的 `variant !== "hover"`
+                分支被消费（session-note-section.tsx:285），本卡恒传 `variant="hover"`，
+                传进去是死代码（旧代码的 `embedded ? undefined : ...` 三元同样从未生效）。 */}
+            <SessionNoteSection
+                state={noteState}
+                canEditProperties
+                variant="hover"
+                onRenameTitle={handleRenameTitle}
+                footerExtra={
+                    sessionId !== "" ? (
+                        <span className="agent-card-session">
+                            <span
+                                className={cn("agent-card-sid", { "is-error": copyFailed })}
+                                title={sessionId}
+                            >
+                                {shortSessionId}
+                            </span>
+                            <CopyButton
+                                className="agent-card-copy-btn"
+                                title={`Copy session id${copyFailed ? " (failed)" : ""}`}
+                                onClick={handleCopySessionId}
+                                onError={() => setCopyFailed(true)}
+                            />
+                        </span>
+                    ) : null
+                }
+            />
         </InfoCard>
     );
 });

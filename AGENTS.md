@@ -1,5 +1,31 @@
 # Snorkeling Codex Instructions
 
+## 👉 接手先读 `HANDOFF.md`
+
+仓库根目录的 **`HANDOFF.md`** 是当前状态页（哪批功能到哪了、下一步做什么）。开工前先读它。
+
+## 🔁 开发流程 = `loop/` 门链，不是"直接改代码"
+
+**动手之前先确认自己在队列里是哪一包。** 没有工作项就先建，不为"顺手"开工。
+
+```bash
+node loop/queue.mjs list            # 全景：谁在哪个门、今晚队列有哪些
+node loop/queue.mjs pending         # 值班第一步：人写了批注还没人回的（必须逐条三选一）
+node loop/queue.mjs run --id X --dry-run   # 取件前的准入校验；门不清会被直接拒
+node loop/queue.mjs prove --id X    # 跑判据采数字（不接受"我看了一下没问题"）
+```
+
+四条硬规则（违反即停，不要自己找理由绕过）：
+
+1. **门不清不许取件** —— `bug/fix-small` 只要 G2 器具 + G7 人验收；`feature/redesign/new-surface` 还有 H 门等白天签。
+2. **判据必须有数字** —— 新增/修改行为前先写得出「命令 → 期望输出」。写不出 = 该包永远进不了队列。
+3. **白名单外不写** —— 每包有 `touch` 路径白名单，写出界即 `out-of-scope` park。
+4. **子 agent 不记台账、不提交、不动看板** —— 只有主 agent 写。
+
+- 规则全文：`loop/RUNBOOK.md`（3 分钟读完）
+- 契约（改 `loop/**` 前必读）：`.trellis/spec/guides/day-night-loop-contract.md`
+- 看板：`node E:/primary/projects/loop/board/scripts/start.mjs` → `http://127.0.0.1:7799`（引擎与看板同仓，2026-11-06 合并）
+
 @.kilocode/rules/rules.md
 
 Read and honor the existing project guidance in `CLAUDE.md` and any referenced skill guides when the task matches them.
@@ -21,6 +47,21 @@ When generating or editing design-related files (designs, prototypes, research d
 - Keep this environment scoped to the command process. Do not persistently edit machine/user PATH, Go env, npm config, or device-debugging global variables.
 - When assigning temporary env vars inside a nested PowerShell `-Command` string, escape `$env:` as `` `$env:FOO='bar'`` so the outer shell does not expand it before the child process starts.
 - Prefer targeted package tests for the touched area first. If the toolchain is still unavailable after `npm run setup` and loading `scripts/use-local-env.ps1`, report those exact checks and blocker.
+
+## 真机验证（自验证，收尾必做）
+
+验证结论必须**可机器判定 + 有证据**，不允许"我看了一下没问题"。
+
+- 改 UI / 交互 / 跨面一致性 → 收尾跑对应验证台；先 `node scripts/verify/index.mjs` 看有哪些 area 和最近结论。
+- 台账 `docs/project/verify-ledger.md` **入库**（一行结论）；明细与截图在 `verify-runs/`（gitignore）。
+- 新 area：复制 `scripts/verify/_template/verify.mjs`，能力只从 `scripts/verify/lib/` 拿
+  （`cdp` / `launch` / `probes` / `report` / `pixel`），别写第二份 CDP client 或 report 逻辑；
+  登记到 `scripts/verify/README.md` 的 area 表。
+- 出口统一：`0` 全绿 / `1` 断言失败 / `2` 环境错误；有意没覆盖的面写进 `skipped`，不要静默省略。
+- 验证实例是**真的 Electron 窗口**：默认跑完自动关（端口→PID），只有 `--keep-open` 才留；
+  不打招呼不要批量起实例。
+- 经验沉淀位置：硬约束进 `.trellis/spec/snorkeling-docs/frontend/quality-guidelines.md`，
+  方法论进 `docs/project/ui-verify-playbook.md`；**每次验证踩到新坑都要回写其中一处**。
 
 ## Electron UI inspection
 

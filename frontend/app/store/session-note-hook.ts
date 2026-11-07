@@ -50,6 +50,11 @@ export type SessionNoteState = {
     inputRef: React.RefObject<HTMLTextAreaElement | null>;
     /** 结束编辑（失焦/Escape）时落盘。 */
     finishEditing: () => void;
+    /**
+     * 立即落盘任何待保存的草稿：取消防抖定时器，若有未保存修改就立刻写库。
+     * 用于悬浮卡卸载前兜底（避免鼠标快速移出时防抖还没到期就丢编辑）。
+     */
+    flushSave: () => void;
     trimmedDraft: string;
     title: string;
     /** 卡片上展示的一行预览：note 首行 → 标签 → 占位。 */
@@ -69,6 +74,19 @@ export type SessionNoteState = {
     generateTitle: () => Promise<void>;
     applyTitle: () => Promise<void>;
     dismissTitle: () => void;
+    /**
+     * 手动改名（用户直接输入）。与 applyTitle 同一广播通道：
+     * `service.Title` → `dispatchAISessionNoteUpdated` → note-cache merge → 所有面同帧刷新。
+     *
+     * 返回写入后的 summary（null = 没写/失败），调用面据此决定是否退出编辑态。
+     * **本 hook 不接收 blockId**（现有签名只有 sessionId + connection），
+     * 所以「改名不得点亮 Done」的 ack 由调用面负责（见 design.md §3.3）。
+     */
+    renameTitle: (next: string) => Promise<SessionSummary | null>;
+    /** 星标（summary.marked）。写库期间为 true，按钮应 disabled。 */
+    starPending: boolean;
+    /** 切换星标：Mark(key, !marked) → dispatchAISessionNoteUpdated。失败写 error。 */
+    toggleStarred: () => Promise<void>;
 };
 
 function firstLine(text: string): string {
@@ -98,6 +116,10 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
     const saveSeqRef = React.useRef(0);
     const saveTimerRef = React.useRef<number | null>(null);
     const latestDraftRef = React.useRef("");
+    const dirtyRef = React.useRef(false);
+    // Latest `saveNote` closure, so the unmount cleanup (which only runs once with
+    // the first-render closure) still saves with current summary/connection.
+    const saveNoteRef = React.useRef<((nextNote: string) => void) | null>(null);
 
     // 触发后台加载（幂等）；快照通过 useSyncExternalStore 订阅。
     React.useEffect(() => {
@@ -145,6 +167,10 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
     React.useEffect(() => {
         latestDraftRef.current = noteDraft;
     }, [noteDraft]);
+
+    React.useEffect(() => {
+        dirtyRef.current = dirty;
+    }, [dirty]);
 
     React.useEffect(() => {
         if (saveStatus !== "saved" && saveStatus !== "error") {
@@ -234,8 +260,24 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
             window.clearTimeout(saveTimerRef.current);
             saveTimerRef.current = null;
         }
-        saveNote(noteDraft);
-    }, [noteDraft, saveNote]);
+        saveNote(latestDraftRef.current);
+    }, [saveNote]);
+
+    // 立即落盘：取消防抖定时器，有未保存修改就同步发一次保存请求。
+    // 不依赖 isEditing（悬浮卡卸载时编辑态可能已经不存在，但草稿仍需落盘）。
+    const flushSave = React.useCallback(() => {
+        if (saveTimerRef.current != null) {
+            window.clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+        }
+        if (dirtyRef.current) {
+            saveNote(latestDraftRef.current);
+        }
+    }, [saveNote]);
+
+    React.useEffect(() => {
+        saveNoteRef.current = saveNote;
+    }, [saveNote]);
 
     // 防抖自动保存：只在用户真的输入过（dirty）且内容与后端不一致时才落盘。
     // 与列表行 / Note 弹窗一致：编辑态停顿同样会保存，不要求先失焦。
@@ -261,6 +303,8 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         // 同上：用展示字段而不是 summary 对象身份。
     }, [dirty, noteDraft, saveNote, summary?.note, summaryTagsKey]);
 
+    // 卸载兜底：悬浮卡 hover 移出后会立刻卸载，防抖定时器可能还没到期。
+    // 这里先把旧的在途结果作废（seq++），再用最新闭包把未保存草稿落盘一次。
     React.useEffect(() => {
         return () => {
             if (saveTimerRef.current != null) {
@@ -268,6 +312,10 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
                 saveTimerRef.current = null;
             }
             saveSeqRef.current++;
+            if (dirtyRef.current && saveNoteRef.current != null) {
+                // saveNote 内部会再 seq++ 并把结果绑定到新 seq，所以不会被上面那次 ++ 作废。
+                saveNoteRef.current(latestDraftRef.current);
+            }
         };
     }, []);
 
@@ -370,12 +418,67 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         setTitleSuggestion("");
         setTitleError("");
     }, []);
+    // ── 手动改名（用户直接输入） ──
+    // 与 applyTitle 同一条通道，差别只在于名字来自用户而不是 AI 提案。
+    // trim 后为空 / 与现值相同 一律不发请求（避免白写一次库并 bump UpdatedAt）。
+    const renameTitle = React.useCallback(
+        async (next: string): Promise<SessionSummary | null> => {
+            const nextTitle = next.trim();
+            if (summary == null || sessionId === "" || nextTitle === "") {
+                return null;
+            }
+            if (nextTitle === (summary.title ?? "")) {
+                return null;
+            }
+            try {
+                // origin 传 connection：远端会话要落到对应 origin 的 manager 上。
+                const updated = await service.Title(sessionId, nextTitle, connection || "");
+                // 广播后 note-cache 与所有卡片拿到新 title，不在本地硬改 summary。
+                dispatchAISessionNoteUpdated(updated);
+                setError("");
+                return updated;
+            } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
+                return null;
+            }
+        },
+        [connection, service, sessionId, summary]
+    );
     // 切换会话时清掉上一个会话的标题提案，避免 Apply 到错误会话。
     React.useEffect(() => {
         setTitleSuggestion("");
         setTitleStatus("idle");
         setTitleError("");
     }, [sessionId]);
+
+    // ── 星标（hover 卡头部，与 PropertyList 的 starred checkbox 同源） ──
+    // 不本地改 summary：Mark 成功后 dispatchAISessionNoteUpdated，session-note-cache
+    // 会把 marked merge 进快照，所有订阅面（卡片 / 列表 / 详情）一起刷新。
+    const [starPending, setStarPending] = React.useState(false);
+    const starPendingRef = React.useRef(false);
+    const toggleStarred = React.useCallback(async () => {
+        if (summary == null || starPendingRef.current) {
+            return;
+        }
+        const next = summary.marked !== true;
+        starPendingRef.current = true;
+        setStarPending(true);
+        setError("");
+        try {
+            // origin 参数：note-cache 场景是本地会话（与 setSessionProperty 的 starred 分支一致）。
+            const updated = await service.Mark(summary.key, next, "");
+            dispatchAISessionNoteUpdated(updated);
+            setSaveStatus("saved");
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.debug("[session-note] failed to toggle starred", { sessionId, error: message });
+            setSaveStatus("error");
+            setError(message);
+        } finally {
+            starPendingRef.current = false;
+            setStarPending(false);
+        }
+    }, [service, sessionId, summary]);
 
     const trimmedDraft = noteDraft.trim();
     const title = summary?.title || summary?.id || sessionId;
@@ -397,6 +500,7 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         error,
         inputRef,
         finishEditing,
+        flushSave,
         trimmedDraft,
         title,
         previewText,
@@ -414,6 +518,9 @@ export function useSessionNoteState(sessionId: string, connection: string): Sess
         generateTitle,
         applyTitle,
         dismissTitle,
+        renameTitle,
+        starPending,
+        toggleStarred,
     };
 }
 

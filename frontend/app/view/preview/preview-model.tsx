@@ -2,27 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { BlockNodeModel } from "@/app/block/blocktypes";
-import type { UnsavedFileModalChoice } from "@/app/modals/unsavedfilemodal";
 import type { FileConflictChoice } from "@/app/modals/file-conflict-modal";
-import { ContextMenuModel } from "@/app/store/contextmenu";
+import type { UnsavedFileModalChoice } from "@/app/modals/unsavedfilemodal";
 import { ConnectionOperationTimeoutMs } from "@/app/store/connection-timeout";
+import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { modalsModel } from "@/app/store/modalmodel";
+import { ObjectService } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
 import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
+import type { LayoutNode } from "@/layout/lib/types";
 import {
     createBlock,
     createBlockSplitHorizontally,
     createBlockSplitVertically,
+    getApi,
     getBlockComponentModel,
     getOverrideConfigAtom,
     refocusNode,
 } from "@/store/global";
-import { ObjectService } from "@/app/store/services";
 import * as WOS from "@/store/wos";
+import { fileInfoRequest } from "@/util/fileinfo";
 import { goHistory, goHistoryBack, goHistoryForward } from "@/util/historyutil";
 import { checkKeyPressed } from "@/util/keyutil";
 import { addOpenMenuItems } from "@/util/previewutil";
@@ -41,25 +44,15 @@ import { Atom, atom, Getter, PrimitiveAtom, WritableAtom } from "jotai";
 import { loadable } from "jotai/utils";
 import type * as MonacoTypes from "monaco-editor";
 import { createRef } from "react";
+import { isOpenableForObsidian, loadObsidianVaults, openInObsidianWithPicker } from "./obsidian";
+import { isNoiseUsagePath, resolvePathUsageKind } from "./path-usage";
+import { recordInitialPathUsage, recordPathUsage } from "./path-usage-store";
+import type { ExportFormat, ExportOptions } from "./plugins/export/export-provider";
+import { availableExportProviders, runMarkdownExport } from "./plugins/export/export-runner";
+import { isMarkdownFile } from "./plugins/export/pdf-export";
 import { PreviewView } from "./preview";
 import { makeDirectoryDefaultMenuItems } from "./preview-directory-utils";
-import { isNoiseUsagePath, resolvePathUsageKind } from "./path-usage";
-import {
-    getHtmlOpenModeEntry,
-    HtmlOpenModeEntries,
-    isHtmlPreviewPath,
-    isTextPreviewOversize,
-    resolveHtmlOpenModeFromMap,
-    resolveTextPreviewKind,
-    TextPreviewMaxBytes,
-    type HtmlOpenMode,
-} from "./preview-text-modes";
-import { getHtmlOpenMode, htmlOpenModePrefsAtom, setHtmlOpenMode } from "./preview-text-modes-store";
-import { recordInitialPathUsage, recordPathUsage } from "./path-usage-store";
-import { runMarkdownExport, availableExportProviders } from "./plugins/export/export-runner";
-import { isMarkdownFile } from "./plugins/export/pdf-export";
-import type { ExportFormat, ExportOptions } from "./plugins/export/export-provider";
-import { isOpenableForObsidian, loadObsidianVaults, openInObsidianWithPicker } from "./obsidian";
+import { findInlineTabDedupeMatch, type InlineTabCandidate } from "./preview-inline-tab";
 import {
     PreviewLiveScrollSyncMetaKey,
     PreviewLiveSourceBlockMetaKey,
@@ -76,6 +69,7 @@ import {
     resolvePreviewDirectoryDisplayMode,
     resolvePreviewOpenTargetDirectionForBlock,
 } from "./preview-navigation";
+import { resolvePreviewPlugin, shouldPreviewPluginTakeOver } from "./preview-plugin-registry";
 import {
     discardPreviewSharedDraftIfUnshared,
     getOrCreatePreviewSharedDraftRecord,
@@ -90,11 +84,19 @@ import {
     summarizePreviewDraftContent,
     summarizePreviewSharedDraftRecord,
 } from "./preview-shared-draft";
+import {
+    getHtmlOpenModeEntry,
+    HtmlOpenModeEntries,
+    isHtmlPreviewPath,
+    isTextPreviewOversize,
+    resolveHtmlOpenModeFromMap,
+    resolveTextPreviewKind,
+    TextPreviewMaxBytes,
+    type HtmlOpenMode,
+} from "./preview-text-modes";
+import { getHtmlOpenMode, htmlOpenModePrefsAtom, setHtmlOpenMode } from "./preview-text-modes-store";
 import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-drives";
-import { findInlineTabDedupeMatch, type InlineTabCandidate } from "./preview-inline-tab";
-import { resolvePreviewPlugin, shouldPreviewPluginTakeOver } from "./preview-plugin-registry";
 import type { PreviewEnv } from "./previewenv";
-
 
 // Pinned directories setting key
 const PreviewPinnedDirectoriesKey = "preview:pinned-directories";
@@ -468,6 +470,8 @@ export class PreviewModel implements ViewModel {
 
     markdownShowToc: PrimitiveAtom<boolean>;
     presentationMode: PrimitiveAtom<boolean>;
+    /** 图片预览当前缩放倍率（翻页键盘仅 scale===1 时生效）。 */
+    imageScale: PrimitiveAtom<number>;
     // markdown 导出反馈：header 显示一条带样式的瞬态状态文本（成功/失败），3s 后自动清除。
     markdownExportStatus: PrimitiveAtom<{ kind: "ok" | "err"; text: string } | null>;
     liveSourceBlockId: Atom<string | null>;
@@ -537,7 +541,13 @@ export class PreviewModel implements ViewModel {
         });
         this.markdownShowToc = atom(false);
         this.presentationMode = atom(false);
-        this.markdownExportStatus = atom<{ kind: "ok" | "err"; text: string } | null>(null) as PrimitiveAtom<{ kind: "ok" | "err"; text: string } | null>;
+        // 图片预览当前的缩放倍率：翻页键盘仅在 scale===1 时生效（不抢缩放手势）。
+        // StreamingImagePreview 的 TransformWrapper onZoom 会同步写它。
+        this.imageScale = atom(1);
+        this.markdownExportStatus = atom<{ kind: "ok" | "err"; text: string } | null>(null) as PrimitiveAtom<{
+            kind: "ok" | "err";
+            text: string;
+        } | null>;
         this.filterOutNowsh = atom(true);
         this.monacoRef = createRef();
         this.searchTargetLine = atom((get) =>
@@ -635,7 +645,12 @@ export class PreviewModel implements ViewModel {
                     icon: "folder-open",
                     longClick: (e: React.MouseEvent<any>) => {
                         const menuItems: ContextMenuItem[] = [
-                            { label: "New Files Window", click: () => { /* handled by widgets bar */ } },
+                            {
+                                label: "New Files Window",
+                                click: () => {
+                                    /* handled by widgets bar */
+                                },
+                            },
                         ];
                         ContextMenuModel.getInstance().showContextMenu(menuItems, e);
                     },
@@ -700,12 +715,14 @@ export class PreviewModel implements ViewModel {
             const exportStatus = get(this.markdownExportStatus);
             const viewTextChildren: HeaderElem[] = [
                 ...(exportStatus
-                    ? [{
-                          elemtype: "text" as const,
-                          text: exportStatus.text,
-                          title: exportStatus.text,
-                          className: exportStatus.kind === "ok" ? "text-success" : "text-error",
-                      }]
+                    ? [
+                          {
+                              elemtype: "text" as const,
+                              text: exportStatus.text,
+                              title: exportStatus.text,
+                              className: exportStatus.kind === "ok" ? "text-success" : "text-error",
+                          },
+                      ]
                     : []),
                 {
                     elemtype: "div",
@@ -873,10 +890,13 @@ export class PreviewModel implements ViewModel {
                 click: (e) =>
                     fireAndForget(() => this.openVersionControlBlock({ forceNewBlock: e.ctrlKey || e.metaKey })),
             };
-            const isLivePreviewView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
+            const isLivePreviewView =
+                loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
             const canPreview = get(this.canPreview);
             const loadableFileInfo = get(this.loadableFileInfo);
-            const isKnownDirectory = loadableFileInfo.state == "hasData" && (!!loadableFileInfo.data?.isdir || loadableFileInfo.data?.mimetype === "directory");
+            const isKnownDirectory =
+                loadableFileInfo.state == "hasData" &&
+                (!!loadableFileInfo.data?.isdir || loadableFileInfo.data?.mimetype === "directory");
             if (!explorerActive && !mimeType) {
                 return null;
             }
@@ -969,7 +989,11 @@ export class PreviewModel implements ViewModel {
         this.connection = atom<Promise<string>>(async (get) => {
             const connName = get(this.blockAtom)?.meta?.connection;
             try {
-                await this.env.rpc.ConnEnsureCommand(TabRpcClient, { connname: connName }, { timeout: ConnectionOperationTimeoutMs });
+                await this.env.rpc.ConnEnsureCommand(
+                    TabRpcClient,
+                    { connname: connName },
+                    { timeout: ConnectionOperationTimeoutMs }
+                );
                 globalStore.set(this.connectionError, "");
             } catch (e) {
                 globalStore.set(this.connectionError, e as string);
@@ -988,9 +1012,7 @@ export class PreviewModel implements ViewModel {
             }
             try {
                 const statFile = await this.env.rpc.FileInfoCommand(TabRpcClient, {
-                    info: {
-                        path,
-                    },
+                    info: fileInfoRequest(path),
                 });
                 return statFile;
             } catch (e) {
@@ -1101,9 +1123,7 @@ export class PreviewModel implements ViewModel {
             }
             try {
                 const file = await this.env.rpc.FileReadCommand(TabRpcClient, {
-                    info: {
-                        path,
-                    },
+                    info: fileInfoRequest(path),
                 });
                 return file;
             } catch (e) {
@@ -1277,9 +1297,7 @@ export class PreviewModel implements ViewModel {
             const path = formatRemoteUri(sourcePath, sourceConnection);
             try {
                 const file = await this.env.rpc.FileReadCommand(TabRpcClient, {
-                    info: {
-                        path,
-                    },
+                    info: fileInfoRequest(path),
                 });
                 return base64ToString(file?.data64);
             } catch (e) {
@@ -1380,7 +1398,7 @@ export class PreviewModel implements ViewModel {
     }
 
     /** 打开导出设置弹窗；用户确认后执行导出。 */
-    showExportModal(defaultFormat: ExportFormat = "html") {
+    async showExportModal(defaultFormat: ExportFormat = "html"): Promise<void> {
         const filePath = globalStore.get(this.metaFilePath);
         const baseName = filePath?.split(/[\\/]/).pop() ?? "export";
         const defaultFileName = baseName.replace(/\.mdx?$/i, "") || "export";
@@ -1552,9 +1570,7 @@ export class PreviewModel implements ViewModel {
 
     private async readCurrentFileContentFromDisk(filePath: string): Promise<string> {
         const file = await this.env.rpc.FileReadCommand(TabRpcClient, {
-            info: {
-                path: await this.formatRemoteUri(filePath, globalStore.get),
-            },
+            info: fileInfoRequest(await this.formatRemoteUri(filePath, globalStore.get)),
         });
         return base64ToString(file?.data64) ?? "";
     }
@@ -1743,10 +1759,10 @@ export class PreviewModel implements ViewModel {
         }
         const currentPath = targetBlockData.meta?.file ?? "";
         const updateMeta = applyDirectoryNavigationMeta(
-            this.applyOpenPathOptions(
-                goHistory("file", currentPath, newPath, targetBlockData.meta),
-                options
-            ) as Record<string, any>,
+            this.applyOpenPathOptions(goHistory("file", currentPath, newPath, targetBlockData.meta), options) as Record<
+                string,
+                any
+            >,
             resolvePreviewDirectoryDisplayMode(
                 targetBlockData.meta?.[PreviewDirectoryDisplayMetaKey],
                 globalStore.get(this.env.getSettingsKeyAtom(PreviewDefaultDirectoryDisplaySettingKey)),
@@ -1851,6 +1867,21 @@ export class PreviewModel implements ViewModel {
             return false;
         }
         return true;
+    }
+
+    /** 写单个 block meta 键（图片翻页的粘性锚点用）。 */
+    async setBlockMetaValue(key: string, value: unknown): Promise<void> {
+        const blockOref = WOS.makeORef("block", this.blockId);
+        await this.env.services.object.UpdateObjectMeta(blockOref, { [key]: value } as MetaType);
+    }
+
+    /**
+     * 在当前块内新增一个 inline tab 并打开文件（图片翻页的 Alt+←/→ 用）。
+     * 已有同路径 tab 时聚焦它（openPathInCurrentBlockAsTab 自带去重）。
+     */
+    async openPathInNewTab(newPath: string): Promise<boolean> {
+        const connection = await globalStore.get(this.connection);
+        return await this.openPathInCurrentBlockAsTab(newPath, connection, { pathIsDir: false });
     }
 
     private async openPathInCurrentBlockAsTab(
@@ -2260,11 +2291,7 @@ export class PreviewModel implements ViewModel {
             // If we can't read disk, skip conflict check and write anyway
         }
         const baseContent = stateBeforeSave?.savedContent ?? globalStore.get(this.diskBaseContent);
-        if (
-            baseContent != null &&
-            currentDiskContent != null &&
-            currentDiskContent !== baseContent
-        ) {
+        if (baseContent != null && currentDiskContent != null && currentDiskContent !== baseContent) {
             const choice = await this.promptFileConflict(filePath, {
                 baseContent,
                 myContent: newFileContent,
@@ -2286,9 +2313,7 @@ export class PreviewModel implements ViewModel {
         }
         try {
             await this.env.rpc.FileWriteCommand(TabRpcClient, {
-                info: {
-                    path: await this.formatRemoteUri(filePath, globalStore.get),
-                },
+                info: fileInfoRequest(await this.formatRemoteUri(filePath, globalStore.get)),
                 data64: stringToBase64(newFileContent),
             });
             globalStore.set(record.stateAtom, (prev) => {
@@ -2756,12 +2781,11 @@ export class PreviewModel implements ViewModel {
     togglePinnedDir(dirPath: string, label?: string): void {
         const current = globalStore.get(this.pinnedDirs);
         const idx = current.findIndex((p) => p.path === dirPath);
-        const next = idx >= 0
-            ? current.filter((_, i) => i !== idx)
-            : [...current, { path: dirPath, label: label ?? basename(dirPath), addedAt: Date.now() }];
-        fireAndForget(() =>
-            this.env.rpc.SetConfigCommand(TabRpcClient, { [PreviewPinnedDirectoriesKey]: next })
-        );
+        const next =
+            idx >= 0
+                ? current.filter((_, i) => i !== idx)
+                : [...current, { path: dirPath, label: label ?? basename(dirPath), addedAt: Date.now() }];
+        fireAndForget(() => this.env.rpc.SetConfigCommand(TabRpcClient, { [PreviewPinnedDirectoriesKey]: next }));
     }
 
     isPinned(dirPath: string): boolean {

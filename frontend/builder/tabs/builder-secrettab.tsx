@@ -114,7 +114,7 @@ const SetSecretDialog = memo(({ secretName, onSetAndMap }: SetSecretDialogProps)
 
     if (error) {
         return (
-            <Modal className="p-4 min-w-[500px]" onOk={handleClose} onClose={handleClose} okLabel="OK">
+            <Modal className="p-4 min-w-[500px]" onOk={handleClose} onClose={handleClose} okLabel="OK" padding={false}>
                 <div className="flex flex-col gap-4 mb-4">
                     <h2 className="text-xl font-semibold">Error Setting Secret</h2>
                     <div className="text-sm text-error">{error}</div>
@@ -132,6 +132,7 @@ const SetSecretDialog = memo(({ secretName, onSetAndMap }: SetSecretDialogProps)
             okLabel="Set and Map"
             cancelLabel="Cancel"
             okDisabled={!secretValue.trim() || isSubmitting}
+            padding={false}
         >
             <div className="flex flex-col gap-4 mb-4">
                 <h2 className="text-xl font-semibold">Set and Map Secret</h2>

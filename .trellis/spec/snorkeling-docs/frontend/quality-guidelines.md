@@ -1,3 +1,11 @@
+---
+description: 前端质量硬约束——可机器判定的验证判据、跨面一致性、重构收口的契约钩子、常见踩坑
+paths:
+  - frontend/**
+  - scripts/verify/**
+  - docs/project/**
+---
+
 # Quality Guidelines
 
 > Code quality standards for frontend development.
@@ -27,6 +35,29 @@ Questions to answer:
 - 新增后端 RPC 时需要同步三处：`pkg/wshrpc/wshrpctypes.go`（接口方法，反射自动注册）、`pkg/wshrpc/wshclient/wshclient.go`（Go client）、`frontend/app/store/wshclientapi.ts`（前端 RpcApi，含 mock 分支）。
 - 终端重绘不动进程：前端 `terminal.refresh(0, rows-1)` + 后端对进程组发 SIGWINCH（`unixutil.SignalGroupByName`）；绝不调用 `ControllerDestroyCommand`/`ControllerResyncCommand(forcerestart)`。
 - 信号工具优先放 `pkg/util/unixutil`（unix/windows 双实现），不要在业务层直接 `syscall.Kill`。
+
+---
+
+## Overview 看板卡片：钩子与结构约束 (2026-11-05, task 11-05-overview-board-v2)
+
+- **容器不能是 `<button>`**：卡片里嵌状态 chip（内部也是 button），嵌套按钮是非法 HTML 且点击会串。
+  卡片用 `div role="button" tabIndex={0}` + `Enter`/`Space` 处理键盘。
+- **身份解析只走 `getAgentIcon(provider, { meta, sessionId, personas, sessionEmojis })`**（会话 → provider → logo），
+  状态词/颜色/读未读只走 `AgentStatusChip` + `useAgentReadContext`。看板不得新增第三份映射。
+- **标题不得回退成视图名**：agent 卡片走 `resolveBoardCardTitle`（sessionTitle → note → 项目名 → `Provider · tab`），
+  `blockTitle()` 末尾用 `basename(meta["cmd:cwd"])` 兜底，禁止让卡片显示裸 `Terminal`。
+- **看板永远单行多列**：`grid-auto-flow: column` + `minmax(220px,1fr)` + `scroll-snap-type: x`，
+  空列 `includeEmpty: true` 常显。按面板宽度退回纵向堆叠 = 又变回列表（用户已经提过一次）。
+
+---
+
+## SCSS / 断言两条硬约束 (2026-11-05, 夜间自主开发)
+
+- **改 SCSS 前先确认锚点唯一**：`@container` 里的选择器列表（`.a,\n.b,\n.c {`）和独立规则长得很像，
+  `oldText` 命中列表会把整段声明块插进选择器位置，静默破坏后面的 `min-width` / `overflow`。
+  实测代价：时间线在 221px 面板里轨道仍 540px 宽（溢出）。改完必须跑对应真机 area。
+- **几何类断言要带数字**：`trackVisible` 这种布尔断言失败时看不出原因。统一输出
+  `{panelW, trackW, dl, dr}` 这类矩形差，下一次不用重新加打印。
 
 ---
 
@@ -176,3 +207,169 @@ getApi().setActiveTab(targetTabId);   // 只负责把用户视线切过去
 <!-- What reviewers should check -->
 
 (To be filled by the team)
+
+---
+
+## Emoji 字符比较必须双向归一化（2026-11-03, task 11-02-emoji-alias-picker-search）
+
+emojibase 里很多符号的 `entry.emoji` **带 VS16（U+FE0F）**：`white_check_mark` 的
+`entry.char` 是 `"✅️"`（U+2705 + U+FE0F），而代码里手写的字面量往往是裸 `"✅"`（U+2705）。
+直接 `===` 比较或单方向 `replace(/\uFE0F/g, "")` 都会漏掉另一半。
+
+正确做法：用一个候选展开函数（`markdown-transform/emoji-aliases.ts` 的 `emojiBaseCandidates`）
+同时生成 **去 VS16 / 加 VS16 / 去皮肤变体** 三种形态，索引和查表两边都走它：
+
+```ts
+const byChar = new Map<string, EmojiEntry>();
+for (const e of catalog.entries) {
+    for (const candidate of emojiBaseCandidates(e.char)) {
+        if (!byChar.has(candidate)) byChar.set(candidate, e);
+    }
+    byChar.set(e.char, e); // 精确拼写永远最后写，优先级最高
+}
+```
+
+**测例提示**：断言不要写 `expect(r[0].char).toBe("✅")`，改用 `shortcode` 断言
+（`expect(r[0].shortcode).toBe("white_check_mark")`），否则会因为不可见的 VS16 假失败。
+
+---
+
+## Agent 状态类"跨面视觉"问题：必须用真机验证台收尾（2026-11-05, task 11-05-agent-card-done-seen）
+
+「Done 不跟随 seen」这类 bug 的判据是**用户看到的那一眼**，单测只能覆盖 read 判定表，
+覆盖不到"悬浮卡真的换色了吗"。所以每次改 agent 状态呈现层，都要跑一次真机台子：
+
+```bash
+node scripts/verify/agent-card-seen/verify.mjs              # 起干净实例 → 全流程 → 自动关
+node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例（迭代 <1min）
+```
+
+它会真的新建一个 Pi agent block（跑 `~/.pi/agent/settings.json` 的默认 provider/model）、
+发 prompt 等 `working → Done`、断言三个面（头部徽章 / 悬浮卡 / Tab 悬浮卡）的
+`read` 与文案、真点徽章 ack、再断言同帧变 seen，最后把 `report.json` + 7 张截图写进
+`verify-runs/<ts>-agent-card-seen/`。
+
+### 六个必踩的坑（都已写进脚本，别退回去）
+
+1. **首次启动的引导向导**（`Welcome to Snorkeling` → `Next` → `Get Started`）会盖住 WidgetsBar。
+   它只有 ~560px，比 `dismissOverlays()` 的"浮窗 > 50% 视口"阈值小，因此**不会被自动关掉**：
+   要按按钮文案（Continue/Next/Skip/Get Started）循环点，最多 8 轮。
+2. **WidgetsBar 收起时图标落在视口外**：根节点是 `relative w-0`，覆盖层被 `translate(48px)` 推出去，
+   图标 `getBoundingClientRect().x` 会 > `innerWidth`。点击前先点
+   `[aria-label="Expand widgets bar"]`，并在探针里过滤 `cx < innerWidth - 2`。
+3. **多 Tab renderer**：每个 Tab 一个 BrowserView（窗口标题 `Wave Terminal - <tab>`），
+   非激活的可能 `innerWidth === 0`。选 renderer 要按「有 `.block` 且宽高 > 0」挑，不能取第一个。
+4. **block 头部文本带 LRM**：`.agent-status-header` 的 `textContent` 前面有 `\u200e`，
+   `^Done` 直接匹配会失败。断言前统一 `replace(/[\u200b-\u200f\ufeff]/g, "")`。
+5. **elapsed 文案是两段词**：`formatDoneElapsed()` 在 <30s 返回 `"Just now"`，
+   所以"未读 Done 带 elapsed"的判据是 `/^Done\s+\S/`（且 != `"Done"`），不是 `/^Done\s+\S+$/`。
+6. **悬浮卡有 hover 延迟**：一次 `mouseMoved` 不一定弹出来，要"移到锚点 → 等 600ms → 读 DOM"
+   循环到出现为止（最多 ~8s）；读的是 `.agent-card-status-chip[data-agent-read]`，
+   **不要读颜色** —— 颜色随主题变，`read`/`is-seen`/`is-done-unread` 才是契约。
+
+### 收尾纪律（用户窗口别乱开）
+
+验证实例是**真的 Electron 窗口**（深色）。默认 `ensureInstance({resetProfile:true})` + 结束时
+`cleanup()`（端口 → PID 关闭，`windowsHide:true` 避免 PowerShell 闪窗）；
+只有显式 `--keep-open` 才留着。**不要**在没打招呼的时候批量起实例。
+
+方法论层面（台的骨架、六条设计原则、环境纪律）见
+[真机 UI 验证台 Playbook](../../../docs/project/ui-verify-playbook.md)。
+其中最贵的两条教训：
+
+- **确定性优先**：每轮 reset profile；"我刚创建的对象"用 before/after 差集取 id，
+  不要用"第一个匹配 selector 的元素"（会读到上一轮留下的同类对象 → 假绿）。
+- **等跃迁不等终态**：先等 `working` 系文案、再等 `Done`；只看终态会在"上一轮已经 Done"
+  时立刻返回，断言的是旧状态。
+
+---
+
+## Tailwind 类名必须先确认真身 (2026-11-05, task 11-05-vcs-panel-icon-buttons)
+
+`frontend/tailwindsetup.css` 的 `@theme inline` 是**唯一**的 token 来源。写之前先 grep：
+
+- 存在：`foreground / secondary / muted / accent / error / success / warning / action /
+  actiontext / actionhover / hoverbg / surface / block / panel / overlay / border`。
+- **不存在**（曾误用于 VCS 面板，全部是死样式）：`ink / ink-muted / ink-faint / detail /
+  danger / ok`。要红用 `text-error`、要绿用 `text-success`。
+- **`.iconbutton` 这个 class 从未被定义过**。全仓 60 处 `className="iconbutton …"` 只靠同行
+  的尺寸 utility 生效，hover/focus/disabled 态一律缺失。要么用 `<IconButton decl>` /
+  新的 `<VcsIconButton>`，要么自己把 hover 态写全；不要以为写了 `iconbutton` 就有样式。
+
+### icon-only 按钮的硬约束
+
+- `title` 与 `aria-label` **同时**写（读屏只认 aria-label，鼠标只认 title）。
+- hover 才浮现的行内动作必须带 `focus-visible:opacity-100`，否则键盘用户永远看不到它。
+- hover 着色一律用 `enabled:hover:*`，避免 disabled 状态被 hover 破功。
+- 有文字的按钮是**主 CTA / 导航 / 段头折展**的特权；`Diff / History / Reset / Prev / Next`
+  这类重复动作一律图标化（VCS 面板 17 处已收口，见
+  `frontend/app/view/vcs/vcs-panel-buttons.test.ts` 的源码级守卫）。
+
+---
+
+## 重构"多份重复实现 → 单一组件"时的三条硬约束 (2026-11-06, task 11-06-agent-card-chip-title)
+
+把 4 份状态 chip 收口成 1 份时，**功能测试全绿但真机台红 4 条**。红的三条都不是功能缺失，
+而是"重构时把契约钩子弄丢了"。所以收同类包时按这三条自检：
+
+### 1. 探针依赖的 class / data-* 是契约，不是实现细节
+
+旧实现里的类名与属性，哪怕新实现不再用它们做样式，也要继续挂上：
+
+- `.agent-card-status-chip` / `.agent-status-header` / `.session-overview-agent-status` /
+  `.session-overview-agent-aggregate` —— verify 探针按这些选择器找元素；
+- `.agent-card-status-dot` 及 `is-working` / `is-thinking` / `is-done-unread` / `is-seen`
+  —— 脉冲断言读它们；
+- `data-agent-read` —— 跨面 read 一致性的唯一机器可读信号。
+
+做法：新实现把"新类名"与"兼容别名"**同时**放进 class 列表，兼容别名只作选择器锚点，
+样式全由新类驱动。单测里显式断言兼容类存在（写进 chip-view 的 className 用例）。
+
+### 2. `data-*` 必须出现在**所有**渲染分支上
+
+`data-agent-read` 只写在 `<button>` 分支上，非交互分支（`onAck == null` 时渲染 `<span>`）
+没写 → ack 之后卡片面读到 `null`，断言 `hover-card-seen` 红，而肉眼完全看不出差异。
+
+规则：把 `{...dataAttrs}` 提到所有 return 分支上，或用同一个 `<Tag>` 变量承载；
+不要在每个分支里手写一遍。
+
+### 3. 真机台失败先分清"功能坏"还是"钩子丢"
+
+本次 4 条红里：
+
+- 3 条是钩子丢失（上面的 1、2）→ 改组件；
+- 1 条是**既有产品 bug 被新断言抓到**：悬浮卡的放大按钮在真实指针下被 xterm 的
+  link-layer canvas 盖住（`elementFromPoint` 命中 `CANVAS.xterm-link-layer`，
+  JS `click()` 却正常）→ 属 `info-card` 层级/命中问题，不该在本包"顺手改掉"，
+  应登记为独立问题并在文档里写清"已知红灯"。
+
+判定方法：在实例里对按钮 rect 中心做 `elementsFromPoint()`，看命中元素是否在按钮内部。
+命中别层 = 层级/遮挡问题（产品）；命中自己但状态没变 = 逻辑问题（代码）。
+
+---
+
+## 多值分组会跨列：计数断言必须写 `>=` (2026-11-06, task 11-06-overview-optimize-1to4)
+
+- `groupOverviewCardsByTags` 把**一张多标签卡放进多列**，所以「各列卡片数之和 = 卡片总数」这条
+  在标签视图下不成立。任何跨分组的计数断言都要按口径分开写：单值口径（status / tab / provider / project）
+  用 `===`，`tags` 用 `>=` 并在 detail 里写明原因。
+- 兜底列（`非 Agent` / `无项目` / `无标签`）的排序优先级**高于卡片数**：哪怕它有 10 张、别的列只有 1 张，
+  它也必须排最后。写断言时别用「按数量降序」去反推兜底列位置。
+
+## 状态历史必须后端记，前端挂事件会漏段 (2026-11-06, task 11-06-overview-optimize-1to4)
+
+- `pkg/agentstatus` 的 `sameStatus()` **故意把 `UpdatedAt` / `ActiveSince` 排除在比较之外**
+  （`agentstatus.go:539` 有注释说明原因）。后果：同一 state 只改了 `ActiveSince` 时 `willEmit=false`，
+  前端收不到 `agentstatus` 事件。
+- 因此「per-block 状态转移历史」**只能在 `statusManager.report()` 内部记**（那里拿得到 prev/next），
+  不能在前端订阅事件自行累积 —— 前端累积会静默漏掉这些不 emit 的转移。
+- 甘特图当前的 G2.1 是**退化实现**：只用 `activeSince` / `completedAt` 两个真实字段切「unknown 历史段 + 当前态段」，
+  画不出多次交替。`overview-timeline.tsx` 的图例 tooltip 已写明这一点；要画多次交替需后端环形历史（另开任务）。
+
+## 甘特条视觉：段 3px / 整条 4px / 段间 1px 缝 (2026-11-06, task 11-06-overview-optimize-1to4)
+
+- 9px 圆角 + 18px 高的条会被读成「胶囊」，而甘特要表达的是**分段区间**。定稿：
+  `.session-overview-timeline-bar { border-radius: 4px; gap: 1px }`，段 `.bar-seg { border-radius: 3px }`。
+- `idle` 段必须是**中性灰实心**，不能并进 `unknown` 的斜纹：斜纹语义是「当时在干什么不知道」，
+  把已知的 idle 画成斜纹等于谎报「不知道」。
+- 真机断言用 `parseFloat(borderTopLeftRadius) <= 4`，不要做字符串比对（不同浏览器会输出 `4px` / `4.000px`）。

@@ -11,11 +11,9 @@
 // - D-class (transitioned to idle, still unreviewed): also lights up.
 // - idle/unknown with no doneUnread: suppressed for noise reduction.
 
-import { agentStatusPresentation, isInferredAgentStatus } from "@/app/agent-status/agent-status-derive";
-import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
+import { deriveAgentStatusView } from "@/app/agent-status/agent-status-view";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import type { Getter } from "jotai";
 
 export type InlineTabStatusDot = {
@@ -34,36 +32,33 @@ export function buildAgentStatusDot(
     doneAckedAtMap: Record<string, number> | null | undefined,
     nowMs: number = Date.now()
 ): InlineTabStatusDot | null {
-    if (agentStatus == null) {
+    // read 判定统一走 deriveAgentStatusView：与 agent 卡片 / 头部徽章同一个函数，
+    // 避免"标签点了 ack、卡片还绿着"这类跨面漂移。
+    const view = deriveAgentStatusView({
+        status: agentStatus,
+        blockId,
+        ackedFp: ackedFpMap?.[blockId] ?? null,
+        doneAckedAt: doneAckedAtMap?.[blockId] ?? 0,
+        nowMs,
+    });
+    if (view == null) {
         return null;
     }
-    const state = agentStatus.state;
-    const ackedFp = ackedFpMap?.[blockId] ?? null;
-    const unread = isAgentStatusUnread(agentStatus, ackedFp);
-    const doneAckedAt = doneAckedAtMap?.[blockId] ?? 0;
-    const doneUnread = isAgentDoneUnread(agentStatus, doneAckedAt);
-    // idle/unknown 默认不渲染 R 状态点减噪; 但 D 触发 (doneUnread) 后即便 state=idle
-    // 也要点亮, 否则进入"开局即 idle 不亮"分支会把 D 也误吞.
+    const state = view.state;
+    const doneUnread = view.read === "unread" && (state === "done" || state === "idle");
+    // idle/unknown 默认不渲染 R 状态点减噪; 但 D 触发后即便 state 还是 canonical idle
+    // (presented 层才提升为 done) 也要点亮, 否则"开局即 idle 不亮"分支会把 D 也误吞。
     if ((state === "idle" || state === "unknown") && !doneUnread) {
         return null;
     }
-    const presentation = agentStatusPresentation(agentStatus);
-    const inferred = isInferredAgentStatus(agentStatus);
-    const doneElapsedMs = doneUnread ? agentDoneElapsedMs(agentStatus, nowMs) : 0;
-    const doneElapsedText = doneUnread ? formatDoneElapsed(doneElapsedMs) : "";
     return {
         state,
-        inferred,
-        unread,
+        inferred: view.inferred,
+        // R 与 D 现在互斥（同一个 read 判定按 state 分流），不再是"两个 flag 各自真假"。
+        unread: view.read === "unread" && !doneUnread,
         doneUnread,
-        doneElapsedText,
-        title: `${presentation.label}${inferred ? " (inferred)" : ""}${
-            unread
-                ? " — click to mark as read"
-                : doneUnread
-                  ? ` — done ${doneElapsedText} ago, switch to block to dismiss`
-                  : " — up to date"
-        }`,
+        doneElapsedText: view.elapsedText,
+        title: view.title,
     };
 }
 

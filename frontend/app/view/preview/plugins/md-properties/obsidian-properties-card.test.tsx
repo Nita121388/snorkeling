@@ -100,11 +100,12 @@ describe("property edit value helpers", () => {
 });
 
 describe("ObsidianPropertiesCard collapse", () => {
-    it("renders expanded by default with chevron-down", () => {
+    it("renders expanded by default (chevron 指向展开态)", () => {
         const html = renderCard('title: A\ntags: ["#b"]');
-        expect(html).toContain("fa-chevron-down");
+        // 折叠箭头自 2aafe0d2 起是内联 SVG（用 data-collapsed 表达朝向），不再是 fa-chevron-*。
+        expect(html).toContain('data-collapsed="false"');
+        expect(html).toContain('aria-expanded="true"');
         expect(html).toContain("obsidian-props-row");
-        expect(html).not.toContain("fa-chevron-right");
     });
 
     it("collapsed header is clickable and hides rows (static render shows rows, interaction toggles)", () => {
@@ -112,17 +113,17 @@ describe("ObsidianPropertiesCard collapse", () => {
         expect(html).toContain("obsidian-props-header");
     });
 
-    it("collapsedSeed=true renders collapsed (no rows, chevron-right)", () => {
+    it("collapsedSeed=true renders collapsed (no rows, chevron 指向收起态)", () => {
         const html = renderCard('title: A\ntags: ["#b"]', { collapsedSeed: true });
-        expect(html).toContain("fa-chevron-right");
-        expect(html).not.toContain("fa-chevron-down");
+        expect(html).toContain('data-collapsed="true"');
+        expect(html).toContain('aria-expanded="false"');
         expect(html).not.toContain("obsidian-props-row");
         expect(html).toContain("is-collapsed");
     });
 
     it("collapsedSeed=false still renders expanded", () => {
         const html = renderCard("title: A", { collapsedSeed: false });
-        expect(html).toContain("fa-chevron-down");
+        expect(html).toContain('data-collapsed="false"');
         expect(html).toContain("obsidian-props-row");
     });
 });

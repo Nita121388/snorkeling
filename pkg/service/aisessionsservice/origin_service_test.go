@@ -74,6 +74,11 @@ func TestOrigins_LocalFirstAndIncludesEnvDump(t *testing.T) {
 	if local == nil || local.Kind != aisessions.OriginKindLocal {
 		t.Fatalf("expected a local origin, got %#v", response.Origins)
 	}
+	// The local origin label must follow the current platform, not a hardcoded
+	// "This Mac" (Windows users saw "This Mac" before this fix).
+	if local.Label != localOriginLabel() {
+		t.Fatalf("local origin label = %q, want %q", local.Label, localOriginLabel())
+	}
 	if all == nil || !all.ReadOnly {
 		t.Fatalf("expected a read-only All machines origin, got %#v", response.Origins)
 	}
@@ -91,6 +96,27 @@ func TestOrigins_LocalFirstAndIncludesEnvDump(t *testing.T) {
 	}
 	if dump.Source != aisessions.SourcePi {
 		t.Fatalf("expected pi source, got %q", dump.Source)
+	}
+}
+
+func TestLocalOriginLabelFor(t *testing.T) {
+	cases := []struct {
+		goos string
+		want string
+	}{
+		{goos: "windows", want: "This PC"},
+		{goos: "darwin", want: "This Mac"},
+		{goos: "linux", want: "This Machine"},
+		{goos: "freebsd", want: "This Machine"},
+	}
+	for _, tc := range cases {
+		if got := localOriginLabelFor(tc.goos); got != tc.want {
+			t.Errorf("localOriginLabelFor(%q) = %q, want %q", tc.goos, got, tc.want)
+		}
+	}
+	// Guard the specific regression: the Windows label must not be "This Mac".
+	if localOriginLabelFor("windows") == "This Mac" {
+		t.Fatal("windows local origin must not be labelled This Mac")
 	}
 }
 

@@ -68,3 +68,21 @@ describe("agent status unread", () => {
         expect(isAgentStatusUnread(next, statusFingerprint(acknowledged))).toBe(true);
     });
 });
+
+describe("statusFingerprint — provider 缺失时的稳定性", () => {
+    it("treats a missing provider the same as an empty one", () => {
+        const base = makeStatus({ state: "working", phase: "thinking" });
+        const withoutProvider = { ...base, provider: undefined } as unknown as typeof base;
+        // Go 生成的 AgentStatus 里 provider 是可选的；两种形状必须产出同一个指纹，
+        // 否则 ack 写入的指纹和后续比较的指纹对不上，状态会"复活"成未读。
+        expect(statusFingerprint(withoutProvider)).toBe(statusFingerprint({ ...base, provider: "" }));
+    });
+
+    it("returns a null-safe fingerprint instead of throwing on unknown shapes", () => {
+        const status = { state: "idle", phase: "none", source: "manual", updatedAt: 1 } as unknown as Parameters<
+            typeof statusFingerprint
+        >[0];
+        expect(() => statusFingerprint(status)).not.toThrow();
+        expect(JSON.parse(statusFingerprint(status))[1]).toBe("");
+    });
+});

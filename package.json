@@ -7,7 +7,7 @@
     "productName": "Snorkeling",
     "description": "Open-Source AI-Native Terminal Built for Seamless Workflows",
     "license": "Apache-2.0",
-    "version": "0.14.6-beta.0.snorkeling.0.0.112",
+    "version": "0.14.6-beta.0.snorkeling.0.0.122",
     "homepage": "https://github.com/Nita121388/snorkeling",
     "build": {
         "appId": "io.github.nita121388.snorkeling"
@@ -32,7 +32,9 @@
         "pslog:query": "node scripts/pslog-query.mjs",
         "trace:tab": "node scripts/trace-tab-switch.mjs",
         "test": "vitest",
-        "postinstall": "node ./postinstall.cjs"
+        "test:scripts": "node --test \"scripts/**/*.test.mjs\" \"tests/**/*.test.mjs\"",
+        "postinstall": "node ./postinstall.cjs",
+        "verify:loop": "node --test \"E:/primary/projects/loop/lib/*.test.mjs\" && node E:/primary/projects/loop/bin/loop.mjs queue self-test --root . && node E:/primary/projects/loop/bin/loop.mjs ledger self-test --root . && node E:/primary/projects/loop/bin/loop.mjs queue verify-ledger --root . && node E:/primary/projects/loop/bin/loop.mjs queue g8 --root . && node E:/primary/projects/loop/bin/loop.mjs queue doctor --root ."
     },
     "engines": {
         "node": ">=22.12.0"

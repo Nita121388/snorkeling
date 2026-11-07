@@ -1,0 +1,41 @@
+# G2 红证 — F-1106-move-block-tab-menu
+
+命令：npx vitest run frontend/app/tab/tab-target-modal.test.tsx frontend/app/block/blockframe-header.menu.test.ts
+时间：2026-11-06T13:13:40Z
+commit：46c36ada（实现前）
+
+结果：16 failed | 1 passed (17)
+
+说明：唯一通过的是「无 moveContext 时返回空数组」——旧实现本来就这样，不构成假绿。
+其余 16 条对旧实现全红：菜单仍是 4 条、弹窗无 New tab 行、行容器是 <button>、没有两个图标动作、有模式状态。
+
+## 摘要（尾部）
+
+[31m   → expected [ …(4) ] to have a length of 1 but got 4[39m
+[31m   → expected [ 'Move to New Tab', …(3) ] to not include 'Move to New Tab'[39m
+[31m   → expected [ 'Move to New Tab', …(3) ] to deeply equal [ 'Move to Tab…' ][39m
+[31m   → expected [] to have a length of 2 but got +0[39m
+[31m   → Cannot read properties of null (reading 'querySelector')[39m
+[31m   → expected null not to be null[39m
+[31m   → expected null not to be null[39m
+[31m   → Cannot read properties of null (reading 'click')[39m
+[31m   → expected [] to have a length of 2 but got +0[39m
+[31m   → expected [] to have a length of 2 but got +0[39m
+[31m   → expected [] to have a length of 2 but got +0[39m
+[31m   → Cannot read properties of undefined (reading 'click')[39m
+[31m   → Cannot read properties of undefined (reading 'querySelectorAll')[39m
+[31m   → Cannot read properties of undefined (reading 'dispatchEvent')[39m
+[31m   → Cannot read properties of undefined (reading 'click')[39m
+[31m   → Cannot read properties of undefined (reading 'querySelectorAll')[39m
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 16 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+[31m[1mAssertionError[22m: expected [ …(4) ] to have a length of 1 but got 4[39m
+[31m[1mAssertionError[22m: expected [ 'Move to New Tab', …(3) ] to not include 'Move to New Tab'[39m
+[31m[1mAssertionError[22m: expected [ 'Move to New Tab', …(3) ] to deeply equal [ 'Move to Tab…' ][39m
+[31m[1mAssertionError[22m: expected [] to have a length of 2 but got +0[39m
+[31m[1mAssertionError[22m: expected null not to be null[39m
+[31m[1mAssertionError[22m: expected null not to be null[39m
+[31m[1mAssertionError[22m: expected [] to have a length of 2 but got +0[39m
+[31m[1mAssertionError[22m: expected [] to have a length of 2 but got +0[39m
+[31m[1mAssertionError[22m: expected [] to have a length of 2 but got +0[39m
+[2m Test Files [22m [1m[31m2 failed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m16 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (17)[39m

@@ -67,6 +67,11 @@ async function loadDirectoryMenuUtils(
         showHiddenFiles: atom(true),
         refresh: vi.fn(),
         openBlockDefAsInlineTab,
+        // 目录右键菜单的 Pin / Set as Tab Default 需要这两个方法（接口加过、fixture 漏补，
+        // 曾导致本文件在 main 上直接红）。默认未 pin、未设过默认路径。
+        isPinned: vi.fn(() => false),
+        togglePinnedDir: vi.fn(async () => {}),
+        setTabDefaultPath: vi.fn(async () => {}),
     };
 
     return {
@@ -1072,5 +1077,20 @@ describe("directory move operations", () => {
         );
         expect(setErrorMsg).toHaveBeenCalledWith(expect.objectContaining({ status: "Move Failed" }));
         expect(model.refresh).toHaveBeenCalled();
+    });
+});
+
+describe("menuOptionsToPreviewEntryOptions", () => {
+    it("translates the menu root into the preview directory root (HTML open modes)", async () => {
+        const { menuOptionsToPreviewEntryOptions } = await loadDirectoryMenuUtils([makeRepo("git")]);
+        expect(menuOptionsToPreviewEntryOptions({ relativePathRoot: "/repo/docs" })).toEqual({
+            forceNewBlock: false,
+            directoryPath: "/repo/docs",
+        });
+    });
+
+    it("falls back to null directory root and current block when no options are given", async () => {
+        const { menuOptionsToPreviewEntryOptions } = await loadDirectoryMenuUtils([makeRepo("git")]);
+        expect(menuOptionsToPreviewEntryOptions(undefined)).toEqual({ forceNewBlock: false, directoryPath: null });
     });
 });

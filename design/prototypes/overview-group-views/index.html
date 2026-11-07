@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Overview 分组视图：目录 / 标签</title>
+        <style>
+            :root {
+                --bg: #0f1014;
+                --panel: #15171d;
+                --card: #1b1e26;
+                --border: #2a2e3a;
+                --text: #e6e6e6;
+                --sub: #9b9da6;
+                --accent: #6aa6ff;
+                --working: #3fb950;
+                --done: #6aa6ff;
+                --idle: #6b7280;
+                --blocked: #d29922;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: radial-gradient(1200px 700px at 50% 0%, #1a1d27, var(--bg));
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+            }
+            header {
+                padding: 24px 32px 8px;
+                display: flex;
+                gap: 16px;
+                align-items: flex-start;
+                flex-wrap: wrap;
+            }
+            header h1 {
+                margin: 0 0 6px;
+                font-size: 20px;
+            }
+            header p {
+                margin: 0;
+                color: var(--sub);
+                font-size: 12px;
+                line-height: 1.7;
+                max-width: 780px;
+            }
+            .controls {
+                margin-left: auto;
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+            .seg {
+                display: inline-flex;
+                border: 1px solid var(--border);
+                border-radius: 7px;
+                overflow: hidden;
+            }
+            .seg button {
+                border: 0;
+                background: transparent;
+                color: var(--sub);
+                padding: 5px 11px;
+                font-size: 11.5px;
+                cursor: pointer;
+            }
+            .seg button.is-active {
+                background: rgb(from var(--accent) r g b / 0.16);
+                color: var(--accent);
+            }
+            main {
+                padding: 16px 32px 40px;
+            }
+            .board {
+                display: grid;
+                grid-auto-flow: column;
+                grid-auto-columns: minmax(220px, 1fr);
+                gap: 10px;
+                overflow-x: auto;
+                padding-bottom: 10px;
+                scroll-snap-type: x proximity;
+            }
+            .col {
+                scroll-snap-align: start;
+                display: flex;
+                flex-direction: column;
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                background: var(--panel);
+                padding: 10px;
+                min-height: 180px;
+            }
+            .col-head {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-bottom: 8px;
+                font-size: 11px;
+                color: var(--sub);
+                letter-spacing: 0.04em;
+            }
+            .col-head .name {
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                text-transform: none;
+                font-size: 11.5px;
+                font-weight: 600;
+                color: var(--text);
+            }
+            .count {
+                padding: 0 6px;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.07);
+                font-size: 10px;
+                color: var(--sub);
+            }
+            .col.is-fallback {
+                border-style: dashed;
+            }
+            .col.is-fallback .name {
+                color: var(--sub);
+                font-weight: 500;
+            }
+            .card {
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+                padding: 9px;
+                margin-bottom: 8px;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, transparent 100%);
+                cursor: pointer;
+            }
+            .card:hover {
+                border-color: rgb(from var(--accent) r g b / 0.5);
+            }
+            .card-head {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .avatar {
+                width: 17px;
+                height: 17px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 5px;
+                background: rgba(255, 255, 255, 0.06);
+                font-size: 11px;
+            }
+            .card-title {
+                flex: 1;
+                min-width: 0;
+                font-size: 11.5px;
+                font-weight: 600;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .card-meta {
+                display: flex;
+                gap: 4px;
+                flex-wrap: nowrap;
+                overflow: hidden;
+            }
+            .chip {
+                padding: 1px 6px;
+                border: 1px solid var(--border);
+                border-radius: 5px;
+                color: var(--sub);
+                font-size: 9px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+            .chip.is-tag {
+                border-color: rgb(from var(--accent) r g b / 0.35);
+                color: rgb(from var(--accent) r g b / 0.9);
+            }
+            .mini {
+                display: flex;
+                gap: 1px;
+                height: 3px;
+                border-radius: 2px;
+                overflow: hidden;
+                margin-top: 2px;
+            }
+            .mini span {
+                height: 100%;
+            }
+            .mini .working {
+                background: var(--working);
+            }
+            .mini .idle {
+                background: var(--idle);
+            }
+            .mini .done {
+                background: var(--done);
+            }
+            .mini .unknown {
+                background: #39404d;
+            }
+            .notes {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 14px;
+                margin-top: 18px;
+            }
+            .note {
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 14px 16px;
+                background: var(--panel);
+            }
+            .note h3 {
+                margin: 0 0 8px;
+                font-size: 13px;
+            }
+            .note p,
+            .note li {
+                margin: 0 0 6px;
+                color: var(--sub);
+                font-size: 11px;
+                line-height: 1.75;
+            }
+            .note ul {
+                margin: 0;
+                padding-left: 16px;
+            }
+            .note code {
+                color: var(--text);
+                font-size: 10.5px;
+            }
+            .tag {
+                display: inline-block;
+                padding: 1px 7px;
+                border: 1px solid var(--border);
+                border-radius: 999px;
+                font-size: 10px;
+                color: var(--sub);
+                margin-left: 6px;
+            }
+            .tag.new {
+                color: var(--accent);
+                border-color: rgb(from var(--accent) r g b / 0.4);
+            }
+            .dup-hint {
+                display: inline-block;
+                margin-left: 4px;
+                padding: 0 4px;
+                border-radius: 4px;
+                background: rgb(from var(--blocked) r g b / 0.18);
+                color: var(--blocked);
+                font-size: 8.5px;
+                font-weight: 700;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div>
+                <h1>Overview 分组视图：目录 / 标签</h1>
+                <p>
+                    在现有「状态 / Tab / Provider」之外加两种口径。<b>目录</b>按会话 <code>projectPath</code> 的 basename 分列，
+                    <b>标签</b>按会话 tags 的并集分列。两种都不补空列，且「无项目 / 无标签」永远排最后（虚线框标识兜底列）。
+                </p>
+            </div>
+            <div class="controls">
+                <div class="seg" id="group-seg">
+                    <button data-group="project" class="is-active">目录</button>
+                    <button data-group="tags">标签</button>
+                    <button data-group="provider">Provider</button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="board" id="board"></div>
+
+            <div class="notes">
+                <div class="note">
+                    <h3>目录视图 <span class="tag new">本次新增</span></h3>
+                    <ul>
+                        <li>列 = <code>basename(projectPath)</code>；同一项目跨 Tab 聚合（跨 Tab 才是看板的意义）。</li>
+                        <li>列序：卡片数降序 → 标题升序。<b>无项目</b>列永远最后（与 provider 的 fallback 规则同源）。</li>
+                        <li>不补空列：没有会话的项目不占屏。</li>
+                        <li>卡片上的项目 chip 在此视图下可以省掉（列头已经说明）。</li>
+                    </ul>
+                </div>
+                <div class="note">
+                    <h3>标签视图 <span class="tag new">本次新增</span></h3>
+                    <ul>
+                        <li>列 = 当前筛选结果里所有 tags 的<b>并集</b>，按字母序；<b>无标签</b>列最后。</li>
+                        <li>
+                            <b>一张卡可出现在多列</b>（多标签）。所以「各列计数之和 = 卡片数」这条旧断言在标签视图下不成立，
+                            必须改成 <code>之和 ≥ 卡片数</code>。
+                        </li>
+                        <li>重复出现的卡片带 <span class="dup-hint">DUP</span> 标记（只在多标签卡上），并在列头 tooltip 说明。</li>
+                        <li>标签数很多时（&gt; 12），列头右侧出现「更多标签」折叠入口（本原型未实现，见下方边界）。</li>
+                    </ul>
+                </div>
+                <div class="note">
+                    <h3>与现有两种口径的一致性</h3>
+                    <ul>
+                        <li>四种口径共享同一份筛选结果（Agents / Opened Tabs），只换分桶规则。</li>
+                        <li>只有 <code>status</code> 分组常显 5 列（含空列）并带状态色点；其余三种只渲染有卡的列、无 tone。</li>
+                        <li>持久化走同一个 <code>overviewBoardGroupAtom</code>；旧版本读到 <code>project</code> / <code>tags</code> 会回落 <code>status</code>。</li>
+                    </ul>
+                </div>
+                <div class="note">
+                    <h3>边界（本次不做）</h3>
+                    <ul>
+                        <li>不做「标签列折叠 / 只显示 Top N 标签」——先看实际标签量再定。</li>
+                        <li>不做按目录层级树（只取 basename，不做 <code>a/b/c</code> 逐层）。</li>
+                        <li>不做跨列拖拽改标签 / 改项目。</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+
+        <script>
+            const NOW = Date.now();
+            const H = 3600_000;
+
+            // 合成数据：3 个项目 + 1 个无项目；tags 覆盖「1 个 / 2 个 / 0 个」
+            const cards = [
+                {
+                    id: "b1", emoji: "🦊", title: "重构 auth 中间件依赖链", provider: "Claude",
+                    project: "snorkeling", tags: ["重构", "auth"], state: "working",
+                    segs: [["unknown", 0.7], ["working", 0.3]],
+                },
+                {
+                    id: "b2", emoji: "🐧", title: "预览编辑软换行丢失", provider: "Codex",
+                    project: "snorkeling", tags: ["bugfix"], state: "done",
+                    segs: [["unknown", 0.55], ["done", 0.45]],
+                },
+                {
+                    id: "b3", emoji: "🧪", title: "properties 抽屉回归", provider: "Gemini",
+                    project: "snorkeling", tags: ["重构"], state: "idle",
+                    segs: [["unknown", 0.5], ["idle", 0.5]],
+                },
+                {
+                    id: "b4", emoji: "🚀", title: "VCS 面板按钮图标化", provider: "Claude",
+                    project: "loop", tags: ["ui", "重构"], state: "blocked",
+                    segs: [["unknown", 0.35], ["blocked", 0.65]],
+                },
+                {
+                    id: "b5", emoji: "🌙", title: "夜班守卫：gate 复跑", provider: "Pi",
+                    project: "loop", tags: [], state: "working",
+                    segs: [["unknown", 0.4], ["working", 0.6]],
+                },
+                {
+                    id: "b6", emoji: "📦", title: "打包体积超阈值", provider: "Codex",
+                    project: "answer-me-with-html", tags: ["perf"], state: "done",
+                    segs: [["unknown", 0.5], ["done", 0.5]],
+                },
+                {
+                    id: "b7", emoji: "▤", title: "临时 scratch 会话", provider: "",
+                    project: "", tags: [], state: "idle",
+                    segs: [["unknown", 0.6], ["idle", 0.4]],
+                },
+            ];
+
+            const stateColor = { working: "working", blocked: "blocked", done: "done", idle: "idle", unknown: "unknown" };
+            let group = "project";
+
+            function columnKeyTitle(card, mode) {
+                if (mode === "project") {
+                    return card.project === "" ? null : card.project;
+                }
+                return null;
+            }
+
+            function buildColumns(mode) {
+                const cols = new Map();
+                const push = (key, title, isFallback) => {
+                    if (!cols.has(key)) cols.set(key, { key, title, isFallback, cards: [] });
+                    return cols.get(key);
+                };
+                if (mode === "project") {
+                    for (const card of cards) {
+                        if (card.project === "") push("__none__", "无项目", true).cards.push(card);
+                        else push(card.project, card.project, false).cards.push(card);
+                    }
+                } else if (mode === "tags") {
+                    for (const card of cards) {
+                        if (card.tags.length === 0) {
+                            push("__untagged__", "无标签", true).cards.push(card);
+                            continue;
+                        }
+                        for (const tag of card.tags) push(tag, tag, false).cards.push(card);
+                    }
+                } else {
+                    for (const card of cards) {
+                        const title = card.provider === "" ? "非 Agent" : card.provider;
+                        push(title, title, card.provider === "").cards.push(card);
+                    }
+                }
+                // 排序：非 fallback 列按卡片数降序 → 标题升序；fallback 列永远最后
+                return [...cols.values()].sort((a, b) => {
+                    if (a.isFallback !== b.isFallback) return a.isFallback ? 1 : -1;
+                    if (b.cards.length !== a.cards.length) return b.cards.length - a.cards.length;
+                    return a.title.localeCompare(b.title);
+                });
+            }
+
+            function cardNode(card, dup) {
+                const el = document.createElement("div");
+                el.className = "card";
+                el.innerHTML = `
+                    <div class="card-head">
+                        <span class="avatar">${card.emoji}</span>
+                        <span class="card-title">${card.title}</span>
+                    </div>
+                    <div class="card-meta">
+                        ${card.provider ? `<span class="chip">${card.provider}</span>` : ""}
+                        ${group === "tags" && card.project ? `<span class="chip">${card.project}</span>` : ""}
+                        ${group !== "tags" ? card.tags.slice(0, 2).map((t) => `<span class="chip is-tag">#${t}</span>`).join("") : ""}
+                        ${group !== "tags" && card.tags.length > 2 ? `<span class="chip">+${card.tags.length - 2}</span>` : ""}
+                        ${dup ? '<span class="dup-hint">DUP</span>' : ""}
+                    </div>`;
+                const mini = document.createElement("div");
+                mini.className = "mini";
+                for (const [state, ratio] of card.segs) {
+                    const s = document.createElement("span");
+                    s.className = stateColor[state] ?? "unknown";
+                    s.style.width = `${ratio * 100}%`;
+                    mini.appendChild(s);
+                }
+                el.appendChild(mini);
+                return el;
+            }
+
+            function render() {
+                const board = document.getElementById("board");
+                board.innerHTML = "";
+                const cols = buildColumns(group);
+                const dupIds = new Set();
+                if (group === "tags") {
+                    const seen = new Set();
+                    for (const col of cols) {
+                        for (const card of col.cards) {
+                            if (seen.has(card.id)) dupIds.add(card.id);
+                            seen.add(card.id);
+                        }
+                    }
+                }
+                for (const col of cols) {
+                    const colEl = document.createElement("section");
+                    colEl.className = `col${col.isFallback ? " is-fallback" : ""}`;
+                    const head = document.createElement("div");
+                    head.className = "col-head";
+                    head.innerHTML = `<span class="name" title="${col.title}">${col.title}</span><span class="count">${col.cards.length}</span>`;
+                    colEl.appendChild(head);
+                    for (const card of col.cards) colEl.appendChild(cardNode(card, dupIds.has(card.id)));
+                    board.appendChild(colEl);
+                }
+                // 标签视图下把「计数之和 ≥ 卡片数」直接显示出来，避免误判
+                if (group === "tags") {
+                    const sum = cols.reduce((n, c) => n + c.cards.length, 0);
+                    const hint = document.createElement("div");
+                    hint.style.cssText =
+                        "grid-column:1/-1;color:var(--sub);font-size:11px;margin-top:6px";
+                    hint.textContent = `列计数之和 = ${sum}，卡片数 = ${cards.length}（多标签卡跨列，故 之和 ≥ 卡片数）`;
+                    board.appendChild(hint);
+                }
+            }
+
+            document.getElementById("group-seg").addEventListener("click", (event) => {
+                const target = event.target.closest("button");
+                if (target == null) return;
+                group = target.dataset.group;
+                for (const btn of event.currentTarget.querySelectorAll("button")) {
+                    btn.classList.toggle("is-active", btn === target);
+                }
+                render();
+            });
+
+            render();
+        </script>
+    </body>
+</html>

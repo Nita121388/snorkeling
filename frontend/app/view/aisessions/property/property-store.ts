@@ -10,6 +10,7 @@
 import type { AISessionsServiceType } from "@/app/store/services";
 import { saveSessionNote, saveSessionProps } from "@/app/store/session-note-cache";
 import { dispatchAISessionNoteUpdated } from "../session-note-events";
+import { removeSessionTagFromNote } from "../session-tags";
 import {
     BUILTIN_PROP_KEYS,
     type PropertyCell,
@@ -19,7 +20,15 @@ import {
     type PropertyValue,
 } from "./property-model";
 
-export type SetSessionPropertyResult = { ok: true } | { ok: false; error: string };
+/**
+ * 属性写入结果。
+ *
+ * 写成单形状（`ok: boolean` + 可选 `error`）而不是判别式联合 `{ok:true} | {ok:false;error}`：
+ * 本仓 tsconfig 是 `strict: false`，在此配置下对 `{ok: true}` 字面量类型的窄化不可靠 ——
+ * 实测 `if (!r.ok) r.error` 会报 TS2339（`ok` 被退化成 `boolean`，两分支被合并）。
+ * 单形状在 strict / 非 strict 下都能正确读取。
+ */
+export type SetSessionPropertyResult = { ok: boolean; error?: string };
 
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
@@ -49,7 +58,20 @@ export async function setSessionProperty(args: {
             }
             case BUILTIN_PROP_KEYS.tags: {
                 const tags = Array.isArray(value) ? value.map((tag) => String(tag)) : [];
-                const result = await saveSessionNote(service, sessionId, connection, summary.note ?? "", tags);
+                // **删标签时必须同步清理 note 正文里的 `#tag`**。
+                //
+                // 后端 `SetNoteAndTags` 会 `MergeSessionTags(tags, ExtractSessionTagsFromNote(note))`
+                // —— note 里写着的 `#标签` 会被强制合并回 tags。只删 tags 数组、note 里的
+                // `#tag` 还在，用户就会看到“删了又回来了”。
+                //
+                // 其它入口（session-detail / session-row / commontext）早就都调
+                // `removeSessionTagFromNote` 了，只有卡片浮层这条路径漏了。
+                const removed = (summary.tags ?? []).filter((tag) => !tags.includes(tag));
+                let nextNote = summary.note ?? "";
+                for (const tag of removed) {
+                    nextNote = removeSessionTagFromNote(nextNote, tag);
+                }
+                const result = await saveSessionNote(service, sessionId, connection, nextNote, tags);
                 return result.status === "ok" ? { ok: true } : { ok: false, error: result.error };
             }
             case BUILTIN_PROP_KEYS.starred: {

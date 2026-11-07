@@ -3,7 +3,7 @@
 
 import Logo from "@/app/asset/logo.svg";
 import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { OnboardingGradientBg } from "@/app/onboarding/onboarding-common";
 import { OnboardingFeatures } from "@/app/onboarding/onboarding-features";
 import { ClientModel } from "@/app/store/client-model";
@@ -342,10 +342,15 @@ const NewInstallOnboardingModal = () => {
     const widthClass = pageName === "features" ? "w-[800px]" : "w-[560px]";
 
     return (
-        <FlexiModal className={`${widthClass} rounded-[10px] ${paddingClass} relative overflow-hidden`} ref={modalRef}>
+        <Modal
+            className={`${widthClass} rounded-[10px] ${paddingClass} relative overflow-hidden`}
+            ref={modalRef}
+            // paddingClass 由本组件自己控制（渐变背景需铺满），不能与壳默认内边距叠加。
+            padding={false}
+        >
             <OnboardingGradientBg />
             <div className="flex flex-col w-full h-full relative z-10">{pageComp}</div>
-        </FlexiModal>
+        </Modal>
     );
 };
 

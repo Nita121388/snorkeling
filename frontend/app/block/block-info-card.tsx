@@ -10,7 +10,8 @@
 //
 // 目前支持：
 //  - Note Block        → NoteInfoCard（极简：图标 + 文件路径）
-//  - Preview Block     → PreviewInfoCard（目录 → 文件夹图标；文件 → 文件图标，均带路径）
+//  - Preview Block     → PreviewInfoCard（目录 → 文件夹图标；文件 → 文件图标，均带路径
+//                          + Git 分区：当前分支 / 未提交变更，见 repo-line.tsx）
 //  - Session Detail    ～ SessionDetailInfoCard（会话标题 / tags / note / 路径）
 //  - GUI Chat Block    ～ SessionDetailInfoCard（同一份会话身份 + note/tags）
 //  - Agent Block       ～ AgentHoverCard（完整：provider / model / status / note）
@@ -28,6 +29,7 @@ import {
 import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
 import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
+import { RepoLine } from "@/app/block/repo-line";
 import { SessionDetailInfoCard } from "@/app/block/session-detail-info-card";
 import { PreviewPathIsDirMetaKey } from "@/app/view/preview/preview-navigation";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
@@ -73,11 +75,14 @@ export function NoteInfoCard({ blockData, onOpen }: { blockData: Block | null; o
  *
  * 目录（preview:pathisdir=true）→ 文件夹图标；文件 → 文件图标。
  * 正文展示完整路径（或 block OID 兜底）；onOpen 可选（激活 tab / 恢复布局）。
+ * 路径下方挂 <RepoLine> 展示 Git 分支与未提交变更；非仓库路径下它返回 null，
+ * 卡片与加 Git 分区之前完全一致。
  */
 export function PreviewInfoCard({ blockData, onOpen }: { blockData: Block | null; onOpen?: () => void }) {
     const meta = blockData?.meta as Record<string, unknown> | undefined;
     const isDir = meta?.[PreviewPathIsDirMetaKey] === true;
     const path = (meta?.file as string) || (meta?.url as string) || blockData?.oid || "";
+    const connection = typeof meta?.connection === "string" ? meta.connection.trim() : "";
 
     return (
         <InfoCard>
@@ -93,6 +98,9 @@ export function PreviewInfoCard({ blockData, onOpen }: { blockData: Block | null
                 ) : (
                     <InfoCardText>{path}</InfoCardText>
                 )}
+                {/* Git 分区：RepoLine 自带 150ms 停留阈值 + 缓存，快速划过不产生 RPC。
+                    非仓库路径下渲染 null，卡片与改动前一致。 */}
+                <RepoLine path={path} connection={connection} />
             </InfoCardSection>
         </InfoCard>
     );

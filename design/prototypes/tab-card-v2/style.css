@@ -1,0 +1,1186 @@
+/* Tab Hover Card — 8 套样式变体原型
+ * 参考：GitHub Hovercard / Linear / Raycast / Notion·Things / Vercel Geist·shadcn
+ *       Discord 成员列表 / Warp 终端 / Windows Fluent 2
+ * 镜像源：frontend/app/tab/tab-info-card.tsx, frontend/app/element/info-card/info-card.scss
+ */
+
+:root {
+    --bg: #0b0d0e;
+    --stage: #0f1113;
+    --panel: #15181b;
+    --panel-2: #1b1f23;
+    --line: #272b30;
+    --text: #e6e9ec;
+    --text-2: #9aa2ab;
+    --text-3: #6d747c;
+
+    --accent: #7c9cf5;
+    --work: #7c9cf5;
+    --idle: #565d65;
+    --done: #5fb87c;
+    --think: #b08ce8;
+
+    --card-bg: #16181b;
+    --card-bd: #2b2f35;
+    --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
+    --row-hover: rgba(255, 255, 255, 0.055);
+}
+
+body.light {
+    --bg: #eef1f4;
+    --stage: #f7f9fb;
+    --panel: #ffffff;
+    --panel-2: #f1f4f7;
+    --line: #dfe4ea;
+    --text: #1b1f24;
+    --text-2: #5c656d;
+    --text-3: #8b939b;
+
+    --accent: #3b6fe0;
+    --work: #3b6fe0;
+    --idle: #b3bcc5;
+    --done: #2f9e5a;
+    --think: #8250c8;
+
+    --card-bg: #ffffff;
+    --card-bd: #dde3e9;
+    --card-shadow: 0 12px 28px rgba(23, 32, 44, 0.14), 0 2px 6px rgba(23, 32, 44, 0.06);
+    --row-hover: rgba(0, 0, 0, 0.045);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ───────────────────────── 左侧变体导航 ───────────────────────── */
+
+.nav {
+    width: 268px;
+    min-width: 268px;
+    height: 100%;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.nav-head {
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid var(--line);
+}
+
+.nav-head h1 {
+    margin: 0 0 3px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.nav-head p {
+    margin: 0;
+    font-size: 11px;
+    color: var(--text-3);
+    line-height: 1.45;
+}
+
+.nav-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px;
+}
+
+.item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    padding: 7px 9px;
+    border-radius: 7px;
+    cursor: pointer;
+    margin-bottom: 2px;
+}
+
+.item:hover {
+    background: var(--row-hover);
+}
+
+.item.active {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.item .name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.item .ref {
+    display: block;
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--text-3);
+    letter-spacing: 0.01em;
+}
+
+.item .desc {
+    display: block;
+    margin-top: 4px;
+    font-size: 10.5px;
+    color: var(--text-2);
+    line-height: 1.4;
+}
+
+.item.active .desc {
+    color: var(--text);
+}
+
+.num {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: var(--panel-2);
+    color: var(--text-3);
+    font-size: 9.5px;
+    font-weight: 700;
+    flex: none;
+}
+
+.item.active .num {
+    background: var(--accent);
+    color: #fff;
+}
+
+.nav-foot {
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-3);
+}
+
+.toggle {
+    margin-left: auto;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--text-2);
+    font: inherit;
+    font-size: 11px;
+    border-radius: 6px;
+    padding: 3px 8px;
+    cursor: pointer;
+}
+
+.toggle:hover {
+    color: var(--text);
+    border-color: var(--text-3);
+}
+
+/* ───────────────────────── 右侧舞台 ───────────────────────── */
+
+.stage {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background:
+        radial-gradient(80% 60% at 30% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+        var(--stage);
+    overflow: auto;
+}
+
+.stage-top {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 16px 22px 10px;
+}
+
+.stage-top h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.stage-top .src {
+    font-size: 11px;
+    color: var(--text-3);
+}
+
+.steal {
+    margin: 0 22px 4px;
+    font-size: 11.5px;
+    color: var(--text-2);
+    max-width: 720px;
+    line-height: 1.55;
+}
+
+.steal b {
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* 模拟窗口 */
+.win {
+    margin: 14px 22px 0;
+    width: 760px;
+    max-width: calc(100% - 44px);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: var(--card-shadow);
+    overflow: visible;
+}
+
+.win-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+}
+
+.win-bar .d {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--line);
+}
+
+.win-bar .d:nth-child(1) {
+    background: #e0655f;
+}
+.win-bar .d:nth-child(2) {
+    background: #e0b25f;
+}
+.win-bar .d:nth-child(3) {
+    background: #5fc07a;
+}
+
+.win-bar .t {
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--text-3);
+}
+
+/* 模拟 tab 栏 */
+.tabbar {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 6px 10px 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--stage);
+    position: relative;
+}
+
+.tabbar .tab {
+    position: relative;
+    min-width: 108px;
+    height: 26px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--text-3);
+    border-radius: 6px 6px 0 0;
+    cursor: default;
+    user-select: none;
+}
+
+.tabbar .tab .ico {
+    font-size: 11px;
+}
+
+.tabbar .tab.hot {
+    background: var(--row-hover);
+    color: var(--text);
+}
+
+.tabbar .tab.active {
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: inset 0 -1px 0 var(--panel);
+}
+
+.tabbar .tab .pdot {
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: var(--accent);
+    opacity: 0.8;
+}
+
+.tabbar .tab .sdot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    margin-left: auto;
+}
+
+.tabbar .add {
+    margin-left: 2px;
+    color: var(--text-3);
+    font-size: 13px;
+    padding: 0 6px 4px;
+}
+
+/* 卡片锚点 */
+.anchor {
+    position: relative;
+    height: 300px;
+    padding: 12px 14px;
+    background:
+        repeating-linear-gradient(0deg, transparent 0 23px, color-mix(in srgb, var(--line) 55%, transparent) 23px 24px),
+        var(--panel);
+}
+
+.card-slot {
+    position: relative;
+    top: 8px;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.card-slot.hidden {
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+}
+
+.hint {
+    position: absolute;
+    right: 14px;
+    bottom: 12px;
+    font-size: 10.5px;
+    color: var(--text-3);
+}
+
+/* ───────────────────────── 通用卡片原子 ───────────────────────── */
+
+.card {
+    width: 268px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-bd);
+    box-shadow: var(--card-shadow);
+    color: var(--text);
+    overflow: hidden;
+}
+
+.dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--idle);
+}
+.dot.working {
+    background: var(--work);
+    animation: pulse 1.6s ease-in-out infinite;
+}
+.dot.thinking {
+    background: var(--think);
+    animation: pulse 0.9s ease-in-out infinite;
+}
+.dot.done {
+    background: var(--done);
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.42;
+        transform: scale(0.82);
+    }
+}
+
+.mono {
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ───────────── 1. GitHub Hovercard ───────────── */
+
+.v-github {
+    padding: 12px;
+    border-radius: 6px;
+}
+.v-github .head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.v-github .ws {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--accent);
+}
+.v-github .title {
+    font-size: 13px;
+    font-weight: 600;
+}
+.v-github .flag {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: #d9a441;
+}
+.v-github .count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-3);
+}
+.v-github .rule {
+    height: 1px;
+    background: var(--card-bd);
+    margin: 10px -12px;
+}
+.v-github .sub {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 6px;
+}
+.v-github .row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 24px;
+    font-size: 12px;
+}
+.v-github .ico {
+    width: 14px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-2);
+}
+.v-github .name {
+    color: var(--text);
+}
+.v-github .state {
+    margin-left: auto;
+    color: var(--text-3);
+    font-size: 11px;
+}
+.v-github .row.is-working .state {
+    color: var(--work);
+}
+.v-github .kv {
+    display: grid;
+    grid-template-columns: 62px 1fr;
+    gap: 3px 8px;
+    font-size: 11px;
+    margin-top: 2px;
+}
+.v-github .kv dt {
+    color: var(--text-3);
+}
+.v-github .kv dd {
+    margin: 0;
+    color: var(--text-2);
+}
+
+/* ───────────── 2. Linear ───────────── */
+
+.v-linear {
+    border-radius: 8px;
+    padding: 10px 0 8px;
+}
+.v-linear .head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 12px 9px;
+    border-bottom: 1px solid var(--card-bd);
+}
+.v-linear .ws {
+    font-size: 11px;
+    color: var(--accent);
+}
+.v-linear .title {
+    font-size: 12px;
+    font-weight: 600;
+}
+.v-linear .count {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--text-3);
+}
+.v-linear .sub {
+    padding: 8px 12px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.v-linear .sub span {
+    color: var(--text-3);
+    font-weight: 500;
+    letter-spacing: 0;
+}
+.v-linear .row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 22px;
+    padding: 0 12px;
+    font-size: 12px;
+}
+.v-linear .row:hover {
+    background: var(--row-hover);
+}
+.v-linear .bd {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+    flex: none;
+}
+.v-linear .name {
+    color: var(--text-2);
+}
+.v-linear .state {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-3);
+}
+.v-linear .row.is-working .state {
+    color: var(--work);
+}
+.v-linear .foot {
+    padding: 7px 12px 0;
+    margin-top: 4px;
+    border-top: 1px solid var(--card-bd);
+    font-size: 10.5px;
+    color: var(--text-3);
+    display: flex;
+    gap: 10px;
+}
+
+/* ───────────── 3. Raycast ───────────── */
+
+.v-raycast {
+    border-radius: 10px;
+    padding: 5px;
+    background: color-mix(in srgb, var(--card-bg) 82%, transparent);
+    backdrop-filter: blur(22px) saturate(1.5);
+    border-color: color-mix(in srgb, var(--card-bd) 80%, transparent);
+}
+.v-raycast .head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 6px 7px;
+}
+.v-raycast .ws {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+}
+.v-raycast .title {
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.v-raycast .count {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--text-3);
+}
+.v-raycast .cap {
+    padding: 2px 7px 3px;
+    font-size: 10px;
+    color: var(--text-3);
+}
+.v-raycast .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 7px;
+    border-radius: 7px;
+    font-size: 12px;
+}
+.v-raycast .row:hover {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.v-raycast .chip {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    flex: none;
+}
+.v-raycast .name {
+    color: var(--text);
+}
+.v-raycast .state {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-3);
+}
+.v-raycast .row.is-working .state {
+    color: var(--work);
+}
+.v-raycast .kbd {
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--panel-2);
+    border: 1px solid var(--card-bd);
+    color: var(--text-3);
+    font-family: ui-monospace, monospace;
+}
+.v-raycast .foot {
+    display: flex;
+    gap: 8px;
+    padding: 6px 7px 3px;
+    margin-top: 3px;
+    border-top: 1px solid color-mix(in srgb, var(--card-bd) 80%, transparent);
+    font-size: 10px;
+    color: var(--text-3);
+}
+
+/* ───────────── 4. Notion / Things 3 ───────────── */
+
+.v-notion {
+    border-radius: 8px;
+    padding: 10px 11px 9px;
+    border-color: color-mix(in srgb, var(--card-bd) 62%, transparent);
+}
+.v-notion .head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 2px;
+}
+.v-notion .ws {
+    font-size: 13px;
+}
+.v-notion .title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+.v-notion .count {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--text-3);
+}
+.v-notion .sub {
+    font-size: 10.5px;
+    color: var(--text-3);
+    margin: 8px 0 4px;
+}
+.v-notion .row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 26px;
+    font-size: 12.5px;
+}
+.v-notion .row:hover {
+    background: var(--row-hover);
+    border-radius: 5px;
+}
+.v-notion .em {
+    width: 15px;
+    font-size: 12.5px;
+    text-align: center;
+}
+.v-notion .name {
+    color: var(--text-2);
+}
+.v-notion .pill {
+    margin-left: auto;
+    font-size: 10.5px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--text-2);
+}
+.v-notion .row.is-working .pill {
+    background: color-mix(in srgb, var(--work) 16%, transparent);
+    color: var(--work);
+}
+.v-notion .row.is-thinking .pill {
+    background: color-mix(in srgb, var(--think) 16%, transparent);
+    color: var(--think);
+}
+.v-notion .props {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid color-mix(in srgb, var(--card-bd) 62%, transparent);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+.v-notion .prop {
+    font-size: 10.5px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: var(--panel-2);
+    color: var(--text-2);
+}
+
+/* ───────────── 5. Geist / shadcn ───────────── */
+
+.v-geist {
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: var(--card-bg);
+}
+.v-geist .head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 8px;
+}
+.v-geist .ws {
+    font-size: 11px;
+    color: var(--text-2);
+}
+.v-geist .title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+.v-geist .count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-3);
+    font-family: ui-monospace, monospace;
+}
+.v-geist .rule {
+    height: 1px;
+    background: color-mix(in srgb, var(--card-bd) 70%, transparent);
+    margin: 0 -12px 8px;
+}
+.v-geist .cap {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 6px;
+}
+.v-geist .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 24px;
+    font-size: 11.5px;
+}
+.v-geist .logo {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--card-bd) 90%, transparent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--text-2);
+    flex: none;
+}
+.v-geist .name {
+    color: var(--text-2);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+}
+.v-geist .tag {
+    margin-left: auto;
+    font-size: 9.5px;
+    padding: 0 6px;
+    line-height: 16px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--card-bd) 90%, transparent);
+    color: var(--text-3);
+}
+.v-geist .row.is-working .tag {
+    border-color: color-mix(in srgb, var(--work) 45%, transparent);
+    color: var(--work);
+}
+.v-geist .row.is-thinking .tag {
+    border-color: color-mix(in srgb, var(--think) 45%, transparent);
+    color: var(--think);
+}
+.v-geist .row.is-done .tag {
+    border-color: color-mix(in srgb, var(--done) 45%, transparent);
+    color: var(--done);
+}
+
+/* ───────────── 6. Discord 成员列表 ───────────── */
+
+.v-discord {
+    border-radius: 8px;
+    padding: 10px 8px 8px;
+}
+.v-discord .head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 4px 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--card-bd) 70%, transparent);
+}
+.v-discord .ws {
+    font-size: 11px;
+    color: var(--accent);
+}
+.v-discord .title {
+    font-size: 12px;
+    font-weight: 600;
+}
+.v-discord .count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-3);
+}
+.v-discord .sub {
+    padding: 7px 4px 3px;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-3);
+}
+.v-discord .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 12.5px;
+}
+.v-discord .row:hover {
+    background: var(--row-hover);
+}
+.v-discord .avatar {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    flex: none;
+}
+.v-discord .ring {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 2px solid var(--card-bg);
+    background: var(--idle);
+}
+.v-discord .row.is-working .ring {
+    background: var(--work);
+}
+.v-discord .row.is-thinking .ring {
+    background: var(--think);
+}
+.v-discord .row.is-done .ring {
+    background: var(--done);
+}
+.v-discord .name {
+    color: var(--text);
+    font-weight: 500;
+}
+.v-discord .state {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--text-3);
+}
+.v-discord .row.is-working .state {
+    color: var(--work);
+}
+
+/* ───────────── 7. Warp 终端 ───────────── */
+
+.v-warp {
+    border-radius: 6px;
+    padding: 9px 11px 8px;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    background: color-mix(in srgb, var(--card-bg) 92%, #000 8%);
+}
+.v-warp .head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--text-2);
+}
+.v-warp .ws {
+    color: var(--accent);
+}
+.v-warp .title {
+    color: var(--text);
+    font-weight: 600;
+}
+.v-warp .count {
+    margin-left: auto;
+    color: var(--text-3);
+    font-size: 10px;
+}
+.v-warp .rule {
+    height: 1px;
+    background: color-mix(in srgb, var(--card-bd) 76%, transparent);
+    margin: 7px 0;
+}
+.v-warp .sub {
+    font-size: 9.5px;
+    color: var(--text-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+.v-warp .row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 19px;
+    font-size: 11px;
+}
+.v-warp .row:hover {
+    background: var(--row-hover);
+}
+.v-warp .bar {
+    width: 2px;
+    height: 11px;
+    border-radius: 1px;
+    background: var(--line);
+    flex: none;
+}
+.v-warp .row.is-working .bar {
+    background: var(--work);
+}
+.v-warp .row.is-thinking .bar {
+    background: var(--think);
+}
+.v-warp .row.is-done .bar {
+    background: var(--done);
+}
+.v-warp .em {
+    font-size: 9.5px;
+    opacity: 0.9;
+    font-family: system-ui, sans-serif;
+}
+.v-warp .name {
+    color: var(--text-2);
+}
+.v-warp .state {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--text-3);
+}
+.v-warp .row.is-working .state {
+    color: var(--work);
+}
+
+/* ───────────── 8. Fluent 2 ───────────── */
+
+.v-fluent {
+    border-radius: 8px;
+    padding: 9px;
+    background: color-mix(in srgb, var(--card-bg) 86%, transparent);
+    backdrop-filter: blur(30px) saturate(1.2);
+    border-color: color-mix(in srgb, var(--card-bd) 72%, transparent);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, #ffffff 5%, transparent) inset,
+        var(--card-shadow);
+}
+.v-fluent .head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 3px 8px;
+}
+.v-fluent .ws {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.v-fluent .title {
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.v-fluent .count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-3);
+}
+.v-fluent .rule {
+    height: 1px;
+    background: color-mix(in srgb, var(--card-bd) 62%, transparent);
+    margin: 0 0 7px;
+}
+.v-fluent .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 3px;
+    border-radius: 5px;
+    font-size: 12px;
+}
+.v-fluent .row:hover {
+    background: var(--row-hover);
+}
+.v-fluent .tile {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    background: var(--panel-2);
+    border: 1px solid color-mix(in srgb, var(--card-bd) 62%, transparent);
+    flex: none;
+}
+.v-fluent .name {
+    color: var(--text-2);
+}
+.v-fluent .pill {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--card-bd) 80%, transparent);
+    color: var(--text-2);
+}
+.v-fluent .pill i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--idle);
+    display: block;
+}
+.v-fluent .row.is-working .pill {
+    border-color: color-mix(in srgb, var(--work) 40%, transparent);
+    color: var(--work);
+}
+.v-fluent .row.is-working .pill i {
+    background: var(--work);
+}
+.v-fluent .row.is-thinking .pill {
+    border-color: color-mix(in srgb, var(--think) 40%, transparent);
+    color: var(--think);
+}
+.v-fluent .row.is-thinking .pill i {
+    background: var(--think);
+}
+.v-fluent .row.is-done .pill {
+    border-color: color-mix(in srgb, var(--done) 40%, transparent);
+    color: var(--done);
+}
+.v-fluent .row.is-done .pill i {
+    background: var(--done);
+}
+
+/* 底部图例 */
+.legend {
+    margin: 16px 22px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 11px;
+    color: var(--text-3);
+    align-items: center;
+}
+.legend .k {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.legend .sw {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.tab-hint {
+    margin-left: auto;
+    align-self: center;
+    padding: 0 6px 4px;
+    font-size: 10px;
+    color: var(--text-3);
+}

@@ -97,6 +97,14 @@
 
 - `agent-id-card/` — **▲ 设计活跃**;Agent 开篇身份证卡:新建/resume Agent 时终端 block 先展示证件风开篇卡(照片位 provider logo + 状态环、Title/Status/Output/Note/Sessions 五信息行、波纹底纹、底部 sessionId 编号行、可选印章),跑起来后折叠成 header 状态灯徽标;10 场景可切换(working·tool/thinking、blocked、error、rate-limited、done、idle、stale、unbound 待落户、missing 户籍注销)+ 印章开关 + 深色桌面对照。状态文案逐字对齐 `agent-status-derive.ts`;镜像 `term.tsx` + `blockframe-header.tsx`,真实组件尚未实现。
 
+## `agent-card-beautify/` — 1 项（自建目录）
+
+- `agent-card-beautify/` — **▲ 设计活跃**（2026-11-03）；Agent hover card 的**信息层级重排**方案集：8 张同数据对照卡（0 现状基线 + A–G 七套参考成熟产品）。A **Linear**（星标上行、空值行不给高度、相对时间、行高 26）、B **Vercel**（顶部 2px 渐变状态条、状态收 chip、属性折叠成 `Properties · 6` disclosure、mono meta 圆点分隔）、C **Raycast**（大写分组头 + 30px 行 + 选中行 accent + 底栏键位提示，仅适合弹窗）、D **GitHub**（32px 品牌头像块、标签 pill + `+ label` 占位、标题引用块、hover 工具组）、E **Warp**（Duration/Cost/Context 三列指标上抬、TASK/DETAILS caps 分区）、F **Arc**（品牌色渐变面 + 发光徽标，一屏多卡会变噪声）、G **Stripe**（两列 key/value 网格 + 单一主按钮）。推荐组合 A+B+E 并可分批落地。可切 5 态/320·360·420 宽/深浅主题/密度标注，抽屉给每方案落地要点与 CSS 片段，支持 `?state/width/theme/guides/notes` 深链。**已合成落地版**（C 行骨架 + D 头像/引用块，2026-11-03）见 `agent-card-hybrid/`；实机落地后卡高 296→251px、星标上移右上角、`title_source` 并入副标题、空值 `—`、相对时间、footer 单行（详见 `docs/project/agent-card-layout.md`）。镜像 `frontend/app/view/term/agent-hover-card.tsx`, `frontend/app/element/info-card/info-card.scss`, `frontend/app/element/info-card/session-note-section.tsx`, `frontend/app/view/aisessions/property/property-list.tsx`；真实组件尚未实现。
+
+## `agent-card-hybrid/` — 1 项（自建目录）
+
+- `agent-card-hybrid/` — **◐ 部分落地**（2026-11-03 主体已落地：`agent-hover-card.tsx` + `info-card.scss` + `session-note-section.tsx` + `property-list.{tsx,scss}` + `session-note-hook.ts`；折叠态与 usage 指标未做）；在 `agent-card-beautify/` 8 套对照里取三个可共存的胜出点合成一版：**C 的行骨架**（icon + label 左 / value 右，一行一条信息） + **D 的身份与主体**（30px 头像块承载 Logo/emoji/文字徽标三态、2px 状态色标题引用块、tags pill） + **右上三件套**（状态 chip / 收藏 / 放大同一基线右对齐，`agent-card-head` 不再各占一行）。配套文本简化：`first_user_message` → 副标题 `First message`、`Empty` → `—`、绝对时间 → 相对时间（hover 绝对）、`Add property` / `AI auto-fill` 收进底部单行、session id 8+4 截断。高度实测 340 宽/2 行标题：现状 296px → 251px，折叠态 140px（页面右下角实时 `offsetHeight` 回写）。页面含主卡 + 5 态 + 宽度/填充/折叠/emoji/超长标题情境，支持 `?state&width&theme&collapsed&hover` 深链。镜像 `frontend/app/view/term/agent-hover-card.tsx`, `frontend/app/element/info-card/info-card.scss`, `frontend/app/element/info-card/session-note-section.tsx`, `frontend/app/view/aisessions/property/property-list.tsx`, `frontend/app/view/aisessions/title-source-badge.tsx`；真实组件尚未实现。
+
 ## `agent-card-accent/` — 1 项（自建目录）
 
 - `agent-card-accent/` — **◐ 部分落地**（2026-05-20；方案 E 已写入 `info-card.scss`）;Agent hover card 强调线改造：原 `.info-card.agent-card` 用 `border-left: 3px` + `border-radius: 8px`，圆角把左侧色条在上下端切成斜段，视觉上两头向外弯（用户明确不喜欢）。**已落地方案 E：通长直条 + 色条自身的圆头**——`::before` 伪元素 `left/top/bottom: 0` + `width: 3px` + `border-radius: 2px`（圆头来自条本身），卡片 `border-radius: 0 6px 6px 0` + `padding-left: 15px`，CSS-only 不碰 JSX。原型里的备选：A 全直角 / B 左直角右圆角 / C 顶部色带 / D 状态章 / F 卡外并列条（需 JSX）/ G 卡全圆角+条在卡内（反例，条端会探出尖角）。原型可切 working/done/blocked/error、280/320/380 宽度、圆头半径 1.5/2/3px、1.5x 放大镜，点卡片看 CSS 片段。镜像 `frontend/app/view/term/agent-hover-card.tsx` + `frontend/app/element/info-card/info-card.scss`。
@@ -125,6 +133,10 @@
 ## `files-block-favorites/` — 1 项（自建目录）
 
 - `files-block-favorites/` — **▲ 设计活跃**（2026-09-04）;Files Block（Preview 视图）常用目录收藏 + 自动识别最近访问目录：folder icon 点击居中弹出 FavoritesFloatingWindow（AgentTargetFloatingWindow 风格毛玻璃浮窗），分 Favorites（手动收藏 + hover × 移除 + "Add current dir" 按钮）+ Recent（自动识别 session 内访问历史，最多 10 条）两区域，选中态 accent 左侧 bar，footer 有 Go to Path / Open / New Tab 三个操作按钮；右键文件/目录新增 "Add to Favorites" / "Remove from Favorites" 菜单项，folder icon 有收藏时显示 ★ 绿色徽标。替换现有硬编码 BOOKMARKS（Home/Desktop/Downloads/Documents/Root）+ longClick context menu。数据走 `preview:favorites` setting key，Recent 前端 session 内追踪。镜像源：`frontend/app/view/preview/preview-model.tsx`, `preview-directory-utils.tsx`, `preview.tsx`。4 场景可交互切换。
+
+## `files-header-split-reveal/` — 1 项（自建目录）
+
+- `files-header-split-reveal/` — **▲ 设计活跃**（2026-11-06）;Files Block header 的 icon 显示不全（把路径挤成 `…`）。方案：悬浮 header 左半 → 只出左侧组；悬浮右半 → 只出右侧组，且左侧 chevron + 路径**收起让位**，腾出的宽度**全部转给右组**。**核心陷阱用"锁存"结构性消除**：方向只在 `pointerenter` 那一刻按进入点判定一次，**整个 hover 会话内锁死**，`pointermove` 完全不参与分区 —— 所以"右组向左伸过中线"根本不会被重新判定，不存在翻区/点不到/闪烁（对照中线实时切分：240px 下右组第 0 个 icon `goto` @x=35 < mid=119 立刻翻成 left，实测 FAIL；锁存版全程 right，PASS）。离开 header 后启动 `resetTimer(graceMs)`（默认 400ms，可配 0~1200），宽限内回来**沿用原方向**，到期才回 NEUTRAL、下次进入才重新判定；溢出菜单/浮层打开时 FROZEN（`pointerleave` 不启动定时器）。三项自动断言全 PASS（①横穿全宽含 icon 越中线不翻区 ②宽限内从另一侧回来不翻区 ③超宽限后从另一侧进入必须切换）。窄块按 5 级 tier 降级（≥360 完整 / 240-360 削尾进 `…` / 192-240 `…` 升主入口 / 88-192 只留类型图标+`…` / <88 浮层工具条接管），硬判据「header 可见 + 溢出菜单 + 浮层 = 12」在 40~520px 十档 × 左右两方向全部 PASS（功能零丢失）；对照组现状 `overflow:hidden` 硬切在 240px 下 6 个全被裁。镜像源：`frontend/app/block/blockframe-header.tsx`, `frontend/app/block/block.scss`, `frontend/app/view/preview/preview-model.tsx`, `frontend/layout/lib/layoutModel.ts`。真实组件尚未实现。
 
 ## `vcs-block-redesign/` — 1 项（自建目录）
 
@@ -174,3 +186,32 @@
 ## 2026-10-28 新增原型
 
 - `aisessions-annotation-card-ux/` — **▲ 设计活跃**（2026-10-28）；会话详情批注节点悬浮卡重设计：去掉卡片「Node」字样改为「类型图标 + #seq + 时间」身份头；圆点交互从「单击既跳又钉」改为 **单击选中留卡 / 双击跳转高亮**；卡片移除 Jump 按钮与图钉，改为 external-link 直接打开 `AnnotationEditor`；工具节点按 `tool-group.tsx` 画成工具行（wrench + 名称 + summary + 状态点），summary 节点显示截断总结（渐隐），批注的类型/标题/正文/标签分层展示。覆盖 message / tool / summary 三类节点 + 明暗主题。镜像源：`annotation-card.tsx`、`annotation-rail.tsx`、`annotation-model.ts`、`session-detail.tsx`、`tool-group.tsx`，真实组件尚未实现。
+
+## 2026-11-02 新增原型
+
+- `tab-card-v2/` — **▲ 设计活跃**（2026-11-02）；Tab 悬浮卡样式与图标重设计。8 套变体同数据对比：GitHub Hovercard / Linear / Raycast / Notion·Things / Vercel Geist·shadcn / Discord 成员列表 / Warp 终端 / Windows Fluent 2，各变体同时换「布局 + 图标容器 + 状态表达」。共同结构主张：计数并入 header、相同 provider 提到分组标题、行内主信息换成状态短语、定宽 268px、无状态不显示 `—`。镜像源：`tab-info-card.tsx`、`info-card.scss`、`tab.tsx`，真实组件尚未改造。
+
+## 2026-11-05 新增原型
+
+- `commontext-list-meta-sort/` — **✅ 已落地**（2026-11-05，`frontend/app/commontext/`，分支 `feat/commontext-list-meta-sort`）；CommonText 列表要展示创建时间 / 更新时间 / 支持多排序 / 显示使用次数。按真实双栏 Master-Detail 镜像重做（首版窄单栏作废），只加两处新增点：左栏搜索下方的排序控件、列表行右侧的「使用次数 + 更新时间」列（不加行高，完整时间走悬浮提示）。排序控件按项目 UI 原则「能用图标表示的不用文字」做成纯图标按钮组（含义走 title/aria-label），列表行与详情页脚的「时间 / 次数」同样用图标 + 数字。原型同时复刻了「搜索态相关度优先、置顶只作并列次序」的真实行为。README 记录落地前必须定的三件事：排序作用域、使用次数写入点缺失（Copy 与行内插入不计数、新建虚记 1 次）、排序函数需独立注入不改 `sortCommonTextItems`。镜像源：`commontext-compose-modal.tsx`、`commontext-model.ts`，真实组件尚未改造。
+
+落地回执：真实组件已按本原型实现两处新增点（列表行右侧「次数 + 更新时间」列、搜索框下方纯图标排序控件）
++ 详情页脚元信息组；三条待定项按原型推荐值定稿——排序作用域（浏览态用用户排序 / 搜索态相关度优先且控件置灰，
+用 `aria-disabled` 保留 tooltip）、使用次数口径（补 Copy 与行内 hover 插入，新建不再虚记 1 次但刷新 `lastusedat`）、
+排序函数独立注入（新增 `sortCommonTextItemsBy`，`sortCommonTextItems` 行为逐位不变）。
+
+## 2026-11-06 新增原型
+
+- `commontext-cloud-sync-notion/` — **▲ 设计活跃**（2026-11-06）；Common Text 三项需求：① 云同步 + 来源元数据（`createdBy.kind/name`、`origin.deviceId/deviceName/platform`、`rev`、`deletedat` 墓碑）；② 按创建者 / 电脑筛选（`All / 👤 Humans / 🤖 Agents` chip + 设备下拉，计数随其它条件重算，与 tag 筛选 AND 叠加）；③ 详情右栏升级为 Notion/Obsidian 页面式（page icon emoji + 大标题 + `name 值` 两列属性网格 + `Preview/Edit` 正文切换 + 复用 markdown `:` 选择器的 emoji picker）。同步状态只暴露 `已同步 / 同步中 / 有冲突` 三态 + 悬浮面板（上次同步、设备列表、冲突条数、模拟另一设备新建 / Agent 改这条）。README 记录四项待拍板：同步后端（推荐先云盘目录 `commontext.json` 后自建服务）、agent 身份来源（命令显式传参优先）、设备展示名（默认 hostname 可改）、冲突粒度（推荐行级自动合并 + 标记）。同步方式部分按「**编译期枚举 + 单活跃**」实现（非插件化）：Transport 单选（Local folder / Git / Self-hosted / Off），前置条件不满足就置灰并给配置入口（Git 未配 token → 灰 + `Configure token…`，配好后立刻可点），切换 = 全量重同步 + **内联**显式选边（This device wins / Remote wins），从 Off 首次启用不需确认。同步设置并入现有设置界面：**`waveconfig` 设置块左栏新增 Sync 条目**（`visualComponent` 表单，镜像 `agentnotifysettings.tsx` 的 SectionRow + `toggle.scss` 几何），含 Transport 单选 + 各后端配置（folder 路径 / git token+interval）+ This computer（Name/DeviceID/Platform）+ Conflicts 三选一 + Scope（Common Text / tombstones）+ Maintenance（Full re-sync / Reveal / Reset）；**草稿态 + Unsaved changes + Save**（真实组件同款），token 因存 keyring 而点保存即刻生效，Raw JSON 页签实时反映草稿。README 记录为什么不做可安装插件（仓库无运行期加载能力 + 同步复杂度在不变量层而非后端数量）与「什么时候才真值得插件化」三条判据。镜像源：`commontext-compose-modal.tsx`、`commontext-model.ts`、`pkg/wconfig/settingsconfig.go`、`pkg/commontextstore/commontext_store.go`，真实组件尚未改造。
+
+- `move-block-modal-v3/` — **▲ 设计活跃**（2026-11-06）；Move Block to Tab 的菜单收敛 + 动作入口重排：现有 4 条菜单（Move/Copy × New/Existing）收敛为 **1 条 `Move to Tab…`**；弹窗内「New tab 行置顶且永远可用」，其余行 **每行两个图标动作**（`→` Move / `⧉` Copy，hover 才浮现），**不做 Move/Copy 分段切换**——去掉模式状态后一步完成，标题固定 `Move Block`；行体点击仍是 Move 的快路径，`→` 是它的显式 / 键盘可达 affordance。行容器必须由 `<button>` 改 `div[role=button]`（按 project 已踩过的非法嵌套坑，`overview-board.tsx:141`）。同时把「只支持 agent Block」的成因查清并画成表：不是按 block 类型拦的，而是 `appendBlockMoveMenuItems` 只被 term / vcs / preview-directory / preview-explorer / processviewer 五个视图接力，`preview-model`（markdown/图片预览）、`aisessions`、`codeeditor` 等右键菜单没接 → 落地方案以 block header `⋯` 为保底入口 + 逐视图补齐。自检 `selfcheck.mjs`（Edge headless + CDP，复用 `scripts/verify/lib/cdp.mjs`）26/26 全绿，含「无模式控件」「行体=Move」「⧉=Copy」「真实指针 hover 图标浮现 / 移开归零」。镜像源：`blockframe-header.tsx`、`tab-target-modal.tsx`、`tab.scss`、`flyoutmenu.scss`、`modal.tsx/scss`，真实组件尚未改造。README 记录待拍板：Copy 的放置方式（每行双图标 / header 分段 / 两条菜单 / 砍掉）、行体点击语义（= Move / 只允许点图标）、New tab 是否当场输名字、空态是否保留 `No other tabs`。
+
+## 2026-11-06 新增原型（Overview 优化 1-4）
+
+配套任务 `.trellis/tasks/11-06-overview-optimize-1to4/`，设计见 `design/plans/overview-board-timeline.md`。
+
+- `overview-card-click/` — **▲ 设计活跃**（2026-11-06）；Overview 看板卡片点击语义的**三级栈**原型：点卡片 → 整卡弹窗（`AgentCardModal`，内部 `AgentHoverCard` frameless）→ 卡内「打开会话详情」→ 会话详情弹窗。演示两处易踩的接线细节：① 卡内按钮必须 `stopPropagation`（否则冒泡回卡片二次触发）；② 非 agent 块没有整卡可开，点击仍是「选中 + 跳转 block」；③ 无 `sessionId` 时详情按钮 disabled。弹窗 `closeOnBackdrop: false`（属性 inline 编辑中误关会丢草稿）。镜像源：`session-overview.tsx:2518`（现状直接 `openSessionDetail`）、`overview-board.tsx:141`（卡片 `onClick`）、`modals/agentcardmodal.tsx`、`view/term/agent-hover-card.tsx`。真实接线尚未改。
+
+- `overview-group-views/` — **▲ 设计活跃**（2026-11-06）；Overview 看板分组新增两种口径：**目录**（`basename(projectPath)`，列序按卡片数降序、「无项目」虚线框兜底列永远最后）、**标签**（tags 并集按字母序、「无标签」兜底列最后）。关键约束画在页面上：**一张卡可出现在多列**，所以「各列计数之和 = 卡片数」的旧断言在标签视图下必须改成 `之和 ≥ 卡片数`；重复出现的卡带 `DUP` 标记。四种口径共享同一份筛选结果，只有 `status` 常显 5 列并带状态色点。镜像源：`session-overview/overview-board-model.ts:385`（`OverviewBoardGroups` 现只有 status/tab/provider）、`session-overview.tsx:2437`（分组 `<select>`）。真实实现尚未加。
+
+- `overview-board-v2/timeline-gantt.html` — **加 G2.1 分段版**（2026-11-06）；在原有 G1/G2 对比之上加第三档 `G2.1 真实分段`：段起点用 `AgentStatus.activeSince`（不再是从尾巴倒推的 6min/20%）、完成点用 `completedAt` 画竖刻度 + 圆点（hover 显示「完成于 N 分钟前」）、idle 段改中性灰实心（不再并入斜纹「状态未知」）、圆角从 9px 收到 4px（段 3px + 1px 缝，右上「圆角 9px ⇄ 4px」按钮可直接 A/B）。页面上明确写出**残留不诚实之处**：仍画不出「working → idle → working → idle」多次交替，因为后端只留当前态，等环形历史落地。镜像源：`session-overview/overview-timeline-model.ts:111-115`（`tailMsFor` 猜法）、`session-overview.scss:1873`（`border-radius: 9px`）。

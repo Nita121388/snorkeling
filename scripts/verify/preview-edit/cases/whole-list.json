@@ -1,0 +1,27 @@
+{
+    "id": "whole-list",
+    "fixture": "list-forms.md",
+    "theme": "dark",
+    "target": {
+        "selector": "ul > li:nth-child(2)",
+        "within": ".markdown-render-root"
+    },
+    "action": {
+        "type": "dblclick",
+        "at": "text-first-line"
+    },
+    "rules": [
+        "text-zero-shift",
+        "pixel-zero-shift",
+        "no-clip",
+        "pixel-visual-parity",
+        "single-level-indent",
+        "marker-drawn",
+        "clean-exit",
+        "no-measure-loop",
+        "inline-style-parity",
+        "editor-kind"
+    ],
+    "expectEditor": "wysiwyg",
+    "note": "带嵌套子项的条目 → 目标提升为整个 <ul>（测 textOffset 与 marker 列的组合）"
+}

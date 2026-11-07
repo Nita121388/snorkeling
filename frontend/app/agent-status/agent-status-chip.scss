@@ -1,0 +1,282 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// AgentStatusChip 的唯一几何来源。
+//
+// 4 个面此前各自在 session-overview.scss / info-card.scss 里写一份 chip 几何，
+// 于是同一个状态换个位置就塌：Overview 是 18px/10px/圆角 6，悬浮卡是
+// 20px/10.5px/胶囊 999 —— 两套光学参数下 `line-height: 1` 的字形墨迹偏差不同，
+// 悬浮卡的文字看着不居中。
+//
+// 现在几何只在这里定义，由 `variant` 类选择：
+//   .agent-status-chip--list      Overview 列表行
+//   .agent-status-chip--board     Overview 看板卡片
+//   .agent-status-chip--card      agent 悬浮卡 / 放大弹窗（胶囊 + dot）
+//   .agent-status-chip--aggregate Tab 聚合（无 icon）
+//   .agent-status-chip--header    Block 头部（HeaderElem 走纯文本，这里只服务测试/预览）
+//
+// 旧类名（.session-overview-agent-status / .agent-card-status-chip / .agent-status-header /
+// .session-overview-agent-aggregate）作为兼容别名同时挂在根节点上，verify 探针依赖它们；
+// 但它们在这份文件里**不承载几何**，只留最小覆盖（见文件末尾），避免两份几何互相打架。
+
+.agent-status-chip {
+    // 光学补偿位：`line-height: 1` 下字形墨迹中心通常比盒中心低 ~0.5–1px，
+    // 具体值由真机判据（|labelCenterY − chipCenterY| ≤ 1px）实测决定，
+    // **不要**用 padding-top 猜值。调这个变量即可，无需改结构。
+    --agent-status-label-shift: 0px;
+
+    --agent-status-color: var(--secondary-text-color);
+    --agent-status-bg: rgb(from var(--main-text-color) r g b / 0.06);
+
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 100%;
+    gap: 4px;
+    box-sizing: border-box;
+    border: 1px solid rgb(from var(--agent-status-color) r g b / 0.28);
+    border-radius: 6px;
+    background: var(--agent-status-bg);
+    color: var(--agent-status-color);
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    vertical-align: middle;
+    text-align: left;
+
+    // chip 是真 <button>（列表/看板/卡片）或 role="button" span（聚合），
+    // 重置 UA chrome，让徽章样式说话。
+    appearance: none;
+    cursor: pointer;
+    padding: 0;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+// ── 状态配色（与 --agent-status-color 配合；组件同时会以内联变量注入 accent）──
+
+.agent-status-chip.is-working {
+    --agent-status-color: var(--agent-working-color);
+    --agent-status-bg: rgb(from var(--agent-working-color) r g b / 0.1);
+}
+
+.agent-status-chip.is-done {
+    --agent-status-color: rgb(from var(--agent-done-color) r g b / 0.78);
+    --agent-status-bg: rgb(from var(--agent-done-color) r g b / 0.1);
+}
+
+.agent-status-chip.is-blocked,
+.agent-status-chip.is-rate-limited {
+    --agent-status-color: var(--warning-color, #f59e0b);
+    --agent-status-bg: rgb(245 158 11 / 0.12);
+    border-color: rgb(245 158 11 / 0.64);
+}
+
+.agent-status-chip.is-error {
+    --agent-status-color: var(--error-color, #ef4444);
+    --agent-status-bg: rgb(from var(--error-color, #ef4444) r g b / 0.12);
+    border-color: rgb(from var(--error-color, #ef4444) r g b / 0.64);
+}
+
+.agent-status-chip.is-stale {
+    // stale 必须与 unknown 视觉分离，否则"卡住了"看着像"没数据"。
+    --agent-status-color: var(--agent-stale-color, #a855f7);
+    --agent-status-bg: rgb(from var(--agent-stale-color, #a855f7) r g b / 0.1);
+    border-color: rgb(from var(--agent-stale-color, #a855f7) r g b / 0.38);
+}
+
+.agent-status-chip.is-unknown {
+    --agent-status-color: var(--secondary-text-color);
+    --agent-status-bg: transparent;
+}
+
+// 推断态（非 agent 主动上报）：虚线边，提示"这是推出来的，不是它自己说的"。
+.agent-status-chip.is-inferred {
+    border-style: dashed;
+}
+
+// 已读：整枚收敛到次要色并停动画。位置不变，只降低注意力。
+.agent-status-chip.is-acked,
+.agent-status-chip.is-seen {
+    --agent-status-color: rgb(from var(--main-text-color) r g b / 0.42);
+    --agent-status-bg: transparent;
+    border-style: dashed;
+    opacity: 0.78;
+
+    > i,
+    .agent-status-chip-label {
+        animation: none;
+    }
+}
+
+// ── 内部结构 ──
+
+.agent-status-chip > i {
+    display: inline-flex;
+    width: 10px;
+    flex: 0 0 10px;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+}
+
+.agent-status-chip-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    // 唯一的光学补偿点：墨迹整体微移，盒子几何与行高都不动。
+    transform: translateY(var(--agent-status-label-shift));
+}
+
+.agent-status-chip-runtime {
+    flex: 0 0 auto;
+    color: rgb(from var(--agent-status-color) r g b / 0.82);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    transform: translateY(var(--agent-status-label-shift));
+}
+
+.agent-status-chip-dot {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+// ── 变体几何 ──
+
+.agent-status-chip--list,
+.agent-status-chip--board {
+    height: 18px;
+    padding: 0 5px;
+}
+
+.agent-status-chip--list {
+    margin-left: 6px;
+}
+
+.agent-status-chip--aggregate {
+    flex: 0 0 auto;
+    height: 18px;
+    padding: 0 6px;
+}
+
+.agent-status-chip--card {
+    height: 20px;
+    margin-right: 2px;
+    padding: 0 7px;
+    gap: 5px;
+    border: none;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 500;
+    // 胶囊不用 1px 边框（会破坏圆角），改用内阴影描边。
+    box-shadow: inset 0 0 0 1px rgb(from var(--agent-status-color) r g b / 0.26);
+    background: rgb(from var(--agent-status-color) r g b / 0.11);
+}
+
+.agent-status-chip--header {
+    // HeaderElem 是纯文本节点，这条只服务测试/预览渲染。
+    height: auto;
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: default;
+}
+
+// ── 动效（working / blocked 呼吸，thinking 更快）──
+
+.agent-status-chip--list.is-working:not(.phase-unknown) > i,
+.agent-status-chip--board.is-working:not(.phase-unknown) > i,
+.agent-status-chip--list.is-blocked > i,
+.agent-status-chip--board.is-blocked > i {
+    animation: agent-status-chip-pulse 1.4s ease-in-out infinite;
+}
+
+.agent-status-chip--list.is-working:not(.phase-unknown) .agent-status-chip-label,
+.agent-status-chip--board.is-working:not(.phase-unknown) .agent-status-chip-label,
+.agent-status-chip--aggregate.is-working .agent-status-chip-label {
+    animation: agent-status-chip-shimmer 1.8s ease-in-out infinite;
+}
+
+.agent-status-chip--card.is-working .agent-status-chip-dot {
+    animation: agent-status-chip-dot-pulse 1.6s ease-in-out infinite;
+}
+
+.agent-status-chip--card.phase-thinking .agent-status-chip-dot {
+    animation-duration: 0.9s;
+}
+
+// 未读 Done：慢呼吸，等价于 block 头部 is-done-unread 的提示强度。
+.agent-status-chip--card.is-unread.is-done .agent-status-chip-dot {
+    animation: agent-status-chip-dot-pulse 2s ease-in-out infinite;
+}
+
+.agent-status-chip--card.is-seen .agent-status-chip-dot {
+    animation: none;
+}
+
+@keyframes agent-status-chip-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.55;
+    }
+}
+
+@keyframes agent-status-chip-shimmer {
+    0%,
+    100% {
+        opacity: 0.85;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@keyframes agent-status-chip-dot-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgb(from currentColor r g b / 0.5);
+    }
+    50% {
+        box-shadow: 0 0 0 4px transparent;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .agent-status-chip,
+    .agent-status-chip > i,
+    .agent-status-chip-dot,
+    .agent-status-chip-label {
+        animation: none !important;
+    }
+}
+
+// ── 兼容别名的最小覆盖 ──
+//
+// 旧样式规则仍在 session-overview.scss / info-card.scss 里，逐步删掉。
+// 这里只做"不打架"的最小修正：让旧选择器无法把几何拉回旧值。
+// 保留别名类的意义是 verify 探针（.agent-card-status-chip / .agent-status-header）
+// 与外部主题覆盖继续生效。
+
+.agent-status-chip.agent-card-status-chip {
+    // 旧规则用了 --info-card-accent，现在统一走 --agent-status-color（由组件注入）。
+    color: var(--agent-status-color);
+}
+
+.agent-status-chip.agent-status-header {
+    // 头部徽章是纯文本：不要盒子、不要指针、不要 hover 底色。
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}

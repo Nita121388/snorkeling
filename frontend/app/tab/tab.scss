@@ -238,3 +238,153 @@ body.nohover .tab.active .close {
         display: inline-flex;
     }
 }
+
+// ── Move Block to Tab 弹窗（2026-11-06 收敛） ──
+// 决策：菜单 4 条 → 1 条；弹窗内 New tab 行置顶、其余行每行两个图标动作（→ Move / ⧉ Copy），
+// 不做 Move/Copy 模式切换（模式把动作变成状态，多一次心理建模）。
+// 旧的 .tab-target-action* 保留：widgets.tsx 的 Create 弹窗不传 rowActions，仍走那条路径。
+
+// New tab 行：标题左侧 ＋ 徽标；虚线框在 hover / 键盘聚焦时实心化，让「这一行可点」坐实。
+.new-tab-row {
+    .row-left {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-width: 0;
+    }
+
+    .plus-box {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+        border-radius: 5px;
+        border: 1px dashed var(--border-color);
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        line-height: 1;
+        transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    }
+
+    .row-name {
+        color: var(--action-bg-color);
+        font-weight: 600;
+    }
+
+    &:hover,
+    &:focus-visible {
+        .plus-box {
+            border-style: solid;
+            border-color: var(--action-bg-color);
+            background: var(--action-bg-color);
+            color: var(--action-text-color);
+        }
+    }
+}
+
+.row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.row-hint {
+    display: block;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.list-divider {
+    height: 1px;
+    margin: 2px 6px;
+    background: var(--border-color);
+}
+
+// 行内两个图标动作。
+// 默认 opacity: 0（零噪音）；hover 或行内有焦点才浮现 —— focus-within 是 focus-visible 的超集，
+// 焦点落在行体上时图标也必须可见（否则键盘用户 Tab 到行体看不到能做什么）。
+.row-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+.tab-target-row:hover .row-icons,
+.tab-target-row:focus-within .row-icons {
+    opacity: 1;
+}
+
+.row-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+
+    svg {
+        display: block;
+        width: 13px;
+        height: 13px;
+    }
+
+    i {
+        font-size: 12px;
+    }
+
+    &:enabled:hover {
+        background: var(--action-bg-color);
+        border-color: var(--action-bg-color);
+        color: var(--action-text-color);
+    }
+
+    &:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 1px var(--accent-color);
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: default;
+    }
+
+    .tab-target-spinner {
+        width: 12px;
+        height: 12px;
+        border-width: 1.5px;
+    }
+}
+
+// 行容器由 <button> 改 div[role=button]：内层图标按钮不能嵌套在按钮里（非法 HTML，点击会串）。
+.tab-target-row {
+    cursor: pointer;
+
+    &[aria-disabled="true"] {
+        opacity: 0.55;
+        cursor: default;
+
+        &:hover {
+            background: transparent;
+        }
+    }
+
+    &:focus-visible {
+        outline: none;
+        box-shadow: inset 0 0 0 1px var(--accent-color);
+    }
+}

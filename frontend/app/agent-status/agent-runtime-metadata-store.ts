@@ -14,7 +14,7 @@
 //     marks the fetch complete; it does not clear data or block rendering.
 import { AISessionsService } from "@/app/store/services";
 
-export type AgentRuntimeModelSource = "requested" | "live" | "unknown";
+export type AgentRuntimeModelSource = "requested" | "live" | "session" | "unknown";
 
 export type AgentRuntimeMetadataEntry = {
     // live model (from a live GUI chat session), when available
@@ -77,18 +77,18 @@ export function ensureAgentRuntimeMetadata(blockId: string, sessionId: string, s
     setEntry(blockId, (cur) => ({ ...cur, loading: true }));
     const p = AISessionsService.LiveSessionState({ source: source || "pi", sessionId })
         .then((resp) => {
-            if (resp.live && resp.modelId) {
+            if (resp.modelId || resp.modelName) {
                 setEntry(blockId, () => ({
                     model: resp.modelName || resp.modelId,
                     provider: resp.modelProvider,
                     thinkingLevel: resp.thinkingLevel,
-                    source: "live",
+                    source: resp.live ? "live" : "session",
                     loading: false,
                     loadedAt: Date.now(),
                 }));
                 return;
             }
-            // Live session not present (or no model reported): keep the existing
+            // Live/session not present or no model reported: keep the existing
             // value (e.g. requested model from block meta), just finish loading.
             setEntry(blockId, (cur) => ({ ...cur, loading: false, loadedAt: Date.now() }));
         })

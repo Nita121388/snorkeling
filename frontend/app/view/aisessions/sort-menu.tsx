@@ -8,6 +8,12 @@
 //  - 下半区：未入选项 ⊕（满 MaxSortChainLength 时置灰）
 //  - 底部：Reset to default
 //
+// 触发器是 icon-only 方形按钮（28×28，与 GroupModeSwitch / FoldMenu 同形）：
+//  - 主体图标 = 主键字段图标（时钟 / 日历 / 气泡 / 分支）
+//  - 右下角 7px caret 表达方向（▼ 新→旧，▲ 旧→新）
+//  - 多键时 caret 换成键数角标
+//  - 非默认链加 accent 环；完整摘要走 title / aria-label
+//
 // 纯受控组件：所有状态由父层 sortChainAtom 持有，这里只发 onChange。
 
 import { autoUpdate, flip, FloatingPortal, offset, shift, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
@@ -80,6 +86,9 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
     const available = (Object.keys(FieldLabels) as SessionSortField[]).filter((field) => !inChain.has(field));
     const chainFull = activeChain.length >= MaxSortChainLength;
     const primary = activeChain[0];
+    const isDefaultChain =
+        activeChain.length === 1 && activeChain[0].field === "time" && activeChain[0].desc === true;
+    const multiKey = activeChain.length > 1;
 
     const { refs, floatingStyles, context } = useFloating({
         open,
@@ -92,9 +101,6 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
     const dismiss = useDismiss(context);
     const { getFloatingProps } = useInteractions([dismiss]);
 
-    const directionIcon =
-        primary.desc === false ? "fa-arrow-up-short-wide" : "fa-arrow-down-wide-short";
-
     return (
         <>
             <button
@@ -106,15 +112,29 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                 title={`Sort by ${sortChainSummary(activeChain)}`}
                 onClick={() => setOpen((current) => !current)}
                 className={cn(
-                    "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border/70 px-2.5 text-xs transition-colors",
+                    "relative flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border/70 transition-colors",
                     open
                         ? "bg-background text-primary shadow-sm ring-1 ring-accent/40"
-                        : "bg-surface text-secondary hover:bg-hover hover:text-primary"
+                        : isDefaultChain
+                          ? "bg-surface text-secondary hover:bg-hover hover:text-primary"
+                          : "bg-background text-primary ring-1 ring-accent/40 hover:bg-hover"
                 )}
             >
-                <i className={cn("fa-sharp fa-solid text-[11px]", directionIcon)} />
-                <span className="max-w-[110px] truncate">{sortChainSummary(activeChain)}</span>
-                <i className="fa-sharp fa-solid fa-chevron-down text-[8px] opacity-60" />
+                <i className={cn("fa-sharp fa-solid text-[11px]", FieldLabels[primary.field].icon)} />
+                {multiKey ? (
+                    <span className="absolute right-[1px] top-[1px] inline-flex h-[13px] min-w-[13px] items-center justify-center rounded-full bg-accent px-1 text-[8px] font-bold leading-none text-black tabular-nums">
+                        {activeChain.length}
+                    </span>
+                ) : (
+                    <i
+                        aria-hidden="true"
+                        className={cn(
+                            "fa fa-solid absolute bottom-[2px] right-[2px] text-[7px] leading-none",
+                            primary.desc ? "fa-caret-down" : "fa-caret-up",
+                            isDefaultChain ? "text-secondary/70" : "text-accent"
+                        )}
+                    />
+                )}
             </button>
             {open && (
                 <FloatingPortal>

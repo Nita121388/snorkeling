@@ -22,6 +22,7 @@ import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TermAgentMessageRail } from "@/app/view/term/term-agent-message-rail";
+import { useMarkAgentSeenOnView } from "@/app/agent-status/use-mark-agent-seen";
 import type { TermViewModel } from "@/app/view/term/term-model";
 import { atoms, getOverrideConfigAtom, getSettingsPrefixAtom, WOS } from "@/store/global";
 import { copyText } from "@/util/clipboard";
@@ -277,6 +278,10 @@ const TermClaudeFullscreenHint = React.memo(
 TermClaudeFullscreenHint.displayName = "TermClaudeFullscreenHint";
 
 const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => {
+    // 切到这个 agent block 并停留 ≥2s 即视为“看过”，用来消掉已经看过的 Done。
+    // 只在挂载后的第一帧状态判定：完成事件发生在用户正在看的时候不自动标已读。
+    const agentStatusForSeen = jotai.useAtomValue(model.agentStatusAtom);
+    useMarkAgentSeenOnView(blockId, agentStatusForSeen);
     const viewRef = React.useRef<HTMLDivElement>(null);
     const connectElemRef = React.useRef<HTMLDivElement>(null);
     const [termWrapInst, setTermWrapInst] = React.useState<TermWrap | null>(null);

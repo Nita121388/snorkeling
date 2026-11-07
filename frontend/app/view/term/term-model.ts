@@ -4,17 +4,16 @@
 import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
 import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
-import {
-    agentStatusPresentation,
-    formatAgentProvider,
-    isInferredAgentStatus,
-} from "@/app/agent-status/agent-status-derive";
+import { formatAgentProvider } from "@/app/agent-status/agent-status-derive";
+import { buildAgentStatusChipView } from "@/app/agent-status/agent-status-chip-view";
+import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
-import { agentDoneElapsedMs, formatDoneElapsed, isAgentDoneUnread } from "@/app/agent-status/agent-status-done-unread";
+import { needsAgentChipRuntime } from "@/app/agent-status/agent-status-runtime";
+import { agentStatusSecondTickAtom } from "@/app/agent-status/agent-status-second-tick";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
+import { deriveAgentStatusView } from "@/app/agent-status/agent-status-view";
 import { WaveAIModel } from "@/app/aipanel/waveai-model";
 import { BlockNodeModel } from "@/app/block/blocktypes";
 import { makeSelectionSearchInFilesMenuItem } from "@/app/element/selection-copy-overlay";
@@ -645,56 +644,62 @@ export class TermViewModel implements ViewModel {
         if (status == null) {
             return null;
         }
-        const presentation = agentStatusPresentation(status);
-        // Ack: read the shared `agentStatusAckedFpAtom` (fingerprint map from SessionOverviewModel)
-        // — fingerprint comparison correctly determines unread state regardless of timestamp churn.
-        // `get` is the viewText atom's getter on the same globalStore, so ack writes trigger a
-        // re-derive of this elem and the badge re-renders.
+        // 呈现态统一走 deriveAgentStatusView：read（看过没看过）由它一处判定，
+        // 不再是"头部自己算 R + 自己算 D"两套逻辑。这样卡片面 ack、切过去看过、
+        // Overview chip ack 都会同帧反映到徽章上。
+        //
+        // `get` 是 viewText atom 的 getter（同一个 globalStore），因此 ack / read 写入
+        // 会触发本 elem 重算并重渲染。
         const overview = SessionOverviewModel.getInstance();
         const ackedFpMap = get(overview.agentStatusAckedFpAtom) ?? {};
-        const ackedFp = ackedFpMap[this.blockId] ?? null;
-        const unread = isAgentStatusUnread(status, ackedFp);
-        // Done-state (D) ack lives in a parallel per-block map. Decision 6B: ack semantics & lifecycle
-        // stay in the agent-status channel, sibling to R's ackedAt rather than reusing SessionOverview's.
         const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom) ?? {};
-        const doneAckedAt = doneAckedAtMap[this.blockId] ?? 0;
-        const doneUnread = isAgentDoneUnread(status, doneAckedAt);
-        // D 完成态 elapsed 自动刷新: 仅在 doneUnread 时订阅 nowMinuteTickAtom, 分钟跳变驱动
-        // rederive, "10m" → "11m" 才不会冻结在跳变那一刻的值. 没 D 时跳过订阅, R 或 idle 上
-        // 不必为分钟 tick 付多余 rederive 代价.
+        const view = deriveAgentStatusView({
+            status,
+            blockId: this.blockId,
+            ackedFp: ackedFpMap[this.blockId] ?? null,
+            doneAckedAt: doneAckedAtMap[this.blockId] ?? 0,
+            nowMs: Date.now(),
+        });
+        if (view == null) {
+            return null;
+        }
+        // 文案 / 类名 / 跑时全部来自共享纯函数 —— 本文件不再自己拼 label 或 className。
+        // 这与 React 侧的 AgentStatusChip 是同一份产出（agent-status-chip-view.ts），
+        // 所以同一个状态在头部徽章与卡片 chip 上不可能再出现两种说法。
+        const chipView = buildAgentStatusChipView({
+            variant: "header",
+            status,
+            read: view.read,
+            nowMs: Date.now(),
+        });
+        if (chipView == null) {
+            return null;
+        }
+        const doneUnread = view.read === "unread" && view.state === "done";
+        // 两根 tick 按需订阅，不白付代价：
+        //   - 活跃态跑时（mm:ss）走 1s tick；
+        //   - 未读 Done 的分钟级 elapsed 走 60s tick。
         if (doneUnread) {
             get(nowMinuteTickAtom);
         }
-        const doneElapsedMs = doneUnread ? agentDoneElapsedMs(status, Date.now()) : 0;
-        const doneElapsedText = doneUnread ? formatDoneElapsed(doneElapsedMs) : "";
-        const allRead = !unread && !doneUnread;
-        // allRead 灰化: R 与 D 各自看自己的未读判定, 任何一个未读都不灰;
-        // 两个都已阅 (或没有未读可点亮) → is-acked 视觉上变淡, 标签显示 "Seen".
-        const titleText = unread
-            ? `${presentation.label} — click to mark as read`
-            : doneUnread
-              ? `${presentation.label} (${doneElapsedText} ago) — click to dismiss`
-              : allRead && status.state === "idle"
-                ? `Seen — up to date`
-                : `${presentation.label} — up to date`;
-        const labelText = doneUnread
-            ? `${presentation.label} ${doneElapsedText}`
-            : allRead && status.state === "idle"
-              ? "Seen"
-              : presentation.label;
+        if (needsAgentChipRuntime(status)) {
+            get(agentStatusSecondTickAtom);
+        }
+        const allRead = view.read === "seen";
+        // allRead 灰化: 已读 (点击 ack 或切过去看过) → is-acked 视觉变淡; 无跳变的 idle 上
+        // 文案收敛成 "Seen"，其余仍是状态词。
+        const titleText = chipView.title;
+        const labelText = view.state === "idle" && allRead ? "Seen" : chipView.label;
         return {
             elemtype: "text",
-            text: labelText,
-            className: `agent-status-header is-${status.state} phase-${status.phase}${isInferredAgentStatus(status) ? " is-inferred" : ""}${allRead ? " is-acked" : ""}${doneUnread ? " is-done-unread" : ""}`,
+            text: chipView.runtime !== "" ? `${labelText} ${chipView.runtime}` : labelText,
+            className: chipView.className,
             noGrow: true,
             onClick: (e) => {
                 e.stopPropagation();
-                // Click the badge acknowledges both R (in-flight updates) and D (just-finished flash),
-                // so a single click fully clears the user's "I've seen this block's status" cue.
-                // Pass current status so R fingerprint is stored — otherwise read sites would still
-                // see unread on next re-derive.
-                overview.markAgentStatusAcked(this.blockId, Date.now(), status);
-                agentStatusDoneAckStore.markDoneAcked(this.blockId, Date.now(), "term-header");
+                // 一次点击同时 ack R（在飞的报告）与 D（刚跑完的提示）—— 收口在
+                // ackAgentStatus，避免某个面忘了写其中一份导致另一面"复活"。
+                ackAgentStatus(this.blockId, status, "term-header");
             },
             tooltipNode: titleText,
             tooltipProps: { hideOnClick: true, openDelay: 200, divClassName: "inline-flex" },

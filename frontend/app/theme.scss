@@ -400,10 +400,10 @@
 // depth instead of a single flat sheet. All chromatic accents collapse to a grey ramp.
 [data-theme="monochrome"] {
     color: var(--main-text-color);
-    --main-text-color: #0a0a0a;
+    --main-text-color: #1c1a16;
     // 无彩色主题：token 走灰阶，靠深浅与字重区分而非色相
-    --codeblock-bg-color: #f5f5f5;
-    --codeblock-text-color: #0a0a0a;
+    --codeblock-bg-color: #f1efe8;
+    --codeblock-text-color: #1c1a16;
     --code-token-comment: #808080;
     --code-token-keyword: #0a0a0a;
     --code-token-string: #404040;
@@ -412,53 +412,61 @@
     --code-token-attr: #4a4a4a;
     --code-token-type: #4a4a4a;
     --code-token-meta: #808080;
-    --secondary-text-color: #4a4a4a;
-    --grey-text-color: #808080;
-    --main-bg-color: #fafafa;
-    --deep-text-color: #0a0a0a;
+    // diff 块必须显式定义：否则从 :root(dark) 继承深绿/深红，浅色页上就是两块深补丁。
+    --codeblock-diff-add-bg: #e8ede9;
+    --codeblock-diff-add-text: #3f6b46;
+    --codeblock-diff-del-bg: #f3e9e8;
+    --codeblock-diff-del-text: #9c4a42;
+    --secondary-text-color: #565148;
+    --grey-text-color: #726d63;
+    --main-bg-color: #f7f6f3;
+    --deep-text-color: #121110;
+    // 与 light 对齐：不给就是继承 dark 的 #000000（浅色下叠色反向）。
+    --surface-shadow-color: #d9d5cc;
     --border-color: rgba(0, 0, 0, 0.14);
-    --surface-soft-color: #fafafa;
-    --surface-color: #f5f5f5;
-    --surface-strong-color: #f0f0f0;
-    --accent-color: #1a1a1a;
-    --accent-hover-color: #000000;
+    --surface-soft-color: #fdfcf9;
+    --surface-color: #f1efe8;
+    --surface-strong-color: #e9e6de;
+    --accent-color: #2b2723;
+    --accent-hover-color: #1c1a16;
     --accent-bg-color: rgba(0, 0, 0, 0.08);
-    --accent-color-50: #f5f5f5;
-    --accent-color-100: #e0e0e0;
-    --accent-color-200: #bdbdbd;
-    --accent-color-300: #9a9a9a;
-    --accent-color-500: #3a3a3a;
-    --accent-color-600: #2a2a2a;
-    --accent-color-700: #1a1a1a;
-    --accent-color-800: #101010;
-    --accent-color-900: #050505;
+    --accent-color-50: #f6f5f4;
+    --accent-color-100: #e3e1dd;
+    --accent-color-200: #c4beb6;
+    --accent-color-300: #a49c90;
+    --accent-color-500: #403b34;
+    --accent-color-600: #2e2b26;
+    --accent-color-700: #1d1b17;
+    --accent-color-800: #12100e;
+    --accent-color-900: #050504;
     --action-bg-color: var(--accent-color);
     --action-hover-bg-color: var(--accent-color-600);
     --action-text-color: var(--button-text-color);
     --action-soft-bg-color: var(--accent-bg-color);
     --action-soft-text-color: var(--accent-color-700);
     --action-soft-border-color: rgb(from var(--accent-color) r g b / 0.3);
-    --panel-bg-color: rgba(245, 245, 245, 0.72);
+    --panel-bg-color: rgba(250, 249, 246, 0.72);
     --highlight-bg-color: rgba(0, 0, 0, 0.08);
-    // monochrome 保留弱饱和语义色：人眼仍能分辨红/绿/黄三态，但与黑白调子调和。
-    --error-color: #8a6a6a;
-    --warning-color: #8a7a4a;
-    --success-color: #7a8a6a;
-    // monochrome 主题: agent working 用弱饱和蓝灰, done 用弱饱和绿灰, 与黑白调子调和.
-    --agent-working-color: #5a6a8a;
-    --agent-done-color: #7a8a6a;
-    --agent-stale-color: #8b7fa8;
+    // 弱饱和语义色：保留色相可辨，但明度压到 L 33-45、彩度提到 20-66。
+    // 病根是「低彩度 + 中明度(L≈48)」= 泥色；同彩度放到深明度区读作墨色。
+    --error-color: #9c4a42;
+    --warning-color: #8a641c;
+    --success-color: #3f6b46;
+    // agent working 用靛蓝, done 与 success 同源, stale 用灰紫.
+    --agent-working-color: #3a6b96;
+    --agent-done-color: #3f6b46;
+    --agent-stale-color: #6b5b8a;
     --hover-bg-color: rgba(0, 0, 0, 0.05);
     --hover-bg-color-strong: rgba(0, 0, 0, 0.1);
     --block-bg-color: rgba(255, 255, 255, 0.72);
     --block-bg-solid-color: #ffffff;
 
-    --overlay-bg-color: #f5f5f5;
-    --tabbar-bg-color: rgba(245, 245, 245, 0.72);
+    --overlay-bg-color: #f7f6f3;
+    --tabbar-bg-color: rgba(247, 246, 243, 0.72);
     --modal-backdrop-color: rgba(0, 0, 0, 0.28);
 
-    --keybinding-color: #2a2a2a;
-    --keybinding-bg-color: #f5f5f5;
+    --keybinding-color: #3a352e;
+    --keybinding-bg-color: #f1efe8;
     --keybinding-border-color: rgba(0, 0, 0, 0.14);
 
     --scrollbar-thumb-color: rgba(0, 0, 0, 0.18);
@@ -475,12 +483,12 @@
     --toggle-thumb-color: #ffffff;
     --toggle-checked-bg-color: var(--accent-color);
 
-    --link-color: #0a0a0a;
+    --link-color: #3a4a63;
 
     --form-element-border-color: rgba(0, 0, 0, 0.14);
     --form-element-bg-color: #ffffff;
-    --form-element-text-color: #0a0a0a;
-    --form-element-primary-text-color: #0a0a0a;
+    --form-element-text-color: #1c1a16;
+    --form-element-primary-text-color: #1c1a16;
     --form-element-primary-color: var(--accent-color);
     --form-element-secondary-color: rgba(0, 0, 0, 0.08);
     --form-element-error-color: var(--error-color);
@@ -518,11 +526,11 @@
     --term-bright-cyan: #7a7a7a;
     --term-bright-white: #f5f5f5;
     --term-gray: #808080;
-    --term-cmdtext: #0a0a0a;
-    --term-foreground: #0a0a0a;
-    --term-background: #fafafa;
+    --term-cmdtext: #1c1a16;
+    --term-foreground: #1c1a16;
+    --term-background: #f7f6f3;
     --term-selection-background: rgba(0, 0, 0, 0.14);
-    --term-cursor-accent: #fafafa;
+    --term-cursor-accent: #f7f6f3;
 
     --button-text-color: #ffffff;
     --button-green-bg: #2a2a2a;
@@ -537,6 +545,16 @@
     --button-red-outlined-color: #2a2a2a;
     --button-yellow-bg: #6a6a6a;
     --button-yellow-hover-bg: #808080;
+
+    // 与 light 同档：monochrome 也是白底主导，字号不上浮会比 light 读起来更瘦小。
+    --text-xxs: 0.6875rem;
+    --text-xs: 0.8125rem;
+    --text-sm: 0.9375rem;
+    --text-default: 0.9375rem;
+    --text-base: 1.0625rem;
+    --text-lg: 1.1875rem;
+    --text-title: 1.1875rem;
+    font-weight: 500;
 }
 
 // Copy of the light theme variables, not yet wired into the theme resolver.

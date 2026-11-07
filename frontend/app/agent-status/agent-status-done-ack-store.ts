@@ -222,7 +222,7 @@ export function observeAgentStatusTransition(next: AgentStatus | null): void {
     if (next == null) return;
     const prev = lastObservedByBlock.get(next.blockId);
     lastObservedByBlock.set(next.blockId, next);
-    // 进入非 idle → 下一轮完成可再触发 D, 清掉旧的 ack.
+    // 进入非 idle → 下一轮完成可再触发 D, 清掉旧的 ack（包括“切过去看过”写的 seen）。
     if (next.state !== "idle" && next.state !== "unknown") {
         agentStatusDoneAckStore.clearDoneAcked(next.blockId, "transition");
     }

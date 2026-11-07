@@ -1,0 +1,29 @@
+{
+  "id": "modal-single-shell-refactor",
+  "name": "modal-single-shell-refactor",
+  "title": "统一 DialogShell 弹窗规范与 AgentCardModal 视觉重构",
+  "description": "建立统一弹窗壳 DialogShell（默认内边距、header 关闭按钮占位、body 可滚动、card/plain 两模式），修复 AgentCardModal 关闭按钮失效、checkbox 属性无法勾选、弹窗内容不滚动等缺陷，去掉弹窗内嵌套 .info-card 造成的双层边框/阴影，并统一属性区信息架构与空态。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-02",
+  "completedAt": null,
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "title": "弹窗收敛为单壳 + AgentCardModal 重构",
+    "description": "把 Modal/FlexiModal/element-modal 三套壳收敛为唯一 Modal 壳（默认内边距、header 内流式关闭键、body 可滚动、footer 固定、flush 逃生阀），删除 FlexiModal 与死代码；AgentCardModal 去掉内层 .info-card 双框并改用新 header；修复 PropertyList checkbox 勾不上、note 空态、note 行点击丢列表、title_source 原始枚举、无滚动/无行数上限等缺陷"
+  }
+}

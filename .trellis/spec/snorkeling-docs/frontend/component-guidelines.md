@@ -222,6 +222,29 @@ InfoCard（`frontend/app/element/info-card/`）的显示由 `isHovered || isCard
 - 关闭前如果焦点还在卡片内，先 `activeElement.blur()`：textarea 的 `onBlur`（note 提交）
   必须先跑，否则点外侧会丢草稿。
 
+#### 10.1 附属浮层（attached layer）：portal 到 body 的浮层也算「卡内」
+
+卡片里的第二轮浮层（属性值下拉、标签选择器等）必须 `FloatingPortal` 到 body（否则被
+markdown / 卡片 overflow 裁切）。但 DOM 上它已不在卡片里，**三条判定会同时出错**：
+鼠标移到浮层上算「离开卡片」→ 300ms 收卡 → 锚点消失 → 编辑器当场消失。
+
+约定（两个消费者都已经落地：`InfoCardPortal` 与 `BlockFrame_Header` 自维护的那套逻辑）：
+
+1. 浮层根节点标 `data-info-card-attached="true"`，卡片的「点卡片内部」判定用
+   `isInAttachedInfoCardLayer(target)`（`info-card-hover.tsx`）把它算作卡内；
+   `onBlurCapture` 同样：`relatedTarget` 落在附属浮层里 → 不算失焦。
+2. 浮层用 `useInfoCardPin()` 在 `open` 期间 `pin()`、关闭/卸载 `release()`
+   （provider 是 `InfoCardPinProvider`，默认值是 no-op，md 预览等非卡片场景不用判空）。
+   卡片按**计数**处理：`onMouseLeave` 与隐藏定时器到期都要看 `pinCount > 0`。
+3. 只有 `pin` 不够：鼠标停在浮层上时焦点可能不在输入框，所以指针路径（`mouseleave`）
+   和定时器路径都要独立保活；反之 `release()` 时若指针还在卡上就别抢着关（等 `mouseleave`）。
+
+反例（都真实踩过）：只加 `data` 标记不加 pin → 指针移入浮层 300ms 后卡片消失；
+只加 pin 不改 `isInside` → 在浮层里点候选会被当成「点击外侧」，卡片直接关掉。
+
+回归测试：`info-card-hover.dom.test.tsx`（附属浮层 pointerdown 不算外侧 / pin→release 生命周期）、
+真机：`node scripts/verify/property-editor/verify.mjs`（`agent-card-survives-pointer-into-popover`）。
+
 回归测试：`frontend/app/element/info-card/info-card-hover.dom.test.tsx`。
 
 ### 11. 视图根节点必须显式 `w-full`，否则浮窗里只占「内容宽」
@@ -276,3 +299,201 @@ InfoCard（`frontend/app/element/info-card/`）的显示由 `isHovered || isCard
 把它挂在会高频换引用的对象（如每 32ms flush 的 `liveTurn`）上，等于每秒数十次
 把所有行高退回估算值 —— 总高度塌陷、scrollTop 被 clamp、内容剧烈跳动。
 流式期间的行高变化交给 `measureElement` 的 ResizeObserver 逐行增量处理。
+
+### 5. InfoCard 变体：一张卡只保留一条「无内容间隔」的 hairline
+
+`InfoCard` 的变体（`.tab-card` 等）常用 1px 分隔线切分区。踩过的坑：header 下方的
+`.tab-card-rule` 与「属性 chips」区块的 `border-top` 在**无 agent 的卡片**里紧挨着出现，
+中间没有任何内容 —— 视觉上是两条平行线，像渲染坏了。
+
+规则：
+- 卡片内固定只有 header 下一条分隔线；
+- 下游分区（chips / 元数据）的上边框**必须条件渲染**：只有上游真的渲染了内容区块时才加
+  （`tab-info-card.tsx` 用 `agentCount > 0 && "has-agents"` 控制，CSS 里 `.tab-card-props.has-agents`）。
+- 判定「有没有上游内容」要在 TSX 里算，不要在 CSS 用 `:has()` / 相邻选择器猜 —— 分区的 DOM
+  层级是 `section` 套 `section`，相邻选择器匹配不到真正的前序内容。
+
+### 6. InfoCard 变体：定宽 + 状态 pill 不参与宽度竞争
+
+Tab 悬浮卡的旧实现是 `min-width: 200px; max-width: 400px` 自适应，状态文本从 `—` 变成
+`Tool: bash` 时卡片会突然变宽，悬停时视觉抖动。现在 `.info-card.tab-card` 定宽 268px，
+右侧状态 pill 用 `margin-left: auto; flex-shrink: 0; white-space: nowrap` —— 长状态不会撑宽卡片。
+新增同类浮层卡时照此办理：**宽度由卡决定，状态文本只决定 pill 自身宽度**。
+
+---
+
+## 共享浮层组件的交互扩展：就地内聚，不改宿主（2026-11-03, task 11-02-emoji-alias-picker-search）
+
+`element/block-editor/components/emoji-picker.tsx` 被 5 个渲染点复用（`markdown.tsx` 4 处：
+callout / 文档 emoji 头 / inline `:emoji` 补全 / slash emoji，以及 `agent-emoji-picker.tsx`）。
+给它加新交互（右键设置 emoji 含义）时的做法，可复用到同类共享浮层：
+
+1. **新增状态内聚在组件里**，宿主 props 一个都不加 —— 否则 5 个宿主都要改一遍，且容易漏。
+2. **浮层内部换视图，不新开第二层浮层**：popover 已经按视口算过 `maxHeight` / 边界，
+   嵌套 portal 需要第二套边缘计算，还会和宿主的 backdrop / 焦点逻辑打架。
+3. **键盘事件要显式拦在浮层内**：宿主常在 `window` 上挂 `Escape → onClose`，
+   子视图的 Esc 必须在自己的根节点 `preventDefault() + stopPropagation()`，
+   否则「关子视图」会变成「关整个浮层」。
+4. **右键入口同时提供键盘入口**（`ContextMenu` / `Shift+F10`）。
+5. **`onMouseDown` 的 `preventDefault` 守卫要放行真实表单控件**：判断选择器是
+   `input, textarea, select, label, button`，新加的可聚焦容器要么用这些标签，要么单独白名单，
+   否则输入框点不动、失焦。
+
+**陷阱**：给浮层里的列表项加 `onContextMenu` 时不要在 `document` 级捕获，
+在格子自身挂监听并 `preventDefault() + stopPropagation()`，避免和宿主/浏览器原生右键菜单叠加。
+
+---
+
+## inline 编辑覆盖层：位置靠实测、高度只是下限（2026-11-03, task 11-03-md-list-inline-edit-geometry）
+
+md 预览的 inline 编辑是一个 `createPortal` 到 `body` 的 `position: fixed` 覆盖层
+（`element/markdown-inline-edit.tsx`）。它最容易出的两类 bug 是「一进编辑文字就跳」和
+「内容被切掉」，原因都在几何取值方式上。
+
+### 1. 覆盖层高度 = 渲染块高度是**下限**，不是定值
+
+`overlayRect.height` 取自渲染块的 `getBoundingClientRect().height`。这个值有两个天然缺口：
+
+- `getBoundingClientRect()` **不含 margin**，而编辑器内容里的 `<ol>/<li>` 有 margin；
+- 内容会增长（多行、多列表项、用户继续换行）。
+
+所以 overlay 必须是 `minHeight: overlayRect.height` + `height: auto`，
+**不能** `height: 固定值`。同时 `overflow` 不能是 `hidden`、`contain` 不能带 `paint`
+—— 两者都会把超出部分裁掉（`paint` containment 的裁剪最隐蔽，改 CSS 时容易漏）。
+
+### 2. 文本起点要用 `Range` 实测，不能用「元素盒子 + padding」推算
+
+`resolveTextOffsetPx()` 用 `Range` 覆盖第一个非空文本节点取 `rect.left`。盒子法在这些情况下会错：
+
+| 锚点形态 | 盒子法误差 | 原因 |
+|---|---|---|
+| 整个 `<ol>`（条目带嵌套子列表时提升到父级） | 1.5px | 文本在 `li` 里，比 `ol` 多一层 `li.paddingLeft` |
+| 折叠式有序列表项 | 13px | 序号是 `.ordered-list-summary-content::before` 内联绘制的，文本墨迹比盒子右移一个序号宽 |
+
+### 3. 列表 marker 必须靠「左扩 overlay + 根 padding」腾位置
+
+渲染态 marker 落在 `<li>` 左边缘**之外**（`ol` 的 margin/padding 区）。把 overlay 左边缘
+锚在 `li.left` 时，任何画在文本左侧的 marker 都会落到覆盖层外被裁掉。可用恒等式：
+
+```
+overlay.left = anchorLeft + textOffset - markerColumn
+root padding-left = markerColumn
+第一层 ul/ol/li 的 margin/padding = 0
+li::before { position: absolute; right: 100%; width: markerColumn }
+⇒ overlay.left + root padding === anchorLeft + textOffset === 渲染态文本 x
+```
+
+`markerColumn` / `textOffset` 都从渲染态 computed / Range 实测，不写死 `1.5em`。
+
+### 4. 折叠内容的块不能进 WYSIWYG
+
+`buildListWysiwygSeed` 会解包 `.ordered-list-collapse-body`，于是阅读态被 `.collapsed`
+隐藏的子内容在编辑器里突然出现（高度暴涨 + 内容被裁）；改成丢弃又会**在提交时丢数据**。
+正确做法是 `captureWysiwygInfo` 早退返回 `null` → 回退 textarea 路径，源文本一字不改。
+
+### 5. `whiteSpace: pre-wrap` 只属于 textarea
+
+textarea 需要它保留源码换行；contentEditable 根节点继承它会把种子 HTML 里的空白文本节点
+变成真实换行 → 多出空行、撑高、被裁。WYSIWYG 根节点用 `normal`（与渲染态一致）。
+
+### 验证方式（别只靠肉眼）
+
+组件预览页 `frontend/preview` 有 markdown 用例（含 editable 列表）。用 CDP 在编辑前后各取一次
+第一个文本节点的 `Range` rect，断言 Δx/Δy ≈ 0，并断言 `overlay.scrollHeight <= clientHeight`。
+把旧 CSS 注入回去做对照，应能重现 ~26px 的偏移 —— 这一步证明测量本身有效。
+
+---
+
+## 预览编辑的"机器可判定"验证闭环（2026-11-04, task 11-04-preview-edit-verify-harness）
+
+用户的判据是"看起来对不对"，不是"数字对不对"。所以任何声称"样式已修好"的结论，
+都必须能由脚本产出 **verdict + 证据**，而不是靠人工看图或口头断言。
+
+### 1. 一条命令
+
+```bash
+node scripts/verify/preview-edit/run.mjs --expect=fixed            # 冷启动（重置 verify profile）
+node scripts/verify/preview-edit/run.mjs --attach --expect=fixed   # 复用已起实例，单轮 <10s
+node scripts/verify/preview-edit/run.mjs --expect=broken --legacy-css   # 证明实验台能抓到旧 bug
+node scripts/verify/preview-edit/run.mjs --against=verify-runs/<ts>/report.json   # 收敛判据
+```
+
+产物：`verify-runs/<ts>/report.json`（机器读）、`report.md`（人读、内嵌截图）、每 case 的
+`before / during / afterEsc / diff` 四张 png。
+
+### 2. 三层 oracle
+
+| 层 | 规则 | 判据 |
+|---|---|---|
+| 几何不变量 | `text-zero-shift` / `no-clip` / `single-level-indent` / `marker-drawn` / `clean-exit` | DOM Range 墨迹与 computed 值 |
+| 像素自证 | `pixel-zero-shift` | 逐文本行比较"最左墨迹 x"（§3） |
+| 契约 | `editor-kind` / `no-measure-loop` | 编辑器类型 & 调试环时序 |
+
+### 3. 像素 oracle 为什么不需要 golden baseline
+
+预览编辑的产品契约是"零布局位移"，所以**阅读态自己就是编辑态的基准**：
+取同一个裁切区域，比较编辑前/编辑中每一行文字的**最左墨迹 x**。
+它对字体抗锯齿、颜色、光标闪烁完全不敏感 —— 只测与 bug 直接相关的那个量。
+
+两个必要细节（都踩过）：
+
+- **必须剔除"镀层列"**：`inline-edit-active` 的 accent 竖条整列都是墨迹，
+  会把所有行连成一条、并劫持"最左墨迹" → 列级墨迹占比 ≥ 0.8 的列一律跳过。
+- **裁切必须紧贴块**：裁太高会把上下相邻段落也框进来，行带数量就失去意义。
+
+### 4. 验证台自身的四个坑（都会导致假绿/假红）
+
+1. **别在 mock 页面验证**：组件预览页没有真实主题变量、不是真实 `.md` preview 路径。
+2. **别用合成事件**：`dispatchEvent(new MouseEvent(...))` 绕过命中测试；必须用 CDP
+   `Input.dispatchMouseEvent`（且要 `Emulation.setFocusEmulationEnabled`，
+   窗口在后台时真实指针事件进不到 React）。
+3. **探针必须复刻 app 的锚点提升规则**：`li` 内含子列表时点击锚定父级 `ol/ul`；
+   探针若还锚在 `li` 上，会量出 24px 的假偏移。
+4. **目标要滚进视口再量**：文档很长时目标在折叠线以下，裁切会被夹成空白（行带 0、diff 0）。
+
+### 5. 循环协议（agent 自我进化用）
+
+```
+run --expect=fixed → 读 report.json 的 failing[].id + detail → 只改一个变量
+→ run --against=<上一轮>：newFailures 非空 = 这次改动是坏的，立即回退
+→ 连续 3 轮无改善 → 停，把整个 verify-runs/<ts>/ 当证据包交给人
+→ 修好后把该 bug 抽象成 rules/<new>.mjs，spec 里写明"为什么需要这条规则"
+```
+
+**rules 库只增不减**：每修一个 bug 就多一条常驻判据，覆盖面单调增长。
+
+---
+
+## Agent hover 卡属性行（PropertyList `layout="agent"`）
+
+**`opacity: 0` 不等于「不占位」**。行内 hover 才出现的按钮（`property-row__dialog-btn` /
+`property-row__menu-btn` / `property-row__delete`）如果仍留在 flex 流里，就会压缩同级
+`width: 100%` 的值按钮，让该行值右缘比其它行少一个图标宽（实测 18px）。隐藏按钮必须
+绝对定位到预留 gutter：
+
+```scss
+.property-list--agent {
+    .property-row__value { padding-right: 18px; }        /* 统一右侧操作栏 */
+    .property-row__dialog-btn,
+    .property-row__menu-btn,
+    .property-row__delete {
+        position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    }
+}
+```
+
+**空值占位不要继承多行行的对齐**。`.property-row.is-note` 为多行 note 设了
+`align-items: flex-start`（图标/标签对齐首行）；但空 note 的 `—` 是单行占位，套上
+`flex-start` 会把 26px 行高的余量全推到下方，整行上浮约 6px、行距塌到 20px。用
+`:has()` 只在非空时生效：
+
+```scss
+.property-row.is-note:has(.property-empty--dash) {
+    align-items: center;
+    .property-row__icon, .property-row__name { margin-top: 0; line-height: 26px; }
+    .property-row__value { align-items: center; }
+}
+```
+
+**验证方式**（不依赖手看）：`sass` 编译该 scss → Edge headless 渲染复刻 DOM →
+PIL 扫描每行墨迹右缘与 label 中心 y。判定：四行 `value_right` 同一 x、行距恒定。

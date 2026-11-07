@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { describeCron } from "@/app/view/scheduledtasks/cron-describe";
 import type { AgentProfileInfo } from "@/app/workspace/agent-catalog";
@@ -20,7 +20,7 @@ export type ScheduledTaskEditorModalProps = {
 /**
  * App-level scheduled-task editor. It used to be an `absolute inset-0` overlay inside the
  * Scheduled Tasks block, which made it tiny and clipped by the block bounds. Rendering it
- * through the global modal layer (FlexiModal portals into #main) gives it the same footprint
+ * through the global modal layer (Modal portals into #main) gives it the same footprint
  * as the other app dialogs and lets ESC/backdrop close it via modalsModel.
  */
 function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorModalProps) {
@@ -78,7 +78,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
     };
 
     return (
-        <FlexiModal
+        <Modal
             className="w-[min(760px,calc(100vw-40px))] max-h-[min(86vh,calc(100vh-56px))] overflow-hidden p-0"
             onClickBackdrop={close}
         >
@@ -331,7 +331,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                     </button>
                 </div>
             </div>
-        </FlexiModal>
+        </Modal>
     );
 }
 

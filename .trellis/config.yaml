@@ -211,3 +211,16 @@ packages:
   tsunami-frontend:
     path: tsunami/frontend
 default_package: snorkeling-docs
+
+#-------------------------------------------------------------------------------
+# loop/ 台账钩子（昼夜循环工作流）— 见 loop/RUNBOOK.md
+# 注册位置必须是 config.yaml；.trellis/hooks.local.json 是 linear_sync 自己的私有配置，
+# 不是钩子注册表（2026-11-05 实测确认）。
+#-------------------------------------------------------------------------------
+hooks:
+  after_create:
+    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge created"
+  after_start:
+    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge started"
+  after_archive:
+    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge archived"

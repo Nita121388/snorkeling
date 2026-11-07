@@ -3,13 +3,19 @@
 
 // TabInfoCard — App Tab 悬浮信息卡。
 //
-// 展示 Tab 的身份（workspace 图标/颜色 + Tab 全名 + flag 颜色）与内容构成
-// （各 block 类型计数），以及 Tab 内所有 Agent block 的实时状态清单。
+// 展示 Tab 的身份（workspace 图标/颜色 + Tab 全名 + flag 颜色）与内容构成，
+// 以及 Tab 内所有 Agent block 的实时状态清单。
+//
+// 结构（Notion / Things 3 风格，见 design/prototypes/tab-card-v2 变体 #4）：
+//  - identity：workspace 图标 + Tab 名 + flag + 右侧 agent 计数
+//  - hairline
+//  - agents：分组标题（provider 相同时并入）+ 26px 行（emoji + 可选 provider + 状态 pill）
+//  - props：非 agent 类型的内容构成 chips（`12 files` / `2 chats` …）
 //
 // 设计原则（与 BlockInfoCard 一致）：
 //  - 只读信息展示；操作（切换/跳转）留给后续 Phase。
 //  - 数据全部来自现成 store：tab/workspace WaveObj、block meta、AgentStatusStore。
-//  - 无 agent 的 Tab 只显示身份 + 内容构成，Agent 清单区块自动隐藏。
+//  - 槽位信息只出现一次：header 只放 agent 数量，其余类型走 chips。
 
 import {
     InfoCard,
@@ -20,44 +26,35 @@ import {
     InfoCardTitle,
 } from "@/app/element/info-card";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
+import { useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
 import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
-import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
-import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { getObjectValue, makeORef } from "@/app/store/wos";
+import {
+    agentGroupHidesProvider,
+    agentGroupLabel,
+    classifyTabBlock,
+    countTabBlocks,
+    nonAgentChips,
+    presentAgentStateFromView,
+} from "./tab-info-card-model";
 import * as React from "react";
 
-// ── block 类型分类 ──
-
-type TabBlockKind = "agent" | "chat" | "file" | "note" | "terminal" | "other";
-
-function classifyBlock(block: Block | null): TabBlockKind {
+/** 读一个 block 的 agent provider（归一后），非 agent block 返回空串。 */
+function readAgentProvider(block: Block | null): string {
     const meta = (block?.meta ?? {}) as Record<string, unknown>;
-    // 会话类 block 先判定：GUI Chat / 会话详情都带 aisessions:*，不应落进 other。
-    if (isSessionDetailBlockMeta(meta) || isChatBlockMeta(meta)) {
-        return "chat";
+    if (!isAgentTerminalMeta(block?.meta ?? null)) {
+        return "";
     }
-    if (isAgentTerminalMeta(block?.meta ?? null)) {
-        return "agent";
-    }
-    if (meta[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote) {
-        return "note";
-    }
-    if (meta.view === "preview") {
-        return "file";
-    }
-    if (meta.view === "term") {
-        return "terminal";
-    }
-    return "other";
+    return normalizeAgentProvider(meta.provider ?? meta["agent:provider"]);
 }
 
 // ── Agent 状态行（每个 agent block 一个子组件，独立订阅状态） ──
 
-function TabAgentRow({ blockId }: { blockId: string }) {
+function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider: boolean }) {
     const store = AgentStatusStore.getInstance();
     const [statusAtom, setStatusAtom] = React.useState<ReturnType<AgentStatusStore["acquire"]> | null>(null);
     React.useEffect(() => {
@@ -66,6 +63,7 @@ function TabAgentRow({ blockId }: { blockId: string }) {
         return () => store.release(blockId);
     }, [store, blockId]);
     const status = useAtomValueSafe(statusAtom);
+    const statusView = useAgentStatusView(blockId, status);
 
     const block = React.useMemo(() => getObjectValue<Block>(makeORef("block", blockId)), [blockId]);
     const meta = (block?.meta ?? {}) as Record<string, unknown>;
@@ -80,67 +78,35 @@ function TabAgentRow({ blockId }: { blockId: string }) {
         sessionId: (meta["agent:sessionid"] as string | undefined) ?? null,
     });
 
-    const state = status?.state ?? "unknown";
-    const stateColor =
-        state === "working"
-            ? "var(--agent-working-color)"
-            : state === "done"
-              ? "var(--agent-done-color)"
-              : state === "blocked" || state === "rate-limited"
-                ? "var(--warning-color, #f59e0b)"
-                : state === "error"
-                  ? "var(--error-color)"
-                  : "var(--secondary-text-color)";
-    const stateLabel =
-        status == null
-            ? "—"
-            : state === "working"
-              ? status.phase === "tool"
-                  ? status.toolName
-                      ? `Tool: ${status.toolName}`
-                      : "Tools"
-                  : status.phase === "thinking"
-                    ? "Thinking"
-                    : "Working"
-              : state === "done"
-                ? "Done"
-                : state === "blocked"
-                  ? "Blocked"
-                  : state === "error"
-                    ? "Error"
-                    : state === "rate-limited"
-                      ? "Rate limited"
-                      : state === "stale"
-                        ? "Stale"
-                        : "Idle";
+    const presentation = presentAgentStateFromView(statusView);
 
     return (
-        <div className="tab-card-agent-row">
-            <span
-                className={cn("tab-card-agent-dot", {
-                    "is-working": state === "working",
-                    "is-thinking": status?.phase === "thinking",
-                })}
-                style={{ background: stateColor }}
-            />
+        <div
+            className={cn(
+                "tab-card-agent-row",
+                `is-${presentation.kind}`,
+                presentation.read === "seen" ? "is-seen" : "is-unread"
+            )}
+            data-agent-read={presentation.read}
+        >
             {agentIcon != null ? (
                 agentIcon.kind === "emoji" ? (
-                    <span className="agent-emoji-icon tab-card-agent-logo">{agentIcon.emoji}</span>
+                    <span className="agent-emoji-icon tab-card-agent-emoji">{agentIcon.emoji}</span>
                 ) : (
                     <span
-                        className="tab-card-agent-logo"
+                        className="tab-card-agent-emoji"
                         style={agentIcon.iconColor != null ? { color: agentIcon.iconColor } : undefined}
                     >
                         {agentIcon.icon}
                     </span>
                 )
             ) : (
-                <InfoCardIcon icon="fa-sharp fa-solid fa-microchip" />
+                <span className="tab-card-agent-emoji">
+                    <i className="fa-sharp fa-solid fa-robot" />
+                </span>
             )}
-            <span className="tab-card-agent-provider">{provider}</span>
-            <span className="tab-card-agent-state" style={{ color: stateColor }}>
-                {stateLabel}
-            </span>
+            {hideProvider ? null : <span className="tab-card-agent-name">{provider}</span>}
+            <span className="tab-card-agent-pill">{presentation.label}</span>
         </div>
     );
 }
@@ -163,92 +129,83 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
     const tabName = tab?.name ?? "";
     const flagColor = tab?.meta?.["tab:flagcolor"] as string | undefined;
 
-    // block 分类统计
     const blockIds = tab?.blockids ?? [];
-    const counts = React.useMemo(() => {
-        const acc: Record<TabBlockKind, number> = { agent: 0, chat: 0, file: 0, note: 0, terminal: 0, other: 0 };
-        for (const blockId of blockIds) {
-            const block = getObjectValue<Block>(makeORef("block", blockId));
-            acc[classifyBlock(block)]++;
-        }
-        return acc;
-    }, [blockIds]);
+    const blocks = React.useMemo(() => blockIds.map((id) => getObjectValue<Block>(makeORef("block", id))), [blockIds]);
+    const counts = React.useMemo(() => countTabBlocks(blocks), [blocks]);
+    const chips = React.useMemo(() => nonAgentChips(counts), [counts]);
 
-    const agentBlockIds = React.useMemo(() => blockIds.filter((id) => classifyBlock(getObjectValue<Block>(makeORef("block", id))) === "agent"), [blockIds]);
+    const agentEntries = React.useMemo(
+        () =>
+            blockIds
+                .map((blockId, idx) => ({
+                    blockId,
+                    kind: classifyTabBlock(blocks[idx] ?? null),
+                    provider: readAgentProvider(blocks[idx] ?? null),
+                }))
+                .filter((entry) => entry.kind === "agent")
+                .map(({ blockId, provider }) => ({ blockId, provider })),
+        [blockIds, blocks]
+    );
 
-    const hasContent = counts.agent + counts.chat + counts.file + counts.note + counts.terminal > 0;
+    const providers = React.useMemo(() => agentEntries.map((entry) => entry.provider), [agentEntries]);
+    const groupLabel = agentGroupLabel(providers);
+    const hideProvider = agentGroupHidesProvider(providers);
+
+    const agentCount = counts.agent;
 
     return (
         <InfoCard className="tab-card">
-            {/* 身份区：workspace 图标 + Tab 全名 + flag */}
-            <InfoCardSection>
+            {/* 身份区：workspace 图标 + Tab 全名 + flag + agent 计数 */}
+            <InfoCardSection className="tab-card-identity">
                 <InfoCardHead>
                     {workspace != null && (workspace.icon || workspace.name) ? (
-                        <span className="tab-card-workspace-icon" style={workspace.color ? { color: workspace.color } : undefined}>
+                        <span
+                            className="tab-card-workspace-icon"
+                            style={workspace.color ? { color: workspace.color } : undefined}
+                        >
                             <i className={cn("fa-solid", makeIconClass(workspace.icon ?? "", false))} />
                         </span>
                     ) : (
                         <InfoCardIcon icon="fa-sharp fa-solid fa-table-columns" />
                     )}
-                    <InfoCardTitle>{tabName !== "" ? tabName : "Untitled tab"}</InfoCardTitle>
-                    {flagColor != null ? <span className="tab-card-flag" style={{ background: flagColor }} title="Flag" /> : null}
+                    <InfoCardTitle className="tab-card-title">{tabName !== "" ? tabName : "Untitled tab"}</InfoCardTitle>
+                    {flagColor != null ? (
+                        <span className="tab-card-flag" style={{ background: flagColor }} title="Flag" />
+                    ) : null}
+                    {agentCount > 0 ? (
+                        <span className="tab-card-count">
+                            {agentCount} agent{agentCount > 1 ? "s" : ""}
+                        </span>
+                    ) : null}
                 </InfoCardHead>
             </InfoCardSection>
 
-            {/* 内容构成：block 类型计数 */}
-            {hasContent && (
-                <InfoCardSection>
-                    <div className="tab-card-blocks">
-                        {counts.agent > 0 && (
-                            <span className="tab-card-block-count">
-                                <i className="fa-sharp fa-solid fa-microchip" />
-                                {counts.agent} agent{counts.agent > 1 ? "s" : ""}
-                            </span>
-                        )}
-                        {counts.chat > 0 && (
-                            <span className="tab-card-block-count">
-                                <i className="fa-sharp fa-solid fa-comments" />
-                                {counts.chat} chat{counts.chat > 1 ? "s" : ""}
-                            </span>
-                        )}
-                        {counts.file > 0 && (
-                            <span className="tab-card-block-count">
-                                <i className="fa-solid fa-file-lines" />
-                                {counts.file} file{counts.file > 1 ? "s" : ""}
-                            </span>
-                        )}
-                        {counts.note > 0 && (
-                            <span className="tab-card-block-count">
-                                <i className="fa-solid fa-note-sticky" />
-                                {counts.note} note{counts.note > 1 ? "s" : ""}
-                            </span>
-                        )}
-                        {counts.terminal > 0 && (
-                            <span className="tab-card-block-count">
-                                <i className="fa-solid fa-terminal" />
-                                {counts.terminal} term{counts.terminal > 1 ? "s" : ""}
-                            </span>
-                        )}
-                    </div>
-                </InfoCardSection>
-            )}
+            <div className="tab-card-rule" />
 
             {/* Agent 状态清单 */}
-            {agentBlockIds.length > 0 && (
+            {agentCount > 0 && (
                 <InfoCardSection>
-                    <InfoCardHead>
-                        <InfoCardIcon icon="fa-sharp fa-solid fa-bolt" />
-                        <InfoCardTitle>Agents</InfoCardTitle>
-                    </InfoCardHead>
+                    <div className="tab-card-sub">{groupLabel}</div>
                     <div className="tab-card-agent-list">
-                        {agentBlockIds.map((blockId) => (
-                            <TabAgentRow key={blockId} blockId={blockId} />
+                        {agentEntries.map((entry) => (
+                            <TabAgentRow key={entry.blockId} blockId={entry.blockId} hideProvider={hideProvider} />
                         ))}
                     </div>
                 </InfoCardSection>
             )}
 
-            {!hasContent && (
+            {/* 非 agent 内容构成（chat / file / note / terminal），与 header 计数不重复 */}
+            {chips.length > 0 && (
+                <InfoCardSection className={cn("tab-card-props", agentCount > 0 && "has-agents")}>
+                    {chips.map((chip) => (
+                        <span key={chip.kind} className="tab-card-prop">
+                            {chip.label}
+                        </span>
+                    ))}
+                </InfoCardSection>
+            )}
+
+            {agentCount === 0 && chips.length === 0 && (
                 <InfoCardSection>
                     <InfoCardText>Empty tab</InfoCardText>
                 </InfoCardSection>

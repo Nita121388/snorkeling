@@ -742,8 +742,15 @@
     pointer-events: auto;
     min-width: 0;
     max-width: 100%;
-    overflow: hidden;
-    contain: layout paint;
+    // `overflow: auto` (not hidden) + an auto height: the overlay's height is the rendered
+    // block's height used as a MINIMUM (see InlineEditOverlay), so content that is taller than
+    // the block — multi-line lists, long paragraphs — grows the box instead of being clipped.
+    // The scrollbar only appears for content taller than the viewport (maxHeight cap).
+    overflow: auto;
+    // No `contain: layout paint` here: paint containment CLIPS descendants to the overlay box,
+    // which is exactly the "list items are cut off" symptom. The overlay only lives for the
+    // duration of an edit session, so the isolation it bought is not worth the clipping.
+    contain: layout;
 
     .inline-edit-textarea {
         display: block;
@@ -1050,6 +1057,133 @@
     list-style-type: disc;
 }
 .wysiwyg-editor.wysiwyg-list ol {
+    list-style-type: decimal;
+}
+
+// --- Inline-edit overlay: first-level list geometry ------------------------------------------
+// Entering edit on a list used to shift the text right by ~30px and push it down ~9px. Two
+// stacked indents caused it: the typography snapshot already carries the rendered `<li>`'s
+// padding onto the WYSIWYG root, and these rules added the render tree's
+// `margin-left: 1.5em` + `padding-left: .25em` on top of it.
+//
+// Geometry contract (see resolveOverlayGeometry / resolveListIndentPx / resolveTextOffsetPx):
+//   overlay.left = anchorLeft + textOffset - markerColumn
+//   root padding = markerColumn
+//   first-level ul/ol/li contribute ZERO indent
+//   the marker itself is an absolutely positioned ::before that fills the reserved column
+// → overlay.left + root padding === anchorLeft + textOffset === the rendered text's x.
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-editor {
+    // The marker sits inside the root's padding box; `hidden` would clip it at the boundary.
+    overflow: visible;
+
+    // 内联标记必须镜像渲染态：覆盖层 portal 到 body，`.markdown` 作用域下的
+    // code / strong / a 规则根本不会命中它 → 编辑时 `code` 丢等宽字体、字重与颜色变样，
+    // 整行看起来就和阅读态不一样（实测像素差 6~7%）。
+    code {
+        color: var(--main-text-color);
+        font: var(--fixed-font);
+        font-size: var(--markdown-fixed-font-size);
+        border-radius: 4px;
+    }
+
+    strong {
+        color: var(--main-text-color);
+    }
+
+    a {
+        color: #32afff;
+    }
+
+    kbd,
+    samp {
+        font: var(--fixed-font);
+        font-size: var(--markdown-fixed-font-size);
+    }
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul,
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+// First-level items: no margins and no padding of their own. The marker column is reserved by
+// the WYSIWYG root's padding (see InlineEditOverlay: `paddingLeft = marker column`), so the
+// item's text starts exactly at the root's content edge — which is where the rendered text is.
+// The rendered li's vertical margin is NOT part of its bounding rect, so keeping it here pushed
+// the text down and made the content taller than the overlay's min-height.
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul > li,
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ol > li {
+    position: relative;
+    margin: 0;
+    padding-left: 0;
+    line-height: inherit;
+}
+
+// Marker drawn as a pseudo-element, mirroring the rendered collapsible ordered list
+// (`.ordered-list-summary-content::before`): it fills the reserved column and right-aligns its
+// ink against the text start with the same 0.286em gap and 600 weight.
+//
+// `right: 100%` puts the whole band in the root's padding area (to the left of the text).
+// Absolutely positioned on purpose: a hanging `inline-block` marker would be pushed onto its own
+// line as soon as the item's content is block-level (loose lists render `<li><p>…</p></li>`).
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul > li::before,
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ol > li::before {
+    position: absolute;
+    right: 100%;
+    top: 0;
+    width: var(--inline-edit-list-indent, 1.5em);
+    box-sizing: border-box;
+    padding-right: 0.286em;
+    text-align: right;
+    text-indent: 0;
+    font-weight: 600;
+    font-style: normal;
+    pointer-events: none;
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ul > li::before {
+    content: "•";
+    color: var(--secondary-text-color);
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list > ol > li::before {
+    content: counter(list-item) ".";
+    color: var(--main-text-color);
+}
+
+// 首行缩进模式（折叠式有序项）：渲染态是"首行缩进 + 续行贴 li 左边"。
+// 缩进用 li 的 text-indent（只影响首行）；marker 用 left 定位到它自己的列。
+// 用根 padding 会连续行一起右移 —— 那正是 ol-collapsible 长期红着的 33px 位移根因。
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > li,
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > ul > li,
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > ol > li {
+    padding-left: 0;
+    text-indent: var(--inline-edit-first-line-indent, 0px);
+}
+
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > ul > li::before,
+.inline-edit-overlay[data-list-indent-mode="first-line"] .wysiwyg-list > ol > li::before {
+    right: auto;
+    left: var(--inline-edit-marker-offset, 0px);
+    width: auto;
+    text-align: left;
+}
+
+// Nested levels keep the rendered indent so the hierarchy still reads correctly.
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ul,
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ol {
+    margin: 0.25em 0 0.25em 1.5em;
+    padding-left: 0.25em;
+    list-style-position: outside;
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ul {
+    list-style-type: disc;
+}
+
+.inline-edit-overlay[data-block-kind="wysiwyg"] .wysiwyg-list li ol {
     list-style-type: decimal;
 }
 
@@ -1836,6 +1970,7 @@
     }
 
     .markdown-emoji-item {
+        position: relative;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1851,6 +1986,187 @@
         &:hover,
         &.is-active {
             background: color-mix(in srgb, var(--accent-color, #58c4ff) 18%, transparent);
+        }
+
+        // User assigned a meaning to this emoji (right-click → alias editor).
+        &.has-alias::after {
+            content: "";
+            position: absolute;
+            right: 3px;
+            bottom: 3px;
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--accent-color, #58c4ff) 80%, transparent);
+            pointer-events: none;
+        }
+    }
+
+    // "why did this show up" strip: the user aliases that matched the current query.
+    .markdown-emoji-alias-strip {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 6px;
+        padding: 0 2px;
+        font-size: 10px;
+        color: color-mix(in srgb, var(--main-text-color, #888) 60%, transparent);
+        user-select: none;
+    }
+
+    .markdown-emoji-alias-chip {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        padding: 1px 5px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--accent-color, #58c4ff) 14%, transparent);
+        color: color-mix(in srgb, var(--accent-color, #58c4ff) 85%, var(--main-text-color, #888) 15%);
+        font-size: 10px;
+        line-height: 1.5;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    // Right-click meaning editor — replaces the search row + grid while open.
+    .markdown-emoji-alias-editor {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 4px 4px 2px;
+
+        .markdown-emoji-alias-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .markdown-emoji-alias-head-char {
+            flex: 0 0 auto;
+            font-size: 22px;
+            line-height: 1;
+            font-family: "Twemoji Country Flags", "Apple Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
+        }
+
+        .markdown-emoji-alias-head-names {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            min-width: 0;
+            font-size: 11px;
+            line-height: 1.3;
+            color: color-mix(in srgb, var(--main-text-color, #888) 65%, transparent);
+
+            .is-primary {
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--main-text-color, inherit);
+            }
+
+            span {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+        }
+
+        .markdown-emoji-alias-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            min-height: 4px;
+        }
+
+        .markdown-emoji-alias-chip.is-editable {
+            gap: 4px;
+            padding-right: 3px;
+
+            button {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 13px;
+                height: 13px;
+                padding: 0;
+                border: 0;
+                border-radius: 50%;
+                background: transparent;
+                color: inherit;
+                font-size: 8px;
+                cursor: pointer;
+                opacity: 0.7;
+
+                &:hover {
+                    opacity: 1;
+                    background: color-mix(in srgb, var(--main-text-color, #888) 18%, transparent);
+                }
+            }
+        }
+
+        input.markdown-emoji-alias-input {
+            width: 100%;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+            background: transparent;
+            color: var(--main-text-color, inherit);
+            font-size: 12px;
+            outline: none;
+
+            &:focus {
+                border-color: var(--accent-color, #58c4ff);
+            }
+        }
+
+        .markdown-emoji-alias-hintrow {
+            font-size: 10px;
+            line-height: 1.4;
+            color: color-mix(in srgb, var(--main-text-color, #888) 50%, transparent);
+            user-select: none;
+        }
+
+        .markdown-emoji-alias-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+
+            .is-spacer {
+                flex: 1 1 auto;
+            }
+
+            button {
+                height: 24px;
+                padding: 0 10px;
+                border-radius: 4px;
+                border: 1px solid color-mix(in srgb, var(--main-text-color, #888) 22%, transparent);
+                background: transparent;
+                color: var(--main-text-color, inherit);
+                font-size: 11px;
+                cursor: pointer;
+
+                &:hover:not(:disabled) {
+                    background: color-mix(in srgb, var(--main-text-color, #888) 12%, transparent);
+                }
+
+                &:disabled {
+                    opacity: 0.35;
+                    cursor: default;
+                }
+
+                &.is-primary {
+                    border-color: var(--accent-color, #58c4ff);
+                    background: color-mix(in srgb, var(--accent-color, #58c4ff) 22%, transparent);
+                    color: var(--accent-color, #58c4ff);
+                    font-weight: 600;
+                }
+
+                &.is-danger {
+                    color: var(--error-color, #e5484d);
+                }
+            }
         }
     }
 

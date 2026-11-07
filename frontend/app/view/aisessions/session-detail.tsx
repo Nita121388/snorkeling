@@ -22,6 +22,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { autoGenerate } from "./aisession-gen-store";
+import { RenameTitleInputClass } from "./title-edit";
 import { replaceAnnotationDrafts, requestAnnotationDrafts } from "./annotation-assist";
 import { AnnotationEditor } from "./annotation-editor";
 import {
@@ -118,8 +119,6 @@ function sourceDotClass(source: string): string {
     return getChatSource(source).dotClass ?? "bg-secondary";
 }
 
-const RenameTitleInputClass =
-    "h-6 min-w-0 flex-1 rounded border border-accent bg-surface px-1.5 text-sm font-medium text-primary outline-none";
 
 export type SessionDetailController = {
     // 可选：供子代理折叠卡片加载子会话内容 / 打开子会话块。

@@ -22,6 +22,11 @@ import { WysiwygEditor, type WysiwygEditorHandle } from "./wysiwyg-editor";
 
 type InlineEditLogEntry = { t: number; seq: number; msg: string; details: Record<string, unknown> };
 
+/** 调试日志专用的安全数字格式化：undefined/NaN/Infinity 一律降级成 "?"，绝不让 log 崩 app。 */
+function fmtPx(v: unknown): string {
+    return typeof v === "number" && Number.isFinite(v) ? v.toFixed(2) : "?";
+}
+
 function isInlineEditDebugEnabled(): boolean {
     return typeof window !== "undefined" && window.localStorage?.getItem("snorkelingInlineEditDebug") === "1";
 }
@@ -211,6 +216,19 @@ export type InlineEditSession = {
     /** Heading level (1-6) for WYSIWYG heading blocks, read from the rendered class is-N. */
     wysiwygHeadingLevel?: number;
     /**
+     * Marker column width (px) measured from the rendered list — see `resolveListIndentPx`.
+     * The overlay reserves this band on its left and the WYSIWYG root pads its content by it,
+     * so the editor's first text character lands exactly where the rendered text starts.
+     */
+    listIndentPx?: number;
+    /**
+     * 列表缩进语义。"first-line" = 折叠式有序项：首行缩进、续行贴 li 左边
+     * （见 resolveListContinuation）。缺省 = 悬挂缩进（两行都对齐文字起点）。
+     */
+    listIndentMode?: "first-line";
+    /** "first-line" 模式下 marker 起点相对 li 内容盒左边的偏移（px）。 */
+    listMarkerOffsetPx?: number;
+    /**
      * Preserved original list marker for WYSIWYG list blocks: the bullet char
      * ("-" | "*" | "+") or the ordered counter head ("1." | "1)"). Kept so commit
      * serialization re-emits the author's marker style, keeping git diffs minimal.
@@ -263,6 +281,208 @@ export function resolveInlineEditTarget(
         return session.targetEl;
     }
     return viewport.querySelector<HTMLElement>(fallbackSelector(session.startLine));
+}
+
+/**
+ * Width (px) of the marker column that the rendered list reserves to the LEFT of its item's
+ * text. `list-style-position: outside` paints the number/bullet in that band, which lives
+ * outside the `<li>`'s own border box (`<ol>`/`<ul>` margin-left + padding-left) — so an editor
+ * overlay anchored exactly at `li.left` has no room for it and the marker either gets clipped
+ * or lands on top of the text.
+ *
+ * The value is MEASURED from the rendered tree instead of hardcoding `1.5em`, so theme / font
+ * size changes carry over automatically. Returns 0 for non-list kinds.
+ */
+export function resolveListIndentPx(targetEl: HTMLElement, blockKind: InlineEditBlockKind): number {
+    if (blockKind !== "list") {
+        return 0;
+    }
+    const owner =
+        targetEl.tagName === "LI"
+            ? targetEl.parentElement?.closest<HTMLElement>("ol, ul")
+            : targetEl.closest<HTMLElement>("ol, ul");
+    if (owner == null) {
+        return 0;
+    }
+    const cs = getComputedStyle(owner);
+    const raw = (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.paddingLeft) || 0);
+    return Number.isFinite(raw) && raw > 0 ? Math.round(raw * 100) / 100 : 0;
+}
+
+/**
+ * Horizontal offset (px) from the anchored block's left edge to the FIRST CHARACTER of its text.
+ *
+ * Measured with a Range over the first non-empty text node, NOT from the anchor's box + padding:
+ *   - a list anchor can be the whole `<ol>`/`<ul>` (items owning a nested sublist promote to
+ *     their parent list) while the text starts one level deeper;
+ *   - a collapsible ordered item draws its number as an inline `::before` INSIDE the summary
+ *     content, so the text ink starts one marker width right of that element's box.
+ * Both cases make a box-based measurement land the editor text on the wrong x (measured residue:
+ * 2px for whole-list anchors, 13px for collapsible items).
+ */
+/**
+ * 折叠式有序列表项的"续行展平"几何。
+ *
+ * 渲染态结构（CDP 实测）：
+ *   li.ordered-list-collapsible             left = 44   <- li 内容盒左边
+ *     .ordered-list-summary-row (flex)
+ *       button.ordered-list-collapse-button   left = 40
+ *       .ordered-list-summary-content         left = 64   <- ::before 画 "1."，推进 13.03 -> 文字 77.03
+ *     .ordered-list-collapse-body            left = 44   <- 续行从这里开始
+ *
+ * 所以这类条目是**首行缩进**（首行 77，续行回到 44），不是悬挂缩进（两行都在 77）。
+ * 编辑器若沿用悬挂缩进模型，续行会右移 firstLineIndent px —— 实测 33px，这正是
+ * ol-collapsible 一直红着的真正原因（早期误判为 2px / 38px）。
+ *
+ * 返回 null = 不是折叠式条目，调用方保持原有悬挂缩进逻辑。
+ */
+export function resolveListContinuation(
+    targetEl: HTMLElement,
+    blockKind: InlineEditBlockKind,
+): { firstLineIndent: number; markerOffset: number; liLeft: number; liWidth: number } | null {
+    if (blockKind !== "list") {
+        return null;
+    }
+    const li = targetEl.tagName === "LI" ? targetEl : targetEl.querySelector<HTMLElement>("li");
+    if (li == null) {
+        return null;
+    }
+    const summary = li.querySelector<HTMLElement>(".ordered-list-summary-content");
+    if (summary == null) {
+        return null;
+    }
+    const liRect = li.getBoundingClientRect();
+    const cs = getComputedStyle(li);
+    const liLeft = liRect.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+
+    const walker = document.createTreeWalker(summary, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode()) != null) {
+        if ((node.nodeValue ?? "").trim() !== "") {
+            break;
+        }
+    }
+    if (node == null) {
+        return null;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const round = (v: number) => Math.round(v * 100) / 100;
+    const firstLineIndent = round(range.getBoundingClientRect().left - liLeft);
+    const markerOffset = round(summary.getBoundingClientRect().left - liLeft);
+    if (!Number.isFinite(firstLineIndent) || firstLineIndent <= 0) {
+        return null;
+    }
+    // liLeft 是**内容盒**左边（续行/首行缩进的共同基准）；li 自身的 rect.left 会差一个
+    // padding/border（实测 2px），拿它当锚点会让整块左移 2px。
+    return {
+        firstLineIndent,
+        markerOffset: Math.max(0, markerOffset),
+        liLeft,
+        liWidth: liRect.right - liLeft,
+    };
+}
+
+export function resolveTextOffsetPx(targetEl: HTMLElement): number {
+    const base = targetEl.getBoundingClientRect().left;
+    let inkLeft: number | null = null;
+    const walker = document.createTreeWalker(targetEl, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode()) != null) {
+        if ((node.nodeValue ?? "").trim() === "") {
+            continue;
+        }
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        if (Number.isFinite(rect.left) && rect.width >= 0) {
+            inkLeft = rect.left;
+        }
+        break;
+    }
+    if (inkLeft == null) {
+        // No text yet (empty block): fall back to the text element's box + its own padding.
+        const textEl = resolveTextElement(targetEl);
+        inkLeft = textEl.getBoundingClientRect().left + (parseFloat(getComputedStyle(textEl).paddingLeft) || 0);
+    }
+    const offset = inkLeft - base;
+    return Number.isFinite(offset) && offset > 0 ? Math.round(offset * 100) / 100 : 0;
+}
+
+export type OverlayGeometry = { top: number; left: number; width: number; height: number };
+
+/**
+ * 折叠式有序项（首行缩进模式）的 overlay 锚点矩形。
+ *
+ * 必须是纯函数且显式逐字段拷贝：`getBoundingClientRect()` 返回的 DOMRect 的
+ * top/left/width/height 是**原型上的 getter**，`{ ...rect, left, width }` 对象展开
+ * 会丢掉 top/height（变成 undefined），下游 `.toFixed()` 直接抛错、错误边界把
+ * 整个预览块整下。这是真实事故（ol-collapsible case），必须留回归单测。
+ */
+export function listAnchorRect(
+    targetRect: Pick<DOMRect, "top" | "height">,
+    continuation: { liLeft: number; liWidth: number }
+): OverlayGeometry {
+    return {
+        top: targetRect.top,
+        left: continuation.liLeft,
+        width: continuation.liWidth,
+        height: targetRect.height,
+    };
+}
+
+export type OverlayGeometryInput = {
+    kind: InlineEditBlockKind;
+    targetRect: { top: number; left: number; width: number; height: number };
+    /** `.markdown-render-root` rect (content area); null when the root is missing. */
+    renderRect: { left: number; right: number; width: number } | null;
+    viewportRect: { right: number };
+    /** Marker column width for list kinds (see resolveListIndentPx). */
+    listIndentPx?: number;
+    /** Text offset inside the anchor for list kinds (see resolveTextOffsetPx). */
+    listTextOffsetPx?: number;
+    /** Heading only: text start left, i.e. after the collapse-chevron column. */
+    headingTextLeft?: number | null;
+};
+
+/**
+ * Pure overlay geometry (viewport coordinates). Extracted from `measureOverlay` so the
+ * "where does the editor land" contract is unit-testable without a layout engine.
+ *
+ * Rules (each one exists to kill a specific reported jump):
+ *   - left: anchored on the rendered block's own left edge. Headings use `.heading-title`'s
+ *     left because `.heading` is a flex row whose first column is the collapse chevron (≈26px)
+ *     — anchoring the whole row would shift the text left and swallow chevron clicks.
+ *   - list: `left = targetLeft + textOffset - markerColumn`. The overlay pads its content by
+ *     `markerColumn` and the first-level `<li>` pads by nothing, so the editor's first character
+ *     lands on `targetLeft + textOffset` — exactly the rendered text's x. Shifting by the marker
+ *     column (rather than by the text offset) is what gives the number/bullet room inside the
+ *     overlay instead of clipping it at the left edge.
+ *   - right edge: list blocks that are obviously narrower than the content area extend to the
+ *     content area's right edge (typing continuity). Paragraphs/headings/quotes/code keep their
+ *     own width — changing it would move their wrap points.
+ *   - height: the rendered block's height. Consumed as `min-height` by the overlay; content is
+ *     allowed to grow past it (auto-grow), which is what keeps multi-line lists uncut.
+ */
+export function resolveOverlayGeometry(input: OverlayGeometryInput): OverlayGeometry {
+    const { kind, targetRect, renderRect, viewportRect } = input;
+    const listIndentPx = kind === "list" ? Math.max(0, input.listIndentPx ?? 0) : 0;
+    let left = input.headingTextLeft ?? targetRect.left;
+    if (listIndentPx > 0) {
+        left = targetRect.left + Math.max(0, input.listTextOffsetPx ?? 0) - listIndentPx;
+        // Allow at most one marker column outside the content area (the marker band genuinely
+        // lives there in the rendered tree), never further left than that.
+        if (renderRect != null) {
+            left = Math.max(left, renderRect.left - listIndentPx);
+        }
+    }
+    left = Math.max(0, left);
+    let right = targetRect.left + targetRect.width;
+    if (renderRect != null && kind === "list" && targetRect.width < renderRect.width * 0.6) {
+        right = renderRect.right;
+    }
+    const width = Math.max(0, Math.min(right - left, viewportRect.right - left));
+    return { top: targetRect.top, left, width, height: targetRect.height };
 }
 
 /**
@@ -403,12 +623,77 @@ export function buildListWysiwygSeed(targetEl: HTMLElement, listMarker: string |
     return clone.outerHTML;
 }
 
+/**
+ * 把种子 HTML 里的"软换行"规范化成显式 `<br>`。
+ *
+ * 为什么要这一步：渲染树把 markdown 的软换行渲染成 `<br>` 或文本里的换行符，而编辑器根节点
+ * 用 `whiteSpace: normal`（避免种子里的排版空白变成真实空行）。normal 会把文本节点里的换行符
+ * 折叠成空格 —— 于是一段两行的条目进编辑后**并成一行**，整块看起来完全变样
+ * （实测：折叠式多行条目的换行消失、像素差 7%）。
+ *
+ * 所以在种子阶段就把语义显式化：文本里的换行 → `<br>`，纯排版用的空白文本节点删掉。
+ * 这样根节点可以安全地用 `normal`，软换行也不会丢。
+ */
+export function normalizeWysiwygSeed(html: string): string {
+    if (!/\r|\n/.test(html)) {
+        return html;
+    }
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    let node: Node | null;
+    while ((node = walker.nextNode()) != null) {
+        textNodes.push(node as Text);
+    }
+    for (const textNode of textNodes) {
+        const parent = textNode.parentElement;
+        // 代码里的换行是内容的一部分，不转 <br>
+        if (parent != null && parent.closest("pre, code") != null) {
+            continue;
+        }
+        const value = textNode.nodeValue ?? "";
+        if (value.trim() === "") {
+            // 纯排版空白（标签之间的缩进/换行）→ 直接丢掉
+            textNode.nodeValue = "";
+            continue;
+        }
+        const parts = value.split(/\r?\n/);
+        if (parts.length === 1) {
+            continue;
+        }
+        const frag = document.createDocumentFragment();
+        parts.forEach((part, index) => {
+            if (index > 0) {
+                frag.appendChild(document.createElement("br"));
+            }
+            const trimmed = index === 0 ? part.replace(/\s+$/, "") : part.replace(/^\s+/, "");
+            frag.appendChild(document.createTextNode(trimmed));
+        });
+        textNode.parentNode?.replaceChild(frag, textNode);
+    }
+    host.normalize();
+    return host.innerHTML;
+}
+
 export function captureWysiwygInfo(
     blockKind: InlineEditBlockKind,
     targetEl: HTMLElement,
     sourceText: string
 ): { html: string; headingLevel?: number; listMarker?: string } | null {
     if (!isBlockEditorFeatureEnabled("wysiwyg") || !WYSIWYG_KINDS.has(blockKind)) {
+        return null;
+    }
+    // Folded list items must NOT enter the WYSIWYG path. A `.collapsed` item hides its nested
+    // content (`.ordered-list-collapse-body`) in the rendered tree, but `buildListWysiwygSeed`
+    // unwraps that body and keeps its children — so the editor would suddenly show content the
+    // reader could not see, blow past the block's height and get clipped. Dropping the children
+    // instead would silently delete them on commit (source corruption). Neither is acceptable,
+    // so folded items fall back to the raw textarea, which edits the source lines verbatim.
+    if (
+        blockKind === "list" &&
+        (targetEl.classList.contains("collapsed") || targetEl.querySelector(".collapsed") != null)
+    ) {
         return null;
     }
     // Eligibility: no images, no links, no callout chrome.
@@ -442,7 +727,7 @@ export function captureWysiwygInfo(
             listMarker = markerMatch[1];
         }
     }
-    return { html, headingLevel, listMarker };
+    return { html: normalizeWysiwygSeed(html), headingLevel, listMarker };
 }
 
 function stripCodeFence(source: string): string {
@@ -621,40 +906,35 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
         // With fixed + viewport-relative coords, scroll-events don't displace the overlay; the
         // textarea stays put where the user dblclicked and focus has nothing to scroll to.
         //
-        // Width: anchor to the rendered target's left edge and span out to the markdown content
-        // root's right edge — not to the target's own width. List/table targets are narrower than
-        // the content area (list indent, table cell box), and an editor narrower than the
-        // surrounding text breaks the "type where you read" feel. Spanning content-area-wide keeps
-        // the editor visually continuous with the surrounding prose bar.
+        // All the left/width/height decisions live in `resolveOverlayGeometry` (pure, unit-tested)
+        // — see its doc comment for why each rule exists.
         const renderRoot = viewport.querySelector<HTMLElement>(".markdown-render-root");
-        let width = targetRect.width;
-        // 左边缘始终锚在渲染块自己身上：以前取 min(target.left, render.left) 会把列表项/
-        // 缩进块的编辑器整体左移，双击瞬间文字就水平跳一下。起点不变、只向右扩展即可。
-        //
-        // 例外：标题行。`.heading` 是 flex，最左一列是折叠 chevron，`.heading-title` 的文字
-        // 从 chevron 之后才开始。用整行的 left 会让编辑器整体左移一个 chevron 槽（≈26px），
-        // 一进编辑文字就横跳；而且那列还压在 chevron 上，编辑中点折叠按钮会被 overlay 吞掉。
-        // 标题改用 .heading-title 的 left（高度/顶边仍取整行，视觉与文字同步不跳动）。
+        const renderRect = renderRoot?.getBoundingClientRect() ?? null;
         const headingTitleEl =
             editSession.blockKind === "h" ? (target.querySelector<HTMLElement>(".heading-title") ?? target) : null;
-        const left = headingTitleEl?.getBoundingClientRect().left ?? targetRect.left;
-        if (renderRoot != null) {
-            const renderRect = renderRoot.getBoundingClientRect();
-            // 只给“明显窄”的块（列表项、表格单元格）向右扩展到内容区右边缘，保留“打字
-            // 连续”的手感；段落/标题/引用/代码块严格用渲染块宽度，宽度一变折行位置就变。
-            const shouldExtend = editSession.blockKind === "list" && targetRect.width < renderRect.width * 0.6;
-            if (shouldExtend) {
-                width = renderRect.right - left;
-            }
-        }
-        const viewportRect = viewport.getBoundingClientRect();
-        width = Math.max(0, Math.min(width, viewportRect.right - left));
-        const next = {
-            top: targetRect.top,
-            left,
-            width,
-            height: targetRect.height,
-        };
+        // 折叠式有序项：缩进取"首行缩进"而非 marker 列宽，续行才会贴 li 左边。
+        const continuation = resolveListContinuation(target, editSession.blockKind);
+        const listIndentPx =
+            continuation?.firstLineIndent ??
+            (resolveListIndentPx(target, editSession.blockKind) || editSession.listIndentPx || 0);
+        // 首行缩进模式：锚点换成 li 的**内容盒左边**（rect.left 会差 2px 的 padding/border），
+        // 并让 textOffset 与缩进等量抵消，使 overlay.left 正好落在内容盒左边。
+        const listTextOffsetPx = continuation != null ? continuation.firstLineIndent : resolveTextOffsetPx(target);
+        // 注意：绝不能用 `{ ...targetRect, left, width }` —— DOMRect 的 top/left/width/height
+        // 是原型上的 getter，不是自有可枚举属性，对象展开会把它们全丢掉（top/height 变
+        // undefined），下游 `.toFixed()` 直接抛错、错误边界把整个预览块整下（真实事故）。
+        // 折叠项必须显式构造完整 rect-like 对象。
+        const anchorRect =
+            continuation != null ? listAnchorRect(targetRect, continuation) : targetRect;
+        const next = resolveOverlayGeometry({
+            kind: editSession.blockKind,
+            targetRect: anchorRect,
+            renderRect,
+            viewportRect: viewport.getBoundingClientRect(),
+            listIndentPx,
+            listTextOffsetPx,
+            headingTextLeft: headingTitleEl?.getBoundingClientRect().left ?? null,
+        });
         // Skip the state write when the rect is unchanged so re-measure churn (scroll events,
         // RAF polls, child re-mounts) doesn't trigger a re-render → re-measure → re-render loop.
         // We compare by value on all four fields; sub-pixel jitter from getBoundingClientRect is
@@ -673,8 +953,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             skipped = false;
             return next;
         });
+        // 调试日志也不允许把 app 搞崩：任何一个 rect 字段异常时降级成 "?"，
+        // 不许让 measure 路径因为一行 log 抛错（错误边界会连整块一起干掉）。
         inlineEditDebug(
-            `measure scrollTop=${viewport.scrollTop.toFixed(2)} tRectTop=${targetRect.top.toFixed(2)} tRectLeft=${targetRect.left.toFixed(2)} tRectW=${targetRect.width.toFixed(2)} tRectH=${targetRect.height.toFixed(2)} next(t=${next.top.toFixed(2)},l=${next.left.toFixed(2)},w=${next.width.toFixed(2)},h=${next.height.toFixed(2)}) skipped=${skipped} kind=${editSession?.blockKind ?? "?"} line=${editSession?.startLine ?? "?"}`
+            `measure scrollTop=${fmtPx(viewport.scrollTop)} tRectTop=${fmtPx(targetRect.top)} tRectLeft=${fmtPx(targetRect.left)} tRectW=${fmtPx(targetRect.width)} tRectH=${fmtPx(targetRect.height)} next(t=${fmtPx(next.top)},l=${fmtPx(next.left)},w=${fmtPx(next.width)},h=${fmtPx(next.height)}) skipped=${skipped} kind=${editSession?.blockKind ?? "?"} line=${editSession?.startLine ?? "?"}`
         );
     }, [editSession, getViewportEl]);
 
@@ -855,6 +1137,7 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
             // (stripListMarker) so passing the stripped text made the marker lookup fail and
             // every ordered list seeded as a <ul> with bullets.
             const wysiwygInfo = captureWysiwygInfo(blockKind, targetEl, sourceContent);
+            const listContinuation = resolveListContinuation(targetEl, blockKind);
             const session: InlineEditSession = {
                 blockKind,
                 startLine: safeLine,
@@ -862,6 +1145,10 @@ export function useInlineEdit({ fullText, onCommit, onSave, getViewportEl, reset
                 initialContent,
                 targetEl,
                 typography: captureBlockTypography(targetEl),
+                // 折叠式有序项要按"首行缩进"建模，否则续行右移（见 resolveListContinuation）
+                listIndentPx: listContinuation?.firstLineIndent ?? resolveListIndentPx(targetEl, blockKind),
+                listIndentMode: listContinuation != null ? "first-line" : undefined,
+                listMarkerOffsetPx: listContinuation?.markerOffset,
                 caretOffset,
                 insertRevert,
                 placeholder: placeholder === "inline" ? true : placeholder || undefined,
@@ -1130,6 +1417,17 @@ type InlineEditOverlayProps = {
     codeLanguage?: string | null;
     /** Code block language change handler. */
     onApplyLanguage?: (lang: string | null) => void;
+    /**
+     * Marker column width (px) for list blocks — see `resolveListIndentPx`. The overlay reserves
+     * this band on its left (its `left` was already shifted by it in `resolveOverlayGeometry`) and
+     * the WYSIWYG root pads its content by it, so the first text character lands on the rendered
+     * text's x. Also published as the `--inline-edit-list-indent` CSS var for the marker rules.
+     */
+    listIndentPx?: number;
+    /** 见 InlineEditSession.listIndentMode（"first-line" = 首行缩进 + 续行贴左边）。 */
+    listIndentMode?: "first-line";
+    /** 见 InlineEditSession.listMarkerOffsetPx。 */
+    listMarkerOffsetPx?: number;
 };
 
 /**
@@ -1206,6 +1504,9 @@ export function InlineEditOverlay({
     wysiwygSessionKey,
     caretOffset,
     sessionKey,
+    listIndentPx,
+    listIndentMode,
+    listMarkerOffsetPx,
 }: InlineEditOverlayProps) {
     const caretPlacedForKeyRef = useRef<string | null>(null);
     useLayoutEffect(() => {
@@ -1252,20 +1553,52 @@ export function InlineEditOverlay({
     // blocks triggered a focus → auto-scroll → re-measure → reposition loop. The portal frees
     // the overlay from that container's coordinate system; measureOverlay now writes viewport-
     // relative (screen) coordinates so `position: fixed` lands at the right pixel.
+    //
+    // Height semantics: `overlayRect.height` is the RENDERED block's height and is used as a
+    // MINIMUM. `height` stays auto so the content decides — a fixed height + overflow:hidden was
+    // the "list items get cut off" bug: the editor's content is taller than the rendered block
+    // (list `<ol>/<li>` margins, marker rows, multi-line growth) and everything past the block's
+    // height was clipped. `maxHeight` + `overflow:auto` is the only fallback, for content taller
+    // than the viewport.
+    const maxOverlayHeight =
+        typeof window !== "undefined" ? Math.max(80, window.innerHeight - overlayRect.top - 8) : undefined;
+    // List blocks: the editor content is padded by the MARKER COLUMN width (not by the rendered
+    // text offset). `resolveOverlayGeometry` placed the overlay's left at
+    // `targetLeft + textOffset - markerColumn`, so padding by the column puts the first character
+    // back on `targetLeft + textOffset` — the rendered text's x — while leaving the marker its
+    // own band on the left. Non-list kinds keep the typography snapshot untouched.
+    // 首行缩进模式（折叠式有序项）：缩进加在 li 的 text-indent 上，不能加在根 padding 上 ——
+    // 根 padding 会把"首行和续行一起"右移，而渲染态只要首行缩进、续行回到 li 左边。
+    const firstLineIndentMode = blockKind === "list" && listIndentMode === "first-line";
+    const listIndent = blockKind === "list" && !firstLineIndentMode ? Math.max(0, listIndentPx ?? 0) : 0;
+    // 首行缩进模式必须把根 padding 归零：缩进由 li 的 text-indent 承担，若再叠上
+    // captureBlockTypography 量到的 paddingLeft（实测 22px），首行会被双重右移。
+    const overlayTypography = firstLineIndentMode
+        ? { ...typography, paddingLeft: "0px" }
+        : listIndent > 0
+          ? { ...typography, paddingLeft: `${listIndent}px` }
+          : typography;
     return createPortal(
         <div
             className="inline-edit-overlay"
             data-block-kind={wysiwygRef != null && wysiwygHtml != null ? "wysiwyg" : blockKind}
-            style={{
-                position: "fixed",
-                top: `${overlayRect.top}px`,
-                left: `${overlayRect.left}px`,
-                width: `${overlayRect.width}px`,
-                height: `${overlayRect.height}px`,
-                maxWidth: `${overlayRect.width}px`,
-                boxSizing: "border-box",
-                overflow: "hidden",
-            }}
+            data-list-indent-mode={firstLineIndentMode ? "first-line" : undefined}
+            style={
+                {
+                    position: "fixed",
+                    top: `${overlayRect.top}px`,
+                    left: `${overlayRect.left}px`,
+                    width: `${overlayRect.width}px`,
+                    minHeight: `${overlayRect.height}px`,
+                    maxWidth: `${overlayRect.width}px`,
+                    maxHeight: maxOverlayHeight != null ? `${maxOverlayHeight}px` : undefined,
+                    boxSizing: "border-box",
+                    overflow: "auto",
+                    "--inline-edit-list-indent": `${listIndent}px`,
+                    "--inline-edit-first-line-indent": `${firstLineIndentMode ? (listIndentPx ?? 0) : 0}px`,
+                    "--inline-edit-marker-offset": `${listMarkerOffsetPx ?? 0}px`,
+                } as React.CSSProperties
+            }
             // Prevent the overlay from catching the markdown root's own dblclick/click handlers.
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
@@ -1304,7 +1637,7 @@ export function InlineEditOverlay({
                     blockKind={blockKind as WysiwygEligibleKind}
                     headingLevel={wysiwygHeadingLevel}
                     listMarker={wysiwygListMarker}
-                    typography={typography}
+                    typography={overlayTypography}
                     placeholder={placeholder}
                     onInput={(md, caretMd) => {
                         onTextChange(md, caretMd);
@@ -1318,7 +1651,7 @@ export function InlineEditOverlay({
                     <textarea
                         ref={textareaRef}
                         className="inline-edit-textarea"
-                        style={{ ...typography, ...formatTypography }}
+                        style={{ ...overlayTypography, ...formatTypography }}
                         value={draftText}
                         rows={1}
                         placeholder={placeholder}
@@ -1352,7 +1685,7 @@ export function InlineEditOverlay({
                                 left: 0,
                                 pointerEvents: "none",
                                 whiteSpace: "pre",
-                                ...typography,
+                                ...overlayTypography,
                                 ...formatTypography,
                                 color: "transparent",
                             }}

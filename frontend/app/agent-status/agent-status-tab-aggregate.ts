@@ -211,7 +211,12 @@ function collectBlockDots(
         // 用于排查 derive 是不是从 stale atom 读到 0. 排查完后删除.
         // 触发条件: state=idle 且 prevState 非 idle (即可能产生 D 的状态), 每次循环都打一条,
         // 确认 map 在 derive 入口处 selfVal 是否真的为 0 还是说已经被写入.
-        if (status.state === "idle" && status.prevState != null && status.prevState !== "idle" && status.prevState !== "unknown") {
+        if (
+            (status.state === "idle" || status.state === "done") &&
+            status.prevState != null &&
+            status.prevState !== "idle" &&
+            status.prevState !== "unknown"
+        ) {
             const selfVal = doneAckedAtMap[blockId] ?? 0;
             const updatedAtMs = normalizeTimeMs(status.updatedAt);
             pslogEvent({

@@ -245,6 +245,40 @@ export function applyStaleness(status: AgentStatus, nowMs: number): AgentStatus 
     };
 }
 
+/**
+ * Canonical-only presentation used by AgentStatusStore — the single source every
+ * surface (agent block header, Session Overview chip, inline tab dot, tab dot
+ * aggregate, hover card) reads.
+ *
+ * Two rules only:
+ * 1. canonical `idle` carrying a completed transition (`prevState` non-idle/unknown)
+ *    is presented as `done`. The state is NOT revoked by ack: ack only greys the
+ *    badge, so the "Done" label stays identical on every surface and does not
+ *    vanish after 15 minutes (the old session-window heuristic did exactly that).
+ * 2. working past its phase threshold decays to `stale` via applyStaleness.
+ *
+ * `null` canonical stays `null` so every surface agrees to render nothing.
+ */
+export function presentCanonicalAgentStatus(status: AgentStatus | null, nowMs: number): AgentStatus | null {
+    if (status == null) {
+        return null;
+    }
+    if (
+        status.state === "idle" &&
+        status.prevState != null &&
+        status.prevState !== "" &&
+        status.prevState !== "idle" &&
+        status.prevState !== "unknown"
+    ) {
+        return {
+            ...status,
+            state: "done",
+            phase: "none",
+        };
+    }
+    return applyStaleness(status, nowMs);
+}
+
 export function formatAgentProvider(provider: string): string {
     const normalized = normalizeProvider(provider);
     switch (normalized) {

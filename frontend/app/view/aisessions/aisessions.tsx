@@ -715,6 +715,13 @@ export class AiSessionsViewModel implements ViewModel {
     }
 
     async loadTags(refresh = false): Promise<void> {
+        // 方案 A（见 task design.md §2.5）：筛选面板**故意**保留自己带 filter 的 Tags 调用。
+        //
+        // 计数语义不同：面板的 count 是「当前筛选条件下」的出现次数（用户改了筛选就该跟着变），
+        // 而卡片候选项用的是 store/available-session-tags.ts 里「最小过滤」的全局 count。
+        // 强行合流会让面板上的数字与它上方的筛选条件脱钩 —— 那是比「两份全局清单」更糟的错误。
+        // 因此 R1「单一标签源」的含义是「全局清单的来源唯一」（卡片侧读 store），
+        // 不是「两种语义不同的 count 必须同源」。
         try {
             const dateRange = globalStore.get(this.dateRangeAtom);
             const { since, before } = dateRangeToSinceBefore(dateRange, Date.now());
@@ -2636,24 +2643,33 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     <div className="flex-1" />
                                     <button
                                         type="button"
-                                        title="Filters"
-                                        aria-label="Filters"
+                                        title={
+                                            activeFilterCount > 0
+                                                ? `Filters: ${activeFilterCount} active`
+                                                : "Filters"
+                                        }
+                                        aria-label={
+                                            activeFilterCount > 0
+                                                ? `Filters: ${activeFilterCount} active`
+                                                : "Filters"
+                                        }
+                                        aria-pressed={filtersOpen}
                                         onClick={() => setFiltersOpen((current) => !current)}
                                         className={cn(
-                                            "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors cursor-pointer",
+                                            "flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 transition-colors cursor-pointer",
                                             filtersOpen
                                                 ? "border border-border/70 bg-background text-primary shadow-sm ring-1 ring-accent/40"
-                                                : "border border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
+                                                : activeFilterCount > 0
+                                                  ? "border border-border/70 bg-background text-primary ring-1 ring-accent/40 hover:bg-hover"
+                                                  : "border border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
                                         )}
                                     >
                                         <i className="fa-sharp fa-solid fa-sliders text-[11px]" />
                                         {activeFilterCount > 0 ? (
-                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black">
+                                            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-black tabular-nums">
                                                 {activeFilterCount}
                                             </span>
-                                        ) : (
-                                            <span>Filters</span>
-                                        )}
+                                        ) : null}
                                     </button>
                                     <FilterPresetMenu
                                         presets={filterPresets}

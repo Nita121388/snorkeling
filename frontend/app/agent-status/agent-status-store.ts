@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { observeAgentStatusTransition } from "@/app/agent-status/agent-status-done-ack-store";
-import { applyStaleness } from "@/app/agent-status/agent-status-derive";
+import { presentCanonicalAgentStatus } from "@/app/agent-status/agent-status-derive";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { normalizeCanonicalAgentStatus } from "@/app/agent-status/agent-status-service";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
@@ -136,7 +136,7 @@ export class AgentStatusStore {
             if (raw.state === "working") {
                 get(nowMinuteTickAtom);
             }
-            return applyStaleness(raw, Date.now());
+            return presentCanonicalAgentStatus(raw, Date.now());
         });
         this.entries.set(blockId, {
             rawAtom: statusAtom,

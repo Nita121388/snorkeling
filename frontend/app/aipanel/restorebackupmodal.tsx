@@ -40,7 +40,7 @@ export const RestoreBackupModal = memo(({ part }: RestoreBackupModalProps) => {
 
     if (status === "success") {
         return (
-            <Modal className="restore-backup-modal pb-5 pr-5" onClose={handleClose} onOk={handleClose} okLabel="Close">
+            <Modal className="restore-backup-modal pb-5 pr-5" onClose={handleClose} onOk={handleClose} okLabel="Close" padding={false}>
                 <div className="flex flex-col gap-4 pt-4 pb-4 max-w-xl">
                     <div className="font-semibold text-lg text-success">Backup Successfully Restored</div>
                     <div className="text-sm text-secondary leading-relaxed">
@@ -54,7 +54,7 @@ export const RestoreBackupModal = memo(({ part }: RestoreBackupModalProps) => {
 
     if (status === "error") {
         return (
-            <Modal className="restore-backup-modal pb-5 pr-5" onClose={handleClose} onOk={handleClose} okLabel="Close">
+            <Modal className="restore-backup-modal pb-5 pr-5" onClose={handleClose} onOk={handleClose} okLabel="Close" padding={false}>
                 <div className="flex flex-col gap-4 pt-4 pb-4 max-w-xl">
                     <div className="font-semibold text-lg text-error">Failed to Restore Backup</div>
                     <div className="text-sm text-secondary leading-relaxed">
@@ -80,6 +80,7 @@ export const RestoreBackupModal = memo(({ part }: RestoreBackupModalProps) => {
             cancelLabel="Cancel"
             okDisabled={isProcessing}
             cancelDisabled={isProcessing}
+            padding={false}
         >
             <div className="flex flex-col gap-4 pt-4 pb-4 max-w-xl">
                 <div className="font-semibold text-lg">Restore File Backup</div>

@@ -1291,3 +1291,896 @@
     }
 }
 
+/* ---------------------------------------------------------------------------
+   Overview board view (status columns). List view styles above are untouched;
+   every selector here is prefixed `.session-overview-board-*` (plus the toggle).
+   Wide panels get a multi-column card wall; narrow panels stack one column per
+   status section and let the existing body scroll handle overflow.
+   --------------------------------------------------------------------------- */
+
+/* 视图分段切换：列表 / 看板（D 追加 时间线），同一枚按钮既是切换器也是状态指示。 */
+.session-overview-view-switch {
+    display: inline-flex;
+    overflow: hidden;
+    align-items: stretch;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+}
+
+.session-overview-view-switch-button {
+    display: inline-flex;
+    height: 26px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border: none;
+    appearance: none;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+
+    & + & {
+        border-left: 1px solid var(--border-color);
+    }
+
+    &:hover {
+        color: var(--main-text-color);
+        background: var(--hover-bg-color-strong);
+    }
+
+    &.is-active {
+        color: var(--accent-color);
+        background: rgb(from var(--accent-color) r g b / 0.12);
+    }
+}
+
+.session-overview-view-toggle.is-active {
+    color: var(--accent-color);
+    border-color: rgb(from var(--accent-color) r g b / 0.42);
+}
+
+/* 看板分组下拉（仅看板模式渲染）。 */
+.session-overview-group-picker {
+    display: inline-flex;
+    height: 26px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--secondary-text-color);
+}
+
+.session-overview-group-select {
+    height: 22px;
+    border: none;
+    appearance: none;
+    background: transparent;
+    color: var(--main-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+
+    option {
+        background: var(--block-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+/* 看板永远是「一行多列」，窄面板横向 snap 滑列 —— 不再按宽度退回纵向堆叠
+   （纵向堆叠 = 状态分组列表，用户 2026-11-05 反馈「不像看板、还是列表化」的根因之一）。
+   列宽下限 220px：任何宽度下都至少露出相邻列的一条边，给出「右侧还有列」的信号。 */
+.session-overview-board {
+    display: grid;
+    height: 100%;
+    min-width: 0;
+    grid-auto-columns: minmax(220px, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+}
+
+.session-overview-board-column {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.session-overview-board-column-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0 2px;
+    color: var(--main-text-color);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.session-overview-board-column-title {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 状态色点由列头承载（卡片状态改由 AgentStatusChip 表达）。 */
+.session-overview-board-column-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+
+    &.is-blocked {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    &.is-done {
+        background: var(--agent-done-color, var(--success-color));
+    }
+
+    &.is-idle {
+        background: rgb(from var(--main-text-color) r g b / 0.35);
+    }
+
+    &.is-stale {
+        background: var(--agent-stale-color, #a855f7);
+    }
+
+    /* 落点高亮：刚有卡片飞进这一列。由 overview-board.tsx 的 `key` 变化驱动（一次性脉冲），
+       其他重渲染不会重播。 */
+    &.is-landing {
+        animation: overview-board-dot-land 700ms ease-out 1;
+    }
+
+    &.is-landing.is-blocked {
+        --overview-board-landing-color: var(--warning-color, #f59e0b);
+    }
+
+    &.is-landing.is-working {
+        --overview-board-landing-color: var(--agent-working-color);
+    }
+
+    &.is-landing.is-done {
+        --overview-board-landing-color: var(--agent-done-color, var(--success-color));
+    }
+
+    &.is-landing.is-idle {
+        --overview-board-landing-color: var(--main-text-color);
+    }
+
+    &.is-landing.is-stale {
+        --overview-board-landing-color: var(--agent-stale-color, #a855f7);
+    }
+}
+
+.session-overview-board-column-count {
+    display: inline-flex;
+    min-width: 18px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: rgb(from var(--main-text-color) r g b / 0.1);
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+
+    /* 计数弹跳：有卡片落到该列时由 `key` 变化重播。 */
+    &.is-bumping {
+        animation: overview-board-count-pop 220ms ease-out 1;
+    }
+}
+
+/* FLIP 飞行：卡片要盖住邻居与列边框，但不能改变布局 —— 只用 transform / z-index，
+   绝不改 position: fixed。 */
+.session-overview-board-card.is-flying {
+    z-index: 2;
+    position: relative;
+}
+
+@keyframes overview-board-dot-land {
+    0% {
+        box-shadow: 0 0 0 0 rgb(from var(--overview-board-landing-color, var(--accent-color)) r g b / 0);
+    }
+    35% {
+        box-shadow: 0 0 0 6px rgb(from var(--overview-board-landing-color, var(--accent-color)) r g b / 0.18);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgb(from var(--overview-board-landing-color, var(--accent-color)) r g b / 0);
+    }
+}
+
+@keyframes overview-board-count-pop {
+    0% {
+        transform: scale(1);
+    }
+    45% {
+        transform: scale(1.16);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* JS 动效层在 reduced motion 下已经直接 return；这两条覆盖纯 CSS 的两个脉冲。 */
+@media (prefers-reduced-motion: reduce) {
+    .session-overview-board-column-dot.is-landing,
+    .session-overview-board-column-count.is-bumping {
+        animation: none;
+    }
+}
+
+.session-overview-board-cards {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.session-overview-board-card {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgb(from var(--main-text-color) r g b / 0.035) 0%, transparent 100%);
+    box-sizing: border-box;
+    color: var(--main-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease;
+
+    &:hover {
+        border-color: rgb(from var(--accent-color) r g b / 0.38);
+        background: var(--hover-bg-color-strong);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.session-overview-board-card-head {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 定宽头像：emoji 用 13px 定宽（同 agent-persona 契约），logo 用品牌色，缺失时 robot 兜底。 */
+.session-overview-board-card-avatar {
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    background: rgb(from var(--main-text-color) r g b / 0.06);
+    font-size: 12px;
+    line-height: 1;
+
+    .agent-emoji-icon {
+        width: 13px;
+        font-size: 13px;
+        line-height: 1;
+    }
+}
+
+.session-overview-board-card-title {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-board-card-age {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+/* 状态 chip + provider/项目 chip 同行；chip 来自共享 AgentStatusChip，这里只做紧凑化。 */
+.session-overview-board-card-meta {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.session-overview-board-card {
+    .session-overview-agent-status {
+        height: 16px;
+        padding: 0 5px;
+        gap: 4px;
+        font-size: 9px;
+    }
+
+    .session-overview-agent-status-age {
+        font-size: 9px;
+    }
+}
+
+.session-overview-board-card-view-label {
+    padding: 1px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.session-overview-board-card-preview {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.session-overview-board-card-note {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-board-card-note-mark {
+    flex: 0 0 auto;
+    opacity: 0.7;
+}
+
+.session-overview-board-card-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.session-overview-board-chip {
+    max-width: 120px;
+    overflow: hidden;
+    padding: 1px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: rgb(from var(--main-text-color) r g b / 0.035);
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 会话标签 chip：与 aisessions 属性面板的 .property-chip 同一套「浅底 + 无重描边」观感，
+   但按看板 9px 的字号缩小一档；不用 accent 实色，避免和状态 chip 抢注意力。 */
+.session-overview-board-chip.is-tag {
+    max-width: 84px;
+    border-color: transparent;
+    background: rgb(from var(--main-text-color) r g b / 0.075);
+    color: var(--main-text-color);
+    font-weight: 500;
+    opacity: 0.82;
+}
+
+/* 溢出计数：比普通 tag 更弱，只作提示不参与点击语义。 */
+.session-overview-board-chip.is-tag-more {
+    flex: 0 0 auto;
+    border-color: transparent;
+    background: transparent;
+    color: var(--secondary-text-color);
+    font-weight: 600;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+/* 卡片底部迷你时间线：3px 高、段间 1px 缝、整条 2px 圆角。
+   段宽由 JS 用 flexGrow 按真实毫秒比例分配（不是等宽）。 */
+.session-overview-board-card-mini {
+    display: flex;
+    height: 3px;
+    gap: 1px;
+    margin-top: 1px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: rgb(from var(--main-text-color) r g b / 0.06);
+}
+
+.session-overview-board-card-mini-seg {
+    height: 100%;
+    min-width: 1px;
+    border-radius: 2px;
+    background: rgb(from var(--main-text-color) r g b / 0.18);
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    &.is-blocked,
+    &.is-error,
+    &.is-rate-limited {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    &.is-done {
+        background: var(--agent-done-color, var(--success-color));
+    }
+
+    &.is-idle {
+        background: var(--secondary-text-color);
+        opacity: 0.45;
+    }
+
+    &.is-stale {
+        background: var(--agent-stale-color, #a371f7);
+    }
+
+    &.is-unknown {
+        /* 斜纹 = 当时在干什么不知道，不谎报状态。 */
+        background: repeating-linear-gradient(
+            135deg,
+            rgb(from var(--main-text-color) r g b / 0.2) 0 2px,
+            rgb(from var(--main-text-color) r g b / 0.08) 2px 4px
+        );
+    }
+}
+
+/* 列作为 snap 停靠点；列内纵向滚动与 board 横向滚动互不干扰。 */
+.session-overview-board-column {
+    scroll-snap-align: start;
+}
+
+/* 空列占位：列头仍常显（给出「看板有这几列」的结构感），列体给一句 muted 提示。 */
+.session-overview-board-empty {
+    display: flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed rgb(from var(--main-text-color) r g b / 0.12);
+    border-radius: 8px;
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.session-overview-board-column.is-empty .session-overview-board-cards {
+    overflow-y: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   Overview timeline (Gantt · G1 session-lifetime bars)
+
+   轨道用 CSS 百分比定位：bar 的 left/width 由 `overview-timeline-model` 算好，
+   这里只负责「网格底纹 + 斜纹历史段 + 当前状态尾巴 + now 线」的观感。
+   窄面板给轨道一个 min-width 并允许横向滚动 —— 刻度文字不能被挤到换行。
+   --------------------------------------------------------------------------- */
+
+.session-overview-timeline {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.session-overview-timeline-axis,
+.session-overview-timeline-row {
+    display: grid;
+    min-width: 560px;
+    grid-template-columns: 210px minmax(0, 1fr);
+}
+
+.session-overview-timeline-axis {
+    align-items: stretch;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.session-overview-timeline-axis-label {
+    padding: 6px 10px;
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.session-overview-timeline-ticks {
+    position: relative;
+    height: 26px;
+}
+
+.session-overview-timeline-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    padding-left: 5px;
+    border-left: 1px solid rgb(from var(--main-text-color) r g b / 0.07);
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    line-height: 26px;
+    white-space: nowrap;
+}
+
+.session-overview-timeline-rows {
+    display: flex;
+    flex-direction: column;
+}
+
+.session-overview-timeline-row {
+    border-top: 1px solid rgb(from var(--main-text-color) r g b / 0.05);
+    cursor: pointer;
+
+    &:first-child {
+        border-top: none;
+    }
+
+    &:hover {
+        background: rgb(from var(--main-text-color) r g b / 0.03);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+}
+
+.session-overview-timeline-row-id {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border-right: 1px solid rgb(from var(--main-text-color) r g b / 0.06);
+}
+
+.session-overview-timeline-avatar {
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    background: rgb(from var(--main-text-color) r g b / 0.06);
+    font-size: 12px;
+    line-height: 1;
+
+    .agent-emoji-icon {
+        width: 13px;
+        font-size: 13px;
+        line-height: 1;
+    }
+}
+
+.session-overview-timeline-row-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.session-overview-timeline-row-title {
+    overflow: hidden;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-timeline-row-meta {
+    overflow: hidden;
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-overview-timeline-track {
+    position: relative;
+    height: 34px;
+    background-image: linear-gradient(90deg, rgb(from var(--main-text-color) r g b / 0.05) 1px, transparent 1px);
+    background-size: 12.5% 100%;
+}
+
+/* 甘特条：4px 圆角（不再是 9px 胶囊），段间留 1px 缝由 gap 负责。
+   段本身 3px 圆角 —— 相邻段之间靠 1px 透明缝分隔，读起来是「分段」而不是「一条药丸」。 */
+.session-overview-timeline-bar {
+    position: absolute;
+    top: 8px;
+    display: flex;
+    gap: 1px;
+    height: 18px;
+    overflow: hidden;
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 1px rgb(from var(--main-text-color) r g b / 0.08);
+}
+
+/* 分段（G2.1）：一段 = 一个真实状态区间。宽度由模型层算成百分比。 */
+.session-overview-timeline-bar-seg {
+    height: 100%;
+    min-width: 1px;
+    flex: 0 0 auto;
+    border-radius: 3px;
+    background: rgb(from var(--main-text-color) r g b / 0.18);
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    &.is-blocked,
+    &.is-error,
+    &.is-rate-limited {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    &.is-done {
+        background: var(--agent-done-color, var(--success-color));
+    }
+
+    /* idle：中性灰实心段（不再并入斜纹「状态未知」）——「空闲了多久」要能一眼读出来。 */
+    &.is-idle {
+        background: rgb(from var(--main-text-color) r g b / 0.42);
+    }
+
+    &.is-stale {
+        background: var(--agent-stale-color, #a855f7);
+    }
+
+    /* 斜纹 = 「当时在干什么不知道」，刻意不用状态色，避免谎报。 */
+    &.is-unknown {
+        background: repeating-linear-gradient(
+            135deg,
+            rgb(from var(--main-text-color) r g b / 0.16) 0 6px,
+            rgb(from var(--main-text-color) r g b / 0.07) 6px 12px
+        );
+    }
+}
+
+/* 完成点竖刻度：completedAt 的精确位置（细线 + 顶端圆点）。 */
+.session-overview-timeline-bar-completed {
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    width: 1px;
+    background: var(--agent-done-color, var(--success-color));
+    opacity: 0.9;
+    pointer-events: none;
+
+    &::after {
+        content: "";
+        position: absolute;
+        top: -2px;
+        left: -2px;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--agent-done-color, var(--success-color));
+    }
+}
+
+/* 兼容别名（旧渲染路径 + 既有 verify 探针）：与 .bar-seg 同一套几何。 */
+.session-overview-timeline-bar-history {
+    height: 100%;
+    border-radius: 3px;
+    background: repeating-linear-gradient(
+        135deg,
+        rgb(from var(--main-text-color) r g b / 0.16) 0 6px,
+        rgb(from var(--main-text-color) r g b / 0.07) 6px 12px
+    );
+}
+
+.session-overview-timeline-bar-tail {
+    height: 100%;
+    border-radius: 3px;
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    &.is-blocked {
+        background: var(--warning-color, #f59e0b);
+    }
+
+    &.is-done {
+        background: var(--agent-done-color, var(--success-color));
+    }
+
+    &.is-idle {
+        background: rgb(from var(--main-text-color) r g b / 0.4);
+    }
+
+    &.is-stale {
+        background: var(--agent-stale-color, #a855f7);
+    }
+}
+
+.session-overview-timeline-now {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    background: var(--accent-color);
+    opacity: 0.7;
+}
+
+/* 窄面板（<560px）：行内两列塞不下标签 + 轨道 —— 改成「标签一行、轨道一行」，
+   刻度隔一个隐藏（保留网格线），不再靠横向滚动去找条。 */
+@container (max-width: 560px) {
+    .session-overview-timeline-axis,
+    .session-overview-timeline-row,
+    .session-overview-timeline-legend,
+    .session-overview-timeline-more {
+        min-width: 0;
+    }
+
+    .session-overview-timeline-axis {
+        display: block;
+    }
+
+    .session-overview-timeline-axis-label {
+        display: none;
+    }
+
+    .session-overview-timeline-ticks {
+        height: 22px;
+    }
+
+    .session-overview-timeline-tick {
+        line-height: 22px;
+
+        &:nth-child(2n) {
+            display: none;
+        }
+    }
+
+    .session-overview-timeline-row {
+        display: block;
+        padding-bottom: 4px;
+    }
+
+    .session-overview-timeline-row-id {
+        border-right: none;
+        padding-bottom: 2px;
+    }
+
+    .session-overview-timeline-track {
+        height: 26px;
+    }
+
+    .session-overview-timeline-bar {
+        top: 4px;
+    }
+
+    /* 窄面板里这条解释性文案会把图例挤到溢出，隐藏它（语义仍靠 tooltip）。 */
+    .session-overview-timeline-legend-hint {
+        display: none;
+    }
+}
+
+/* 行数超过上限时的汇总行（模型侧 splitTimelineRows 截断）。 */
+.session-overview-timeline-more {
+    padding: 8px 10px;
+    border-top: 1px solid var(--border-color);
+    color: var(--secondary-text-color);
+    font-size: 9px;
+}
+
+.session-overview-timeline-legend {
+    display: flex;
+    min-width: 560px;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border-color);
+    color: var(--secondary-text-color);
+    font-size: 9px;
+}
+
+.session-overview-timeline-legend-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 4px;
+    border-radius: 3px;
+    vertical-align: -1px;
+
+    &.is-history {
+        background: repeating-linear-gradient(
+            135deg,
+            rgb(from var(--main-text-color) r g b / 0.2) 0 3px,
+            rgb(from var(--main-text-color) r g b / 0.07) 3px 6px
+        );
+    }
+
+    &.is-working {
+        background: var(--agent-working-color);
+    }
+
+    /* 空闲：中性灰实心（与条上的 idle 段同一色阶）。 */
+    &.is-idle {
+        background: rgb(from var(--main-text-color) r g b / 0.42);
+    }
+
+    /* 完成点：竖线 + 圆点的缩略表达。 */
+    &.is-completed {
+        position: relative;
+        background: transparent;
+
+        &::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 4px;
+            width: 1px;
+            background: var(--agent-done-color, var(--success-color));
+        }
+
+        &::after {
+            content: "";
+            position: absolute;
+            top: 1px;
+            left: 2px;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--agent-done-color, var(--success-color));
+        }
+    }
+}

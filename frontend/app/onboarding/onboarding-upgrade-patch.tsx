@@ -3,7 +3,7 @@
 
 import Logo from "@/app/asset/logo.svg";
 import { Button } from "@/app/element/button";
-import { FlexiModal } from "@/app/modals/modal";
+import { Modal } from "@/app/modals/modal";
 import { CurrentOnboardingVersion, OnboardingGradientBg } from "@/app/onboarding/onboarding-common";
 import { StarAskPage } from "@/app/onboarding/onboarding-starask";
 import { ClientModel } from "@/app/store/client-model";
@@ -242,20 +242,25 @@ const UpgradeOnboardingPatch = ({ isReleaseNotes = false }: UpgradeOnboardingPat
 
     if (showStarAsk) {
         return (
-            <FlexiModal
+            <Modal
                 className="w-[500px] rounded-[10px] !p-[30px] relative overflow-hidden bg-panel"
                 ref={modalRef}
+                padding={false}
             >
                 <OnboardingGradientBg />
                 <div className="relative z-10 flex flex-col w-full h-full">
                     <StarAskPage onClose={doClose} page="upgrade" />
                 </div>
-            </FlexiModal>
+            </Modal>
         );
     }
 
     return (
-        <FlexiModal className={`w-[650px] rounded-[10px] ${paddingClass} relative overflow-hidden`} ref={modalRef}>
+        <Modal
+            className={`w-[650px] rounded-[10px] ${paddingClass} relative overflow-hidden`}
+            ref={modalRef}
+            padding={false}
+        >
             <OnboardingGradientBg />
             <div className="flex flex-col w-full h-full relative z-10">
                 <div className="flex flex-col h-full">
@@ -284,7 +289,7 @@ const UpgradeOnboardingPatch = ({ isReleaseNotes = false }: UpgradeOnboardingPat
                     />
                 </div>
             </div>
-        </FlexiModal>
+        </Modal>
     );
 };
 

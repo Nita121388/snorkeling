@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tab 悬浮卡 · 8 套样式变体</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<aside class="nav">
+    <div class="nav-head">
+        <h1>Tab 悬浮卡 · 样式变体</h1>
+        <p>同一份数据（PPT / 4 agents / 12 files），8 套成熟 UI 体系的表达方式。↑↓ 切换，右上角切主题。</p>
+    </div>
+    <div class="nav-list" id="nav-list"></div>
+    <div class="nav-foot">
+        <span>变化点：布局 · 图标 · 状态</span>
+        <button class="toggle" id="theme">浅色</button>
+    </div>
+</aside>
+
+<main class="stage" id="stage">
+    <div class="stage-top">
+        <h2 id="v-title">GitHub Hovercard</h2>
+        <span class="src" id="v-ref"></span>
+    </div>
+    <p class="steal" id="v-steal"></p>
+
+    <div class="win">
+        <div class="win-bar">
+            <span class="d"></span><span class="d"></span><span class="d"></span>
+            <span class="t">snorkeling — tab hover card prototype</span>
+        </div>
+
+        <div class="tabbar">
+            <div class="tab active"><span class="pdot"></span><span class="ico">▤</span>PPT</div>
+            <div class="tab" id="tab-hot"><span class="ico">◫</span>aisessions<span class="sdot" style="background:#7c9cf5"></span></div>
+            <div class="tab"><span class="ico">▥</span>Files</div>
+            <div class="tab"><span class="ico">▦</span>VCS</div>
+            <div class="add">+</div>
+            <div class="tab-hint">把指针移到「aisessions」上可重新触发浮层</div>
+        </div>
+
+        <div class="anchor">
+            <div class="card-slot" id="card-slot-wrap">
+                <div id="card-slot"></div>
+            </div>
+            <div class="hint">原型：卡片相对 Tab 锚定在下方 8px</div>
+        </div>
+    </div>
+
+    <div class="legend">
+        <span class="k"><span class="sw" style="background:var(--work)"></span>working</span>
+        <span class="k"><span class="sw" style="background:var(--think)"></span>thinking</span>
+        <span class="k"><span class="sw" style="background:var(--done)"></span>done</span>
+        <span class="k"><span class="sw" style="background:var(--idle)"></span>idle / 无状态</span>
+        <span>· 镜像源：tab-info-card.tsx + info-card.scss:444-548</span>
+    </div>
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>

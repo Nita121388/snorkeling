@@ -5,9 +5,10 @@ import { Button } from "@/app/element/button";
 import { CenteredDiv } from "@/app/element/quickelems";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { formatRemoteUri } from "@/util/waveutil";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { TransformComponent, TransformWrapper, useControls } from "react-zoom-pan-pinch";
 import type { SpecializedViewProps } from "./preview";
+import { ImagePager, IMAGE_PAGER_ENABLED } from "./image-pager";
 
 function ImageZoomControls() {
     const { zoomIn, zoomOut, resetTransform } = useControls();
@@ -27,15 +28,30 @@ function ImageZoomControls() {
     );
 }
 
-function StreamingImagePreview({ url }: { url: string }) {
+function StreamingImagePreview({ url, model }: { url: string; model: SpecializedViewProps["model"] }) {
+    const fileInfo = useAtomValue(model.statFile);
+    const connKey = useAtomValue(model.connectionImmediate);
+    // 缩放守卫的权威来源：onTransformed。
+    // 不能用 onZoom —— 它只在手势缩放时触发，程序化 zoomIn()/resetTransform() 不触发
+    // （实测 scale 恒为 1，键盘守卫形同虚设）；onTransformed 走 setTransformState 的
+    // 每次变更回调，程序化与手势都会触发。
+    const setImageScale = useSetAtom(model.imageScale);
     return (
         <div className="flex flex-row h-full overflow-hidden items-center justify-center relative">
-            <TransformWrapper initialScale={1} centerOnInit pinch={{ step: 10 }}>
+            <TransformWrapper
+                initialScale={1}
+                centerOnInit
+                pinch={{ step: 10 }}
+                onTransformed={(_ref, state) => setImageScale(state?.scale ?? 1)}
+            >
                 <ImageZoomControls />
                 <TransformComponent wrapperClass="!h-full !w-full">
                     <img src={url} className="z-[1]" />
                 </TransformComponent>
             </TransformWrapper>
+            {IMAGE_PAGER_ENABLED && fileInfo != null ? (
+                <ImagePager model={model} filePath={fileInfo.path} connKey={connKey ?? ""} />
+            ) : null}
         </div>
     );
 }
@@ -70,7 +86,7 @@ function StreamingPreview({ model }: SpecializedViewProps) {
         );
     }
     if (fileInfo.mimetype.startsWith("image/")) {
-        return <StreamingImagePreview url={streamingUrl} />;
+        return <StreamingImagePreview url={streamingUrl} model={model} />;
     }
     return <CenteredDiv>Preview Not Supported</CenteredDiv>;
 }

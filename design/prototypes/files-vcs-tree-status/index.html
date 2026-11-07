@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Files 目录树 · VCS 状态标记原型 v3</title>
+  <style>
+    :root {
+      /* 浅色主题（截图实际主题） */
+      --main-text-color: rgb(58, 50, 39);
+      --secondary-text-color: #5c5347;
+      --muted: #8b8175;
+      --border-color: rgba(58, 50, 39, 0.14);
+      --bg: #faf7f1;
+      --bg-panel: #fffdf8;
+      --bg-hover: rgba(158, 96, 197, 0.09);
+      --bg-selected: rgba(158, 96, 197, 0.16);
+      --accent-color: #9e60c5;
+      --success-color: #2e7d32;
+      --warning-color: #e65100;
+      --error-color: #d32f2f;
+      --icon-folder: #c9a227;
+      --icon-file: #8b8175;
+      /* Header 干净态路径色：success 混入 secondary（不能用 accent，跨主题会漂移） */
+      --clean-path-color: color-mix(in srgb, var(--success-color) 45%, var(--secondary-text-color));
+    }
+    body.dark {
+      --main-text-color: #eeeeee;
+      --secondary-text-color: rgb(195, 200, 194);
+      --muted: rgb(150, 154, 150);
+      --border-color: rgba(255, 255, 255, 0.14);
+      --bg: #1b1b1d;
+      --bg-panel: #232326;
+      --bg-hover: rgba(255, 255, 255, 0.07);
+      --bg-selected: rgba(255, 255, 255, 0.1);
+      --accent-color: rgb(88, 193, 66);
+      --success-color: rgb(78, 154, 6);
+      --warning-color: rgb(224, 185, 86);
+      --error-color: rgb(229, 77, 46);
+      --icon-folder: #c9a227;
+      --icon-file: rgb(150, 154, 150);
+      --clean-path-color: color-mix(in srgb, var(--success-color) 45%, var(--secondary-text-color));
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--main-text-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px; line-height: 1.6;
+    }
+    .page { max-width: 940px; margin: 0 auto; padding: 28px 20px 64px; display: grid; gap: 20px; }
+    h1 { margin: 0; font-size: 20px; }
+    .sub { color: var(--secondary-text-color); margin-top: 4px; font-size: 13px; }
+
+    .card { border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-panel); overflow: hidden; }
+    .card-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--border-color); }
+    .card-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
+    .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--muted); }
+    .tag.rec { border-color: var(--success-color); color: var(--success-color); }
+    .tag.bad { border-color: var(--error-color); color: var(--error-color); }
+
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; padding: 10px 14px; border-bottom: 1px solid var(--border-color); }
+    .ctrl { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--secondary-text-color); }
+    .seg { display: flex; border: 1px solid var(--border-color); border-radius: 999px; overflow: hidden; }
+    .seg button { border: none; background: transparent; color: var(--muted); padding: 3px 11px; cursor: pointer; font-size: 12px; }
+    .seg button.active { color: var(--main-text-color); background: var(--bg-selected); }
+    .seg button .mini { font-size: 10px; opacity: .65; margin-left: 3px; }
+
+    /* ═══════ 文件树仿真 ═══════ */
+    .tree { padding: 4px 0; }
+    .row {
+      display: flex; align-items: center; gap: 5px;
+      height: 26px; padding: 0 10px; cursor: default;
+      color: var(--main-text-color); position: relative;
+    }
+    .row:hover { background: var(--bg-hover); }
+    .row.selected { background: var(--bg-selected); }
+    .indent { flex: 0 0 auto; }
+    .caret { width: 12px; color: var(--muted); font-size: 9px; flex: 0 0 auto; text-align: center; }
+    .fico { width: 15px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--icon-folder); }
+    .fico.file { color: var(--icon-file); }
+    .fico svg { width: 13px; height: 13px; display: block; }
+    .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 120ms ease; }
+
+    /* 通用行尾槽位：所有方案共用，保证不额外撑开布局 */
+    .trail { flex: 0 0 auto; margin-left: auto; display: inline-flex; align-items: center; gap: 5px; }
+
+    /* ── 方案 A：圆点（能标文件，但无类型）── */
+    .status { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .status .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status.clean .dot { background: var(--success-color); }
+    .status.dirty .dot { background: var(--warning-color); }
+    .status.dirty .num { color: var(--warning-color); }
+    .status.hidden { display: none; }
+
+    /* ── 方案 B：图标整体变色（不推荐）── */
+    .row.mode-icon .status { display: none; }
+    .row.mode-icon .fico[data-chg="modified"] { color: var(--warning-color); }
+    .row.mode-icon .fico[data-chg="untracked"] { color: var(--success-color); }
+    .row.mode-icon .fico[data-chg="deleted"] { color: var(--error-color); }
+
+    /* ── 方案 C：图标变色 + 圆点 ── */
+    .row.mode-both .fico[data-chg="modified"] { color: var(--warning-color); }
+    .row.mode-both .fico[data-chg="untracked"] { color: var(--success-color); }
+    .row.mode-both .fico[data-chg="deleted"] { color: var(--error-color); }
+
+    /* ── 方案 D：文件名着色 + 行尾字母（推荐，VS Code 式）── */
+    .row.mode-name .name[data-chg="modified"] { color: var(--warning-color); }
+    .row.mode-name .name[data-chg="untracked"] { color: var(--success-color); }
+    .row.mode-name .name[data-chg="deleted"] { color: var(--error-color); text-decoration: line-through; text-decoration-thickness: 1px; opacity: .8; }
+    .letter {
+      font-size: 10px; font-weight: 700; font-family: ui-monospace, monospace;
+      letter-spacing: 0; width: 10px; text-align: center; line-height: 1;
+    }
+    .letter.m { color: var(--warning-color); }
+    .letter.u { color: var(--success-color); }
+    .letter.d { color: var(--error-color); }
+    /* 文件夹行的变更数量徽标：文件行没有数量（单文件恒为 1），数量只在目录聚合时有意义 */
+    .cnt {
+      font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+      min-width: 14px; text-align: right; line-height: 1;
+      color: var(--warning-color);
+    }
+    body.hide-count .cnt { display: none; }
+
+    .row.skipped .name { color: var(--muted); }
+    .row.skipped .fico { color: var(--muted) !important; }
+    .row.repo-root .name { font-weight: 600; }
+
+    /* ═══════ 图例 ═══════ */
+    .legend { padding: 12px 14px; border-top: 1px solid var(--border-color); display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--secondary-text-color); }
+    .legend .item { display: flex; align-items: center; gap: 6px; }
+    .legend .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .legend svg { width: 13px; height: 13px; }
+    .legend .letter { font-size: 10px; }
+
+    /* ═══════ 说明区 ═══════ */
+    .body-text { padding: 14px; display: grid; gap: 9px; font-size: 12.5px; color: var(--secondary-text-color); }
+    .body-text strong { color: var(--main-text-color); }
+    .body-text code { color: var(--accent-color); font-family: ui-monospace, monospace; font-size: 11.5px; }
+    .body-text ol, .body-text ul { margin: 0; padding-left: 18px; display: grid; gap: 7px; }
+    .bad { color: var(--error-color); font-weight: 600; }
+    .good { color: var(--success-color); font-weight: 600; }
+
+    .budget { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 12px; }
+    .budget .v { font-variant-numeric: tabular-nums; color: var(--main-text-color); font-weight: 600; }
+
+    .proscons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid var(--border-color); }
+    .proscons > div { padding: 12px; border-right: 1px solid var(--border-color); font-size: 11.5px; }
+    .proscons > div:last-child { border-right: none; }
+    .proscons h3 { margin: 0 0 6px; font-size: 12px; display: flex; align-items: center; gap: 5px; }
+    .proscons ul { margin: 0; padding-left: 15px; display: grid; gap: 4px; color: var(--secondary-text-color); }
+
+    /* ═══════ Files Header 仿真（wave block header） ═══════ */
+    .files-header {
+      display: flex; align-items: center; gap: 6px;
+      height: 42px; padding: 0 12px;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .hdr-chev { color: var(--muted); font-size: 12px; flex: 0 0 auto; }
+    .path {
+      display: inline-block;
+      font-size: 13px;
+      color: var(--secondary-text-color);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      transform-origin: left center;
+      transition: color 140ms ease, font-weight 140ms ease, transform 140ms ease, letter-spacing 140ms ease;
+    }
+    /* 干净：success 45% 混 secondary + 字重 500 + 微缩放（仅非悬浮） */
+    .path.clean:not(:hover) {
+      color: var(--clean-path-color);
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      transform: scale(1.012);
+    }
+    /* 悬浮：一律还原正常交互态 */
+    .path:hover {
+      color: var(--main-text-color);
+      font-weight: 400;
+      letter-spacing: 0;
+      transform: scale(1);
+    }
+    .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 3px; }
+    .icon-btn {
+      width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 5px; color: var(--secondary-text-color); cursor: pointer;
+      position: relative; border: 1px solid transparent; background: transparent;
+    }
+    .icon-btn:hover { background: var(--bg-hover); color: var(--main-text-color); }
+    .icon-btn svg { width: 14px; height: 14px; }
+    /* 图标角标：干净=绿点 / 有变更=橙点+数字 / 非仓库=无 */
+    .vcs-badge {
+      position: absolute; top: 1px; right: 0;
+      display: inline-flex; align-items: center; gap: 1px;
+      font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums;
+      line-height: 1; padding: 1px 3px; border-radius: 999px;
+      background: var(--bg-panel);
+    }
+    .vcs-badge.clean { padding: 2px; }
+    .vcs-badge.clean .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--success-color); }
+    .vcs-badge.dirty { color: var(--warning-color); }
+    .vcs-badge.dirty .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--warning-color); }
+    .vcs-badge.none { display: none; }
+
+    .hdr-menu {
+      position: absolute; top: 34px; right: 0; width: 248px; z-index: 30;
+      border: 1px solid var(--border-color); border-radius: 9px;
+      background: var(--bg-panel);
+      display: none; flex-direction: column; overflow: hidden;
+      box-shadow: 0 18px 40px -20px rgba(0,0,0,.45);
+    }
+    .hdr-menu.open { display: flex; }
+    .hdr-menu .mi {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 8px 12px; font-size: 12.5px; cursor: pointer;
+      border-left: 2px solid transparent;
+    }
+    .hdr-menu .mi + .mi { border-top: 1px solid var(--border-color); }
+    .hdr-menu .mi:hover { background: var(--bg-hover); border-left-color: var(--success-color); }
+    .hdr-menu .mi.disabled { color: var(--muted); pointer-events: none; }
+    .hdr-menu .mi .k { font-size: 10.5px; color: var(--muted); }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(10px);
+      background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 9px;
+      padding: 9px 16px; font-size: 12.5px; color: var(--main-text-color);
+      opacity: 0; pointer-events: none; transition: opacity 170ms ease, transform 170ms ease;
+      box-shadow: 0 16px 40px -22px rgba(0,0,0,.6);
+      display: flex; align-items: center; gap: 9px; z-index: 100;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast .tdot { width: 7px; height: 7px; border-radius: 50%; background: var(--success-color); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div>
+      <h1>Files 目录树 · VCS 状态标记</h1>
+      <div class="sub">四种方案实测对比 —— 结论：<strong>D（文件名着色 + 行尾字母）</strong>最干净、信息最全</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Explorer（tree view）</h2>
+        <span class="tag" id="mode-tag">方案 D · 文件名着色 + 字母</span>
+      </div>
+
+      <div class="controls">
+        <div class="ctrl">
+          <span>方案</span>
+          <div class="seg" id="mode-seg">
+            <button data-m="dot">A 圆点</button>
+            <button data-m="icon">B 图标变色</button>
+            <button data-m="both">C 结合</button>
+            <button data-m="name" class="active">D 文字+字母</button>
+          </div>
+        </div>
+        <div class="ctrl">
+          <span>场景</span>
+          <div class="seg" id="scene-seg">
+            <button data-s="multi" class="active">多仓库</button>
+            <button data-s="single">单仓库</button>
+          </div>
+        </div>
+        <div class="ctrl">
+          <span>主题</span>
+          <div class="seg" id="theme-seg">
+            <button data-t="light" class="active">浅色</button>
+            <button data-t="dark">暗色</button>
+          </div>
+        </div>
+        <div class="ctrl">
+          <span>文件夹数量</span>
+          <div class="seg" id="count-seg">
+            <button data-c="show" class="active">显示</button>
+            <button data-c="hide">隐藏</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tree" id="tree"></div>
+
+      <div class="legend">
+        <span class="item"><span class="letter m">M</span>已修改（文件）</span>
+        <span class="item"><span class="letter u">U</span>未跟踪（文件）</span>
+        <span class="item"><span class="letter d">D</span>已删除（文件）</span>
+        <span class="item"><span class="cnt">2</span>目录变更数（文件夹）</span>
+        <span class="item"><span class="dot" style="background:var(--warning-color)"></span>有变更（A/C）</span>
+        <span class="item"><span class="dot" style="background:var(--success-color)"></span>干净（A/C）</span>
+        <span class="item">· 干净时 D 方案不变色、无字母</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>四方案权衡</h2></div>
+      <div class="proscons">
+        <div>
+          <h3>A 圆点</h3>
+          <ul>
+            <li>能标出哪个文件/目录变了<br><span class="bad">（我上一版说"不能"是错的）</span></li>
+            <li>改动最小</li>
+            <li class="bad">只有两态，分不出 M/U/D</li>
+            <li class="bad">干净也要绿点 → 满屏点</li>
+          </ul>
+        </div>
+        <div>
+          <h3>B 图标变色 <span class="bad">不推荐</span></h3>
+          <ul>
+            <li class="bad">与「文件类型色」语义打架</li>
+            <li class="bad">高饱和小色块满屏 → 显脏</li>
+            <li class="bad">偏离 VS Code 实际做法</li>
+          </ul>
+        </div>
+        <div>
+          <h3>C 结合</h3>
+          <ul>
+            <li>信息最全</li>
+            <li class="bad">双重编码，视觉最吵</li>
+            <li class="bad">窄栏易挤</li>
+          </ul>
+        </div>
+        <div>
+          <h3>D 文字+字母 <span class="good">推荐</span></h3>
+          <ul>
+            <li>不污染 icon 类型色</li>
+            <li>文件行：字母 M/U/D 表类型</li>
+            <li>文件夹行：数字表变更数</li>
+            <li>干净时完全静默</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2 id="why-title">为什么图标变色显「脏」</h2><span class="tag bad">设计原理</span></div>
+      <div class="body-text">
+        <ol>
+          <li>
+            <strong>icon 颜色本来承载「文件类型」</strong>：文件夹黄、代码蓝、图片紫。按 VCS 状态换色后，
+            用户分不清「这是变色了的代码图标」还是「这文件本身是橙色类型」，<span class="bad">两套编码抢同一个通道</span>。
+          </li>
+          <li>
+            <strong>小面积高饱和色块堆叠</strong>：icon 是 13px 左右的实心块，几十行彩色叠加，
+            整棵树会花掉、失焦；文字是细笔画，同色率下温和得多。
+          </li>
+          <li>
+            <strong>VS Code / JetBrains 实际做法</strong>：文件名<strong>文字</strong>变黄/绿，图标只加
+            <strong>M/U/D 角标</strong>，<strong>不整体换 icon 色</strong>。我上一版把这条说错了。
+          </li>
+          <li>
+            <strong>信息密度</strong>：文字着色 + 字母，一个通道承载「哪个变了」，另一个承载「怎么变的」，
+            而 icon 换色只能承载前者。
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>性能预算（硬约束）</h2><span class="tag rec">不影响性能</span></div>
+      <div class="body-text">
+        <div class="budget">
+          <span>RPC 调用次数（整个目录树）</span><span class="v">1 次</span>
+          <span>每行渲染计算</span><span class="v">O(1) 查表</span>
+          <span>status 聚合</span><span class="v">O(M) 一次</span>
+          <span>D 方案新增 DOM</span><span class="v">仅变更行 +1 span</span>
+          <span>滚动 / hover 新增请求</span><span class="v">0</span>
+          <span>目录切换 debounce</span><span class="v">250 ms</span>
+        </div>
+        <strong>做法</strong>
+        <ol>
+          <li><strong>一次 RPC 拿全</strong>：<code>RemoteVcsRepositoriesCommand({ path, scandepth, statuslimit: 2000, includeparent: true })</code>。<span class="bad">绝不对每行单独请求</span></li>
+          <li><strong>一趟遍历建两套索引</strong>：<code>Map&lt;目录首段, 变更数&gt;</code> + <code>Map&lt;相对路径, 变更码&gt;</code>，同趟 O(M)</li>
+          <li><strong>行尾槽位固定</strong>：<code>.trail</code> 始终存在，方案切换只改内容不改布局 → 无 reflow</li>
+          <li><strong>只算可见层级</strong>：只给当前展开层直接子行打标记</li>
+          <li><strong>跳过噪音目录</strong>：<code>node_modules</code> / <code>.git</code> / <code>dist</code> / <code>target</code></li>
+          <li><strong>缓存 + 精准失效</strong>：<code>directoryVcsStatusCache</code>（key = conn + dir），仅 VCS 操作成功 / 手动刷新 / 目录变更时失效</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>语义色（跨 4 套主题）</h2><span class="tag">修正</span></div>
+      <div class="body-text">
+        <div>
+          <span class="bad">不要用 <code>--accent-color</code></span>：暗色绿 <code>rgb(88,193,66)</code>、浅色紫 <code>#9e60c5</code>、
+          极简黑 <code>#1a1a1a</code>、暖色橙 <code>#c38057</code>，「干净」语义会漂移。
+        </div>
+        <div>
+          用 <code>--success-color</code>（4 套均绿系）+ <code>--warning-color</code>（modified）+ <code>--error-color</code>（deleted）。
+        </div>
+        <div>
+          <strong>干净不要用绿</strong>（会与 untracked 的绿混淆）。干净 = 不变色，
+          由 Files Header 路径变色单独承担「一眼看出干净」。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ICON_FOLDER = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.2h4.6l1.4 1.9h7v7.9h-13z" opacity=".95"/></svg>';
+    const ICON_FILE = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 1.6h6.3L13.4 5.7v8.7H3z" opacity=".9"/><path d="M9.1 1.8v4h4.1" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".65"/></svg>';
+
+    const LETTER = { modified: ["M", "m"], untracked: ["U", "u"], deleted: ["D", "d"] };
+
+    const scenes = {
+      multi: {
+        root: "projects",
+        rows: [
+          { name: "agent-prompt-studio", repo: true, chg: null },
+          { name: "ai-usage-monitor", repo: true, chg: "modified", count: 2 },
+          { name: "answer-me-with-html", repo: true, chg: null },
+          { name: "data-guardian", repo: true, chg: "modified", count: 5 },
+          { name: "data-guardian-dev", repo: true, chg: "modified", count: 1 },
+          { name: "handle-viz", repo: true, chg: null },
+          { name: "i-am-cooking", repo: true, chg: "modified", count: 3 },
+          { name: "Nitalnbox", chg: null },
+          { name: "pi-session-digest", repo: true, chg: null },
+          { name: "pi-session-library", repo: true, chg: "modified", count: 1 },
+          { name: "usb-ssh-setup", repo: true, chg: null },
+          { name: "nul", file: true, chg: null },
+        ],
+      },
+      single: {
+        root: "i-am-cooking",
+        rows: [
+          { name: ".agents", chg: null },
+          { name: ".git", chg: null, skipped: true },
+          { name: ".opencode", chg: null },
+          { name: ".pi", chg: null },
+          { name: ".trellis", chg: "modified", count: 2 },
+          { name: "docs", chg: null },
+          { name: "extensions", chg: null },
+          { name: "node_modules", chg: null, skipped: true },
+          { name: "scripts", chg: "modified", count: 1 },
+          { name: "tests", chg: null },
+          { name: ".gitattributes", file: true, chg: null },
+          { name: ".gitignore", file: true, chg: null },
+          { name: "AGENTS.md", file: true, chg: null },
+          { name: "CHANGELOG.md", file: true, chg: "modified", count: 1 },
+          { name: "package.json", file: true, chg: "modified", count: 1 },
+          { name: "README.md", file: true, chg: "untracked", count: 1 },
+          { name: "old-config.json", file: true, chg: "deleted", count: 1 },
+          { name: "tsconfig.json", file: true, chg: null },
+        ],
+      },
+    };
+
+    const treeEl = document.getElementById("tree");
+    const modeTag = document.getElementById("mode-tag");
+    const MODE_LABEL = {
+      dot: "方案 A · 行尾圆点",
+      icon: "方案 B · 图标整体变色（不推荐）",
+      both: "方案 C · 图标变色 + 圆点",
+      name: "方案 D · 文件名着色 + 字母（推荐）",
+    };
+    let scene = "multi";
+    let mode = "name";
+
+    function render() {
+      const data = scenes[scene];
+      const parts = [];
+
+      parts.push(`<div class="row selected repo-root">
+        <span class="caret">▾</span>
+        <span class="fico">${ICON_FOLDER}</span>
+        <span class="name">${data.root}</span>
+        <span class="trail"></span>
+      </div>`);
+
+      data.rows.forEach((r) => {
+        const cls = ["row", `mode-${mode}`];
+        if (r.repo) cls.push("repo-root");
+        if (r.skipped) cls.push("skipped");
+
+        // 图标通道
+        const iconChg = (mode === "icon" || mode === "both") ? (r.chg || "clean") : "clean";
+        // 文字通道
+        const nameChg = (mode === "name" && r.chg) ? r.chg : "clean";
+
+        // 行尾通道
+        let trail = "";
+        if (mode === "dot" || mode === "both") {
+          if (r.chg) {
+            trail = `<span class="status dirty"><span class="dot"></span><span class="num">${r.count || 1}</span></span>`;
+          } else if (r.repo) {
+            trail = `<span class="status clean"><span class="dot"></span></span>`;
+          }
+        } else if (mode === "name" && r.chg) {
+          if (r.file) {
+            // 文件行：字母标记变更类型（单文件数量恒为 1，不显示）
+            const [up, low] = LETTER[r.chg];
+            trail = `<span class="letter ${low}" title="${r.chg}">${up}</span>`;
+          } else {
+            // 文件夹行：数字显示该目录下变更文件数
+            trail = `<span class="cnt" title="${r.count || 1} changed file(s) in this folder">${r.count || 1}</span>`;
+          }
+        }
+
+        parts.push(`<div class="${cls.join(" ")}">
+          <span class="indent" style="width:14px"></span>
+          <span class="caret">▸</span>
+          <span class="fico ${r.file ? "file" : ""}" data-chg="${iconChg}">${r.file ? ICON_FILE : ICON_FOLDER}</span>
+          <span class="name" data-chg="${nameChg}">${r.name}</span>
+          <span class="trail">${trail}</span>
+        </div>`);
+      });
+
+      treeEl.innerHTML = parts.join("");
+      modeTag.textContent = MODE_LABEL[mode];
+    }
+
+    document.getElementById("mode-seg").addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      [...e.currentTarget.children].forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      mode = btn.dataset.m;
+      render();
+    });
+    document.getElementById("scene-seg").addEventListener("click", (e) => {
+      if (e.target.tagName !== "BUTTON") return;
+      [...e.currentTarget.children].forEach((b) => b.classList.remove("active"));
+      e.target.classList.add("active");
+      scene = e.target.dataset.s;
+      render();
+    });
+    document.getElementById("theme-seg").addEventListener("click", (e) => {
+      if (e.target.tagName !== "BUTTON") return;
+      [...e.currentTarget.children].forEach((b) => b.classList.remove("active"));
+      e.target.classList.add("active");
+      document.body.classList.toggle("dark", e.target.dataset.t === "dark");
+    });
+    document.getElementById("count-seg").addEventListener("click", (e) => {
+      if (e.target.tagName !== "BUTTON") return;
+      [...e.currentTarget.children].forEach((b) => b.classList.remove("active"));
+      e.target.classList.add("active");
+      document.body.classList.toggle("hide-count", e.target.dataset.c === "hide");
+    });
+
+    render();
+  </script>
+</body>
+</html>

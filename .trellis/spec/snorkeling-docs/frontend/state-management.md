@@ -141,3 +141,53 @@ dispose(): void { /* 退订 + flush 最后一次变化 */ }
   因此可以直接单测，无需 jsdom。参考 `frontend/app/view/preview/path-usage.ts`。
 - `xxx-store.ts` — 有状态适配层：jotai atom、配置持久化、节流。参考 `path-usage-store.ts`。
 - 组件只负责渲染 store 暴露的数据与调用 store 的动作。
+
+---
+
+## localStorage 外部 store 范式（2026-11-03, task 11-02-emoji-alias-picker-search）
+
+「一个模块 + 一个 localStorage 键 + 内存快照 + 单调版本号 + 订阅者」是本项目的标准做法。
+**canonical 实例**：`frontend/app/element/markdown-transform/emoji-aliases.ts`
+（同构的还有 `agent-persona/persona-store.ts`、`agent-persona/session-persona-store.ts`）。
+
+必须遵守的四条：
+
+1. **版本信封**：存 `{ version: 1, ... }` 而不是裸数据。读到不认识的 `version` 时
+   **返回空表但绝不覆写**，否则新版本写的数据会被旧版本静默清掉。
+2. **快照 + 版本号**：`getXxx()` 返回稳定的内存快照（`useSyncExternalStore` 的快照同一性要求），
+   写入时 `snapshot = next; version++`。派生列表把 `version` 放进 `useMemo` 依赖，
+   **不要把整个 map 塞进依赖**（每次写都是新对象，容易连带重算无关逻辑）。
+3. **跨窗口同步**：只注册一次 `window.addEventListener("storage")`，用
+   `event.key === KEY` 与 `event.storageArea !== window.localStorage` 双重过滤，
+   收到外部写入时重读快照 + `version++` + 广播。
+4. **读写全包 `try/catch`，失败降级为内存态**：localStorage 满了 / 隐私模式下，
+   写入失败不能让 UI 操作抛错，本次会话内照常可用。
+
+**禁止**：在渲染路径里直接 `localStorage.getItem`（每次击键都同步读盘，且破坏快照同一性）；
+把派生状态写回同一个键（双写者 → 数据丢失，见上文 `preview:pinned-directories` 反例）。
+
+---
+
+## 派生状态：单一呈现源 + ack 指纹同源（2026-11-03, task 11-03-agent-status-cross-surface-consistency）
+
+同一份后端状态被多个 UI 面展示时，**只允许有一个派生函数和一份订阅**，所有面读同一个 atom。
+
+反例（已修复）：agent 状态有三条独立管线 —— block 头部（store presented atom，只 `applyStaleness`）、
+Session Overview（自建 `GetAgentStatus` + `agentstatus` 订阅 + `presentAgentStatus` 的 idle→done 派生）、
+inline tab / Tab 圆点（store）。结果同一个 block：
+
+- 头部按 canonical 取 label 显示 `"Idle 10m"`，Overview 派生 `state:"done"` 显示 `"Done"`；
+- 两侧都写同一份 `agentStatusAckedFpAtom[blockId]`，但 fingerprint 由**不同的 status 对象**算出
+  （`...|hook|7|idle|...` vs `...|session|7|done|...`）→ 在任一面 ack 后，另一面比对不上、重新亮起。
+
+约定：
+
+1. **一个派生函数**：`agent-status-derive.ts` 的 `presentCanonicalAgentStatus()` 是唯一呈现层
+   （idle+`prevState` 提升为 `done`、working 超阈值衰减 `stale`、null 保持 null）。
+   新增展示面必须读 `AgentStatusStore.acquire()` / `peekPresentedStatusAtom()`，**禁止**自己再拉 RPC。
+2. **ack 指纹必须同源**：`statusFingerprint(status)` 的入参必须是"所有面都会读到的那一个对象"。
+   两个面用不同形态的 status 计算 fingerprint，就等于两份互不相认的 ack 状态。
+3. **ack 写全**：R 类（fingerprint）与 D 类（`doneAckedAt`）各自独立，任何一个 ack 入口都要同时写两边，
+   否则另一面会因为只认自己那份判定而"复活"。参见 `session-overview.tsx` 的 `ackAgentStatus`。
+4. **showing 判定只看 `state`**：`done` 长期保留直到下一次非 idle 事件或 ack；不要用"时间窗口"（例如
+   15 分钟内才显示）作为单侧显示条件——时间窗口会让同一状态在两个面不同时消失。

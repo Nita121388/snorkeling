@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Overview 时间线（甘特）原型 — G1 / G2</title>
+        <style>
+            :root {
+                --bg: #0f1014;
+                --panel: #15171d;
+                --card: #1b1e26;
+                --border: #2a2e3a;
+                --text: #e6e6e6;
+                --sub: #9b9da6;
+                --accent: #6aa6ff;
+                --working: #3fb950;
+                --blocked: #d29922;
+                --done: #6aa6ff;
+                --stale: #a371f7;
+                --idle: #6b7280;
+                --unknown: #39404d;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: radial-gradient(1200px 700px at 50% 0%, #1a1d27, var(--bg));
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+            }
+            header {
+                padding: 24px 32px 8px;
+                display: flex;
+                gap: 16px;
+                align-items: flex-start;
+                flex-wrap: wrap;
+            }
+            header h1 {
+                margin: 0 0 6px;
+                font-size: 20px;
+            }
+            header p {
+                margin: 0;
+                color: var(--sub);
+                font-size: 12px;
+                line-height: 1.7;
+                max-width: 720px;
+            }
+            .controls {
+                margin-left: auto;
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            .seg {
+                display: inline-flex;
+                border: 1px solid var(--border);
+                border-radius: 7px;
+                overflow: hidden;
+            }
+            .seg button {
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                color: var(--sub);
+                font-size: 11px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            .seg button + button {
+                border-left: 1px solid var(--border);
+            }
+            .seg button.is-active {
+                color: var(--accent);
+                background: rgba(106, 166, 255, 0.12);
+            }
+            main {
+                padding: 8px 32px 64px;
+            }
+            .board {
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                background: var(--panel);
+                overflow: hidden;
+            }
+            .axis-head {
+                display: grid;
+                grid-template-columns: 240px 1fr;
+                border-bottom: 1px solid var(--border);
+                background: rgba(255, 255, 255, 0.015);
+            }
+            .axis-head .label {
+                padding: 10px 14px;
+                color: var(--sub);
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                border-right: 1px solid var(--border);
+            }
+            .axis {
+                position: relative;
+                height: 34px;
+            }
+            .tick {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                border-left: 1px solid rgba(255, 255, 255, 0.06);
+                padding-left: 6px;
+                color: var(--sub);
+                font-size: 9px;
+                line-height: 34px;
+                white-space: nowrap;
+            }
+            .row {
+                display: grid;
+                grid-template-columns: 240px 1fr;
+                border-top: 1px solid rgba(255, 255, 255, 0.045);
+            }
+            .row:hover {
+                background: rgba(255, 255, 255, 0.02);
+            }
+            .row-id {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                padding: 9px 14px;
+                border-right: 1px solid var(--border);
+                min-width: 0;
+            }
+            .avatar {
+                width: 20px;
+                height: 20px;
+                flex: 0 0 auto;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 6px;
+                background: rgba(255, 255, 255, 0.06);
+                font-size: 13px;
+            }
+            .row-text {
+                min-width: 0;
+            }
+            .row-title {
+                font-size: 12px;
+                font-weight: 600;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .row-sub {
+                font-size: 10px;
+                color: var(--sub);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .track {
+                position: relative;
+                height: 42px;
+            }
+            .track::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+                background-size: var(--tick-gap, 12.5%) 100%;
+            }
+            .bar {
+                position: absolute;
+                top: 12px;
+                height: 18px;
+                /* G2.1：默认 4px 圆角（不再是 9px 胶囊），由 --bar-radius 控制，
+                   右上角切换按钮直接改这个变量做 A/B 对比。 */
+                border-radius: var(--bar-radius, 4px);
+                overflow: hidden;
+                display: flex;
+                gap: 1px;
+                box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+                cursor: pointer;
+            }
+            .bar:hover {
+                filter: brightness(1.25);
+            }
+            .seg-pill {
+                height: 100%;
+                border-radius: var(--seg-radius, 3px);
+                opacity: 0.9;
+            }
+            .seg-pill.working {
+                background: linear-gradient(180deg, #4bd166, #2f9d47);
+            }
+            .seg-pill.blocked {
+                background: linear-gradient(180deg, #e5b13d, #b8862a);
+            }
+            .seg-pill.done {
+                background: linear-gradient(180deg, #79b0ff, #4a86d8);
+            }
+            .seg-pill.stale {
+                background: linear-gradient(180deg, #b48bff, #8258d6);
+            }
+            .seg-pill.idle {
+                /* G2.1：idle 用中性灰实心段，不再并入斜纹「状态未知」。 */
+                background: #4b5563;
+            }
+            /* 完成点：completedAt 的竖刻度（细、贯穿轨道，带 hover 提示）。 */
+            .completed-mark {
+                position: absolute;
+                top: 6px;
+                bottom: 6px;
+                width: 1px;
+                background: var(--done);
+                opacity: 0.85;
+                pointer-events: none;
+            }
+            .completed-mark::after {
+                content: "";
+                position: absolute;
+                left: -2px;
+                top: -2px;
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                background: var(--done);
+            }
+            .seg-pill.unknown {
+                background: repeating-linear-gradient(135deg, #2b303b 0 6px, #343a46 6px 12px);
+            }
+            .now-line {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 1px;
+                background: var(--accent);
+                opacity: 0.7;
+            }
+            .now-line::after {
+                content: "now";
+                position: absolute;
+                top: -1px;
+                left: 3px;
+                font-size: 9px;
+                color: var(--accent);
+            }
+            .legend {
+                display: flex;
+                gap: 14px;
+                flex-wrap: wrap;
+                padding: 10px 14px;
+                border-top: 1px solid var(--border);
+                color: var(--sub);
+                font-size: 10px;
+            }
+            .legend i {
+                display: inline-block;
+                width: 10px;
+                height: 10px;
+                border-radius: 3px;
+                margin-right: 5px;
+                vertical-align: -1px;
+            }
+            .notes {
+                margin-top: 18px;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 14px;
+            }
+            .note {
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 14px 16px;
+                background: var(--card);
+            }
+            .note h3 {
+                margin: 0 0 8px;
+                font-size: 13px;
+            }
+            .note p,
+            .note li {
+                margin: 0 0 6px;
+                color: var(--sub);
+                font-size: 11px;
+                line-height: 1.7;
+            }
+            .note ul {
+                margin: 0;
+                padding-left: 16px;
+            }
+            .tag {
+                display: inline-block;
+                padding: 1px 7px;
+                border: 1px solid var(--border);
+                border-radius: 999px;
+                font-size: 10px;
+                color: var(--sub);
+                margin-left: 6px;
+            }
+            .tag.ok {
+                color: #4bd166;
+                border-color: rgba(75, 209, 102, 0.4);
+            }
+            .tag.warn {
+                color: #e5b13d;
+                border-color: rgba(229, 177, 61, 0.4);
+            }
+            .tag.new {
+                color: #6aa6ff;
+                border-color: rgba(106, 166, 255, 0.4);
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div>
+                <h1>Overview · 时间线（甘特）原型</h1>
+                <p>
+                    同一份 agent 数据，两种时间口径：<b>G1 会话寿命条</b>（只用现有字段，今天就能做）与
+                    <b>G2 状态分段</b>（需要新增 per-block 状态历史）。切换上方按钮对比；下方写明数据来源与代价。
+                </p>
+            </div>
+            <div class="controls">
+                <div class="seg" id="mode-seg">
+                    <button data-mode="g1" class="is-active">G1 会话寿命条</button>
+                    <button data-mode="g2">G2 状态分段</button>
+                    <button data-mode="g21">G2.1 真实分段</button>
+                </div>
+                <div class="seg" id="radius-seg">
+                    <button data-radius="9" class="is-active">圆角 9px</button>
+                    <button data-radius="4">圆角 4px</button>
+                </div>
+                <div class="seg" id="range-seg">
+                    <button data-range="2" class="is-active">2h</button>
+                    <button data-range="8">8h</button>
+                    <button data-range="24">24h</button>
+                    <button data-range="168">7d</button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="board">
+                <div class="axis-head">
+                    <div class="label">Agent 会话</div>
+                    <div class="axis" id="axis"></div>
+                </div>
+                <div id="rows"></div>
+                <div class="legend" id="legend"></div>
+            </div>
+
+            <div class="notes">
+                <div class="note">
+                    <h3>G1 会话寿命条 <span class="tag ok">无需埋点</span></h3>
+                    <p>条形 = <code>SessionSummary.createdAt → updatedAt</code>（live 会话延到 now）。</p>
+                    <ul>
+                        <li>尾巴一段用**当前状态色**（与列头/卡片 chip 同一套 token），历史段中性灰斜纹表示「不知道当时在干什么」。</li>
+                        <li>hover 出：provider、项目、消息数、最后活动时间、当前状态词。</li>
+                        <li>无 <code>createdAt</code> 的历史会话 → 从第一天可见的 <code>updatedAt</code> 起算，并在 tooltip 标注 "start unknown"。</li>
+                    </ul>
+                </div>
+                <div class="note">
+                    <h3>G2 状态分段 <span class="tag warn">需要埋点</span></h3>
+                    <p>条形按状态切段（working / blocked / done / idle / stale），每段宽度 = 该状态持续时长。</p>
+                    <ul>
+                        <li>数据缺口：现在 <code>AgentStatus</code> 只保留「当前态」，没有转移序列，无法回溯着色。</li>
+                        <li>最小实现：agent-status store 里对每个 blockId 留一份环形历史（cap 200 条，localStorage 持久化，约 40 字节/条 → 单块 8KB 上限，全部会话设总预算 1MB + LRU 淘汰）。</li>
+                        <li>写入点只有一处（presented 状态更新时 append），读取走纯函数 <code>buildTimelineSegments(history, window)</code>，可单测。</li>
+                    </ul>
+                </div>
+                <div class="note">
+                    <h3>G2.1 真实分段 <span class="tag new">本任务要落地</span></h3>
+                    <p>不等后端环形历史，先用**已有真实字段**把「猜」换成「有依据」：</p>
+                    <ul>
+                        <li>当前状态段起点 = <code>AgentStatus.activeSince</code>（不是从尾巴倒推的 6 分钟）。</li>
+                        <li>完成点 = <code>AgentStatus.completedAt</code>，画成竖刻度 + 圆点，hover 显示「完成于 N 分钟前」。</li>
+                        <li>idle 段用中性灰实心（不再并入斜纹「状态未知」），宽度 = <code>now − completedAt</code>。</li>
+                        <li>圆角从 9px 收到 4px（段 3px），段间留 1px 缝 —— 右上「圆角」按钮可直接 A/B。</li>
+                        <li><b>残留不诚实</b>：仍画不出「working → idle → working → idle」的多次交替，因为后端只留当前态。这一段写进图例 tooltip，等环形历史落地。</li>
+                    </ul>
+                </div>
+                <div class="note">
+                    <h3>共同交互与边界</h3>
+                    <ul>
+                        <li>时间窗：2h / 8h / 24h / 7d 四档，默认 8h；窗口外不画条，只在行尾给一个「更早」箭头。</li>
+                        <li>排序：按最后活动时间倒序（最上面 = 刚刚动过的），空会话（<code>updatedAt</code> 超窗）灰显排底。</li>
+                        <li>窄面板：行标签缩到 emoji + 竖排省略，时间轴横向 scroll + snap，不压缩刻度文字。</li>
+                        <li>与看板/列表共用筛选（Agents / Opened Tabs）与「打开会话」点击行为。</li>
+                    </ul>
+                </div>
+                <div class="note">
+                    <h3>建议</h3>
+                    <p>
+                        先落 <b>G1</b>（零埋点、当天可做、立刻能回答「哪个 agent 起了多久还没结束」）；
+                        真实用一周后如果「期间到底卡在哪」这个问法反复出现，再上 <b>G2</b> 的环形历史 ——
+                        它是一条可独立回滚的小改动，不动时间线的渲染结构（同一份 segments 模型，G1 就是单段带 unknown 尾巴）。
+                    </p>
+                </div>
+            </div>
+        </main>
+
+        <script>
+            // 合成数据：贴近真机形态（emoji 人格 + provider + 项目 + 当前状态）。
+            const NOW = Date.now();
+            const H = 3600_000;
+            const agents = [
+                {
+                    id: "a1",
+                    emoji: "🦊",
+                    title: "重构 auth 中间件依赖链",
+                    provider: "Claude",
+                    project: "snorkeling",
+                    state: "working",
+                    stateLabel: "Working",
+                    startedAgo: 2.4 * H,
+                    lastAgo: 0.02 * H,
+                    activeAgo: 0.55 * H,
+                    completedAgo: null,
+                    messages: 42,
+                    segments: [
+                        ["working", 0.9],
+                        ["idle", 0.25],
+                        ["working", 0.5],
+                        ["blocked", 0.2],
+                        ["working", 0.55],
+                    ],
+                },
+                {
+                    id: "a2",
+                    emoji: "🐧",
+                    title: "预览编辑软换行丢失",
+                    provider: "Codex",
+                    project: "snorkeling",
+                    state: "done",
+                    stateLabel: "Done",
+                    startedAgo: 5.5 * H,
+                    lastAgo: 1.6 * H,
+                    activeAgo: 1.6 * H,
+                    completedAgo: 1.6 * H,
+                    messages: 88,
+                    segments: [
+                        ["working", 1.6],
+                        ["idle", 1.9],
+                        ["working", 0.4],
+                    ],
+                },
+                {
+                    id: "a3",
+                    emoji: "🚀",
+                    title: "VCS 面板按钮图标化",
+                    provider: "Claude",
+                    project: "snorkeling",
+                    state: "blocked",
+                    stateLabel: "Needs input",
+                    startedAgo: 3.1 * H,
+                    lastAgo: 0.45 * H,
+                    activeAgo: 0.45 * H,
+                    completedAgo: null,
+                    messages: 31,
+                    segments: [
+                        ["working", 1.1],
+                        ["blocked", 2.0],
+                    ],
+                },
+                {
+                    id: "a4",
+                    emoji: "🌙",
+                    title: "夜班守卫：gate 复跑",
+                    provider: "Pi",
+                    project: "loop",
+                    state: "stale",
+                    stateLabel: "Stale",
+                    startedAgo: 7.4 * H,
+                    lastAgo: 4.2 * H,
+                    activeAgo: 4.2 * H,
+                    completedAgo: 4.2 * H,
+                    messages: 12,
+                    segments: [
+                        ["working", 0.7],
+                        ["idle", 2.5],
+                        ["stale", 4.2],
+                    ],
+                },
+                {
+                    id: "a5",
+                    emoji: "🧪",
+                    title: "properties 抽屉回归",
+                    provider: "Gemini",
+                    project: "snorkeling",
+                    state: "idle",
+                    stateLabel: "Idle",
+                    startedAgo: 1.1 * H,
+                    lastAgo: 0.9 * H,
+                    activeAgo: 0.9 * H,
+                    completedAgo: 0.9 * H,
+                    messages: 7,
+                    segments: [["idle", 1.1]],
+                },
+            ];
+
+            // 支持 ?mode=g2&range=8，便于分享具体形态（也让截图/评审能直达某一版）。
+            const params = new URLSearchParams(location.search);
+            let mode = ["g1", "g2", "g21"].includes(params.get("mode")) ? params.get("mode") : "g1";
+            let rangeHours = [2, 8, 24, 168].includes(Number(params.get("range")))
+                ? Number(params.get("range"))
+                : 2;
+            const stateColor = {
+                working: "working",
+                blocked: "blocked",
+                done: "done",
+                stale: "stale",
+                idle: "idle",
+                unknown: "unknown",
+            };
+
+            function pct(value, total) {
+                return Math.max(0, Math.min(100, (value / total) * 100));
+            }
+
+            function segmentsFor(agent, windowMs) {
+                const start = Math.min(agent.startedAgo, windowMs);
+                const end = Math.min(agent.lastAgo, start);
+                const widthPct = pct(start - end, windowMs);
+                const leftPct = pct(windowMs - start, windowMs);
+                if (mode === "g21") {
+                    // G2.1（本任务要落地的形态）：段边界来自**真实字段**，不是 25% 视觉猜测。
+                    //   历史段 = startedAgo → activeAgo（状态未知，因为后端还没有转移序列）
+                    //   当前段 = activeAgo → lastAgo（当前状态，起点是 AgentStatus.activeSince）
+                    const start = Math.min(agent.startedAgo, windowMs);
+                    const cur = Math.min(agent.activeAgo ?? agent.lastAgo, start);
+                    const end = Math.min(agent.lastAgo, cur);
+                    const total = Math.max(start - end, 1);
+                    const histRatio = (cur - end) / total;
+                    return [
+                        {
+                            left: leftPct,
+                            width: widthPct,
+                            parts: [
+                                { cls: "unknown", ratio: Math.max(0, 1 - histRatio) },
+                                { cls: stateColor[agent.state] ?? "unknown", ratio: histRatio },
+                            ],
+                        },
+                    ];
+                }
+                if (mode === "g1") {
+                    // 历史段 unknown + 当前状态尾巴（尾巴 = 最近一次状态变化到现在，G1 里没有精确值，
+                    // 用 min(15min, 条长 20%) 的视觉近似，明确写进 tips）。
+                    const tail = Math.min(0.25 * H, (start - end) * 0.25);
+                    const total = start - end || 1;
+                    return [
+                        { left: leftPct, width: widthPct, parts: [
+                            { cls: "unknown", ratio: Math.max(0, (total - tail) / total) },
+                            { cls: stateColor[agent.state] ?? "unknown", ratio: Math.min(1, tail / total) },
+                        ] },
+                    ];
+                }
+                const total = agent.segments.reduce((sum, [, w]) => sum + w, 0) || 1;
+                return [
+                    {
+                        left: leftPct,
+                        width: widthPct,
+                        parts: agent.segments.map(([state, w]) => ({ cls: stateColor[state] ?? "unknown", ratio: w / total })),
+                    },
+                ];
+            }
+
+            function render() {
+                const windowMs = rangeHours * H;
+                const axis = document.getElementById("axis");
+                const rows = document.getElementById("rows");
+                const legend = document.getElementById("legend");
+                const tickCount = rangeHours <= 2 ? 8 : rangeHours <= 8 ? 8 : rangeHours <= 24 ? 6 : 7;
+                axis.innerHTML = "";
+                for (let i = 0; i <= tickCount; i++) {
+                    const offsetMs = windowMs - (windowMs / tickCount) * i;
+                    const when = new Date(NOW - offsetMs);
+                    const label =
+                        rangeHours >= 24
+                            ? `${when.getMonth() + 1}/${when.getDate()} ${String(when.getHours()).padStart(2, "0")}:00`
+                            : `${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+                    const tick = document.createElement("div");
+                    tick.className = "tick";
+                    tick.style.left = `${(i / tickCount) * 100}%`;
+                    tick.textContent = i === tickCount ? "now" : label;
+                    axis.appendChild(tick);
+                }
+                axis.style.setProperty("--tick-gap", `${100 / tickCount}%`);
+
+                rows.innerHTML = "";
+                const sorted = [...agents].sort((a, b) => a.lastAgo - b.lastAgo);
+                for (const agent of sorted) {
+                    const row = document.createElement("div");
+                    row.className = "row";
+                    row.innerHTML = `
+                        <div class="row-id">
+                            <span class="avatar">${agent.emoji}</span>
+                            <span class="row-text">
+                                <span class="row-title">${agent.title}</span>
+                                <span class="row-sub">${agent.provider} · ${agent.project} · ${agent.messages} msgs</span>
+                            </span>
+                        </div>
+                        <div class="track"></div>`;
+                    const track = row.querySelector(".track");
+                    track.style.setProperty("--tick-gap", `${100 / tickCount}%`);
+                    for (const bar of segmentsFor(agent, windowMs)) {
+                        if (bar.width <= 0.2) continue;
+                        const el = document.createElement("div");
+                        el.className = "bar";
+                        el.style.left = `${bar.left}%`;
+                        el.style.width = `${Math.max(bar.width, 0.6)}%`;
+                        el.title = `${agent.provider} · ${agent.stateLabel} · ${agent.messages} msgs · last ${Math.round(agent.lastAgo * 60)}m ago`;
+                        for (const part of bar.parts) {
+                            const s = document.createElement("span");
+                            s.className = `seg-pill ${part.cls}`;
+                            s.style.width = `${part.ratio * 100}%`;
+                            el.appendChild(s);
+                        }
+                        track.appendChild(el);
+                    }
+                    // 完成点竖刻度：completedAt 在窗口内才画。
+                    const completedAgo = agent.completedAgo;
+                    if (completedAgo != null && completedAgo < windowMs) {
+                        const mark = document.createElement("div");
+                        mark.className = "completed-mark";
+                        mark.style.left = `${pct(windowMs - completedAgo, windowMs)}%`;
+                        mark.title = `完成于 ${Math.round(completedAgo * 60)} 分钟前`;
+                        track.appendChild(mark);
+                    }
+                    const now = document.createElement("div");
+                    now.className = "now-line";
+                    now.style.left = "100%";
+                    track.appendChild(now);
+                    rows.appendChild(row);
+                }
+
+                legend.innerHTML =
+                    mode === "g21"
+                        ? `<span><i style="background:#39404d"></i>历史（状态未知，后端暂无转移序列）</span>
+                           <span><i style="background:#3fb950"></i>当前状态段（起点 = activeSince）</span>
+                           <span><i style="background:#4b5563"></i>idle 实心灰</span>
+                           <span><i style="background:#6aa6ff"></i><b>完成点</b>（completedAt 竖刻度）</span>
+                           <span>条长仍 = 会话寿命；段起点来自真实字段，不再用 6min / 20% 猜</span>`
+                        : mode === "g1"
+                        ? `<span><i style="background:#39404d"></i>历史（状态未知）</span>
+                           <span><i style="background:#3fb950"></i>当前状态着色（working / blocked / done / idle / stale）</span>
+                           <span>长度 = 会话寿命（createdAt → updatedAt / now）</span>`
+                        : `<span><i style="background:#3fb950"></i>working</span>
+                           <span><i style="background:#d29922"></i>blocked / needs input</span>
+                           <span><i style="background:#6aa6ff"></i>done</span>
+                           <span><i style="background:#6b7280"></i>idle</span>
+                           <span><i style="background:#a371f7"></i>stale</span>
+                           <span>每段 = 该状态持续时长（需要历史转移记录）</span>`;
+            }
+
+            let barRadius = 9;
+            document.getElementById("radius-seg").addEventListener("click", (event) => {
+                const target = event.target.closest("button");
+                if (target == null) return;
+                barRadius = Number(target.dataset.radius);
+                for (const btn of event.currentTarget.querySelectorAll("button")) {
+                    btn.classList.toggle("is-active", btn === target);
+                }
+                document.documentElement.style.setProperty("--bar-radius", `${barRadius}px`);
+                document.documentElement.style.setProperty("--seg-radius", `${Math.max(2, barRadius - 1)}px`);
+            });
+
+            document.getElementById("mode-seg").addEventListener("click", (event) => {
+                const target = event.target.closest("button");
+                if (target == null) return;
+                mode = target.dataset.mode;
+                for (const btn of event.currentTarget.querySelectorAll("button")) {
+                    btn.classList.toggle("is-active", btn === target);
+                }
+                render();
+            });
+            // 初始按钮态跟 query 对齐
+            for (const btn of document.querySelectorAll("#mode-seg button")) {
+                btn.classList.toggle("is-active", btn.dataset.mode === mode);
+            }
+            const initialRadius = Number(params.get("radius")) === 4 ? 4 : 9;
+            for (const btn of document.querySelectorAll("#radius-seg button")) {
+                btn.classList.toggle("is-active", Number(btn.dataset.radius) === initialRadius);
+            }
+            document.documentElement.style.setProperty("--bar-radius", `${initialRadius}px`);
+            document.documentElement.style.setProperty("--seg-radius", `${Math.max(2, initialRadius - 1)}px`);
+            for (const btn of document.querySelectorAll("#range-seg button")) {
+                btn.classList.toggle("is-active", Number(btn.dataset.range) === rangeHours);
+            }
+
+            document.getElementById("range-seg").addEventListener("click", (event) => {
+                const target = event.target.closest("button");
+                if (target == null) return;
+                rangeHours = Number(target.dataset.range);
+                for (const btn of event.currentTarget.querySelectorAll("button")) {
+                    btn.classList.toggle("is-active", btn === target);
+                }
+                render();
+            });
+            render();
+        </script>
+    </body>
+</html>
