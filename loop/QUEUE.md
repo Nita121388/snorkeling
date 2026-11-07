@@ -2,11 +2,19 @@
 
 # QUEUE
 
-> 生成于 2026-11-05T03:13:05Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
+> 生成于 2026-11-06T15:07:52Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
 
 | 包 | 优先级 | 类型 | 门 | 门状态 | 运行 | 说明 |
 |---|---|---|---|---|---|---|
-| `N-1105-loop-ledger` | P0 | arch | 4/4 | clear | committed | loop 台账骨架 + 门引擎 |
+| `N-1105-loop-ledger` | P0 | arch | 3/4 | blocked:g6 | committed | 方案：expired |
 | `N-1105-harness-redproof` | P1 | chore | 0/1 | blocked:g5 | idle | 合规：not-run |
+| `N-1106-overview-card-actions` | P1 | feature | 0/3 | blocked:g1 | idle | 需求：unsigned |
+| `N-1106-overview-board-motion` | P1 | feature | 2/3 | blocked:g1 ⚠drift | queued | 需求：drift |
+| `F-1106-agent-card-chip-title` | P1 | feature | 2/3 | blocked:g1 ⚠drift | queued | 需求：drift |
 | `N-1105-cleanup-46to22` | P1 | arch | 1/4 | blocked:g2 | idle | 器具：no-red-proof |
-| `N-1105-queue-failopen` | P2 | bug | 1/1 | clear | green | queue.json 解析失败不再静默清空（回退 last-good 快照） |
+| `F-1106-move-block-tab-menu` | P1 | feature | 2/3 | blocked:g5 | queued | 合规：not-run |
+| `N-1105-cmd-window-flash` | P1 | bug | 1/1 | clear | committed | 打开看板闪黑窗：子进程漏 windowsHide |
+| `N-1105-night-runner` | P1 | arch | 0/4 | blocked:g1 | idle | 需求：unsigned |
+| `N-1105-tab-hover-clip` | P1 | bug | 1/1 | clear | committed | Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位） |
+| `N-1105-queue-failopen` | P2 | bug | 1/1 | clear | accepted | queue.json 解析失败不再静默清空（回退 last-good 快照） |
+| `N-1106-agent-tag-catalog` | P2 | feature | 3/3 | clear | green | Agent 卡片标签候选：全局清单 + 计数 |

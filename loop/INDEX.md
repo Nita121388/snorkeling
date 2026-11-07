@@ -2,17 +2,25 @@
 
 # 工作项索引
 
-> 生成于 2026-11-05T03:13:05Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
+> 生成于 2026-11-06T15:07:52Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
 
 ## P0（1）
 
-- [ ] `N-1105-loop-ledger` — loop 台账骨架 + 门引擎 · arch · internal · 门已清
+- [ ] `N-1105-loop-ledger` — loop 台账骨架 + 门引擎 · arch · internal · 方案待办
 
-## P1（2）
+## P1（9）
 
 - [ ] `N-1105-harness-redproof` — 既有 4 个 harness 登记 red_proof · chore · internal · 合规待办
+- [ ] `N-1106-overview-card-actions` — Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删 · feature · self · 需求待办
+- [ ] `N-1106-overview-board-motion` — Overview 看板卡片跨列移动动画（FLIP + WAAPI） · feature · self · 需求待办
+- [ ] `F-1106-agent-card-chip-title` — Agent 卡片统一：状态 chip 收口 + 运行时长 + 标题编辑 · feature · self · 需求待办
 - [ ] `N-1105-cleanup-46to22` — 清账：活跃任务 46 → ≤22（归档清单须人工过） · arch · internal · 器具待办
+- [ ] `F-1106-move-block-tab-menu` — Move Block to Tab：菜单 4→1 条 + 弹窗内新建 / 每行双图标动作 · feature · self · 合规待办
+- [ ] `N-1105-cmd-window-flash` — 打开看板闪黑窗：子进程漏 windowsHide · bug · self · 门已清
+- [ ] `N-1105-night-runner` — 夜班真派发：headless agent 注入契约并限一包 · arch · self · 需求待办
+- [ ] `N-1105-tab-hover-clip` — Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位） · bug · self · 门已清
 
-## P2（1）
+## P2（2）
 
 - [ ] `N-1105-queue-failopen` — queue.json 解析失败不再静默清空（回退 last-good 快照） · bug · internal · 门已清
+- [ ] `N-1106-agent-tag-catalog` — Agent 卡片标签候选：全局清单 + 计数 · feature · self · 门已清

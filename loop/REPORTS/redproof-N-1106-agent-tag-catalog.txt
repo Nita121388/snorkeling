@@ -1,0 +1,57 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+ [31m×[39m frontend/app/element/property-editor/tag-editor.dom.test.tsx[2m > [22mPropertyTagEditor — 候选计数[2m > [22m传 optionCounts 时候选项行尾渲染计数[32m 150[2mms[22m[39m
+[31m   → expected null to be '12' // Object.is equality[39m
+ [32m✓[39m frontend/app/element/property-editor/tag-editor.dom.test.tsx[2m > [22mPropertyTagEditor — 候选计数[2m > [22m不传 optionCounts 时不渲染任何计数节点（md 预览属性卡回归门）[32m 24[2mms[22m[39m
+ [31m×[39m frontend/app/element/property-editor/tag-editor.dom.test.tsx[2m > [22mPropertyTagEditor — 候选计数[2m > [22m清单里没有 count 的候选项不伪造 0[32m 23[2mms[22m[39m
+[31m   → expected null to be '7' // Object.is equality[39m
+ [32m✓[39m frontend/app/element/property-editor/tag-editor.dom.test.tsx[2m > [22mPropertyTagEditor — 候选计数[2m > [22m计数不打断点选：点候选项仍然 toggle 并回调完整数组[32m 37[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/element/property-editor/tag-editor.dom.test.tsx[2m > [22mPropertyTagEditor — 候选计数[2m > [22m传 optionCounts 时候选项行尾渲染计数
+[31m[1mAssertionError[22m: expected null to be '12' // Object.is equality[39m
+
+[32m- Expected:[39m 
+"12"
+
+[31m+ Received:[39m 
+null
+
+[36m [2m❯[22m frontend/app/element/property-editor/tag-editor.dom.test.tsx:[2m58:34[22m[39m
+    [90m 56| [39m        [35mconst[39m rows [33m=[39m [34moptionRows[39m()[33m;[39m
+    [90m 57| [39m        [34mexpect[39m(rows)[33m.[39m[34mtoHaveLength[39m([34m2[39m)[33m;[39m
+    [90m 58| [39m        [34mexpect[39m([34mcountOf[39m(rows[[34m0[39m]))[33m.[39m[34mtoBe[39m([32m"12"[39m)[33m;[39m
+    [90m   | [39m                                 [31m^[39m
+    [90m 59| [39m        [34mexpect[39m([34mcountOf[39m(rows[[34m1[39m]))[33m.[39m[34mtoBe[39m([32m"3"[39m)[33m;[39m
+    [90m 60| [39m    })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/element/property-editor/tag-editor.dom.test.tsx[2m > [22mPropertyTagEditor — 候选计数[2m > [22m清单里没有 count 的候选项不伪造 0
+[31m[1mAssertionError[22m: expected null to be '7' // Object.is equality[39m
+
+[32m- Expected:[39m 
+"7"
+
+[31m+ Received:[39m 
+null
+
+[36m [2m❯[22m frontend/app/element/property-editor/tag-editor.dom.test.tsx:[2m86:31[22m[39m
+    [90m 84| [39m        [34mexpect[39m([34mcountOf[39m(mineOnly[33m![39m))[33m.[39m[34mtoBeNull[39m()[33m;[39m
+    [90m 85| [39m        const fix = rows.find((row) => row.textContent?.includes("fix"…
+    [90m 86| [39m        [34mexpect[39m([34mcountOf[39m(fix[33m![39m))[33m.[39m[34mtoBe[39m([32m"7"[39m)[33m;[39m
+    [90m   | [39m                              [31m^[39m
+    [90m 87| [39m    })[33m;[39m
+    [90m 88| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 13:34:27
+[2m   Duration [22m 10.56s[2m (transform 1.08s, setup 170ms, collect 1.16s, tests 238ms, environment 5.12s, prepare 553ms)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml
