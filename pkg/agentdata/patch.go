@@ -559,9 +559,7 @@ func applySessionTitle(ctx context.Context, report OperationReport, op PatchOper
 	if err != nil {
 		return report, err
 	}
-	if err := validateSessionPrecondition(op, summary); err != nil {
-		return report, err
-	}
+	// Precondition already validated by ApplyPatch against the pre-patch state.
 	manager := aisessions.NewManager("", nil)
 	updated, err := manager.SetAITitle(ctx, summary.Key, *op.Title, op.Force)
 	if errors.Is(err, aisessions.ErrTitleProtected) {
@@ -620,9 +618,7 @@ func applySessionProps(ctx context.Context, report OperationReport, op PatchOper
 	if err != nil {
 		return report, err
 	}
-	if err := validateSessionPrecondition(op, summary); err != nil {
-		return report, err
-	}
+	// Precondition already validated by ApplyPatch against the pre-patch state.
 	suggestions, skipped := sessionPropSuggestions(summary.Props, op)
 	manager := aisessions.NewManager("", nil)
 	updated, appliedSkipped, err := manager.ApplyAIProperties(ctx, summary.Key, suggestions, op.Force)
@@ -774,9 +770,11 @@ func applyOperation(ctx context.Context, idx int, op PatchOperation) (OperationR
 		if err != nil {
 			return report, err
 		}
-		if err := validateSessionPrecondition(op, summary); err != nil {
-			return report, err
-		}
+		// No precondition re-check here: ApplyPatch validates every operation's
+		// precondition against the pre-patch state before applying anything. In a
+		// multi-operation patch (note+tags, then title, then props) re-validating
+		// here would compare the agent's hash against state already mutated by the
+		// earlier operations in the same patch and always conflict.
 		nextNote, nextTags := nextSessionState(summary, op)
 		updated, err := manager.NoteAndTags(ctx, summary.Key, nextNote, nextTags)
 		if err != nil {
