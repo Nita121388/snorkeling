@@ -7,6 +7,7 @@ import {
     filterCommonTextItemsByTags,
     findDuplicateCommonText,
     getCommonTextTagSummaries,
+    getCommonTextDeviceSummaries,
     markCommonTextUsed,
     normalizeCommonTextItem,
     normalizeCommonTextSortKey,
@@ -526,6 +527,59 @@ describe("commontext-model", () => {
         it("falls back per field when origin is partially missing", () => {
             const item = normalizeCommonTextItem({ id: "x", text: "body", origin: { platform: "darwin" } });
             expect(item.origin).toEqual({ deviceid: "local", devicename: "This machine", platform: "darwin" });
+        });
+    });
+
+    describe("creator / device filters", () => {
+        const home = { deviceid: "dev-home", devicename: "Home PC", platform: "win32" };
+        const work = { deviceid: "dev-work", devicename: "Work Mac", platform: "darwin" };
+        const dataset: CommonTextItem[] = [
+            makeItem({ id: "a", title: "A", text: "a", createdby: { kind: "human", name: "Nita" }, origin: home }),
+            makeItem({ id: "b", title: "B", text: "b", createdby: { kind: "agent", name: "pi" }, origin: home }),
+            makeItem({ id: "c", title: "C", text: "c", createdby: { kind: "human", name: "Nita" }, origin: work }),
+            makeItem({ id: "d", title: "D", text: "d", createdby: { kind: "agent", name: "codex" }, origin: work }),
+        ];
+        const ids = (items: CommonTextItem[]) => items.map((i) => i.id).sort();
+
+        it("filters by creator kind", () => {
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "human" }))).toEqual(["a", "c"]);
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "agent" }))).toEqual(["b", "d"]);
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "all" }))).toEqual(["a", "b", "c", "d"]);
+        });
+
+        it("filters by originating device", () => {
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { device: "dev-home" }))).toEqual(["a", "b"]);
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { device: "dev-work" }))).toEqual(["c", "d"]);
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { device: "any" }))).toEqual(["a", "b", "c", "d"]);
+        });
+
+        it("combines creator and device as AND", () => {
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "human", device: "dev-work" }))).toEqual([
+                "c",
+            ]);
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "agent", device: "dev-home" }))).toEqual([
+                "b",
+            ]);
+        });
+
+        it("applies the source filter before the result limit", () => {
+            // 来源是硬过滤：先筛再截断，否则 limit 会把本该命中的行挤掉
+            const filtered = searchCommonTextComposeItems(dataset, "", "", { creator: "agent", limit: 2 });
+            expect(ids(filtered)).toEqual(["b", "d"]);
+        });
+
+        it("treats missing metadata as human / local device", () => {
+            const legacy = [makeItem({ id: "legacy", title: "Legacy", text: "legacy text" })];
+            expect(ids(searchCommonTextComposeItems(legacy, "", "", { creator: "human" }))).toEqual(["legacy"]);
+            expect(ids(searchCommonTextComposeItems(legacy, "", "", { creator: "agent" }))).toEqual([]);
+            expect(ids(searchCommonTextComposeItems(legacy, "", "", { device: "local" }))).toEqual(["legacy"]);
+        });
+
+        it("summarizes devices with counts in first-seen order", () => {
+            expect(getCommonTextDeviceSummaries(dataset)).toEqual([
+                { deviceid: "dev-home", devicename: "Home PC", count: 2 },
+                { deviceid: "dev-work", devicename: "Work Mac", count: 2 },
+            ]);
         });
     });
 });

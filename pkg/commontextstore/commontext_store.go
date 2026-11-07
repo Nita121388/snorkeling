@@ -39,6 +39,7 @@ type commonTextDBRow struct {
 	UpdatedAt  int64   `db:"updatedat"`
 	LastUsedAt *int64  `db:"lastusedat"`
 	UsageCount int64   `db:"usagecount"`
+	Emoji      *string `db:"emoji"`
 
 	// Sync metadata columns. All nullable: rows written before sync existed keep NULL
 	// and the read path fills defaults (see commonTextItemFromRow).
@@ -53,7 +54,7 @@ type commonTextDBRow struct {
 
 // commonTextRowColumns is the single column list for every SELECT. Keeping it in one place
 // means adding a column cannot silently desync the three read sites.
-const commonTextRowColumns = `id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount,
+const commonTextRowColumns = `id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount, emoji,
 	createdby_kind, createdby_name, origin_deviceid, origin_devicename, origin_platform, rev, deletedat`
 
 type ListOptions struct {
@@ -161,6 +162,7 @@ func normalizeCommonTextItem(item commonTextItem, nowMs int64) (commonTextItem, 
 		UpdatedAt:  item.UpdatedAt,
 		LastUsedAt: item.LastUsedAt,
 		UsageCount: item.UsageCount,
+		Emoji:      item.Emoji,
 		// Sync metadata must survive normalization: dropping it here would silently
 		// erase provenance on every save (this function rebuilds the struct field by field).
 		CreatedBy: item.CreatedBy,
@@ -286,6 +288,10 @@ func commonTextItemsToDBRows(items []commonTextItem) []commonTextDBRow {
 			lastUsedAt := int64(item.LastUsedAt)
 			row.LastUsedAt = &lastUsedAt
 		}
+		if item.Emoji != "" {
+			emoji := item.Emoji
+			row.Emoji = &emoji
+		}
 		if item.CreatedBy != nil {
 			kind := item.CreatedBy.Kind
 			name := item.CreatedBy.Name
@@ -337,6 +343,9 @@ func commonTextItemFromRow(row commonTextDBRow) commonTextItem {
 	}
 	if tags := dbutil.ParseJsonArr[string](row.Tags); len(tags) > 0 {
 		item.Tags = normalizeCommonTextTags(tags)
+	}
+	if row.Emoji != nil {
+		item.Emoji = *row.Emoji
 	}
 	createdByKind := legacyCreatedByKind
 	if row.CreatedByKind != nil && strings.TrimSpace(*row.CreatedByKind) != "" {
@@ -721,9 +730,9 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 			ids = append(ids, row.ID)
 			tx.Exec(
 				`INSERT INTO db_common_text (
-					id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount,
+					id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount, emoji,
 					createdby_kind, createdby_name, origin_deviceid, origin_devicename, origin_platform, rev, deletedat
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(id) DO UPDATE SET
 					title = excluded.title,
 					text = excluded.text,
@@ -734,6 +743,7 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 					updatedat = excluded.updatedat,
 					lastusedat = excluded.lastusedat,
 					usagecount = excluded.usagecount,
+					emoji = excluded.emoji,
 					createdby_kind = excluded.createdby_kind,
 					createdby_name = excluded.createdby_name,
 					origin_deviceid = excluded.origin_deviceid,
@@ -751,6 +761,7 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 				row.UpdatedAt,
 				commonTextNullableInt64(row.LastUsedAt),
 				row.UsageCount,
+				commonTextNullableString(row.Emoji),
 				commonTextNullableString(row.CreatedByKind),
 				commonTextNullableString(row.CreatedByName),
 				commonTextNullableString(row.OriginDeviceID),

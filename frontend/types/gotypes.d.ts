@@ -1684,6 +1684,7 @@ declare global {
         updatedat?: number;
         lastusedat?: number;
         usagecount?: number;
+        emoji?: string;
         createdby?: CommonTextCreatedByType;
         origin?: CommonTextOriginType;
         rev?: number;

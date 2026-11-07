@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { atoms, globalStore } from "@/app/store/global";
+import { atoms, getApi, globalStore } from "@/app/store/global";
 import { CommonTextService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -37,6 +37,8 @@ export type CommonTextItem = {
     usagecount?: number;
     // Sync metadata. Optional because items written before sync existed have none of it;
     // normalizeCommonTextItem fills the same defaults the Go read path uses.
+    /** Page icon (Notion-style page header). Empty/absent means no icon. */
+    emoji?: string;
     createdby?: CommonTextCreatedBy;
     origin?: CommonTextOrigin;
     /** Per-item version used for conflict detection. */
@@ -49,12 +51,40 @@ export type CommonTextItem = {
 export const LegacyCreatedBy: CommonTextCreatedBy = { kind: "human", name: "" };
 export const LegacyOrigin: CommonTextOrigin = { deviceid: "local", devicename: "This machine", platform: "" };
 
+/**
+ * Current machine's platform, normalized to the same enum the Go side accepts
+ * (win32 / darwin / linux). Unknown platforms fall back to "" so the property grid
+ * just omits the platform segment instead of inventing a value.
+ */
+function currentPlatform(): string {
+    try {
+        const platform = getApi()?.getPlatform?.();
+        if (platform === "win32" || platform === "darwin" || platform === "linux") return platform;
+    } catch {
+        // getApi is unavailable in tests / server-side renders; fall through.
+    }
+    return "";
+}
+
+/**
+ * Origin stamped on an item created by this renderer.
+ *
+ * deviceid stays "local" until the sync transport layer starts minting stable device ids
+ * (task 11-07-commontext-sync-transport). Writing the real platform now means the property
+ * grid shows `This machine win32 · local` instead of a dangling separator, and the value
+ * survives once device ids arrive without a migration.
+ */
+export function currentOrigin(): CommonTextOrigin {
+    return { deviceid: LegacyOrigin.deviceid, devicename: LegacyOrigin.devicename, platform: currentPlatform() };
+}
+
 export type CommonTextDraft = {
     title: string;
     text: string;
     shortcut?: string;
     tags?: string[] | string;
     pinned?: boolean;
+    emoji?: string;
 };
 
 export type CommonTextTagSummary = {
@@ -117,6 +147,7 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
         typeof raw.lastusedat === "number" && Number.isFinite(raw.lastusedat) ? raw.lastusedat : undefined;
     const usagecount =
         typeof raw.usagecount === "number" && Number.isFinite(raw.usagecount) ? Math.max(0, raw.usagecount) : 0;
+    const emoji = typeof raw.emoji === "string" && raw.emoji.trim() !== "" ? raw.emoji.trim() : undefined;
     const createdby = normalizeCommonTextCreatedBy(raw.createdby);
     const origin = normalizeCommonTextOrigin(raw.origin);
     const rev = typeof raw.rev === "number" && Number.isFinite(raw.rev) ? raw.rev : 0;
@@ -132,6 +163,7 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
         updatedat,
         lastusedat,
         usagecount,
+        emoji,
         createdby,
         origin,
         rev,
@@ -349,6 +381,8 @@ export function tokenizeCommonTextQuery(
     return Array.from(tokens);
 }
 
+export type CommonTextCreatorFilter = "all" | "human" | "agent";
+
 export type CommonTextComposeSearchOptions = {
     limit?: number;
     selectedTags?: string[];
@@ -357,7 +391,55 @@ export type CommonTextComposeSearchOptions = {
     insertedIds?: string[];
     // 浏览态（无搜索词）的列表次序。搜索态下由相关度决定，这里只当并列 tie-break。
     sortKey?: CommonTextSortKey;
+    // 来源筛选：与 tag/查询正交叠加。creator 与 device 同时生效（AND）。
+    creator?: CommonTextCreatorFilter;
+    // "any" 与 "" 等价，都表示不限设备。
+    device?: string;
 };
+
+/**
+ * 条目的创建者类型。与 Go 读路径同规则：缺省即 human，未知值也按 human 处理
+ * （宁可归到人类，也不要因为脏数据把条目从所有筛选里漏掉）。
+ */
+export function getCommonTextCreatorKind(item: CommonTextItem): "human" | "agent" {
+    return item.createdby?.kind === "agent" ? "agent" : "human";
+}
+
+export function commonTextItemMatchesCreator(item: CommonTextItem, filter: CommonTextCreatorFilter | undefined): boolean {
+    if (filter == null || filter === "all") return true;
+    return getCommonTextCreatorKind(item) === filter;
+}
+
+export function commonTextItemMatchesDevice(item: CommonTextItem, device: string | undefined): boolean {
+    const normalized = (device ?? "").trim();
+    if (normalized === "" || normalized === "any") return true;
+    return getCommonTextOriginDeviceId(item) === normalized;
+}
+
+export function getCommonTextOriginDeviceId(item: CommonTextItem): string {
+    const id = item.origin?.deviceid?.trim();
+    return id != null && id !== "" ? id : LegacyOrigin.deviceid;
+}
+
+export function getCommonTextOriginDeviceName(item: CommonTextItem): string {
+    const name = item.origin?.devicename?.trim();
+    return name != null && name !== "" ? name : LegacyOrigin.devicename;
+}
+
+/** 去重后的设备清单（按出现顺序），供筛选下拉与计数使用。 */
+export function getCommonTextDeviceSummaries(items: CommonTextItem[]): { deviceid: string; devicename: string; count: number }[] {
+    const byId = new Map<string, { deviceid: string; devicename: string; count: number }>();
+    for (const item of items) {
+        const id = getCommonTextOriginDeviceId(item);
+        const existing = byId.get(id);
+        if (existing == null) {
+            byId.set(id, { deviceid: id, devicename: getCommonTextOriginDeviceName(item), count: 1 });
+        } else {
+            existing.count++;
+        }
+    }
+    return [...byId.values()];
+}
 
 type CommonTextSearchFields = {
     title: string;
@@ -446,6 +528,8 @@ export function searchCommonTextComposeItems(
         caret = editor.length,
         insertedIds = [],
         sortKey = DefaultCommonTextSortKey,
+        creator = "all",
+        device = "any",
     } = options;
     const isManualSearch = manualQuery.trim() !== "";
     const tokenWeights = new Map<string, number>();
@@ -456,7 +540,11 @@ export function searchCommonTextComposeItems(
             tokenWeights.set(token, weight);
         }
     }
-    const baseItems = sortCommonTextItemsBy(filterCommonTextItemsByTags(items, selectedTags, { untagged }), sortKey);
+    // 来源筛选是硬过滤（AND），先于 tag/查询/排序执行：否则 limit 截断会把本该命中的行挤掉。
+    const sourceFiltered = items.filter(
+        (item) => commonTextItemMatchesCreator(item, creator) && commonTextItemMatchesDevice(item, device)
+    );
+    const baseItems = sortCommonTextItemsBy(filterCommonTextItemsByTags(sourceFiltered, selectedTags, { untagged }), sortKey);
     if (tokenWeights.size === 0) {
         return baseItems.slice(0, limit);
     }
@@ -559,10 +647,11 @@ export async function upsertCommonTextItem(draft: CommonTextDraft, existingId?: 
         updatedat: now,
         lastusedat: existing?.lastusedat,
         usagecount: existing?.usagecount ?? 0,
+        emoji: draft.emoji !== undefined ? draft.emoji.trim() || undefined : existing?.emoji,
         // Provenance is set once at creation and preserved on edit: rewriting it on every save
         // would make an item look like it moved machines whenever it was touched.
         createdby: existing?.createdby ?? { ...LegacyCreatedBy },
-        origin: existing?.origin ?? { ...LegacyOrigin },
+        origin: existing?.origin ?? currentOrigin(),
         rev: existing?.rev ?? 0,
         deletedat: existing?.deletedat,
     };

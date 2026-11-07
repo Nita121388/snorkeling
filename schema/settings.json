@@ -178,6 +178,9 @@
         "usagecount": {
           "type": "number"
         },
+        "emoji": {
+          "type": "string"
+        },
         "createdby": {
           "$ref": "#/$defs/CommonTextCreatedByType"
         },

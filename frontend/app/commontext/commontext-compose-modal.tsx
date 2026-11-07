@@ -28,8 +28,13 @@ import {
     getCommonTextItemsFromSettings,
     getCommonTextTagSummaries,
     recordCommonTextUse,
+    getCommonTextDeviceSummaries,
+    getCommonTextCreatorKind,
+    getCommonTextOriginDeviceId,
+    getCommonTextOriginDeviceName,
     searchCommonTextComposeItems,
     upsertCommonTextItem,
+    type CommonTextCreatorFilter,
     type CommonTextItem,
     type CommonTextSortKey,
 } from "./commontext-model";
@@ -37,9 +42,17 @@ import { extractSessionTagsFromNote, removeSessionTagFromNote } from "@/app/view
 import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
 import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/aisessions/utils";
 import { loadCommonTextSortKey, saveCommonTextSortKey } from "./commontext-sort-preference";
+import { PageIconSlot } from "./commontext-page-icon";
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
+
+/** 创建者筛选三档：图标 + 计数，含义全走 title / aria-label（与排序控件同口径）。 */
+const CommonTextCreatorFilters: { key: CommonTextCreatorFilter; icon: string; label: string }[] = [
+    { key: "all", icon: "fa-solid fa-layer-group", label: "All creators" },
+    { key: "human", icon: "fa-solid fa-user", label: "Created by a person" },
+    { key: "agent", icon: "fa-solid fa-robot", label: "Created by an agent" },
+];
 
 /** 排序控件：只用图标，含义全走 title / aria-label（不占左栏宽度）。 */
 const CommonTextSortOptions: { key: CommonTextSortKey; icon: string; label: string }[] = [
@@ -51,6 +64,24 @@ const CommonTextSortOptions: { key: CommonTextSortKey; icon: string; label: stri
 ];
 
 /** 时间一律走会话列表同一套口径（formatSessionDateCompact），不另写一套格式化。 */
+/** 徽标上的名字：agent 显示 agent 名，human 显示人名；都没名就退回类型名。 */
+function describeCommonTextCreatorName(item: CommonTextItem): string {
+    const name = item.createdby?.name?.trim();
+    if (name != null && name !== "") return name;
+    return getCommonTextCreatorKind(item) === "agent" ? "agent" : "human";
+}
+
+/** 徽标的 tooltip：谁 + 哪台机器 + 什么时候建的。 */
+function describeCommonTextSource(item: CommonTextItem): string {
+    const kind = getCommonTextCreatorKind(item);
+    const who = describeCommonTextCreatorName(item);
+    const device = getCommonTextOriginDeviceName(item);
+    const platform = item.origin?.platform?.trim();
+    const deviceLabel = platform != null && platform !== "" ? `${device} · ${platform}` : device;
+    const created = compactCommonTextTime(item.createdat, true);
+    return `Created by ${kind === "agent" ? `agent ${who}` : who} on ${deviceLabel}${created ? ` · ${created}` : ""}`;
+}
+
 function compactCommonTextTime(timestamp: number | undefined, withTime = false): string {
     if (timestamp == null) return "never";
     return formatSessionDateCompact(timestamp, Date.now(), withTime) || "never";
@@ -75,12 +106,17 @@ type ComposeState = {
     selectedTags: string[];
     // 无标签筛选：与 selectedTags 互斥（开启时清空 tag 选择）。
     untaggedOnly: boolean;
+    // 来源筛选（与 tag/查询正交叠加）：创建者类型 + 设备。
+    creatorFilter: CommonTextCreatorFilter;
+    deviceFilter: string;
     selectedIndex: number;
     // 详情区当前展示的 item id —— hover/键盘 ↑↓/单击 同步它，但不触发插入。
     // 与 selectedIndex 解耦：selectedIndex 仍服务于列表行高亮与键盘导航边界，
     // detailId 才是右侧详情区渲染的真源。
     detailId: string | null;
     // 详情区就地编辑态：editing 进入时由 detail item 拷贝而来，Cancel 丢弃、Save upsert。
+    // detailEmoji 是页面 icon（Notion 式页面头），空串表示未设置。
+    detailEmoji: string;
     detailTitle: string;
     detailText: string;
     detailDirty: boolean;
@@ -135,8 +171,11 @@ const initialOpenState = (manualQuery = ""): ComposeState => ({
     manualQuery,
     selectedTags: [],
     untaggedOnly: false,
+    creatorFilter: "all",
+    deviceFilter: "any",
     selectedIndex: 0,
     detailId: null,
+    detailEmoji: "",
     detailTitle: "",
     detailText: "",
     detailDirty: false,
@@ -261,6 +300,24 @@ const CommonTextComposeModal = memo(() => {
     // 正文里，All Tags 面板据此决定 chip 亮灭；该 memo 也是 Save 时写回 item.tags 的真源。
     const detailTags = useMemo(() => extractSessionTagsFromNote(state.detailText).tags, [state.detailText]);
 
+    // 计数与设备清单按「当前 tag/查询过滤后的集合」统计，与列表实际可见范围一致：
+    // 若按全量统计，chip 上的数字会与点下去后的行数不符。
+    const sourceScopeItems = useMemo(
+        () =>
+            filterCommonTextItemsByTags(allItems, state.selectedTags, { untagged: state.untaggedOnly }),
+        [allItems, state.selectedTags, state.untaggedOnly]
+    );
+    const creatorCounts = useMemo(() => {
+        let human = 0;
+        let agent = 0;
+        for (const item of sourceScopeItems) {
+            if (getCommonTextCreatorKind(item) === "agent") agent++;
+            else human++;
+        }
+        return { all: sourceScopeItems.length, human, agent } as Record<CommonTextCreatorFilter, number>;
+    }, [sourceScopeItems]);
+    const deviceSummaries = useMemo(() => getCommonTextDeviceSummaries(sourceScopeItems), [sourceScopeItems]);
+
     const filteredItems = useMemo(() => {
         if (!state.open) return [];
         return searchCommonTextComposeItems(allItems, state.editorFilterDismissed ? "" : state.editor, state.manualQuery, {
@@ -270,9 +327,13 @@ const CommonTextComposeModal = memo(() => {
             caret: state.editorCaret,
             insertedIds: state.insertedIds,
             sortKey: state.sortKey,
+            creator: state.creatorFilter,
+            device: state.deviceFilter,
         });
     }, [
         allItems,
+        state.creatorFilter,
+        state.deviceFilter,
         state.editor,
         state.editorCaret,
         state.editorFilterDismissed,
@@ -283,6 +344,14 @@ const CommonTextComposeModal = memo(() => {
         state.sortKey,
         state.untaggedOnly,
     ]);
+    // 空结果文案按起因分流：查询无命中 vs 筛选把结果清空，两种情况用户要做的事不一样。
+    const sourceFilterActive = state.creatorFilter !== "all" || state.deviceFilter !== "any";
+    const emptyListMessage =
+        allItems.length === 0
+            ? "No common text yet"
+            : filteredItems.length === 0 && sourceFilterActive
+              ? "No items from this filter"
+              : "No matching text";
     const editorFilterActive =
         !state.editorFilterDismissed && state.manualQuery.trim() === "" && state.editor.trim() !== "";
     // 相关度接管列表次序的两种情形：搜索框有字（手动搜索），或编辑器过滤生效。
@@ -302,6 +371,69 @@ const CommonTextComposeModal = memo(() => {
         const idx = Math.min(state.selectedIndex, filteredItems.length - 1);
         return filteredItems[idx] ?? null;
     }, [filteredItems, state.detailId, state.selectedIndex, state.open]);
+
+    // Notion 式属性网格：来源信息是只读的（由写入侧决定），所以这里全部是派生值。
+    // 值里的次要文本用独立 span，不嵌套 grid 项——嵌套会继承行样式把行高压乱。
+    const detailProperties = useMemo(() => {
+        const item = detailItem;
+        if (item == null) return [] as { label: string; value: React.ReactNode }[];
+        const kind = getCommonTextCreatorKind(item);
+        const device = getCommonTextOriginDeviceName(item);
+        const platform = item.origin?.platform?.trim();
+        const deviceId = getCommonTextOriginDeviceId(item);
+        return [
+            {
+                label: "Created by",
+                value: (
+                    <span className="inline-flex items-center gap-1">
+                        <i
+                            className={
+                                kind === "agent"
+                                    ? "fa-solid fa-robot text-[9px] text-sky-300"
+                                    : "fa-solid fa-user text-[9px] text-orange-300"
+                            }
+                        />
+                        <span>{describeCommonTextCreatorName(item)}</span>
+                        <span className="text-muted">· {kind}</span>
+                    </span>
+                ),
+            },
+            {
+                label: "Computer",
+                value: (
+                    // gap-1 的间距会被 truncate 吃掉（flex 子项收缩到 0 宽时中间空隙不可见），
+                    // 所以分隔符显式带空格，不依赖弹性间距。
+                    <span className="inline-flex min-w-0 items-center">
+                        <span className="truncate">{device}</span>
+                        {platform != null && platform !== "" && (
+                            <span className="shrink-0 text-muted">&nbsp;{platform}</span>
+                        )}
+                        <span className="shrink-0 truncate font-mono text-[10px] text-muted">&nbsp;· {deviceId}</span>
+                    </span>
+                ),
+            },
+            {
+                label: "Created",
+                value: <span>{compactCommonTextTime(item.createdat, true)}</span>,
+            },
+            {
+                label: "Updated",
+                value: <span>{formatSessionRelativeTime(item.updatedat)}</span>,
+            },
+            {
+                label: "Used",
+                value: (
+                    <span>
+                        {item.usagecount ?? 0} time{(item.usagecount ?? 0) === 1 ? "" : "s"}
+                        {item.lastusedat != null && item.lastusedat > 0 && (
+                            <span className="text-muted"> · last {formatSessionRelativeTime(item.lastusedat)}</span>
+                        )}
+                    </span>
+                ),
+            },
+        ];
+    }, [detailItem]);
+
 
     // 详情区一旦选中某 item 即永远编辑态（点选即编辑），不存在只读中间态。
     // detailDirty 仅用来提示"有未保存改动"，控制 footer 上 Save 行为是否禁言。
@@ -382,6 +514,7 @@ const CommonTextComposeModal = memo(() => {
                 setState((cur) => ({
                     ...cur,
                     detailId: null,
+                    detailEmoji: "",
                     detailTitle: "",
                     detailText: "",
                     detailDirty: false,
@@ -394,6 +527,7 @@ const CommonTextComposeModal = memo(() => {
             setState((s) => ({
                 ...s,
                 detailId: cur?.id ?? null,
+                detailEmoji: cur?.emoji ?? "",
                 detailTitle: cur?.title ?? "",
                 detailText: cur?.text ?? "",
                 detailDirty: false,
@@ -574,6 +708,7 @@ const CommonTextComposeModal = memo(() => {
         setState((cur) => ({
             ...cur,
             detailId: item.id,
+            detailEmoji: item.emoji ?? "",
             detailTitle: item.title,
             detailText: item.text,
             detailDirty: false,
@@ -711,6 +846,7 @@ const CommonTextComposeModal = memo(() => {
                     text,
                     tags: extractSessionTagsFromNote(text).tags,
                     pinned: detailItem?.pinned ?? false,
+                    emoji: state.detailEmoji,
                 },
                 id
             );
@@ -840,6 +976,7 @@ const CommonTextComposeModal = memo(() => {
             setState((cur) => ({
                 ...cur,
                 detailId: item.id,
+                detailEmoji: item.emoji ?? "",
                 detailTitle: item.title,
                 detailText: item.text,
                 detailDirty: false,
@@ -1180,6 +1317,63 @@ const CommonTextComposeModal = memo(() => {
                                 </InputRightElement>
                             </InputGroup>
                             {allItems.length > 0 && (
+                                <div
+                                    className="mt-2 flex min-w-0 items-center gap-1.5"
+                                    data-commontext-source-row=""
+                                >
+                                    <div
+                                        role="group"
+                                        aria-label="Filter by creator"
+                                        className="inline-flex shrink-0 items-center overflow-hidden rounded-md border border-border"
+                                    >
+                                        {CommonTextCreatorFilters.map((option) => {
+                                            const active = option.key === state.creatorFilter;
+                                            return (
+                                                <button
+                                                    key={option.key}
+                                                    type="button"
+                                                    data-commontext-creator={option.key}
+                                                    aria-pressed={active}
+                                                    title={option.label}
+                                                    aria-label={option.label}
+                                                    onClick={() => setState((cur) => ({ ...cur, creatorFilter: option.key, selectedIndex: 0 }))}
+                                                    className={
+                                                        "inline-flex items-center gap-1 px-2 py-0.5 text-[11px] leading-none cursor-pointer transition-colors " +
+                                                        (active
+                                                            ? "bg-actionsoft text-actionsofttext"
+                                                            : "text-secondary hover:bg-hover hover:text-primary")
+                                                    }
+                                                >
+                                                    <i className={option.icon + " text-[10px]"} />
+                                                    <span className="tabular-nums" data-commontext-creator-count={option.key}>
+                                                        {creatorCounts[option.key]}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {deviceSummaries.length > 1 && (
+                                        <select
+                                            data-commontext-device=""
+                                            aria-label="Filter by computer"
+                                            title="Filter by originating computer"
+                                            value={state.deviceFilter}
+                                            onChange={(e) =>
+                                                setState((cur) => ({ ...cur, deviceFilter: e.target.value, selectedIndex: 0 }))
+                                            }
+                                            className="min-w-0 max-w-[160px] shrink truncate h-[22px] rounded-md border border-border bg-surface-soft px-1.5 text-[11px] text-secondary cursor-pointer focus:outline-none focus:border-accent"
+                                        >
+                                            <option value="any">Any computer</option>
+                                            {deviceSummaries.map((d) => (
+                                                <option key={d.deviceid} value={d.deviceid}>
+                                                    {d.devicename} ({d.count})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+                            )}
+                            {allItems.length > 0 && (
                                 <div className="mt-2 flex min-w-0 items-center gap-1.5" data-commontext-sort-row="">
                                     <div
                                         role="group"
@@ -1288,7 +1482,7 @@ const CommonTextComposeModal = memo(() => {
                             {filteredItems.length === 0 ? (
                                 <div className="flex flex-1 min-h-[80px] items-center justify-center gap-2 text-secondary text-sm">
                                     <i className="fa fa-regular fa-quote-left text-xl opacity-60" />
-                                    <div>{allItems.length === 0 ? "No common text yet" : "No matching text"}</div>
+                                    <div>{emptyListMessage}</div>
                                 </div>
                             ) : (
                                 filteredItems.map((item, index) => {
@@ -1318,7 +1512,28 @@ const CommonTextComposeModal = memo(() => {
                                                 {item.pinned ? <i className="fa fa-solid fa-thumbtack text-[11px]" /> : null}
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <div className="text-xs font-medium truncate">{item.title}</div>
+                                                <div className="flex min-w-0 items-center gap-1.5">
+                                                    <span className="min-w-0 truncate text-xs font-medium">{item.title}</span>
+                                                    <span
+                                                        data-commontext-creator-badge={getCommonTextCreatorKind(item)}
+                                                        title={describeCommonTextSource(item)}
+                                                        className={
+                                                            "inline-flex shrink-0 items-center gap-1 rounded-sm border px-1 py-px text-[9.5px] leading-none " +
+                                                            (getCommonTextCreatorKind(item) === "agent"
+                                                                ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
+                                                                : "border-orange-400/30 bg-orange-400/10 text-orange-300")
+                                                        }
+                                                    >
+                                                        <i
+                                                            className={
+                                                                getCommonTextCreatorKind(item) === "agent"
+                                                                    ? "fa-solid fa-robot text-[8px]"
+                                                                    : "fa-solid fa-user text-[8px]"
+                                                            }
+                                                        />
+                                                        {describeCommonTextCreatorName(item)}
+                                                    </span>
+                                                </div>
                                                 <div className="text-[11px] text-secondary truncate">
                                                     {makePreview(item.text)}
                                                 </div>
@@ -1409,24 +1624,35 @@ const CommonTextComposeModal = memo(() => {
                         ) : (
                             <div className="flex-1 min-h-0 p-4 flex flex-col gap-2.5">
                                 {/* 详情区外层 padding+gap；All tags 只用分隔线组织，不形成嵌套卡片。 */}
-                                {/* 详情 head：title input 卡片化 + 右侧 38×38 Pin toggle 按钮（平铺一行） */}
-                                <div className="shrink-0 flex items-center gap-2">
+                                {/* 详情 head：Notion 式页面 —— page icon（emoji 槽）+ 大标题 + 右侧 Pin。
+                                    icon 槽与标题同一行：icon 是条目的「脸」，单独一行会把它变成装饰。 */}
+                                <div className="shrink-0 flex items-start gap-2">
+                                    <div className="shrink-0 pt-0.5">
+                                        <PageIconSlot
+                                            emoji={state.detailEmoji}
+                                            title={detailItem.title}
+                                            onChange={(emoji) =>
+                                                setState((cur) => ({ ...cur, detailEmoji: emoji, detailDirty: true }))
+                                            }
+                                        />
+                                    </div>
                                     <input
                                         type="text"
                                         value={state.detailTitle}
                                         onChange={(e) =>
                                             setState((cur) => ({ ...cur, detailTitle: e.target.value, detailDirty: true }))
                                         }
-                                        placeholder="Title (optional — auto-derived from text)"
-                                        className="flex-1 min-w-0 h-9 px-3 rounded-md border border-border bg-modalbg text-sm font-medium focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/30 transition-colors"
+                                        placeholder="Untitled"
+                                        className="flex-1 min-w-0 h-8 px-1 -ml-1 rounded border border-transparent bg-transparent text-[17px] font-semibold leading-8 hover:bg-surface-soft focus:outline-none focus:border-border focus:bg-modalbg transition-colors"
                                         spellCheck={false}
+                                        data-commontext-detail-title=""
                                     />
                                     <button
                                         type="button"
                                         onClick={() => fireAndForget(async () => handleDetailTogglePin())}
                                         title={detailItem.pinned ? "Unpin this text" : "Pin this text to the top of the list"}
                                         className={
-                                            "shrink-0 w-9 h-9 inline-flex items-center justify-center rounded-md border transition-colors cursor-pointer " +
+                                            "shrink-0 mt-0.5 w-8 h-8 inline-flex items-center justify-center rounded-md border transition-colors cursor-pointer " +
                                             (detailItem.pinned
                                                 ? "border-accent bg-highlightbg text-accent"
                                                 : "border-border bg-modalbg text-secondary hover:border-accent/70 hover:text-primary")
@@ -1434,6 +1660,25 @@ const CommonTextComposeModal = memo(() => {
                                     >
                                         <i className="fa fa-solid fa-thumbtack text-sm" />
                                     </button>
+                                </div>
+
+                                {/* 属性网格：label 定宽 + 值，行间只用细分隔线（不套卡片）。
+                                    值与 label 各自独立类名——嵌套会继承 grid 项样式把行高压乱。 */}
+                                <div className="shrink-0 flex flex-col" data-commontext-properties="">
+                                    {detailProperties.map((prop) => (
+                                        <div
+                                            key={prop.label}
+                                            data-commontext-property={prop.label}
+                                            className="flex items-start gap-2 border-b border-border/40 py-1 last:border-b-0"
+                                        >
+                                            <div className="w-[104px] shrink-0 text-[10.5px] leading-5 text-muted">
+                                                {prop.label}
+                                            </div>
+                                            <div className="min-w-0 flex-1 text-[11px] leading-5 text-secondary">
+                                                {prop.value}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
 
                                 {/* 详情 body：永远 textarea 形态（点选即编辑），卡片样式对齐原型尺寸 */}

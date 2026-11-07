@@ -13,3 +13,5 @@ ALTER TABLE db_common_text ADD COLUMN origin_devicename text;
 ALTER TABLE db_common_text ADD COLUMN origin_platform text;
 ALTER TABLE db_common_text ADD COLUMN rev integer NOT NULL DEFAULT 0;
 ALTER TABLE db_common_text ADD COLUMN deletedat real;
+-- Notion-style page icon for the item (empty = no icon).
+ALTER TABLE db_common_text ADD COLUMN emoji text;
