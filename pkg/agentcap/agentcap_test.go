@@ -37,6 +37,61 @@ func TestSchemaTextIsJSON(t *testing.T) {
 	}
 }
 
+// TestSchemaCoversSessionControlOps keeps the advertised schema in sync with the
+// operations agentdata actually accepts. An operation missing from the schema is
+// invisible to an agent that builds patches from it.
+func TestSchemaCoversSessionControlOps(t *testing.T) {
+	schemaText := SchemaText()
+	for _, op := range []string{
+		"session_note.update",
+		"session_title.update",
+		"session_prop.update",
+		"common_text.update",
+		"tag.rename",
+	} {
+		if !strings.Contains(schemaText, `"const": "`+op+`"`) {
+			t.Fatalf("schema does not declare operation %q", op)
+		}
+	}
+	var schema map[string]any
+	if err := json.Unmarshal([]byte(schemaText), &schema); err != nil {
+		t.Fatalf("schema should be valid JSON: %v", err)
+	}
+	defs, ok := schema["$defs"].(map[string]any)
+	if !ok {
+		t.Fatal("schema lost its $defs")
+	}
+	for _, def := range []string{"sessionTitleUpdate", "sessionPropUpdate", "propPatch"} {
+		if _, ok := defs[def]; !ok {
+			t.Fatalf("schema is missing $defs.%s", def)
+		}
+	}
+}
+
+// TestExamplesCoverSessionControlOps guards the copyable examples the same way.
+func TestExamplesCoverSessionControlOps(t *testing.T) {
+	examples := ExamplesText()
+	for _, want := range []string{"session_title.update", "session_prop.update"} {
+		if !strings.Contains(examples, want) {
+			t.Fatalf("examples do not show %q", want)
+		}
+	}
+}
+
+// TestAgentCardCommandsAreDiscoverable keeps the card shortcut advertised.
+func TestAgentCardCommandsAreDiscoverable(t *testing.T) {
+	for name, text := range map[string]string{
+		"guide":  GuideText(),
+		"prompt": ExternalAgentPrompt(),
+	} {
+		for _, want := range []string{"wsh agent card get", "wsh agent card set"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s text must advertise %q", name, want)
+			}
+		}
+	}
+}
+
 // TestLiveSessionCommandsAreDiscoverable guards the agent-control discovery
 // contract: the read-only session commands must be advertised in the guidance an
 // agent actually loads, otherwise the capability exists but is unreachable.

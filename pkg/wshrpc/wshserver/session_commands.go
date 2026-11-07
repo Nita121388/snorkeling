@@ -24,3 +24,14 @@ func (ws *WshServer) SessionGetCommand(ctx context.Context, data wshrpc.SessionG
 func (ws *WshServer) SessionListCommand(ctx context.Context, data wshrpc.SessionListRequest) (*wshrpc.SessionListResult, error) {
 	return agentcontrol.BuildSessionList(ctx, data)
 }
+
+// AgentCardGetCommand reads one session card (read-only).
+func (ws *WshServer) AgentCardGetCommand(ctx context.Context, data wshrpc.AgentCardGetRequest) (*wshrpc.AgentCardResult, error) {
+	return agentcontrol.GetAgentCard(ctx, data)
+}
+
+// AgentCardSetCommand writes one session card through the agentdata patch
+// pipeline. It is not read-only: dry-run unless Yes is set.
+func (ws *WshServer) AgentCardSetCommand(ctx context.Context, data wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error) {
+	return agentcontrol.SetAgentCard(ctx, data)
+}

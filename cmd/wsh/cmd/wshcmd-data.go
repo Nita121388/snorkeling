@@ -291,6 +291,9 @@ func formatApplySummary(report agentdata.Report) string {
 		for _, message := range operation.Messages {
 			fmt.Fprintf(&builder, "  note: %s\n", message)
 		}
+		for _, skipped := range operation.Skipped {
+			fmt.Fprintf(&builder, "  skipped: %s\n", skipped)
+		}
 		if operation.Error != "" {
 			fmt.Fprintf(&builder, "  error: %s\n", operation.Error)
 		}

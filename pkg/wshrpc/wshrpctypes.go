@@ -91,6 +91,9 @@ type WshRpcInterface interface {
 	SessionLiveCommand(ctx context.Context, data SessionLiveRequest) (*SessionLiveResult, error)
 	SessionGetCommand(ctx context.Context, data SessionGetRequest) (*SessionLiveRecord, error)
 	SessionListCommand(ctx context.Context, data SessionListRequest) (*SessionListResult, error)
+	// agent control surface (session card read/write, used by wsh agent card *)
+	AgentCardGetCommand(ctx context.Context, data AgentCardGetRequest) (*AgentCardResult, error)
+	AgentCardSetCommand(ctx context.Context, data AgentCardSetRequest) (*AgentCardSetResult, error)
 	WaveInfoCommand(ctx context.Context) (*WaveInfoData, error)
 	MacOSVersionCommand(ctx context.Context) (string, error)
 	WshActivityCommand(ct context.Context, data map[string]int) error
@@ -637,9 +640,9 @@ type SessionLiveResult struct {
 }
 
 type SessionGetRequest struct {
-	Identifier string `json:"identifier"`
-	BlockId    string `json:"blockid,omitempty"`
-	IncludeIdle bool  `json:"includeidle,omitempty"`
+	Identifier  string `json:"identifier"`
+	BlockId     string `json:"blockid,omitempty"`
+	IncludeIdle bool   `json:"includeidle,omitempty"`
 }
 
 type SessionListRequest struct {
@@ -657,6 +660,83 @@ type SessionListResult struct {
 	Partial     bool                `json:"partial,omitempty"`
 	Records     []SessionLiveRecord `json:"records"`
 	Warnings    []string            `json:"warnings,omitempty"`
+}
+
+// ---- Agent Control Surface: session card DTOs ----
+
+// AgentCardGetRequest identifies the session whose card should be read. `this`
+// resolves from BlockId (WAVETERM_BLOCKID in a block).
+type AgentCardGetRequest struct {
+	Identifier string `json:"identifier"`
+	BlockId    string `json:"blockid,omitempty"`
+}
+
+// AgentCardResult is the read side of a session card. Hash is the value the
+// caller must echo back as ExpectedHash to prove it saw the current state.
+type AgentCardResult struct {
+	Version     int              `json:"version"`
+	SessionKey  string           `json:"sessionkey"`
+	SessionId   string           `json:"sessionid"`
+	Provider    string           `json:"provider"`
+	Summary     *SessionLiveCard `json:"summary"`
+	Title       string           `json:"title"`
+	TitleSource string           `json:"titlesource"`
+	// Persona is intentionally always nil in v1: avatar/persona live only in
+	// frontend localStorage (design §15 D3), so the backend cannot read or write them.
+	Persona   *any   `json:"persona"`
+	Hash      string `json:"hash"`
+	UpdatedAt int64  `json:"updatedat"`
+}
+
+// AgentCardTagPatch mirrors agentdata.TagPatch without importing it: agentdata
+// transitively imports wshrpc, so referencing its types here would be a cycle.
+type AgentCardTagPatch struct {
+	Set    []string `json:"set,omitempty"`
+	Add    []string `json:"add,omitempty"`
+	Remove []string `json:"remove,omitempty"`
+	// HasSet distinguishes "set to empty" (clear) from "not provided".
+	HasSet bool `json:"hasset,omitempty"`
+}
+
+// AgentCardPropPatch mirrors agentdata.PropPatch.
+type AgentCardPropPatch struct {
+	Type  string `json:"type"`
+	Value any    `json:"value"`
+	Name  string `json:"name,omitempty"`
+}
+
+// AgentCardChangeReport mirrors agentdata.ChangeReport.
+type AgentCardChangeReport struct {
+	Field  string `json:"field"`
+	Before any    `json:"before"`
+	After  any    `json:"after"`
+}
+
+// AgentCardSetResult is the flattened agentdata.Report the CLI renders.
+type AgentCardSetResult struct {
+	DryRun    bool                    `json:"dryrun"`
+	Changed   bool                    `json:"changed"`
+	Target    string                  `json:"target,omitempty"`
+	Changes   []AgentCardChangeReport `json:"changes,omitempty"`
+	Messages  []string                `json:"messages,omitempty"`
+	Skipped   []string                `json:"skipped,omitempty"`
+	BackupIds []string                `json:"backupids,omitempty"`
+}
+
+// AgentCardSetRequest is the write side. Exactly one patch operation is built
+// from these fields, so note/tags/title/props applied together are atomic.
+type AgentCardSetRequest struct {
+	Identifier        string                        `json:"identifier"`
+	BlockId           string                        `json:"blockid,omitempty"`
+	Note              *string                       `json:"note,omitempty"`
+	Tags              *AgentCardTagPatch            `json:"tags,omitempty"`
+	Title             *string                       `json:"title,omitempty"`
+	Props             map[string]AgentCardPropPatch `json:"props,omitempty"`
+	Force             bool                          `json:"force,omitempty"`
+	ExpectedHash      string                        `json:"expectedhash,omitempty"`
+	ExpectedUpdatedAt int64                         `json:"expectedupdatedat,omitempty"`
+	DryRun            bool                          `json:"dryrun,omitempty"`
+	Yes               bool                          `json:"yes,omitempty"`
 }
 
 type AiMessageData struct {

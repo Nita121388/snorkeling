@@ -26,6 +26,18 @@ func ActivityCommand(w *wshutil.WshRpc, data wshrpc.ActivityUpdate, opts *wshrpc
 	return err
 }
 
+// command "agentcardget", wshserver.AgentCardGetCommand
+func AgentCardGetCommand(w *wshutil.WshRpc, data wshrpc.AgentCardGetRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentCardResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentCardResult](w, "agentcardget", data, opts)
+	return resp, err
+}
+
+// command "agentcardset", wshserver.AgentCardSetCommand
+func AgentCardSetCommand(w *wshutil.WshRpc, data wshrpc.AgentCardSetRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentCardSetResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentCardSetResult](w, "agentcardset", data, opts)
+	return resp, err
+}
+
 // command "agentprofilelist", wshserver.AgentProfileListCommand
 func AgentProfileListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]agentcatalog.ProfileInfo, error) {
 	resp, err := sendRpcRequestCallHelper[[]agentcatalog.ProfileInfo](w, "agentprofilelist", nil, opts)

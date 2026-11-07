@@ -563,6 +563,74 @@ declare global {
         conn?: {[key: string]: number};
     };
 
+    // wshrpc.AgentCardChangeReport
+    type AgentCardChangeReport = {
+        field: string;
+        before: any;
+        after: any;
+    };
+
+    // wshrpc.AgentCardGetRequest
+    type AgentCardGetRequest = {
+        identifier: string;
+        blockid?: string;
+    };
+
+    // wshrpc.AgentCardPropPatch
+    type AgentCardPropPatch = {
+        type: string;
+        value: any;
+        name?: string;
+    };
+
+    // wshrpc.AgentCardResult
+    type AgentCardResult = {
+        version: number;
+        sessionkey: string;
+        sessionid: string;
+        provider: string;
+        summary: SessionLiveCard;
+        title: string;
+        titlesource: string;
+        persona: any;
+        hash: string;
+        updatedat: number;
+    };
+
+    // wshrpc.AgentCardSetRequest
+    type AgentCardSetRequest = {
+        identifier: string;
+        blockid?: string;
+        note?: string;
+        tags?: AgentCardTagPatch;
+        title?: string;
+        props?: {[key: string]: AgentCardPropPatch};
+        force?: boolean;
+        expectedhash?: string;
+        expectedupdatedat?: number;
+        dryrun?: boolean;
+        yes?: boolean;
+    };
+
+    // wshrpc.AgentCardSetResult
+    type AgentCardSetResult = {
+        dryrun: boolean;
+        changed: boolean;
+        target?: string;
+        changes?: AgentCardChangeReport[];
+        messages?: string[];
+        skipped?: string[];
+        backupids?: string[];
+    };
+
+    // wshrpc.AgentCardTagPatch
+    type AgentCardTagPatch = {
+        set?: string[];
+        add?: string[];
+        remove?: string[];
+        hasset?: boolean;
+    };
+
     // wconfig.AgentModelConfigType
     type AgentModelConfigType = {
         id: string;

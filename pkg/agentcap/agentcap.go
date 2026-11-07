@@ -46,8 +46,23 @@ Workflow
 
 Supported Operations
 - session_note.update: update a session note and/or tags.
+- session_title.update: set a session title with titleSource="ai". Refused when the
+  existing title is user-authored unless "force": true (title contract: user > ai).
+- session_prop.update: set custom session properties (map of key -> {type, value}).
+  Built-in keys (note/tags/starred/title_source/created_at/updated_at) are refused;
+  values whose source is "user" are skipped unless "force": true.
 - common_text.update: update Common Text title, text/content, and/or tags.
 - tag.rename: rename a tag in sessions, common_text, or all.
+
+Session Card Shortcut
+- wsh agent card get <sessionKey|sessionId|this> --json   -> title/note/tags/props + hash
+- wsh agent card set <...> --note ... --tags-add ... --dry-run
+- wsh agent card set <...> --note ... --yes --expected-hash <hash>
+- wsh agent card set <...> --title "..." --yes --expected-hash <hash>
+- wsh agent card set <...> --title "..." --force --yes --expected-hash <hash>
+- wsh agent card set <...> --prop 优先级=select:P1 --yes --expected-hash <hash>
+- Writes are dry-run unless --yes; a real write requires --expected-hash. The CLI
+  builds the same patch these operations describe, so backups/audit apply too.
 
 Reading Live Agent Sessions (read-only)
 - These commands never write. Use them to discover what is running before touching data.
@@ -103,6 +118,8 @@ const patchSchemaJSON = `
       "items": {
         "oneOf": [
           { "$ref": "#/$defs/sessionNoteUpdate" },
+          { "$ref": "#/$defs/sessionTitleUpdate" },
+          { "$ref": "#/$defs/sessionPropUpdate" },
           { "$ref": "#/$defs/commonTextUpdate" },
           { "$ref": "#/$defs/tagRename" }
         ]
@@ -144,6 +161,72 @@ const patchSchemaJSON = `
         },
         "tags": {
           "$ref": "#/$defs/tags"
+        },
+        "expectedHash": {
+          "type": "string"
+        },
+        "expectedUpdatedAt": {
+          "type": "integer"
+        }
+      }
+    },
+    "sessionTitleUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sessionKey", "title"],
+      "properties": {
+        "type": {
+          "const": "session_title.update"
+        },
+        "sessionKey": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "force": {
+          "type": "boolean"
+        },
+        "expectedHash": {
+          "type": "string"
+        },
+        "expectedUpdatedAt": {
+          "type": "integer"
+        }
+      }
+    },
+    "propPatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": {
+          "enum": ["text", "number", "select", "multi_select", "status", "date", "checkbox", "url"]
+        },
+        "value": {},
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "sessionPropUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "sessionKey", "props"],
+      "properties": {
+        "type": {
+          "const": "session_prop.update"
+        },
+        "sessionKey": {
+          "type": "string"
+        },
+        "props": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/propPatch" }
+        },
+        "force": {
+          "type": "boolean"
         },
         "expectedHash": {
           "type": "string"
@@ -253,6 +336,39 @@ Update a Common Text item:
     ]
   }
 
+Set a session title (refused when the title is user-authored; add "force": true):
+
+  {
+    "version": 1,
+    "source": "agent",
+    "operations": [
+      {
+        "type": "session_title.update",
+        "sessionKey": "codex:SESSION_ID:/path/to/session.jsonl",
+        "title": "ACS 设计",
+        "expectedHash": "hash-from-export"
+      }
+    ]
+  }
+
+Set custom session properties (built-in keys are refused; user values need "force"):
+
+  {
+    "version": 1,
+    "source": "agent",
+    "operations": [
+      {
+        "type": "session_prop.update",
+        "sessionKey": "codex:SESSION_ID:/path/to/session.jsonl",
+        "props": {
+          "priority": { "type": "select", "value": "P1" },
+          "owner": { "type": "text", "value": "nita" }
+        },
+        "expectedHash": "hash-from-export"
+      }
+    ]
+  }
+
 Rename a tag everywhere:
 
   {
@@ -288,6 +404,9 @@ Rules:
 - Do not edit Snorkeling SQLite databases directly.
 - Use wsh data for AI session notes, session tags, and Common Text edits.
 - Use wsh session live --json to discover which agent sessions are running right now.
+- Use wsh agent card get for a session card, and wsh agent card set to write it;
+  writes are dry-run unless --yes and require --expected-hash, and never overwrite
+  a user-authored title/property without --force.
 - Export current data before creating a patch.
 - Run a dry-run before any real apply.
 - Apply only after explicit user confirmation.
@@ -299,6 +418,7 @@ Start here:
   wsh data examples
   wsh session live --json
   wsh session get this --json
+  wsh agent card get this --json
 
 Recommended workflow:
   wsh data export --domain all --out snorkeling-data.json
