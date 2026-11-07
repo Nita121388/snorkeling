@@ -29,10 +29,10 @@
 
 ```
 Transport (single active)
-├── ● Local folder (cloud drive)   [ready, recommended]   commontext.json 放进云盘目录
-├── ○ Git repository               [ready, needs token]   私有 repo 定时 commit
-├── ○ Self-hosted service          [planned, 置灰]        尚未实现（D1 方案 C）
-└── ○ Off · local only             [ready]                不启用传输
+├── ● Local folder (cloud drive)   [ready, recommended]    commontext.json 放进云盘目录
+├── ○ Git repository               [ready, needs token]    私有 repo 定时 commit
+├── ○ Self-hosted service          [ready, needs URL+token] 自建服务端，HTTP/WS 推送（2026-11-06 起真实现，不再 planned）
+└── ○ Off · local only             [ready]                 不启用传输
 ```
 
 三条硬规则，都能在原型里点到：
@@ -42,7 +42,9 @@ Transport (single active)
 2. **前置条件不满足就置灰 + 给配置入口**，不是"安装"：
    - Git 未配 token → 整行置灰，描述改成「需要先配置访问令牌（token 存 keyring，不写 settings）」，行内有 `Configure token…`
    - 配好 token 后同一行立刻变成可点，描述回到常规说明
-   - `Self-hosted service` 是 `status: planned`，置灰并写明「尚未实现」
+   - `Self-hosted service` 需要两个前置：服务器 URL（含协议）+ 服务端 token（存 keyring）；
+     两步配置逐级解锁——只填 URL 时提示「需要先配置服务端 token」，配完 token 才可选。
+     配置块含 Server URL / Token / Push mode（realtime 或轮询）/ Allow insecure http://（局域网开关，公网必须关）/ Test connection（模拟返回服务端版本与条目数）
 3. **切换 = 全量重同步 + 显式选边**：确认区**内联**在面板里（不另起浮层），
    先选 `This device wins` / `Remote wins` 作为基线，再 `Switch & re-sync`；
    取消则回到原 transport。从 `Off` 首次启用时不需要确认（没有历史数据要调和）。
@@ -198,6 +200,12 @@ Title                         ← 大号标题，可直接改
 文件层用「改名 + 原子替换 + 后写者按 rev 判冲突」，等账号体系统一后再换传输层。
 好处：数据格式（R1 的字段）现在就能定稿，换后端不用改 UI 和存储模型。
 
+> 2026-11-06 修订：用户明确 **自部署服务（C）也要实现**，不再「等账号体系后再说」。
+> 服务端最小形态（不引入完整账号体系）：单二进制 Go 服务，token 鉴权（首次启动生成打印），
+> REST：`GET /snapshot`（带 since-rev 增量）/ `PUT /snapshot`（带 base-rev 冲突检测），
+> 数据落同一套 SQLite schema（commontext_store.go 可直接复用）。
+> 三个 transport 的实现顺序：folder（最小）→ server（中等，真后端）→ git（最重，依赖外部 git）。
+
 **原型里已实现的接口形状**（落地时照此抽 transport）：
 
 ```go
@@ -215,6 +223,16 @@ type SyncTransport interface {
 三条判据，全中才动：① 需要独立发版（不发主程序也能更新适配器）；② 出现第三方适配器
 （用户自己写 S3 / WebDAV）；③ 同步从 Common Text 扩到 N 个域且各域传输需求不同。
 在此之前，「编译期枚举 + capabilities 门控」够用，不会把沙箱与权限模型提前背进来。
+
+### D6 分组折叠（2026-11-06 新增）
+
+设置块六个分组（Transport / 后端配置 / This computer / Conflicts / Scope / Maintenance）的标题
+都是可点按钮：点击折叠/展开，`aria-expanded` 同步，折叠体 `display:none` 不占布局。
+
+- 折叠状态是**纯视图偏好**（`wcFolded` 内存变量），不进 settings.json——真实实现如果要持久化，
+  存 localStorage 即可，与业务配置分开。
+- 折叠任何组不影响草稿值；Save 后重渲染，折叠状态保留（探针已验）。
+- 视觉沿用分组标题口径：11px/600/灰，前面一个 9px chevron，折叠时 rotate(-90deg)。
 
 ### D2 agent 身份怎么来（`createdBy.kind=agent` 时）
 
