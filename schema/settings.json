@@ -448,6 +448,59 @@
           },
           "type": "array"
         },
+        "commontext:sync:transport": {
+          "type": "string",
+          "enum": [
+            "none",
+            "folder",
+            "git",
+            "server"
+          ]
+        },
+        "commontext:sync:conflictpolicy": {
+          "type": "string",
+          "enum": [
+            "row-merge",
+            "newest",
+            "manual"
+          ]
+        },
+        "commontext:sync:devicename": {
+          "type": "string"
+        },
+        "commontext:sync:deviceid": {
+          "type": "string"
+        },
+        "commontext:sync:folder:path": {
+          "type": "string"
+        },
+        "commontext:sync:folder:watch": {
+          "type": "boolean"
+        },
+        "commontext:sync:git:remote": {
+          "type": "string"
+        },
+        "commontext:sync:git:interval": {
+          "type": "string"
+        },
+        "commontext:sync:git:hastoken": {
+          "type": "boolean"
+        },
+        "commontext:sync:server:url": {
+          "type": "string"
+        },
+        "commontext:sync:server:pushmode": {
+          "type": "string"
+        },
+        "commontext:sync:server:hastoken": {
+          "type": "boolean"
+        },
+        "commontext:sync:server:allowinsecure": {
+          "type": "boolean"
+        },
+        "commontext:sync:synctombstones": {
+          "type": "boolean"
+        },
         "agent:*": {
           "type": "boolean"
         },

@@ -223,6 +223,23 @@ type SettingsType struct {
 
 	CommonTextItems []CommonTextItemType `json:"commontext:items,omitempty"`
 
+	// Common Text cloud sync. One active transport at a time: the enum is closed (compile-time
+	// registry, not a plugin loader), and an unknown value falls back to "none" on read.
+	CommonTextSyncTransport      string `json:"commontext:sync:transport,omitempty" jsonschema:"enum=none,enum=folder,enum=git,enum=server"`
+	CommonTextSyncConflictPolicy string `json:"commontext:sync:conflictpolicy,omitempty" jsonschema:"enum=row-merge,enum=newest,enum=manual"`
+	CommonTextSyncDeviceName     string `json:"commontext:sync:devicename,omitempty"`
+	CommonTextSyncDeviceId       string `json:"commontext:sync:deviceid,omitempty"`
+	CommonTextSyncFolderPath     string `json:"commontext:sync:folder:path,omitempty"`
+	CommonTextSyncFolderWatch    *bool  `json:"commontext:sync:folder:watch,omitempty"`
+	CommonTextSyncGitRemote      string `json:"commontext:sync:git:remote,omitempty"`
+	CommonTextSyncGitInterval    string `json:"commontext:sync:git:interval,omitempty"`
+	CommonTextSyncGitHasToken    *bool  `json:"commontext:sync:git:hastoken,omitempty"`
+	CommonTextSyncServerUrl      string `json:"commontext:sync:server:url,omitempty"`
+	CommonTextSyncServerPushMode string `json:"commontext:sync:server:pushmode,omitempty"`
+	CommonTextSyncServerHasToken *bool  `json:"commontext:sync:server:hastoken,omitempty"`
+	CommonTextSyncServerInsecure *bool  `json:"commontext:sync:server:allowinsecure,omitempty"`
+	CommonTextSyncTombstones     *bool  `json:"commontext:sync:synctombstones,omitempty"`
+
 	AgentClear          bool                              `json:"agent:*,omitempty"`
 	AgentDefaultProfile string                            `json:"agent:defaultprofile,omitempty"`
 	AgentProfiles       map[string]AgentProfileConfigType `json:"agent:profiles,omitempty"`
