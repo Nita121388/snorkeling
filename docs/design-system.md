@@ -37,12 +37,14 @@ Monochrome is white-dominant and follows the light path for binary renderers suc
 
 | Role | Dark | Light | Monochrome |
 | --- | --- | --- | --- |
-| Canvas | `#222222` | `#ebe5d9` | `#fafafa` |
-| Primary text | `#f7f7f7` | `#4c3924` | `#0a0a0a` |
-| Secondary text | `#c3c8c2` | `#675033` | `#4a4a4a` |
-| Primary action | `#58c142` | `#7c49a1` | `#1a1a1a` |
+| Canvas | `#222222` | `#f2eee5` | `#f7f6f3` |
+| Primary text | `#f7f7f7` | `#3a3227` | `#1c1a16` |
+| Secondary text | `#c3c8c2` | `#635c52` | `#565148` |
+| Primary action | `#58c142` | `#714393` | `#2b2723` |
 | Primary action text | `#000000` | `#ffffff` | `#ffffff` |
-| Error | `#e54d2e` | `#d32f2f` | `#2a2a2a` |
+| Error | `#e54d2e` | `#d32f2f` | `#9c4a42` |
+
+Monochrome is a warm-paper black-and-white theme: neutrals carry a slight warm cast (hue ~40, saturation ≤26) so the app reads as paper rather than photocopy. Semantic colours stay low-chroma but sit at L 33–45 with saturation 20–66 — the "muddy" band is low chroma at mid lightness (L≈48), which reads as dirty rather than restrained. Monochrome canvas must stay at ΔE ≥ 4 against the light theme canvas, otherwise the two themes become indistinguishable.
 
 These values document the current palette. Features must consume roles rather than copying values.
 

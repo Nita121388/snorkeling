@@ -10,7 +10,7 @@ const TailwindSetup = readFileSync(new URL("../tailwindsetup.css", import.meta.u
 const ActionPalettes = [
     { theme: "dark", background: "#58c142", hover: "#76df60", text: "#000000" },
     { theme: "light", background: "#714393", hover: "#8c4cb1", text: "#ffffff" },
-    { theme: "monochrome", background: "#1a1a1a", hover: "#2a2a2a", text: "#ffffff" },
+    { theme: "monochrome", background: "#2b2723", hover: "#2e2b26", text: "#ffffff" },
 ];
 
 function luminance(color: string): number {

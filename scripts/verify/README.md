@@ -99,3 +99,4 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `property-editor`      | `verify.mjs` | 属性值下拉编辑器：md 预览浮层（已选标签无描边 + 行尾 ✓）/ agent 悬浮卡浮层 + 「指针移入附属浮层卡片不收起」 | ✅       |
 | `agent-card-tags`      | `verify.mjs` | Agent 卡片 Tags 候选：全局清单并入（候选含本会话未选标签）+ 候选项数字计数 + hover 卡与 AgentCardModal 候选一致（独立 profile + 端口 9234） | ✅       |
 | `commontext-meta-sort` | `verify.mjs` | CommonText 列表元信息列 / 图标排序控件 / 搜索态禁用 / 次数写入（独立 profile + 端口 9251）                  | ✅       |
+| `theme-monochrome`     | `verify.mjs` | 三主题矩阵：dark/light token 基线不变 + monochrome 目标值生效 + 终端 default-monochrome 16 色可读可辨（另有 check.py 纯静态判据，不启 GUI） | ✅       |
