@@ -1,0 +1,2047 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Common Text · 云同步元数据 + 创建者筛选 + Notion 式详情（原型）</title>
+<!-- 图标与系统字体同真实组件口径（Font Awesome），离线时回退为无语义方块，不影响布局判断 -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<style>
+  :root{
+    /* 取自 frontend/app/theme.scss 暗色主题 */
+    --bg:#222222;
+    --panel:#1b1c1b;
+    --panel-2:#262726;
+    --surface:rgba(255,255,255,.06);
+    --surface-soft:rgba(255,255,255,.04);
+    --border:rgba(255,255,255,.16);
+    --border-soft:rgba(255,255,255,.09);
+    --text:#f7f7f7;
+    --text-2:rgb(195,200,194);
+    --text-3:rgba(195,200,194,.55);
+    --accent:rgb(88,193,66);
+    --accent-soft:rgba(88,193,66,.12);
+    --accent-line:rgba(88,193,66,.4);
+    --warn:#e8c87c;
+    --err:#e87c7c;
+    --blue:#6fb3e0;
+    --orange:#e8a87c;
+    --mono:ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;
+    --ui:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:#151615;color:var(--text);font:13px/1.5 var(--ui);
+    display:flex;align-items:center;justify-content:center;height:100vh;
+  }
+  /* ===== 模态外框：镜像真实 commontext-compose-modal（900x620 兜底） ===== */
+  .modal{
+    width:min(96vw,1080px);height:min(92vh,720px);background:var(--bg);
+    border:1px solid var(--border);border-radius:10px;box-shadow:0 24px 60px rgba(0,0,0,.6);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  .modal-head{display:flex;align-items:flex-start;gap:10px;padding:14px 16px 10px}
+  .modal-head .titles{flex:1;min-width:0}
+  .modal-head .title{font-size:16px;font-weight:600;line-height:1.3}
+  .modal-head .sub{font-size:11px;color:var(--text-3);margin-top:2px}
+
+  /* ===== 顶部 compose 编辑区（镜像真实 commontext-compose-modal 的 editor + action row） ===== */
+  .compose{flex-shrink:0;padding:0 16px 8px;display:flex;flex-direction:column;gap:8px}
+  .compose textarea{
+    width:100%;resize:none;border-radius:5px;border:1px solid var(--border-soft);
+    background:var(--panel-2);color:var(--text);padding:6px 8px;outline:none;
+    font-family:var(--mono);font-size:13px;line-height:1.6;
+    height:36px;min-height:36px;overflow:hidden;white-space:nowrap;
+    transition:height .12s ease,min-height .12s ease;
+  }
+  .compose textarea::placeholder{color:var(--text-3)}
+  .compose textarea:focus{border-color:var(--accent-line);white-space:pre-wrap;overflow:auto}
+  .compose textarea.expanded{height:120px;min-height:120px;white-space:pre-wrap;overflow:auto}
+  .action-row{display:flex;align-items:center;gap:6px}
+  .action-row .sp{flex:1}
+
+  .modal-body{flex:1;min-height:0;display:flex;gap:0;border-top:1px solid var(--border-soft)}
+  .col-l{width:340px;min-width:340px;display:flex;flex-direction:column;border-right:1px solid var(--border-soft);min-height:0}
+  .col-r{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+
+  /* ===== 通用控件 ===== */
+  .chip{
+    display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:11px;
+    border:1px solid var(--border-soft);background:var(--surface-soft);color:var(--text-2);
+    font-size:11px;cursor:pointer;white-space:nowrap;user-select:none;
+  }
+  .chip:hover{background:var(--surface);color:var(--text)}
+  .chip.on{background:var(--accent-soft);border-color:var(--accent-line);color:var(--text)}
+  .chip .cnt{opacity:.6;font-variant-numeric:tabular-nums}
+  .icobtn{
+    display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+    border-radius:5px;border:0;background:transparent;color:var(--text-2);cursor:pointer;font-size:12px;
+  }
+  .icobtn:hover{background:var(--surface);color:var(--text)}
+  .icobtn.on{background:var(--accent-soft);color:var(--accent)}
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:5px;
+    border:1px solid var(--border-soft);background:var(--surface-soft);color:var(--text-2);
+    font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;
+  }
+  .btn:hover{background:var(--surface);color:var(--text)}
+  .btn.primary{background:var(--accent-soft);border-color:var(--accent-line);color:var(--text)}
+  .btn.primary:hover{background:rgba(88,193,66,.2)}
+  .btn.danger:hover{color:var(--err);border-color:rgba(232,124,124,.4)}
+  input,select,textarea{font:inherit;color:inherit}
+  .search{
+    flex:1;height:28px;padding:0 9px;border-radius:5px;border:1px solid var(--border-soft);
+    background:var(--panel-2);color:var(--text);outline:none;font-size:12px;
+  }
+  .search::placeholder{color:var(--text-3)}
+  .search:focus{border-color:var(--accent-line);background:var(--accent-soft)}
+  /* 注意：这里不能叫 .sel —— 会和列表行的 .item.sel 撞名，把行高强行改成 26px */
+  .devsel{
+    height:26px;padding:0 6px;border-radius:5px;border:1px solid var(--border-soft);
+    background:var(--panel-2);color:var(--text-2);font-size:11px;outline:none;cursor:pointer;
+  }
+  .devsel:focus{border-color:var(--accent-line)}
+
+  /* ===== 左栏 ===== */
+  .l-toolbar{padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0}
+  .row{display:flex;align-items:center;gap:6px;min-width:0}
+  .creator-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .creator-row .label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+  .tagrow{display:flex;gap:5px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .tagrow::-webkit-scrollbar{display:none}
+  .sortrow{display:flex;align-items:center;gap:2px}
+  .sortrow .sp{flex:1}
+  .list{flex:1;min-height:0;overflow-y:auto;padding:2px 6px 8px}
+  .list::-webkit-scrollbar{width:8px}
+  .list::-webkit-scrollbar-thumb{background:var(--surface);border-radius:4px}
+
+  .item{
+    /* 显式 grid：pin / icon / body / meta 四列。flex + 自动高度会让 .body 被压成单行高度，
+       摘要溢出到下一行行头上（原型首版真踩到）。 */
+    display:grid;grid-template-columns:14px 18px minmax(0,1fr) 54px;
+    gap:0 6px;align-items:start;
+    padding:6px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;
+  }
+  .item:hover{background:var(--surface-soft)}
+  .item.sel{background:var(--accent-soft);border-color:var(--accent-line)}
+  .item .pin{display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:10px;line-height:1.6}
+  .item .pin.on{color:var(--accent)}
+  .item .ico{font-size:13px;line-height:1.6;text-align:center}
+  .item .body{min-width:0}
+  .item .trow{display:flex;align-items:baseline;gap:5px;min-width:0;line-height:1.6}
+  .item .name{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .item .src{
+    flex-shrink:0;font-size:9px;line-height:1.4;padding:0 4px;border-radius:3px;
+    background:var(--surface-soft);border:1px solid var(--border-soft);color:var(--text-3);
+  }
+  .item .src.agent{color:var(--blue);border-color:rgba(111,179,224,.35);background:rgba(111,179,224,.1)}
+  .item .src.human{color:var(--orange);border-color:rgba(232,168,124,.3);background:rgba(232,168,124,.1)}
+  .item .sum{font-size:11px;line-height:1.5;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .item .meta{
+    text-align:right;font-size:10px;line-height:1.5;color:var(--text-3);
+    display:flex;flex-direction:column;gap:1px;align-items:flex-end;
+  }
+  .item .meta .m{display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}
+  .item .meta .m.zero{opacity:.4}
+  .item .conflict{color:var(--warn)}
+
+  .empty{padding:24px 16px;text-align:center;color:var(--text-3);font-size:12px}
+
+  /* ===== 右栏：页面式 ===== */
+  .r-head{display:flex;align-items:center;gap:8px;padding:10px 14px 0;flex-shrink:0}
+  .r-head .sp{flex:1}
+  .syncpill{
+    display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:12px;
+    border:1px solid var(--border-soft);background:var(--surface-soft);color:var(--text-2);
+    font-size:11px;cursor:pointer;user-select:none;
+  }
+  .syncpill:hover{background:var(--surface)}
+  .syncpill .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  .syncpill.busy .dot{background:var(--warn);animation:pulse 1s infinite}
+  .syncpill.conf .dot{background:var(--err)}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
+  .page{flex:1;min-height:0;overflow-y:auto;padding:14px 22px 10px}
+  .page::-webkit-scrollbar{width:8px}
+  .page::-webkit-scrollbar-thumb{background:var(--surface);border-radius:4px}
+
+  .page-icon-row{display:flex;align-items:flex-start;gap:10px}
+  .page-icon{
+    width:44px;height:44px;flex-shrink:0;border-radius:8px;border:1px solid transparent;
+    background:transparent;font-size:30px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;padding:0;
+  }
+  .page-icon:hover{background:var(--surface-soft);border-color:var(--border-soft)}
+  .page-icon.none{color:var(--text-3);font-size:18px;border:1px dashed var(--border-soft)}
+  .page-titlewrap{flex:1;min-width:0}
+  .page-title{
+    width:100%;border:0;background:transparent;outline:none;
+    font-size:22px;font-weight:600;line-height:1.25;color:var(--text);padding:4px 0;
+    border-bottom:1px solid transparent;
+  }
+  .page-title:focus{border-bottom-color:var(--border-soft)}
+  .page-title::placeholder{color:var(--text-3);font-weight:500}
+
+  .props{margin-top:12px;display:grid;grid-template-columns:104px 1fr;gap:2px 10px;align-items:center}
+  .pkey{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-3);padding:3px 0}
+  .pkey i{width:12px;text-align:center;font-size:11px}
+  .pval{font-size:12px;color:var(--text);padding:3px 0;display:flex;align-items:center;gap:6px;min-height:22px;flex-wrap:wrap}
+  /* 属性值里的次要文本（平台、时间戳、id）——必须用独立类：嵌套 .pval 会继承 grid 项样式并撑高整行 */
+  .psub{font-size:10.5px;color:var(--text-3);font-variant-numeric:tabular-nums}
+  .pval .agentbadge{
+    display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:0 5px;border-radius:3px;
+    background:rgba(111,179,224,.1);border:1px solid rgba(111,179,224,.35);color:var(--blue);
+  }
+  .pval .devchip{
+    display:inline-flex;align-items:center;gap:4px;font-size:10.5px;padding:0 6px;border-radius:3px;
+    background:var(--surface-soft);border:1px solid var(--border-soft);color:var(--text-2);
+  }
+  .pval .tchip{
+    font-size:10.5px;padding:0 6px;border-radius:3px;background:var(--surface-soft);
+    border:1px solid var(--border-soft);color:var(--text-2);
+  }
+  .pval .add{color:var(--text-3);cursor:pointer;font-size:11px}
+  .pval .add:hover{color:var(--accent)}
+  .pval .shortcut{font-family:var(--mono);font-size:11px;padding:0 5px;border-radius:3px;border:1px solid var(--border-soft);background:var(--surface-soft)}
+
+  .divider{height:1px;background:var(--border-soft);margin:12px 0 0}
+
+  .content-head{display:flex;align-items:center;gap:6px;margin:10px 0 8px}
+  .content-head .label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em}
+  .content-head .sp{flex:1}
+  .seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--border-soft);border-radius:5px;padding:1px;gap:1px}
+  .seg button{
+    font:inherit;font-size:11px;color:var(--text-2);background:transparent;border:0;
+    padding:2px 9px;border-radius:4px;cursor:pointer;display:flex;align-items:center;gap:4px;
+  }
+  .seg button.on{background:var(--surface);color:var(--text)}
+
+  .content-view{
+    border:1px solid var(--border-soft);border-radius:7px;background:var(--panel);
+    padding:12px 14px;min-height:120px;
+  }
+  .content-view h3{margin:0 0 6px;font-size:14px;font-weight:600}
+  .content-view p{margin:0 0 8px;font-size:12.5px;color:var(--text-2);line-height:1.65}
+  .content-view ul{margin:0 0 8px;padding-left:18px;font-size:12.5px;color:var(--text-2);line-height:1.7}
+  .content-view code{
+    font-family:var(--mono);font-size:11.5px;background:var(--surface);padding:1px 4px;border-radius:3px;
+  }
+  .content-edit{
+    width:100%;min-height:150px;resize:vertical;border:1px solid var(--border-soft);border-radius:7px;
+    background:var(--panel);color:var(--text);padding:12px 14px;outline:none;
+    font-family:var(--mono);font-size:12px;line-height:1.65;
+  }
+  .content-edit:focus{border-color:var(--accent-line)}
+
+  .r-foot{
+    flex-shrink:0;display:flex;align-items:center;gap:6px;padding:10px 14px;
+    border-top:1px solid var(--border-soft);
+  }
+  .r-foot .sp{flex:1}
+
+  /* ===== Emoji picker ===== */
+  .pop{
+    position:fixed;z-index:60;background:var(--panel);border:1px solid var(--border);
+    border-radius:9px;box-shadow:0 16px 40px rgba(0,0,0,.55);display:none;overflow:hidden;
+  }
+  .pop.show{display:block}
+  .emoji-pop{width:322px;max-height:340px;display:none;flex-direction:column}
+  .emoji-pop.show{display:flex}
+  .pop-search{padding:8px;border-bottom:1px solid var(--border-soft);flex-shrink:0}
+  .pop-search input{
+    width:100%;height:26px;border-radius:5px;border:1px solid var(--border-soft);
+    background:var(--panel-2);color:var(--text);padding:0 8px;outline:none;font-size:12px;
+  }
+  .pop-search input:focus{border-color:var(--accent-line)}
+  .pop-cats{display:flex;gap:2px;padding:6px 8px 0;flex-shrink:0}
+  .pop-cats button{
+    flex:1;height:24px;border:0;background:transparent;color:var(--text-3);font-size:14px;
+    line-height:1;border-radius:4px;cursor:pointer;
+  }
+  .pop-cats button.on{background:var(--surface);color:var(--text)}
+  .pop-grid{
+    /* 固定行高：靠 aspect-ratio:1 时行高会反过来把列宽推到 109px（原型实测），
+       8 列 ×109 直接冲出弹层。 */
+    flex:0 1 auto;max-height:220px;overflow-y:auto;padding:6px 8px 10px;
+    display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-auto-rows:34px;gap:2px;
+  }
+  .pop-grid::-webkit-scrollbar{width:8px}
+  .pop-grid::-webkit-scrollbar-thumb{background:var(--surface);border-radius:4px}
+  .ecell{
+    width:100%;height:34px;border:0;background:transparent;border-radius:5px;cursor:pointer;
+    font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;
+  }
+  .ecell:hover{background:var(--surface)}
+  .ecell.sel{background:var(--accent-soft)}
+  .pop-foot{
+    flex-shrink:0;border-top:1px solid var(--border-soft);padding:6px 8px;
+    display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--text-3);
+  }
+  .pop-foot span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pop-foot .rm{white-space:nowrap;color:var(--text-2);cursor:pointer}
+  .pop-foot .rm:hover{color:var(--err)}
+
+  /* ===== Sync panel ===== */
+  /* 高度上限压到 430px：面板展开后不应占满整窗（否则看起来像主界面而不是浮层）。
+     内容超出时只让 .sp-body 滚动，header / footer 固定。 */
+  .sync-pop{width:340px;padding:0;max-height:min(470px,calc(100vh - 24px));display:none;flex-direction:column}
+  .sync-pop .sp-head{flex-shrink:0}
+  .sync-pop .sp-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding-bottom:14px}
+  /* 内容确实超出时给底部渐隐，让"还能滚"看得出来——否则最后一行半截会读成裁切 bug */
+  .sync-pop .sp-body::after{
+    content:"";display:block;position:sticky;bottom:-14px;height:16px;margin-top:-16px;
+    background:linear-gradient(to top,var(--panel) 30%,transparent);
+    pointer-events:none;opacity:0;transition:opacity .15s;
+  }
+  .sync-pop .sp-body.scrollable::after{opacity:1}
+  .sync-pop .sp-body::-webkit-scrollbar{width:8px}
+  .sync-pop .sp-body::-webkit-scrollbar-thumb{background:var(--surface);border-radius:4px}
+  .sync-pop .sp-foot{flex-shrink:0}
+  .sync-pop.show{display:flex}
+  .sp-head{padding:10px 12px 8px;border-bottom:1px solid var(--border-soft)}
+  .sp-head .t{font-size:12px;font-weight:600}
+  .sp-head .s{font-size:10.5px;color:var(--text-3);margin-top:2px}
+  .sp-body{padding:10px 12px}
+  .sp-kv{display:grid;grid-template-columns:88px 1fr;gap:4px 8px;font-size:11px}
+  .sp-kv .k{color:var(--text-3)}
+  .sp-kv .v{color:var(--text-2)}
+  /* ---- 传输方式单选（编译期枚举 + 单活跃） ---- */
+  .sp-divider{height:1px;background:var(--border-soft);margin:2px 0 8px}
+  /* 内联切换确认：不另起浮层，直接插在 Transport 列表上方 */
+  .sw-inline{display:none;margin:0 0 8px;padding:8px;border-radius:7px;
+    border:1px solid var(--accent-line);background:var(--accent-soft)}
+  .sw-inline.show{display:block}
+  .sw-head{font-size:11.5px;color:var(--text);margin-bottom:3px}
+  .sw-note{font-size:10.5px;color:var(--text-3);line-height:1.45;margin-bottom:6px}
+  .sw-base{display:flex;flex-direction:column;gap:3px}
+  .sw-base .tx-opt{background:var(--panel-2)}
+  .sw-base .tx-opt.on{background:var(--surface)}
+  .sp-section{display:flex;align-items:center;gap:6px;margin:0 0 6px}
+  .sp-section .t{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em}
+  .sp-section .sp{flex:1}
+  .sp-section .single{font-size:9.5px;color:var(--text-3);border:1px solid var(--border-soft);padding:0 4px;border-radius:3px}
+  .tx{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}
+  .tx-opt{
+    display:grid;grid-template-columns:14px 1fr;gap:0 7px;align-items:start;
+    padding:5px 7px;border-radius:6px;border:1px solid var(--border-soft);
+    background:var(--surface-soft);cursor:pointer;
+  }
+  .tx-opt:hover{background:var(--surface)}
+  .tx-opt.on{border-color:var(--accent-line);background:var(--accent-soft)}
+  .tx-opt.disabled{opacity:.55;cursor:not-allowed}
+  .tx-opt.disabled:hover{background:var(--surface-soft)}
+  .tx-radio{
+    width:11px;height:11px;border-radius:50%;border:1.5px solid var(--text-3);margin-top:3px;
+    position:relative;flex-shrink:0;
+  }
+  .tx-opt.on .tx-radio{border-color:var(--accent)}
+  .tx-opt.on .tx-radio::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--accent)}
+  .tx-main{min-width:0}
+  .tx-name{font-size:11.5px;color:var(--text);display:flex;align-items:center;gap:5px}
+  .tx-name .badge{
+    font-size:9px;padding:0 4px;border-radius:3px;border:1px solid var(--border-soft);
+    color:var(--text-3);font-weight:400;
+  }
+  .tx-name .badge.rec{color:var(--accent);border-color:var(--accent-line)}
+  .tx-name .badge.need{color:var(--warn);border-color:rgba(232,200,124,.35)}
+  .tx-desc{
+    /* 必须是 block：inline 元素上 text-overflow:ellipsis 不生效，长文案会直接冲出面板右边界 */
+    display:block;font-size:10.5px;color:var(--text-3);line-height:1.4;margin-top:1px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .tx-cfg{grid-column:2;margin-top:4px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+  .tx-cfg .path{
+    flex:1;min-width:110px;font-family:var(--mono);font-size:10px;color:var(--text-2);
+    background:var(--panel-2);border:1px solid var(--border-soft);border-radius:4px;
+    padding:2px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .tx-cfg .btn{height:21px;font-size:10px;padding:0 7px}
+  .sp-devices{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+  .sp-devices .d{
+    display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2);
+    padding:4px 6px;border-radius:5px;background:var(--surface-soft);border:1px solid var(--border-soft);
+  }
+  .sp-devices .d .sp{flex:1}
+  .sp-devices .d .cur{font-size:9.5px;color:var(--accent);border:1px solid var(--accent-line);padding:0 4px;border-radius:3px}
+  .sp-devices .d .when{color:var(--text-3);font-variant-numeric:tabular-nums}
+  .sp-conf{margin-top:10px;padding:7px 8px;border-radius:6px;background:rgba(232,200,124,.08);border:1px solid rgba(232,200,124,.3);font-size:11px;color:var(--warn);display:none}
+  .sp-conf.show{display:block}
+  .sp-foot{border-top:1px solid var(--border-soft);padding:8px 12px;display:flex;gap:6px;flex-wrap:wrap}
+  .sp-foot .btn{height:24px;font-size:11px;padding:0 8px}
+
+  /* ============================================================
+     waveconfig 设置块（镜像 frontend/app/view/waveconfig/waveconfig.tsx）
+     - 左栏 w-48 border-r；条目 = name(text-sm) + description(text-xs muted)
+     - 标题栏：name(text-lg font-semibold) + docs 图标 + path(mono text-xs) ｜ Save
+     - Visual / Raw JSON 页签：bg-highlightbg 选中态
+     - 内容区 p-6 overflow-auto → max-w-2xl
+     - 表单行镜像 SectionRow：flex items-start gap-4 py-3 + divide-y divide-border
+     颜色全部走 theme.scss 的语义 token，不另造色值。
+     ============================================================ */
+  .wc{
+    position:fixed;inset:0;z-index:80;display:none;flex-direction:row;
+    background:var(--bg);color:var(--text);
+  }
+  .wc.show{display:flex}
+
+  /* ── 左栏 ── */
+  .wc-side{
+    width:192px;flex:0 0 192px;display:flex;flex-direction:column;
+    border-right:1px solid var(--border);background:var(--panel);overflow-y:auto;
+  }
+  .wc-sidehead{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px 16px;border-bottom:1px solid var(--border);
+    font-size:12px;font-weight:600;color:var(--text);
+  }
+  .wc-item{padding:8px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s}
+  .wc-item:hover{background:var(--surface)}
+  .wc-item.on{background:var(--accent-soft);color:var(--text);border-left:2px solid var(--accent);padding-left:14px}
+  .wc-item .nm{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wc-item .ds{font-size:10.5px;color:var(--text-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* ── 右栏 ── */
+  .wc-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+
+  /* 标题栏 */
+  .wc-head{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:8px 16px;border-bottom:1px solid var(--border);flex:0 0 auto;
+  }
+  .wc-head .l{display:flex;align-items:baseline;gap:8px;min-width:0}
+  .wc-head .nm{font-size:15px;font-weight:600;white-space:nowrap}
+  .wc-head .wc-doc{color:var(--text-3);font-size:12px;cursor:pointer}
+  .wc-head .wc-doc:hover{color:var(--text)}
+  .wc-head .path{font-size:11px;font-family:var(--mono);color:var(--text-3);margin-left:4px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wc-head .r{display:flex;align-items:baseline;gap:8px;flex:0 0 auto}
+  .wc-head .unsaved{font-size:11px;color:var(--warn)}
+  .wc-burger{display:none;border:none;background:transparent;color:var(--text-2);cursor:pointer;padding:4px;border-radius:4px}
+  .wc-burger:hover{background:var(--surface)}
+  .wc-save{
+    padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer;transition:background .12s;
+    border:1px solid var(--border);color:var(--text-3);background:transparent;
+  }
+  .wc-save:disabled{opacity:.5;cursor:default}
+  .wc-save:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line);color:var(--text)}
+  .wc-save:not(:disabled):hover{background:rgba(88,193,66,.2)}
+
+  /* Visual / Raw JSON 页签 */
+  .wc-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);flex:0 0 auto}
+  .wc-tab{
+    padding:4px 16px 6px;border:none;background:transparent;color:var(--text-2);
+    font:inherit;font-size:12px;cursor:pointer;transition:background .12s;
+  }
+  .wc-tab:hover{background:var(--surface)}
+  .wc-tab.on{background:var(--accent-soft);color:var(--text)}
+
+  /* 内容区 */
+  .wc-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:24px}
+  .wc-body > div, .wc-body > pre{max-width:672px}
+  .wc-lead{font-size:12px;color:var(--text-2);line-height:1.6;margin-bottom:16px}
+
+  /* 小节标题（真实组件用「Lead 文字 + divide-y 列表」，没有分组标题；
+     这里因为条目多，补一个轻量分组标题，样式取 text-xs font-medium muted） */
+  .wc-group{
+    font-size:11px;font-weight:600;color:var(--text-2);letter-spacing:.02em;
+    margin:20px 0 2px;
+  }
+  .wc-group:first-of-type{margin-top:4px}
+
+  /* 行容器：divide-y divide-border（真实组件同款） */
+  .wc-rows{display:flex;flex-direction:column}
+  .wc-rows > .wc-row + .wc-row{border-top:1px solid var(--border-soft)}
+
+  /* SectionRow：flex items-start gap-4 py-3 */
+  .wc-row{display:flex;align-items:flex-start;gap:16px;padding:12px 0}
+  .wc-row.disabled{opacity:.5}
+  .wc-row .t{flex:1 1 auto;min-width:0}
+  .wc-row .tt{font-size:12px;color:var(--text)}
+  .wc-row .td{font-size:10.5px;color:var(--text-3);margin-top:2px;line-height:1.5}
+  .wc-row .td.mono, .wc-row .td .mono{font-family:var(--mono);font-size:10.5px}
+  .wc-row .c{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding-top:2px}
+
+  .wc-note{font-size:10.5px;color:var(--text-3);line-height:1.5;margin-top:6px}
+
+  /* 输入控件：镜像真实组件 h-8 rounded border-border bg-panel px-2 text-xs */
+  .wc-input{
+    height:30px;min-width:280px;border-radius:4px;border:1px solid var(--border);
+    background:var(--panel-2);color:var(--text);padding:0 8px;outline:none;
+    font:inherit;font-size:11.5px;
+  }
+  .wc-input:focus{border-color:var(--accent-line)}
+  .wc-input.mono{font-family:var(--mono)}
+  .wc-input[readonly]{color:var(--text-2);background:var(--surface-soft)}
+
+  .wc-btn{
+    height:30px;padding:0 12px;border-radius:4px;border:1px solid var(--border);
+    background:var(--surface-soft);color:var(--text-2);font:inherit;font-size:11.5px;cursor:pointer;
+    white-space:nowrap;
+  }
+  .wc-btn:hover{background:var(--surface);color:var(--text)}
+  .wc-btn.danger:hover{color:var(--err);border-color:rgba(232,124,124,.45)}
+  .wc-icobtn{
+    width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;
+    border-radius:4px;border:1px solid var(--border);background:var(--surface-soft);
+    color:var(--text-2);font-size:11px;cursor:pointer;
+  }
+  .wc-icobtn:hover{background:var(--surface);color:var(--text)}
+
+  /* Toggle：镜像 element/toggle.scss（32×20，slider 16px，translateX(11px)） */
+  .wc-toggle{
+    position:relative;display:inline-block;width:32px;height:20px;border-radius:33px;
+    background:var(--border);cursor:pointer;flex:0 0 auto;transition:background .2s;
+  }
+  .wc-toggle::before{
+    content:"";position:absolute;height:16px;width:16px;left:3px;bottom:2px;
+    border-radius:50%;background:var(--text);transition:transform .2s;
+  }
+  .wc-toggle.on{background:var(--accent)}
+  .wc-toggle.on::before{transform:translateX(11px)}
+  .wc-toggle.locked{cursor:default;opacity:.85}
+
+  /* 单选行：复用 SectionRow 布局，左侧标题+说明，右侧圆点 */
+  .wc-radio{
+    width:14px;height:14px;border-radius:50%;border:1.5px solid var(--text-3);
+    position:relative;flex:0 0 auto;
+  }
+  .wc-row.on .wc-radio{border-color:var(--accent)}
+  .wc-row.on .wc-radio::after{content:"";position:absolute;inset:2.5px;border-radius:50%;background:var(--accent)}
+  .wc-row.pickable{cursor:pointer}
+  .wc-row.pickable:hover{background:var(--surface-soft)}
+  .wc-badge{
+    font-size:9px;padding:0 4px;border-radius:3px;border:1px solid var(--border-soft);
+    color:var(--text-3);font-weight:400;margin-left:6px;vertical-align:1px;
+  }
+  .wc-badge.rec{color:var(--accent);border-color:var(--accent-line)}
+  .wc-badge.need{color:var(--warn);border-color:rgba(232,200,124,.35)}
+
+  /* Raw JSON 面板 */
+  .wc-json{
+    margin:0;font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--text-2);
+    background:var(--panel-2);border:1px solid var(--border-soft);border-radius:5px;
+    padding:12px;white-space:pre-wrap;word-break:break-all;
+  }
+
+  /* 原型反馈提示（真实 waveconfig 没有 toast；只为点按钮时给个可见回应） */
+  .wc-toast{
+    position:absolute;left:50%;transform:translateX(-50%);bottom:20px;
+    display:none;align-items:center;gap:7px;max-width:calc(100% - 48px);
+    padding:6px 12px;border-radius:14px;font-size:11px;line-height:1.4;
+    border:1px solid var(--accent-line);background:rgba(30,42,28,.97);
+    box-shadow:0 8px 22px rgba(0,0,0,.55);color:var(--text);z-index:5;
+  }
+  .wc-toast.show{display:flex}
+  .wc-toast i{color:var(--accent);flex:0 0 auto;font-size:10px}
+  .wc-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 窄窗口：左栏折叠成抽屉（真实组件用 @max-w600:hidden + burger） */
+  @media (max-width:760px){
+    .wc-side{display:none}
+    .wc-burger{display:inline-flex}
+  }
+  .hint{
+    position:fixed;left:50%;bottom:14px;transform:translateX(-50%);
+    font-size:11px;color:var(--text-3);background:rgba(0,0,0,.5);padding:5px 10px;border-radius:12px;
+    border:1px solid var(--border-soft);
+  }
+  /* 原型导航条：三个面各一步直达，评审不用记入口路径 */
+  .nav{
+    position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:90;
+    display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:12px;
+    background:rgba(0,0,0,.72);border:1px solid var(--border-soft);backdrop-filter:blur(6px);
+  }
+  .navlbl{font-size:10px;color:var(--text-3);letter-spacing:.04em;text-transform:uppercase;margin-right:2px}
+  .navb{
+    display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:11px;
+    border:1px solid var(--border-soft);background:var(--surface-soft);color:var(--text-2);
+    font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;
+  }
+  .navb:hover{background:var(--surface);color:var(--text)}
+  .navb.on{border-color:var(--accent-line);background:var(--accent-soft);color:var(--text)}
+  .navsep{width:1px;height:14px;background:var(--border-soft);margin:0 2px}
+  .navhint{font-size:10.5px;color:var(--text-3);white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="modal">
+  <!-- ===== 头部 ===== -->
+  <div class="modal-head">
+    <div class="titles">
+      <div class="title">Common Text</div>
+      <div class="sub">Compose text. Click <b>+</b> to add a new item, click a row to edit it on the right; Insert drops it into the editor.</div>
+    </div>
+  </div>
+
+  <!-- ===== 顶部 compose 编辑区（真实组件同位置：editor 在上、动作行在下、双栏在下方） ===== -->
+  <div class="compose">
+    <textarea id="composer" placeholder="Compose here. The list below suggests common text matching what you type." spellCheck="false"></textarea>
+    <div class="action-row">
+      <button class="icobtn" id="btnEditorFilter" title="Filter list by editor content (type in editor to enable)"><i class="fa-solid fa-filter"></i></button>
+      <button class="icobtn" id="btnClearEditor" title="Clear editor"><i class="fa-solid fa-eraser"></i></button>
+      <button class="icobtn" id="btnSaveNew" title="Add new common text item (edit on the right)"><i class="fa-solid fa-plus"></i></button>
+      <button class="icobtn" id="btnCopyEditor" title="Copy editor content to clipboard"><i class="fa-regular fa-copy"></i></button>
+      <button class="btn primary" id="btnSendToTerm" title="Send editor content to the active terminal"><i class="fa-solid fa-paper-plane"></i> Send</button>
+      <span class="sp"></span>
+      <span class="sub" style="font-size:10.5px;color:var(--text-3)" id="composerHint">36px collapsed · expands on focus · folds back after 600ms when empty</span>
+    </div>
+  </div>
+
+  <div class="modal-body">
+    <!-- ===== 左栏 ===== -->
+    <div class="col-l">
+      <div class="l-toolbar">
+        <div class="row">
+          <input class="search" id="search" placeholder="Search title, text, tag…" />
+        </div>
+
+        <!-- 新增点 1：创建者筛选 -->
+        <div class="creator-row">
+          <span class="label">Creator</span>
+          <div class="chip on" data-creator="all">All <span class="cnt" id="cntAll"></span></div>
+          <div class="chip" data-creator="human">👤 Humans <span class="cnt" id="cntHuman"></span></div>
+          <div class="chip" data-creator="agent">🤖 Agents <span class="cnt" id="cntAgent"></span></div>
+          <select class="devsel" id="deviceSel" title="Filter by originating computer"></select>
+        </div>
+
+        <div class="tagrow" id="tagrow"></div>
+
+        <!-- 已有：排序图标组（上一版原型已落地） -->
+        <div class="sortrow">
+          <button class="icobtn on" data-sort="lastused-desc" title="Recently used"><i class="fa-solid fa-clock-rotate-left"></i></button>
+          <button class="icobtn" data-sort="updated-desc" title="Recently updated"><i class="fa-solid fa-pen"></i></button>
+          <button class="icobtn" data-sort="created-desc" title="Recently created"><i class="fa-solid fa-calendar-plus"></i></button>
+          <button class="icobtn" data-sort="usage-desc" title="Most used"><i class="fa-solid fa-fire"></i></button>
+          <button class="icobtn" data-sort="title-asc" title="Title A → Z"><i class="fa-solid fa-arrow-down-a-z"></i></button>
+          <span class="sp"></span>
+          <button class="icobtn" id="btnAdd" title="Add new common text item"><i class="fa-solid fa-plus"></i></button>
+        </div>
+      </div>
+
+      <div class="list" id="list"></div>
+    </div>
+
+    <!-- ===== 右栏 ===== -->
+    <div class="col-r">
+      <div class="r-head">
+        <span class="sp"></span>
+        <div class="syncpill" id="syncpill"><span class="dot"></span><span id="syncText">Synced · 2 min ago</span></div>
+      </div>
+
+      <div class="page" id="page"></div>
+
+      <div class="r-foot">
+        <button class="btn primary" id="btnInsert"><i class="fa-solid fa-arrow-down-to-line"></i> Insert</button>
+        <button class="btn" id="btnCopy"><i class="fa-regular fa-copy"></i> Copy</button>
+        <button class="btn" id="btnSend"><i class="fa-solid fa-paper-plane"></i> Send</button>
+        <span class="sp"></span>
+        <button class="btn danger" id="btnDelete"><i class="fa-solid fa-trash-can"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Emoji picker（复用 markdown `:` 选择器的同一份组件语义） ===== -->
+<div class="pop emoji-pop" id="emojiPop">
+  <div class="pop-search"><input id="emojiSearch" placeholder="Search emoji or :alias:" /></div>
+  <div class="pop-cats" id="emojiCats"></div>
+  <div class="pop-grid" id="emojiGrid"></div>
+  <div class="pop-foot">
+    <span id="emojiHint">Recent first · same recents as markdown “:” picker</span>
+    <span class="rm" id="emojiRemove">Remove emoji</span>
+  </div>
+</div>
+
+<!-- ===== 同步状态面板 ===== -->
+<div class="pop sync-pop" id="syncPop">
+  <div class="sp-head">
+    <div class="t">Cloud sync</div>
+    <div class="s">Common Text only · 编译期枚举 + 单活跃（见 README D1）</div>
+  </div>
+
+  <div class="sp-body" style="overflow-y:auto;min-height:0">
+    <!-- 传输方式单选：一次只能选一个，切换会触发全量重同步 -->
+    <div class="sp-section">
+      <span class="t">Transport</span>
+      <span class="sp"></span>
+      <span class="single" title="一次只能启用一个传输方式，防止数据分叉">single active</span>
+    </div>
+    <div id="switchInline" class="sw-inline"></div>
+    <div class="tx" id="txList"></div>
+
+    <div class="sp-divider"></div>
+    <div class="sp-kv">
+      <span class="k">Last sync</span><span class="v" id="spLast">2 min ago</span>
+      <span class="k">Items</span><span class="v" id="spItems">0</span>
+    </div>
+
+    <div class="sp-devices" id="spDevices"></div>
+    <div class="sp-conf" id="spConf"></div>
+  </div>
+
+  <div class="sp-foot" id="spFootNormal">
+    <button class="btn" id="simRemoteAdd"><i class="fa-solid fa-plus"></i> 另一设备新建</button>
+    <button class="btn" id="simAgentEdit"><i class="fa-solid fa-bolt"></i> Agent 改这条</button>
+    <button class="btn" id="simSyncNow"><i class="fa-solid fa-rotate"></i> Sync now</button>
+    <button class="btn" id="spSettings" title="Sync settings" aria-label="Sync settings"><i class="fa-solid fa-gear"></i></button>
+  </div>
+  <div class="sp-foot" id="spFootSwitch" style="display:none">
+    <button class="btn primary" id="swConfirm">Switch &amp; re-sync</button>
+    <button class="btn" id="swCancel">Cancel</button>
+  </div>
+</div>
+
+<!-- ===== 同步设置：作为 waveconfig 设置块的一个条目（不是独立弹窗） =====
+     镜像 frontend/app/view/waveconfig/waveconfig.tsx 的真实结构：
+       .wc            @container flex flex-col w-full h-full
+       ├─ .wc-side    左侧 ConfigSidebar（w-48，border-r，条目 = name + description）
+       └─ .wc-main
+          ├─ .wc-head   标题栏：name + docs 图标 + path（mono）｜右侧 Save / Unsaved changes
+          ├─ .wc-tabs   Visual / Raw JSON（仅 hasJsonView 的条目才有）
+          └─ .wc-body   visualComponent 渲染区（p-6 overflow-auto → max-w-2xl）
+    表单行镜像 agentnotifysettings.tsx 的 SectionRow：左标题+说明、右控件、divide-y 分行。
+-->
+<div class="wc" id="wcView" hidden>
+  <!-- 左栏：条目列表（真实组件里叫 ConfigSidebar） -->
+  <div class="wc-side">
+    <div class="wc-sidehead"><span>Config Files</span></div>
+    <div class="wc-item on">
+      <div class="nm">Sync</div>
+      <div class="ds">Common Text cloud sync</div>
+    </div>
+    <div class="wc-item">
+      <div class="nm">General</div>
+      <div class="ds">settings.json</div>
+    </div>
+    <div class="wc-item">
+      <div class="nm">App Theme</div>
+      <div class="ds">Light / Dark / Monochrome / System</div>
+    </div>
+    <div class="wc-item">
+      <div class="nm">Agent Notifications</div>
+      <div class="ds">OS toasts for agent done / blocked</div>
+    </div>
+    <div class="wc-item">
+      <div class="nm">Connections</div>
+      <div class="ds">SSH hosts and WSL distros</div>
+    </div>
+    <div class="wc-item">
+      <div class="nm">Sidebar Widgets</div>
+      <div class="ds">widgets.json</div>
+    </div>
+    <div class="wc-item">
+      <div class="nm">Wave AI Modes</div>
+      <div class="ds">Local models and BYOK</div>
+    </div>
+    <div class="wc-item">
+      <div class="nm">Secrets</div>
+      <div class="ds">secrets</div>
+    </div>
+  </div>
+
+  <!-- 右栏 -->
+  <div class="wc-main">
+    <!-- 标题栏：与真实组件同构（name / docs 图标 / path / Save） -->
+    <div class="wc-head">
+      <div class="l">
+        <button class="wc-burger" title="Config files" aria-label="Config files"><i class="fa-solid fa-bars"></i></button>
+        <span class="nm">Sync</span>
+        <a class="wc-doc" title="View documentation" aria-label="View documentation"><i class="fa-solid fa-book"></i></a>
+        <span class="path">settings.json</span>
+      </div>
+      <div class="r">
+        <span class="unsaved" id="wcUnsaved" hidden>Unsaved changes</span>
+        <button class="wc-save" id="wcSave" disabled>Save</button>
+      </div>
+    </div>
+
+    <!-- Visual / Raw JSON：只有 hasJsonView 的条目才显示；Sync 有 -->
+    <div class="wc-tabs">
+      <button class="wc-tab on" data-wctab="visual">Visual</button>
+      <button class="wc-tab" data-wctab="json">Raw JSON</button>
+    </div>
+
+    <div class="wc-body">
+      <!-- ===== Visual 面板 ===== -->
+      <div id="wcVisual">
+        <div class="wc-lead">
+          Common Text 可以同步到你的其它电脑。当前版本只同步 Common Text，一个传输方式、一份数据。
+        </div>
+
+        <!-- 传输方式：单选行，而不是独立弹窗里的卡片 -->
+        <div class="wc-group">Transport</div>
+        <div class="wc-rows" id="wcTxRows"></div>
+        <div class="wc-note" id="wcTxNote"></div>
+
+        <!-- 后端配置：只显示当前选中项的字段 -->
+        <div class="wc-group" id="wcCfgHead">Local folder</div>
+        <div class="wc-rows" id="wcCfgRows"></div>
+
+        <!-- 这台电脑 -->
+        <div class="wc-group">This computer</div>
+        <div class="wc-rows">
+          <div class="wc-row">
+            <div class="t">
+              <div class="tt">Name</div>
+              <div class="td">新建条目的「Computer」显示名。改名不影响历史条目（历史保留当时的名字）。</div>
+            </div>
+            <div class="c"><input class="wc-input" id="wcDevName" value="Home PC" /></div>
+          </div>
+          <div class="wc-row">
+            <div class="t">
+              <div class="tt">Device ID</div>
+              <div class="td">首次启动生成后不再变，与显示名解耦；同步靠它区分「同一台」和「另一台」。</div>
+            </div>
+            <div class="c">
+              <input class="wc-input mono" id="wcDevId" readonly value="dev-home-7c3a" />
+              <button class="wc-icobtn" id="wcDevCopy" title="Copy device ID" aria-label="Copy device ID"><i class="fa-solid fa-copy"></i></button>
+            </div>
+          </div>
+          <div class="wc-row">
+            <div class="t">
+              <div class="tt">Platform</div>
+              <div class="td">由运行环境决定，不可编辑。</div>
+            </div>
+            <div class="c"><input class="wc-input mono" id="wcDevPlat" readonly value="win32" /></div>
+          </div>
+        </div>
+
+        <!-- 冲突策略 -->
+        <div class="wc-group">Conflicts</div>
+        <div class="wc-rows" id="wcConflictRows"></div>
+        <div class="wc-note" id="wcConflictNote"></div>
+
+        <!-- 范围 -->
+        <div class="wc-group">Scope</div>
+        <div class="wc-rows">
+          <div class="wc-row">
+            <div class="t">
+              <div class="tt">Common Text</div>
+              <div class="td">当前版本只同步这一项。其它域（settings / notes / 会话）不在本次范围。</div>
+            </div>
+            <div class="c"><span class="wc-toggle on locked"><i></i></span></div>
+          </div>
+          <div class="wc-row">
+            <div class="t">
+              <div class="tt">Sync deletions (tombstones)</div>
+              <div class="td">关掉后删除只在本机生效，另一台设备会把条目推回来。</div>
+            </div>
+            <div class="c"><span class="wc-toggle on" id="wcTomb" role="switch" tabindex="0" aria-checked="true" aria-label="Sync deletions"></span></div>
+          </div>
+        </div>
+
+        <!-- 维护 -->
+        <div class="wc-group">Maintenance</div>
+        <div class="wc-rows">
+          <div class="wc-row">
+            <div class="t">
+              <div class="tt">Full re-sync</div>
+              <div class="td">忽略本机游标，把远端整份拉下来重新对账一次。</div>
+            </div>
+            <div class="c"><button class="wc-btn" id="wcResync">Re-sync</button></div>
+          </div>
+          <div class="wc-row">
+            <div class="t">
+              <div class="tt">Sync file</div>
+              <div class="td"><span class="mono" id="wcFilePath">~/OneDrive/Snorkeling/commontext.json</span></div>
+            </div>
+            <div class="c">
+              <button class="wc-icobtn" id="wcReveal" title="Reveal file" aria-label="Reveal file"><i class="fa-solid fa-folder-open"></i></button>
+              <button class="wc-icobtn" id="wcCopyPath" title="Copy path" aria-label="Copy path"><i class="fa-solid fa-copy"></i></button>
+            </div>
+          </div>
+          <div class="wc-row">
+            <div class="t">
+              <div class="tt">Reset sync state</div>
+              <div class="td">只清本机同步游标与 rev 缓存，不删条目、不动远端文件。</div>
+            </div>
+            <div class="c"><button class="wc-btn danger" id="wcReset">Reset</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Raw JSON 面板：真实组件这里是 Monaco，原型用等宽只读块表示 ===== -->
+      <pre class="wc-json" id="wcJson" hidden></pre>
+    </div>
+  </div>
+</div>
+
+<!-- 原型导航：三个面都要能一步点到，否则设置弹窗藏在 pill → gear 后面没人找得到 -->
+<div class="nav">
+  <span class="navlbl">原型</span>
+  <button class="navb" data-nav="main"><i class="fa-solid fa-list"></i> Main</button>
+  <button class="navb" data-nav="panel"><i class="fa-solid fa-cloud"></i> Sync status panel</button>
+  <button class="navb" data-nav="settings"><i class="fa-solid fa-gear"></i> Settings → Sync</button>
+  <span class="navsep"></span>
+  <span class="navhint">点 emoji / pill / 模拟按钮均可交互 · 假数据</span>
+</div>
+
+<script>
+/* ============================================================
+   数据模型（镜像 pkg/wconfig/settingsconfig.go CommonTextItemType + 新增元数据）
+   ============================================================ */
+const DEVICES = {
+  home:  { id:"dev-home-7c3a", name:"Home PC",   platform:"win32"  },
+  work:  { id:"dev-work-9f12", name:"Work Mac",  platform:"darwin" },
+  lab:   { id:"dev-lab-2b88",  name:"Lab Server",platform:"linux"  },
+};
+/** 条目上的 origin 是快照（设备改名后历史条目仍显示当时的名字），所以要显式拷字段。 */
+function originOf(dev){
+  return { deviceId: dev.id, deviceName: dev.name, platform: dev.platform };
+}
+
+const NOW = Date.now();
+
+/**
+ * 传输方式：编译期枚举（不是运行期插件加载器）。
+ * status: "ready" = 本版已实现；"planned" = 枚举里有位置但还没实现。
+ * 只注册一个 ready 实现（folder），接口先立起来——将来要真插件化，抽出去是机械转换。
+ */
+const TRANSPORTS = [
+  {
+    id:"folder", name:"Local folder (cloud drive)", status:"ready", badge:"recommended", badgeKind:"rec",
+    desc:"commontext.json 放进云盘目录，fsnotify 监听变更；零服务器、零账号。",
+    path:"~/OneDrive/Snorkeling/commontext.json",
+  },
+  {
+    id:"git", name:"Git repository", status:"ready", badge:"needs token", badgeKind:"need",
+    desc:"私有 repo 里定时 commit；天然版本历史，冲突可见。",
+    path:"git@github.com:nita/snorkeling-sync.git",
+  },
+  {
+    id:"server", name:"Self-hosted service", status:"planned",
+    desc:"实时推送 + 账号权限；需要服务器与鉴权体系。",
+    blockedNote:"尚未实现（D1 方案 C，需要账号体系先行）",
+  },
+  {
+    id:"none", name:"Off · local only", status:"ready",
+    desc:"不启用传输，条目只存在本机。",
+  },
+];
+
+const MIN = 60*1000, HOUR = 60*MIN, DAY = 24*HOUR;
+
+/* createdBy: {kind:'human'|'agent', name}; origin:{deviceId, deviceName, platform}; rev; deletedat */
+let ITEMS = [
+  { id:"ct1", emoji:"🧾", title:"Monthly SQL checklist", pinned:true, shortcut:"mchk",
+    text:"## Month-end SQL checklist\n\n- [ ] Verify `billing` table row counts match invoices\n- [ ] Reconcile `refunds` against payment gateway export\n- [ ] Export the summary to **finance** share\n\n> Run against the read replica, never prod.",
+    tags:["sql","report"], createdat:NOW-9*DAY, updatedat:NOW-5*HOUR, lastusedat:NOW-2*HOUR, usagecount:24,
+    createdBy:{kind:"human", name:"Nita"}, origin:originOf(DEVICES.home), rev:7 },
+  { id:"ct2", emoji:"🤖", title:"Agent handoff template", pinned:false, shortcut:"hof",
+    text:"## Handoff\n\n**What I did** — \n**Where it stops** — \n**Next step** — \n\nEvidence:\n- command → expected output\n- run id / commit",
+    tags:["template","agent"], createdat:NOW-3*DAY, updatedat:NOW-1*DAY, lastusedat:NOW-1*DAY, usagecount:6,
+    createdBy:{kind:"agent", name:"pi"}, origin:originOf(DEVICES.lab), rev:3 },
+  { id:"ct3", emoji:"🔍", title:"Log triage one-liner", pinned:false, shortcut:"logs",
+    text:"`rg -n --no-heading -C2 'ERROR|FATAL' <logdir> | head -200`\n\nThen group by the first stack frame.",
+    tags:["logs","snippet"], createdat:NOW-14*DAY, updatedat:NOW-6*DAY, lastusedat:NOW-4*HOUR, usagecount:31,
+    createdBy:{kind:"human", name:"Nita"}, origin:originOf(DEVICES.work), rev:11 },
+  { id:"ct4", emoji:"📮", title:"Release notes skeleton", pinned:false, shortcut:"rel",
+    text:"## <version>\n\n### Added\n### Fixed\n### Known issues\n\nBuilt by GitHub Actions on tag push; three platforms.",
+    tags:["release"], createdat:NOW-2*DAY, updatedat:NOW-2*DAY, lastusedat:0, usagecount:2,
+    createdBy:{kind:"agent", name:"claude"}, origin:originOf(DEVICES.home), rev:1 },
+  { id:"ct5", emoji:"🧪", title:"Verify harness command", pinned:false, shortcut:"vfy",
+    text:"`node scripts/verify/index.mjs` → pick an area → run with `--attach` when an instance is already up.\n\nExit codes: `0` green · `1` assertion failed · `2` environment error.",
+    tags:["verify","snippet"], createdat:NOW-5*DAY, updatedat:NOW-3*DAY, lastusedat:NOW-3*DAY, usagecount:12,
+    createdBy:{kind:"human", name:"Nita"}, origin:originOf(DEVICES.work), rev:4 },
+  { id:"ct6", emoji:"🧠", title:"Design doc skeleton", pinned:false, shortcut:"ddoc",
+    text:"**Problem** — \n**Options** — \n**Recommendation** — \n**Blast radius** — \n**Rollback** —",
+    tags:["template"], createdat:NOW-1*DAY, updatedat:NOW-20*HOUR, lastusedat:NOW-20*HOUR, usagecount:3,
+    createdBy:{kind:"agent", name:"codex"}, origin:originOf(DEVICES.lab), rev:2 },
+  { id:"ct7", emoji:"📊", title:"Weekly metrics query", pinned:false, shortcut:"wk",
+    text:"`SELECT date_trunc('week', created_at) AS wk, count(*) FROM sessions GROUP BY 1 ORDER BY 1 DESC LIMIT 12;`",
+    tags:["sql"], createdat:NOW-21*DAY, updatedat:NOW-8*DAY, lastusedat:NOW-8*DAY, usagecount:9,
+    createdBy:{kind:"human", name:"Nita"}, origin:originOf(DEVICES.home), rev:5 },
+  { id:"ct8", emoji:"🪝", title:"Git guardrail note", pinned:false, shortcut:"",
+    text:"Never `taskkill /IM node.exe /F` — pi itself is node. Kill by PID only.\n\nNever force-push shared branches.",
+    tags:["rules"], createdat:NOW-11*DAY, updatedat:NOW-11*DAY, lastusedat:NOW-11*DAY, usagecount:4,
+    createdBy:{kind:"agent", name:"pi"}, origin:originOf(DEVICES.home), rev:1 },
+];
+
+let state = {
+  selectedId: "ct1",
+  query: "",
+  editor: "",
+  editorFilterDismissed: false,
+  editorExpanded: false,
+  creator: "all",      // all | human | agent
+  device: "any",
+  tag: null,           // null | "untagged" | tag
+  sort: "lastused-desc",
+  contentMode: "preview", // preview | edit
+  sync: "synced",      // synced | busy | conflict
+  transport: "folder", // none | folder | git | server —— 全局单活跃
+  gitToken: false,     // git 传输的前置凭据（真实实现存 keyring）
+  // ── 同步设置（Sync settings 弹窗里编辑；真实实现落 settings.json + keyring）──
+  conflictPolicy: "row-merge",   // row-merge | newest | manual（README D4）
+  deviceName: "Home PC",         // 展示名，默认 hostname，可改
+  folderPath: "~/OneDrive/Snorkeling/commontext.json",
+  watchExternal: true,
+  gitRemote: "git@github.com:nita/snorkeling-sync.git",
+  gitInterval: "15m",
+  syncTombstones: true,          // 删除是否同步（墓碑）
+  conflictIds: new Set(),
+  lastSync: NOW - 2*MIN,
+  devicesOnline: [
+    { id:DEVICES.home.id, name:"Home PC", when:"now", current:true },
+    { id:DEVICES.work.id, name:"Work Mac", when:"1 min ago", current:false },
+    { id:DEVICES.lab.id, name:"Lab Server", when:"12 min ago", current:false },
+  ],
+};
+
+/* ============================================================
+   工具
+   ============================================================ */
+function relTime(ts){
+  if(!ts) return "—";
+  const d = Date.now()-ts;
+  if(d < MIN) return "now";
+  if(d < HOUR) return Math.floor(d/MIN)+"m";
+  if(d < DAY) return Math.floor(d/HOUR)+"h";
+  if(d < 7*DAY) return Math.floor(d/DAY)+"d";
+  return Math.floor(d/(7*DAY))+"w";
+}
+function absTime(ts){
+  if(!ts) return "—";
+  const dt = new Date(ts);
+  return dt.toLocaleString("en-US",{month:"short",day:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function devName(item){ return item.origin?.deviceName || "This machine"; }
+function creatorLabel(item){
+  const c = item.createdBy || {kind:"human",name:""};
+  if(c.kind === "agent") return `🤖 ${c.name || "agent"}`;
+  return `👤 ${c.name || "you"}`;
+}
+
+/* ============================================================
+   筛选 + 排序
+   ============================================================ */
+function matchesQuery(item, q){
+  if(!q) return true;
+  const hay = [item.title,item.text,(item.tags||[]).join(" "),creatorLabel(item),devName(item)].join(" ").toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every(t=>hay.includes(t));
+}
+function matchesCreator(item, c){
+  if(c === "all") return true;
+  const kind = item.createdBy?.kind || "human";
+  return kind === c;
+}
+function matchesDevice(item, d){
+  if(d === "any") return true;
+  return (item.origin?.deviceId || "local") === d;
+}
+function matchesTag(item, t){
+  if(!t) return true;
+  const tags = item.tags || [];
+  if(t === "untagged") return tags.length === 0;
+  return tags.some(x=>x.toLowerCase() === t.toLowerCase());
+}
+
+/* 先算「除某一维度外」的计数，避免点完后变成 0 条的困惑 */
+function baseForCreator(){
+  return ITEMS.filter(i=>matchesQuery(i,state.query) && matchesDevice(i,state.device) && matchesTag(i,state.tag));
+}
+function baseForDevice(){
+  return ITEMS.filter(i=>matchesQuery(i,state.query) && matchesCreator(i,state.creator) && matchesTag(i,state.tag));
+}
+function matchesComposer(item){
+  // 镜像真实行为：editor 有内容且未点灭 filter 按钮时，列表额外受 editor 内容过滤
+  if(state.editorFilterDismissed) return true;
+  const ed = state.editor.trim();
+  if(ed === "") return true;
+  const hay = [item.title,item.text,(item.tags||[]).join(" ")].join(" ").toLowerCase();
+  return ed.toLowerCase().split(/\s+/).filter(Boolean).every(t=>hay.includes(t));
+}
+function filtered(){
+  return ITEMS.filter(i=>
+    matchesQuery(i,state.query) && matchesCreator(i,state.creator) &&
+    matchesDevice(i,state.device) && matchesTag(i,state.tag) && matchesComposer(i));
+}
+
+const SORTS = {
+  "lastused-desc": (a,b)=>(b.lastusedat||0)-(a.lastusedat||0),
+  "updated-desc":  (a,b)=>(b.updatedat||0)-(a.updatedat||0),
+  "created-desc":  (a,b)=>(b.createdat||0)-(a.createdat||0),
+  "usage-desc":    (a,b)=>(b.usagecount||0)-(a.usagecount||0),
+  "title-asc":     (a,b)=>a.title.localeCompare(b.title),
+};
+function sortItems(items){
+  const primary = SORTS[state.sort] || SORTS["lastused-desc"];
+  return [...items].sort((a,b)=>{
+    if(!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    const p = primary(a,b); if(p !== 0) return p;
+    const u = (b.updatedat||0)-(a.updatedat||0); if(u !== 0) return u;
+    return a.title.localeCompare(b.title);
+  });
+}
+
+/* ============================================================
+   渲染：左栏列表
+   ============================================================ */
+function renderChips(){
+  const bc = baseForCreator();
+  document.getElementById("cntAll").textContent   = bc.length;
+  document.getElementById("cntHuman").textContent = bc.filter(i=>matchesCreator(i,"human")).length;
+  document.getElementById("cntAgent").textContent = bc.filter(i=>matchesCreator(i,"agent")).length;
+  document.querySelectorAll("[data-creator]").forEach(el=>{
+    el.classList.toggle("on", el.dataset.creator === state.creator);
+  });
+
+  // 设备下拉：计数随其它条件重算
+  const bd = baseForDevice();
+  const sel = document.getElementById("deviceSel");
+  const opts = [{v:"any", label:"Any computer", n:bd.length}];
+  Object.values(DEVICES).forEach(d=>{
+    opts.push({v:d.id, label:d.name, n:bd.filter(i=>matchesDevice(i,d.id)).length});
+  });
+  sel.innerHTML = opts.map(o=>`<option value="${o.v}">${o.v==="any"?"🖥":"💻"} ${esc(o.label)} · ${o.n}</option>`).join("");
+  sel.value = state.device;
+
+  // tag chips
+  const tags = {};
+  ITEMS.forEach(i=>(i.tags||[]).forEach(t=>{ tags[t] = (tags[t]||0)+1; }));
+  const untagged = ITEMS.filter(i=>(i.tags||[]).length===0).length;
+  const tagrow = document.getElementById("tagrow");
+  let html = `<div class="chip ${state.tag===null?"on":""}" data-tag="__none">All</div>`;
+  html += `<div class="chip ${state.tag==="untagged"?"on":""}" data-tag="untagged">untagged <span class="cnt">${untagged}</span></div>`;
+  Object.keys(tags).sort().forEach(t=>{
+    html += `<div class="chip ${state.tag===t?"on":""}" data-tag="${esc(t)}">#${esc(t)} <span class="cnt">${tags[t]}</span></div>`;
+  });
+  tagrow.innerHTML = html;
+  tagrow.querySelectorAll("[data-tag]").forEach(el=>{
+    el.onclick = ()=>{
+      const v = el.dataset.tag;
+      state.tag = v === "__none" ? null : (state.tag === v ? null : v);
+      render();
+    };
+  });
+
+  document.querySelectorAll("[data-sort]").forEach(el=>{
+    el.classList.toggle("on", el.dataset.sort === state.sort);
+  });
+}
+
+function renderList(){
+  const rows = sortItems(filtered());
+  const list = document.getElementById("list");
+  if(rows.length === 0){
+    // 空结果原因可能来自三个维度，文案要指向真正起因（否则用户会去改错的筛选）
+    const why = (state.editor.trim() !== "" && !state.editorFilterDismissed)
+      ? "No item matches the composer text. Click the funnel icon to stop filtering by it."
+      : state.creator !== "all" || state.device !== "any" || state.tag !== null
+        ? "No items match these filters. Try clearing the creator, computer or tag filter."
+        : "No items match this search.";
+    list.innerHTML = `<div class="empty">${esc(why)}</div>`;
+    return;
+  }
+  list.innerHTML = rows.map(i=>{
+    const kind = i.createdBy?.kind || "human";
+    const used = i.usagecount || 0;
+    const conflict = state.conflictIds.has(i.id);
+    return `
+    <div class="item ${i.id===state.selectedId?"sel":""}" data-id="${i.id}">
+      <div class="pin ${i.pinned?"on":""}"><i class="fa-solid fa-thumbtack"></i></div>
+      <div class="ico">${esc(i.emoji||"📄")}</div>
+      <div class="body">
+        <div class="trow">
+          <span class="name">${esc(i.title)}</span>
+          <span class="src ${kind}">${kind==="agent"?"🤖":"👤"} ${esc(i.createdBy?.name||"")}</span>
+          ${conflict?`<span class="src" style="color:var(--warn);border-color:rgba(232,200,124,.35);background:rgba(232,200,124,.1)" title="Conflicting edit">⚡</span>`:""}
+        </div>
+        <div class="sum">${esc((i.text||"").replace(/[#>*`]/g,"").slice(0,64))}</div>
+      </div>
+      <div class="meta">
+        <div class="m ${used===0?"zero":""}" title="Used ${used} time(s)"><i class="fa-solid fa-repeat"></i>${used}</div>
+        <div class="m" title="Updated ${absTime(i.updatedat)} · created ${absTime(i.createdat)} · ${devName(i)}"><i class="fa-solid fa-clock"></i>${relTime(i.updatedat)}</div>
+      </div>
+    </div>`;
+  }).join("");
+  list.querySelectorAll(".item").forEach(el=>{
+    el.onclick = ()=>{ state.selectedId = el.dataset.id; state.contentMode="preview"; render(); };
+  });
+}
+
+/* ============================================================
+   渲染：右栏页面式详情
+   ============================================================ */
+function renderPage(){
+  const page = document.getElementById("page");
+  const item = ITEMS.find(i=>i.id===state.selectedId);
+  if(!item){
+    page.innerHTML = `<div class="empty">Select an item on the left.</div>`;
+    return;
+  }
+  const c = item.createdBy || {kind:"human",name:""};
+  const o = item.origin || {deviceId:"local",deviceName:"This machine",platform:"—"};
+  const conflict = state.conflictIds.has(item.id);
+
+  const props = `
+    <div class="pkey"><i class="fa-solid ${c.kind==="agent"?"fa-robot":"fa-user"}"></i>Created by</div>
+    <div class="pval">
+      ${esc(c.name||"—")}
+      ${c.kind==="agent"?`<span class="agentbadge"><i class="fa-solid fa-robot"></i>agent</span>`:`<span class="agentbadge" style="background:rgba(232,168,124,.1);border-color:rgba(232,168,124,.3);color:var(--orange)"><i class="fa-solid fa-user"></i>human</span>`}
+    </div>
+
+    <div class="pkey"><i class="fa-solid fa-laptop"></i>Computer</div>
+    <div class="pval">
+      <span class="devchip"><i class="fa-brands ${o.platform==="darwin"?"fa-apple":o.platform==="linux"?"fa-linux":"fa-windows"}"></i>${esc(o.deviceName)}</span>
+      <span class="psub">${esc(o.platform||"")} · ${esc(o.deviceId||"")}</span>
+    </div>
+
+    <div class="pkey"><i class="fa-solid fa-calendar-plus"></i>Created</div>
+    <div class="pval">${absTime(item.createdat)}</div>
+
+    <div class="pkey"><i class="fa-solid fa-pen"></i>Updated</div>
+    <div class="pval">${relTime(item.updatedat)} <span class="psub">${absTime(item.updatedat)}</span></div>
+
+    <div class="pkey"><i class="fa-solid fa-hashtag"></i>Tags</div>
+    <div class="pval">
+      ${(item.tags||[]).map(t=>`<span class="tchip">#${esc(t)}</span>`).join("")}
+      <span class="add">+ add</span>
+    </div>
+
+    <div class="pkey"><i class="fa-solid fa-keyboard"></i>Shortcut</div>
+    <div class="pval">${item.shortcut?`<span class="shortcut">${esc(item.shortcut)}</span>`:`<span class="muted" style="color:var(--text-3)">—</span>`}</div>
+
+    <div class="pkey"><i class="fa-solid fa-fire"></i>Used</div>
+    <div class="pval">${item.usagecount||0}× <span class="psub">last ${relTime(item.lastusedat)}</span></div>
+
+    <div class="pkey"><i class="fa-solid fa-code-branch"></i>Revision</div>
+    <div class="pval">r${item.rev||0}${conflict?` <span class="agentbadge" style="color:var(--warn);background:rgba(232,200,124,.1);border-color:rgba(232,200,124,.35)"><i class="fa-solid fa-bolt"></i>conflict</span>`:""}</div>
+  `;
+
+  const content = state.contentMode === "edit"
+    ? `<textarea class="content-edit" id="contentEdit" spellCheck="false">${esc(item.text)}</textarea>`
+    : `<div class="content-view">${renderMarkdown(item.text)}</div>`;
+
+  page.innerHTML = `
+    <div class="page-icon-row">
+      <button class="page-icon ${item.emoji?"":"none"}" id="pageIcon" title="${item.emoji?"Change emoji":"Add an emoji"}">${esc(item.emoji||"😀+")}</button>
+      <div class="page-titlewrap">
+        <input class="page-title" id="pageTitle" value="${esc(item.title)}" placeholder="Untitled" />
+      </div>
+    </div>
+    <div class="props">${props}</div>
+    <div class="divider"></div>
+    <div class="content-head">
+      <span class="label">Content</span>
+      <span class="sp"></span>
+      <div class="seg">
+        <button class="${state.contentMode==="preview"?"on":""}" data-mode="preview"><i class="fa-solid fa-eye"></i>Preview</button>
+        <button class="${state.contentMode==="edit"?"on":""}" data-mode="edit"><i class="fa-solid fa-pen"></i>Edit</button>
+      </div>
+    </div>
+    ${content}
+  `;
+
+  // 交互绑定
+  document.getElementById("pageIcon").onclick = (e)=>{ openEmojiPicker(e.currentTarget); };
+  document.getElementById("pageTitle").onchange = (e)=>{
+    item.title = e.currentTarget.value.trim() || "Untitled";
+    item.updatedat = Date.now(); item.rev = (item.rev||0)+1; markDirty();
+  };
+  page.querySelectorAll("[data-mode]").forEach(b=>{
+    b.onclick = ()=>{ state.contentMode = b.dataset.mode; renderPage(); };
+  });
+  const ce = document.getElementById("contentEdit");
+  if(ce) ce.oninput = (e)=>{ item.text = e.currentTarget.value; };
+}
+
+/* 极简 markdown 渲染（只覆盖原型演示需要：## / - / ** / ` / > ） */
+function renderMarkdown(md){
+  const lines = String(md||"").split(/\r?\n/);
+  let out = "", inList = false;
+  const inline = (s)=>esc(s)
+    .replace(/`([^`]+)`/g,"<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")
+    .replace(/\[ \]/g,"☐").replace(/\[x\]/g,"☑");
+  for(const raw of lines){
+    const line = raw.replace(/\r/g,"");
+    if(/^##\s/.test(line)){
+      if(inList){ out += "</ul>"; inList=false; }
+      out += `<h3>${inline(line.replace(/^##\s/,""))}</h3>`;
+    } else if(/^-\s/.test(line)){
+      if(!inList){ out += "<ul>"; inList=true; }
+      out += `<li>${inline(line.replace(/^-\s/,""))}</li>`;
+    } else if(/^>\s/.test(line)){
+      if(inList){ out += "</ul>"; inList=false; }
+      out += `<p style="border-left:2px solid var(--border);padding-left:8px;color:var(--text-3)">${inline(line.replace(/^>\s/,""))}</p>`;
+    } else if(line.trim()===""){
+      if(inList){ out += "</ul>"; inList=false; }
+    } else {
+      if(inList){ out += "</ul>"; inList=false; }
+      out += `<p>${inline(line)}</p>`;
+    }
+  }
+  if(inList) out += "</ul>";
+  return out;
+}
+
+/* ============================================================
+   Emoji picker
+   ============================================================ */
+const EMOJI = {
+  recent: ["🧾","🤖","🔍","📮","🧪","🧠","📊","🪝","🚀","✅","⚠️","📌"],
+  people: ["👤","👥","🧑‍💻","🤖","🦾","🧠","👀","🙌","✍️","🫡","🧑‍🔬","🐣"],
+  work:   ["🧾","📮","📊","📈","📉","🗂","📁","📌","🔖","🪝","✅","⚠️","🔍","🧪","🛠","⚙️","🔧","📝","🗒","🧮","💡","🎯","⏱","📅"],
+  nature: ["🌊","🌱","🌿","🍀","🌲","🔥","❄️","☀️","🌙","⭐","🌈","🪐"],
+  faces:  ["😀","😄","😅","🙂","😉","😎","🤓","🥳","😴","🤔","🫠","😇"],
+  symbols:["🚀","⚡","💥","🔔","🔒","🔑","♻️","🧿","❗","❓","➕","➖","⬆️","⬇️"],
+};
+const CAT_ICONS = { recent:"🕘", people:"👤", work:"🧾", nature:"🌿", faces:"😀", symbols:"⚡" };
+let emojiState = { open:false, cat:"recent", query:"", anchor:null };
+
+function openEmojiPicker(anchorEl){
+  emojiState.open = true; emojiState.cat = "recent"; emojiState.query = "";
+  const pop = document.getElementById("emojiPop");
+  pop.classList.add("show");
+  const r = anchorEl.getBoundingClientRect();
+  const w = 322, h = 340;
+  let left = r.left, top = r.bottom + 6;
+  if(left + w > window.innerWidth - 8) left = window.innerWidth - w - 8;
+  if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  pop.style.left = left+"px"; pop.style.top = top+"px";
+  document.getElementById("emojiSearch").value = "";
+  renderEmoji();
+  setTimeout(()=>document.getElementById("emojiSearch").focus(), 0);
+}
+function closeEmojiPicker(){
+  emojiState.open = false;
+  document.getElementById("emojiPop").classList.remove("show");
+}
+function renderEmoji(){
+  const cats = document.getElementById("emojiCats");
+  cats.innerHTML = Object.keys(CAT_ICONS).map(k=>
+    `<button data-cat="${k}" class="${emojiState.cat===k?"on":""}" title="${k}">${CAT_ICONS[k]}</button>`).join("");
+  cats.querySelectorAll("[data-cat]").forEach(b=>{
+    b.onclick = ()=>{ emojiState.cat = b.dataset.cat; renderEmoji(); };
+  });
+
+  const q = emojiState.query.trim().toLowerCase();
+  let list;
+  if(q){
+    // 跨分类搜索（真实组件走同一份 catalog + alias）
+    list = [...new Set(Object.values(EMOJI).flat())];
+  } else {
+    list = EMOJI[emojiState.cat] || [];
+  }
+  const item = ITEMS.find(i=>i.id===state.selectedId);
+  const grid = document.getElementById("emojiGrid");
+  grid.innerHTML = list.map(e=>
+    `<button class="ecell ${item && item.emoji===e?"sel":""}" data-e="${esc(e)}">${e}</button>`).join("")
+    || `<div class="empty" style="grid-column:1/-1">No emoji</div>`;
+  grid.querySelectorAll(".ecell").forEach(b=>{
+    b.onclick = ()=>{
+      const it = ITEMS.find(i=>i.id===state.selectedId);
+      if(!it) return;
+      it.emoji = b.dataset.e;
+      it.updatedat = Date.now(); it.rev = (it.rev||0)+1;
+      // 写入 recents（真实实现复用 markdown `:` 选择器同一份 recents）
+      const rec = EMOJI.recent.filter(x=>x!==it.emoji); rec.unshift(it.emoji); EMOJI.recent = rec.slice(0,12);
+      closeEmojiPicker(); markDirty(); render();
+    };
+  });
+}
+document.getElementById("emojiSearch").oninput = (e)=>{ emojiState.query = e.currentTarget.value; renderEmoji(); };
+document.getElementById("emojiSearch").onkeydown = (e)=>{
+  if(e.key === "Escape"){ closeEmojiPicker(); }
+  if(e.key === "Enter"){
+    const first = document.querySelector("#emojiGrid .ecell");
+    if(first) first.click();
+  }
+};
+document.getElementById("emojiRemove").onclick = ()=>{
+  const it = ITEMS.find(i=>i.id===state.selectedId);
+  if(it){ it.emoji = ""; it.updatedat = Date.now(); markDirty(); }
+  closeEmojiPicker(); render();
+};
+
+/* ============================================================
+   同步面板
+   ============================================================ */
+function renderSyncPill(){
+  const pill = document.getElementById("syncpill");
+  const text = document.getElementById("syncText");
+  pill.classList.remove("busy","conf","off");
+  if(state.transport === "none"){ pill.classList.add("off"); text.textContent = "Local only"; return; }
+  if(state.sync === "busy"){ pill.classList.add("busy"); text.textContent = "Syncing…"; }
+  else if(state.sync === "conflict"){ pill.classList.add("conf"); text.textContent = `Conflict · ${state.conflictIds.size}`; }
+  else {
+    const t = relTime(state.lastSync);
+    text.textContent = t === "now" ? "Synced · just now" : `Synced · ${t} ago`;
+  }
+}
+
+/**
+ * 传输方式 = 编译期枚举（不是运行期插件）。
+ * 每个 transport 用 capabilities 描述自己的前置条件；UI 只做两件事：
+ * 1) 前置不满足就置灰并给配置入口（而不是"安装"）
+ * 2) 全局只能有一个 active —— 防止同一份数据被两条链路各写一遍导致分叉
+ */
+function renderTransportList(){
+  const box = document.getElementById("txList");
+  box.innerHTML = TRANSPORTS.map(t=>{
+    const active = state.transport === t.id;
+    // 可选中 = 已实现 && 前置条件满足 && 不是当前项
+    const blockedReason = transportBlockedBy(t);
+    const disabled = t.status !== "ready" || blockedReason !== null;
+    const cfg = t.id === "folder"
+      ? `<div class="tx-cfg"><span class="path" title="${esc(t.path)}">${esc(t.path)}</span><button class="btn" data-pick-folder>Change…</button></div>`
+      : t.id === "git" && !state.gitToken
+        ? `<div class="tx-cfg"><span class="path">git@github.com:nita/snorkeling-sync.git</span><button class="btn" data-config-git>Configure token…</button></div>`
+        : t.id === "git"
+          ? `<div class="tx-cfg"><span class="path">git@github.com:nita/snorkeling-sync.git</span><span class="badge" style="color:var(--accent);border-color:var(--accent-line)">token stored in keyring</span></div>`
+          : "";
+    return `
+      <div class="tx-opt ${active?"on":""} ${disabled?"disabled":""}" data-tx="${t.id}"
+           title="${active ? "Currently active" : disabled ? esc(blockedReason || t.blockedNote || "") : "Switch to " + esc(t.name)}">
+        <span class="tx-radio"></span>
+        <span class="tx-main">
+          <span class="tx-name">${esc(t.name)}${t.badge?`<span class="badge ${t.badgeKind||""}">${esc(t.badge)}</span>`:""}</span>
+          <span class="tx-desc">${esc(disabled && blockedReason ? blockedReason : t.desc)}</span>
+          ${active ? "" : cfg}
+        </span>
+      </div>`;
+  }).join("");
+
+  box.querySelectorAll("[data-tx]").forEach(el=>{
+    el.onclick = (e)=>{
+      const id = el.dataset.tx;
+      if(el.classList.contains("disabled") || id === state.transport) return;
+      e.stopPropagation();
+      if(state.transport === "none"){ applyTransport(id, "local"); return; }
+      openSwitchConfirm(state.transport, id);
+    };
+  });
+  box.querySelectorAll("[data-config-git]").forEach(b=>{
+    b.onclick = (e)=>{
+      e.stopPropagation();
+      state.gitToken = true;
+      renderSyncPanel();
+    };
+  });
+  box.querySelectorAll("[data-pick-folder]").forEach(b=>{
+    b.onclick = (e)=>{ e.stopPropagation(); closeSyncPanel(); };
+  });
+}
+
+/**
+ * 返回 null 表示可切换；返回字符串表示不可切 + 原因（直接作为 tooltip/描述）。
+ * 同时接受 transport 对象和 id 字符串：状态面板传对象，设置弹窗按 id 查（两处共用同一判据，
+ * 不允许各写一份，否则面板和设置页的可用性会分叉）。
+ */
+function transportBlockedBy(t){
+  const tx = typeof t === "string" ? TRANSPORTS.find(x=>x.id===t) : t;
+  if(!tx) return "unknown transport";
+  if(tx.status !== "ready") return tx.blockedNote || "尚未实现";
+  if(tx.id === "git" && !state.gitToken) return "需要先配置访问令牌（token 存 keyring，不写 settings）";
+  return null;
+}
+
+function renderSyncPanel(){
+  renderTransportList();
+  const t = TRANSPORTS.find(x=>x.id === state.transport);
+  document.getElementById("spLast").textContent = state.transport === "none" ? "—" : relTime(state.lastSync)+" ago";
+  document.getElementById("spItems").textContent = ITEMS.length;
+  const itemsEl = document.getElementById("spItems");
+  itemsEl.textContent = state.transport === "none"
+    ? `${ITEMS.length} · local only, nothing uploaded`
+    : state.transport === "git"
+      ? `${ITEMS.length} · commontext.json 8.4 KB · rev 7`
+      : `${ITEMS.length} · commontext.json 8.4 KB`;
+  const dev = document.getElementById("spDevices");
+  dev.innerHTML = state.transport === "none"
+    ? `<div class="d" style="opacity:.7"><i class="fa-solid fa-laptop"></i><span>Only this device</span><span class="sp"></span><span class="when">no sync</span></div>`
+    : state.devicesOnline.map(d=>`
+      <div class="d">
+        <i class="fa-solid fa-laptop"></i>
+        <span>${esc(d.name)}</span>
+        <span class="sp"></span>
+        ${d.current?`<span class="cur">this device</span>`:`<span class="when">${esc(d.when)}</span>`}
+      </div>`).join("");
+  const conf = document.getElementById("spConf");
+  conf.classList.toggle("show", state.conflictIds.size > 0);
+  if(state.conflictIds.size > 0) conf.textContent = `${state.conflictIds.size} item has a conflicting edit. Resolution policy is D4 in README.`;
+  // 面板内容可能超出 470px 上限：给底部渐隐提示（不是裁切 bug）
+  const body = document.querySelector("#syncPop .sp-body");
+  body.classList.toggle("scrollable", body.scrollHeight > body.clientHeight + 1);
+}
+
+function openSyncPanel(anchorEl){
+  const pop = document.getElementById("syncPop");
+  pop.classList.add("show");
+  const r = anchorEl.getBoundingClientRect();
+  const w = 340, h = Math.min(470, window.innerHeight - 24);
+  let left = r.right - w, top = r.bottom + 6;
+  if(left < 8) left = 8;
+  if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  pop.style.left = left+"px"; pop.style.top = top+"px";
+  pop.style.maxHeight = Math.min(470, window.innerHeight - top - 8) + "px";
+  renderSyncPanel();
+}
+function closeSyncPanel(){ document.getElementById("syncPop").classList.remove("show"); }
+
+/* ===== 切换确认：单活跃 + 全量重同步 + 显式选边（内联在面板里，不另起浮层） ===== */
+let switchPending = null; // {from, to, base}
+
+function transportName(id){ return TRANSPORTS.find(t=>t.id===id)?.name || id; }
+
+function openSwitchConfirm(from, to){
+  switchPending = { from, to, base: "local" };
+  renderSwitchInline();
+}
+function renderSwitchInline(){
+  const box = document.getElementById("switchInline");
+  const normal = document.getElementById("spFootNormal");
+  const swFoot = document.getElementById("spFootSwitch");
+  if(!switchPending){
+    box.classList.remove("show");
+    box.innerHTML = "";
+    normal.style.display = "";
+    swFoot.style.display = "none";
+    return;
+  }
+  box.classList.add("show");
+  box.innerHTML = `
+    <div class="sw-head">Switch to <b>${esc(transportName(switchPending.to))}</b></div>
+    <div class="sw-note">切换前会做一次全量重同步。两边条目可能不一致，先选一边作为基线：</div>
+    <div class="sw-base" id="swBase">
+      <label class="tx-opt ${switchPending.base==="local"?"on":""}" data-base="local">
+        <span class="tx-radio"></span>
+        <span class="tx-main">
+          <span class="tx-name">This device wins</span>
+          <span class="tx-desc">本机条目推上去；远端多出来的条目保留不删。</span>
+        </span>
+      </label>
+      <label class="tx-opt ${switchPending.base==="remote"?"on":""}" data-base="remote">
+        <span class="tx-radio"></span>
+        <span class="tx-main">
+          <span class="tx-name">Remote wins</span>
+          <span class="tx-desc">以远端为基线；本机未同步条目按新条目追加。</span>
+        </span>
+      </label>
+    </div>`;
+  normal.style.display = "none";
+  swFoot.style.display = "";
+  box.querySelectorAll("[data-base]").forEach(el=>{
+    el.onclick = (e)=>{
+      e.stopPropagation();
+      switchPending.base = el.dataset.base;
+      renderSwitchInline();
+    };
+  });
+}
+function closeSwitchConfirm(){
+  switchPending = null;
+  renderSwitchInline();
+}
+function applyTransport(to, base){
+  state.transport = to;
+  state.sync = "busy";
+  switchPending = null;
+  renderSwitchInline();
+  renderSyncPill(); renderSyncPanel();
+  setTimeout(()=>{
+    state.sync = state.conflictIds.size > 0 ? "conflict" : "synced";
+    state.lastSync = Date.now();
+    renderSyncPill(); renderSyncPanel();
+  }, 1100);
+}
+document.getElementById("swCancel").onclick = (e)=>{ e.stopPropagation(); closeSwitchConfirm(); };
+document.getElementById("swConfirm").onclick = (e)=>{
+  e.stopPropagation();
+  if(!switchPending) return;
+  applyTransport(switchPending.to, switchPending.base);
+};
+
+function markDirty(){
+  state.sync = state.conflictIds.size > 0 ? "conflict" : "busy";
+  renderSyncPill(); renderSyncPanel();
+  setTimeout(()=>{
+    state.sync = state.conflictIds.size > 0 ? "conflict" : "synced";
+    state.lastSync = Date.now();
+    renderSyncPill(); renderSyncPanel();
+  }, 900);
+}
+
+/* ============================================================
+   顶部 compose 编辑区（镜像真实：36px 折叠 → 聚焦展开 → 600ms 后按内容收回）
+   ============================================================ */
+const composer = document.getElementById("composer");
+let composerCollapseTimer = null;
+
+function renderComposer(){
+  composer.classList.toggle("expanded", state.editorExpanded);
+  document.getElementById("btnEditorFilter").classList.toggle("on", state.editor.trim() !== "" && !state.editorFilterDismissed);
+  document.getElementById("composerHint").textContent = state.editorExpanded
+    ? "expanded · folds back after 600ms when empty"
+    : "36px collapsed · expands on focus";
+}
+composer.addEventListener("input", (e)=>{
+  state.editor = e.currentTarget.value;
+  renderComposer();
+  renderList(); // editor 过滤会改变左栏列表
+});
+composer.addEventListener("focus", ()=>{
+  if(composerCollapseTimer != null){ clearTimeout(composerCollapseTimer); composerCollapseTimer = null; }
+  state.editorExpanded = true; renderComposer();
+});
+composer.addEventListener("blur", ()=>{
+  const hasNewline = composer.value.includes("\n");
+  if(composerCollapseTimer != null) clearTimeout(composerCollapseTimer);
+  composerCollapseTimer = setTimeout(()=>{
+    composerCollapseTimer = null;
+    state.editorExpanded = hasNewline;
+    renderComposer();
+  }, 600);
+});
+document.getElementById("btnEditorFilter").onclick = ()=>{
+  if(state.editor.trim() === "") return;
+  state.editorFilterDismissed = !state.editorFilterDismissed;
+  renderComposer(); renderList();
+};
+document.getElementById("btnClearEditor").onclick = ()=>{
+  state.editor = ""; composer.value = ""; renderComposer(); renderList();
+};
+document.getElementById("btnCopyEditor").onclick = (e)=>flash(e.currentTarget, "Copied");
+document.getElementById("btnSendToTerm").onclick = (e)=>flash(e.currentTarget, "Sent");
+
+/* 右栏 Insert 真的把正文落到 composer（真实行为：Insert drops it into the editor） */
+document.getElementById("btnInsert").onclick = () => {
+  const it = ITEMS.find(i=>i.id===state.selectedId);
+  if(!it) return;
+  state.editor = it.text;
+  composer.value = it.text;
+  it.usagecount = (it.usagecount||0)+1;
+  it.lastusedat = Date.now();
+  state.editorExpanded = true;
+  renderComposer(); render();
+  const btn = document.getElementById("btnInsert");
+  const old = btn.innerHTML;
+  btn.innerHTML = `<i class="fa-solid fa-check"></i> Inserted`;
+  setTimeout(()=>{ btn.innerHTML = old; }, 900);
+};
+
+/* ============================================================
+   事件
+   ============================================================ */
+function render(){
+  renderChips();
+  renderList();
+  renderPage();
+  renderSyncPill();
+  renderSyncPanel();
+}
+
+document.getElementById("search").oninput = (e)=>{ state.query = e.currentTarget.value; render(); };
+document.querySelectorAll("[data-creator]").forEach(el=>{
+  el.onclick = ()=>{ state.creator = el.dataset.creator; render(); };
+});
+document.getElementById("deviceSel").onchange = (e)=>{ state.device = e.currentTarget.value; render(); };
+document.querySelectorAll("[data-sort]").forEach(el=>{
+  el.onclick = ()=>{ state.sort = el.dataset.sort; render(); };
+});
+document.getElementById("syncpill").onclick = (e)=>{ e.stopPropagation(); openSyncPanel(e.currentTarget); };
+document.addEventListener("click", (e)=>{
+  if(!e.target.closest("#emojiPop") && !e.target.closest("#pageIcon")) closeEmojiPicker();
+  if(!e.target.closest("#syncPop") && !e.target.closest("#syncpill")) closeSyncPanel();
+  // 内联确认跟着面板一起关：点面板外就撤销待切换状态
+  if(!e.target.closest("#syncPop") && !e.target.closest("#syncpill") && switchPending) closeSwitchConfirm();
+});
+
+document.getElementById("simSyncNow").onclick = ()=>{
+  if(state.transport === "none"){ return; }
+  state.sync = "busy"; renderSyncPill();
+  setTimeout(()=>{ state.sync = state.conflictIds.size>0?"conflict":"synced"; state.lastSync = Date.now(); renderSyncPill(); renderSyncPanel(); }, 800);
+};
+document.getElementById("simRemoteAdd").onclick = ()=>{
+  const d = DEVICES.work;
+  const id = "ct-remote-" + Math.random().toString(36).slice(2,7);
+  ITEMS.unshift({
+    id, emoji:"💻", title:"From Work Mac · scratch note",
+    text:"Created on another device, arrived via sync.\n\nCheck the **Computer** property — it says Work Mac.",
+    tags:["scratch"], createdat:Date.now(), updatedat:Date.now(), lastusedat:0, usagecount:0,
+    createdBy:{kind:"human",name:"Nita"}, origin:d, rev:1,
+  });
+  state.sync = "busy"; render(); renderSyncPill();
+  setTimeout(()=>{ state.sync = "synced"; state.lastSync = Date.now(); renderSyncPill(); renderSyncPanel(); }, 800);
+};
+document.getElementById("simAgentEdit").onclick = ()=>{
+  const it = ITEMS.find(i=>i.id===state.selectedId);
+  if(!it) return;
+  state.conflictIds.add(it.id);
+  it.rev = (it.rev||0)+1;
+  state.sync = "conflict";
+  render(); renderSyncPanel();
+};
+
+/* ============================================================
+   同步设置（waveconfig 设置块里的 Sync 条目）
+   - 与状态面板共用 state.transport / state.gitToken（单一数据源，不另存一份）
+   - 编辑是草稿态：切走 / 关块丢弃；Save 才落到 state
+     （真实实现 = SetConfigCommand 写 settings.json，token 走 keyring）
+   - 可用性判据只有一处：transportBlockedBy()
+   ============================================================ */
+const CONFLICT_POLICIES = [
+  { id:"row-merge", name:"Merge per row, mark only real conflicts",
+    desc:"同一条两边都改且改到同一字段才算冲突；能按行合并的自动合并。", rec:true },
+  { id:"newest", name:"Newest wins",
+    desc:"按 updatedat 取新的，旧的被覆盖（可能丢另一端改动）。" },
+  { id:"manual", name:"Always ask",
+    desc:"每次冲突都停下来让你选，同步会一直卡住直到处理完。" },
+];
+
+let wcDraft = null;      // 打开时的 state 快照（草稿）
+let wcDirty = false;
+
+function openWcView(){
+  document.querySelector(".nav").style.display = "none";   // 导航属于主界面，设置块里不显示
+  wcDraft = {
+    transport: state.transport,
+    conflictPolicy: state.conflictPolicy,
+    deviceName: state.deviceName,
+    folderPath: state.folderPath,
+    watchExternal: state.watchExternal,
+    gitRemote: state.gitRemote,
+    gitInterval: state.gitInterval,
+    gitToken: state.gitToken,
+    syncTombstones: state.syncTombstones,
+  };
+  wcDirty = false;
+  document.getElementById("wcView").classList.add("show");
+  setWcTab("visual");
+  renderWc();
+}
+function closeWcView(){
+  document.getElementById("wcView").classList.remove("show");
+  document.querySelector(".nav").style.display = "";
+  wcDraft = null;
+  wcDirty = false;
+}
+function setWcDirty(v){
+  wcDirty = v;
+  document.getElementById("wcUnsaved").hidden = !v;
+  document.getElementById("wcSave").disabled = !v;
+}
+function setWcTab(which){
+  document.querySelectorAll(".wc-tab").forEach(b=>b.classList.toggle("on", b.dataset.wctab===which));
+  document.getElementById("wcVisual").hidden = which !== "visual";
+  document.getElementById("wcJson").hidden = which !== "json";
+  if(which === "json") renderWcJson();
+}
+
+/* Raw JSON：真实组件是 Monaco 编辑 settings.json；这里只读展示同一份内容 */
+function renderWcJson(){
+  if(!wcDraft) return;
+  const obj = {
+    "commontext:sync:transport": wcDraft.transport,
+    "commontext:sync:conflictpolicy": wcDraft.conflictPolicy,
+    "commontext:sync:device:name": wcDraft.deviceName,
+    "commontext:sync:folder:path": wcDraft.folderPath,
+    "commontext:sync:folder:watch": wcDraft.watchExternal,
+    "commontext:sync:git:remote": wcDraft.gitRemote,
+    "commontext:sync:git:interval": wcDraft.gitInterval,
+    "commontext:sync:git:hastoken": wcDraft.gitToken,
+    "commontext:sync:synctombstones": wcDraft.syncTombstones,
+  };
+  document.getElementById("wcJson").textContent = JSON.stringify(obj, null, 2);
+}
+
+function renderWc(){
+  if(!wcDraft) return;
+  const d = wcDraft;
+
+  /* ── Transport：单选行，置灰时把原因写在说明里（不靠 tooltip 藏） ── */
+  document.getElementById("wcTxRows").innerHTML = TRANSPORTS.map(function(t){
+    const on = d.transport === t.id;
+    const blocked = transportBlockedBy(t.id);
+    const dis = blocked != null;
+    const desc = dis ? blocked : t.desc;
+    const badge = t.badge ? '<span class="wc-badge ' + t.badgeKind + '">' + esc(t.badge) + '</span>' : "";
+    return '<div class="wc-row pickable ' + (on?"on ":"") + (dis?"disabled":"") + '" data-wctx="' + t.id + '">' +
+      '<div class="t">' +
+        '<div class="tt">' + esc(t.name) + badge + '</div>' +
+        '<div class="td">' + esc(desc) + '</div>' +
+      '</div>' +
+      '<div class="c"><span class="wc-radio"></span></div>' +
+    '</div>';
+  }).join("");
+  document.querySelectorAll("#wcTxRows [data-wctx]").forEach(function(el){
+    el.onclick = function(){
+      if(el.classList.contains("disabled")) return;
+      wcDraft.transport = el.dataset.wctx;
+      setWcDirty(true);
+      renderWc();
+    };
+  });
+  document.getElementById("wcTxNote").textContent =
+    d.transport === state.transport
+      ? "当前生效。改动在 Save 后生效；从 Off 切回需要一次全量重同步。"
+      : "Save 后生效：将从 " + transportName(state.transport) + " 切到 " + transportName(d.transport) + "，需要一次全量重同步。";
+
+  /* ── 后端配置：只渲染当前选中项，行式布局与 SectionRow 一致 ── */
+  const head = document.getElementById("wcCfgHead");
+  const rows = document.getElementById("wcCfgRows");
+  if(d.transport === "folder"){
+    head.textContent = "Local folder";
+    head.hidden = false;
+    rows.innerHTML =
+      row("File path",
+          "云盘目录里放一个 commontext.json；本机写入走「写临时文件 + 原子改名」，不会读到半个文件。",
+          '<input class="wc-input mono" id="wcFolderPath" value="' + esc(d.folderPath) + '" />' +
+          '<button class="wc-icobtn" id="wcBrowse" title="Choose folder" aria-label="Choose folder"><i class="fa-solid fa-folder-open"></i></button>') +
+      rowToggle("Watch for external changes",
+          "别的设备/云盘客户端改了文件时立刻刷新列表。", "wcWatch", d.watchExternal);
+  } else if(d.transport === "git"){
+    head.textContent = "Git repository";
+    head.hidden = false;
+    rows.innerHTML =
+      row("Remote",
+          "私有仓库。推送失败不阻塞本机使用，失败原因在同步面板里显示。",
+          '<input class="wc-input mono" id="wcGitRemote" value="' + esc(d.gitRemote) + '" />') +
+      row("Token",
+          d.gitToken
+            ? "已配置：token 在 OS keyring 里，settings.json 只有 hastoken: true。"
+            : "不写入 settings.json：存 OS keyring（Windows Credential / macOS Keychain / libsecret）。",
+          '<input class="wc-input" id="wcGitToken" placeholder="ghp_…" />' +
+          '<button class="wc-icobtn" id="wcGitSave" title="Save token" aria-label="Save token"><i class="fa-solid fa-check"></i></button>') +
+      row("Interval",
+          "定时 commit + pull；手动 Sync now 立即执行一次。",
+          '<input class="wc-input mono" id="wcGitInterval" value="' + esc(d.gitInterval) + '" />');
+  } else {
+    head.hidden = true;
+    rows.innerHTML = "";
+  }
+  bindWcCfg();
+
+  /* ── 这台电脑 ── */
+  document.getElementById("wcDevName").value = d.deviceName;
+  document.getElementById("wcDevId").value = DEVICES.home.id;
+  document.getElementById("wcDevPlat").value = DEVICES.home.platform;
+
+  /* ── 冲突策略 ── */
+  document.getElementById("wcConflictRows").innerHTML = CONFLICT_POLICIES.map(function(c){
+    return '<div class="wc-row pickable ' + (d.conflictPolicy===c.id?"on":"") + '" data-wccp="' + c.id + '">' +
+      '<div class="t">' +
+        '<div class="tt">' + esc(c.name) + (c.rec ? '<span class="wc-badge rec">recommended</span>' : "") + '</div>' +
+        '<div class="td">' + esc(c.desc) + '</div>' +
+      '</div>' +
+      '<div class="c"><span class="wc-radio"></span></div>' +
+    '</div>';
+  }).join("");
+  document.querySelectorAll("#wcConflictRows [data-wccp]").forEach(function(el){
+    el.onclick = function(){
+      wcDraft.conflictPolicy = el.dataset.wccp;
+      setWcDirty(true);
+      renderWc();
+    };
+  });
+  document.getElementById("wcConflictNote").textContent = d.conflictPolicy === "manual"
+    ? "注意：Always ask 会让同步在冲突未处理前一直停住，适合调试，不适合日常。"
+    : d.conflictPolicy === "newest"
+      ? "注意：Newest wins 会静默覆盖另一端的改动，不产生冲突条目。"
+      : "行级合并的判据是条目级 rev + 字段级 updatedat；合并不了才生成冲突条目。";
+
+  /* ── 范围 ── */
+  const tomb = document.getElementById("wcTomb");
+  tomb.classList.toggle("on", d.syncTombstones);
+  tomb.setAttribute("aria-checked", String(d.syncTombstones));
+  tomb.onclick = function(){
+    wcDraft.syncTombstones = !wcDraft.syncTombstones;
+    setWcDirty(true);
+    renderWc();
+  };
+
+  document.getElementById("wcFilePath").textContent = d.folderPath;
+  if(document.getElementById("wcJson") && !document.getElementById("wcJson").hidden) renderWcJson();
+}
+
+/* SectionRow 的两个小工厂：保持行结构与真实组件一致（左标题说明 / 右控件） */
+function row(title, desc, controlHtml, extraClass){
+  return '<div class="wc-row ' + (extraClass||"") + '">' +
+    '<div class="t"><div class="tt">' + esc(title) + '</div><div class="td">' + esc(desc) + '</div></div>' +
+    '<div class="c">' + controlHtml + '</div></div>';
+}
+function rowToggle(title, desc, id, on){
+  return '<div class="wc-row">' +
+    '<div class="t"><div class="tt">' + esc(title) + '</div><div class="td">' + esc(desc) + '</div></div>' +
+    '<div class="c"><span class="wc-toggle ' + (on?"on":"") + '" id="' + id + '" role="switch" tabindex="0" aria-checked="' + String(!!on) + '" aria-label="' + esc(title) + '"></span></div>' +
+  '</div>';
+}
+
+function bindWcCfg(){
+  const fp = document.getElementById("wcFolderPath");
+  if(fp) fp.oninput = function(){ wcDraft.folderPath = fp.value; document.getElementById("wcFilePath").textContent = fp.value; setWcDirty(true); };
+  const browse = document.getElementById("wcBrowse");
+  if(browse) browse.onclick = function(){ wcToast("Native folder picker would open here (dialog.showOpenDialog, directory)."); };
+  const watch = document.getElementById("wcWatch");
+  if(watch) watch.onclick = function(){
+    wcDraft.watchExternal = !wcDraft.watchExternal;
+    setWcDirty(true); renderWc();
+  };
+  const gr = document.getElementById("wcGitRemote");
+  if(gr) gr.oninput = function(){ wcDraft.gitRemote = gr.value; setWcDirty(true); };
+  const gi = document.getElementById("wcGitInterval");
+  if(gi) gi.oninput = function(){ wcDraft.gitInterval = gi.value; setWcDirty(true); };
+  const gs = document.getElementById("wcGitSave");
+  if(gs) gs.onclick = function(){
+    const el = document.getElementById("wcGitToken");
+    if(!el.value.trim()){ wcToast("Token is empty — nothing saved."); return; }
+    // token 是 OS keyring 里的凭据，不是 settings.json 草稿：写进去立刻生效，
+    // 否则「配置入口在设置块、可用性在状态面板」会互相看不见对方。
+    wcDraft.gitToken = true;
+    state.gitToken = true;
+    setWcDirty(true);
+    renderWc();
+    wcToast("Token saved to keyring (simulated). Git transport is now selectable.");
+  };
+}
+
+/* 设备名直接改草稿 */
+document.getElementById("wcDevName").oninput = function(e){
+  if(!wcDraft) return;
+  wcDraft.deviceName = e.target.value;
+  setWcDirty(true);
+};
+document.getElementById("wcDevCopy").onclick = function(){ wcToast("Device ID copied."); };
+document.getElementById("wcCopyPath").onclick = function(){ wcToast("Path copied."); };
+document.getElementById("wcReveal").onclick = function(){ wcToast("Would open the containing folder in the OS file manager."); };
+document.getElementById("wcResync").onclick = function(){
+  state.lastSync = Date.now();
+  wcToast("Full re-sync queued. Progress shows in the status panel.");
+};
+document.getElementById("wcReset").onclick = function(){
+  wcToast("Reset clears local sync cursor + rev cache. Items and remote file untouched.");
+};
+
+/* 页签 + Save + 关闭 */
+document.querySelectorAll(".wc-tab").forEach(function(b){
+  b.onclick = function(){ setWcTab(b.dataset.wctab); };
+});
+document.getElementById("wcSave").onclick = function(){
+  if(!wcDraft) return;
+  const prev = state.transport;
+  Object.assign(state, {
+    transport: wcDraft.transport,
+    conflictPolicy: wcDraft.conflictPolicy,
+    deviceName: wcDraft.deviceName,
+    folderPath: wcDraft.folderPath,
+    watchExternal: wcDraft.watchExternal,
+    gitRemote: wcDraft.gitRemote,
+    gitInterval: wcDraft.gitInterval,
+    gitToken: wcDraft.gitToken,
+    syncTombstones: wcDraft.syncTombstones,
+  });
+  // 设备改名要反映到 devicesOnline 里的自己（历史条目的 origin 快照不动）
+  const self = state.devicesOnline.find(function(x){ return x.current; });
+  if(self) self.name = wcDraft.deviceName;
+  setWcDirty(false);
+  render();
+  renderSyncPill();
+  if(state.transport !== prev && prev !== "none" && state.transport !== "none"){
+    // 真的换了传输方式：回到面板走「全量重同步 + 选边」
+    closeWcView();
+    openSyncPanel(document.getElementById("syncpill"));
+    openSwitchConfirm(prev, state.transport);
+  } else {
+    wcToast("Saved to settings.json.");
+  }
+};
+
+/* 状态面板 footer 的 gear → waveconfig 的 Sync 条目 */
+document.getElementById("spSettings").onclick = function(e){
+  e.stopPropagation();
+  closeSyncPanel();
+  location.hash = "settings";   // 与 hash 路由一致，刷新后仍停在设置页
+  openWcView();
+};
+
+/* 轻提示（waveconfig 里没有 toast，这里只用于原型反馈） */
+let wcToastTimer = null;
+function wcToast(msg){
+  let t = document.getElementById("wcToast");
+  if(!t){
+    t = document.createElement("div");
+    t.id = "wcToast";
+    t.className = "wc-toast";
+    document.getElementById("wcView").appendChild(t);
+  }
+  t.innerHTML = '<i class="fa-solid fa-check"></i><span>' + esc(msg) + "</span>";
+  t.classList.add("show");
+  clearTimeout(wcToastTimer);
+  wcToastTimer = setTimeout(function(){ t.classList.remove("show"); }, 2600);
+}
+
+/* 左栏条目切换（原型里只有 Sync 有内容，其它条目只切高亮并给提示） */
+document.querySelectorAll(".wc-item").forEach(function(el){
+  el.onclick = function(){
+    document.querySelectorAll(".wc-item").forEach(x=>x.classList.remove("on"));
+    el.classList.add("on");
+    const nm = el.querySelector(".nm").textContent;
+    if(nm !== "Sync"){
+      wcToast(nm + " is not part of this prototype — only Sync is drawn.");
+    }
+  };
+});
+
+/* 底部动作：原型只给状态反馈 */
+function flash(btn, label){
+  const old = btn.innerHTML;
+  btn.innerHTML = `<i class="fa-solid fa-check"></i> ${label}`;
+  setTimeout(()=>{ btn.innerHTML = old; }, 900);
+}
+document.getElementById("btnCopy").onclick   = (e)=>flash(e.currentTarget, "Copied");
+document.getElementById("btnSend").onclick   = (e)=>flash(e.currentTarget, "Sent");
+document.getElementById("btnAdd").onclick = document.getElementById("btnSaveNew").onclick = ()=>{
+  const id = "ct-new-" + Math.random().toString(36).slice(2,7);
+  ITEMS.unshift({
+    id, emoji:"", title:"Untitled", text:"Start typing…", tags:[],
+    createdat:Date.now(), updatedat:Date.now(), lastusedat:0, usagecount:0,
+    createdBy:{kind:"human",name:"Nita"}, origin:originOf(DEVICES.home), rev:0,
+  });
+  state.selectedId = id; state.contentMode = "edit"; state.creator = "all"; state.device="any"; state.tag=null;
+  markDirty(); render();
+};
+document.getElementById("btnDelete").onclick = ()=>{
+  const it = ITEMS.find(i=>i.id===state.selectedId);
+  if(!it) return;
+  // 墓碑：删除也要同步，否则另一台设备会复活它
+  it.deletedat = Date.now();
+  ITEMS = ITEMS.filter(x=>x.id !== it.id);
+  state.selectedId = ITEMS[0]?.id || null;
+  markDirty(); render();
+};
+
+/* ============================================================
+   原型导航 + hash 直达
+   #settings 直接开设置弹窗、#panel 直接开状态面板 —— 评审和截图都靠它，
+   不用记「pill → footer gear」这条路径。
+   ============================================================ */
+function navTo(where){
+  closeWcView();
+  closeSyncPanel();
+  document.querySelectorAll(".navb").forEach(b=>b.classList.toggle("on", b.dataset.nav===where));
+  if(where === "panel"){
+    openSyncPanel(document.getElementById("syncpill"));
+  } else if(where === "settings"){
+    openWcView();
+  }
+}
+document.querySelectorAll(".navb").forEach(b=>{
+  b.onclick = (e)=>{ e.stopPropagation(); location.hash = b.dataset.nav === "main" ? "" : b.dataset.nav; navTo(b.dataset.nav); };
+});
+function navFromHash(){
+  const h = (location.hash || "").replace("#","");
+  if(h === "settings" || h === "panel") navTo(h);
+  else document.querySelectorAll(".navb").forEach(b=>b.classList.toggle("on", b.dataset.nav==="main"));
+}
+window.addEventListener("hashchange", navFromHash);
+
+/* 首屏 */
+renderComposer();
+render();
+navFromHash();
+</script>
+</body>
+</html>
