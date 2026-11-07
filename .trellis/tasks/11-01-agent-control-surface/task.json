@@ -18,12 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [
-    "11-01-live-session-overview",
-    "11-01-session-agent-card"
-  ],
+  "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "P0.0 + P0.1 已交付并归档（11-01-live-session-overview, 11-01-session-agent-card）。剩余 P0.2/P0.3/P1/P1.5 待开新任务。",
   "meta": {}
 }
