@@ -8,12 +8,12 @@ package agentcontrol
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/agentdata"
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/aisessions/chat"
@@ -27,8 +27,6 @@ const (
 	defaultMaxRows       = 200
 	chatStateConcurrency = 4
 	chatStateTimeout     = 1500 * time.Millisecond
-	summaryConcurrency   = 4
-	summaryTimeout       = 2 * time.Second
 
 	freshnessFresh = "fresh"
 	freshnessStale = "stale"
@@ -258,35 +256,48 @@ func fillChatState(ctx context.Context, records []wshrpc.SessionLiveRecord) {
 }
 
 // fillSummaries resolves the AI session summary (title/note/tags/props/hash)
-// for each record that has a session id. Bounded concurrency + per-call timeout.
+// for each record that has a session id.
+//
+// This deliberately does NOT call Manager.Summary once per record: Summary ->
+// resolveSession -> refreshAllSummaries, so N cache misses would fan out into N
+// full scans, which the scan contract
+// (.trellis/spec/snorkeling-docs/backend/aisessions-scan-contract.md) forbids.
+// ResolveSummaries resolves the whole batch against the live registry + SQLite
+// index first and only escalates genuinely unknown identifiers.
 func fillSummaries(ctx context.Context, records []wshrpc.SessionLiveRecord) {
+	identifiers := make([]string, 0, len(records))
+	for idx := range records {
+		if records[idx].SessionId != "" {
+			identifiers = append(identifiers, records[idx].SessionId)
+		}
+	}
+	if len(identifiers) == 0 {
+		return
+	}
+
 	manager := aisessions.NewManager("", nil)
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, summaryConcurrency)
+	summaries, missing := manager.ResolveSummaries(ctx, identifiers)
+
+	unresolved := make(map[string]bool, len(missing))
+	for _, identifier := range missing {
+		unresolved[identifier] = true
+	}
+
 	for idx := range records {
 		rec := &records[idx]
 		if rec.SessionId == "" {
 			continue
 		}
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(rec *wshrpc.SessionLiveRecord) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			sumCtx, cancel := context.WithTimeout(ctx, summaryTimeout)
-			defer cancel()
-			summary, err := manager.Summary(sumCtx, rec.SessionId, false)
-			if err != nil {
-				rec.Warnings = append(rec.Warnings, "summary-unavailable")
-				if rec.Conn != "" && !strings.HasPrefix(rec.Conn, "local") {
-					rec.Warnings = append(rec.Warnings, "remote-summary-unavailable")
-				}
-				return
+		summary, ok := summaries[rec.SessionId]
+		if !ok || unresolved[rec.SessionId] {
+			rec.Warnings = append(rec.Warnings, "summary-unavailable")
+			if rec.Conn != "" && !strings.HasPrefix(rec.Conn, "local") {
+				rec.Warnings = append(rec.Warnings, "remote-summary-unavailable")
 			}
-			applySummary(rec, summary)
-		}(rec)
+			continue
+		}
+		applySummary(rec, summary)
 	}
-	wg.Wait()
 }
 
 func applySummary(rec *wshrpc.SessionLiveRecord, summary aisessions.SessionSummary) {
@@ -305,6 +316,10 @@ func applySummary(rec *wshrpc.SessionLiveRecord, summary aisessions.SessionSumma
 	card := &wshrpc.SessionLiveCard{
 		Note: summary.Note,
 		Tags: append([]string(nil), summary.Tags...),
+		// HashSession is the same precondition agentdata validates for
+		// session_note.update, so a value taken from here is directly usable as
+		// `agent card set --expected-hash` without a second lookup.
+		Hash: agentdata.HashSession(summary),
 	}
 	if len(summary.Props) > 0 {
 		card.Props = make(map[string]wshrpc.AgentPropValue, len(summary.Props))
@@ -410,131 +425,4 @@ func statePriority(rec wshrpc.SessionLiveRecord) int {
 	default:
 		return 3
 	}
-}
-
-// ResolveSessionForBlock returns the agent session id bound to a block.
-func ResolveSessionForBlock(ctx context.Context, blockId string) (string, error) {
-	blockId = strings.TrimSpace(blockId)
-	if blockId == "" {
-		return "", newError(CodeUsage, "block id is required")
-	}
-	block, err := wstore.DBMustGet[*waveobj.Block](ctx, blockId)
-	if err != nil {
-		return "", newError(CodeNotFound, "block %q not found", blockId)
-	}
-	if sid := strings.TrimSpace(block.Meta.GetString("agent:sessionid", "")); sid != "" {
-		return sid, nil
-	}
-	if status := agentstatus.Get(blockId); status != nil && status.SessionId != "" {
-		return status.SessionId, nil
-	}
-	return "", newError(CodeNotFound, "block %q has no agent session", blockId).
-		WithHint("pass an explicit session key or id")
-}
-
-// GetSessionRecord returns one record by session key/id, or falls back to the
-// AI session index for non-live sessions.
-func GetSessionRecord(ctx context.Context, identifier string, blockId string) (*wshrpc.SessionLiveRecord, error) {
-	identifier = strings.TrimSpace(identifier)
-	if identifier == "" {
-		identifier = "this"
-	}
-	if identifier == "this" {
-		if blockId == "" {
-			return nil, newError(CodeUsage, "no block context for 'this'").
-				WithHint("run inside a Snorkeling block or pass an explicit session key")
-		}
-		sid, err := ResolveSessionForBlock(ctx, blockId)
-		if err != nil {
-			return nil, err
-		}
-		identifier = sid
-	}
-
-	live, err := BuildLiveSessions(ctx, wshrpc.SessionLiveRequest{IncludeIdle: true, MaxRows: defaultMaxRows})
-	if err == nil {
-		for idx := range live.Records {
-			rec := &live.Records[idx]
-			if rec.SessionKey == identifier || rec.SessionId == identifier || rec.BlockId == identifier {
-				return rec, nil
-			}
-		}
-	}
-
-	manager := aisessions.NewManager("", nil)
-	summary, err := manager.Summary(ctx, identifier, false)
-	if err != nil {
-		return nil, newError(CodeNotFound, "session %q not found", identifier)
-	}
-	rec := &wshrpc.SessionLiveRecord{
-		Provider:  summary.Source,
-		SessionId: summary.ID,
-		View:      "session",
-		Warnings:  []string{"not-live"},
-	}
-	applySummary(rec, summary)
-	return rec, nil
-}
-
-// BuildSessionList returns indexed sessions (not necessarily live).
-func BuildSessionList(ctx context.Context, req wshrpc.SessionListRequest) (*wshrpc.SessionListResult, error) {
-	limit := req.Limit
-	if limit <= 0 || limit > 500 {
-		limit = 20
-	}
-	manager := aisessions.NewManager("", nil)
-	listOpts := aisessions.ListOptions{
-		Source:  req.Source,
-		Project: req.Project,
-		Marked:  req.Marked,
-		Limit:   limit,
-	}
-	if req.Tag != "" {
-		listOpts.TagFilters = []string{req.Tag}
-	}
-
-	var summaries []aisessions.SessionSummary
-	var err error
-	if strings.TrimSpace(req.Query) != "" {
-		summaries, err = manager.Search(ctx, aisessions.SearchOptions{
-			Query:      req.Query,
-			Source:     req.Source,
-			Project:    req.Project,
-			Limit:      limit,
-			TagFilters: listOpts.TagFilters,
-		})
-	} else {
-		summaries, err = manager.List(ctx, listOpts)
-	}
-	if err != nil {
-		return nil, newError(CodeInternal, "listing sessions: %v", err)
-	}
-
-	result := &wshrpc.SessionListResult{
-		Version:     wshrpc.AgentControlVersion,
-		GeneratedAt: time.Now().UnixMilli(),
-		Records:     make([]wshrpc.SessionLiveRecord, 0, len(summaries)),
-	}
-	for _, summary := range summaries {
-		rec := wshrpc.SessionLiveRecord{
-			Provider:  summary.Source,
-			SessionId: summary.ID,
-			View:      "session",
-		}
-		applySummary(&rec, summary)
-		result.Records = append(result.Records, rec)
-	}
-	return result, nil
-}
-
-// FormatFreshnessWarnings is a helper for callers that want a single summary
-// string; kept small so the CLI can stay dumb.
-func FormatFreshnessWarnings(records []wshrpc.SessionLiveRecord) []string {
-	var rtn []string
-	for _, rec := range records {
-		if rec.Issue != nil && rec.Issue.Freshness == freshnessStale {
-			rtn = append(rtn, fmt.Sprintf("%s: stale agent status", rec.BlockId))
-		}
-	}
-	return rtn
 }

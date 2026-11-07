@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "generatedat": 1761980000123,
+  "records": [
+    {
+      "blockid": "blk7",
+      "tabid": "tabIdA",
+      "windowid": "win1",
+      "view": "term",
+      "provider": "codex",
+      "sessionid": "codex-session-019a",
+      "sessionkey": "codex:codex-session-019a:/repo/session.jsonl",
+      "title": "整理 ACS 设计",
+      "titlesource": "ai",
+      "projectpath": "/repo",
+      "issue": {
+        "state": "working",
+        "prevstate": "idle",
+        "phase": "tool",
+        "toolname": "shell",
+        "message": "running tests token=***",
+        "source": "hook",
+        "confidence": "high",
+        "activesince": 1761979900000,
+        "updatedat": 1761980000000,
+        "expiresat": 1761980060000,
+        "seq": 12,
+        "freshness": "fresh"
+      },
+      "chat": null,
+      "card": {
+        "note": "已整理",
+        "tags": [
+          "设计",
+          "已整理"
+        ],
+        "props": {
+          "优先级": {
+            "type": "select",
+            "value": "P1",
+            "source": "user",
+            "updatedat": 1761980000000
+          }
+        },
+        "hash": "f6fcf0cb58de2e317befdced1fda7a8ec4773778d91ecb5e598b9c8b6e669385"
+      }
+    },
+    {
+      "blockid": "blk8",
+      "tabid": "tabIdA",
+      "windowid": "win1",
+      "view": "agent",
+      "provider": "pi",
+      "sessionid": "pi-session-1",
+      "sessionkey": "pi:pi-session-1:/repo/pi.jsonl",
+      "title": "pi 会话",
+      "issue": null,
+      "chat": {
+        "state": "running",
+        "isstreaming": true,
+        "modelprovider": "openai",
+        "modelid": "gpt-5-codex",
+        "thinkinglevel": "high",
+        "contextusagepct": 0.42,
+        "messagecount": 12,
+        "lastusedat": 1761980000000
+      },
+      "card": {
+        "hash": "bb3edb3c71e4a17d97bde6ecc74efe77b930ebd13df201c3a560ea9fe58c3395"
+      }
+    },
+    {
+      "blockid": "blkRemote",
+      "view": "term",
+      "conn": "user@host",
+      "provider": "claude",
+      "sessionid": "claude-remote-1",
+      "issue": {
+        "state": "working",
+        "updatedat": 1761979000000,
+        "expiresat": 1761979100000,
+        "freshness": "stale"
+      },
+      "chat": null,
+      "card": null,
+      "warnings": [
+        "summary-unavailable",
+        "remote-summary-unavailable"
+      ]
+    },
+    {
+      "blockid": "",
+      "view": "chat",
+      "provider": "pi",
+      "sessionid": "pi-orphan-1",
+      "issue": null,
+      "chat": {
+        "state": "idle",
+        "lastusedat": 1761979000000
+      },
+      "card": null,
+      "warnings": [
+        "orphan-chat"
+      ]
+    }
+  ]
+}

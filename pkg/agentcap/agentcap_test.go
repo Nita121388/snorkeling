@@ -36,3 +36,22 @@ func TestSchemaTextIsJSON(t *testing.T) {
 		t.Fatalf("unexpected schema title: %#v", schema["title"])
 	}
 }
+
+// TestLiveSessionCommandsAreDiscoverable guards the agent-control discovery
+// contract: the read-only session commands must be advertised in the guidance an
+// agent actually loads, otherwise the capability exists but is unreachable.
+func TestLiveSessionCommandsAreDiscoverable(t *testing.T) {
+	for name, text := range map[string]string{
+		"guide":  GuideText(),
+		"prompt": ExternalAgentPrompt(),
+	} {
+		for _, want := range []string{"wsh session live", "wsh session get"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s text must advertise %q:\n%s", name, want, text)
+			}
+		}
+		if strings.Contains(text, "\n`this` ") {
+			t.Fatalf("%s text must not use backticks inside the raw literal", name)
+		}
+	}
+}

@@ -49,6 +49,22 @@ Supported Operations
 - common_text.update: update Common Text title, text/content, and/or tags.
 - tag.rename: rename a tag in sessions, common_text, or all.
 
+Reading Live Agent Sessions (read-only)
+- These commands never write. Use them to discover what is running before touching data.
+- wsh session live --json                  -> every live session (agent TUI + GUI chat), merged from
+  agentstatus, the GUI chat registry and the AI session index.
+  Add --include-idle to keep idle rows; --max-rows N caps the list.
+- wsh session get <sessionKey|sessionId|this> --json -> one row; 'this' resolves from the
+  current block. The row carries card.hash, usable directly as a precondition below.
+- wsh session list --source pi --limit 5 --json    -> indexed (not necessarily live) sessions.
+- wsh session for-block [blockid|this] --json      -> block to session mapping.
+- Fields per row: provider, sessionId, sessionKey, title, titleSource, projectPath,
+  issue (TUI live state: state/phase/tool/message/freshness), chat (GUI chat state/model/context),
+  card (note/tags/props/hash), warnings.
+- issue/message and issue/reason are credential-redacted. A missing source is reported as null,
+  and degraded rows carry warnings such as orphan-chat / summary-unavailable /
+  remote-summary-unavailable rather than disappearing.
+
 Concurrency Safety
 - Real session_note.update and common_text.update operations require expectedHash or expectedUpdatedAt from a fresh export.
 - Dry-run may omit preconditions, but it will warn.
@@ -271,6 +287,7 @@ This guidance was loaded on demand for this task. Do not assume every task needs
 Rules:
 - Do not edit Snorkeling SQLite databases directly.
 - Use wsh data for AI session notes, session tags, and Common Text edits.
+- Use wsh session live --json to discover which agent sessions are running right now.
 - Export current data before creating a patch.
 - Run a dry-run before any real apply.
 - Apply only after explicit user confirmation.
@@ -280,6 +297,8 @@ Start here:
   wsh data guide
   wsh data schema
   wsh data examples
+  wsh session live --json
+  wsh session get this --json
 
 Recommended workflow:
   wsh data export --domain all --out snorkeling-data.json
