@@ -82,3 +82,38 @@ gemini + FetchModels，错误信息加上实际 URL。24 个单测 + openaichat 
   marks 全 undefined。已写进 preview-edit-harness spec。
 - 发版：bump 0.0.118（12eab5dc）+ tag `snorkeling-v0.14.6-beta.0-0.0.118` 已推，CI run 41947396042。
 - 观察（未修，非本任务范围）：情形 A 的「共享单个尾部组件」对叶子名相同的同级目录仍会误映射（既有行为）。
+
+## 2026-11-02 Agent Control Surface P0：会话面 + 会话卡
+
+用户要「本地 Agent 能用 wsh 受控地读实时会话、写会话卡」。设计文档 1367 行早已就位，代码只落了
+只读那一半（c235c39b），而且带着三处硬伤。这一轮把 P0.0 补齐、P0.1 从零做完。
+
+**先做同步**：分支落后 origin/main 138 个提交。`git merge-tree` 先验 → 零冲突、两边改动文件完全不重叠
+（我碰 agentcontrol/wshrpc/wshcmd，main 那 138 个提交碰的是 aisessionsservice origins 与前端 agent-card）。
+merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff。分支此前没 push 过，顺手建了跟踪。
+
+**P0.0 修的三处**：
+1. **违反扫描契约（真 bug）**：`fillSummaries` 对每条会话调一次 `Manager.Summary`。
+   Summary → resolveSession → refreshAllSummaries，N 条未命中 = N 次全量扫描 —— 正是
+   `aisessions-scan-contract.md` 记载的 OOM 成因。新增 `Manager.ResolveSummaries`：
+   live registry（内存）→ 一次开库按主键批量 GetSession → 仅未知项限流升级。
+2. **`card.hash` 从来没填**：prd 要求 hash 能直接喂给 `card set`，代码里 `SessionLiveCard.Hash` 是空的。
+   改用 `agentdata.HashSession`，与 agentdata 校验前置条件时算的是同一个函数。
+3. **零测试**：只有 redact 两个用例。补了 24 个表驱动用例（freshness/idle/过滤/排序/去重/chatKey）
+   + golden 快照锁字段名、null-vs-省略、脱敏，+ 拆 `session.go` 把 live.go 从 556 行降到 428。
+
+**P0.1 从零做**：`SetAITitle(force)` + `ErrTitleProtected`（守 title contract 的 user > ai）、
+`session_title.update` / `session_prop.update` 两个 op 全部复用既有 validate/preview/apply 管线
+（所以白拿 dry-run/备份/审计/前置条件）、`wsh agent card get/set`、两个新 RPC。
+
+**过程中撞出的两个真缺陷（都不是我写的，但必须修）**：
+1. `sessionPropDiff` 把没变的 prop 也报成 changed —— "跳过 user 值" 会被误报成已修改。
+2. **多 op patch 永远无法生效**：`applyOperation` 拿同一 patch 里前序 op 已改过的状态重新校验
+   `expectedHash`，必然冲突，还会触发备份回滚把刚写的 note 撤掉。`card set --note --title` 必挂。
+   改成只在写前统一校验一次前置条件（`ApplyPatch` 本来就这么做，只是 apply 侧重复校验了）。
+
+**验收**：P0 全部可验证项打勾并标注对应测试；真机项（UI 一致性、kill→stale、P95）明确留白，
+没有假装完成。全仓 `go test ./...` 只剩 `conncontroller` 一个既有失败（改动前后一致，已比对确认）。
+
+**教训**：写完"能编译"不等于写完。这三处硬伤里，扫描契约那条只有读了 spec 才会发现，
+`card.hash` 那条只有对着 prd 验收项逐条核才会发现 —— 任务文档的验收清单不是装饰。
