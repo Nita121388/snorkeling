@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,20 +36,33 @@ type Patch struct {
 }
 
 type PatchOperation struct {
-	Type              string         `json:"type"`
-	SessionKey        string         `json:"sessionKey,omitempty"`
-	ID                string         `json:"id,omitempty"`
-	Note              *string        `json:"note,omitempty"`
-	Title             *string        `json:"title,omitempty"`
-	Text              *string        `json:"text,omitempty"`
-	Content           *string        `json:"content,omitempty"`
-	Tags              *TagPatch      `json:"tags,omitempty"`
-	Domain            string         `json:"domain,omitempty"`
-	From              string         `json:"from,omitempty"`
-	To                string         `json:"to,omitempty"`
-	ExpectedHash      string         `json:"expectedHash,omitempty"`
-	ExpectedUpdatedAt int64          `json:"expectedUpdatedAt,omitempty"`
-	raw               map[string]any `json:"-"`
+	Type       string    `json:"type"`
+	SessionKey string    `json:"sessionKey,omitempty"`
+	ID         string    `json:"id,omitempty"`
+	Note       *string   `json:"note,omitempty"`
+	Title      *string   `json:"title,omitempty"`
+	Text       *string   `json:"text,omitempty"`
+	Content    *string   `json:"content,omitempty"`
+	Tags       *TagPatch `json:"tags,omitempty"`
+	Domain     string    `json:"domain,omitempty"`
+	From       string    `json:"from,omitempty"`
+	To         string    `json:"to,omitempty"`
+	// Force lets session_title.update / session_prop.update overwrite a value
+	// the user authored. Without it those operations degrade to a skip.
+	Force bool `json:"force,omitempty"`
+	// Props carries the custom-property batch for session_prop.update.
+	Props             map[string]PropPatch `json:"props,omitempty"`
+	ExpectedHash      string               `json:"expectedHash,omitempty"`
+	ExpectedUpdatedAt int64                `json:"expectedUpdatedAt,omitempty"`
+	raw               map[string]any       `json:"-"`
+}
+
+// PropPatch is one custom-property write for session_prop.update.
+type PropPatch struct {
+	Type  string `json:"type"`
+	Value any    `json:"value"`
+	// Name optionally renames the user-visible label.
+	Name string `json:"name,omitempty"`
 }
 
 func (op *PatchOperation) UnmarshalJSON(data []byte) error {
@@ -136,7 +150,11 @@ type OperationReport struct {
 	AffectedCount int            `json:"affectedCount,omitempty"`
 	Changes       []ChangeReport `json:"changes,omitempty"`
 	Messages      []string       `json:"messages,omitempty"`
-	Error         string         `json:"error,omitempty"`
+	// Skipped lists values the operation deliberately did not write, with the
+	// reason (built-in property, user-authored value). Agents need this to tell
+	// "nothing to do" apart from "silently ignored".
+	Skipped []string `json:"skipped,omitempty"`
+	Error   string   `json:"error,omitempty"`
 }
 
 type ChangeReport struct {
@@ -341,6 +359,34 @@ func validateOperation(idx int, op PatchOperation, opts ApplyOptions) error {
 		if strings.TrimSpace(op.From) == "" || strings.TrimSpace(op.To) == "" {
 			return fmt.Errorf("operation %d from and to are required", idx)
 		}
+	case "session_title.update":
+		if strings.TrimSpace(op.SessionKey) == "" {
+			return fmt.Errorf("operation %d sessionKey is required", idx)
+		}
+		if op.Title == nil || strings.TrimSpace(*op.Title) == "" {
+			return fmt.Errorf("operation %d title is required", idx)
+		}
+		if !opts.DryRun && !operationHasPrecondition(op) {
+			return fmt.Errorf("operation %d session_title.update requires expectedHash or expectedUpdatedAt for real apply", idx)
+		}
+	case "session_prop.update":
+		if strings.TrimSpace(op.SessionKey) == "" {
+			return fmt.Errorf("operation %d sessionKey is required", idx)
+		}
+		if len(op.Props) == 0 {
+			return fmt.Errorf("operation %d props is required", idx)
+		}
+		for key, prop := range op.Props {
+			if strings.TrimSpace(key) == "" {
+				return fmt.Errorf("operation %d has an empty property key", idx)
+			}
+			if !aisessions.ValidPropertyType(strings.TrimSpace(prop.Type)) {
+				return fmt.Errorf("operation %d property %q has unsupported type %q", idx, key, prop.Type)
+			}
+		}
+		if !opts.DryRun && !operationHasPrecondition(op) {
+			return fmt.Errorf("operation %d session_prop.update requires expectedHash or expectedUpdatedAt for real apply", idx)
+		}
 	default:
 		return fmt.Errorf("operation %d has unsupported type %q", idx, op.Type)
 	}
@@ -372,6 +418,18 @@ func allowedFieldsForOperation(opType string) map[string]bool {
 		base["domain"] = true
 		base["from"] = true
 		base["to"] = true
+	case "session_title.update":
+		base["sessionKey"] = true
+		base["title"] = true
+		base["force"] = true
+		base["expectedHash"] = true
+		base["expectedUpdatedAt"] = true
+	case "session_prop.update":
+		base["sessionKey"] = true
+		base["props"] = true
+		base["force"] = true
+		base["expectedHash"] = true
+		base["expectedUpdatedAt"] = true
 	}
 	return base
 }
@@ -444,9 +502,227 @@ func previewOperation(ctx context.Context, idx int, op PatchOperation) (Operatio
 		return report, nil
 	case "tag.rename":
 		return previewRenameTag(ctx, report, op)
+	case "session_title.update":
+		return previewSessionTitle(ctx, report, op)
+	case "session_prop.update":
+		return previewSessionProps(ctx, report, op)
 	default:
 		return report, fmt.Errorf("unsupported operation %q", op.Type)
 	}
+}
+
+// loadSessionForControl resolves a session for the agent-control write
+// operations. It uses the meta-write resolver (primary-key SQLite hit first) so
+// a session whose file is still being appended does not fall back to a scan.
+func loadSessionForControl(ctx context.Context, identifier string) (aisessions.SessionSummary, error) {
+	manager := aisessions.NewManager("", nil)
+	return manager.Summary(ctx, identifier, false)
+}
+
+func previewSessionTitle(ctx context.Context, report OperationReport, op PatchOperation) (OperationReport, error) {
+	summary, err := loadSessionForControl(ctx, op.SessionKey)
+	if err != nil {
+		return report, err
+	}
+	if err := validateSessionPrecondition(op, summary); err != nil {
+		return report, err
+	}
+	if !operationHasPrecondition(op) {
+		report.Messages = append(report.Messages, "warning: real apply requires expectedHash or expectedUpdatedAt")
+	}
+	report.Target = summary.Key
+	nextTitle := strings.TrimSpace(*op.Title)
+	if summary.TitleSource == aisessions.TitleSourceUser && !op.Force {
+		// Title contract: "user" is never overwritten by an agent channel.
+		report.Messages = append(report.Messages,
+			fmt.Sprintf("conflict: existing title %q is user-authored; pass \"force\": true to overwrite", summary.Title))
+		report.Changes = buildChanges([]ChangeReport{
+			{Field: "title", Before: summary.Title, After: summary.Title},
+			{Field: "titleSource", Before: summary.TitleSource, After: summary.TitleSource},
+		})
+		return report, nil
+	}
+	report.Changes = buildChanges([]ChangeReport{
+		{Field: "title", Before: summary.Title, After: nextTitle},
+		{Field: "titleSource", Before: summary.TitleSource, After: aisessions.TitleSourceAI},
+	})
+	report.Changed = summary.Title != nextTitle || summary.TitleSource != aisessions.TitleSourceAI
+	if report.Changed {
+		report.AffectedCount = 1
+	}
+	report.Messages = append(report.Messages, "session title validated")
+	return report, nil
+}
+
+func applySessionTitle(ctx context.Context, report OperationReport, op PatchOperation) (OperationReport, error) {
+	summary, err := loadSessionForControl(ctx, op.SessionKey)
+	if err != nil {
+		return report, err
+	}
+	if err := validateSessionPrecondition(op, summary); err != nil {
+		return report, err
+	}
+	manager := aisessions.NewManager("", nil)
+	updated, err := manager.SetAITitle(ctx, summary.Key, *op.Title, op.Force)
+	if errors.Is(err, aisessions.ErrTitleProtected) {
+		return report, fmt.Errorf("session %q title conflict: %w (re-run with force to overwrite)", summary.Key, err)
+	}
+	if err != nil {
+		return report, err
+	}
+	report.Target = updated.Key
+	report.Changes = buildChanges([]ChangeReport{
+		{Field: "title", Before: summary.Title, After: updated.Title},
+		{Field: "titleSource", Before: summary.TitleSource, After: updated.TitleSource},
+	})
+	report.Changed = summary.Title != updated.Title || summary.TitleSource != updated.TitleSource
+	if report.Changed {
+		report.AffectedCount = 1
+	}
+	return report, nil
+}
+
+// existingPropsFor loads the current custom-property layer for a session key.
+func existingPropsFor(ctx context.Context, key string) (map[string]aisessions.PropertyCell, error) {
+	manager := aisessions.NewManager("", nil)
+	summary, err := manager.Summary(ctx, key, false)
+	if err != nil {
+		return nil, err
+	}
+	return summary.Props, nil
+}
+
+func previewSessionProps(ctx context.Context, report OperationReport, op PatchOperation) (OperationReport, error) {
+	summary, err := loadSessionForControl(ctx, op.SessionKey)
+	if err != nil {
+		return report, err
+	}
+	if err := validateSessionPrecondition(op, summary); err != nil {
+		return report, err
+	}
+	if !operationHasPrecondition(op) {
+		report.Messages = append(report.Messages, "warning: real apply requires expectedHash or expectedUpdatedAt")
+	}
+	report.Target = summary.Key
+	changes, skipped := sessionPropChanges(summary.Props, op)
+	report.Changes = changes
+	report.Skipped = skipped
+	report.Changed = len(changes) > 0
+	if report.Changed {
+		report.AffectedCount = 1
+	}
+	report.Messages = append(report.Messages, "session properties validated")
+	return report, nil
+}
+
+func applySessionProps(ctx context.Context, report OperationReport, op PatchOperation) (OperationReport, error) {
+	summary, err := loadSessionForControl(ctx, op.SessionKey)
+	if err != nil {
+		return report, err
+	}
+	if err := validateSessionPrecondition(op, summary); err != nil {
+		return report, err
+	}
+	suggestions, skipped := sessionPropSuggestions(summary.Props, op)
+	manager := aisessions.NewManager("", nil)
+	updated, appliedSkipped, err := manager.ApplyAIProperties(ctx, summary.Key, suggestions, op.Force)
+	if err != nil {
+		return report, err
+	}
+	report.Target = updated.Key
+	report.Skipped = append(skipped, appliedSkipped...)
+	report.Changes = sessionPropDiff(summary.Props, updated.Props)
+	report.Changed = len(report.Changes) > 0
+	if report.Changed {
+		report.AffectedCount = 1
+	}
+	return report, nil
+}
+
+// sessionPropSuggestions splits an operation into AI-writable suggestions and
+// the keys that must be skipped (built-in/reserved keys we refuse outright).
+func sessionPropSuggestions(existing map[string]aisessions.PropertyCell, op PatchOperation) ([]aisessions.PropertySuggestion, []string) {
+	suggestions := make([]aisessions.PropertySuggestion, 0, len(op.Props))
+	var skipped []string
+	keys := make([]string, 0, len(op.Props))
+	for key := range op.Props {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		prop := op.Props[key]
+		if isReservedSessionPropKey(key) {
+			skipped = append(skipped, key+": built-in property")
+			continue
+		}
+		suggestions = append(suggestions, aisessions.PropertySuggestion{
+			Key:   key,
+			Name:  prop.Name,
+			Type:  strings.TrimSpace(prop.Type),
+			Value: prop.Value,
+		})
+	}
+	_ = existing
+	return suggestions, skipped
+}
+
+// isReservedSessionPropKey mirrors the built-in keys the UI maps virtually.
+// Custom properties must never shadow them.
+func isReservedSessionPropKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	switch normalized {
+	case "note", "tags", "starred", "title_source", "title", "created_at", "updated_at":
+		return true
+	}
+	return false
+}
+
+func sessionPropChanges(existing map[string]aisessions.PropertyCell, op PatchOperation) ([]ChangeReport, []string) {
+	suggestions, skipped := sessionPropSuggestions(existing, op)
+	changes := make([]ChangeReport, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		before := ""
+		if cell, ok := existing[suggestion.Key]; ok {
+			before = fmt.Sprintf("%v", cell.Value)
+			if !op.Force && cell.Source == aisessions.PropertySourceUser {
+				skipped = append(skipped, suggestion.Key+": user-authored value")
+				changes = append(changes, ChangeReport{Field: "prop:" + suggestion.Key, Before: before, After: before})
+				continue
+			}
+		}
+		changes = append(changes, ChangeReport{
+			Field:  "prop:" + suggestion.Key,
+			Before: before,
+			After:  fmt.Sprintf("%v", suggestion.Value),
+		})
+	}
+	return changes, skipped
+}
+
+// sessionPropDiff reports only properties whose value or source actually moved,
+// so a skipped user value cannot masquerade as a change.
+func sessionPropDiff(before, after map[string]aisessions.PropertyCell) []ChangeReport {
+	var changes []ChangeReport
+	keys := make([]string, 0, len(after))
+	for key := range after {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		beforeCell, hadBefore := before[key]
+		beforeValue := ""
+		beforeSource := ""
+		if hadBefore {
+			beforeValue = fmt.Sprintf("%v", beforeCell.Value)
+			beforeSource = beforeCell.Source
+		}
+		afterValue := fmt.Sprintf("%v", after[key].Value)
+		if hadBefore && beforeValue == afterValue && beforeSource == after[key].Source {
+			continue
+		}
+		changes = append(changes, ChangeReport{Field: "prop:" + key, Before: beforeValue, After: afterValue})
+	}
+	return changes
 }
 
 func previewRenameTag(ctx context.Context, report OperationReport, op PatchOperation) (OperationReport, error) {
@@ -579,6 +855,10 @@ func applyOperation(ctx context.Context, idx int, op PatchOperation) (OperationR
 		return report, nil
 	case "tag.rename":
 		return applyRenameTag(ctx, report, op)
+	case "session_title.update":
+		return applySessionTitle(ctx, report, op)
+	case "session_prop.update":
+		return applySessionProps(ctx, report, op)
 	default:
 		return report, fmt.Errorf("unsupported operation %q", op.Type)
 	}

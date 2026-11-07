@@ -5,6 +5,7 @@ package aisessions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -1072,7 +1073,7 @@ func (m *Manager) setAutoTitle(ctx context.Context, key string, title string) (S
 		meta, err := m.openMeta()
 		if meta == nil {
 			if sqliteErr == nil && sqliteIdx != nil {
-				return SessionSummary{Key: key, Title: cleanTitle, TitleSource: "ai"}, nil
+				return SessionSummary{Key: key, Title: cleanTitle, TitleSource: TitleSourceAI}, nil
 			}
 			return SessionSummary{}, err
 		}
@@ -1081,7 +1082,35 @@ func (m *Manager) setAutoTitle(ctx context.Context, key string, title string) (S
 			return SessionSummary{}, err
 		}
 	}
-	return SessionSummary{Key: key, Title: cleanTitle, TitleSource: "ai"}, nil
+	return SessionSummary{Key: key, Title: cleanTitle, TitleSource: TitleSourceAI}, nil
+}
+
+// ErrTitleProtected is returned when an AI title write would overwrite a
+// user-authored title. It maps to E_CONFLICT on the control surface.
+var ErrTitleProtected = errors.New("title is user-authored")
+
+// SetAITitle writes a title with titleSource="ai".
+//
+// Title contract (.trellis/spec/snorkeling-docs/backend/aisessions-title-contract.md):
+// user > ai > first_user_message > source_title > project > id, and "user" is
+// never overwritten by an automatic/agent channel. An existing user title is
+// therefore refused with ErrTitleProtected unless force is set, in which case
+// the caller has explicitly accepted the overwrite and the new source is "ai".
+func (m *Manager) SetAITitle(ctx context.Context, identifier string, title string, force bool) (SessionSummary, error) {
+	cleanTitle := strings.TrimSpace(title)
+	if cleanTitle == "" {
+		return SessionSummary{}, fmt.Errorf("title is required")
+	}
+	summary, err := m.resolveSessionForMetaWrite(ctx, identifier)
+	if err != nil {
+		return SessionSummary{}, err
+	}
+	if !force && summary.TitleSource == TitleSourceUser {
+		return SessionSummary{}, fmt.Errorf("%w: %q", ErrTitleProtected, summary.Title)
+	}
+	// setAutoTitle takes the session key so the write cannot be re-resolved
+	// against a different row than the one we just checked.
+	return m.setAutoTitle(ctx, summary.Key, cleanTitle)
 }
 
 // markAITitleAttempt records the idempotency marker. It is best-effort: a failed
@@ -1138,7 +1167,7 @@ func (m *Manager) SetTitle(ctx context.Context, identifier string, title string)
 			if sqliteIdx != nil && writeErr == nil {
 				debugf("Manager.SetTitle meta json dual-write open error key=%q err=%v", summary.Key, err)
 				summary.Title = cleanTitle
-				summary.TitleSource = "user"
+				summary.TitleSource = TitleSourceUser
 				return summary, nil
 			}
 			return SessionSummary{}, err
@@ -1155,7 +1184,7 @@ func (m *Manager) SetTitle(ctx context.Context, identifier string, title string)
 		}
 	}
 	summary.Title = cleanTitle
-	summary.TitleSource = "user"
+	summary.TitleSource = TitleSourceUser
 	return summary, nil
 }
 

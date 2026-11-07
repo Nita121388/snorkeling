@@ -23,6 +23,15 @@ const (
 	RoleUnknown   = "unknown"
 )
 
+// Title source: who authored a session title. The precedence is
+// user > ai > first_user_message > source_title > project > id, and "user" is
+// never overwritten by an automatic or agent channel
+// (.trellis/spec/snorkeling-docs/backend/aisessions-title-contract.md).
+const (
+	TitleSourceUser = "user"
+	TitleSourceAI   = "ai"
+)
+
 // Property source: who wrote the value. The UI renders AI-sourced values with a
 // distinct marker and the AI worker must not overwrite a user value unless forced.
 const (
