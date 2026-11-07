@@ -685,13 +685,10 @@ export class PreviewModel implements ViewModel {
             }
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
-            const isDirectoryView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "directory";
             const isLivePreviewView =
                 loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
             const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
             const isMarkdownView = isMarkdownLike(mimeType);
-            const directoryDisplayMode = get(this.directoryDisplayMode);
-            const explorerActive = directoryDisplayMode === "tree" && isDirectoryView;
             const loadableFileInfo = get(this.loadableFileInfo);
             const isKnownDirectory =
                 loadableFileInfo.state == "hasData" &&
@@ -753,12 +750,6 @@ export class PreviewModel implements ViewModel {
                     ],
                 },
             ];
-            const htmlOpenMode = get(this.htmlOpenMode);
-            const htmlModeEntry = getHtmlOpenModeEntry(htmlOpenMode);
-            const htmlModeMenuItems: MenuItem[] = HtmlOpenModeEntries.map((entry) => ({
-                label: `${htmlOpenMode === entry.id ? "✓ " : ""}${entry.label}`,
-                onClick: () => fireAndForget(() => this.setHtmlOpenMode(entry.id)),
-            }));
             if (isCeView) {
                 const fileInfo = globalStore.get(this.loadableFileInfo);
                 if (fileInfo.state != "hasData") {
@@ -796,9 +787,6 @@ export class PreviewModel implements ViewModel {
                             },
                         });
                     }
-                }
-                if (!isBlank(get(this.livePreviewOpenBlockId)) && isMarkdownView) {
-                    const syncEnabled = get(this.liveScrollSyncEnabled);
                 }
             } else if (!isLivePreviewView && get(this.canPreview) && !isKnownDirectory && mimeType !== "directory") {
                 // Edit 按钮已移到 endIconButtons(紧贴 X 按钮). 保存交由 Ctrl/Cmd+S + 右键菜单 Save File.
@@ -838,8 +826,6 @@ export class PreviewModel implements ViewModel {
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
             const isDirectoryView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "directory";
-            const isLivePreviewView =
-                loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
             const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
             const isMarkdownView = isMarkdownLike(mimeType);
             const explorerActive = get(this.directoryDisplayMode) === "tree" && isDirectoryView;
@@ -867,7 +853,11 @@ export class PreviewModel implements ViewModel {
                     elemtype: "iconbutton",
                     zone: "start",
                     priority: 2,
-                    icon: openTargetSymbol(currentDirection),
+                    // 方向符号是文本/emoji（←→↑↓🧭），不是 FontAwesome 类名。
+                    // IconButton 对字符串 icon 会走 makeIconClass()，它只认 FA 名，
+                    // 认不出就返回 null → 渲染出一个 24px 宽的空白按钮（实测就是个“空缺”）。
+                    // 所以用 <span> 包成元素节点，绕开 makeIconClass（与树形切换图标一致）。
+                    icon: <span className="text-[12px] leading-none">{openTargetSymbol(currentDirection)}</span>,
                     title: `Open in directional block: ${currentDirection} (click to cycle)`,
                     click: () => {
                         const next = order[(order.indexOf(currentDirection) + 1) % order.length];
@@ -925,7 +915,6 @@ export class PreviewModel implements ViewModel {
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
             const hasUnsavedChanges = get(this.newFileContent) != null;
             const explorerActive = get(this.directoryDisplayMode) === "tree" && mimeType == "directory";
-            const directorySearchActive = get(this.directorySearchActive);
             const vcsButton: IconButtonDecl = {
                 elemtype: "iconbutton",
                 icon: "code-branch",
