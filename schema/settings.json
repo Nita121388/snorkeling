@@ -734,6 +734,21 @@
         "block:inlinetabactivemaxwidthpct": {
           "type": "number"
         },
+        "block:headersplitreveal": {
+          "type": "boolean"
+        },
+        "block:headeryieldleft": {
+          "type": "boolean"
+        },
+        "block:headernarrowtier": {
+          "type": "boolean"
+        },
+        "block:headerhoverlatch": {
+          "type": "boolean"
+        },
+        "block:headerhovergrace": {
+          "type": "number"
+        },
         "widget:*": {
           "type": "boolean"
         },

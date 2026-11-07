@@ -118,6 +118,8 @@ type CommonTextItemType struct {
 	UpdatedAt  float64  `json:"updatedat,omitempty"`
 	LastUsedAt float64  `json:"lastusedat,omitempty"`
 	UsageCount float64  `json:"usagecount,omitempty"`
+	// Emoji is the Notion-style page icon for this item. Empty means no icon.
+	Emoji string `json:"emoji,omitempty"`
 
 	// Sync metadata. All optional: items written before sync existed have none of
 	// these, and the read path fills defaults without rewriting the row.
@@ -343,6 +345,19 @@ type SettingsType struct {
 
 	// 当前打开的 inline-tab block 标签最大宽度占 block 容器宽度的百分比
 	BlockInlineTabActiveMaxWidthPct *float64 `json:"block:inlinetabactivemaxwidthpct,omitempty"`
+
+	// Block header 悬停分区（锁存式）：悬停左半只揭示左侧 icon 组，悬停右半只揭示
+	// 右侧组并让左侧 chevron+路径收起让位。方向只在 pointerenter 判定一次，
+	// pointermove 不参与 —— 这是消除「右组越中线导致翻区、点不到、来回闪」的结构性手段。
+	BlockHeaderSplitReveal *bool `json:"block:headersplitreveal,omitempty"`
+	// 右锁时左侧（chevron + 路径）是否收起让位，把宽度让给右组。
+	BlockHeaderYieldLeft *bool `json:"block:headeryieldleft,omitempty"`
+	// 窄块 tier 降级（按宽度把装不下的 icon 收进 … 菜单）。关闭 = 退回硬切（仅用于对照）。
+	BlockHeaderNarrowTier *bool `json:"block:headernarrowtier,omitempty"`
+	// 锁存开关。关闭 = 退回「中线实时切分」（可复现自激缺陷，仅用于对照）。
+	BlockHeaderHoverLatch *bool `json:"block:headerhoverlatch,omitempty"`
+	// 离开 header 后方向保持的宽限毫秒数（0~1200，0 = 离开立刻恢复）。
+	BlockHeaderHoverGrace *float64 `json:"block:headerhovergrace,omitempty"`
 
 	WidgetClear    bool  `json:"widget:*,omitempty"`
 	WidgetShowHelp *bool `json:"widget:showhelp,omitempty"`

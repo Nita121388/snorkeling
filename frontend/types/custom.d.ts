@@ -232,7 +232,12 @@ declare global {
         title?: string;
         disabled?: boolean;
         noAction?: boolean;
-        zone?: "pinned" | "reveal";
+        zone?: "pinned" | "reveal" | "start";
+        // 溢出削尾优先级：**数字越大越先被收进 … 菜单**。默认 0（不参与削尾）。
+        // 逃生通道（…）与主入口（vcs / close）用 neverOverflow 而不是大 priority。
+        priority?: number;
+        // 永不被削尾：即使宽度不足也留在 header（tier 4 除外，那时整条进浮层）。
+        neverOverflow?: boolean;
         // Optional rich Tooltip. When present, the header renderer wraps the icon in the shared
         // `<Tooltip>` component (replacing the native `title`). Used by header path-jump icons
         // that want the same styled tooltip as the block path copy element.
@@ -398,6 +403,12 @@ declare global {
 
         // Icon buttons displayed at the end of the block header.
         endIconButtons?: jotai.Atom<IconButtonDecl[]>;
+
+        // Icon buttons displayed as the header's「左组」（对称 endIconButtons）。
+        // 悬停 header 左半时揭示这一组；右半揭示 endIconButtons。
+        // 用于把「Go to Path / 列表树切换 / 打开方向 / HTML 打开方式」这类
+        // 原本挤在 viewText 里的 icon 从文本流里拆出来，让宽度预算可算。
+        startIconButtons?: jotai.Atom<IconButtonDecl[]>;
 
         // Background styling metadata for the block.
         blockBg?: jotai.Atom<MetaType>;

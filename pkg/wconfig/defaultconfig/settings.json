@@ -50,5 +50,10 @@
     "preview:defaultsort": "name",
     "preview:defaultdirectorydisplay": "tree",
     "preview:defaultopentarget": "right",
-    "block:inlinetabactivemaxwidthpct": 45
+    "block:inlinetabactivemaxwidthpct": 45,
+    "block:headersplitreveal": true,
+    "block:headeryieldleft": true,
+    "block:headernarrowtier": true,
+    "block:headerhoverlatch": true,
+    "block:headerhovergrace": 400
 }

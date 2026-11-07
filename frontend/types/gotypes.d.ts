@@ -2853,6 +2853,11 @@ declare global {
         "tab:confirmclose"?: boolean;
         "tab:background"?: string;
         "block:inlinetabactivemaxwidthpct"?: number;
+        "block:headersplitreveal"?: boolean;
+        "block:headeryieldleft"?: boolean;
+        "block:headernarrowtier"?: boolean;
+        "block:headerhoverlatch"?: boolean;
+        "block:headerhovergrace"?: number;
         "widget:*"?: boolean;
         "widget:showhelp"?: boolean;
         "window:*"?: boolean;

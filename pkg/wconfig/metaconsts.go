@@ -120,6 +120,11 @@ const (
 	ConfigKey_TabBackground                  = "tab:background"
 
 	ConfigKey_BlockInlineTabActiveMaxWidthPct = "block:inlinetabactivemaxwidthpct"
+	ConfigKey_BlockHeaderSplitReveal         = "block:headersplitreveal"
+	ConfigKey_BlockHeaderYieldLeft           = "block:headeryieldleft"
+	ConfigKey_BlockHeaderNarrowTier          = "block:headernarrowtier"
+	ConfigKey_BlockHeaderHoverLatch          = "block:headerhoverlatch"
+	ConfigKey_BlockHeaderHoverGrace          = "block:headerhovergrace"
 
 	ConfigKey_WidgetClear                    = "widget:*"
 	ConfigKey_WidgetShowHelp                 = "widget:showhelp"
