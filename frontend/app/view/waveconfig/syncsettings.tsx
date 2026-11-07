@@ -341,11 +341,18 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
     }, []);
 
     const save = useCallback(() => {
+        // 前置没满足时允许保存（配置要能边填边存），但必须明确告诉用户「现在跑不起来」，
+        // 否则界面显示已保存、同步却一直不动，是最难查的一类静默失败。
+        const blocked = blockedReasonFor(draft.transport, draft);
         fireAndForget(async () => {
             try {
                 await RpcApi.SetConfigCommand(TabRpcClient, draftToSettingsPatch(draft) as SettingsType);
                 setDirty(false);
-                setStatus("Saved.");
+                setStatus(
+                    blocked == null
+                        ? "Saved."
+                        : `Saved, but sync will not start: ${blocked}`
+                );
             } catch (err) {
                 setStatus(err instanceof Error ? err.message : String(err));
             }
@@ -381,7 +388,14 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                         </button>
                     </div>
                 </div>
-                {status !== "" && <div className="mb-2 text-xs text-success">{status}</div>}
+                {status !== "" && (
+                    <div
+                        data-sync-status=""
+                        className={cn("mb-2 text-xs", status.startsWith("Saved.") ? "text-success" : "text-warning")}
+                    >
+                        {status}
+                    </div>
+                )}
 
                 {/* ── Transport ─────────────────────────────────────────── */}
                 <GroupHeader
@@ -401,7 +415,7 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                     key={t.id}
                                     data-sync-transport={t.id}
                                     data-sync-transport-state={blocked ? "blocked" : active ? "active" : "available"}
-                                    className={cn("flex items-start gap-4 py-3", blocked && "opacity-50")}
+                                    className="flex items-start gap-4 py-3"
                                 >
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center gap-1.5">
@@ -416,15 +430,20 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                             {blocked ? t.blockedReason : t.description}
                                         </div>
                                     </div>
-                                    <div className="shrink-0 pt-0.5">
+                                    <div className="flex shrink-0 items-center gap-2 pt-0.5">
+                                        {blocked && !active && (
+                                            <span className="text-[10px] text-muted">not ready</span>
+                                        )}
+                                        {/* radio 永远可点：选中它是「我要用这个后端」，选不中就等于
+                                            用户永远看不到该后端的配置字段（server 的 URL 曾经因此完全
+                                            无法触达 —— 死锁）。能不能真正生效由下面的配置项是否填全决定。 */}
                                         <input
                                             type="radio"
                                             name="commontext-sync-transport"
                                             aria-label={t.name}
                                             checked={active}
-                                            disabled={blocked}
                                             onChange={() => patch({ transport: t.id })}
-                                            className="h-4 w-4 cursor-pointer accent-accent disabled:cursor-default"
+                                            className="h-4 w-4 cursor-pointer accent-accent"
                                         />
                                     </div>
                                 </div>

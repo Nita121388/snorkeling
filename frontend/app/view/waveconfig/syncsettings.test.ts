@@ -38,6 +38,16 @@ describe("syncsettings availability", () => {
         ).toBeNull();
     });
 
+    it("still reports a reason for a blocked transport (the panel must explain itself)", () => {
+        // blockedReasonFor 是「为什么还不能用」的说明来源，不是「禁止选中」的开关。
+        // 一旦有人把它接到 radio 的 disabled 上，server 就会死锁：URL 字段只在
+        // transport === "server" 时渲染，而选中 server 又要求 URL 已填 —— 永远够不到。
+        const specs = buildTransportSpecs(baseDraft());
+        const server = specs.find((s) => s.id === "server");
+        expect(server?.blockedReason).not.toBeNull();
+        expect(server?.blockedReason).toContain("URL");
+    });
+
     it("never blocks none", () => {
         expect(blockedReasonFor("none", baseDraft())).toBeNull();
     });
