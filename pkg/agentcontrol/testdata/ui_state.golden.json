@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "generatedat": 1761980000123,
+  "windows": ["win1"],
+  "tabs": [
+    { "tabid": "tabA", "name": "调研", "active": true, "workspaceid": "ws1" }
+  ],
+  "blocks": [
+    {
+      "blockid": "blk7",
+      "tabid": "tabA",
+      "workspaceid": "ws1",
+      "view": "term",
+      "title": "claude",
+      "controller": "shell",
+      "runtime": { "shellprocstatus": "running", "tsunamiport": 0 },
+      "meta": { "view": "term", "controller": "shell", "frametitle": "claude" }
+    },
+    {
+      "blockid": "blk8",
+      "tabid": "tabA",
+      "workspaceid": "ws1",
+      "view": "preview",
+      "title": "README.md",
+      "controller": "",
+      "meta": { "file": "/repo/README.md", "view": "preview" }
+    }
+  ],
+  "sources": { "backend": "ok", "live": "not-requested" }
+}

@@ -94,6 +94,14 @@ type WshRpcInterface interface {
 	// agent control surface (session card read/write, used by wsh agent card *)
 	AgentCardGetCommand(ctx context.Context, data AgentCardGetRequest) (*AgentCardResult, error)
 	AgentCardSetCommand(ctx context.Context, data AgentCardSetRequest) (*AgentCardSetResult, error)
+	// agent control surface (UI observe + navigate, used by wsh ui/block/tab *)
+	UIActiveCommand(ctx context.Context, data UIActiveRequest) (*UIActiveSnapshot, error)
+	UIStateCommand(ctx context.Context, data UIStateRequest) (*UIStateSnapshot, error)
+	BlockReadCommand(ctx context.Context, data BlockReadRequest) (*BlockReadResult, error)
+	BlockOpenCommand(ctx context.Context, data BlockOpenRequest) (*BlockOpenResult, error)
+	TabListCommand(ctx context.Context, data TabListRequest) (*TabListResult, error)
+	TabCreateCommand(ctx context.Context, data TabCreateRequest) (*TabCreateResult, error)
+	TabActivateCommand(ctx context.Context, data TabActivateRequest) (*TabActivateResult, error)
 	WaveInfoCommand(ctx context.Context) (*WaveInfoData, error)
 	MacOSVersionCommand(ctx context.Context) (string, error)
 	WshActivityCommand(ct context.Context, data map[string]int) error
@@ -737,6 +745,172 @@ type AgentCardSetRequest struct {
 	ExpectedUpdatedAt int64                         `json:"expectedupdatedat,omitempty"`
 	DryRun            bool                          `json:"dryrun,omitempty"`
 	Yes               bool                          `json:"yes,omitempty"`
+}
+
+// ---- Agent Control Surface: UI observe + navigate DTOs ----
+
+// UIActiveRequest is the input for `wsh ui active`. BlockId/TabId carry the
+// caller's own location when env (WAVETERM_BLOCKID/TABID) is unavailable.
+type UIActiveRequest struct {
+	BlockId string `json:"blockid,omitempty"`
+	TabId   string `json:"tabid,omitempty"`
+}
+
+// UIActiveSelf is where the caller (the agent) is standing.
+type UIActiveSelf struct {
+	TabId    string `json:"tabid,omitempty"`
+	BlockId  string `json:"blockid,omitempty"`
+	BlockNum int    `json:"blocknum,omitempty"`
+}
+
+// UIActiveTarget is where the user is actually looking.
+type UIActiveTarget struct {
+	WindowId    string `json:"windowid,omitempty"`
+	WorkspaceId string `json:"workspaceid,omitempty"`
+	TabId       string `json:"tabid,omitempty"`
+	TabName     string `json:"tabname,omitempty"`
+	BlockId     string `json:"blockid,omitempty"`
+	View        string `json:"view,omitempty"`
+	Title       string `json:"title,omitempty"`
+}
+
+// UIActiveSnapshot answers "where am I" vs "where is the user". Self and
+// Active are separate objects on purpose: the whole point is that they differ.
+type UIActiveSnapshot struct {
+	Version     int             `json:"version"`
+	GeneratedAt int64           `json:"generatedat"`
+	Self        UIActiveSelf    `json:"self"`
+	Active      *UIActiveTarget `json:"active"`
+	Warnings    []string        `json:"warnings,omitempty"`
+}
+
+type UIStateRequest struct {
+	WindowId    string `json:"windowid,omitempty"`
+	WorkspaceId string `json:"workspaceid,omitempty"`
+	IncludeIdle bool   `json:"includeidle,omitempty"`
+}
+
+type UIBlockState struct {
+	BlockId     string            `json:"blockid"`
+	TabId       string            `json:"tabid,omitempty"`
+	WorkspaceId string            `json:"workspaceid,omitempty"`
+	View        string            `json:"view,omitempty"`
+	Title       string            `json:"title,omitempty"`
+	Controller  string            `json:"controller,omitempty"`
+	Runtime     *UIBlockRuntime   `json:"runtime,omitempty"`
+	Agent       *SessionLiveIssue `json:"agent,omitempty"`
+	Meta        waveobj.MetaMapType `json:"meta,omitempty"`
+}
+
+type UIBlockRuntime struct {
+	ShellProcStatus string `json:"shellprocstatus,omitempty"`
+	TsunamiPort     int    `json:"tsunamiport,omitempty"`
+}
+
+type UIStateTab struct {
+	TabId       string `json:"tabid"`
+	Name        string `json:"name,omitempty"`
+	Active      bool   `json:"active,omitempty"`
+	WorkspaceId string `json:"workspaceid,omitempty"`
+}
+
+type UIStateSnapshot struct {
+	Version     int            `json:"version"`
+	GeneratedAt int64          `json:"generatedat"`
+	Windows     []string       `json:"windows,omitempty"`
+	Tabs        []UIStateTab   `json:"tabs,omitempty"`
+	Blocks      []UIBlockState `json:"blocks,omitempty"`
+	Sources     map[string]string `json:"sources,omitempty"`
+	Warnings    []string       `json:"warnings,omitempty"`
+}
+
+type BlockReadRequest struct {
+	BlockId     string `json:"blockid"`
+	Tail        int    `json:"tail,omitempty"`
+	MaxBytes    int    `json:"maxbytes,omitempty"`
+	LastCommand bool   `json:"lastcommand,omitempty"`
+}
+
+type BlockReadResult struct {
+	Version   int                    `json:"version"`
+	BlockId   string                 `json:"blockid"`
+	View      string                 `json:"view"`
+	Kind      string                 `json:"kind"`
+	Truncated bool                   `json:"truncated"`
+	Bytes     int                    `json:"bytes"`
+	Payload   map[string]any         `json:"payload"`
+	Warnings  []string               `json:"warnings,omitempty"`
+}
+
+type BlockOpenRequest struct {
+	View           string            `json:"view"`
+	Tab            string            `json:"tab,omitempty"` // active | new | <tabid>
+	WorkspaceId    string            `json:"workspaceid,omitempty"`
+	Split          string            `json:"split,omitempty"` // right|down|left|up
+	Replace        string            `json:"replace,omitempty"` // block id to replace
+	Magnified      bool              `json:"magnified,omitempty"`
+	NoFocus        bool              `json:"nofocus,omitempty"`
+	Wait           bool              `json:"wait,omitempty"`
+	WaitMs         int               `json:"waitms,omitempty"`
+	Dedupe         bool              `json:"dedupe,omitempty"`
+	Meta           waveobj.MetaMapType `json:"meta,omitempty"`
+}
+
+type BlockOpenResult struct {
+	Version   int      `json:"version"`
+	Ok        bool     `json:"ok"`
+	TabId     string   `json:"tabid,omitempty"`
+	BlockId   string   `json:"blockid,omitempty"`
+	BlockNum  int      `json:"blocknum,omitempty"`
+	View      string   `json:"view,omitempty"`
+	Deduped   bool     `json:"deduped,omitempty"`
+	SyncState string   `json:"syncstate,omitempty"` // db-only | layout-applied
+	WaitedMs  int      `json:"waitedms,omitempty"`
+	Warnings  []string `json:"warnings,omitempty"`
+}
+
+type TabListRequest struct {
+	WorkspaceId string `json:"workspaceid,omitempty"`
+}
+
+type TabListResult struct {
+	Version     int          `json:"version"`
+	GeneratedAt int64        `json:"generatedat"`
+	WorkspaceId string       `json:"workspaceid,omitempty"`
+	ActiveTabId string       `json:"activetabid,omitempty"`
+	Tabs        []UIStateTab `json:"tabs,omitempty"`
+	Warnings    []string     `json:"warnings,omitempty"`
+}
+
+type TabCreateRequest struct {
+	WorkspaceId string `json:"workspaceid,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Activate    bool   `json:"activate,omitempty"`
+	Wait        bool   `json:"wait,omitempty"`
+	WaitMs      int    `json:"waitms,omitempty"`
+}
+
+type TabCreateResult struct {
+	Version   int      `json:"version"`
+	Ok        bool     `json:"ok"`
+	TabId     string   `json:"tabid,omitempty"`
+	TabName   string   `json:"tabname,omitempty"`
+	WaitedMs  int      `json:"waitedms,omitempty"`
+	Warnings  []string `json:"warnings,omitempty"`
+}
+
+type TabActivateRequest struct {
+	TabId  string `json:"tabid"`
+	Wait   bool   `json:"wait,omitempty"`
+	WaitMs int    `json:"waitms,omitempty"`
+}
+
+type TabActivateResult struct {
+	Version   int      `json:"version"`
+	Ok        bool     `json:"ok"`
+	TabId     string   `json:"tabid,omitempty"`
+	WaitedMs  int      `json:"waitedms,omitempty"`
+	Warnings  []string `json:"warnings,omitempty"`
 }
 
 type AiMessageData struct {
