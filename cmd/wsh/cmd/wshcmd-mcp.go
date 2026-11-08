@@ -17,6 +17,7 @@ import (
 var (
 	mcpTokenFile string
 	mcpTimeout   int64
+	mcpStdio     bool
 )
 
 var mcpCmd = &cobra.Command{
@@ -44,6 +45,10 @@ func init() {
 	mcpCmd.PersistentFlags().Int64Var(&mcpTimeout, "timeout", 15000, "per-call RPC timeout in milliseconds")
 	mcpCmd.AddCommand(mcpServeCmd)
 	mcpServeCmd.Flags().StringVar(&mcpTokenFile, "token-file", "", "agent token file (see: wsh auth grant)")
+	// --stdio is the only transport. The flag exists so the invocation reads
+	// as intent, and so a future attempt to add a listener has to fight a
+	// deliberate name rather than slip in silently.
+	mcpServeCmd.Flags().BoolVar(&mcpStdio, "stdio", true, "serve over stdio (the only supported transport)")
 	rootCmd.AddCommand(mcpCmd)
 }
 
@@ -104,6 +109,12 @@ func (b rpcBackend) AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetReq
 
 func mcpServeRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() { sendActivity("mcp serve", rtnErr == nil) }()
+
+	if !mcpStdio {
+		// There is no other transport on purpose (design §10.5.5: a TCP
+		// listener would enlarge the threat model by an order of magnitude).
+		return fmt.Errorf("E_USAGE: only --stdio is supported; no listener transport exists")
+	}
 
 	// The token must come from a file or the environment: putting it in argv
 	// would expose it to `ps` and to the host's MCP config file.
