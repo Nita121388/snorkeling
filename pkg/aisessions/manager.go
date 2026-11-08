@@ -1203,6 +1203,37 @@ func (m *Manager) Delete(ctx context.Context, identifier string) (SessionSummary
 	return summary, nil
 }
 
+func (m *Manager) DeletePermanently(ctx context.Context, identifier string) (SessionSummary, error) {
+	summary, err := m.resolveSession(ctx, identifier, false, false)
+	if err != nil {
+		return SessionSummary{}, err
+	}
+	if strings.TrimSpace(summary.FilePath) == "" {
+		return SessionSummary{}, fmt.Errorf("session file path is empty")
+	}
+	RemoveLiveSession(summary.ID)
+	RemoveLiveSession(summary.Key)
+	if err := os.Remove(summary.FilePath); err != nil && !os.IsNotExist(err) {
+		return SessionSummary{}, fmt.Errorf("deleting session file: %w", err)
+	}
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr == nil && sqliteIdx != nil {
+		defer sqliteIdx.Close()
+		if err := sqliteIdx.DeleteSessionDataPermanently(ctx, summary); err != nil {
+			debugf("Manager.DeletePermanently sqlite delete error key=%q err=%v", summary.Key, err)
+		}
+	}
+	meta, _ := m.openMeta()
+	if meta != nil {
+		defer meta.Close()
+		if err := meta.Delete(ctx, summary.Key); err != nil {
+			return SessionSummary{}, err
+		}
+	}
+	summary.FilePath = ""
+	return summary, nil
+}
+
 func (m *Manager) Path(ctx context.Context, identifier string, refresh bool) (string, error) {
 	summary, err := m.resolveSession(ctx, identifier, refresh, false)
 	if err != nil {

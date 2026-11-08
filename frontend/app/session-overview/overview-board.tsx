@@ -3,7 +3,7 @@
 
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { useAgentReadContext } from "@/app/agent-status/use-agent-status-view";
-import { cn } from "@/util/util";
+import { cn, makeIconClass } from "@/util/util";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgentStatusChip } from "./agent-status-chip";
 import {
@@ -20,8 +20,8 @@ import {
     diffBoardLayout,
     OVERVIEW_BOARD_MOTION_ENABLED,
     type BoardMotionKind,
-    type BoardSnapshot,
     type BoardRect,
+    type BoardSnapshot,
 } from "./overview-board-motion";
 import type { OverviewTimelineSegment } from "./overview-timeline-model";
 import "./session-overview.scss";
@@ -89,25 +89,18 @@ function isLayoutChange(prev: BoardSnapshot, next: BoardSnapshot): boolean {
     return prev.columns.some((key) => !next.columns.includes(key));
 }
 
-
 export type OverviewBoardProps = {
     cards: readonly OverviewBoardCard[];
     presentedStatuses: Readonly<Record<string, OverviewBoardStatusInput>>;
-    /** Real status objects, used by the status chip (label / elapsed / ack). */
     agentStatuses?: Readonly<Record<string, AgentStatus | null>>;
-    /** Total card cap, applied across columns in fixed order. */
     maxTotal?: number;
-    /** 分组口径：状态（固定 5 列）/ Tab / Provider / 目录 / 标签。 */
     group?: OverviewBoardGroup;
-    /**
-     * 卡片底部迷你时间线：blockId → 段数组（毫秒）。
-     *
-     * 由面板算（`buildTimelineSegments`），看板只渲染 —— 保持「看板是哑渲染器」的既有约定。
-     */
     miniTimelines?: Readonly<Record<string, readonly OverviewTimelineSegment[] | undefined>>;
     now: number;
-    /** 点卡片：agent 块 → 打开整卡弹窗（AgentCardModal）；非 agent 块 → 选中 / 跳转。 */
     onOpenCard: (card: OverviewBoardCard) => void;
+    onCloseCard?: (card: OverviewBoardCard) => void;
+    onDeleteSession?: (card: OverviewBoardCard) => void;
+    deletingSessionId?: string;
     onAckStatus?: (blockId: string, status: AgentStatus) => void;
 };
 
@@ -131,6 +124,9 @@ function BoardCard({
     columnKey,
     now,
     onOpenCard,
+    onCloseCard,
+    onDeleteSession,
+    deletingSessionId,
     onAckStatus,
     miniSegments,
 }: {
@@ -140,6 +136,9 @@ function BoardCard({
     columnKey: string;
     now: number;
     onOpenCard: (card: OverviewBoardCard) => void;
+    onCloseCard?: (card: OverviewBoardCard) => void;
+    onDeleteSession?: (card: OverviewBoardCard) => void;
+    deletingSessionId?: string;
     onAckStatus?: (blockId: string, status: AgentStatus) => void;
     /**
      * 卡片底部迷你时间线的段（毫秒）。不传 = 不画迷你条。
@@ -156,6 +155,16 @@ function BoardCard({
     // Chip 内部是 <button>，卡片容器不能再是 <button>（嵌套按钮是非法 HTML，点击会串）。
     const openCard = () => onOpenCard(card);
     const tagChips = resolveBoardTagChips(card.tags, 3);
+    const isDeletingSession = deletingSessionId !== "" && deletingSessionId === card.sessionId;
+    const showDeleteSession = onDeleteSession != null && card.sessionId !== "";
+    const stopCardEvent = (event: React.SyntheticEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+    };
+    const openCardFromTarget = (event: React.MouseEvent) => {
+        if (event.target !== event.currentTarget) return;
+        openCard();
+    };
 
     return (
         <div
@@ -167,7 +176,7 @@ function BoardCard({
             data-agent-like={card.isAgentLike ? "true" : "false"}
             role="button"
             tabIndex={0}
-            onClick={openCard}
+            onClick={openCardFromTarget}
             onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
@@ -177,10 +186,43 @@ function BoardCard({
             aria-label={`Open session ${card.title}`}
             title={card.preview ? `${card.title}\n${card.preview}` : card.title}
         >
-            <span className="session-overview-board-card-head">
+            <span className="session-overview-board-card-head" onClick={openCardFromTarget}>
                 <BoardAvatar avatar={card.avatar} />
                 <span className="session-overview-board-card-title">{card.title}</span>
                 {age ? <span className="session-overview-board-card-age">{age}</span> : null}
+                <span
+                    className="session-overview-board-card-actions"
+                    onClick={stopCardEvent}
+                    onMouseDown={stopCardEvent}
+                >
+                    {showDeleteSession ? (
+                        <button
+                            type="button"
+                            className={cn(
+                                "session-overview-board-card-action",
+                                "danger",
+                                isDeletingSession && "is-busy"
+                            )}
+                            onClick={() => !isDeletingSession && onDeleteSession?.(card)}
+                            disabled={isDeletingSession}
+                            aria-label={`Delete session ${card.title}`}
+                            title="????"
+                        >
+                            <i className={makeIconClass(isDeletingSession ? "spinner" : "trash", false)} />
+                        </button>
+                    ) : null}
+                    {onCloseCard ? (
+                        <button
+                            type="button"
+                            className="session-overview-board-card-action"
+                            onClick={() => onCloseCard(card)}
+                            aria-label={`Close block ${card.title}`}
+                            title="??"
+                        >
+                            <i className={makeIconClass("xmark", false)} />
+                        </button>
+                    ) : null}
+                </span>
             </span>
             <span className="session-overview-board-card-meta">
                 {status != null && onAckStatus != null ? (
@@ -261,6 +303,9 @@ export function OverviewBoard({
     miniTimelines,
     now,
     onOpenCard,
+    onCloseCard,
+    onDeleteSession,
+    deletingSessionId,
     onAckStatus,
 }: OverviewBoardProps) {
     // 状态分组常显 5 列（空列给占位）；tab / provider 分组只显示有卡的列。
@@ -278,10 +323,7 @@ export function OverviewBoard({
     // 列 key 也进签名：切分组（status ⇄ tab ⇄ provider）必须重跑一次，才能被 diff 的
     // 「列集合变了 → 整体静默」规则拦下来。
     const layoutSignature = useMemo(
-        () =>
-            columns
-                .map((column) => `${column.key}:${column.blocks.map((c) => c.blockId).join(",")}`)
-                .join("|"),
+        () => columns.map((column) => `${column.key}:${column.blocks.map((c) => c.blockId).join(",")}`).join("|"),
         [columns]
     );
 
@@ -439,10 +481,7 @@ export function OverviewBoard({
                         <span className="session-overview-board-column-title">{column.title}</span>
                         <span
                             key={`count-${column.key}-${isLanding(column.key) ? landing.tick : 0}`}
-                            className={cn(
-                                "session-overview-board-column-count",
-                                isLanding(column.key) && "is-bumping"
-                            )}
+                            className={cn("session-overview-board-column-count", isLanding(column.key) && "is-bumping")}
                             role="status"
                         >
                             {column.blocks.length}
@@ -460,6 +499,9 @@ export function OverviewBoard({
                                     columnKey={column.key}
                                     now={now}
                                     onOpenCard={onOpenCard}
+                                    onCloseCard={onCloseCard}
+                                    onDeleteSession={onDeleteSession}
+                                    deletingSessionId={deletingSessionId}
                                     onAckStatus={onAckStatus}
                                     miniSegments={miniTimelines?.[card.blockId]}
                                 />
