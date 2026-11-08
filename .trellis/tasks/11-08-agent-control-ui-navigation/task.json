@@ -21,6 +21,6 @@
   "children": [],
   "parent": "11-01-agent-control-surface",
   "relatedFiles": [],
-  "notes": "Stage 1-5 代码 + Stage 7 文档/spec 已交付（8b2b8406..ebab6998）。真机验收（CDP 直调 RpcApi，无需 token）：AC1/AC3/AC4/AC5/AC6/AC8/AC9 通过；AC7 仅后端半边通过，前端渲染未验成——dev 以非前台方式启动，两个 page target 均报 document.hidden=true，Win32 ShowWindow 恢复窗口与 Page.bringToFront 均无效，属环境阻塞。过程中修复真 bug：connection=\"local\" 被误判为远程（4f719d1e）。AC7 前端需正常交互式启动的可见窗口复测。明细见 docs/project/verify-runs/2026-11-08-acs-p02.md。",
+  "notes": "Stage 1-5 代码 + Stage 7 文档/spec 已交付（8b2b8406..ebab6998）。真机验收（CDP 直调 RpcApi，无需 token）：AC1/AC3/AC4/AC5/AC6/AC8/AC9 通过；AC7 仅后端半边通过，前端渲染未验成——dev 以非前台方式启动，两个 page target 均报 document.hidden=true，Win32 ShowWindow 恢复窗口与 Page.bringToFront 均无效，属环境阻塞。过程中修复真 bug：connection=\"local\" 被误判为远程（4f719d1e）。AC7 前端需正常交互式启动的可见窗口复测。明细见 docs/project/verify-runs/2026-11-08-acs-p02.md。\nAC7 机制已定位（DB 直查）：syncState 只看 tab.BlockIds；发往未显示 tab 的布局动作堆在 pendingbackendactions 未被消费，发往活动 tab 的动作 pending=0 但 leaforder 未增长。→ --wait 判据应改为「pending 排空 且 leaforder 含该 block」或加前端回执，列 P0.3 修正项。",
   "meta": {}
 }
