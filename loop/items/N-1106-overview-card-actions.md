@@ -3,7 +3,7 @@ id: N-1106-overview-card-actions
 title: "Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删"
 type: feature
 priority: P1
-status: open
+status: accepted
 origin: self
 source: "nita 2026-11-06 会话要求（先设计后开工）"
 task: 11-06-overview-board-card-actions
@@ -12,6 +12,7 @@ touch: [frontend/app/session-overview/**, frontend/app/modals/confirmmodal.tsx, 
 rollback: "git revert 前后端两次提交；硬删 RPC 可单独回滚，前端退回仅软删"
 budget: {minutes: 180, retries: 2}
 releaseCandidate: false
+score: {value: 5, by: nita, at: "2026-11-08T13:17:04Z", note: null}
 createdAt: "2026-11-06T00:45:53Z"
 ---
 

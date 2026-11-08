@@ -3,7 +3,7 @@ id: N-1105-loop-ledger
 title: "loop 台账骨架 + 门引擎"
 type: arch
 priority: P0
-status: open
+status: accepted
 origin: internal
 source: "2026-11-05 昼夜循环工作流立项"
 task: 11-05-day-night-loop
@@ -12,7 +12,8 @@ touch: [loop/**, .trellis/config.yaml]
 rollback: "rm -rf loop/ && git checkout -- .trellis/config.yaml"
 budget: {minutes: 90, retries: 2}
 releaseCandidate: false
-createdAt: 2026-11-05T09:40
+score: {value: 5, by: nita, at: "2026-11-08T13:16:00Z", note: null}
+createdAt: "2026-11-05T09:40"
 ---
 
 # loop 台账骨架 + 门引擎

@@ -3,7 +3,7 @@ id: F-1106-move-block-tab-menu
 title: "Move Block to Tab：菜单 4→1 条 + 弹窗内新建 / 每行双图标动作"
 type: feature
 priority: P1
-status: open
+status: accepted
 origin: self
 source: "2026-11-06T12:44:52Z"
 task: 11-06-move-block-tab-menu
@@ -12,6 +12,7 @@ touch: [frontend/app/tab/tab-target-modal.tsx, frontend/app/tab/tab-target-modal
 rollback: "纯前端两次独立提交（modal 结构 / 菜单+覆盖）各自 git revert；无 feature flag，删新 prop 即回旧行为"
 budget: {minutes: 150, retries: 2}
 releaseCandidate: false
+score: {value: 5, by: nita, at: "2026-11-08T13:16:07Z", note: null}
 createdAt: "2026-11-06T12:44:52Z"
 ---
 
