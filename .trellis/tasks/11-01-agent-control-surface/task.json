@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "11-08-agent-control-ui-navigation"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "P0.0 + P0.1 已交付并归档（11-01-live-session-overview, 11-01-session-agent-card）。剩余 P0.2/P0.3/P1/P1.5 待开新任务。",
