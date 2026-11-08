@@ -28,6 +28,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/syncconflict"
 	"github.com/wavetermdev/waveterm/pkg/syncjournal"
 	"github.com/wavetermdev/waveterm/pkg/syncproto"
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
 
@@ -40,6 +41,7 @@ const (
 	keyFolderPath     = "commontext:sync:folder:path"
 	keyServerUrl      = "commontext:sync:server:url"
 	keyServerInsecure = "commontext:sync:server:allowinsecure"
+	keyGitRemote      = "commontext:sync:git:remote"
 )
 
 // DefaultInterval is how often the timer syncs. Chosen to match the git transport's documented
@@ -386,6 +388,8 @@ func settingString(settings wconfig.SettingsType, key string) string {
 		return settings.CommonTextSyncFolderPath
 	case keyServerUrl:
 		return settings.CommonTextSyncServerUrl
+	case keyGitRemote:
+		return settings.CommonTextSyncGitRemote
 	}
 	return ""
 }
@@ -433,7 +437,21 @@ func buildTransport(settings wconfig.SettingsType, transportId string) (ctsync.T
 		}
 		return ctsync.NewServerTransport(url, token, settingBool(settings, keyServerInsecure))
 	case ctsync.TransportGit:
-		return nil, errors.New("git transport is not implemented yet")
+		remote := settingString(settings, keyGitRemote)
+		if strings.TrimSpace(remote) == "" {
+			return nil, errors.New("git transport needs a remote URL")
+		}
+		token, found, tokErr := secretstore.GetSecret("commontext_sync_git_token")
+		if tokErr != nil || !found {
+			token = ""
+		}
+		// The clone is owned by the app under the data dir: never a repository the user already has,
+		// because reusing one would commit sync payloads into their working tree.
+		repoDir, dirErr := gitRepoDir()
+		if dirErr != nil {
+			return nil, dirErr
+		}
+		return ctsync.NewGitTransport(remote, repoDir, token)
 	default:
 		return nil, errors.New("unknown transport")
 	}
@@ -471,4 +489,14 @@ func serverToken() (string, error) {
 		return "", nil
 	}
 	return value, nil
+}
+
+// gitRepoDir is the local clone the git transport manages. It lives under the app data dir so the
+// transport never touches a repository the user already has.
+func gitRepoDir() (string, error) {
+	dataDir := wavebase.GetWaveDataDir()
+	if dataDir == "" {
+		return "", errors.New("cannot locate the app data directory for the git sync clone")
+	}
+	return filepath.Join(dataDir, "sync", "git-repo"), nil
 }

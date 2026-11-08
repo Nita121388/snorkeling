@@ -221,7 +221,13 @@ func (t *FolderTransport) Push(ctx context.Context, req syncproto.PushRequest) (
 }
 
 func (t *FolderTransport) readPayload() (*FolderPayload, error) {
-	raw, err := os.ReadFile(t.Path)
+	return readPayloadFile(t.Path)
+}
+
+// readPayloadFile is shared by every file-based transport (folder, git) so the on-disk format has
+// exactly one implementation. A second parser would silently accept different things.
+func readPayloadFile(path string) (*FolderPayload, error) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -235,7 +241,7 @@ func (t *FolderTransport) readPayload() (*FolderPayload, error) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		// A corrupt payload must not be silently replaced: overwriting would destroy the other
 		// machine's data. Failing loudly keeps the user in control.
-		return nil, fmt.Errorf("sync file %s is not valid JSON (refusing to overwrite it): %w", t.Path, err)
+		return nil, fmt.Errorf("sync file %s is not valid JSON (refusing to overwrite it): %w", path, err)
 	}
 	if payload.FormatVersion > FolderFormatVersion {
 		return nil, fmt.Errorf(
@@ -248,7 +254,17 @@ func (t *FolderTransport) readPayload() (*FolderPayload, error) {
 
 // writePayload writes atomically: temp file in the same directory, then rename.
 func (t *FolderTransport) writePayload(payload *FolderPayload) error {
-	dir := filepath.Dir(t.Path)
+	if err := writePayloadFile(t.Path, payload); err != nil {
+		return err
+	}
+	t.lastWroteAt = time.Now()
+	return nil
+}
+
+// writePayloadFile writes atomically: temp file in the same directory, fsync, then rename.
+// Shared by the folder and git transports.
+func writePayloadFile(path string, payload *FolderPayload) error {
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating sync folder %s: %w", dir, err)
 	}
@@ -276,10 +292,9 @@ func (t *FolderTransport) writePayload(payload *FolderPayload) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpName, t.Path); err != nil {
+	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("replacing sync file: %w", err)
 	}
-	t.lastWroteAt = time.Now()
 	return nil
 }
 

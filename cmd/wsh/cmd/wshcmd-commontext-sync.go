@@ -31,6 +31,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/syncconflict"
 	"github.com/wavetermdev/waveterm/pkg/syncjournal"
 	"github.com/wavetermdev/waveterm/pkg/syncproto"
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
@@ -915,6 +916,17 @@ func buildTransport(settings map[string]any, id sync.TransportId) (sync.Transpor
 		token := loadSyncToken("server")
 		insecure := syncKeyBool(settings, "commontext:sync:server:allowinsecure")
 		return sync.NewServerTransport(url, token, insecure)
+	case sync.TransportGit:
+		remote := syncKeyString(settings, "commontext:sync:git:remote")
+		if strings.TrimSpace(remote) == "" {
+			return nil, fmt.Errorf("git transport needs a remote (run: wsh commontext-sync set-git <remote>)")
+		}
+		token := loadSyncToken("git")
+		repoDir, err := cliGitRepoDir()
+		if err != nil {
+			return nil, err
+		}
+		return sync.NewGitTransport(remote, repoDir, token)
 	default:
 		return nil, fmt.Errorf("transport %q is not implemented yet", id)
 	}
@@ -1063,4 +1075,14 @@ func writeCommonTextItems(items []wconfig.CommonTextItemType) error {
 	return wshclient.SetConfigCommand(RpcClient, wshrpc.MetaSettingsType{
 		MetaMapType: map[string]any{wconfig.ConfigKey_CommonTextItems: items},
 	}, &wshrpc.RpcOpts{Timeout: 10000})
+}
+
+// cliGitRepoDir mirrors the app managed clone location so the CLI and the GUI share one clone.
+// Two clones would mean two working trees racing on the same remote.
+func cliGitRepoDir() (string, error) {
+	dataDir := wavebase.GetWaveDataDir()
+	if dataDir == "" {
+		return "", fmt.Errorf("cannot locate the app data directory for the git sync clone")
+	}
+	return filepath.Join(dataDir, "sync", "git-repo"), nil
 }
