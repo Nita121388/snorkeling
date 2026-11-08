@@ -182,9 +182,21 @@ signature), then calls the existing `CreateBlockCommand`, so the frontend sees
 exactly the same events as `wsh createblock`. `--split` targets the last block in
 the tab; `--split` and `--replace` are mutually exclusive.
 
-`--wait` polls **backend truth only** (`Workspace.ActiveTabId`, tab `BlockIds`),
-never a frontend claim. `syncState` moves `db-only` → `layout-applied`; a timeout
-lands in `warnings` because the write already succeeded.
+`--wait` deliberately does **not** trust `tab.BlockIds` alone: the block row exists
+as soon as the backend writes it, while the frontend may not have consumed the
+layout action yet (measured: `BlockIds=4` with `leaforder=1`). It polls
+`wcore.LayoutAppliedToFrontend` — pending-action queue drained **and** the block
+present in `leaforder` — and reports one of three states:
+
+| syncState | meaning |
+|---|---|
+| `db-only` | no `--wait`; the row is written, nothing about the frontend is claimed |
+| `layout-queued` | `--wait` timed out: written, but the frontend has not applied it (adds `layout-not-applied`) |
+| `layout-applied` | the frontend consumed the action and the block is in its leaf order |
+
+Reporting `layout-applied` before the frontend catches up would make an agent
+believe a block is on screen when it is not, so the queued state is a hard
+requirement, not a nicety.
 
 `wsh blocks list` and `wsh ui state` share `wcore.ListBlocksScoped` — the same walk
 feeds both, so they cannot drift.

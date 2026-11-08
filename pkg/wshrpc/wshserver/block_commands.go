@@ -55,7 +55,7 @@ func (ws *WshServer) BlockOpenCommand(ctx context.Context, data wshrpc.BlockOpen
 				BlockId:   existing,
 				View:      view,
 				Deduped:   true,
-				SyncState: "layout-applied",
+				SyncState: BlockSyncStateLayoutApplied,
 			}, nil
 		}
 	}
@@ -89,10 +89,13 @@ func (ws *WshServer) BlockOpenCommand(ctx context.Context, data wshrpc.BlockOpen
 		TabId:     tabId,
 		BlockId:   oref.OID,
 		View:      view,
-		SyncState: "db-only",
+		SyncState: BlockSyncStateDbOnly,
 	}
 
-	// 5. --wait: poll until the block is reflected in the tab's block list.
+	// 5. --wait: poll until the frontend has actually consumed the layout
+	// action. BlockIds membership is not enough (the row exists as soon as the
+	// backend writes it); we also need the queue drained and the leaf order to
+	// contain the block, otherwise `layout-applied` would be a lie.
 	if data.Wait {
 		waitMs := data.WaitMs
 		if waitMs <= 0 {
@@ -101,19 +104,31 @@ func (ws *WshServer) BlockOpenCommand(ctx context.Context, data wshrpc.BlockOpen
 		start := time.Now()
 		deadline := start.Add(time.Duration(waitMs) * time.Millisecond)
 		for time.Now().Before(deadline) {
-			if blockInTab(ctx, tabId, oref.OID) {
-				rtn.SyncState = "layout-applied"
+			if wcore.LayoutAppliedToFrontend(ctx, tabId, oref.OID) {
+				rtn.SyncState = BlockSyncStateLayoutApplied
 				break
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
 		rtn.WaitedMs = int(time.Since(start).Milliseconds())
-		if rtn.SyncState != "layout-applied" {
-			rtn.Warnings = append(rtn.Warnings, "wait-timeout")
+		if rtn.SyncState != BlockSyncStateLayoutApplied {
+			// The write succeeded; only the frontend has not caught up yet.
+			rtn.SyncState = BlockSyncStateLayoutQueued
+			rtn.Warnings = append(rtn.Warnings, "layout-not-applied")
 		}
 	}
 	return rtn, nil
 }
+
+// Sync states reported by block open. `layout-queued` exists because a block
+// can be written to the tab while the frontend has not consumed the layout
+// action yet — reporting that as "layout-applied" would make agents believe a
+// block is on screen when it is not.
+const (
+	BlockSyncStateDbOnly        = "db-only"
+	BlockSyncStateLayoutQueued  = "layout-queued"
+	BlockSyncStateLayoutApplied = "layout-applied"
+)
 
 // splitTargetAction maps CLI --split/--replace to wshrpc TargetAction.
 // The split target block is left empty (CreateBlockCommand appends to the
@@ -218,19 +233,6 @@ func signatureMatches(existing, want waveobj.MetaMapType) bool {
 		}
 	}
 	return true
-}
-
-func blockInTab(ctx context.Context, tabId, blockId string) bool {
-	tabObj, err := wstore.DBMustGet[*waveobj.Tab](ctx, tabId)
-	if err != nil {
-		return false
-	}
-	for _, id := range tabObj.BlockIds {
-		if id == blockId {
-			return true
-		}
-	}
-	return false
 }
 
 // lastBlockInTab returns the last block id in the tab, or "" when empty.

@@ -79,8 +79,12 @@ var termScrollbackFn   = func(tabId string, data wshrpc.TermScrollbackData) (*..
 ## 6. `--wait` 只看后端真相
 
 - `tab create/activate --wait`：轮询 `Workspace.ActiveTabId == tabId`，不看前端声称。
-- `block open --wait`：轮询新 block 出现在 tab 的 `BlockIds`。
-- 语义：`syncState` 只会从 `db-only` 推进到 `layout-applied`；超时进 `warnings`，**不报错**（写入已经成功）。
+- `block open --wait`：轮询 `wcore.LayoutAppliedToFrontend` = 布局动作队列排空 **且** `leaforder` 含该块。
+  **不能用 `tab.BlockIds` 含该块作为判据**：后端写完行就成立，前端可能还没消费动作
+  （2026-11-08 实测 `BlockIds=4` 而 `leaforder=1`）。
+- 三态：`db-only`（未 `--wait`）/ `layout-queued`（超时，写入成功但前端未应用，带 `layout-not-applied`）/
+  `layout-applied`。把未渲染的情况报成 `layout-applied` 等于对 Agent 说谎。
+- 超时进 `warnings`，**不报错**（写入已经成功）。
 
 ---
 

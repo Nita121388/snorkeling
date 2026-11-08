@@ -87,3 +87,41 @@ func ListBlocksScoped(ctx context.Context, scope BlocksScope) ([]wshrpc.BlocksLi
 	}
 	return results, nil
 }
+
+// GetLayoutStateForTab returns the layout object backing one tab. Callers use
+// it to ask the two questions that decide whether a block is really applied:
+// is the pending-action queue drained, and does the leaf order contain it?
+func GetLayoutStateForTab(ctx context.Context, tabId string) (*waveobj.LayoutState, error) {
+	layoutId, err := GetLayoutIdForTab(ctx, tabId)
+	if err != nil {
+		return nil, err
+	}
+	if layoutId == "" {
+		return nil, fmt.Errorf("tab %q has no layout state", tabId)
+	}
+	return wstore.DBMustGet[*waveobj.LayoutState](ctx, layoutId)
+}
+
+// LayoutAppliedToFrontend reports whether the frontend has consumed every
+// pending layout action for the tab AND the block appears in its leaf order.
+// BlockIds membership alone is not enough: the block row exists as soon as the
+// backend writes it, while the frontend may not have processed the action yet
+// (measured 2026-11-08: BlockIds=4 while leaforder=1).
+func LayoutAppliedToFrontend(ctx context.Context, tabId, blockId string) bool {
+	layout, err := GetLayoutStateForTab(ctx, tabId)
+	if err != nil || layout == nil {
+		return false
+	}
+	if layout.PendingBackendActions != nil && len(*layout.PendingBackendActions) > 0 {
+		return false
+	}
+	if layout.LeafOrder == nil {
+		return false
+	}
+	for _, leaf := range *layout.LeafOrder {
+		if leaf.BlockId == blockId {
+			return true
+		}
+	}
+	return false
+}

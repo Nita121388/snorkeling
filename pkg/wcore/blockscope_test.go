@@ -115,3 +115,63 @@ func TestListBlocksScopedUnknownWorkspaceErrors(t *testing.T) {
 		t.Fatal("expected error for unknown workspace")
 	}
 }
+
+func TestLayoutAppliedToFrontend(t *testing.T) {
+	setupBlockScopeStore(t)
+	ctx := context.Background()
+	tabId := "wstest-layout-tab"
+	layoutId := "wstest-layout-1"
+	blkId := "wstest-layout-blk"
+
+	cleanup := func() {
+		_ = wstore.DBDelete(ctx, waveobj.OType_LayoutState, layoutId)
+		_ = wstore.DBDelete(ctx, waveobj.OType_Tab, tabId)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	if err := wstore.DBInsert(ctx, &waveobj.Tab{
+		OID:         tabId,
+		Name:        "layout-tab",
+		LayoutState: layoutId,
+		BlockIds:    []string{blkId},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	pending := []waveobj.LayoutActionData{{ActionType: "insert", BlockId: blkId}}
+	leaves := []waveobj.LeafOrderEntry{{NodeId: "n1", BlockId: blkId}}
+
+	// queue still has the action -> not applied, even though BlockIds has it
+	if err := wstore.DBInsert(ctx, &waveobj.LayoutState{
+		OID:                   layoutId,
+		PendingBackendActions: &pending,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if LayoutAppliedToFrontend(ctx, tabId, blkId) {
+		t.Fatal("pending queue must block layout-applied")
+	}
+
+	// queue drained but block not in leaf order -> still not applied
+	otherLeaves := []waveobj.LeafOrderEntry{{NodeId: "n2", BlockId: "some-other-block"}}
+	if err := wstore.DBUpdate(ctx, &waveobj.LayoutState{OID: layoutId, LeafOrder: &otherLeaves}); err != nil {
+		t.Fatal(err)
+	}
+	if LayoutAppliedToFrontend(ctx, tabId, blkId) {
+		t.Fatal("missing leaf order must block layout-applied")
+	}
+
+	// queue drained and block present -> applied
+	empty := []waveobj.LayoutActionData{}
+	if err := wstore.DBUpdate(ctx, &waveobj.LayoutState{
+		OID:                   layoutId,
+		LeafOrder:             &leaves,
+		PendingBackendActions: &empty,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !LayoutAppliedToFrontend(ctx, tabId, blkId) {
+		t.Fatal("drained queue + leaf present must report applied")
+	}
+}
