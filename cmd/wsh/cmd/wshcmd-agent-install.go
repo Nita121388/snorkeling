@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/wavetermdev/waveterm/pkg/agentmcphost"
 	"github.com/wavetermdev/waveterm/pkg/agentskill"
 )
 
@@ -132,51 +132,18 @@ func agentInstallSkillRun(cmd *cobra.Command, args []string) (rtnErr error) {
 func agentMCPConfigRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() { sendActivity("agent mcp-config", rtnErr == nil) }()
 
-	wshPath, err := os.Executable()
-	if err != nil {
-		wshPath = "wsh"
-	}
-	tokenPath := filepath.Join("~", ".config", "snorkeling", "agent-token.json")
-
-	var payload map[string]any
-	switch strings.ToLower(mcpConfigHost) {
-	case "claude", "cursor", "pi":
-		payload = map[string]any{
-			"mcpServers": map[string]any{
-				"snorkeling": map[string]any{
-					"command": wshPath,
-					"args":    []string{"mcp", "serve", "--stdio"},
-					"env":     map[string]string{"SNORKELING_AGENT_TOKEN_FILE": tokenPath},
-				},
-			},
-		}
-	case "codex":
-		payload = map[string]any{
-			"mcp": map[string]any{
-				"servers": map[string]any{
-					"snorkeling": map[string]any{
-						"command": wshPath,
-						"args":    []string{"mcp", "serve", "--stdio"},
-						"env":     map[string]string{"SNORKELING_AGENT_TOKEN_FILE": tokenPath},
-					},
-				},
-			},
-		}
-	default:
-		return fmt.Errorf("E_USAGE: unknown --host %q (claude|cursor|codex)", mcpConfigHost)
-	}
-
-	data, err := json.MarshalIndent(payload, "", "  ")
+	// Same builder as the in-app Agent Access panel, so the two never diverge.
+	config, err := agentmcphost.Config(mcpConfigHost)
 	if err != nil {
 		return err
 	}
 	if mcpConfigOut != "" {
-		if err := os.WriteFile(mcpConfigOut, append(data, '\n'), 0o644); err != nil {
+		if err := os.WriteFile(mcpConfigOut, append([]byte(config), byte(10)), 0o644); err != nil {
 			return err
 		}
-		fmt.Printf("wrote\t%s\n", mcpConfigOut)
+		fmt.Println("wrote	" + mcpConfigOut)
 		return nil
 	}
-	fmt.Println(string(data))
+	fmt.Println(config)
 	return nil
 }

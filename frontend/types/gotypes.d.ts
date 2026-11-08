@@ -568,6 +568,7 @@ declare global {
         name: string;
         scope: string[];
         ttlseconds?: number;
+        out?: string;
     };
 
     // wshrpc.AgentAuthGrantResult
@@ -580,6 +581,37 @@ declare global {
         scopes: string[];
         expiresat: number;
         createdat: number;
+        outpath?: string;
+    };
+
+    // wshrpc.AgentAuthListResult
+    type AgentAuthListResult = {
+        version: number;
+        tokens: AgentAuthTokenInfo[];
+        path: string;
+    };
+
+    // wshrpc.AgentAuthRevokeRequest
+    type AgentAuthRevokeRequest = {
+        name?: string;
+        jti?: string;
+        all?: boolean;
+    };
+
+    // wshrpc.AgentAuthRevokeResult
+    type AgentAuthRevokeResult = {
+        revoked: number;
+    };
+
+    // wshrpc.AgentAuthTokenInfo
+    type AgentAuthTokenInfo = {
+        name: string;
+        jtiprefix: string;
+        scopes: string[];
+        createdat: number;
+        expiresat: number;
+        expired: boolean;
+        revoked: boolean;
     };
 
     // wshrpc.AgentCardChangeReport
@@ -650,6 +682,11 @@ declare global {
         hasset?: boolean;
     };
 
+    // wshrpc.AgentMCPConfigResult
+    type AgentMCPConfigResult = {
+        config: string;
+    };
+
     // wconfig.AgentModelConfigType
     type AgentModelConfigType = {
         id: string;
@@ -686,6 +723,13 @@ declare global {
         order?: number;
         aiManaged?: boolean;
         aiInstruction?: string;
+    };
+
+    // wshrpc.AgentSkillInstallResult
+    type AgentSkillInstallResult = {
+        skill: string;
+        installed: string[];
+        skipped: string[];
     };
 
     // agentstatus.AgentStatus

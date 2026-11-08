@@ -30,6 +30,18 @@ export class RpcApiType {
         return client.wshRpcCall("agentauthgrant", data, opts);
     }
 
+    // command "agentauthlist" [call]
+    AgentAuthListCommand(client: WshClient, opts?: RpcOpts): Promise<AgentAuthListResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentauthlist", null, opts);
+        return client.wshRpcCall("agentauthlist", null, opts);
+    }
+
+    // command "agentauthrevoke" [call]
+    AgentAuthRevokeCommand(client: WshClient, data: AgentAuthRevokeRequest, opts?: RpcOpts): Promise<AgentAuthRevokeResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentauthrevoke", data, opts);
+        return client.wshRpcCall("agentauthrevoke", data, opts);
+    }
+
     // command "agentcardget" [call]
     AgentCardGetCommand(client: WshClient, data: AgentCardGetRequest, opts?: RpcOpts): Promise<AgentCardResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentcardget", data, opts);
@@ -42,10 +54,22 @@ export class RpcApiType {
         return client.wshRpcCall("agentcardset", data, opts);
     }
 
+    // command "agentmcpconfig" [call]
+    AgentMCPConfigCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<AgentMCPConfigResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentmcpconfig", data, opts);
+        return client.wshRpcCall("agentmcpconfig", data, opts);
+    }
+
     // command "agentprofilelist" [call]
     AgentProfileListCommand(client: WshClient, opts?: RpcOpts): Promise<ProfileInfo[]> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentprofilelist", null, opts);
         return client.wshRpcCall("agentprofilelist", null, opts);
+    }
+
+    // command "agentskillinstall" [call]
+    AgentSkillInstallCommand(client: WshClient, opts?: RpcOpts): Promise<AgentSkillInstallResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentskillinstall", null, opts);
+        return client.wshRpcCall("agentskillinstall", null, opts);
     }
 
     // command "agentstatus" [call]

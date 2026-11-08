@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wavetermdev/waveterm/pkg/agentguide"
 )
 
 func TestEmbeddedFilesExist(t *testing.T) {
@@ -90,5 +92,39 @@ func TestInstallIsIdempotentAndContained(t *testing.T) {
 	}
 	if _, err := Install(""); err == nil {
 		t.Fatal("empty root must be refused")
+	}
+}
+
+// TestSkillCommandsMatchGuide is the P1.6 same-source check: the command
+// reference shipped inside the skill must be exactly what pkg/agentguide
+// renders. If someone adds a command or renames a flag in one place only, this
+// fails — which is the whole point, because an agent that trusts a stale skill
+// calls commands that no longer exist.
+func TestSkillCommandsMatchGuide(t *testing.T) {
+	data, err := Read("reference/commands.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := agentguide.SkillMarkdown()
+	if string(data) != want {
+		t.Fatalf("skill commands.md is out of sync with pkg/agentguide.\n" +
+			"Run: node scripts/run-task.mjs generate\n" +
+			"(then re-run this test)")
+	}
+}
+
+// TestSkillRedLinesMatchGuide keeps the safety text identical in both places.
+func TestSkillRedLinesMatchGuide(t *testing.T) {
+	data, err := Read("SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, line := range agentguide.RedLines() {
+		// SKILL.md numbers them, so match on the sentence body.
+		body := strings.TrimSpace(line)
+		if !strings.Contains(text, body) {
+			t.Fatalf("SKILL.md is missing red line %q; the guide and the skill must agree", body)
+		}
 	}
 }

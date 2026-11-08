@@ -89,20 +89,14 @@ func defaultAgentTokenPath() string {
 	return filepath.Join(home, ".config", "snorkeling", "agent-token.json")
 }
 
+// tabChar avoids backslashes in format strings (see the table printing below).
+const tabChar = "\u0009"
+
 func authGrantRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() { sendActivity("auth grant", rtnErr == nil) }()
 	if strings.TrimSpace(authName) == "" {
 		return fmt.Errorf("--name is required")
 	}
-	res, err := wshclient.AgentAuthGrantCommand(RpcClient, wshrpc.AgentAuthGrantRequest{
-		Name:       authName,
-		Scope:      authScopes,
-		TTLSeconds: authTTL,
-	}, &wshrpc.RpcOpts{Timeout: authTimeout})
-	if err != nil {
-		return err
-	}
-
 	outPath := authOut
 	if outPath == "" {
 		outPath = defaultAgentTokenPath()
@@ -110,53 +104,41 @@ func authGrantRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	if outPath == "" {
 		return fmt.Errorf("cannot determine a default token path; pass --out")
 	}
-	payload := AgentTokenFile{
-		Version:   1,
-		Name:      res.Name,
-		Token:     res.Token,
-		Socket:    res.Socket,
-		Scopes:    res.Scopes,
-		ExpiresAt: res.ExpiresAt,
-		CreatedAt: res.CreatedAt,
-	}
-	data, err := json.MarshalIndent(payload, "", "  ")
+	// The app writes the file (0600) so the CLI and the Agent Access panel share
+	// one implementation of the permission rule instead of two.
+	res, err := wshclient.AgentAuthGrantCommand(RpcClient, wshrpc.AgentAuthGrantRequest{
+		Name:       authName,
+		Scope:      authScopes,
+		TTLSeconds: authTTL,
+		Out:        outPath,
+	}, &wshrpc.RpcOpts{Timeout: authTimeout})
 	if err != nil {
 		return err
 	}
-	if err := writeSecretFile(outPath, data); err != nil {
-		return err
+	written := res.OutPath
+	if written == "" {
+		written = outPath
 	}
 
 	if authJSON {
 		// Never echo the token itself.
-		echo := payload
-		echo.Token = "***"
-		out, _ := json.Marshal(echo)
+		out, _ := json.Marshal(map[string]any{
+			"version":   res.Version,
+			"name":      res.Name,
+			"token":     "***",
+			"socket":    res.Socket,
+			"scopes":    res.Scopes,
+			"expiresat": res.ExpiresAt,
+			"createdat": res.CreatedAt,
+			"file":      written,
+		})
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Printf("granted\t%s\n", res.Name)
-	fmt.Printf("scopes\t%s\n", strings.Join(res.Scopes, ","))
-	fmt.Printf("expires\t%s\n", formatMilli(res.ExpiresAt))
-	fmt.Printf("file\t%s\n", outPath)
-	return nil
-}
-
-// writeSecretFile creates the file 0600 from the start (design §10.5.9: never
-// create-then-chmod, which leaves a window where the secret is world-readable).
-func writeSecretFile(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if _, err := f.Write(data); err != nil {
-		return err
-	}
+	fmt.Println("granted" + tabChar + res.Name)
+	fmt.Println("scopes" + tabChar + strings.Join(res.Scopes, ","))
+	fmt.Println("expires" + tabChar + formatMilli(res.ExpiresAt))
+	fmt.Println("file" + tabChar + written)
 	return nil
 }
 

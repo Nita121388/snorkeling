@@ -166,6 +166,34 @@ func IsRevoked(jti string) bool {
 	return false
 }
 
+// RegistryPath is the absolute path of the registry file, for display in the
+// Agent Access panel. It is not a credential: the file holds no tokens.
+func RegistryPath() string { return registryPath() }
+
+// LookupJti finds a full jti by its prefix, so the panel can revoke a row that
+// only shows 8 characters. An ambiguous prefix is an error rather than a guess:
+// revoking the wrong token would kill someone else's automation.
+func LookupJti(prefix string) (string, error) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return "", fmt.Errorf("E_USAGE: empty jti prefix")
+	}
+	matches := []string{}
+	for _, e := range load() {
+		if strings.HasPrefix(e.Jti, prefix) {
+			matches = append(matches, e.Jti)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("E_NOT_FOUND: no token with jti prefix %q", prefix)
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("E_CONFLICT: jti prefix %q matches %d tokens; use a longer prefix", prefix, len(matches))
+	}
+}
+
 // Describe summarises a jti prefix for logs (never the full token).
 func Describe(jti string) string {
 	if len(jti) >= 8 {

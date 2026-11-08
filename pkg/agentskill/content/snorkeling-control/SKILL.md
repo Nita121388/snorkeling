@@ -36,22 +36,27 @@ that does the job. Anything you attempt without the scope fails with
 
 ## Red lines (do not violate)
 
-1. **Never write a token into a skill file, script, repo, or commit.** Tokens are
-   short-lived and personal; they belong in the file the user created.
-2. **Dangerous operations go dry-run → ask → apply.** `block open --replace`,
-   any delete, and `agent card set` must be previewed (and for card writes,
-   `--dry-run` + `--expected-hash`) before a real write. Confirm with the user
-   between preview and apply.
-3. **Do not poll.** Prefer `wsh ui active --json` (< 2 KB). Never loop on
-   `ui state` / `session live`; if you need change notifications, say so instead
-   of spinning. The token is rate limited to 60 calls/minute and polling will hit
-   it.
-4. **If the token is missing, stop and ask.** Never look for `WAVETERM_AUTH_KEY`,
-   swap tokens, or another way around the grant. That key is the whole app's
-   credential.
-5. **Assume the UI moved.** Read `ui active` before acting on "the current
-   block", and use `--expected-hash` when writing so a concurrent edit becomes
-   `E_CONFLICT` instead of data loss.
+The five sentences below are identical to `wsh agent guide` (both render from
+pkg/agentguide), so a test fails if they drift.
+
+1. Never write a token into a skill file, script, repo, or commit.
+   Tokens are short-lived and personal; they belong in the file the user created.
+
+2. Dangerous operations go dry-run → ask → apply.
+   `block open --replace`, any delete, and `agent card set` must be previewed
+   (and for card writes, `--dry-run` + `--expected-hash`) before a real write.
+   Confirm with the user between preview and apply.
+
+3. Do not poll. Prefer `ui active`; a token is rate limited to 60 calls/minute.
+   Never loop on `ui state` / `session live`. If you need change notifications,
+   say so instead of spinning.
+
+4. If the token is missing, stop and ask. Never look for WAVETERM_AUTH_KEY.
+   Do not swap tokens or find another way around the grant. That key is the
+   whole app's credential.
+
+5. Assume the UI moved: read `ui active` first, and pass --expected-hash when writing.
+   That way a concurrent edit becomes `E_CONFLICT` instead of data loss.
 
 ## The 30-second orientation
 

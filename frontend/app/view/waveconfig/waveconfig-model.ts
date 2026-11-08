@@ -7,6 +7,7 @@ import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
+import { AgentAccessSettingsContent } from "@/app/view/waveconfig/agentaccesssettings";
 import { SyncSettingsContent } from "@/app/view/waveconfig/syncsettings";
 import { AIPromptsVisualContent } from "@/app/view/waveconfig/aipromptsettings";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
@@ -84,6 +85,13 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             description: "OS toasts for agent done / blocked",
             hasJsonView: false,
             visualComponent: AgentNotifySettingsContent,
+        },
+        {
+            name: "Agent Access",
+            path: "agentaccess",
+            description: "Scoped tokens for agents outside the app",
+            hasJsonView: false,
+            visualComponent: AgentAccessSettingsContent,
         },
         {
             // Common Text cloud sync lives here rather than in its own modal: this is the app's

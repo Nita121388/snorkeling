@@ -32,6 +32,18 @@ func AgentAuthGrantCommand(w *wshutil.WshRpc, data wshrpc.AgentAuthGrantRequest,
 	return resp, err
 }
 
+// command "agentauthlist", wshserver.AgentAuthListCommand
+func AgentAuthListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.AgentAuthListResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentAuthListResult](w, "agentauthlist", nil, opts)
+	return resp, err
+}
+
+// command "agentauthrevoke", wshserver.AgentAuthRevokeCommand
+func AgentAuthRevokeCommand(w *wshutil.WshRpc, data wshrpc.AgentAuthRevokeRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentAuthRevokeResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentAuthRevokeResult](w, "agentauthrevoke", data, opts)
+	return resp, err
+}
+
 // command "agentcardget", wshserver.AgentCardGetCommand
 func AgentCardGetCommand(w *wshutil.WshRpc, data wshrpc.AgentCardGetRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentCardResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentCardResult](w, "agentcardget", data, opts)
@@ -44,9 +56,21 @@ func AgentCardSetCommand(w *wshutil.WshRpc, data wshrpc.AgentCardSetRequest, opt
 	return resp, err
 }
 
+// command "agentmcpconfig", wshserver.AgentMCPConfigCommand
+func AgentMCPConfigCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) (*wshrpc.AgentMCPConfigResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentMCPConfigResult](w, "agentmcpconfig", data, opts)
+	return resp, err
+}
+
 // command "agentprofilelist", wshserver.AgentProfileListCommand
 func AgentProfileListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]agentcatalog.ProfileInfo, error) {
 	resp, err := sendRpcRequestCallHelper[[]agentcatalog.ProfileInfo](w, "agentprofilelist", nil, opts)
+	return resp, err
+}
+
+// command "agentskillinstall", wshserver.AgentSkillInstallCommand
+func AgentSkillInstallCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.AgentSkillInstallResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentSkillInstallResult](w, "agentskillinstall", nil, opts)
 	return resp, err
 }
 

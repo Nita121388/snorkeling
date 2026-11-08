@@ -104,6 +104,10 @@ type WshRpcInterface interface {
 	TabActivateCommand(ctx context.Context, data TabActivateRequest) (*TabActivateResult, error)
 	// external agent access: mint a scoped token (in-app only)
 	AgentAuthGrantCommand(ctx context.Context, data AgentAuthGrantRequest) (*AgentAuthGrantResult, error)
+	AgentAuthListCommand(ctx context.Context) (*AgentAuthListResult, error)
+	AgentAuthRevokeCommand(ctx context.Context, data AgentAuthRevokeRequest) (*AgentAuthRevokeResult, error)
+	AgentSkillInstallCommand(ctx context.Context) (*AgentSkillInstallResult, error)
+	AgentMCPConfigCommand(ctx context.Context, host string) (*AgentMCPConfigResult, error)
 	WaveInfoCommand(ctx context.Context) (*WaveInfoData, error)
 	MacOSVersionCommand(ctx context.Context) (string, error)
 	WshActivityCommand(ct context.Context, data map[string]int) error
@@ -961,6 +965,54 @@ type AgentAuthGrantRequest struct {
 	Name       string   `json:"name"`
 	Scope      []string `json:"scope"`
 	TTLSeconds int      `json:"ttlseconds,omitempty"`
+	// Out is where the app writes the token file (0600). Empty means the caller
+	// stores the token itself. Letting the app write it keeps one implementation
+	// of the file-permission rule for both the CLI and the settings panel.
+	Out string `json:"out,omitempty"`
+}
+
+// AgentAuthTokenInfo is one row of the Agent Access panel. It never carries the
+// token: the registry does not store tokens, so there is nothing to leak here.
+type AgentAuthTokenInfo struct {
+	Name      string   `json:"name"`
+	JtiPrefix string   `json:"jtiprefix"`
+	Scopes    []string `json:"scopes"`
+	CreatedAt int64    `json:"createdat"`
+	ExpiresAt int64    `json:"expiresat"`
+	Expired   bool     `json:"expired"`
+	Revoked   bool     `json:"revoked"`
+}
+
+// AgentAuthListResult lists every granted token (including revoked/expired, so
+// the panel can show history; the UI filters).
+type AgentAuthListResult struct {
+	Version int                 `json:"version"`
+	Tokens  []AgentAuthTokenInfo `json:"tokens"`
+	Path    string              `json:"path"`
+}
+
+// AgentAuthRevokeRequest revokes by name, by jti, or everything.
+type AgentAuthRevokeRequest struct {
+	Name string `json:"name,omitempty"`
+	Jti  string `json:"jti,omitempty"`
+	All  bool   `json:"all,omitempty"`
+}
+
+// AgentAuthRevokeResult reports how many live tokens were revoked.
+type AgentAuthRevokeResult struct {
+	Revoked int `json:"revoked"`
+}
+
+// AgentSkillInstallResult reports where the bundled skill was written.
+type AgentSkillInstallResult struct {
+	Skill     string   `json:"skill"`
+	Installed []string `json:"installed"`
+	Skipped   []string `json:"skipped"`
+}
+
+// AgentMCPConfigResult carries the host config snippet for `wsh mcp serve`.
+type AgentMCPConfigResult struct {
+	Config string `json:"config"`
 }
 
 // AgentAuthGrantResult carries the signed token. The caller writes it to a file
@@ -974,6 +1026,8 @@ type AgentAuthGrantResult struct {
 	Scopes    []string `json:"scopes"`
 	ExpiresAt int64    `json:"expiresat"`
 	CreatedAt int64    `json:"createdat"`
+	// OutPath is the absolute path written when the request set Out.
+	OutPath string `json:"outpath,omitempty"`
 }
 
 type AiMessageData struct {

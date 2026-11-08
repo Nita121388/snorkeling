@@ -6,13 +6,17 @@ package wshserver
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/agentaccess"
+	"github.com/wavetermdev/waveterm/pkg/agentmcphost"
 	"github.com/wavetermdev/waveterm/pkg/agentscope"
+	"github.com/wavetermdev/waveterm/pkg/agentskill"
 	"github.com/wavetermdev/waveterm/pkg/wavejwt"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshutil"
@@ -84,7 +88,7 @@ func (ws *WshServer) AgentAuthGrantCommand(ctx context.Context, data wshrpc.Agen
 	}); err != nil {
 		return nil, fmt.Errorf("E_INTERNAL: failed to record grant: %w", err)
 	}
-	return &wshrpc.AgentAuthGrantResult{
+	rtn := &wshrpc.AgentAuthGrantResult{
 		Version:   wshrpc.AgentControlVersion,
 		Name:      name,
 		Token:     token,
@@ -93,7 +97,27 @@ func (ws *WshServer) AgentAuthGrantCommand(ctx context.Context, data wshrpc.Agen
 		Scopes:    scopes,
 		ExpiresAt: now.Add(ttl).UnixMilli(),
 		CreatedAt: now.UnixMilli(),
-	}, nil
+	}
+	// Write the file here when asked, so the 0600 rule lives in exactly one
+	// place (agentaccess.WriteTokenFile) for both the CLI and the panel.
+	if out := strings.TrimSpace(data.Out); out != "" {
+		writtenPath, writeErr := agentaccess.WriteTokenFile(out, agentaccess.TokenFile{
+			Version:   wshrpc.AgentControlVersion,
+			Name:      name,
+			Token:     token,
+			Socket:    callerCtx.SockName,
+			Scopes:    scopes,
+			ExpiresAt: rtn.ExpiresAt,
+			CreatedAt: rtn.CreatedAt,
+		})
+		if writeErr != nil {
+			// The grant is recorded and live; only the file failed. Say so
+			// instead of pretending the grant did not happen.
+			return nil, fmt.Errorf("%w (the grant is still valid: pass --out to a writable path)", writeErr)
+		}
+		rtn.OutPath = writtenPath
+	}
+	return rtn, nil
 }
 
 // normalizeScopes validates requested scopes. Unknown names are refused rather
@@ -146,4 +170,118 @@ func sanitizeRouteSegment(name string) string {
 		return "agent"
 	}
 	return out
+}
+
+// inAppOnly refuses calls that did not come from a block inside this app.
+//
+// The Agent Access panel lives in the renderer, which is already an in-app
+// client, so it passes. An external token gets E_FORBIDDEN: a scoped agent must
+// never be able to mint or revoke credentials for other agents (privilege
+// escalation by definition).
+func inAppOnly(ctx context.Context) error {
+	rpc := wshutil.GetWshRpcFromContext(ctx)
+	if rpc == nil {
+		return fmt.Errorf("E_NO_ROUTE: no rpc context (run this inside a Snorkeling block)")
+	}
+	if rpc.GetRpcContext().SockName == "" {
+		return fmt.Errorf("E_NO_ROUTE: caller has no socket name")
+	}
+	return nil
+}
+
+// AgentAuthListCommand lists granted tokens for the Agent Access panel.
+func (ws *WshServer) AgentAuthListCommand(ctx context.Context) (*wshrpc.AgentAuthListResult, error) {
+	if err := inAppOnly(ctx); err != nil {
+		return nil, err
+	}
+	entries, err := agentaccess.List()
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UnixMilli()
+	rtn := &wshrpc.AgentAuthListResult{
+		Version: wshrpc.AgentControlVersion,
+		Path:    agentaccess.RegistryPath(),
+		Tokens:  make([]wshrpc.AgentAuthTokenInfo, 0, len(entries)),
+	}
+	for _, e := range entries {
+		rtn.Tokens = append(rtn.Tokens, wshrpc.AgentAuthTokenInfo{
+			Name:      e.Name,
+			JtiPrefix: agentaccess.Describe(e.Jti),
+			Scopes:    e.Scopes,
+			CreatedAt: e.CreatedAt,
+			ExpiresAt: e.ExpiresAt,
+			Expired:   e.Expired(now),
+			Revoked:   e.Revoked(),
+		})
+	}
+	return rtn, nil
+}
+
+// AgentAuthRevokeCommand revokes by name, by jti prefix, or everything. The
+// caller is expected to confirm with the user first; this function does not ask.
+func (ws *WshServer) AgentAuthRevokeCommand(ctx context.Context, data wshrpc.AgentAuthRevokeRequest) (*wshrpc.AgentAuthRevokeResult, error) {
+	if err := inAppOnly(ctx); err != nil {
+		return nil, err
+	}
+	var (
+		n   int
+		err error
+	)
+	switch {
+	case data.All:
+		n, err = agentaccess.RevokeAll()
+	case strings.TrimSpace(data.Jti) != "":
+		var jti string
+		jti, err = agentaccess.LookupJti(data.Jti)
+		if err != nil {
+			return nil, err
+		}
+		n, err = agentaccess.RevokeByJti(jti)
+	case strings.TrimSpace(data.Name) != "":
+		n, err = agentaccess.RevokeByName(strings.TrimSpace(data.Name))
+	default:
+		return nil, fmt.Errorf("E_USAGE: pass name, jti, or all")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &wshrpc.AgentAuthRevokeResult{Revoked: n}, nil
+}
+
+// AgentSkillInstallCommand writes the bundled skill into the agent skill
+// directories that exist on this machine.
+func (ws *WshServer) AgentSkillInstallCommand(ctx context.Context) (*wshrpc.AgentSkillInstallResult, error) {
+	if err := inAppOnly(ctx); err != nil {
+		return nil, err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	rtn := &wshrpc.AgentSkillInstallResult{Skill: agentskill.SkillName}
+	for _, root := range agentskill.DefaultRoots(home) {
+		if _, statErr := os.Stat(filepath.Dir(root)); statErr != nil {
+			// Do not create ~/.claude for someone who never used Claude Code.
+			rtn.Skipped = append(rtn.Skipped, root)
+			continue
+		}
+		if _, err := agentskill.Install(root); err != nil {
+			return nil, fmt.Errorf("E_INTERNAL: install into %s: %w", root, err)
+		}
+		rtn.Installed = append(rtn.Installed, filepath.Join(root, agentskill.SkillName))
+	}
+	return rtn, nil
+}
+
+// AgentMCPConfigCommand returns the host config snippet for `wsh mcp serve`.
+func (ws *WshServer) AgentMCPConfigCommand(ctx context.Context, host string) (*wshrpc.AgentMCPConfigResult, error) {
+	if err := inAppOnly(ctx); err != nil {
+		return nil, err
+	}
+	cfg, err := agentmcphost.Config(host)
+	if err != nil {
+		return nil, err
+	}
+	return &wshrpc.AgentMCPConfigResult{Config: cfg}, nil
 }

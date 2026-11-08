@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/wavetermdev/waveterm/pkg/agentguide"
 	"github.com/wavetermdev/waveterm/pkg/gogen"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
@@ -19,6 +20,7 @@ import (
 const WshClientFileName = "pkg/wshrpc/wshclient/wshclient.go"
 const WaveObjMetaConstsFileName = "pkg/waveobj/metaconsts.go"
 const SettingsMetaConstsFileName = "pkg/wconfig/metaconsts.go"
+const AgentSkillCommandsFileName = "pkg/agentskill/content/snorkeling-control/reference/commands.md"
 
 func GenerateWshClient() error {
 	fmt.Fprintf(os.Stderr, "generating wshclient file to %s\n", WshClientFileName)
@@ -82,6 +84,18 @@ func GenerateSettingsMetaConsts() error {
 	return err
 }
 
+// GenerateAgentSkillCommands keeps the shipped skill's command reference in sync
+// with pkg/agentguide, which is also what `wsh agent guide` prints. Without this
+// the skill and the binary would describe different surfaces.
+func GenerateAgentSkillCommands() error {
+	fmt.Fprintln(os.Stderr, "generating agent skill command reference to "+AgentSkillCommandsFileName)
+	written, err := utilfn.WriteFileIfDifferent(AgentSkillCommandsFileName, []byte(agentguide.SkillMarkdown()))
+	if !written {
+		fmt.Fprintln(os.Stderr, "no changes to "+AgentSkillCommandsFileName)
+	}
+	return err
+}
+
 func main() {
 	err := GenerateWshClient()
 	if err != nil {
@@ -96,6 +110,11 @@ func main() {
 	err = GenerateSettingsMetaConsts()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error generating settings meta consts: %v\n", err)
+		return
+	}
+	err = GenerateAgentSkillCommands()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error generating agent skill commands: %v\n", err)
 		return
 	}
 }
