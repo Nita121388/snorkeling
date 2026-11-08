@@ -1053,66 +1053,10 @@ func (ws *WshServer) MacOSVersionCommand(ctx context.Context) (string, error) {
 func (ws *WshServer) BlocksListCommand(
 	ctx context.Context,
 	req wshrpc.BlocksListRequest) ([]wshrpc.BlocksListEntry, error) {
-	var results []wshrpc.BlocksListEntry
-
-	// Resolve the set of workspaces to inspect
-	var workspaceIDs []string
-	if req.WorkspaceId != "" {
-		workspaceIDs = []string{req.WorkspaceId}
-	} else if req.WindowId != "" {
-		win, err := wcore.GetWindow(ctx, req.WindowId)
-		if err != nil {
-			return nil, err
-		}
-		workspaceIDs = []string{win.WorkspaceId}
-	} else {
-		// "current" == first workspace in client focus list
-		client, err := wstore.DBGetSingleton[*waveobj.Client](ctx)
-		if err != nil {
-			return nil, err
-		}
-		if len(client.WindowIds) == 0 {
-			return nil, fmt.Errorf("no active window")
-		}
-		win, err := wcore.GetWindow(ctx, client.WindowIds[0])
-		if err != nil {
-			return nil, err
-		}
-		workspaceIDs = []string{win.WorkspaceId}
-	}
-
-	for _, wsID := range workspaceIDs {
-		wsData, err := wcore.GetWorkspace(ctx, wsID)
-		if err != nil {
-			return nil, err
-		}
-
-		windowId, err := wstore.DBFindWindowForWorkspaceId(ctx, wsID)
-		if err != nil {
-			log.Printf("error finding window for workspace %s: %v", wsID, err)
-		}
-
-		for _, tabID := range wsData.TabIds {
-			tab, err := wstore.DBMustGet[*waveobj.Tab](ctx, tabID)
-			if err != nil {
-				return nil, err
-			}
-			for _, blkID := range tab.BlockIds {
-				blk, err := wstore.DBMustGet[*waveobj.Block](ctx, blkID)
-				if err != nil {
-					return nil, err
-				}
-				results = append(results, wshrpc.BlocksListEntry{
-					WindowId:    windowId,
-					WorkspaceId: wsID,
-					TabId:       tabID,
-					BlockId:     blkID,
-					Meta:        blk.Meta,
-				})
-			}
-		}
-	}
-	return results, nil
+	return wcore.ListBlocksScoped(ctx, wcore.BlocksScope{
+		WindowId:    req.WindowId,
+		WorkspaceId: req.WorkspaceId,
+	})
 }
 
 func (ws *WshServer) WorkspaceListCommand(ctx context.Context) ([]wshrpc.WorkspaceInfoData, error) {
