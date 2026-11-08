@@ -595,6 +595,101 @@
                     }
                 }
 
+                // ── 锁存式悬停分区（header-hover-latch）──────────────────────
+                // 方向只在 pointerenter 判定一次，pointermove 不参与；
+                // 这里只负责「按 data-latched 揭示哪一组」与「右侧让位」。
+                .block-frame-header-left-zone {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    min-width: 0;
+                    flex: 1 1 auto;
+                    // 让位用 max-width + opacity 过渡（不用 display:none）：
+                    // display:none 会让路径瞬间脱离布局 → 右组左跳抖动，且键盘 focus 链会断。
+                    max-width: 100%;
+                    transition: max-width 0.15s ease, opacity 0.13s ease;
+                    overflow: hidden;
+                }
+
+                // 右锁且 plan 判定需要让位（tier 0 且右组本就放得下时不让位）：
+                // chevron + 路径收起，类型图标保留 —— 腾出的宽度全给右组。
+                // 判据来自 plan.yieldLeft（纯函数唯一真相源），通过 .block-frame-end-icons 的
+                // data-header-yield 暴露，这里用 :has() 读，不重复算一遍宽度。
+                &[data-latched="right"]:has(.block-frame-end-icons[data-header-yield="1"]) {
+                    .block-frame-header-left-zone {
+                        flex: 0 0 auto;
+                        max-width: 0;
+                        opacity: 0;
+                    }
+                    .block-frame-default-header-iconview {
+                        // 类型图标是「我是什么」的唯一标识，让位时必须留。
+                        flex-shrink: 0;
+                    }
+                }
+
+                // tier 3/4（<192px）：左区只剩类型图标，路径与 chevron 一律收起。
+                // 否则窄块下路径会把 … 挤出 header（那正是本任务要修的硬切）。
+                &:has(.block-frame-end-icons[data-header-tier="3"]),
+                &:has(.block-frame-end-icons[data-header-tier="4"]) {
+                    .block-frame-header-left-zone {
+                        flex: 0 0 auto;
+                        .block-frame-preicon-button,
+                        .block-frame-textelems-wrapper {
+                            display: none;
+                        }
+                    }
+                }
+
+                .hdr-icon-group {
+                    display: flex;
+                    align-items: center;
+                    column-gap: 2px;
+                    flex: 0 0 auto;
+                    min-width: 0;
+
+                    &:empty {
+                        display: none;
+                    }
+                }
+
+                .hdr-group-pinned {
+                    flex-shrink: 0;
+                }
+
+                // 未锁存时（idle）：保持旧观感 —— reveal 组随 .is-hovered 显隐，pinned 常显。
+                // 这是 block:headersplitreveal=false 时的唯一生效路径，也是无锁存时的兜底。
+                .hdr-icon-group.is-idle {
+                    &.hdr-group-reveal {
+                        display: none;
+                    }
+                    &.hdr-group-start {
+                        display: none;
+                    }
+                }
+
+                .block-frame-end-icons.is-hovered .hdr-icon-group.is-idle {
+                    &.hdr-group-reveal,
+                    &.hdr-group-start {
+                        display: flex;
+                    }
+                }
+
+                // 「…」是逃生通道，视觉上固定排在本组最右（不参与削尾，见 plan 的 neverOverflow）。
+                .hdr-group-reveal .block-frame-settings {
+                    order: 99;
+                }
+
+                // 锁存态（data-latched 非空）时，组内 icon 必须可见 ——
+                // 否则就被下面既有的 `.wave-iconbutton.end-icon-reveal { display:none }`
+                // 压住（那条规则的特异性 0,2,0）。这里用「header 已锁存 + 在正常组里」
+                // 把它放回来；.is-idle 的组已由上一条规则单独处理。
+                &[data-latched="left"] .hdr-icon-group:not(.is-idle),
+                &[data-latched="right"] .hdr-icon-group:not(.is-idle) {
+                    .wave-iconbutton {
+                        display: flex;
+                    }
+                }
+
                 .block-frame-end-icons {
                     display: flex;
                     flex-shrink: 0;

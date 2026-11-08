@@ -31,7 +31,7 @@ function childSpanClasses(node: ReactElement<ElementProps>): string[] {
 }
 
 describe("RunningDot", () => {
-    it("renders four CSS dots in a spinning box when the session is running", () => {
+    it("renders a single breathing dot (no loading spinner) when the session is running", () => {
         const onJumpToBlock = vi.fn();
         const dot = RunningDot({
             runningState: { status: "running", blockId: "block-1", tabId: "tab-1" },
@@ -52,18 +52,22 @@ describe("RunningDot", () => {
         const button = dot.props.children;
         expect(isValidElement<ElementProps>(button)).toBe(true);
         if (!isValidElement<ElementProps>(button)) return;
-        expect(button.props.className).toContain("animate-spin");
         expect(button.props.className).toContain("h-4");
         expect(button.props.className).toContain("w-4");
         expect(button.props["aria-label"]).toBe("Jump to live block");
 
-        const dots = childSpanClasses(button);
-        expect(dots).toHaveLength(4);
-        for (const cls of dots) {
-            expect(cls).toContain("rounded-full");
-            expect(cls).toContain("bg-success");
-            expect(cls).toContain("absolute");
-        }
+        // 视觉契约：**不再**是 animate-spin + 4 个绿点。
+        // `animate-spin` 在本仓的既定语义是「请求未完成」，用在长期运行态上是语义错位；
+        // 绿色在 agent-status 体系里属于 done，运行中用 --agent-working-color 蓝。
+        // 这些断言是防回退的锁，改视觉前先读 session-row.tsx 里 RunningDot 的注释。
+        expect(button.props.className).not.toContain("animate-spin");
+
+        const dotSpan = button.props.children;
+        expect(isValidElement<ElementProps>(dotSpan)).toBe(true);
+        if (!isValidElement<ElementProps>(dotSpan)) return;
+        expect(dotSpan.props.className).toContain("session-row-live-dot");
+        expect(dotSpan.props.className).not.toContain("bg-success");
+        expect(dotSpan.props.className).not.toContain("absolute");
 
         const stopPropagation = vi.fn();
         button.props.onClick?.({ stopPropagation });
@@ -309,5 +313,75 @@ describe("metric heat cells", () => {
         const markup = renderMetrics({ messageCount: 3 });
         expect(markup).toContain("3 messages");
         expect(markup).toContain("height:20%");
+    });
+});
+
+describe("right-side run badge wiring", () => {
+    /**
+     * 徽章挂在 `row-meta` 末尾并带 `ml-auto`：这是「左粗 / 右细」分工的几何契约。
+     * 位置一旦退回标题行或左列，右侧就失去「行内唯一不被 hover 按钮打扰的位置」这个理由。
+     */
+    function renderRow(extra: Partial<SessionSummary> & { chatRunning?: boolean } = {}): string {
+        const { chatRunning, ...sessionExtra } = extra;
+        const session = {
+            key: "k",
+            id: "k",
+            source: "pi",
+            createdAt: 0,
+            updatedAt: 0,
+            ...sessionExtra,
+        } as unknown as SessionSummary;
+        return renderToStaticMarkup(
+            <SessionRow
+                session={session}
+                selected={false}
+                onSelect={() => {}}
+                onMark={() => {}}
+                onNoteSave={() => Promise.resolve(true)}
+                onResume={() => {}}
+                onJumpToBlock={() => {}}
+                chatRunning={chatRunning}
+            />
+        );
+    }
+
+    /**
+     * 取 row-meta 那段 html（从 tabular-nums 到 row-meta 的收尾 </div> 之前）。
+     *
+     * 不能用 `line-clamp`（snippet）当右边界：没有 snippet 的行取不到它，
+     * indexOf 返回 -1 → 切片退化成空串，断言会假红（实测踩到）。
+     * 这里用 `data-heat` 之后的第一个 </div> 收尾。
+     */
+    function metaSegment(markup: string): string {
+        const start = markup.indexOf("tabular-nums");
+        if (start < 0) return "";
+        const close = markup.indexOf("</div>", start);
+        return close > start ? markup.slice(start, close) : markup.slice(start);
+    }
+
+    it("places the badge wrapper inside row-meta with ml-auto", () => {
+        // 用 chatRunning 造出「确实有徽章」的行，否则 hasRunBadge=false 就不渲染 wrapper。
+        const markup = renderRow({ messageCount: 10, chatRunning: true });
+        const meta = metaSegment(markup);
+        expect(meta).toContain("ml-auto");
+        expect(meta).toContain("shrink-0");
+        expect(meta).toContain("session-run-badge");
+    });
+
+    it("renders no badge when the session is idle", () => {
+        const markup = renderRow({});
+        expect(markup).not.toContain("session-run-badge");
+        // 没内容时不留空 wrapper：否则末尾多一个零宽元素，`ml-auto` 也没意义。
+        expect(markup).not.toContain("ml-auto inline-flex shrink-0");
+    });
+
+    it("shows the chat tone when only GUI chat is running", () => {
+        const markup = renderRow({ chatRunning: true });
+        expect(markup).toContain("session-run-badge");
+        expect(markup).toContain("is-chat");
+        expect(markup).toContain("Chat");
+        // 旧的第二个 spinner 必须已经消失：同一行不该有两个「运行中」标记。
+        expect(markup).not.toContain("GUI Chat");
+        expect(markup).not.toContain("fa-spinner");
     });
 });

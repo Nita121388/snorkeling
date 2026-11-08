@@ -1731,6 +1731,12 @@ declare global {
         data64: string;
     };
 
+    // wconfig.CommonTextCreatedByType
+    type CommonTextCreatedByType = {
+        kind?: string;
+        name?: string;
+    };
+
     // commontextservice.CommonTextGetRequest
     type CommonTextGetRequest = {
         id: string;
@@ -1754,6 +1760,11 @@ declare global {
         updatedat?: number;
         lastusedat?: number;
         usagecount?: number;
+        emoji?: string;
+        createdby?: CommonTextCreatedByType;
+        origin?: CommonTextOriginType;
+        rev?: number;
+        deletedat?: number;
     };
 
     // commontextservice.CommonTextListRequest
@@ -1767,6 +1778,13 @@ declare global {
     // commontextservice.CommonTextListResponse
     type CommonTextListResponse = {
         items: CommonTextItemType[];
+    };
+
+    // wconfig.CommonTextOriginType
+    type CommonTextOriginType = {
+        deviceid?: string;
+        devicename?: string;
+        platform?: string;
     };
 
     // commontextservice.CommonTextRenameTagRequest
@@ -2927,6 +2945,20 @@ declare global {
         "app:theme"?: string;
         "feature:waveappbuilder"?: boolean;
         "commontext:items"?: CommonTextItemType[];
+        "commontext:sync:transport"?: string;
+        "commontext:sync:conflictpolicy"?: string;
+        "commontext:sync:devicename"?: string;
+        "commontext:sync:deviceid"?: string;
+        "commontext:sync:folder:path"?: string;
+        "commontext:sync:folder:watch"?: boolean;
+        "commontext:sync:git:remote"?: string;
+        "commontext:sync:git:interval"?: string;
+        "commontext:sync:git:hastoken"?: boolean;
+        "commontext:sync:server:url"?: string;
+        "commontext:sync:server:pushmode"?: string;
+        "commontext:sync:server:hastoken"?: boolean;
+        "commontext:sync:server:allowinsecure"?: boolean;
+        "commontext:sync:synctombstones"?: boolean;
         "agent:*"?: boolean;
         "agent:defaultprofile"?: string;
         "agent:profiles"?: {[key: string]: AgentProfileConfigType};
@@ -3011,6 +3043,11 @@ declare global {
         "tab:confirmclose"?: boolean;
         "tab:background"?: string;
         "block:inlinetabactivemaxwidthpct"?: number;
+        "block:headersplitreveal"?: boolean;
+        "block:headeryieldleft"?: boolean;
+        "block:headernarrowtier"?: boolean;
+        "block:headerhoverlatch"?: boolean;
+        "block:headerhovergrace"?: number;
         "widget:*"?: boolean;
         "widget:showhelp"?: boolean;
         "window:*"?: boolean;

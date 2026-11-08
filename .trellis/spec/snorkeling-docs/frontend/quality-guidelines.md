@@ -373,3 +373,54 @@ node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例
 - `idle` 段必须是**中性灰实心**，不能并进 `unknown` 的斜纹：斜纹语义是「当时在干什么不知道」，
   把已知的 idle 画成斜纹等于谎报「不知道」。
 - 真机断言用 `parseFloat(borderTopLeftRadius) <= 4`，不要做字符串比对（不同浏览器会输出 `4px` / `4.000px`）。
+
+---
+
+## Block header 悬停分区：必须锁存，`pointermove` 不参与 (2026-11-07, task 11-07-files-header-hover-latch)
+
+`blockframe-header.tsx` 是**全 block 共用** header。给它加「悬停左半揭示左组 / 悬停右半揭示右组 + 左侧让位」时，
+分区方向**只能在 `pointerenter` 判定一次，整个 hover 会话内不可变**。
+
+### 为什么不能按鼠标位置实时算
+
+右锁会让左侧（chevron + 路径）收起，腾出的宽度给右组 → 右组向左伸展、越过 header 中线。
+若分区靠 `pointermove` 重算：鼠标去点那个已经伸过中线的 icon → x 落在中线左侧 → 分区翻成 left →
+右组消失 → 点不到 → 鼠标退回 → 又翻回 right → **无限闪烁**。实测 240px 块宽下，中线版在右组第 0 个
+icon（`goto` @x=35，mid=119）就翻区。
+
+### 硬约束
+
+1. **状态机是纯函数，且事件类型里没有 MOVE**（`header-hover-latch.ts` 的 `reduceHoverLatch`）。
+   事件只有 `ENTER(x)` / `LEAVE()` / `RESET()` / `FREEZE()` / `UNFREEZE()`。类型层就没有误用的可能。
+2. **锁存状态独立于 `isHovered`**。`isHovered` 管 reveal 显隐 + `claimInfoCard` + 悬浮卡 300ms 收起，
+   **一行都不要改**；锁存另开 `hoverLatch`（`use-header-hover-latch.ts`）。
+3. **离开 header 后启动宽限定时器**（默认 400ms，`block:headerhovergrace`，钳制 0–1200）。
+   宽限内 `pointerenter` → 取消定时器并**沿用原方向**；到期才回 NEUTRAL。
+   换方向必须「离开 → 等过宽限 → 从另一侧进入」，这是有意接受的代价（可预测 > 灵活）。
+4. **宽度预算必须是纯函数**（`header-icon-plan.ts` 的 `planHeaderIcons`），不变量：
+   `shown.length + hidden.length === total`，`w ∈ [40..900] step 2` × `zone ∈ {left,right}` 全跑单测。
+   绝不允许出现「被 `overflow:hidden` 硬切、既不在菜单也不在浮层」的 icon —— 那是功能真丢。
+5. **逃生入口按 `neverOverflow` 语义取，不硬编码 key**。各视图的溢出 icon key 不同
+   （Files 是 `more`，原型里叫 `dots`）；硬编码会让窄块下 `shown` 变空、整条通道消失。
+6. **让位由 `plan.yieldLeft` 单一真相源驱动**：子组件把它写成 `data-header-yield`，
+   CSS 用 `:has()` 读。tier 0 且右组本就放得下时**不让位**（省掉无意义的路径收起）。
+
+### 附属层（溢出菜单）的 `pointerleave` 顺序陷阱
+
+实测（Playwright + Edge，菜单 portal 到 body 与 header 互为兄弟）：
+
+```
+hdr:pointerenter
+hdr:pointerleave related=DIV      ← 先到（与直觉相反）
+menu:pointerenter related=hdr     ← 后到
+```
+
+所以**不能指望菜单自己先 FREEZE**，宽限定时器已经在 `LEAVE` 时启动。两层防护都要：
+① `onPointerLeave` 里先查 `relatedTarget` 是否落在附属层内（主路径，`header-attached-layer.ts`）；
+② `FREEZE` 取消已启动的定时器（兜底）。
+`graceMs === 0` 时第 ② 层失效，只有 ① 能保护 —— 单测必须覆盖这个边界。
+
+### 验证
+
+- 单测（不需要 GUI）：`npx vitest run frontend/app/block/header-{hover-latch,icon-plan,attached-layer}.test.ts`
+- 真机台：`scripts/verify/header-hover-latch/verify.mjs`（A3–A7；本包由用户手动验证，台子留作回归用）

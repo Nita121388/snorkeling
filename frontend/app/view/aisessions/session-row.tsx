@@ -26,6 +26,7 @@ import {
     stripSessionTagHashes,
 } from "./session-tags";
 import { getChatSource } from "./sources";
+import { SessionRunBadge } from "./session-run-badge";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
 import {
@@ -125,10 +126,20 @@ function isRowActionTarget(event: { target: EventTarget | null }): boolean {
 }
 
 /**
- * Four-dot spinner shown beneath the mark button when the session has a live block.
- * Four dots sit at the top/right/bottom/left of a small box and the whole box rotates,
- * so the dots appear to chase each other around a square path.
- * Returns null for any non-running state so callers can drop it straight into JSX.
+ * 左侧粗粒度状态点：只表达「这个会话有一个活着的块」，点击跳过去。
+ *
+ * 历史：旧实现是 4 个 4px 绿点装在一个 16×16 方框里整体 `animate-spin`。
+ * `animate-spin` 在本仓的既定语义是**请求未完成**（restoring / generating /
+ * fetching 全用它），把它用在可能持续两小时的「运行中」上等于一直告诉用户
+ * 「马上就好」；4 点方框在视觉上也偏「廉价 loading 插件」。
+ *
+ * 现在：单点 6px，working 才呼吸，颜色用 --agent-working-color（蓝）。
+ * 绿色在本仓的 agent-status 体系里已经属于 `done`，同一行两种绿会撞语义。
+ *
+ * 细粒度信息（跑到哪一步、跑了多久）交给右侧 `SessionRunBadge`，两者分工：
+ * 左 = 有没有活块，右 = 什么状态、多久了。
+ *
+ * 返回 null 表示不渲染，调用方直接丢进 JSX 即可。
  */
 export function RunningDot({
     runningState,
@@ -138,7 +149,6 @@ export function RunningDot({
     onJumpToBlock: (runningState: SessionRunningState) => void;
 }): ReactElement | null {
     if (runningState == null || runningState.status !== "running") return null;
-    const dotClass = "absolute rounded-full bg-success";
     return (
         <Tooltip
             placement="top"
@@ -157,17 +167,15 @@ export function RunningDot({
         >
             <button
                 type="button"
-                className="relative inline-flex h-4 w-4 shrink-0 cursor-pointer animate-spin border-0 bg-transparent p-0"
+                className="session-row-live-dot-slot relative inline-flex h-4 w-4 shrink-0 cursor-pointer border-0 bg-transparent p-0"
                 aria-label="Jump to live block"
+                data-running-dot="true"
                 onClick={(event) => {
                     event.stopPropagation();
                     onJumpToBlock(runningState);
                 }}
             >
-                <span className={cn(dotClass, "left-1/2 top-0 h-1 w-1 -translate-x-1/2")} />
-                <span className={cn(dotClass, "right-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
-                <span className={cn(dotClass, "bottom-0 left-1/2 h-1 w-1 -translate-x-1/2")} />
-                <span className={cn(dotClass, "left-0 top-1/2 h-1 w-1 -translate-y-1/2")} />
+                <span className="session-row-live-dot" aria-hidden="true" />
             </button>
         </Tooltip>
     );
@@ -305,6 +313,9 @@ export function SessionRow({
     const dateInfo = describeSessionDates(session.createdAt ?? 0, session.updatedAt ?? 0);
     // snippet 的字体/行数策略：机器产出单行等宽，散文父子行分别 2 / 1 行。
     const snippetKind = classifySnippet(session.snippet);
+    // 右侧运行徽章是否会有内容：没内容就不留空 span（否则 row-meta 末尾多一个
+    // 零宽元素，`ml-auto` 也没有意义，还会让 DOM 断言误以为"徽章已渲染"）。
+    const hasRunBadge = runningState != null || chatRunning;
 
     const tooltip = useMemo(
         () =>
@@ -632,12 +643,11 @@ export function SessionRow({
                             )}
                             {session.source}
                         </button>
-                        {chatRunning ? (
-                            <span className="inline-flex items-center gap-1 text-accent" title="GUI Chat is running">
-                                <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />
-                                GUI Chat
-                            </span>
-                        ) : null}
+                        {/*
+                         * GUI Chat 的运行标记已并入右侧 SessionRunBadge（is-chat tone）：
+                         * 之前这里是第二个 spinner，与左列 RunningDot 构成两个互不知晓的
+                         * 「在跑」标记，同一行出现两次「运行中」。
+                         */}
                         {session.vendorid ? (
                             <span
                                 className="max-w-40 truncate rounded border border-border px-1.5 py-0.5 text-[10px] text-primary"
@@ -703,6 +713,24 @@ export function SessionRow({
                                 />
                             ) : null}
                         </span>
+                        {/*
+                         * 右侧运行徽章（细粒度）：状态词 + 跑时，`ml-auto` 顶到行右侧。
+                         * 与左列 `RunningDot`（粗粒度、只表达「有活着的块」）分工不同。
+                         *
+                         * 已知代价：本行是 flex-wrap，默认 320px 宽度下左侧元素已占满
+                         * 1 行，所以徽章会把该行撑成 2 行（实测 15 → 38px）。要零成本
+                         * 就改 nowrap 策略（左侧截断），见
+                         * design/prototypes/aisessions-running-indicator/README.md。
+                         */}
+                        {hasRunBadge ? (
+                            <span className="ml-auto inline-flex shrink-0">
+                                <SessionRunBadge
+                                    runningState={runningState}
+                                    chatRunning={chatRunning}
+                                    onJumpToBlock={onJumpToBlock}
+                                />
+                            </span>
+                        ) : null}
                     </div>
                     {session.snippet ? (
                         <div className="mt-1 flex items-start gap-1">

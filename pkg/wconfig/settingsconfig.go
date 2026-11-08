@@ -89,6 +89,24 @@ type AgentPropertyDefType struct {
 	AIInstruction string   `json:"aiInstruction,omitempty"`
 }
 
+// CommonTextCreatedByType records who authored an item.
+// Kind is human or agent; Name is the OS user name for humans and the agent name
+// (pi / claude / codex) for agents. Pointer-typed on the item so that legacy JSON
+// without these keys parses to nil instead of a non-nil empty struct.
+type CommonTextCreatedByType struct {
+	Kind string `json:"kind,omitempty" jsonschema:"enum=human,enum=agent"`
+	Name string `json:"name,omitempty"`
+}
+
+// CommonTextOriginType is the snapshot of the machine that created the item.
+// DeviceId is stable and never changes (renaming a device does not rewrite history),
+// DeviceName is the display name at creation time.
+type CommonTextOriginType struct {
+	DeviceId   string `json:"deviceid,omitempty"`
+	DeviceName string `json:"devicename,omitempty"`
+	Platform   string `json:"platform,omitempty" jsonschema:"enum=win32,enum=darwin,enum=linux"`
+}
+
 type CommonTextItemType struct {
 	Id         string   `json:"id,omitempty"`
 	Title      string   `json:"title,omitempty"`
@@ -100,6 +118,18 @@ type CommonTextItemType struct {
 	UpdatedAt  float64  `json:"updatedat,omitempty"`
 	LastUsedAt float64  `json:"lastusedat,omitempty"`
 	UsageCount float64  `json:"usagecount,omitempty"`
+	// Emoji is the Notion-style page icon for this item. Empty means no icon.
+	Emoji string `json:"emoji,omitempty"`
+
+	// Sync metadata. All optional: items written before sync existed have none of
+	// these, and the read path fills defaults without rewriting the row.
+	CreatedBy *CommonTextCreatedByType `json:"createdby,omitempty"`
+	Origin    *CommonTextOriginType    `json:"origin,omitempty"`
+	// Rev is the per-item version used for conflict detection.
+	Rev float64 `json:"rev,omitempty"`
+	// DeletedAt is a tombstone: non-zero means deleted. Deletions must sync or the
+	// other machine would resurrect the item.
+	DeletedAt float64 `json:"deletedat,omitempty"`
 }
 
 type PinnedDirectoryType struct {
@@ -193,6 +223,23 @@ type SettingsType struct {
 
 	CommonTextItems []CommonTextItemType `json:"commontext:items,omitempty"`
 
+	// Common Text cloud sync. One active transport at a time: the enum is closed (compile-time
+	// registry, not a plugin loader), and an unknown value falls back to "none" on read.
+	CommonTextSyncTransport      string `json:"commontext:sync:transport,omitempty" jsonschema:"enum=none,enum=folder,enum=git,enum=server"`
+	CommonTextSyncConflictPolicy string `json:"commontext:sync:conflictpolicy,omitempty" jsonschema:"enum=row-merge,enum=newest,enum=manual"`
+	CommonTextSyncDeviceName     string `json:"commontext:sync:devicename,omitempty"`
+	CommonTextSyncDeviceId       string `json:"commontext:sync:deviceid,omitempty"`
+	CommonTextSyncFolderPath     string `json:"commontext:sync:folder:path,omitempty"`
+	CommonTextSyncFolderWatch    *bool  `json:"commontext:sync:folder:watch,omitempty"`
+	CommonTextSyncGitRemote      string `json:"commontext:sync:git:remote,omitempty"`
+	CommonTextSyncGitInterval    string `json:"commontext:sync:git:interval,omitempty"`
+	CommonTextSyncGitHasToken    *bool  `json:"commontext:sync:git:hastoken,omitempty"`
+	CommonTextSyncServerUrl      string `json:"commontext:sync:server:url,omitempty"`
+	CommonTextSyncServerPushMode string `json:"commontext:sync:server:pushmode,omitempty"`
+	CommonTextSyncServerHasToken *bool  `json:"commontext:sync:server:hastoken,omitempty"`
+	CommonTextSyncServerInsecure *bool  `json:"commontext:sync:server:allowinsecure,omitempty"`
+	CommonTextSyncTombstones     *bool  `json:"commontext:sync:synctombstones,omitempty"`
+
 	AgentClear          bool                              `json:"agent:*,omitempty"`
 	AgentDefaultProfile string                            `json:"agent:defaultprofile,omitempty"`
 	AgentProfiles       map[string]AgentProfileConfigType `json:"agent:profiles,omitempty"`
@@ -200,7 +247,7 @@ type SettingsType struct {
 	// definitions (name, type, options, order, scope). It is the global template;
 	// session props are additive values stored per-session. Empty/legacy configs
 	// simply have no custom definitions.
-	AgentPropertySchema []AgentPropertyDefType          `json:"agent:propertyschema,omitempty"`
+	AgentPropertySchema []AgentPropertyDefType `json:"agent:propertyschema,omitempty"`
 
 	// agentstatus:osnotify — system (OS-level) notifications for agent state transitions.
 	// POC scope: done (non-idle → idle completion) and blocked. All flags default true except
@@ -315,6 +362,19 @@ type SettingsType struct {
 
 	// 当前打开的 inline-tab block 标签最大宽度占 block 容器宽度的百分比
 	BlockInlineTabActiveMaxWidthPct *float64 `json:"block:inlinetabactivemaxwidthpct,omitempty"`
+
+	// Block header 悬停分区（锁存式）：悬停左半只揭示左侧 icon 组，悬停右半只揭示
+	// 右侧组并让左侧 chevron+路径收起让位。方向只在 pointerenter 判定一次，
+	// pointermove 不参与 —— 这是消除「右组越中线导致翻区、点不到、来回闪」的结构性手段。
+	BlockHeaderSplitReveal *bool `json:"block:headersplitreveal,omitempty"`
+	// 右锁时左侧（chevron + 路径）是否收起让位，把宽度让给右组。
+	BlockHeaderYieldLeft *bool `json:"block:headeryieldleft,omitempty"`
+	// 窄块 tier 降级（按宽度把装不下的 icon 收进 … 菜单）。关闭 = 退回硬切（仅用于对照）。
+	BlockHeaderNarrowTier *bool `json:"block:headernarrowtier,omitempty"`
+	// 锁存开关。关闭 = 退回「中线实时切分」（可复现自激缺陷，仅用于对照）。
+	BlockHeaderHoverLatch *bool `json:"block:headerhoverlatch,omitempty"`
+	// 离开 header 后方向保持的宽限毫秒数（0~1200，0 = 离开立刻恢复）。
+	BlockHeaderHoverGrace *float64 `json:"block:headerhovergrace,omitempty"`
 
 	WidgetClear    bool  `json:"widget:*,omitempty"`
 	WidgetShowHelp *bool `json:"widget:showhelp,omitempty"`

@@ -127,6 +127,22 @@
         "path"
       ]
     },
+    "CommonTextCreatedByType": {
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "human",
+            "agent"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "CommonTextItemType": {
       "properties": {
         "id": {
@@ -161,6 +177,41 @@
         },
         "usagecount": {
           "type": "number"
+        },
+        "emoji": {
+          "type": "string"
+        },
+        "createdby": {
+          "$ref": "#/$defs/CommonTextCreatedByType"
+        },
+        "origin": {
+          "$ref": "#/$defs/CommonTextOriginType"
+        },
+        "rev": {
+          "type": "number"
+        },
+        "deletedat": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CommonTextOriginType": {
+      "properties": {
+        "deviceid": {
+          "type": "string"
+        },
+        "devicename": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string",
+          "enum": [
+            "win32",
+            "darwin",
+            "linux"
+          ]
         }
       },
       "additionalProperties": false,
@@ -396,6 +447,59 @@
             "$ref": "#/$defs/CommonTextItemType"
           },
           "type": "array"
+        },
+        "commontext:sync:transport": {
+          "type": "string",
+          "enum": [
+            "none",
+            "folder",
+            "git",
+            "server"
+          ]
+        },
+        "commontext:sync:conflictpolicy": {
+          "type": "string",
+          "enum": [
+            "row-merge",
+            "newest",
+            "manual"
+          ]
+        },
+        "commontext:sync:devicename": {
+          "type": "string"
+        },
+        "commontext:sync:deviceid": {
+          "type": "string"
+        },
+        "commontext:sync:folder:path": {
+          "type": "string"
+        },
+        "commontext:sync:folder:watch": {
+          "type": "boolean"
+        },
+        "commontext:sync:git:remote": {
+          "type": "string"
+        },
+        "commontext:sync:git:interval": {
+          "type": "string"
+        },
+        "commontext:sync:git:hastoken": {
+          "type": "boolean"
+        },
+        "commontext:sync:server:url": {
+          "type": "string"
+        },
+        "commontext:sync:server:pushmode": {
+          "type": "string"
+        },
+        "commontext:sync:server:hastoken": {
+          "type": "boolean"
+        },
+        "commontext:sync:server:allowinsecure": {
+          "type": "boolean"
+        },
+        "commontext:sync:synctombstones": {
+          "type": "boolean"
         },
         "agent:*": {
           "type": "boolean"
@@ -684,6 +788,21 @@
           "type": "string"
         },
         "block:inlinetabactivemaxwidthpct": {
+          "type": "number"
+        },
+        "block:headersplitreveal": {
+          "type": "boolean"
+        },
+        "block:headeryieldleft": {
+          "type": "boolean"
+        },
+        "block:headernarrowtier": {
+          "type": "boolean"
+        },
+        "block:headerhoverlatch": {
+          "type": "boolean"
+        },
+        "block:headerhovergrace": {
           "type": "number"
         },
         "widget:*": {

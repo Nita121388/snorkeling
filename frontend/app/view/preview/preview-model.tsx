@@ -430,6 +430,8 @@ export class PreviewModel implements ViewModel {
     viewText: Atom<HeaderElem[]>;
     preIconButton: Atom<IconButtonDecl>;
     endIconButtons: Atom<IconButtonDecl[]>;
+    /** header 左组（悬停左半揭示）：列表/树切换、打开方向、HTML 打开方式、Preview、滚动同步。 */
+    startIconButtons: Atom<IconButtonDecl[]>;
     hideViewName: Atom<boolean>;
     previewTextRef: React.RefObject<HTMLDivElement>;
     editMode: Atom<boolean>;
@@ -683,13 +685,10 @@ export class PreviewModel implements ViewModel {
             }
             const loadableSV = get(this.loadableSpecializedView);
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
-            const isDirectoryView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "directory";
             const isLivePreviewView =
                 loadableSV.state == "hasData" && loadableSV.data.specializedView == "markdownlivepreview";
             const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
             const isMarkdownView = isMarkdownLike(mimeType);
-            const directoryDisplayMode = get(this.directoryDisplayMode);
-            const explorerActive = directoryDisplayMode === "tree" && isDirectoryView;
             const loadableFileInfo = get(this.loadableFileInfo);
             const isKnownDirectory =
                 loadableFileInfo.state == "hasData" &&
@@ -751,44 +750,6 @@ export class PreviewModel implements ViewModel {
                     ],
                 },
             ];
-            if (isDirectoryView) {
-                viewTextChildren.push({
-                    elemtype: "iconbutton",
-                    icon: <span className="text-[12px] leading-none">{explorerActive ? "☰" : "🌳"}</span>,
-                    iconColor: explorerActive ? "var(--accent-color)" : undefined,
-                    title: explorerActive ? "Switch To List View" : "Switch To Tree View",
-                    click: () => {
-                        fireAndForget(() => this.toggleDirectoryDisplayMode());
-                    },
-                    className: "preview-list-mode-toggle",
-                });
-            }
-            const htmlOpenMode = get(this.htmlOpenMode);
-            const htmlModeEntry = getHtmlOpenModeEntry(htmlOpenMode);
-            const htmlModeMenuItems: MenuItem[] = HtmlOpenModeEntries.map((entry) => ({
-                label: `${htmlOpenMode === entry.id ? "✓ " : ""}${entry.label}`,
-                onClick: () => fireAndForget(() => this.setHtmlOpenMode(entry.id)),
-            }));
-            if (!isDirectoryView && !isCeView && isHtmlPreviewPath(get(this.metaFilePath))) {
-                viewTextChildren.push({
-                    elemtype: "menubutton",
-                    text: htmlModeEntry.label,
-                    icon: htmlModeEntry.icon,
-                    title: "Open HTML files with",
-                    className: "compact-open-target-menubutton",
-                    items: htmlModeMenuItems,
-                });
-            }
-            if (isDirectoryView || explorerActive) {
-                const currentDirection = this.getOpenTargetDirection(get);
-                viewTextChildren.push({
-                    elemtype: "menubutton",
-                    text: openTargetSymbol(currentDirection),
-                    title: "Open files/folders in directional block",
-                    className: "compact-open-target-menubutton",
-                    items: this.makeOpenTargetMenuItems(currentDirection),
-                });
-            }
             if (isCeView) {
                 const fileInfo = globalStore.get(this.loadableFileInfo);
                 if (fileInfo.state != "hasData") {
@@ -826,24 +787,6 @@ export class PreviewModel implements ViewModel {
                             },
                         });
                     }
-                    viewTextChildren.push({
-                        elemtype: "menubutton",
-                        text: "Preview",
-                        icon: "eye",
-                        title: "Preview Options",
-                        className: "compact-open-target-menubutton",
-                        items: previewMenuItems,
-                    });
-                }
-                if (!isBlank(get(this.livePreviewOpenBlockId)) && isMarkdownView) {
-                    const syncEnabled = get(this.liveScrollSyncEnabled);
-                    viewTextChildren.push({
-                        elemtype: "iconbutton",
-                        icon: syncEnabled ? "link" : "link-slash",
-                        title: syncEnabled ? "Disable Live Preview Scroll Sync" : "Enable Live Preview Scroll Sync",
-                        iconColor: syncEnabled ? "var(--accent-color)" : undefined,
-                        click: () => fireAndForget(() => this.setLiveScrollSyncEnabled(!syncEnabled)),
-                    });
                 }
             } else if (!isLivePreviewView && get(this.canPreview) && !isKnownDirectory && mimeType !== "directory") {
                 // Edit 按钮已移到 endIconButtons(紧贴 X 按钮). 保存交由 Ctrl/Cmd+S + 右键菜单 Save File.
@@ -871,6 +814,97 @@ export class PreviewModel implements ViewModel {
                 click: this.goParentDirectory.bind(this),
             };
         });
+        // header 左组：悬停 header 左半时揭示。从 viewText 的 children 搬出来，
+        // 这样宽度预算才算得清（icon 与文本混在一条 flex 里无法统一削尾）。
+        // 「Go to Path」故意留在 viewText 的 preview-filename-shell 里 ——
+        // 它是“路径的附属”（悬浮文件名才浮现），不是左组常驻入口。
+        this.startIconButtons = atom((get) => {
+            const connStatus = get(this.connStatus);
+            if (connStatus?.status != "connected") {
+                return [];
+            }
+            const loadableSV = get(this.loadableSpecializedView);
+            const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
+            const isDirectoryView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "directory";
+            const mimeType = jotaiLoadableValue(get(this.fileMimeTypeLoadable), "");
+            const isMarkdownView = isMarkdownLike(mimeType);
+            const explorerActive = get(this.directoryDisplayMode) === "tree" && isDirectoryView;
+            const buttons: IconButtonDecl[] = [];
+
+            if (isDirectoryView) {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    zone: "start",
+                    priority: 2,
+                    icon: <span className="text-[12px] leading-none">{explorerActive ? "☰" : "🌳"}</span>,
+                    iconColor: explorerActive ? "var(--accent-color)" : undefined,
+                    title: explorerActive ? "Switch To List View" : "Switch To Tree View",
+                    click: () => {
+                        fireAndForget(() => this.toggleDirectoryDisplayMode());
+                    },
+                    className: "preview-list-mode-toggle",
+                });
+            }
+            if (isDirectoryView || explorerActive) {
+                const currentDirection = this.getOpenTargetDirection(get);
+                // 单图标循环：点一下换下一个方向（原 menubutton 需要浮层，左组 icon 没浮层容器）。
+                const order: PreviewOpenTargetDirection[] = ["off", "left", "right", "up", "down"];
+                buttons.push({
+                    elemtype: "iconbutton",
+                    zone: "start",
+                    priority: 2,
+                    // 方向符号是文本/emoji（←→↑↓🧭），不是 FontAwesome 类名。
+                    // IconButton 对字符串 icon 会走 makeIconClass()，它只认 FA 名，
+                    // 认不出就返回 null → 渲染出一个 24px 宽的空白按钮（实测就是个“空缺”）。
+                    // 所以用 <span> 包成元素节点，绕开 makeIconClass（与树形切换图标一致）。
+                    icon: <span className="text-[12px] leading-none">{openTargetSymbol(currentDirection)}</span>,
+                    title: `Open in directional block: ${currentDirection} (click to cycle)`,
+                    click: () => {
+                        const next = order[(order.indexOf(currentDirection) + 1) % order.length];
+                        fireAndForget(() => this.setOpenTargetDirection(next));
+                    },
+                });
+            }
+            if (!isDirectoryView && !isCeView && isHtmlPreviewPath(get(this.metaFilePath))) {
+                const htmlOpenMode = get(this.htmlOpenMode);
+                const entry = getHtmlOpenModeEntry(htmlOpenMode);
+                buttons.push({
+                    elemtype: "iconbutton",
+                    zone: "start",
+                    priority: 3,
+                    icon: entry.icon,
+                    title: `HTML Open Mode: ${entry.label} (click to cycle)`,
+                    click: () => {
+                        const order: HtmlOpenMode[] = ["source", "preview", "system"];
+                        const next = order[(order.indexOf(htmlOpenMode) + 1) % order.length];
+                        fireAndForget(() => this.setHtmlOpenMode(next));
+                    },
+                });
+            }
+            if (isCeView && get(this.canPreview)) {
+                buttons.push({
+                    elemtype: "iconbutton",
+                    zone: "start",
+                    priority: 3,
+                    icon: "eye",
+                    title: "Preview Options",
+                    click: () => fireAndForget(() => this.setEditMode(false)),
+                });
+                if (!isBlank(get(this.livePreviewOpenBlockId)) && isMarkdownView) {
+                    const syncEnabled = get(this.liveScrollSyncEnabled);
+                    buttons.push({
+                        elemtype: "iconbutton",
+                        zone: "start",
+                        priority: 3,
+                        icon: syncEnabled ? "link" : "link-slash",
+                        title: syncEnabled ? "Disable Live Preview Scroll Sync" : "Enable Live Preview Scroll Sync",
+                        iconColor: syncEnabled ? "var(--accent-color)" : undefined,
+                        click: () => fireAndForget(() => this.setLiveScrollSyncEnabled(!syncEnabled)),
+                    });
+                }
+            }
+            return buttons;
+        });
         this.endIconButtons = atom((get) => {
             const connStatus = get(this.connStatus);
             if (connStatus?.status != "connected") {
@@ -881,7 +915,6 @@ export class PreviewModel implements ViewModel {
             const isCeView = loadableSV.state == "hasData" && loadableSV.data.specializedView == "codeedit";
             const hasUnsavedChanges = get(this.newFileContent) != null;
             const explorerActive = get(this.directoryDisplayMode) === "tree" && mimeType == "directory";
-            const directorySearchActive = get(this.directorySearchActive);
             const vcsButton: IconButtonDecl = {
                 elemtype: "iconbutton",
                 icon: "code-branch",

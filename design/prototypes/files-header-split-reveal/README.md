@@ -1,8 +1,8 @@
 # Files Block Header — 锁存式分区（进入即锁，离开恢复）
 
-> 同步状态：▲ 设计活跃（未实现）
+> 同步状态：● 已落地（2026-11-07，task 11-07-files-header-hover-latch）
 > 镜像源：frontend/app/block/blockframe-header.tsx, frontend/app/block/block.scss, frontend/app/view/preview/preview-model.tsx, frontend/layout/lib/layoutModel.ts
-> 最后同步：2026-11-06
+> 最后同步：2026-11-07
 
 ```bash
 start design/prototypes/files-header-split-reveal/index.html

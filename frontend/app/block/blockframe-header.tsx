@@ -52,6 +52,8 @@ import * as React from "react";
 import { minimizeBlockToFloat, restoreMinimizedBlockToLayout } from "./block-minimize";
 import { BlockEnv } from "./blockenv";
 import { BlockFrameProps } from "./blocktypes";
+import { useHeaderHoverLatch } from "./use-header-hover-latch";
+import { planHeaderIcons, type HeaderIconScene } from "./header-icon-plan";
 
 export type MoveBlockMenuContext = {
     currentTabId: string;
@@ -217,15 +219,55 @@ function resolveZoneClass(decl: IconButtonDecl): string {
     return decl.zone === "pinned" ? "end-icon-pinned" : "end-icon-reveal";
 }
 
+type HeaderIconGroup = "start" | "reveal" | "pinned";
+
+/** 一条 header icon 记录：`key` 给 plan 用，`node` 是已构造好的元素。 */
+type HeaderIconItem = {
+    key: string;
+    group: HeaderIconGroup;
+    node: React.ReactElement;
+    priority: number;
+    neverOverflow: boolean;
+};
+
+function iconItem(
+    key: string,
+    decl: IconButtonDecl | null,
+    group: HeaderIconGroup,
+    node: React.ReactElement,
+    neverOverflow = false
+): HeaderIconItem {
+    return {
+        key,
+        group,
+        node,
+        priority: decl?.priority ?? 0,
+        neverOverflow: neverOverflow || decl?.neverOverflow === true,
+    };
+}
+
 type HeaderEndIconsProps = {
     viewModel: ViewModel;
     nodeModel: NodeModel;
     blockId: string;
     moveContext?: MoveBlockMenuContext;
     isHovered: boolean;
+    /** 当前锁存方向；null = 两侧都不展开。 */
+    latchedZone?: "left" | "right" | null;
+    /** header 当前宽度（px），由父级 ResizeObserver 维护。 */
+    headerWidth?: number;
 };
 
-const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext, isHovered }: HeaderEndIconsProps) => {
+const HeaderEndIcons = React.memo(
+    ({
+        viewModel,
+        nodeModel,
+        blockId,
+        moveContext,
+        isHovered,
+        latchedZone,
+        headerWidth = 0,
+    }: HeaderEndIconsProps) => {
     const blockEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
     const layoutModel = getLayoutModelForTabById(tabModel.tabId);
@@ -243,12 +285,32 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
     const blockData = jotai.useAtomValue(blockEnv.wos.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
     const isNoteBlock = blockData?.meta?.[SnorkelingBlockKindMetaKey] === SnorkelingBlockKindNote;
 
-    const endIconsElem: React.ReactElement[] = [];
+    // 三组 item：start（左组）/ reveal（右组）/ pinned（常驻）。
+    // 「放在哪个容器」由 group 决定；「是否可见」由 plan() + data-latched 决定。
+    const startElems: HeaderIconItem[] = [];
+    const revealElems: HeaderIconItem[] = [];
+    const pinnedElems: HeaderIconItem[] = [];
 
+    const startIconButtons = util.useAtomValueSafe(viewModel?.startIconButtons);
+    if (startIconButtons && startIconButtons.length > 0) {
+        startIconButtons.forEach((button, idx) => {
+            startElems.push(
+                iconItem("start-" + idx, button, "start", <IconButton decl={button} className="hdr-icon" />)
+            );
+        });
+    }
     if (endIconButtons && endIconButtons.length > 0) {
-        endIconsElem.push(...endIconButtons.map((button, idx) => (
-            <IconButton key={idx} decl={button} className={resolveZoneClass(button)} />
-        )));
+        endIconButtons.forEach((button, idx) => {
+            const group: HeaderIconGroup =
+                button.zone === "pinned" ? "pinned" : button.zone === "start" ? "start" : "reveal";
+            const item = iconItem(
+                "end-" + idx,
+                button,
+                group,
+                <IconButton decl={button} className={resolveZoneClass(button)} />
+            );
+            (group === "pinned" ? pinnedElems : group === "start" ? startElems : revealElems).push(item);
+        });
     }
     if (showSplitButtons && viewModel?.viewType === "term") {
         const splitHorizontalDecl: IconButtonDecl = {
@@ -281,19 +343,24 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 createBlockSplitVertically(blockDef, blockId, "after");
             },
         };
-        endIconsElem.push(<IconButton key="split-horizontal" decl={splitHorizontalDecl} className="end-icon-reveal" />);
-        endIconsElem.push(<IconButton key="split-vertical" decl={splitVerticalDecl} className="end-icon-reveal" />);
+        revealElems.push(iconItem("split-horizontal", splitHorizontalDecl, "reveal", <IconButton decl={splitHorizontalDecl} className="end-icon-reveal" />));
+        revealElems.push(iconItem("split-vertical", splitVerticalDecl, "reveal", <IconButton decl={splitVerticalDecl} className="end-icon-reveal" />));
     }
+    // 「…」是窄块下唯一的逃生通道：标 neverOverflow，任何宽度都留在 header。
+    // 它自己就是溢出容器，不允许再被收进溢出（否则整条通道消失）。
+    // click 在渲染层被覆盖：有隐藏项时先弹隐藏项，否则回落块右键菜单。
     const moreDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "ellipsis",
         title: "More",
         zone: "reveal",
+        neverOverflow: true,
         click: (e) => showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, tabModel.tabId, moveContext),
     };
-    endIconsElem.push(<IconButton key="more" decl={moreDecl} className="block-frame-settings end-icon-reveal" />);
+    revealElems.push(iconItem("more", moreDecl, "reveal", <IconButton decl={moreDecl} className="block-frame-settings end-icon-reveal" />, true));
     if (isNoteBlock && (minimizedPreview || ephemeral)) {
-        endIconsElem.push(
+        revealElems.push(
+            iconItem("collapse-note-preview", null, "reveal",
             <OptMagnifyButton
                 key="collapse-note-preview"
                 magnified={true}
@@ -312,6 +379,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                     insertBlockAtFixedLeftOrder(SnorkelingBlockKindNote, blockId, false);
                 }}
             />
+            )
         );
     } else if (minimizedPreview) {
         const restoreDecl: IconButtonDecl = {
@@ -326,7 +394,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 }
             },
         };
-        endIconsElem.push(<IconButton key="restore-minimized" decl={restoreDecl} className="end-icon-reveal" />);
+        revealElems.push(iconItem("restore-minimized", restoreDecl, "reveal", <IconButton decl={restoreDecl} className="end-icon-reveal" />));
     } else if (ephemeral) {
         const addToLayoutDecl: IconButtonDecl = {
             elemtype: "iconbutton",
@@ -337,9 +405,10 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 nodeModel.addEphemeralNodeToLayout();
             },
         };
-        endIconsElem.push(<IconButton key="add-to-layout" decl={addToLayoutDecl} className="end-icon-reveal" />);
+        revealElems.push(iconItem("add-to-layout", addToLayoutDecl, "reveal", <IconButton decl={addToLayoutDecl} className="end-icon-reveal" />));
     } else {
-        endIconsElem.push(
+        revealElems.push(
+            iconItem("unmagnify", null, "reveal",
             <OptMagnifyButton
                 key="unmagnify"
                 magnified={magnified}
@@ -350,6 +419,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 disabled={magnifyDisabled}
                 className="end-icon-reveal"
             />
+            )
         );
         const inlineMinimizeDecl: IconButtonDecl = {
             elemtype: "iconbutton",
@@ -365,7 +435,7 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
                 }
             },
         };
-        endIconsElem.push(<IconButton key="inline-tab-minimize" decl={inlineMinimizeDecl} className="end-icon-reveal" />);
+        revealElems.push(iconItem("inline-tab-minimize", inlineMinimizeDecl, "reveal", <IconButton decl={inlineMinimizeDecl} className="end-icon-reveal" />));
     }
 
     const closeDecl: IconButtonDecl = {
@@ -376,9 +446,105 @@ const HeaderEndIcons = React.memo(({ viewModel, nodeModel, blockId, moveContext,
         click: () =>
             minimizedPreview ? nodeModel.onClose() : util.fireAndForget(() => uxCloseBlock(nodeModel.blockId)),
     };
-    endIconsElem.push(<IconButton key="close" decl={closeDecl} className="block-frame-default-close end-icon-pinned" />);
+    pinnedElems.push(iconItem("close", closeDecl, "pinned", <IconButton decl={closeDecl} className="block-frame-default-close end-icon-pinned" />, true));
 
-    return <div className={cn("block-frame-end-icons", isHovered && "is-hovered")}>{endIconsElem}</div>;
+    // ── 按 plan 决定「哪些留在 header」────────────────────────────
+    // 宽度取 header 根节点的实际宽度（由 ResizeObserver 维持）。plan 是纯函数，
+    // 保证 shown + hidden === total，所以任何宽度下都不会出现「被 overflow:hidden 硬切」。
+    const scene: HeaderIconScene = {
+        entries: [
+            ...startElems.map((i) => ({
+                key: i.key,
+                group: "left" as const,
+                priority: i.priority,
+                neverOverflow: i.neverOverflow,
+            })),
+            ...revealElems.map((i) => ({
+                key: i.key,
+                group: "right" as const,
+                priority: i.priority,
+                neverOverflow: i.neverOverflow,
+            })),
+            ...pinnedElems.map((i) => ({
+                key: i.key,
+                group: "pinned" as const,
+                priority: i.priority,
+                neverOverflow: i.neverOverflow,
+            })),
+        ],
+    };
+    const plan = planHeaderIcons(headerWidth, latchedZone ?? null, scene);
+    const shownSet = new Set(plan.shown);
+    const total = scene.entries.length;
+
+    // 未锁存时两侧都不展开（保持旧观感：仅 pinned 常驻 + 悬浮时 reveal 按 .is-hovered 显）。
+    const idle = latchedZone == null;
+
+    const renderGroup = (items: HeaderIconItem[], cls: string, overrideFor?: (key: string) => React.ReactElement | null) => {
+        const visible = idle ? items : items.filter((i) => shownSet.has(i.key));
+        if (visible.length === 0) return null;
+        return (
+            <div className={cn("hdr-icon-group", cls, idle && "is-idle")}>
+                {visible.map((i) => (
+                    <React.Fragment key={i.key}>{overrideFor?.(i.key) ?? i.node}</React.Fragment>
+                ))}
+            </div>
+        );
+    };
+
+    // 「…」的双重职责：有隐藏项时弹“隐藏项列表”，否则回落块右键菜单。
+    // 这样不需要新增第二个溢出按钮（复用一个入口，避免两个 … 并排）。
+    const overflowCount = idle ? 0 : plan.hidden.length;
+    const buildOverflowNode = (): React.ReactElement | null => {
+        if (overflowCount === 0) return null;
+        const hiddenSet = new Set(plan.hidden);
+        const menu: ContextMenuItem[] = [];
+        let realItems = 0;
+        const pushFor = (items: HeaderIconItem[], label: string) => {
+            const hit = items.filter((i) => hiddenSet.has(i.key));
+            if (hit.length === 0) return;
+            if (realItems > 0) menu.push({ type: "separator" });
+            for (const i of hit) {
+                const decl = (i.node as React.ReactElement<{ decl?: IconButtonDecl }>).props?.decl;
+                if (decl == null) continue; // OptMagnifyButton 等非 decl 节点不进菜单
+                menu.push({
+                    label: `${label} · ${decl.title ?? i.key}`,
+                    click: () => decl.click?.(undefined as unknown as React.MouseEvent<any>),
+                    enabled: decl.disabled !== true,
+                });
+                realItems += 1;
+            }
+        };
+        pushFor(startElems, "L");
+        pushFor(revealElems, "R");
+        pushFor(pinnedElems, "P");
+        const overflowDecl: IconButtonDecl = {
+            ...moreDecl,
+            title: realItems > 0 ? `More (${realItems} hidden)` : "More",
+            click: (e) => {
+                if (realItems === 0) {
+                    // 没有可弹的隐藏项（或全是非 decl 节点）：回落块右键菜单。
+                    showBlockContextMenu(e, blockId, viewModel, nodeModel, blockEnv, tabModel.tabId, moveContext);
+                    return;
+                }
+                blockEnv.showContextMenu(menu, e);
+            },
+        };
+        return <IconButton key="more" decl={overflowDecl} className="block-frame-settings end-icon-reveal" />;
+    };
+
+    return (
+        <div
+            className={cn("block-frame-end-icons", isHovered && "is-hovered")}
+            data-header-total={total}
+            data-header-tier={plan.tier}
+            data-header-yield={plan.yieldLeft ? "1" : "0"}
+        >
+            {renderGroup(startElems, "hdr-group-start")}
+            {renderGroup(revealElems, "hdr-group-reveal", (key) => (key === "more" ? buildOverflowNode() : null))}
+            {renderGroup(pinnedElems, "hdr-group-pinned")}
+        </div>
+    );
 });
 HeaderEndIcons.displayName = "HeaderEndIcons";
 
@@ -675,19 +841,57 @@ const BlockFrame_Header = ({
 
     const viewIconElem = getViewIconElem(viewIconUnion, iconColor);
 
+    // 悬停分区锁存。与 isHovered 完全独立（后者管 reveal 显隐 + 悬浮卡，一行不改）。
+    // 溢出菜单 / 浮层是 portal，挂载晚于 hook 初始化，所以用 ref + getter 延迟求值。
+    const attachedLayerRef = React.useRef<HTMLDivElement | null>(null);
+    const getAttachedEls = React.useCallback(() => [attachedLayerRef.current], []);
+    const hoverLatchEnabled = jotai.useAtomValue(waveEnv.getSettingsKeyAtom("block:headersplitreveal")) ?? true;
+    const hoverGraceRaw = jotai.useAtomValue(waveEnv.getSettingsKeyAtom("block:headerhovergrace"));
+    const hoverLatch = useHeaderHoverLatch(hoverLatchEnabled, hoverGraceRaw, getAttachedEls);
+
+    // header 实际宽度：plan() 的唯一输入。用 ResizeObserver 而非每次 render 读 DOM，
+    // 避免布局抖动与强制同步布局。
+    const headerElRef = React.useRef<HTMLDivElement | null>(null);
+    const [headerWidth, setHeaderWidth] = React.useState(0);
+    React.useEffect(() => {
+        const el = headerElRef.current;
+        if (el == null || typeof ResizeObserver === "undefined") return;
+        const ro = new ResizeObserver((entries) => {
+            const w = entries[0]?.contentRect?.width;
+            if (typeof w === "number") setHeaderWidth(w);
+        });
+        ro.observe(el);
+        setHeaderWidth(el.getBoundingClientRect().width);
+        return () => ro.disconnect();
+    }, []);
+
+    // dragHandleRef 是外部传入的 RefObject（拖拽用），不能直接覆盖；
+    // 用回调 ref 同时写两边：自己的宽度测量 + 外部拖拽句柄。
+    const setHeaderRef = React.useCallback(
+        (el: HTMLDivElement | null) => {
+            headerElRef.current = el;
+            if (dragHandleRef != null) {
+                (dragHandleRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+            }
+        },
+        [dragHandleRef]
+    );
+
     return (
         <div
             className={cn("block-frame-default-header", useTermHeader && "!pl-[2px]")}
             data-role="block-header"
-            ref={dragHandleRef}
-            onPointerEnter={() => {
+            data-latched={hoverLatch.latch.zone ?? ""}
+            ref={setHeaderRef}
+            onPointerEnter={(e) => {
                 cancelPendingHideHover();
                 cancelPendingHideCard();
                 claimInfoCard(claimTokenRef.current);
                 setIsHovered(true);
                 setIsCardOpen(true);
+                hoverLatch.onPointerEnter(e);
             }}
-            onPointerLeave={() => {
+            onPointerLeave={(e) => {
                 cancelPendingHideHover();
                 hideHoverTimerRef.current = window.setTimeout(() => {
                     hideHoverTimerRef.current = null;
@@ -699,50 +903,57 @@ const BlockFrame_Header = ({
                 if (!cardFocusRef.current && cardPinCountRef.current === 0) {
                     scheduleHideCard();
                 }
+                hoverLatch.onPointerLeave(e);
             }}
             onContextMenu={(e) =>
                 showBlockContextMenu(e, nodeModel.blockId, viewModel, nodeModel, waveEnv, tabModel.tabId, moveContext)
             }
         >
-            {!useTermHeader && (
-                <>
-                    {preIconButton && <IconButton decl={preIconButton} className="block-frame-preicon-button" />}
-                    <div className="block-frame-default-header-iconview">
-                        {viewIconElem}
-                        {metaFrameText && !hideViewName && <div className="block-frame-view-type"><span>{metaFrameText}</span></div>}
+            {/* 左区：右锁时整体收起让位（chevron + 路径），类型图标保留。
+                useTermHeader 分支不进左区（term 有自己的排布，不改）。 */}
+            <div className="block-frame-header-left-zone">
+                {!useTermHeader && (
+                    <>
+                        {preIconButton && <IconButton decl={preIconButton} className="block-frame-preicon-button" />}
+                        <div className="block-frame-default-header-iconview">
+                            {viewIconElem}
+                            {metaFrameText && !hideViewName && <div className="block-frame-view-type"><span>{metaFrameText}</span></div>}
+                        </div>
+                    </>
+                )}
+                {manageConnection && (
+                    <ConnectionButton
+                        ref={connBtnRef}
+                        key="connbutton"
+                        connection={metaConnection}
+                        changeConnModalAtom={changeConnModalAtom}
+                        isTerminalBlock={isTerminalBlock}
+                    />
+                )}
+                {useTermHeader && termConfigedDurable != null && (
+                    <DurableSessionFlyover
+                        key="durable-status"
+                        blockId={nodeModel.blockId}
+                        viewModel={viewModel}
+                        placement="bottom"
+                        divClassName="iconbutton disabled text-[13px] ml-[-4px]"
+                    />
+                )}
+                {useTermHeader && badge && (
+                    <div className="pointer-events-none flex items-center px-1" style={{ color: badge.color || "#fbbf24" }}>
+                        <i className={makeIconClass(badge.icon, true, { defaultIcon: "circle-small" })} />
                     </div>
-                </>
-            )}
-            {manageConnection && (
-                <ConnectionButton
-                    ref={connBtnRef}
-                    key="connbutton"
-                    connection={metaConnection}
-                    changeConnModalAtom={changeConnModalAtom}
-                    isTerminalBlock={isTerminalBlock}
-                />
-            )}
-            {useTermHeader && termConfigedDurable != null && (
-                <DurableSessionFlyover
-                    key="durable-status"
-                    blockId={nodeModel.blockId}
-                    viewModel={viewModel}
-                    placement="bottom"
-                    divClassName="iconbutton disabled text-[13px] ml-[-4px]"
-                />
-            )}
-            {useTermHeader && badge && (
-                <div className="pointer-events-none flex items-center px-1" style={{ color: badge.color || "#fbbf24" }}>
-                    <i className={makeIconClass(badge.icon, true, { defaultIcon: "circle-small" })} />
-                </div>
-            )}
-            <HeaderTextElems viewModel={viewModel} blockId={nodeModel.blockId} preview={preview} error={error} isHovered={isHovered} />
+                )}
+                <HeaderTextElems viewModel={viewModel} blockId={nodeModel.blockId} preview={preview} error={error} isHovered={isHovered} />
+            </div>
             <HeaderEndIcons
                 viewModel={viewModel}
                 nodeModel={nodeModel}
                 blockId={nodeModel.blockId}
                 moveContext={moveContext}
                 isHovered={isHovered}
+                latchedZone={hoverLatch.latch.zone}
+                headerWidth={headerWidth}
             />
             {/* Agent/Note hover card - 经 BlockInfoCard 分派（GUI 模式；TUI 用 TermAgentSessionRail） */}
             {isAgentBlock && isCardOpen && (

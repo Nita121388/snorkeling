@@ -1,0 +1,153 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// SessionRow 右侧运行徽章（细粒度）的几何与配色。
+//
+// 与左侧 `RunningDot` 分工见 session-run-badge.tsx 顶部注释。
+// 高度固定 15px：元信息行是 text-[11px]，徽章再高就会明显抬高行。
+//
+// 配色沿用 agent-status 的语义色（--agent-working-color 蓝 / --agent-done-color 绿 /
+// --agent-stale-color 紫），与 block 头部 chip、Overview chip 同一套 token。
+// **不要**用 --success 绿表示「运行中」——绿色在本仓的 agent-status 体系里属于 done。
+
+.session-run-badge {
+    --session-run-color: var(--secondary-text-color);
+    --session-run-bg: transparent;
+    --session-run-border: var(--border-color);
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 15px;
+    max-width: 100%;
+    padding: 0 5px;
+    box-sizing: border-box;
+    border: 1px solid var(--session-run-border);
+    border-radius: 5px;
+    background: var(--session-run-bg);
+    color: var(--session-run-color);
+    font-family: inherit;
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+    appearance: none;
+}
+
+.session-run-badge--button {
+    cursor: pointer;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.session-run-badge-icon {
+    width: 9px;
+    flex: 0 0 9px;
+    font-size: 8px;
+    text-align: center;
+}
+
+.session-run-badge-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.session-run-badge-runtime {
+    flex: 0 0 auto;
+    font-weight: 500;
+    opacity: 0.8;
+}
+
+/* 「有活跃块但无 AgentStatus」的中性点 */
+.session-run-badge-dot {
+    width: 5px;
+    height: 5px;
+    flex: 0 0 5px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+/* ── 状态配色 ── */
+
+.session-run-badge.is-working {
+    --session-run-color: var(--agent-working-color);
+    --session-run-bg: rgb(from var(--agent-working-color) r g b / 0.12);
+    --session-run-border: rgb(from var(--agent-working-color) r g b / 0.3);
+}
+
+.session-run-badge.is-working .session-run-badge-icon {
+    animation: session-run-badge-breathe 1.4s ease-in-out infinite;
+}
+
+.session-run-badge.is-live {
+    --session-run-color: var(--agent-working-color);
+    --session-run-bg: rgb(from var(--agent-working-color) r g b / 0.1);
+    --session-run-border: rgb(from var(--agent-working-color) r g b / 0.26);
+}
+
+.session-run-badge.is-live .session-run-badge-dot {
+    animation: session-run-badge-breathe 1.6s ease-in-out infinite;
+}
+
+.session-run-badge.is-chat {
+    --session-run-color: var(--accent-color);
+    --session-run-bg: rgb(from var(--accent-color) r g b / 0.1);
+    --session-run-border: rgb(from var(--accent-color) r g b / 0.26);
+}
+
+.session-run-badge.is-done {
+    --session-run-color: rgb(from var(--agent-done-color) r g b / 0.85);
+    --session-run-bg: rgb(from var(--agent-done-color) r g b / 0.1);
+    --session-run-border: rgb(from var(--agent-done-color) r g b / 0.28);
+}
+
+.session-run-badge.is-stale {
+    --session-run-color: var(--agent-stale-color, #a855f7);
+    --session-run-bg: rgb(from var(--agent-stale-color, #a855f7) r g b / 0.1);
+    --session-run-border: rgb(from var(--agent-stale-color, #a855f7) r g b / 0.32);
+}
+
+.session-run-badge.is-blocked,
+.session-run-badge.is-rate-limited {
+    --session-run-color: var(--warning-color, #f59e0b);
+    --session-run-bg: rgb(245 158 11 / 0.12);
+    --session-run-border: rgb(245 158 11 / 0.5);
+}
+
+.session-run-badge.is-error {
+    --session-run-color: var(--error-color, #ef4444);
+    --session-run-bg: rgb(from var(--error-color, #ef4444) r g b / 0.12);
+    --session-run-border: rgb(from var(--error-color, #ef4444) r g b / 0.5);
+}
+
+.session-run-badge.is-idle,
+.session-run-badge.is-unknown {
+    --session-run-color: var(--secondary-text-color);
+    --session-run-bg: transparent;
+    --session-run-border: var(--border-color);
+    opacity: 0.78;
+}
+
+@keyframes session-run-badge-breathe {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.45;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .session-run-badge-icon,
+    .session-run-badge-dot {
+        animation: none !important;
+    }
+}

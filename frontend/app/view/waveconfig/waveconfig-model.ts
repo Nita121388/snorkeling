@@ -7,6 +7,7 @@ import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
+import { SyncSettingsContent } from "@/app/view/waveconfig/syncsettings";
 import { AIPromptsVisualContent } from "@/app/view/waveconfig/aipromptsettings";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
@@ -83,6 +84,15 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             description: "OS toasts for agent done / blocked",
             hasJsonView: false,
             visualComponent: AgentNotifySettingsContent,
+        },
+        {
+            // Common Text cloud sync lives here rather than in its own modal: this is the app's
+            // single settings surface, and a second shell would drift from it.
+            name: "Sync",
+            path: "commontextsync",
+            description: "Common Text cloud sync",
+            hasJsonView: false,
+            visualComponent: SyncSettingsContent,
         },
         {
             name: "Connections",

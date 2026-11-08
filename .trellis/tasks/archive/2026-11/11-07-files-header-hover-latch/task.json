@@ -1,0 +1,28 @@
+{
+  "id": "files-header-hover-latch",
+  "name": "files-header-hover-latch",
+  "title": "Files Block Header 锁存式分区：悬停左/右半揭示对应 icon 组 + 窄块降级",
+  "description": "Files Block header 的 icon 显示不全（把路径挤成 …）。改成悬停 header 左半只揭示左侧 icon 组、悬停右半只揭示右侧组并把左侧 chevron+路径收起让位、腾出的宽度全给右组。分区用锁存语义（pointerenter 判定一次后整个会话锁死，pointermove 不参与）以结构性消除「右组越中线导致翻区、点不到、来回闪」。窄块按 5 级 tier 降级，硬判据 header可见+溢出菜单+浮层=总数，40px 到 900px 功能零丢失。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-07",
+  "completedAt": "2026-11-07",
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "commit": "565c7295"
+  }
+}
