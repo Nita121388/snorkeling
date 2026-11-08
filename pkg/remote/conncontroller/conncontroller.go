@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1833,4 +1834,106 @@ func GetConnectionsFromConfig() ([]string, error) {
 	remote.WaveSshConfigUserSettings().ReloadConfigs()
 
 	return resolveSshConfigPatterns(sshConfigFiles)
+}
+
+// GetConnectionsDetail returns the Connect-to list with provenance for each name.
+//
+// It deliberately does not replace GetConnectionsList: that one has several callers and changing
+// its return shape would silently break them. Both read the same four sources, so they can only
+// disagree if someone edits one and not the other — hence one helper builds the merge.
+// mergeConnectionSources builds name -> sources, keeping every source a name belongs to.
+//
+// Precedence inside each slice is settings > sshconfig > history because that is the order the UI
+// should highlight: an explicit settings entry beats an ssh-config entry (settings can override
+// ssh-config parameters), and history is the weakest signal since it carries no configuration.
+func mergeConnectionSources(settingsNames, sshConfigNames, historyNames []string) map[string][]wshrpc.ConnectionSource {
+	sources := make(map[string][]wshrpc.ConnectionSource)
+	add := func(names []string, source wshrpc.ConnectionSource) {
+		for _, name := range names {
+			if name == "" {
+				continue
+			}
+			already := false
+			for _, existing := range sources[name] {
+				if existing == source {
+					already = true
+					break
+				}
+			}
+			if !already {
+				sources[name] = append(sources[name], source)
+			}
+		}
+	}
+	add(settingsNames, wshrpc.ConnSourceSettings)
+	add(sshConfigNames, wshrpc.ConnSourceSshConfig)
+	// History is added only for names no configured source claimed. A name that is both
+	// configured and previously connected does not need the history badge: the settings/ssh-config
+	// badge already tells the user it is configured, and "also connected once" is noise. History
+	// carries information only when it is the ONLY reason the row exists — i.e. it is deletable
+	// config-wise, which is exactly what the user needs to know before removing it.
+	var historyOnly []string
+	for _, name := range historyNames {
+		if len(sources[name]) == 0 {
+			historyOnly = append(historyOnly, name)
+		}
+	}
+	add(historyOnly, wshrpc.ConnSourceHistory)
+	return sources
+}
+
+// mergeConnectionOrder returns the display order: settings entries in their own order, then
+// sshconfig-only names, then history-only names. Deterministic so the list does not jump around
+// between refreshes.
+func mergeConnectionOrder(settingsNames, sshConfigNames, historyNames []string) []string {
+	seen := make(map[string]bool, len(settingsNames)+len(sshConfigNames)+len(historyNames))
+	order := make([]string, 0, len(seen))
+	for _, list := range [][]string{settingsNames, sshConfigNames, historyNames} {
+		for _, name := range list {
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			order = append(order, name)
+		}
+	}
+	return order
+}
+
+func GetConnectionsDetail() ([]wshrpc.ConnectionDetailItem, error) {
+	existing := GetAllConnStatus()
+	connected := make(map[string]bool, len(existing))
+	hasConnected := make(map[string]bool, len(existing))
+	var historyNames []string
+	for _, stat := range existing {
+		if stat.Connected {
+			connected[stat.Connection] = true
+		}
+		if stat.HasConnected {
+			hasConnected[stat.Connection] = true
+			historyNames = append(historyNames, stat.Connection)
+		}
+	}
+	sort.Strings(historyNames)
+
+	fromInternal := GetConnectionsFromInternalConfig()
+	fromConfig, err := GetConnectionsFromConfig()
+	if err != nil {
+		// Matches GetConnectionsList: a missing ssh config is not fatal.
+		log.Printf("warning: no connections from ssh config found: %v", err)
+	}
+
+	sources := mergeConnectionSources(fromInternal, fromConfig, historyNames)
+	order := mergeConnectionOrder(fromInternal, fromConfig, historyNames)
+
+	items := make([]wshrpc.ConnectionDetailItem, 0, len(order))
+	for _, name := range order {
+		items = append(items, wshrpc.ConnectionDetailItem{
+			Name:         name,
+			Sources:      sources[name],
+			Connected:    connected[name],
+			HasConnected: hasConnected[name],
+		})
+	}
+	return items, nil
 }

@@ -1822,6 +1822,14 @@ declare global {
         keepalivesenttime?: number;
     };
 
+    // wshrpc.ConnectionDetailItem
+    type ConnectionDetailItem = {
+        name: string;
+        sources: string[];
+        connected: boolean;
+        hasconnected: boolean;
+    };
+
     // objectservice.CopyBlockToNewTabResult
     type CopyBlockToNewTabResult = {
         tabid: string;

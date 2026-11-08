@@ -108,6 +108,29 @@
                 }
             }
 
+            /* 来源徽标：靠右、不参与行高、不给 label 让位（label 已 ellipsis）。
+               图标本身就是契约，含义全在 title / aria-label。 */
+            .typeahead-item-source {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                margin-left: auto;
+                padding-left: 6px;
+                flex-shrink: 0;
+                color: var(--grey-text-color);
+                opacity: 0.75;
+
+                .typeahead-source-icon {
+                    font-size: 9px;
+                    position: static;
+                    top: 0;
+                }
+            }
+
+            .suggestion-item.selected .typeahead-item-source {
+                opacity: 1;
+            }
+
             .typeahead-current-checkbox {
                 margin-left: auto;
             }

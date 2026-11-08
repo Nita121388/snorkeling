@@ -10,6 +10,28 @@ import ReactDOM from "react-dom";
 
 import "./typeaheadmodal.scss";
 
+/**
+ * Badge spec per connection source. Icons instead of words because the row is a dense list and
+the meaning belongs in the tooltip - the same rule the rest of this list follows.
+ */
+const ConnectionSourceBadge: Record<string, { icon: string; solid: boolean; title: string }> = {
+    settings: {
+        icon: "gear",
+        solid: true,
+        title: "Configured in Snorkeling (settings.json)",
+    },
+    sshconfig: {
+        icon: "file-lines",
+        solid: false,
+        title: "From ~/.ssh/config",
+    },
+    history: {
+        icon: "clock-rotate-left",
+        solid: false,
+        title: "No current config; this machine connected to it before",
+    },
+};
+
 interface SuggestionsProps {
     suggestions?: SuggestionsType[];
     onSelect?: (_: string) => void;
@@ -41,6 +63,24 @@ const Suggestions = forwardRef<HTMLDivElement, SuggestionsProps>(
                     {item.icon &&
                         renderIcon(item.icon, "iconColor" in item && item.iconColor ? item.iconColor : "inherit")}
                     {item.label}
+                    {"sources" in item && Array.isArray(item.sources) && item.sources.length > 0 && (
+                        // 来源徽标只占右侧固定小位，不增加行高；含义全走 title（读屏用 aria-label）。
+                        <span className="typeahead-item-source" data-conn-sources={item.sources.join(",")}>
+                            {item.sources.map((source) => {
+                                const spec = ConnectionSourceBadge[source];
+                                if (spec == null) return null;
+                                return (
+                                    <i
+                                        key={source}
+                                        className={clsx(makeIconClass(spec.icon, spec.solid), "typeahead-source-icon")}
+                                        title={spec.title}
+                                        aria-label={spec.title}
+                                        data-conn-source={source}
+                                    />
+                                );
+                            })}
+                        </span>
+                    )}
                 </div>
                 {"current" in item && item.current && (
                     <i className={clsx(makeIconClass("check", false), "typeahead-current-checkbox")} />

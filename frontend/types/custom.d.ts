@@ -567,6 +567,14 @@ declare global {
         iconColor: string;
         onSelect?: (_: string) => void;
         current?: boolean;
+        /**
+         * Where this connection name comes from. Ordered by precedence
+         * (settings > sshconfig > history). Absent for non-connection items.
+         * Without this the user cannot tell an entry they configured in Snorkeling from one
+         * their ~/.ssh/config owns - deleting the former works, deleting the latter is undone
+         * by the next ssh-config read.
+         */
+        sources?: string[];
     }
 
     interface SuggestionConnectionScope {
