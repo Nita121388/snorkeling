@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-08T06:05:39Z",
+  "updatedAt": "2026-11-08T08:31:27Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -30,6 +30,23 @@
       "g5": {
         "ok": false,
         "executedAt": null
+      }
+    },
+    "N-1106-overview-card-actions": {
+      "g1": {
+        "at": "2026-11-08T08:27:19Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "01e46e770ef8"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-N-1106-overview-card-actions.txt",
+        "at": "2026-11-08T08:28:59Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-08T08:31:27Z",
+        "by": "self"
       }
     },
     "N-1106-overview-board-motion": {

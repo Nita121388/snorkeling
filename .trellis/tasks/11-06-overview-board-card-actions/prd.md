@@ -1,3 +1,5 @@
+> **Confirmed: 2026-11-08 @nita**
+
 # Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删
 
 ## Goal
