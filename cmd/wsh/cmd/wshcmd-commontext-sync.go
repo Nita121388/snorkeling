@@ -968,7 +968,7 @@ func (s *cliSyncStore) Items(ctx context.Context) ([]syncproto.SnapshotItem, err
 	return out, nil
 }
 
-func (s *cliSyncStore) ApplyRemote(ctx context.Context, incoming []syncproto.SnapshotItem) (int, error) {
+func (s *cliSyncStore) ApplyRemoteWithMode(ctx context.Context, incoming []syncproto.SnapshotItem, mode sync.RemoteApplyMode) (int, error) {
 	items, err := commonTextSyncReadItems()
 	if err != nil {
 		return 0, err
@@ -980,10 +980,17 @@ func (s *cliSyncStore) ApplyRemote(ctx context.Context, incoming []syncproto.Sna
 	applied := 0
 	for _, remote := range incoming {
 		if idx, ok := byId[remote.Id]; ok {
-			// Only take the remote copy when it is actually newer; otherwise a pull would clobber a
-			// local edit that has not been pushed yet.
-			if remote.Rev <= items[idx].Rev {
+			switch mode {
+			case sync.RemoteFillMissing:
 				continue
+			case sync.RemoteOverwrite:
+				// take it regardless of rev (revs are per-transport and not comparable on a switch)
+			default:
+				// Only take the remote copy when it is actually newer; otherwise a pull would
+				// clobber a local edit that has not been pushed yet.
+				if remote.Rev <= items[idx].Rev {
+					continue
+				}
 			}
 			items[idx] = commonTextFromSnapshotItem(remote)
 		} else {
