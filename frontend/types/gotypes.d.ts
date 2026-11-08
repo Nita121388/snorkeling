@@ -1733,6 +1733,12 @@ declare global {
         status: Status;
     };
 
+    // commontextservice.CommonTextSyncSwitchRequest
+    type CommonTextSyncSwitchRequest = {
+        settings: {[key: string]: any};
+        baseline: string;
+    };
+
     // commontextservice.CommonTextTagsResponse
     type CommonTextTagsResponse = {
         tags: TagSummary[];

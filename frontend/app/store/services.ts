@@ -139,6 +139,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Delete", Array.from(arguments))
     }
 
+    // permanently delete an AI session file and remove its local index data
+    // @returns deleted AI session summary
+    DeletePermanently(id: string, origin: string): Promise<SessionSummary> {
+        return callBackendService(this?.waveEnv, "aisessions", "DeletePermanently", Array.from(arguments))
+    }
+
     // load a local AI session detail
     // @returns AI session detail
     Detail(request: AISessionsDetailRequest): Promise<SessionDetail> {
@@ -442,6 +448,12 @@ export class CommonTextServiceType {
     // @returns sync status
     SyncStatus(): Promise<CommonTextSyncStatusResponse> {
         return callBackendService(this?.waveEnv, "commontext", "SyncStatus", Array.from(arguments))
+    }
+
+    // switch the sync transport after a full re-sync with an explicit baseline
+    // @returns sync status after the switch
+    SyncSwitchTransport(request: CommonTextSyncSwitchRequest): Promise<CommonTextSyncStatusResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncSwitchTransport", Array.from(arguments))
     }
 
     // list common text tags

@@ -214,3 +214,30 @@ func (svc *CommonTextService) SyncNow(ctx context.Context, request *CommonTextSy
 	// "local only" instead of an error toast.
 	return &CommonTextSyncStatusResponse{Status: status}, nil
 }
+
+type CommonTextSyncSwitchRequest struct {
+	// Settings is the full pending transport configuration (transport id + backend fields), because
+	// the backend must build the new transport before it can re-sync with a baseline.
+	Settings map[string]any `json:"settings"`
+	// Baseline is "local" or "remote"; anything else is rejected (no silent default).
+	Baseline string `json:"baseline"`
+}
+
+func (svc *CommonTextService) SyncSwitchTransport_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "switch the sync transport after a full re-sync with an explicit baseline",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "sync status after the switch",
+	}
+}
+
+func (svc *CommonTextService) SyncSwitchTransport(ctx context.Context, request *CommonTextSyncSwitchRequest) (*CommonTextSyncStatusResponse, error) {
+	if request == nil {
+		return nil, errors.New("switch request is required")
+	}
+	status, err := syncmanager.SwitchTransport(ctx, request.Settings, request.Baseline)
+	if err != nil {
+		return &CommonTextSyncStatusResponse{Status: status}, err
+	}
+	return &CommonTextSyncStatusResponse{Status: status}, nil
+}

@@ -84,11 +84,39 @@ type Store interface {
 	// Items returns every local item INCLUDING tombstones (a delete must be pushed, otherwise the
 	// remote resurrects it).
 	Items(ctx context.Context) ([]syncproto.SnapshotItem, error)
-	// ApplyRemote writes items learned from the remote into the local database.
-	ApplyRemote(ctx context.Context, items []syncproto.SnapshotItem) (applied int, err error)
+	// ApplyRemoteWithMode writes items learned from the remote into the local database, using the
+	// mode to decide what a collision means.
+	ApplyRemoteWithMode(ctx context.Context, items []syncproto.SnapshotItem, mode RemoteApplyMode) (applied int, err error)
 	// LocalRevision is the highest rev this machine has stored; used as `sinceRev` on pull and as
 	// the base for the next push.
 	LocalRevision(ctx context.Context) (float64, error)
+}
+
+// RemoteApplyMode decides what happens when a remote item collides with a local one.
+type RemoteApplyMode string
+
+const (
+	// RemoteMerge takes the remote copy only when it carries a higher rev. Correct for steady-state
+	// sync within one transport.
+	RemoteMerge RemoteApplyMode = "merge"
+	// RemoteFillMissing only adds ids the local store does not have, never overwriting an existing
+	// item. Used for the "this device wins" baseline.
+	RemoteFillMissing RemoteApplyMode = "fill-missing"
+	// RemoteOverwrite forces the remote value for every id the remote knows about. Used for the
+	// "remote wins" baseline.
+	RemoteOverwrite RemoteApplyMode = "overwrite"
+)
+
+// remoteApplyModeFor maps a baseline to how remote items should be applied locally.
+func remoteApplyModeFor(baseline Baseline) RemoteApplyMode {
+	switch baseline {
+	case BaselineLocal:
+		return RemoteFillMissing
+	case BaselineRemote:
+		return RemoteOverwrite
+	default:
+		return RemoteMerge
+	}
 }
 
 // ConflictPolicy mirrors the settings enum.
@@ -234,7 +262,7 @@ func (e *Engine) Run(ctx context.Context, trigger string) (RunResult, error) {
 
 	_ = e.journal(syncjournal.Event{Type: syncjournal.EventRunStart, Trigger: trigger})
 
-	result, err := e.runOnce(ctx, transport)
+	result, err := e.runOnce(ctx, transport, BaselineNone)
 	result.Ms = time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -248,7 +276,7 @@ func (e *Engine) Run(ctx context.Context, trigger string) (RunResult, error) {
 	return result, nil
 }
 
-func (e *Engine) runOnce(ctx context.Context, transport Transport) (RunResult, error) {
+func (e *Engine) runOnce(ctx context.Context, transport Transport, baseline Baseline) (RunResult, error) {
 	var result RunResult
 
 	localRev, err := e.store.LocalRevision(ctx)
@@ -257,18 +285,29 @@ func (e *Engine) runOnce(ctx context.Context, transport Transport) (RunResult, e
 	}
 
 	// ── 1. Pull ──────────────────────────────────────────────────────────────
-	remote, err := transport.Pull(ctx, localRev)
+	// A baseline run must pull EVERYTHING: rev numbers are per-transport (each backend counts its
+	// own), so a `sinceRev` from the old transport filters out the entire new remote. This was a
+	// real bug: switching transports pulled nothing and then pushed local over the remote.
+	sinceRev := localRev
+	if baseline != BaselineNone {
+		sinceRev = 0
+	}
+	remote, err := transport.Pull(ctx, sinceRev)
 	if err != nil {
 		return result, fmt.Errorf("pull: %w", err)
 	}
-	if remote != nil && len(remote.Items) > 0 {
-		result.Pulled = len(remote.Items)
+	var remoteItems []syncproto.SnapshotItem
+	if remote != nil {
+		remoteItems = remote.Items
+	}
+	if len(remoteItems) > 0 {
+		result.Pulled = len(remoteItems)
 		_ = e.journal(syncjournal.Event{
-			Type: syncjournal.EventPull, Items: len(remote.Items), Since: localRev, Rev: remote.Rev,
+			Type: syncjournal.EventPull, Items: len(remoteItems), Since: sinceRev, Rev: remote.Rev,
 		})
-		applied, err := e.store.ApplyRemote(ctx, remote.Items)
-		if err != nil {
-			return result, fmt.Errorf("applying remote items: %w", err)
+		applied, applyErr := e.store.ApplyRemoteWithMode(ctx, remoteItems, remoteApplyModeFor(baseline))
+		if applyErr != nil {
+			return result, fmt.Errorf("applying remote items: %w", applyErr)
 		}
 		result.Applied = applied
 	}
@@ -285,9 +324,18 @@ func (e *Engine) runOnce(ctx context.Context, transport Transport) (RunResult, e
 
 	// The base is "what this machine last synced". Without a stored base we send none, and the
 	// remote falls back to updatedat — see syncproto.DetectConflictFields for the reasoning.
+	//
+	// A baseline choice is expressed entirely through this field, so every transport gets the same
+	// behaviour without transport-specific code:
+	//   BaselineLocal  → send the REMOTE snapshot as base, so from the transport's point of view
+	//                    local always diverged from base and therefore wins every field.
+	//   BaselineRemote → send the LOCAL items as base, so local "did not change" and the remote
+	//                    value is kept.
+	pushBase := e.baseForBaseline(baseline, items, remoteItems)
 	outcome, err := transport.Push(ctx, syncproto.PushRequest{
 		BaseRev:    localRev,
 		Items:      items,
+		Base:       pushBase,
 		DeviceId:   e.deviceId,
 		DeviceName: e.deviceName,
 	})
@@ -321,4 +369,96 @@ func (e *Engine) ShouldBlockPush(unresolvedCount int) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.policy == PolicyManual && unresolvedCount > 0
+}
+
+// Baseline is the "which side do I believe" choice made when switching between transports.
+//
+// Switching transports is the only operation where two independent datasets meet with no shared
+// history: everything local was produced under transport A, everything remote under transport B.
+// Guessing (by updatedat) would silently drop whichever side happened to be older, so the user
+// must choose. `none` means "normal sync", not "no data".
+type Baseline string
+
+const (
+	// BaselineNone is the ordinary steady-state sync (three-way merge, ask on real conflicts).
+	BaselineNone Baseline = ""
+	// BaselineLocal means this device's items win every conflicting field. Remote-only items are
+	// still pulled in (nothing is deleted).
+	BaselineLocal Baseline = "local"
+	// BaselineRemote means the remote's items win every conflicting field. Local-only items are
+	// still pushed as new items (nothing is deleted).
+	BaselineRemote Baseline = "remote"
+)
+
+// ParseBaseline maps a request string to the enum; anything unrecognised means "no baseline" so a
+// typo cannot accidentally force one side to win.
+func ParseBaseline(raw string) Baseline {
+	switch Baseline(strings.TrimSpace(raw)) {
+	case BaselineLocal:
+		return BaselineLocal
+	case BaselineRemote:
+		return BaselineRemote
+	default:
+		return BaselineNone
+	}
+}
+
+// baseForBaseline turns the baseline choice into the `Base` field of a push.
+//
+// This is where "local wins" and "remote wins" are implemented, and doing it here (rather than in
+// each transport) means folder, git and server all behave identically without any transport code
+// knowing a baseline exists.
+func (e *Engine) baseForBaseline(baseline Baseline, localItems, remoteItems []syncproto.SnapshotItem) []syncproto.SnapshotItem {
+	switch baseline {
+	case BaselineLocal:
+		// Claim the remote snapshot as "what I last synced", so every local difference reads as
+		// "only local changed" → local wins every field, and no conflict is reported.
+		return remoteItems
+	case BaselineRemote:
+		// Claim the local snapshot as the base, so from the transport's view local never changed
+		// and the remote value is kept. Local-only ids still arrive as inserts.
+		out := make([]syncproto.SnapshotItem, len(localItems))
+		copy(out, localItems)
+		return out
+	default:
+		return nil
+	}
+}
+
+// RunWithBaseline performs one sync with an explicit winner. It is used when switching transports
+// and must not become the steady state: after it succeeds the caller drops back to BaselineNone.
+func (e *Engine) RunWithBaseline(ctx context.Context, baseline Baseline, trigger string) (RunResult, error) {
+	e.mu.Lock()
+	if e.running {
+		e.mu.Unlock()
+		return RunResult{}, ErrAlreadyRunning
+	}
+	transport := e.transport
+	if transport == nil {
+		e.mu.Unlock()
+		return RunResult{Skipped: "no transport configured"}, nil
+	}
+	e.running = true
+	e.mu.Unlock()
+
+	start := time.Now()
+	defer func() {
+		e.mu.Lock()
+		e.running = false
+		e.mu.Unlock()
+	}()
+
+	_ = e.journal(syncjournal.Event{Type: syncjournal.EventRunStart, Trigger: trigger})
+
+	result, err := e.runOnce(ctx, transport, baseline)
+	result.Ms = time.Since(start).Milliseconds()
+	if err != nil {
+		_ = e.journal(syncjournal.Event{
+			Type: syncjournal.EventError, Phase: "baseline-resync", Msg: err.Error(), Ms: result.Ms,
+		})
+		_ = e.journal(syncjournal.Event{Type: syncjournal.EventRunEnd, OK: false, Ms: result.Ms})
+		return result, err
+	}
+	_ = e.journal(syncjournal.Event{Type: syncjournal.EventRunEnd, OK: true, Ms: result.Ms})
+	return result, nil
 }

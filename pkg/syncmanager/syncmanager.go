@@ -15,6 +15,7 @@ package syncmanager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,6 +30,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/syncjournal"
 	"github.com/wavetermdev/waveterm/pkg/syncproto"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
+	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
 
@@ -210,6 +212,127 @@ func SyncNow(ctx context.Context, trigger string) (Status, error) {
 // ErrNotConfigured means no transport is set up; the UI shows this as "local only", not as an error.
 var ErrNotConfigured = errors.New("sync is not configured")
 
+// SwitchTransport changes the active transport, running a full re-sync with an explicit baseline
+// first.
+//
+// Order matters and is the whole safety property of this operation:
+//  1. build the NEW transport from the pending settings (nothing written yet)
+//  2. run one baseline sync against it
+//  3. only then persist the settings
+//
+// If step 2 fails, the user's existing configuration is untouched — a failed switch must never
+// leave them pointing at a half-configured transport with the old one already forgotten.
+//
+// `patch` carries the whole pending transport configuration (path / remote / url + token flags),
+// not just the id, because the backend must build the new transport before saving.
+func SwitchTransport(ctx context.Context, patch map[string]any, baselineRaw string) (Status, error) {
+	// Build the target settings = current settings overlaid with the pending patch.
+	current, err := currentSettings()
+	if err != nil {
+		return currentStatusLocked(), err
+	}
+	target := overlaySettings(current, patch)
+	targetId := parseTransport(settingString(target, keyTransport))
+	if targetId == "none" {
+		// Switching to "off" needs no baseline: the target side is empty, so there is nothing to
+		// reconcile into. Demanding one here would be pure noise.
+		if saveErr := saveSettings(patch); saveErr != nil {
+			return currentStatusLocked(), saveErr
+		}
+		reload()
+		return currentStatusLocked(), nil
+	}
+
+	// Every other switch has data on both sides, and their rev numbers come from different
+	// transports, so no comparison is meaningful. Refuse to guess.
+	baseline := ctsync.ParseBaseline(baselineRaw)
+	if baseline == ctsync.BaselineNone {
+		return currentStatusLocked(), errors.New("switching transports needs an explicit baseline (local or remote)")
+	}
+
+	tr, buildErr := buildTransport(target, targetId)
+	if buildErr != nil {
+		return currentStatusLocked(), buildErr
+	}
+
+	handle := &engineHandle{
+		transportId: ctsync.TransportId(targetId),
+		deviceName:  settingString(target, keyDeviceName),
+		engine: ctsync.NewEngine(
+			storeAdapter{},
+			tr,
+			ctsync.ParseConflictPolicy(settingString(target, keyConflictPolicy)),
+			settingString(target, keyDeviceId),
+			settingString(target, keyDeviceName),
+			journalAppend,
+		),
+	}
+
+	res, runErr := handle.engine.RunWithBaseline(ctx, baseline, "transport-switch")
+	mu.Lock()
+	lastRunAt = time.Now()
+	if runErr != nil {
+		lastError = runErr.Error()
+	} else {
+		lastError = ""
+		lastResult = runSummary{Pulled: res.Pulled, Applied: res.Applied, Pushed: res.Pushed}
+	}
+	mu.Unlock()
+	if runErr != nil {
+		// Nothing persisted: the user stays on the previous transport.
+		return currentStatusLocked(), fmt.Errorf("baseline sync failed, transport not switched: %w", runErr)
+	}
+
+	if saveErr := saveSettings(patch); saveErr != nil {
+		return currentStatusLocked(), saveErr
+	}
+	reload()
+	return currentStatusLocked(), nil
+}
+
+// overlaySettings returns a copy of settings with the pending patch applied, so buildTransport can
+// see the target configuration before it is persisted.
+func overlaySettings(settings wconfig.SettingsType, patch map[string]any) wconfig.SettingsType {
+	out := settings
+	for key, raw := range patch {
+		if value, ok := raw.(string); ok {
+			switch key {
+			case keyTransport:
+				out.CommonTextSyncTransport = value
+			case keyConflictPolicy:
+				out.CommonTextSyncConflictPolicy = value
+			case keyDeviceName:
+				out.CommonTextSyncDeviceName = value
+			case keyFolderPath:
+				out.CommonTextSyncFolderPath = value
+			case keyServerUrl:
+				out.CommonTextSyncServerUrl = value
+			case keyGitRemote:
+				out.CommonTextSyncGitRemote = value
+			}
+			continue
+		}
+		if value, ok := raw.(bool); ok {
+			v := value
+			switch key {
+			case keyServerInsecure:
+				out.CommonTextSyncServerInsecure = &v
+			}
+		}
+	}
+	return out
+}
+
+// saveSettings merges the patch into settings.json. SetBaseConfigValue is a merge write, so keys not
+// present in the patch keep their current value.
+func saveSettings(patch map[string]any) error {
+	meta := waveobj.MetaMapType(patch)
+	if err := wconfig.SetBaseConfigValue(meta); err != nil {
+		return fmt.Errorf("saving sync settings: %w", err)
+	}
+	return nil
+}
+
 // GetStatus returns the UI-facing snapshot.
 func GetStatus() Status {
 	reload()
@@ -278,7 +401,7 @@ func (storeAdapter) Items(ctx context.Context) ([]syncproto.SnapshotItem, error)
 	return out, nil
 }
 
-func (storeAdapter) ApplyRemote(ctx context.Context, incoming []syncproto.SnapshotItem) (int, error) {
+func (storeAdapter) ApplyRemoteWithMode(ctx context.Context, incoming []syncproto.SnapshotItem, mode ctsync.RemoteApplyMode) (int, error) {
 	if len(incoming) == 0 {
 		return 0, nil
 	}
@@ -295,10 +418,19 @@ func (storeAdapter) ApplyRemote(ctx context.Context, incoming []syncproto.Snapsh
 	applied := 0
 	for _, remote := range incoming {
 		if existing, ok := byId[remote.Id]; ok {
-			// Only take the remote copy when it is actually newer. Taking it unconditionally would
-			// clobber a local edit that has not been pushed yet.
-			if remote.Rev <= existing.Rev {
+			switch mode {
+			case ctsync.RemoteFillMissing:
+				// "This device wins": keep the local copy of anything already present.
 				continue
+			case ctsync.RemoteOverwrite:
+				// "Remote wins": take it regardless of rev. Rev numbers come from different
+				// transports and are not comparable across a switch.
+			default:
+				// Steady state: only a higher rev replaces the local copy, otherwise a pull would
+				// clobber a local edit that has not been pushed yet.
+				if remote.Rev <= existing.Rev {
+					continue
+				}
 			}
 			for idx := range merged {
 				if merged[idx].Id == remote.Id {

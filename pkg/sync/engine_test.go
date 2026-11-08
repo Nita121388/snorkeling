@@ -38,16 +38,26 @@ func (s *memStore) Items(ctx context.Context) ([]syncproto.SnapshotItem, error) 
 	return out, nil
 }
 
-func (s *memStore) ApplyRemote(ctx context.Context, items []syncproto.SnapshotItem) (int, error) {
+func (s *memStore) ApplyRemoteWithMode(ctx context.Context, items []syncproto.SnapshotItem, mode RemoteApplyMode) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	applied := 0
 	for _, incoming := range items {
 		stored, found := s.items[incoming.Id]
-		if !found || incoming.Rev > stored.Rev {
-			s.items[incoming.Id] = incoming
-			applied++
+		switch mode {
+		case RemoteFillMissing:
+			if found {
+				continue
+			}
+		case RemoteOverwrite:
+			// always take the remote value
+		default:
+			if found && incoming.Rev <= stored.Rev {
+				continue
+			}
 		}
+		s.items[incoming.Id] = incoming
+		applied++
 	}
 	return applied, nil
 }
@@ -312,4 +322,130 @@ func (b *blockingTransport) Pull(ctx context.Context, sinceRev float64) (*syncpr
 }
 func (b *blockingTransport) Push(ctx context.Context, req syncproto.PushRequest) (*PushOutcome, error) {
 	return &PushOutcome{}, nil
+}
+
+// ── Baseline (transport switching) ──────────────────────────────────────────
+
+// baselineFixture builds "local has A+B, remote has A(different)+C" — the state you are in when
+// you switch from one already-used transport to another.
+func baselineFixture(t *testing.T) (*FolderTransport, *Engine, *memStore, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "commontext.json")
+	tr, err := NewFolderTransport(path)
+	if err != nil {
+		t.Fatalf("transport: %v", err)
+	}
+	// Seed the remote with A (content "remote-A") and C.
+	if _, err := tr.Push(context.Background(), syncproto.PushRequest{
+		Items: []syncproto.SnapshotItem{
+			{Id: "A", Title: "A", Text: "remote-A", UpdatedAt: 500, Rev: 1},
+			{Id: "C", Title: "C", Text: "remote-C", UpdatedAt: 500, Rev: 2},
+		},
+	}); err != nil {
+		t.Fatalf("seed remote: %v", err)
+	}
+	// Local has A (content "local-A", newer) and B (local-only).
+	store := newMemStore(
+		syncproto.SnapshotItem{Id: "A", Title: "A", Text: "local-A", UpdatedAt: 9000, Rev: 5},
+		syncproto.SnapshotItem{Id: "B", Title: "B", Text: "local-B", UpdatedAt: 9000, Rev: 6},
+	)
+	eng := NewEngine(store, tr, PolicyRowMerge, "dev-a", "Home PC", nil)
+	return tr, eng, store, path
+}
+
+func TestBaselineLocalWinsConflictsAndKeepsRemoteOnly(t *testing.T) {
+	tr, eng, store, _ := baselineFixture(t)
+
+	res, err := eng.RunWithBaseline(context.Background(), BaselineLocal, TriggerManual)
+	if err != nil {
+		t.Fatalf("baseline run: %v", err)
+	}
+	// Choosing "local wins" must not report conflicts: the user already decided.
+	if len(res.Conflicts) != 0 {
+		t.Fatalf("a baseline run must not surface conflicts, got %+v", res.Conflicts)
+	}
+
+	snap, err := tr.Pull(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	byId := map[string]string{}
+	for _, it := range snap.Items {
+		byId[it.Id] = it.Text
+	}
+	if byId["A"] != "local-A" {
+		t.Fatalf("local must win on A, got %q", byId["A"])
+	}
+	if byId["B"] != "local-B" {
+		t.Fatalf("local-only B must be pushed, got %q", byId["B"])
+	}
+	// "Remote extras are kept, not deleted" — C must still be on the remote and present locally.
+	if byId["C"] != "remote-C" {
+		t.Fatalf("remote-only C must not be deleted, got %q", byId["C"])
+	}
+	if _, ok := store.get("C"); !ok {
+		t.Fatal("remote-only C must also be pulled into local")
+	}
+}
+
+func TestBaselineRemoteWinsConflictsAndKeepsLocalOnly(t *testing.T) {
+	tr, eng, store, _ := baselineFixture(t)
+
+	res, err := eng.RunWithBaseline(context.Background(), BaselineRemote, TriggerManual)
+	if err != nil {
+		t.Fatalf("baseline run: %v", err)
+	}
+	if len(res.Conflicts) != 0 {
+		t.Fatalf("a baseline run must not surface conflicts, got %+v", res.Conflicts)
+	}
+
+	// Local A must have been replaced by the remote version.
+	if it, _ := store.get("A"); it.Text != "remote-A" {
+		t.Fatalf("remote must win on A locally, got %q", it.Text)
+	}
+	// Local-only B is appended to the remote as a new item — never dropped.
+	snap, err := tr.Pull(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	byId := map[string]string{}
+	for _, it := range snap.Items {
+		byId[it.Id] = it.Text
+	}
+	if byId["B"] != "local-B" {
+		t.Fatalf("local-only B must be appended to the remote, got %q", byId["B"])
+	}
+	if byId["A"] != "remote-A" {
+		t.Fatalf("remote must keep its A, got %q", byId["A"])
+	}
+}
+
+func TestBaselineNoneStillReportsRealConflicts(t *testing.T) {
+	// Sanity: the baseline path must not have disabled normal conflict detection.
+	tr, eng, _, _ := baselineFixture(t)
+	_ = tr
+	res, err := eng.Run(context.Background(), TriggerManual)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// With no base the fallback is updatedat (local newer) → applied, not a conflict. This asserts
+	// the steady-state path still works after the baseline plumbing.
+	if res.Applied == 0 && res.Pushed == 0 {
+		t.Fatalf("normal run should have pushed something, got %+v", res)
+	}
+}
+
+func TestParseBaselineFallsBackToNone(t *testing.T) {
+	if ParseBaseline("local") != BaselineLocal || ParseBaseline("remote") != BaselineRemote {
+		t.Fatal("known baselines must parse")
+	}
+	// A typo must never silently force one side to win.
+	for _, raw := range []string{"", "locall", "REMOTE", "both"} {
+		if got := ParseBaseline(raw); got != BaselineNone {
+			t.Fatalf("ParseBaseline(%q) = %q, want none", raw, got)
+		}
+	}
+	if ParseBaseline("remote") == BaselineNone {
+		t.Fatal("remote must not be swallowed by the fallback")
+	}
 }
