@@ -609,6 +609,7 @@ declare global {
         updatedAt: number;
         completedAt?: number;
         activeSince?: number;
+        phaseSince?: number;
         seq?: number;
         expiresAt?: number;
     };

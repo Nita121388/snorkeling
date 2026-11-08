@@ -78,8 +78,12 @@ type AgentStatus struct {
 	UpdatedAt   int64  `json:"updatedAt"`
 	CompletedAt int64  `json:"completedAt,omitempty"`
 	ActiveSince int64  `json:"activeSince,omitempty"`
-	Seq         int64  `json:"seq,omitempty"`
-	ExpiresAt   int64  `json:"expiresAt,omitempty"`
+	// PhaseSince 是「当前阶段段」的起点：state / phase / toolName 任一变化都归零重计。
+	// 与 ActiveSince（state 段）分开，是因为徽章要显示「当前这个工具跑了多久」，
+	// 而 Overview 时间线条要的是「当前状态段起点」—— 两者混用会让时间线塌成一段。
+	PhaseSince int64 `json:"phaseSince,omitempty"`
+	Seq        int64 `json:"seq,omitempty"`
+	ExpiresAt  int64 `json:"expiresAt,omitempty"`
 }
 
 type sourceEntry struct {
@@ -329,6 +333,17 @@ func (m *statusManager) report(report AgentStatusReport, fallbackBlockId string)
 	if prevSource.State == report.State && prevSource.ActiveSince > 0 {
 		activeSince = prevSource.ActiveSince
 	}
+	// phaseSince 与 activeSince 差一个粒度：同 state 下换工具（toolName 变）或
+	// 相位切换（thinking <-> tool）都算新的一段。pi 的 tool_call / claude 的
+	// PreToolUse 每次都上报 working+tool+新 toolName，state 不变而 toolName 变 ——
+	// 只比 state 的话徽章会一直显示整轮 working 的总时长。
+	phaseSince := report.ReportedAt
+	if prevSource.State == report.State &&
+		prevSource.Phase == report.Phase &&
+		prevSource.ToolName == report.ToolName &&
+		prevSource.PhaseSince > 0 {
+		phaseSince = prevSource.PhaseSince
+	}
 	reason := strings.TrimSpace(report.Reason)
 	if reason == "" {
 		reason = "explicit-report"
@@ -346,6 +361,7 @@ func (m *statusManager) report(report AgentStatusReport, fallbackBlockId string)
 		ToolName:    report.ToolName,
 		UpdatedAt:   report.ReportedAt,
 		ActiveSince: activeSince,
+		PhaseSince:  phaseSince,
 		Seq:         report.Seq,
 		ExpiresAt:   expiresAt,
 	}

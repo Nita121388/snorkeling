@@ -1,0 +1,10 @@
+# red proof: N-1108-agent-chip-phase-duration
+# date: 2026-11-08T06:05:15Z
+# cmd: powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-env.ps1 -Quiet; go test ./pkg/agentstatus -run TestBadgeRuntimeStartFollowsCurrentTool -count=1"
+# fixture: report working/tool/Bash @t0 -> report working/tool/Read @t1(+60s), 读 ActiveSince(前端 chip-view:69 的 runtimeStart)
+
+--- FAIL: TestBadgeRuntimeStartFollowsCurrentTool (0.00s)
+    redproof_tmp_test.go:37: BUG: badge runtime start = 1700000000000 (60000ms before current tool), want 1700000060000
+FAIL
+FAIL	github.com/wavetermdev/waveterm/pkg/agentstatus	3.546s
+FAIL

@@ -18,6 +18,7 @@ type RawCanonicalAgentStatus = {
     updatedAt?: unknown;
     completedAt?: unknown;
     activeSince?: unknown;
+    phaseSince?: unknown;
     seq?: unknown;
     expiresAt?: unknown;
 };
@@ -98,6 +99,7 @@ export function normalizeCanonicalAgentStatus(
         updatedAt: numberValue(raw.updatedAt) ?? Date.now(),
         completedAt: numberValue(raw.completedAt),
         activeSince: numberValue(raw.activeSince),
+        phaseSince: numberValue(raw.phaseSince),
         seq: numberValue(raw.seq),
         expiresAt: numberValue(raw.expiresAt),
     };

@@ -105,8 +105,9 @@ export function buildSessionRunBadgeView(input: BuildSessionRunBadgeViewInput): 
     // ── 分支 1：有 AgentStatus，走共享呈现层 ──
     if (status != null) {
         const presentation = agentStatusPresentation(status);
+        // 跑时起点与 block 头部 chip 同一口径：当前阶段段（phaseSince），不是整轮 working 总时长。
         const runtime = needsAgentChipRuntime(status)
-            ? formatAgentChipRuntime(status.activeSince ?? status.updatedAt ?? 0, input.nowMs)
+            ? formatAgentChipRuntime(status.phaseSince ?? status.activeSince ?? status.updatedAt ?? 0, input.nowMs)
             : "";
         return {
             tone: "agent",

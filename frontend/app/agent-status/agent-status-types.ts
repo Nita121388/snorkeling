@@ -48,6 +48,8 @@ export type AgentStatus = {
     updatedAt: number;
     completedAt?: number;
     activeSince?: number;
+    /** 当前阶段段（state+phase+toolName 全等才算同一段）的起点：徽章跑时读它。 */
+    phaseSince?: number;
     seq?: number;
     expiresAt?: number;
 };
