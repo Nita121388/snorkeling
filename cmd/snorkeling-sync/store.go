@@ -182,8 +182,14 @@ func (s *Store) Apply(req syncproto.PushRequest) (syncproto.PushResponse, error)
 	}
 	defer tx.Rollback()
 
-	resp := syncproto.PushResponse{Rev: head}
+	resp := syncproto.PushResponse{Rev: head, Conflicts: []syncproto.Conflict{}}
 	newRev := head
+	baseById := make(map[string]*syncproto.SnapshotItem, len(req.Base))
+	for idx := range req.Base {
+		if req.Base[idx].Id != "" {
+			baseById[req.Base[idx].Id] = &req.Base[idx]
+		}
+	}
 	for _, it := range req.Items {
 		if it.Id == "" {
 			continue
@@ -193,41 +199,77 @@ func (s *Store) Apply(req syncproto.PushRequest) (syncproto.PushResponse, error)
 			nextRev = it.Rev
 		}
 
-		var existingUpdated, existingRev sql.NullFloat64
-		err := tx.QueryRow(`SELECT updatedat, rev FROM sync_items WHERE id = ?`, it.Id).
-			Scan(&existingUpdated, &existingRev)
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
+		existing, found, err := itemByIDTx(tx, it.Id)
+		if err != nil {
+			return syncproto.PushResponse{}, err
+		}
+		if !found {
 			if err := upsertItem(tx, it, nextRev); err != nil {
 				return syncproto.PushResponse{}, err
 			}
 			resp.Applied++
 			newRev = nextRev
-		case err != nil:
-			return syncproto.PushResponse{}, err
-		default:
-			// Tombstone wins over a live copy with an older revision.
-			if it.DeletedAt > 0 && it.Rev >= existingRev.Float64 {
-				if err := upsertItem(tx, it, nextRev); err != nil {
-					return syncproto.PushResponse{}, err
-				}
-				resp.Applied++
-				newRev = nextRev
-				continue
-			}
-			if it.UpdatedAt > existingUpdated.Float64 {
-				if err := upsertItem(tx, it, nextRev); err != nil {
-					return syncproto.PushResponse{}, err
-				}
-				resp.Applied++
-				newRev = nextRev
-				continue
-			}
-			resp.Conflicts = append(resp.Conflicts, syncproto.Conflict{
-				Id:     it.Id,
-				Reason: "server has a newer or equal updatedat; keeping server copy",
-			})
+			continue
 		}
+
+		// Tombstone wins over a live copy with an older revision: a delete must not be resurrected
+		// by a device that simply missed it.
+		if it.DeletedAt > 0 && it.Rev >= existing.Rev {
+			if err := upsertItem(tx, it, nextRev); err != nil {
+				return syncproto.PushResponse{}, err
+			}
+			resp.Applied++
+			newRev = nextRev
+			continue
+		}
+
+		// No base means this is the first sync of an item that already exists on both sides: there
+		// is no common ancestor, so field-level attribution is impossible. Fall back to the only
+		// signal available (updatedat, whole item) instead of reporting every first-sync difference
+		// as a conflict — that would bury the user in noise on day one.
+		base := baseById[it.Id]
+		if base == nil {
+			if it.UpdatedAt > existing.UpdatedAt {
+				if err := upsertItem(tx, it, nextRev); err != nil {
+					return syncproto.PushResponse{}, err
+				}
+				resp.Applied++
+				newRev = nextRev
+			} else {
+				resp.Unchanged++
+			}
+			continue
+		}
+
+		// Three-way merge: compare local (pushed) and remote (stored) against the base the client
+		// last synced. Only fields BOTH sides changed differently are a conflict; everything else
+		// merges automatically.
+		conflictFields := syncproto.DetectConflictFields(base, &it, existing)
+		if len(conflictFields) == 0 {
+			merged, changed := mergeItems(base, &it, existing)
+			if changed {
+				if err := upsertItem(tx, merged, nextRev); err != nil {
+					return syncproto.PushResponse{}, err
+				}
+				resp.Applied++
+				newRev = nextRev
+			} else {
+				resp.Unchanged++
+			}
+			continue
+		}
+
+		// Real conflict: keep the server copy and hand BOTH versions back so the client can show
+		// a diff and let a human (or an agent) merge it.
+		localCopy := it
+		remoteCopy := *existing
+		resp.Conflicts = append(resp.Conflicts, syncproto.Conflict{
+			Id:     it.Id,
+			Fields: conflictFields,
+			Local:  &localCopy,
+			Remote: &remoteCopy,
+			Reason: "both sides changed " + joinFields(conflictFields),
+		})
 	}
 	if err := setHeadRevTx(tx, newRev); err != nil {
 		return syncproto.PushResponse{}, err
@@ -306,3 +348,138 @@ func splitTags(raw string) []string {
 }
 
 var _ = time.Now
+
+// itemByIDTx loads one stored item in wire form (nil when absent).
+func itemByIDTx(tx *sql.Tx, id string) (*syncproto.SnapshotItem, bool, error) {
+	row := tx.QueryRow(`SELECT id, title, body, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount,
+       emoji, createdby_kind, createdby_name, origin_deviceid, origin_devicename, origin_platform,
+       rev, deletedat
+FROM sync_items WHERE id = ?`, id)
+	var it syncproto.SnapshotItem
+	var title, body, shortcut, tags, emoji sql.NullString
+	var cbKind, cbName, origId, origName, origPlatform sql.NullString
+	var createdAt, updatedAt, lastUsedAt, usageCount, rev, deletedAt sql.NullFloat64
+	var pinned sql.NullBool
+	err := row.Scan(&it.Id, &title, &body, &shortcut, &tags, &pinned, &createdAt, &updatedAt,
+		&lastUsedAt, &usageCount, &emoji, &cbKind, &cbName, &origId, &origName, &origPlatform,
+		&rev, &deletedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	it.Title = title.String
+	it.Text = body.String
+	it.Shortcut = shortcut.String
+	it.Pinned = pinned.Bool
+	it.CreatedAt = createdAt.Float64
+	it.UpdatedAt = updatedAt.Float64
+	it.LastUsedAt = lastUsedAt.Float64
+	it.UsageCount = usageCount.Float64
+	it.Emoji = emoji.String
+	it.Rev = rev.Float64
+	it.DeletedAt = deletedAt.Float64
+	it.Tags = splitTags(tags.String)
+	if cbKind.Valid || cbName.Valid {
+		it.CreatedBy = &syncproto.Author{Kind: cbKind.String, Name: cbName.String}
+	}
+	if origId.Valid || origName.Valid || origPlatform.Valid {
+		it.Origin = &syncproto.Origin{
+			DeviceId: origId.String, DeviceName: origName.String, Platform: origPlatform.String,
+		}
+	}
+	return &it, true, nil
+}
+
+// mergeItems combines non-conflicting changes: per field, take whichever side diverged from base.
+//
+// It reports whether anything actually changed, so an idempotent push (client re-sending the same
+// row) does not bump the head revision forever.
+func mergeItems(base, local, remote *syncproto.SnapshotItem) (syncproto.SnapshotItem, bool) {
+	merged := *remote // start from the server copy; overwrite only the fields local changed
+	changed := false
+
+	pick := func(baseVal, localVal, remoteVal string) string {
+		if localVal == remoteVal {
+			return remoteVal
+		}
+		if localVal == baseVal {
+			return remoteVal // only remote changed
+		}
+		return localVal // only local changed
+	}
+
+	text := pick(baseText(base), local.Text, remote.Text)
+	if text != remote.Text {
+		merged.Text = text
+		changed = true
+	}
+	title := pick(baseTitle(base), local.Title, remote.Title)
+	if title != remote.Title {
+		merged.Title = title
+		changed = true
+	}
+	shortcut := pick(baseShortcut(base), local.Shortcut, remote.Shortcut)
+	if shortcut != remote.Shortcut {
+		merged.Shortcut = shortcut
+		changed = true
+	}
+	localTags := syncproto.JoinTags(local.Tags)
+	remoteTags := syncproto.JoinTags(remote.Tags)
+	tags := pick(syncproto.JoinTags(baseTags(base)), localTags, remoteTags)
+	if tags != remoteTags {
+		merged.Tags = syncproto.SplitTags(tags)
+		changed = true
+	}
+
+	// Scalar metadata: the newer updatedat wins as a whole, but only when content merged cleanly.
+	if local.UpdatedAt > remote.UpdatedAt {
+		merged.UpdatedAt = local.UpdatedAt
+		merged.LastUsedAt = local.LastUsedAt
+		merged.UsageCount = local.UsageCount
+		merged.Pinned = local.Pinned
+		merged.Emoji = local.Emoji
+		if remote.DeletedAt == 0 && local.DeletedAt > 0 {
+			merged.DeletedAt = local.DeletedAt
+		}
+	}
+	return merged, changed
+}
+
+func baseText(b *syncproto.SnapshotItem) string {
+	if b == nil {
+		return ""
+	}
+	return b.Text
+}
+func baseTitle(b *syncproto.SnapshotItem) string {
+	if b == nil {
+		return ""
+	}
+	return b.Title
+}
+func baseShortcut(b *syncproto.SnapshotItem) string {
+	if b == nil {
+		return ""
+	}
+	return b.Shortcut
+}
+func baseTags(b *syncproto.SnapshotItem) []string {
+	if b == nil {
+		return nil
+	}
+	return b.Tags
+}
+
+// joinFields renders ["text","title"] as "text, title" for a human-readable reason string.
+func joinFields(fields []string) string {
+	out := ""
+	for i, f := range fields {
+		if i > 0 {
+			out += ", "
+		}
+		out += f
+	}
+	return out
+}

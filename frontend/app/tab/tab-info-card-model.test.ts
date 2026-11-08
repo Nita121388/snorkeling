@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
     agentGroupHidesProvider,
     agentGroupLabel,
+    agentPillText,
     classifyTabBlock,
     countTabBlocks,
     nonAgentChips,
@@ -129,5 +130,28 @@ describe("agentGroupLabel", () => {
     it("空 provider 清单", () => {
         expect(agentGroupLabel([])).toBe("Agents");
         expect(agentGroupLabel(["", ""])).toBe("Agents");
+    });
+});
+
+// ── pill 文案：状态词 + 跑时，必须与块头 / 悬浮卡逐字一致 ──
+//
+// 历史上 Tab 悬浮卡的 pill 只读 `agentStatusViewLabel`（状态词，Done 未读时带
+// 分钟级 elapsed），而跑时 "3min21s" 只由 `buildAgentStatusChipView().runtime` 产出。
+// 于是 working / tool 期间 pill 只有 "Tool: Bash"、没有时长 —— 与块头、悬浮卡对不上。
+describe("agentPillText", () => {
+    it("活跃态把 runtime 拼在状态词之后（与 term-model 头部同一拼法）", () => {
+        expect(agentPillText({ label: "Tool: Bash", runtime: "3min21s" }, "Tool: Bash")).toBe("Tool: Bash 3min21s");
+    });
+
+    it("无 runtime 时不追加多余空格", () => {
+        expect(agentPillText({ label: "Done", runtime: "" }, "Done")).toBe("Done");
+    });
+
+    it("拿不到 chipView 时退回状态词（null status 的 idle 行）", () => {
+        expect(agentPillText(null, "Idle")).toBe("Idle");
+    });
+
+    it("未读 Done：elapsed 已在 label 里，runtime 为空 → 只有一份时间", () => {
+        expect(agentPillText({ label: "Done 3m", runtime: "" }, "Done 3m")).toBe("Done 3m");
     });
 });

@@ -16,7 +16,8 @@
 | [Agent Catalog 单一事实来源契约](./agent-catalog-contract.md) | agent/模型目录唯一来源；解析优先级；RPC/CLI/调度器/UI 同源；未知 model 不阻断 | 有效 |
 | [Agent 命令探测契约](./agent-command-detection-contract.md) | 本地/远程候选目录单一来源；LookPath→候选目录→登录 shell PATH；GUI 裸 PATH 必命中 | 有效 |
 | [AI 会话标题契约](./aisessions-title-contract.md) | titleSource 优先级 user>ai>first_user_message>…；setMetaTx 合并规则；后台自动生成开关/幂等/静默 | 有效 |
-| [Agent Control Surface 契约](./agent-control-surface-contract.md) | ACS 分层职责；遍历只允许一份 `ListBlocksScoped`；读取有界+白名单脱敏；前端路由调用必须可注入；`--wait` 只看后端真相；错误码冻结 | 有效 |
+| [Agent Control Surface 契约](./agent-control-surface-contract.md) | ACS 分层职责；遍历只允许一份 `ListBlocksScoped`；读取有界+白名单脱敏；前端路由调用必须可注入；`--wait` 判据为「队列排空 + leaforder 含该块」；错误码冻结 | 有效 |
+| [Agent 状态时间戳契约](./agentstatus-timestamps-contract.md) | activeSince（state 段）vs phaseSince（阶段段）的粒度与消费方；两戳都不参与 sameStatus/指纹；前端读取优先级 | 有效 |
 
 ---
 

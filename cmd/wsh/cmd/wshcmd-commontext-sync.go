@@ -19,14 +19,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/wavetermdev/waveterm/pkg/sync"
 	"github.com/wavetermdev/waveterm/pkg/syncclient"
+	"github.com/wavetermdev/waveterm/pkg/syncconflict"
 	"github.com/wavetermdev/waveterm/pkg/syncjournal"
+	"github.com/wavetermdev/waveterm/pkg/syncproto"
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 )
@@ -56,6 +62,10 @@ var commonTextSyncInterval string
 var commonTextSyncInsecure bool
 var commonTextSyncDeviceName string
 var commonTextSyncLogLines int
+var commonTextSyncConflictsCopy bool
+var commonTextSyncResolveTextFile string
+var commonTextSyncResolveLocal bool
+var commonTextSyncResolveRemote bool
 
 func init() {
 	rootCmd.AddCommand(commonTextSyncCmd)
@@ -133,6 +143,33 @@ func init() {
 	logCmd.Flags().IntVar(&commonTextSyncLogLines, "n", 20, "how many events")
 	logCmd.Flags().BoolVar(&commonTextSyncShowJson, "json", false, "print JSON lines")
 	commonTextSyncCmd.AddCommand(logCmd)
+
+	syncNowCmd := &cobra.Command{
+		Use:   "sync",
+		Short: "run one sync through the configured transport",
+		RunE:  commonTextSyncRunRun,
+	}
+	commonTextSyncCmd.AddCommand(syncNowCmd)
+
+	conflictsCmd := &cobra.Command{
+		Use:   "conflicts",
+		Short: "list unresolved sync conflicts",
+		RunE:  commonTextSyncConflictsRun,
+	}
+	conflictsCmd.Flags().BoolVar(&commonTextSyncConflictsCopy, "copy", false, "print a self-contained AI-ready block")
+	conflictsCmd.Flags().BoolVar(&commonTextSyncShowJson, "json", false, "print JSON")
+	commonTextSyncCmd.AddCommand(conflictsCmd)
+
+	resolveCmd := &cobra.Command{
+		Use:   "resolve <id>",
+		Short: "resolve a conflict with merged or chosen content",
+		Args:  cobra.ExactArgs(1),
+		RunE:  commonTextSyncResolveRun,
+	}
+	resolveCmd.Flags().StringVar(&commonTextSyncResolveTextFile, "text-file", "", "file containing the merged text (use - for stdin)")
+	resolveCmd.Flags().BoolVar(&commonTextSyncResolveLocal, "take-local", false, "keep this machine's version")
+	resolveCmd.Flags().BoolVar(&commonTextSyncResolveRemote, "take-remote", false, "keep the remote version")
+	commonTextSyncCmd.AddCommand(resolveCmd)
 }
 
 // syncSettingsFromEnv reads the current values through the same RPC the UI uses.
@@ -632,4 +669,427 @@ func shortTime(rfc3339 string) string {
 		return rfc3339
 	}
 	return t.Local().Format("01-02 15:04:05")
+}
+
+// ---------------------------------------------------------------------------
+// conflicts / resolve
+// ---------------------------------------------------------------------------
+
+// commonTextSyncConflictsRun lists unresolved conflicts. With --copy it prints a self-contained
+// block whose last section states the task, so it can be pasted into an AI with no extra words.
+func commonTextSyncConflictsRun(cmd *cobra.Command, args []string) error {
+	entries, err := syncconflict.List()
+	if err != nil {
+		return err
+	}
+	if commonTextSyncShowJson {
+		out, _ := json.MarshalIndent(entries, "", "  ")
+		WriteStdout("%s\n", string(out))
+		return nil
+	}
+	if len(entries) == 0 {
+		WriteStdout("no unresolved conflicts\n")
+		return nil
+	}
+	if commonTextSyncConflictsCopy {
+		WriteStdout("%s", syncconflict.RenderAll(entries))
+		return nil
+	}
+	for _, e := range entries {
+		title := e.Title
+		if title == "" {
+			title = "(untitled)"
+		}
+		WriteStdout("%s  %s\n", e.Id, title)
+		WriteStdout("            fields: %s · from %s · detected %s\n",
+			strings.Join(e.Fields, ", "), firstNonEmpty(e.DeviceName, "remote"), shortTime(e.DetectedAt))
+	}
+	WriteStdout("\nresolve with:\n")
+	WriteStdout("  wsh commontext-sync conflicts --copy          # paste into an AI to merge\n")
+	WriteStdout("  wsh commontext-sync resolve <id> --text-file merged.md\n")
+	return nil
+}
+
+// commonTextSyncResolveRun applies a resolution. Three ways: take local, take remote, or supply
+// merged text. Both-sides flags are rejected rather than silently picking one.
+func commonTextSyncResolveRun(cmd *cobra.Command, args []string) error {
+	id := strings.TrimSpace(args[0])
+	if id == "" {
+		return fmt.Errorf("conflict id is required")
+	}
+	chosen := 0
+	if commonTextSyncResolveLocal {
+		chosen++
+	}
+	if commonTextSyncResolveRemote {
+		chosen++
+	}
+	if commonTextSyncResolveTextFile != "" {
+		chosen++
+	}
+	if chosen == 0 {
+		return fmt.Errorf("choose one of --take-local / --take-remote / --text-file")
+	}
+	if chosen > 1 {
+		return fmt.Errorf("choose only one of --take-local / --take-remote / --text-file")
+	}
+
+	entries, err := syncconflict.List()
+	if err != nil {
+		return err
+	}
+	var target *syncconflict.Entry
+	for i := range entries {
+		if entries[i].Id == id {
+			target = &entries[i]
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("no unresolved conflict with id %q (run: wsh commontext-sync conflicts)", id)
+	}
+
+	var text string
+	switch {
+	case commonTextSyncResolveLocal:
+		if target.Local == nil {
+			return fmt.Errorf("conflict %q has no local version", id)
+		}
+		text = target.Local.Text
+	case commonTextSyncResolveRemote:
+		if target.Remote == nil {
+			return fmt.Errorf("conflict %q has no remote version", id)
+		}
+		text = target.Remote.Text
+	default:
+		data, err := readTextArg(commonTextSyncResolveTextFile)
+		if err != nil {
+			return err
+		}
+		text = data
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("refusing to resolve %q with empty text — deletes go through the UI", id)
+	}
+
+	// Write the resolved content locally first, then mark the conflict resolved. If the write
+	// fails the conflict stays visible, which is the safe order.
+	//
+	// There is no per-item RPC reachable from wsh (Common Text uses the service layer, which has no
+	// generated Go client), so this goes through SetConfigCommand -> SaveFromConfigMap: read the
+	// current items, replace one, write them back. The read-modify-write window is the tradeoff;
+	// it is acceptable for an explicit user/agent resolution and the alternative is a new RPC just
+	// for this command.
+	items, err := commonTextSyncReadItems()
+	if err != nil {
+		return err
+	}
+	updated := false
+	for idx := range items {
+		if items[idx].Id != id {
+			continue
+		}
+		items[idx].Text = text
+		items[idx].UpdatedAt = float64(time.Now().UnixMilli())
+		items[idx].Rev = items[idx].Rev + 1 // bump so the server sees a newer version
+		updated = true
+		break
+	}
+	if !updated {
+		return fmt.Errorf("item %q not found in local Common Text — was it deleted?", id)
+	}
+	if err := wshclient.SetConfigCommand(RpcClient, wshrpc.MetaSettingsType{
+		MetaMapType: map[string]any{wconfig.ConfigKey_CommonTextItems: items},
+	}, &wshrpc.RpcOpts{Timeout: 8000}); err != nil {
+		return fmt.Errorf("writing resolved text: %w", err)
+	}
+	if err := syncconflict.MarkResolved(id); err != nil {
+		return err
+	}
+	WriteStdout("resolved %s\n", id)
+	WriteStdout("next sync will push the merged version\n")
+	return nil
+}
+
+// commonTextSyncReadItems loads the current Common Text items through the config path.
+func commonTextSyncReadItems() ([]wconfig.CommonTextItemType, error) {
+	full, err := wshclient.GetFullConfigCommand(RpcClient, &wshrpc.RpcOpts{Timeout: 5000})
+	if err != nil {
+		return nil, fmt.Errorf("reading common text: %w", err)
+	}
+	return full.Settings.CommonTextItems, nil
+}
+
+// readTextArg reads a file, or stdin when the arg is "-".
+func readTextArg(path string) (string, error) {
+	if path == "-" {
+		data, err := io.ReadAll(os.Stdin)
+		return string(data), err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", path, err)
+	}
+	return string(data), nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
+// sync (run one sync through the configured transport)
+// ---------------------------------------------------------------------------
+
+// commonTextSyncRunRun performs one sync now. The desktop app owns the timer-driven loop; this
+// command covers "sync now" for a script or an agent, and is the only path that works without the
+// GUI running.
+func commonTextSyncRunRun(cmd *cobra.Command, args []string) error {
+	settings, err := syncSettingsFromEnv()
+	if err != nil {
+		return err
+	}
+	transportId := sync.ParseTransport(syncKeyString(settings, "commontext:sync:transport"))
+	if transportId == sync.TransportNone {
+		return fmt.Errorf("no transport configured (run: wsh commontext-sync set-folder <path>)")
+	}
+
+	store := &cliSyncStore{}
+	transport, err := buildTransport(settings, transportId)
+	if err != nil {
+		return err
+	}
+
+	engine := sync.NewEngine(
+		store,
+		transport,
+		sync.ParseConflictPolicy(syncKeyString(settings, "commontext:sync:conflictpolicy")),
+		syncKeyString(settings, "commontext:sync:deviceid"),
+		syncKeyString(settings, "commontext:sync:devicename"),
+		func(ev syncjournal.Event) error { return syncjournal.Append(ev) },
+	)
+
+	res, err := engine.Run(context.Background(), sync.TriggerManual)
+	if err != nil {
+		// Journal and conflict state are already written; report and stop.
+		return fmt.Errorf("sync: %w", err)
+	}
+	if res.Skipped != "" {
+		WriteStdout("nothing to do: %s\n", res.Skipped)
+		return nil
+	}
+	WriteStdout("pulled %d, applied %d, pushed %d, unchanged %d (%dms)\n",
+		res.Pulled, res.Applied, res.Pushed, res.Unchanged, res.Ms)
+	if len(res.Conflicts) > 0 {
+		// Persist them so `conflicts --copy` can hand them to an AI.
+		if err := syncconflict.Record(res.Conflicts, string(transportId), syncKeyString(settings, "commontext:sync:devicename")); err != nil {
+			WriteStdout("warning: could not record conflicts: %v\n", err)
+		}
+		WriteStdout("\n%d conflict(s) need a decision:\n", len(res.Conflicts))
+		for _, c := range res.Conflicts {
+			WriteStdout("  %s (%s)\n", c.Id, strings.Join(c.Fields, ", "))
+		}
+		WriteStdout("\n  wsh commontext-sync conflicts --copy     # paste into an AI to merge\n")
+	}
+	if res.StaleBase {
+		WriteStdout("note: remote moved during the push; run sync again to reconcile\n")
+	}
+	return nil
+}
+
+// buildTransport constructs the configured transport.
+func buildTransport(settings map[string]any, id sync.TransportId) (sync.Transport, error) {
+	switch id {
+	case sync.TransportFolder:
+		path := syncKeyString(settings, "commontext:sync:folder:path")
+		if strings.TrimSpace(path) == "" {
+			return nil, fmt.Errorf("folder transport needs a path (run: wsh commontext-sync set-folder <path>)")
+		}
+		return sync.NewFolderTransport(expandHome(path))
+	case sync.TransportServer:
+		url := syncKeyString(settings, "commontext:sync:server:url")
+		token := loadSyncToken("server")
+		insecure := syncKeyBool(settings, "commontext:sync:server:allowinsecure")
+		return sync.NewServerTransport(url, token, insecure)
+	case sync.TransportGit:
+		remote := syncKeyString(settings, "commontext:sync:git:remote")
+		if strings.TrimSpace(remote) == "" {
+			return nil, fmt.Errorf("git transport needs a remote (run: wsh commontext-sync set-git <remote>)")
+		}
+		token := loadSyncToken("git")
+		repoDir, err := cliGitRepoDir()
+		if err != nil {
+			return nil, err
+		}
+		return sync.NewGitTransport(remote, repoDir, token)
+	default:
+		return nil, fmt.Errorf("transport %q is not implemented yet", id)
+	}
+}
+
+// expandHome resolves a leading ~, which users type and shells do not always expand in config.
+func expandHome(path string) string {
+	if !strings.HasPrefix(path, "~") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
+		return filepath.Join(home, path[2:])
+	}
+	return path
+}
+
+// cliSyncStore bridges the engine to the local Common Text store.
+//
+// It uses the config path (GetFullConfig / SetConfigCommand) because Common Text lives behind the
+// service layer, which has no generated Go client.
+type cliSyncStore struct{}
+
+func (s *cliSyncStore) Items(ctx context.Context) ([]syncproto.SnapshotItem, error) {
+	items, err := commonTextSyncReadItems()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]syncproto.SnapshotItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, snapshotItemFromCommonText(it))
+	}
+	return out, nil
+}
+
+func (s *cliSyncStore) ApplyRemoteWithMode(ctx context.Context, incoming []syncproto.SnapshotItem, mode sync.RemoteApplyMode) (int, error) {
+	items, err := commonTextSyncReadItems()
+	if err != nil {
+		return 0, err
+	}
+	byId := make(map[string]int, len(items))
+	for idx := range items {
+		byId[items[idx].Id] = idx
+	}
+	applied := 0
+	for _, remote := range incoming {
+		if idx, ok := byId[remote.Id]; ok {
+			switch mode {
+			case sync.RemoteFillMissing:
+				continue
+			case sync.RemoteOverwrite:
+				// take it regardless of rev (revs are per-transport and not comparable on a switch)
+			default:
+				// Only take the remote copy when it is actually newer; otherwise a pull would
+				// clobber a local edit that has not been pushed yet.
+				if remote.Rev <= items[idx].Rev {
+					continue
+				}
+			}
+			items[idx] = commonTextFromSnapshotItem(remote)
+		} else {
+			items = append(items, commonTextFromSnapshotItem(remote))
+		}
+		applied++
+	}
+	if applied == 0 {
+		return 0, nil
+	}
+	if err := writeCommonTextItems(items); err != nil {
+		return 0, err
+	}
+	return applied, nil
+}
+
+func (s *cliSyncStore) LocalRevision(ctx context.Context) (float64, error) {
+	items, err := commonTextSyncReadItems()
+	if err != nil {
+		return 0, err
+	}
+	var max float64
+	for _, it := range items {
+		if it.Rev > max {
+			max = it.Rev
+		}
+	}
+	return max, nil
+}
+
+// snapshotItemFromCommonText converts a stored item to the wire shape.
+func snapshotItemFromCommonText(it wconfig.CommonTextItemType) syncproto.SnapshotItem {
+	out := syncproto.SnapshotItem{
+		Id:         it.Id,
+		Title:      it.Title,
+		Text:       it.Text,
+		Shortcut:   it.Shortcut,
+		Tags:       it.Tags,
+		Pinned:     it.Pinned,
+		CreatedAt:  it.CreatedAt,
+		UpdatedAt:  it.UpdatedAt,
+		LastUsedAt: it.LastUsedAt,
+		UsageCount: it.UsageCount,
+		Emoji:      it.Emoji,
+		Rev:        it.Rev,
+		DeletedAt:  it.DeletedAt,
+	}
+	if it.CreatedBy != nil {
+		out.CreatedBy = &syncproto.Author{Kind: it.CreatedBy.Kind, Name: it.CreatedBy.Name}
+	}
+	if it.Origin != nil {
+		out.Origin = &syncproto.Origin{
+			DeviceId: it.Origin.DeviceId, DeviceName: it.Origin.DeviceName, Platform: it.Origin.Platform,
+		}
+	}
+	return out
+}
+
+// commonTextFromSnapshotItem converts a wire item back to the stored shape.
+func commonTextFromSnapshotItem(it syncproto.SnapshotItem) wconfig.CommonTextItemType {
+	out := wconfig.CommonTextItemType{
+		Id:         it.Id,
+		Title:      it.Title,
+		Text:       it.Text,
+		Shortcut:   it.Shortcut,
+		Tags:       it.Tags,
+		Pinned:     it.Pinned,
+		CreatedAt:  it.CreatedAt,
+		UpdatedAt:  it.UpdatedAt,
+		LastUsedAt: it.LastUsedAt,
+		UsageCount: it.UsageCount,
+		Emoji:      it.Emoji,
+		Rev:        it.Rev,
+		DeletedAt:  it.DeletedAt,
+	}
+	if it.CreatedBy != nil {
+		out.CreatedBy = &wconfig.CommonTextCreatedByType{Kind: it.CreatedBy.Kind, Name: it.CreatedBy.Name}
+	}
+	if it.Origin != nil {
+		out.Origin = &wconfig.CommonTextOriginType{
+			DeviceId: it.Origin.DeviceId, DeviceName: it.Origin.DeviceName, Platform: it.Origin.Platform,
+		}
+	}
+	return out
+}
+
+// writeCommonTextItems persists the full item list through the config path.
+func writeCommonTextItems(items []wconfig.CommonTextItemType) error {
+	return wshclient.SetConfigCommand(RpcClient, wshrpc.MetaSettingsType{
+		MetaMapType: map[string]any{wconfig.ConfigKey_CommonTextItems: items},
+	}, &wshrpc.RpcOpts{Timeout: 10000})
+}
+
+// cliGitRepoDir mirrors the app managed clone location so the CLI and the GUI share one clone.
+// Two clones would mean two working trees racing on the same remote.
+func cliGitRepoDir() (string, error) {
+	dataDir := wavebase.GetWaveDataDir()
+	if dataDir == "" {
+		return "", fmt.Errorf("cannot locate the app data directory for the git sync clone")
+	}
+	return filepath.Join(dataDir, "sync", "git-repo"), nil
 }

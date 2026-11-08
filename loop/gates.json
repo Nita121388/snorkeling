@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-06T16:13:17Z",
+  "updatedAt": "2026-11-08T08:31:27Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -30,6 +30,23 @@
       "g5": {
         "ok": false,
         "executedAt": null
+      }
+    },
+    "N-1106-overview-card-actions": {
+      "g1": {
+        "at": "2026-11-08T08:27:19Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "01e46e770ef8"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-N-1106-overview-card-actions.txt",
+        "at": "2026-11-08T08:28:59Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-08T08:31:27Z",
+        "by": "self"
       }
     },
     "N-1106-overview-board-motion": {
@@ -102,6 +119,12 @@
       "g2": {
         "redProof": "node --test 等价：npx vitest run frontend/app/element/info-card/info-card-pos.test.ts → 10 passed；校准三例（靠右 Tab / 靠下目标 / placement=right 贴右墙）对旧公式 legacyCardPos 断言 isFullyInside=false，实测出界，判据看得见本 bug",
         "at": "2026-11-06T00:26:40Z"
+      }
+    },
+    "N-1108-agent-chip-phase-duration": {
+      "g2": {
+        "redProof": "loop/red/N-1108-agent-chip-phase-duration.txt",
+        "at": "2026-11-08T06:05:39Z"
       }
     },
     "N-1105-queue-failopen": {

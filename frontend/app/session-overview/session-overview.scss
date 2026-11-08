@@ -834,11 +834,16 @@
     // chip no longer nags for attention. Relights when agent state changes again
     // (status.updatedAt moves past ackedAt), which the component flips back to
     // non-acked so this block stops applying.
+    //
+    // 四值以 Block 头部 `.agent-status-header.is-acked` 为基准（block.scss）：
+    // secondary/0.4 虚线边框 + secondary 实色 + main/0.04 底 + 0.7 透明度。
+    // 这里曾用 main/0.42 + 透明底 + 0.78 —— 同一状态在 Overview 与块头看起来不像。
     &.is-acked {
-        --agent-status-color: rgb(from var(--main-text-color) r g b / 0.42);
-        --agent-status-bg: transparent;
+        --agent-status-color: var(--secondary-text-color);
+        --agent-status-bg: rgb(from var(--main-text-color) r g b / 0.04);
+        border-color: rgb(from var(--secondary-text-color) r g b / 0.4);
         border-style: dashed;
-        opacity: 0.78;
+        opacity: 0.7;
         > i {
             animation: none;
         }
@@ -1579,10 +1584,61 @@
 }
 
 .session-overview-board-card-head {
+    position: relative;
     display: flex;
     min-width: 0;
     align-items: center;
     gap: 6px;
+}
+
+.session-overview-board-card-actions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+}
+
+.session-overview-board-card-action {
+    display: inline-flex;
+    width: 20px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+
+    &:hover:not(:disabled) {
+        border-color: var(--border-color);
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+
+    &.danger:hover:not(:disabled) {
+        border-color: rgb(from var(--error-color) r g b / 0.45);
+        background: rgb(from var(--error-color) r g b / 0.1);
+        color: var(--error-color);
+    }
+
+    &:disabled,
+    &.is-busy {
+        cursor: progress;
+        opacity: 0.75;
+    }
+}
+
+.session-overview-board-card:hover .session-overview-board-card-actions,
+.session-overview-board-card:focus-within .session-overview-board-card-actions {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 /* 定宽头像：emoji 用 13px 定宽（同 agent-persona 契约），logo 用品牌色，缺失时 robot 兜底。 */

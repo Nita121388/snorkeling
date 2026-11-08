@@ -129,6 +129,23 @@ export function presentAgentStateFromView(view: AgentStatusView | null): AgentSt
 }
 
 /**
+ * Tab 悬浮卡 pill 的完整文案：状态词 + 跑时。
+ *
+ * 为什么需要这个函数：pill 用的是 `agentStatusViewLabel` 时只能拿到状态词
+ * （Done 未读带分钟级 elapsed），而 "3min21s" 跑时只由
+ * `buildAgentStatusChipView().runtime` 产出 —— 不在这个函数里拼一次，
+ * Tab 悬浮卡片就会在 working / tool 期间只剩状态词、没有时长（与块头/悬浮卡不一致）。
+ *
+ * 拼接方式与 term-model 的头部徽章逐字一致：`runtime === ""` 时不加多余空格。
+ */
+export function agentPillText(chipView: { label: string; runtime: string } | null, fallbackLabel: string): string {
+    if (chipView == null) {
+        return fallbackLabel;
+    }
+    return chipView.runtime !== "" ? `${chipView.label} ${chipView.runtime}` : chipView.label;
+}
+
+/**
  * 状态 → 行样式类别 + 文案。
  *
  * 无状态（null）与 `unknown` 一律按 Idle 处理：旧实现显示 `—`，看起来像坏值。

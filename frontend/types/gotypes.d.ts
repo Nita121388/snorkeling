@@ -685,6 +685,7 @@ declare global {
         updatedAt: number;
         completedAt?: number;
         activeSince?: number;
+        phaseSince?: number;
         seq?: number;
         expiresAt?: number;
     };
@@ -1847,6 +1848,22 @@ declare global {
         count: number;
     };
 
+    // commontextservice.CommonTextSyncNowRequest
+    type CommonTextSyncNowRequest = {
+        trigger?: string;
+    };
+
+    // commontextservice.CommonTextSyncStatusResponse
+    type CommonTextSyncStatusResponse = {
+        status: Status;
+    };
+
+    // commontextservice.CommonTextSyncSwitchRequest
+    type CommonTextSyncSwitchRequest = {
+        settings: {[key: string]: any};
+        baseline: string;
+    };
+
     // commontextservice.CommonTextTagsResponse
     type CommonTextTagsResponse = {
         tags: TagSummary[];
@@ -1944,6 +1961,14 @@ declare global {
         wshversion?: string;
         lastactivitybeforestalledtime?: number;
         keepalivesenttime?: number;
+    };
+
+    // wshrpc.ConnectionDetailItem
+    type ConnectionDetailItem = {
+        name: string;
+        sources: string[];
+        connected: boolean;
+        hasconnected: boolean;
     };
 
     // objectservice.CopyBlockToNewTabResult
@@ -3137,6 +3162,21 @@ declare global {
         "tsunami:gopath"?: string;
         "scheduledtasks:*"?: boolean;
         "scheduledtasks:items"?: ScheduledTaskType[];
+    };
+
+    // syncmanager.Status
+    type Status = {
+        transport: string;
+        configured: boolean;
+        problem?: string;
+        running: boolean;
+        lastRunAt?: string;
+        lastError?: string;
+        lastPulled: number;
+        lastApplied: number;
+        lastPushed: number;
+        conflicts: number;
+        intervalSeconds: number;
     };
 
     // waveobj.StickerClickOptsType

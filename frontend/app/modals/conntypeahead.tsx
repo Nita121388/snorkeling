@@ -56,7 +56,8 @@ function sortConnSuggestionItems(
 function createRemoteSuggestionItems(
     filteredList: Array<string>,
     connection: string,
-    connStatusMap: Map<string, ConnStatus>
+    connStatusMap: Map<string, ConnStatus>,
+    sourcesMap: Map<string, string[]>
 ): Array<SuggestionConnectionItem> {
     return filteredList.map((connName) => {
         const connStatus = connStatusMap.get(connName);
@@ -69,6 +70,8 @@ function createRemoteSuggestionItems(
             value: connName,
             label: connName,
             current: connName == connection,
+            // 来源由后端 connlistdetail 提供；缺数据时不显示徽标（不造假信息）。
+            sources: sourcesMap.get(connName),
         };
         return item;
     });
@@ -186,10 +189,11 @@ function getRemoteSuggestions(
     connSelected: string,
     connStatusMap: Map<string, ConnStatus>,
     fullConfig: FullConfigType,
-    filterOutNowsh: boolean
+    filterOutNowsh: boolean,
+    sourcesMap: Map<string, string[]>
 ): SuggestionConnectionScope | null {
     const filtered = filterConnections(connList, connSelected, fullConfig, filterOutNowsh);
-    const suggestionItems = createRemoteSuggestionItems(filtered, connection, connStatusMap);
+    const suggestionItems = createRemoteSuggestionItems(filtered, connection, connStatusMap, sourcesMap);
     const sortedSuggestionItems = sortConnSuggestionItems(suggestionItems, fullConfig);
     if (sortedSuggestionItems.length == 0) {
         return null;
@@ -310,6 +314,9 @@ const ChangeConnectionBlockModal = React.memo(
         const connStatus = jotai.useAtomValue(connStatusAtom);
         const [connList, setConnList] = React.useState<Array<string>>([]);
         const [wslList, setWslList] = React.useState<Array<string>>([]);
+        // connName -> sources, filled from connlistdetail. Kept as separate state (not folded into
+        // connList) so a failure to load provenance degrades to "no badges" instead of an empty list.
+        const [connSources, setConnSources] = React.useState<Map<string, string[]>>(() => new Map());
         const allConnStatus = jotai.useAtomValue(atoms.allConnStatus);
         const [rowIndex, setRowIndex] = React.useState(0);
         const connStatusMap = new Map<string, ConnStatus>();
@@ -334,6 +341,19 @@ const ChangeConnectionBlockModal = React.memo(
             prtn.then((newConnList) => {
                 setConnList(newConnList ?? []);
             }).catch((e) => console.log("unable to load conn list from backend. using blank list: ", e));
+            // Provenance is best-effort: the list still works without it, it just loses badges.
+            const pdetail = RpcApi.ConnListDetailCommand(TabRpcClient, { timeout: 2000 });
+            pdetail
+                .then((details) => {
+                    const next = new Map<string, string[]>();
+                    for (const detail of details ?? []) {
+                        if (detail?.name != null && Array.isArray(detail.sources)) {
+                            next.set(detail.name, detail.sources);
+                        }
+                    }
+                    setConnSources(next);
+                })
+                .catch((e) => console.log("unable to load connection sources; badges will be omitted: ", e));
             const p2rtn = RpcApi.WslListCommand(TabRpcClient, { timeout: 2000 });
             p2rtn
                 .then((newWslList) => {
@@ -393,7 +413,8 @@ const ChangeConnectionBlockModal = React.memo(
             connSelected,
             connStatusMap,
             fullConfig,
-            filterOutNowsh
+            filterOutNowsh,
+            connSources
         );
         const connectionsEditItem = getConnectionsEditItem(changeConnModalAtom, connSelected);
         const disconnectItem = getDisconnectItem(connection, connStatusMap, changeConnModalAtom);

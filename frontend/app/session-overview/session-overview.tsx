@@ -38,10 +38,11 @@ import debug from "debug";
 import * as jotai from "jotai";
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AgentStatusChip, shouldShowAgentStatusChip } from "./agent-status-chip";
+import { planBlockRemoval } from "./block-removal";
 import { OverviewBoard } from "./overview-board";
 import {
-    OVERVIEW_BOARD_ENABLED,
     normalizeBoardTags,
+    OVERVIEW_BOARD_ENABLED,
     overviewBoardGroupAtom,
     overviewViewModeAtom,
     OverviewViewModesImplemented,
@@ -236,22 +237,33 @@ function openSessionDetail(sessionId: string): void {
     modalsModel.pushModal("AISessionDetailModal", { sessionId });
 }
 
-async function deleteOverviewBlock(block: OverviewBlock): Promise<void> {
+export { planBlockRemoval };
+
+async function closeOverviewBlock(block: OverviewBlock): Promise<void> {
     const staticTabId = globalStore.get(atoms.staticTabId);
-    if (block.tabId === staticTabId) {
-        await uxCloseBlock(block.blockId);
+    const layoutModel = block.tabId ? getLayoutModelForTabById(block.tabId) : null;
+    const node = layoutModel?.getNodeByBlockId(block.blockId) ?? null;
+    const plan = planBlockRemoval({
+        tabId: block.tabId,
+        blockId: block.blockId,
+        staticTabId,
+        hasNode: node != null,
+        hasOnNodeDelete: layoutModel?.onNodeDelete != null,
+    });
+    if (plan.kind === "ux-close-block") {
+        await uxCloseBlock(plan.blockId);
         return;
     }
-
-    const layoutModel = getLayoutModelForTabById(block.tabId);
-    const node = layoutModel?.getNodeByBlockId(block.blockId);
-    const shouldDeleteDirectly = node == null || layoutModel?.onNodeDelete == null;
-    if (node != null) {
-        await layoutModel.closeNode(node.id);
+    if (plan.kind === "layout-close-block") {
+        const tabLayoutModel = getLayoutModelForTabById(plan.tabId);
+        if (tabLayoutModel?.getNodeByBlockId(plan.blockId) != null) {
+            await tabLayoutModel.closeBlock(plan.blockId);
+            return;
+        }
+        await ObjectService.DeleteBlock(plan.blockId);
+        return;
     }
-    if (shouldDeleteDirectly) {
-        await ObjectService.DeleteBlock(block.blockId);
-    }
+    await ObjectService.DeleteBlock(plan.blockId);
 }
 
 function shouldShowFullOverviewBlock(block: OverviewBlock): boolean {
@@ -2546,18 +2558,68 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                     overviewModel.markBlockViewed(card.blockId);
                                     const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
                                     if (card.isAgentLike && block != null) {
-                                        // agent 块：开整卡弹窗（AgentCardModal），卡内再点「打开会话详情」。
                                         modalsModel.pushModal("AgentCardModal", {
                                             blockId: card.blockId,
                                             blockData: block.block,
                                         });
                                         return;
                                     }
-                                    // 非 agent 块（普通 term / 其他 view）：没有整卡可开，保持原「跳转 block」。
                                     if (block != null) {
                                         overviewModel.jumpToBlock(block.tabId, block.blockId);
                                     }
                                 }}
+                                onCloseCard={(card) => {
+                                    const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
+                                    if (block == null) return;
+                                    setSessionAction((current) => ({ ...current, error: "" }));
+                                    closeOverviewBlock(block)
+                                        .catch((error) => {
+                                            setSessionAction((current) => ({
+                                                ...current,
+                                                error: error instanceof Error ? error.message : String(error),
+                                            }));
+                                        })
+                                        .finally(() => model.refresh());
+                                }}
+                                onDeleteSession={(card) => {
+                                    const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
+                                    if (block == null || !block.sessionId || sessionAction.deletingSessionId) return;
+                                    modalsModel.pushModal("ConfirmModal", {
+                                        title: "删除会话文件",
+                                        message: `Delete session file for "${block.title}"?\n\n移到回收站可从 deleted storage 恢复；彻底删除无法恢复。`,
+                                        cancelLabel: "取消",
+                                        actions: [
+                                            { label: "移到回收站", value: "recycle", tone: "secondary" },
+                                            { label: "彻底删除", value: "delete-permanently", tone: "destructive" },
+                                        ],
+                                        onAction: (action: string) => {
+                                            if (action !== "recycle" && action !== "delete-permanently") return;
+                                            setSelectedBlockId(block.blockId);
+                                            setSessionAction({ deletingSessionId: block.sessionId, error: "" });
+                                            const request =
+                                                action === "delete-permanently"
+                                                    ? sessionService.DeletePermanently(block.sessionId, "")
+                                                    : sessionService.Delete(block.sessionId, "");
+                                            request
+                                                .then(() => fireAndForget(() => closeOverviewBlock(block)))
+                                                .catch((error) => {
+                                                    setSessionAction({
+                                                        deletingSessionId: "",
+                                                        error: error instanceof Error ? error.message : String(error),
+                                                    });
+                                                })
+                                                .finally(() => {
+                                                    setSessionAction((current) =>
+                                                        current.deletingSessionId === block.sessionId
+                                                            ? { deletingSessionId: "", error: current.error }
+                                                            : current
+                                                    );
+                                                    model.refresh();
+                                                });
+                                        },
+                                    });
+                                }}
+                                deletingSessionId={sessionAction.deletingSessionId}
                             />
                         )
                     ) : displayedTabGroups.length === 0 ? (
@@ -2595,43 +2657,55 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 }}
                                 onDeleteSession={(nextBlock) => {
                                     if (!nextBlock.sessionId || sessionAction.deletingSessionId) return;
-                                    const confirmed = window.confirm(
-                                        `Delete session file for "${nextBlock.title}"?\n\nThe source file will be moved to deleted storage.`
-                                    );
-                                    if (!confirmed) return;
-                                    setSelectedBlockId(nextBlock.blockId);
-                                    setSessionAction({ deletingSessionId: nextBlock.sessionId, error: "" });
-                                    sessionService
-                                        // origin 参数：GUI 会话概览是本地会话。
-                                        .Delete(nextBlock.sessionId, "")
-                                        .then(() => {
-                                            setSelectedBlockId((current) =>
-                                                current === nextBlock.blockId ? null : current
-                                            );
-                                            setSelected((current) =>
-                                                current?.block.sessionId === nextBlock.sessionId ? null : current
-                                            );
-                                            fireAndForget(() => uxCloseBlock(nextBlock.blockId));
-                                            model.refresh();
-                                        })
-                                        .catch((error) => {
-                                            setSessionAction({
-                                                deletingSessionId: "",
-                                                error: error instanceof Error ? error.message : String(error),
-                                            });
-                                        })
-                                        .finally(() => {
-                                            setSessionAction((current) =>
-                                                current.deletingSessionId === nextBlock.sessionId
-                                                    ? { deletingSessionId: "", error: current.error }
-                                                    : current
-                                            );
-                                        });
+                                    modalsModel.pushModal("ConfirmModal", {
+                                        title: "删除会话文件",
+                                        message: `Delete session file for "${nextBlock.title}"?\n\n移到回收站可从 deleted storage 恢复；彻底删除无法恢复。`,
+                                        cancelLabel: "取消",
+                                        actions: [
+                                            { label: "移到回收站", value: "recycle", tone: "secondary" },
+                                            { label: "彻底删除", value: "delete-permanently", tone: "destructive" },
+                                        ],
+                                        onAction: (action: string) => {
+                                            if (action !== "recycle" && action !== "delete-permanently") return;
+                                            setSelectedBlockId(nextBlock.blockId);
+                                            setSessionAction({ deletingSessionId: nextBlock.sessionId, error: "" });
+                                            const request =
+                                                action === "delete-permanently"
+                                                    ? sessionService.DeletePermanently(nextBlock.sessionId, "")
+                                                    : sessionService.Delete(nextBlock.sessionId, "");
+                                            request
+                                                .then(() => {
+                                                    setSelectedBlockId((current) =>
+                                                        current === nextBlock.blockId ? null : current
+                                                    );
+                                                    setSelected((current) =>
+                                                        current?.block.sessionId === nextBlock.sessionId
+                                                            ? null
+                                                            : current
+                                                    );
+                                                    fireAndForget(() => closeOverviewBlock(nextBlock));
+                                                    model.refresh();
+                                                })
+                                                .catch((error) => {
+                                                    setSessionAction({
+                                                        deletingSessionId: "",
+                                                        error: error instanceof Error ? error.message : String(error),
+                                                    });
+                                                })
+                                                .finally(() => {
+                                                    setSessionAction((current) =>
+                                                        current.deletingSessionId === nextBlock.sessionId
+                                                            ? { deletingSessionId: "", error: current.error }
+                                                            : current
+                                                    );
+                                                });
+                                        },
+                                    });
                                 }}
                                 onDeleteBlock={(nextBlock) => {
                                     setSelectedBlockId(nextBlock.blockId);
                                     setSessionAction((current) => ({ ...current, error: "" }));
-                                    deleteOverviewBlock(nextBlock)
+                                    closeOverviewBlock(nextBlock)
                                         .then(() => {
                                             setSelectedBlockId((current) =>
                                                 current === nextBlock.blockId ? null : current
@@ -2680,14 +2754,10 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                 }}
                 onDeleteBlock={(nextBlock) => {
                     setSessionAction((current) => ({ ...current, error: "" }));
-                    deleteOverviewBlock(nextBlock)
+                    closeOverviewBlock(nextBlock)
                         .then(() => {
-                            setSelectedBlockId((current) =>
-                                current === nextBlock.blockId ? null : current
-                            );
-                            setSelected((current) =>
-                                current?.block.blockId === nextBlock.blockId ? null : current
-                            );
+                            setSelectedBlockId((current) => (current === nextBlock.blockId ? null : current));
+                            setSelected((current) => (current?.block.blockId === nextBlock.blockId ? null : current));
                             model.refresh();
                         })
                         .catch((error) => {

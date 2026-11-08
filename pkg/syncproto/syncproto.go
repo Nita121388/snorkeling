@@ -142,8 +142,13 @@ type PushRequest struct {
 	// BaseRev is the revision the client last saw. The server compares it with its own head:
 	// a mismatch means someone else wrote in between, and the server answers 409 with the
 	// current snapshot instead of silently overwriting.
-	BaseRev    float64        `json:"baseRev"`
-	Items      []SnapshotItem `json:"items"`
+	BaseRev float64        `json:"baseRev"`
+	Items   []SnapshotItem `json:"items"`
+	// Base carries, per item id, the version the client last synced. Three-way merge needs it to
+	// tell "only local changed" from "only remote changed"; without it every difference looks
+	// like a conflict. An item with no base entry falls back to conservative behaviour: differing
+	// content is reported as a conflict rather than silently overwritten.
+	Base       []SnapshotItem `json:"base,omitempty"`
 	DeviceId   string         `json:"deviceId"`
 	DeviceName string         `json:"deviceName"`
 }
@@ -152,14 +157,129 @@ type PushRequest struct {
 type PushResponse struct {
 	Rev       float64    `json:"rev"`
 	Applied   int        `json:"applied"`
+	Unchanged int        `json:"unchanged,omitempty"`
 	Conflicts []Conflict `json:"conflicts,omitempty"`
 }
 
-// Conflict describes one item the server refused to overwrite because both sides changed it.
+// Conflict describes one item where both sides changed the same field, so the server refused to
+// pick a winner. It carries BOTH versions: without them the user (or an agent) only sees "there is
+// a conflict" with no way to resolve it, and "copy this conflict for an AI to merge" is impossible.
 type Conflict struct {
-	Id     string `json:"id"`
-	Reason string `json:"reason"`
+	Id string `json:"id"`
+	// Fields lists the field names that actually conflict (text / title / tags / shortcut).
+	// A conflict where only one side changed a field must not be reported at all — those merge
+	// automatically, and reporting them would train the user to ignore the list.
+	Fields []string `json:"fields,omitempty"`
+	// Local is the version the pushing client had; Remote is the version the server kept.
+	Local  *SnapshotItem `json:"local,omitempty"`
+	Remote *SnapshotItem `json:"remote,omitempty"`
+	// Reason is a human-readable one-liner for the UI list.
+	Reason string `json:"reason,omitempty"`
+}
+
+// ConflictField names. Kept as constants so the server and the UI agree on the spelling.
+const (
+	ConflictFieldText     = "text"
+	ConflictFieldTitle    = "title"
+	ConflictFieldTags     = "tags"
+	ConflictFieldShortcut = "shortcut"
+)
+
+// DetectConflictFields returns the fields both sides changed relative to a common base.
+//
+// This is a true three-way comparison, which is the only thing that can answer "who changed
+// this field?". A two-way comparison cannot: given local != remote you cannot tell whether only
+// local changed or only remote did, so every edit would look like a conflict and the list would be
+// useless.
+//
+// A field conflicts only when BOTH sides diverge from the base AND from each other. When they
+// diverge but agree (both typed the same text), it is not a conflict. When only one side diverged,
+// that side wins silently — that is the whole point of row-merge.
+func DetectConflictFields(base, local, remote *SnapshotItem) []string {
+	if local == nil || remote == nil {
+		return nil
+	}
+	var fields []string
+	if fieldConflicts(baseValue(base, ConflictFieldText), local.Text, remote.Text) {
+		fields = append(fields, ConflictFieldText)
+	}
+	if fieldConflicts(baseValue(base, ConflictFieldTitle), local.Title, remote.Title) {
+		fields = append(fields, ConflictFieldTitle)
+	}
+	if fieldConflicts(baseValue(base, ConflictFieldTags), JoinTags(local.Tags), JoinTags(remote.Tags)) {
+		fields = append(fields, ConflictFieldTags)
+	}
+	if fieldConflicts(baseValue(base, ConflictFieldShortcut), local.Shortcut, remote.Shortcut) {
+		fields = append(fields, ConflictFieldShortcut)
+	}
+	return fields
+}
+
+// fieldConflicts is the three-way rule for one field. `base` is the value the client last synced.
+func fieldConflicts(base, local, remote string) bool {
+	if local == remote {
+		// Both sides agree, so there is nothing to resolve even if both edited.
+		return false
+	}
+	// Exactly one side diverged from the base → that side wins, no conflict to report.
+	if local == base {
+		return false
+	}
+	if remote == base {
+		return false
+	}
+	// Both diverged and they disagree: a real conflict.
+	return true
+}
+
+func baseValue(base *SnapshotItem, field string) string {
+	if base == nil {
+		return ""
+	}
+	switch field {
+	case ConflictFieldText:
+		return base.Text
+	case ConflictFieldTitle:
+		return base.Title
+	case ConflictFieldTags:
+		return JoinTags(base.Tags)
+	case ConflictFieldShortcut:
+		return base.Shortcut
+	}
+	return ""
+}
+
+// JoinTags normalizes tags to one comparable string (a fresh slice would make == useless).
+// Exported because the server needs it for its own field-level comparison.
+func JoinTags(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	out := tags[0]
+	for _, t := range tags[1:] {
+		out += "\n" + t
+	}
+	return out
 }
 
 // ErrConflictCode is the HTTP status a server uses when BaseRev does not match its head.
 const ConflictStatusCode = 409
+
+// SplitTags is the inverse of JoinTags. It exists so a caller that received a joined
+// representation can get the slice back without re-implementing the separator.
+func SplitTags(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	out := make([]string, 0, 4)
+	start := 0
+	for i := 0; i <= len(raw); i++ {
+		if i == len(raw) || raw[i] == '\n' {
+			if i > start {
+				out = append(out, raw[start:i])
+			}
+			start = i + 1
+		}
+	}
+	return out
+}

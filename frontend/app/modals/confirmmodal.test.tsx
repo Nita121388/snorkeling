@@ -91,4 +91,37 @@ describe("ConfirmModal", () => {
         expect(onResolve).toHaveBeenCalledWith(true);
         unmount();
     });
+
+    it("renders explicit actions and resolves the selected action value", () => {
+        const onAction = vi.fn();
+        const { unmount } = renderModal({
+            cancelLabel: "Cancel",
+            actions: [
+                { label: "移到回收站", value: "recycle", tone: "secondary" },
+                { label: "彻底删除", value: "delete-permanently", tone: "destructive" },
+            ],
+            onAction,
+        });
+        expect(findButton("移到回收站")).toBeTruthy();
+        expect(findButton("彻底删除")).toBeTruthy();
+        act(() => findButton("彻底删除")?.click());
+        expect(onAction).toHaveBeenCalledWith("delete-permanently");
+        expect(popModalMock).toHaveBeenCalledTimes(1);
+        unmount();
+    });
+
+    it("resolves cancel as empty action when actions are provided", () => {
+        const onAction = vi.fn();
+        const onResolve = vi.fn();
+        const { unmount } = renderModal({
+            cancelLabel: "Cancel",
+            actions: [{ label: "彻底删除", value: "delete-permanently", tone: "destructive" }],
+            onAction,
+            onResolve,
+        });
+        act(() => findButton("Cancel")?.click());
+        expect(onAction).toHaveBeenCalledWith("");
+        expect(onResolve).toHaveBeenCalledWith(false);
+        unmount();
+    });
 });

@@ -1924,3 +1924,23 @@ func (svc *AISessionsService) Delete(ctx context.Context, id string, origin stri
 	}
 	return &summary, nil
 }
+
+func (svc *AISessionsService) DeletePermanently_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "permanently delete an AI session file and remove its local index data",
+		ArgNames:   []string{"ctx", "id", "origin"},
+		ReturnDesc: "deleted AI session summary",
+	}
+}
+
+func (svc *AISessionsService) DeletePermanently(ctx context.Context, id string, origin string) (*aisessions.SessionSummary, error) {
+	manager, err := svc.managerForScope(ctx, id, "", origin)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := manager.DeletePermanently(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}

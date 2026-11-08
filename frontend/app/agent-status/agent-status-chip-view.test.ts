@@ -236,3 +236,38 @@ describe("buildAgentStatusChipView — 跑时只在活跃态", () => {
         expect(view.runtime).toBe("1min5s");
     });
 });
+
+// 跑时起点必须是「当前阶段段」而不是整轮 working：后端 phaseSince 按
+// state+phase+toolName 三者重置，activeSince 只在 state 变化时重置。
+// 这里锁死读取优先级，避免有人为省事把它改回 activeSince（换工具后会显示总时长）。
+describe("runtime 起点：phaseSince > activeSince > updatedAt", () => {
+    it("phaseSince 存在时优先用它（换工具后徽章归零重计）", () => {
+        const view = buildAgentStatusChipView({
+            variant: "header",
+            status: status({ activeSince: Now - 65_000, phaseSince: Now - 3_000 }),
+            read: "seen",
+            nowMs: Now,
+        });
+        expect(view.runtime).toBe("3s");
+    });
+
+    it("phaseSince 缺失（旧后端 / 旧事件）时回落 activeSince", () => {
+        const view = buildAgentStatusChipView({
+            variant: "header",
+            status: status({ activeSince: Now - 65_000, phaseSince: undefined }),
+            read: "seen",
+            nowMs: Now,
+        });
+        expect(view.runtime).toBe("1min5s");
+    });
+
+    it("两个都缺失时回落 updatedAt", () => {
+        const view = buildAgentStatusChipView({
+            variant: "header",
+            status: status({ activeSince: undefined, phaseSince: undefined, updatedAt: Now - 12_000 }),
+            read: "seen",
+            nowMs: Now,
+        });
+        expect(view.runtime).toBe("12s");
+    });
+});

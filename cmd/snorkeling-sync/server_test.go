@@ -158,6 +158,105 @@ func TestStaleBaseRevIsRejectedWithCurrentSnapshot(t *testing.T) {
 	}
 }
 
+// First sync of an item that exists on both sides has no common ancestor, so field-level
+// attribution is impossible. The server falls back to whole-item updatedat instead of reporting
+// every difference as a conflict — otherwise day-one syncing would bury the user in noise.
+func TestFirstSyncWithoutBaseUsesUpdatedAt(t *testing.T) {
+	srv, _, tok := newTestServer(t)
+	handler := muxFor(srv)
+
+	push(t, handler, tok, syncproto.PushRequest{
+		BaseRev: 0,
+		Items:   []syncproto.SnapshotItem{{Id: "a", Title: "old", Text: "old", UpdatedAt: 2000, Rev: 1}},
+	})
+	head := srv.store.mustHeadRev(t)
+
+	// No Base provided → newer updatedat wins outright, no conflict reported.
+	rec := push(t, handler, tok, syncproto.PushRequest{
+		BaseRev: head,
+		Items:   []syncproto.SnapshotItem{{Id: "a", Title: "new", Text: "new", UpdatedAt: 3000, Rev: 2}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("push must succeed, got %d", rec.Code)
+	}
+	var resp syncproto.PushResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Conflicts) != 0 {
+		t.Fatalf("first sync must not report conflicts, got %+v", resp.Conflicts)
+	}
+	snap, err := srv.store.SnapshotSince(0)
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if snap.Items[0].Title != "new" {
+		t.Fatalf("newer item must win, got %q", snap.Items[0].Title)
+	}
+}
+
+// With a base, only fields BOTH sides changed differently conflict. This is the case that decides
+// whether a real user ever sees a conflict dialog.
+func TestThreeWayMergeOnlyConflictsOnSameField(t *testing.T) {
+	srv, _, tok := newTestServer(t)
+	handler := muxFor(srv)
+
+	base := syncproto.SnapshotItem{Id: "a", Title: "Orig", Text: "orig", UpdatedAt: 1000, Rev: 1}
+	push(t, handler, tok, syncproto.PushRequest{BaseRev: 0, Items: []syncproto.SnapshotItem{base}})
+	head := srv.store.mustHeadRev(t)
+
+	// Local edited the body only; the server copy (base) is unchanged → merges silently.
+	rec := push(t, handler, tok, syncproto.PushRequest{
+		BaseRev: head,
+		Base:    []syncproto.SnapshotItem{base},
+		Items:   []syncproto.SnapshotItem{{Id: "a", Title: "Orig", Text: "local edit", UpdatedAt: 2000, Rev: 2}},
+	})
+	var resp syncproto.PushResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Conflicts) != 0 {
+		t.Fatalf("one-sided edit must merge, got %+v", resp.Conflicts)
+	}
+
+	// Now the server side also diverges on the SAME field → real conflict with both versions.
+	head = srv.store.mustHeadRev(t)
+	serverSide := syncproto.SnapshotItem{Id: "a", Title: "Orig", Text: "server edit", UpdatedAt: 2500, Rev: 3}
+	push(t, handler, tok, syncproto.PushRequest{
+		BaseRev: head,
+		Base:    []syncproto.SnapshotItem{{Id: "a", Title: "Orig", Text: "local edit", UpdatedAt: 2000, Rev: 2}},
+		Items:   []syncproto.SnapshotItem{serverSide},
+	})
+	head = srv.store.mustHeadRev(t)
+
+	rec = push(t, handler, tok, syncproto.PushRequest{
+		BaseRev: head,
+		Base:    []syncproto.SnapshotItem{{Id: "a", Title: "Orig", Text: "local edit", UpdatedAt: 2000, Rev: 2}},
+		Items:   []syncproto.SnapshotItem{{Id: "a", Title: "Orig", Text: "local edit v2", UpdatedAt: 3000, Rev: 4}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a conflict is reported, not fatal: got %d", rec.Code)
+	}
+	resp = syncproto.PushResponse{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Conflicts) != 1 {
+		t.Fatalf("expected one conflict, got %+v", resp.Conflicts)
+	}
+	c := resp.Conflicts[0]
+	if c.Id != "a" || len(c.Fields) != 1 || c.Fields[0] != syncproto.ConflictFieldText {
+		t.Fatalf("conflict must name the field: %+v", c)
+	}
+	// Both versions must come back, otherwise the conflict cannot be resolved or handed to an AI.
+	if c.Local == nil || c.Remote == nil {
+		t.Fatalf("conflict must carry both versions: %+v", c)
+	}
+	if c.Local.Text != "local edit v2" || c.Remote.Text != "server edit" {
+		t.Fatalf("unexpected versions: local=%q remote=%q", c.Local.Text, c.Remote.Text)
+	}
+}
+
 func TestNewerItemWinsAndOlderItemConflicts(t *testing.T) {
 	srv, _, tok := newTestServer(t)
 	handler := muxFor(srv)
@@ -184,21 +283,26 @@ func TestNewerItemWinsAndOlderItemConflicts(t *testing.T) {
 		t.Fatalf("newer item must win, got %q", snap.Items[0].Title)
 	}
 
-	// Older updatedat: server copy survives and the client is told about the conflict.
+	// A stale push without a base is not a conflict any more: with no common ancestor the server
+	// cannot attribute the change, so it keeps its newer copy and reports nothing. (Real conflicts
+	// require a base; see TestThreeWayMergeOnlyConflictsOnSameField.)
 	head = srv.store.mustHeadRev(t)
 	rec = push(t, handler, tok, syncproto.PushRequest{
 		BaseRev: head,
 		Items:   []syncproto.SnapshotItem{{Id: "a", Title: "stale", Text: "stale", UpdatedAt: 500, Rev: 3}},
 	})
 	if rec.Code != http.StatusOK {
-		t.Fatalf("conflicting push is still 200 (it is reported, not fatal), got %d", rec.Code)
+		t.Fatalf("push must be accepted, got %d", rec.Code)
 	}
 	var resp syncproto.PushResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(resp.Conflicts) != 1 || resp.Conflicts[0].Id != "a" {
-		t.Fatalf("expected one conflict for item a, got %+v", resp.Conflicts)
+	if len(resp.Conflicts) != 0 {
+		t.Fatalf("no-base staleness is not a conflict, got %+v", resp.Conflicts)
+	}
+	if resp.Unchanged != 1 {
+		t.Fatalf("expected the stale item to count as unchanged, got %+v", resp)
 	}
 	snap, _ = srv.store.SnapshotSince(0)
 	if snap.Items[0].Title != "new" {

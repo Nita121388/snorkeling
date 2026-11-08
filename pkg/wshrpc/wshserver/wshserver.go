@@ -898,6 +898,12 @@ func (ws *WshServer) ConnListCommand(ctx context.Context) ([]string, error) {
 	return conncontroller.GetConnectionsList()
 }
 
+// ConnListDetailCommand is ConnListCommand plus provenance. Both read the same sources inside
+// conncontroller, so the two can never disagree about which connections exist.
+func (ws *WshServer) ConnListDetailCommand(ctx context.Context) ([]wshrpc.ConnectionDetailItem, error) {
+	return conncontroller.GetConnectionsDetail()
+}
+
 func (ws *WshServer) WslListCommand(ctx context.Context) ([]string, error) {
 	distros, err := wsl.RegisteredDistros(ctx)
 	if err != nil {

@@ -130,6 +130,10 @@ type WshRpcInterface interface {
 	ConnConnectCommand(ctx context.Context, connRequest ConnRequest) error
 	ConnDisconnectCommand(ctx context.Context, connName string) error
 	ConnListCommand(ctx context.Context) ([]string, error)
+	// ConnListDetailCommand is ConnListCommand plus provenance. The flat []string shape is kept
+	// because it has several callers; both read the same sources so they cannot disagree about
+	// which connections exist.
+	ConnListDetailCommand(ctx context.Context) ([]ConnectionDetailItem, error)
 	WslListCommand(ctx context.Context) ([]string, error)
 	WslDefaultDistroCommand(ctx context.Context) (string, error)
 	DismissWshFailCommand(ctx context.Context, connName string) error
@@ -472,6 +476,32 @@ func (m MetaSettingsType) MarshalJSON() ([]byte, error) {
 type ConnConfigRequest struct {
 	Host        string              `json:"host"`
 	MetaMapType waveobj.MetaMapType `json:"metamaptype"`
+}
+
+// ConnectionSource records where a connection name came from. The Connect-to list merges several
+// sources and used to flatten them into []string, which threw the provenance away — a user could
+// not tell an entry they typed into settings.json from one their ~/.ssh/config owns (deleting the
+// former works, deleting the latter just brings it back).
+type ConnectionSource string
+
+const (
+	// ConnSourceSshConfig: the name appears in ~/.ssh/config or /etc/ssh/config.
+	ConnSourceSshConfig ConnectionSource = "sshconfig"
+	// ConnSourceSettings: the name is configured in settings.json (connections.<name>).
+	ConnSourceSettings ConnectionSource = "settings"
+	// ConnSourceHistory: no current config, but this machine connected to it before.
+	ConnSourceHistory ConnectionSource = "history"
+)
+
+// ConnectionDetailItem is one row of the Connect-to list with its provenance.
+type ConnectionDetailItem struct {
+	Name string `json:"name"`
+	// Sources is ordered by precedence (settings > sshconfig > history) so a consumer can show the
+	// first entry when it only has room for one badge.
+	Sources []ConnectionSource `json:"sources"`
+	// Connected / HasConnected mirror ConnStatus so the caller does not need a second RPC.
+	Connected    bool `json:"connected"`
+	HasConnected bool `json:"hasconnected"`
 }
 
 type ConnStatus struct {

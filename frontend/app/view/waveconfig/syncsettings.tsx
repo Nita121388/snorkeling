@@ -17,6 +17,7 @@
  *    preference and lives in localStorage, not in settings.json.
  */
 
+import { CommonTextService } from "@/app/store/services";
 import { atoms } from "@/app/store/global-atoms";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -194,10 +195,20 @@ export function draftToSettingsPatch(draft: SyncSettingsDraft): Record<string, u
     };
 }
 
-const GroupKeys = ["transport", "backend", "device", "conflict", "scope", "maintenance"] as const;
+const GroupKeys = ["transport", "backend", "device", "conflict", "scope", "status", "maintenance"] as const;
 type GroupKey = (typeof GroupKeys)[number];
 
 const CollapseStorageKey = "commontext:syncSettings:collapsed";
+
+/**
+ * Formats an RFC3339 timestamp from the backend. Falls back to the raw string when unparseable —
+ * showing "Invalid Date" would be worse than showing the value the backend sent.
+ */
+function formatSyncTime(rfc3339: string): string {
+    const ts = Date.parse(rfc3339);
+    if (Number.isNaN(ts)) return rfc3339;
+    return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
 
 function loadCollapsedGroups(): Record<string, boolean> {
     try {
@@ -317,6 +328,12 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
     const [draft, setDraft] = useState<SyncSettingsDraft>(stored);
     const [dirty, setDirty] = useState(false);
     const [status, setStatus] = useState("");
+    // Live status from the sync manager (transport, last run, unresolved conflicts).
+    const [syncStatus, setSyncStatus] = useState<Status | null>(null);
+    const [syncingNow, setSyncingNow] = useState(false);
+    // Switch flow: the baseline chooser is visible, and whether the switch is in flight.
+    const [baselinePending, setBaselinePending] = useState(false);
+    const [switching, setSwitching] = useState(false);
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => loadCollapsedGroups());
 
     // Re-sync the draft when the persisted values change and the user has no local edits.
@@ -340,10 +357,45 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
         });
     }, []);
 
+    // Live status: fetched once on mount and refreshed after Save / Sync now. Polling is not needed
+    // because the timer-driven runs are minutes apart and the panel is short-lived.
+    const refreshSyncStatus = useCallback(() => {
+        fireAndForget(async () => {
+            try {
+                const resp = await CommonTextService.SyncStatus();
+                setSyncStatus(resp?.status ?? null);
+            } catch {
+                // Status is informational; a failure must not break the settings panel.
+                setSyncStatus(null);
+            }
+        });
+    }, []);
+
+    useEffect(() => {
+        refreshSyncStatus();
+    }, [refreshSyncStatus]);
+
+    // Switching from one ACTIVE transport to another is the only case that needs a baseline: two
+    // independent datasets meet with no shared history, so guessing would silently drop whichever
+    // side is older. Going from "off" to a transport has an empty side, so no choice is needed.
+    const needsBaseline = useMemo(() => {
+        const from = stored.transport;
+        const to = draft.transport;
+        if (from === to) return false;
+        if (from === "none" || to === "none") return false;
+        return blockedReasonFor(to, draft) == null;
+    }, [draft, stored.transport]);
+
     const save = useCallback(() => {
         // 前置没满足时允许保存（配置要能边填边存），但必须明确告诉用户「现在跑不起来」，
         // 否则界面显示已保存、同步却一直不动，是最难查的一类静默失败。
         const blocked = blockedReasonFor(draft.transport, draft);
+        if (needsBaseline) {
+            // Show the chooser first; nothing is written until a side is picked.
+            setBaselinePending(true);
+            setStatus("");
+            return;
+        }
         fireAndForget(async () => {
             try {
                 await RpcApi.SetConfigCommand(TabRpcClient, draftToSettingsPatch(draft) as SettingsType);
@@ -353,11 +405,69 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                         ? "Saved."
                         : `Saved, but sync will not start: ${blocked}`
                 );
+                refreshSyncStatus();
             } catch (err) {
                 setStatus(err instanceof Error ? err.message : String(err));
             }
         });
-    }, [draft]);
+    }, [draft, needsBaseline, refreshSyncStatus]);
+
+    // applyBaseline runs the explicit switch: the backend re-syncs against the new transport with
+    // the chosen winner, and only persists the settings if that succeeds.
+    const applyBaseline = useCallback(
+        (baseline: "local" | "remote") => {
+            setSwitching(true);
+            fireAndForget(async () => {
+                try {
+                    const resp = await CommonTextService.SyncSwitchTransport({
+                        settings: draftToSettingsPatch(draft) as Record<string, unknown>,
+                        baseline,
+                    });
+                    setSyncStatus(resp?.status ?? null);
+                    setBaselinePending(false);
+                    setDirty(false);
+                    const s = resp?.status;
+                    setStatus(
+                        s?.lastError != null && s.lastError !== ""
+                            ? `Switched, but the first sync reported: ${s.lastError}`
+                            : `Switched to ${draft.transport} (${baseline} wins).`
+                    );
+                } catch (err) {
+                    // The backend keeps the previous transport when the baseline sync fails, so the
+                    // message must say that explicitly rather than looking like a plain failure.
+                    setStatus(
+                        `Switch aborted, previous transport kept: ${err instanceof Error ? err.message : String(err)}`
+                    );
+                } finally {
+                    setSwitching(false);
+                }
+            });
+        },
+        [draft]
+    );
+
+    const runSyncNow = useCallback(() => {
+        if (syncingNow) return;
+        setSyncingNow(true);
+        fireAndForget(async () => {
+            try {
+                const resp = await CommonTextService.SyncNow({ trigger: "manual" });
+                setSyncStatus(resp?.status ?? null);
+                const s = resp?.status;
+                setStatus(
+                    s == null
+                        ? "Sync finished."
+                        : s.lastError != null && s.lastError !== ""
+                          ? `Sync failed: ${s.lastError}`
+                          : `Synced — pulled ${s.lastPulled ?? 0}, applied ${s.lastApplied ?? 0}, pushed ${s.lastPushed ?? 0}.`
+                );
+            } catch (err) {
+                setStatus(err instanceof Error ? err.message : String(err));
+            } finally {
+                setSyncingNow(false);
+            }
+        });
+    }, [syncingNow]);
 
     const transports = useMemo(() => buildTransportSpecs(draft), [draft]);
     const deviceId = (settings as Record<string, unknown> | undefined)?.[SyncSettingKeys.deviceId];
@@ -449,6 +559,72 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 </div>
                             );
                         })}
+                    </div>
+                )}
+
+                {/* ── Baseline chooser (only while switching between two active transports) ── */}
+                {baselinePending && (
+                    <div
+                        data-sync-baseline=""
+                        className="mt-3 rounded border border-accent/40 bg-accent/5 p-3"
+                    >
+                        <div className="text-xs font-medium text-primary">
+                            Switching from {stored.transport} to {draft.transport}
+                        </div>
+                        <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                            Both sides already hold data, and their revision numbers come from different
+                            transports so they cannot be compared. Pick which side to trust for items that
+                            differ. Nothing is deleted either way.
+                        </div>
+                        <div className="mt-2 flex flex-not-wrap flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                data-sync-baseline-choice="local"
+                                disabled={switching}
+                                onClick={() => applyBaseline("local")}
+                                className={cn(
+                                    "h-7 rounded border border-border px-3 text-xs text-primary",
+                                    switching ? "cursor-default opacity-50" : "cursor-pointer hover:bg-hover"
+                                )}
+                            >
+                                This device wins
+                            </button>
+                            <button
+                                type="button"
+                                data-sync-baseline-choice="remote"
+                                disabled={switching}
+                                onClick={() => applyBaseline("remote")}
+                                className={cn(
+                                    "h-7 rounded border border-border px-3 text-xs text-primary",
+                                    switching ? "cursor-default opacity-50" : "cursor-pointer hover:bg-hover"
+                                )}
+                            >
+                                Remote wins
+                            </button>
+                            <button
+                                type="button"
+                                data-sync-baseline-choice="cancel"
+                                disabled={switching}
+                                onClick={() => {
+                                    // Cancel reverts the transport selection to what is actually stored,
+                                    // so Save cannot later slip past the chooser.
+                                    setDraft((cur) => ({ ...cur, transport: stored.transport }));
+                                    setBaselinePending(false);
+                                    setStatus("");
+                                }}
+                                className="h-7 cursor-pointer rounded px-2 text-xs text-secondary hover:text-primary"
+                            >
+                                Cancel
+                            </button>
+                            <span className="text-[10.5px] text-muted">
+                                {switching ? "Re-syncing…" : "Runs one full re-sync before saving"}
+                            </span>
+                        </div>
+                        <div className="mt-2 text-[10.5px] text-muted">
+                            This device wins — local items overwrite the remote; remote-only items are
+                            pulled in. Remote wins — remote items overwrite local; local-only items are
+                            pushed as new.
+                        </div>
                     </div>
                 )}
 
@@ -745,6 +921,72 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 aria-label="Sync deletions"
                                 onChange={(v) => patch({ syncTombstones: v })}
                             />
+                        </Row>
+                    </div>
+                )}
+
+                {/* ── Status (live) ────────────────────────────────────── */}
+                <GroupHeader
+                    groupKey="status"
+                    label="Status"
+                    collapsed={isCollapsed("status")}
+                    onToggle={toggleGroup}
+                />
+                {!isCollapsed("status") && (
+                    <div className="divide-y divide-border" data-sync-live-status="">
+                        <Row
+                            title="Last sync"
+                            description={
+                                syncStatus == null
+                                    ? "Reading status…"
+                                    : syncStatus.lastError != null && syncStatus.lastError !== ""
+                                      ? syncStatus.lastError
+                                      : syncStatus.lastRunAt == null || syncStatus.lastRunAt === ""
+                                        ? `No run yet — syncs every ${Math.round(syncStatus.intervalSeconds / 60)} min once configured.`
+                                        : `pulled ${syncStatus.lastPulled ?? 0} · applied ${syncStatus.lastApplied ?? 0} · pushed ${syncStatus.lastPushed ?? 0}`
+                            }
+                            rowKey="status-last"
+                        >
+                            <span data-sync-status-time="" className="text-xs text-secondary">
+                                {syncStatus?.lastRunAt ? formatSyncTime(syncStatus.lastRunAt) : "—"}
+                            </span>
+                        </Row>
+                        <Row
+                            title="Unresolved conflicts"
+                            description={
+                                (syncStatus?.conflicts ?? 0) > 0
+                                    ? "Run `wsh commontext-sync conflicts --copy` to hand them to an AI for merging."
+                                    : "Nothing to resolve."
+                            }
+                            rowKey="status-conflicts"
+                        >
+                            <span
+                                data-sync-conflicts={(syncStatus?.conflicts ?? 0).toString()}
+                                className={cn(
+                                    "text-xs tabular-nums",
+                                    (syncStatus?.conflicts ?? 0) > 0 ? "text-warning" : "text-secondary"
+                                )}
+                            >
+                                {syncStatus?.conflicts ?? 0}
+                            </span>
+                        </Row>
+                        <Row
+                            title="Sync now"
+                            description="Run one sync immediately instead of waiting for the timer."
+                            rowKey="status-now"
+                        >
+                            <button
+                                type="button"
+                                data-sync-action="sync-now"
+                                disabled={syncingNow}
+                                onClick={() => void runSyncNow()}
+                                className={cn(
+                                    "h-7 rounded border border-border px-3 text-xs text-primary",
+                                    syncingNow ? "cursor-default opacity-50" : "cursor-pointer hover:bg-hover"
+                                )}
+                            >
+                                {syncingNow ? "Syncing…" : "Sync now"}
+                            </button>
                         </Row>
                     </div>
                 )}

@@ -64,9 +64,18 @@ function isSilentState(state: AgentDisplayState): boolean {
     return state === "idle" || state === "unknown";
 }
 
-/** 跑时起点：与既有口径一致（`activeSince ?? updatedAt`）。 */
+/**
+ * 跑时起点：**当前阶段段**的起点。
+ *
+ * 为什么不是 `activeSince`：`activeSince` 是 state 段的起点，后端只在 state 变化时重置，
+ * 而同一次 working 里换了工具（pi 的 tool_call / claude 的 PreToolUse 都是
+ * working+tool+新 toolName）state 不变 —— 拿它当跑时起点会让 `Tool: Read` 显示
+ * 整轮 working 的总时长。`phaseSince` 按 state+phase+toolName 三者重置。
+ *
+ * 回退链保留 `activeSince ?? updatedAt`：旧后端 / 旧事件不带 phaseSince 时行为不变。
+ */
 function runtimeStart(status: AgentStatus): number {
-    return status.activeSince ?? status.updatedAt ?? 0;
+    return status.phaseSince ?? status.activeSince ?? status.updatedAt ?? 0;
 }
 
 /**

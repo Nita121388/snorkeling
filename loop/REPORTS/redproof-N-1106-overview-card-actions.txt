@@ -1,0 +1,11 @@
+﻿N-1106-overview-card-actions red proof (pre-fix, 2026-11-08)
+
+Observed on current working tree (no implementation for this item):
+- frontend/app/session-overview/overview-board.tsx BoardCard (128-178,455-466): no close/delete action area, no ×/trash, no stopPropagation action buttons; only whole-card onOpenCard.
+- frontend/app/session-overview/session-overview.tsx:239-256 deleteOverviewBlock() closes via layoutModel.closeNode(node.id) when node exists (unsafe for inline Tab group with multiple blocks; PRD requires closeBlock(blockId)/uxCloseBlock planning). Board render (2642+) passes no delete/close callbacks.
+- frontend/app/session-overview/session-overview.tsx list delete uses window.confirm + AISessionsService.Delete (soft move to deleted storage); no "彻底删除" option, no shared 3-action confirm.
+- frontend/app/modals/confirmmodal.tsx supports only single confirm/cancel; cannot present 移到回收站/彻底删除/取消.
+- No permanent-delete backend RPC/method found in pkg/service/aisessionsservice/aisessionsservice.go or frontend service/types (only Delete/AnnotationDelete).
+- scripts/verify/overview-board/actions.mjs does not exist.
+
+Expected red: board card actions absent, inline-tab close unsafe, no permanent delete path, no 3-way confirmation.

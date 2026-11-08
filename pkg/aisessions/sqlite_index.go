@@ -1154,6 +1154,60 @@ func (idx *SQLiteIndex) DeleteMeta(ctx context.Context, key string) error {
 	return tx.Commit()
 }
 
+func isSchemaMissingErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no such table") || strings.Contains(msg, "no such column")
+}
+
+func (idx *SQLiteIndex) DeleteSessionDataPermanently(ctx context.Context, summary SessionSummary) error {
+	key := strings.TrimSpace(summary.Key)
+	if key == "" {
+		return fmt.Errorf("session key is required")
+	}
+	tx, err := idx.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_messages WHERE session_key = ?`, key); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_tags WHERE session_key = ?`, key); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_props WHERE session_key = ?`, key); err != nil && !isSchemaMissingErr(err) {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_annotations WHERE session_key = ?`, key); err != nil && !isSchemaMissingErr(err) {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_annotation_ai_state WHERE session_key = ?`, key); err != nil && !isSchemaMissingErr(err) {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_session_meta WHERE session_key = ?`, key); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_sessions WHERE key = ?`, key); err != nil {
+		return err
+	}
+	filePath := strings.TrimSpace(summary.FilePath)
+	if filePath != "" {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM ai_files WHERE file_path = ?`, filePath); err != nil && !isSchemaMissingErr(err) {
+			return err
+		}
+	}
+	// Audit table is created by AuditStore.ensureAuditTable; tolerate legacy/minimal DBs.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_audit_log WHERE session_key = ?`, key); err != nil && !isSchemaMissingErr(err) {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (idx *SQLiteIndex) tagsForSession(ctx context.Context, key string) ([]string, error) {
 	var tags []string
 	err := idx.db.SelectContext(ctx, &tags, `SELECT tag FROM ai_session_tags WHERE session_key = ? ORDER BY tag`, key)

@@ -158,7 +158,13 @@ func (c *Client) Pull(ctx context.Context, sinceRev float64) (*syncproto.Snapsho
 // PushResult distinguishes "applied" from "someone else wrote first".
 type PushResult struct {
 	Applied bool
-	// Conflicts are items the server kept its own copy of.
+	// AppliedCount / Unchanged are the server's own tallies. Kept separately from `Applied` (which
+	// answers "did the batch go through") so the journal can report actual movement rather than a
+	// boolean.
+	AppliedCount int
+	Unchanged    int
+	// Conflicts are items the server kept its own copy of, WITH both versions so they can be shown
+	// and handed to an AI for merging.
 	Conflicts []syncproto.Conflict
 	// Current is set when the push was rejected because BaseRev was stale; the caller must
 	// reconcile (pull, merge, retry) instead of retrying blindly.
@@ -190,7 +196,13 @@ func (c *Client) Push(ctx context.Context, req syncproto.PushRequest) (*PushResu
 		if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
 			return nil, fmt.Errorf("push response is not valid JSON: %w", err)
 		}
-		return &PushResult{Applied: true, Conflicts: pr.Conflicts, Rev: pr.Rev}, nil
+		return &PushResult{
+			Applied:      true,
+			AppliedCount: pr.Applied,
+			Unchanged:    pr.Unchanged,
+			Conflicts:    pr.Conflicts,
+			Rev:          pr.Rev,
+		}, nil
 	case syncproto.ConflictStatusCode:
 		var payload struct {
 			Current syncproto.Snapshot `json:"current"`
