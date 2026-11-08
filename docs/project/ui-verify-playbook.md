@@ -206,3 +206,25 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
   —— 把条尾设成「刚刚」才能稳定切出两段。
 - **verify 脚本里的模板字符串反引号**：在 ``client.evaluate(`...`)`` 的注释里写反引号会截断字符串，
   报 `SyntaxError: missing ) after argument list`。注释里描述类名用普通文本，不要用反引号。
+
+## 踩坑记录（2026-11-08, agent Done 徽章 seen 样式统一）
+
+- **冷启动时 Electron 可能先于 Vite 就绪 → 整页空壳，且不会自愈。** 现象：`dev-isolated` 的窗口先创建，
+  Vite 51799 过了 ~3 分钟才 LISTEN；期间 renderer 拿不到模块，页面永远停在
+  `document.body.className === "init"`、`readyState === "interactive"`、`.block` 数 0，
+  应用自己 120s 后打一行 `initPromise timed out ... showing window for devtools`。
+  这时 `launch.mjs` 的 420s 轮询 **一定超时**，`--attach` 也会在 `waitForReady`（要求 `document.fonts.status === "loaded"`
+  且根节点存在）红掉，报「页面未就绪」而不是「实例没起来」—— 两者要分清，别当成脚本 bug。
+  判断方法：`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:<vite>`，返回 `000` 就是 Vite 没起来；
+  起来之后 `Page.reload` 也不一定救得回来（实测 body 直接变 null），正确做法是关掉实例重起一轮。
+- **同一端口别同时开两轮。** 前一轮 `nohup ... &` 的实例还在冷启动、紧接着又跑一遍前台启动器，后者会因
+  Electron 单实例锁提前退出，报「verify 启动器提前退出（exit=...）」；而端口其实是**前一轮**的。
+  先用 `netstat -ano | grep :9231` 拿到 PID，确认是自己起的再 `taskkill //PID <pid> //T //F`。
+- **纯样式一致性不必等真机。** 「同名 class 不同值」这类 bug（`is-acked` 在各面写了不同的四值）既不会
+  被 TS 抓到、也不会被单帧 DOM 快照抓到，但可以直接**断言 SCSS 源码里的四值**：
+  `frontend/app/agent-status/agent-status-seen-style.test.ts` 以 `block.scss` 的
+  `.agent-status-header.is-acked` 为基准，检查 chip / Overview / Tab pill 是否写了同一套
+  （dashed 边 + secondary/0.4 + main/0.04 底 + 0.7 透明度）。真机台负责行为，这条负责数值。
+- **给 pill 加边框会改盒高。** `.tab-card-agent-pill` 原来无边框、`line-height: 17px`；
+  要对齐头部的虚线边就必须 `border: 1px dashed`，此时 `line-height` 要降到 15px 才能保持 17px 总高，
+  否则 Tab 悬浮卡的 agent 行会抖 2px。

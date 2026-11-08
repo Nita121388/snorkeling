@@ -92,6 +92,41 @@ FontAwesome 计算）。原型页与真实渲染一致。
 - 弹窗形态的属性区仍用 agent 行骨架（4 行），未切换成 Notion 属性面板；需要更宽的编辑体验时再切。
 - 未做卡片内折叠属性（原型里有开关，真实卡保持 4 行常显）。
 
+## 诊断：卡片不显示 model / provider（2026-11-08）
+
+> 证据样本：`term` block `3047aa4a…`，`cmd=pi`，`agentProvider=pi`，`agentSessionId=1aba2760…`，
+> `shellProcStatus=running`，`rpcProbe.summary.ok && idMatches`（source=pi, filePath 指向本机 pi session jsonl）。
+
+### 取值链路（hover 卡 / `AgentHoverCard`）
+
+- Provider：`agentStatus.provider` → `meta["agent:provider"]` → `resolveAgentProviderLabel`（`agent-identity.ts`）；
+  cc-switch 可兜底 `agent:*vendorname`。`providerLabel === "Agent"` 且无 model/status 时 `showMetaRow=false`，
+  头部整段不渲染（`frontend/app/view/term/agent-hover-card.tsx`）。
+- Model：`agent:requestedmodel` / `meta.model`（仅 launcher 路径常写入，`frontend/app/workspace/agent-launch.ts`）
+  + `AISessionsService.LiveSessionState` 异步补全（`frontend/app/agent-status/agent-runtime-metadata-store.ts`）。
+  `sessionId` 为空直接不请求；仅当 `resp.modelId || resp.modelName` 才采纳，失败静默。
+
+### 根因（分情形）
+
+1. **退出清理抹掉运行时身份**：`pkg/blockcontroller/shellcontroller.go` `clearAgentRuntimeMeta`（exit 且
+   `!KeepAgentMetaOnExit`）清 `agent:provider`、`agent:sessionid`、`cmd/cmd:args` 等；未清 `agent:requestedmodel`。
+   非 cc-switch 退出后常只剩 `"Agent"`，且 sessionId/cmd 丢失导致无法补全。
+2. **Pi TUI 模型补全失败（本样本命中）**：`pkg/service/aisessionsservice/chatcontrol.go` `LiveSessionState`
+   无 GUI live session 时读持久化会话，**仅当最后一条消息 `m.Model != ""` 才回填**。
+   `pkg/aisessions/provider_pi.go` 解析路径未给 `SessionMessage.Model` 赋值（`types.go` 有字段），故 Pi 历史会话
+   常返回无 model；前端无 `agent:requestedmodel`/`meta.model` 时显示“未指定/无模型”。
+3. **对照表面**：`tab-more-agent-card` 紧凑行只用 `requestedModel`（无 runtime 补全）；`tab-info-card` 仅 provider；
+   Overview 用 `agentProviderFromMeta`/`providerDisplayLabel`，与 hover 卡不同源。
+
+### 如何查看 Block meta
+
+- **优先**：终端块 “Copy Session/Terminal Debug Info”（`frontend/app/view/term/session-debug.ts`），含
+  `block.agentProvider`、`hasPersistedAgentSessionId`、`rpcProbe` 等。
+- **运行中 renderer（dev/CDP）**：`node scripts/inspect-electron-ui.mjs eval "<expr>"`（默认 `127.0.0.1:9222`）。
+  仓库未默认暴露 `window.globalStore`；原始读取需在 renderer 上下文访问
+  `WOS.getWaveObjectAtom<Block>(makeORef('block','<id>'))` + `globalStore.get(...)`。
+- **后端**：`wstore` block 对象；排查退出清理可在 `shellcontroller.go` `clearAgentRuntimeMeta`/`UpdateObjectMeta` 断点。
+
 ## 状态 chip 收口（2026-11-06, task 11-06-agent-card-chip-title）
 
 状态徽章此前有 **4 份互不相干的实现**，只有判定层共享，几何/文案/跑时各写一份：

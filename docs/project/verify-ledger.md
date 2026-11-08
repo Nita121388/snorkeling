@@ -102,3 +102,7 @@
 | 2026-11-08 06:20 | overview-timeline | ❌ fatal（未跑） | launch+reset | `20261108T06185-overview-timeline` | aedc7fe1 |
 | 2026-11-08 06:36 | overview-timeline | ❌ fatal（未跑） | launch+reset | `20261108T06284-overview-timeline` | aedc7fe1 |
 | 2026-11-08 06:42 | overview-timeline | ❌ fatal（未跑） | launch+reset | `20261108T06412-overview-timeline` | aedc7fe1 |
+| 2026-11-08 07:28 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261108T07210-agent-card-seen` | 557d5109 |
+| 2026-11-08 08:01 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261108T07590-agent-card-seen` | 0016e987 |
+| 2026-11-08 08:07 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261108T08003-agent-card-seen` | 0016e987 |
+| 2026-11-08 08:09 | agent-card-seen | ❌ fatal（未跑） | attach | `20261108T08082-agent-card-seen` | 0016e987 |

@@ -12,12 +12,10 @@
 
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
+import { needsAgentChipRuntime } from "@/app/agent-status/agent-status-runtime";
+import { agentStatusSecondTickAtom } from "@/app/agent-status/agent-status-second-tick";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
-import {
-    deriveAgentStatusView,
-    type AgentReadState,
-    type AgentStatusView,
-} from "@/app/agent-status/agent-status-view";
+import { deriveAgentStatusView, type AgentReadState, type AgentStatusView } from "@/app/agent-status/agent-status-view";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
 import { useAtomValueSafe } from "@/util/util";
 import * as React from "react";
@@ -60,4 +58,19 @@ export function useAgentStatusView(blockId: string, status: AgentStatus | null):
         () => deriveAgentStatusView({ status, blockId, ackedFp, doneAckedAt, nowMs: Date.now() }),
         [status, blockId, ackedFp, doneAckedAt, minuteTick]
     );
+}
+
+/**
+ * 徽章跑时的「当前时刻」，供**不用** `<AgentStatusChip>` 的消费面使用。
+ *
+ * 为什么需要它：`buildAgentStatusChipView().runtime` 只在活跃态（working / blocked /
+ * stale）产出 "3min21s"，而真正把它拼进文案的是 term-model（头部）与 chip 组件自己。
+ * Tab 悬浮卡的 pill 是手写 `<span>`，此前只读 `agentStatusViewLabel`（状态词 + Done 的
+ * 分钟级 elapsed），于是 working/tool 期间那一行只有 "Tool: Bash"、没有跑时。
+ * 这里把 chip 内部的 1Hz tick 收成一个 hook：活跃态才订阅，其余面 0 订阅。
+ */
+export function useAgentChipNow(status: AgentStatus | null): number {
+    const tickEnabled = needsAgentChipRuntime(status);
+    const tick = tickEnabled ? (useAtomValueSafe(agentStatusSecondTickAtom) ?? 0) : 0;
+    return Math.max(Date.now(), tick);
 }

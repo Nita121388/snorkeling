@@ -153,6 +153,19 @@ const blockIdsProbe = `(() => [...document.querySelectorAll(".block[data-blockid
 /** 关键展示面的快照（一次 eval 取全，避免多次往返读到不同帧）。 */
 const surfacesProbe = (blockId) => `(() => {
     const clean = (s) => (s || "").replace(/[\\u200b-\\u200f\\ufeff]/g, "").trim();
+    // 已读（seen / acked）的四值：需要与块头 `.agent-status-header.is-acked` 逐值一致。
+    // 只断言 class 名不够 —— 「卡片 Done 与头部 Done 不像」就是同名不同值。
+    const styleOf = (el) => {
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        return {
+            borderStyle: cs.borderTopStyle,
+            borderColor: cs.borderTopColor,
+            color: cs.color,
+            background: cs.backgroundColor,
+            opacity: Number(cs.opacity),
+        };
+    };
     const block = document.querySelector('.block[data-blockid="' + ${JSON.stringify(blockId)} + '"]');
     const header = block?.querySelector(".agent-status-header") || document.querySelector(".agent-status-header");
     const dot = document.querySelector(".inline-tab-block-tab-statusdot");
@@ -167,6 +180,7 @@ const surfacesProbe = (blockId) => `(() => {
             cls: header.className,
             unread: header.classList.contains("is-done-unread"),
             acked: header.classList.contains("is-acked"),
+            style: styleOf(header),
         } : null,
         dot: dot ? { cls: dot.className, doneUnread: dot.classList.contains("is-done-unread"), acked: dot.classList.contains("is-acked") } : null,
         chip: chip ? {
@@ -174,6 +188,7 @@ const surfacesProbe = (blockId) => `(() => {
             read: chip.getAttribute("data-agent-read"),
             seen: chip.classList.contains("is-seen"),
             pulsing: chipDot ? chipDot.classList.contains("is-done-unread") : null,
+            style: styleOf(chip),
             // 几何：label 墨迹盒中心与 chip 盒中心的垂直差（R5 的 1px 判据）。
             // 取 label 的 rect 而不是 chip 的 textContent 基线：前者是真实的墨迹盒。
             centered: (() => {
@@ -196,6 +211,7 @@ const surfacesProbe = (blockId) => `(() => {
         tabRow: tabRow ? {
             read: tabRow.getAttribute("data-agent-read"),
             pill: clean(tabRow.querySelector(".tab-card-agent-pill")?.textContent),
+            pillStyle: styleOf(tabRow.querySelector(".tab-card-agent-pill")),
         } : null,
         doneAcked,
     };
@@ -372,6 +388,19 @@ async function main() {
     );
   }
 
+  // Tab 悬浮卡（G 面）的 pill 同样要带跑时 —— 旧实现只读状态词，working/tool 期间
+  // 那一行只有 "Tool: Bash"，没有 "3min21s"（与块头 / 悬浮卡对不上）。
+  const tabPoint = await client.evaluate(appTabCenterProbe);
+  if (tabPoint != null) {
+    const workingTabRow = await hoverUntil(client, tabPoint, surfacesProbe(blockId), (s) => s?.tabRow != null);
+    await shot(client, "02b-tab-card-working");
+    check(
+      "tab-card-pill-runtime",
+      /\s(?:\d+s|\d+min\d+s|\d+h\d+min|\d+d\d+h)$/.test(workingTabRow?.tabRow?.pill ?? ""),
+      workingTabRow?.tabRow?.pill ?? "no .tab-card-agent-pill"
+    );
+  }
+
   const done = await waitForSurfaces(client, blockId, (s) => /^Done/.test(s?.header?.text ?? ""), {
     timeoutMs: 240000,
     onTick: record,
@@ -417,7 +446,6 @@ async function main() {
   }
 
   // Tab 悬浮卡（G 面）：悬停 app tab 打开标签卡，读 agent 行。
-  const tabPoint = await client.evaluate(appTabCenterProbe);
   let unreadTabRow = null;
   if (tabPoint != null) {
     unreadTabRow = await hoverUntil(client, tabPoint, surfacesProbe(blockId), (s) => s?.tabRow != null);
@@ -456,12 +484,37 @@ async function main() {
     check("hover-card-no-elapsed", (seenChipSnap.chip.text ?? "").trim() === "Done", seenChipSnap.chip.text);
   }
 
+  // ── 已读样式对齐：头部徽章 vs 卡片 chip vs Tab pill ──
+  // 「agent card 的 Done 徽章和 agent header 上的 Done 样式不一样（包括 ack 后的样式）」
+  // 就是这里的判据：同名 class 不够，得比 computed 四值（虚线边 / 颜色 / 底色 / 透明度）。
+  // 基准是 block.scss 的 `.agent-status-header.is-acked`。
+  const headerSeen = seenChipSnap?.header?.style ?? acked?.header?.style ?? null;
+  const chipSeen = seenChipSnap?.chip?.style ?? null;
+  if (headerSeen != null && chipSeen != null) {
+    check("seen-border-dashed",
+      headerSeen.borderStyle === "dashed" && chipSeen.borderStyle === "dashed",
+      { header: headerSeen.borderStyle, chip: chipSeen.borderStyle });
+    check("seen-color-parity", headerSeen.color === chipSeen.color, { header: headerSeen.color, chip: chipSeen.color });
+    check("seen-background-parity", headerSeen.background === chipSeen.background,
+      { header: headerSeen.background, chip: chipSeen.background });
+    check("seen-opacity-parity", Math.abs(headerSeen.opacity - chipSeen.opacity) <= 0.01,
+      { header: headerSeen.opacity, chip: chipSeen.opacity });
+  }
+
   if (tabPoint != null) {
     const seenTabRow = await hoverUntil(client, tabPoint, surfacesProbe(blockId), (s) => s?.tabRow != null);
     await shot(client, "07-tab-card-seen");
     check("tab-card-seen", seenTabRow?.tabRow?.read === "seen", seenTabRow?.tabRow ?? "not visible");
     if (seenTabRow?.tabRow != null) {
       check("tab-card-pill-no-elapsed", (seenTabRow.tabRow.pill ?? "").trim() === "Done", seenTabRow.tabRow.pill);
+      const pillSeen = seenTabRow.tabRow.pillStyle ?? null;
+      if (pillSeen != null && headerSeen != null) {
+        check("tab-pill-seen-dashed", pillSeen.borderStyle === "dashed", pillSeen.borderStyle);
+        check("tab-pill-seen-color-parity", pillSeen.color === headerSeen.color,
+          { header: headerSeen.color, pill: pillSeen.color });
+        check("tab-pill-seen-opacity-parity", Math.abs(pillSeen.opacity - headerSeen.opacity) <= 0.01,
+          { header: headerSeen.opacity, pill: pillSeen.opacity });
+      }
     }
   }
 

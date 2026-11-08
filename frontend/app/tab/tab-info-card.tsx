@@ -17,6 +17,11 @@
 //  - 数据全部来自现成 store：tab/workspace WaveObj、block meta、AgentStatusStore。
 //  - 槽位信息只出现一次：header 只放 agent 数量，其余类型走 chips。
 
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
+import { buildAgentStatusChipView } from "@/app/agent-status/agent-status-chip-view";
+import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
+import { useAgentChipNow, useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
 import {
     InfoCard,
     InfoCardHead,
@@ -25,23 +30,20 @@ import {
     InfoCardText,
     InfoCardTitle,
 } from "@/app/element/info-card";
-import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
-import { useAgentStatusView } from "@/app/agent-status/use-agent-status-view";
-import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
-import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
-import { getAgentIcon } from "@/app/view/term/agent-logo";
-import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
-import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { getObjectValue, makeORef } from "@/app/store/wos";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
+import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
+import * as React from "react";
 import {
     agentGroupHidesProvider,
     agentGroupLabel,
+    agentPillText,
     classifyTabBlock,
     countTabBlocks,
     nonAgentChips,
     presentAgentStateFromView,
 } from "./tab-info-card-model";
-import * as React from "react";
 
 /** 读一个 block 的 agent provider（归一后），非 agent block 返回空串。 */
 function readAgentProvider(block: Block | null): string {
@@ -79,6 +81,18 @@ function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider:
     });
 
     const presentation = presentAgentStateFromView(statusView);
+    // 文案与跑时走与头部徽章/悬浮卡**同一个纯函数**：`agentStatusViewLabel` 只产状态词
+    // （Done 未读时带分钟级 elapsed），跑时 "3min21s" 只由 buildAgentStatusChipView().runtime
+    // 产出。pill 之前只读前者，所以 working/tool 期间这里没有时长 —— 本行就是那个断层。
+    // variant 只影响 className（本组件不采用），label/runtime 在四个变体间由单测锁死一致。
+    const chipNow = useAgentChipNow(status);
+    const chipView = buildAgentStatusChipView({
+        variant: "list",
+        status,
+        read: statusView?.read ?? "seen",
+        nowMs: chipNow,
+    });
+    const pillLabel = agentPillText(chipView, presentation.label);
 
     return (
         <div
@@ -106,7 +120,7 @@ function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider:
                 </span>
             )}
             {hideProvider ? null : <span className="tab-card-agent-name">{provider}</span>}
-            <span className="tab-card-agent-pill">{presentation.label}</span>
+            <span className="tab-card-agent-pill">{pillLabel}</span>
         </div>
     );
 }
@@ -168,7 +182,9 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
                     ) : (
                         <InfoCardIcon icon="fa-sharp fa-solid fa-table-columns" />
                     )}
-                    <InfoCardTitle className="tab-card-title">{tabName !== "" ? tabName : "Untitled tab"}</InfoCardTitle>
+                    <InfoCardTitle className="tab-card-title">
+                        {tabName !== "" ? tabName : "Untitled tab"}
+                    </InfoCardTitle>
                     {flagColor != null ? (
                         <span className="tab-card-flag" style={{ background: flagColor }} title="Flag" />
                     ) : null}

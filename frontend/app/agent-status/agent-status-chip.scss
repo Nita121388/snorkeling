@@ -101,13 +101,17 @@
     border-style: dashed;
 }
 
-// 已读：整枚收敛到次要色并停动画。位置不变，只降低注意力。
+// 已读（ack 过 / 打开看过）：与 Block 头部的 `.agent-status-header.is-acked`
+// **同一套四值** —— dashed 边框 secondary/0.4、secondary 实色、main/0.04 底、0.7 透明度，
+// 并停掉全部动画。基准定义在 block.scss，改这里必须同步那边，否则 ack 前后两副脸
+// （这正是「卡片 Done 与头部 Done 不像」的来源：卡片曾是 main/0.42 + 透明底 + 0.78）。
 .agent-status-chip.is-acked,
 .agent-status-chip.is-seen {
-    --agent-status-color: rgb(from var(--main-text-color) r g b / 0.42);
-    --agent-status-bg: transparent;
+    --agent-status-color: var(--secondary-text-color);
+    --agent-status-bg: rgb(from var(--main-text-color) r g b / 0.04);
+    border-color: rgb(from var(--secondary-text-color) r g b / 0.4);
     border-style: dashed;
-    opacity: 0.78;
+    opacity: 0.7;
 
     > i,
     .agent-status-chip-label {
@@ -180,6 +184,15 @@
     // 胶囊不用 1px 边框（会破坏圆角），改用内阴影描边。
     box-shadow: inset 0 0 0 1px rgb(from var(--agent-status-color) r g b / 0.26);
     background: rgb(from var(--agent-status-color) r g b / 0.11);
+}
+
+// 已读的胶囊要跟头部一样是 dashed，但 box-shadow 画不出虚线 —— seen 时换回真实
+// 1px 边框并清掉内阴影；盒高由 base 的 `box-sizing: border-box` + 20px 锁住，几何不变。
+.agent-status-chip--card.is-acked,
+.agent-status-chip--card.is-seen {
+    border: 1px dashed rgb(from var(--secondary-text-color) r g b / 0.4);
+    box-shadow: none;
+    background: rgb(from var(--main-text-color) r g b / 0.04);
 }
 
 .agent-status-chip--header {
