@@ -283,6 +283,8 @@ func claimsToRpcCtx(claims *wavejwt.WaveJwtClaims) *wshrpc.RpcContext {
 		BlockId:   claims.BlockId,
 		Conn:      claims.Conn,
 		IsRouter:  claims.Router,
+		AgentName: claims.AgentName,
+		Scope:     claims.Scope,
 	}
 }
 

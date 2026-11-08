@@ -11,6 +11,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
+	"github.com/wavetermdev/waveterm/pkg/wavejwt"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
@@ -123,7 +124,10 @@ func (impl *WshRouterControlImpl) AuthenticateCommand(ctx context.Context, data 
 func extractTokenData(token string) (wshrpc.CommandAuthenticateRtnData, error) {
 	entry := shellutil.GetAndRemoveTokenSwapEntry(token)
 	if entry == nil {
-		return wshrpc.CommandAuthenticateRtnData{}, fmt.Errorf("no token entry found")
+		// Not a swap token: it may be a signed external-agent JWT (design
+		// §10.5.3). Signature + exp are validated by the JWT library; the
+		// scopes travel with the token, so the caller cannot self-declare them.
+		return extractAgentJwtData(token)
 	}
 	_, err := validateRpcContextFromAuth(entry.RpcContext)
 	if err != nil {
@@ -210,6 +214,8 @@ func (impl *WshRouterControlImpl) AuthenticateTokenCommand(ctx context.Context, 
 	log.Printf("wshrouter authenticate-token success linkid=%d routeid=%q", linkId, rtnData.RouteId)
 	impl.Router.trustLink(linkId, LinkKind_Leaf)
 	impl.Router.bindRoute(linkId, rtnData.RouteId, true)
+	// Bind the grant to the connection, not to anything the client declares.
+	SetLinkScopes(linkId, rtnData.Scopes)
 
 	return rtnData, nil
 }
@@ -306,4 +312,30 @@ func validateRpcContextFromAuth(newCtx *wshrpc.RpcContext) (string, error) {
 		return "", nil
 	}
 	return newCtx.GenerateRouteId(), nil
+}
+
+// extractAgentJwtData validates a signed external-agent token and returns the
+// route plus the scopes it was granted. An empty scope list means the token is
+// app-level (in-app), which is not scope-limited.
+func extractAgentJwtData(tokenStr string) (wshrpc.CommandAuthenticateRtnData, error) {
+	claims, err := wavejwt.ValidateAndExtract(tokenStr)
+	if err != nil {
+		return wshrpc.CommandAuthenticateRtnData{}, fmt.Errorf("invalid agent token: %w", err)
+	}
+	if claims.Router {
+		return wshrpc.CommandAuthenticateRtnData{}, fmt.Errorf("cannot auth router via agent token")
+	}
+	rpcCtx := claimsToRpcCtx(claims)
+	if _, err := validateRpcContextFromAuth(rpcCtx); err != nil {
+		return wshrpc.CommandAuthenticateRtnData{}, err
+	}
+	routeId := rpcCtx.GenerateRouteId()
+	if routeId == "" {
+		return wshrpc.CommandAuthenticateRtnData{}, fmt.Errorf("no routeid")
+	}
+	return wshrpc.CommandAuthenticateRtnData{
+		RouteId:    routeId,
+		Scopes:     claims.Scope,
+		RpcContext: rpcCtx,
+	}, nil
 }

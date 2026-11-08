@@ -26,6 +26,12 @@ func ActivityCommand(w *wshutil.WshRpc, data wshrpc.ActivityUpdate, opts *wshrpc
 	return err
 }
 
+// command "agentauthgrant", wshserver.AgentAuthGrantCommand
+func AgentAuthGrantCommand(w *wshutil.WshRpc, data wshrpc.AgentAuthGrantRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentAuthGrantResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentAuthGrantResult](w, "agentauthgrant", data, opts)
+	return resp, err
+}
+
 // command "agentcardget", wshserver.AgentCardGetCommand
 func AgentCardGetCommand(w *wshutil.WshRpc, data wshrpc.AgentCardGetRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentCardResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentCardResult](w, "agentcardget", data, opts)

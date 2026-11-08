@@ -563,6 +563,25 @@ declare global {
         conn?: {[key: string]: number};
     };
 
+    // wshrpc.AgentAuthGrantRequest
+    type AgentAuthGrantRequest = {
+        name: string;
+        scope: string[];
+        ttlseconds?: number;
+    };
+
+    // wshrpc.AgentAuthGrantResult
+    type AgentAuthGrantResult = {
+        version: number;
+        name: string;
+        token: string;
+        socket: string;
+        routeid: string;
+        scopes: string[];
+        expiresat: number;
+        createdat: number;
+    };
+
     // wshrpc.AgentCardChangeReport
     type AgentCardChangeReport = {
         field: string;
@@ -1057,6 +1076,7 @@ declare global {
     // wshrpc.CommandAuthenticateRtnData
     type CommandAuthenticateRtnData = {
         routeid: string;
+        scopes?: string[];
         env?: {[key: string]: string};
         initscripttext?: string;
         rpccontext?: RpcContext;
@@ -2756,6 +2776,8 @@ declare global {
         blockid?: string;
         conn?: string;
         isrouter?: boolean;
+        agentname?: string;
+        scope?: string[];
     };
 
     // wshutil.RpcMessage

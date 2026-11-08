@@ -102,6 +102,8 @@ type WshRpcInterface interface {
 	TabListCommand(ctx context.Context, data TabListRequest) (*TabListResult, error)
 	TabCreateCommand(ctx context.Context, data TabCreateRequest) (*TabCreateResult, error)
 	TabActivateCommand(ctx context.Context, data TabActivateRequest) (*TabActivateResult, error)
+	// external agent access: mint a scoped token (in-app only)
+	AgentAuthGrantCommand(ctx context.Context, data AgentAuthGrantRequest) (*AgentAuthGrantResult, error)
 	WaveInfoCommand(ctx context.Context) (*WaveInfoData, error)
 	MacOSVersionCommand(ctx context.Context) (string, error)
 	WshActivityCommand(ct context.Context, data map[string]int) error
@@ -299,6 +301,9 @@ type RpcContext struct {
 	BlockId   string `json:"blockid,omitempty"`   // blockid for this rpc
 	Conn      string `json:"conn,omitempty"`      // the conn name
 	IsRouter  bool   `json:"isrouter,omitempty"`  // if this is for a sub-router
+	// External agent access (design §10.5.3). Empty Scope = in-app token.
+	AgentName string   `json:"agentname,omitempty"`
+	Scope     []string `json:"scope,omitempty"`
 }
 
 func (rc RpcContext) GenerateRouteId() string {
@@ -310,6 +315,8 @@ func (rc RpcContext) GenerateRouteId() string {
 
 type CommandAuthenticateRtnData struct {
 	RouteId string `json:"routeid"`
+	// external agent scopes proved by the token (empty = app-level)
+	Scopes []string `json:"scopes,omitempty"`
 
 	// these fields are only set when doing a token swap
 	Env            map[string]string `json:"env,omitempty"`
@@ -941,6 +948,30 @@ type TabActivateResult struct {
 	TabId     string   `json:"tabid,omitempty"`
 	WaitedMs  int      `json:"waitedms,omitempty"`
 	Warnings  []string `json:"warnings,omitempty"`
+}
+
+// ---- External agent access (design §10.5.3) ----
+
+// AgentAuthGrantRequest asks the app to mint a short-lived, revocable token for
+// a process outside the app. Only callable from inside a block, because the
+// socket name comes from the caller's own authenticated context.
+type AgentAuthGrantRequest struct {
+	Name       string   `json:"name"`
+	Scope      []string `json:"scope"`
+	TTLSeconds int      `json:"ttlseconds,omitempty"`
+}
+
+// AgentAuthGrantResult carries the signed token. The caller writes it to a file
+// with 0600; it is never logged.
+type AgentAuthGrantResult struct {
+	Version   int      `json:"version"`
+	Name      string   `json:"name"`
+	Token     string   `json:"token"`
+	Socket    string   `json:"socket"`
+	RouteId   string   `json:"routeid"`
+	Scopes    []string `json:"scopes"`
+	ExpiresAt int64    `json:"expiresat"`
+	CreatedAt int64    `json:"createdat"`
 }
 
 type AiMessageData struct {

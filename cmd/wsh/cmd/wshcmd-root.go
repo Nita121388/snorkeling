@@ -15,6 +15,8 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 	"github.com/wavetermdev/waveterm/pkg/wshutil"
+	"encoding/json"
+	"strings"
 )
 
 var (
@@ -82,16 +84,40 @@ func OutputHelpMessage(cmd *cobra.Command) {
 	WriteStderr("\n")
 }
 
-func preRunSetupRpcClient(cmd *cobra.Command, args []string) error {
-	jwtToken := os.Getenv(wshutil.WaveJwtTokenVarName)
-	if jwtToken == "" {
-		return fmt.Errorf("wsh must be run inside a Wave-managed SSH session (WAVETERM_JWT not found)")
+// agentTokenFilePath implements the token source chain (design §10.5.4):
+// --token-file > SNORKELING_AGENT_TOKEN_FILE > SNORKELING_AGENT_TOKEN >
+// WAVETERM_JWT (in-app) > the default on-disk path.
+func agentTokenFilePath() string {
+	if flag := cmdTokenFileFlag; flag != "" {
+		return flag
 	}
-	err := setupRpcClient(nil, jwtToken)
-	if err != nil {
+	if env := os.Getenv("SNORKELING_AGENT_TOKEN_FILE"); env != "" {
+		return env
+	}
+	return ""
+}
+
+func preRunSetupRpcClient(cmd *cobra.Command, args []string) error {
+	// 1. explicit token file, or 2. the env that names one
+	if path := agentTokenFilePath(); path != "" {
+		return setupRpcClientFromTokenFile(path)
+	}
+	// 3. inline token (discouraged: shows up in shell history)
+	if raw := os.Getenv("SNORKELING_AGENT_TOKEN"); raw != "" {
+		_, err := setupRpcClientWithRawToken(raw)
 		return err
 	}
-	return nil
+	// 4. in-app path
+	if jwtToken := os.Getenv(wshutil.WaveJwtTokenVarName); jwtToken != "" {
+		return setupRpcClient(nil, jwtToken)
+	}
+	// 5. default on-disk convention, if it exists
+	if def := defaultAgentTokenPath(); def != "" {
+		if _, err := os.Stat(def); err == nil {
+			return setupRpcClientFromTokenFile(def)
+		}
+	}
+	return fmt.Errorf("no credentials: run inside Snorkeling, or pass --token-file (create one with: wsh auth grant --name <n> --out <file>)")
 }
 
 func getIsTty() bool {
@@ -122,6 +148,55 @@ func resolveBlockArg() (*waveobj.ORef, error) {
 		return nil, fmt.Errorf("resolving blockid: %w", err)
 	}
 	return fullORef, nil
+}
+
+// setupRpcClientFromTokenFile authenticates with a scoped external-agent token
+// read from a file (design §10.5.4). The token is never taken from argv.
+// cmdTokenFileFlag backs the global --token-file flag.
+var cmdTokenFileFlag string
+
+// agentTokenScopes is what the presented token was granted (empty = app-level).
+var agentTokenScopes []string
+
+func setupRpcClientFromTokenFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("cannot read token file %s: %w", path, err)
+	}
+	var payload AgentTokenFile
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return fmt.Errorf("invalid token file %s: %w", path, err)
+	}
+	if strings.TrimSpace(payload.Token) == "" {
+		return fmt.Errorf("token file %s has no token", path)
+	}
+	agentTokenScopes = payload.Scopes
+	_, err = setupRpcClientWithRawToken(payload.Token)
+	return err
+}
+
+// setupRpcClientWithRawToken is setupRpcClientWithToken without the swap-token
+// unwrapping: the value IS the JWT.
+func setupRpcClientWithRawToken(tokenStr string) (wshrpc.CommandAuthenticateRtnData, error) {
+	var rtn wshrpc.CommandAuthenticateRtnData
+	rpcCtx, err := wshutil.ExtractUnverifiedRpcContext(tokenStr)
+	if err != nil {
+		return rtn, fmt.Errorf("cannot parse token: %w", err)
+	}
+	if rpcCtx.SockName == "" {
+		return rtn, fmt.Errorf("token has no sockname")
+	}
+	RpcContext = *rpcCtx
+	RpcClient, err = wshutil.SetupDomainSocketRpcClient(rpcCtx.SockName, nil, "wshcmd")
+	if err != nil {
+		return rtn, fmt.Errorf("error setting up domain socket rpc client: %w", err)
+	}
+	rtn, err = wshclient.AuthenticateTokenCommand(RpcClient, wshrpc.CommandAuthenticateTokenData{Token: tokenStr}, &wshrpc.RpcOpts{Route: wshutil.ControlRoute})
+	if err != nil {
+		return rtn, err
+	}
+	RpcClientRouteId = rtn.RouteId
+	return rtn, nil
 }
 
 func setupRpcClientWithToken(swapTokenStr string) (wshrpc.CommandAuthenticateRtnData, error) {
@@ -243,6 +318,7 @@ func Execute() {
 		}
 	}()
 	rootCmd.PersistentFlags().StringVarP(&blockArg, "block", "b", "", "for commands which require a block id")
+	rootCmd.PersistentFlags().StringVar(&cmdTokenFileFlag, "token-file", "", "external agent token file (see: wsh auth grant)")
 	err := rootCmd.Execute()
 	if err != nil {
 		wshutil.DoShutdown("", 1, true)

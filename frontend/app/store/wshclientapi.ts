@@ -24,6 +24,12 @@ export class RpcApiType {
         return client.wshRpcCall("activity", data, opts);
     }
 
+    // command "agentauthgrant" [call]
+    AgentAuthGrantCommand(client: WshClient, data: AgentAuthGrantRequest, opts?: RpcOpts): Promise<AgentAuthGrantResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentauthgrant", data, opts);
+        return client.wshRpcCall("agentauthgrant", data, opts);
+    }
+
     // command "agentcardget" [call]
     AgentCardGetCommand(client: WshClient, data: AgentCardGetRequest, opts?: RpcOpts): Promise<AgentCardResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentcardget", data, opts);

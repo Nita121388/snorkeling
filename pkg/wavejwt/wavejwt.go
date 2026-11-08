@@ -34,6 +34,10 @@ type WaveJwtClaims struct {
 	JobId      string `json:"jobid,omitempty"`
 	Conn       string `json:"conn,omitempty"`
 	Router     bool   `json:"router,omitempty"`
+	// External agent access (design §10.5.3). Empty Scope means an in-app
+	// token, which is app-level and not scope-limited.
+	AgentName string   `json:"agentname,omitempty"`
+	Scope     []string `json:"scope,omitempty"`
 }
 
 type KeyPair struct {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
+	"github.com/wavetermdev/waveterm/pkg/agentscope"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
@@ -96,6 +97,14 @@ func serverImplAdapter(impl any) func(*RpcResponseHandler) bool {
 			}
 			handler.SendResponseError(fmt.Errorf("command not implemented %q", cmd))
 			return true
+		}
+		// External-agent scope gate. The grant is bound to the link at
+		// authenticate time, so a client cannot widen it by declaring scopes.
+		if required, ok := agentscope.RequiredForCommand(cmd); ok {
+			if !agentscope.Allows(GetLinkScopes(handler.GetIngressLinkId()), required) {
+				handler.SendResponseError(fmt.Errorf("E_FORBIDDEN: command %q requires scope %q", cmd, required))
+				return true
+			}
 		}
 		implMethod := reflect.ValueOf(impl).MethodByName(rmethod.Name)
 		var callParams []reflect.Value
