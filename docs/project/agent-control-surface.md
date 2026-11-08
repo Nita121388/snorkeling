@@ -123,6 +123,72 @@ state, before applying anything. Per-operation re-validation inside
 earlier operations of the same patch, which makes multi-operation patches
 impossible to apply. Do not reintroduce it.
 
+## UI observe + navigate (P0.2)
+
+```
+wsh ui active [--json]                         # where am I vs where is the user
+wsh ui state  [--window <id>] [--workspace <id>] [--json]
+wsh block read <block|this> [--tail 80] [--max-bytes 65536] [--lastcommand] [--json]
+wsh block open --view <term|web|preview|edit|agent>
+               [--tab active|new|<tabid>] [--workspace <id>]
+               [--split right|down|left|up] [--replace <blockid>]
+               [--magnified] [--no-focus] [--wait] [--wait-ms N] [--dedupe]
+               [--url <u>] [--file <path>] [--cwd <dir>] [--conn <conn>]
+               [--meta key=value]... [--json]
+wsh tab list     [--workspace <id>] [--json]
+wsh tab create   [--workspace <id>] [--name <s>] [--activate] [--wait] [--json]
+wsh tab activate <tabid> [--wait] [--json]
+```
+
+Nothing here writes user data; it only observes and changes UI structure.
+
+`ui active` returns **two separate objects**, because the interesting case is that
+they differ (`self` = the calling block, from `WAVETERM_BLOCKID`; `active` = the
+window/workspace/activeTab/focusedBlock the user is actually looking at):
+
+```json
+{
+  "version": 1,
+  "self":   { "tabid": "tabB", "blockid": "blk7", "blocknum": 3 },
+  "active": { "windowid": "win1", "workspaceid": "ws1", "tabid": "tabA",
+              "tabname": "调研", "blockid": "blk2", "view": "term", "title": "claude" },
+  "warnings": []
+}
+```
+
+`ui state` is a backend-only snapshot (`windows` / `tabs` / `blocks`), where each
+block carries `runtime` (`blockcontroller.GetBlockControllerRuntimeStatus`) and
+`agent` (`agentstatus.Get`) plus **allowlisted** meta. No content, no `--live`
+(that is P0.3).
+
+`block read` dispatches by view and is always bounded:
+
+| view | payload |
+|---|---|
+| `term` | `lines` (string, newline-joined), `totallines` |
+| `preview` / `edit` | `file`, `content`, `isdir` |
+| `web` | `url` |
+| `agent` | `sessionid`, `sessionkey`, `title`, `agentstate` / `agentphase` |
+| unknown | `error: "unsupported view"` (exit 0, still returns view) |
+
+Degradation is a warning, never a failure: a missing frontend route yields
+`lines: []` + `warning: term-route-unavailable`; a remote file yields
+`warning: remote-file-unsupported`. Agents need to tell "nothing there" from
+"could not read".
+
+`block open` is an **orchestration layer**, not a second create path — it resolves
+`--tab`, validates meta, optionally dedupes (`view` + `file`/`url`/`connection`
+signature), then calls the existing `CreateBlockCommand`, so the frontend sees
+exactly the same events as `wsh createblock`. `--split` targets the last block in
+the tab; `--split` and `--replace` are mutually exclusive.
+
+`--wait` polls **backend truth only** (`Workspace.ActiveTabId`, tab `BlockIds`),
+never a frontend claim. `syncState` moves `db-only` → `layout-applied`; a timeout
+lands in `warnings` because the write already succeeded.
+
+`wsh blocks list` and `wsh ui state` share `wcore.ListBlocksScoped` — the same walk
+feeds both, so they cannot drift.
+
 ## Cross-surface acceptance script
 
 The two P0 surfaces are only useful together: discover a live session, read its
