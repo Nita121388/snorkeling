@@ -16,12 +16,17 @@ package cmd
 // checks and prints what is still missing.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/wavetermdev/waveterm/pkg/syncclient"
+	"github.com/wavetermdev/waveterm/pkg/syncjournal"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 )
@@ -50,6 +55,7 @@ var commonTextSyncToken string
 var commonTextSyncInterval string
 var commonTextSyncInsecure bool
 var commonTextSyncDeviceName string
+var commonTextSyncLogLines int
 
 func init() {
 	rootCmd.AddCommand(commonTextSyncCmd)
@@ -110,6 +116,23 @@ func init() {
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  commonTextSyncRawRun,
 	})
+
+	doctorCmd := &cobra.Command{
+		Use:   "doctor",
+		Short: "diagnose the sync setup and print the exact fix for each problem",
+		RunE:  commonTextSyncDoctorRun,
+	}
+	doctorCmd.Flags().BoolVar(&commonTextSyncShowJson, "json", false, "print JSON")
+	commonTextSyncCmd.AddCommand(doctorCmd)
+
+	logCmd := &cobra.Command{
+		Use:   "log",
+		Short: "print recent sync activity",
+		RunE:  commonTextSyncLogRun,
+	}
+	logCmd.Flags().IntVar(&commonTextSyncLogLines, "n", 20, "how many events")
+	logCmd.Flags().BoolVar(&commonTextSyncShowJson, "json", false, "print JSON lines")
+	commonTextSyncCmd.AddCommand(logCmd)
 }
 
 // syncSettingsFromEnv reads the current values through the same RPC the UI uses.
@@ -367,21 +390,246 @@ func commonTextSyncRawRun(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// storeSyncToken persists the credential. Until the keyring plumbing lands (transport task),
-// this refuses rather than pretending: silently dropping a token would leave the user with
-// "configured" but permanently unauthenticated sync.
+// syncTokenSecretName maps a transport to its secretstore entry. The secretstore name pattern
+// forbids colons, so these are underscored even though the settings keys are not.
+func syncTokenSecretName(kind string) string {
+	if kind == "git" {
+		return syncclient.SecretGitToken
+	}
+	return syncclient.SecretServerToken
+}
+
+// storeSyncToken writes the credential into the existing secrets store (secrets.enc, encrypted
+// via Electron safeStorage) — the same mechanism the Secrets panel uses, so there is no second
+// place a credential can hide and no plaintext copy in settings.json.
 func storeSyncToken(kind string, token string) error {
-	if strings.TrimSpace(token) == "" {
+	trimmed := strings.TrimSpace(token)
+	if trimmed == "" {
 		return fmt.Errorf("token is empty")
 	}
-	if os.Getenv("SNORKELING_SYNC_ALLOW_PLAINTEXT_TOKEN") == "1" {
-		WriteStdout("warning: token NOT stored (keyring not implemented yet); settings only records hastoken\n")
+	name := syncTokenSecretName(kind)
+	// SetSecretsCommand takes map[string]*string so a nil value can mean "delete".
+	value := trimmed
+	if err := wshclient.SetSecretsCommand(RpcClient, map[string]*string{name: &value},
+		&wshrpc.RpcOpts{Timeout: 4000}); err != nil {
+		return fmt.Errorf("storing token in secrets: %w", err)
+	}
+	return nil
+}
+
+// loadSyncToken reads the credential back. A missing secret is not an error: it just means the
+// user has not configured one yet.
+func loadSyncToken(kind string) string {
+	name := syncTokenSecretName(kind)
+	resp, err := wshclient.GetSecretsCommand(RpcClient, []string{name}, &wshrpc.RpcOpts{Timeout: 3000})
+	if err != nil || resp == nil {
+		return ""
+	}
+	return resp[name]
+}
+
+// ---------------------------------------------------------------------------
+// doctor / log
+// ---------------------------------------------------------------------------
+
+// commonTextSyncDoctorRun prints per-check results with an actionable fix for every failure.
+//
+// This is the agent-facing entry point: an agent runs `doctor --json`, reads `checks[].fix`,
+// executes it, and runs doctor again. No step requires interpreting a prose error.
+func commonTextSyncDoctorRun(cmd *cobra.Command, args []string) error {
+	settings, err := syncSettingsFromEnv()
+	if err != nil {
+		return err
+	}
+	transport := syncKeyString(settings, "commontext:sync:transport")
+	if transport == "" {
+		transport = "none"
+	}
+
+	report := map[string]any{"transport": transport}
+
+	switch transport {
+	case "server":
+		url := syncKeyString(settings, "commontext:sync:server:url")
+		insecure := syncKeyBool(settings, "commontext:sync:server:allowinsecure")
+		token := loadSyncToken("server")
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		probe := syncclient.Diagnose(ctx, url, token, insecure)
+		report["url"] = probe.URL
+		report["ready"] = probe.Ready
+		report["health"] = probe.Health
+		report["checks"] = probe.Checks
+		if commonTextSyncShowJson {
+			out, _ := json.MarshalIndent(report, "", "  ")
+			WriteStdout("%s\n", string(out))
+			return nil
+		}
+		printProbe(probe)
+	case "folder":
+		path := syncKeyString(settings, "commontext:sync:folder:path")
+		checks := checkFolderPath(path)
+		ready := true
+		for _, c := range checks {
+			if c.State == syncclient.CheckFailed {
+				ready = false
+			}
+		}
+		report["ready"] = ready
+		report["checks"] = checks
+		if commonTextSyncShowJson {
+			out, _ := json.MarshalIndent(report, "", "  ")
+			WriteStdout("%s\n", string(out))
+			return nil
+		}
+		printChecks(checks)
+	case "git":
+		remote := syncKeyString(settings, "commontext:sync:git:remote")
+		checks := []syncclient.Check{{Id: "remote", State: syncclient.CheckOK, Detail: remote}}
+		if strings.TrimSpace(remote) == "" {
+			checks = []syncclient.Check{{
+				Id: "remote", State: syncclient.CheckFailed, Detail: "no remote configured",
+				Fix: "wsh commontext-sync set-git <remote> --token <pat>",
+			}}
+		}
+		hasToken := loadSyncToken("git") != ""
+		state := syncclient.CheckOK
+		fix := ""
+		if !hasToken {
+			state = syncclient.CheckFailed
+			fix = "wsh commontext-sync set-git " + remote + " --token <pat>"
+		}
+		checks = append(checks, syncclient.Check{Id: "auth", State: state, Detail: "git access token", Fix: fix})
+		report["checks"] = checks
+		report["ready"] = state == syncclient.CheckOK && strings.TrimSpace(remote) != ""
+		if commonTextSyncShowJson {
+			out, _ := json.MarshalIndent(report, "", "  ")
+			WriteStdout("%s\n", string(out))
+			return nil
+		}
+		printChecks(checks)
+	default:
+		report["ready"] = true
+		report["checks"] = []syncclient.Check{{
+			Id: "transport", State: syncclient.CheckOK, Detail: "local only — nothing is uploaded",
+		}}
+		if commonTextSyncShowJson {
+			out, _ := json.MarshalIndent(report, "", "  ")
+			WriteStdout("%s\n", string(out))
+			return nil
+		}
+		WriteStdout("transport: none (local only — nothing is uploaded)\n")
+	}
+	return nil
+}
+
+func printProbe(probe *syncclient.Probe) {
+	printChecks(probe.Checks)
+	if probe.Health != nil {
+		WriteStdout("\nserver:  %s %s (protocol v%d)\n", probe.Health.Service,
+			probe.Health.AppVersion, probe.Health.ProtocolVersion)
+		WriteStdout("items:   %.0f at rev %.0f\n", probe.Health.Items, probe.Health.Rev)
+	}
+	if probe.Ready {
+		WriteStdout("\nstatus:  READY\n")
+	} else {
+		WriteStdout("\nstatus:  NOT READY\n")
+	}
+}
+
+func printChecks(checks []syncclient.Check) {
+	for _, c := range checks {
+		mark := "✓"
+		switch c.State {
+		case syncclient.CheckFailed:
+			mark = "✗"
+		case syncclient.CheckSkipped:
+			mark = "-"
+		}
+		WriteStdout("%s %-9s %s\n", mark, c.Id, c.Detail)
+		if c.State == syncclient.CheckFailed && c.Fix != "" {
+			WriteStdout("           fix: %s\n", c.Fix)
+		}
+	}
+}
+
+// checkFolderPath validates the folder transport without touching the filesystem beyond a stat.
+func checkFolderPath(path string) []syncclient.Check {
+	if strings.TrimSpace(path) == "" {
+		return []syncclient.Check{{
+			Id: "path", State: syncclient.CheckFailed, Detail: "no file path configured",
+			Fix: "wsh commontext-sync set-folder <path/to/commontext.json>",
+		}}
+	}
+	checks := []syncclient.Check{{Id: "path", State: syncclient.CheckOK, Detail: path}}
+	dir := filepath.Dir(path)
+	if info, err := os.Stat(dir); err != nil {
+		checks = append(checks, syncclient.Check{
+			Id: "dir", State: syncclient.CheckFailed,
+			Detail: fmt.Sprintf("directory does not exist: %s", dir),
+			Fix:    fmt.Sprintf("mkdir -p %s", dir),
+		})
+	} else if !info.IsDir() {
+		checks = append(checks, syncclient.Check{
+			Id: "dir", State: syncclient.CheckFailed, Detail: "parent path is not a directory",
+		})
+	} else {
+		checks = append(checks, syncclient.Check{Id: "dir", State: syncclient.CheckOK, Detail: "directory exists"})
+	}
+	return checks
+}
+
+// commonTextSyncLogRun prints recent journal events. This is the "did it actually sync?" answer.
+func commonTextSyncLogRun(cmd *cobra.Command, args []string) error {
+	events, err := syncjournal.ReadRecent(commonTextSyncLogLines)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		WriteStdout("no sync activity recorded yet\n")
 		return nil
 	}
-	return fmt.Errorf(
-		"keyring storage for sync tokens is not implemented yet, so the %s token cannot be stored safely.\n"+
-			"Set SNORKELING_SYNC_ALLOW_PLAINTEXT_TOKEN=1 to record only the hastoken flag (sync will not authenticate), "+
-			"or configure the token from the Settings UI once keyring support lands",
-		kind,
-	)
+	if commonTextSyncShowJson {
+		for _, ev := range events {
+			line, _ := json.Marshal(ev)
+			WriteStdout("%s\n", string(line))
+		}
+		return nil
+	}
+	for _, ev := range events {
+		writeEventLine(ev)
+	}
+	return nil
+}
+
+func writeEventLine(ev syncjournal.Event) {
+	switch ev.Type {
+	case syncjournal.EventRunStart:
+		WriteStdout("%s  run start (%s)\n", shortTime(ev.TS), ev.Trigger)
+	case syncjournal.EventPull:
+		WriteStdout("%s  pull   %d item(s) since rev %.0f\n", shortTime(ev.TS), ev.Items, ev.Since)
+	case syncjournal.EventPush:
+		WriteStdout("%s  push   %d item(s) → rev %.0f\n", shortTime(ev.TS), ev.Items, ev.Rev)
+	case syncjournal.EventConflict:
+		WriteStdout("%s  conflict  %s (%s) → %s\n", shortTime(ev.TS), ev.Id,
+			strings.Join(ev.Fields, ","), ev.Resolved)
+	case syncjournal.EventError:
+		WriteStdout("%s  ERROR  %s: %s\n", shortTime(ev.TS), ev.Phase, ev.Msg)
+	case syncjournal.EventRunEnd:
+		status := "ok"
+		if !ev.OK {
+			status = "failed"
+		}
+		WriteStdout("%s  run end  %s (%dms)\n", shortTime(ev.TS), status, ev.Ms)
+	default:
+		WriteStdout("%s  %s\n", shortTime(ev.TS), ev.Type)
+	}
+}
+
+func shortTime(rfc3339 string) string {
+	t, err := time.Parse(time.RFC3339Nano, rfc3339)
+	if err != nil {
+		return rfc3339
+	}
+	return t.Local().Format("01-02 15:04:05")
 }
