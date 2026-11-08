@@ -17,6 +17,7 @@
  *    preference and lives in localStorage, not in settings.json.
  */
 
+import { CommonTextService } from "@/app/store/services";
 import { atoms } from "@/app/store/global-atoms";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -194,10 +195,20 @@ export function draftToSettingsPatch(draft: SyncSettingsDraft): Record<string, u
     };
 }
 
-const GroupKeys = ["transport", "backend", "device", "conflict", "scope", "maintenance"] as const;
+const GroupKeys = ["transport", "backend", "device", "conflict", "scope", "status", "maintenance"] as const;
 type GroupKey = (typeof GroupKeys)[number];
 
 const CollapseStorageKey = "commontext:syncSettings:collapsed";
+
+/**
+ * Formats an RFC3339 timestamp from the backend. Falls back to the raw string when unparseable —
+ * showing "Invalid Date" would be worse than showing the value the backend sent.
+ */
+function formatSyncTime(rfc3339: string): string {
+    const ts = Date.parse(rfc3339);
+    if (Number.isNaN(ts)) return rfc3339;
+    return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
 
 function loadCollapsedGroups(): Record<string, boolean> {
     try {
@@ -317,6 +328,9 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
     const [draft, setDraft] = useState<SyncSettingsDraft>(stored);
     const [dirty, setDirty] = useState(false);
     const [status, setStatus] = useState("");
+    // Live status from the sync manager (transport, last run, unresolved conflicts).
+    const [syncStatus, setSyncStatus] = useState<Status | null>(null);
+    const [syncingNow, setSyncingNow] = useState(false);
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => loadCollapsedGroups());
 
     // Re-sync the draft when the persisted values change and the user has no local edits.
@@ -358,6 +372,47 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
             }
         });
     }, [draft]);
+
+    // Live status: fetched once on mount and refreshed after Save / Sync now. Polling is not needed
+    // because the timer-driven runs are minutes apart and the panel is short-lived.
+    const refreshSyncStatus = useCallback(() => {
+        fireAndForget(async () => {
+            try {
+                const resp = await CommonTextService.SyncStatus();
+                setSyncStatus(resp?.status ?? null);
+            } catch {
+                // Status is informational; a failure must not break the settings panel.
+                setSyncStatus(null);
+            }
+        });
+    }, []);
+
+    useEffect(() => {
+        refreshSyncStatus();
+    }, [refreshSyncStatus]);
+
+    const runSyncNow = useCallback(() => {
+        if (syncingNow) return;
+        setSyncingNow(true);
+        fireAndForget(async () => {
+            try {
+                const resp = await CommonTextService.SyncNow({ trigger: "manual" });
+                setSyncStatus(resp?.status ?? null);
+                const s = resp?.status;
+                setStatus(
+                    s == null
+                        ? "Sync finished."
+                        : s.lastError != null && s.lastError !== ""
+                          ? `Sync failed: ${s.lastError}`
+                          : `Synced — pulled ${s.lastPulled ?? 0}, applied ${s.lastApplied ?? 0}, pushed ${s.lastPushed ?? 0}.`
+                );
+            } catch (err) {
+                setStatus(err instanceof Error ? err.message : String(err));
+            } finally {
+                setSyncingNow(false);
+            }
+        });
+    }, [syncingNow]);
 
     const transports = useMemo(() => buildTransportSpecs(draft), [draft]);
     const deviceId = (settings as Record<string, unknown> | undefined)?.[SyncSettingKeys.deviceId];
@@ -745,6 +800,72 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 aria-label="Sync deletions"
                                 onChange={(v) => patch({ syncTombstones: v })}
                             />
+                        </Row>
+                    </div>
+                )}
+
+                {/* ── Status (live) ────────────────────────────────────── */}
+                <GroupHeader
+                    groupKey="status"
+                    label="Status"
+                    collapsed={isCollapsed("status")}
+                    onToggle={toggleGroup}
+                />
+                {!isCollapsed("status") && (
+                    <div className="divide-y divide-border" data-sync-live-status="">
+                        <Row
+                            title="Last sync"
+                            description={
+                                syncStatus == null
+                                    ? "Reading status…"
+                                    : syncStatus.lastError != null && syncStatus.lastError !== ""
+                                      ? syncStatus.lastError
+                                      : syncStatus.lastRunAt == null || syncStatus.lastRunAt === ""
+                                        ? `No run yet — syncs every ${Math.round(syncStatus.intervalSeconds / 60)} min once configured.`
+                                        : `pulled ${syncStatus.lastPulled ?? 0} · applied ${syncStatus.lastApplied ?? 0} · pushed ${syncStatus.lastPushed ?? 0}`
+                            }
+                            rowKey="status-last"
+                        >
+                            <span data-sync-status-time="" className="text-xs text-secondary">
+                                {syncStatus?.lastRunAt ? formatSyncTime(syncStatus.lastRunAt) : "—"}
+                            </span>
+                        </Row>
+                        <Row
+                            title="Unresolved conflicts"
+                            description={
+                                (syncStatus?.conflicts ?? 0) > 0
+                                    ? "Run `wsh commontext-sync conflicts --copy` to hand them to an AI for merging."
+                                    : "Nothing to resolve."
+                            }
+                            rowKey="status-conflicts"
+                        >
+                            <span
+                                data-sync-conflicts={(syncStatus?.conflicts ?? 0).toString()}
+                                className={cn(
+                                    "text-xs tabular-nums",
+                                    (syncStatus?.conflicts ?? 0) > 0 ? "text-warning" : "text-secondary"
+                                )}
+                            >
+                                {syncStatus?.conflicts ?? 0}
+                            </span>
+                        </Row>
+                        <Row
+                            title="Sync now"
+                            description="Run one sync immediately instead of waiting for the timer."
+                            rowKey="status-now"
+                        >
+                            <button
+                                type="button"
+                                data-sync-action="sync-now"
+                                disabled={syncingNow}
+                                onClick={() => void runSyncNow()}
+                                className={cn(
+                                    "h-7 rounded border border-border px-3 text-xs text-primary",
+                                    syncingNow ? "cursor-default opacity-50" : "cursor-pointer hover:bg-hover"
+                                )}
+                            >
+                                {syncingNow ? "Syncing…" : "Sync now"}
+                            </button>
                         </Row>
                     </div>
                 )}

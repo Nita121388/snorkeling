@@ -776,6 +776,20 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 	})
 }
 
+// SaveAll replaces the whole item table with the given list.
+//
+// It exists for the sync layer, which merges a remote snapshot into the local set and must write
+// the result atomically. It intentionally bypasses the empty-save guard in SaveFromConfigMap: a
+// sync that legitimately deletes every item (e.g. the remote deleted them) must be able to persist
+// that, and the guard there protects against a different mistake (an empty settings write).
+func SaveAll(ctx context.Context, items []commonTextItem) error {
+	if !wstore.IsInitialized() {
+		return fmt.Errorf("wstore is not initialized")
+	}
+	_ = ctx
+	return saveCommonTextItemsToDB(items)
+}
+
 func SaveFromConfigMap(settings waveobj.MetaMapType) (bool, error) {
 	allowEmptySave := settings.GetBool(commonTextAllowEmptySaveKey, false)
 	delete(settings, commonTextAllowEmptySaveKey)

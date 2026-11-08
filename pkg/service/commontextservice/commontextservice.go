@@ -5,10 +5,12 @@ package commontextservice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/commontextstore"
+	"github.com/wavetermdev/waveterm/pkg/syncmanager"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
@@ -166,4 +168,49 @@ func (svc *CommonTextService) RenameTag(ctx context.Context, request *CommonText
 		return nil, err
 	}
 	return &CommonTextRenameTagResponse{Count: count}, nil
+}
+
+// ── sync (R2 GUI wiring) ────────────────────────────────────────────────────
+
+type CommonTextSyncStatusResponse struct {
+	Status syncmanager.Status `json:"status"`
+}
+
+type CommonTextSyncNowRequest struct {
+	// Trigger names the cause so the journal can distinguish manual from timer.
+	Trigger string `json:"trigger,omitempty"`
+}
+
+func (svc *CommonTextService) SyncStatus_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "get common text sync status (transport, last run, unresolved conflicts)",
+		ArgNames:   []string{"ctx"},
+		ReturnDesc: "sync status",
+	}
+}
+
+func (svc *CommonTextService) SyncStatus(ctx context.Context) (*CommonTextSyncStatusResponse, error) {
+	return &CommonTextSyncStatusResponse{Status: syncmanager.GetStatus()}, nil
+}
+
+func (svc *CommonTextService) SyncNow_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "run one common text sync now",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "sync status after the run",
+	}
+}
+
+func (svc *CommonTextService) SyncNow(ctx context.Context, request *CommonTextSyncNowRequest) (*CommonTextSyncStatusResponse, error) {
+	trigger := "manual"
+	if request != nil && strings.TrimSpace(request.Trigger) != "" {
+		trigger = request.Trigger
+	}
+	status, err := syncmanager.SyncNow(ctx, trigger)
+	if err != nil && !errors.Is(err, syncmanager.ErrNotConfigured) {
+		return &CommonTextSyncStatusResponse{Status: status}, err
+	}
+	// ErrNotConfigured is the default state, not a failure: return the status so the UI can render
+	// "local only" instead of an error toast.
+	return &CommonTextSyncStatusResponse{Status: status}, nil
 }

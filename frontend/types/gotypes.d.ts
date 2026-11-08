@@ -1723,6 +1723,16 @@ declare global {
         count: number;
     };
 
+    // commontextservice.CommonTextSyncNowRequest
+    type CommonTextSyncNowRequest = {
+        trigger?: string;
+    };
+
+    // commontextservice.CommonTextSyncStatusResponse
+    type CommonTextSyncStatusResponse = {
+        status: Status;
+    };
+
     // commontextservice.CommonTextTagsResponse
     type CommonTextTagsResponse = {
         tags: TagSummary[];
@@ -2922,6 +2932,21 @@ declare global {
         "tsunami:gopath"?: string;
         "scheduledtasks:*"?: boolean;
         "scheduledtasks:items"?: ScheduledTaskType[];
+    };
+
+    // syncmanager.Status
+    type Status = {
+        transport: string;
+        configured: boolean;
+        problem?: string;
+        running: boolean;
+        lastRunAt?: string;
+        lastError?: string;
+        lastPulled: number;
+        lastApplied: number;
+        lastPushed: number;
+        conflicts: number;
+        intervalSeconds: number;
     };
 
     // waveobj.StickerClickOptsType

@@ -29,6 +29,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/secretstore"
 	"github.com/wavetermdev/waveterm/pkg/service"
+	"github.com/wavetermdev/waveterm/pkg/syncmanager"
 	"github.com/wavetermdev/waveterm/pkg/telemetry"
 	"github.com/wavetermdev/waveterm/pkg/telemetry/telemetrydata"
 	"github.com/wavetermdev/waveterm/pkg/util/envutil"
@@ -594,6 +595,9 @@ func main() {
 	}
 	wconfig.RegisterFullConfigHydrator(commontextstore.HydrateFullConfig)
 	commontextstore.MigrateCommonTextItems()
+	// Start the Common Text sync loop. It is a no-op until a transport is configured, and it
+	// re-reads settings each tick so a Settings-panel Save takes effect without a restart.
+	syncmanager.Start()
 	panichandler.PanicTelemetryHandler = panicTelemetryHandler
 	go func() {
 		defer func() {

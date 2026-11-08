@@ -432,6 +432,18 @@ export class CommonTextServiceType {
         return callBackendService(this?.waveEnv, "commontext", "RenameTag", Array.from(arguments))
     }
 
+    // run one common text sync now
+    // @returns sync status after the run
+    SyncNow(request: CommonTextSyncNowRequest): Promise<CommonTextSyncStatusResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncNow", Array.from(arguments))
+    }
+
+    // get common text sync status (transport, last run, unresolved conflicts)
+    // @returns sync status
+    SyncStatus(): Promise<CommonTextSyncStatusResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncStatus", Array.from(arguments))
+    }
+
     // list common text tags
     // @returns common text tags
     Tags(request: CommonTextListRequest): Promise<CommonTextTagsResponse> {
