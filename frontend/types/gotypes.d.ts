@@ -956,6 +956,55 @@ declare global {
         cmdexitsignal?: string;
     };
 
+    // wshrpc.BlockOpenRequest
+    type BlockOpenRequest = {
+        view: string;
+        tab?: string;
+        workspaceid?: string;
+        split?: string;
+        replace?: string;
+        magnified?: boolean;
+        nofocus?: boolean;
+        wait?: boolean;
+        waitms?: number;
+        dedupe?: boolean;
+        meta?: MetaType;
+    };
+
+    // wshrpc.BlockOpenResult
+    type BlockOpenResult = {
+        version: number;
+        ok: boolean;
+        tabid?: string;
+        blockid?: string;
+        blocknum?: number;
+        view?: string;
+        deduped?: boolean;
+        syncstate?: string;
+        waitedms?: number;
+        warnings?: string[];
+    };
+
+    // wshrpc.BlockReadRequest
+    type BlockReadRequest = {
+        blockid: string;
+        tail?: number;
+        maxbytes?: number;
+        lastcommand?: boolean;
+    };
+
+    // wshrpc.BlockReadResult
+    type BlockReadResult = {
+        version: number;
+        blockid: string;
+        view: string;
+        kind: string;
+        truncated: boolean;
+        bytes: number;
+        payload: {[key: string]: any};
+        warnings?: string[];
+    };
+
     // wshrpc.BlocksListEntry
     type BlocksListEntry = {
         windowid: string;
@@ -3318,6 +3367,56 @@ declare global {
         blockids: string[];
     };
 
+    // wshrpc.TabActivateRequest
+    type TabActivateRequest = {
+        tabid: string;
+        wait?: boolean;
+        waitms?: number;
+    };
+
+    // wshrpc.TabActivateResult
+    type TabActivateResult = {
+        version: number;
+        ok: boolean;
+        tabid?: string;
+        waitedms?: number;
+        warnings?: string[];
+    };
+
+    // wshrpc.TabCreateRequest
+    type TabCreateRequest = {
+        workspaceid?: string;
+        name?: string;
+        activate?: boolean;
+        wait?: boolean;
+        waitms?: number;
+    };
+
+    // wshrpc.TabCreateResult
+    type TabCreateResult = {
+        version: number;
+        ok: boolean;
+        tabid?: string;
+        tabname?: string;
+        waitedms?: number;
+        warnings?: string[];
+    };
+
+    // wshrpc.TabListRequest
+    type TabListRequest = {
+        workspaceid?: string;
+    };
+
+    // wshrpc.TabListResult
+    type TabListResult = {
+        version: number;
+        generatedat: number;
+        workspaceid?: string;
+        activetabid?: string;
+        tabs?: UIStateTab[];
+        warnings?: string[];
+    };
+
     // commontextstore.TagSummary
     type TagSummary = {
         tag: string;
@@ -3387,6 +3486,58 @@ declare global {
         exitCode?: number;
     };
 
+    // wshrpc.UIActiveRequest
+    type UIActiveRequest = {
+        blockid?: string;
+        tabid?: string;
+    };
+
+    // wshrpc.UIActiveSelf
+    type UIActiveSelf = {
+        tabid?: string;
+        blockid?: string;
+        blocknum?: number;
+    };
+
+    // wshrpc.UIActiveSnapshot
+    type UIActiveSnapshot = {
+        version: number;
+        generatedat: number;
+        self: UIActiveSelf;
+        active: UIActiveTarget;
+        warnings?: string[];
+    };
+
+    // wshrpc.UIActiveTarget
+    type UIActiveTarget = {
+        windowid?: string;
+        workspaceid?: string;
+        tabid?: string;
+        tabname?: string;
+        blockid?: string;
+        view?: string;
+        title?: string;
+    };
+
+    // wshrpc.UIBlockRuntime
+    type UIBlockRuntime = {
+        shellprocstatus?: string;
+        tsunamiport?: number;
+    };
+
+    // wshrpc.UIBlockState
+    type UIBlockState = {
+        blockid: string;
+        tabid?: string;
+        workspaceid?: string;
+        view?: string;
+        title?: string;
+        controller?: string;
+        runtime?: UIBlockRuntime;
+        agent?: SessionLiveIssue;
+        meta?: MetaType;
+    };
+
     // uctypes.UIChat
     type UIChat = {
         chatid: string;
@@ -3428,6 +3579,32 @@ declare global {
         id?: string;
         data?: any;
         providerMetadata?: {[key: string]: any};
+    };
+
+    // wshrpc.UIStateRequest
+    type UIStateRequest = {
+        windowid?: string;
+        workspaceid?: string;
+        includeidle?: boolean;
+    };
+
+    // wshrpc.UIStateSnapshot
+    type UIStateSnapshot = {
+        version: number;
+        generatedat: number;
+        windows?: string[];
+        tabs?: UIStateTab[];
+        blocks?: UIBlockState[];
+        sources?: {[key: string]: string};
+        warnings?: string[];
+    };
+
+    // wshrpc.UIStateTab
+    type UIStateTab = {
+        tabid: string;
+        name?: string;
+        active?: boolean;
+        workspaceid?: string;
     };
 
     // userinput.UserInputRequest

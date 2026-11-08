@@ -108,6 +108,18 @@ export class RpcApiType {
         return client.wshRpcCall("blockjobstatus", data, opts);
     }
 
+    // command "blockopen" [call]
+    BlockOpenCommand(client: WshClient, data: BlockOpenRequest, opts?: RpcOpts): Promise<BlockOpenResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "blockopen", data, opts);
+        return client.wshRpcCall("blockopen", data, opts);
+    }
+
+    // command "blockread" [call]
+    BlockReadCommand(client: WshClient, data: BlockReadRequest, opts?: RpcOpts): Promise<BlockReadResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "blockread", data, opts);
+        return client.wshRpcCall("blockread", data, opts);
+    }
+
     // command "blockslist" [call]
     BlocksListCommand(client: WshClient, data: BlocksListRequest, opts?: RpcOpts): Promise<BlocksListEntry[]> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "blockslist", data, opts);
@@ -1158,6 +1170,24 @@ export class RpcApiType {
         return client.wshRpcStream("streamtest", null, opts);
     }
 
+    // command "tabactivate" [call]
+    TabActivateCommand(client: WshClient, data: TabActivateRequest, opts?: RpcOpts): Promise<TabActivateResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "tabactivate", data, opts);
+        return client.wshRpcCall("tabactivate", data, opts);
+    }
+
+    // command "tabcreate" [call]
+    TabCreateCommand(client: WshClient, data: TabCreateRequest, opts?: RpcOpts): Promise<TabCreateResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "tabcreate", data, opts);
+        return client.wshRpcCall("tabcreate", data, opts);
+    }
+
+    // command "tablist" [call]
+    TabListCommand(client: WshClient, data: TabListRequest, opts?: RpcOpts): Promise<TabListResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "tablist", data, opts);
+        return client.wshRpcCall("tablist", data, opts);
+    }
+
     // command "termgetscrollbacklines" [call]
     TermGetScrollbackLinesCommand(client: WshClient, data: CommandTermGetScrollbackLinesData, opts?: RpcOpts): Promise<CommandTermGetScrollbackLinesRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "termgetscrollbacklines", data, opts);
@@ -1174,6 +1204,18 @@ export class RpcApiType {
     TestMultiArgCommand(client: WshClient, arg1: string, arg2: number, arg3: boolean, opts?: RpcOpts): Promise<string> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "testmultiarg", { args: [arg1, arg2, arg3] }, opts);
         return client.wshRpcCall("testmultiarg", { args: [arg1, arg2, arg3] }, opts);
+    }
+
+    // command "uiactive" [call]
+    UIActiveCommand(client: WshClient, data: UIActiveRequest, opts?: RpcOpts): Promise<UIActiveSnapshot> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "uiactive", data, opts);
+        return client.wshRpcCall("uiactive", data, opts);
+    }
+
+    // command "uistate" [call]
+    UIStateCommand(client: WshClient, data: UIStateRequest, opts?: RpcOpts): Promise<UIStateSnapshot> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "uistate", data, opts);
+        return client.wshRpcCall("uistate", data, opts);
     }
 
     // command "updatetabname" [call]

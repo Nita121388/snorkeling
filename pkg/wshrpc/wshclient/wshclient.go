@@ -110,6 +110,18 @@ func BlockJobStatusCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts)
 	return resp, err
 }
 
+// command "blockopen", wshserver.BlockOpenCommand
+func BlockOpenCommand(w *wshutil.WshRpc, data wshrpc.BlockOpenRequest, opts *wshrpc.RpcOpts) (*wshrpc.BlockOpenResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.BlockOpenResult](w, "blockopen", data, opts)
+	return resp, err
+}
+
+// command "blockread", wshserver.BlockReadCommand
+func BlockReadCommand(w *wshutil.WshRpc, data wshrpc.BlockReadRequest, opts *wshrpc.RpcOpts) (*wshrpc.BlockReadResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.BlockReadResult](w, "blockread", data, opts)
+	return resp, err
+}
+
 // command "blockslist", wshserver.BlocksListCommand
 func BlocksListCommand(w *wshutil.WshRpc, data wshrpc.BlocksListRequest, opts *wshrpc.RpcOpts) ([]wshrpc.BlocksListEntry, error) {
 	resp, err := sendRpcRequestCallHelper[[]wshrpc.BlocksListEntry](w, "blockslist", data, opts)
@@ -1153,6 +1165,24 @@ func StreamTestCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) chan wshrpc.Resp
 	return sendRpcRequestResponseStreamHelper[int](w, "streamtest", nil, opts)
 }
 
+// command "tabactivate", wshserver.TabActivateCommand
+func TabActivateCommand(w *wshutil.WshRpc, data wshrpc.TabActivateRequest, opts *wshrpc.RpcOpts) (*wshrpc.TabActivateResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.TabActivateResult](w, "tabactivate", data, opts)
+	return resp, err
+}
+
+// command "tabcreate", wshserver.TabCreateCommand
+func TabCreateCommand(w *wshutil.WshRpc, data wshrpc.TabCreateRequest, opts *wshrpc.RpcOpts) (*wshrpc.TabCreateResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.TabCreateResult](w, "tabcreate", data, opts)
+	return resp, err
+}
+
+// command "tablist", wshserver.TabListCommand
+func TabListCommand(w *wshutil.WshRpc, data wshrpc.TabListRequest, opts *wshrpc.RpcOpts) (*wshrpc.TabListResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.TabListResult](w, "tablist", data, opts)
+	return resp, err
+}
+
 // command "termgetscrollbacklines", wshserver.TermGetScrollbackLinesCommand
 func TermGetScrollbackLinesCommand(w *wshutil.WshRpc, data wshrpc.CommandTermGetScrollbackLinesData, opts *wshrpc.RpcOpts) (*wshrpc.CommandTermGetScrollbackLinesRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandTermGetScrollbackLinesRtnData](w, "termgetscrollbacklines", data, opts)
@@ -1168,6 +1198,18 @@ func TestCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
 // command "testmultiarg", wshserver.TestMultiArgCommand
 func TestMultiArgCommand(w *wshutil.WshRpc, arg1 string, arg2 int, arg3 bool, opts *wshrpc.RpcOpts) (string, error) {
 	resp, err := sendRpcRequestCallHelper[string](w, "testmultiarg", wshrpc.MultiArg{Args: []any{arg1, arg2, arg3}}, opts)
+	return resp, err
+}
+
+// command "uiactive", wshserver.UIActiveCommand
+func UIActiveCommand(w *wshutil.WshRpc, data wshrpc.UIActiveRequest, opts *wshrpc.RpcOpts) (*wshrpc.UIActiveSnapshot, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.UIActiveSnapshot](w, "uiactive", data, opts)
+	return resp, err
+}
+
+// command "uistate", wshserver.UIStateCommand
+func UIStateCommand(w *wshutil.WshRpc, data wshrpc.UIStateRequest, opts *wshrpc.RpcOpts) (*wshrpc.UIStateSnapshot, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.UIStateSnapshot](w, "uistate", data, opts)
 	return resp, err
 }
 
