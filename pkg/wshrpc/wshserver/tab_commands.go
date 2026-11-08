@@ -57,10 +57,10 @@ func (ws *WshServer) TabCreateCommand(ctx context.Context, data wshrpc.TabCreate
 		return nil, err
 	}
 	rtn := &wshrpc.TabCreateResult{
-		Version:   wshrpc.AgentControlVersion,
-		Ok:        true,
-		TabId:     newTabId,
-		WaitedMs:  int(time.Since(start).Milliseconds()),
+		Version:  wshrpc.AgentControlVersion,
+		Ok:       true,
+		TabId:    newTabId,
+		WaitedMs: int(time.Since(start).Milliseconds()),
 	}
 	if tabObj, err := wstore.DBMustGet[*waveobj.Tab](ctx, newTabId); err == nil {
 		rtn.TabName = tabObj.Name

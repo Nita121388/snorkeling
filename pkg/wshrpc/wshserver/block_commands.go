@@ -60,30 +60,15 @@ func (ws *WshServer) BlockOpenCommand(ctx context.Context, data wshrpc.BlockOpen
 		}
 	}
 
-	// 4. Delegate to the existing create path.
-	var targetBlockId, targetAction string
-	switch data.Split {
-	case "", "right":
-		targetAction = "splitright"
-	case "left":
-		targetAction = "splitleft"
-	case "down":
-		targetAction = "splitdown"
-	case "up":
-		targetAction = "splitup"
-	default:
-		return nil, fmt.Errorf("E_USAGE: invalid --split %q (right|down|left|up)", data.Split)
+	// 4. Delegate to the existing create path. Split needs a target block:
+	// use the last block in the tab so `--split right` places the new block
+	// after the current end of the tab (mirrors "split current pane").
+	targetBlockId, targetAction, err := splitTargetAction(data.Split, data.Replace)
+	if err != nil {
+		return nil, err
 	}
-	if data.Replace != "" {
-		targetAction = "replace"
-		targetBlockId = data.Replace
-	} else {
-		// split needs a target block; without one, append to the tab.
-		targetBlockId = ""
-	}
-	if targetBlockId == "" && data.Replace == "" {
-		// plain insert: no layout target, CreateBlockCommand appends.
-		targetAction = ""
+	if targetAction != "" && targetAction != "replace" && targetBlockId == "" {
+		targetBlockId = lastBlockInTab(ctx, tabId)
 	}
 
 	oref, err := ws.CreateBlockCommand(ctx, wshrpc.CommandCreateBlockData{
@@ -128,6 +113,31 @@ func (ws *WshServer) BlockOpenCommand(ctx context.Context, data wshrpc.BlockOpen
 		}
 	}
 	return rtn, nil
+}
+
+// splitTargetAction maps CLI --split/--replace to wshrpc TargetAction.
+// The split target block is left empty (CreateBlockCommand appends to the
+// tab), so split maps to a no-target insert with the direction recorded in
+// the layout action by CreateBlockCommand itself.
+func splitTargetAction(split, replace string) (targetBlockId, targetAction string, err error) {
+	if split != "" && replace != "" {
+		return "", "", fmt.Errorf("E_USAGE: --split and --replace are mutually exclusive")
+	}
+	if replace != "" {
+		return replace, "replace", nil
+	}
+	switch split {
+	case "", "right":
+		return "", "splitright", nil
+	case "left":
+		return "", "splitleft", nil
+	case "down":
+		return "", "splitdown", nil
+	case "up":
+		return "", "splitup", nil
+	default:
+		return "", "", fmt.Errorf("E_USAGE: invalid --split %q (right|down|left|up)", split)
+	}
 }
 
 func resolveOpenTabId(ctx context.Context, data wshrpc.BlockOpenRequest) (string, error) {
@@ -221,4 +231,13 @@ func blockInTab(ctx context.Context, tabId, blockId string) bool {
 		}
 	}
 	return false
+}
+
+// lastBlockInTab returns the last block id in the tab, or "" when empty.
+func lastBlockInTab(ctx context.Context, tabId string) string {
+	tabObj, err := wstore.DBMustGet[*waveobj.Tab](ctx, tabId)
+	if err != nil || len(tabObj.BlockIds) == 0 {
+		return ""
+	}
+	return tabObj.BlockIds[len(tabObj.BlockIds)-1]
 }

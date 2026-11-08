@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -112,7 +113,11 @@ func uidSeedData(t *testing.T, prefix string) uidSeed {
 			meta["cmd:env"] = "AI_API_KEY=sk-secret"
 			meta[waveobj.MetaKey_FrameTitle] = "shell"
 		}
-		must(wstore.DBInsert(ctx, &waveobj.Block{OID: id, Meta: meta}))
+		must(wstore.DBInsert(ctx, &waveobj.Block{
+			OID:        id,
+			ParentORef: waveobj.MakeORef(waveobj.OType_Tab, s.tabId).String(),
+			Meta:       meta,
+		}))
 	}
 	return s
 }
@@ -226,8 +231,9 @@ func TestBuildUIActiveFocusedUnavailableDegrades(t *testing.T) {
 func TestReadTermBlockViaStub(t *testing.T) {
 	setupUIStore(t)
 	ctx := context.Background()
-	blkId := "uiread-term-blk"
-	tabId := "uiread-term-tab"
+	// OIDs must be valid UUIDs: DBFindTabForBlockId parses the parent ref.
+	blkId := uuid.NewString()
+	tabId := uuid.NewString()
 	_ = wstore.DBDelete(ctx, waveobj.OType_Block, blkId)
 	_ = wstore.DBDelete(ctx, waveobj.OType_Tab, tabId)
 	t.Cleanup(func() {
@@ -238,8 +244,9 @@ func TestReadTermBlockViaStub(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := wstore.DBInsert(ctx, &waveobj.Block{
-		OID:  blkId,
-		Meta: waveobj.MetaMapType{waveobj.MetaKey_View: "term"},
+		OID:        blkId,
+		ParentORef: waveobj.MakeORef(waveobj.OType_Tab, tabId).String(),
+		Meta:       waveobj.MetaMapType{waveobj.MetaKey_View: "term"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -267,11 +274,20 @@ func TestReadBlockUnknownView(t *testing.T) {
 	setupUIStore(t)
 	ctx := context.Background()
 	blkId := "uiread-unknown-blk"
+	tabId := "uiread-unknown-tab"
 	_ = wstore.DBDelete(ctx, waveobj.OType_Block, blkId)
-	t.Cleanup(func() { _ = wstore.DBDelete(ctx, waveobj.OType_Block, blkId) })
+	_ = wstore.DBDelete(ctx, waveobj.OType_Tab, tabId)
+	t.Cleanup(func() {
+		_ = wstore.DBDelete(ctx, waveobj.OType_Block, blkId)
+		_ = wstore.DBDelete(ctx, waveobj.OType_Tab, tabId)
+	})
+	if err := wstore.DBInsert(ctx, &waveobj.Tab{OID: tabId, Name: "t", BlockIds: []string{blkId}}); err != nil {
+		t.Fatal(err)
+	}
 	if err := wstore.DBInsert(ctx, &waveobj.Block{
-		OID:  blkId,
-		Meta: waveobj.MetaMapType{waveobj.MetaKey_View: "weird-view"},
+		OID:        blkId,
+		ParentORef: waveobj.MakeORef(waveobj.OType_Tab, tabId).String(),
+		Meta:       waveobj.MetaMapType{waveobj.MetaKey_View: "weird-view"},
 	}); err != nil {
 		t.Fatal(err)
 	}
