@@ -18,11 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [
-    "11-08-agent-control-ui-navigation"
-  ],
+  "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "P0.0 + P0.1 已交付并归档（11-01-live-session-overview, 11-01-session-agent-card）。剩余 P0.2/P0.3/P1/P1.5 待开新任务。",
+  "notes": "P0.0 + P0.1 已交付归档；P0.2（11-08-agent-control-ui-navigation）已交付并归档：ui active/state + block read/open + tab list/create/activate，真机验收 7/8 通过，AC7 前端实拍因 dev 启动环境（renderer 恒 hidden）未验成，已在 7866de53 用三态 syncState 消除误报风险。剩余 P0.3/P1/P1.5 待开新任务。",
   "meta": {}
 }
