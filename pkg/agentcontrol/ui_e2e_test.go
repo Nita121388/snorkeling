@@ -305,6 +305,52 @@ func TestReadBlockUnknownView(t *testing.T) {
 	}
 }
 
+func TestReadBlockLocalConnReadsFile(t *testing.T) {
+	setupUIStore(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(filePath, []byte("hello acs"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	blkId := uuid.NewString()
+	tabId := uuid.NewString()
+	t.Cleanup(func() {
+		_ = wstore.DBDelete(ctx, waveobj.OType_Block, blkId)
+		_ = wstore.DBDelete(ctx, waveobj.OType_Tab, tabId)
+	})
+	if err := wstore.DBInsert(ctx, &waveobj.Tab{OID: tabId, Name: "t", BlockIds: []string{blkId}}); err != nil {
+		t.Fatal(err)
+	}
+	// "local" is the normal value for a local block: it must NOT be treated
+	// as a remote mount (real-machine regression, 2026-11-08).
+	if err := wstore.DBInsert(ctx, &waveobj.Block{
+		OID:        blkId,
+		ParentORef: waveobj.MakeORef(waveobj.OType_Tab, tabId).String(),
+		Meta: waveobj.MetaMapType{
+			waveobj.MetaKey_View:       "preview",
+			waveobj.MetaKey_File:       filePath,
+			waveobj.MetaKey_Connection: "local",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rtn, err := ReadBlock(ctx, wshrpc.BlockReadRequest{BlockId: blkId})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rtn.Payload["warning"] == "remote-file-unsupported" {
+		t.Fatal("connection=local must not be treated as remote")
+	}
+	if rtn.Payload["content"] != "hello acs" {
+		t.Fatalf("expected file content, got %#v", rtn.Payload["content"])
+	}
+	if rtn.Payload["file"] != filePath {
+		t.Fatalf("expected file path echoed, got %#v", rtn.Payload["file"])
+	}
+}
+
 func TestReadBlockMissingBlock(t *testing.T) {
 	setupUIStore(t)
 	_, err := ReadBlock(context.Background(), wshrpc.BlockReadRequest{BlockId: "no-such-block"})

@@ -17,6 +17,7 @@ import (
 
 	"github.com/wavetermdev/waveterm/pkg/agentstatus"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
+	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wcore"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -277,7 +278,9 @@ func readFileBlock(ctx context.Context, rtn *wshrpc.BlockReadResult, blk *waveob
 		rtn.Payload["warning"] = "no-file"
 		return
 	}
-	if conn := redacted.GetString(waveobj.MetaKey_Connection, ""); conn != "" {
+	if conn := redacted.GetString(waveobj.MetaKey_Connection, ""); !conncontroller.IsLocalConnName(conn) {
+		// "local" / "local:<name>" / "" all mean this machine; only a real
+		// remote conn means the file is not readable here.
 		rtn.Payload["warning"] = "remote-file-unsupported"
 		rtn.Warnings = append(rtn.Warnings, "remote-file-unsupported")
 		return
@@ -288,14 +291,14 @@ func readFileBlock(ctx context.Context, rtn *wshrpc.BlockReadResult, blk *waveob
 		rtn.Warnings = append(rtn.Warnings, "file-unreadable")
 		return
 	}
-	_ = info
 	rtn.Payload["content"] = content
-	rtn.Payload["isdir"] = false
-	if _, err := os.Stat(filePath); err == nil {
-		if st, err2 := os.Stat(filePath); err2 == nil && st.IsDir() {
-			rtn.Payload["isdir"] = true
-		}
+	if info != nil {
+		rtn.Payload["isdir"] = info.IsDir()
+	} else {
+		rtn.Payload["isdir"] = false
 	}
+	rtn.Bytes = len(content)
+	rtn.Truncated = len(content) >= maxBytes
 	rtn.Bytes = len(content)
 	rtn.Truncated = len(content) >= maxBytes
 }
