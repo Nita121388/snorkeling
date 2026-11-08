@@ -21,6 +21,6 @@
   "children": [],
   "parent": "11-01-agent-control-surface",
   "relatedFiles": [],
-  "notes": "Stage 1-5 代码已交付并提交（8b2b8406/f5744cfe/4260490d/4a4c23df）；Stage 7 文档与 spec 已提交（2d3c98ea）。AC1-AC9 真机项未完成：wsh 只从 WAVETERM_JWT 取 RPC 上下文，应用外没有合法 token 来源；验证子代理因 provider 403 失败。判定口径与复跑方式见 docs/project/verify-runs/2026-11-08-acs-p02.md。未通过前不得归档。",
+  "notes": "Stage 1-5 代码 + Stage 7 文档/spec 已交付（8b2b8406..ebab6998）。真机验收（CDP 直调 RpcApi，无需 token）：AC1/AC3/AC4/AC5/AC6/AC8/AC9 通过；AC7 仅后端半边通过，前端渲染未验成——dev 以非前台方式启动，两个 page target 均报 document.hidden=true，Win32 ShowWindow 恢复窗口与 Page.bringToFront 均无效，属环境阻塞。过程中修复真 bug：connection=\"local\" 被误判为远程（4f719d1e）。AC7 前端需正常交互式启动的可见窗口复测。明细见 docs/project/verify-runs/2026-11-08-acs-p02.md。",
   "meta": {}
 }
