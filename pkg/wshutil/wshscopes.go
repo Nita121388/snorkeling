@@ -9,38 +9,49 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 )
 
-// Link scopes are the scopes a connection proved at authenticate time. They are
-// keyed by ingress link id rather than by anything the client sends, so a client
-// cannot widen its own permissions by declaring scopes in a request context.
+// Grant is what a connection proved at authenticate time. It lives here rather
+// than in the request context because the request context is supplied by the
+// client: identity and permissions must come from the verified token.
+type Grant struct {
+	Scopes    []string
+	AgentName string
+	Jti       string
+}
+
 var (
 	linkScopeLock sync.RWMutex
-	linkScopes    = map[baseds.LinkId][]string{}
+	linkGrants    = map[baseds.LinkId]Grant{}
 )
 
-// SetLinkScopes records what a link was granted. An empty/nil slice means
-// app-level (in-app token), which is not scope-limited.
-func SetLinkScopes(linkId baseds.LinkId, scopes []string) {
+// SetLinkGrant records what a link was granted. An empty grant means app-level
+// (in-app token), which is not scope-limited.
+func SetLinkGrant(linkId baseds.LinkId, grant Grant) {
 	linkScopeLock.Lock()
 	defer linkScopeLock.Unlock()
-	if len(scopes) == 0 {
-		delete(linkScopes, linkId)
+	if len(grant.Scopes) == 0 && grant.AgentName == "" && grant.Jti == "" {
+		delete(linkGrants, linkId)
 		return
 	}
-	copied := make([]string, len(scopes))
-	copy(copied, scopes)
-	linkScopes[linkId] = copied
+	copied := Grant{AgentName: grant.AgentName, Jti: grant.Jti}
+	copied.Scopes = append([]string(nil), grant.Scopes...)
+	linkGrants[linkId] = copied
 }
 
-// GetLinkScopes returns the scopes granted to a link (nil = app-level).
-func GetLinkScopes(linkId baseds.LinkId) []string {
+// GetLinkGrant returns the grant bound to a link (zero value = app-level).
+func GetLinkGrant(linkId baseds.LinkId) Grant {
 	linkScopeLock.RLock()
 	defer linkScopeLock.RUnlock()
-	return linkScopes[linkId]
+	return linkGrants[linkId]
 }
 
-// ClearLinkScopes drops the grant when a link goes away.
-func ClearLinkScopes(linkId baseds.LinkId) {
+// GetLinkScopes is the scope-only view, kept for callers that only need that.
+func GetLinkScopes(linkId baseds.LinkId) []string {
+	return GetLinkGrant(linkId).Scopes
+}
+
+// ClearLinkGrant drops the grant when a link goes away.
+func ClearLinkGrant(linkId baseds.LinkId) {
 	linkScopeLock.Lock()
 	defer linkScopeLock.Unlock()
-	delete(linkScopes, linkId)
+	delete(linkGrants, linkId)
 }

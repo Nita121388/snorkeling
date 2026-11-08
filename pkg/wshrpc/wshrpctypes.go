@@ -316,7 +316,9 @@ func (rc RpcContext) GenerateRouteId() string {
 type CommandAuthenticateRtnData struct {
 	RouteId string `json:"routeid"`
 	// external agent scopes proved by the token (empty = app-level)
-	Scopes []string `json:"scopes,omitempty"`
+	Scopes    []string `json:"scopes,omitempty"`
+	AgentName string   `json:"agentname,omitempty"`
+	TokenId   string   `json:"tokenid,omitempty"` // jti, for audit + revocation
 
 	// these fields are only set when doing a token swap
 	Env            map[string]string `json:"env,omitempty"`

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/wavetermdev/waveterm/pkg/agentaccess"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
@@ -215,7 +216,7 @@ func (impl *WshRouterControlImpl) AuthenticateTokenCommand(ctx context.Context, 
 	impl.Router.trustLink(linkId, LinkKind_Leaf)
 	impl.Router.bindRoute(linkId, rtnData.RouteId, true)
 	// Bind the grant to the connection, not to anything the client declares.
-	SetLinkScopes(linkId, rtnData.Scopes)
+	SetLinkGrant(linkId, Grant{Scopes: rtnData.Scopes, AgentName: rtnData.AgentName, Jti: rtnData.TokenId})
 
 	return rtnData, nil
 }
@@ -325,6 +326,13 @@ func extractAgentJwtData(tokenStr string) (wshrpc.CommandAuthenticateRtnData, er
 	if claims.Router {
 		return wshrpc.CommandAuthenticateRtnData{}, fmt.Errorf("cannot auth router via agent token")
 	}
+	// Revocation is checked lazily on every authenticate: simplest correct
+	// behaviour, and a revoked token fails on its next call instead of living
+	// until expiry. (Design §10.5.3 asks for immediate effect; this delivers it
+	// per-call without cross-thread link surgery.)
+	if agentaccess.IsRevoked(claims.ID) {
+		return wshrpc.CommandAuthenticateRtnData{}, fmt.Errorf("E_UNAUTHORIZED: token was revoked")
+	}
 	rpcCtx := claimsToRpcCtx(claims)
 	if _, err := validateRpcContextFromAuth(rpcCtx); err != nil {
 		return wshrpc.CommandAuthenticateRtnData{}, err
@@ -336,6 +344,8 @@ func extractAgentJwtData(tokenStr string) (wshrpc.CommandAuthenticateRtnData, er
 	return wshrpc.CommandAuthenticateRtnData{
 		RouteId:    routeId,
 		Scopes:     claims.Scope,
+		AgentName:  claims.AgentName,
+		TokenId:    claims.ID,
 		RpcContext: rpcCtx,
 	}, nil
 }

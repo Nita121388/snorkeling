@@ -3,7 +3,7 @@
   "name": "agent-control-mcp",
   "title": "ACS P1+P1.5：scoped token 与 MCP 门面（外部 Agent 接入）",
   "description": "让 App 外的 Agent（Claude Code / Codex / pi）通过 scoped token 走 wsh，并由 wsh mcp serve --stdio 暴露成 MCP tools/resources。含 wavejwt claims 扩展、wsh auth grant/list/revoke、--token-file、服务端 scope 强制、MCP 协议实现与 JSON Schema。设计见 design/plans/agent-control-surface.md §10.5。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": "snorkeling-docs",

@@ -13,6 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
+	"time"
+	"text/tabwriter"
+	"github.com/wavetermdev/waveterm/pkg/agentaccess"
 )
 
 // AgentTokenFile is the on-disk shape of an external-agent token. The token
@@ -28,6 +31,10 @@ type AgentTokenFile struct {
 }
 
 var (
+	authShowRevoked bool
+	authRevokeName  string
+	authRevokeJti   string
+	authRevokeAll   bool
 	authName     string
 	authScopes   []string
 	authTTL      int
@@ -59,12 +66,17 @@ The token is written 0600. Default scope is observe; data writes need --scope da
 func init() {
 	authCmd.PersistentFlags().Int64Var(&authTimeout, "timeout", 8000, "RPC timeout in milliseconds")
 	authCmd.PersistentFlags().BoolVar(&authJSON, "json", false, "output as JSON")
-	authCmd.AddCommand(authGrantCmd)
+	authCmd.AddCommand(authGrantCmd, authListCmd, authRevokeCmd)
 
 	authGrantCmd.Flags().StringVar(&authName, "name", "", "agent name (used in the route id and audit)")
 	authGrantCmd.Flags().StringSliceVar(&authScopes, "scope", []string{"observe"}, "scopes: observe,navigate,data")
 	authGrantCmd.Flags().IntVar(&authTTL, "ttl", 1800, "token lifetime in seconds (max 86400)")
 	authGrantCmd.Flags().StringVar(&authOut, "out", "", "output file (default ~/.config/snorkeling/agent-token.json)")
+
+	authListCmd.Flags().BoolVar(&authShowRevoked, "all", false, "include revoked tokens")
+	authRevokeCmd.Flags().StringVar(&authRevokeName, "name", "", "revoke every token for this agent name")
+	authRevokeCmd.Flags().StringVar(&authRevokeJti, "jti", "", "revoke one token by jti")
+	authRevokeCmd.Flags().BoolVar(&authRevokeAll, "all", false, "revoke every live token")
 
 	rootCmd.AddCommand(authCmd)
 }
@@ -153,4 +165,74 @@ func formatMilli(ms int64) string {
 		return "-"
 	}
 	return fmt.Sprintf("%d", ms)
+}
+
+var authListCmd = &cobra.Command{
+	Use:     "list",
+	Short:   "List granted agent tokens (never the token itself)",
+	Args:    cobra.NoArgs,
+	RunE:    authListRun,
+	PreRunE: preRunSetupRpcClient,
+}
+
+var authRevokeCmd = &cobra.Command{
+	Use:   "revoke [--name <n> | --jti <id> | --all]",
+	Short: "Revoke an agent token so its next call fails",
+	Args:  cobra.NoArgs,
+	RunE:  authRevokeRun,
+}
+
+func authListRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	entries, err := agentaccess.List()
+	if err != nil {
+		return err
+	}
+	now := time.Now().UnixMilli()
+	if authJSON {
+		out, _ := json.Marshal(entries)
+		fmt.Println(string(out))
+		return nil
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	defer w.Flush()
+	fmt.Fprintln(w, "NAME\tJTI\tSCOPES\tEXPIRES\tSTATE")
+	for _, e := range entries {
+		state := "live"
+		switch {
+		case e.Revoked():
+			state = "revoked"
+			if !authShowRevoked {
+				continue
+			}
+		case e.Expired(now):
+			state = "expired"
+			if !authShowRevoked {
+				continue
+			}
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			e.Name, agentaccess.Describe(e.Jti), strings.Join(e.Scopes, ","),
+			time.UnixMilli(e.ExpiresAt).Format("15:04:05"), state)
+	}
+	return nil
+}
+
+func authRevokeRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	var count int
+	var err error
+	switch {
+	case authRevokeAll:
+		count, err = agentaccess.RevokeAll()
+	case authRevokeName != "":
+		count, err = agentaccess.RevokeByName(authRevokeName)
+	case authRevokeJti != "":
+		count, err = agentaccess.RevokeByJti(authRevokeJti)
+	default:
+		return fmt.Errorf("nothing to revoke: pass --name, --jti or --all")
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Printf("revoked\t%d\n", count)
+	return nil
 }

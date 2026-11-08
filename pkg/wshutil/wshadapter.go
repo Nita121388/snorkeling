@@ -10,6 +10,7 @@ import (
 
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
 	"github.com/wavetermdev/waveterm/pkg/util/utilfn"
+	"github.com/wavetermdev/waveterm/pkg/agentaccess"
 	"github.com/wavetermdev/waveterm/pkg/agentscope"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
@@ -98,13 +99,28 @@ func serverImplAdapter(impl any) func(*RpcResponseHandler) bool {
 			handler.SendResponseError(fmt.Errorf("command not implemented %q", cmd))
 			return true
 		}
-		// External-agent scope gate. The grant is bound to the link at
-		// authenticate time, so a client cannot widen it by declaring scopes.
+		// External-agent gate: scope + rate limit + audit, all in one place so
+		// there is exactly one choke point for the control surface.
 		if required, ok := agentscope.RequiredForCommand(cmd); ok {
-			if !agentscope.Allows(GetLinkScopes(handler.GetIngressLinkId()), required) {
+			grant := GetLinkGrant(handler.GetIngressLinkId())
+			if !agentscope.Allows(grant.Scopes, required) {
+				auditDenied(cmd, grant, "scope "+required)
 				handler.SendResponseError(fmt.Errorf("E_FORBIDDEN: command %q requires scope %q", cmd, required))
 				return true
 			}
+			if !agentaccess.Allow(grant.Jti) {
+				auditDenied(cmd, grant, "rate limit")
+				handler.SendResponseError(fmt.Errorf("E_FORBIDDEN: rate limit exceeded for this agent token (60/min); hint: prefer wsh ui active over polling ui state"))
+				return true
+			}
+			// Recorded before the call: the audit answers "who touched what",
+			// not "what did the handler decide".
+			_ = agentaccess.AppendAudit(agentaccess.AuditEntry{
+				Command:   cmd,
+				AgentName: grant.AgentName,
+				JtiPrefix: agentaccess.Describe(grant.Jti),
+				Result:    "ok",
+			})
 		}
 		implMethod := reflect.ValueOf(impl).MethodByName(rmethod.Name)
 		var callParams []reflect.Value
@@ -183,4 +199,16 @@ func serverImplAdapter(impl any) func(*RpcResponseHandler) bool {
 			return true
 		}
 	}
+}
+
+// auditDenied records a refused control call. Audit failures never turn a
+// refusal into a different failure mode.
+func auditDenied(cmd string, grant Grant, reason string) {
+	_ = agentaccess.AppendAudit(agentaccess.AuditEntry{
+		Command:   cmd,
+		AgentName: grant.AgentName,
+		JtiPrefix: agentaccess.Describe(grant.Jti),
+		Result:    "denied",
+		Reason:    reason,
+	})
 }

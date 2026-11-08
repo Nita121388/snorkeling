@@ -1077,6 +1077,8 @@ declare global {
     type CommandAuthenticateRtnData = {
         routeid: string;
         scopes?: string[];
+        agentname?: string;
+        tokenid?: string;
         env?: {[key: string]: string};
         initscripttext?: string;
         rpccontext?: RpcContext;

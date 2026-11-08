@@ -11,6 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/wavetermdev/waveterm/pkg/agentaccess"
 	"github.com/wavetermdev/waveterm/pkg/agentscope"
 	"github.com/wavetermdev/waveterm/pkg/wavejwt"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -70,6 +71,18 @@ func (ws *WshServer) AgentAuthGrantCommand(ctx context.Context, data wshrpc.Agen
 	token, err := wavejwt.Sign(claims)
 	if err != nil {
 		return nil, fmt.Errorf("E_INTERNAL: failed to sign token: %w", err)
+	}
+	// Record the grant so it can be listed and revoked. The token itself is
+	// never written anywhere but the caller's file.
+	if err := agentaccess.Record(agentaccess.Entry{
+		Jti:       jti,
+		Name:      name,
+		Scopes:    scopes,
+		RouteId:   routeId,
+		CreatedAt: now.UnixMilli(),
+		ExpiresAt: now.Add(ttl).UnixMilli(),
+	}); err != nil {
+		return nil, fmt.Errorf("E_INTERNAL: failed to record grant: %w", err)
 	}
 	return &wshrpc.AgentAuthGrantResult{
 		Version:   wshrpc.AgentControlVersion,
