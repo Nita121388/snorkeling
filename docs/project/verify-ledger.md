@@ -73,4 +73,4 @@
 | 2026-11-06 17:39 | overview-timeline | ✅ 27/27 | launch+reset | `20261106T17332-overview-timeline` | aa121542 |
 | 2026-11-07 03:49 | theme-monochrome | ✅ 1/1 | launch+reset | `20261107T03493-theme-monochrome` | a43a7749 |
 | 2026-11-07 03:55 | theme-monochrome | ✅ 5/5 | launch+reset | `20261107T03494-theme-monochrome` | a43a7749 |
-| 2026-11-08 | acs-p02（新 area，非 verify 台） | ⏸ 机器可判定项绿 / 真机 AC1-AC9 阻塞 | go test + generate | `verify-runs/2026-11-08-acs-p02.md` | 4a4c23df |
+| 2026-11-08 | acs-p02（新 area，非 verify 台） | ◑ 5 过 / 2 部分 / 1 修复后过；AC7 前端渲染未验成 | CDP RpcApi + go test | `verify-runs/2026-11-08-acs-p02.md` | 4f719d1e |
