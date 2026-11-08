@@ -17,6 +17,24 @@
 想在任何 shell 里用，把它加进 PATH 或建个软链即可。**block 内不需要**：那里已经
 配好了。
 
+## 0.5 图形界面路径（不用终端）
+
+**Settings → Agent Access** 一页做完所有事：
+
+| 区块 | 作用 |
+|---|---|
+| Create a token | 填名字、勾 scope（Observe / Navigate / Data）、选 TTL、填保存路径 → **Create token** |
+| Active tokens | 表格显示 name / scopes / 过期 / live·expired·revoked / jti 前缀，逐条 **Revoke**，或 **Revoke all** |
+| Give your agent the skill | **Install** → 装进本机已存在的 `~/.claude`、`~/.codex`、`~/.agents` |
+| Register the MCP server | 选 host（Claude Code/Cursor 或 Codex）→ **Build** → **Copy config** |
+
+界面里**看不到 token 本身**，只有落盘路径。这是有意的：屏幕上的 token 会进截图、
+聊天记录和剪贴板历史；路径不会。
+
+它背后的 RPC 与 CLI 是同一套（`AgentAuthGrant/List/Revoke`、`AgentSkillInstall`、
+`AgentMCPConfig`），且**只有应用内可调**——外部 scoped token 不能给别人签发或撤销
+凭据，否则就是提权。
+
 ## 1. 授权（必须先做，否则外部进程没有任何凭据）
 
 在 **Snorkeling 里任意一个 block** 里执行（block 内自带凭据，App 负责签名）：
@@ -133,6 +151,17 @@ wsh block read this --tail 40 --json
 
 token 来源优先级：`--token-file` > `SNORKELING_AGENT_TOKEN_FILE` >
 `SNORKELING_AGENT_TOKEN`（不推荐）> block 内 `WAVETERM_JWT` > 默认路径。
+
+## 4.5 一页式命令指南
+
+```bash
+wsh agent guide          # 人类/agent 可读：命令 + scope + 5 条红线 + 错误码
+wsh agent guide --json   # 机器可读：command / scope / flags / notes / errors / redlines
+```
+
+这份指南与 skill 里的 `reference/commands.md` **由同一张表生成**（`pkg/agentguide`）。
+改了命令却只改一边，`pkg/agentskill` 的测试会失败——所以不会出现「skill 让 agent 调
+一个已经不存在或改了 flag 的命令」。
 
 ## 5. 排障
 
