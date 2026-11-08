@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/syncclient"
+	"github.com/wavetermdev/waveterm/pkg/syncconflict"
 	"github.com/wavetermdev/waveterm/pkg/syncjournal"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 )
@@ -56,6 +59,10 @@ var commonTextSyncInterval string
 var commonTextSyncInsecure bool
 var commonTextSyncDeviceName string
 var commonTextSyncLogLines int
+var commonTextSyncConflictsCopy bool
+var commonTextSyncResolveTextFile string
+var commonTextSyncResolveLocal bool
+var commonTextSyncResolveRemote bool
 
 func init() {
 	rootCmd.AddCommand(commonTextSyncCmd)
@@ -133,6 +140,26 @@ func init() {
 	logCmd.Flags().IntVar(&commonTextSyncLogLines, "n", 20, "how many events")
 	logCmd.Flags().BoolVar(&commonTextSyncShowJson, "json", false, "print JSON lines")
 	commonTextSyncCmd.AddCommand(logCmd)
+
+	conflictsCmd := &cobra.Command{
+		Use:   "conflicts",
+		Short: "list unresolved sync conflicts",
+		RunE:  commonTextSyncConflictsRun,
+	}
+	conflictsCmd.Flags().BoolVar(&commonTextSyncConflictsCopy, "copy", false, "print a self-contained AI-ready block")
+	conflictsCmd.Flags().BoolVar(&commonTextSyncShowJson, "json", false, "print JSON")
+	commonTextSyncCmd.AddCommand(conflictsCmd)
+
+	resolveCmd := &cobra.Command{
+		Use:   "resolve <id>",
+		Short: "resolve a conflict with merged or chosen content",
+		Args:  cobra.ExactArgs(1),
+		RunE:  commonTextSyncResolveRun,
+	}
+	resolveCmd.Flags().StringVar(&commonTextSyncResolveTextFile, "text-file", "", "file containing the merged text (use - for stdin)")
+	resolveCmd.Flags().BoolVar(&commonTextSyncResolveLocal, "take-local", false, "keep this machine's version")
+	resolveCmd.Flags().BoolVar(&commonTextSyncResolveRemote, "take-remote", false, "keep the remote version")
+	commonTextSyncCmd.AddCommand(resolveCmd)
 }
 
 // syncSettingsFromEnv reads the current values through the same RPC the UI uses.
@@ -632,4 +659,175 @@ func shortTime(rfc3339 string) string {
 		return rfc3339
 	}
 	return t.Local().Format("01-02 15:04:05")
+}
+
+// ---------------------------------------------------------------------------
+// conflicts / resolve
+// ---------------------------------------------------------------------------
+
+// commonTextSyncConflictsRun lists unresolved conflicts. With --copy it prints a self-contained
+// block whose last section states the task, so it can be pasted into an AI with no extra words.
+func commonTextSyncConflictsRun(cmd *cobra.Command, args []string) error {
+	entries, err := syncconflict.List()
+	if err != nil {
+		return err
+	}
+	if commonTextSyncShowJson {
+		out, _ := json.MarshalIndent(entries, "", "  ")
+		WriteStdout("%s\n", string(out))
+		return nil
+	}
+	if len(entries) == 0 {
+		WriteStdout("no unresolved conflicts\n")
+		return nil
+	}
+	if commonTextSyncConflictsCopy {
+		WriteStdout("%s", syncconflict.RenderAll(entries))
+		return nil
+	}
+	for _, e := range entries {
+		title := e.Title
+		if title == "" {
+			title = "(untitled)"
+		}
+		WriteStdout("%s  %s\n", e.Id, title)
+		WriteStdout("            fields: %s · from %s · detected %s\n",
+			strings.Join(e.Fields, ", "), firstNonEmpty(e.DeviceName, "remote"), shortTime(e.DetectedAt))
+	}
+	WriteStdout("\nresolve with:\n")
+	WriteStdout("  wsh commontext-sync conflicts --copy          # paste into an AI to merge\n")
+	WriteStdout("  wsh commontext-sync resolve <id> --text-file merged.md\n")
+	return nil
+}
+
+// commonTextSyncResolveRun applies a resolution. Three ways: take local, take remote, or supply
+// merged text. Both-sides flags are rejected rather than silently picking one.
+func commonTextSyncResolveRun(cmd *cobra.Command, args []string) error {
+	id := strings.TrimSpace(args[0])
+	if id == "" {
+		return fmt.Errorf("conflict id is required")
+	}
+	chosen := 0
+	if commonTextSyncResolveLocal {
+		chosen++
+	}
+	if commonTextSyncResolveRemote {
+		chosen++
+	}
+	if commonTextSyncResolveTextFile != "" {
+		chosen++
+	}
+	if chosen == 0 {
+		return fmt.Errorf("choose one of --take-local / --take-remote / --text-file")
+	}
+	if chosen > 1 {
+		return fmt.Errorf("choose only one of --take-local / --take-remote / --text-file")
+	}
+
+	entries, err := syncconflict.List()
+	if err != nil {
+		return err
+	}
+	var target *syncconflict.Entry
+	for i := range entries {
+		if entries[i].Id == id {
+			target = &entries[i]
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("no unresolved conflict with id %q (run: wsh commontext-sync conflicts)", id)
+	}
+
+	var text string
+	switch {
+	case commonTextSyncResolveLocal:
+		if target.Local == nil {
+			return fmt.Errorf("conflict %q has no local version", id)
+		}
+		text = target.Local.Text
+	case commonTextSyncResolveRemote:
+		if target.Remote == nil {
+			return fmt.Errorf("conflict %q has no remote version", id)
+		}
+		text = target.Remote.Text
+	default:
+		data, err := readTextArg(commonTextSyncResolveTextFile)
+		if err != nil {
+			return err
+		}
+		text = data
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("refusing to resolve %q with empty text — deletes go through the UI", id)
+	}
+
+	// Write the resolved content locally first, then mark the conflict resolved. If the write
+	// fails the conflict stays visible, which is the safe order.
+	//
+	// There is no per-item RPC reachable from wsh (Common Text uses the service layer, which has no
+	// generated Go client), so this goes through SetConfigCommand -> SaveFromConfigMap: read the
+	// current items, replace one, write them back. The read-modify-write window is the tradeoff;
+	// it is acceptable for an explicit user/agent resolution and the alternative is a new RPC just
+	// for this command.
+	items, err := commonTextSyncReadItems()
+	if err != nil {
+		return err
+	}
+	updated := false
+	for idx := range items {
+		if items[idx].Id != id {
+			continue
+		}
+		items[idx].Text = text
+		items[idx].UpdatedAt = float64(time.Now().UnixMilli())
+		items[idx].Rev = items[idx].Rev + 1 // bump so the server sees a newer version
+		updated = true
+		break
+	}
+	if !updated {
+		return fmt.Errorf("item %q not found in local Common Text — was it deleted?", id)
+	}
+	if err := wshclient.SetConfigCommand(RpcClient, wshrpc.MetaSettingsType{
+		MetaMapType: map[string]any{wconfig.ConfigKey_CommonTextItems: items},
+	}, &wshrpc.RpcOpts{Timeout: 8000}); err != nil {
+		return fmt.Errorf("writing resolved text: %w", err)
+	}
+	if err := syncconflict.MarkResolved(id); err != nil {
+		return err
+	}
+	WriteStdout("resolved %s\n", id)
+	WriteStdout("next sync will push the merged version\n")
+	return nil
+}
+
+// commonTextSyncReadItems loads the current Common Text items through the config path.
+func commonTextSyncReadItems() ([]wconfig.CommonTextItemType, error) {
+	full, err := wshclient.GetFullConfigCommand(RpcClient, &wshrpc.RpcOpts{Timeout: 5000})
+	if err != nil {
+		return nil, fmt.Errorf("reading common text: %w", err)
+	}
+	return full.Settings.CommonTextItems, nil
+}
+
+// readTextArg reads a file, or stdin when the arg is "-".
+func readTextArg(path string) (string, error) {
+	if path == "-" {
+		data, err := io.ReadAll(os.Stdin)
+		return string(data), err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", path, err)
+	}
+	return string(data), nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
