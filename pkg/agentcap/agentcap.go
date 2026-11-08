@@ -80,6 +80,32 @@ Reading Live Agent Sessions (read-only)
   and degraded rows carry warnings such as orphan-chat / summary-unavailable /
   remote-summary-unavailable rather than disappearing.
 
+Observing And Navigating The UI (read-only except structure changes)
+- Nothing here writes user data; block open / tab create only change the UI structure.
+- wsh ui active --json        -> two objects on purpose: self (the block you run in, from
+  WAVETERM_BLOCKID) and active (the window/workspace/tab/block the user is actually looking at).
+  When they differ, the user is somewhere else - check before acting on "the current block".
+- wsh ui state --json         -> backend snapshot of windows/tabs/blocks with per-block runtime and
+  agent state. Block meta is allowlisted (view/controller/connection/file/url/agent:*), never raw:
+  cmd:env and credential-looking values are stripped.
+- wsh block read <block|this> --tail 80 --json
+                              -> bounded content, dispatched by view: lines (term), file+content
+                              (preview/edit), url (web), session fields (agent). Unreadable is a
+                              warning, not an error: term-route-unavailable / remote-file-unsupported.
+                              content is capped by --max-bytes and reports truncated/bytes.
+- wsh block open --view preview --file <path> --split right --wait --json
+                              -> opens a block through the same path as the UI. --tab active|new|<id>,
+                              --split right|down|left|up (mutually exclusive with --replace),
+                              --dedupe returns an identical open block instead of a second one.
+                              syncState tells you how far it got: db-only (written, nothing claimed),
+                              layout-queued (wait timed out: written, the frontend has NOT applied it),
+                              layout-applied (frontend consumed the action and the block is in its
+                              layout leaf order). Do not treat layout-queued as "on screen".
+- wsh tab list|create|activate [--wait] --json -> tab management. --wait polls the backend
+  Workspace.ActiveTabId, never a frontend claim.
+- Errors use stable codes: E_USAGE / E_NOT_FOUND / E_CONFLICT / E_FORBIDDEN / E_UNSUPPORTED /
+  E_NO_ROUTE / E_TIMEOUT / E_INTERNAL. Branch on the code, not on the message.
+
 Concurrency Safety
 - Real session_note.update and common_text.update operations require expectedHash or expectedUpdatedAt from a fresh export.
 - Dry-run may omit preconditions, but it will warn.
@@ -404,6 +430,10 @@ Rules:
 - Do not edit Snorkeling SQLite databases directly.
 - Use wsh data for AI session notes, session tags, and Common Text edits.
 - Use wsh session live --json to discover which agent sessions are running right now.
+- Use wsh ui active to learn where you are versus where the user is, and wsh block read
+  to inspect a block instead of guessing.
+- Use wsh block open / wsh tab create to navigate; check syncState (layout-queued means
+  the frontend has not applied it yet).
 - Use wsh agent card get for a session card, and wsh agent card set to write it;
   writes are dry-run unless --yes and require --expected-hash, and never overwrite
   a user-authored title/property without --force.
@@ -418,6 +448,8 @@ Start here:
   wsh data examples
   wsh session live --json
   wsh session get this --json
+  wsh ui active --json
+  wsh block read this --tail 20 --json
   wsh agent card get this --json
 
 Recommended workflow:

@@ -110,3 +110,26 @@ func TestLiveSessionCommandsAreDiscoverable(t *testing.T) {
 		}
 	}
 }
+
+// TestUIAndNavigateCommandsAreDiscoverable guards the P0.2 discovery contract:
+// ui observe and block/tab navigation must be advertised where an agent looks,
+// otherwise the capability exists but is unreachable.
+func TestUIAndNavigateCommandsAreDiscoverable(t *testing.T) {
+	for name, text := range map[string]string{
+		"guide":  GuideText(),
+		"prompt": ExternalAgentPrompt(),
+	} {
+		for _, want := range []string{"wsh ui active", "wsh block read"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s text must advertise %q:\n%s", name, want, text)
+			}
+		}
+	}
+	// the sync-state contract must be documented, not just the command name
+	guide := GuideText()
+	for _, want := range []string{"layout-queued", "layout-applied", "db-only"} {
+		if !strings.Contains(guide, want) {
+			t.Fatalf("guide must document syncState %q", want)
+		}
+	}
+}
