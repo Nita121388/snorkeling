@@ -21,7 +21,9 @@
   "children": [
     "11-07-commontext-sync-metadata",
     "11-07-commontext-ui-filters-notion",
-    "11-07-commontext-sync-transport"
+    "11-07-commontext-sync-transport",
+    "11-09-commontext-sync-config-fixes",
+    "11-09-commontext-sync-watermark"
   ],
   "parent": null,
   "relatedFiles": [],
