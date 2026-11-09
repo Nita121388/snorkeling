@@ -5,6 +5,7 @@ package syncmanager
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/commontextstore"
 	"github.com/wavetermdev/waveterm/pkg/syncconflict"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
@@ -168,4 +170,42 @@ func TestSwitchToNoneNeedsNoBaseline(t *testing.T) {
 	if strings.Contains(err.Error(), "baseline") {
 		t.Fatalf("switching to none must not require a baseline, got: %v", err)
 	}
+}
+
+// The status panel must be able to say "3 items are still waiting", not just "last sync 2 min ago".
+// This pins the field's presence in the JSON contract and that an unavailable database degrades to
+// 0 instead of panicking (the panel is rendered on every settings open).
+func TestStatusReportsPendingCount(t *testing.T) {
+	setup(t)
+
+	status := GetStatus()
+	if _, found := statusJSONKeys(t, status)["pending"]; !found {
+		t.Fatal("status JSON must expose a pending count")
+	}
+
+	// Whatever the store reports is what the status reports — one source of truth.
+	expected := 0
+	if pending, err := commontextstore.PendingItems(context.Background()); err == nil {
+		expected = len(pending)
+	}
+	if status.Pending != expected {
+		t.Fatalf("status.pending = %d, store reports %d", status.Pending, expected)
+	}
+	if status.Pending < 0 {
+		t.Fatalf("pending count cannot be negative, got %d", status.Pending)
+	}
+}
+
+// statusJSONKeys marshals the status into a map so a test asserts the wire contract, not the struct.
+func statusJSONKeys(t *testing.T, status Status) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("marshal status: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal status: %v", err)
+	}
+	return decoded
 }

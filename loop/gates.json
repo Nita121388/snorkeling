@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-09T02:05:34Z",
+  "updatedAt": "2026-11-09T02:37:23Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -131,6 +131,11 @@
       "g2": {
         "redProof": "loop/red/F-1109-commontext-sync-watermark.txt",
         "at": "2026-11-09T02:05:34Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-09T02:37:23Z",
+        "by": "compliance"
       }
     },
     "N-1105-cmd-window-flash": {

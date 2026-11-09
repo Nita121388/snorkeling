@@ -169,7 +169,9 @@ type PushResult struct {
 	// Current is set when the push was rejected because BaseRev was stale; the caller must
 	// reconcile (pull, merge, retry) instead of retrying blindly.
 	Current *syncproto.Snapshot
-	Rev     float64
+	// Items is the per-item outcome the server reported, used to record the sync watermark.
+	Items []syncproto.PushItemResult
+	Rev   float64
 }
 
 func (c *Client) Push(ctx context.Context, req syncproto.PushRequest) (*PushResult, error) {
@@ -201,6 +203,7 @@ func (c *Client) Push(ctx context.Context, req syncproto.PushRequest) (*PushResu
 			AppliedCount: pr.Applied,
 			Unchanged:    pr.Unchanged,
 			Conflicts:    pr.Conflicts,
+			Items:        pr.Items,
 			Rev:          pr.Rev,
 		}, nil
 	case syncproto.ConflictStatusCode:

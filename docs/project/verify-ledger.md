@@ -107,3 +107,4 @@
 | 2026-11-08 08:07 | agent-card-seen | ❌ fatal（未跑） | launch+reset | `20261108T08003-agent-card-seen` | 0016e987 |
 | 2026-11-08 08:09 | agent-card-seen | ❌ fatal（未跑） | attach | `20261108T08082-agent-card-seen` | 0016e987 |
 | 2026-11-08 | acs-p02（新 area，非 verify 台） | ◑ 7 过 / 1 环境阻塞（AC7 FE 渲染）；syncState 误报已修 | CDP RpcApi + go test | `verify-runs/2026-11-08-acs-p02.md` | 7866de53 |
+| 2026-11-09 | commontext-sync-watermark（无 verify 台） | ◑ L1：6/6 判据绿（go test 6 包 · watermark 5 用例 · engine 5 用例 · vitest commontext 133 passed · tsc 47=基线 · go vet 干净）；真机双设备联调 skipped（用户自验） | loop prove | `loop/LEDGER-2026-11.jsonl` | 见本次提交 |

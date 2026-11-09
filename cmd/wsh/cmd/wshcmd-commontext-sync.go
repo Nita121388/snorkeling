@@ -40,6 +40,10 @@ import (
 var commonTextSyncCmd = &cobra.Command{
 	Use:   "commontext-sync",
 	Short: "configure Common Text cloud sync",
+	// Every subcommand below talks to the running app (settings + secrets), exactly like
+	// `setconfig` / `secret`. Without this hook RpcClient stays nil and every command dies with
+	// "nil wshrpc passed to wshclient" — which is what shipped before 2026-11-09.
+	PersistentPreRunE: preRunSetupRpcClient,
 	Long: `Configure Common Text cloud sync from the command line.
 
 Subcommands:
@@ -111,6 +115,19 @@ func init() {
 		Short: "disable syncing (local only)",
 		RunE:  commonTextSyncOffRun,
 	})
+
+	pendingCmd := &cobra.Command{
+		Use:   "pending",
+		Short: "list items the cloud has not received yet",
+		Long: `List Common Text items that are still waiting to be uploaded.
+
+An item is pending when its content changed after the last successful sync (or when it was never
+synced). Tombstones are included: a delete has to be uploaded too, otherwise the other machine
+resurrects the item.`,
+		RunE: commonTextSyncPendingRun,
+	}
+	pendingCmd.Flags().BoolVar(&commonTextSyncShowJson, "json", false, "print JSON")
+	commonTextSyncCmd.AddCommand(pendingCmd)
 
 	deviceCmd := &cobra.Command{
 		Use:   "set-device-name <name>",
@@ -248,6 +265,53 @@ func transportReadiness(transport string, settings map[string]any) string {
 	return ""
 }
 
+// commonTextSyncPendingRun answers "which items are not in the cloud yet" from the same derived
+// state the UI shows, so a report from the CLI and a dot in the list can never disagree.
+func commonTextSyncPendingRun(cmd *cobra.Command, args []string) error {
+	resp, err := wshclient.CommonTextSyncPendingCommand(RpcClient, &wshrpc.RpcOpts{Timeout: 10000})
+	if err != nil {
+		return err
+	}
+	pending := []wconfig.CommonTextItemType{}
+	if resp != nil {
+		pending = resp.Pending
+	}
+	if commonTextSyncShowJson {
+		out, _ := json.MarshalIndent(map[string]any{
+			"count":   len(pending),
+			"pending": pending,
+		}, "", "  ")
+		WriteStdout("%s\n", string(out))
+		return nil
+	}
+	if len(pending) == 0 {
+		WriteStdout("nothing pending — every item is uploaded\n")
+		return nil
+	}
+	WriteStdout("%d item(s) waiting to be uploaded:\n", len(pending))
+	for _, item := range pending {
+		title := item.Title
+		if item.DeletedAt > 0 {
+			title += "  (deleted, tombstone)"
+		}
+		WriteStdout("  %s  %s\n", item.Id, title)
+	}
+	return nil
+}
+
+// commonTextSyncPendingCount is a soft probe for `show`: a status view that fails because the
+// pending count is unavailable is worse than one that says "unknown".
+func commonTextSyncPendingCount() (int, string) {
+	resp, err := wshclient.CommonTextSyncPendingCommand(RpcClient, &wshrpc.RpcOpts{Timeout: 10000})
+	if err != nil {
+		return 0, err.Error()
+	}
+	if resp == nil {
+		return 0, ""
+	}
+	return len(resp.Pending), ""
+}
+
 func commonTextSyncShowRun(cmd *cobra.Command, args []string) error {
 	settings, err := syncSettingsFromEnv()
 	if err != nil {
@@ -257,7 +321,10 @@ func commonTextSyncShowRun(cmd *cobra.Command, args []string) error {
 	if transport == "" {
 		transport = "none"
 	}
+	pendingCount, pendingErr := commonTextSyncPendingCount()
 	view := map[string]any{
+		"pending":        pendingCount,
+		"pendingError":   pendingErr,
 		"transport":      transport,
 		"conflictPolicy": syncKeyString(settings, "commontext:sync:conflictpolicy"),
 		"deviceName":     syncKeyString(settings, "commontext:sync:devicename"),
@@ -282,6 +349,14 @@ func commonTextSyncShowRun(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	WriteStdout("transport:   %s\n", transport)
+	switch {
+	case pendingErr != "":
+		WriteStdout("pending:     unknown (%s)\n", pendingErr)
+	case pendingCount == 0:
+		WriteStdout("pending:     0 (everything is uploaded)\n")
+	default:
+		WriteStdout("pending:     %d item(s) not uploaded yet\n", pendingCount)
+	}
 	if missing := transportReadiness(transport, settings); missing != "" {
 		WriteStdout("status:      NOT READY — %s\n", missing)
 	} else if transport == "none" {
@@ -966,6 +1041,29 @@ func (s *cliSyncStore) Items(ctx context.Context) ([]syncproto.SnapshotItem, err
 		out = append(out, snapshotItemFromCommonText(it))
 	}
 	return out, nil
+}
+
+// PendingItems deliberately returns every item: the CLI keeps pushing the full set.
+//
+// The app's engine pushes only pending items, but doing that here would make the CLI depend on a
+// watermark it cannot reason about (it would have to implement the remote-reset self-heal too).
+// A full push is idempotent, and MarkSynced still records the outcome, so both paths leave the
+// same watermark state — the CLI is just less cheap.
+func (s *cliSyncStore) PendingItems(ctx context.Context) ([]syncproto.SnapshotItem, error) {
+	return s.Items(ctx)
+}
+
+// MarkSynced writes the watermark through the app: the table belongs to the app's database, and a
+// second writer would need to bypass the RPC layer to reach it.
+func (s *cliSyncStore) MarkSynced(ctx context.Context, results []syncproto.PushItemResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+	return wshclient.CommonTextSyncMarkSyncedCommand(
+		RpcClient,
+		wshrpc.CommonTextSyncMarkSyncedData{Results: results},
+		&wshrpc.RpcOpts{Timeout: 10000},
+	)
 }
 
 func (s *cliSyncStore) ApplyRemoteWithMode(ctx context.Context, incoming []syncproto.SnapshotItem, mode sync.RemoteApplyMode) (int, error) {

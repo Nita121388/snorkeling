@@ -198,6 +198,18 @@ export class RpcApiType {
         return client.wshRpcCall("checkgoversion", null, opts);
     }
 
+    // command "commontextsyncmarksynced" [call]
+    CommonTextSyncMarkSyncedCommand(client: WshClient, data: CommonTextSyncMarkSyncedData, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "commontextsyncmarksynced", data, opts);
+        return client.wshRpcCall("commontextsyncmarksynced", data, opts);
+    }
+
+    // command "commontextsyncpending" [call]
+    CommonTextSyncPendingCommand(client: WshClient, opts?: RpcOpts): Promise<CommonTextSyncPendingResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "commontextsyncpending", null, opts);
+        return client.wshRpcCall("commontextsyncpending", null, opts);
+    }
+
     // command "connconnect" [call]
     ConnConnectCommand(client: WshClient, data: ConnRequest, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "connconnect", data, opts);

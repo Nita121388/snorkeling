@@ -145,7 +145,7 @@ func (t *FolderTransport) Push(ctx context.Context, req syncproto.PushRequest) (
 		if !found {
 			incoming.Rev = nextRev
 			byId[incoming.Id] = incoming
-			outcome.Applied++
+			outcome.record(incoming.Id, nextRev, syncproto.PushStatusApplied)
 			newRev = nextRev
 			continue
 		}
@@ -154,7 +154,7 @@ func (t *FolderTransport) Push(ctx context.Context, req syncproto.PushRequest) (
 		if incoming.DeletedAt > 0 && incoming.Rev >= stored.Rev {
 			incoming.Rev = nextRev
 			byId[incoming.Id] = incoming
-			outcome.Applied++
+			outcome.record(incoming.Id, nextRev, syncproto.PushStatusApplied)
 			newRev = nextRev
 			continue
 		}
@@ -166,10 +166,10 @@ func (t *FolderTransport) Push(ctx context.Context, req syncproto.PushRequest) (
 			if incoming.UpdatedAt > stored.UpdatedAt {
 				incoming.Rev = nextRev
 				byId[incoming.Id] = incoming
-				outcome.Applied++
+				outcome.record(incoming.Id, nextRev, syncproto.PushStatusApplied)
 				newRev = nextRev
 			} else {
-				outcome.Unchanged++
+				outcome.record(incoming.Id, stored.Rev, syncproto.PushStatusUnchanged)
 			}
 			continue
 		}
@@ -178,6 +178,7 @@ func (t *FolderTransport) Push(ctx context.Context, req syncproto.PushRequest) (
 		if len(fields) > 0 {
 			local := incoming
 			remote := stored
+			outcome.Items = append(outcome.Items, syncproto.PushItemResult{Id: incoming.Id, Status: syncproto.PushStatusConflict})
 			outcome.Conflicts = append(outcome.Conflicts, syncproto.Conflict{
 				Id:     incoming.Id,
 				Fields: fields,
@@ -190,12 +191,12 @@ func (t *FolderTransport) Push(ctx context.Context, req syncproto.PushRequest) (
 
 		merged, changed := mergeForFolder(base, &incoming, &stored)
 		if !changed {
-			outcome.Unchanged++
+			outcome.record(incoming.Id, stored.Rev, syncproto.PushStatusUnchanged)
 			continue
 		}
 		merged.Rev = nextRev
 		byId[merged.Id] = merged
-		outcome.Applied++
+		outcome.record(merged.Id, nextRev, syncproto.PushStatusApplied)
 		newRev = nextRev
 	}
 

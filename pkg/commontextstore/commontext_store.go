@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wavetermdev/waveterm/pkg/syncproto"
 	"github.com/wavetermdev/waveterm/pkg/util/dbutil"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
@@ -56,6 +57,21 @@ type commonTextDBRow struct {
 // means adding a column cannot silently desync the three read sites.
 const commonTextRowColumns = `id, title, text, shortcut, tags, pinned, createdat, updatedat, lastusedat, usagecount, emoji,
 	createdby_kind, createdby_name, origin_deviceid, origin_devicename, origin_platform, rev, deletedat`
+
+// Per-item sync state. `pending` means the remote has not confirmed this exact content yet.
+const (
+	SyncStatePending = "pending"
+	SyncStateSynced  = "synced"
+)
+
+// commonTextSyncRow is one row of db_common_text_sync: the watermark the engine writes after a
+// successful push/pull. Kept out of db_common_text on purpose (see the 000014 migration comment).
+type commonTextSyncRow struct {
+	Id              string  `db:"id"`
+	SyncedRev       float64 `db:"syncedrev"`
+	SyncedUpdatedAt float64 `db:"syncedupdatedat"`
+	SyncedAt        float64 `db:"syncedat"`
+}
 
 type ListOptions struct {
 	Query      string
@@ -324,7 +340,7 @@ const (
 	legacyOriginDeviceName = "This machine"
 )
 
-func commonTextItemFromRow(row commonTextDBRow) commonTextItem {
+func commonTextItemFromRow(row commonTextDBRow, watermark *commonTextSyncRow) commonTextItem {
 	item := commonTextItem{
 		Id:         row.ID,
 		Title:      row.Title,
@@ -376,13 +392,39 @@ func commonTextItemFromRow(row commonTextDBRow) commonTextItem {
 	if row.DeletedAt != nil {
 		item.DeletedAt = *row.DeletedAt
 	}
+	// The watermark is a projection, never stored on the item row: a renderer that saves the whole
+	// item array back must not be able to overwrite sync bookkeeping.
+	if watermark != nil {
+		item.SyncedRev = watermark.SyncedRev
+		item.SyncedAt = watermark.SyncedAt
+	}
+	item.SyncState = SyncStateOf(item, watermark)
 	return item
 }
 
-func commonTextItemsFromDBRows(rows []commonTextDBRow) []commonTextItem {
+// SyncStateOf is the single judgement of "has this item reached the remote".
+//
+// It compares the item's own updatedat with the updatedat that was confirmed at sync time. rev is
+// unusable for this: a local edit does not bump it (the renderer does not know the remote's
+// revision space), so "rev > syncedrev" would never fire after an edit.
+func SyncStateOf(item commonTextItem, watermark *commonTextSyncRow) string {
+	if watermark == nil {
+		return SyncStatePending
+	}
+	if item.UpdatedAt > watermark.SyncedUpdatedAt {
+		return SyncStatePending
+	}
+	return SyncStateSynced
+}
+
+func commonTextItemsFromDBRows(rows []commonTextDBRow, watermarks map[string]commonTextSyncRow) []commonTextItem {
 	items := make([]commonTextItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, commonTextItemFromRow(row))
+		var watermark *commonTextSyncRow
+		if row2, found := watermarks[row.ID]; found {
+			watermark = &row2
+		}
+		items = append(items, commonTextItemFromRow(row, watermark))
 	}
 	return sortCommonTextItems(items)
 }
@@ -545,7 +587,11 @@ func RenameTag(ctx context.Context, from string, to string) (int, error) {
 	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (int, error) {
 		var rows []commonTextDBRow
 		tx.Select(&rows, `SELECT `+commonTextRowColumns+` FROM db_common_text`)
-		items := commonTextItemsFromDBRows(rows)
+		watermarks, err := loadSyncWatermarksTx(ctx, tx)
+		if err != nil {
+			return 0, err
+		}
+		items := commonTextItemsFromDBRows(rows, watermarks)
 		count := 0
 		now := float64(time.Now().UnixMilli())
 		for _, item := range items {
@@ -670,6 +716,22 @@ func loadCommonTextItemsFromDB() ([]commonTextItem, error) {
 	return loadCommonTextItemsFromDBContext(context.Background())
 }
 
+// loadSyncWatermarksTx reads the watermark table inside an existing transaction so an item read
+// and its watermark can never disagree (a run that writes the watermark mid-read would otherwise
+// make one item look pending in the same snapshot it was confirmed in).
+func loadSyncWatermarksTx(ctx context.Context, tx *wstore.TxWrap) (map[string]commonTextSyncRow, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	var rows []commonTextSyncRow
+	tx.Select(&rows, `SELECT id, syncedrev, syncedupdatedat, syncedat FROM db_common_text_sync`)
+	out := make(map[string]commonTextSyncRow, len(rows))
+	for _, row := range rows {
+		out[row.Id] = row
+	}
+	return out, nil
+}
+
 func loadCommonTextItemsFromDBContext(ctx context.Context) ([]commonTextItem, error) {
 	if !wstore.IsInitialized() {
 		return nil, nil
@@ -678,7 +740,11 @@ func loadCommonTextItemsFromDBContext(ctx context.Context) ([]commonTextItem, er
 		var rows []commonTextDBRow
 		query := `SELECT ` + commonTextRowColumns + ` FROM db_common_text`
 		tx.Select(&rows, query)
-		return commonTextItemsFromDBRows(rows), nil
+		watermarks, err := loadSyncWatermarksTx(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		return commonTextItemsFromDBRows(rows, watermarks), nil
 	})
 }
 
@@ -691,7 +757,11 @@ func commonTextItemByIDTx(ctx context.Context, tx *wstore.TxWrap, id string) (co
 	if len(rows) == 0 {
 		return commonTextItem{}, false, nil
 	}
-	items := commonTextItemsFromDBRows(rows)
+	watermarks, err := loadSyncWatermarksTx(ctx, tx)
+	if err != nil {
+		return commonTextItem{}, false, err
+	}
+	items := commonTextItemsFromDBRows(rows, watermarks)
 	if len(items) == 0 {
 		return commonTextItem{}, false, fmt.Errorf("common text item is invalid: %q", id)
 	}
@@ -772,6 +842,10 @@ func saveCommonTextItemsToDB(items []commonTextItem) error {
 			)
 		}
 		tx.Exec(`DELETE FROM db_common_text WHERE id NOT IN (SELECT value FROM json_each(?))`, dbutil.QuickJsonArr(ids))
+		// Watermarks follow the main table: an id that no longer exists (not even as a tombstone)
+		// cannot be pending, and leaving the row around would make the pending counter drift upward
+		// forever. Tombstones still exist in db_common_text, so their watermarks survive.
+		tx.Exec(`DELETE FROM db_common_text_sync WHERE id NOT IN (SELECT id FROM db_common_text)`)
 		return nil
 	})
 }
@@ -788,6 +862,102 @@ func SaveAll(ctx context.Context, items []commonTextItem) error {
 	}
 	_ = ctx
 	return saveCommonTextItemsToDB(items)
+}
+
+// ── per-item sync watermark ──────────────────────────────────────────────────
+
+// MarkSynced records that the remote confirmed these items, so they stop being pending.
+//
+// Conflicts are dropped here (not just in the caller): "synced" must mean "the remote holds this
+// exact content", and a conflict means it holds something else. Accepting a conflict as synced
+// would silently hide an unresolved divergence from both the UI and the next push.
+func MarkSynced(ctx context.Context, results []syncproto.PushItemResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+	if !wstore.IsInitialized() {
+		return fmt.Errorf("wstore is not initialized")
+	}
+	return wstore.WithTx(ctx, func(tx *wstore.TxWrap) error {
+		now := float64(time.Now().UnixMilli())
+		for _, result := range results {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if result.Id == "" || result.Status == syncproto.PushStatusConflict {
+				continue
+			}
+			// The watermark is the item's own updatedat (what was just confirmed), not now(): a
+			// foreign clock must not be compared against a local one on the next read.
+			var rows []commonTextDBRow
+			tx.Select(&rows, `SELECT `+commonTextRowColumns+` FROM db_common_text WHERE id = ?`, result.Id)
+			if len(rows) == 0 {
+				// The item vanished between push and write-back (deleted on another device and
+				// pruned). Nothing to confirm.
+				continue
+			}
+			tx.Exec(
+				`INSERT INTO db_common_text_sync (id, syncedrev, syncedupdatedat, syncedat)
+				 VALUES (?, ?, ?, ?)
+				 ON CONFLICT(id) DO UPDATE SET
+					syncedrev = excluded.syncedrev,
+					syncedupdatedat = excluded.syncedupdatedat,
+					syncedat = excluded.syncedat`,
+				result.Id, result.Rev, rows[0].UpdatedAt, now,
+			)
+		}
+		return nil
+	})
+}
+
+// PendingItems returns every item the remote has not confirmed yet, tombstones included: a delete
+// that is never uploaded gets resurrected by the next pull from the other machine.
+func PendingItems(ctx context.Context) ([]commonTextItem, error) {
+	items, err := List(ctx, ListOptions{IncludeDeleted: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]commonTextItem, 0, len(items))
+	for _, item := range items {
+		if item.SyncState == SyncStatePending {
+			out = append(out, item)
+		}
+	}
+	return out, nil
+}
+
+// MaxSyncedRev is the highest remote revision this device has confirmed. The engine compares it
+// with the remote head to notice that the remote started over (payload deleted / folder moved).
+func MaxSyncedRev(ctx context.Context) (float64, error) {
+	if !wstore.IsInitialized() {
+		return 0, fmt.Errorf("wstore is not initialized")
+	}
+	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (float64, error) {
+		var rows []commonTextSyncRow
+		tx.Select(&rows, `SELECT id, syncedrev, syncedupdatedat, syncedat FROM db_common_text_sync`)
+		var max float64
+		for _, row := range rows {
+			if row.SyncedRev > max {
+				max = row.SyncedRev
+			}
+		}
+		return max, nil
+	})
+}
+
+// ResetSyncWatermarks forgets every confirmation, making all items pending again.
+//
+// This is the self-heal for a remote that restarted from revision zero: without it the pending
+// filter would refuse to re-upload items the (now empty) remote never received, and nothing would
+// ever report an error.
+func ResetSyncWatermarks(ctx context.Context) error {
+	if !wstore.IsInitialized() {
+		return fmt.Errorf("wstore is not initialized")
+	}
+	return wstore.WithTx(ctx, func(tx *wstore.TxWrap) error {
+		tx.Exec(`DELETE FROM db_common_text_sync`)
+		return nil
+	})
 }
 
 func SaveFromConfigMap(settings waveobj.MetaMapType) (bool, error) {

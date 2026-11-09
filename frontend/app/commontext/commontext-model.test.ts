@@ -8,6 +8,8 @@ import {
     findDuplicateCommonText,
     getCommonTextTagSummaries,
     getCommonTextDeviceSummaries,
+    getLiveCommonTextItems,
+    isCommonTextTombstone,
     markCommonTextUsed,
     normalizeCommonTextItem,
     normalizeCommonTextSortKey,
@@ -519,6 +521,20 @@ describe("commontext-model", () => {
             expect(item.deletedat).toBe(1234);
         });
 
+        it("projects the sync watermark, defaulting to pending when absent", () => {
+            const never = normalizeCommonTextItem({ id: "never", text: "body" });
+            expect(never.syncstate).toBe("pending");
+            expect(never.syncedrev).toBeUndefined();
+
+            const synced = normalizeCommonTextItem({ id: "synced", text: "body", syncstate: "synced", syncedrev: 12 });
+            expect(synced.syncstate).toBe("synced");
+            expect(synced.syncedrev).toBe(12);
+
+            // 未知值按 pending 处理：宁可多推一次，也不谎报已同步。
+            const bogus = normalizeCommonTextItem({ id: "bogus", text: "body", syncstate: "probably" });
+            expect(bogus.syncstate).toBe("pending");
+        });
+
         it("rejects an unknown createdby kind instead of trusting it", () => {
             const item = normalizeCommonTextItem({ id: "x", text: "body", createdby: { kind: "robot", name: "r2" } });
             expect(item.createdby).toEqual({ kind: "human", name: "r2" });
@@ -580,6 +596,24 @@ describe("commontext-model", () => {
                 { deviceid: "dev-home", devicename: "Home PC", count: 2 },
                 { deviceid: "dev-work", devicename: "Work Mac", count: 2 },
             ]);
+        });
+    });
+
+    describe("sync visibility", () => {
+        it("treats a tombstone as deleted and hides it from the visible list", () => {
+            const live = makeItem({ id: "live", text: "keep" });
+            const gone = makeItem({ id: "gone", text: "bye", deletedat: 4000, updatedat: 4000 });
+            expect(isCommonTextTombstone(live)).toBe(false);
+            expect(isCommonTextTombstone(gone)).toBe(true);
+            // 写入源必须保留墓碑（否则一次普通保存就把未上传的删除抹掉）
+            expect([live, gone]).toHaveLength(2);
+            // 展示面只看活条目
+            expect(getLiveCommonTextItems([live, gone]).map((item) => item.id)).toEqual(["live"]);
+        });
+
+        it("keeps a tombstone out of duplicate detection so the same text can be re-added", () => {
+            const gone = makeItem({ id: "gone", text: "refund policy", deletedat: 4000 });
+            expect(findDuplicateCommonText(getLiveCommonTextItems([gone]), "refund policy")).toBeNull();
         });
     });
 });

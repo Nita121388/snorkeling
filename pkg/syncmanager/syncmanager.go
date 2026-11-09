@@ -64,6 +64,9 @@ type Status struct {
 	LastApplied int `json:"lastApplied"`
 	LastPushed  int `json:"lastPushed"`
 	Conflicts   int `json:"conflicts"`
+	// Pending is how many items the remote has not confirmed yet. It is the item-level answer to
+	// "is everything uploaded?" that the four counters above cannot give.
+	Pending int `json:"pending"`
 	// IntervalSeconds is informational, so the UI can say "every 5 minutes".
 	IntervalSeconds int `json:"intervalSeconds"`
 }
@@ -206,6 +209,10 @@ func SyncNow(ctx context.Context, trigger string) (Status, error) {
 			log.Printf("commontext sync: recording conflicts: %v", recErr)
 		}
 	}
+	// Watermarks live in the database, not in settings.json, so no file event fires for them.
+	// Re-broadcast the hydrated config or the open Common Text window keeps showing the pre-sync
+	// pending dots until it is reopened.
+	wconfig.BroadcastConfigUpdate()
 	return currentStatusLocked(), err
 }
 
@@ -376,6 +383,13 @@ func currentStatusLocked() Status {
 	if entries, err := syncconflict.List(); err == nil {
 		status.Conflicts = len(entries)
 	}
+	// Pending count is a database read: the status must never claim "all uploaded" while items are
+	// waiting, so a failure here reports 0 only after logging (the caller shows lastError anyway).
+	if pending, err := commontextstore.PendingItems(context.Background()); err == nil {
+		status.Pending = len(pending)
+	} else {
+		log.Printf("commontext sync: counting pending items: %v", err)
+	}
 	return status
 }
 
@@ -447,6 +461,30 @@ func (storeAdapter) ApplyRemoteWithMode(ctx context.Context, incoming []syncprot
 		return 0, nil
 	}
 	return applied, commontextstore.SaveAll(ctx, merged)
+}
+
+func (storeAdapter) PendingItems(ctx context.Context) ([]syncproto.SnapshotItem, error) {
+	items, err := commontextstore.PendingItems(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]syncproto.SnapshotItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, snapshotFromItem(it))
+	}
+	return out, nil
+}
+
+func (storeAdapter) MarkSynced(ctx context.Context, results []syncproto.PushItemResult) error {
+	return commontextstore.MarkSynced(ctx, results)
+}
+
+func (storeAdapter) MaxSyncedRev(ctx context.Context) (float64, error) {
+	return commontextstore.MaxSyncedRev(ctx)
+}
+
+func (storeAdapter) ResetSyncWatermarks(ctx context.Context) error {
+	return commontextstore.ResetSyncWatermarks(ctx)
 }
 
 func (storeAdapter) LocalRevision(ctx context.Context) (float64, error) {

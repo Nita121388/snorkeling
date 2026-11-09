@@ -24,6 +24,21 @@ const repoRoot = path.resolve(here, "..");
 const baselinePath = path.join(repoRoot, "docs", "project", "tsc-baseline.json");
 const args = new Set(process.argv.slice(2));
 
+/**
+ * tscInvocation 返回可执行的 tsc 命令。
+ *
+ * 之前在 Windows 上直接 spawn "npx" 会得到 ENOENT：Node 的 spawn 不套 PATHEXT，而真正存在的是
+ * `npx.cmd`。结果就是这道闸门在 Windows 上永远 exit 2（环境错误），等于没有闸门。
+ * 优先用仓库自带的 node_modules/.bin/tsc，落到 shell 才用得着 npx。
+ */
+function tscInvocation() {
+    const localTsc = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
+    if (existsSync(localTsc)) {
+        return [process.execPath, [localTsc, "--noEmit", "-p", "tsconfig.json"]];
+    }
+    return ["npx", ["tsc", "--noEmit", "-p", "tsconfig.json"]];
+}
+
 function loadBaseline() {
     if (!existsSync(baselinePath)) return null;
     try {
@@ -35,7 +50,7 @@ function loadBaseline() {
 
 let output = "";
 try {
-    output = execFileSync("npx", ["tsc", "--noEmit", "-p", "tsconfig.json"], {
+    output = execFileSync(...tscInvocation(), {
         cwd: repoRoot,
         encoding: "utf8",
         maxBuffer: 64 * 1024 * 1024,

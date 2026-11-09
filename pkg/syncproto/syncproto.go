@@ -159,6 +159,25 @@ type PushResponse struct {
 	Applied   int        `json:"applied"`
 	Unchanged int        `json:"unchanged,omitempty"`
 	Conflicts []Conflict `json:"conflicts,omitempty"`
+	// Items reports the per-item outcome. Counters alone cannot answer "which item did not make
+	// it", and the client needs the confirmed revision per item to record its sync watermark.
+	Items []PushItemResult `json:"items,omitempty"`
+}
+
+// Per-item push outcomes. Strings (not a Go enum type) so an older reader can degrade gracefully
+// on a value a newer build writes.
+const (
+	PushStatusApplied   = "applied"
+	PushStatusUnchanged = "unchanged"
+	PushStatusConflict  = "conflict"
+)
+
+// PushItemResult is one item's fate in a push. Rev is the remote revision the item ended up at
+// (zero for conflicts, where the remote kept its own version).
+type PushItemResult struct {
+	Id     string  `json:"id"`
+	Rev    float64 `json:"rev,omitempty"`
+	Status string  `json:"status"`
 }
 
 // Conflict describes one item where both sides changed the same field, so the server refused to

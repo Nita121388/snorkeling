@@ -15,6 +15,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/aiusechat/uctypes"
 	"github.com/wavetermdev/waveterm/pkg/baseds"
 	"github.com/wavetermdev/waveterm/pkg/ccswitch"
+	"github.com/wavetermdev/waveterm/pkg/syncproto"
 	"github.com/wavetermdev/waveterm/pkg/telemetry/telemetrydata"
 	"github.com/wavetermdev/waveterm/pkg/vdom"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
@@ -80,6 +81,11 @@ type WshRpcInterface interface {
 	TestCommand(ctx context.Context, data string) error
 	TestMultiArgCommand(ctx context.Context, arg1 string, arg2 int, arg3 bool) (string, error)
 	SetConfigCommand(ctx context.Context, data MetaSettingsType) error
+	// Common Text sync watermark. Exposed over RPC so the `wsh commontext-sync` CLI path records
+	// the same watermarks the in-app engine does; writing them straight to the DB would need the
+	// CLI to open the app's database file.
+	CommonTextSyncPendingCommand(ctx context.Context) (*CommonTextSyncPendingResult, error)
+	CommonTextSyncMarkSyncedCommand(ctx context.Context, data CommonTextSyncMarkSyncedData) error
 	SetConnectionsConfigCommand(ctx context.Context, data ConnConfigRequest) error
 	GetFullConfigCommand(ctx context.Context) (wconfig.FullConfigType, error)
 	GetWaveAIModeConfigCommand(ctx context.Context) (wconfig.AIModeConfigUpdate, error)
@@ -286,6 +292,19 @@ type WshRpcInterface interface {
 }
 
 // for frontend
+// CommonTextSyncPendingResult carries the items the remote has not confirmed yet.
+type CommonTextSyncPendingResult struct {
+	// Pending is the derived state per item; kept parallel to Ids so a caller can show a title
+	// without a second query.
+	Pending []wconfig.CommonTextItemType `json:"pending"`
+}
+
+// CommonTextSyncMarkSyncedData is the per-item push outcome, so the receiver can record
+// syncedrev / syncedupdatedat exactly like the in-app engine does.
+type CommonTextSyncMarkSyncedData struct {
+	Results []syncproto.PushItemResult `json:"results"`
+}
+
 type WshServerCommandMeta struct {
 	CommandType string `json:"commandtype"`
 }

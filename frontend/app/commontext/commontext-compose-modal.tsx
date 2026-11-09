@@ -26,6 +26,7 @@ import {
     filterCommonTextItemsByTags,
     getCommonTextItems,
     getCommonTextItemsFromSettings,
+    getLiveCommonTextItems,
     getCommonTextTagSummaries,
     recordCommonTextUse,
     getCommonTextDeviceSummaries,
@@ -62,6 +63,32 @@ const CommonTextSortOptions: { key: CommonTextSortKey; icon: string; label: stri
     { key: "usage-desc", icon: "fa-fire", label: "Most used" },
     { key: "title-asc", icon: "fa-arrow-down-a-z", label: "Title A to Z" },
 ];
+
+/**
+ * 同步状态的唯一文案来源：列表圆点 tooltip 与详情页脚都读它。
+ * pending 说的是「云端还没收到这一份内容」，不是「正在上传」——上传是整包同步，没有单条进度。
+ */
+function describeCommonTextSyncState(item: CommonTextItem): string {
+    if (item.syncstate === "synced") {
+        const rev = item.syncedrev != null && item.syncedrev > 0 ? ` · rev ${item.syncedrev}` : "";
+        return `Synced${rev}`;
+    }
+    return "Pending upload — the next sync will send it";
+}
+
+/** 列表行标题右侧的小圆点：只在 pending 时出现，已同步不占布局。 */
+function CommonTextSyncDot({ item }: { item: CommonTextItem }) {
+    const pending = item.syncstate !== "synced";
+    if (!pending) return null;
+    return (
+        <span
+            data-commontext-sync-state={item.syncstate}
+            title={describeCommonTextSyncState(item)}
+            aria-label={describeCommonTextSyncState(item)}
+            className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
+        />
+    );
+}
 
 /** 时间一律走会话列表同一套口径（formatSessionDateCompact），不另写一套格式化。 */
 /** 徽标上的名字：agent 显示 agent 名，human 显示人名；都没名就退回类型名。 */
@@ -285,7 +312,11 @@ const CommonTextComposeModal = memo(() => {
     // 之后所有 await 之 setState 都跳过，避免"setState on unmounted component"触发 React 19 卸载期 throw 白屏。
     const unmountedRef = useRef(false);
 
-    const allItems = useMemo(() => getCommonTextItemsFromSettings(settings), [settings]);
+    // 墓碑（已删除、等同步上传的条目）不进列表/标签统计：它们在库里存在只是为了把删除推出去。
+    const allItems = useMemo(
+        () => getLiveCommonTextItems(getCommonTextItemsFromSettings(settings)),
+        [settings]
+    );
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
     // 无标签条目数：驱动 untagged chip 的计数展示，与筛选走同一 normalize 口径。
     const untaggedCount = useMemo(
@@ -1514,6 +1545,7 @@ const CommonTextComposeModal = memo(() => {
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex min-w-0 items-center gap-1.5">
                                                     <span className="min-w-0 truncate text-xs font-medium">{item.title}</span>
+                                                    <CommonTextSyncDot item={item} />
                                                     <span
                                                         data-commontext-creator-badge={getCommonTextCreatorKind(item)}
                                                         title={describeCommonTextSource(item)}
@@ -1763,6 +1795,23 @@ const CommonTextComposeModal = memo(() => {
                                         data-commontext-detail-meta=""
                                         className="flex items-center gap-2 text-[10.5px] leading-none tabular-nums text-secondary"
                                     >
+                                        <span
+                                            data-commontext-detail-sync={detailItem.syncstate ?? "pending"}
+                                            className={
+                                                "inline-flex items-center gap-1 " +
+                                                (detailItem.syncstate === "synced" ? "" : "text-warn")
+                                            }
+                                            title={describeCommonTextSyncState(detailItem)}
+                                        >
+                                            <i
+                                                className={
+                                                    detailItem.syncstate === "synced"
+                                                        ? "fa fa-solid fa-cloud text-[9px]"
+                                                        : "fa fa-solid fa-cloud-arrow-up text-[9px]"
+                                                }
+                                            />
+                                            {detailItem.syncstate === "synced" ? "Synced" : "Pending"}
+                                        </span>
                                         <span
                                             className="inline-flex items-center gap-1"
                                             title={`Created ${compactCommonTextTime(detailItem.createdat, true)}`}

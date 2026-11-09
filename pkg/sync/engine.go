@@ -63,6 +63,18 @@ type Transport interface {
 	Push(ctx context.Context, req syncproto.PushRequest) (*PushOutcome, error)
 }
 
+// record appends one item outcome and keeps the counters in sync with it. Transports call this
+// instead of incrementing Applied/Unchanged directly so the two can never disagree.
+func (o *PushOutcome) record(id string, rev float64, status string) {
+	o.Items = append(o.Items, syncproto.PushItemResult{Id: id, Rev: rev, Status: status})
+	switch status {
+	case syncproto.PushStatusApplied:
+		o.Applied++
+	case syncproto.PushStatusUnchanged:
+		o.Unchanged++
+	}
+}
+
 // PushOutcome is the transport-independent result of a push.
 type PushOutcome struct {
 	// Applied counts items the remote accepted (new or updated).
@@ -71,6 +83,9 @@ type PushOutcome struct {
 	Unchanged int
 	// Conflicts are items the remote refused and returned both versions for.
 	Conflicts []syncproto.Conflict
+	// Items is the per-item outcome. The counters above stay for display and for transports that
+	// do not report detail; the sync watermark needs the ids and confirmed revisions.
+	Items []syncproto.PushItemResult
 	// Rev is the remote head revision after the push.
 	Rev float64
 	// StaleBase means the remote moved on; the caller must pull and retry rather than push blindly.
@@ -82,14 +97,29 @@ type PushOutcome struct {
 // Store is the local side of a sync run: the engine never touches the database directly.
 type Store interface {
 	// Items returns every local item INCLUDING tombstones (a delete must be pushed, otherwise the
-	// remote resurrects it).
+	// remote resurrects it). Used for baseline runs, which seed a whole new remote.
 	Items(ctx context.Context) ([]syncproto.SnapshotItem, error)
+	// PendingItems returns only the items the remote has not confirmed yet. Steady-state runs push
+	// this set instead of the whole table.
+	PendingItems(ctx context.Context) ([]syncproto.SnapshotItem, error)
+	// MarkSynced records the per-item push outcome so confirmed items stop being pending.
+	MarkSynced(ctx context.Context, results []syncproto.PushItemResult) error
 	// ApplyRemoteWithMode writes items learned from the remote into the local database, using the
 	// mode to decide what a collision means.
 	ApplyRemoteWithMode(ctx context.Context, items []syncproto.SnapshotItem, mode RemoteApplyMode) (applied int, err error)
 	// LocalRevision is the highest rev this machine has stored; used as `sinceRev` on pull and as
 	// the base for the next push.
 	LocalRevision(ctx context.Context) (float64, error)
+}
+
+// WatermarkStore is the optional extra a store can implement to let the engine notice that the
+// remote started over. Optional on purpose: a store that cannot track revisions still syncs, it
+// just loses the self-heal.
+type WatermarkStore interface {
+	// MaxSyncedRev is the highest remote revision this device has confirmed.
+	MaxSyncedRev(ctx context.Context) (float64, error)
+	// ResetSyncWatermarks forgets every confirmation, making all items pending again.
+	ResetSyncWatermarks(ctx context.Context) error
 }
 
 // RemoteApplyMode decides what happens when a remote item collides with a local one.
@@ -216,6 +246,9 @@ type RunResult struct {
 	Pushed    int
 	Unchanged int
 	Conflicts []syncproto.Conflict
+	// PushedIds names the items the remote accepted (or already matched). Used by callers that
+	// report item-level progress instead of a bare count.
+	PushedIds []string
 	// StaleBase means the remote moved during our push; a follow-up Run will reconcile.
 	StaleBase bool
 	// Skipped is set when the run did nothing (no transport, or manual policy blocked by conflicts).
@@ -313,7 +346,24 @@ func (e *Engine) runOnce(ctx context.Context, transport Transport, baseline Base
 	}
 
 	// ── 2. Collect local changes and push ────────────────────────────────────
-	items, err := e.store.Items(ctx)
+	//
+	// Steady state pushes only what the remote has not confirmed yet. Baseline runs push everything
+	// on purpose: they are seeding a remote that has never seen this dataset, so a watermark taken
+	// from a DIFFERENT transport says nothing about it.
+	pushAll := baseline != BaselineNone
+	if !pushAll {
+		startedOver, resetErr := e.remoteStartedOver(ctx, remote)
+		if resetErr != nil {
+			return result, resetErr
+		}
+		pushAll = startedOver
+	}
+	var items []syncproto.SnapshotItem
+	if pushAll {
+		items, err = e.store.Items(ctx)
+	} else {
+		items, err = e.store.PendingItems(ctx)
+	}
 	if err != nil {
 		return result, fmt.Errorf("reading local items: %w", err)
 	}
@@ -353,7 +403,28 @@ func (e *Engine) runOnce(ctx context.Context, transport Transport, baseline Base
 		_ = e.journal(syncjournal.Event{Type: syncjournal.EventPush, Items: outcome.Applied, Rev: outcome.Rev})
 	}
 
-	// ── 3. Journal conflicts ─────────────────────────────────────────────────
+	// ── 3. Record what the remote confirmed ──────────────────────────────────
+	// Only accepted/matching items count as synced. A conflict means the remote kept a different
+	// version, so the item stays pending until a human (or a policy) resolves it.
+	confirmed := make([]syncproto.PushItemResult, 0, len(outcome.Items))
+	for _, itemResult := range outcome.Items {
+		if itemResult.Status == syncproto.PushStatusConflict {
+			continue
+		}
+		confirmed = append(confirmed, itemResult)
+		result.PushedIds = append(result.PushedIds, itemResult.Id)
+	}
+	if len(confirmed) > 0 {
+		if markErr := e.store.MarkSynced(ctx, confirmed); markErr != nil {
+			// The upload already happened, so failing the whole run would be wrong; but silence
+			// would leave the item pending forever with no explanation. Journal it and keep going.
+			_ = e.journal(syncjournal.Event{
+				Type: syncjournal.EventError, Phase: "mark-synced", Msg: markErr.Error(),
+			})
+		}
+	}
+
+	// ── 4. Journal conflicts ─────────────────────────────────────────────────
 	for _, c := range outcome.Conflicts {
 		_ = e.journal(syncjournal.Event{
 			Type: syncjournal.EventConflict, Id: c.Id, Fields: c.Fields,
@@ -361,6 +432,41 @@ func (e *Engine) runOnce(ctx context.Context, transport Transport, baseline Base
 		})
 	}
 	return result, nil
+}
+
+// remoteStartedOver reports whether the remote lost its history since the last confirmation.
+//
+// Rev numbers are per-remote: a reset payload file, a moved sync folder or a reinstalled peer all
+// restart at zero. With an incremental push that would be silent data loss — the pending filter
+// would keep every local item local because the remote "already has" revisions higher than the
+// empty remote ever issued. Clearing the watermarks turns it into one full re-upload instead.
+func (e *Engine) remoteStartedOver(ctx context.Context, remote *syncproto.Snapshot) (bool, error) {
+	store, ok := e.store.(WatermarkStore)
+	if !ok {
+		return false, nil
+	}
+	maxSynced, err := store.MaxSyncedRev(ctx)
+	if err != nil {
+		return false, fmt.Errorf("reading sync watermark: %w", err)
+	}
+	if maxSynced == 0 {
+		return false, nil
+	}
+	var remoteRev float64
+	if remote != nil {
+		remoteRev = remote.Rev
+	}
+	if remoteRev >= maxSynced {
+		return false, nil
+	}
+	if err := store.ResetSyncWatermarks(ctx); err != nil {
+		return false, fmt.Errorf("resetting sync watermark: %w", err)
+	}
+	_ = e.journal(syncjournal.Event{
+		Type: syncjournal.EventError, Phase: "remote-reset",
+		Msg:  fmt.Sprintf("remote rev %.0f is behind the last confirmed rev %.0f; re-uploading everything", remoteRev, maxSynced),
+	})
+	return true, nil
 }
 
 // ShouldBlockPush reports whether the manual policy should stop the next push because unresolved

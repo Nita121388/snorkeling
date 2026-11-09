@@ -130,6 +130,16 @@ type CommonTextItemType struct {
 	// DeletedAt is a tombstone: non-zero means deleted. Deletions must sync or the
 	// other machine would resurrect the item.
 	DeletedAt float64 `json:"deletedat,omitempty"`
+
+	// Sync watermark projection. Read-only: filled by the store from db_common_text_sync on
+	// every read and dropped on every write (normalizeCommonTextItem rebuilds the struct field
+	// by field), because a renderer's stale copy must never be able to write a watermark.
+	// SyncedRev is the remote revision this device confirmed for the item.
+	SyncedRev float64 `json:"syncedrev,omitempty"`
+	// SyncedAt is the local wall clock of that confirmation (display / debugging only).
+	SyncedAt float64 `json:"syncedat,omitempty"`
+	// SyncState is "pending" or "synced", derived from SyncedUpdatedat vs UpdatedAt.
+	SyncState string `json:"syncstate,omitempty"`
 }
 
 type PinnedDirectoryType struct {

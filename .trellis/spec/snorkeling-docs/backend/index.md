@@ -51,3 +51,16 @@
      （`pkg/wshrpc/wshremote/windows_drives.go`）保持一致；不要另造 “My Computer” 之类新词。
    - 前端在数据未就绪时的 fallback 文案也要平台中性（`"this machine"`），
      不要复制后端某个平台的写死值。
+7. **整表覆盖的写路径上不许承载同步状态。** 任何「前端把整份数组写回、后端整表 upsert」
+   的数据（典型：`commontext:items` → `SaveFromConfigMap` → `saveCommonTextItemsToDB`），
+   都**不能**把同步水位、dirty 标记、last-synced 时间戳这类「谁同步过」的字段放在同一行。
+   前端手里的数组是同步**之前**读到的快照，一次置顶/改名/记用量就会把水位写回旧值，
+   表现成「同步成功后过一会儿又变回待上传」。
+   - 正确做法：水位放独立表（如 `db_common_text_sync`），读路径 JOIN 后以**只读投影**字段
+     （`syncstate` / `syncedrev`）暴露；写路径的 normalize 函数逐字段重建结构体，天然丢弃投影。
+   - 判定经验：**同步判定要比「本地写入的值」而不是「本机当前时钟」**。`syncedupdatedat`
+     存的是被确认那一刻条目的 `updatedat` 原值；存 `now()` 会让另一台机器创建的条目
+     （时钟可能超前）永远 pending。
+   - 增量推送必须配一个「远端被重置」自愈：远端 rev 掉到 0 而本地还记着 syncedrev 时，
+     只推 pending 等于永远不推，且**没有任何报错**。开工前先问一句：
+     「这套过滤在远端失忆时会发生什么？」

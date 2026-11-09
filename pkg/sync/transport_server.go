@@ -62,6 +62,7 @@ func (t *ServerTransport) Push(ctx context.Context, req syncproto.PushRequest) (
 		Applied:   res.AppliedCount,
 		Unchanged: res.Unchanged,
 		Conflicts: res.Conflicts,
+		Items:     res.Items,
 		Rev:       res.Rev,
 	}
 	if !res.Applied {

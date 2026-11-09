@@ -85,4 +85,17 @@ describe("CommonTextComposeModal hook order", () => {
         // 新建条目：只刷新 lastusedat，不虚记一次使用
         expect(source).toContain("recordCommonTextUse(item.id, { countUsage: false })");
     });
+
+    it("marks items the cloud has not received yet, in the row and in the detail footer", () => {
+        // 列表行：只在 pending 时出现一个点，已同步不占布局
+        expect(source).toContain("data-commontext-sync-state={item.syncstate}");
+        expect(source).toContain("function CommonTextSyncDot(");
+        expect(source).toContain("<CommonTextSyncDot item={item} />");
+        // 详情页脚：与列表同一份派生状态（后端 syncstate 投影），文案只有一处
+        expect(source).toContain("data-commontext-detail-sync={detailItem.syncstate");
+        expect(source).toContain("function describeCommonTextSyncState(");
+        expect(source).toContain('"Pending upload — the next sync will send it"');
+        // 墓碑不上列表：可见条目必须先过滤
+        expect(source).toContain("getLiveCommonTextItems(getCommonTextItemsFromSettings(settings))");
+    });
 });

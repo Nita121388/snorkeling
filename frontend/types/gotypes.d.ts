@@ -1881,6 +1881,9 @@ declare global {
         origin?: CommonTextOriginType;
         rev?: number;
         deletedat?: number;
+        syncedrev?: number;
+        syncedat?: number;
+        syncstate?: string;
     };
 
     // commontextservice.CommonTextListRequest
@@ -1914,9 +1917,19 @@ declare global {
         count: number;
     };
 
+    // wshrpc.CommonTextSyncMarkSyncedData
+    type CommonTextSyncMarkSyncedData = {
+        results: PushItemResult[];
+    };
+
     // commontextservice.CommonTextSyncNowRequest
     type CommonTextSyncNowRequest = {
         trigger?: string;
+    };
+
+    // wshrpc.CommonTextSyncPendingResult
+    type CommonTextSyncPendingResult = {
+        pending: CommonTextItemType[];
     };
 
     // commontextservice.CommonTextSyncStatusResponse
@@ -2666,6 +2679,13 @@ declare global {
         confidence?: number;
     };
 
+    // syncproto.PushItemResult
+    type PushItemResult = {
+        id: string;
+        rev?: number;
+        status: string;
+    };
+
     // uctypes.RateLimitInfo
     type RateLimitInfo = {
         req: number;
@@ -3244,6 +3264,7 @@ declare global {
         lastApplied: number;
         lastPushed: number;
         conflicts: number;
+        pending: number;
         intervalSeconds: number;
     };
 

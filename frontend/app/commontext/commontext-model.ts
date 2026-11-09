@@ -45,7 +45,16 @@ export type CommonTextItem = {
     rev?: number;
     /** Tombstone: non-zero means deleted. */
     deletedat?: number;
+    /**
+     * 同步状态："pending" = 云端还没收到这一份内容，"synced" = 已确认。
+     * 只读投影：由后端按 db_common_text_sync 的水位算出，保存时不回写（写路径会丢弃它）。
+     */
+    syncstate?: CommonTextSyncState;
+    /** 云端确认过的该条目 rev（只读投影，用于详情展示）。 */
+    syncedrev?: number;
 };
+
+export type CommonTextSyncState = "pending" | "synced";
 
 /** Defaults for items written before sync metadata existed (mirrors the Go read path). */
 export const LegacyCreatedBy: CommonTextCreatedBy = { kind: "human", name: "" };
@@ -152,6 +161,11 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
     const origin = normalizeCommonTextOrigin(raw.origin);
     const rev = typeof raw.rev === "number" && Number.isFinite(raw.rev) ? raw.rev : 0;
     const deletedat = typeof raw.deletedat === "number" && Number.isFinite(raw.deletedat) ? raw.deletedat : undefined;
+    // 同步状态只认后端给出的两个值；其它（含缺失）一律按 pending —— 宁可多推一次，
+    // 也不能把没上传的条目谎报成已同步。
+    const syncstate: CommonTextSyncState = raw.syncstate === "synced" ? "synced" : "pending";
+    const syncedrev =
+        typeof raw.syncedrev === "number" && Number.isFinite(raw.syncedrev) ? raw.syncedrev : undefined;
     return {
         id,
         title,
@@ -168,6 +182,8 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
         origin,
         rev,
         deletedat,
+        syncstate,
+        syncedrev,
     };
 }
 
@@ -213,6 +229,21 @@ export function getCommonTextItemsFromSettings(settings: SettingsType | null | u
 
 export function getCommonTextItems(): CommonTextItem[] {
     return getCommonTextItemsFromSettings(globalStore.get(atoms.settingsAtom));
+}
+
+/** 墓碑（已删除待同步/已同步删除）不能在列表、重复检测和标签统计里出现。 */
+export function isCommonTextTombstone(item: CommonTextItem): boolean {
+    return (item.deletedat ?? 0) > 0;
+}
+
+/**
+ * 可见条目 = 去掉墓碑。
+ *
+ * 与 `getCommonTextItems` 分开：那个函数是**写入源**（整表覆盖写盘），必须包含墓碑，
+ * 否则一次普通保存就会把未上传的删除从库里抹掉，对端下次 pull 就把条目复活。
+ */
+export function getLiveCommonTextItems(items: CommonTextItem[]): CommonTextItem[] {
+    return items.filter((item) => !isCommonTextTombstone(item));
 }
 
 /**
@@ -632,7 +663,8 @@ export async function upsertCommonTextItem(draft: CommonTextDraft, existingId?: 
     const now = Date.now();
     const existing = existingId ? items.find((item) => item.id === existingId) : null;
     const text = draft.text;
-    const duplicate = findDuplicateCommonText(items, text, existingId);
+    // 重复检测只看活条目：一条已删（待同步墓碑）的旧内容不应该拦住用户重新添加同样的文本。
+    const duplicate = findDuplicateCommonText(getLiveCommonTextItems(items), text, existingId);
     if (duplicate != null) {
         throw new Error(`Common text already exists: ${duplicate.title}`);
     }
@@ -654,6 +686,8 @@ export async function upsertCommonTextItem(draft: CommonTextDraft, existingId?: 
         origin: existing?.origin ?? currentOrigin(),
         rev: existing?.rev ?? 0,
         deletedat: existing?.deletedat,
+        // syncstate / syncedrev 刻意不拷：它们是后端投影，写路径会丢掉；带上只会让本地对象
+        // 看起来“刚同步过”，而实际并没有。
     };
     const nextItems = existing == null ? [item, ...items] : items.map((cur) => (cur.id === item.id ? item : cur));
     await saveCommonTextItems(nextItems);
@@ -669,7 +703,12 @@ export async function addSelectionToCommonText(text: string): Promise<CommonText
 }
 
 export async function deleteCommonTextItem(id: string): Promise<void> {
-    const nextItems = getCommonTextItems().filter((item) => item.id !== id);
+    // 删除 = 写墓碑（保留条目 + 时间戳），不是从数组里抹掉。
+    // 抹掉的话同步层收不到任何信号：对端 pull 到它还比你「新」，于是已删条目被复活。
+    const deletedAt = Date.now();
+    const nextItems = getCommonTextItems().map((item) =>
+        item.id === id ? { ...item, deletedat: deletedAt, updatedat: deletedAt } : item
+    );
     await saveCommonTextItems(nextItems, { allowEmpty: nextItems.length === 0 });
 }
 

@@ -367,7 +367,7 @@ func mergeIntoPayload(payload *FolderPayload, req syncproto.PushRequest) (*PushO
 		if !found {
 			incoming.Rev = nextRev
 			byId[incoming.Id] = incoming
-			outcome.Applied++
+			outcome.record(incoming.Id, nextRev, syncproto.PushStatusApplied)
 			newRev = nextRev
 			changed = true
 			continue
@@ -375,7 +375,7 @@ func mergeIntoPayload(payload *FolderPayload, req syncproto.PushRequest) (*PushO
 		if incoming.DeletedAt > 0 && incoming.Rev >= stored.Rev {
 			incoming.Rev = nextRev
 			byId[incoming.Id] = incoming
-			outcome.Applied++
+			outcome.record(incoming.Id, nextRev, syncproto.PushStatusApplied)
 			newRev = nextRev
 			changed = true
 			continue
@@ -385,11 +385,11 @@ func mergeIntoPayload(payload *FolderPayload, req syncproto.PushRequest) (*PushO
 			if incoming.UpdatedAt > stored.UpdatedAt {
 				incoming.Rev = nextRev
 				byId[incoming.Id] = incoming
-				outcome.Applied++
+				outcome.record(incoming.Id, nextRev, syncproto.PushStatusApplied)
 				newRev = nextRev
 				changed = true
 			} else {
-				outcome.Unchanged++
+				outcome.record(incoming.Id, stored.Rev, syncproto.PushStatusUnchanged)
 			}
 			continue
 		}
@@ -397,6 +397,7 @@ func mergeIntoPayload(payload *FolderPayload, req syncproto.PushRequest) (*PushO
 		if len(fields) > 0 {
 			local := incoming
 			remote := stored
+			outcome.Items = append(outcome.Items, syncproto.PushItemResult{Id: incoming.Id, Status: syncproto.PushStatusConflict})
 			outcome.Conflicts = append(outcome.Conflicts, syncproto.Conflict{
 				Id: incoming.Id, Fields: fields, Local: &local, Remote: &remote,
 				Reason: "both sides changed the same field",
@@ -405,12 +406,12 @@ func mergeIntoPayload(payload *FolderPayload, req syncproto.PushRequest) (*PushO
 		}
 		merged, didChange := mergeForFolder(base, &incoming, &stored)
 		if !didChange {
-			outcome.Unchanged++
+			outcome.record(incoming.Id, stored.Rev, syncproto.PushStatusUnchanged)
 			continue
 		}
 		merged.Rev = nextRev
 		byId[merged.Id] = merged
-		outcome.Applied++
+		outcome.record(merged.Id, nextRev, syncproto.PushStatusApplied)
 		newRev = nextRev
 		changed = true
 	}

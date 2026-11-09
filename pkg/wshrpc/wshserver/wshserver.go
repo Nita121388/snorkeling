@@ -726,6 +726,26 @@ func (ws *WshServer) SetConfigCommand(ctx context.Context, data wshrpc.MetaSetti
 	return wconfig.SetBaseConfigValue(data.MetaMapType)
 }
 
+// CommonTextSyncPendingCommand reports the items the remote has not confirmed yet.
+func (ws *WshServer) CommonTextSyncPendingCommand(ctx context.Context) (*wshrpc.CommonTextSyncPendingResult, error) {
+	pending, err := commontextstore.PendingItems(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &wshrpc.CommonTextSyncPendingResult{Pending: pending}, nil
+}
+
+// CommonTextSyncMarkSyncedCommand records push outcomes so confirmed items stop being pending.
+func (ws *WshServer) CommonTextSyncMarkSyncedCommand(ctx context.Context, data wshrpc.CommonTextSyncMarkSyncedData) error {
+	if err := commontextstore.MarkSynced(ctx, data.Results); err != nil {
+		return err
+	}
+	// The item list is hydrated into settings, so the open window has to be re-broadcast or its
+	// pending dots stay stale until reopen.
+	wconfig.BroadcastConfigUpdate()
+	return nil
+}
+
 func (ws *WshServer) SetConnectionsConfigCommand(ctx context.Context, data wshrpc.ConnConfigRequest) error {
 	return wconfig.SetConnectionsConfigValue(data.Host, data.MetaMapType)
 }

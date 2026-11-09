@@ -208,6 +208,7 @@ func (s *Store) Apply(req syncproto.PushRequest) (syncproto.PushResponse, error)
 				return syncproto.PushResponse{}, err
 			}
 			resp.Applied++
+			resp.Items = append(resp.Items, syncproto.PushItemResult{Id: it.Id, Rev: nextRev, Status: syncproto.PushStatusApplied})
 			newRev = nextRev
 			continue
 		}
@@ -219,6 +220,7 @@ func (s *Store) Apply(req syncproto.PushRequest) (syncproto.PushResponse, error)
 				return syncproto.PushResponse{}, err
 			}
 			resp.Applied++
+			resp.Items = append(resp.Items, syncproto.PushItemResult{Id: it.Id, Rev: nextRev, Status: syncproto.PushStatusApplied})
 			newRev = nextRev
 			continue
 		}
@@ -234,9 +236,11 @@ func (s *Store) Apply(req syncproto.PushRequest) (syncproto.PushResponse, error)
 					return syncproto.PushResponse{}, err
 				}
 				resp.Applied++
+				resp.Items = append(resp.Items, syncproto.PushItemResult{Id: it.Id, Rev: nextRev, Status: syncproto.PushStatusApplied})
 				newRev = nextRev
 			} else {
 				resp.Unchanged++
+				resp.Items = append(resp.Items, syncproto.PushItemResult{Id: it.Id, Rev: existing.Rev, Status: syncproto.PushStatusUnchanged})
 			}
 			continue
 		}
@@ -252,9 +256,11 @@ func (s *Store) Apply(req syncproto.PushRequest) (syncproto.PushResponse, error)
 					return syncproto.PushResponse{}, err
 				}
 				resp.Applied++
+				resp.Items = append(resp.Items, syncproto.PushItemResult{Id: it.Id, Rev: nextRev, Status: syncproto.PushStatusApplied})
 				newRev = nextRev
 			} else {
 				resp.Unchanged++
+				resp.Items = append(resp.Items, syncproto.PushItemResult{Id: it.Id, Rev: existing.Rev, Status: syncproto.PushStatusUnchanged})
 			}
 			continue
 		}
@@ -263,6 +269,7 @@ func (s *Store) Apply(req syncproto.PushRequest) (syncproto.PushResponse, error)
 		// a diff and let a human (or an agent) merge it.
 		localCopy := it
 		remoteCopy := *existing
+		resp.Items = append(resp.Items, syncproto.PushItemResult{Id: it.Id, Rev: existing.Rev, Status: syncproto.PushStatusConflict})
 		resp.Conflicts = append(resp.Conflicts, syncproto.Conflict{
 			Id:     it.Id,
 			Fields: conflictFields,

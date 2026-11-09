@@ -192,6 +192,15 @@
         },
         "deletedat": {
           "type": "number"
+        },
+        "syncedrev": {
+          "type": "number"
+        },
+        "syncedat": {
+          "type": "number"
+        },
+        "syncstate": {
+          "type": "string"
         }
       },
       "additionalProperties": false,

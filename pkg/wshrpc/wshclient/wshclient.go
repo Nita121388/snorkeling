@@ -200,6 +200,18 @@ func CheckGoVersionCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.Com
 	return resp, err
 }
 
+// command "commontextsyncmarksynced", wshserver.CommonTextSyncMarkSyncedCommand
+func CommonTextSyncMarkSyncedCommand(w *wshutil.WshRpc, data wshrpc.CommonTextSyncMarkSyncedData, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "commontextsyncmarksynced", data, opts)
+	return err
+}
+
+// command "commontextsyncpending", wshserver.CommonTextSyncPendingCommand
+func CommonTextSyncPendingCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.CommonTextSyncPendingResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.CommonTextSyncPendingResult](w, "commontextsyncpending", nil, opts)
+	return resp, err
+}
+
 // command "connconnect", wshserver.ConnConnectCommand
 func ConnConnectCommand(w *wshutil.WshRpc, data wshrpc.ConnRequest, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "connconnect", data, opts)
