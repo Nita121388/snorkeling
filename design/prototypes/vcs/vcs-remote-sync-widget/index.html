@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>VCS Remote 区美化原型 · Upstream / Incoming / Outgoing</title>
+<style>
+  :root {
+    --font-sans: "Inter", "Microsoft YaHei", system-ui, sans-serif;
+    --font-mono: "Hack", "Cascadia Mono", Consolas, monospace;
+  }
+  html[data-theme="dark"] {
+    --bg: rgb(34, 34, 34);
+    --panel: rgb(30, 30, 30);
+    --text: #f7f7f7;
+    --text-2: rgb(195, 200, 194);
+    --text-muted: #7d7d7d;
+    --border: rgba(255, 255, 255, 0.16);
+    --border-soft: rgba(255, 255, 255, 0.08);
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --surface: rgba(255, 255, 255, 0.06);
+    --hover: rgba(255, 255, 255, 0.07);
+    --accent: rgb(88, 193, 66);
+    --success: rgb(110, 200, 90);
+    --error: rgb(229, 100, 77);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  html[data-theme="light"] {
+    --bg: #fdfbf6;
+    --panel: #fffdf8;
+    --text: #2b2723;
+    --text-2: #5c554c;
+    --text-muted: #948a7c;
+    --border: rgba(0, 0, 0, 0.14);
+    --border-soft: rgba(0, 0, 0, 0.07);
+    --surface-soft: #f7f4ee;
+    --surface: #f1efe8;
+    --hover: rgba(0, 0, 0, 0.045);
+    --accent: #6b8f3f;
+    --success: #2e7d32;
+    --error: #c0392b;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 24px 64px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page-head { max-width: 1180px; margin: 0 auto 26px; }
+  .page-head h1 { font-size: 17px; margin: 0 0 6px; letter-spacing: 0.2px; }
+  .page-head p { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+  .seg {
+    display: inline-flex; padding: 2px; gap: 2px;
+    background: var(--surface-soft); border-radius: 7px;
+  }
+  .seg button {
+    font: inherit; font-size: 12px; border: 0; background: transparent; color: var(--text-2);
+    padding: 5px 11px; border-radius: 5px; cursor: pointer; transition: background .12s, color .12s;
+  }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--surface); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-soft); }
+  .hint { color: var(--text-muted); font-size: 11px; }
+
+  .board { display: flex; gap: 36px; flex-wrap: wrap; max-width: 1180px; margin: 0 auto; }
+  .col { display: flex; flex-direction: column; gap: 10px; }
+  .col > h2 {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--text-muted); margin: 0 0 2px;
+  }
+  .col > h2 b { color: var(--text-2); font-weight: 600; }
+  .col-note { font-size: 11px; color: var(--text-muted); line-height: 1.6; max-width: 470px; margin: 0; }
+  .frames { display: flex; gap: 20px; flex-wrap: wrap; }
+  .col.wide { flex: 1 1 100%; }
+
+  /* ---------- VCS panel shell (real block look) ---------- */
+  .panel {
+    width: 470px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 10px 12px; font-size: 12px; box-shadow: var(--shadow);
+  }
+  .sec-head {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+    padding: 4px 8px; border-radius: 5px; color: var(--text-2); font-size: 12px; font-weight: 500;
+  }
+  .sec-head:hover { background: var(--hover); }
+  .chev { color: var(--text-muted); font-size: 10px; width: 12px; }
+  .sec-title { flex: 1; min-width: 0; }
+  .sec-actions { display: flex; align-items: center; gap: 4px; }
+  .ic {
+    width: 22px; height: 22px; display: inline-grid; place-items: center;
+    border: 0; border-radius: 5px; background: transparent; color: var(--text-2);
+    font-size: 12px; cursor: pointer; transition: background .12s, color .12s;
+  }
+  .ic:hover { background: var(--hover); color: var(--text); }
+  .ic.on { color: var(--accent); }
+  .ic[disabled] { opacity: .4; cursor: default; }
+
+  /* ---------- current (before) ---------- */
+  .cur-upstream { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-2); font-size: 12px; margin-top: 4px; }
+  .cur-upstream .nm { font-family: var(--font-mono); }
+  .cur-pill {
+    border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+    font-size: 11px; color: var(--text-2);
+  }
+  .cur-grp-title { font-size: 11px; font-weight: 500; color: var(--text-2); margin: 10px 0 4px; }
+  .cur-row {
+    display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);
+    padding: 6px 8px; font-size: 12px;
+  }
+  .cur-row:last-child { border-bottom: 0; }
+  .cur-row .h { font-family: var(--font-mono); color: var(--text-2); min-width: 78px; }
+  .cur-row .s { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cur-row .a { color: var(--text-muted); min-width: 60px; }
+  .cur-row .d { color: var(--text-muted); min-width: 84px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- Variant A : sync bar + two-line rows ---------- */
+  .syncbar {
+    display: flex; align-items: center; gap: 7px;
+    margin: 6px 0 2px; padding: 7px 10px; border-radius: 7px;
+    background: var(--surface-soft);
+  }
+  .syncbar .branch { color: var(--text-muted); font-size: 11px; }
+  .syncbar .up {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-2);
+    max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .syncbar .up.none { font-family: var(--font-sans); font-style: italic; color: var(--text-muted); }
+  .syncbar .sp { flex: 1; }
+  .diverge { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-family: var(--font-mono); }
+  .diverge .n { display: inline-flex; align-items: center; gap: 2px; }
+  .diverge .up-n { color: var(--success); }
+  .diverge .dn-n { color: var(--error); }
+  .diverge .z { color: var(--text-muted); opacity: .55; }
+  .diverge .sep { color: var(--text-muted); opacity: .5; }
+  .insync { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
+  .insync .dot { color: var(--success); }
+
+  .grp { margin-top: 12px; }
+  .grp-head { display: flex; align-items: center; gap: 7px; padding: 0 2px 5px; }
+  .grp-head .lbl { font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--text-2); }
+  .grp-head .cnt {
+    font-size: 10px; font-family: var(--font-mono); color: var(--text-muted);
+    background: var(--surface-soft); border-radius: 4px; padding: 0 4px; line-height: 15px;
+  }
+  .grp-head .rule { flex: 1; height: 1px; background: var(--border-soft); }
+
+  .rows { border-radius: 7px; overflow: hidden; }
+  .row2 {
+    position: relative; display: flex; gap: 8px; padding: 7px 8px 8px;
+    cursor: default; transition: background .12s;
+  }
+  .row2 + .row2::before {
+    content: ""; position: absolute; left: 8px; right: 8px; top: 0;
+    height: 1px; background: var(--border-soft);
+  }
+  .row2:hover { background: var(--hover); }
+  .row2 .rail { width: 2px; border-radius: 2px; background: transparent; flex: none; }
+  .row2:hover .rail { background: var(--border); }
+  .row2.out .rail { background: color-mix(in srgb, var(--success) 55%, transparent); }
+  .row2.in .rail { background: color-mix(in srgb, var(--error) 55%, transparent); }
+  .row2 .body { min-width: 0; flex: 1; }
+  .row2 .subject {
+    font-size: 12px; color: var(--text); line-height: 1.45;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .row2 .meta {
+    display: flex; align-items: center; gap: 6px; margin-top: 3px;
+    font-size: 10.5px; color: var(--text-muted);
+  }
+  .row2 .meta code { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); letter-spacing: .02em; }
+  .row2:hover .meta code { color: var(--text-2); }
+  .row2 .meta .s2 { opacity: .45; }
+  .row2 .acts { display: flex; align-items: center; gap: 2px; opacity: 0; transition: opacity .12s; }
+  .row2:hover .acts { opacity: 1; }
+  .row2 .acts .ic { width: 20px; height: 20px; font-size: 11px; }
+
+  /* ---------- Variant B : compact single-line ---------- */
+  .row1 {
+    position: relative; display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 6px; font-size: 12px; transition: background .12s;
+  }
+  .row1:hover { background: var(--hover); }
+  .row1 .glyph { width: 12px; text-align: center; font-size: 10px; color: var(--text-muted); flex: none; }
+  .row1.out .glyph { color: var(--success); }
+  .row1.in .glyph { color: var(--error); }
+  .row1 .subject { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row1 .who { color: var(--text-muted); font-size: 10.5px; white-space: nowrap; flex: none; max-width: 88px; overflow: hidden; text-overflow: ellipsis; }
+  .row1 .when { color: var(--text-muted); font-size: 10.5px; white-space: nowrap; flex: none; min-width: 30px; text-align: right; }
+
+  /* ---------- misc ---------- */
+  .anno { display: flex; gap: 8px; font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+  .anno .n {
+    flex: none; width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--surface-soft); color: var(--text-2); font-size: 9px; margin-top: 1px;
+  }
+  .tag {
+    font-size: 10px; padding: 1px 5px; border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: color-mix(in srgb, var(--accent) 80%, var(--text)); letter-spacing: .02em;
+  }
+  .hidden { display: none !important; }
+  .divider { max-width: 1180px; margin: 34px auto; height: 1px; background: var(--border-soft); }
+  .legend { max-width: 1180px; margin: 0 auto; font-size: 11.5px; color: var(--text-muted); line-height: 1.9; }
+  .legend code { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-2); background: var(--surface-soft); padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>VCS · Remote 区（Upstream / Incoming / Outgoing）美化原型</h1>
+  <p>
+    镜像源：<code>frontend/app/view/vcs/vcs-changes-tab.tsx</code>（<code>RemoteCommitRow</code> / <code>RemoteCommitList</code> / Remote 折叠区 L415-429）。
+    三个面板同宽 470px，用同一份样例数据，便于逐像素对比。
+  </p>
+  <div class="toolbar">
+    <div class="seg" id="themeSeg">
+      <button data-theme="dark" class="on">深色</button>
+      <button data-theme="light">浅色</button>
+    </div>
+    <div class="seg" id="stateSeg">
+      <button data-state="normal" class="on">有分叉（↑3 ↓1）</button>
+      <button data-state="sync">已同步（↑0 ↓0）</button>
+    </div>
+    <span class="hint" id="stateHint">悬停提交行可看 hover 态</span>
+  </div>
+</div>
+
+<div class="board">
+  <!-- BEFORE -->
+  <div class="col">
+    <h2>现状 <b>Before</b></h2>
+    <div class="panel">
+      <div class="sec-head">
+        <span class="chev">▾</span><span class="sec-title">Remote</span>
+        <div class="sec-actions">
+          <button class="ic" title="Fetch">⟳</button>
+          <button class="ic on" title="Pull">⤓</button>
+          <button class="ic on" title="Push">⤒</button>
+        </div>
+      </div>
+
+      <div class="cur-upstream">
+        <span style="color:var(--text-muted)">Upstream</span>
+        <span class="nm">origin/main</span>
+        <span class="cur-pill">Behind 0</span>
+        <span class="cur-pill">Ahead 3</span>
+      </div>
+
+      <div class="cur-grp-title">Incoming</div>
+      <div>
+        <div class="cur-row">
+          <span class="h">9c1de40a72</span>
+          <span class="s">fix(aisessions): 筛选栏补 OpenCode 来源芯片</span>
+          <span class="a">Nita</span>
+          <span class="d">2026-11-09T14:17…</span>
+        </div>
+      </div>
+
+      <div class="cur-grp-title">Outgoing</div>
+      <div>
+        <div class="cur-row">
+          <span class="h">f8f092ad31</span>
+          <span class="s">chore(loop): 台账事件落库（filt…</span>
+          <span class="a">Nita</span>
+          <span class="d">2026-11-09T14:2…</span>
+        </div>
+        <div class="cur-row">
+          <span class="h">f72a595b22</span>
+          <span class="s">chore(task): archive 11-09-aises…</span>
+          <span class="a">Nita</span>
+          <span class="d">2026-11-09T14:1…</span>
+        </div>
+        <div class="cur-row">
+          <span class="h">603d822440</span>
+          <span class="s">fix(aisessions): 筛选栏补 Open…</span>
+          <span class="a">Nita</span>
+          <span class="d">2026-11-09T14:1…</span>
+        </div>
+      </div>
+    </div>
+    <p class="col-note">
+      问题：① 固定列 78/120/110px + gaps ≈ 320px，470px 面板下标题只剩 ~70px，标题全被截断；
+      ② 描边胶囊无语义色，与分支页 ↑绿 ↓红 的既有语汇不一致；
+      ③ 无表头、无 hover、无行分隔层次，读起来像裸数据表；松 ISO 时间戳占宽却信息量低。
+    </p>
+  </div>
+
+  <!-- VARIANT A -->
+  <div class="col">
+    <h2>方案 A <b>推荐</b> <span class="tag">同步条 + 两行式</span></h2>
+    <div class="panel">
+      <div class="sec-head">
+        <span class="chev">▾</span><span class="sec-title">Remote</span>
+        <div class="sec-actions">
+          <button class="ic" title="Fetch">⟳</button>
+          <button class="ic on" title="Pull">⤓</button>
+          <button class="ic on" title="Push">⤒</button>
+        </div>
+      </div>
+
+      <div class="syncbar">
+        <span class="branch">⎇</span>
+        <span class="up">origin/main</span>
+        <span class="sp"></span>
+        <span class="diverge s-normal">
+          <span class="n up-n" title="Ahead by 3">↑3</span>
+          <span class="sep">·</span>
+          <span class="n dn-n" title="Behind by 1">↓1</span>
+        </span>
+        <span class="insync s-sync hidden"><span class="dot">✓</span>已同步</span>
+      </div>
+
+      <div class="grp s-normal">
+        <div class="grp-head"><span class="lbl">Incoming</span><span class="cnt">1</span><span class="rule"></span></div>
+        <div class="rows">
+          <div class="row2 in">
+            <span class="rail"></span>
+            <div class="body">
+              <div class="subject" title="fix(aisessions): 筛选栏补 OpenCode 来源芯片">fix(aisessions): 筛选栏补 OpenCode 来源芯片</div>
+              <div class="meta"><code>9c1de40a72</code><span class="s2">·</span><span>Nita</span><span class="s2">·</span><span>2 小时前</span></div>
+            </div>
+            <div class="acts"><button class="ic" title="复制 hash">⧉</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-head"><span class="lbl">Outgoing</span><span class="cnt">3</span><span class="rule"></span></div>
+        <div class="rows">
+          <div class="row2 out">
+            <span class="rail"></span>
+            <div class="body">
+              <div class="subject" title="chore(loop): 台账事件落库（filter-opencode 归档）">chore(loop): 台账事件落库（filter-opencode 归档）</div>
+              <div class="meta"><code>f8f092ad31</code><span class="s2">·</span><span>Nita</span><span class="s2">·</span><span>5 分钟前</span></div>
+            </div>
+            <div class="acts"><button class="ic" title="复制 hash">⧉</button></div>
+          </div>
+          <div class="row2 out">
+            <span class="rail"></span>
+            <div class="body">
+              <div class="subject" title="chore(task): archive 11-09-aisessions-filter-opencode">chore(task): archive 11-09-aisessions-filter-opencode</div>
+              <div class="meta"><code>f72a595b22</code><span class="s2">·</span><span>Nita</span><span class="s2">·</span><span>8 分钟前</span></div>
+            </div>
+            <div class="acts"><button class="ic" title="复制 hash">⧉</button></div>
+          </div>
+          <div class="row2 out">
+            <span class="rail"></span>
+            <div class="body">
+              <div class="subject" title="fix(aisessions): 筛选栏补 OpenCode 来源芯片">fix(aisessions): 筛选栏补 OpenCode 来源芯片</div>
+              <div class="meta"><code>603d822440</code><span class="s2">·</span><span>Nita</span><span class="s2">·</span><span>9 分钟前</span></div>
+            </div>
+            <div class="acts"><button class="ic" title="复制 hash">⧉</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;max-width:470px">
+      <div class="anno"><span class="n">1</span><span>上游 + 分叉合成一条 <b>sync bar</b>：去描边，用 <code>surface-soft</code> 底面分层；↑绿 / ↓红 沿用分支页语汇，0 值降到 55% 透明度作为弱提示。</span></div>
+      <div class="anno"><span class="n">2</span><span>提交行改两行：标题整宽（不再和作者/时间抢宽度），元信息下一行 10.5px muted，松 ISO 时间戳换相对时间（<code>5 分钟前</code>，hover 显示绝对时间）。</span></div>
+      <div class="anno"><span class="n">3</span><span>左 2px 语义轨：Outgoing 绿、Incoming 红（hover 才点亮到 55%，静止更轻）；分组标题从裸文字改为 <b>标签 + 计数 chip + 发丝线</b>。</span></div>
+    </div>
+  </div>
+
+  <!-- VARIANT B -->
+  <div class="col">
+    <h2>方案 B <b>紧凑备选</b> <span class="tag">单行 + 相对时间</span></h2>
+    <div class="panel">
+      <div class="sec-head">
+        <span class="chev">▾</span><span class="sec-title">Remote</span>
+        <div class="sec-actions">
+          <button class="ic" title="Fetch">⟳</button>
+          <button class="ic on" title="Pull">⤓</button>
+          <button class="ic on" title="Push">⤒</button>
+        </div>
+      </div>
+
+      <div class="syncbar">
+        <span class="branch">⎇</span>
+        <span class="up">origin/main</span>
+        <span class="sp"></span>
+        <span class="diverge s-normal">
+          <span class="n up-n">↑3</span><span class="sep">·</span><span class="n dn-n">↓1</span>
+        </span>
+        <span class="insync s-sync hidden"><span class="dot">✓</span>已同步</span>
+      </div>
+
+      <div class="grp s-normal">
+        <div class="grp-head"><span class="lbl">Incoming</span><span class="cnt">1</span><span class="rule"></span></div>
+        <div class="rows">
+          <div class="row1 in">
+            <span class="glyph">↓</span>
+            <span class="subject" title="fix(aisessions): 筛选栏补 OpenCode 来源芯片">fix(aisessions): 筛选栏补 OpenCode 来源芯片</span>
+            <span class="who">Nita</span>
+            <span class="when">2h</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-head"><span class="lbl">Outgoing</span><span class="cnt">3</span><span class="rule"></span></div>
+        <div class="rows">
+          <div class="row1 out">
+            <span class="glyph">↑</span>
+            <span class="subject" title="chore(loop): 台账事件落库（filter-opencode 归档）">chore(loop): 台账事件落库（filter-opencode 归档）</span>
+            <span class="who">Nita</span>
+            <span class="when">5m</span>
+          </div>
+          <div class="row1 out">
+            <span class="glyph">↑</span>
+            <span class="subject" title="chore(task): archive 11-09-aisessions-filter-opencode">chore(task): archive 11-09-aisessions-filter-opencode</span>
+            <span class="who">Nita</span>
+            <span class="when">8m</span>
+          </div>
+          <div class="row1 out">
+            <span class="glyph">↑</span>
+            <span class="subject" title="fix(aisessions): 筛选栏补 OpenCode 来源芯片">fix(aisessions): 筛选栏补 OpenCode 来源芯片</span>
+            <span class="who">Nita</span>
+            <span class="when">9m</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="col-note">
+      保留单行高度（28px），只把「方向箭头 + 相对时间」放上来，hash 移到 <code>title</code> 里。
+      密度最高、改动最小；代价是看不到 hash，扫读时少了"这条是不是我刚提的那个 commit"的锚点。
+    </p>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="legend">
+  <div><b>共性规则（A/B 都适用）</b></div>
+  <div>· 语义色只用于方向，不用来整行染色：<code>--success</code> = ahead/Outgoing，<code>--error</code> = behind/Incoming，文字仍走 <code>text-secondary</code>。</div>
+  <div>· Behind = 0 时弱化到 <code>opacity .55</code>，仍保留可见（用户要确认"我没落后"），但不再是一个抢眼的描边胶囊。</div>
+  <div>· Ahead 与 Behind 都为 0 时，整条 sync bar 右侧换成 <code>✓ 已同步</code>（上面可切状态看效果）。</div>
+  <div>· Pull / Push 按钮 disabled 逻辑沿用现状（<code>behind &lt;= 0</code> / <code>ahead &lt;= 0</code>），A 方案里再加一条：新增计数变化时对 ↑/↓ 数字做 200ms 高亮脉冲（可选 P2）。</div>
+  <div>· 长标题一律 <code>text-overflow: ellipsis</code> + <code>title</code> 全量，不做换行，保持行高可预测（虚拟滚动/高度稳定）。</div>
+</div>
+
+<script>
+  const html = document.documentElement;
+  document.getElementById("themeSeg").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    html.dataset.theme = btn.dataset.theme;
+    [...btn.parentNode.children].forEach((b) => b.classList.toggle("on", b === btn));
+  });
+  const stateHint = document.getElementById("stateHint");
+  document.getElementById("stateSeg").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const sync = btn.dataset.state === "sync";
+    [...btn.parentNode.children].forEach((b) => b.classList.toggle("on", b === btn));
+    document.querySelectorAll(".s-normal").forEach((el) => el.classList.toggle("hidden", sync));
+    document.querySelectorAll(".s-sync").forEach((el) => el.classList.toggle("hidden", !sync));
+    stateHint.textContent = sync
+      ? "已同步态：分叉数字隐去，Incoming 分组消失，只留 Outgoing + ✓ 已同步"
+      : "悬停提交行可看 hover 态";
+  });
+</script>
+</body>
+</html>

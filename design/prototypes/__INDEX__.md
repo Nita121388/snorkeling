@@ -83,6 +83,7 @@
 - `vcs/vcs-repo-switcher/` — 同步状态：▲ 设计活跃（未实现）
 - `vcs/vcs-repo-switcher-v2/` — 同步状态：◐ 部分落地
 - `vcs/vcs-status-settings/` — 状态：**设计中（待确认）**，未改动真实代码
+- `vcs/vcs-remote-sync-widget/` — 同步状态：◐ 部分落地（代码已实现，真机截图验证待做），Remote 区上游行 + Incoming/Outgoing 列表美化
 
 ## _archive
 - `_archive/meta/__REVIEW_GUIDE__.md`（历史审阅指南）

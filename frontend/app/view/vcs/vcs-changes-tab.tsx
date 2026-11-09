@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { filterVcsFileStatuses, VcsFileTypeFilterOptions } from "@/app/view/vcs/vcs-filter";
+import { formatAbsoluteTime, formatRelativeTime } from "@/app/view/vcs/vcs-time";
 import { isBlank } from "@/util/util";
 import React from "react";
 import { VcsIconButton } from "./vcs-icon-button";
@@ -191,29 +192,47 @@ function FileStatusRow({
     );
 }
 
-function RemoteCommitRow({ commit }: { commit: VcsCommitInfo }) {
+type RemoteCommitDirection = "incoming" | "outgoing";
+
+function RemoteCommitRow({ commit, direction }: { commit: VcsCommitInfo; direction: RemoteCommitDirection }) {
     const shortHash = (hash: string) => (hash?.length > 10 ? hash.slice(0, 10) : hash);
+    const subject = commit.subject || "(no subject)";
+    const railColor = direction === "outgoing" ? "bg-success" : "bg-error";
+    const relativeTime = formatRelativeTime(commit.date);
     return (
-        <div className="flex w-max min-w-full items-center gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0">
-            <span className="font-mono text-secondary min-w-[78px]">{shortHash(commit.hash ?? "")}</span>
-            <span className="min-w-[220px] max-w-[520px] flex-1 truncate pr-3">{commit.subject || "(no subject)"}</span>
-            <span className="text-muted min-w-[120px] truncate">{commit.author}</span>
-            <span className="text-muted min-w-[110px] whitespace-nowrap">{commit.date ?? ""}</span>
+        <div className="flex w-full items-stretch gap-2 border-b border-border px-2 py-[7px] last:border-b-0 hover:bg-hover" title={subject}>
+            <span className={`w-[2px] shrink-0 self-stretch rounded-full opacity-55 ${railColor}`} />
+            <div className="min-w-0 flex-1 py-[1px]">
+                <div className="truncate text-xs">{subject}</div>
+                <div className="mt-[3px] flex min-w-0 items-center gap-1.5 text-[10.5px] text-muted">
+                    <span className="font-mono">{shortHash(commit.hash ?? "")}</span>
+                    {commit.author ? (
+                        <>
+                            <span className="opacity-50">·</span>
+                            <span className="max-w-[160px] truncate">{commit.author}</span>
+                        </>
+                    ) : null}
+                    <span className="opacity-50">·</span>
+                    <span title={formatAbsoluteTime(commit.date)}>{relativeTime || "—"}</span>
+                </div>
+            </div>
         </div>
     );
 }
 
-function RemoteCommitList({ title, commits }: { title: string; commits: VcsCommitInfo[] }) {
+function RemoteCommitList({ title, commits, direction }: { title: string; commits: VcsCommitInfo[]; direction: RemoteCommitDirection }) {
     if ((commits?.length ?? 0) === 0) return null;
     return (
-        <div className="mt-2">
-            <div className="mb-1 text-[11px] font-medium text-secondary">{title}</div>
-            <div className="overflow-x-auto rounded">
-                <div className="min-w-full">
-                    {commits.map((commit, idx) => (
-                        <RemoteCommitRow key={`${title}-${commit.hash}-${idx}`} commit={commit} />
-                    ))}
-                </div>
+        <div className="mt-3">
+            <div className="mb-1 flex items-center gap-1.5 px-0.5">
+                <span className="text-[11px] font-semibold text-secondary">{title}</span>
+                <span className="rounded bg-surface-soft px-1 font-mono text-[10px] leading-[15px] text-muted">{commits.length}</span>
+                <span className="ml-1 h-px flex-1 bg-border" />
+            </div>
+            <div className="overflow-hidden rounded-[7px]">
+                {commits.map((commit, idx) => (
+                    <RemoteCommitRow key={`${title}-${commit.hash}-${idx}`} commit={commit} direction={direction} />
+                ))}
             </div>
         </div>
     );
@@ -417,14 +436,36 @@ export function VcsChangesTab({
                     />
                     {remoteSectionOpen && (
                         <div className="mt-1">
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-secondary">
-                                <span className="text-muted">Upstream</span>
-                                <span className="font-mono">{isBlank(remote?.upstream) ? "Not configured" : remote?.upstream}</span>
-                                <span className="rounded border border-border px-1.5 py-[1px] text-[11px] text-secondary">Behind {behind}</span>
-                                <span className="rounded border border-border px-1.5 py-[1px] text-[11px] text-secondary">Ahead {ahead}</span>
+                            <div className="flex items-center gap-2 rounded-[7px] bg-surface-soft px-2.5 py-[7px]">
+                                <i className="fa-sharp fa-solid fa-code-branch text-[11px] text-muted" />
+                                {isBlank(remote?.upstream) ? (
+                                    <span className="truncate text-xs italic text-muted" title="Upstream not configured">
+                                        No upstream
+                                    </span>
+                                ) : (
+                                    <span className="max-w-[220px] truncate font-mono text-xs text-secondary" title={remote?.upstream}>
+                                        {remote?.upstream}
+                                    </span>
+                                )}
+                                <span className="flex-1" />
+                                {ahead === 0 && behind === 0 ? (
+                                    <span className="text-[11px] text-muted">
+                                        <span className="text-success">✓</span> in sync
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-1.5 font-mono text-[11px]">
+                                        <span className={`text-success ${ahead > 0 ? "" : "opacity-55"}`} title={`Ahead by ${ahead}`}>
+                                            ↑{ahead}
+                                        </span>
+                                        <span className="text-muted opacity-50">·</span>
+                                        <span className={`text-error ${behind > 0 ? "" : "opacity-55"}`} title={`Behind by ${behind}`}>
+                                            ↓{behind}
+                                        </span>
+                                    </span>
+                                )}
                             </div>
-                            <RemoteCommitList title="Incoming" commits={incoming} />
-                            <RemoteCommitList title="Outgoing" commits={outgoing} />
+                            <RemoteCommitList title="Incoming" commits={incoming} direction="incoming" />
+                            <RemoteCommitList title="Outgoing" commits={outgoing} direction="outgoing" />
                         </div>
                     )}
                 </>
