@@ -17,6 +17,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/agentmcphost"
 	"github.com/wavetermdev/waveterm/pkg/agentscope"
 	"github.com/wavetermdev/waveterm/pkg/agentskill"
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wavejwt"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshutil"
@@ -49,14 +50,19 @@ func (ws *WshServer) AgentAuthGrantCommand(ctx context.Context, data wshrpc.Agen
 		return nil, fmt.Errorf("E_USAGE: --ttl must be <= 24h (got %s)", ttl)
 	}
 
-	// The caller's context tells us which socket to embed.
-	rpc := wshutil.GetWshRpcFromContext(ctx)
-	if rpc == nil {
+	// The socket to embed is the *server's* own socket, not anything the caller
+	// declares: SockName is a client-side dial hint and is not populated on the
+	// server's link context. Taking it from the caller would also let a caller
+	// point the token at a different app.
+	if err := requireInApp(ctx); err != nil {
+		return nil, err
+	}
+	if wshutil.GetWshRpcFromContext(ctx) == nil {
 		return nil, fmt.Errorf("E_NO_ROUTE: no rpc context (run this inside a Snorkeling block)")
 	}
-	callerCtx := rpc.GetRpcContext()
-	if callerCtx.SockName == "" {
-		return nil, fmt.Errorf("E_NO_ROUTE: caller has no socket name")
+	sockName := wavebase.GetMainRpcSocketName()
+	if sockName == "" {
+		return nil, fmt.Errorf("E_NO_ROUTE: the app has no socket name")
 	}
 
 	jti := uuid.New().String()
@@ -65,7 +71,7 @@ func (ws *WshServer) AgentAuthGrantCommand(ctx context.Context, data wshrpc.Agen
 	claims := &wavejwt.WaveJwtClaims{
 		AgentName: name,
 		Scope:     scopes,
-		Sock:      callerCtx.SockName,
+		Sock:      sockName,
 		RouteId:   routeId,
 	}
 	claims.ID = jti
@@ -92,7 +98,7 @@ func (ws *WshServer) AgentAuthGrantCommand(ctx context.Context, data wshrpc.Agen
 		Version:   wshrpc.AgentControlVersion,
 		Name:      name,
 		Token:     token,
-		Socket:    callerCtx.SockName,
+		Socket:    sockName,
 		RouteId:   routeId,
 		Scopes:    scopes,
 		ExpiresAt: now.Add(ttl).UnixMilli(),
@@ -105,7 +111,7 @@ func (ws *WshServer) AgentAuthGrantCommand(ctx context.Context, data wshrpc.Agen
 			Version:   wshrpc.AgentControlVersion,
 			Name:      name,
 			Token:     token,
-			Socket:    callerCtx.SockName,
+			Socket:    sockName,
 			Scopes:    scopes,
 			ExpiresAt: rtn.ExpiresAt,
 			CreatedAt: rtn.CreatedAt,
@@ -172,26 +178,33 @@ func sanitizeRouteSegment(name string) string {
 	return out
 }
 
-// inAppOnly refuses calls that did not come from a block inside this app.
+// callerIsAgent reports whether this request arrived on a link authenticated
+// with an external agent token.
 //
-// The Agent Access panel lives in the renderer, which is already an in-app
-// client, so it passes. An external token gets E_FORBIDDEN: a scoped agent must
-// never be able to mint or revoke credentials for other agents (privilege
-// escalation by definition).
-func inAppOnly(ctx context.Context) error {
-	rpc := wshutil.GetWshRpcFromContext(ctx)
-	if rpc == nil {
-		return fmt.Errorf("E_NO_ROUTE: no rpc context (run this inside a Snorkeling block)")
+// The grant is bound to the connection at authenticate time, so this is a
+// server-side fact; a client cannot make itself look non-agent. An in-app
+// client (the renderer, or wsh inside a block) has no grant.
+func callerIsAgent(ctx context.Context) bool {
+	handler := wshutil.GetRpcResponseHandlerFromContext(ctx)
+	if handler == nil {
+		return false
 	}
-	if rpc.GetRpcContext().SockName == "" {
-		return fmt.Errorf("E_NO_ROUTE: caller has no socket name")
+	return wshutil.GetLinkGrant(handler.GetIngressLinkId()).Jti != ""
+}
+
+// requireInApp refuses scoped agent tokens. Issuing or revoking credentials is
+// not something an agent may do on another agent's behalf: that is privilege
+// escalation by definition.
+func requireInApp(ctx context.Context) error {
+	if callerIsAgent(ctx) {
+		return fmt.Errorf("E_FORBIDDEN: agent tokens cannot manage credentials; run this inside the app")
 	}
 	return nil
 }
 
 // AgentAuthListCommand lists granted tokens for the Agent Access panel.
 func (ws *WshServer) AgentAuthListCommand(ctx context.Context) (*wshrpc.AgentAuthListResult, error) {
-	if err := inAppOnly(ctx); err != nil {
+	if err := requireInApp(ctx); err != nil {
 		return nil, err
 	}
 	entries, err := agentaccess.List()
@@ -221,7 +234,7 @@ func (ws *WshServer) AgentAuthListCommand(ctx context.Context) (*wshrpc.AgentAut
 // AgentAuthRevokeCommand revokes by name, by jti prefix, or everything. The
 // caller is expected to confirm with the user first; this function does not ask.
 func (ws *WshServer) AgentAuthRevokeCommand(ctx context.Context, data wshrpc.AgentAuthRevokeRequest) (*wshrpc.AgentAuthRevokeResult, error) {
-	if err := inAppOnly(ctx); err != nil {
+	if err := requireInApp(ctx); err != nil {
 		return nil, err
 	}
 	var (
@@ -252,7 +265,7 @@ func (ws *WshServer) AgentAuthRevokeCommand(ctx context.Context, data wshrpc.Age
 // AgentSkillInstallCommand writes the bundled skill into the agent skill
 // directories that exist on this machine.
 func (ws *WshServer) AgentSkillInstallCommand(ctx context.Context) (*wshrpc.AgentSkillInstallResult, error) {
-	if err := inAppOnly(ctx); err != nil {
+	if err := requireInApp(ctx); err != nil {
 		return nil, err
 	}
 	home, err := os.UserHomeDir()
@@ -276,7 +289,7 @@ func (ws *WshServer) AgentSkillInstallCommand(ctx context.Context) (*wshrpc.Agen
 
 // AgentMCPConfigCommand returns the host config snippet for `wsh mcp serve`.
 func (ws *WshServer) AgentMCPConfigCommand(ctx context.Context, host string) (*wshrpc.AgentMCPConfigResult, error) {
-	if err := inAppOnly(ctx); err != nil {
+	if err := requireInApp(ctx); err != nil {
 		return nil, err
 	}
 	cfg, err := agentmcphost.Config(host)

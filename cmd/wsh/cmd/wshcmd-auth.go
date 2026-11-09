@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -37,7 +38,7 @@ var (
 	authRevokeAll   bool
 	authName     string
 	authScopes   []string
-	authTTL      int
+	authTTL      string
 	authOut      string
 	authTimeout  int64
 	authJSON     bool
@@ -70,7 +71,7 @@ func init() {
 
 	authGrantCmd.Flags().StringVar(&authName, "name", "", "agent name (used in the route id and audit)")
 	authGrantCmd.Flags().StringSliceVar(&authScopes, "scope", []string{"observe"}, "scopes: observe,navigate,data")
-	authGrantCmd.Flags().IntVar(&authTTL, "ttl", 1800, "token lifetime in seconds (max 86400)")
+	authGrantCmd.Flags().StringVar(&authTTL, "ttl", "30m", "token lifetime, e.g. 30m, 8h, or plain seconds (max 24h)")
 	authGrantCmd.Flags().StringVar(&authOut, "out", "", "output file (default ~/.config/snorkeling/agent-token.json)")
 
 	authListCmd.Flags().BoolVar(&authShowRevoked, "all", false, "include revoked tokens")
@@ -89,6 +90,31 @@ func defaultAgentTokenPath() string {
 	return filepath.Join(home, ".config", "snorkeling", "agent-token.json")
 }
 
+// parseTTL accepts both a Go duration ("30m", "8h") and plain seconds ("1800").
+//
+// Both forms are supported because the docs and the panel say "30m" while the
+// flag started life as an integer; accepting only one silently broke the other.
+func parseTTL(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 1800, nil
+	}
+	if n, err := strconv.Atoi(raw); err == nil {
+		if n <= 0 {
+			return 0, fmt.Errorf("E_USAGE: --ttl must be positive (got %s)", raw)
+		}
+		return n, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("E_USAGE: --ttl %q is not a duration (try 30m or 1800)", raw)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("E_USAGE: --ttl must be positive (got %s)", raw)
+	}
+	return int(d.Seconds()), nil
+}
+
 // tabChar avoids backslashes in format strings (see the table printing below).
 const tabChar = "\u0009"
 
@@ -96,6 +122,10 @@ func authGrantRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() { sendActivity("auth grant", rtnErr == nil) }()
 	if strings.TrimSpace(authName) == "" {
 		return fmt.Errorf("--name is required")
+	}
+	ttlSeconds, ttlErr := parseTTL(authTTL)
+	if ttlErr != nil {
+		return ttlErr
 	}
 	outPath := authOut
 	if outPath == "" {
@@ -109,7 +139,7 @@ func authGrantRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	res, err := wshclient.AgentAuthGrantCommand(RpcClient, wshrpc.AgentAuthGrantRequest{
 		Name:       authName,
 		Scope:      authScopes,
-		TTLSeconds: authTTL,
+		TTLSeconds: ttlSeconds,
 		Out:        outPath,
 	}, &wshrpc.RpcOpts{Timeout: authTimeout})
 	if err != nil {

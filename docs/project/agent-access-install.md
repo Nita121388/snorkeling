@@ -46,7 +46,8 @@ wsh auth grant --name claude-code --scope observe --ttl 30m \
 
 - `--scope`：`observe`（只读，默认）→ `navigate`（开块/建 tab）→ `data`（写会话卡）。
   按最小够用给，不要一次给满。
-- `--ttl`：默认 30 分钟，上限 24 小时。**过期就失效**，需要重新 grant。
+- `--ttl`：`30m` / `8h` 这样的时长，或直接写秒数（`1800`）；默认 30 分钟，上限 24 小时。
+  **过期就失效**，需要重新 grant。
 - 文件权限 `0600`，token 不会打印到终端。
 
 管理：
@@ -175,6 +176,11 @@ wsh agent guide --json   # 机器可读：command / scope / flags / notes / erro
 | 装了 skill 但 agent 看不到 | 目录不对：`--root` 指到该宿主真正的 skills 目录，并重启宿主 |
 
 ## 6. 安全边界（用户应知道的）
+
+**登记表的保护级别是「操作系统用户」，不是 App。**
+`wsh auth list` / `auth revoke` 读写的是本地登记表文件（不存 token 明文），
+所以：App 没运行时也能撤销（这是有意的），但**任何以你身份运行的进程**同样能读它、
+也能删掉它。真正的边界是「谁能以你这个用户跑进程」，App 无法越过这条线。
 
 - 外部进程**拿不到** `WAVETERM_AUTH_KEY`（那是整个 App 的凭据）。
 - token 短时、可撤销、按 scope 限权、按 `jti` 限流。
