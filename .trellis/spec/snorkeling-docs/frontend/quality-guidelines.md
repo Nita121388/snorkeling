@@ -473,3 +473,23 @@ menu:pointerenter related=hdr     ← 后到
 - 同一 meta 行的 chip 家族共用 `.session-overview-board-chip` 基类，变体（`is-tag` / `is-tag-more`）
   只做继承层覆盖；调字号 / 内距必须同步调 `line-height`，保证 chip 总高不漂
   （2026-11-09 A 方案：9px/1.4 → 10px/1.25，实测 `54.1×16.6` → `62.6×16.5` px）。
+
+---
+
+## 窄侧栏（VCS 面板）里的行式列表：禁止固定列宽，时间用相对 (2026-11-09, task 11-09-vcs-remote-sync-widget)
+
+VCS 面板典型宽度 400–560px。`RemoteCommitRow` 原来给 hash/author/date 各挂
+`min-w-[78px] / min-w-[120px] / min-w-[110px]`，加 3 个 `gap-2` 共 332px，
+扣掉 padding 后**标题只剩 ~72px**，中文标题必然截断成 6~7 个字。
+
+- **元信息一律下移成第二行**（两行式），标题吃满整宽：`truncate` + `title` 全量；
+  行高从 28px → ~40px 是更划算的交换。
+- **时间不用 ISO 串**：`formatRelativeTime`（`frontend/app/view/vcs/vcs-time.ts`）
+  `just now / Nm ago / Nh ago / Nd ago / MM-DD`，绝对时间进 `title`；
+  解析失败原样返回，不能让脏数据把整行渲染打空。
+- **方向语义色沿用既有语汇**：ahead/Outgoing 用 `text-success`/`bg-success`，
+  behind/Incoming 用 `text-error`/`bg-error`（与 `vcs-branches-tab.tsx` 的 ↑/↓ 一致）；
+  值为 0 时降到 `opacity-55` 保留可见（用户要确认「我没落后」），不要整块隐藏。
+- **分组标题 = 标签 + 计数 chip + 发丝线**，不要裸一行小字；chip 走 `bg-surface-soft`，
+  别用 `border-border` 描边胶囊（与「去描边胶囊化」口径一致）。
+- 纯函数放独立 `*.ts` 并配 vitest（`vcs-time.test.ts` 11 条），组件里不写时间格式化分支。
