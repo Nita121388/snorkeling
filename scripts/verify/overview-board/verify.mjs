@@ -594,6 +594,7 @@ async function main() {
             const hadDialog = dialog != null;
             const detailBtn = dialog == null ? null : dialog.querySelector("[data-agent-card-detail]");
             const detailDisabled = detailBtn == null ? null : detailBtn.disabled === true;
+            const dialogJumpBtn = dialog == null ? null : dialog.querySelector("[data-agent-card-jump]");
 
             let detailOpened = false;
             if (detailBtn != null && detailDisabled === false) {
@@ -620,6 +621,7 @@ async function main() {
                 hadDialog,
                 hasDetailButton: detailBtn != null,
                 detailDisabled,
+                hasDialogJumpButton: dialogJumpBtn != null,
                 detailOpened,
                 layersAfterDetail,
                 layersAfterClose,
@@ -634,6 +636,11 @@ async function main() {
                 `button=${clickFlow.hasDetailButton} disabled=${clickFlow.detailDisabled}`
             );
             check(
+                "agent-dialog-has-jump-button",
+                clickFlow.hasDialogJumpButton === true,
+                `button=${clickFlow.hasDialogJumpButton}（footer「定位到块」，tabId 由看板传入）`
+            );
+            check(
                 "agent-dialog-detail-opens-session",
                 clickFlow.detailOpened === true && clickFlow.layersAfterDetail === 2,
                 `opened=${clickFlow.detailOpened} layers=${clickFlow.layersAfterDetail}`
@@ -642,8 +649,54 @@ async function main() {
         } else {
             skip("card-click-opens-agent-dialog", `点击流程采样失败: ${clickFlow?.err ?? "unknown"}`);
             skip("agent-dialog-has-detail-button", "点击流程采样失败");
+            skip("agent-dialog-has-jump-button", "点击流程采样失败");
             skip("agent-dialog-detail-opens-session", "点击流程采样失败");
             skip("agent-dialog-stack-closes", "点击流程采样失败");
+        }
+        await new Promise((r) => setTimeout(r, 300));
+
+        // ── 阶段 1b：卡片「定位到块」（任务 11-09-overview-card-jump）──
+        // 1. 每张卡都长出 [data-board-jump]（有 tabId + 面板传了 onJumpCard）；
+        // 2. 点它不开整卡弹窗（与卡片点击语义互不串）；
+        // 3. 点它触发 BlockModel 的块高亮（jumpToOverviewBlock 的可见副作用）。
+        const jumpFlow = await client.evaluate(`(async () => {
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            const cards = [...document.querySelectorAll(".session-overview-board-card")];
+            if (cards.length === 0) return { err: "no cards" };
+            const withJump = cards.filter((c) => c.querySelector("[data-board-jump]") != null);
+            const target = cards.find((c) => c.getAttribute("data-agent-like") === "true") ?? cards[0];
+            if (target == null) return { err: "no target" };
+            const targetBlockId = target.getAttribute("data-block-id");
+            const btn = target.querySelector("[data-board-jump]");
+            if (btn == null) return { err: "no jump button", cards: cards.length };
+            btn.click();
+            await sleep(250);
+            const bm = await import("/frontend/app/block/block-model.ts");
+            const gs = await import("/frontend/app/store/jotaiStore.ts");
+            const highlight = gs.globalStore.get(bm.BlockModel.getInstance().blockHighlightAtom);
+            const dialog = document.querySelector(".agent-dialog") != null;
+            await sleep(1200);
+            return {
+                ok: true,
+                cards: cards.length,
+                jumpButtons: withJump.length,
+                targetBlockId,
+                highlightBlockId: highlight?.blockId ?? "",
+                dialog,
+            };
+        })()`);
+        if (jumpFlow?.ok === true) {
+            check("board-card-jump-buttons", jumpFlow.jumpButtons === jumpFlow.cards, `按钮=${jumpFlow.jumpButtons} 卡片=${jumpFlow.cards}`);
+            check(
+                "board-card-jump-highlights",
+                jumpFlow.highlightBlockId === jumpFlow.targetBlockId,
+                `高亮=${jumpFlow.highlightBlockId} 目标=${jumpFlow.targetBlockId}`
+            );
+            check("board-card-jump-no-dialog", jumpFlow.dialog === false, `agent-dialog=${jumpFlow.dialog}`);
+        } else {
+            skip("board-card-jump-buttons", `定位流程采样失败: ${jumpFlow?.err ?? "unknown"}`);
+            skip("board-card-jump-highlights", "定位流程采样失败");
+            skip("board-card-jump-no-dialog", "定位流程采样失败");
         }
         await new Promise((r) => setTimeout(r, 300));
 

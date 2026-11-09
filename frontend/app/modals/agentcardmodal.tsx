@@ -20,6 +20,7 @@
 
 import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
+import { jumpToOverviewBlock } from "@/app/session-overview/session-overview-model";
 import { EditableTitle } from "@/app/element/info-card/editable-title";
 import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
@@ -30,9 +31,12 @@ import * as React from "react";
 type AgentCardModalProps = {
     blockId: string;
     blockData: Block | null;
+    /** 该 block 所在 tab。由 Overview 看板传入（看板知道每个块挂在哪个 tab）；
+     *  不传（如 term 头部悬浮卡放大）就不渲染「定位到块」—— 块本来就在眼前。 */
+    tabId?: string;
 };
 
-function AgentCardModal({ blockId, blockData }: AgentCardModalProps) {
+function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
     const connection = React.useMemo(() => {
         const value = blockData?.meta?.connection;
         return typeof value === "string" ? value.trim() : "";
@@ -48,6 +52,13 @@ function AgentCardModal({ blockId, blockData }: AgentCardModalProps) {
     const closeModal = React.useCallback(() => {
         modalsModel.popModal();
     }, []);
+
+    // 定位到块：关掉弹窗再切 tab + 高亮块（与 Overview 列表/看板的 jumpToBlock 同一手感）。
+    const handleJumpToBlock = React.useCallback(() => {
+        if ((tabId ?? "") === "") return;
+        modalsModel.popModal();
+        jumpToOverviewBlock(tabId, blockId);
+    }, [blockId, tabId]);
 
     // 改名成功后 ack 掉自己制造的这次更新（详见 agent-hover-card 的同名逻辑）。
     const handleRenameTitle = React.useCallback(
@@ -82,6 +93,22 @@ function AgentCardModal({ blockId, blockData }: AgentCardModalProps) {
             }
             footer={
                 <div className="flex w-full items-center gap-2">
+                    {(tabId ?? "") !== "" ? (
+                        <button
+                            type="button"
+                            className="cursor-pointer rounded px-2 py-1 text-[11px] text-secondary transition-colors hover:bg-hover hover:text-primary"
+                            data-agent-card-jump
+                            title="定位到该会话所在的块"
+                            aria-label="定位到该会话所在的块"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                handleJumpToBlock();
+                            }}
+                        >
+                            <i className="fa-sharp fa-solid fa-location-crosshairs mr-1" />
+                            定位到块
+                        </button>
+                    ) : null}
                     <button
                         type="button"
                         className="cursor-pointer rounded px-2 py-1 text-[11px] text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"

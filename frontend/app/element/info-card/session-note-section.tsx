@@ -98,6 +98,14 @@ export function SessionNoteSection({
     }, []);
 
     const sessionKey = summary?.key ?? state.sessionId;
+    // 写路径必须用 hook 建档所用的同一个 id：useSessionNoteState 的 block 侧调用方
+    // （AgentHoverCard / SessionDetailInfoCard / AgentCardModal）传入的是 meta 里的
+    // 裸 sessionId（agent:sessionid），note-cache 按 (sessionId, connection) 建档；
+    // 而 summary.key 是完整 stable key（pi:<id>:<path>），两者不同。saveSessionNote /
+    // saveSessionProps 用传入 id 查缓存拿乐观更新基线（before），传 summary.key 会
+    // 查空 → "session summary not loaded" → UI 显示「保存失败」。
+    // GenActionButton / AISessionNoteModal 等直接走 RPC 的路径不受影响，仍可用 sessionKey。
+    const writeSessionId = state.sessionId;
     const connection = state.connection ?? "";
     // 全局标签清单（含使用次数）：给 PropertyList 的 Tags 浮层补上「别的会话用过什么标签」。
     // 首帧为空数组 → 候选池退化为「def.options + 已选值」，与接入前完全一致（渐进增强）。
@@ -106,7 +114,7 @@ export function SessionNoteSection({
         () => (availableTags.length > 0 ? { tags: availableTags } : {}),
         [availableTags]
     );
-    const undo = useNoteUndo(state.service, sessionKey, connection);
+    const undo = useNoteUndo(state.service, writeSessionId, connection);
 
     // 弹窗编辑 Note（类似 aisessions 列表行）：App 级 modal，不渲染在卡片内。
     const openNoteDialog = React.useCallback(() => {
@@ -129,7 +137,7 @@ export function SessionNoteSection({
             // 表现为“改了但没保存”且完全没有任何提示。
             void setSessionProperty({
                 service: state.service,
-                sessionId: sessionKey,
+                sessionId: writeSessionId,
                 connection,
                 summary,
                 def,
@@ -138,7 +146,7 @@ export function SessionNoteSection({
                 setWriteError(result.ok ? "" : `保存失败：${result.error}`);
             });
         },
-        [connection, sessionKey, state.service, summary]
+        [connection, writeSessionId, state.service, summary]
     );
 
     const addProperty = React.useCallback(
@@ -182,14 +190,14 @@ export function SessionNoteSection({
             if (summary == null) return;
             void patchSessionProperty({
                 service: state.service,
-                sessionId: sessionKey,
+                sessionId: writeSessionId,
                 connection,
                 summary,
                 key,
                 name,
             });
         },
-        [connection, sessionKey, state.service, summary]
+        [connection, writeSessionId, state.service, summary]
     );
 
     const retypeProperty = React.useCallback(
@@ -197,14 +205,14 @@ export function SessionNoteSection({
             if (summary == null) return;
             void patchSessionProperty({
                 service: state.service,
-                sessionId: sessionKey,
+                sessionId: writeSessionId,
                 connection,
                 summary,
                 key,
                 type,
             });
         },
-        [connection, sessionKey, state.service, summary]
+        [connection, writeSessionId, state.service, summary]
     );
 
     const moveProperty = React.useCallback(
@@ -225,9 +233,9 @@ export function SessionNoteSection({
                 const existing = summary.props[k];
                 next[k] = { ...existing, order: i + 1, updatedAt: Date.now() };
             });
-            void saveSessionProps(state.service, sessionKey, connection, next);
+            void saveSessionProps(state.service, writeSessionId, connection, next);
         },
-        [connection, schema, sessionKey, state.service, summary]
+        [connection, schema, writeSessionId, state.service, summary]
     );
 
     if (summary == null) {

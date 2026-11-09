@@ -114,3 +114,4 @@
 | 2026-11-09 07:58 | vcs-panel-buttons | ⏭ skipped（attach 到实例但 `hasTab=false blocks=0`，用户要求先提交，未重跑） | attach | `20261109T07584-vcs-panel-buttons` | f8f092ad |
 | 2026-11-09 | inline-tab 更多下拉（删除不关菜单、连续删除） | ◑ L1：vitest 14/14（本文件）+ 相关面 37/37 · eslint 0 error（1 条存量 warning）· tsc 改动文件 0 error；真机 Electron/verify 台 **skipped（无对应 area，菜单需 >1 内联 Tab 且溢出才出现）** | vitest + eslint + tsc | `frontend/app/block/inlinetab-dropdown.test.tsx` | 见本次提交 |
 | 2026-11-09 | commontext 详情编辑区遮挡（无新 area，复用 `commontext-meta-sort`） | ✅ L1+真机 CDP：dev 实例（electron-vite dev 51742 / CDP 9222）实测修复后 `scrollHeight 568 > clientHeight 426`（详情列内部滚动生效）、textarea 底 725 < All tags 顶 735（零重叠，修复前 200px 硬撑出槽位）、包裹层 `min-h-[200px]` + textarea `minH 0px`；vitest `frontend/app/commontext` 99 passed · tsc 改动文件 0 error（47=存量基线） | CDP 实测量 + vitest + tsc | 本台账 | 见本次提交 |
+| 2026-11-09 14:38 | overview-board | ✅ 71/71 | launch+reset | `20261109T14362-overviewboard` | working-tree |

@@ -213,16 +213,29 @@ export class SessionOverviewModel {
 	}
 
 	jumpToBlock(tabId: string, blockId: string): void {
-		if (tabId) {
-			setActiveTab(tabId);
-		}
 		if (blockId) {
 			this.markBlockViewed(blockId);
-			BlockModel.getInstance().setBlockHighlight({ blockId, icon: "location-crosshairs" });
-			window.setTimeout(() => refocusNode(blockId), 80);
-			window.setTimeout(() => refocusNode(blockId), 220);
-			window.setTimeout(() => BlockModel.getInstance().setBlockHighlight(null), 1200);
 		}
+		jumpToOverviewBlock(tabId, blockId);
+	}
+}
+
+/**
+ * 「定位到块」的共享实现：切 Tab → 高亮 → 两次 refocus → 1.2s 后撤高亮。
+ *
+ * 抽出来是因为 AgentCardModal 也需要同一动作（先从整卡跳回现场），而它拿不到
+ * SessionOverviewModel 实例的 markBlockViewed 语义（overview 面板可能没挂）。
+ * 纯 UI 副作用，无 RPC；调用方各自决定要不要记「已看」。
+ */
+export function jumpToOverviewBlock(tabId: string, blockId: string): void {
+	if (tabId) {
+		setActiveTab(tabId);
+	}
+	if (blockId) {
+		BlockModel.getInstance().setBlockHighlight({ blockId, icon: "location-crosshairs" });
+		window.setTimeout(() => refocusNode(blockId), 80);
+		window.setTimeout(() => refocusNode(blockId), 220);
+		window.setTimeout(() => BlockModel.getInstance().setBlockHighlight(null), 1200);
 	}
 }
 

@@ -286,6 +286,42 @@ export function ensureSessionNote(
     return entry.snapshot;
 }
 
+/**
+ * 用别处已经拿到的 Summary 预置本缓存（例如 Overview 看板自己的 summary 缓存）。
+ *
+ * 为什么需要：看板卡片的标题/note/tags 来自 `session-overview-session-cache`，
+ * 而 AgentCardModal / 悬浮卡走的是本缓存。点开弹窗时本缓存通常是冷的，弹窗会先渲染
+ * 一个空壳（header 空标题 + 只有 provider 行），等一次 `Summary` RPC 往返后内容才整体
+ * 弹入 —— 实测这个空白期 200ms~400ms，远端连接更久。把看板手上已有的 summary 直接
+ * 预置进来，弹窗第一帧就是完整卡片，RPC 只留 TTL 后的后台刷新。
+ *
+ * 三条不变量：
+ *   1. 已 loaded 且未过 TTL 的条目不覆盖（旧数据不能顶掉更新的数据）；
+ *   2. 有 in-flight 请求时不抢跑（请求返回的才是权威值）；
+ *   3. 预置后 `loadedAt` 记账，`ensureSessionNote` 到 TTL 会照常后台刷新。
+ */
+export function primeSessionNote(
+    sessionId: string,
+    summary: SessionSummary | null,
+    connection?: string | null
+): void {
+    if (sessionId === "" || summary == null) {
+        return;
+    }
+    ensureEventListener();
+    const conn = normalizeConnection(connection);
+    const entry = getEntry(sessionId, conn);
+    if (entry.snapshot.status === "loaded" && Date.now() - entry.snapshot.loadedAt < NoteRefreshTtlMs) {
+        return;
+    }
+    if (entry.promise != null) {
+        return;
+    }
+    clearRetryTimer(entry);
+    entry.retryCount = 0;
+    setSnapshot(entry, { status: "loaded", summary, error: "", loadedAt: Date.now() });
+}
+
 export function getSessionNoteSnapshot(sessionId: string, connection?: string | null): SessionNoteSnapshot {
     return getEntry(sessionId, normalizeConnection(connection)).snapshot;
 }

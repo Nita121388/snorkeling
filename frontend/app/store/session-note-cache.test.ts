@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     ensureSessionNote,
     getSessionNoteSnapshot,
+    primeSessionNote,
     resetSessionNoteCache,
     saveSessionNote,
     subscribeSessionNote,
@@ -370,5 +371,80 @@ describe("saveSessionNote optimistic update", () => {
         });
         await saveSessionNote(service, sessionId, undefined, "n", []);
         expect(noteAndTagsFn).toHaveBeenCalledWith({ id: summary.key, note: "n", tags: [] });
+    });
+});
+
+// ── primeSessionNote：跨缓存预热 ────────────────────────────────────────────────
+//
+// 场景（2026-11-09 性能问题）：Overview 看板手上已有同一份 SessionSummary，但
+// AgentCardModal 走的是本缓存。点开弹窗时本缓存是冷的 → 弹窗先渲染空壳，等一次
+// Summary RPC 往返（实测 200~400ms）内容才弹入。priming 让第一帧就完整。
+describe("session-note-cache primeSessionNote", () => {
+    beforeEach(() => {
+        resetSessionNoteCache();
+    });
+
+    afterEach(() => {
+        resetSessionNoteCache();
+    });
+
+    it("makes the summary readable synchronously and skips the first RPC", () => {
+        const { service, summaryFn } = makeMockService();
+        const sessionId = nextId("prime-hit");
+        primeSessionNote(sessionId, makeSummary(sessionId, "primed"));
+
+        const snapshot = getSessionNoteSnapshot(sessionId);
+        expect(snapshot.status).toBe("loaded");
+        expect(snapshot.summary?.note).toBe("primed");
+
+        ensureSessionNote(service, sessionId);
+        expect(summaryFn).not.toHaveBeenCalled();
+    });
+
+    it("does not overwrite a fresh loaded entry", () => {
+        const sessionId = nextId("prime-fresh");
+        const { service, summaryFn } = makeMockService();
+        summaryFn.mockResolvedValue(makeSummary(sessionId, "from-rpc"));
+        ensureSessionNote(service, sessionId);
+        return vi.waitFor(() => {
+            expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("from-rpc");
+            primeSessionNote(sessionId, makeSummary(sessionId, "stale-board"));
+            expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("from-rpc");
+        });
+    });
+
+    it("does not preempt an in-flight request", async () => {
+        const sessionId = nextId("prime-inflight");
+        const { service, summaryFn } = makeMockService();
+        let release: (value: SessionSummary) => void = () => {};
+        summaryFn.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    release = resolve;
+                })
+        );
+        ensureSessionNote(service, sessionId);
+        expect(getSessionNoteSnapshot(sessionId).status).toBe("loading");
+
+        primeSessionNote(sessionId, makeSummary(sessionId, "board"));
+        expect(getSessionNoteSnapshot(sessionId).status).toBe("loading");
+
+        release(makeSummary(sessionId, "rpc"));
+        await vi.waitFor(() => {
+            expect(getSessionNoteSnapshot(sessionId).summary?.note).toBe("rpc");
+        });
+    });
+
+    it("isolates primed entries by connection", () => {
+        const sessionId = nextId("prime-conn");
+        primeSessionNote(sessionId, makeSummary(sessionId, "local"), "");
+        expect(getSessionNoteSnapshot(sessionId, "").summary?.note).toBe("local");
+        expect(getSessionNoteSnapshot(sessionId, "remote-host").status).toBe("idle");
+    });
+
+    it("ignores empty ids and null summaries", () => {
+        primeSessionNote("", makeSummary("x", "note"));
+        primeSessionNote("id-a", null);
+        expect(getSessionNoteSnapshot("id-a").status).toBe("idle");
     });
 });

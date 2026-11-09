@@ -23,6 +23,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { uxCloseBlock } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType, BlockServiceType, ObjectService } from "@/app/store/services";
+import { primeSessionNote } from "@/app/store/session-note-cache";
 import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "@/app/tab/tab-open-state";
 import {
     AiSessionNoteUpdatedEvent,
@@ -2575,14 +2576,36 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                     overviewModel.markBlockViewed(card.blockId);
                                     const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
                                     if (card.isAgentLike && block != null) {
+                                        // 看板手上已有同一份 SessionSummary，直接预置进 note-cache：
+                                        // 否则弹窗会先渲染空壳，等一次 Summary RPC 回来后内容才弹入
+                                        // （实测 200~400ms 空白期，远端连接更久）。
+                                        const blockConnection =
+                                            typeof block.block?.meta?.connection === "string"
+                                                ? (block.block.meta.connection as string).trim()
+                                                : "";
+                                        primeSessionNote(
+                                            card.sessionId,
+                                            summaries[card.sessionId]?.summary ??
+                                                details[card.sessionId]?.detail?.summary ??
+                                                null,
+                                            blockConnection
+                                        );
                                         modalsModel.pushModal("AgentCardModal", {
                                             blockId: card.blockId,
                                             blockData: block.block,
+                                            tabId: card.tabId,
                                         });
                                         return;
                                     }
                                     if (block != null) {
                                         overviewModel.jumpToBlock(block.tabId, block.blockId);
+                                    }
+                                }}
+                                onJumpCard={(card) => {
+                                    setSelectedBlockId(card.blockId);
+                                    overviewModel.markBlockViewed(card.blockId);
+                                    if (card.tabId !== "") {
+                                        overviewModel.jumpToBlock(card.tabId, card.blockId);
                                     }
                                 }}
                                 onCloseCard={(card) => {

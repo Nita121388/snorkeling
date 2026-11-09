@@ -101,6 +101,8 @@ export type OverviewBoardProps = {
     miniTimelines?: Readonly<Record<string, readonly OverviewTimelineSegment[] | undefined>>;
     now: number;
     onOpenCard: (card: OverviewBoardCard) => void;
+    /** 定位到块：切到该块所在 Tab 并高亮（复用 overviewModel.jumpToBlock）。不传 = 卡片不提供入口。 */
+    onJumpCard?: (card: OverviewBoardCard) => void;
     onCloseCard?: (card: OverviewBoardCard) => void;
     onDeleteSession?: (card: OverviewBoardCard) => void;
     deletingSessionId?: string;
@@ -127,6 +129,7 @@ export function BoardCard({
     columnKey,
     now,
     onOpenCard,
+    onJumpCard,
     onCloseCard,
     onDeleteSession,
     deletingSessionId,
@@ -139,6 +142,8 @@ export function BoardCard({
     columnKey: string;
     now: number;
     onOpenCard: (card: OverviewBoardCard) => void;
+    /** 见 OverviewBoardProps.onJumpCard；未传则该卡不渲染定位按钮。 */
+    onJumpCard?: (card: OverviewBoardCard) => void;
     onCloseCard?: (card: OverviewBoardCard) => void;
     onDeleteSession?: (card: OverviewBoardCard) => void;
     deletingSessionId?: string;
@@ -164,6 +169,8 @@ export function BoardCard({
     const metaLabel = resolveBoardMetaLabel({ hasStatusChip, kindLabel: card.kindLabel });
     const isDeletingSession = deletingSessionId !== "" && deletingSessionId === card.sessionId;
     const showDeleteSession = onDeleteSession != null && card.sessionId !== "";
+    // 没有 tabId 的卡片无处可跳（理论上不会出现；留着防脏数据长出死按钮）。
+    const showJump = onJumpCard != null && card.tabId !== "";
     const stopCardEvent = (event: React.SyntheticEvent) => {
         event.preventDefault();
         event.stopPropagation();
@@ -206,6 +213,18 @@ export function BoardCard({
                     onClick={stopCardEvent}
                     onMouseDown={stopCardEvent}
                 >
+                    {showJump ? (
+                        <button
+                            type="button"
+                            className="session-overview-board-card-action"
+                            data-board-jump
+                            onClick={() => onJumpCard?.(card)}
+                            aria-label={`Jump to ${card.title}`}
+                            title="定位到块"
+                        >
+                            <i className={makeIconClass("location-crosshairs", false)} />
+                        </button>
+                    ) : null}
                     {showDeleteSession ? (
                         <button
                             type="button"
@@ -217,7 +236,7 @@ export function BoardCard({
                             onClick={() => !isDeletingSession && onDeleteSession?.(card)}
                             disabled={isDeletingSession}
                             aria-label={`Delete session ${card.title}`}
-                            title="????"
+                            title="删除会话文件"
                         >
                             <i className={makeIconClass(isDeletingSession ? "spinner" : "trash", false)} />
                         </button>
@@ -228,7 +247,7 @@ export function BoardCard({
                             className="session-overview-board-card-action"
                             onClick={() => onCloseCard(card)}
                             aria-label={`Close block ${card.title}`}
-                            title="??"
+                            title="关闭块"
                         >
                             <i className={makeIconClass("xmark", false)} />
                         </button>
@@ -328,6 +347,7 @@ export function OverviewBoard({
     miniTimelines,
     now,
     onOpenCard,
+    onJumpCard,
     onCloseCard,
     onDeleteSession,
     deletingSessionId,
@@ -524,6 +544,7 @@ export function OverviewBoard({
                                     columnKey={column.key}
                                     now={now}
                                     onOpenCard={onOpenCard}
+                                    onJumpCard={onJumpCard}
                                     onCloseCard={onCloseCard}
                                     onDeleteSession={onDeleteSession}
                                     deletingSessionId={deletingSessionId}
