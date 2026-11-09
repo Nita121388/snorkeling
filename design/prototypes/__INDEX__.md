@@ -89,3 +89,6 @@
 - `_archive/meta/__REVIEW_GUIDE__.md`（历史审阅指南）
 - `_archive/meta/vcs-block-redesign.root.html`（根目录重复快照）
 
+
+## settings
+- `settings-density/` — 同步状态：▲ 设计活跃（未实现）｜镜像源：frontend/app/view/waveconfig/*（waveconfig.tsx / agentnotifysettings.tsx / syncsettings.tsx 等）

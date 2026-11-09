@@ -76,3 +76,6 @@ scripts/cdp-gui-chat-*.mjs
 
 # verify-* 是运行产物（截图/报告），不进仓库
 verify-runs/
+
+# design-taste-frontend 技能的工作目录（检查器截图/报告，本地产物）
+.taste-skill/

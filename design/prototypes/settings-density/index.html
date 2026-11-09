@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings 去密化原型 — Snorkeling waveconfig</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══════════ 原型控制条（非产品 UI） ══════════ -->
+<div class="proto-strip">
+    <span class="proto-title">原型 · Settings 去密化</span>
+    <span class="proto-note">design/prototypes/settings-density — 控制条不属于产品</span>
+    <span style="flex:1"></span>
+    <div class="seg" id="seg-panel">
+        <button data-panel="notify" class="on">Agent Notifications</button>
+        <button data-panel="general">General</button>
+        <button data-panel="sync">Sync</button>
+    </div>
+    <div class="seg" id="seg-mode">
+        <button data-mode="after" class="on">提案</button>
+        <button data-mode="before">现状</button>
+    </div>
+    <div class="seg" id="seg-theme">
+        <button data-theme="light" class="on">浅色</button>
+        <button data-theme="dark">深色</button>
+    </div>
+</div>
+
+<!-- ══════════ 外壳（结构镜像 waveconfig.tsx） ══════════ -->
+<div class="wcfg-shell">
+
+    <!-- 左栏：提案 = 分组 + 搜索；现状 = 平铺 -->
+    <aside class="wcfg-sidebar" id="sidebar">
+        <div class="sb-search"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg> <input type="text" placeholder="搜索设置…" id="sb-search-input"></div>
+
+        <div class="sb-after" data-render="after">
+            <div class="sb-group-label">Appearance</div>
+            <div class="sb-item" data-panel="apptheme">App Theme</div>
+            <div class="sb-group-label">Basics</div>
+            <div class="sb-item" data-panel="general">General</div>
+            <div class="sb-item" data-panel="connections">Connections</div>
+            <div class="sb-item" data-panel="widgets">Sidebar Widgets</div>
+            <div class="sb-item" data-panel="backgrounds">Tab Backgrounds</div>
+            <div class="sb-group-label">Agents</div>
+            <div class="sb-item on" data-panel="notify">Agent Notifications</div>
+            <div class="sb-item" data-panel="agentaccess">Agent Access</div>
+            <div class="sb-item" data-panel="waveai">Wave AI Modes</div>
+            <div class="sb-item" data-panel="aiprompts">AI Prompts</div>
+            <div class="sb-group-label">Sync &amp; cloud</div>
+            <div class="sb-item" data-panel="sync">Sync</div>
+            <div class="sb-group-label">Security</div>
+            <div class="sb-item" data-panel="secrets">Secrets</div>
+        </div>
+
+        <div class="sb-before" data-render="before" style="display:none">
+            <div class="sb-item" data-panel="general">General</div>
+            <div class="sb-item" data-panel="na"><div><div>App Theme</div><div class="sb-sub">Light / Dark / Monochrome…</div></div></div>
+            <div class="sb-item" data-panel="notify"><div><div>Agent Notifications</div><div class="sb-sub">OS toasts for agent done…</div></div></div>
+            <div class="sb-item" data-panel="na"><div><div>Agent Access</div><div class="sb-sub">Scoped tokens for age…</div></div></div>
+            <div class="sb-item" data-panel="sync"><div><div>Sync</div><div class="sb-sub">Common Text cloud sync</div></div></div>
+            <div class="sb-item" data-panel="na"><div><div>Connections</div><div class="sb-sub">SSH hosts</div></div></div>
+            <div class="sb-item" data-panel="na">Sidebar Widgets</div>
+            <div class="sb-item" data-panel="na"><div><div>Wave AI Modes</div><div class="sb-sub">Local models and BYOK</div></div></div>
+            <div class="sb-item" data-panel="na"><div><div>AI Prompts</div><div class="sb-sub">Prompts for AI-generat…</div></div></div>
+            <div class="sb-item" data-panel="na">Tab Backgrounds</div>
+            <div class="sb-item" data-panel="na">Secrets</div>
+            <div class="sb-item" data-panel="na" style="opacity:.55">Presets · deprecated</div>
+            <div class="sb-item" data-panel="na" style="opacity:.55">AI Presets · deprecated</div>
+        </div>
+    </aside>
+
+    <main class="wcfg-main">
+
+        <!-- ─────────── Agent Notifications ─────────── -->
+        <div class="wcfg-panel on" id="panel-notify">
+
+            <!-- AFTER -->
+            <div data-render="after">
+                <header class="wcfg-header" style="margin:-28px -32px 24px; padding:12px 32px;">
+                    <div><h1 class="h-title">Agent Notifications</h1><span class="h-sub mono">agentstatus:osnotify*</span></div>
+                    <div class="h-right"><span class="saved-stamp" id="stamp-notify"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 L6.5 12 L13 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Saved</span></div>
+                </header>
+
+                <div class="set-cols">
+                <div>
+                <p class="set-lead">Native toasts when an agent finishes or needs input.</p>
+
+                <div class="set-group">
+                    <h2 class="set-group-title">Master</h2>
+                    <div class="set-card">
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Agent notifications <span class="row-badge">On</span></div>
+                                <div class="row-desc">Every agent toast follows this switch.</div>
+                            </div>
+                            <div class="row-ctrl">
+                                <label class="switch"><input type="checkbox" checked data-autosave><span class="track"></span></label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="set-group">
+                    <h2 class="set-group-title">When to notify</h2>
+                    <div class="set-card">
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Agent finished</div>
+                                <div class="row-desc">The turn completed; the agent went idle.</div>
+                            </div>
+                            <div class="row-ctrl">
+                                <label class="switch"><input type="checkbox" checked data-autosave><span class="track"></span></label>
+                            </div>
+                        </div>
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Agent needs input</div>
+                                <div class="row-desc">Blocked, e.g. waiting on an approval.</div>
+                            </div>
+                            <div class="row-ctrl">
+                                <label class="switch"><input type="checkbox" checked data-autosave><span class="track"></span></label>
+                            </div>
+                        </div>
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">While Snorkeling is focused</div>
+                                <div class="row-desc">Off by default — focused windows skip toasts.</div>
+                            </div>
+                            <div class="row-ctrl">
+                                <label class="switch"><input type="checkbox" data-autosave><span class="track"></span></label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="set-group">
+                    <h2 class="set-group-title">Pacing</h2>
+                    <div class="set-card">
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Idle threshold</div>
+                                <div class="row-desc">Keyboard and mouse quiet for this long. 0 = right away.</div>
+                            </div>
+                            <div class="row-ctrl">
+                                <div class="stepper" data-autosave><button aria-label="decrease">−</button><span class="st-val">30</span><button aria-label="increase">+</button></div>
+                                <span class="st-unit">sec</span>
+                            </div>
+                        </div>
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Cooldown</div>
+                                <div class="row-desc">Same-kind toasts inside this window merge into one summary. 0 = off.</div>
+                            </div>
+                            <div class="row-ctrl">
+                                <div class="stepper" data-autosave><button aria-label="decrease">−</button><span class="st-val">60</span><button aria-label="increase">+</button></div>
+                                <span class="st-unit">sec</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div><!-- /左列 -->
+
+                <!-- 右轨：设置效果预览（§8.2 show what the setting produces） -->
+                <aside class="preview-rail">
+                    <div class="pv-label">Preview</div>
+                    <div class="toast-preview" id="toast-preview">
+                        <div class="tp-icon">S</div>
+                        <div>
+                            <div class="tp-title">Agent finished</div>
+                            <div class="tp-body">“拉取最新代码” · T2</div>
+                            <div class="tp-time">now</div>
+                        </div>
+                    </div>
+                    <div class="pv-caption">The preview updates to the toast you would actually get.</div>
+                </aside>
+                </div><!-- /set-cols -->
+            </div>
+
+            <!-- BEFORE（现状复刻：真实文案） -->
+            <div data-render="before" style="display:none">
+                <header class="wcfg-header" style="margin:-28px -32px 24px; padding:12px 32px;">
+                    <div><h1 class="h-title">Agent Notifications</h1><span class="h-sub mono">agentnotifications</span></div>
+                </header>
+                <div class="before-panel">
+                    <div class="bw">
+                        <div class="bw-intro">Snorkeling raises a native toast when an agent finishes or asks for input. These switches control how often that happens.</div>
+                        <div class="bw-list">
+                            <div class="bw-row">
+                                <div class="bw-text">
+                                    <div class="bw-title">Agent notifications</div>
+                                    <div class="bw-desc">Master switch for every agent toast.</div>
+                                </div>
+                                <div class="bw-ctrl"><label class="switch"><input type="checkbox" checked><span class="track"></span></label></div>
+                            </div>
+                            <div class="bw-row">
+                                <div class="bw-text">
+                                    <div class="bw-title">Notify when an agent finishes</div>
+                                    <div class="bw-desc">A working agent became idle — the turn completed.</div>
+                                </div>
+                                <div class="bw-ctrl"><label class="switch"><input type="checkbox" checked><span class="track"></span></label></div>
+                            </div>
+                            <div class="bw-row">
+                                <div class="bw-text">
+                                    <div class="bw-title">Notify when an agent needs input</div>
+                                    <div class="bw-desc">The agent is blocked, for example on an approval prompt.</div>
+                                </div>
+                                <div class="bw-ctrl"><label class="switch"><input type="checkbox" checked><span class="track"></span></label></div>
+                            </div>
+                            <div class="bw-row">
+                                <div class="bw-text">
+                                    <div class="bw-title">Notify even while Snorkeling is focused</div>
+                                    <div class="bw-desc">By default a toast is skipped when a Snorkeling window has focus.</div>
+                                </div>
+                                <div class="bw-ctrl"><label class="switch"><input type="checkbox"><span class="track"></span></label></div>
+                            </div>
+                            <div class="bw-row">
+                                <div class="bw-text">
+                                    <div class="bw-title">Idle threshold</div>
+                                    <div class="bw-desc">Wait until the keyboard and mouse have been idle this long before notifying. 0 notifies right away.</div>
+                                </div>
+                                <div class="bw-ctrl"><input class="bw-num" value="30"><span class="bw-sec">sec</span></div>
+                            </div>
+                            <div class="bw-row">
+                                <div class="bw-text">
+                                    <div class="bw-title">Cooldown</div>
+                                    <div class="bw-desc">Repeat toasts of the same kind inside this window are merged into one summary. 0 disables the cooldown.</div>
+                                </div>
+                                <div class="bw-ctrl"><input class="bw-num" value="60"><span class="bw-sec">sec</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─────────── General ─────────── -->
+        <div class="wcfg-panel" id="panel-general">
+
+            <!-- AFTER -->
+            <div data-render="after">
+                <header class="wcfg-header" style="margin:-28px -32px 0; padding:12px 32px;">
+                    <div><h1 class="h-title">General</h1><span class="h-sub mono">~/.waveterm/settings.json</span></div>
+                    <div class="h-right"><span class="saved-stamp" id="stamp-general"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 L6.5 12 L13 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Saved</span></div>
+                </header>
+                <div class="wcfg-tabs" style="margin:0 -32px 28px; padding-left:32px;">
+                    <div class="tab on" data-gtab="visual">Visual</div>
+                    <div class="tab" data-gtab="json">Raw JSON</div>
+                </div>
+
+                <div id="gtab-visual">
+                    <p class="set-lead">The settings you change most. Everything else lives in Raw JSON below.</p>
+
+                    <div class="set-group">
+                        <h2 class="set-group-title">Default agent</h2>
+                        <div class="radiocards" data-autosave>
+                            <div class="rc on" data-rc>
+                                <div class="rc-check"></div>
+                                <div class="rc-name">Claude Code</div>
+                                <div class="rc-desc">New agent blocks start here.</div>
+                            </div>
+                            <div class="rc" data-rc>
+                                <div class="rc-check"></div>
+                                <div class="rc-name">Codex CLI</div>
+                                <div class="rc-desc">OpenAI Codex vendor.</div>
+                            </div>
+                            <div class="rc" data-rc>
+                                <div class="rc-check"></div>
+                                <div class="rc-name">Gemini CLI</div>
+                                <div class="rc-desc">Google Gemini vendor.</div>
+                            </div>
+                            <div class="rc" data-rc>
+                                <div class="rc-check"></div>
+                                <div class="rc-name">Pi</div>
+                                <div class="rc-desc">Local pi agent harness.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="set-group">
+                        <h2 class="set-group-title">Interface</h2>
+                        <div class="set-card">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Terminal font size</div>
+                                    <div class="row-desc">Applies to every terminal block.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <div class="stepper" data-autosave><button aria-label="decrease">−</button><span class="st-val">13</span><button aria-label="increase">+</button></div>
+                                    <span class="st-unit">px</span>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Markdown preview font size</div>
+                                    <div class="row-desc">Notes, README preview, and blocks.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <div class="stepper" data-autosave><button aria-label="decrease">−</button><span class="st-val">14</span><button aria-label="increase">+</button></div>
+                                    <span class="st-unit">px</span>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Show block numbers</div>
+                                    <div class="row-desc">Overlay numbers on block headers.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <label class="switch"><input type="checkbox" data-autosave><span class="track"></span></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="set-group">
+                        <h2 class="set-group-title">Windows &amp; tabs</h2>
+                        <div class="set-card">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Confirm before closing a tab</div>
+                                    <div class="row-desc">Ask when a tab holds running blocks.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <label class="switch"><input type="checkbox" data-autosave><span class="track"></span></label>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Confirm before quitting</div>
+                                    <div class="row-desc">Ask when agent blocks are still working.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <label class="switch"><input type="checkbox" checked data-autosave><span class="track"></span></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="set-group">
+                        <h2 class="set-group-title">Updates</h2>
+                        <div class="set-card">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Check for updates</div>
+                                    <div class="row-desc">Background check on launch.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <label class="switch"><input type="checkbox" checked data-autosave><span class="track"></span></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 高级折叠 -->
+                    <div class="set-group">
+                        <div class="acc" id="acc-advanced">
+                            <div class="acc-head">▸ <span class="chev"></span> Advanced <span class="acc-sub">90+ more keys</span></div>
+                            <div class="acc-body">
+                                <div class="set-row">
+                                    <div class="row-text">
+                                        <div class="row-title">Hardware acceleration</div>
+                                        <div class="row-desc">Turn off only if rendering glitches.</div>
+                                    </div>
+                                    <div class="row-ctrl"><label class="switch"><input type="checkbox" checked data-autosave><span class="track"></span></label></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="row-text">
+                                        <div class="row-title">Global hotkey</div>
+                                        <div class="row-desc">Show/hide Snorkeling from anywhere.</div>
+                                    </div>
+                                    <div class="row-ctrl"><input class="set-input mono" value="CmdOrCtrl+`" style="min-width:140px"></div>
+                                </div>
+                                <div class="set-row">
+                                    <div class="row-text">
+                                        <div class="row-title">Terminal scrollback</div>
+                                        <div class="row-desc">Lines kept per terminal.</div>
+                                    </div>
+                                    <div class="row-ctrl">
+                                        <div class="stepper" data-autosave><button aria-label="decrease">−</button><span class="st-val">1000</span><button aria-label="increase">+</button></div>
+                                        <span class="st-unit">lines</span>
+                                    </div>
+                                </div>
+                                <div style="padding:12px 16px 14px;">
+                                    <button class="btn text-btn" data-gtab-jump="json">Edit all 100+ keys in Raw JSON →</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Raw JSON 折叠卡 -->
+                    <div class="set-group">
+                        <div class="acc rawjson-card" id="acc-rawjson">
+                            <div class="acc-head">▸ <span class="chev"></span> <span class="mono" style="font-size:12.5px">settings.json</span> <span class="acc-sub">raw editor</span></div>
+                            <div class="acc-body">
+                                <div class="code-peek"><span class="cc">// 当前生效的关键项（预览，完整编辑器在 Raw JSON 标签页）</span>
+{
+  <span class="ck">"agent:defaultprofile"</span>: <span class="cs">"claude"</span>,
+  <span class="ck">"term:fontsize"</span>: <span class="cn">13</span>,
+  <span class="ck">"markdown:fontsize"</span>: <span class="cn">14</span>,
+  <span class="ck">"app:showoverlayblocknums"</span>: <span class="cn">false</span>,
+  <span class="ck">"tab:confirmclose"</span>: <span class="cn">false</span>,
+  <span class="ck">"app:confirmquit"</span>: <span class="cn">true</span>,
+  <span class="cc">// … 94 more</span>
+}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="gtab-json" style="display:none">
+                    <div class="bw-editor" id="gen-json-editor"></div>
+                </div>
+            </div>
+
+            <!-- BEFORE：现状 = 纯 JSON 编辑器 -->
+            <div data-render="before" style="display:none">
+                <header class="wcfg-header" style="margin:-28px -32px 0; padding:12px 32px;">
+                    <div><h1 class="h-title">General</h1><span class="h-sub mono">~/.waveterm/settings.json</span></div>
+                    <div class="h-right">
+                        <span style="font-size:12px;color:var(--warning-color)">Unsaved changes</span>
+                        <button class="btn primary">Save</button>
+                    </div>
+                </header>
+                <div class="bw-editor" id="gen-json-editor-before"></div>
+            </div>
+        </div>
+
+        <!-- ─────────── Sync ─────────── -->
+        <div class="wcfg-panel" id="panel-sync">
+
+            <!-- AFTER -->
+            <div data-render="after">
+                <header class="wcfg-header" style="margin:-28px -32px 24px; padding:12px 32px;">
+                    <div><h1 class="h-title">Sync</h1><span class="h-sub mono">commontext:sync:*</span></div>
+                    <div class="h-right">
+                        <span style="font-size:12px;color:var(--warning-color);display:none" id="sync-dirty-hint">Unsaved changes</span>
+                    </div>
+                </header>
+
+                <p class="set-lead">Common Text syncs across your machines — one transport, one copy of the data.</p>
+
+                <div class="set-group">
+                    <h2 class="set-group-title">Transport</h2>
+                    <div class="radiocards grid2" id="sync-transports" style="max-width:880px">
+                        <div class="rc on" data-rc data-sync-dirty>
+                            <span class="rc-flag">recommended</span>
+                            <div class="rc-check"></div>
+                            <div class="rc-name">Local folder</div>
+                            <div class="rc-desc">commontext.json in a cloud-drive folder; picks up external changes.</div>
+                        </div>
+                        <div class="rc blocked" data-rc data-sync-dirty>
+                            <div class="rc-check"></div>
+                            <div class="rc-name">Git repository</div>
+                            <div class="rc-desc">Private repo, periodic commits — real history, visible conflicts.<br><span class="warn-line">Set an access token first (Settings → Secrets).</span></div>
+                        </div>
+                        <div class="rc blocked" data-rc data-sync-dirty>
+                            <div class="rc-check"></div>
+                            <div class="rc-name">Self-hosted service</div>
+                            <div class="rc-desc">Your own sync server over HTTP/WebSocket, token auth.<br><span class="warn-line">Enter the server URL and token first.</span></div>
+                        </div>
+                        <div class="rc" data-rc data-sync-dirty>
+                            <div class="rc-check"></div>
+                            <div class="rc-name">Off · local only</div>
+                            <div class="rc-desc">No transport. Items stay on this machine.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="set-group">
+                    <h2 class="set-group-title">This device</h2>
+                    <div class="set-card" style="max-width:880px">
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Device name</div>
+                                <div class="row-desc">How this machine shows up in sync history.</div>
+                            </div>
+                            <div class="row-ctrl"><input class="set-input" value="nita-MBP" style="width:306px" data-sync-dirty></div>
+                        </div>
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Cloud-drive folder</div>
+                                <div class="row-desc">Where commontext.json lives.</div>
+                            </div>
+                            <div class="row-ctrl joined">
+                                <input class="set-input mono" value="~/Library/Mobile Documents/iCloud/Snorkeling" data-sync-dirty>
+                                <button class="btn">Browse</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="set-group">
+                    <div class="acc" id="acc-sync-advanced">
+                        <div class="acc-head">▸ <span class="chev"></span> Advanced <span class="acc-sub">conflicts · git · server</span></div>
+                        <div class="acc-body" style="max-width:640px">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Conflict policy</div>
+                                    <div class="row-desc">What happens when both sides changed an item.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <div class="seg" style="background:var(--surface-strong-color)" data-sync-dirty>
+                                        <button class="on">Row merge</button><button>Newest</button><button>Manual</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Git commit interval</div>
+                                    <div class="row-desc">How often changes are committed.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <div class="stepper" data-sync-dirty><button aria-label="decrease">−</button><span class="st-val">15</span><button aria-label="increase">+</button></div>
+                                    <span class="st-unit">min</span>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Server push mode</div>
+                                    <div class="row-desc">Realtime streams edits; on save batches them.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <div class="seg" style="background:var(--surface-strong-color)" data-sync-dirty>
+                                        <button class="on">Realtime</button><button>On save</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-bar" style="max-width:880px">
+                    <span class="sb-hint">Draft — nothing is written until Save.</span>
+                    <button class="btn">Discard</button>
+                    <button class="btn primary" id="sync-save-btn-2" disabled>Save</button>
+                </div>
+            </div>
+
+            <!-- BEFORE（现状复刻：真实文案与类） -->
+            <div data-render="before" style="display:none">
+                <header class="wcfg-header" style="margin:-28px -32px 24px; padding:12px 32px;">
+                    <div><h1 class="h-title">Sync</h1><span class="h-sub mono">commontextsync</span></div>
+                </header>
+                <div class="before-panel">
+                    <div class="bw">
+                        <div class="mb-1" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px">
+                            <div class="bw-intro" style="margin:0">Common Text can sync across your machines. This version syncs Common Text only, with one transport and one copy of the data.</div>
+                            <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+                                <span class="bw-notready" style="color:var(--warning-color);font-size:11px">Unsaved changes</span>
+                                <button class="btn" style="height:28px;font-size:12px">Save</button>
+                            </div>
+                        </div>
+
+                        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;font-weight:600">
+                            Transport <span style="margin-left:auto;font-size:11px;font-weight:400;color:var(--secondary-text-color)">single active</span>
+                            <span style="font-size:11px">▾</span>
+                        </div>
+                        <div>
+                            <div class="bw-radiorow">
+                                <div class="bw-radio on"></div>
+                                <div class="bw-text" style="flex:1;min-width:0">
+                                    <span class="bw-title">Local folder (cloud drive)<span class="bw-tag">recommended</span></span>
+                                    <div class="bw-desc">commontext.json in a synced folder; fsnotify picks up external changes.</div>
+                                </div>
+                            </div>
+                            <div class="bw-radiorow">
+                                <div class="bw-radio"></div>
+                                <div class="bw-text" style="flex:1;min-width:0">
+                                    <span class="bw-title">Git repository</span>
+                                    <div class="bw-desc">Configure an access token first (stored in the OS keyring).</div>
+                                </div>
+                                <span style="font-size:11px;color:var(--secondary-text-color)">not ready</span>
+                            </div>
+                            <div class="bw-radiorow">
+                                <div class="bw-radio"></div>
+                                <div class="bw-text" style="flex:1;min-width:0">
+                                    <span class="bw-title">Self-hosted service</span>
+                                    <div class="bw-desc">Enter the server URL first (include the scheme).</div>
+                                </div>
+                                <span style="font-size:11px;color:var(--secondary-text-color)">not ready</span>
+                            </div>
+                            <div class="bw-radiorow">
+                                <div class="bw-radio"></div>
+                                <div class="bw-text" style="flex:1;min-width:0">
+                                    <span class="bw-title">Off · local only</span>
+                                    <div class="bw-desc">No transport. Items stay on this machine.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex;align-items:center;gap:8px;padding:10px 0 4px;font-size:13px;font-weight:600">
+                            Backend <span style="margin-left:auto;font-size:11px;font-weight:400;color:var(--secondary-text-color)">1 of 3 ready</span> <span style="font-size:11px">▸</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;padding:10px 0 4px;font-size:13px;font-weight:600">
+                            This computer <span style="margin-left:auto;font-size:11px;font-weight:400;color:var(--secondary-text-color)">device · folder</span> <span style="font-size:11px">▸</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;padding:10px 0 4px;font-size:13px;font-weight:600">
+                            Conflicts <span style="margin-left:auto;font-size:11px;font-weight:400;color:var(--secondary-text-color)">row-merge</span> <span style="font-size:11px">▸</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─────────── 其余条目：诚实空态 ─────────── -->
+        <div class="wcfg-panel" id="panel-na">
+            <div class="na-panel">
+                <div class="na-t">本原型未覆盖这个面板</div>
+                <div>原型只做了三个最有代表性的面（General / Agent Notifications / Sync）与分组左栏。<br>
+                其余面板（App Theme、Agent Access、Wave AI Modes…）沿用同一套
+                <span class="mono">SettingRow / SettingGroup</span> 组件，落地时按同规范迁移。</div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
