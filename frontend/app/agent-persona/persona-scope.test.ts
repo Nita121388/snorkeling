@@ -17,6 +17,18 @@ describe("resolveAgentEmojiScope", () => {
         expect(resolveAgentEmojiScope("session", "   ")).toBe("provider");
     });
 
+    test("collapses onto the block scope when the session id is missing but a block id is known", () => {
+        expect(resolveAgentEmojiScope("session", "", "block-1")).toBe("block");
+        expect(resolveAgentEmojiScope("session", null, "block-1")).toBe("block");
+        expect(resolveAgentEmojiScope("session", "   ", "  block-1  ")).toBe("block");
+    });
+
+    test("a block-scope request without a block id falls back to session, then provider", () => {
+        expect(resolveAgentEmojiScope("block", "sess-1")).toBe("session");
+        expect(resolveAgentEmojiScope("block", "")).toBe("provider");
+        expect(resolveAgentEmojiScope("block", "sess-1", "block-1")).toBe("block");
+    });
+
     test("provider scope is never rewritten", () => {
         expect(resolveAgentEmojiScope("provider", "sess-1")).toBe("provider");
         expect(resolveAgentEmojiScope("provider", "")).toBe("provider");
@@ -31,8 +43,26 @@ describe("resolveAgentEmojiWriteTarget", () => {
         });
     });
 
-    test("a session-scope request without a session id writes provider-wide, matching the visible radio", () => {
+    test("a session-scope request without a session id writes provider-wide when there is no block", () => {
         expect(resolveAgentEmojiWriteTarget("session", "", "opencode")).toEqual({
+            kind: "provider",
+            provider: "opencode",
+        });
+    });
+
+    test("a session-scope request without a session id writes the block meta when a block id is known", () => {
+        expect(resolveAgentEmojiWriteTarget("session", "", "opencode", "block-1")).toEqual({
+            kind: "block",
+            blockId: "block-1",
+        });
+    });
+
+    test("a block-scope request with a block id writes the block meta", () => {
+        expect(resolveAgentEmojiWriteTarget("block", "sess-1", "opencode", "block-1")).toEqual({
+            kind: "block",
+            blockId: "block-1",
+        });
+        expect(resolveAgentEmojiWriteTarget("block", "", "opencode")).toEqual({
             kind: "provider",
             provider: "opencode",
         });

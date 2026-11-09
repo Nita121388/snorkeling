@@ -13,6 +13,7 @@
  */
 
 import type { AgentEmojiScope } from "@/app/view/term/agent-emoji-picker";
+import { resolveAgentEmojiScope } from "./persona-scope";
 
 export type AgentEmojiPickerState = {
     /** `null` on surfaces that aren't bound to a block (e.g. the aisessions list). */
@@ -64,21 +65,26 @@ export function openAgentEmojiPicker(
     // Normalize blank session ids to null so callers can pass "" or "  "
     // interchangeably without accidentally advertising the session scope.
     const normalizedSessionId = sessionId?.trim() ? sessionId.trim() : null;
+    const normalizedBlockId = blockId?.trim() ? blockId.trim() : null;
     // Clicking the same icon again toggles the picker closed.
     if (
         pickerSnapshot != null &&
-        pickerSnapshot.blockId === blockId &&
+        pickerSnapshot.blockId === normalizedBlockId &&
         pickerSnapshot.provider === provider &&
         pickerSnapshot.sessionId === normalizedSessionId
     ) {
         closeAgentEmojiPicker();
         return;
     }
-    const scope: AgentEmojiScope = normalizedSessionId == null ? "provider" : initialScope;
+    // No session id: a block-bound surface collapses onto the per-block scope so one
+    // click can never rewrite every session of the provider. Surfaces without a
+    // block (aisessions history rows always carry a session id anyway) stay provider,
+    // and an explicit provider choice from a right-click entry is never rewritten.
+    const scope: AgentEmojiScope = resolveAgentEmojiScope(initialScope, normalizedSessionId, normalizedBlockId);
     const spaceBelow = window.innerHeight - rect.bottom;
     const placeAbove = spaceBelow < POPOVER_HEIGHT_ESTIMATE && rect.top > POPOVER_HEIGHT_ESTIMATE;
     pickerSnapshot = {
-        blockId,
+        blockId: normalizedBlockId,
         sessionId: normalizedSessionId,
         provider,
         initialScope: scope,

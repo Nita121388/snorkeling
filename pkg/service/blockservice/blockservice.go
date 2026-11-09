@@ -124,6 +124,13 @@ func (bs *BlockService) ReportAgentStatus(ctx context.Context, report agentstatu
 	if err != nil {
 		return nil, err
 	}
+	// A hook-reported session id (opencode plugin, claude/codex hooks) is the only
+	// live source of session identity for providers without a backend-minted id.
+	// Adopt it into block meta so session-scoped features (emoji persona, Note,
+	// outline) work and survive restarts. First-writer-wins inside the helper.
+	if status != nil && status.SessionId != "" {
+		blockcontroller.PersistAgentSessionIdFromHook(status.BlockId, status.SessionId)
+	}
 	if changed {
 		publishAgentStatus(report.BlockId, status, "fe-report")
 	}

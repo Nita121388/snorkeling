@@ -21,6 +21,10 @@ import {
     recordRecentEmoji,
     type EmojiCatalog,
 } from "@/app/element/markdown-transform/emoji";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { makeORef } from "@/app/store/wos";
+import { AgentEmojiMetaKey, normalizeAgentEmoji } from "./agent-logo";
 import { cn } from "@/util/util";
 import * as React from "react";
 
@@ -32,6 +36,14 @@ export type AgentEmojiPickerProps = {
      * here; without it only the provider scope is offered.
      */
     sessionId: string | null;
+    /**
+     * Block that opened the picker. Enables the per-block scope ("仅此标签页", block
+     * meta `agent:emoji`) when the session id is unknown — a missing session id must
+     * never silently rewrite every session of the provider.
+     */
+    blockId?: string | null;
+    /** Current block-level emoji from `agent:emoji` meta (enables "remove"). */
+    blockEmoji?: string | null;
     provider: string;
     anchor: { top: number; left: number };
     placement: "top" | "bottom";
@@ -68,6 +80,8 @@ function ScopeOption({
  */
 export function AgentEmojiPicker({
     sessionId,
+    blockId = null,
+    blockEmoji = null,
     provider,
     anchor,
     placement,
@@ -79,14 +93,17 @@ export function AgentEmojiPicker({
     const [query, setQuery] = React.useState("");
     const [activeIndex, setActiveIndex] = React.useState(0);
     const sessionKey = normalizeSessionEmojiKey(sessionId);
-    const [scope, setScope] = React.useState<AgentEmojiScope>(() => resolveAgentEmojiScope(initialScope, sessionKey));
+    const blockKey = normalizeSessionEmojiKey(blockId);
+    const [scope, setScope] = React.useState<AgentEmojiScope>(() =>
+        resolveAgentEmojiScope(initialScope, sessionKey, blockKey)
+    );
     const [emojiOnly, setEmojiOnlyState] = React.useState(() =>
         sessionKey !== "" ? getTabDisplayMode(sessionKey) === "emoji-only" : false
     );
     // The radio must reflect the scope that will actually be written. When the
-    // session id is unknown, "session" is not offered — so show (and write)
-    // provider scope instead of silently falling through to a provider-wide write.
-    const effectiveScope = resolveAgentEmojiScope(scope, sessionKey);
+    // session id is unknown the request collapses onto the per-block scope (the
+    // radiobutton label says "仅此标签页") instead of silently writing provider-wide.
+    const effectiveScope = resolveAgentEmojiScope(scope, sessionKey, blockKey);
 
     React.useEffect(() => {
         if (catalog != null) {
@@ -117,23 +134,33 @@ export function AgentEmojiPicker({
 
     const applyEmoji = React.useCallback(
         (emoji: string | null) => {
-            const target = resolveAgentEmojiWriteTarget(effectiveScope, sessionKey, provider);
+            const target = resolveAgentEmojiWriteTarget(effectiveScope, sessionKey, provider, blockKey);
             if (target.kind === "session") {
                 setSessionEmoji(target.sessionId, emoji);
+            } else if (target.kind === "block") {
+                // Per-block persona: block meta only, so a single tab click can never
+                // reach the provider-wide store shared by every session.
+                void RpcApi.SetMetaCommand(TabRpcClient, {
+                    oref: makeORef("block", target.blockId),
+                    meta: { [AgentEmojiMetaKey]: emoji } as unknown as MetaType,
+                }).catch((e) => console.warn("failed to set block agent emoji", e));
             } else {
                 setAgentPersona(target.provider, emoji);
             }
             onClose();
         },
-        [effectiveScope, sessionKey, provider, onClose]
+        [effectiveScope, sessionKey, provider, blockKey, onClose]
     );
     // Per-scope "has emoji" so the remove button reflects the scope you're looking at.
     const currentHasEmoji = React.useMemo(() => {
         if (effectiveScope === "session" && sessionKey !== "") {
             return (getSessionEmojiSnapshot()[sessionKey] ?? "") !== "";
         }
+        if (effectiveScope === "block" && blockKey !== "") {
+            return normalizeAgentEmoji(blockEmoji) != null;
+        }
         return hasCurrentEmoji;
-    }, [effectiveScope, sessionKey, hasCurrentEmoji]);
+    }, [effectiveScope, sessionKey, blockKey, blockEmoji, hasCurrentEmoji]);
 
     // Focus the search box ourselves instead of trusting `autoFocus`: the click that
     // opened the picker also hands focus to the underlying block (xterm re-claims it
@@ -167,9 +194,21 @@ export function AgentEmojiPicker({
                         hint="这一个会话在所有出现的位置都换成此 emoji（含历史列表，resume 后也保留）"
                         onChange={() => setScope("session")}
                     />
-                ) : (
-                    <div className="agent-emoji-scope-note">未识别到当前会话 ID，只能应用到所有 {providerLabel} 会话</div>
-                )}
+                ) : blockKey !== "" ? (
+                    <ScopeOption
+                        checked={effectiveScope === "block"}
+                        label="仅此标签页"
+                        hint="只改当前这个标签页的图标；其它会话不受影响"
+                        onChange={() => setScope("block")}
+                    />
+                ) : null}
+                {sessionKey === "" ? (
+                    <div className="agent-emoji-scope-note">
+                        {blockKey !== ""
+                            ? "未识别到当前会话 ID，默认只改当前标签页"
+                            : "未识别到当前会话 ID"}
+                    </div>
+                ) : null}
                 <ScopeOption
                     checked={effectiveScope === "provider"}
                     label={`所有 ${providerLabel} 会话`}

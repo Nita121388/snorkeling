@@ -125,6 +125,14 @@ func (ws *WshServer) AgentStatusCommand(ctx context.Context, data agentstatus.Ag
 		return nil, err
 	}
 	log.Printf("[agentstatus] report-ok block=%q provider=%q state=%q phase=%q source=%q changed=%t status-nil=%t", report.BlockId, report.Provider, report.State, report.Phase, report.Source, changed, status == nil)
+	// Adopt the hook-reported session id into block meta once (see
+	// blockcontroller.PersistAgentSessionIdFromHook). opencode's plugin is the only
+	// live session-id source for that provider, so without this the block stays
+	// "session unknown" for the whole lifetime and session-scoped UI degrades to
+	// provider-wide behavior.
+	if status != nil && status.SessionId != "" {
+		blockcontroller.PersistAgentSessionIdFromHook(status.BlockId, status.SessionId)
+	}
 	if changed {
 		log.Printf("[agentstatus] publish block=%q", report.BlockId)
 		publishAgentStatus(report.BlockId, status, "hook")

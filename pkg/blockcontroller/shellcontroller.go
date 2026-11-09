@@ -1366,6 +1366,68 @@ func capturePiSessionIdForBlock(blockId string, sessionId string) {
 	captureClaudeSessionIdForBlock(blockId, sessionId)
 }
 
+// hookSessionIdAdopted dedupes hook-driven block-meta writes per block so the
+// hot path (every agent status event) costs a map load, not a DB read.
+var hookSessionIdAdopted sync.Map // blockId -> sessionId already written/adopted
+
+// shouldPersistAgentSessionId decides whether a hook-reported session id may be
+// written into block meta. First-writer-wins: an existing session id (minted by
+// the backend for claude/pi, captured from disk for codex, or written by OSC)
+// is never overwritten — a differing id from a hook must not desync the block
+// from the process that is actually running.
+func shouldPersistAgentSessionId(existing string, sessionId string) bool {
+	if strings.TrimSpace(sessionId) == "" {
+		return false
+	}
+	return strings.TrimSpace(existing) == ""
+}
+
+// PersistAgentSessionIdFromHook writes a hook-reported session id (opencode's
+// `event.properties.sessionID`, claude/codex hook payloads, ...) into block meta
+// `agent:sessionid` when the block does not have one yet.
+//
+// Why this exists: session identity used to live only in the in-memory agent
+// status entry. Any surface reading block meta alone (emoji persona scope, Note,
+// Session outline) saw "no session id" and fell back to provider-wide behavior —
+// for opencode, which has no backend-minted id and no disk capture, that meant
+// "change one block = change every opencode session".
+//
+// Best effort: async, 2s budget, failures only logged; the status `report` path
+// must never block on meta IO.
+func PersistAgentSessionIdFromHook(blockId string, sessionId string) {
+	blockId = strings.TrimSpace(blockId)
+	sessionId = strings.TrimSpace(sessionId)
+	if blockId == "" || sessionId == "" {
+		return
+	}
+	if adopted, ok := hookSessionIdAdopted.Load(blockId); ok && adopted == sessionId {
+		return
+	}
+	go func() {
+		ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+		defer cancelFn()
+		block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
+		if err != nil || block == nil {
+			return
+		}
+		existingSid := ""
+		if block.Meta != nil {
+			existingSid = block.Meta.GetString(MetaKey_AgentSessionId, "")
+		}
+		if !shouldPersistAgentSessionId(existingSid, sessionId) {
+			if strings.TrimSpace(existingSid) != "" {
+				hookSessionIdAdopted.Store(blockId, existingSid)
+			}
+			return
+		}
+		if err := persistAgentSessionId(blockId, sessionId); err != nil {
+			log.Printf("[agent-session-adopt] FAIL block=%s err=%v", blockId, err)
+			return
+		}
+		hookSessionIdAdopted.Store(blockId, sessionId)
+	}()
+}
+
 func (bc *ShellController) shouldClearAgentRuntimeMetaOnExit() bool {
 	bc.Lock.Lock()
 	defer bc.Lock.Unlock()

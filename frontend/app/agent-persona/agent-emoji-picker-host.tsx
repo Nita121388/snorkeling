@@ -54,6 +54,7 @@ function AgentEmojiPickerHostInner({ state }: { state: NonNullable<AgentEmojiPic
     // per-scope as you toggle the radio, so pass the scope-relevant value.
     const personaEmoji = normalizeAgentEmoji(personas[normalizeAgentPersonaKey(state.provider)]);
     const sessionEmoji = normalizeAgentEmoji(getSessionEmojiSnapshot()[sessionId]);
+    const blockEmoji = normalizeAgentEmoji(meta?.[AgentEmojiMetaKey]);
     const hasCurrentEmoji =
         state.initialScope === "session" && sessionId !== "" ? sessionEmoji != null : personaEmoji != null;
 
@@ -62,6 +63,8 @@ function AgentEmojiPickerHostInner({ state }: { state: NonNullable<AgentEmojiPic
             <div className="markdown-emoji-backdrop" onMouseDown={closeAgentEmojiPicker} />
             <AgentEmojiPicker
                 sessionId={sessionId === "" ? null : sessionId}
+                blockId={state.blockId}
+                blockEmoji={blockEmoji}
                 provider={state.provider}
                 anchor={state.anchor}
                 placement={state.placement}

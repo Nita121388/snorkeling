@@ -24,7 +24,14 @@ describe("agent emoji picker host store", () => {
         expect(state?.provider).toBe("claude");
         expect(state?.placement).toBe("bottom");
         expect(state?.anchor).toEqual({ top: 124, left: 40 });
-        expect(state?.initialScope).toBe("provider");
+        // No session id but a block id: the safe default is the per-block scope,
+        // never a provider-wide write that would reach every opencode session.
+        expect(state?.initialScope).toBe("block");
+    });
+
+    it("keeps provider scope when there is no block to bind the write to", () => {
+        openAgentEmojiPicker(null, "opencode", { top: 100, bottom: 120, left: 40 });
+        expect(getAgentEmojiPickerSnapshot()?.initialScope).toBe("provider");
     });
 
     it("opens session scope when a session id is supplied", () => {
@@ -33,9 +40,9 @@ describe("agent emoji picker host store", () => {
         expect(getAgentEmojiPickerSnapshot()?.sessionId).toBe("sess-1");
     });
 
-    it("normalizes a blank session id to provider scope", () => {
+    it("normalizes a blank session id to the per-block scope", () => {
         openAgentEmojiPicker("block-1", "claude", { top: 100, bottom: 120, left: 40 }, "session", "   ");
-        expect(getAgentEmojiPickerSnapshot()?.initialScope).toBe("provider");
+        expect(getAgentEmojiPickerSnapshot()?.initialScope).toBe("block");
         expect(getAgentEmojiPickerSnapshot()?.sessionId).toBeNull();
     });
 
