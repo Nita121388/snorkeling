@@ -2,7 +2,7 @@
 
 # QUEUE
 
-> 生成于 2026-11-09T02:28:16Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
+> 生成于 2026-11-09T02:38:38Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
 
 | 包 | 优先级 | 类型 | 门 | 门状态 | 运行 | 说明 |
 |---|---|---|---|---|---|---|
@@ -15,7 +15,7 @@
 | `N-1105-cleanup-46to22` | P1 | arch | 1/4 | blocked:g2 | idle | 器具：no-red-proof |
 | `F-1106-move-block-tab-menu` | P1 | feature | 2/3 | blocked:g5 | accepted | 合规：not-run |
 | `F-1107-commontext-sync-meta` | P1 | feature | 0/3 | blocked:g1 | idle | 需求：unsigned |
-| `F-1109-commontext-sync-watermark` | P1 | arch | 3/4 | blocked:g5 | queued | 合规：not-run |
+| `F-1109-commontext-sync-watermark` | P1 | arch | 4/4 | clear | committed | Common Text 条目级同步水位：区分已同步/待上传 + 增量推送 + 墓碑 |
 | `N-1105-cmd-window-flash` | P1 | bug | 1/1 | clear | committed | 打开看板闪黑窗：子进程漏 windowsHide |
 | `N-1105-night-runner` | P1 | arch | 0/4 | blocked:g1 | idle | 需求：unsigned |
 | `N-1105-tab-hover-clip` | P1 | bug | 1/1 | clear | committed | Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位） |

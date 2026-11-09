@@ -2,7 +2,7 @@
 
 # 工作项索引
 
-> 生成于 2026-11-09T02:28:16Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
+> 生成于 2026-11-09T02:38:38Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
 
 ## P0（2）
 
@@ -18,7 +18,7 @@
 - [ ] `N-1105-cleanup-46to22` — 清账：活跃任务 46 → ≤22（归档清单须人工过） · arch · internal · 器具待办
 - [ ] `F-1106-move-block-tab-menu` — Move Block to Tab：菜单 4→1 条 + 弹窗内新建 / 每行双图标动作 · feature · self · 合规待办
 - [ ] `F-1107-commontext-sync-meta` — Common Text 同步元数据：createdBy/origin/rev/deletedat + 迁移 + 过滤 · feature · self · 需求待办
-- [ ] `F-1109-commontext-sync-watermark` — Common Text 条目级同步水位：区分已同步/待上传 + 增量推送 + 墓碑 · arch · self · 合规待办
+- [ ] `F-1109-commontext-sync-watermark` — Common Text 条目级同步水位：区分已同步/待上传 + 增量推送 + 墓碑 · arch · self · 门已清
 - [ ] `N-1105-cmd-window-flash` — 打开看板闪黑窗：子进程漏 windowsHide · bug · self · 门已清
 - [ ] `N-1105-night-runner` — 夜班真派发：headless agent 注入契约并限一包 · arch · self · 需求待办
 - [ ] `N-1105-tab-hover-clip` — Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位） · bug · self · 门已清
