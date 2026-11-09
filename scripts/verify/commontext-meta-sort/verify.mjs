@@ -85,7 +85,12 @@ const SNAPSHOT_FN = `(() => {
         rowHeights: rows.map((row) => h(row)),
         metaHeights: rows.map((row) => h(row.querySelector("[data-commontext-meta]"))),
         usage: rows.map((row) => text(row.querySelector("[data-commontext-usage]"))),
+        usageGlyphs: rows.map((row) => row.querySelectorAll("[data-commontext-usage] i").length),
         updated: rows.map((row) => text(row.querySelector("[data-commontext-updated]"))),
+        updatedLabels: rows.map((row) => text(row.querySelector("[data-commontext-updated-rel]"))),
+        freshnessTiers: rows.map(
+            (row) => row.querySelector("[data-commontext-updated] [data-commontext-freshness]")?.getAttribute("data-commontext-freshness") ?? null
+        ),
         sortKeys: sortButtons.map((b) => b.getAttribute("data-commontext-sort")),
         sortDisabled: sortButtons.map((b) => b.getAttribute("aria-disabled")),
         activeSort:
@@ -266,12 +271,27 @@ try {
     usageOf(base, "Zulu deploy notes") === "0" && usageOf(base, "Standup summary") === "1",
     base?.usage
   );
+  // 更新时间：方块（图形）+ 紧凑数字（`3d`）双出口。
+  // 相对时间不再需要悬停：紧凑标签常显在方块右侧，且不带 ` ago`（同一列全是「多久以前」）。
   reporter.check(
-    "updated-time-readable",
-    Array.isArray(base?.updated) &&
-      base.updated.length === 3 &&
-      base.updated.every((t) => /just now|^\d+(s|m|h|d) ago$/.test(t)),
-    base?.updated
+    "updated-compact-label-visible",
+    Array.isArray(base?.updatedLabels) &&
+      base.updatedLabels.length === 3 &&
+      base.updatedLabels.every((t) => /^(now|\d+(s|m|h|d))$/.test(t)),
+    base?.updatedLabels
+  );
+  reporter.check(
+    "updated-freshness-square-present",
+    Array.isArray(base?.freshnessTiers) &&
+      base.freshnessTiers.length === 3 &&
+      base.freshnessTiers.every((t) => t != null),
+    base?.freshnessTiers
+  );
+  // 右槽是纯数字列：次数不配图标（图标把「用了多少次」读成「重来」）。
+  reporter.check(
+    "usage-column-glyph-free",
+    Array.isArray(base?.usageGlyphs) && base.usageGlyphs.every((n) => n === 0),
+    base?.usageGlyphs
   );
   reporter.check(
     "meta-column-present",

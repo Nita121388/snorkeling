@@ -6,6 +6,7 @@ import {
     commonTextFreshnessFillClass,
     commonTextFreshnessFillStyle,
     commonTextFreshnessTier,
+    formatCommonTextFreshnessCompact,
     isCommonTextNeverEdited,
 } from "./commontext-freshness";
 import type { CommonTextItem } from "./commontext-model";
@@ -88,5 +89,32 @@ describe("commonTextFreshnessFillClass", () => {
         expect(commonTextFreshnessFillClass(3)).toBe("bg-accent");
         expect(commonTextFreshnessFillClass(4)).toBe("bg-muted");
         expect(commonTextFreshnessFillClass(5)).toBe("bg-muted");
+    });
+});
+
+describe("formatCommonTextFreshnessCompact", () => {
+    // 固定 now：相对时间随真实时钟走会让断言在跨秒/跨分钟的瞬间变红。
+    const now = Date.UTC(2026, 10, 9, 12, 0, 0);
+
+    it("keeps the granularity of formatSessionRelativeTime but drops the `ago` noise", () => {
+        expect(formatCommonTextFreshnessCompact(now - 5 * 1000, now)).toBe("now");
+        expect(formatCommonTextFreshnessCompact(now - 45 * 1000, now)).toBe("45s");
+        expect(formatCommonTextFreshnessCompact(now - 12 * MINUTE, now)).toBe("12m");
+        expect(formatCommonTextFreshnessCompact(now - 5 * HOUR, now)).toBe("5h");
+        expect(formatCommonTextFreshnessCompact(now - 12 * DAY, now)).toBe("12d");
+        expect(formatCommonTextFreshnessCompact(now - 45 * DAY, now)).toBe("45d");
+    });
+
+    it("returns an empty label when there is no usable timestamp", () => {
+        // 空串 = 调用方直接不渲染文字，而不是留一个 "never" 占位。
+        expect(formatCommonTextFreshnessCompact(undefined, now)).toBe("");
+        expect(formatCommonTextFreshnessCompact(0, now)).toBe("");
+    });
+
+    it("stays narrow enough for the 58px right slot", () => {
+        // 右槽 = 12px 方块 + 4px gap + 文字："365d" 是最长的正常输出（≥1 年）。
+        const longest = formatCommonTextFreshnessCompact(now - 400 * DAY, now);
+        expect(longest.length).toBeLessThanOrEqual(4);
+        expect(12 + 4 + longest.length * 6).toBeLessThanOrEqual(58);
     });
 });

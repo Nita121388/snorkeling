@@ -61,21 +61,33 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("saveCommonTextSortKey(sortKey)");
     });
 
-    it("shows usage count plus a freshness square at the right of each row", () => {
+    it("shows usage count plus a freshness square and a compact relative label at the right of each row", () => {
         expect(source).toContain('data-commontext-meta=""');
         expect(source).toContain("data-commontext-usage={item.usagecount ?? 0}");
-        // 更新时间不再写文字：图形化后扫视不用逐个读「4h ago」，也不会因相对时间过期而说谎。
+        // 图形 + 数字双出口：方块管扫视，紧跟的 `3d` 管精确读数（不再需要悬停）。
         expect(source).toContain('data-commontext-updated=""');
         expect(source).toContain("<CommonTextFreshnessSquare");
         expect(source).toContain("tier={commonTextFreshnessTier(item)}");
+        expect(source).toContain('data-commontext-updated-rel=""');
+        expect(source).toContain("formatCommonTextFreshnessCompact(item.updatedat)");
         // 元信息列不新增行高：与 hover 插入按钮共用同一固定宽槽
         expect(source).toContain("w-[58px]");
         expect(source).toContain("group-hover:opacity-0");
     });
 
+    it("renders the usage count as a bare number in the row slot", () => {
+        // `fa-repeat` 读起来是「重来/循环」，与「这条被用过多少次」不是一回事；
+        // 右槽已经是纯数字列，计数也跟着留纯数字（tooltip 仍给完整句子）。
+        const start = source.indexOf("data-commontext-usage={item.usagecount ?? 0}");
+        const end = source.indexOf('data-commontext-updated=""');
+        expect(start).toBeGreaterThan(-1);
+        expect(end).toBeGreaterThan(start);
+        expect(source.slice(start, end)).not.toContain("fa-repeat");
+    });
+
     it("drops the clock glyph from the row slot", () => {
         // 列表右槽原本是「时钟图标 + 相对时间文字」；图形化后不应再出现那个图标。
-        // 相对时间只保留在 aria-label / tooltip 里（对读屏仍然有用，但不是可见文字）。
+        // 相对时间现在以紧凑数字（`3d`）常显在方块旁，完整句只走 aria-label / tooltip。
         expect(source).not.toContain('<i className="fa fa-regular fa-clock text-[9px]" />');
         expect(source.match(/<CommonTextFreshnessSquare/g)?.length).toBe(1);
     });

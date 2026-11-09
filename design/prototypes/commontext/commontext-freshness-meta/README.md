@@ -1,6 +1,7 @@
 > 同步状态：✅ 已落地（2026-11-09，`frontend/app/commontext/commontext-freshness.ts` + `commontext-freshness-square.tsx`，任务 `11-09-commontext-freshness-square`）
 > 镜像源：frontend/app/commontext/commontext-compose-modal.tsx（:1569-1576 / :1774-1779）, frontend/app/view/aisessions/utils.ts, frontend/app/view/aisessions/session-row.tsx
-> 最后同步：2026-11-09（落地取 E 热力方块，12×12；填充比例 100/82/64/46/28）
+> 最后同步：2026-11-09 二次修订：E 热力方块旁**常显紧凑相对时间**（now/45s/12m/3h/45d，`formatCommonTextFreshnessCompact`）
+> ——「方块 tooltip 悬停不到」的短板用常显数字补上；右槽次数去 `fa-repeat` 图标改纯数字。
 
 # CommonText：更新时间可视化（不显示具体时间）
 

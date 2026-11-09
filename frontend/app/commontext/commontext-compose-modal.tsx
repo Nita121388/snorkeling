@@ -45,7 +45,7 @@ import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/
 import { loadCommonTextSortKey, saveCommonTextSortKey } from "./commontext-sort-preference";
 import { PageIconSlot } from "./commontext-page-icon";
 import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
-import { commonTextFreshnessTier } from "./commontext-freshness";
+import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
@@ -1598,29 +1598,36 @@ const CommonTextComposeModal = memo(() => {
                                                         }
                                                         title={`Used ${item.usagecount ?? 0} time(s)`}
                                                     >
-                                                        <i className="fa fa-solid fa-repeat text-[9px]" />
+                                                        {/* 计数不再配图标：那个循环箭头读起来是「重来/重跑」，
+                                                            与「这条被用过多少次」不是一回事。同一右槽第二行已改成
+                                                            「方块 + 时间数字」的纯数字列，计数留纯数字反而最安静、
+                                                            也对齐了 tabular-nums 的右边界。 */}
                                                         {item.usagecount ?? 0}
                                                     </span>
                                                     <span
                                                         data-commontext-updated=""
                                                         className="inline-flex items-center gap-1"
                                                     >
-                                                        {/* 更新时间不再写文字：「4h ago」在扫视时要逐个读字，
-                                                            且相对时间不会自动刷新（停在弹窗打开那刻）。热力方块用
-                                                            填充高度 + 浓度双通道编码，5 档在 12px 里都能分开。
-                                                            精确时间与相对时间都下沉到 tooltip / aria-label。 */}
+                                                        {/* 图形 + 数字双出口：方块管「扫一眼比大小」（填充高度 + 浓度
+                                                            双通道，5 档在 12px 里都能分开），紧跟着的数字管「精确到
+                                                            第几天」——悬停才会显形的时间等于没有时间，而 `4h ago`
+                                                            那种整句在扫视时要逐个读字。取 `3d` / `12m` 这种最短形式，
+                                                            先把 `ago` 去掉：同一列里所有值都是「多久以前」。 */}
                                                         <CommonTextFreshnessSquare
                                                             tier={commonTextFreshnessTier(item)}
                                                             title={`Updated ${compactCommonTextTime(item.updatedat, true)}`}
                                                             ariaLabel={`Updated ${formatSessionRelativeTime(item.updatedat)}`}
                                                         />
+                                                        <span data-commontext-updated-rel="" aria-hidden="true">
+                                                            {formatCommonTextFreshnessCompact(item.updatedat)}
+                                                        </span>
                                                     </span>
                                                 </div>
                                                 <span
                                                     role="button"
                                                     tabIndex={-1}
                                                     aria-label="Insert this common text into the focused target"
-                                                    title="Insert into focused target"
+                                                    title={`Insert into focused target · updated ${formatSessionRelativeTime(item.updatedat)}`}
                                                     className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
                                                     onClick={(event) => {
                                                         event.stopPropagation();

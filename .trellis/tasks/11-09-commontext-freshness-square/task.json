@@ -2,7 +2,7 @@
   "id": "commontext-freshness-square",
   "name": "commontext-freshness-square",
   "title": "CommonText 更新时间改热力方块",
-  "description": "列表行右槽的更新时间从「fa-clock + 4h ago」文字改成 12x12 热力方块（颜色 + 填充高度双编码，复刻 aisessions HeatCell），精确时间下沉到 tooltip；补充单测断言。",
+  "description": "列表行右槽的更新时间从「fa-clock + 4h ago」文字改成 12x12 热力方块（颜色 + 填充高度双编码，复刻 aisessions HeatCell），方块旁常显紧凑相对时间（now/45s/12m/3h/45d），精确时间下沉到 tooltip；右槽次数去图标改纯数字；补充单测断言。",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,

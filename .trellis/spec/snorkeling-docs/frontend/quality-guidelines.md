@@ -493,3 +493,22 @@ VCS 面板典型宽度 400–560px。`RemoteCommitRow` 原来给 hash/author/dat
 - **分组标题 = 标签 + 计数 chip + 发丝线**，不要裸一行小字；chip 走 `bg-surface-soft`，
   别用 `border-border` 描边胶囊（与「去描边胶囊化」口径一致）。
 - 纯函数放独立 `*.ts` 并配 vitest（`vcs-time.test.ts` 11 条），组件里不写时间格式化分支。
+
+---
+
+## 行内「悬浮淡出」的元信息：不能靠 tooltip 承载必要读数 (2026-11-09, task 11-09-commontext-freshness-square)
+
+CommonText 列表行右槽（`w-[58px] h-7`）挂 `group-hover:opacity-0`，hover 时换成插入按钮。
+第一次把更新时间做成 12×12 热力方块、精确时间只放 `title` —— 结果**那个 tooltip 永远悬停不到**：
+行的任意位置一 hover，方块就淡出，且插入按钮（`absolute right-0 w-7`）正好盖在方块上。
+
+- **判据**：任何「必须读到」的信息，在 `group-hover` 生效的位置都不能只存在于 `title` / `aria-label`。
+  要么常显（文字或可量化的图形），要么挪到不需要 hover 的出口（详情面板）。
+- **双出口是正解**：图形管「扫一眼比大小」，紧跟的**紧凑数字**（`now/45s/12m/3h/45d`）管精确读数，
+  不额外占用行高（`12px 方块 + 4px gap + ≤4 字符 ≈ 39px ≤ 58px`）。
+  数字标签 `aria-hidden="true"`，读屏只读方块 `aria-label`，避免重复播报。
+- **紧凑时间不另写阈值**：从 `formatSessionRelativeTime()` 改写（去 ` ago`、`just now → now`），
+  与 aisessions 同一套口径；`ago` 在整列同构的行里是纯背景噪声。
+- **图标语义必须对得上计数语义**：`fa-repeat` 读作「重来/循环」，放在「被用过多少次」旁边是错配。
+  纯数字列（tabular-nums）里就留纯数字，不要把语义可疑的图标当装饰。
+  但**多列并排的详情元信息行（创建/更新/最近使用/次数）例外**：图标是区分列义的唯一线索，不能删。

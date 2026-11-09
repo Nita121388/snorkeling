@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { freshnessLevel } from "@/app/view/aisessions/utils";
+import { formatSessionRelativeTime, freshnessLevel } from "@/app/view/aisessions/utils";
 import type { CommonTextItem } from "./commontext-model";
 
 /**
@@ -53,4 +53,24 @@ export function commonTextFreshnessFillStyle(tier: number): { height: string; op
 /** 填充色：陈旧的 4/5 档用 muted，其余用 accent。 */
 export function commonTextFreshnessFillClass(tier: number): string {
     return tier >= 4 ? "bg-muted" : "bg-accent";
+}
+
+/**
+ * 方块右侧的极简相对时间标签：`now / 45s / 12m / 3h / 45d`。
+ *
+ * 为什么不是直接显示 `formatSessionRelativeTime` 的原文：右槽只有 58px，`45d ago` 比
+ * `45d` 多两个字符；而 `ago` 在一列同构的行里是纯背景噪声——所有行都表示「过去」，
+ * 没有对比价值。去掉词根后一个 3 字符标签就够，扫视时读的是数字不是句子。
+ *
+ * 阈值不在这里重写：直接从 `formatSessionRelativeTime()` 的输出改写，两个列表
+ * （aisessions / commontext）「多久算旧」的口径必须一致。
+ *
+ * 空字符串代表「没有可读时间」（`updatedat` 缺失），调用方直接不渲染文字。
+ */
+export function formatCommonTextFreshnessCompact(timestamp: number | undefined, now = Date.now()): string {
+    if (timestamp == null) return "";
+    const relative = formatSessionRelativeTime(timestamp, now);
+    if (relative === "never") return "";
+    if (relative === "just now") return "now";
+    return relative.endsWith(" ago") ? relative.slice(0, -4) : relative;
 }
