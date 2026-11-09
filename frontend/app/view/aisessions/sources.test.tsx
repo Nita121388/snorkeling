@@ -2,7 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { chatSourcesForAvailability, fetchChatSourceIds } from "./sources";
+import { CHAT_SOURCES, chatSourcesForAvailability, fetchChatSourceIds, getChatSource } from "./sources";
+
+describe("CHAT_SOURCES", () => {
+    it("exposes a filterable chip for every scanned backend source incl. opencode", () => {
+        const ids = CHAT_SOURCES.map((source) => source.id);
+        expect(ids).toEqual(["pi", "codex", "claude", "opencode"]);
+    });
+
+    it("resolves opencode to a labelled source with a dot class", () => {
+        expect(getChatSource("opencode")).toMatchObject({ label: "OpenCode", dotClass: "bg-source-opencode" });
+    });
+});
 
 describe("fetchChatSourceIds", () => {
     beforeEach(() => {

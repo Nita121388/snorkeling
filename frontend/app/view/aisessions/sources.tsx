@@ -9,6 +9,7 @@ export const CHAT_SOURCES = [
     { id: "pi", label: "Pi", dotClass: "bg-source-pi" },
     { id: "codex", label: "Codex", dotClass: "bg-source-codex" },
     { id: "claude", label: "Claude Code", dotClass: "bg-source-claude" },
+    { id: "opencode", label: "OpenCode", dotClass: "bg-source-opencode" },
 ] satisfies readonly ChatSourceDef[];
 
 export interface ChatSourceDef {

@@ -21,7 +21,8 @@
   "children": [
     "10-30-opencode-ccswitch-loader-fix",
     "10-30-opencode-resume-reisolate",
-    "10-30-opencode-hook-verify"
+    "10-30-opencode-hook-verify",
+    "11-09-aisessions-filter-opencode"
   ],
   "parent": null,
   "relatedFiles": [],

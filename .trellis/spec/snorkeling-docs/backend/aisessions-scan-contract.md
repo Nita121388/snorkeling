@@ -70,6 +70,24 @@ List RPC
 | `SNORKELING_AISESSIONS_TITLE_SCAN_MAX_BYTES` | title 扫描读取上限（默认 1MB） |
 | `SNORKELING_AISESSIONS_MSG_BUDGET_BYTES` | 消息计数解析预算（默认 128MB） |
 
+## 新增扫描 provider 的前端联动（踩坑 2026-11-09）
+
+后端新增 provider（如 `provider_opencode.go` 的 `SourceOpenCode`）后，筛选栏不会自动支持它：
+
+- 筛选栏 agent 来源段直接 `CHAT_SOURCES.map(...)` 渲染（`frontend/app/view/aisessions/filter-panel.tsx`），
+  该清单是 `frontend/app/view/aisessions/sources.tsx` 里写死的常量。
+- `chatSourcesForAvailability()` 的动态合并救不了新 provider：它只覆盖 chat-composer / session-detail，
+  且数据来自 `/api/aisessions-chat` 的 `AvailableProviders()`（GUI-chat provider 注册表，与扫描 provider 是两回事）。
+
+**新增 provider 必须同步四处，缺一不可：**
+
+1. `frontend/app/view/aisessions/sources.tsx`：`CHAT_SOURCES` 加条目（id / label / `dotClass: "bg-source-<id>"`）。
+2. `frontend/tailwindsetup.css`：加 `--color-source-<id>` 色变量（与 `agent-logo.tsx` 中该品牌 iconColor 一致）。
+3. `frontend/app/view/aisessions/types.ts`：`SourceFilter` 加字面量；`filter-presets.ts` 的 `SourceValues` 同步。
+4. `frontend/app/view/term/agent-logo.tsx`：`getAgentLogoByProvider` 加图标分支（有则自动进筛选栏图标）。
+
+回归测试：`sources.test.tsx` 的 `CHAT_SOURCES` id 清单断言。
+
 ## 改动检查清单
 
 - [ ] 新增扫描路径是否走 `ScanAllSummaries`？有没有直接调 `ScanSummaries`？

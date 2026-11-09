@@ -49,6 +49,7 @@
 
     --color-source-claude: #cc685c;
     --color-source-codex: #74a7cb;
+    --color-source-opencode: #e0b956;
     --color-source-pi: #888888;
     /* 表面层（输入框底 / 胶囊轨道 / 徽标底）必须由主题块提供：
        写死成白色叠色时，浅色主题里会与 panel 同色，控件彻底失去底面。 */
