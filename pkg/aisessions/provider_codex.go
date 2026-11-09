@@ -75,8 +75,49 @@ func (p *CodexProvider) LoadMessages(ctx context.Context, filePath string) ([]Me
 }
 
 func parseCodexMessages(ctx context.Context, r io.Reader) ([]Message, error) {
-	messages, _, _, err := parseJSONLFromReader(ctx, r, 1, parseCodexMessageLine)
+	parser := &codexMessageParser{}
+	messages, _, _, err := parseJSONLFromReader(ctx, r, 1, parser.parse)
 	return messages, err
+}
+
+// codexMessageParser carries the last seen turn_context model across lines:
+// codex rollouts do not stamp the model on each response_item, they emit one
+// `turn_context` line per turn whose payload carries the model for that turn.
+// Full-file parsing goes through parseCodexMessages so every assistant message
+// inherits its turn's model. The stateless parseCodexMessageLine (delta and
+// remote paths) has no turn_context context, so those messages may carry an
+// empty Model; the first full Load already populated it.
+type codexMessageParser struct {
+	model string
+}
+
+func (p *codexMessageParser) parse(line []byte, seq int) ([]Message, bool) {
+	p.observe(line)
+	msg, ok := parseCodexMessageLineSingle(line, seq)
+	if !ok {
+		return nil, false
+	}
+	if p.model != "" && msg.Role == RoleAssistant && msg.Model == "" {
+		msg.Model = p.model
+	}
+	return []Message{msg}, true
+}
+
+func (p *codexMessageParser) observe(line []byte) {
+	var value map[string]any
+	if err := json.Unmarshal(line, &value); err != nil {
+		return
+	}
+	if strValue(value, "type") != "turn_context" {
+		return
+	}
+	payload, _ := value["payload"].(map[string]any)
+	if payload == nil {
+		return
+	}
+	if model := strings.TrimSpace(strValue(payload, "model")); model != "" {
+		p.model = model
+	}
 }
 
 func parseCodexMessageLine(line []byte, seq int) ([]Message, bool) {

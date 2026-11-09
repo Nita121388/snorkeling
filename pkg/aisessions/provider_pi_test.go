@@ -616,3 +616,43 @@ func TestPiProvider_TitleEmptyFallsBackToID(t *testing.T) {
 		t.Fatalf("expected DisplayTitle fallback to project basename, got %q", got)
 	}
 }
+
+func TestPiAssistantMessageModel(t *testing.T) {
+	dir := t.TempDir()
+	content := `{"type":"session","version":3,"id":"pi-model-1","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+		`{"type":"model_change","id":"mc-1","parentId":"","timestamp":"2026-11-09T11:49:36.250Z","provider":"deepseek","modelId":"deepseek-v4.1-flash"}` + "\n" +
+		`{"type":"message","id":"u1","parentId":"mc-1","timestamp":"2026-11-09T11:49:40.000Z","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}` + "\n" +
+		`{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-11-09T11:49:41.000Z","message":{"role":"assistant","provider":"deepseek","model":"deepseek-v4.1-flash","content":[{"type":"text","text":"hi"}]}}` + "\n"
+	path := writePiJSONL(t, dir, content)
+	messages, err := NewPiProvider(dir).LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+	if messages[1].Role != RoleAssistant || messages[1].Model != "deepseek-v4.1-flash" {
+		t.Fatalf("expected assistant model deepseek-v4.1-flash, got role=%q model=%q", messages[1].Role, messages[1].Model)
+	}
+}
+
+func TestPiModelChangeFallback(t *testing.T) {
+	dir := t.TempDir()
+	// Assistant message without a `model` field (older pi / trimmed session):
+	// the model_change entry is the only model source.
+	content := `{"type":"session","version":3,"id":"pi-model-2","timestamp":1700000000,"cwd":"/home/user/project"}` + "\n" +
+		`{"type":"model_change","id":"mc-1","parentId":"","timestamp":"2026-11-09T11:49:36.250Z","provider":"deepseek","modelId":"deepseek-v4.1-flash"}` + "\n" +
+		`{"type":"message","id":"u1","parentId":"mc-1","timestamp":"2026-11-09T11:49:40.000Z","message":{"role":"user","content":"hello"}}` + "\n" +
+		`{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-11-09T11:49:41.000Z","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}` + "\n"
+	path := writePiJSONL(t, dir, content)
+	messages, err := NewPiProvider(dir).LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+	if messages[1].Model != "deepseek-v4.1-flash" {
+		t.Fatalf("expected model_change fallback deepseek-v4.1-flash, got %q", messages[1].Model)
+	}
+}

@@ -96,3 +96,28 @@ List RPC
 - [ ] 详情路径（Load/Delta）是否仍拿到当前 mtime/size？
 - [ ] `go test ./pkg/aisessions/...` 是否包含 singleflight / 预算 / stale 快返回 / mtime 倒序用例？
 - [ ] 前端动到 `aisessions.tsx` 时，`vitest run frontend/app/view/aisessions` 是否全绿？
+
+## 消息模型解析契约（2026-11-09，`11-09-aisessions-pi-codex-model-parse`）
+
+`Message.Model` 是 Agent 卡片副标题与 AI Audit 的唯一模型来源。`LiveSessionState`
+的磁盘兜底（`pkg/service/aisessionsservice/chatcontrol.go`）倒序取 `detail.Messages`
+里最后一个**非空** `Model`，所以 provider 不填 = 卡片恒显示「未指定」。
+
+各 provider 的模型来源**形状不同**，新增/修改解析时必须按各自形状取：
+
+| provider | 模型所在位置 | 解析方式 |
+| --- | --- | --- |
+| claude | 每条 assistant `message.model` | 单行直取 |
+| opencode | message `modelID` + `providerID` | 单行直取 |
+| pi | assistant `message.model`；会话头/切换 `model_change.modelId` | 单行直取 + `model_change` 兜底 |
+| codex | **不在消息上**，在每轮 `turn_context.payload.model` | 需跨行状态（`codexMessageParser`） |
+
+**踩过的坑**：2026-11-04 的 `11-04-fix-agent-card-model-vendor` 判定「codex/pi transcripts
+不暴露 Model」，实际是这两个 provider 的解析函数从没读过该字段。**判断某个 provider
+能不能取到模型，必须打开真实会话文件验证，不能从解析代码里有没有 `Model` 反推。**
+
+已知取舍：`LoadMessageDelta` 与远端 delta 走无状态单行解析器，拿不到 codex 的
+`turn_context` 状态，尾部增量消息可能缺 Model；首次全量 `Load` 已带，卡片走全量。
+
+守卫测试：`TestPiAssistantMessageModel` / `TestPiModelChangeFallback` /
+`TestCodexTurnContextModel`（`pkg/aisessions`）。

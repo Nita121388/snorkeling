@@ -518,3 +518,34 @@ func TestRemoteProviderLoadMessageDeltaStopsAtIncompleteTail(t *testing.T) {
 		t.Fatal("expected hasMore for incomplete remote tail")
 	}
 }
+
+func TestCodexTurnContextModel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	err := os.WriteFile(path, []byte(
+		`{"timestamp":"2026-03-20T03:43:16.218Z","type":"session_meta","payload":{"id":"codex-model-1","cwd":"/tmp"}}`+"\n"+
+			`{"timestamp":"2026-03-20T03:43:16.219Z","type":"turn_context","payload":{"turn_id":"t1","cwd":"/tmp","model":"gpt-5.4"}}`+"\n"+
+			`{"timestamp":"2026-03-20T03:43:17.000Z","type":"response_item","payload":{"type":"message","role":"user","content":"list files"}}`+"\n"+
+			`{"timestamp":"2026-03-20T03:43:18.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":"done"}}`+"\n"+
+			`{"timestamp":"2026-03-20T03:45:12.295Z","type":"turn_context","payload":{"turn_id":"t2","cwd":"/tmp","model":"gpt-5.4-mini"}}`+"\n"+
+			`{"timestamp":"2026-03-20T03:45:13.000Z","type":"response_item","payload":{"type":"message","role":"user","content":"again"}}`+"\n"+
+			`{"timestamp":"2026-03-20T03:45:14.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":"done again"}}`+"\n",
+	), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	messages, err := NewCodexProvider(dir).LoadMessages(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(messages))
+	}
+	if messages[1].Model != "gpt-5.4" {
+		t.Fatalf("expected first assistant model gpt-5.4, got %q", messages[1].Model)
+	}
+	if messages[3].Model != "gpt-5.4-mini" {
+		t.Fatalf("expected second assistant model gpt-5.4-mini, got %q", messages[3].Model)
+	}
+}

@@ -300,6 +300,11 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	var entries []piRawEntry
+	// currentModel mirrors pi's own `model_change` entry, which is written when the
+	// session is created (before the first assistant reply) and again on every
+	// /model switch. It is only a fallback: v3 assistant messages already carry
+	// their own `model`, which wins when present.
+	currentModel := ""
 	for scanner.Scan() {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -317,8 +322,18 @@ func parsePiMessages(ctx context.Context, r io.Reader) ([]Message, error) {
 			continue
 		}
 		raw := piRawEntry{id: id, parentID: strValue(value, "parentId")}
+		if strValue(value, "type") == "model_change" {
+			if model := strings.TrimSpace(strValue(value, "modelId")); model != "" {
+				currentModel = model
+			}
+		}
 		if strValue(value, "type") == "message" {
 			raw.msgs = piEntryMessages(value)
+			for i := range raw.msgs {
+				if raw.msgs[i].Role == RoleAssistant && raw.msgs[i].Model == "" && currentModel != "" {
+					raw.msgs[i].Model = currentModel
+				}
+			}
 			annotatePiEntryMessages(id, raw.msgs)
 		}
 		entries = append(entries, raw)
@@ -494,11 +509,16 @@ func piEntryMessages(value map[string]any) []Message {
 		text = "[Tool: " + toolName + "]"
 	}
 
+	// pi v3 persists the producing model on every assistant message
+	// (`message.model`), alongside `provider`. Claude is the same shape; codex
+	// hides it in per-turn `turn_context` lines instead (see provider_codex.go).
+	model := strValue(msgMap, "model")
+
 	var msgs []Message
 	if text != "" {
 		msgs = append(msgs, Message{
 			Role: role, Text: text, ToolName: toolName, Thinking: thinking,
-			Timestamp: timestamp, CharCount: runeCount(text),
+			Model: model, Timestamp: timestamp, CharCount: runeCount(text),
 		})
 		thinking = ""
 	}
@@ -506,7 +526,7 @@ func piEntryMessages(value map[string]any) []Message {
 		anchorText := "[Tool: " + name + "]"
 		msgs = append(msgs, Message{
 			Role: role, Text: anchorText, ToolName: name, Thinking: thinking,
-			Timestamp: timestamp, CharCount: len(anchorText),
+			Model: model, Timestamp: timestamp, CharCount: len(anchorText),
 		})
 		thinking = ""
 	}
