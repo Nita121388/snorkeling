@@ -117,3 +117,14 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
 
 **教训**：写完"能编译"不等于写完。这三处硬伤里，扫描契约那条只有读了 spec 才会发现，
 `card.hash` 那条只有对着 prd 验收项逐条核才会发现 —— 任务文档的验收清单不是装饰。
+
+## 2026-11-09 Inline Tab「更多」下拉：删除后保持菜单打开
+
+用户报 Tab 化 Block 的「更多」下拉点 × 删一条后菜单就关了，无法连续删。根因是
+`inlinetab-dropdown.tsx` 里 `handleClose` 和键盘 Delete/Backspace 都显式 `onOpenChange(false)`
+（d0d4a582 有意为之，但交互上不合理）。修复：删除后不关菜单，行列表随 store 更新刷新；
+键盘删除记录 `{被删行索引, blockId}`，待 `tabs` 收缩后按索引恢复焦点（越界取最后一条，
+行删空落回菜单容器 tabIndex=-1）；确认弹窗取消（行还在）只清引用不动焦点。溢出消失或
+组内剩 1 个 block 时由父组件自然关闭，这两条保留。14 例单测（3 个新焦点用例）+ 相关面
+37 例全绿；真机 verify 台 skipped（无对应 area），已记台账。教训写进 quality-guidelines：
+列表型下拉的每行删除默认不得顺手关菜单，键盘删除必须恢复焦点。

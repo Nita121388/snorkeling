@@ -65,6 +65,9 @@ export const InlineTabDropdownMenu = memo(
         const menuRef = useRef<HTMLDivElement>(null);
         const personas = useAgentPersonas();
         const sessionEmojis = useSessionEmojis();
+        // 删除一条后待恢复焦点的行 (被删行的索引 + blockId)。blockId 用来判定删除是否
+        // 真正落地 (脏数据确认弹窗取消时行还在, 此时只清引用不动焦点), 避免无关刷新误移焦点。
+        const pendingFocusRef = useRef<{ index: number; blockId: string } | null>(null);
 
         const { refs, floatingStyles } = useFloating({
             open: isOpen,
@@ -115,14 +118,37 @@ export const InlineTabDropdownMenu = memo(
             [onSelect, onOpenChange]
         );
 
-        // 删除某一项: 与标签上的 × 走同一条 uxCloseBlock 链路 (含脏数据确认), 删除后关闭菜单
+        // 删除某一项: 与标签上的 × 走同一条 uxCloseBlock 链路 (含脏数据确认)。
+        // 删除后菜单保持打开, 行列表随 store 更新自动刷新 —— 支持鼠标连续点 ×、
+        // 键盘连续 Delete 批量清理 (溢出消失或组内只剩 1 个 block 时由父组件自然关闭)。
         const handleClose = useCallback(
             (blockId: string) => {
+                pendingFocusRef.current = { index: tabs.findIndex((tab) => tab.id === blockId), blockId };
                 onClose?.(blockId);
-                onOpenChange(false);
             },
-            [onClose, onOpenChange]
+            [onClose, tabs]
         );
+
+        // 删除落地后把焦点放回同位置的行 (越界取最后一条), 键盘 Delete 才能逐条连发;
+        // 行删空时聚焦菜单容器, 别让焦点掉到 body 上。
+        useEffect(() => {
+            const pending = pendingFocusRef.current;
+            if (pending == null) {
+                return;
+            }
+            // 删除没落地 (确认弹窗被取消): 行还在, 不动焦点, 只清引用。
+            if (tabs.some((tab) => tab.id === pending.blockId)) {
+                pendingFocusRef.current = null;
+                return;
+            }
+            pendingFocusRef.current = null;
+            const rows = menuRef.current?.querySelectorAll<HTMLElement>(".inline-tab-block-dropdown-item");
+            if (rows == null || rows.length === 0) {
+                menuRef.current?.focus();
+                return;
+            }
+            rows[Math.min(Math.max(pending.index, 0), rows.length - 1)].focus();
+        }, [tabs, isOpen]);
 
         // 键盘导航
         const handleKeyDown = useCallback(
@@ -173,13 +199,14 @@ export const InlineTabDropdownMenu = memo(
                         if (isBlank(blockId)) {
                             return;
                         }
+                        // 与 × 同一条链路: 记录待恢复焦点索引再删, 菜单保持打开。
+                        pendingFocusRef.current = { index: currentIndex, blockId };
                         onClose(blockId);
-                        onOpenChange(false);
                         break;
                     }
                 }
             },
-            [isOpen, onClose, onOpenChange]
+            [isOpen, onClose]
         );
 
         if (!isOpen) {
@@ -197,6 +224,7 @@ export const InlineTabDropdownMenu = memo(
                     className="inline-tab-block-dropdown-menu"
                     role="menu"
                     aria-label="All tabs"
+                    tabIndex={-1}
                     onKeyDown={handleKeyDown}
                 >
                     {tabs.map((tab) => {

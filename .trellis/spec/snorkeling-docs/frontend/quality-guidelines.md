@@ -61,6 +61,20 @@ Questions to answer:
 
 ---
 
+## 列表型下拉菜单：删除不得顺手关菜单（2026-11-09, task 11-09-inlinetab-dropdown-keep-open）
+
+- 下拉/浮层里如果每行都有「删除 / 关闭」动作，**默认删除后菜单保持打开**：用户清理多个条目时
+  不该被迫「打开 → 删一条 → 再打开」。实测修复点：`block/inlinetab-dropdown.tsx` 的 × 与
+  Delete/Backspace 曾显式 `onOpenChange(false)`，导致无法连续删除。
+- 允许自动关闭的只有两种：锚点（触发按钮/药丸）本身被隐藏，或列表被上层整体卸载。
+  其他「删完就关」要靠注释写清理由，否则下一个人会当成 bug 或当成规范。
+- 键盘删除必须**恢复焦点**：被删行从 DOM 移除后焦点会掉到 body，Delete 连发直接失效。
+  做法：先记录 `{被删行索引, blockId}`，等 `tabs` 实际收缩后按索引聚焦（越界取最后一条），
+  行删空则聚焦菜单容器（容器需 `tabIndex={-1}`）；若行还在（脏数据确认被取消）只清引用不动焦点。
+- 单测要覆盖三件事：删除后 `onOpenChange` 未被调用、删除落地后焦点索引、取消删除时焦点不动。
+
+---
+
 ## Forbidden Patterns
 
 <!-- Patterns that should never be used and why -->

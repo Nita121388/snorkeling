@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Self-check for the "more tabs" dropdown (inline-tab-block-more-btn) delete affordance.
-// Covers: hover-revealed × rendering, close-without-activating, and Delete/Backspace key path.
+// Covers: hover-revealed × rendering, close-without-activating, Delete/Backspace key path,
+// menu staying open after a delete (consecutive deletes), and focus restoration.
 // Run: npx vitest run frontend/app/block/inlinetab-dropdown.test.tsx
 
 // @vitest-environment jsdom
@@ -18,32 +19,41 @@ import { InlineTabDropdownMenu } from "./inlinetab-dropdown";
 // react-dom's act() support is opt-in; without this flag every act() call warns.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-type Handle = { container: HTMLElement; unmount: () => void };
+type Handle = { container: HTMLElement; unmount: () => void; rerender: (props: Partial<MenuProps>) => void };
+type MenuProps = React.ComponentProps<typeof InlineTabDropdownMenu>;
 
-function renderMenu(props: Partial<React.ComponentProps<typeof InlineTabDropdownMenu>>): Handle {
+const DEFAULT_TABS: MenuProps["tabs"] = [
+    { id: "b1", title: "alpha", icon: "terminal", isActive: false },
+    { id: "b2", title: "beta", icon: "terminal", isActive: true },
+];
+
+function renderMenu(props: Partial<MenuProps>): Handle {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const anchor = document.createElement("div");
     document.body.appendChild(anchor);
+    // 稳定引用: 每次渲染新建 ref 对象只会触发无意义的 setReference 重跑.
+    const anchorRef = { current: anchor };
     const root = createRoot(container);
-    act(() => {
-        root.render(
-            <InlineTabDropdownMenu
-                tabs={[
-                    { id: "b1", title: "alpha", icon: "terminal", isActive: false },
-                    { id: "b2", title: "beta", icon: "terminal", isActive: true },
-                ]}
-                activeTabId="b2"
-                anchorRef={{ current: anchor }}
-                isOpen={true}
-                onOpenChange={() => {}}
-                onSelect={() => {}}
-                {...props}
-            />
-        );
-    });
+    const render = (next: Partial<MenuProps>) => {
+        act(() => {
+            root.render(
+                <InlineTabDropdownMenu
+                    tabs={DEFAULT_TABS}
+                    activeTabId="b2"
+                    anchorRef={anchorRef}
+                    isOpen={true}
+                    onOpenChange={() => {}}
+                    onSelect={() => {}}
+                    {...next}
+                />
+            );
+        });
+    };
+    render(props);
     return {
         container,
+        rerender: (next: Partial<MenuProps>) => render(next),
         unmount: () => {
             act(() => root.unmount());
             container.remove();
@@ -93,11 +103,13 @@ describe("InlineTabDropdownMenu delete affordance", () => {
         expect(onClose).toHaveBeenCalledTimes(1);
         expect(onClose).toHaveBeenCalledWith("b1");
         expect(onSelect).not.toHaveBeenCalled();
-        expect(onOpenChange).toHaveBeenCalledWith(false);
+        // 删除后菜单不关闭: 支持连续点 × 清理多个内联 Tab
+        expect(onOpenChange).not.toHaveBeenCalled();
+        expect(items().length).toBe(2);
         h.unmount();
     });
 
-    test("Delete / Backspace on a focused row closes that row", () => {
+    test("Delete / Backspace on a focused row closes that row without closing the menu", () => {
         const onClose = vi.fn();
         const onOpenChange = vi.fn();
         const h = renderMenu({ onClose, onOpenChange });
@@ -109,7 +121,7 @@ describe("InlineTabDropdownMenu delete affordance", () => {
             target.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
         });
         expect(onClose).toHaveBeenCalledWith("b1");
-        expect(onOpenChange).toHaveBeenCalledWith(false);
+        expect(onOpenChange).not.toHaveBeenCalled();
         h.unmount();
 
         const onClose2 = vi.fn();
@@ -123,6 +135,55 @@ describe("InlineTabDropdownMenu delete affordance", () => {
         });
         expect(onClose2).toHaveBeenCalledWith("b2");
         h2.unmount();
+    });
+
+    test("after a delete lands, focus moves to the row at the same index", () => {
+        const onClose = vi.fn();
+        const onOpenChange = vi.fn();
+        const h = renderMenu({ onClose, onOpenChange });
+        const first = items()[0];
+        act(() => {
+            first.focus();
+        });
+        act(() => {
+            first.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+        });
+        expect(onOpenChange).not.toHaveBeenCalled();
+        // 父组件在删除落地后重渲染, 行列表收缩
+        h.rerender({ tabs: [{ id: "b2", title: "beta", icon: "terminal", isActive: true }] });
+        expect(items().length).toBe(1);
+        expect(document.activeElement).toBe(items()[0]);
+        h.unmount();
+    });
+
+    test("deleting the last row falls focus back to the menu container", () => {
+        const h = renderMenu({ onClose: vi.fn() });
+        const last = items()[1];
+        act(() => {
+            last.focus();
+        });
+        act(() => {
+            last.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+        });
+        h.rerender({ tabs: [] });
+        expect(document.querySelectorAll(".inline-tab-block-dropdown-item").length).toBe(0);
+        expect(document.activeElement?.classList.contains("inline-tab-block-dropdown-menu")).toBe(true);
+        h.unmount();
+    });
+
+    test("a cancelled delete (row still present) does not move focus", () => {
+        const h = renderMenu({ onClose: vi.fn() });
+        const first = items()[0];
+        act(() => {
+            first.focus();
+        });
+        act(() => {
+            first.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+        });
+        // 脏数据确认被取消: 行还在, 焦点应保持原样
+        h.rerender({ tabs: [...DEFAULT_TABS] });
+        expect(document.activeElement).toBe(items()[0]);
+        h.unmount();
     });
 
     test("arrow navigation still walks rows only (close buttons are not in the item set)", () => {
