@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { RootErrorBoundary } from "@/app/element/errorboundary";
 import { waveAIHasSelection } from "@/app/aipanel/waveai-focus-utils";
 import { setMonacoTheme } from "@/app/monaco/monaco-env";
 import {
@@ -62,14 +63,29 @@ const App = ({ onFirstRender }: { onFirstRender: () => void }) => {
     }, []);
     return (
         <Provider store={globalStore}>
-            <WaveEnvContext.Provider value={waveEnvRef.current}>
-                <TabModelContext.Provider value={getTabModelByTabId(tabId)}>
-                    <AppInner />
-                </TabModelContext.Provider>
-            </WaveEnvContext.Provider>
+            {/* 根节点兜底：任何 render 期异常渲染成错误卡片，而不是整窗白屏（N-1109）。 */}
+            <RootErrorBoundary onError={reportRootRenderError}>
+                <WaveEnvContext.Provider value={waveEnvRef.current}>
+                    <TabModelContext.Provider value={getTabModelByTabId(tabId)}>
+                        <AppInner />
+                    </TabModelContext.Provider>
+                </WaveEnvContext.Provider>
+            </RootErrorBoundary>
         </Provider>
     );
 };
+
+/** 根节点渲染异常的上报通道：经 preload api 进主进程 fe-log（能落 waveapp.log），再兜一层防抛。 */
+function reportRootRenderError(error: Error, info: React.ErrorInfo) {
+    try {
+        const api = (window as any).api;
+        api?.sendLog?.(
+            ["root-render-error", error?.message, error?.stack, info?.componentStack].filter(Boolean).join("\n")
+        );
+    } catch {
+        // 上报失败不能反过来制造新的异常
+    }
+}
 
 function isContentEditableBeingEdited(): boolean {
     const activeElement = document.activeElement;

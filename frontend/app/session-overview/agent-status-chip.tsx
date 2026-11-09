@@ -19,7 +19,7 @@
 //   timelineRows 两个 memo 与看板 useLayoutEffect 依赖。
 
 import { needsAgentChipRuntime } from "@/app/agent-status/agent-status-runtime";
-import { agentStatusSecondTickAtom } from "@/app/agent-status/agent-status-second-tick";
+import { agentStatusSecondTickAtom, useAgentSecondTick } from "@/app/agent-status/agent-status-second-tick";
 import type { AgentStatus, AgentStatusAggregate } from "@/app/agent-status/agent-status-types";
 import { agentStatusAccent } from "@/app/agent-status/agent-status-view";
 import { Tooltip } from "@/app/element/tooltip";
@@ -61,8 +61,12 @@ function AgentStatusChipInner({
     className,
 }: AgentStatusChipProps) {
     // 只有活跃态需要秒级刷新；其余面保持 0 订阅，不白付 1Hz 代价。
+    // 注意：必须走 `useAgentSecondTick`（内部 hook 数量恒定）。
+    // 写成 `tickEnabled ? useAtomValueSafe(...) : 0` 会在 status 翻转时改变 hook 数量 →
+    // React #310 → 整窗白屏（2026-11-09 真机，N-1109）。
+    // React #310 → 整窗白屏（2026-11-09 真机，N-1109）。
     const tickEnabled = variant === "aggregate" ? false : needsAgentChipRuntime(status);
-    const tick = tickEnabled ? (useAtomValueSafe(agentStatusSecondTickAtom) ?? 0) : 0;
+    const tick = useAgentSecondTick(tickEnabled);
     const view = buildAgentStatusChipView({
         variant,
         status,

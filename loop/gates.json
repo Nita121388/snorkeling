@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-08T08:31:27Z",
+  "updatedAt": "2026-11-09T02:05:34Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -24,6 +24,12 @@
         "ok": true,
         "executedAt": "2026-11-05T01:52:41Z",
         "by": "self"
+      }
+    },
+    "N-1109-agent-chip-conditional-hook": {
+      "g2": {
+        "redProof": "loop/red/N-1109-agent-chip-conditional-hook.txt",
+        "at": "2026-11-09T01:56:31Z"
       }
     },
     "N-1105-harness-redproof": {
@@ -107,6 +113,24 @@
       "g2": {
         "redProof": "loop/REPORTS/redproof-F-1106-move-block-tab-menu.txt",
         "at": "2026-11-06T13:14:27Z"
+      }
+    },
+    "F-1109-commontext-sync-watermark": {
+      "g1": {
+        "at": "2026-11-09T02:03:21Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "c7b8809d8e56"
+      },
+      "g6": {
+        "at": "2026-11-09T02:03:21Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "planHash": "eba17a50319b"
+      },
+      "g2": {
+        "redProof": "loop/red/F-1109-commontext-sync-watermark.txt",
+        "at": "2026-11-09T02:05:34Z"
       }
     },
     "N-1105-cmd-window-flash": {

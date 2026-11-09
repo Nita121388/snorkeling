@@ -21,7 +21,7 @@
 //   design/prototypes/aisessions-running-indicator/README.md。
 
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
-import { agentStatusSecondTickAtom } from "@/app/agent-status/agent-status-second-tick";
+import { useAgentSecondTick } from "@/app/agent-status/agent-status-second-tick";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { Tooltip } from "@/app/element/tooltip";
 import { cn, useAtomValueSafe } from "@/util/util";
@@ -85,10 +85,12 @@ export function SessionRunBadge({
     const status = useSessionAgentStatus(runningState?.blockId ?? null);
 
     // 秒级跑时：只有确实需要显示跑时的分支才订阅，其余情况不白付 1Hz 代价。
+    // 注意：必须走 `useAgentSecondTick`（hook 数量恒定）。写成条件 hook 会在 status 翻转时
+    // 改变 hook 数量 → React #310 → 整窗白屏（N-1109）。
     const tickEnabled = status != null
         ? buildSessionRunBadgeView({ runningState, status, chatRunning, nowMs: 0 })?.runtime !== ""
         : false;
-    const tick = tickEnabled ? (useAtomValueSafe(agentStatusSecondTickAtom) ?? 0) : 0;
+    const tick = useAgentSecondTick(tickEnabled);
 
     const view = buildSessionRunBadgeView({
         runningState,

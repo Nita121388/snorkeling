@@ -13,7 +13,7 @@
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { needsAgentChipRuntime } from "@/app/agent-status/agent-status-runtime";
-import { agentStatusSecondTickAtom } from "@/app/agent-status/agent-status-second-tick";
+import { useAgentSecondTick } from "@/app/agent-status/agent-status-second-tick";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { deriveAgentStatusView, type AgentReadState, type AgentStatusView } from "@/app/agent-status/agent-status-view";
 import { SessionOverviewModel } from "@/app/session-overview/session-overview-model";
@@ -68,9 +68,11 @@ export function useAgentStatusView(blockId: string, status: AgentStatus | null):
  * Tab 悬浮卡的 pill 是手写 `<span>`，此前只读 `agentStatusViewLabel`（状态词 + Done 的
  * 分钟级 elapsed），于是 working/tool 期间那一行只有 "Tool: Bash"、没有跑时。
  * 这里把 chip 内部的 1Hz tick 收成一个 hook：活跃态才订阅，其余面 0 订阅。
+ * 注意：订阅必须走 `useAgentSecondTick`（hook 数量恒定）；写成 `enabled ? useAtomValueSafe(...) : 0`
+ * 会在 status 翻转时改变 hook 数量 → React #310 → 整窗白屏（N-1109）。
  */
 export function useAgentChipNow(status: AgentStatus | null): number {
     const tickEnabled = needsAgentChipRuntime(status);
-    const tick = tickEnabled ? (useAtomValueSafe(agentStatusSecondTickAtom) ?? 0) : 0;
+    const tick = useAgentSecondTick(tickEnabled);
     return Math.max(Date.now(), tick);
 }

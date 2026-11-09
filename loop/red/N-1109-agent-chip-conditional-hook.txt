@@ -1,0 +1,66 @@
+# red proof: N-1109-agent-chip-conditional-hook
+# date: 2026-11-09T01:55:58Z
+# cmd: npx vitest run frontend/app/session-overview/agent-status-chip-hooks.test.tsx
+# fixture: 同一 AgentStatusChip 实例先 status=idle 渲染，再 rerender 成 status=working(tool)
+# 坏样本：修复前 agent-status-chip.tsx:65 把 useAtomValueSafe 写在 tickEnabled 条件表达式里
+# 期望：0 条 hook 顺序信号；实际：2 条 Internal React error（prod 构建同一分支 = Minified React error #310）
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+ [31m×[39m frontend/app/session-overview/agent-status-chip-hooks.test.tsx[2m > [22mAgentStatusChip hook 顺序稳定性[2m > [22midle → working：不改变 hook 数量（白屏根因）[32m 76[2mms[22m[39m
+[31m   → expected [ Array(1) ] to deeply equal [][39m
+ [32m✓[39m frontend/app/session-overview/agent-status-chip-hooks.test.tsx[2m > [22mAgentStatusChip hook 顺序稳定性[2m > [22mworking → done → idle：来回翻转都不改变 hook 数量[32m 26[2mms[22m[39m
+ [31m×[39m frontend/app/session-overview/agent-status-chip-hooks.test.tsx[2m > [22mAgentStatusChip hook 顺序稳定性[2m > [22mcard / aggregate 变体同样不受 status 翻转影响[32m 12[2mms[22m[39m
+[31m   → expected [ Array(1) ] to deeply equal [][39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/agent-status-chip-hooks.test.tsx[2m > [22mAgentStatusChip hook 顺序稳定性[2m > [22midle → working：不改变 hook 数量（白屏根因）
+[31m[1mAssertionError[22m: expected [ Array(1) ] to deeply equal [][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "Internal React error: Expected static flag was missing. Please notify the React team.",[39m
+[31m+ ][39m
+
+[36m [2m❯[22m frontend/app/session-overview/agent-status-chip-hooks.test.tsx:[2m97:29[22m[39m
+    [90m 95| [39m        [35mtry[39m {
+    [90m 96| [39m            const signals = hookOrderSignals(() => h.render(makeStatus…
+    [90m 97| [39m            [34mexpect[39m(signals)[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m   | [39m                            [31m^[39m
+    [90m 98| [39m            [34mexpect[39m(h[33m.[39mcontainer[33m.[39minnerHTML)[33m.[39m[34mtoContain[39m([32m"is-working"[39m)[33m;[39m
+    [90m 99| [39m        } [35mfinally[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/agent-status-chip-hooks.test.tsx[2m > [22mAgentStatusChip hook 顺序稳定性[2m > [22mcard / aggregate 变体同样不受 status 翻转影响
+[31m[1mAssertionError[22m: expected [ Array(1) ] to deeply equal [][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "Internal React error: Expected static flag was missing. Please notify the React team.",[39m
+[31m+ ][39m
+
+[36m [2m❯[22m frontend/app/session-overview/agent-status-chip-hooks.test.tsx:[2m122:97[22m[39m
+    [90m120| [39m        [35mconst[39m card [33m=[39m [34mmountChip[39m([34mmakeStatus[39m([32m"idle"[39m)[33m,[39m [32m"card"[39m)[33m;[39m
+    [90m121| [39m        [35mtry[39m {
+    [90m122| [39m            expect(hookOrderSignals(() => card.render(makeStatus("work…
+    [90m   | [39m                                                                                                [31m^[39m
+    [90m123| [39m        } [35mfinally[39m {
+    [90m124| [39m            card[33m.[39m[34munmount[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 09:55:36
+[2m   Duration [22m 8.39s[2m (transform 619ms, setup 39ms, collect 894ms, tests 117ms, environment 2.18s, prepare 335ms)[22m
+

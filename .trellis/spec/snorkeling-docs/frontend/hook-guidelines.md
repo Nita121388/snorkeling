@@ -71,3 +71,51 @@ Questions to answer:
 <!-- Hook-related mistakes your team has made -->
 
 (To be filled by the team)
+
+---
+
+## 硬约束：hook 数量必须恒定（2026-11-09, N-1109 整窗白屏）
+
+**禁止**把 hook 写进 `cond ? useX() : fallback` / `cond && useX()` / `if (cond) useX()`。
+React 要求同一组件实例每次渲染的 hook 数量与顺序一致；一旦 `cond` 在两次渲染间翻转，
+React 抛 `Rendered more hooks than during the previous render`（生产构建 = **Minified React error #310**）。
+
+### 为什么这条是 P0
+
+`frontend/app/app.tsx` 的根节点在 2026-11-09 之前没有 ErrorBoundary，所以这个异常会让 React
+**卸载整棵树** → 窗口只剩主题底色（light 主题是米白）→ 用户看到"整窗白屏、切 tab 无效、
+只能重启"。真机现场（Overview 页）抓到的栈就是它：
+
+```
+Uncaught Error: Minified React error #310
+  at updateWorkInProgressHook
+  at Object.updateReducer [as useReducer]     ← jotai useAtomValue 内部
+```
+
+`useAtomValueSafe` / `useAtomValue` / `useSyncExternalStore` **都是 hook**，一并受此约束。
+
+### 正确写法：条件放在"选中哪个 atom"，不放在"调不调 hook"
+
+```tsx
+// ❌ 会白屏
+const tick = tickEnabled ? (useAtomValueSafe(agentStatusSecondTickAtom) ?? 0) : 0;
+
+// ✅ hook 数量恒定；不需要刷新时订阅一个永不变化的 atom，成本可忽略
+const tick = useAgentSecondTick(tickEnabled);   // frontend/app/agent-status/agent-status-second-tick.ts
+```
+
+同类收敛点（改之前先看这些有没有现成的 hook 可用）：
+`useAgentSecondTick`（秒级跑时）、`nowMinuteTickAtom`（分钟级 Done elapsed）。
+
+### 兜底（第二道闸，不替代上面）
+
+`App` 根节点包了 `RootErrorBoundary`（`frontend/app/element/errorboundary.tsx`）：
+render 异常渲染成错误卡片（消息 + 组件栈 + Reload），不再整窗白屏，并经 preload `sendLog` 进 `waveapp.log`。
+新增根级 Provider / 全局宿主组件时，**不要**把它放到 boundary 外面而绕过兜底。
+
+### 回归用例写法（dev 构建不抛，只报 console.error）
+
+React 19 的 dev 构建在 hook 数量不一致时**不向外抛异常**，而是 `console.error("Internal React error: Expected static flag was missing.")`；
+生产构建同一分支才是 `#310`。所以断言要盯 **console.error 信号 + 翻转后 DOM 仍正确**，
+不能只写 `expect(...).not.toThrow()`（那样在 dev 里永远是绿的、零信息）。
+范式：`frontend/app/session-overview/agent-status-chip-hooks.test.tsx`。

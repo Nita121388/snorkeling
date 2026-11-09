@@ -2,14 +2,24 @@
 
 # LEDGER 视图
 
-> 生成于 2026-11-05T02:16:23Z · 源：LEDGER-2026-11.jsonl
+> 生成于 2026-11-09T02:28:16Z · 源：LEDGER-2026-11.jsonl
 
 ## 进行中
 
 | 包 | 状态 | 原因 | commit | 最近 |
 |---|---|---|---|---|
-| N-1105-loop-ledger | committed | - | 37db7b96 | 2026-11-05T02:07:27Z |
-| N-1105-queue-failopen | green | - | - | 2026-11-05T02:16:23Z |
+| N-1105-loop-ledger | accepted | - | 37db7b96 | 2026-11-08T13:14:35Z |
+| N-1105-queue-failopen | accepted | - | - | 2026-11-05T04:39:51Z |
+| N-1105-tab-hover-clip | committed | - | ec327a59 | 2026-11-06T00:29:31Z |
+| N-1105-cmd-window-flash | committed | - | 6109567 | 2026-11-06T00:55:08Z |
+| N-1106-overview-board-motion | queued | - | - | 2026-11-06T01:54:19Z |
+| F-1106-agent-card-chip-title | queued | - | - | 2026-11-06T07:10:28Z |
+| N-1106-agent-tag-catalog | green | - | - | 2026-11-06T15:07:30Z |
+| F-1106-move-block-tab-menu | accepted | - | - | 2026-11-08T13:10:58Z |
+| N-1108-agent-chip-phase-duration | queued | - | - | 2026-11-08T06:03:15Z |
+| N-1106-overview-card-actions | accepted | - | - | 2026-11-08T13:17:04Z |
+| N-1109-agent-chip-conditional-hook | queued | - | - | 2026-11-09T01:57:00Z |
+| F-1109-commontext-sync-watermark | queued | - | - | 2026-11-09T02:03:42Z |
 
 ## 近 14 天已发布
 

@@ -18,12 +18,34 @@
 // —— 单次判断成本可忽略。
 
 import { globalStore } from "@/app/store/jotaiStore";
-import { atom } from "jotai";
+import { atom, useAtomValue } from "jotai";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let visibilityBound = false;
 
 export const agentStatusSecondTickAtom = atom<number>(0);
+
+/**
+ * 永不变的静态 atom —— 「不需要秒级刷新」时的占位订阅目标。
+ *
+ * 为什么要有它：作业常写成 `enabled ? useAtomValue(agentStatusSecondTickAtom) : 0`，
+ * 那会在 `enabled` 翻转时改变 hook 数量，React 抛 "Rendered more hooks than during the
+ * previous render"（生产构建 = Minified React error #310）；因为 App 根没有 ErrorBoundary，
+ * 整棵树会被卸载 → 整窗白屏（2026-11-09 真机，见 N-1109-agent-chip-conditional-hook）。
+ * 换成「订阅一个永不变化的 atom」后订阅成本可忽略，但 hook 数量恒定。
+ */
+const IdleTickAtom = atom<number>(0);
+
+/**
+ * 秒级 tick 的唯一订阅入口（**hook 数量恒定**，不要展开成条件 hook）。
+ *
+ * @param enabled 只决定订阅哪根 atom，不决定调不调用 hook。
+ * @returns enabled=false 时恒为 0（调用方照常 `Math.max(now, tick)`）。
+ */
+export function useAgentSecondTick(enabled: boolean): number {
+    const value = useAtomValue(enabled ? agentStatusSecondTickAtom : IdleTickAtom);
+    return enabled ? (value ?? 0) : 0;
+}
 
 function tick(): void {
     if (typeof document !== "undefined" && document.hidden === true) {
