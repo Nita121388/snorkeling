@@ -46,6 +46,7 @@ import {
     makeSelectionSearchInFilesMenuItem,
 } from "./element/selection-copy-overlay";
 import { classifyMacOSFirstMouseTarget, shouldPassThroughMacOSFirstMouse } from "./macos-first-click";
+import { loadEmojiCatalog } from "./element/markdown-transform/emoji";
 
 import "./app.scss";
 
@@ -60,6 +61,18 @@ const App = ({ onFirstRender }: { onFirstRender: () => void }) => {
     const waveEnvRef = useRef(makeWaveEnvImpl());
     useEffect(() => {
         onFirstRender();
+        // Emoji picker first-open speed: while the app sits idle, pre-build the emoji
+        // catalog (~2.6MB of dynamic imports + pinyin derivation, 200ms+) so the first
+        // click on any emoji surface hits a warm cache and opens instantly.
+        const idle =
+            typeof window.requestIdleCallback === "function"
+                ? window.requestIdleCallback(() => void loadEmojiCatalog(), { timeout: 8000 })
+                : null;
+        const fallback = idle == null ? window.setTimeout(() => void loadEmojiCatalog(), 4000) : null;
+        return () => {
+            if (idle != null) window.cancelIdleCallback(idle);
+            if (fallback != null) window.clearTimeout(fallback);
+        };
     }, []);
     return (
         <Provider store={globalStore}>

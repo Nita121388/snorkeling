@@ -1971,6 +1971,12 @@
 
     .markdown-emoji-item {
         position: relative;
+        // Perf: the grid holds ~1900 cells but the list shows ~40 at a time.
+        // content-visibility skips layout/paint for offscreen cells, so opening the
+        // picker no longer pays for the whole grid (and scrolling stays cheap).
+        // The intrinsic size keeps the scrollbar honest before a cell is painted.
+        content-visibility: auto;
+        contain-intrinsic-size: 36px 36px;
         display: flex;
         align-items: center;
         justify-content: center;
