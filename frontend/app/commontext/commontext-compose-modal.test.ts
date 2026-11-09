@@ -99,6 +99,16 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("Last used ${compactCommonTextTime(detailItem.lastusedat, true)}");
     });
 
+    it("keeps the detail textarea inside its flex slot instead of overlapping the tags panel", () => {
+        // 根因：`h-full` 的 textarea 自带 `min-h-[200px]` 时，窗口变矮后 flex 槽不足 200px，
+        // textarea 会硬撞出槽位盖住 All tags / 按钮行（textarea 内容不被自身裁掉，
+        // 2026-11-09 真机：编辑区下半部分盖住上半部分）。修法：min-h 挂在**包裹层**（flex 项）
+        // 上参与布局，详情列 `overflow-y-auto` 接管溢出。
+        expect(source).toContain('flex-1 min-h-[200px]">');
+        expect(source).not.toContain("h-full min-h-[200px]");
+        expect(source).toContain("flex flex-col gap-2.5 overflow-y-auto");
+    });
+
     it("counts a use for row-hover insert and detail copy, but not for brand-new items", () => {
         // 行内 hover 插入/无目标回退复制
         expect(source).toContain("await recordCommonTextUse(item.id);");

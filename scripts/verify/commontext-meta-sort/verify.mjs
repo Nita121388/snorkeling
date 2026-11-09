@@ -387,6 +387,21 @@ try {
   });
   reporter.check("detail-footer-meta", (detail?.detailMetaCount ?? 0) >= 4, detail?.detailMetaCount);
 
+  // 详情编辑区不得盖住 All tags / 按钮行（2026-11-09 真机：textarea 自带 min-h 硬撞出 flex 槽位
+  // 盖住下方内容；修法 = min-h 挂包裹层 + 详情列 overflow-y-auto 接管滚动）。
+  const overlap = await client.evaluate(`(() => {
+    const modal = document.querySelector("${MODAL.slice(1)}");
+    const col = [...modal.querySelectorAll("div")].find((d) => d.className.includes("p-4") && d.className.includes("flex-col"));
+    if (col == null) return { found: false };
+    const ta = col.querySelector("textarea");
+    const tags = [...col.children].find((c) => (c.textContent || "").includes("All tags"));
+    if (ta == null || tags == null) return { found: false };
+    const a = ta.getBoundingClientRect();
+    const b = tags.getBoundingClientRect();
+    return { found: true, taBottom: Math.round(a.bottom), tagsTop: Math.round(b.top), ok: a.bottom <= b.top };
+  })()`);
+  reporter.check("detail-editor-not-overlapping-tags", overlap?.found === true && overlap.ok === true, overlap);
+
   const copyClicked = await clickSelector(client, `${MODAL} [title="Copy this text"]`);
   const copied = await waitForProbe(client, probeSnapshot(), (s) => usageOf(s, "Zulu deploy notes") === "1", {
     timeoutMs: 20000,

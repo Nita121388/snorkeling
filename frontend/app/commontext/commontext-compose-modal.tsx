@@ -1671,7 +1671,7 @@ const CommonTextComposeModal = memo(() => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex-1 min-h-0 p-4 flex flex-col gap-2.5">
+                            <div className="flex-1 min-h-0 p-4 flex flex-col gap-2.5 overflow-y-auto">
                                 {/* 详情区外层 padding+gap；All tags 只用分隔线组织，不形成嵌套卡片。 */}
                                 {/* 详情 head：Notion 式页面 —— page icon（emoji 槽）+ 大标题 + 右侧 Pin。
                                     icon 槽与标题同一行：icon 是条目的「脸」，单独一行会把它变成装饰。 */}
@@ -1730,8 +1730,12 @@ const CommonTextComposeModal = memo(() => {
                                     ))}
                                 </div>
 
-                                {/* 详情 body：永远 textarea 形态（点选即编辑），卡片样式对齐原型尺寸 */}
-                                <div className="flex-1 min-h-0">
+                                {/* 详情 body：永远 textarea 形态（点选即编辑），卡片样式对齐原型尺寸。
+                                    最小高度挂在**包裹层**上（flex 项），不能挂 textarea 自己：
+                                    后者拿到 `h-full` 后会用 min-height 硬撞出 flex 槽位，
+                                    在窗口变矮时把下面 All tags / 按钮直接盖住（内容不会被自身裁掉）。
+                                    包裹层长到 200px 后，超出部分由详情列的 `overflow-y-auto` 接管滚动。 */}
+                                <div className="flex-1 min-h-[200px]">
                                     <textarea
                                         ref={detailTextRef}
                                         value={state.detailText}
@@ -1739,7 +1743,7 @@ const CommonTextComposeModal = memo(() => {
                                             setState((cur) => ({ ...cur, detailText: e.target.value, detailDirty: true }))
                                         }
                                         placeholder="Text to insert — type #tag inline to tag this item"
-                                        className="w-full h-full min-h-[200px] resize-none rounded-lg border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
+                                        className="w-full h-full min-h-0 resize-none rounded-lg border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
                                         spellCheck={false}
                                     />
                                 </div>
