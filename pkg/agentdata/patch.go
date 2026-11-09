@@ -164,15 +164,36 @@ type ChangeReport struct {
 }
 
 type BackupManifest struct {
-	ID         string `json:"id"`
-	Type       string `json:"type"`
-	Reason     string `json:"reason"`
-	Path       string `json:"path"`
+	ID     string `json:"id"`
+	Type   string `json:"type"`
+	Reason string `json:"reason"`
+	Path   string `json:"path"`
+	// Kind distinguishes the snapshot shape. Empty means a whole-database
+	// VACUUM INTO copy (the pre-125 behaviour, still used as the fallback and
+	// still the shape of every backup already on disk). BackupKindRows means a
+	// row-scoped snapshot that only carries the rows one patch touches.
+	Kind       string `json:"kind,omitempty"`
 	CreatedAt  int64  `json:"createdAt"`
 	Size       int64  `json:"size"`
 	Prunable   bool   `json:"prunable"`
 	AppVersion string `json:"appVersion,omitempty"`
 }
+
+const (
+	// BackupKindRows marks a row-scoped snapshot: the file only contains the
+	// rows the patch touched, and restore only writes those rows back.
+	BackupKindRows = "rows"
+
+	// BackupModeEnv forces the whole-database backup path when set to "full".
+	// It is the one-line escape hatch for a real incident: no code change needed.
+	BackupModeEnv = "SNORKELING_AGENTDATA_BACKUP_MODE"
+)
+
+// scopedBackupRowLimit caps how many rows a row-scoped snapshot may cover.
+// Beyond it the whole-database VACUUM INTO path is used instead: a tag rename
+// that hits every session would otherwise build an unbounded IN list.
+// It is a var so tests can shrink it.
+var scopedBackupRowLimit = 5000
 
 type PruneReport struct {
 	DryRun    bool             `json:"dryRun"`
@@ -281,6 +302,7 @@ func ApplyPatch(ctx context.Context, patch Patch, opts ApplyOptions) (Report, er
 			Error:      errorString(applyErr),
 		})
 	}()
+	previews := make([]OperationReport, 0, len(patch.Operations))
 	for idx, op := range patch.Operations {
 		opReport, err := previewOperation(ctx, idx, op)
 		if err != nil {
@@ -289,16 +311,17 @@ func ApplyPatch(ctx context.Context, patch Patch, opts ApplyOptions) (Report, er
 			applyErr = err
 			return report, err
 		}
+		previews = append(previews, opReport)
 	}
 	report.Operations = nil
-	backups, err := createBackupsForPatch(ctx, patch)
+	backups, err := createBackupsForPatch(ctx, patch, previews)
 	if err != nil {
 		applyErr = err
 		return report, err
 	}
 	report.Backups = backups
 	for idx, op := range patch.Operations {
-		opReport, err := applyOperation(ctx, idx, op)
+		opReport, err := applyOperationFn(ctx, idx, op)
 		if err != nil {
 			opReport.Error = err.Error()
 			report.Operations = append(report.Operations, opReport)
@@ -761,6 +784,10 @@ func previewRenameTag(ctx context.Context, report OperationReport, op PatchOpera
 	return report, nil
 }
 
+// applyOperationFn is the apply entry point; tests swap it to force a mid-patch
+// failure and exercise the rollback path.
+var applyOperationFn = applyOperation
+
 func applyOperation(ctx context.Context, idx int, op PatchOperation) (OperationReport, error) {
 	report := operationReport(idx, op)
 	switch op.Type {
@@ -1069,11 +1096,17 @@ func normalizeCommonTextTagsForPatch(tags []string) []string {
 	return normalized
 }
 
-func createBackupsForPatch(ctx context.Context, patch Patch) ([]BackupManifest, error) {
+// createBackupsForPatch writes the undo material a patch needs. It prefers a
+// row-scoped snapshot (cheap, precise restore) and falls back to the whole
+// database VACUUM INTO copy when the blast radius is large or when
+// BackupModeEnv forces it.
+func createBackupsForPatch(ctx context.Context, patch Patch, previews []OperationReport) ([]BackupManifest, error) {
 	needsSession, needsCommonText := patchDomains(patch)
+	scope := collectPatchScope(patch, previews)
 	var backups []BackupManifest
 	if needsSession {
-		backup, err := backupSQLite(ctx, "sessions", aisessions.DefaultSQLiteIndexPath(), "agent-data-patch")
+		dbPath := aisessions.DefaultSQLiteIndexPath()
+		backup, err := createScopedSessionBackup(ctx, dbPath, scope)
 		if err != nil {
 			return backups, err
 		}
@@ -1083,13 +1116,341 @@ func createBackupsForPatch(ctx context.Context, patch Patch) ([]BackupManifest, 
 		if err := EnsureCommonTextRuntime(); err != nil {
 			return backups, err
 		}
-		backup, err := backupSQLite(ctx, "common_text", commonTextSQLitePath(), "agent-data-patch")
+		dbPath := commonTextSQLitePath()
+		backup, err := createScopedCommonTextBackup(ctx, dbPath, scope)
 		if err != nil {
 			return backups, err
 		}
 		backups = append(backups, backup)
 	}
 	return backups, nil
+}
+
+// patchBackupScope is what one patch can touch, in the terms a row-scoped
+// snapshot needs: explicit row keys plus the from-tag of a rename (whose
+// affected keys are only known after querying).
+//
+// Keys are canonical (summary.Key / item.Id), not the caller's identifier: the
+// preview pass resolves identifiers and hands the resolved target back.
+type patchBackupScope struct {
+	SessionKeys         []string
+	SessionRenameTag    string
+	CommonTextIDs       []string
+	CommonTextRenameTag string
+}
+
+func collectPatchScope(patch Patch, previews []OperationReport) patchBackupScope {
+	var scope patchBackupScope
+	sessionKeys := make(map[string]struct{})
+	commonTextIDs := make(map[string]struct{})
+	addSessionKey := func(key string) {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			sessionKeys[key] = struct{}{}
+		}
+	}
+	addCommonTextID := func(id string) {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			commonTextIDs[id] = struct{}{}
+		}
+	}
+	for idx, op := range patch.Operations {
+		target := ""
+		if idx < len(previews) {
+			target = strings.TrimSpace(previews[idx].Target)
+		}
+		switch op.Type {
+		case "session_note.update", "session_title.update", "session_prop.update":
+			if target == "" {
+				target = op.SessionKey
+			}
+			addSessionKey(target)
+		case "common_text.update":
+			if target == "" {
+				target = op.ID
+			}
+			addCommonTextID(target)
+		case "tag.rename":
+			from := strings.TrimSpace(op.From)
+			switch normalizeDomain(op.Domain) {
+			case "session":
+				scope.SessionRenameTag = from
+			case "common_text":
+				scope.CommonTextRenameTag = from
+			case "all":
+				scope.SessionRenameTag = from
+				scope.CommonTextRenameTag = from
+			}
+		}
+	}
+	scope.SessionKeys = sortedSetKeys(sessionKeys)
+	scope.CommonTextIDs = sortedSetKeys(commonTextIDs)
+	return scope
+}
+
+func sortedSetKeys(set map[string]struct{}) []string {
+	out := make([]string, 0, len(set))
+	for key := range set {
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func backupModeAllowsScoped() bool {
+	return !strings.EqualFold(strings.TrimSpace(os.Getenv(BackupModeEnv)), "full")
+}
+
+// createScopedSessionBackup snapshots only the ai_session_* rows this patch can
+// write. Returns a whole-database backup when the scope is too large to be worth
+// scoping.
+func createScopedSessionBackup(ctx context.Context, dbPath string, scope patchBackupScope) (BackupManifest, error) {
+	if !backupModeAllowsScoped() {
+		return backupSQLite(ctx, "sessions", dbPath, "agent-data-patch")
+	}
+	keys := append([]string(nil), scope.SessionKeys...)
+	if scope.SessionRenameTag != "" {
+		tagKeys, err := sessionKeysWithTag(ctx, dbPath, scope.SessionRenameTag)
+		if err != nil {
+			return BackupManifest{}, err
+		}
+		keys = append(keys, tagKeys...)
+	}
+	keys = dedupeStrings(keys)
+	if len(keys) == 0 {
+		// Nothing enumerable: the patch cannot touch a session row, but stay safe
+		// and keep the old behaviour rather than arm nothing.
+		return backupSQLite(ctx, "sessions", dbPath, "agent-data-patch")
+	}
+	if len(keys) > scopedBackupRowLimit {
+		return backupSQLite(ctx, "sessions", dbPath, "agent-data-patch")
+	}
+	tables := []scopedTable{
+		{Name: "ai_session_meta", KeyColumn: "session_key"},
+		{Name: "ai_session_tags", KeyColumn: "session_key"},
+		{Name: "ai_session_props", KeyColumn: "session_key"},
+	}
+	return createScopedBackupFile(ctx, "sessions", dbPath, tables, keys)
+}
+
+func createScopedCommonTextBackup(ctx context.Context, dbPath string, scope patchBackupScope) (BackupManifest, error) {
+	if !backupModeAllowsScoped() {
+		return backupSQLite(ctx, "common_text", dbPath, "agent-data-patch")
+	}
+	ids := append([]string(nil), scope.CommonTextIDs...)
+	if scope.CommonTextRenameTag != "" {
+		tagIDs, err := commonTextIDsWithTag(ctx, dbPath, scope.CommonTextRenameTag)
+		if err != nil {
+			return BackupManifest{}, err
+		}
+		ids = append(ids, tagIDs...)
+	}
+	ids = dedupeStrings(ids)
+	if len(ids) == 0 {
+		return backupSQLite(ctx, "common_text", dbPath, "agent-data-patch")
+	}
+	if len(ids) > scopedBackupRowLimit {
+		return backupSQLite(ctx, "common_text", dbPath, "agent-data-patch")
+	}
+	tables := []scopedTable{{Name: "db_common_text", KeyColumn: "id"}}
+	return createScopedBackupFile(ctx, "common_text", dbPath, tables, ids)
+}
+
+type scopedTable struct {
+	Name      string
+	KeyColumn string
+}
+
+// createScopedBackupFile copies the given rows out of dbPath into a small
+// standalone sqlite file next to the other backups. The main database is opened
+// read-only: this function never writes to it.
+func createScopedBackupFile(ctx context.Context, backupType string, dbPath string, tables []scopedTable, keys []string) (BackupManifest, error) {
+	if strings.TrimSpace(dbPath) == "" {
+		return BackupManifest{}, fmt.Errorf("%s sqlite path is empty", backupType)
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		return BackupManifest{}, err
+	}
+	now := time.Now()
+	backupDir := filepath.Join(filepath.Dir(dbPath), "backups")
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
+		return BackupManifest{}, err
+	}
+	id := fmt.Sprintf("%s-%s-%s.rows", backupType, now.Format("20060102-150405"), shortHash(fmt.Sprintf("%s:%d", dbPath, now.UnixNano())))
+	backupPath := filepath.Join(backupDir, id+".sqlite")
+
+	db, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro&_busy_timeout=5000", dbPath))
+	if err != nil {
+		return BackupManifest{}, err
+	}
+	defer db.Close()
+	db.DB.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, `ATTACH DATABASE ? AS bak`, backupPath); err != nil {
+		return BackupManifest{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(backupPath)
+		}
+	}()
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return BackupManifest{}, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	for _, table := range tables {
+		// Always create the table, even for an empty key set, so the restore side
+		// can unconditionally SELECT from it.
+		createQuery := fmt.Sprintf(`CREATE TABLE bak.%s AS SELECT * FROM main.%s WHERE 0`, table.Name, table.Name)
+		if _, err := tx.ExecContext(ctx, createQuery); err != nil {
+			return BackupManifest{}, fmt.Errorf("scoped backup of %s failed: %w", table.Name, err)
+		}
+		for _, chunk := range chunkStrings(keys, scopedSQLChunkSize) {
+			insertQuery := fmt.Sprintf(`INSERT INTO bak.%s SELECT * FROM main.%s WHERE %s IN (%s)`,
+				table.Name, table.Name, table.KeyColumn, placeholders(len(chunk)))
+			if _, err := tx.ExecContext(ctx, insertQuery, anyStrings(chunk)...); err != nil {
+				return BackupManifest{}, fmt.Errorf("scoped backup of %s failed: %w", table.Name, err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return BackupManifest{}, err
+	}
+	committed = true
+	if _, err := db.ExecContext(ctx, `DETACH DATABASE bak`); err != nil {
+		// The file is already complete; a failed detach only leaks the handle
+		// until the connection closes.
+		_ = err
+	}
+	backupInfo, err := os.Stat(backupPath)
+	if err != nil {
+		return BackupManifest{}, err
+	}
+	backup := BackupManifest{
+		ID:         id,
+		Type:       backupType,
+		Reason:     "agent-data-patch",
+		Path:       backupPath,
+		Kind:       BackupKindRows,
+		CreatedAt:  now.UnixMilli(),
+		Size:       backupInfo.Size(),
+		Prunable:   true,
+		AppVersion: wavebase.WaveVersion,
+	}
+	if err := appendBackupManifest(backupDir, backup); err != nil {
+		return BackupManifest{}, err
+	}
+	return backup, nil
+}
+
+// sessionKeysWithTag lists the sessions currently carrying tag.
+func sessionKeysWithTag(ctx context.Context, dbPath string, tag string) ([]string, error) {
+	if strings.TrimSpace(dbPath) == "" {
+		return nil, fmt.Errorf("sessions sqlite path is empty")
+	}
+	db, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro&_busy_timeout=5000", dbPath))
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	db.DB.SetMaxOpenConns(1)
+	var keys []string
+	if err := db.SelectContext(ctx, &keys, `SELECT DISTINCT session_key FROM ai_session_tags WHERE tag = ?`, tag); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+// commonTextIDsWithTag lists the common-text entries carrying tag. The tags
+// column is JSON, so the match happens in Go over what is a small table.
+func commonTextIDsWithTag(ctx context.Context, dbPath string, tag string) ([]string, error) {
+	if strings.TrimSpace(dbPath) == "" {
+		return nil, fmt.Errorf("common text sqlite path is empty")
+	}
+	db, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro&_busy_timeout=5000", dbPath))
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	db.DB.SetMaxOpenConns(1)
+	var rows []struct {
+		ID   string `db:"id"`
+		Tags string `db:"tags"`
+	}
+	if err := db.SelectContext(ctx, &rows, `SELECT id, tags FROM db_common_text`); err != nil {
+		return nil, err
+	}
+	target := strings.ToLower(strings.TrimSpace(tag))
+	var ids []string
+	for _, row := range rows {
+		var tags []string
+		if err := json.Unmarshal([]byte(row.Tags), &tags); err != nil {
+			continue
+		}
+		for _, itemTag := range tags {
+			if strings.ToLower(strings.TrimSpace(itemTag)) == target {
+				ids = append(ids, row.ID)
+				break
+			}
+		}
+	}
+	return ids, nil
+}
+
+// scopedSQLChunkSize bounds how many keys go into one IN (...) list, so we stay
+// well under SQLite's bound-parameter limit on every build.
+const scopedSQLChunkSize = 500
+
+func placeholders(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
+}
+
+func anyStrings(values []string) []any {
+	args := make([]any, len(values))
+	for idx, value := range values {
+		args[idx] = value
+	}
+	return args
+}
+
+func chunkStrings(values []string, size int) [][]string {
+	if size <= 0 {
+		size = scopedSQLChunkSize
+	}
+	var chunks [][]string
+	for start := 0; start < len(values); start += size {
+		end := start + size
+		if end > len(values) {
+			end = len(values)
+		}
+		chunks = append(chunks, values[start:end])
+	}
+	return chunks
+}
+
+func dedupeStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, found := seen[value]; found {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func patchDomains(patch Patch) (bool, bool) {
@@ -1282,6 +1643,16 @@ func restoreFromBackups(ctx context.Context, backups []BackupManifest) error {
 }
 
 func restoreBackup(ctx context.Context, backup BackupManifest) error {
+	if backup.Kind == BackupKindRows {
+		switch backup.Type {
+		case "sessions":
+			return restoreScopedBackup(ctx, aisessions.DefaultSQLiteIndexPath(), backup.Path, scopedSessionTables)
+		case "common_text":
+			return restoreScopedBackup(ctx, commonTextSQLitePath(), backup.Path, scopedCommonTextTables)
+		default:
+			return fmt.Errorf("unsupported backup type %q", backup.Type)
+		}
+	}
 	switch backup.Type {
 	case "sessions":
 		return restoreSessionBackup(ctx, aisessions.DefaultSQLiteIndexPath(), backup.Path)
@@ -1290,6 +1661,77 @@ func restoreBackup(ctx context.Context, backup BackupManifest) error {
 	default:
 		return fmt.Errorf("unsupported backup type %q", backup.Type)
 	}
+}
+
+var scopedSessionTables = []scopedTable{
+	{Name: "ai_session_meta", KeyColumn: "session_key"},
+	{Name: "ai_session_tags", KeyColumn: "session_key"},
+	{Name: "ai_session_props", KeyColumn: "session_key"},
+}
+
+var scopedCommonTextTables = []scopedTable{
+	{Name: "db_common_text", KeyColumn: "id"},
+}
+
+// restoreScopedBackup rolls back exactly the rows a row-scoped snapshot holds.
+// Nothing outside the snapshot key set is touched: a concurrent edit to another
+// session survives, which is the whole point of scoping the snapshot.
+func restoreScopedBackup(ctx context.Context, dbPath string, backupPath string, tables []scopedTable) error {
+	if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(backupPath) == "" {
+		return fmt.Errorf("scoped backup restore path is empty")
+	}
+	db, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=rwc&_busy_timeout=5000", dbPath))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	db.DB.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, `ATTACH DATABASE ? AS bak`, backupPath); err != nil {
+		return err
+	}
+	keys, err := scopedSnapshotKeys(ctx, db, tables)
+	if err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		// Nothing was captured: there is nothing to undo.
+		return nil
+	}
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	for _, table := range tables {
+		for _, chunk := range chunkStrings(keys, scopedSQLChunkSize) {
+			deleteQuery := fmt.Sprintf(`DELETE FROM main.%s WHERE %s IN (%s)`,
+				table.Name, table.KeyColumn, placeholders(len(chunk)))
+			if _, err := tx.ExecContext(ctx, deleteQuery, anyStrings(chunk)...); err != nil {
+				return fmt.Errorf("scoped restore of %s failed: %w", table.Name, err)
+			}
+		}
+		insertQuery := fmt.Sprintf(`INSERT INTO main.%s SELECT * FROM bak.%s`, table.Name, table.Name)
+		if _, err := tx.ExecContext(ctx, insertQuery); err != nil {
+			return fmt.Errorf("scoped restore of %s failed: %w", table.Name, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// scopedSnapshotKeys reads the key set the snapshot covers. The snapshot is its
+// own scope declaration, so nothing has to be stored beside it.
+func scopedSnapshotKeys(ctx context.Context, db *sqlx.DB, tables []scopedTable) ([]string, error) {
+	var queries []string
+	for _, table := range tables {
+		queries = append(queries, fmt.Sprintf(`SELECT %s AS k FROM bak.%s`, table.KeyColumn, table.Name))
+	}
+	var keys []string
+	if err := db.SelectContext(ctx, &keys, strings.Join(queries, " UNION ")); err != nil {
+		return nil, err
+	}
+	return dedupeStrings(keys), nil
 }
 
 func restoreSessionBackup(ctx context.Context, dbPath string, backupPath string) error {

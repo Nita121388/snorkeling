@@ -107,3 +107,21 @@ CLI 必须把 `Code` 映射成稳定退出码，`--json` 时输出结构化错�
 5. 广告到 `pkg/agentcap`（`GuideText` / `ExternalAgentPrompt`）——不可发现的命令等于不存在。
 6. 改动了线上形状 → 更新 `pkg/agentcontrol/testdata/*.golden.json`。
 7. 纯逻辑单测 + DB fixture 测试（`ui_e2e_test.go` 的 `setupUIStore` 模式）+ 低成本 golden。
+
+---
+
+## 9. card 写入的备份粒度（数据安全）
+
+`agent card set` 的真实写入走 `agentdata.ApplyPatch`，**备份成本必须与操作范围成正比**，
+不能与数据库体积挂钩。
+
+| 规则 | 原因 |
+|---|---|
+| 默认写 `kind=rows` 的行级快照（`*.rows.sqlite`），只含本 patch 能触及的行 | 整库 `VACUUM INTO` 在 2.8 GB 索引上必然超 `--timeout 15s`（2026-11-09 真机 `EC-TIME`），且要求等于索引体积的空闲磁盘 |
+| 回滚只 `DELETE`+`INSERT` 快照内的 key | 整表快照回滚会抹掉其它会话在 patch 期间的并发写入 |
+| `ai_session_props` 必须出现在恢复语句里 | 它和 note/title 一样会被 patch 写，漏了就是「付了保费却漏保」 |
+| 影响行数 > `scopedBackupRowLimit`(5000) 或 `SNORKELING_AGENTDATA_BACKUP_MODE=full` → 退回整库备份 | `tag.rename` 可能命中全部会话；且必须留一条不改代码的降级路 |
+| 无 `kind` 字段的历史备份继续走整表恢复 | 旧备份不能因为改粒度而失效 |
+
+判据（改动此路径时必须重新采数）：单会话 note/标签写入 **< 2 s**、新增备份文件 **< 1 MB**、
+`patch-audit.jsonl` 里 `success:true` 且 `operations` 非 null。

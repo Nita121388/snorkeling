@@ -99,11 +99,39 @@ wsh data apply patch.json --yes
 wsh data apply patch.json --yes --format summary
 ```
 
-Real apply creates SQLite backups before writing. If an operation fails after earlier operations already wrote, Snorkeling attempts a table-level restore from the backups created for that apply and records the result in the operation report and audit log.
+Real apply snapshots before writing. If an operation fails after earlier operations already wrote, Snorkeling restores from that snapshot and records the result in the operation report and audit log.
 
 ## Backups
 
-Patch backups are created with SQLite `VACUUM INTO`. Session backups cover the AI sessions SQLite index. Common Text backups cover the wstore SQLite database.
+Two snapshot shapes exist. The shape is recorded as `kind` in the backup manifest.
+
+| `kind` | File | Contains | Restore |
+|---|---|---|---|
+| `rows` (default) | `<type>-<ts>-<hash>.rows.sqlite` | only the rows the patch can write | only those rows are deleted and re-inserted |
+| *(empty)* | `<type>-<ts>-<hash>.sqlite` | the whole database (`VACUUM INTO`) | whole-table restore (pre-125 behaviour) |
+
+Row-scoped snapshots are the default because a whole-database copy made every note/tag write cost
+O(database size): on an index with ~1M messages (2.8 GB) a single tag edit had to copy 2.8 GB, which
+exceeded the 15 s RPC timeout and required disk space equal to the whole index.
+
+What a row-scoped snapshot covers:
+
+| Operation | Captured rows |
+|---|---|
+| `session_note.update` / `session_title.update` / `session_prop.update` | that session in `ai_session_meta`, `ai_session_tags`, **and `ai_session_props`** |
+| `common_text.update` | that entry in `db_common_text` |
+| `tag.rename` | every session / entry currently carrying the old tag |
+
+Because the snapshot is keyed, a rollback only writes the rows the patch touched. Edits other
+writers made to other sessions while the patch was running survive the rollback; a whole-table
+restore would have erased them.
+
+The whole-database path is still used when:
+
+- the affected row set exceeds `scopedBackupRowLimit` (5000) — a tag rename can hit every session, and an unbounded `IN (...)` list is not worth building;
+- `SNORKELING_AGENTDATA_BACKUP_MODE=full` is set. This is the one-line escape hatch for an incident: it restores the previous behaviour without touching code.
+
+Backups written by older versions have no `kind` field and keep using the whole-table restore path.
 
 ```bash
 wsh data backup list

@@ -6,6 +6,7 @@ package agentdata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/commontextstore"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
@@ -519,4 +521,251 @@ func changesByField(changes []ChangeReport) map[string]ChangeReport {
 		indexed[change.Field] = change
 	}
 	return indexed
+}
+
+// --- row-scoped patch backups -------------------------------------------------
+//
+// These tests pin the granularity contract: the snapshot covers only the rows a
+// patch can write, and the rollback only writes those rows back. They never
+// touch a real user database: setupAgentDataSession points the index at a temp
+// dir.
+
+// addTestSession seeds one more indexed session with an initial note.
+func addTestSession(t *testing.T, manager *aisessions.Manager, sessionID string, note string) {
+	t.Helper()
+	sessionDir := filepath.Join(os.Getenv("CODEX_HOME"), "sessions")
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(sessionDir, "rollout-2026-06-16T00-00-09-"+sessionID+".jsonl")
+	content := `{"timestamp":"2026-06-16T00:00:09Z","type":"session_meta","payload":{"id":"` + sessionID + `","cwd":"/tmp/project"}}` + "\n" +
+		`{"timestamp":"2026-06-16T00:00:10Z","type":"response_item","payload":{"type":"message","role":"user","content":"second request"}}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, errs := manager.Index(context.Background()); len(errs) > 0 {
+		t.Fatalf("index session: %v", errs[0])
+	}
+	if note != "" {
+		if _, err := manager.NoteAndTags(context.Background(), sessionID, note, []string{"seed"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func countRowsInScopedBackup(t *testing.T, path string, table string) int {
+	t.Helper()
+	db, err := sqlx.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var count int
+	if err := db.Get(&count, fmt.Sprintf(`SELECT count(*) FROM %s`, table)); err != nil {
+		t.Fatalf("read %s from %s: %v", table, path, err)
+	}
+	return count
+}
+
+func TestScopedBackupOnlyContainsAffectedRows(t *testing.T) {
+	sessionID, manager := setupAgentDataSession(t)
+	addTestSession(t, manager, "agentdata-other", "other note")
+	summary, err := manager.Summary(context.Background(), sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	backup, err := createScopedSessionBackup(context.Background(), aisessions.DefaultSQLiteIndexPath(), patchBackupScope{
+		SessionKeys: []string{summary.Key},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backup.Kind != BackupKindRows {
+		t.Fatalf("expected a row-scoped backup, got kind %q (%s)", backup.Kind, backup.Path)
+	}
+	if !strings.HasSuffix(backup.Path, ".rows.sqlite") {
+		t.Fatalf("expected .rows.sqlite suffix, got %s", backup.Path)
+	}
+	if backup.Size > 64*1024 {
+		t.Fatalf("scoped snapshot should stay tiny, got %d bytes", backup.Size)
+	}
+	if got := countRowsInScopedBackup(t, backup.Path, "ai_session_meta"); got != 1 {
+		t.Fatalf("expected exactly 1 captured session, got %d", got)
+	}
+	for _, table := range []string{"ai_session_tags", "ai_session_props"} {
+		if got := countRowsInScopedBackup(t, backup.Path, table); got != (map[string]int{"ai_session_tags": 1, "ai_session_props": 0})[table] {
+			t.Fatalf("unexpected %s row count: %d", table, got)
+		}
+	}
+}
+
+func TestScopedRestoreLeavesOtherSessionsUntouched(t *testing.T) {
+	sessionA, manager := setupAgentDataSession(t)
+	sessionB := "agentdata-concurrent"
+	addTestSession(t, manager, sessionB, "b-note")
+	ctx := context.Background()
+
+	beforeA, err := manager.Summary(ctx, sessionA, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := "triggered write"
+	title := "triggered title"
+	patch := Patch{
+		Version: PatchVersion,
+		Source:  "test-scoped-restore",
+		Operations: []PatchOperation{
+			{Type: "session_note.update", SessionKey: sessionA, Note: &note, ExpectedHash: HashSession(beforeA)},
+			{Type: "session_title.update", SessionKey: sessionA, Title: &title, Force: true, ExpectedHash: HashSession(beforeA)},
+		},
+	}
+
+	restoreApplyOperation := applyOperationFn
+	defer func() { applyOperationFn = restoreApplyOperation }()
+	applyOperationFn = func(ctx context.Context, idx int, op PatchOperation) (OperationReport, error) {
+		if idx == 1 {
+			// Simulate a concurrent writer landing between the snapshot and the
+			// rollback. A whole-table rollback would erase this write.
+			if _, err := manager.NoteAndTags(ctx, sessionB, "b-concurrent", []string{"seed"}); err != nil {
+				t.Fatal(err)
+			}
+			return operationReport(idx, op), errors.New("injected mid-patch failure")
+		}
+		return applyOperation(ctx, idx, op)
+	}
+
+	applyReport, err := ApplyPatch(ctx, patch, ApplyOptions{Yes: true})
+	if err == nil {
+		t.Fatal("expected the injected failure to abort the patch")
+	}
+	if len(applyReport.Backups) != 1 || applyReport.Backups[0].Kind != BackupKindRows {
+		t.Fatalf("expected a row-scoped backup, got %#v", applyReport.Backups)
+	}
+
+	summaryA, err := manager.Summary(ctx, sessionA, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summaryA.Note != "old note" || strings.Join(summaryA.Tags, ",") != "old" {
+		t.Fatalf("expected session A rolled back, got note=%q tags=%v", summaryA.Note, summaryA.Tags)
+	}
+	summaryB, err := manager.Summary(ctx, sessionB, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summaryB.Note != "b-concurrent" {
+		t.Fatalf("scoped rollback must not erase a concurrent write, got %q", summaryB.Note)
+	}
+}
+
+func TestScopedRestoreCoversSessionProps(t *testing.T) {
+	sessionID, manager := setupAgentDataSession(t)
+	ctx := context.Background()
+	before, err := manager.Summary(ctx, sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := "note before props failure"
+	patch := Patch{
+		Version: PatchVersion,
+		Source:  "test-scoped-props",
+		Operations: []PatchOperation{
+			{Type: "session_note.update", SessionKey: sessionID, Note: &note, ExpectedHash: HashSession(before)},
+			{Type: "session_prop.update", SessionKey: sessionID, Props: map[string]PropPatch{"priority": {Type: "select", Value: "P1"}}, ExpectedHash: HashSession(before)},
+		},
+	}
+
+	restoreApplyOperation := applyOperationFn
+	defer func() { applyOperationFn = restoreApplyOperation }()
+	applyOperationFn = func(ctx context.Context, idx int, op PatchOperation) (OperationReport, error) {
+		report, err := applyOperation(ctx, idx, op)
+		if err != nil {
+			return report, err
+		}
+		if idx == 1 {
+			// The prop write already landed: this is exactly the partial-failure
+			// shape the old restore silently left behind.
+			return report, errors.New("injected failure after prop write")
+		}
+		return report, nil
+	}
+
+	if _, err := ApplyPatch(ctx, patch, ApplyOptions{Yes: true}); err == nil {
+		t.Fatal("expected the injected failure to abort the patch")
+	}
+
+	after, err := manager.Summary(ctx, sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Note != "old note" {
+		t.Fatalf("expected note rolled back, got %q", after.Note)
+	}
+	if cell, found := after.Props["priority"]; found {
+		t.Fatalf("session_prop.update must be rolled back, prop survived: %#v", cell)
+	}
+}
+
+func TestScopedBackupFallsBackToFullOnLargeScope(t *testing.T) {
+	sessionA, manager := setupAgentDataSession(t)
+	sessionB := "agentdata-second"
+	addTestSession(t, manager, sessionB, "second note")
+	ctx := context.Background()
+
+	limit := scopedBackupRowLimit
+	defer func() { scopedBackupRowLimit = limit }()
+	scopedBackupRowLimit = 1
+
+	note := "renamed"
+	beforeA, err := manager.Summary(ctx, sessionA, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeB, err := manager.Summary(ctx, sessionB, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := Patch{
+		Version: PatchVersion,
+		Source:  "test-fallback",
+		Operations: []PatchOperation{
+			{Type: "session_note.update", SessionKey: sessionA, Note: &note, ExpectedHash: HashSession(beforeA)},
+			{Type: "session_note.update", SessionKey: sessionB, Note: &note, ExpectedHash: HashSession(beforeB)},
+		},
+	}
+	report, err := ApplyPatch(ctx, patch, ApplyOptions{Yes: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Backups) != 1 {
+		t.Fatalf("expected one backup, got %#v", report.Backups)
+	}
+	if report.Backups[0].Kind != "" || strings.Contains(report.Backups[0].Path, ".rows.") {
+		t.Fatalf("expected the whole-database fallback, got %#v", report.Backups[0])
+	}
+}
+
+func TestScopedBackupDisabledByEnvFullMode(t *testing.T) {
+	sessionID, manager := setupAgentDataSession(t)
+	t.Setenv(BackupModeEnv, "full")
+	before, err := manager.Summary(context.Background(), sessionID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := "env full mode"
+	patch := Patch{
+		Version: PatchVersion,
+		Source:  "test-env-full",
+		Operations: []PatchOperation{
+			{Type: "session_note.update", SessionKey: sessionID, Note: &note, ExpectedHash: HashSession(before)},
+		},
+	}
+	report, err := ApplyPatch(context.Background(), patch, ApplyOptions{Yes: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Backups) != 1 || report.Backups[0].Kind != "" {
+		t.Fatalf("expected the whole-database backup under %s=full, got %#v", BackupModeEnv, report.Backups)
+	}
 }
