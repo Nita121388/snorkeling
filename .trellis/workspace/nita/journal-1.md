@@ -128,3 +128,10 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
 组内剩 1 个 block 时由父组件自然关闭，这两条保留。14 例单测（3 个新焦点用例）+ 相关面
 37 例全绿；真机 verify 台 skipped（无对应 area），已记台账。教训写进 quality-guidelines：
 列表型下拉的每行删除默认不得顺手关菜单，键盘删除必须恢复焦点。
+
+## 2026-11-09 · pi/codex 会话模型解析（9c4f7329）
+
+- 根因：`pkg/aisessions` 的 pi/codex provider 从不解析 `Message.Model`；11-04 任务误判「上游不暴露」（实测 pi 有 message.model + model_change，codex 有 turn_context.payload.model）。claude/opencode 一直正常。
+- 修复：pi 单行直取 + model_change 兜底；codex 新增跨行 codexMessageParser。真实数据 169/169、7/7 填充。
+- 待办：G7 人验收——重新构建 app 后看 Agent 悬浮卡/Tab more/弹窗副标题不再是「未指定」（codex delta 路径消息可能缺 Model，已记 design 取舍）。gemini 无 session provider，属独立能力缺口。
+- loop 引擎在本机路径失效（E:/primary/... Windows 路径），未记台账。
