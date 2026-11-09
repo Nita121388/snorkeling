@@ -9,6 +9,7 @@
 // panel goes back to the untouched list-only path.
 
 import { basename, formatCompactDuration } from "@/util/util";
+import { formatDateTimeToSecond } from "@/app/view/aisessions/utils";
 import type { ReactNode } from "react";
 import {
     createPersistedEnum,
@@ -343,6 +344,14 @@ export type OverviewBoardCard = {
     note: string;
     /** Recent-activity timestamp in ms; `0` hides the age label. */
     updatedAt: number;
+    /** Session creation timestamp in ms（已归一化）; `0` hides the created metric. */
+    createdAt?: number;
+    /** `SessionSummary.messageCount`; `0`/undefined hides the heat cell. */
+    messageCount?: number;
+    /** `SessionSummary.size` in bytes; `0`/undefined hides the heat cell. */
+    size?: number;
+    /** `SessionSummary.live`：活跃跨度的终点走到 now，而不是停在最后一次活动。 */
+    live?: boolean;
 };
 
 export type ResolveBoardCardTitleInput = {
@@ -465,8 +474,41 @@ export function resolveBoardTagChips(
 }
 
 /** Compact age label for the card head (`now` / `12m` / `3h` / `2d`); "" hides it. */
-export function formatBoardAge(updatedAtMs: number, nowMs: number): string {    if (!updatedAtMs || updatedAtMs <= 0) return "";
+export function formatBoardAge(updatedAtMs: number, nowMs: number): string {
+    if (!updatedAtMs || updatedAtMs <= 0) return "";
     return formatCompactDuration(updatedAtMs, nowMs);
+}
+
+/**
+ * 卡头 age 的完整说法（`title` / `aria-label`）。
+ *
+ * 动机（真机抓到）：卡片右上只有一个裸的 `1d`，既无 tooltip 也无 aria-label，用户无法判断
+ * 它与状态 chip 的 `Working 12m`、度量轨的 `↔3d` 有什么区别。三者起点不同
+ * （最后一次活动 / 当前 phase / 创建），文字上必须能各自说清。
+ */
+export function formatBoardAgeTitle(updatedAtMs: number, nowMs: number): string {
+    const age = formatBoardAge(updatedAtMs, nowMs);
+    if (age === "") return "";
+    const relative = age === "now" ? "刚刚" : `${age} 前`;
+    return `最后活动：${formatDateTimeToSecond(updatedAtMs)} · ${relative}`;
+}
+
+/**
+ * 卡片 meta 行的「视图名兜底标签」文案；返回 "" 表示整个节点不渲染。
+ *
+ * 2026-11-09 真机：agent-like 卡的 kindLabel 恒为 ""（状态 chip 接管），
+ * 但无 AgentStatus 时看板仍无条件渲染兜底 span —— 该 class 带 border/padding，
+ * 空串也会画成一个空胶囊。列表视图早已按 status 判空，这里把同一收口收成纯函数。
+ */
+export function resolveBoardMetaLabel({
+    hasStatusChip,
+    kindLabel,
+}: {
+    hasStatusChip: boolean;
+    kindLabel: string;
+}): string {
+    if (hasStatusChip) return "";
+    return cleanText(kindLabel);
 }
 
 /** One-line preview used by the card body. Returns "" so callers can skip the node. */export function truncateBoardPreview(text: string | null | undefined, maxLength = 120): string {

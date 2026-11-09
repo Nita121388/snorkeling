@@ -44,6 +44,8 @@ import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
 import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/aisessions/utils";
 import { loadCommonTextSortKey, saveCommonTextSortKey } from "./commontext-sort-preference";
 import { PageIconSlot } from "./commontext-page-icon";
+import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
+import { commonTextFreshnessTier } from "./commontext-freshness";
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
@@ -1575,9 +1577,11 @@ const CommonTextComposeModal = memo(() => {
                                                     </div>
                                                 )}
                                             </div>
-                                            {/* 右侧固定宽槽：默认是「次数 + 更新时间」列（图标 + 数字，不新增行高），
-                                                鼠标悬浮时它淡出、插入按钮落在同一位置——hover 不产生布局抖动。
-                                                代价是标题列少了这 58px（靠 truncate 兜住，行高因此不变）。 */}
+                                            {/* 右侧固定宽槽：默认是「次数 + 更新时间」列（次数是图标 + 数字，
+                                                更新时间是 12px 热力方块），鼠标悬浮时它淡出、插入按钮落在同一位置
+                                                ——hover 不产生布局抖动。
+                                                代价是标题列少了这 58px（靠 truncate 兜住，行高因此不变）。
+                                                尺寸约束：次数行 10px + gap 2px + 方块 12px = 24px ≤ h-7(28px)。 */}
                                             <div
                                                 className="relative shrink-0 self-center w-[58px] h-7 flex items-center justify-end"
                                                 data-commontext-meta=""
@@ -1600,10 +1604,16 @@ const CommonTextComposeModal = memo(() => {
                                                     <span
                                                         data-commontext-updated=""
                                                         className="inline-flex items-center gap-1"
-                                                        title={metaTooltip}
                                                     >
-                                                        <i className="fa fa-regular fa-clock text-[9px]" />
-                                                        {formatSessionRelativeTime(item.updatedat)}
+                                                        {/* 更新时间不再写文字：「4h ago」在扫视时要逐个读字，
+                                                            且相对时间不会自动刷新（停在弹窗打开那刻）。热力方块用
+                                                            填充高度 + 浓度双通道编码，5 档在 12px 里都能分开。
+                                                            精确时间与相对时间都下沉到 tooltip / aria-label。 */}
+                                                        <CommonTextFreshnessSquare
+                                                            tier={commonTextFreshnessTier(item)}
+                                                            title={`Updated ${compactCommonTextTime(item.updatedat, true)}`}
+                                                            ariaLabel={`Updated ${formatSessionRelativeTime(item.updatedat)}`}
+                                                        />
                                                     </span>
                                                 </div>
                                                 <span

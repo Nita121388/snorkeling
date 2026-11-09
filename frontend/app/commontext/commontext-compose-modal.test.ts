@@ -61,13 +61,23 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("saveCommonTextSortKey(sortKey)");
     });
 
-    it("shows usage count plus relative update time at the right of each row", () => {
+    it("shows usage count plus a freshness square at the right of each row", () => {
         expect(source).toContain('data-commontext-meta=""');
         expect(source).toContain("data-commontext-usage={item.usagecount ?? 0}");
-        expect(source).toContain("formatSessionRelativeTime(item.updatedat)");
+        // 更新时间不再写文字：图形化后扫视不用逐个读「4h ago」，也不会因相对时间过期而说谎。
+        expect(source).toContain('data-commontext-updated=""');
+        expect(source).toContain("<CommonTextFreshnessSquare");
+        expect(source).toContain("tier={commonTextFreshnessTier(item)}");
         // 元信息列不新增行高：与 hover 插入按钮共用同一固定宽槽
         expect(source).toContain("w-[58px]");
         expect(source).toContain("group-hover:opacity-0");
+    });
+
+    it("drops the clock glyph from the row slot", () => {
+        // 列表右槽原本是「时钟图标 + 相对时间文字」；图形化后不应再出现那个图标。
+        // 相对时间只保留在 aria-label / tooltip 里（对读屏仍然有用，但不是可见文字）。
+        expect(source).not.toContain('<i className="fa fa-regular fa-clock text-[9px]" />');
+        expect(source.match(/<CommonTextFreshnessSquare/g)?.length).toBe(1);
     });
 
     it("shows created / updated / last-used / usage metadata in the detail footer", () => {

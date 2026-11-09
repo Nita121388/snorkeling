@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Overview Agent Card 度量信息原型 — A/B/C</title>
+        <!--
+            原型：Overview 看板卡（BoardCard）+ 列表行（BlockRow）补充度量信息
+            镜像源：
+              frontend/app/session-overview/overview-board.tsx      (BoardCard)
+              frontend/app/session-overview/session-overview.tsx    (BlockRow)
+              frontend/app/view/aisessions/session-row.tsx          (HeatCell / 阈值来源)
+            新增点只有一个：<SessionMetrics>（单组件，两处复用）
+        -->
+        <style>
+            :root {
+                --bg: #0f1014;
+                --panel: #15171d;
+                --card: #1b1e26;
+                --border: #2a2e3a;
+                --text: #e6e6e6;
+                --sub: #9b9da6;
+                --accent: #6aa6ff;
+                --working: #3fb950;
+                --blocked: #d29922;
+                --done: #6aa6ff;
+                --stale: #a371f7;
+                --idle: #6b7280;
+                --agent-working-color: var(--working);
+                --agent-done-color: var(--done);
+                --agent-stale-color: var(--stale);
+                --warning-color: var(--blocked);
+                --main-text-color: var(--text);
+                --secondary-text-color: var(--sub);
+                --border-color: var(--border);
+            }
+
+            body[data-theme="light"] {
+                --bg: #f4f6f9;
+                --panel: #ffffff;
+                --card: #fdfefe;
+                --border: #dde2ea;
+                --text: #1b1f27;
+                --sub: #6b7280;
+                --accent: #2f6fed;
+                --working: #1a7f37;
+                --blocked: #b7791f;
+                --done: #2f6fed;
+                --stale: #8250df;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            header {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 16px;
+                align-items: flex-start;
+                padding: 24px 32px 8px;
+            }
+
+            header h1 {
+                margin: 0 0 6px;
+                font-size: 19px;
+            }
+
+            header p {
+                max-width: 820px;
+                margin: 0;
+                color: var(--sub);
+                font-size: 12px;
+                line-height: 1.75;
+            }
+
+            code {
+                padding: 1px 4px;
+                border-radius: 4px;
+                background: rgb(from var(--text) r g b / 0.08);
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                font-size: 11px;
+            }
+
+            .controls {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+                margin-left: auto;
+            }
+
+            .control-label {
+                color: var(--sub);
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+
+            .seg {
+                display: inline-flex;
+                border: 1px solid var(--border);
+                border-radius: 7px;
+                overflow: hidden;
+            }
+
+            .seg button {
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                color: var(--sub);
+                font-size: 11px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+            .seg button + button {
+                border-left: 1px solid var(--border);
+            }
+
+            .seg button.is-active {
+                background: rgb(from var(--accent) r g b / 0.14);
+                color: var(--accent);
+            }
+
+            main {
+                padding: 8px 32px 80px;
+            }
+
+            section {
+                margin-top: 26px;
+            }
+
+            section > h2 {
+                margin: 0 0 4px;
+                font-size: 14px;
+            }
+
+            section > .hint {
+                margin: 0 0 12px;
+                color: var(--sub);
+                font-size: 11px;
+                line-height: 1.7;
+            }
+
+            /* ===================== 真实组件的镜像部分 ===================== */
+            /* 列宽 minmax(220px,1fr)；这里用固定列宽做窄列压测。 */
+            .session-overview-board {
+                display: grid;
+                grid-auto-columns: var(--colw, 220px);
+                grid-auto-flow: column;
+                grid-template-rows: minmax(0, 1fr);
+                gap: 12px;
+                overflow-x: auto;
+                padding: 2px 2px 10px;
+            }
+
+            .session-overview-board-column {
+                display: flex;
+                min-width: 0;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .session-overview-board-column-head {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin: 0;
+                padding: 0 2px;
+                font-size: 11px;
+                font-weight: 600;
+                line-height: 1.2;
+            }
+
+            .session-overview-board-column-dot {
+                width: 7px;
+                height: 7px;
+                flex: 0 0 auto;
+                border-radius: 50%;
+                background: var(--unknown, #39404d);
+            }
+
+            .session-overview-board-column-dot.is-blocked {
+                background: var(--blocked);
+            }
+            .session-overview-board-column-dot.is-working {
+                background: var(--working);
+            }
+            .session-overview-board-column-dot.is-done {
+                background: var(--done);
+            }
+            .session-overview-board-column-dot.is-idle {
+                background: var(--idle);
+            }
+            .session-overview-board-column-dot.is-stale {
+                background: var(--stale);
+            }
+
+            .session-overview-board-column-title {
+                min-width: 0;
+                flex: 1;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .session-overview-board-column-count {
+                flex: 0 0 auto;
+                padding: 0 5px;
+                border-radius: 6px;
+                background: rgb(from var(--text) r g b / 0.07);
+                color: var(--sub);
+                font-size: 10px;
+                font-variant-numeric: tabular-nums;
+            }
+
+            .session-overview-board-cards {
+                display: flex;
+                min-height: 0;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .session-overview-board-card {
+                display: flex;
+                width: 100%;
+                flex-direction: column;
+                gap: 6px;
+                padding: 10px;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                background: linear-gradient(180deg, rgb(from var(--text) r g b / 0.035) 0%, transparent 100%);
+                color: var(--text);
+                cursor: pointer;
+                text-align: left;
+                transition:
+                    background-color 120ms ease,
+                    border-color 120ms ease;
+            }
+
+            .session-overview-board-card:hover {
+                border-color: rgb(from var(--accent) r g b / 0.38);
+                background: rgb(from var(--text) r g b / 0.05);
+            }
+
+            .session-overview-board-card-head {
+                position: relative;
+                display: flex;
+                min-width: 0;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .session-overview-board-card-avatar {
+                display: inline-flex;
+                width: 18px;
+                height: 18px;
+                flex: 0 0 auto;
+                align-items: center;
+                justify-content: center;
+                border-radius: 5px;
+                background: rgb(from var(--text) r g b / 0.06);
+                font-size: 12px;
+                line-height: 1;
+            }
+
+            .session-overview-board-card-title {
+                min-width: 0;
+                flex: 1;
+                overflow: hidden;
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1.3;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .session-overview-board-card-age {
+                flex: 0 0 auto;
+                color: var(--sub);
+                font-size: 10px;
+                white-space: nowrap;
+            }
+
+            .session-overview-board-card-actions {
+                display: inline-flex;
+                flex: 0 0 auto;
+                align-items: center;
+                gap: 4px;
+                margin-left: auto;
+                opacity: 0;
+                transition: opacity 120ms ease;
+            }
+
+            .session-overview-board-card:hover .session-overview-board-card-actions {
+                opacity: 1;
+            }
+
+            .session-overview-board-card-action {
+                display: inline-flex;
+                width: 16px;
+                height: 16px;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                background: transparent;
+                color: var(--sub);
+                font-size: 10px;
+                cursor: pointer;
+            }
+
+            .session-overview-board-card-action:hover {
+                border-color: var(--border);
+                color: var(--text);
+            }
+
+            .session-overview-board-card-age + .session-overview-board-card-actions {
+                margin-left: 0;
+            }
+
+            .session-overview-board-card-meta {
+                display: flex;
+                min-width: 0;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .session-overview-agent-status {
+                display: inline-flex;
+                height: 16px;
+                align-items: center;
+                gap: 4px;
+                padding: 0 5px;
+                border: 1px solid var(--border);
+                border-radius: 5px;
+                font-size: 9px;
+                font-weight: 600;
+                line-height: 1;
+            }
+
+            .session-overview-agent-status.is-working {
+                border-color: rgb(from var(--working) r g b / 0.45);
+                background: rgb(from var(--working) r g b / 0.12);
+                color: var(--working);
+            }
+
+            .session-overview-agent-status.is-blocked,
+            .session-overview-agent-status.is-error {
+                border-color: rgb(from var(--blocked) r g b / 0.5);
+                background: rgb(from var(--blocked) r g b / 0.12);
+                color: var(--blocked);
+            }
+
+            .session-overview-agent-status.is-done {
+                border-color: rgb(from var(--done) r g b / 0.4);
+                background: rgb(from var(--done) r g b / 0.1);
+                color: var(--done);
+            }
+
+            .session-overview-agent-status.is-idle,
+            .session-overview-agent-status.is-stale {
+                color: var(--sub);
+            }
+
+            .session-overview-agent-status-age {
+                font-size: 9px;
+                opacity: 0.8;
+                font-variant-numeric: tabular-nums;
+            }
+
+            .session-overview-board-chip {
+                max-width: 120px;
+                overflow: hidden;
+                padding: 1px 6px;
+                border: 1px solid var(--border);
+                border-radius: 5px;
+                background: rgb(from var(--text) r g b / 0.035);
+                color: var(--sub);
+                font-size: 9px;
+                font-weight: 600;
+                line-height: 1.4;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .session-overview-board-chip.is-tag {
+                max-width: 84px;
+                border-color: transparent;
+                background: rgb(from var(--text) r g b / 0.075);
+                color: var(--text);
+                font-weight: 500;
+                opacity: 0.82;
+            }
+
+            .session-overview-board-chip.is-tag-more {
+                flex: 0 0 auto;
+                padding: 1px 2px;
+                border-color: transparent;
+                background: transparent;
+                color: var(--sub);
+                font-weight: 600;
+            }
+
+            .session-overview-board-card-preview {
+                display: -webkit-box;
+                overflow: hidden;
+                color: var(--sub);
+                font-size: 11px;
+                line-height: 1.4;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2;
+                line-clamp: 2;
+            }
+
+            .session-overview-board-card-note {
+                display: flex;
+                min-width: 0;
+                align-items: center;
+                gap: 4px;
+                overflow: hidden;
+                color: var(--sub);
+                font-size: 10px;
+                line-height: 1.4;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .session-overview-board-card-note-mark {
+                flex: 0 0 auto;
+                opacity: 0.7;
+            }
+
+            .session-overview-board-card-data {
+                display: flex;
+                min-width: 0;
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .session-overview-board-card-mini {
+                display: flex;
+                height: 3px;
+                gap: 1px;
+                overflow: hidden;
+                border-radius: 2px;
+                background: rgb(from var(--text) r g b / 0.06);
+            }
+
+            .session-overview-board-card-mini-seg {
+                height: 100%;
+                min-width: 1px;
+                border-radius: 2px;
+                background: rgb(from var(--text) r g b / 0.18);
+            }
+
+            .session-overview-board-card-mini-seg.is-working {
+                background: var(--working);
+            }
+            .session-overview-board-card-mini-seg.is-blocked,
+            .session-overview-board-card-mini-seg.is-error {
+                background: var(--blocked);
+            }
+            .session-overview-board-card-mini-seg.is-done {
+                background: var(--done);
+            }
+            .session-overview-board-card-mini-seg.is-idle {
+                background: var(--sub);
+                opacity: 0.45;
+            }
+            .session-overview-board-card-mini-seg.is-stale {
+                background: var(--stale);
+            }
+            .session-overview-board-card-mini-seg.is-unknown {
+                background: repeating-linear-gradient(
+                    135deg,
+                    rgb(from var(--text) r g b / 0.2) 0 2px,
+                    rgb(from var(--text) r g b / 0.08) 2px 4px
+                );
+            }
+
+            /* ===================== 新增：SessionMetrics 度量轨 ===================== */
+            .session-metrics {
+                display: flex;
+                min-width: 0;
+                align-items: center;
+                gap: 8px;
+                padding-top: 6px;
+                border-top: 1px solid rgb(from var(--text) r g b / 0.08);
+                color: var(--sub);
+                font-size: 10px;
+                font-variant-numeric: tabular-nums;
+                line-height: 1;
+            }
+
+            .session-metric {
+                display: inline-flex;
+                min-width: 0;
+                flex: 0 1 auto;
+                align-items: center;
+                gap: 3px;
+            }
+
+            /* 热力格：形状编码（填充高度）+ 颜色双通道，色弱也能比大小。 */
+            .session-metric-heat {
+                position: relative;
+                display: inline-flex;
+                width: 10px;
+                height: 10px;
+                flex: 0 0 auto;
+                align-items: flex-end;
+                justify-content: center;
+                overflow: hidden;
+                border-radius: 2px;
+                background: rgb(from var(--text) r g b / 0.1);
+            }
+
+            .session-metric-heat i {
+                display: block;
+                width: 100%;
+                border-radius: 1px;
+                background: var(--accent);
+                opacity: 0.35;
+            }
+
+            .session-metric-heat[data-level="2"] i {
+                opacity: 0.5;
+            }
+            .session-metric-heat[data-level="3"] i {
+                opacity: 0.65;
+            }
+            .session-metric-heat[data-level="4"] i {
+                opacity: 0.8;
+            }
+            .session-metric-heat[data-level="5"] i {
+                opacity: 1;
+            }
+
+            /* 占比条：运行时长 / 活跃窗。中性色，不冒充状态色。 */
+            .session-metric-bar {
+                display: block;
+                width: 24px;
+                height: 4px;
+                flex: 0 0 auto;
+                overflow: hidden;
+                border-radius: 2px;
+                background: rgb(from var(--text) r g b / 0.1);
+            }
+
+            .session-metric-bar i {
+                display: block;
+                height: 100%;
+                min-width: 1px;
+                border-radius: 2px;
+                background: var(--accent);
+                opacity: 0.8;
+            }
+
+            .session-metric.is-span {
+                flex: 1 1 auto;
+            }
+
+            .session-metric-value {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            /* 「跨度」语义标记：与卡头 age（最后活动）和状态 chip（当前轮跑时）区分。 */
+            .session-metric-mark {
+                margin-right: 1px;
+                color: var(--sub);
+                opacity: 0.75;
+            }
+
+            /* 只有 B（2×2 格）用标签；A/C 里不占位。 */
+            .session-metric-label {
+                display: none;
+                color: var(--sub);
+                font-size: 9px;
+                opacity: 0.75;
+            }
+
+            .session-metric.is-missing {
+                display: none;
+            }
+
+            /* 量高时临时把度量轨藏掉（= 今天的真实卡） */
+            body.is-measuring-none .session-metrics {
+                display: none;
+            }
+
+            /* --- 变体 B：2×2 度量格 --- */
+            body[data-variant="b"] .session-metrics.is-board {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px 8px;
+                padding-top: 8px;
+            }
+
+            body[data-variant="b"] .session-metrics.is-board .session-metric {
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 3px;
+                padding: 5px 6px;
+                border: 1px solid rgb(from var(--text) r g b / 0.08);
+                border-radius: 6px;
+                background: rgb(from var(--text) r g b / 0.025);
+            }
+
+            body[data-variant="b"] .session-metrics.is-board .session-metric-label {
+                display: block;
+                flex: 1 1 100%;
+                order: 3;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+            }
+
+            /* --- 变体 C：并入底轨（零新增行高） --- */
+            body[data-variant="c"] .session-overview-board-card-data {
+                flex-direction: row;
+                align-items: center;
+                gap: 8px;
+            }
+
+            body[data-variant="c"] .session-metrics {
+                flex: 0 0 auto;
+                padding-top: 0;
+                border-top: none;
+            }
+
+            body[data-variant="c"] .session-metric-heat,
+            body[data-variant="c"] .session-metric-bar {
+                display: none;
+            }
+
+            body[data-variant="c"] .session-metric + .session-metric::before {
+                content: "·";
+                margin-right: 3px;
+                opacity: 0.5;
+            }
+
+            body[data-variant="c"] .session-overview-board-card-mini {
+                flex: 1 1 auto;
+                min-width: 24px;
+            }
+
+            /* ===================== 列表行（BlockRow）镜像 ===================== */
+            .session-overview-block-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 7px 8px;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                cursor: pointer;
+            }
+
+            .session-overview-block-row:hover {
+                border-color: var(--border);
+                background: rgb(from var(--text) r g b / 0.04);
+            }
+
+            .session-overview-block-icon.is-agent-brand {
+                display: inline-flex;
+                width: 18px;
+                height: 18px;
+                flex: 0 0 auto;
+                align-items: center;
+                justify-content: center;
+                border-radius: 5px;
+                background: rgb(from var(--text) r g b / 0.06);
+                font-size: 12px;
+            }
+
+            .session-overview-block-text {
+                display: flex;
+                min-width: 0;
+                flex: 1 1 auto;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .session-overview-block-title {
+                min-width: 0;
+                overflow: hidden;
+                font-size: 12px;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .session-overview-block-side {
+                display: flex;
+                flex: 0 0 auto;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .session-metrics.is-row {
+                padding-top: 0;
+                border-top: none;
+                gap: 8px;
+            }
+
+            /* ===================== 页面自身的外壳（非镜像） ===================== */
+            .stage {
+                padding: 14px;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                background: var(--panel);
+            }
+
+            .stage.is-stacked {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .legend {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+                gap: 10px;
+            }
+
+            .legend-item {
+                padding: 10px 12px;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                background: var(--card);
+            }
+
+            .legend-item h3 {
+                margin: 0 0 4px;
+                font-size: 11px;
+            }
+
+            .legend-item p {
+                margin: 0;
+                color: var(--sub);
+                font-size: 10px;
+                line-height: 1.7;
+            }
+
+            .legend-demo {
+                display: flex;
+                gap: 6px;
+                align-items: flex-end;
+                margin: 8px 0 6px;
+            }
+
+            .assumption {
+                padding: 10px 12px;
+                border: 1px solid rgb(from var(--accent) r g b / 0.35);
+                border-radius: 8px;
+                background: rgb(from var(--accent) r g b / 0.07);
+                color: var(--sub);
+                font-size: 11px;
+                line-height: 1.8;
+            }
+
+            .assumption b {
+                color: var(--text);
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 11px;
+            }
+
+            th,
+            td {
+                padding: 6px 8px;
+                border-bottom: 1px solid var(--border);
+                text-align: left;
+                vertical-align: top;
+            }
+
+            th {
+                color: var(--sub);
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+            }
+
+            td code {
+                white-space: nowrap;
+            }
+        </style>
+    </head>
+    <body data-theme="dark" data-variant="a">
+        <header>
+            <div>
+                <h1>Overview Agent Card · 度量信息</h1>
+                <p>
+                    看板卡（<code>BoardCard</code>）与列表行（<code>BlockRow</code>）补充
+                    <b>消息数 / 体积 / 活跃跨度 / 创建时间</b>，可视化词汇与 aisessions 列表项同源
+                    （热力格 + 占比条，形状优先）。三种变体、暗/亮主题、220/280/340 三种列宽可切。
+                </p>
+            </div>
+            <div class="controls">
+                <span class="control-label">主题</span>
+                <span class="seg" data-control="theme">
+                    <button data-value="dark" class="is-active">暗</button>
+                    <button data-value="light">亮</button>
+                </span>
+                <span class="control-label">变体</span>
+                <span class="seg" data-control="variant">
+                    <button data-value="a" class="is-active">A 度量轨</button>
+                    <button data-value="b">B 2×2</button>
+                    <button data-value="c">C 内联</button>
+                </span>
+                <span class="control-label">列宽</span>
+                <span class="seg" data-control="colw">
+                    <button data-value="220" class="is-active">220</button>
+                    <button data-value="280">280</button>
+                    <button data-value="340">340</button>
+                </span>
+            </div>
+        </header>
+
+        <main>
+            <section>
+                <h2>口径假设（未拍板项，按推荐值先落）</h2>
+                <p class="hint">这三条决定实现形态，改起来便宜但要先说清楚。</p>
+                <div class="assumption">
+                    ① <b>「会话数量」= 该会话的消息条数</b>（<code>SessionSummary.messageCount</code>），不是"某 agent 名下 N 个会话"的聚合卡。<br />
+                    ② <b>「运行时长」= 活跃跨度</b>（<code>createdAt → updatedAt</code>，live 走到 now）。
+                    <b>不是</b> Σ working 段 —— 实现前核对发现真实数据里没有 per-block 状态历史
+                    （<code>buildTimelineSegments</code> 的 <code>history</code> 参数无调用方），Σworking 会退化成 chip 的跑时或恒 0。<br />
+                    ③ <b>落点 = 看板卡 + 列表行都上</b>，两处复用同一个 <code>&lt;SessionMetrics&gt;</code> 组件与同一份阈值表。
+                </div>
+            </section>
+
+            <section>
+                <h2>一张卡上的三个「多久」（语义必须可分辨）</h2>
+                <p class="hint">
+                    卡头 age / 状态 chip / 度量轨三个时长挨得很近，且前两个单位都是 <code>m</code> —— 不标注就会互相冒充。
+                </p>
+                <table style="max-width: 860px">
+                    <thead>
+                        <tr><th>位置</th><th>例子</th><th>回答的问题</th><th>起点</th><th>刷新</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>卡头右上 age</td><td><code>1d</code></td><td>多久没动静（新鲜度）</td><td><code>updatedAt</code> → now</td><td>30s tick，跨档才变；悬停出完整时间戳</td></tr>
+                        <tr><td>状态 chip</td><td><code>Working 12m</code></td><td>当前这一步跑了多久</td><td><code>phaseSince ?? activeSince</code> → now</td><td>1Hz 秒级跳动；done/idle 不显示</td></tr>
+                        <tr><td>度量轨 span</td><td><code>↔3d</code></td><td>从创建到最后一次活动跨了多久</td><td><code>createdAt</code> → <code>updatedAt</code>（live 到 now）</td><td>随 summary 变化才重算，不秒跳</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section>
+                <h2>编码图例</h2>
+                <p class="hint">四格共用一套规则；阈值直接 import aisessions 的 <code>heatLevel</code> / <code>MessageHeatThresholds</code> / <code>SizeHeatThresholds</code>，禁止第二份。</p>
+                <div class="legend" id="legend"></div>
+            </section>
+
+            <section>
+                <h2>看板卡（5 列 / 固定列宽压测）</h2>
+                <p class="hint">列宽 220 是当前真实下限；数字一律 <code>tabular-nums</code> + 单行截断，卡高不随数据跳动。</p>
+                <div class="stage">
+                    <div class="session-overview-board" id="board"></div>
+                </div>
+            </section>
+
+            <section>
+                <h2>列表行（BlockRow，右侧接入同一组件）</h2>
+                <p class="hint">列表行空间更宽，组件用 <code>is-row</code> 修饰符：无上分割线、gap 加大、数字不缩。</p>
+                <div class="stage" id="rows"></div>
+            </section>
+
+            <section>
+                <h2>边界态（不许留空格、不许换行、不许谎报）</h2>
+                <p class="hint">非 agent 块 / summary 未回包 / 全零 / 巨型数字 / 极年轻会话 —— 缺数据的格 <code>display:none</code>，其余自动补位。</p>
+                <div class="stage">
+                    <div class="session-overview-board" id="edge"></div>
+                </div>
+            </section>
+
+            <section>
+                <h2>卡高对照（实测）</h2>
+                <p class="hint">
+                    同一张卡在四种渲染下用 <code>getBoundingClientRect().height</code> 实测（探针卡离屏，不影响版面）：
+                    变体切换 / 主题 / 列宽都会重测。
+                </p>
+                <div class="stage">
+                    <table style="max-width: 560px">
+                        <thead>
+                            <tr>
+                                <th>渲染</th>
+                                <th>单卡高</th>
+                                <th>相对今天</th>
+                            </tr>
+                        </thead>
+                        <tbody id="heightTable"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section>
+                <h2>数据契约</h2>
+                <p class="hint">全部来自 Overview 已有的 <code>SessionSummary</code> 缓存与已有 timeline segments —— <b>零新增 RPC、零后端改动</b>。</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>度量</th>
+                            <th>字段</th>
+                            <th>编码</th>
+                            <th>缺数据</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>消息数</td>
+                            <td><code>SessionSummary.messageCount</code></td>
+                            <td>10×10 热力格（填充 20%×level）+ 数字</td>
+                            <td><code>0</code> → 不渲染该格</td>
+                        </tr>
+                        <tr>
+                            <td>体积</td>
+                            <td><code>SessionSummary.size</code></td>
+                            <td>10×10 热力格 + <code>formatFileSize</code></td>
+                            <td><code>null/0</code> → 不渲染</td>
+                        </tr>
+                        <tr>
+                            <td>活跃跨度</td>
+                            <td><code>createdAt</code> → <code>updatedAt</code>（live 到 now）</td>
+                            <td>24×4 档位条（档位×20%）+ <code>↔3d</code></td>
+                            <td><code>createdAt=0</code> → 不渲染</td>
+                        </tr>
+                        <tr>
+                            <td>创建时间</td>
+                            <td><code>SessionSummary.createdAt</code></td>
+                            <td>纯文本 <code>MM-DD</code>（跨年 <code>YY-MM-DD</code>）</td>
+                            <td><code>0</code> → 不渲染</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+        </main>
+
+        <!-- 离屏探针：只用于量高，不参与版面 -->
+        <div id="probe" aria-hidden="true" style="position: absolute; left: -9999px; top: 0; width: 220px"></div>
+
+        <script>
+            // ============ 与真实代码同源的纯函数（实现时必须 import，不许复制） ============
+            const MessageHeatThresholds = [5, 20, 100, 500];
+            const SizeHeatThresholds = [100 * 1024, 460 * 1024, 2 * 1024 * 1024, 6 * 1024 * 1024];
+            // 活跃跨度档位（10m / 1h / 8h / 1d）—— 与实现里的 SpanHeatThresholds 同值。
+            const SpanHeatThresholds = [10 * 60e3, 60 * 60e3, 8 * 3600e3, 24 * 3600e3];
+
+            function heatLevel(value, thresholds) {
+                if (!Number.isFinite(value) || value <= 0) return 1;
+                let level = 1;
+                for (const threshold of thresholds) {
+                    if (value >= threshold) level += 1;
+                }
+                return Math.min(level, thresholds.length + 1);
+            }
+
+            function formatFileSize(bytes) {
+                if (bytes == null || Number.isNaN(bytes)) return "";
+                if (bytes < 0) return "";
+                if (bytes === 0) return "0 B";
+                const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+                const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+                const value = bytes / Math.pow(1024, unitIndex);
+                const display =
+                    unitIndex === 0 ? Math.round(value).toString() : value.toFixed(value < 10 ? 1 : 0).replace(/\.0$/, "");
+                return `${display} ${units[unitIndex]}`;
+            }
+
+            function shortDuration(ms) {
+                if (!Number.isFinite(ms) || ms <= 0) return "";
+                const minutes = Math.floor(ms / 60000);
+                if (minutes < 1) return "<1m";
+                if (minutes < 60) return `${minutes}m`;
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${hours}h`;
+                return `${Math.floor(hours / 24)}d`;
+            }
+
+            /** 精确版（只给 tooltip）：2h05m / 37m12s */
+            function preciseDuration(ms) {
+                const totalMinutes = Math.floor(ms / 60000);
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                if (hours > 0) return `${hours}h${String(minutes).padStart(2, "0")}m`;
+                return `${minutes}m`;
+            }
+
+            const pad2 = (n) => String(n).padStart(2, "0");
+
+            function createdText(ms, nowMs) {
+                if (!ms) return "";
+                const d = new Date(ms);
+                const n = new Date(nowMs);
+                const md = `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+                return d.getFullYear() === n.getFullYear() ? md : `${String(d.getFullYear()).slice(2)}-${md}`;
+            }
+
+            function createdFull(ms) {
+                if (!ms) return "";
+                const d = new Date(ms);
+                return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+            }
+
+            function boardAge(updatedAt, nowMs) {
+                if (!updatedAt) return "";
+                return shortDuration(Math.max(0, nowMs - updatedAt)) || "now";
+            }
+
+            const escapeHtml = (value) =>
+                String(value ?? "").replace(
+                    /[&<>"']/g,
+                    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+                );
+
+            // ============ 新增组件：SessionMetrics（唯一渲染入口） ============
+            /**
+             * @param {{messageCount?:number,size?:number,createdAt?:number,updatedAt?:number,
+             *          segments?:{state:string,ms:number}[]}} data
+             * @param {{surface:"board"|"row"}} opts
+             */
+            function sessionMetricsHtml(data, opts) {
+                const surface = opts.surface === "row" ? "is-row" : "is-board";
+                const hasSession = data.hasSession !== false;
+                if (!hasSession) return "";
+
+                const nowMs = NOW;
+                // 活跃跨度：createdAt → (live ? now : updatedAt)。**不读 segments** ——
+                // 真实数据里没有 per-block 状态历史（buildTimelineSegments 的 history 参数无调用方），
+                // Σworking 会退化成 chip 的跑时或恒 0，见 README「为什么是活跃跨度」。
+                const createdAtMs = Math.max(0, data.createdAt ?? 0);
+                const spanEnd = data.live === true ? nowMs : Math.max(0, data.updatedAt ?? 0);
+                const spanMs = createdAtMs > 0 && spanEnd > 0 ? Math.max(0, spanEnd - createdAtMs) : 0;
+
+                const parts = [];
+
+                if ((data.messageCount ?? 0) > 0) {
+                    const level = heatLevel(data.messageCount, MessageHeatThresholds);
+                    parts.push(`
+                        <span class="session-metric" data-metric="msg" title="${data.messageCount} messages" aria-label="${data.messageCount} messages">
+                            <span class="session-metric-heat" data-level="${level}" aria-hidden="true"><i style="height:${level * 20}%"></i></span>
+                            <span class="session-metric-value">${data.messageCount >= 10000 ? `${(data.messageCount / 1000).toFixed(1)}k` : data.messageCount}</span>
+                            <span class="session-metric-label">msgs</span>
+                        </span>`);
+                }
+
+                if (data.size != null && data.size > 0) {
+                    const level = heatLevel(data.size, SizeHeatThresholds);
+                    parts.push(`
+                        <span class="session-metric" data-metric="size" title="${formatFileSize(data.size)} (${data.size} bytes)" aria-label="Session size ${formatFileSize(data.size)}">
+                            <span class="session-metric-heat" data-level="${level}" aria-hidden="true"><i style="height:${level * 20}%"></i></span>
+                            <span class="session-metric-value">${formatFileSize(data.size).replace(" ", "")}</span>
+                            <span class="session-metric-label">size</span>
+                        </span>`);
+                }
+
+                if (spanMs > 0) {
+                    const level = heatLevel(spanMs, SpanHeatThresholds);
+                    const endLabel = data.live === true ? "现在" : createdFull(spanEnd);
+                    parts.push(`
+                        <span class="session-metric is-span" data-metric="span"
+                              title="活跃跨度 ${preciseDuration(spanMs)}：${createdFull(createdAtMs)} → ${endLabel}"
+                              aria-label="Active span ${shortDuration(spanMs)}">
+                            <span class="session-metric-bar" aria-hidden="true"><i style="width:${level * 20}%"></i></span>
+                            <span class="session-metric-value"><span class="session-metric-mark" aria-hidden="true">↔</span>${shortDuration(spanMs)}</span>
+                            <span class="session-metric-label">span</span>
+                        </span>`);
+                }
+
+                if ((data.createdAt ?? 0) > 0) {
+                    parts.push(`
+                        <span class="session-metric is-created" data-metric="created" title="Created: ${createdFull(data.createdAt)}" aria-label="Created ${createdFull(data.createdAt)}">
+                            <span class="session-metric-value">${createdText(data.createdAt, nowMs)}</span>
+                            <span class="session-metric-label">created</span>
+                        </span>`);
+                }
+
+                if (parts.length === 0) return "";
+                return `<span class="session-metrics ${surface}" data-metrics-count="${parts.length}">${parts.join("")}</span>`;
+            }
+
+            function miniHtml(segments) {
+                if (!segments || segments.length === 0) return "";
+                const segs = segments
+                    .map(
+                        (seg) =>
+                            `<span class="session-overview-board-card-mini-seg is-${escapeHtml(seg.state)}" style="flex-grow:${Math.max(seg.ms, 1)}"></span>`
+                    )
+                    .join("");
+                return `<span class="session-overview-board-card-mini" aria-hidden="true">${segs}</span>`;
+            }
+
+            function boardCardHtml(card) {
+                const age = boardAge(card.updatedAt, NOW);
+                const lastActiveFull = createdFull(card.updatedAt);
+                const ageTitle =
+                    age === "" ? "" : age === "now" ? `最后活动：${lastActiveFull} · 刚刚` : `最后活动：${lastActiveFull} · ${age} 前`;
+                const chips = [card.provider, card.project].filter(Boolean).slice(0, 2);
+                const visibleTags = (card.tags ?? []).slice(0, 3);
+                const hiddenTags = Math.max(0, (card.tags ?? []).length - visibleTags.length);
+                const status = card.status;
+                const chipHtml = chips
+                    .map((chip) => `<span class="session-overview-board-chip" title="${escapeHtml(chip)}">${escapeHtml(chip)}</span>`)
+                    .join("");
+                const tagHtml =
+                    visibleTags
+                        .map((tag) => `<span class="session-overview-board-chip is-tag" title="#${escapeHtml(tag)}">#${escapeHtml(tag)}</span>`)
+                        .join("") +
+                    (hiddenTags > 0
+                        ? `<span class="session-overview-board-chip is-tag-more" title="另有 ${hiddenTags} 个标签">+${hiddenTags}</span>`
+                        : "");
+                const statusHtml = status
+                    ? `<span class="session-overview-agent-status is-${status.state}">
+                           <span>${escapeHtml(status.label)}</span>
+                           ${status.age ? `<span class="session-overview-agent-status-age">${escapeHtml(status.age)}</span>` : ""}
+                       </span>`
+                    : `<span class="session-overview-board-chip">${escapeHtml(card.kindLabel ?? "")}</span>`;
+                const metrics = sessionMetricsHtml(card, { surface: "board" });
+
+                return `
+                <div class="session-overview-board-card" role="button" tabindex="0"
+                     title="${escapeHtml(card.title)}${card.preview ? `\n${escapeHtml(card.preview)}` : ""}">
+                    <span class="session-overview-board-card-head">
+                        <span class="session-overview-board-card-avatar">${card.avatar ?? "🤖"}</span>
+                        <span class="session-overview-board-card-title">${escapeHtml(card.title)}</span>
+                        ${age ? `<span class="session-overview-board-card-age" title="${ageTitle}" aria-label="${ageTitle}">${age}</span>` : ""}
+                        <span class="session-overview-board-card-actions">
+                            <button class="session-overview-board-card-action" title="Delete session">🗑</button>
+                            <button class="session-overview-board-card-action" title="Close block">✕</button>
+                        </span>
+                    </span>
+                    <span class="session-overview-board-card-meta">
+                        ${statusHtml}${chipHtml}${tagHtml}
+                    </span>
+                    ${card.preview ? `<span class="session-overview-board-card-preview">${escapeHtml(card.preview)}</span>` : ""}
+                    ${card.note ? `<span class="session-overview-board-card-note"><span class="session-overview-board-card-note-mark">✎</span>${escapeHtml(card.note)}</span>` : ""}
+                    <span class="session-overview-board-card-data">
+                        ${metrics}
+                        ${miniHtml(card.segments)}
+                    </span>
+                </div>`;
+            }
+
+            function columnHtml(column) {
+                const cards = column.cards.map(boardCardHtml).join("");
+                return `
+                <section class="session-overview-board-column" aria-label="${escapeHtml(column.title)}，${column.cards.length} 个会话">
+                    <h3 class="session-overview-board-column-head">
+                        <span class="session-overview-board-column-dot is-${column.tone}" aria-hidden="true"></span>
+                        <span class="session-overview-board-column-title">${escapeHtml(column.title)}</span>
+                        <span class="session-overview-board-column-count">${column.cards.length}</span>
+                    </h3>
+                    <div class="session-overview-board-cards">${cards}</div>
+                </section>`;
+            }
+
+            function rowHtml(card) {
+                const status = card.status;
+                const statusHtml = status
+                    ? `<span class="session-overview-agent-status is-${status.state}">
+                           <span>${escapeHtml(status.label)}</span>
+                           ${status.age ? `<span class="session-overview-agent-status-age">${escapeHtml(status.age)}</span>` : ""}
+                       </span>`
+                    : "";
+                return `
+                <div class="session-overview-block-row">
+                    <span class="session-overview-block-icon is-agent-brand">${card.avatar ?? "🤖"}</span>
+                    <span class="session-overview-block-text">
+                        <span class="session-overview-block-title">${escapeHtml(card.title)}</span>
+                        ${statusHtml}
+                    </span>
+                    <span class="session-overview-block-side">
+                        ${sessionMetricsHtml(card, { surface: "row" })}
+                    </span>
+                </div>`;
+            }
+
+            // ============ 数据（形状与真实 SessionSummary 一致） ============
+            const NOW = Date.now();
+            const M = 60 * 1000;
+            const H = 60 * M;
+            const D = 24 * H;
+
+            const seg = (state, ms) => ({ state, ms });
+
+            const cards = [
+                {
+                    column: "blocked",
+                    avatar: "🐞",
+                    title: "OpenCode 扫不到会话：schema 漂移",
+                    provider: "OpenCode",
+                    project: "snorkeling",
+                    tags: ["p0", "opencode"],
+                    preview: "provider.sessions 结构变了，scan 返回 0 条；需要对齐 v2 schema",
+                    status: { state: "blocked", label: "Blocked", age: "26m" },
+                    updatedAt: NOW - 26 * M,
+                    createdAt: NOW - 5 * D,
+                    messageCount: 42,
+                    size: 780 * 1024,
+                    segments: [seg("working", 14 * M), seg("idle", 3 * D), seg("working", 4 * M), seg("blocked", 26 * M)],
+                },
+                {
+                    column: "blocked",
+                    avatar: "⚠️",
+                    title: "Common Text 同步 401",
+                    provider: "Codex",
+                    project: "snorkeling",
+                    tags: ["sync"],
+                    preview: "token 热加载没生效，wsh CLI 报 unauthorized",
+                    status: { state: "error", label: "Error", age: "2h" },
+                    updatedAt: NOW - 2 * H,
+                    createdAt: NOW - 1 * D,
+                    messageCount: 12,
+                    size: 210 * 1024,
+                    segments: [seg("working", 4 * M), seg("unknown", 20 * H), seg("working", 2 * M), seg("blocked", 2 * H)],
+                },
+                {
+                    column: "working",
+                    avatar: "🤖",
+                    title: "Refactor overview board metrics",
+                    provider: "Claude",
+                    project: "snorkeling",
+                    tags: ["ui", "perf", "overview"],
+                    preview: "修 board 卡片在窄列下的统计信息缺失：补 msg / 体积 / 运行时长 / 创建时间",
+                    status: { state: "working", label: "Working", age: "12m" },
+                    updatedAt: NOW - 12 * M,
+                    createdAt: NOW - 3 * D - 4 * H,
+                    messageCount: 128,
+                    size: 2.4 * 1024 * 1024,
+                    live: true,
+                    segments: [
+                        seg("working", 22 * M),
+                        seg("idle", 2 * D),
+                        seg("working", 15 * M),
+                        seg("idle", 4 * H),
+                        seg("working", 12 * M),
+                    ],
+                },
+                {
+                    column: "working",
+                    avatar: "🧪",
+                    title: "AISessions 虚拟行稳定性",
+                    provider: "Codex",
+                    project: "snorkeling",
+                    tags: ["perf"],
+                    preview: "行高估算 + 滚动锚定：挂载动画导致测量抖动",
+                    status: { state: "working", label: "Working", age: "48m" },
+                    updatedAt: NOW - 48 * M,
+                    createdAt: NOW - 9 * D,
+                    messageCount: 356,
+                    size: 6.1 * 1024 * 1024,
+                    live: true,
+                    segments: [seg("working", 2 * H + 5 * M), seg("idle", 6 * D), seg("working", 48 * M)],
+                },
+                {
+                    column: "done",
+                    avatar: "✨",
+                    title: "Tab 悬浮卡 Notion 风格重设计",
+                    provider: "Claude",
+                    project: "snorkeling",
+                    tags: ["tab", "ui"],
+                    preview: "悬浮卡改 Notion property 布局，属性行左标签右值",
+                    note: "评审过：亮色下边框太重，已压到 1px 8% 透明",
+                    status: { state: "done", label: "Done", age: "3h" },
+                    updatedAt: NOW - 3 * H,
+                    createdAt: NOW - 2 * D,
+                    messageCount: 64,
+                    size: 1.1 * 1024 * 1024,
+                    segments: [seg("working", 18 * M), seg("idle", 1 * D), seg("working", 4 * M), seg("done", 3 * H)],
+                },
+                {
+                    column: "done",
+                    avatar: "🪄",
+                    title: "Move Block to Tab 菜单收口",
+                    provider: "Codex",
+                    project: "snorkeling",
+                    tags: ["tab"],
+                    preview: "菜单 4 条 → 1 条 + 弹窗内新建/双图标动作",
+                    status: { state: "done", label: "Done", age: "5h" },
+                    updatedAt: NOW - 5 * H,
+                    createdAt: NOW - 6 * H,
+                    messageCount: 8,
+                    size: 96 * 1024,
+                    segments: [seg("working", 3 * M), seg("idle", 2 * H), seg("done", 5 * H)],
+                },
+                {
+                    column: "idle",
+                    avatar: "🧭",
+                    title: "Tab 栏启动还原与溢出「更多」",
+                    provider: "Claude",
+                    project: "snorkeling",
+                    tags: [],
+                    preview: "启动时按 tab 顺序还原，溢出走三点图标",
+                    status: { state: "idle", label: "Idle", age: "1d" },
+                    updatedAt: NOW - 1 * D,
+                    createdAt: NOW - 12 * D,
+                    messageCount: 21,
+                    size: 340 * 1024,
+                    segments: [seg("working", 9 * M), seg("idle", 11 * D), seg("idle", 1 * D)],
+                },
+                {
+                    column: "stale",
+                    avatar: "📦",
+                    title: "WaveTerm 上游合并调研",
+                    provider: "Gemini",
+                    project: "wave",
+                    tags: ["upstream", "research"],
+                    preview: "上游 0.14 拆包结构差异，合并成本评估",
+                    status: { state: "stale", label: "Stale", age: "38d" },
+                    updatedAt: NOW - 38 * D,
+                    createdAt: NOW - 340 * D,
+                    messageCount: 412,
+                    size: 12 * 1024 * 1024,
+                    segments: [seg("working", 1 * H + 40 * M), seg("stale", 300 * D)],
+                },
+            ];
+
+            const columns = [
+                { key: "blocked", title: "待我处理", tone: "blocked" },
+                { key: "working", title: "进行中", tone: "working" },
+                { key: "done", title: "已完成", tone: "done" },
+                { key: "idle", title: "空闲", tone: "idle" },
+                { key: "stale", title: "陈旧", tone: "stale" },
+            ].map((column) => ({
+                ...column,
+                cards: cards.filter((card) => card.column === column.key),
+            }));
+
+            document.getElementById("board").innerHTML = columns.map(columnHtml).join("");
+
+            // 列表行：取 4 张不同列的卡
+            document.getElementById("rows").innerHTML = [cards[2], cards[3], cards[4], cards[7]].map(rowHtml).join("");
+
+            // ============ 边界态 ============
+            const edgeCards = [
+                {
+                    avatar: "🖥",
+                    title: "非 agent 块：Terminal",
+                    kindLabel: "Terminal",
+                    preview: "summary 不存在 —— 整条度量轨不渲染",
+                    updatedAt: 0,
+                    createdAt: 0,
+                    hasSession: false,
+                    segments: [],
+                },
+                {
+                    avatar: "🤖",
+                    title: "summary 未回包",
+                    provider: "Claude",
+                    project: "snorkeling",
+                    preview: "四格全缺 → 度量轨整条隐藏，卡片高度与有数据时一致（不留空行）",
+                    status: { state: "idle", label: "Idle", age: "" },
+                    updatedAt: NOW - 4 * M,
+                    createdAt: 0,
+                    messageCount: 0,
+                    size: 0,
+                    segments: [],
+                },
+                {
+                    avatar: "🐋",
+                    title: "巨型数字：12345 msgs / 1.2 GB",
+                    provider: "Codex",
+                    project: "snorkeling",
+                    tags: ["long-running"],
+                    preview: "数字走 k/M 缩写 + tabular-nums + 单行截断，绝不换行",
+                    status: { state: "working", label: "Working", age: "1m" },
+                    updatedAt: NOW - 1 * M,
+                    createdAt: NOW - 120 * D,
+                    messageCount: 12345,
+                    size: 1.2 * 1024 * 1024 * 1024,
+                    live: true,
+                    segments: [seg("working", 30 * H), seg("idle", 90 * D), seg("working", 1 * M)],
+                },
+                {
+                    avatar: "⚡",
+                    title: "极年轻：3 分钟前刚建",
+                    provider: "Claude",
+                    project: "snorkeling",
+                    preview: "runtime < 1m 显示 <1m；创建时间是今天 → 显示 MM-DD 不显示时间",
+                    status: { state: "working", label: "Working", age: "now" },
+                    updatedAt: NOW - 20 * 1000,
+                    createdAt: NOW - 3 * M,
+                    messageCount: 1,
+                    size: 12 * 1024,
+                    live: true,
+                    segments: [seg("working", 40 * 1000), seg("idle", 60 * 1000), seg("working", 20 * 1000)],
+                },
+            ];
+
+            document.getElementById("edge").innerHTML = [
+                { title: "边界态", tone: "idle", cards: edgeCards },
+            ]
+                .map(columnHtml)
+                .join("");
+
+            // ============ 图例 ============
+            const legend = [
+                {
+                    title: "消息数 · 热力格",
+                    demo: [1, 2, 3, 4, 5]
+                        .map(
+                            (level) =>
+                                `<span class="session-metric-heat" data-level="${level}"><i style="height:${level * 20}%"></i></span>`
+                        )
+                        .join(""),
+                    body: "1→5 档对应 [5,20,100,500] 条。填充高度 + 透明度双编码，灰阶/色弱下仍可比较；精确值在 title。",
+                },
+                {
+                    title: "体积 · 热力格",
+                    demo: [1, 2, 3, 4, 5]
+                        .map(
+                            (level) =>
+                                `<span class="session-metric-heat" data-level="${level}"><i style="height:${level * 20}%"></i></span>`
+                        )
+                        .join(""),
+                    body: "档位 [100K,460K,2M,6M]（aisessions 实测分布：中位 122KB、p90 1.9MB、p99 14MB）。文本走 formatFileSize。",
+                },
+                {
+                    title: "活跃跨度 · 档位条",
+                    demo: `<span class="session-metric"><span class="session-metric-bar"><i style="width:20%"></i></span><span class="session-metric-value"><span class="session-metric-mark">↔</span>3m</span></span>
+                           <span class="session-metric"><span class="session-metric-bar"><i style="width:60%"></i></span><span class="session-metric-value"><span class="session-metric-mark">↔</span>37m</span></span>
+                           <span class="session-metric"><span class="session-metric-bar"><i style="width:100%"></i></span><span class="session-metric-value"><span class="session-metric-mark">↔</span>1d</span></span>`,
+                    body: "`↔` = 从创建到最后一次活动跨了多久（live 会话走到现在）。填充按档位 [10m,1h,8h,1d] → 5 档 × 20%，**不是比例条**（比例对老会话恒接近满格，没有信息量）。",
+                },
+                {
+                    title: "创建时间 · 纯文本",
+                    demo: `<span style="font-size:10px;color:var(--sub);font-variant-numeric:tabular-nums">10-28 · 25-12-11</span>`,
+                    body: "同年 MM-DD、跨年 YY-MM-DD。只给日期，精确到秒的时间进 title 与 aria-label —— 窄列里时间戳是噪声。",
+                },
+            ];
+
+            document.getElementById("legend").innerHTML = legend
+                .map(
+                    (item) => `
+                <div class="legend-item">
+                    <h3>${item.title}</h3>
+                    <div class="legend-demo">${item.demo}</div>
+                    <p>${item.body}</p>
+                </div>`
+                )
+                .join("");
+
+            // ============ 控件 ============
+            document.querySelectorAll("[data-control]").forEach((group) => {
+                const control = group.dataset.control;
+                group.addEventListener("click", (event) => {
+                    const button = event.target.closest("button");
+                    if (!button) return;
+                    group.querySelectorAll("button").forEach((item) => item.classList.toggle("is-active", item === button));
+                    if (control === "theme") {
+                        document.body.dataset.theme = button.dataset.value;
+                    } else if (control === "variant") {
+                        document.body.dataset.variant = button.dataset.value;
+                    } else if (control === "colw") {
+                        currentColw = Number(button.dataset.value);
+                        document.body.style.setProperty("--colw", `${currentColw}px`);
+                    }
+                    measureCardHeights();
+                });
+            });
+
+            // ============ 卡高实测（离屏探针 + 逐变体量高） ============
+            let currentColw = 220;
+            const probeEl = document.getElementById("probe");
+            probeEl.innerHTML = boardCardHtml(cards[2]);
+
+            const HeightRows = [
+                { key: "none", label: "今天（无度量轨）" },
+                { key: "a", label: "A 度量轨" },
+                { key: "b", label: "B 2×2 格" },
+                { key: "c", label: "C 内联底轨" },
+            ];
+
+            function measureCardHeights() {
+                const body = document.body;
+                const saved = body.dataset.variant;
+                const card = probeEl.querySelector(".session-overview-board-card");
+                if (card == null) return;
+                probeEl.style.width = `${currentColw}px`;
+                const heights = {};
+                for (const row of HeightRows) {
+                    body.classList.toggle("is-measuring-none", row.key === "none");
+                    body.dataset.variant = row.key === "none" ? saved : row.key;
+                    card.getBoundingClientRect(); // 强制同步布局，拿到真实值
+                    heights[row.key] = card.getBoundingClientRect().height;
+                }
+                body.classList.remove("is-measuring-none");
+                body.dataset.variant = saved;
+
+                const base = heights.none;
+                document.getElementById("heightTable").innerHTML = HeightRows.map((row) => {
+                    const height = heights[row.key];
+                    const delta = height - base;
+                    const deltaText =
+                        row.key === "none" ? "基准" : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} px`;
+                    const tone =
+                        row.key === "b" ? "var(--blocked)" : row.key === "none" ? "var(--sub)" : "var(--working)";
+                    return `<tr>
+                        <td>${row.label}</td>
+                        <td style="font-variant-numeric: tabular-nums">${height.toFixed(1)} px</td>
+                        <td style="font-variant-numeric: tabular-nums; color: ${tone}">${deltaText}</td>
+                    </tr>`;
+                }).join("");
+            }
+
+            measureCardHeights();
+            window.addEventListener("resize", measureCardHeights);
+        </script>
+    </body>
+</html>

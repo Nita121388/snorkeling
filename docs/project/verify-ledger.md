@@ -108,3 +108,5 @@
 | 2026-11-08 08:09 | agent-card-seen | ❌ fatal（未跑） | attach | `20261108T08082-agent-card-seen` | 0016e987 |
 | 2026-11-08 | acs-p02（新 area，非 verify 台） | ◑ 7 过 / 1 环境阻塞（AC7 FE 渲染）；syncState 误报已修 | CDP RpcApi + go test | `verify-runs/2026-11-08-acs-p02.md` | 7866de53 |
 | 2026-11-09 | commontext-sync-watermark（无 verify 台） | ◑ L1：6/6 判据绿（go test 6 包 · watermark 5 用例 · engine 5 用例 · vitest commontext 133 passed · tsc 47=基线 · go vet 干净）；真机双设备联调 skipped（用户自验） | loop prove | `loop/LEDGER-2026-11.jsonl` | 见本次提交 |
+| 2026-11-09 | overview board（无状态空标签） | ◑ L1：vitest 64 passed / 0 failed（新增 8 例 = 纯函数 4 + jsdom DOM 4）· loop prove 3/3 绿 · tsc 47=基线（改动文件 0 error）· 红证→绿证同一用例；真机 CDP/Electron **skipped（用户自验）**，断言 `board-no-empty-view-label` + `board-view-labels-preserved` 已留在 verify 台 | vitest + loop prove | `loop/red/N-1109-overview-board-empty-status-label.txt` | 未提交（G7 待签） |
+| 2026-11-09 | overview board（chip A 美化） | ◐ L1：loop prove 3/3 绿（session-overview suite 全绿 · 静态探针 · 原型入索引）；原型 before/after 截图实测 `54.1×16.6` → `62.6×16.5` px（高度差 0.1px）；真机观感 **skipped（用户自验）** | loop prove + Edge headless 截图 | `verify-runs/proto-shots/board-chip-polish-light.png` | 未提交（G1/G3/G4/G7 待签） |

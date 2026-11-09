@@ -8,7 +8,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AgentStatusChip } from "./agent-status-chip";
 import {
     formatBoardAge,
+    formatBoardAgeTitle,
     groupOverviewCards,
+    resolveBoardMetaLabel,
     resolveBoardTagChips,
     type OverviewBoardAvatar,
     type OverviewBoardCard,
@@ -24,6 +26,7 @@ import {
     type BoardSnapshot,
 } from "./overview-board-motion";
 import type { OverviewTimelineSegment } from "./overview-timeline-model";
+import { SessionMetrics } from "./session-metrics";
 import "./session-overview.scss";
 
 /** 卡片跨列动效的参数表（与任务 design.md 的参数表同源）。 */
@@ -118,7 +121,7 @@ function BoardAvatar({ avatar }: { avatar: OverviewBoardAvatar }) {
     );
 }
 
-function BoardCard({
+export function BoardCard({
     card,
     status,
     columnKey,
@@ -147,6 +150,7 @@ function BoardCard({
     miniSegments?: readonly OverviewTimelineSegment[];
 }) {
     const age = formatBoardAge(card.updatedAt, now);
+    const ageTitle = formatBoardAgeTitle(card.updatedAt, now);
     const readContext = useAgentReadContext(card.blockId, status);
     const unread = readContext.read === "unread";
     const chips = [card.providerLabel, card.projectName || card.tabName].filter((chip) => chip !== "");
@@ -155,6 +159,9 @@ function BoardCard({
     // Chip 内部是 <button>，卡片容器不能再是 <button>（嵌套按钮是非法 HTML，点击会串）。
     const openCard = () => onOpenCard(card);
     const tagChips = resolveBoardTagChips(card.tags, 3);
+    // 状态 chip 与视图名标签各按自己的条件渲染；两者都缺席时 meta 行不留下空胶囊。
+    const hasStatusChip = status != null && onAckStatus != null;
+    const metaLabel = resolveBoardMetaLabel({ hasStatusChip, kindLabel: card.kindLabel });
     const isDeletingSession = deletingSessionId !== "" && deletingSessionId === card.sessionId;
     const showDeleteSession = onDeleteSession != null && card.sessionId !== "";
     const stopCardEvent = (event: React.SyntheticEvent) => {
@@ -189,7 +196,11 @@ function BoardCard({
             <span className="session-overview-board-card-head" onClick={openCardFromTarget}>
                 <BoardAvatar avatar={card.avatar} />
                 <span className="session-overview-board-card-title">{card.title}</span>
-                {age ? <span className="session-overview-board-card-age">{age}</span> : null}
+                {age ? (
+                    <span className="session-overview-board-card-age" title={ageTitle} aria-label={ageTitle}>
+                        {age}
+                    </span>
+                ) : null}
                 <span
                     className="session-overview-board-card-actions"
                     onClick={stopCardEvent}
@@ -225,7 +236,7 @@ function BoardCard({
                 </span>
             </span>
             <span className="session-overview-board-card-meta">
-                {status != null && onAckStatus != null ? (
+                {hasStatusChip ? (
                     <AgentStatusChip
                         variant="board"
                         status={status}
@@ -234,9 +245,10 @@ function BoardCard({
                         unread={unread}
                         onAck={onAckStatus}
                     />
-                ) : (
-                    <span className="session-overview-board-card-view-label">{card.kindLabel}</span>
-                )}
+                ) : null}
+                {metaLabel !== "" ? (
+                    <span className="session-overview-board-card-view-label">{metaLabel}</span>
+                ) : null}
                 {visibleChips.map((chip, index) => (
                     <span key={`${chip}-${index}`} className="session-overview-board-chip" title={chip}>
                         {chip}
@@ -273,23 +285,36 @@ function BoardCard({
                     {card.note}
                 </span>
             ) : null}
-            {miniSegments != null && miniSegments.length > 0 ? (
-                // 迷你时间线：一段 = 一个真实状态区间（宽度按毫秒比例），
-                // 3px 高、2px 圆角、段间 1px 缝 —— 与甘特图同一套配色 token。
-                <span
-                    className="session-overview-board-card-mini"
-                    data-mini-segments={miniSegments.length}
-                    aria-hidden="true"
-                >
-                    {miniSegments.map((segment, index) => (
-                        <span
-                            key={`${segment.state}-${index}`}
-                            className={cn("session-overview-board-card-mini-seg", `is-${segment.state}`)}
-                            style={{ flexGrow: Math.max(segment.toMs - segment.fromMs, 1) }}
-                        />
-                    ))}
-                </span>
-            ) : null}
+            {/* 度量区：4 格度量轨 + 既有 mini timeline。两行共用同一容器，
+                `gap` 只在这里生效一次，卡高不因抽屉变化而漂。 */}
+            <span className="session-overview-board-card-data">
+                <SessionMetrics
+                    surface="board"
+                    messageCount={card.messageCount}
+                    size={card.size}
+                    createdAt={card.createdAt}
+                    updatedAt={card.updatedAt}
+                    live={card.live}
+                    now={now}
+                />
+                {miniSegments != null && miniSegments.length > 0 ? (
+                    // 迷你时间线：一段 = 一个真实状态区间（宽度按毫秒比例），
+                    // 3px 高、2px 圆角、段间 1px 缝 —— 与甘特图同一套配色 token。
+                    <span
+                        className="session-overview-board-card-mini"
+                        data-mini-segments={miniSegments.length}
+                        aria-hidden="true"
+                    >
+                        {miniSegments.map((segment, index) => (
+                            <span
+                                key={`${segment.state}-${index}`}
+                                className={cn("session-overview-board-card-mini-seg", `is-${segment.state}`)}
+                                style={{ flexGrow: Math.max(segment.toMs - segment.fromMs, 1) }}
+                            />
+                        ))}
+                    </span>
+                ) : null}
+            </span>
         </div>
     );
 }

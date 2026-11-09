@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overview 看板 chip 美化 · A 方案 before/after</title>
+<style>
+    /* ---- 真实主题 token（取自 frontend/app/theme.scss 对应主题块） ---- */
+    body[data-theme="dark"] {
+        --main-bg-color: rgb(34, 34, 34);
+        --main-text-color: #f7f7f7;
+        --secondary-text-color: rgb(195, 200, 194);
+        --border-color: rgba(255, 255, 255, 0.16);
+        --surface-color: #2a2a2a;
+        --page-bg: #1b1b1b;
+        --muted-border: rgba(255, 255, 255, 0.1);
+    }
+    body[data-theme="light"] {
+        --main-bg-color: #f2eee5;
+        --main-text-color: #3a3227;
+        --secondary-text-color: #635c52;
+        --border-color: #dcd6c9;
+        --surface-color: #faf8f2;
+        --page-bg: #e9e4d9;
+        --muted-border: rgba(0, 0, 0, 0.1);
+    }
+    body[data-theme="mono"] {
+        --main-bg-color: #f7f6f3;
+        --main-text-color: #1c1a16;
+        --secondary-text-color: #565148;
+        --border-color: rgba(0, 0, 0, 0.14);
+        --surface-color: #ffffff;
+        --page-bg: #ececea;
+        --muted-border: rgba(0, 0, 0, 0.1);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+        margin: 0;
+        padding: 24px 28px 40px;
+        background: var(--page-bg);
+        color: var(--main-text-color);
+        font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+        transition: background 0.15s, color 0.15s;
+    }
+    h1 { margin: 0 0 4px; font-size: 17px; font-weight: 650; letter-spacing: 0.2px; }
+    .sub { margin: 0 0 18px; color: var(--secondary-text-color); font-size: 12px; }
+
+    .controls {
+        display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+        padding: 10px 12px; margin-bottom: 22px;
+        border: 1px solid var(--muted-border); border-radius: 10px;
+        background: color-mix(in srgb, var(--surface-color) 70%, transparent);
+    }
+    .controls .group { display: flex; align-items: center; gap: 6px; }
+    .controls .label { color: var(--secondary-text-color); font-size: 11px; margin-right: 2px; }
+    button {
+        appearance: none; cursor: pointer;
+        padding: 4px 10px; border-radius: 999px;
+        border: 1px solid var(--muted-border);
+        background: transparent; color: var(--main-text-color);
+        font: inherit; font-size: 11px;
+    }
+    button[aria-pressed="true"] {
+        background: color-mix(in srgb, var(--main-text-color) 12%, transparent);
+        border-color: color-mix(in srgb, var(--main-text-color) 24%, transparent);
+        font-weight: 600;
+    }
+    .measure { margin-left: auto; color: var(--secondary-text-color); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+    .stage { display: grid; grid-template-columns: repeat(2, minmax(220px, 280px)); gap: 20px; align-items: start; }
+    body[data-view="before"] .panel[data-panel="after"],
+    body[data-view="after"] .panel[data-panel="before"] { display: none; }
+    body[data-view="before"] .stage,
+    body[data-view="after"] .stage { grid-template-columns: minmax(220px, 280px); }
+
+    .panel > .panel-title {
+        display: flex; align-items: center; gap: 8px;
+        margin: 0 0 8px; font-size: 11px; font-weight: 650;
+        color: var(--secondary-text-color); text-transform: uppercase; letter-spacing: 0.6px;
+    }
+    .panel > .panel-title .tag { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--muted-border); font-size: 10px; }
+    body[data-view="before"] .panel[data-panel="before"] .panel-title .tag,
+    body[data-view="after"] .panel[data-panel="after"] .panel-title .tag { color: #fff; background: #c2603b; border-color: #c2603b; }
+
+    /* ---- 真实看板卡的近似结构（session-overview-board-card） ---- */
+    .board-card {
+        display: flex; flex-direction: column; gap: 6px;
+        padding: 10px 10px 9px;
+        border: 1px solid var(--muted-border); border-radius: 8px;
+        background: var(--surface-color);
+        box-shadow: 0 1px 0 color-mix(in srgb, var(--main-text-color) 4%, transparent);
+    }
+    .card-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .avatar {
+        flex: 0 0 auto; display: grid; place-items: center;
+        width: 18px; height: 18px; border-radius: 5px;
+        background: color-mix(in srgb, var(--main-text-color) 9%, transparent);
+        font-size: 11px;
+    }
+    .card-title {
+        flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        font-size: 12px; font-weight: 650;
+    }
+    .card-age { flex: 0 0 auto; color: var(--secondary-text-color); font-size: 9px; font-variant-numeric: tabular-nums; }
+
+    /* meta 行：真实 DOM 是 .session-overview-board-card-meta 下并列 chip */
+    .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+
+    /* ---- BEFORE：当前 scss 原样 ---- */
+    .chip {
+        max-width: 120px;
+        overflow: hidden;
+        padding: 1px 6px;
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        background: rgb(from var(--main-text-color) r g b / 0.035);
+        color: var(--secondary-text-color);
+        font-size: 9px;
+        font-weight: 600;
+        line-height: 1.4;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .chip.is-tag {
+        max-width: 84px;
+        border-color: transparent;
+        background: rgb(from var(--main-text-color) r g b / 0.075);
+        color: var(--main-text-color);
+        font-weight: 500;
+        opacity: 0.82;
+    }
+    .chip.is-tag-more {
+        flex: 0 0 auto;
+        border-color: transparent;
+        background: transparent;
+        color: var(--secondary-text-color);
+        font-weight: 600;
+        padding-left: 2px;
+        padding-right: 2px;
+    }
+
+    /* ---- AFTER：A 方案覆盖 ---- */
+    .panel[data-panel="after"] .chip {
+        padding: 1px 8px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        color: rgb(from var(--main-text-color) r g b / 0.78);
+        font-size: 10px;
+        line-height: 1.25;
+    }
+    .panel[data-panel="after"] .chip.is-tag {
+        border-color: transparent;
+        color: var(--main-text-color);
+    }
+
+    /* 状态 chip（仅作同行参照，两版一致，不由本包修改） */
+    .status-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        height: 16px; padding: 0 5px;
+        border-radius: 999px;
+        background: color-mix(in srgb, #c2603b 14%, transparent);
+        color: #c2603b;
+        font-size: 9px; font-weight: 600;
+        white-space: nowrap;
+    }
+    .status-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+    .card-preview {
+        color: var(--secondary-text-color); font-size: 11px; line-height: 1.4;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .card-note {
+        display: flex; align-items: center; gap: 4px; min-width: 0;
+        color: var(--secondary-text-color); font-size: 10px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    .legend { margin-top: 22px; max-width: 720px; color: var(--secondary-text-color); font-size: 11px; line-height: 1.7; }
+    .legend code { color: var(--main-text-color); font-family: var(--mono, "Hack", monospace); font-size: 10px; }
+</style>
+</head>
+<body data-theme="light" data-view="compare">
+    <h1>Overview 看板 chip 美化 · A 方案</h1>
+    <p class="sub">目标节点：<code>.session-overview-board-chip</code>（provider / 项目 chip，例如 <code>title="Obsidian"</code>）。BEFORE 是当前 scss 原样，AFTER 是 A 方案。</p>
+
+    <div class="controls">
+        <div class="group">
+            <span class="label">主题</span>
+            <button data-theme-btn="dark">暗</button>
+            <button data-theme-btn="light" aria-pressed="true">亮</button>
+            <button data-theme-btn="mono">单色</button>
+        </div>
+        <div class="group">
+            <span class="label">视图</span>
+            <button data-view-btn="compare" aria-pressed="true">并排</button>
+            <button data-view-btn="before">仅 BEFORE</button>
+            <button data-view-btn="after">仅 AFTER</button>
+        </div>
+        <span class="measure" id="measure">测量中…</span>
+    </div>
+
+    <div class="stage">
+        <section class="panel" data-panel="before">
+            <h2 class="panel-title">Before <span class="tag">当前 scss</span></h2>
+            <div class="board-card">
+                <div class="card-head">
+                    <span class="avatar">🤖</span>
+                    <span class="card-title">Obsidian 同步水位与墓碑</span>
+                    <span class="card-age">12m</span>
+                </div>
+                <div class="card-meta">
+                    <span class="status-chip"><span class="dot"></span>Working 12m</span>
+                    <span class="chip" title="Obsidian">Obsidian</span>
+                    <span class="chip is-tag" title="#sync">#sync</span>
+                    <span class="chip is-tag" title="#commontext">#commontext</span>
+                    <span class="chip is-tag-more" title="另有 2 个标签">+2</span>
+                </div>
+                <div class="card-preview">把 Common Text 的条目级水位接到云同步：区分已同步 / 待上传，墓碑只做增量。</div>
+                <div class="card-note">✎ 等 wsh CLI RPC 接完再看</div>
+            </div>
+        </section>
+
+        <section class="panel" data-panel="after">
+            <h2 class="panel-title">After <span class="tag">A 方案</span></h2>
+            <div class="board-card">
+                <div class="card-head">
+                    <span class="avatar">🤖</span>
+                    <span class="card-title">Obsidian 同步水位与墓碑</span>
+                    <span class="card-age">12m</span>
+                </div>
+                <div class="card-meta">
+                    <span class="status-chip"><span class="dot"></span>Working 12m</span>
+                    <span class="chip" title="Obsidian">Obsidian</span>
+                    <span class="chip is-tag" title="#sync">#sync</span>
+                    <span class="chip is-tag" title="#commontext">#commontext</span>
+                    <span class="chip is-tag-more" title="另有 2 个标签">+2</span>
+                </div>
+                <div class="card-preview">把 Common Text 的条目级水位接到云同步：区分已同步 / 待上传，墓碑只做增量。</div>
+                <div class="card-note">✎ 等 wsh CLI RPC 接完再看</div>
+            </div>
+        </section>
+    </div>
+
+    <div class="legend">
+        <div><strong>A 改了什么</strong>：<code>border</code> 改透明（保留盒子尺寸）、<code>border-radius: 5px → 999px</code>、
+            <code>font-size: 9px → 10px</code>、<code>line-height: 1.4 → 1.25</code>（抵掉字号增高）、
+            <code>padding: 1px 6px → 1px 8px</code>、<code>color</code> 提到 main-text 的 78%。</div>
+        <div><strong>没动</strong>：<code>is-tag</code> / <code>is-tag-more</code> 的底色与透明度、状态 chip、DOM 结构、文案。</div>
+        <div><strong>为什么竖向 padding 不动</strong>：让 chip 总高与今天基本一致（≈16.5px vs 16.6px），
+            避免看板卡高度漂移、220px 窄列换行。</div>
+    </div>
+
+<script>
+    const body = document.body;
+    const measureEl = document.getElementById("measure");
+
+    function syncTheme(theme) {
+        body.dataset.theme = theme;
+        document.querySelectorAll("[data-theme-btn]").forEach((b) => {
+            b.setAttribute("aria-pressed", String(b.dataset.themeBtn === theme));
+        });
+        measure();
+    }
+
+    function syncView(view) {
+        body.dataset.view = view;
+        document.querySelectorAll("[data-view-btn]").forEach((b) => {
+            b.setAttribute("aria-pressed", String(b.dataset.viewBtn === view));
+        });
+        measure();
+    }
+
+    function measure() {
+        const before = document.querySelector('[data-panel="before"] .chip[title="Obsidian"]');
+        const after = document.querySelector('[data-panel="after"] .chip[title="Obsidian"]');
+        if (!before || !after) return;
+        const b = before.getBoundingClientRect();
+        const a = after.getBoundingClientRect();
+        const fmt = (n) => n.toFixed(1);
+        measureEl.textContent = `Obsidian chip：BEFORE ${fmt(b.width)}×${fmt(b.height)} · AFTER ${fmt(a.width)}×${fmt(a.height)} px`;
+    }
+
+    document.querySelectorAll("[data-theme-btn]").forEach((btn) => {
+        btn.addEventListener("click", () => syncTheme(btn.dataset.themeBtn));
+    });
+    document.querySelectorAll("[data-view-btn]").forEach((btn) => {
+        btn.addEventListener("click", () => syncView(btn.dataset.viewBtn));
+    });
+    window.addEventListener("resize", measure);
+    measure();
+</script>
+</body>
+</html>

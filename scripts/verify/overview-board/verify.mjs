@@ -57,6 +57,12 @@ const COUNTS = `(() => {
         cards: cards.length,
         avatars: cards.filter((c) => c.querySelector(".session-overview-board-card-avatar") != null).length,
         statusChips: cards.filter((c) => c.querySelector(".session-overview-agent-status") != null).length,
+        // 无状态 agent 卡不应留下带边框的空 view-label 胶囊（2026-11-09 nita 报）。
+        viewLabels: document.querySelectorAll(".session-overview-board-card-view-label").length,
+        nonAgentCards: cards.filter((c) => c.getAttribute("data-agent-like") !== "true").length,
+        emptyViewLabels: [...document.querySelectorAll(".session-overview-board-card-view-label")].filter(
+            (e) => (e.textContent || "").trim() === ""
+        ).length,
         agentCards: agentCards.length,
         terminalAgentTitles: agentCards
             .map((c) => (c.querySelector(".session-overview-board-card-title")?.textContent || "").trim())
@@ -197,6 +203,16 @@ async function main() {
       `空列占位=${st.emptyColumns} cards=${st.cards}`
     );
     check("board-cards-present", st.cards > 0, `cards=${st.cards}`);
+    check(
+      "board-no-empty-view-label",
+      st.emptyViewLabels === 0,
+      `空状态标签=${st.emptyViewLabels} 标签总数=${st.viewLabels}（无状态卡不应渲染空胶囊）`
+    );
+    check(
+      "board-view-labels-preserved",
+      st.nonAgentCards === 0 || st.viewLabels >= 1,
+      `非 agent 卡=${st.nonAgentCards} 标签数=${st.viewLabels}（有普通块卡时视图名标签不能消失）`
+    );
     check("board-hides-list-rows", st.rows === 0, `rows=${st.rows}（看板视图不应同时渲染列表行）`);
     check("toggle-pressed", st.togglePressed === "true", `aria-pressed=${st.togglePressed}`);
 
@@ -806,6 +822,216 @@ async function main() {
         )
         .catch(() => false);
       await new Promise((r) => setTimeout(r, 1200));
+    }
+
+    // ── 阶段 4：度量轨（消息数 / 体积 / 活跃跨度 / 创建日期）──
+    //
+    // 干净 profile 里没有 agent 块 = 没有 SessionSummary = 度量轨无从渲染。
+    // 这里从**真实** aisessions 索引里挑一条有数据的会话，把它的 id 挂到一个 term 块上，
+    // 让 Overview 走正常路径（Summary RPC）加载 summary，再断言四个度量格的渲染契约 ——
+    // 不是手搭 DOM，而是走真实数据链路。
+    const metricSeed = await client.evaluate(`(async () => {
+        try {
+            const services = await import("/frontend/app/store/services.ts");
+            const globalMod = await import("/frontend/app/store/global.ts");
+            const list = await services.AISessionsService.List({ limit: 40 });
+            const sessions = (list?.sessions ?? []).filter(
+                (s) => s != null && s.id && (s.messageCount ?? 0) > 0 && (s.size ?? 0) > 0 && (s.createdAt ?? 0) > 0
+            );
+            if (sessions.length === 0) return { ok: false, err: "本机 aisessions 索引里没有带 messageCount/size 的会话" };
+            const picked = sessions[0];
+            const blockId = await globalMod.createBlock(
+                {
+                    meta: {
+                        view: "term",
+                        "agent:provider": picked.source,
+                        "agent:sessionid": picked.id,
+                        "cmd:cwd": picked.projectPath ?? "",
+                    },
+                },
+                false,
+                false
+            );
+            return {
+                ok: true,
+                blockId,
+                messageCount: picked.messageCount ?? 0,
+                sizeBytes: picked.size ?? 0,
+                hasLive: picked.live === true,
+            };
+        } catch (err) {
+            return { ok: false, err: String(err && err.message ? err.message : err) };
+        }
+    })()`);
+
+    if (metricSeed?.ok === true) {
+      await client.evaluate(clickView("board"));
+      // summary 走 RPC + 缓存，等它落到卡片上（轮询而不是固定 sleep）。
+      const metrics = await (async () => {
+        const deadline = Date.now() + 25000;
+        let last = null;
+        while (Date.now() < deadline) {
+          last = await client
+            .evaluate(`(() => {
+                const blockId = ${JSON.stringify(metricSeed.blockId)};
+                const card = [...document.querySelectorAll(".session-overview-board-card")].find(
+                    (c) => c.getAttribute("data-board-block-id") === blockId
+                );
+                if (card == null) return { found: false };
+                const rail = card.querySelector(".session-metrics");
+                if (rail == null) return { found: true, railPresent: false };
+                const cells = [...rail.querySelectorAll(".session-metric")];
+                const byMetric = {};
+                for (const cell of cells) {
+                    byMetric[cell.getAttribute("data-metric") ?? "?"] = (cell.textContent || "").trim();
+                }
+                const cardBox = card.getBoundingClientRect();
+                const age = card.querySelector(".session-overview-board-card-age");
+                return {
+                    found: true,
+                    railPresent: true,
+                    count: Number(rail.getAttribute("data-metrics-count") ?? -1),
+                    cells: cells.length,
+                    byMetric,
+                    spanMark: (card.querySelector('[data-metric="span"] .session-metric-mark')?.textContent || "").trim(),
+                    spanTitle: card.querySelector('[data-metric="span"]')?.getAttribute("title") ?? "",
+                    sizeText: (card.querySelector('[data-metric="size"] .session-metric-value')?.textContent || "").trim(),
+                    msgText: (card.querySelector('[data-metric="msg"] .session-metric-value')?.textContent || "").trim(),
+                    createdText: (card.querySelector('[data-metric="created"] .session-metric-value')?.textContent || "").trim(),
+                    createdTitle: card.querySelector('[data-metric="created"]')?.getAttribute("title") ?? "",
+                    overflow: rail.scrollWidth - rail.clientWidth,
+                    railWidth: Math.round(rail.getBoundingClientRect().width),
+                    cardWidth: Math.round(cardBox.width),
+                    ageText: (age?.textContent || "").trim(),
+                    ageTitle: age?.getAttribute("title") ?? "",
+                    ageAria: age?.getAttribute("aria-label") ?? "",
+                    emptyRails: [...document.querySelectorAll(".session-metrics")].filter(
+                        (r) => r.querySelectorAll(".session-metric").length === 0
+                    ).length,
+                };
+            })()`)
+            .catch(() => null);
+          if (last != null && last.railPresent === true) break;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        return last;
+      })();
+
+      if (metrics?.railPresent === true) {
+        const expectedMsg =
+          metricSeed.messageCount >= 10000
+            ? `${(metricSeed.messageCount / 1000).toFixed(1)}k`
+            : String(metricSeed.messageCount);
+        check(
+          "metrics-rail-renders",
+          metrics.cells >= 3,
+          `cells=${metrics.cells} keys=${JSON.stringify(Object.keys(metrics.byMetric))} cardW=${metrics.cardWidth} railW=${metrics.railWidth}`
+        );
+        check(
+          "metrics-count-matches-cells",
+          metrics.count === metrics.cells,
+          `data-metrics-count=${metrics.count} cells=${metrics.cells}`
+        );
+        check(
+          "metrics-message-text",
+          metrics.msgText === expectedMsg,
+          `msg=${metrics.msgText} expected=${expectedMsg}（summary.messageCount=${metricSeed.messageCount}）`
+        );
+        check(
+          "metrics-size-text",
+          /^[0-9]+(\.[0-9])?(B|KB|MB|GB)$/.test(metrics.sizeText),
+          `size=${metrics.sizeText}（去空格单位，bytes=${metricSeed.sizeBytes}）`
+        );
+        check("metrics-span-mark", metrics.spanMark === "↔", `mark=${metrics.spanMark}`);
+        check(
+          "metrics-span-title",
+          /^活跃跨度 .+：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} → /.test(metrics.spanTitle),
+          `title=${metrics.spanTitle}`
+        );
+        check(
+          "metrics-created-format",
+          /^(\d{4}-)?\d{2}-\d{2}$/.test(metrics.createdText) && /^创建：\d{4}-\d{2}-\d{2}/.test(metrics.createdTitle),
+          `text=${metrics.createdText} title=${metrics.createdTitle}`
+        );
+        check(
+          "metrics-no-wrap",
+          metrics.overflow <= 1,
+          `scrollWidth-clientWidth=${metrics.overflow}（220px 列宽下不得换行）`
+        );
+        check("metrics-no-empty-rail", metrics.emptyRails === 0, `空白度量轨=${metrics.emptyRails}（缺数据应整条不渲染）`);
+        const ageTitleOk = /最后活动：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · (.+前|刚刚)$/.test(
+          metrics.ageTitle
+        );
+        check(
+          "metrics-age-self-explaining",
+          ageTitleOk && metrics.ageAria === metrics.ageTitle,
+          `age=${metrics.ageText} title=${metrics.ageTitle}`
+        );
+
+        // 列表行（surface="row"）：同一个组件、同一份数字。
+        await client.evaluate(clickView("list"));
+        await new Promise((r) => setTimeout(r, 1200));
+        const rowMetrics = await client.evaluate(`(() => {
+            const rails = [...document.querySelectorAll(".session-metrics.is-row")];
+            const rails2 = rails.map((r) => ({
+                count: Number(r.getAttribute("data-metrics-count") ?? -1),
+                cells: r.querySelectorAll(".session-metric").length,
+                overflow: r.scrollWidth - r.clientWidth,
+                spanMark: (r.querySelector('[data-metric="span"] .session-metric-mark')?.textContent || "").trim(),
+            }));
+            return {
+                rails: rails.length,
+                bad: rails2.filter((r) => r.count !== r.cells || r.overflow > 1 || r.spanMark !== "↔").length,
+                detail: rails2.slice(0, 3),
+            };
+        })()`);
+        check(
+          "metrics-row-surface",
+          rowMetrics.rails > 0 && rowMetrics.bad === 0,
+          `rails=${rowMetrics.rails} bad=${rowMetrics.bad} ${JSON.stringify(rowMetrics.detail)}`
+        );
+        await shot(client, "04-metrics-board", { x: 520, y: 60, width: 780, height: 620 });
+      } else {
+        skip("metrics-rail-renders", `播种块的 summary 没有落到卡片上（${JSON.stringify(metrics)}）`);
+        skip("metrics-count-matches-cells", "summary 未加载");
+        skip("metrics-message-text", "summary 未加载");
+        skip("metrics-size-text", "summary 未加载");
+        skip("metrics-span-mark", "summary 未加载");
+        skip("metrics-span-title", "summary 未加载");
+        skip("metrics-created-format", "summary 未加载");
+        skip("metrics-no-wrap", "summary 未加载");
+        skip("metrics-no-empty-rail", "summary 未加载");
+        skip("metrics-age-self-explaining", "summary 未加载");
+        skip("metrics-row-surface", "summary 未加载");
+      }
+
+      await client
+        .evaluate(
+          `(async () => {
+            try {
+                const services = await import("/frontend/app/store/services.ts");
+                await services.ObjectService.DeleteBlock(${JSON.stringify(metricSeed.blockId)});
+            } catch (err) {
+                /* verify 实例本来就会被 reset，清理失败不影响 verdict */
+            }
+            return true;
+        })()`
+        )
+        .catch(() => false);
+      await client.evaluate(clickView("board"));
+      await new Promise((r) => setTimeout(r, 900));
+    } else {
+      skip("metrics-rail-renders", `播种度量会话块失败: ${metricSeed?.err ?? "unknown"}`);
+      skip("metrics-count-matches-cells", "播种失败");
+      skip("metrics-message-text", "播种失败");
+      skip("metrics-size-text", "播种失败");
+      skip("metrics-span-mark", "播种失败");
+      skip("metrics-span-title", "播种失败");
+      skip("metrics-created-format", "播种失败");
+      skip("metrics-no-wrap", "播种失败");
+      skip("metrics-no-empty-rail", "播种失败");
+      skip("metrics-age-self-explaining", "播种失败");
+      skip("metrics-row-surface", "播种失败");
     }
 
     // 2c) 卡片集合 ⊇ 列表行集合（折叠只会减少列表行；普通 block 已按

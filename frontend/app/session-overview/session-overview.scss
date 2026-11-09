@@ -1749,20 +1749,22 @@
 .session-overview-board-chip {
     max-width: 120px;
     overflow: hidden;
-    padding: 1px 6px;
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
+    /* A 方案（2026-11-09）：去实描边但保留 1px 盒子，胶囊化；字号 9→10 用 line-height 1.25 抵高，
+       保证卡高不漂（与度量轨 R5 同一原则）。is-tag / is-tag-more 只做继承层覆盖，不改。 */
+    padding: 1px 8px;
+    border: 1px solid transparent;
+    border-radius: 999px;
     background: rgb(from var(--main-text-color) r g b / 0.035);
-    color: var(--secondary-text-color);
-    font-size: 9px;
+    color: rgb(from var(--main-text-color) r g b / 0.78);
+    font-size: 10px;
     font-weight: 600;
-    line-height: 1.4;
+    line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 /* 会话标签 chip：与 aisessions 属性面板的 .property-chip 同一套「浅底 + 无重描边」观感，
-   但按看板 9px 的字号缩小一档；不用 accent 实色，避免和状态 chip 抢注意力。 */
+   但按看板 10px 的字号缩小一档；不用 accent 实色，避免和状态 chip 抢注意力。 */
 .session-overview-board-chip.is-tag {
     max-width: 84px;
     border-color: transparent;
@@ -1832,6 +1834,129 @@
             rgb(from var(--main-text-color) r g b / 0.08) 2px 4px
         );
     }
+}
+
+/* ---------------------------------------------------------------------------
+   Overview 度量轨（<SessionMetrics>：消息数 · 体积 · 活跃跨度 · 创建日期）
+
+   唯一渲染入口：看板卡（surface="board"）与列表行（surface="row"）共用同一套类名，
+   只差 `.is-board` / `.is-row` 两个修饰符 —— 阈值与缺数据规则因此只存在一份。
+
+   形状优先：热力格用「填充高度」编码档位，档位条用「长度」编码量级；颜色只是第二通道，
+   暗色主题 5 档灰阶、单色主题下都能分辨（同 aisessions HeatCell 的理由）。
+   占比条一律中性 accent，**不借状态色** —— 否则卡片会多出第二个「状态指示器」。
+   --------------------------------------------------------------------------- */
+.session-overview-board-card-data {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.session-metrics {
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+    align-items: center;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgb(from var(--main-text-color) r g b / 0.08);
+    color: var(--secondary-text-color);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+/* 列表行更宽，不需要上分割线；gap 放大后与左侧 message strip 拉开层次。 */
+.session-metrics.is-row {
+    gap: 10px;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.session-metric {
+    display: inline-flex;
+    min-width: 0;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 3px;
+}
+
+/* 跨度独占剩余宽度 → 创建日期被顶到卡片右端；列表行不伸，避免条被拉成一条长线。 */
+.session-metric.is-span {
+    flex: 1 1 auto;
+}
+
+.session-metrics.is-row .session-metric.is-span {
+    flex: 0 0 auto;
+}
+
+.session-metric-heat {
+    position: relative;
+    display: inline-flex;
+    width: 10px;
+    height: 10px;
+    flex: 0 0 auto;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 2px;
+    background: rgb(from var(--main-text-color) r g b / 0.1);
+
+    i {
+        display: block;
+        width: 100%;
+        border-radius: 1px;
+        background: var(--accent-color);
+        opacity: 0.35;
+    }
+}
+
+.session-metric-heat[data-level="2"] i {
+    opacity: 0.5;
+}
+
+.session-metric-heat[data-level="3"] i {
+    opacity: 0.65;
+}
+
+.session-metric-heat[data-level="4"] i {
+    opacity: 0.8;
+}
+
+.session-metric-heat[data-level="5"] i {
+    opacity: 1;
+}
+
+.session-metric-bar {
+    display: block;
+    width: 24px;
+    height: 4px;
+    flex: 0 0 auto;
+    overflow: hidden;
+    border-radius: 2px;
+    background: rgb(from var(--main-text-color) r g b / 0.1);
+
+    i {
+        display: block;
+        height: 100%;
+        min-width: 1px;
+        border-radius: 2px;
+        background: var(--accent-color);
+        opacity: 0.8;
+    }
+}
+
+/* `↔` / 同类语义符号：单独降一级，避免和数字抢注意力。 */
+.session-metric-mark {
+    margin-right: 1px;
+    opacity: 0.75;
+}
+
+.session-metric-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* 列作为 snap 停靠点；列内纵向滚动与 board 横向滚动互不干扰。 */

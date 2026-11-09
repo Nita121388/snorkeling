@@ -1,0 +1,79 @@
+BAD_FALLBACK=1
+=== G2 红证：修复前跑新增用例 ===
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[32m·[39m[33m[39m[31mx[39m[33m[39m[31mx[39m[33m[39m[31mx[39m[33m[39m[31mx[39m[33m[39m[31mx[39m[33m[39m[31mx[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 6 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board-empty-label.test.tsx[2m > [22mBoardCard meta label[2m > [22mrenders no label for an agent-like card without a status
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board-empty-label.test.tsx[2m > [22mBoardCard meta label[2m > [22mkeeps the view label for a non-agent card without a status
+[31m[1mError[22m: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.[39m
+[90m [2m❯[22m createFiberFromTypeAndProps node_modules/react-dom/cjs/react-dom-client.development.js:[2m5021:28[22m[39m
+[90m [2m❯[22m createFiberFromElement node_modules/react-dom/cjs/react-dom-client.development.js:[2m5035:14[22m[39m
+[90m [2m❯[22m reconcileChildFibersImpl node_modules/react-dom/cjs/react-dom-client.development.js:[2m6920:31[22m[39m
+[90m [2m❯[22m node_modules/react-dom/cjs/react-dom-client.development.js:[2m7098:33[22m[39m
+[90m [2m❯[22m reconcileChildren node_modules/react-dom/cjs/react-dom-client.development.js:[2m9702:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom-client.development.js:[2m11899:15[22m[39m
+[90m [2m❯[22m runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:[2m874:13[22m[39m
+[90m [2m❯[22m performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:[2m17641:22[22m[39m
+[90m [2m❯[22m workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:[2m17469:41[22m[39m
+[90m [2m❯[22m renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:[2m17450:11[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board.test.ts[2m > [22mresolveBoardMetaLabel — 空状态不显示、视图名保留[2m > [22mhides the label when there is no chip and no view name
+[31m[1mTypeError[22m: (0 , resolveBoardMetaLabel) is not a function[39m
+[36m [2m❯[22m frontend/app/session-overview/overview-board.test.ts:[2m604:16[22m[39m
+    [90m602| [39m[34mdescribe[39m([32m"resolveBoardMetaLabel — 空状态不显示、视图名保留"[39m[33m,[39m () [33m=>[39m {
+    [90m603| [39m    it("hides the label when there is no chip and no view name", () =>…
+    [90m604| [39m        expect(resolveBoardMetaLabel({ hasStatusChip: false, kindLabel…
+    [90m   | [39m               [31m^[39m
+    [90m605| [39m    })[33m;[39m
+    [90m606| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board.test.ts[2m > [22mresolveBoardMetaLabel — 空状态不显示、视图名保留[2m > [22mkeeps the view name when there is no chip
+[31m[1mTypeError[22m: (0 , resolveBoardMetaLabel) is not a function[39m
+[36m [2m❯[22m frontend/app/session-overview/overview-board.test.ts:[2m608:16[22m[39m
+    [90m606| [39m
+    [90m607| [39m    [34mit[39m([32m"keeps the view name when there is no chip"[39m[33m,[39m () [33m=>[39m {
+    [90m608| [39m        expect(resolveBoardMetaLabel({ hasStatusChip: false, kindLabel…
+    [90m   | [39m               [31m^[39m
+    [90m609| [39m    })[33m;[39m
+    [90m610| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board.test.ts[2m > [22mresolveBoardMetaLabel — 空状态不显示、视图名保留[2m > [22mhides whitespace-only view names
+[31m[1mTypeError[22m: (0 , resolveBoardMetaLabel) is not a function[39m
+[36m [2m❯[22m frontend/app/session-overview/overview-board.test.ts:[2m612:16[22m[39m
+    [90m610| [39m
+    [90m611| [39m    [34mit[39m([32m"hides whitespace-only view names"[39m[33m,[39m () [33m=>[39m {
+    [90m612| [39m        expect(resolveBoardMetaLabel({ hasStatusChip: false, kindLabel…
+    [90m   | [39m               [31m^[39m
+    [90m613| [39m    })[33m;[39m
+    [90m614| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/session-overview/overview-board.test.ts[2m > [22mresolveBoardMetaLabel — 空状态不显示、视图名保留[2m > [22mlets the status chip own the row when it is present
+[31m[1mTypeError[22m: (0 , resolveBoardMetaLabel) is not a function[39m
+[36m [2m❯[22m frontend/app/session-overview/overview-board.test.ts:[2m616:16[22m[39m
+    [90m614| [39m
+    [90m615| [39m    [34mit[39m([32m"lets the status chip own the row when it is present"[39m[33m,[39m () [33m=>[39m {
+    [90m616| [39m        expect(resolveBoardMetaLabel({ hasStatusChip: true, kindLabel:…
+    [90m   | [39m               [31m^[39m
+    [90m617| [39m        expect(resolveBoardMetaLabel({ hasStatusChip: true, kindLabel:…
+    [90m618| [39m    })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m6 failed[39m[22m[2m | [22m[1m[32m56 passed[39m[22m[90m (62)[39m
+[2m   Start at [22m 11:36:49
+[2m   Duration [22m 12.72s[2m (transform 2.33s, setup 151ms, collect 5.48s, tests 145ms, environment 4.65s, prepare 761ms)[22m
+

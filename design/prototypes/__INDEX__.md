@@ -57,6 +57,8 @@
 ## misc
 
 ## overview-dashboard
+- `overview-dashboard/agent-card-metrics/` — 同步状态：◐ 部分落地（2026-11-09，`session-metrics{,-view}.tsx`）｜看板卡/列表行补消息数・体积・活跃跨度・创建时间（A 度量轨 / B 2×2 / C 内联三变体，含实测卡高）
+- `overview-dashboard/board-chip-polish/` — 同步状态：◐ 部分落地（2026-11-09，`session-overview.scss` 的 `.session-overview-board-chip` 已改为 A 形态）｜before/after 可切换 + 三主题 + 实时宽高测量
 - `overview-dashboard/combine-dashboard-legacy.html` — （单文件原型）
 - `overview-dashboard/overview-board-v2/` — 
 - `overview-dashboard/overview-card-click/` — 同步状态：（待确认）

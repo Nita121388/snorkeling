@@ -57,6 +57,7 @@ import {
     type OverviewViewModeImplemented,
 } from "./overview-board-model";
 import { OverviewTimeline } from "./overview-timeline";
+import { SessionMetrics } from "./session-metrics";
 import {
     buildTimelineRows,
     buildTimelineSegments,
@@ -1722,6 +1723,16 @@ function BlockRow({
                             unreadText={unread ? formatUnreadDuration(updatedAtMs, now) : ""}
                             onOpenMessage={onOpenMessage}
                         />
+                        {/* 度量轨：与看板卡共用 <SessionMetrics>（唯一渲染入口），这里只是 surface="row"。 */}
+                        <SessionMetrics
+                            surface="row"
+                            messageCount={summary?.messageCount}
+                            size={summary?.size}
+                            createdAt={normalizeTimeMs(summary?.createdAt)}
+                            updatedAt={updatedAtMs}
+                            live={summary?.live === true}
+                            now={now}
+                        />
                         {summary?.note ? (
                             <div className="session-overview-note-line">
                                 <span>{summary.note}</span>
@@ -2325,6 +2336,12 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     preview,
                     note,
                     updatedAt: normalizeTimeMs(summary?.updatedAt ?? detailSummary?.updatedAt),
+                    // 度量轨（session-metrics）：全部来自已存在的 SessionSummary，不新增 RPC。
+                    // createdAt 必须先归一化（summary 里可能是秒），度量轨不做秒/毫秒猜测。
+                    createdAt: normalizeTimeMs(summary?.createdAt ?? detailSummary?.createdAt),
+                    messageCount: summary?.messageCount ?? detailSummary?.messageCount ?? 0,
+                    size: summary?.size ?? detailSummary?.size ?? 0,
+                    live: summary?.live === true,
                 } satisfies OverviewBoardCard;
             }),
         [boardBlocks, details, personas, sessionEmojis, summaries]

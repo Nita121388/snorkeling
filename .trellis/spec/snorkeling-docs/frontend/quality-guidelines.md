@@ -424,3 +424,52 @@ menu:pointerenter related=hdr     ← 后到
 
 - 单测（不需要 GUI）：`npx vitest run frontend/app/block/header-{hover-latch,icon-plan,attached-layer}.test.ts`
 - 真机台：`scripts/verify/header-hover-latch/verify.mjs`（A3–A7；本包由用户手动验证，台子留作回归用）
+
+---
+
+## 指标类信息：先证明数据可得，再设计图形 (2026-11-09, task 11-09-overview-card-metrics)
+
+- **"累计 / 求和的指标"落地前必须 grep 数据源的真实调用方**。本次「Σ working 净运行时长」在原型里画得很好看，
+  实现前核对发现 `buildTimelineSegments()` 的 `history` 参数**没有任何调用方**（注释写着"留给后端 ring buffer"），
+  每个会话只有 `[unknown, 当前态]` 两段 —— 于是 Σworking 在 live 卡上等于状态 chip 的跑时（纯重复），
+  在 done/idle 卡上恒为 0（整格永不渲染）。判据：**如果指标在两个常见状态上分别是"重复"和"缺失"，它就不是指标。**
+- **同屏多个"时长"必须语义可分**。Overview 卡上一度同时出现 `1d`（最后活动）、`Working 12m`（当前轮跑时）、`3m`（跨度/累计）：
+  前两个单位都是 `m`，用户当场就问"这两个有什么区别"。约定：**派生指标一律带符号前缀**（`↔3d` = 跨度、`Σ3m` = 累计），
+  符号单独成 `<span>` 以便降一级样式；符号与数值分开返回（纯函数返回 `{mark, text}`），别把符号混进数字文本。
+- **裸的时间/年龄标签必须有 `title` + `aria-label`**。卡头 `age` 只是 `1d`，没有 tooltip、没有无障碍名，
+  用户无法自解释。完整写法：`最后活动：YYYY-MM-DD HH:mm:ss · 1d 前`（`now` → 「刚刚」）。判定函数放纯模型层（可单测）。
+- **度量轨只有一个渲染入口**：`session-metrics.tsx`（组件）+ `session-metrics-view.ts`（纯 view model，可单测），
+  看板卡与列表行靠 `surface="board" | "row"` 分视觉差异。阈值一律 `import` aisessions 的
+  `heatLevel` / `MessageHeatThresholds` / `SizeHeatThresholds` —— 复制一份数组必然漂移（chip 上已经吃过 4 份实现的亏）。
+- **同组件文件不能同名 `.ts` + `.tsx`**：`session-metrics.ts` 与 `session-metrics.tsx` 并存时，TS 解析 `./session-metrics`
+  **优先 `.ts`**，于是 `import { SessionMetrics } from "./session-metrics"` 报"没有导出成员"。命名按本仓既有约定：
+  纯逻辑 `*-view.ts` / 组件 `.tsx`。
+
+### 真机验证：真实数据播种（比手搭 DOM 诚实）
+
+干净 profile 里没有 agent 块 = 没有 `SessionSummary` = 度量轨无从渲染，直接断言只会全 `skipped`。可复用的套路
+（`scripts/verify/overview-board/verify.mjs` 阶段 4）：
+
+1. `AISessionsService.List({ limit: 40 })` 从**真实索引**里挑一条 `messageCount>0 && size>0 && createdAt>0` 的会话；
+2. `createBlock({ meta: { view: "term", "agent:provider": src, "agent:sessionid": id } })` 把它的 id 挂到一个块上；
+3. Overview 走正常路径加载 summary（轮询等 `.session-metrics` 出现，不要固定 sleep）；
+4. 断言值来自播种数据（如 `msgText === formatMessageCount(messageCount)`），而不是"看起来像数字"；
+5. 结束 `ObjectService.DeleteBlock` 清场。
+
+配套断言：`data-metrics-count === 单元格数`、`scrollWidth - clientWidth <= 1`（220px 窄列不换行）、
+`无 cells 的空轨道数 === 0`（缺数据必须整条不渲染，不留空分割线）。
+
+### 卡片 meta 行：没有内容就不要渲染带样式的空节点
+
+`session-overview-board-card-view-label` 带 `border / padding / border-radius`，即使文本是空串也会
+画成一个空胶囊（2026-11-09 真机：无 AgentStatus 的 pi agent 卡）。硬约束：
+
+- 显示判定收口成纯函数（`resolveBoardMetaLabel`），返回 `""` 时组件必须 `cond ? <span/> : null`，
+  **不允许**把可能为空的值直接塞进带样式的节点；与 `formatBoardAge` / `truncateBoardPreview`
+  的「空串隐藏」是同一口径。
+- 状态 chip 与兜底标签各按自己的条件渲染，别用 `if/else` 把「没 chip」等价于「一定要画标签」。
+- 回归两级：DOM 单测（jsdom + createRoot 渲染真实卡片）断言空节点数 = 0；真机台同名断言
+  `board-no-empty-view-label`（用户自验时也要跑）。
+- 同一 meta 行的 chip 家族共用 `.session-overview-board-chip` 基类，变体（`is-tag` / `is-tag-more`）
+  只做继承层覆盖；调字号 / 内距必须同步调 `line-height`，保证 chip 总高不漂
+  （2026-11-09 A 方案：9px/1.4 → 10px/1.25，实测 `54.1×16.6` → `62.6×16.5` px）。

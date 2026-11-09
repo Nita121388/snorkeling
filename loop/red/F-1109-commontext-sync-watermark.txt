@@ -1,0 +1,27 @@
+# github.com/wavetermdev/waveterm/pkg/sync [github.com/wavetermdev/waveterm/pkg/sync.test]
+pkg\sync\engine_watermark_test.go:21:72: undefined: syncproto.PushItemResult
+pkg\sync\engine_watermark_test.go:32:27: undefined: syncproto.PushItemResult
+pkg\sync\engine_watermark_test.go:61:78: undefined: syncproto.PushItemResult
+pkg\sync\engine_watermark_test.go:65:28: undefined: syncproto.PushStatusConflict
+pkg\sync\engine_watermark_test.go:107:23: undefined: syncproto.PushItemResult
+pkg\sync\engine_watermark_test.go:129:20: undefined: syncproto.PushItemResult
+pkg\sync\engine_watermark_test.go:129:78: undefined: syncproto.PushStatusApplied
+pkg\sync\engine_watermark_test.go:135:26: out.Items undefined (type *PushOutcome has no field or method Items)
+pkg\sync\engine_watermark_test.go:137:18: undefined: syncproto.PushStatusApplied
+pkg\sync\engine_watermark_test.go:276:82: undefined: syncproto.PushItemResult
+pkg\sync\engine_watermark_test.go:137:18: too many errors
+# github.com/wavetermdev/waveterm/pkg/commontextstore [github.com/wavetermdev/waveterm/pkg/commontextstore.test]
+pkg\commontextstore\commontext_sync_watermark_test.go:31:14: items[0].SyncState undefined (type commonTextItem has no field or method SyncState)
+pkg\commontextstore\commontext_sync_watermark_test.go:31:27: undefined: SyncStatePending
+pkg\commontextstore\commontext_sync_watermark_test.go:32:66: items[0].SyncState undefined (type commonTextItem has no field or method SyncState)
+pkg\commontextstore\commontext_sync_watermark_test.go:35:12: undefined: MarkSynced
+pkg\commontextstore\commontext_sync_watermark_test.go:35:40: undefined: syncproto.PushItemResult
+pkg\commontextstore\commontext_sync_watermark_test.go:35:94: undefined: syncproto.PushStatusApplied
+pkg\commontextstore\commontext_sync_watermark_test.go:42:14: items[0].SyncState undefined (type commonTextItem has no field or method SyncState)
+pkg\commontextstore\commontext_sync_watermark_test.go:42:27: undefined: SyncStateSynced
+pkg\commontextstore\commontext_sync_watermark_test.go:43:64: items[0].SyncState undefined (type commonTextItem has no field or method SyncState)
+pkg\commontextstore\commontext_sync_watermark_test.go:45:14: items[0].SyncedRev undefined (type commonTextItem has no field or method SyncedRev)
+pkg\commontextstore\commontext_sync_watermark_test.go:45:14: too many errors
+FAIL	github.com/wavetermdev/waveterm/pkg/commontextstore [build failed]
+FAIL	github.com/wavetermdev/waveterm/pkg/sync [build failed]
+FAIL

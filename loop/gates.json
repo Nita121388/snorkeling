@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-09T02:37:23Z",
+  "updatedAt": "2026-11-09T04:05:38Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -177,6 +177,23 @@
         "by": "nita",
         "verdict": "confirmed",
         "prdHash": "4664aaf427b3"
+      }
+    },
+    "N-1109-overview-board-chip-polish": {
+      "g2": {
+        "redProof": "loop/red/N-1109-overview-board-chip-polish.txt",
+        "at": "2026-11-09T04:03:12Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-09T04:05:38Z",
+        "by": "self"
+      }
+    },
+    "N-1109-overview-board-empty-status-label": {
+      "g2": {
+        "redProof": "loop/red/N-1109-overview-board-empty-status-label.txt",
+        "at": "2026-11-09T03:38:26Z"
       }
     }
   },

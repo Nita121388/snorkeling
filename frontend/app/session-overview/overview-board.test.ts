@@ -28,6 +28,7 @@ import {
     readOverviewBoardGroup,
     readOverviewViewMode,
     resolveBoardCardTitle,
+    resolveBoardMetaLabel,
     resolveBoardTagChips,
     truncateBoardPreview,
     writeOverviewBoardGroup,
@@ -595,5 +596,24 @@ describe("overview view mode — 已实现值与未来值", () => {
     it("still rejects values this build does not render (no white screen on downgrade)", () => {
         expect(isOverviewViewMode("gantt-v2")).toBe(false);
         expect(readOverviewViewMode({ getItem: () => "gantt-v2", setItem: () => {} })).toBe("list");
+    });
+});
+
+describe("resolveBoardMetaLabel — 空状态不显示、视图名保留", () => {
+    it("hides the label when there is no chip and no view name", () => {
+        expect(resolveBoardMetaLabel({ hasStatusChip: false, kindLabel: "" })).toBe("");
+    });
+
+    it("keeps the view name when there is no chip", () => {
+        expect(resolveBoardMetaLabel({ hasStatusChip: false, kindLabel: "Terminal" })).toBe("Terminal");
+    });
+
+    it("hides whitespace-only view names", () => {
+        expect(resolveBoardMetaLabel({ hasStatusChip: false, kindLabel: "   " })).toBe("");
+    });
+
+    it("lets the status chip own the row when it is present", () => {
+        expect(resolveBoardMetaLabel({ hasStatusChip: true, kindLabel: "Terminal" })).toBe("");
+        expect(resolveBoardMetaLabel({ hasStatusChip: true, kindLabel: "" })).toBe("");
     });
 });

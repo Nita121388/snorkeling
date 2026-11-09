@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CommonText 更新时间可视化 · 三版对照（镜像真实组件）</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body data-theme="dark">
+    <div class="page">
+        <div class="page-head">
+            <div>
+                <h1>CommonText · 更新时间可视化（不显示具体时间）</h1>
+                <p class="sub">
+                    镜像 <code>frontend/app/commontext/commontext-compose-modal.tsx</code> 的真实双栏结构。
+                    唯一改动点：把列表右槽第二行的
+                    <code>&lt;i class="fa-regular fa-clock"&gt; 4h ago</code> 换成图形编码。
+                    行高不变，精确时间戳下沉到 <code>title</code>。
+                </p>
+            </div>
+            <div class="theme-switch" id="themeSwitch">
+                <button data-theme-val="dark" class="active">Dark</button>
+                <button data-theme-val="light">Light</button>
+            </div>
+        </div>
+
+        <!-- ===== 变体开关 ===== -->
+        <div class="variant-bar">
+            <div class="variant-group">
+                <span class="variant-label">列表右槽 · 更新时间</span>
+                <div class="segmented" id="listVariant" role="radiogroup" aria-label="List update-time encoding">
+                    <button type="button" data-v="text" class="active" role="radio" aria-checked="true">
+                        <i class="fa-regular fa-clock"></i> 现状
+                    </button>
+                    <button type="button" data-v="bar" role="radio" aria-checked="false" title="A · 连续新鲜度条（与 aisessions 同款）">
+                        <span class="ic-bar"></span> A 连续条
+                    </button>
+                    <button type="button" data-v="seg" role="radio" aria-checked="false" title="B · 5 段信号格（可数）">
+                        <span class="ic-seg"></span> B 信号格
+                    </button>
+                    <button type="button" data-v="dot" role="radio" aria-checked="false" title="C · 纯色点">
+                        <span class="ic-dot"></span> C 色点
+                    </button>
+                    <button type="button" data-v="sq" role="radio" aria-checked="false" title="D · 纯色方块（10×10，只有颜色一个通道）">
+                        <span class="ic-sq"></span> D 色方块
+                    </button>
+                    <button type="button" data-v="heat" role="radio" aria-checked="false" title="E · 热力方块（12×12，颜色 + 填充高度双通道，同 HeatCell）">
+                        <span class="ic-heat"></span> E 热力方块
+                    </button>
+                </div>
+            </div>
+            <div class="variant-group">
+                <span class="variant-label">A 档位标定</span>
+                <div class="segmented" id="barScale" role="radiogroup" aria-label="Bar fill scale">
+                    <button type="button" data-v="repo" class="active" role="radio" aria-checked="true"
+                            title="照抄 aisessions 的 RecencyFillByLevel：100 / 62 / 32 / 15 / 6">
+                        现有 100/62/32/15/6
+                    </button>
+                    <button type="button" data-v="tuned" role="radio" aria-checked="false"
+                            title="提议 A · 重新标定 5 档：100 / 68 / 44 / 26 / 12">
+                        提议 A 100/68/44/26/12
+                    </button>
+                    <button type="button" data-v="quad" role="radio" aria-checked="false"
+                            title="提议 B · 合并成 4 档（>=7 天统一算旧）：100 / 66 / 33 / 12">
+                        提议 B 4 档
+                    </button>
+                </div>
+            </div>
+            <div class="variant-group">
+                <span class="variant-label">详情页脚 · 更新时间</span>
+                <div class="segmented" id="detailVariant" role="radiogroup" aria-label="Detail footer update-time encoding">
+                    <button type="button" data-v="text" class="active" role="radio" aria-checked="true">
+                        <i class="fa-regular fa-clock"></i> 现状（相对时间）
+                    </button>
+                    <button type="button" data-v="meter" role="radio" aria-checked="false" title="5 段 meter + 档位词">
+                        <span class="ic-seg"></span> meter + 档位词
+                    </button>
+                    <button type="button" data-v="stamp" role="radio" aria-checked="false" title="保留精确时间戳">
+                        <i class="fa-regular fa-calendar"></i> 精确时间戳
+                    </button>
+                </div>
+            </div>
+            <div class="variant-group">
+                <span class="variant-label">排序</span>
+                <div class="segmented" id="sortGroup" role="group" aria-label="Sort common text list">
+                    <button type="button" data-sort="updated-desc" class="active" title="Recently updated">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button type="button" data-sort="lastused-desc" title="Recently used">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                    </button>
+                    <button type="button" data-sort="usage-desc" title="Most used">
+                        <i class="fa-solid fa-fire"></i>
+                    </button>
+                    <button type="button" data-sort="created-desc" title="Recently created">
+                        <i class="fa-solid fa-calendar-plus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="variant-group grow">
+                <span class="variant-label">Hover 提示</span>
+                <label class="check">
+                    <input type="checkbox" id="showHoverHint" checked />
+                    <span>开启时鼠标停在图形上可读具体时间</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- ===== 真实组件镜像 ===== -->
+        <div class="mock-modal" id="modal">
+            <div class="mm-header">
+                <div class="mm-title">Common Text</div>
+                <div class="mm-subtitle">
+                    Compose text. Click + to add a new item to the top, then edit it on the right; click a row (or
+                    press Enter) to edit it; Insert drops it into the editor.
+                </div>
+            </div>
+
+            <div class="composer-wrap">
+                <input
+                    class="composer"
+                    id="composer"
+                    spellcheck="false"
+                    placeholder="Compose here. The list below suggests common text matching what you type."
+                />
+            </div>
+
+            <div class="mm-actions">
+                <button class="mm-icon-btn" title="Filter list by editor content">
+                    <i class="fa-solid fa-filter"></i>
+                </button>
+                <button class="mm-btn" title="Clear editor"><i class="fa-solid fa-eraser"></i></button>
+                <button class="mm-btn" title="Add new common text item (edit on the right)">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+                <button class="mm-btn" title="Copy editor content to clipboard">
+                    <i class="fa-regular fa-copy"></i>
+                </button>
+                <button class="mm-btn" title="Paste into the focused terminal">
+                    <i class="fa-solid fa-terminal"></i> Send
+                </button>
+                <span class="mm-status" id="status"></span>
+            </div>
+
+            <div class="md-body">
+                <!-- 左：列表 -->
+                <div class="md-list-pane">
+                    <div class="mm-search-area">
+                        <div class="mm-search-input-wrap">
+                            <i class="fa-regular fa-magnifying-glass"></i>
+                            <input id="searchInput" type="text" placeholder="Search common text" />
+                        </div>
+                        <div class="mm-chip-row">
+                            <button type="button" class="mm-chip" id="untaggedChip">
+                                <span>untagged</span>
+                                <span class="mm-chip-count" id="untaggedCount">0</span>
+                            </button>
+                            <div class="mm-tag-chips" id="tagChips"></div>
+                        </div>
+                    </div>
+                    <div class="mm-list" id="listEl"></div>
+                </div>
+
+                <!-- 右：详情 -->
+                <div class="md-detail-pane">
+                    <div class="md-detail" id="detailPane"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 放大标本 ===== -->
+        <div class="notes">
+            <section class="note-card">
+                <h2>放大标本 · 真实的 26px 在 4 倍下长什么样</h2>
+                <p class="dim">
+                    第二列是<b>当前列表变体的真实尺寸</b>，其余是 4× 放大。<b>只看 1× 列判断可读性</b>，
+                    放大列用来核对填充比例、段数与方块内部填充高度是否真的是 5→1。
+                </p>
+                <div class="specimen" id="specimen"></div>
+                <div class="calib" id="calib"></div>
+            </section>
+
+            <section class="note-card">
+                <h2>原型里看到的四条结论（比纸面判断可靠）</h2>
+                <ol class="bullets numbered">
+                    <li>
+                        <b>C 色点在 1× 下信息量基本为零</b>：6px 圆点的 5 个色阶在暗色主题里都挤在
+                        grey-green 一段，邻档靠猜。<b>排除。</b>
+                    </li>
+                    <li>
+                        <b>把点换成方块就好了</b>：面积从 6px² 放大到 10-12px² 后，明度差才看得出来。
+                        <b>D 纯色方块</b>可用，但仍只有颜色一个通道 ——
+                        「4 档 = 12 天」和「5 档 = 45 天」在暗色主题下几乎同灰。
+                        <b>E 热力方块</b>（同 <code>HeatCell</code>）加了「填充高度」这个形状通道，
+                        5 档只剩一格底、1 档满格，<b>色弱也能读</b>，且 4/5 档靠高度差分开。
+                    </li>
+                    <li>
+                        <b>B 的「可数」优势在 1× 下不成立</b>：4px 段 + 1px 缝，在 10px 字号的行里糊成一条虚线，
+                        数不出 5 还是 4。要真可数，槽宽得从 26px 加到 36px 左右，会挤占标题列。
+                        而换成「段数可数」的代价是<b>跟 aisessions 变成两套时间语言</b>。<b>不推荐。</b>
+                    </li>
+                    <li>
+                        <b>A 可用，但现有的 15% / 6% 两档在 1× 下几乎同长</b>（3.9px vs 1.6px）：
+                        「一周内改过」跟「一个月没动」在这个尺寸上分不开。<code>RecencyFillByLevel</code>
+                        当初是按 aisessions 行宽标的，搬到 26px 槽需要重新标定 —— 用上方
+                        <b>A 档位标定</b> 开关对比两套值。
+                    </li>
+                </ol>
+            </section>
+
+            <section class="note-card">
+                <h2>六个变体 · 编码通道对照</h2>
+                <table>
+                    <thead>
+                        <tr><th>变体</th><th>编码通道</th><th>优点</th><th>代价</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><b>E 热力方块</b><br /><span class="dim">推荐</span></td>
+                            <td>颜色 + 填充高度<br /><span class="dim">双通道</span></td>
+                            <td>
+                                12×12 槽，复用 <code>HeatCell</code> 的结构（它已经在 aisessions 里验证过）；
+                                两个通道同向变化，<b>色弱也能读</b>；方块比条形更像「一个物」，
+                                放在右槽里不像一条进度条那样容易被误读成「完成度」
+                            </td>
+                            <td>比 26×5 条形高 7px，右槽两行合计 ~26px，刚好贴住 <code>h-7</code> 上限，没有余量</td>
+                        </tr>
+                        <tr>
+                            <td><b>D 纯色方块</b></td>
+                            <td>颜色</td>
+                            <td>面积够大（10×10），明度差看得出来，比 C 好很多</td>
+                            <td>只有颜色一个通道：4 档 / 5 档在暗色主题下几乎同灰，等于 4 档制</td>
+                        </tr>
+                        <tr>
+                            <td><b>A 连续条</b></td>
+                            <td>长度（形状）</td>
+                            <td>
+                                与 aisessions 列表<b>完全同款</b>（<code>RecencyFillByLevel</code>），一个 app 只有一套
+                                「时间有多新」的视觉语言；形状编码，色弱可用；26px 塞进现有 <code>w-[58px]</code> 槽
+                            </td>
+                            <td>连续条会把 5 个离散档位看成连续值（用户可能以为能精确比较）</td>
+                        </tr>
+                        <tr>
+                            <td><b>B 信号格</b></td>
+                            <td>段数（可数）</td>
+                            <td>档位诚实，不需要「估条长」；<code>tabindex</code> 之外还能用段数做读屏标签</td>
+                            <td>4px 小段在 10px 行里偏细；且与 aisessions <b>两套</b>时间语言，一致性代价最大</td>
+                        </tr>
+                        <tr>
+                            <td><b>C 色点</b></td>
+                            <td>颜色</td>
+                            <td>最省空间（6px），最安静</td>
+                            <td>只有颜色一个通道，5 档里相邻两档肉眼不可分 —— 这个维度基本失效</td>
+                        </tr>
+                        <tr>
+                            <td><b>现状</b>（baseline）</td>
+                            <td>文字</td>
+                            <td>精确、无歧义</td>
+                            <td>一行一个「4h ago」，扫视时要逐个读字；且不会自动刷新的相对时间会<b>过期</b>（停在弹窗打开那刻）</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="note-card">
+                <h2>规格（E 热力方块）</h2>
+                <table>
+                    <thead>
+                        <tr><th>档位</th><th>阈值</th><th>填充高度</th><th>填充色 / 浓度</th><th>详情档位词</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>1</td><td>&lt; 1 小时</td><td>100%</td><td>accent · 100%</td><td>Fresh</td></tr>
+                        <tr><td>2</td><td>&lt; 1 天</td><td>84%</td><td>accent · 85%</td><td>Recent</td></tr>
+                        <tr><td>3</td><td>&lt; 7 天</td><td>66%</td><td>accent · 72%</td><td>This week</td></tr>
+                        <tr><td>4</td><td>&lt; 30 天</td><td>48%</td><td>muted · 60%</td><td>This month</td></tr>
+                        <tr><td>5</td><td>≥ 30 天</td><td>30%</td><td>muted · 50%</td><td>Stale</td></tr>
+                        <tr><td>—</td><td><code>updatedat === createdat</code></td><td>0%（只留空槽）</td><td>—</td><td>Never edited</td></tr>
+                    </tbody>
+                </table>
+                <p class="dim" style="margin-top:2px">
+                    尺寸：槽 12×12、圆角 3px、槽底 <code>--surface-strong</code>；内部填充 100% 宽、底部对齐、圆角 1px。
+                    行右槽仍是 <code>w-[58px] h-7</code>：使用次数一行（~11px）+ 间距 3px + 方块 12px ≈ 26px，刚好放得下。
+                </p>
+                <ul class="bullets">
+                    <li>
+                        <b>槽必须可见</b>：1 档只填 6% 时若没有槽底，图形等于消失。用与行底色差一档的
+                        <code>--border</code> 当槽（不是描边）—— 同 <code>HeatCell</code> 的判断。
+                    </li>
+                    <li>
+                        <b>精确值只走 tooltip</b>：<code>Updated 4h ago · 03-15 09:34</code>。
+                        真实代码里 <code>metaTooltip</code> 已经拼好了，直接复用。
+                    </li>
+                    <li>
+                        <b>无障碍</b>：<code>role="img"</code> + <code>aria-label="Updated 4h ago"</code>，
+                        不要留空 <code>aria-label</code>（纯 <code>title</code> 对读屏不稳）。
+                    </li>
+                    <li>
+                        <b>刷新时机</b>：5 档跨越以小时/天为单位，不需要定时器；但弹窗 <code>onOpen</code>
+                        时应重算一次 <code>now</code>，否则「1 分钟前改的」第二天打开还显示满格。
+                    </li>
+                    <li>
+                        <b>「从未编辑过」是新增语义</b>：现在文字版区分不出来（显示 40d ago），
+                        图形版用「空槽」一眼可见 —— 这类条目其实是最稳定的、值得优先复用。
+                    </li>
+                </ul>
+            </section>
+
+            <section class="note-card">
+                <h2>落地要改的地方（按依赖顺序）</h2>
+                <ol class="bullets numbered">
+                    <li>
+                        <b>抽出共享原语</b>：<code>freshnessLevel()</code> 已在
+                        <code>frontend/app/view/aisessions/utils.ts:496</code>；<code>RecencyFillByLevel</code>
+                        还在 <code>session-row.tsx:63</code> 里是私有的，需要 <code>export</code> 出去。
+                        采用方块方案的话要新增 <code>HeatFillByLevel</code> /
+                        <code>HeatOpacityByLevel</code> 两张表，也收在同一处。
+                    </li>
+                    <li>
+                        <b>列表行改渲染</b>：<code>commontext-compose-modal.tsx:1569-1576</code>，
+                        把 <code>&lt;i class="fa fa-regular fa-clock"&gt;</code> + <code>{formatSessionRelativeTime(...)}</code>
+                        换成图形，<code>data-commontext-updated</code> 钩子<code>保留</code>（verify 脚本可能在找它）。
+                    </li>
+                    <li>
+                        <b>详情页脚</b>：<code>:1774-1779</code>。三个选项见上方开关，我推荐
+                        <b>precision</b>（保留精确时间）—— 详情区是「我要看细节」的地方，也是唯一还能读到绝对时间的位置。
+                    </li>
+                    <li>
+                        <b>改断言</b>：<code>commontext-compose-modal.test.ts:66-73</code> 明确断言源码里含
+                        <code>formatSessionRelativeTime(item.updatedat)</code>，会直接红；<code>:86-90</code> 那条覆盖详情页脚。
+                    </li>
+                    <li>
+                        <b>补 verify area</b>：<code>scripts/verify/</code> 目前没有 commontext 的 area，
+                        新增一个记「排序切 Recently updated 时条长必须单调递减」这种可机器判定的断言。
+                    </li>
+                </ol>
+            </section>
+
+            <section class="note-card">
+                <h2>可试交互</h2>
+                <ul class="bullets">
+                    <li>
+                        <b>切排序到「Recently updated」</b>：A 的条长必须随行单调递减 —— 这是图形编码正确性的最直观自检。
+                    </li>
+                    <li><b>鼠标停在任何图形上</b>：读具体时间（tooltip 开关可关掉看纯图形效果）。</li>
+                    <li><b>编辑右栏正文</b>：该行立刻跳到 1 档（满格 / 5 段 / 亮点），验证实时反馈。</li>
+                    <li><b>看第 6 条「Meeting notes skeleton」</b>：建好后从未编辑过 → 空槽，与「很久以前改过」的 5 档明确区分。</li>
+                </ul>
+            </section>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
