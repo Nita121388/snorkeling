@@ -559,3 +559,24 @@ CommonText 列表行右槽（`w-[58px] h-7`）挂 `group-hover:opacity-0`，hove
 - **图标语义必须对得上计数语义**：`fa-repeat` 读作「重来/循环」，放在「被用过多少次」旁边是错配。
   纯数字列（tabular-nums）里就留纯数字，不要把语义可疑的图标当装饰。
   但**多列并排的详情元信息行（创建/更新/最近使用/次数）例外**：图标是区分列义的唯一线索，不能删。
+
+---
+
+## 「复制给 agent」的 payload 只能经 buildAgentPayload 组装 (2026-11-10, task 11-10-cfa-core)
+
+- 任何把**上下文拼成 prompt 文本**复制到剪贴板的新入口（冲突合并、同步诊断、终端失败输出、
+  VCS 冲突、设置 JSON 校验失败…），一律走 `frontend/app/element/copy-for-agent.tsx` 的
+  `<CopyForAgent>` + `frontend/app/element/agent-payload.ts` 的 `buildAgentPayload()`；
+  纯复制标识符（blockId / 命令 / 路径）的按钮不在此列。
+- payload 固定三段：`### Context`（调用方拼装，键值行）→ `### Task`（一句祈使句）→
+  `### Output contract`（选预设常量 `MERGED_CONTENT_ONLY` / `FIX_COMMAND_ONLY` /
+  `DIAGNOSIS_BRIEF`；自定义必须给理由注释）。**缺 Task 或 Output contract 会被构建器直接 throw**：
+  没有输出契约，agent 默认回一篇分析；没有 Task，用户还得自己解释——这正是「复制给 agent」
+  要消灭的摩擦，不是可选项。
+- 三段小节结构与 Go 端 `pkg/syncconflict/render.go` 的 `RenderMarkdown` 对齐。新增/修改任何一侧
+  投资节标题，必须两侧同步改，否则同一个用户名下两处复制出来的格式会漂。
+- 入口语义与摆放：文案统一 `Copy for agent`，`title` 必填并带 payload 概要（如
+  `Copy all 3 conflicts for an AI to merge`）；按钮紧贴被解释的对象（冲突行右、错误行右），
+  不做全局「导出诊断」。**只进剪贴板**，不绑定任何单一 provider。
+- 成功反馈复用 `CopyButton`（2s 勾，Promise 形态只在 resolve 后报成功，失败静默保持原图标）；
+  懒取 RPC 数据用 `text: () => Promise<string>` 函数形态，pending 期间按钮转圈禁点。
