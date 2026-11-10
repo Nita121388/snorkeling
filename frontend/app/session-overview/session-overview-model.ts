@@ -4,6 +4,8 @@
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { statusFingerprint } from "@/app/agent-status/agent-status-unread";
 import { BlockModel } from "@/app/block/block-model";
+import { broadcastBlockJumpSignal } from "@/app/block/block-jump-signal";
+import { restoreMinimizedBlockToLayout } from "@/app/block/block-minimize";
 import { ackBumpAtom } from "@/app/agent-status/agent-status-done-ack-store";
 import { atoms, globalStore, refocusNode, setActiveTab, WOS } from "@/app/store/global";
 import { pslogEvent, makeAgentTraceId } from "@/app/store/pslog-trace";
@@ -12,7 +14,7 @@ import {
 	SnorkelingBlockKindOverview,
 	toggleCurrentTabBlockByKind,
 } from "@/app/workspace/toggle-block";
-import { getHiddenBlockIdsFromTab, getLayoutModelForStaticTab } from "@/layout/index";
+import { getHiddenBlockIdsFromTab, getLayoutModelForStaticTab, getLayoutModelForTabById } from "@/layout/index";
 import * as jotai from "jotai";
 import { atomWithStorage } from "jotai/vanilla/utils";
 import type { SyncStorage } from "jotai/vanilla/utils/atomWithStorage";
@@ -221,22 +223,60 @@ export class SessionOverviewModel {
 }
 
 /**
- * 「定位到块」的共享实现：切 Tab → 高亮 → 两次 refocus → 1.2s 后撤高亮。
+ * 「定位到块」的共享实现。
+ *
+ * 同 tab：切 Tab → 高亮 → 两次 refocus → 1.2s 后撤高亮（本 renderer 内直接生效）。
+ *
+ * 跨 tab（2026-11-10 修复）：每个 tab 是独立渲染进程（staticTabId 每 renderer 固定），
+ * 本 renderer 的 setBlockHighlight / refocusNode 对目标 tab 全部无效（此前表现为「只切了
+ * tab，块上什么都不发生」）。改为：
+ *   1. 在目标 tab 的 layout model 上操作（会 persist 到后端）——最小化的块还原、
+ *      隐藏的块取消隐藏、focusNode 落 focusednodeid（目标 view 若是全新创建的 renderer，
+ *      首帧即聚焦该块）；
+ *   2. 广播 storage 信号，目标 tab 已加载的 renderer 收到后自行执行高亮 + refocus；
+ *   3. 最后才切 view。
  *
  * 抽出来是因为 AgentCardModal 也需要同一动作（先从整卡跳回现场），而它拿不到
  * SessionOverviewModel 实例的 markBlockViewed 语义（overview 面板可能没挂）。
- * 纯 UI 副作用，无 RPC；调用方各自决定要不要记「已看」。
+ * 调用方各自决定要不要记「已看」。
  */
 export function jumpToOverviewBlock(tabId: string, blockId: string): void {
-	if (tabId) {
+	const currentTabId = globalStore.get(atoms.staticTabId);
+	const isSameTab = tabId === "" || tabId === currentTabId;
+	if (isSameTab) {
+		if (tabId) {
+			setActiveTab(tabId);
+		}
+		if (blockId) {
+			BlockModel.getInstance().setBlockHighlight({ blockId, icon: "location-crosshairs" });
+			window.setTimeout(() => refocusNode(blockId), 80);
+			window.setTimeout(() => refocusNode(blockId), 220);
+			window.setTimeout(() => BlockModel.getInstance().setBlockHighlight(null), 1200);
+		}
+		return;
+	}
+	// 跨 tab：高亮/refocus 必须落到目标 tab 自己的 renderer 里执行。
+	const layoutModel = getLayoutModelForTabById(tabId);
+	if (layoutModel == null) {
 		setActiveTab(tabId);
+		return;
 	}
 	if (blockId) {
-		BlockModel.getInstance().setBlockHighlight({ blockId, icon: "location-crosshairs" });
-		window.setTimeout(() => refocusNode(blockId), 80);
-		window.setTimeout(() => refocusNode(blockId), 220);
-		window.setTimeout(() => BlockModel.getInstance().setBlockHighlight(null), 1200);
+		if (layoutModel.getNodeByBlockId(blockId) == null) {
+			restoreMinimizedBlockToLayout(tabId, blockId);
+		}
+		if (layoutModel.isBlockHidden(blockId)) {
+			layoutModel.showBlock(blockId);
+		}
+		// focusednodeid 落库：目标 tab 的 view 若在跳转后才创建，新 renderer 首帧即聚焦。
+		const targetNodeId = layoutModel.getNodeByBlockId(blockId)?.id;
+		if (targetNodeId != null) {
+			layoutModel.focusNode(targetNodeId);
+		}
+		// 目标 tab 已加载的 renderer 收到信号后自己高亮 + refocus。
+		broadcastBlockJumpSignal(tabId, blockId);
 	}
+	setActiveTab(tabId);
 }
 
 export function isSessionOverviewTab(tab: Tab | null): boolean {

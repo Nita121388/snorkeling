@@ -28,7 +28,12 @@ import clsx from "clsx";
 import * as jotai from "jotai";
 import * as React from "react";
 import { BlockEnv } from "./blockenv";
+import { installBlockJumpSignalListener } from "./block-jump-signal";
 import { BlockFrameProps } from "./blocktypes";
+
+// 跨 renderer 的「定位到块」信号监听：模块加载时装一次（每个渲染块的 renderer 必经此处）。
+// Overview 跳转其他 tab 的块时，目标 renderer 靠它执行高亮 + refocus。
+installBlockJumpSignalListener();
 
 const BlockMask = React.memo(({ nodeModel }: { nodeModel: NodeModel }) => {
     const waveEnv = useWaveEnv<BlockEnv>();
