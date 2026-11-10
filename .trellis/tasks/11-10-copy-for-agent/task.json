@@ -1,0 +1,33 @@
+{
+  "id": "copy-for-agent",
+  "name": "copy-for-agent",
+  "title": "Copy for Agent：一键把上下文交给 agent（冲突/诊断/失败输出）",
+  "description": "把「用户向 agent 解释半天」这类摩擦收口成一键复制：统一 <CopyForAgent> 与 payload 三段式契约（Context/Task/Output contract），先落 CommonText 同步冲突（含粘回闭环），再覆盖同步诊断、终端失败输出、VCS 冲突与被拒 push、设置 JSON 校验失败。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P1",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-10",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-10-cfa-core",
+    "11-10-cfa-commontext-conflict",
+    "11-10-cfa-sync-diagnostics",
+    "11-10-cfa-terminal-output",
+    "11-10-cfa-vcs-conflict",
+    "11-10-cfa-settings-json-error"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
