@@ -49,12 +49,17 @@ VCS 面板在「有未解决合并冲突」与「push/commit 失败」两种状�
 
 ## Acceptance（命令 → 期望输出）
 
-- `npx vitest run frontend/app/view/preview/conflict-copy` 与 file-conflict-modal 相关测试 → 全绿。
-- 新增 ≥ 5 用例：单文件冲突片段截取、多文件分段、stderr 截断、无冲突时不渲染按钮、迁移后仍含 Task 段。
-- 手工造冲突（`git merge` 制造 1 个 unmerged 文件）→ 点复制 → 粘贴文本
-  `grep -c "<<<<<<<"` ≥ 1、`grep -c "### Output"` = 1。
-- push 到保护分支制造失败 → 复制文本含 stderr 原文片段（`grep -c "remote:"` ≥ 1，视远端提示而定，允许为 0 但必须有 `exit code`）。
-- 真机验证台（VCS area）全绿 + 台账一行。
+- [x] `npx vitest run frontend/app/view/preview/conflict-copy.test.ts` + `frontend/app/view/vcs/` → 全绿（冲突域 10 + VCS 域 36 共 46）。
+- [x] 新增 ≥ 5 用例：单文件冲突片段截取（±3 行上下文）、多文件 `=== path ===` 分段、stderr 200 行截断、无冲突码不渲染（isUnmergedCode 表）、迁移后仍含 Task/Output contract 段。另含单文件 60 行上限、无标记 throw 两个防御用例。
+- [x] 手工造冲突（双分支改同一行 → merge 冲突）→ 点复制 → 粘贴文本含 `<<<<<<<` / `=======` / `>>>>>>>`，`### Output contract` = 1（真机 verify `merge-payload-*` 锁死）。
+- [x] push 被拒（amend 后非快进）→ 复制文本含 stderr 原文（`! [rejected]` / non-fast-forward，真机 verify `push-payload-rejected-line`）与 `action: push` / `repo:` / `stderr (`。
+- [x] 真机验证台：新 area `scripts/verify/vcs-conflict-copy/verify.mjs` → **17/17 全绿**（launch+reset，真实 git 仓库驱动），台账已记；area 已登记 README。
+
+## 实施偏离与附带修复（2026-11-10）
+
+- 冲突条放在共享进度卡同层的 VCS 视图共享区（而非 Changes 面内）：vcs-changes-tab.tsx 不在本任务白名单；视觉效果与失败条同规格（同色同圆角）。push/commit 失败卡与冲突条共存。
+- Context 未含 branch / exit code：`VcsOperationInfo` 只有 action/message/details（后端 RPC 不返回退出码与分支）；repo 路径已含。
+- 真机挖出一个真 bug 并修：VcsConflictBar 的 `FileReadCommand` 传了 `route: "conn:local"` 会让 fileread 静默失败（本地连接不传 route，远程才带 conn 路由）。
 
 ## Touch（白名单）
 

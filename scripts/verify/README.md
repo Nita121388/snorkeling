@@ -107,3 +107,4 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `sync-conflict-copy`   | `verify.mjs` | Settings → Sync 冲突行 Copy for Agent（title 含计数）/ payload 走 Go 渲染源（SyncConflictsCopy == RenderAll，含 Task + 输出契约）/ Review 抽屉逐条复制+粘回 resolve / conflicts=0 零态不渲染（造 store 文件驱动） | ✅       |
 | `sync-diagnostics-copy` | `verify.mjs` | 同步诊断复制：none 传输 probe 短路 / 不可达 server 的 checks+fix payload / 失败 run 的 lastError+journal payload（跑真实失败 sync）/ JournalTail n 上限与 CLI 行格式 | ✅       |
 | `term-failure-copy`    | `verify.mjs` | 终端失败复制：真实 exit 3 命令块驱动——失败提示条 + Copy for agent payload（命令行/cwd/exit code/末段输出/三段式契约）；exit 0 块不渲染 | ✅       |
+| `vcs-conflict-copy`   | `verify.mjs` | VCS 冲突/失败复制：真实 git 仓库（amend 非快进 → push 被拒；双分支改同一行 → merge 冲突）驱动——失败卡复制含 stderr 被拒原因、冲突条复制含三标记 + `=== path ===` 分段、干净仓库无冲突条 | ✅       |

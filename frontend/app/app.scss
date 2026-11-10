@@ -147,7 +147,9 @@ a {
     min-width: 12px;
     height: 12px;
     line-height: 12px;
-    font-size: 12px;
+    // 会话行（aisessions）：盒子仍 12px（虚拟行 + flex-wrap 行高不能漂），只放大字形。
+    font-size: 15px;
+    overflow: visible;
 }
 
 .agent-card-logo--clickable {

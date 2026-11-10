@@ -7,7 +7,13 @@ import { clearVcsTreeStatusCache } from "@/app/view/preview/vcs-tree-status";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { createBlock } from "@/store/global";
-import { basename, isBlank, makeConnRoute } from "@/util/util";
+import { CopyForAgent } from "@/app/element/copy-for-agent";
+import {
+    buildMergeConflictsPayload,
+    buildVcsOperationFailurePayload,
+    isUnmergedCode,
+} from "@/app/view/preview/conflict-copy";
+import { base64ToString, isBlank, makeConnRoute, basename } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
 
@@ -130,9 +136,11 @@ function OperationDetails({ details }: { details: string }) {
  */
 function VcsProgressCard({
     operation,
+    repoPath,
     onDismiss,
 }: {
     operation?: VcsOperationInfo;
+    repoPath?: string;
     onDismiss: () => void;
 }) {
     // Keep the latest dismiss callback without resetting the auto-dismiss timer.
@@ -191,12 +199,87 @@ function VcsProgressCard({
                     <div className="whitespace-pre-wrap">{summary || `${VcsOperationLabel[action]} failed.`}</div>
                     {hasDetails && <OperationDetails details={details} />}
                 </div>
+                <CopyForAgent
+                    title={`Copy the failed ${action} for an AI to diagnose`}
+                    text={() =>
+                        Promise.resolve(
+                            buildVcsOperationFailurePayload({
+                                action,
+                                repoPath: repoPath ?? "",
+                                message: message || summary || "",
+                                details,
+                            })
+                        )
+                    }
+                />
                 {dismissBtn}
             </div>
         );
     }
 
     return <div className={boxClass}>{body}</div>;
+}
+
+/**
+ * 合并冲突条：仓库有 unmerged 文件时出现在变更区上方。
+ * 复制时懒读每个文件的冲突标记片段（±3 行上下文），走共享三段式契约。
+ */
+function VcsConflictBar({
+    repo,
+    connection,
+    rpc,
+}: {
+    repo: VcsRepositoryInfo;
+    connection: string;
+    rpc: VcsUiEnv["rpc"];
+}) {
+    const unmerged = React.useMemo(
+        () => (repo.status ?? []).filter((status) => isUnmergedCode(status.code)),
+        [repo.status]
+    );
+    if (unmerged.length === 0) return null;
+
+    const readFileText = async (filePath: string): Promise<string> => {
+        const fullPath = filePath.startsWith("/") ? filePath : `${repo.rootpath.replace(/\/$/, "")}/${filePath}`;
+        // 本地连接不传 route：`fileread` 不接受 "conn:local" 这种连接路由（2026-11-10 真机
+        // 验证台实踩——传了会让一次复制静默失败）；远程连接才带 conn 路由。
+        const routeOpts =
+            connection != null && connection !== "" && connection !== "local"
+                ? { route: makeConnRoute(connection), timeout: VcsRepositoryRpcTimeoutMs }
+                : undefined;
+        try {
+            const resp = await rpc.FileReadCommand(TabRpcClient, { info: { path: fullPath } as FileInfo }, routeOpts);
+            return resp?.data64 ? base64ToString(resp.data64) : "";
+        } catch {
+            return "";
+        }
+    };
+
+    return (
+        <div
+            className="mb-2 rounded border border-warning/40 bg-warning/8 px-2 py-1.5 text-xs text-warning"
+            data-vcs-conflict-bar=""
+        >
+            <div className="flex items-center gap-2">
+                <i className="fa-sharp fa-solid fa-code-merge text-[11px] shrink-0" />
+                <span className="min-w-0 flex-1 truncate">
+                    {unmerged.length} file{unmerged.length > 1 ? "s" : ""} with merge conflicts.
+                </span>
+                <CopyForAgent
+                    title={`Copy all ${unmerged.length} merge conflict${unmerged.length > 1 ? "s" : ""} for an AI to resolve`}
+                    text={async () => {
+                        const files = await Promise.all(
+                            unmerged.map(async (status) => ({
+                                path: status.path,
+                                content: await readFileText(status.path),
+                            }))
+                        );
+                        return buildMergeConflictsPayload(files);
+                    }}
+                />
+            </div>
+        </div>
+    );
 }
 
 export class VcsViewModel implements ViewModel {
@@ -579,7 +662,12 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     />
 
                     {/* Shared operation progress card, visible across all tabs */}
-                    <VcsProgressCard operation={activeOp} onDismiss={() => clearOperation(activeRepo.repoid)} />
+                    <VcsProgressCard
+                        operation={activeOp}
+                        repoPath={activeRepo.rootpath}
+                        onDismiss={() => clearOperation(activeRepo.repoid)}
+                    />
+                    <VcsConflictBar repo={activeRepo} connection={connection} rpc={env.rpc} />
 
                     {/* Tab content */}
                     <div className="flex-1 min-h-0 overflow-hidden">
