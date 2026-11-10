@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Snorkeling · 更新流程原型</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="proto-shell">
+
+  <!-- ===== 左：模拟真实窗口 ===== -->
+  <div class="app-window" id="appWindow">
+    <!-- tab bar（镜像 frontend/app/tab/tabbar.tsx） -->
+    <div class="tabbar">
+      <div class="tabbar-left">
+        <div class="tab active">~/Primary</div>
+        <div class="tab">term 2</div>
+        <div class="tab-plus">+</div>
+      </div>
+      <div class="tabbar-right">
+        <!-- 镜像 updatebanner.tsx -->
+        <div class="update-banner" id="updateBanner" hidden>
+          <i class="ico" id="bannerIco"></i>
+          <span id="bannerText"></span>
+          <button class="banner-x" id="bannerCancel" title="Cancel download" hidden>×</button>
+        </div>
+        <div class="widget-strip" title="WidgetsBar">▤</div>
+      </div>
+    </div>
+
+    <!-- 内容区 -->
+    <div class="app-body">
+      <div class="terminal">
+        <div class="term-line dim">Snorkeling 0.14.6-beta.0.snorkeling.0.0.125</div>
+        <div class="term-line"><span class="prompt">~</span> <span class="caret"></span></div>
+      </div>
+
+      <!-- 支持性面板（NEW）：由控制器场景触发 -->
+      <aside class="support-panel" id="supportPanel" hidden>
+        <h4>安装形态支持性 <span class="tag-new">NEW</span></h4>
+        <ul id="supportList"></ul>
+        <p class="hint" id="supportHint"></p>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ===== 右：原型控制器 ===== -->
+  <aside class="controller">
+    <h3>原型控制器</h3>
+    <div class="ctl-group">
+      <label>场景</label>
+      <button data-scene="idle">0 · 无更新（检查中不消失）</button>
+      <button data-scene="available">1 · 新版本可用</button>
+      <button data-scene="downloading">2 · 下载中（进度/取消）</button>
+      <button data-scene="ready">3 · 就绪 → 重启弹窗</button>
+      <button data-scene="error">4 · 下载失败（重试）</button>
+      <button data-scene="channel">5 · 通道选择（About）</button>
+      <button data-scene="zipwindows">6 · Windows zip 解压安装</button>
+      <button data-scene="debug">7 · Update Debug Info</button>
+    </div>
+    <div class="ctl-group">
+      <label>主题</label>
+      <button id="themeToggle">切换 暗 / 亮</button>
+    </div>
+    <div class="ctl-group">
+      <label>当前通道（演示）</label>
+      <div class="ctl-row">
+        <button data-channel="stable" class="chan-btn active">Stable</button>
+        <button data-channel="beta" class="chan-btn">Beta</button>
+      </div>
+    </div>
+    <p class="ctl-note">
+      本原型只演示交互与状态机，不含真实下载逻辑。<br />
+      镜像源：<code>updatebanner.tsx</code> / <code>about.tsx</code> / <code>updater.ts</code>
+    </p>
+  </aside>
+</div>
+
+<!-- ===== 重启确认弹窗（NEW） ===== -->
+<div class="modal-scrim" id="restartScrim" hidden>
+  <div class="modal restart-modal">
+    <div class="modal-head">
+      <span class="modal-icon">⟳</span>
+      <div>
+        <h3>更新已就绪</h3>
+        <p class="muted" id="restartVersion">Snorkeling 0.14.6-beta.0.snorkeling.0.0.126 已下载并校验完成</p>
+      </div>
+    </div>
+    <ul class="restart-facts">
+      <li>大小 208.8 MB ｜ 通道 <span id="restartChannel">Stable</span></li>
+      <li>已解包到 <code>…/Snorkeling/updates/0.0.126/</code></li>
+      <li>替换动作发生在退出后由独立脚本完成，失败自动回滚旧版本</li>
+    </ul>
+    <div class="modal-actions">
+      <button class="btn primary" id="restartNow">Restart Now</button>
+      <button class="btn" id="restartLater">Later</button>
+    </div>
+    <p class="modal-foot muted">Later = 保持就绪，下次正常退出应用时自动应用更新（install-on-quit）。</p>
+  </div>
+</div>
+
+<!-- ===== About 弹窗（镜像 about.tsx，含 NEW 通道选择器） ===== -->
+<div class="modal-scrim" id="aboutScrim" hidden>
+  <div class="modal about-modal">
+    <div class="about-logo">◈</div>
+    <div class="about-title">Snorkeling</div>
+    <div class="about-sub muted">Customized from Wave Terminal upstream<br />Open-Source AI-Integrated Terminal</div>
+    <div class="about-meta">
+      Client Version 0.14.6-beta.0.snorkeling.0.0.125
+      <br />
+      Update Channel:
+      <!-- NEW: 只读文本 → 选择器 -->
+      <span class="channel-select" id="channelSelect">
+        <button class="chan-opt active" data-channel="stable">Stable</button>
+        <button class="chan-opt" data-channel="beta">Beta</button>
+      </span>
+    </div>
+    <p class="about-note muted">
+      Stable 只接受正式发布；Beta 接受预发布版本，可能不稳定。
+      当前所有 release 均未标记 prerelease，因此 Beta 暂时与 Stable 等价（发版时勾选 prerelease 即生效）。
+    </p>
+    <div class="about-grid">
+      <span class="about-btn">GitHub Repo</span>
+      <span class="about-btn">Wave Upstream</span>
+      <span class="about-btn">Open Source</span>
+      <span class="about-btn">Wave Website</span>
+    </div>
+    <!-- NEW: 更新诊断入口 -->
+    <div class="about-debug">
+      <button class="btn small" id="copyUpdateDebug">Copy Update Debug Info <span class="tag-new">NEW</span></button>
+      <button class="btn small" id="closeAbout">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Debug Info 面板（NEW） ===== -->
+<div class="modal-scrim" id="debugScrim" hidden>
+  <div class="modal debug-modal">
+    <h3>Update Debug Info <span class="tag-new">NEW</span></h3>
+    <pre id="debugText"></pre>
+    <div class="modal-actions">
+      <button class="btn primary" id="closeDebug">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
