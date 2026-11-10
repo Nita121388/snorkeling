@@ -4,7 +4,9 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import "./copybutton.scss";
+import { Button } from "./button";
 import { IconButton } from "./iconbutton";
+import { makeIconClass } from "@/util/util";
 
 type CopyButtonProps = {
     title: string;
@@ -16,10 +18,19 @@ type CopyButtonProps = {
     onClick: (e: React.MouseEvent<HTMLButtonElement>) => void | Promise<unknown>;
     /** 复制失败回调。不传则失败时静默保持原图标（不假装成功）。 */
     onError?: () => void;
+    /**
+     * 文本按钮形态（如 "Copy for agent"）：渲染「图标 + 文字」的小按钮，
+     * 而不是纯 IconButton。不传则维持纯图标形态（既有消费面行为不变）。
+     */
+    label?: React.ReactNode;
+    /** 图标名（makeIconClass）。默认 "copy"；成功后统一换成 "check"。 */
+    icon?: string;
 };
 
-const CopyButton = ({ title, className, onClick, onError }: CopyButtonProps) => {
+const CopyButton = ({ title, className, onClick, onError, label, icon }: CopyButtonProps) => {
     const [isCopied, setIsCopied] = useState(false);
+    // 懒取形态（onClick 返回 Promise）在 settle 前的 loading 态：图标转圈 + 禁点。
+    const [isBusy, setIsBusy] = useState(false);
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const markCopied = () => {
@@ -34,7 +45,7 @@ const CopyButton = ({ title, className, onClick, onError }: CopyButtonProps) => 
     };
 
     const handleOnClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-        if (isCopied) {
+        if (isCopied || isBusy) {
             return;
         }
 
@@ -47,9 +58,16 @@ const CopyButton = ({ title, className, onClick, onError }: CopyButtonProps) => 
         }
 
         if (result != null && typeof (result as Promise<unknown>).then === "function") {
+            setIsBusy(true);
             void (result as Promise<unknown>).then(
-                () => markCopied(),
-                () => onError?.()
+                () => {
+                    setIsBusy(false);
+                    markCopied();
+                },
+                () => {
+                    setIsBusy(false);
+                    onError?.();
+                }
             );
             return;
         }
@@ -65,11 +83,27 @@ const CopyButton = ({ title, className, onClick, onError }: CopyButtonProps) => 
         };
     }, []);
 
+    if (label != null) {
+        return (
+            <Button
+                title={title}
+                aria-label={title}
+                className={clsx("copy-button", "ghost", "grey", { copied: isCopied }, className)}
+                onClick={handleOnClick}
+                disabled={isBusy}
+            >
+                <i className={makeIconClass(isCopied ? "check" : (icon ?? "copy"), true, { spin: isBusy })} />
+                {label}
+            </Button>
+        );
+    }
+
     return (
         <IconButton
             decl={{
                 elemtype: "iconbutton",
-                icon: isCopied ? "check" : "copy",
+                icon: isCopied ? "check" : (icon ?? "copy"),
+                iconSpin: isBusy,
                 title,
                 className: clsx("copy-button", { copied: isCopied }),
                 click: handleOnClick,

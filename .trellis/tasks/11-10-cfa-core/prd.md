@@ -40,9 +40,10 @@ merged content only"）只存在于 `pkg/syncconflict/render.go`；前端 `confl
 
 ## Acceptance（命令 → 期望输出）
 
-- `npx vitest run frontend/app/element/copy-for-agent.test.tsx` → 全绿，≥ 6 个用例。
-- `grep -rn "buildAgentPayload" frontend/ | wc -l` ≥ 1（构建器落位）；core 任务本身不接消费面。
-- `grep -rn "Output contract\|### Output" frontend/app/element/copy-for-agent.ts*` → 常量存在且只此一处定义。
+- [x] `npx vitest run frontend/app/element/copy-for-agent.test.tsx` → 全绿，9 个用例（≥ 6）；copybutton 回归 6/6 同跑全绿。
+- [x] `grep -rn "buildAgentPayload" frontend/ | wc -l` ≥ 1（构建器落位 agent-payload.ts + copy-for-agent.tsx re-export）；core 任务本身不接消费面。
+- [x] `grep -rn "Output contract\|### Output" frontend/app/element/copy-for-agent.ts*` → 三段式小节头在组件注释中声明，字符串常量仅在 agent-payload.ts 一处定义（`"### Output contract"` L59）。
+- [x] `npx tsc --noEmit` 新增/改动文件 0 error（仓内存量 47 处不计）。
 
 ## Touch（白名单）
 
