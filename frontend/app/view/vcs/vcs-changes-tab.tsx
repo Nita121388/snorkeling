@@ -1,9 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CommitGroup, CommitRow } from "@/app/view/vcs/vcs-commit-row";
 import { filterVcsFileStatuses, VcsFileTypeFilterOptions } from "@/app/view/vcs/vcs-filter";
-import { formatAbsoluteTime, formatRelativeTime } from "@/app/view/vcs/vcs-time";
-import { isBlank } from "@/util/util";
+import { getRepoOpenUrl } from "@/app/view/vcs/vcs-remote";
+import { openLink } from "@/store/global";
+import { fireAndForget, isBlank } from "@/util/util";
 import React from "react";
 import { VcsIconButton } from "./vcs-icon-button";
 
@@ -188,52 +190,6 @@ function FileStatusRow({
                 reveal="hover"
                 onClick={onShowHistory}
             />
-        </div>
-    );
-}
-
-type RemoteCommitDirection = "incoming" | "outgoing";
-
-function RemoteCommitRow({ commit, direction }: { commit: VcsCommitInfo; direction: RemoteCommitDirection }) {
-    const shortHash = (hash: string) => (hash?.length > 10 ? hash.slice(0, 10) : hash);
-    const subject = commit.subject || "(no subject)";
-    const railColor = direction === "outgoing" ? "bg-success" : "bg-error";
-    const relativeTime = formatRelativeTime(commit.date);
-    return (
-        <div className="flex w-full items-stretch gap-2 border-b border-border px-2 py-[7px] last:border-b-0 hover:bg-hover" title={subject}>
-            <span className={`w-[2px] shrink-0 self-stretch rounded-full opacity-55 ${railColor}`} />
-            <div className="min-w-0 flex-1 py-[1px]">
-                <div className="truncate text-xs">{subject}</div>
-                <div className="mt-[3px] flex min-w-0 items-center gap-1.5 text-[10.5px] text-muted">
-                    <span className="font-mono">{shortHash(commit.hash ?? "")}</span>
-                    {commit.author ? (
-                        <>
-                            <span className="opacity-50">·</span>
-                            <span className="max-w-[160px] truncate">{commit.author}</span>
-                        </>
-                    ) : null}
-                    <span className="opacity-50">·</span>
-                    <span title={formatAbsoluteTime(commit.date)}>{relativeTime || "—"}</span>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function RemoteCommitList({ title, commits, direction }: { title: string; commits: VcsCommitInfo[]; direction: RemoteCommitDirection }) {
-    if ((commits?.length ?? 0) === 0) return null;
-    return (
-        <div className="mt-3">
-            <div className="mb-1 flex items-center gap-1.5 px-0.5">
-                <span className="text-[11px] font-semibold text-secondary">{title}</span>
-                <span className="rounded bg-surface-soft px-1 font-mono text-[10px] leading-[15px] text-muted">{commits.length}</span>
-                <span className="ml-1 h-px flex-1 bg-border" />
-            </div>
-            <div className="overflow-hidden rounded-[7px]">
-                {commits.map((commit, idx) => (
-                    <RemoteCommitRow key={`${title}-${commit.hash}-${idx}`} commit={commit} direction={direction} />
-                ))}
-            </div>
         </div>
     );
 }
@@ -442,8 +398,20 @@ export function VcsChangesTab({
                                     <span className="truncate text-xs italic text-muted" title="Upstream not configured">
                                         No upstream
                                     </span>
-                                ) : (
+                                ) : isBlank(getRepoOpenUrl(repo)) ? (
                                     <span className="max-w-[220px] truncate font-mono text-xs text-secondary" title={remote?.upstream}>
+                                        {remote?.upstream}
+                                    </span>
+                                ) : (
+                                    <span
+                                        className="max-w-[220px] truncate font-mono text-xs text-secondary cursor-pointer hover:text-accent hover:underline"
+                                        title={getRepoOpenUrl(repo)}
+                                        onClick={() => {
+                                            fireAndForget(async () => {
+                                                await openLink(getRepoOpenUrl(repo));
+                                            });
+                                        }}
+                                    >
                                         {remote?.upstream}
                                     </span>
                                 )}
@@ -464,8 +432,16 @@ export function VcsChangesTab({
                                     </span>
                                 )}
                             </div>
-                            <RemoteCommitList title="Incoming" commits={incoming} direction="incoming" />
-                            <RemoteCommitList title="Outgoing" commits={outgoing} direction="outgoing" />
+                            <CommitGroup title="Incoming" count={incoming.length}>
+                                {incoming.map((commit, idx) => (
+                                    <CommitRow key={`incoming-${commit.hash}-${idx}`} commit={commit} railColor="bg-error" />
+                                ))}
+                            </CommitGroup>
+                            <CommitGroup title="Outgoing" count={outgoing.length}>
+                                {outgoing.map((commit, idx) => (
+                                    <CommitRow key={`outgoing-${commit.hash}-${idx}`} commit={commit} railColor="bg-success" />
+                                ))}
+                            </CommitGroup>
                         </div>
                     )}
                 </>

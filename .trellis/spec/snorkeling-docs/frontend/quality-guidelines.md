@@ -508,6 +508,20 @@ VCS 面板典型宽度 400–560px。`RemoteCommitRow` 原来给 hash/author/dat
   别用 `border-border` 描边胶囊（与「去描边胶囊化」口径一致）。
 - 纯函数放独立 `*.ts` 并配 vitest（`vcs-time.test.ts` 11 条），组件里不写时间格式化分支。
 
+### 两行式提交行只有一份实现 (2026-11-10, task 11-10-vcs-history-commit-row-style)
+
+- vcshistory 块的提交列表与 Changes 页 Remote 区共用 `frontend/app/view/vcs/vcs-commit-row.tsx`
+  的 `CommitRow` / `CommitGroup`：同一观感（轨 / 两行 / hover / 分隔线 / 圆角容器）只允许这一份，
+  不要在别的 VCS 面板再手写第三份。
+- **expandable 行与纯展示行必须同一分支骨架**：非 expandable 时 subject 行是纯 `div.truncate.text-xs`
+  （与 Remote 区逐字节一致）；expandable 才换 flex + `▾/▸`。禁止为「可展开」另写一套行容器。
+- **语义轨不得跨场景复用方向色**：Outgoing 绿 / Incoming 红只属于 remote 同步方向；
+  history 等无方向语义的场景用 `bg-accent` 中性轨。真机断言锁死 history 轨不出现
+  `bg-success` / `bg-error`。
+- verify 台的 `--dry` 分支必须 `finish({ ledger: false })`：模板默认 `ledger: true`，
+  dry-run 只跑「依赖解析」也会往 `docs/project/verify-ledger.md` 写一行 ✅ 假绿（2026-11-10 实踩）。
+  新 area 从模板复制后第一件事就是改 dry 分支，并删掉模板遗留的任何假绿行。
+
 ---
 
 ## 行内「悬浮淡出」的元信息：不能靠 tooltip 承载必要读数 (2026-11-09, task 11-09-commontext-freshness-square)

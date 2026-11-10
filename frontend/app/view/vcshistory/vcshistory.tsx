@@ -3,6 +3,7 @@
 
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { CommitGroup, CommitRow } from "@/app/view/vcs/vcs-commit-row";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { createBlock } from "@/store/global";
@@ -62,6 +63,7 @@ export class VcsHistoryViewModel implements ViewModel {
         this.repoTypeAtom = atom((get) => get(this.blockAtom)?.meta?.["vcshistory:repotype"] ?? "");
         this.repoPathAtom = atom((get) => get(this.blockAtom)?.meta?.["vcshistory:repopath"] ?? "");
         this.filePathAtom = atom((get) => get(this.blockAtom)?.meta?.["vcshistory:filepath"] ?? "");
+        this.browseUrlAtom = atom((get) => get(this.blockAtom)?.meta?.["vcshistory:browseurl"] ?? "");
         this.titleAtom = atom((get) => {
             const customTitle = get(this.blockAtom)?.meta?.["vcshistory:title"];
             if (!isBlank(customTitle)) {
@@ -279,36 +281,25 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                     <div className="text-sm text-muted">No history entries found for this path.</div>
                 )}
                 {!loading && !error && commits.length > 0 && (
-                    <div className="flex flex-col gap-1">
+                    <CommitGroup title="History" count={commits.length}>
                         {commits.map((commit, idx) => {
                             const revision = commit.hash ?? "";
-                            const clickable = !isBlank(revision);
+                            const expandable = !isBlank(revision);
                             const expanded = !!expandedByRevision[revision];
                             const filesLoading = !!filesLoadingByRevision[revision];
                             const filesError = filesErrorByRevision[revision] ?? "";
                             const files = filesByRevision[revision] ?? [];
                             return (
-                                <div
-                                    key={`${revision}-${idx}`}
-                                    className="px-2 py-1.5"
-                                >
-                                    <div
-                                        className={`flex items-center gap-2 text-xs ${
-                                            clickable ? "cursor-pointer hover:text-accent" : ""
-                                        }`}
-                                        onClick={() => toggleCommit(commit)}
-                                    >
-                                        <span className="text-muted w-[12px] shrink-0">{expanded ? "▾" : "▸"}</span>
-                                        <span className="font-mono text-secondary">{shortHash(revision)}</span>
-                                        <span className="truncate flex-1">{commit.subject || "(no message)"}</span>
-                                    </div>
-                                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
-                                        <span className="truncate">{commit.author || "unknown"}</span>
-                                        <span className="truncate">{commit.date || ""}</span>
-                                    </div>
-
-                                    {expanded && (
-                                        <div className="mt-1.5 rounded border border-border bg-surface-strong">
+                                <React.Fragment key={`${revision}-${idx}`}>
+                                    <CommitRow
+                                        commit={commit}
+                                        railColor="bg-accent"
+                                        expandable={expandable}
+                                        expanded={expanded}
+                                        onToggle={() => toggleCommit(commit)}
+                                    />
+                                    {expandable && expanded && (
+                                        <div className="mb-1 ml-4 mt-1.5 rounded border border-border bg-surface-strong">
                                             {filesLoading && (
                                                 <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>
                                             )}
@@ -354,10 +345,10 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                             )}
                                         </div>
                                     )}
-                                </div>
+                                </React.Fragment>
                             );
                         })}
-                    </div>
+                    </CommitGroup>
                 )}
             </div>
         </div>

@@ -95,6 +95,7 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `overview-timeline`    | `verify.mjs` | Overview 时间线（Gantt · G1 会话寿命条）：刻度/now 线/当前状态尾巴/时间窗持久化                             | ✅       |
 | `vcs-tree-status`      | `verify.mjs` | Files VCS 行标记                                                                                            | ✅       |
 | `vcs-panel-buttons`    | `verify.mjs` | 版本管理面板按钮语义：无遗留文字按钮 / icon-only 都有 aria-label / 图标字形解析 / 行内动作 hover 浮现       | ✅       |
+| `vcshistory-rows`      | `verify.mjs` | vcshistory 块提交行：与 Outgoing 共享两行式 CommitRow（副行 hash·author·相对时间 + 2px 轨 + 分组头计数 chip）+ 行内展开 files 面板 | ✅       |
 | `agent-card-seen`      | `verify.mjs` | Agent 状态跨面一致性：Done ↔ ack/seen（头部徽章 / 悬浮卡 / Tab 悬浮卡）                                     | ✅       |
 | `property-editor`      | `verify.mjs` | 属性值下拉编辑器：md 预览浮层（已选标签无描边 + 行尾 ✓）/ agent 悬浮卡浮层 + 「指针移入附属浮层卡片不收起」 | ✅       |
 | `agent-card-tags`      | `verify.mjs` | Agent 卡片 Tags 候选：全局清单并入（候选含本会话未选标签）+ 候选项数字计数 + hover 卡与 AgentCardModal 候选一致（独立 profile + 端口 9234） | ✅       |
