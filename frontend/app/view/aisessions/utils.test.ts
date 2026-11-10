@@ -26,6 +26,7 @@ import {
     groupSessionsByProject,
     heatLevel,
     isReadableMessage,
+    isSessionNotFoundError,
     makeSessionComparator,
     MessageHeatThresholds,
     pruneSelectionToVisible,
@@ -67,6 +68,39 @@ describe("AI sessions empty state", () => {
         expect(shouldStartEmptyChat(false, 0, false, false, "load failed")).toBe(false);
         expect(shouldStartEmptyChat(false, 1, false, false, "")).toBe(false);
         expect(shouldStartEmptyChat(false, 0, true, false, "")).toBe(false);
+    });
+});
+
+describe("isSessionNotFoundError", () => {
+    const NotFoundId = "01a1c45f-4e67-7849-a887-87852146b4d6";
+    const NotFoundMessage = `call aisessions.Detail error: session not found: ${NotFoundId}`;
+
+    it("recognizes a backend session-not-found error with the exact id", () => {
+        expect(isSessionNotFoundError(new Error(NotFoundMessage), NotFoundId)).toBe(true);
+        expect(isSessionNotFoundError(NotFoundMessage, NotFoundId)).toBe(true);
+        expect(isSessionNotFoundError(NotFoundMessage.toUpperCase(), NotFoundId)).toBe(true);
+    });
+
+    it("recognizes a session-not-found error without an id constraint", () => {
+        expect(isSessionNotFoundError(new Error(NotFoundMessage))).toBe(true);
+        expect(isSessionNotFoundError(new Error("session not found: some-other-id"))).toBe(true);
+    });
+
+    it("rejects errors that are not session-not-found", () => {
+        expect(isSessionNotFoundError(new Error("failed to fetch"), NotFoundId)).toBe(false);
+        expect(isSessionNotFoundError(new Error("call aisessions.Detail error: context deadline exceeded"), NotFoundId)).toBe(false);
+        expect(isSessionNotFoundError("session not foundish")).toBe(false);
+    });
+
+    it("rejects a not-found error for a different session id", () => {
+        expect(isSessionNotFoundError(new Error("session not found: 00000000-0000-0000-0000-000000000000"), NotFoundId)).toBe(false);
+    });
+
+    it("handles blank input without throwing", () => {
+        expect(isSessionNotFoundError("")).toBe(false);
+        expect(isSessionNotFoundError(null)).toBe(false);
+        expect(isSessionNotFoundError(undefined)).toBe(false);
+        expect(isSessionNotFoundError(NotFoundMessage, "")).toBe(true);
     });
 });
 

@@ -580,3 +580,19 @@ CommonText 列表行右槽（`w-[58px] h-7`）挂 `group-hover:opacity-0`，hove
   不做全局「导出诊断」。**只进剪贴板**，不绑定任何单一 provider。
 - 成功反馈复用 `CopyButton`（2s 勾，Promise 形态只在 resolve 后报成功，失败静默保持原图标）；
   懒取 RPC 数据用 `text: () => Promise<string>` 函数形态，pending 期间按钮转圈禁点。
+
+---
+
+## 恢复路径不得把「绑定已失效」的内部错误甩给用户 (2026-11-10, task 11-10-aisessions-restore-notfound-graceful)
+
+- **背景**：Agent GUI 块发首条消息时 `bindNewSession()` 立刻把 `aisessions:sessionid` 写进 block meta，
+  但 pi 的 JSONL 要等第一条 assistant 消息完成才落盘。此间重启 → 恢复时 `Detail` 必然
+  `session not found: <id>`，旧行为把这行内部错误当横幅展示。
+- **硬约束**：任何在**恢复/挂载路径**读取持久化会话 id 的地方（`agent.tsx` 的 `restoreBoundSession`、
+  `aisessions.tsx` 的列表恢复 fallback），失败后必须先用
+  `isSessionNotFoundError(error, sessionId)`（`frontend/app/view/aisessions/utils.ts`）判定：
+  - 是 → 清 block meta 绑定（`aisessions:sessionid` / `agent:sessionid` → null）+ 清 `errorAtom`，
+    回落 New Chat / 既有 fallback；**不展示内部错误**。
+  - 否（连接/网络/瞬时）→ 保持既有报错行为，**不清绑**（避免把有效会话误清）。
+- 判定必须带确切 id 匹配（`session not found: <id>`），只匹配文本前缀会把别的会话的 not-found 误判成当前绑定失效。
+- 用户主动点击会话行的 not-found 不在降级范围（应正常报错）。

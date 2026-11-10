@@ -219,8 +219,8 @@ default_package: snorkeling-docs
 #-------------------------------------------------------------------------------
 hooks:
   after_create:
-    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge created"
+    - "node ../loop/bin/loop.mjs hook-bridge created"
   after_start:
-    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge started"
+    - "node ../loop/bin/loop.mjs hook-bridge started"
   after_archive:
-    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge archived"
+    - "node ../loop/bin/loop.mjs hook-bridge archived"

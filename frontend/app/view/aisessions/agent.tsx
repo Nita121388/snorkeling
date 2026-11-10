@@ -25,7 +25,7 @@ import { mergeSessionTimeline } from "./session-timeline-sync";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import { defaultChatSource } from "./sources";
 import { NewSessionKey } from "./types";
-import { getErrorMessage, restoreMetaForSession } from "./utils";
+import { getErrorMessage, isSessionNotFoundError, restoreMetaForSession } from "./utils";
 
 export class AgentViewModel implements ViewModel {
     blockId: string;
@@ -502,6 +502,40 @@ export class AgentViewModel implements ViewModel {
         }
     }
 
+    // 清掉 block meta 里失效的会话绑定（孤儿 id：未落盘/已删除/已移动的会话）。
+    // SetMetaCommand 的 meta 值传 null 即删除键（与 bindNewSession 清 newchat 标志同样用法）。
+    private async clearBoundSessionMeta(): Promise<void> {
+        try {
+            await RpcApi.SetMetaCommand(TabRpcClient, {
+                oref: `block:${this.blockId}`,
+                meta: {
+                    "aisessions:sessionid": null,
+                    "agent:sessionid": null,
+                } as MetaType,
+            });
+        } catch {
+            // 清绑失败不致命：下次恢复还会重试同样的降级路径
+        }
+    }
+
+    // 重启恢复入口：尝试加载绑定的会话；若绑定已失效（session not found）则静默清绑并回落
+    // New Chat 空态，而不是把内部错误横幅留给用户。其他失败（连接/网络/瞬时）保持报错行为。
+    async restoreBoundSession(): Promise<void> {
+        const boundSessionId = this.getBoundSessionId();
+        if (boundSessionId === "") {
+            this.startNewSession();
+            return;
+        }
+        const ok = await this.loadDetailById(boundSessionId);
+        if (ok) return;
+        if (!isSessionNotFoundError(globalStore.get(this.errorAtom), boundSessionId)) return;
+        await this.clearBoundSessionMeta();
+        globalStore.set(this.errorAtom, "");
+        globalStore.set(this.detailAtom, null);
+        globalStore.set(this.detailLoadingAtom, false);
+        this.startNewSession();
+    }
+
     async loadDetailById(sessionId: string, refresh = false): Promise<boolean> {
         const trimmedSessionId = sessionId.trim();
         if (trimmedSessionId === "") return false;
@@ -677,16 +711,9 @@ function AgentView({ model }: ViewComponentProps<AgentViewModel>) {
 
     const isNewChat = selectedKey === NewSessionKey;
 
-    // 初始化：如果绑定了 session，加载详情；否则启动新会话
+    // 初始化：如果绑定了 session，加载详情（绑定失效时降级为 New Chat）；否则启动新会话
     useEffect(() => {
-        const boundSessionId = model.getBoundSessionId();
-        if (boundSessionId !== "") {
-            void model.loadDetailById(boundSessionId);
-        } else if (model.shouldAutoStartNewChat()) {
-            model.startNewSession();
-        } else {
-            model.startNewSession();
-        }
+        void model.restoreBoundSession();
     }, [model]);
 
     // 监听笔记更新事件

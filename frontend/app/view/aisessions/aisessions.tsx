@@ -122,6 +122,7 @@ import {
     formatRelativeRefreshTime,
     getErrorMessage,
     groupSessionsByProject,
+    isSessionNotFoundError,
     makeSessionComparator,
     normalizePathPrefix,
     normalizePathSelections,
@@ -619,9 +620,18 @@ export class AiSessionsViewModel implements ViewModel {
                 if (boundSession != null) {
                     globalStore.set(this.selectedKeyAtom, boundSession.key);
                     globalStore.set(this.detailAtom, null);
-                } else if (boundSessionId !== "" && (await this.loadDetailById(boundSessionId, refresh))) {
-                    return;
-                } else if (this.shouldAutoStartNewChat()) {
+                } else if (boundSessionId !== "") {
+                    if (await this.loadDetailById(boundSessionId, refresh)) {
+                        return;
+                    }
+                    // 绑定已失效（孤儿 id：未落盘/已删除）：静默清绑 + 清错误，再走既有 fallback。
+                    // 其他失败（连接/网络/瞬时）保留错误展示，不清绑。
+                    if (isSessionNotFoundError(globalStore.get(this.errorAtom), boundSessionId)) {
+                        await this.clearBoundSessionMeta();
+                        globalStore.set(this.errorAtom, "");
+                    }
+                }
+                if (this.shouldAutoStartNewChat()) {
                     this.startNewSession();
                 } else {
                     const firstSession = sortSessionsByTime(sessions, sortDescending)[0];
@@ -1089,6 +1099,21 @@ export class AiSessionsViewModel implements ViewModel {
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
         const sessionId = meta["aisessions:sessionid"] ?? meta["agent:sessionid"];
         return typeof sessionId === "string" ? sessionId.trim() : "";
+    }
+
+    // 清掉 block meta 里失效的会话绑定（孤儿 id）。与 agent.tsx 的同名方法保持一致。
+    private async clearBoundSessionMeta(): Promise<void> {
+        try {
+            await RpcApi.SetMetaCommand(TabRpcClient, {
+                oref: `block:${this.blockId}`,
+                meta: {
+                    "aisessions:sessionid": null,
+                    "agent:sessionid": null,
+                } as MetaType,
+            });
+        } catch {
+            // 清绑失败不致命：下次恢复还会重试同样的降级路径
+        }
     }
 
     // New Agent GUI 模式的 block 带 newchat 标志：无绑定会话时自动开新会话。

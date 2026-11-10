@@ -724,6 +724,16 @@ export function getErrorMessage(error: unknown): string {
     return String(error);
 }
 
+// 识别后端 aisessions 的 "session not found: <id>" 错误（含 ambiguous 场景，后端也返回同一文案）。
+// 传入 sessionId 时要求错误文本里带上确切的 id，避免把其他会话的 not-found 误判为当前绑定失效。
+export function isSessionNotFoundError(error: unknown, sessionId?: string): boolean {
+    const normalized = getErrorMessage(error).trim().toLowerCase();
+    if (!normalized.includes("session not found:")) return false;
+    const normalizedSessionId = (sessionId ?? "").trim().toLowerCase();
+    if (normalizedSessionId === "") return true;
+    return normalized.includes(`session not found: ${normalizedSessionId}`);
+}
+
 // ── Path filter helpers ──
 // Roots are clustered by disk drive / home prefix. Windows drive letter is
 // case-insensitive but we keep canonical uppercase form for display, lowercase
