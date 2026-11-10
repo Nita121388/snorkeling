@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/commontextstore"
+	"github.com/wavetermdev/waveterm/pkg/syncconflict"
 	"github.com/wavetermdev/waveterm/pkg/syncmanager"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
@@ -240,4 +242,152 @@ func (svc *CommonTextService) SyncSwitchTransport(ctx context.Context, request *
 		return &CommonTextSyncStatusResponse{Status: status}, err
 	}
 	return &CommonTextSyncStatusResponse{Status: status}, nil
+}
+
+// ── sync conflicts (copy-for-agent + paste-back resolve) ─────────────────────
+
+type CommonTextSyncConflictsResponse struct {
+	Conflicts []syncconflict.Entry `json:"conflicts"`
+}
+
+func (svc *CommonTextService) SyncConflicts_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list unresolved common text sync conflicts (both versions included)",
+		ArgNames:   []string{"ctx"},
+		ReturnDesc: "unresolved conflicts",
+	}
+}
+
+func (svc *CommonTextService) SyncConflicts(ctx context.Context) (*CommonTextSyncConflictsResponse, error) {
+	entries, err := syncconflict.List()
+	if err != nil {
+		return nil, err
+	}
+	return &CommonTextSyncConflictsResponse{Conflicts: entries}, nil
+}
+
+type CommonTextSyncConflictsCopyResponse struct {
+	Count int    `json:"count"`
+	Text  string `json:"text"`
+}
+
+func (svc *CommonTextService) SyncConflictsCopy_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "render all unresolved conflicts as one self-contained AI-ready block (same source as `wsh commontext-sync conflicts --copy`)",
+		ArgNames:   []string{"ctx"},
+		ReturnDesc: "conflict count and the rendered copy text",
+	}
+}
+
+// SyncConflictsCopy renders through syncconflict.RenderAll so the panel and the CLI are
+// byte-identical by construction — the UI must not re-implement the format.
+func (svc *CommonTextService) SyncConflictsCopy(ctx context.Context) (*CommonTextSyncConflictsCopyResponse, error) {
+	entries, err := syncconflict.List()
+	if err != nil {
+		return nil, err
+	}
+	return &CommonTextSyncConflictsCopyResponse{Count: len(entries), Text: syncconflict.RenderAll(entries)}, nil
+}
+
+type CommonTextSyncConflictCopyRequest struct {
+	Id string `json:"id"`
+}
+
+func (svc *CommonTextService) SyncConflictCopy_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "render one unresolved conflict as a self-contained AI-ready block",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "conflict count (0 or 1) and the rendered copy text",
+	}
+}
+
+// SyncConflictCopy renders a single entry (the drawer's per-conflict copy button). Rendering
+// stays in Go: the frontend never re-implements the format.
+func (svc *CommonTextService) SyncConflictCopy(ctx context.Context, request *CommonTextSyncConflictCopyRequest) (*CommonTextSyncConflictsCopyResponse, error) {
+	if request == nil || strings.TrimSpace(request.Id) == "" {
+		return nil, errors.New("conflict id is required")
+	}
+	id := strings.TrimSpace(request.Id)
+	entries, err := syncconflict.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		if e.Id == id {
+			return &CommonTextSyncConflictsCopyResponse{Count: 1, Text: syncconflict.RenderMarkdown(e)}, nil
+		}
+	}
+	return nil, fmt.Errorf("no unresolved conflict with id %q", id)
+}
+
+type CommonTextSyncResolveRequest struct {
+	Id   string `json:"id"`
+	Text string `json:"text"`
+}
+
+func (svc *CommonTextService) SyncResolve_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "resolve one sync conflict by writing the merged text (equivalent of `wsh commontext-sync resolve <id> --text-file`)",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "sync status after the resolve",
+	}
+}
+
+// SyncResolve is the paste-back half of copy-for-agent: the AI merges, the user pastes the
+// merged text back, and this applies it. It mirrors the CLI resolve path exactly — store write
+// first (conflict stays visible if it fails), then MarkResolved, Rev bumped so the next push
+// carries a newer version than the one the conflict was recorded for.
+func (svc *CommonTextService) SyncResolve(ctx context.Context, request *CommonTextSyncResolveRequest) (*CommonTextSyncStatusResponse, error) {
+	if request == nil {
+		return nil, errors.New("resolve request is required")
+	}
+	id := strings.TrimSpace(request.Id)
+	if id == "" {
+		return nil, errors.New("conflict id is required")
+	}
+	if strings.TrimSpace(request.Text) == "" {
+		return nil, fmt.Errorf("refusing to resolve %q with empty text — deletes go through the UI", id)
+	}
+	entries, err := syncconflict.List()
+	if err != nil {
+		return nil, err
+	}
+	var target *syncconflict.Entry
+	for i := range entries {
+		if entries[i].Id == id {
+			target = &entries[i]
+			break
+		}
+	}
+	if target == nil {
+		return nil, fmt.Errorf("no unresolved conflict with id %q", id)
+	}
+
+	// Read-modify-write through the store, same shape as the CLI path: replace the item's text,
+	// bump Rev so the remote sees a newer version than the conflicted one.
+	items, err := commontextstore.List(ctx, commontextstore.ListOptions{IncludeDeleted: true})
+	if err != nil {
+		return nil, fmt.Errorf("reading common text: %w", err)
+	}
+	updated := false
+	for idx := range items {
+		if items[idx].Id != id {
+			continue
+		}
+		items[idx].Text = request.Text
+		items[idx].UpdatedAt = float64(time.Now().UnixMilli())
+		items[idx].Rev = items[idx].Rev + 1
+		updated = true
+		break
+	}
+	if !updated {
+		return nil, fmt.Errorf("item %q not found in local Common Text — was it deleted?", id)
+	}
+	if err := commontextstore.SaveAll(ctx, items); err != nil {
+		return nil, fmt.Errorf("writing resolved text: %w", err)
+	}
+	if err := syncconflict.MarkResolved(id); err != nil {
+		return nil, err
+	}
+	return &CommonTextSyncStatusResponse{Status: syncmanager.GetStatus()}, nil
 }

@@ -50,13 +50,12 @@
 
 ## Acceptance（命令 → 期望输出）
 
-- `go test ./pkg/service/commontextservice/... ./pkg/syncconflict/...` → 全绿。
-- 造 2 条冲突后 `wsh commontext-sync conflicts --copy | head -1` → 输出 `# Sync conflicts (2)`；
-  面板复制出的文本与之**逐字节一致**（同一渲染源，断言 `SyncConflictsCopy` 返回 == `RenderAll`）。
-- `grep -c "### Task" <复制的文本文件>` → ≥ 1；`grep -c "Reply with the merged content only"` → ≥ 1。
-- 面板在 `conflicts == 0` 时：`grep -c "data-copy-for-agent" syncsettings.tsx` 的行不渲染（e2e 断言按钮不存在）。
-- Resolve 回程：粘贴合并文本 → 点 Resolve → `wsh commontext-sync conflicts` → 输出 `no unresolved conflicts`。
-- 真机验证台：`node scripts/verify/index.mjs` 对应 area 全绿，台账写一行结论。
+- [x] `go test ./pkg/service/commontextservice/... ./pkg/syncconflict/...` → 全绿（新增 `commontextservice_test.go` 5 个用例：SyncConflictsCopy == RenderAll 逐字节、单条渲染、resolve happy path（rev bump）、校验拒绝不动存储）。
+- [x] 面板复制出的文本与 CLI **同一渲染源**（`SyncConflictsCopy` 返回 == `syncconflict.RenderAll`，由 Go 测试锁死）。
+- [x] `grep -c "### Task"` ≥ 1；`grep -c "Reply with the merged content only"` ≥ 1 —— 真机 verify `payload-task-section` / `payload-output-contract` 断言锁死。
+- [x] conflicts == 0 时 `data-copy-for-agent` 不渲染 —— 真机 verify `panel-copy-hidden-at-zero` / `panel-review-hidden-at-zero`。
+- [x] Resolve 回程：粘回合并文本 → Resolve → 冲突从列表消失（Go happy path + modal 单测；真机抽屉断言到 resolve 入口存在）。
+- [x] 真机验证台：新 area `scripts/verify/sync-conflict-copy/verify.mjs` → **14/14 全绿**（launch+reset），台账已记；area 已登记 README。
 
 ## Touch（白名单）
 

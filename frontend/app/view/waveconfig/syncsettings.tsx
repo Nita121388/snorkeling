@@ -18,7 +18,9 @@
  */
 
 import { CommonTextService } from "@/app/store/services";
+import { CopyForAgent } from "@/app/element/copy-for-agent";
 import { atoms } from "@/app/store/global-atoms";
+import { modalsModel } from "@/app/store/modalmodel";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { Toggle } from "@/app/element/toggle";
@@ -955,11 +957,34 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                             title="Unresolved conflicts"
                             description={
                                 (syncStatus?.conflicts ?? 0) > 0
-                                    ? "Run `wsh commontext-sync conflicts --copy` to hand them to an AI for merging."
+                                    ? "Conflict details can be copied to an AI; nothing is overwritten. (CLI equivalent: `wsh commontext-sync conflicts --copy`.)"
                                     : "Nothing to resolve."
                             }
                             rowKey="status-conflicts"
                         >
+                            {(syncStatus?.conflicts ?? 0) > 0 && (
+                                <>
+                                    <CopyForAgent
+                                        title={`Copy all ${syncStatus?.conflicts ?? 0} conflicts for an AI to merge`}
+                                        text={async () => {
+                                            const resp = await CommonTextService.SyncConflictsCopy();
+                                            return resp?.text ?? "";
+                                        }}
+                                    />
+                                    <button
+                                        type="button"
+                                        data-sync-action="review-conflicts"
+                                        onClick={() =>
+                                            modalsModel.pushModal("SyncConflictModal", {
+                                                onResolved: refreshSyncStatus,
+                                            })
+                                        }
+                                        className="h-7 cursor-pointer rounded border border-border px-3 text-xs text-primary hover:bg-hover"
+                                    >
+                                        Review
+                                    </button>
+                                </>
+                            )}
                             <span
                                 data-sync-conflicts={(syncStatus?.conflicts ?? 0).toString()}
                                 className={cn(

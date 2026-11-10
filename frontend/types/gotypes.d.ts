@@ -915,6 +915,12 @@ declare global {
         updatedAt: number;
     };
 
+    // syncproto.Author
+    type Author = {
+        kind?: string;
+        name?: string;
+    };
+
     // wconfig.BackgroundConfigType
     type BackgroundConfigType = {
         bg?: string;
@@ -1917,6 +1923,22 @@ declare global {
         count: number;
     };
 
+    // commontextservice.CommonTextSyncConflictCopyRequest
+    type CommonTextSyncConflictCopyRequest = {
+        id: string;
+    };
+
+    // commontextservice.CommonTextSyncConflictsCopyResponse
+    type CommonTextSyncConflictsCopyResponse = {
+        count: number;
+        text: string;
+    };
+
+    // commontextservice.CommonTextSyncConflictsResponse
+    type CommonTextSyncConflictsResponse = {
+        conflicts: Entry[];
+    };
+
     // wshrpc.CommonTextSyncMarkSyncedData
     type CommonTextSyncMarkSyncedData = {
         results: PushItemResult[];
@@ -1930,6 +1952,12 @@ declare global {
     // wshrpc.CommonTextSyncPendingResult
     type CommonTextSyncPendingResult = {
         pending: CommonTextItemType[];
+    };
+
+    // commontextservice.CommonTextSyncResolveRequest
+    type CommonTextSyncResolveRequest = {
+        id: string;
+        text: string;
     };
 
     // commontextservice.CommonTextSyncStatusResponse
@@ -2087,6 +2115,19 @@ declare global {
         bottom: number;
         width: number;
         height: number;
+    };
+
+    // syncconflict.Entry
+    type Entry = {
+        id: string;
+        fields: string[];
+        local?: SnapshotItem;
+        remote?: SnapshotItem;
+        title?: string;
+        detectedAt: string;
+        deviceName?: string;
+        transport?: string;
+        resolvedAt?: string;
     };
 
     // wshrpc.FetchSuggestionsData
@@ -2553,6 +2594,13 @@ declare global {
         "waveai:chatid"?: string;
         "waveai:mode"?: string;
         "waveai:maxoutputtokens"?: number;
+    };
+
+    // syncproto.Origin
+    type Origin = {
+        deviceid?: string;
+        devicename?: string;
+        platform?: string;
     };
 
     // wshrpc.PathCommandData
@@ -3250,6 +3298,25 @@ declare global {
         "tsunami:gopath"?: string;
         "scheduledtasks:*"?: boolean;
         "scheduledtasks:items"?: ScheduledTaskType[];
+    };
+
+    // syncproto.SnapshotItem
+    type SnapshotItem = {
+        id: string;
+        title?: string;
+        text?: string;
+        shortcut?: string;
+        tags?: string[];
+        pinned?: boolean;
+        createdat?: number;
+        updatedat?: number;
+        lastusedat?: number;
+        usagecount?: number;
+        emoji?: string;
+        createdby?: Author;
+        origin?: Origin;
+        rev?: number;
+        deletedat?: number;
     };
 
     // syncmanager.Status

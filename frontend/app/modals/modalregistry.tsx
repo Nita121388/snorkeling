@@ -10,6 +10,7 @@ import { EnvModalView } from "@/app/view/term/envmodal";
 import { WidgetQuickLaunchModal } from "@/app/workspace/widget-quick-launch";
 import { DeleteFileModal, PublishAppModal, RenameFileModal } from "@/builder/builder-apppanel";
 import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
+import { SyncConflictModal } from "@/app/modals/syncconflictmodal";
 import { AboutModal } from "./about";
 import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
 import { AgentCardModal } from "./agentcardmodal";
@@ -48,6 +49,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [SetSecretDialog.displayName || "SetSecretDialog"]: SetSecretDialog,
     [ExportOptionsModal.displayName || "ExportOptionsModal"]: ExportOptionsModal,
     [RestartConfirmModal.displayName || "RestartConfirmModal"]: RestartConfirmModal,
+    [SyncConflictModal.displayName || "SyncConflictModal"]: SyncConflictModal,
     [ConfirmModal.displayName || "ConfirmModal"]: ConfirmModal,
     [EditOriginsModal.displayName || "EditOriginsModal"]: EditOriginsModal,
     [ScheduledTaskEditorModal.displayName || "ScheduledTaskEditorModal"]: ScheduledTaskEditorModal,

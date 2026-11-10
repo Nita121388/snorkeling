@@ -438,10 +438,34 @@ export class CommonTextServiceType {
         return callBackendService(this?.waveEnv, "commontext", "RenameTag", Array.from(arguments))
     }
 
+    // render one unresolved conflict as a self-contained AI-ready block
+    // @returns conflict count (0 or 1) and the rendered copy text
+    SyncConflictCopy(request: CommonTextSyncConflictCopyRequest): Promise<CommonTextSyncConflictsCopyResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncConflictCopy", Array.from(arguments))
+    }
+
+    // list unresolved common text sync conflicts (both versions included)
+    // @returns unresolved conflicts
+    SyncConflicts(): Promise<CommonTextSyncConflictsResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncConflicts", Array.from(arguments))
+    }
+
+    // render all unresolved conflicts as one self-contained AI-ready block (same source as `wsh commontext-sync conflicts --copy`)
+    // @returns conflict count and the rendered copy text
+    SyncConflictsCopy(): Promise<CommonTextSyncConflictsCopyResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncConflictsCopy", Array.from(arguments))
+    }
+
     // run one common text sync now
     // @returns sync status after the run
     SyncNow(request: CommonTextSyncNowRequest): Promise<CommonTextSyncStatusResponse> {
         return callBackendService(this?.waveEnv, "commontext", "SyncNow", Array.from(arguments))
+    }
+
+    // resolve one sync conflict by writing the merged text (equivalent of `wsh commontext-sync resolve <id> --text-file`)
+    // @returns sync status after the resolve
+    SyncResolve(request: CommonTextSyncResolveRequest): Promise<CommonTextSyncStatusResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncResolve", Array.from(arguments))
     }
 
     // get common text sync status (transport, last run, unresolved conflicts)

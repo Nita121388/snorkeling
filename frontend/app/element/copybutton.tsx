@@ -25,9 +25,11 @@ type CopyButtonProps = {
     label?: React.ReactNode;
     /** 图标名（makeIconClass）。默认 "copy"；成功后统一换成 "check"。 */
     icon?: string;
+    /** 渲到按钮上的 data-* 锚点（e2e/验证台定位用，如 data-copy-for-agent）。 */
+    dataAttrs?: Record<string, string>;
 };
 
-const CopyButton = ({ title, className, onClick, onError, label, icon }: CopyButtonProps) => {
+const CopyButton = ({ title, className, onClick, onError, label, icon, dataAttrs }: CopyButtonProps) => {
     const [isCopied, setIsCopied] = useState(false);
     // 懒取形态（onClick 返回 Promise）在 settle 前的 loading 态：图标转圈 + 禁点。
     const [isBusy, setIsBusy] = useState(false);
@@ -91,6 +93,7 @@ const CopyButton = ({ title, className, onClick, onError, label, icon }: CopyBut
                 className={clsx("copy-button", "ghost", "grey", { copied: isCopied }, className)}
                 onClick={handleOnClick}
                 disabled={isBusy}
+                {...dataAttrs}
             >
                 <i className={makeIconClass(isCopied ? "check" : (icon ?? "copy"), true, { spin: isBusy })} />
                 {label}
@@ -107,6 +110,8 @@ const CopyButton = ({ title, className, onClick, onError, label, icon }: CopyBut
                 title,
                 className: clsx("copy-button", { copied: isCopied }),
                 click: handleOnClick,
+                // IconButton decl 没有透传 data-* 的口子，拼进 className 会污染样式钩子；
+                // 图标形态的 e2e 锚点用 title（aria-label 同源）定位。
             }}
             className={className}
         ></IconButton>

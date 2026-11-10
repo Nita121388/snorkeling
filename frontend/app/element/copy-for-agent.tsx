@@ -48,7 +48,16 @@ const CopyForAgent = ({ title, text, className }: CopyForAgentProps) => {
         }
         await navigator.clipboard.writeText(payload);
     };
-    return <CopyButton title={title} label="Copy for agent" icon="copy" onClick={onClick} className={className} />;
+    return (
+        <CopyButton
+            title={title}
+            label="Copy for agent"
+            icon="copy"
+            onClick={onClick}
+            className={className}
+            dataAttrs={{ "data-copy-for-agent": title }}
+        />
+    );
 };
 
 export { CopyForAgent, buildAgentPayload, MERGED_CONTENT_ONLY, FIX_COMMAND_ONLY, DIAGNOSIS_BRIEF };
