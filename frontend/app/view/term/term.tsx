@@ -3,6 +3,7 @@
 
 import ClaudeColorSvg from "@/app/asset/claude-color.svg";
 import { SubBlock } from "@/app/block/block";
+import { peekPendingInput, takePendingInput, computeInjectDecision } from "@/app/commontext/pending-input";
 import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { NullErrorBoundary } from "@/app/element/errorboundary";
@@ -14,6 +15,8 @@ import {
     type SelectionQuickActionItem,
 } from "@/app/element/selection-copy-overlay";
 import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
+import { CopyForAgent } from "@/app/element/copy-for-agent";
+import { buildTermFailurePayload, shouldShowTermFailureCopy } from "@/app/view/term/agent-failure-copy";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { globalStore } from "@/app/store/jotaiStore";
 import { AISessionsServiceType } from "@/app/store/services";
@@ -226,6 +229,42 @@ const TermToolbarVDomNode = ({ blockId, model }: TerminalViewProps) => {
 // support in its prompt input; fullscreen renderer adds click-to-position the
 // cursor (+ select-to-copy). Surf a dismissible pill until the user either
 // dismisses it or Claude enables mouse reporting (fullscreen) itself.
+const TermFailureCopyBar = React.memo(
+    ({ model }: { model: TermViewModel }) => {
+        const status = jotai.useAtomValue(model.shellProcFullStatus);
+        const blockData = jotai.useAtomValue(model.blockAtom);
+        const meta = blockData?.meta;
+        // 只对 cmd 块有意义（普通终端没有退出码概念）；成功与运行中都不渲染。
+        if (!shouldShowTermFailureCopy(meta, status)) return null;
+        const exitCode = status?.shellprocexitcode ?? -1;
+
+        // 完整命令行 = 可执行文件 + 参数（只拼 args 会丢掉 "跑的到底是哪个命令"）。
+        const cmdArgs = meta?.["cmd:args"];
+        const cmdRaw = typeof meta?.["cmd"] === "string" ? meta["cmd"] : "";
+        const command = [cmdRaw, ...(Array.isArray(cmdArgs) ? cmdArgs : [])].filter(Boolean).join(" ");
+        const cwd = typeof meta?.["cmd:cwd"] === "string" ? meta["cmd:cwd"] : "";
+
+        return (
+            <div className="absolute right-3 top-2 z-30" data-term-failure-copy="">
+                <CopyForAgent
+                    title={`Copy this failed command (exit ${exitCode}) for an AI to diagnose`}
+                    text={() =>
+                        Promise.resolve(
+                            buildTermFailurePayload({
+                                command,
+                                cwd,
+                                exitCode,
+                                output: model.termRef.current?.getScrollbackContent() ?? "",
+                            })
+                        )
+                    }
+                />
+            </div>
+        );
+    }
+);
+TermFailureCopyBar.displayName = "TermFailureCopyBar";
+
 export function shouldShowClaudeFullscreenHint(
     claudeActive: boolean,
     dismissed: boolean,
@@ -520,6 +559,56 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             setSelectionLogicalLineText(null);
         };
     }, [blockId, termSettings, termFontSize, connFontFamily]);
+
+    // pending input 注入：CommonText「新建 agent block 并发送」时，文本在队列里等 TUI 就绪。
+    // 就绪判定走 computeInjectDecision（首输出 + 静默窗口，TTL 兜底）；注入经 terminal.paste
+    // （与 insertTextIntoTerm 同一 PTY 路径，保留 bracketed paste 语义）。
+    // 注意：不使用 meta 键 cmd:initialinput（全仓零消费点，见 docs/project/agent-session-plan.md）。
+    React.useEffect(() => {
+        if (termWrapInst == null) return;
+        if (peekPendingInput(blockId) == null) return;
+        const termWrap = termWrapInst;
+        const baselineLastUpdated = termWrap.lastUpdated;
+        let cancelled = false;
+        let timer: number | null = null;
+        const tick = () => {
+            if (cancelled) return;
+            const entry = peekPendingInput(blockId);
+            if (entry == null) return; // 已被消费（别处注入/清空）
+            const decision = computeInjectDecision({
+                entry,
+                baselineLastUpdated,
+                lastUpdated: termWrap.lastUpdated,
+                now: Date.now(),
+            });
+            if (decision.action === "inject") {
+                const text = takePendingInput(blockId);
+                if (text != null && text !== "") {
+                    termWrap.terminal.paste(text);
+                }
+                return;
+            }
+            if (decision.action === "expire") {
+                const text = takePendingInput(blockId);
+                if (text != null && text !== "") {
+                    fireAndForget(() => copyText(text));
+                    console.warn("[pending-input] expired, fell back to clipboard", { blockId });
+                    window.dispatchEvent(
+                        new CustomEvent("snorkeling:pending-input-fallback", { detail: { blockId } })
+                    );
+                }
+                return;
+            }
+            timer = window.setTimeout(tick, 300);
+        };
+        timer = window.setTimeout(tick, 300);
+        return () => {
+            cancelled = true;
+            if (timer != null) {
+                window.clearTimeout(timer);
+            }
+        };
+    }, [termWrapInst, blockId]);
 
     // Live-update the xterm font family when it changes, without recreating the
     // terminal/PTY (which would drop the session). xterm applies fontFamily at runtime.
@@ -864,6 +953,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                     setIsTermAtBottom(true);
                 }}
             />
+            <TermFailureCopyBar model={model} />
         </div>
     );
 };

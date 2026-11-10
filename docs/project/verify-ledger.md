@@ -125,3 +125,10 @@
 | 2026-11-10 11:37 | sync-diagnostics-copy | ❌ 15/20 | launch+reset | `20261110T11353-sync-diagnostics-copy` | b4124c1e |
 | 2026-11-10 11:41 | sync-diagnostics-copy | ❌ 15/20 | launch+reset | `20261110T11384-sync-diagnostics-copy` | b4124c1e |
 | 2026-11-10 11:45 | sync-diagnostics-copy | ✅ 20/20 | launch+reset | `20261110T11443-sync-diagnostics-copy` | b4124c1e |
+| 2026-11-10 11:58 | commontext-send-agent-block | ✅ 1/1 | launch+reset | `20261110T11581-commontext-send-agent-block` | 2aea7a7e |
+| 2026-11-10 12:01 | commontext-send-agent-block | ❌ 9/12 | launch+reset | `20261110T11585-commontext-send-agent-block` | 2aea7a7e |
+| 2026-11-10 12:06 | term-failure-copy | ⚠️ 0/0（无断言） | launch+reset | `20261110T12060-term-failure-copy` | 2aea7a7e |
+| 2026-11-10 12:07 | term-failure-copy | ❌ 9/10 | launch+reset | `20261110T12070-term-failure-copy` | 2aea7a7e |
+| 2026-11-10 12:07 | term-failure-copy | ❌ 9/10 | launch+reset | `20261110T12074-term-failure-copy` | 2aea7a7e |
+| 2026-11-10 12:08 | term-failure-copy | ✅ 10/10 | launch+reset | `20261110T12080-term-failure-copy` | 2aea7a7e |
+| 2026-11-10 12:08 | commontext-send-agent-block | ❌ 11/13 | launch+reset | `20261110T12054-commontext-send-agent-block` | 2aea7a7e |

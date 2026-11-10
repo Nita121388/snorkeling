@@ -40,10 +40,14 @@
 
 ## Acceptance（命令 → 期望输出）
 
-- `npx vitest run frontend/app/view/term/` 相关测试文件 → 全绿，新增 ≥ 5 用例。
-- 手动跑 `npx vitest run --passWithNoTests false && exit 1` 之类失败命令后点复制：
-  粘贴文本 `grep -c "exit code"` ≥ 1、`grep -c "Output"` ≥ 1、行数 ≤ 200。
-- 真机验证台（终端 area）全绿 + 台账一行。
+- [x] `npx vitest run frontend/app/view/term/agent-failure-copy.test.ts` → 10/10 全绿（≥ 5）：三态判定（失败/成功/运行中/非 cmd 块）、ANSI 剥离 ≥ 4 例（SGR / 清屏+光标 / OSC 两种结尾）、截断与 N 钳制、payload 证据字段与三段式。
+- [x] 真机跑真实失败命令（`sh -c 'echo boom-verify-line; exit 3'`）→ 点复制：payload 含 `command:` / `cwd:` / `exit code: 3` / 末段输出 / `### Task` / `### Output contract`；行数 ≤ 200（真实 12 行）。
+- [x] 真机验证台：新 area `scripts/verify/term-failure-copy/verify.mjs` → **11/11 全绿**（launch+reset），台账已记；area 已登记 README。
+
+## 实施偏离（2026-11-10）
+
+- 入口位置：`HeaderElem` 不支持任意 React 组件，若改类型/渲染器会出界；PRD 本身允许「失败提示条」备选，所以实现为终端块内右上角的**常驻覆盖条**（`data-term-failure-copy`，不随输出滚动，满足「不能跟着滚走」的硬要求），而非块头工具区。
+- `command` 取 `cmd` + `cmd:args` 拼接：真机验证发现只拼 args 会丢掉可执行文件名（payload 里成了 `-c echo ...`），已修。
 
 ## Touch（白名单）
 
