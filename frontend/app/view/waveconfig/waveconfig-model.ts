@@ -9,6 +9,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
 import { AgentAccessSettingsContent } from "@/app/view/waveconfig/agentaccesssettings";
 import { SyncSettingsContent } from "@/app/view/waveconfig/syncsettings";
+import { type WaveConfigSaveFailure, describeJsonFailure } from "@/app/view/waveconfig/waveconfig-json-error";
 import { AIPromptsVisualContent } from "@/app/view/waveconfig/aipromptsettings";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
@@ -190,6 +191,8 @@ export class WaveConfigViewModel implements ViewModel {
     isSavingAtom: PrimitiveAtom<boolean>;
     errorMessageAtom: PrimitiveAtom<string>;
     validationErrorAtom: PrimitiveAtom<string>;
+    /** 保存校验失败的细节（行列/片段），Copy for Agent 的数据源。 */
+    saveFailureAtom: PrimitiveAtom<WaveConfigSaveFailure | null>;
     isMenuOpenAtom: PrimitiveAtom<boolean>;
     presetsJsonExistsAtom: PrimitiveAtom<boolean>;
     activeTabAtom: PrimitiveAtom<"visual" | "json">;
@@ -225,6 +228,7 @@ export class WaveConfigViewModel implements ViewModel {
         this.isSavingAtom = atom(false);
         this.errorMessageAtom = atom(null) as PrimitiveAtom<string>;
         this.validationErrorAtom = atom(null) as PrimitiveAtom<string>;
+        this.saveFailureAtom = atom(null) as PrimitiveAtom<WaveConfigSaveFailure | null>;
         this.isMenuOpenAtom = atom(false);
         this.presetsJsonExistsAtom = atom(false);
         this.activeTabAtom = atom<"visual" | "json">("visual");
@@ -420,14 +424,14 @@ export class WaveConfigViewModel implements ViewModel {
             const parsed = JSON.parse(fileContent);
 
             if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) {
-                globalStore.set(this.validationErrorAtom, "JSON must be an object, not an array, primitive, or null");
+                this.setValidationFailure("JSON must be an object, not an array, primitive, or null");
                 return;
             }
 
             if (selectedFile.validator) {
                 const validationResult = selectedFile.validator(parsed);
                 if ("error" in validationResult) {
-                    globalStore.set(this.validationErrorAtom, validationResult.error);
+                    this.setValidationFailure(validationResult.error);
                     return;
                 }
             }
@@ -456,7 +460,7 @@ export class WaveConfigViewModel implements ViewModel {
                 globalStore.set(this.isSavingAtom, false);
             }
         } catch (err) {
-            globalStore.set(this.validationErrorAtom, `Invalid JSON: ${err.message || String(err)}`);
+            this.setValidationFailure(`Invalid JSON: ${err.message || String(err)}`);
         }
     }
 
@@ -466,6 +470,18 @@ export class WaveConfigViewModel implements ViewModel {
 
     clearValidationError() {
         globalStore.set(this.validationErrorAtom, null);
+        globalStore.set(this.saveFailureAtom, null);
+    }
+
+    /** 统一出口：设置校验错误时同步收集可复制细节（行列/片段），别的地方不重复拼。 */
+    private setValidationFailure(message: string) {
+        const selectedFile = globalStore.get(this.selectedFileAtom);
+        const fileContent = globalStore.get(this.fileContentAtom);
+        globalStore.set(this.validationErrorAtom, message);
+        globalStore.set(
+            this.saveFailureAtom,
+            describeJsonFailure(`${this.configDir}/${selectedFile?.path ?? "(unknown)"}`, message, fileContent)
+        );
     }
 
     async checkStorageBackend() {

@@ -4,6 +4,8 @@
 import { Tooltip } from "@/app/element/tooltip";
 import { globalStore } from "@/app/store/jotaiStore";
 import { tryReinjectKey } from "@/app/store/keymodel";
+import { CopyForAgent } from "@/app/element/copy-for-agent";
+import { buildSettingsJsonFailurePayload } from "@/app/view/waveconfig/waveconfig-json-error";
 import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
 import type { ConfigFile, WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
@@ -111,6 +113,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
     const isSaving = useAtomValue(model.isSavingAtom);
     const errorMessage = useAtomValue(model.errorMessageAtom);
     const validationError = useAtomValue(model.validationErrorAtom);
+    const saveFailure = useAtomValue(model.saveFailureAtom);
     const [isMenuOpen, setIsMenuOpen] = useAtom(model.isMenuOpenAtom);
     const hasChanges = useAtomValue(model.hasEditedAtom);
     const [activeTab, setActiveTab] = useAtom(model.activeTabAtom);
@@ -277,8 +280,17 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                 </div>
                             )}
                             {validationError && (
-                                <div className="bg-error text-primary px-4 py-2 border-b border-error flex items-center justify-between">
-                                    <span>{validationError}</span>
+                                <div
+                                    className="bg-error text-primary px-4 py-2 border-b border-error flex items-center justify-between gap-2"
+                                    data-waveconfig-validation-error=""
+                                >
+                                    <span className="min-w-0 flex-1">{validationError}</span>
+                                    {saveFailure != null && (
+                                        <CopyForAgent
+                                            title="Copy this JSON error for an AI to fix"
+                                            text={() => Promise.resolve(buildSettingsJsonFailurePayload(saveFailure))}
+                                        />
+                                    )}
                                     <button
                                         onClick={() => model.clearValidationError()}
                                         className="ml-2 hover:bg-hover rounded p-1 cursor-pointer transition-colors"

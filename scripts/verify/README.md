@@ -109,3 +109,4 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `sync-diagnostics-copy` | `verify.mjs` | 同步诊断复制：none 传输 probe 短路 / 不可达 server 的 checks+fix payload / 失败 run 的 lastError+journal payload（跑真实失败 sync）/ JournalTail n 上限与 CLI 行格式 | ✅       |
 | `term-failure-copy`    | `verify.mjs` | 终端失败复制：真实 exit 3 命令块驱动——失败提示条 + Copy for agent payload（命令行/cwd/exit code/末段输出/三段式契约）；exit 0 块不渲染 | ✅       |
 | `vcs-conflict-copy`   | `verify.mjs` | VCS 冲突/失败复制：真实 git 仓库（amend 非快进 → push 被拒；双分支改同一行 → merge 冲突）驱动——失败卡复制含 stderr 被拒原因、冲突条复制含三标记 + `=== path ===` 分段、干净仓库无冲突条 | ✅       |
+| `waveconfig-json-error` | `verify.mjs` | 设置 JSON 校验失败复制：Monaco 真实键入坏 JSON（char 事件驱动 EditContext）→ Save → 失败条 + payload（行列/±5 行片段/键名/三段式契约）；初始合法态无按钮；修复后失败条消失 | ✅       |
