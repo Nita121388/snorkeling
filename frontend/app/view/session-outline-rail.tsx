@@ -130,8 +130,10 @@ const RailTick = memo(function RailTick({ index, prompt, isActive, attentionInde
 
     return (
         <div
-            className="pointer-events-auto relative flex shrink-0 items-center justify-start"
-            style={{ width: RAIL_WIDTH, height: SLOT_HEIGHT }}
+            className="pointer-events-auto relative flex w-full shrink-0 items-center justify-start"
+            // 宽度随内容盒收缩：出现竖滚动条时内容区 36-4=32px，若刻度仍固定 36px 会
+            // 横向溢出（即使 overflow-x:hidden 也会让 scrollWidth/clientWidth 分家）。
+            style={{ maxWidth: RAIL_WIDTH, height: SLOT_HEIGHT }}
             onMouseEnter={() => onHover(index)}
         >
             <button
@@ -324,7 +326,7 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
             >
                 <div
                     ref={scrollRef}
-                    className="overflow-y-auto max-h-[300px] scrollbar-hide-until-hover"
+                    className="overflow-y-auto overflow-x-hidden max-h-[300px] scrollbar-hide-until-hover"
                     style={{ width: RAIL_WIDTH }}
                 >
                     {prompts.map((prompt, index) => (

@@ -1689,6 +1689,11 @@ function getShowAuditButton(meta: MetaType | undefined): boolean {
 const DefaultAutoRefreshIntervalMs = 60_000;
 const MinAutoRefreshIntervalMs = 10_000;
 const MaxAutoRefreshIntervalMs = 60 * 60_000;
+// aisessions:sessionschanged 是触发信号，不是数据推送：列表仍然走正常 List RPC。
+// 去抖文件 watcher 事件风暴（活跃会话每条消息都改 mtime），并保持两次后台刷新
+// 至少间隔 5s，防止 mtime 风暴把后端 List 打满。
+const SessionChangedRefreshDebounceMs = 500;
+const SessionChangedRefreshMinIntervalMs = 5_000;
 const AutoRefreshIntervalOptions = [
     { label: "Off", value: 0 },
     { label: "30 seconds", value: 30_000 },
@@ -2214,20 +2219,25 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         return () => observer.disconnect();
     }, []);
 
+    // 后台同步：不触发整面板 loading/黑屏，也不做破坏性的会话切换。
+    // 60s 轮询与 sessionschanged 事件共用这一份刷新体。
+    const backgroundRefresh = useCallback(() => {
+        if (globalStore.get(model.loadingAtom)) return;
+        void model.loadSessions(false, globalStore.get(model.sortDescendingAtom), true);
+        void model.refreshBoundSessionSummary();
+        if (globalStore.get(model.detailAtom)?.summary?.key) {
+            void model.loadDetailDelta("manual");
+        }
+    }, [model]);
+
     useEffect(() => {
         if (!autoRefreshEnabled || autoRefreshIntervalMs <= 0 || !blockVisible) return;
         const handle = window.setInterval(() => {
             if (document.visibilityState === "hidden") return;
-            if (globalStore.get(model.loadingAtom)) return;
-            // 后台同步：不触发整面板 loading/黑屏，也不做破坏性的会话切换。
-            void model.loadSessions(false, globalStore.get(model.sortDescendingAtom), true);
-            void model.refreshBoundSessionSummary();
-            if (globalStore.get(model.detailAtom)?.summary?.key) {
-                void model.loadDetailDelta("manual");
-            }
+            backgroundRefresh();
         }, autoRefreshIntervalMs);
         return () => window.clearInterval(handle);
-    }, [autoRefreshEnabled, autoRefreshIntervalMs, blockVisible, model]);
+    }, [autoRefreshEnabled, autoRefreshIntervalMs, blockVisible, backgroundRefresh]);
 
     // 主排序键变化要重新拉取：后端按主键决定 limit 先留下哪些行
     // （例如 Created·Oldest 必须拿全索引里最早的一批，而不是当前页内重排）。
@@ -2291,6 +2301,38 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
             },
         });
     }, [model]);
+
+    // 后端 session 文件 watcher 检测到新/变更会话时广播 sessionschanged。
+    // 事件只做触发信号：去抖 + 最小间隔后走与 60s 轮询共用的 backgroundRefresh；
+    // 远程连接（无本地 watcher）和不可见/隐藏窗口不发请求。
+    useEffect(() => {
+        let timer: number | null = null;
+        let lastRefreshAt = 0;
+        const schedule = () => {
+            if (timer != null) return;
+            const wait = Math.max(
+                SessionChangedRefreshDebounceMs,
+                lastRefreshAt + SessionChangedRefreshMinIntervalMs - Date.now()
+            );
+            timer = window.setTimeout(() => {
+                timer = null;
+                if (!blockVisible || document.visibilityState === "hidden") return;
+                lastRefreshAt = Date.now();
+                backgroundRefresh();
+            }, wait);
+        };
+        const unsubscribe = waveEventSubscribeSingle<"aisessions:sessionschanged">({
+            eventType: "aisessions:sessionschanged",
+            handler: (event) => {
+                if (event.data?.connection) return;
+                schedule();
+            },
+        });
+        return () => {
+            unsubscribe?.();
+            if (timer != null) window.clearTimeout(timer);
+        };
+    }, [backgroundRefresh, blockVisible]);
 
     const selectedSession = visibleSessions.find((session) => session.key === selectedKey);
     const fallbackSession = selectedKey === "" ? visibleSessions[0] : null;

@@ -28,6 +28,15 @@ Questions to answer:
 
 ---
 
+## 单轴滚动容器必须显式声明另一轴 (2026-11-10, task 11-10-agent-rail-sessions-realtime)
+
+- CSS 规则：一旦一个轴不是 `visible`，另一个轴会被从 `visible` 强制计算成 `auto`。所以「只要纵向滚动」的容器必须写全两个轴：Tailwind `overflow-y-auto` ⇒ 同时 `overflow-x-hidden`，并把固定宽度的子项收敛到内容盒（`w-full` + `maxWidth`）。
+- 否则一旦竖滚动条出现（全局滚动条 4px），内容区宽度减小，固定宽度子项横向溢出 → 底部长出水平滚动轴（agent TUI 右侧会话轨实例：36px 刻度在 32px 内容区）。
+- 注意：`overflow-x: hidden` 只是不显示水平轴，`scrollWidth` 仍可能 > `clientWidth`（内容照常溢出只是被裁掉）；断言「无水平轴」看 computed `overflowX === "hidden"`，断言「无溢出」看 `scrollWidth <= clientWidth`。两者都要过。
+- 验证台样板：`scripts/verify/agent-session-rail/`（用 >37 条用户消息的真实会话播种 TUI 轨，逼出竖滚动条状态）。
+
+---
+
 ## Terminal Block 轻量操作约定 (2026-10-15, task 10-15)
 
 - Header 右上角默认按钮应承载**轻量、高频、无害**操作（如 `Redraw TUI`），不要直接暴露会中断进程的重操作。

@@ -228,3 +228,19 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
 - **给 pill 加边框会改盒高。** `.tab-card-agent-pill` 原来无边框、`line-height: 17px`；
   要对齐头部的虚线边就必须 `border: 1px dashed`，此时 `line-height` 要降到 15px 才能保持 17px 总高，
   否则 Tab 悬浮卡的 agent 行会抖 2px。
+
+## 踩坑记录（2026-11-10, agent-session-rail）
+
+- **探针里的 CSS 属性选择器要数三层转义。** 探针是"写进模板字面量 → 作为 JS 源码发给浏览器 → 浏览器再解析字符串字面量 → querySelector 再解析 CSS"。
+  `.max-h-[300px]` 想要浏览器看到合法 CSS 转义 `.max-h-\[300px\]`，源码里要写 **4 个反斜杠**（`\\.max-h-\\\\[300px\\\\]` 形态取决于嵌套层）。
+  算错的表现很隐蔽：`evaluate` 抛 SyntaxError，而调用侧 `.catch(() => null)` 会把它变成"没找到"，看起来像"元素没挂载"。
+  排查法：把 selector 单独在 inspect 里跑一次，返回 `{ok:false, err}` 才是语法问题。
+- **选择器别用共享 class。** `scrollbar-hide-until-hover` 同时被 preview 的全屏预览容器复用，rail 断言一度把 293px 的预览面板当成 36px 的轨道。
+  用组件独有的标记类（`.max-h-[300px]`）或 `data-*`，并在断言里加一条 `is-rail`（class 自证），防止再次撞车。
+- **不驱动 UI 也能造出回归状态。** 会话轨的水平滚动轴只在"竖滚动条出现"时才是 bug，而竖滚动条需要 >37 条刻度。
+  不必真去和 agent 对话：用 `AISessionsService.UserOutline` 在磁盘上的真实会话里找一条用户消息 >37 的，
+  把它的 sessionid 播种进一个 `createBlock({meta:{view:"term","agent:sessionid":sid}}, magnified=true)` 的块即可，
+  轨立刻以 50 条刻度挂载、`scrollHeight 400 > clientHeight 300`，回归条件稳定复现（比依赖 UI 点击列表行可靠得多；
+  aisessions 列表是虚拟化的，目标行不在视口里时 `row.click()` 直接落空）。
+- **多窗口时按"轨数→块数→面积"挑 renderer。** 用户多开窗口时会有多个 page target，最小化窗口 `innerWidth=0`，
+  `pickLiveRenderer` 只按块数选可能选到没有目标元素的窗口；选择器探测成功的窗口优先。

@@ -75,6 +75,15 @@ func (b *BrokerType) GetClient() Client {
 }
 
 // if already subscribed, this will *resubscribe* with the new subscription (remove the old one, and replace with this one)
+// HasSubscribers reports whether any route currently subscribes to event.
+// Background producers use it to skip work when nobody is listening.
+func (b *BrokerType) HasSubscribers(event string) bool {
+	b.Lock.Lock()
+	defer b.Lock.Unlock()
+	bs := b.SubMap[event]
+	return bs != nil && !bs.IsEmpty()
+}
+
 func (b *BrokerType) Subscribe(subRouteId string, sub SubscriptionRequest) {
 	// log.Printf("[wps] sub %s %s\n", subRouteId, sub.Event)
 	if sub.Event == "" {

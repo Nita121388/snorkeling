@@ -58,9 +58,9 @@ type PropertyCell struct {
 }
 
 type SessionSummary struct {
-	Key         string `json:"key"`
-	ID          string `json:"id"`
-	Source      string `json:"source"`
+	Key    string `json:"key"`
+	ID     string `json:"id"`
+	Source string `json:"source"`
 	// Origin tags which scan root surfaced this row in a merged ("All machines")
 	// view. Empty for rows loaded from a single origin, so the frontend can fall
 	// back to its selected origin for routing detail/stat calls.
@@ -95,8 +95,8 @@ type SessionSummary struct {
 	// under; "child" means it was pulled in because a matching parent needs its
 	// subagent runs shown. Request-scoped derived field: never persisted.
 	Attached string `json:"attached,omitempty"`
-	MTime int64  `json:"-"`
-	Size  int64  `json:"size,omitempty"`
+	MTime    int64  `json:"-"`
+	Size     int64  `json:"size,omitempty"`
 	// Props holds user/AI-defined custom properties for this session. It is an
 	// additive layer: legacy fields above remain authoritative for the built-in
 	// properties, so old clients and old data keep working without migration.
@@ -199,6 +199,16 @@ type GenerationStatusEvent struct {
 	MaxAttempts int    `json:"maxAttempts"`
 	Error       string `json:"error,omitempty"`
 	UpdatedAt   int64  `json:"updatedAt"`
+}
+
+// SessionsChangedEvent is published as a wps event when the local session-file
+// watcher detects new or changed session files. It is a trigger signal only:
+// the GUI answers it with its normal List RPC (filters / sort / attach context
+// stay in one place on the backend), so the payload carries no rows.
+type SessionsChangedEvent struct {
+	Connection string `json:"connection,omitempty"`
+	Changed    int    `json:"changed,omitempty"` // changed/new session files this tick
+	At         int64  `json:"at,omitempty"`      // unix ms
 }
 
 type SessionFile struct {
@@ -396,8 +406,8 @@ type AnnotationView struct {
 	// NodeText 是用户手改的「节点原文」副本；空串表示没覆盖，前端回落到活节点文本。
 	NodeText  string `json:"nodeText,omitempty"`
 	Orphaned  bool   `json:"orphaned,omitempty"`
-	CreatedAt     int64    `json:"createdAt"`
-	UpdatedAt     int64    `json:"updatedAt"`
+	CreatedAt int64  `json:"createdAt"`
+	UpdatedAt int64  `json:"updatedAt"`
 }
 
 // AnnotatedSession is one row of the cross-session annotation list.

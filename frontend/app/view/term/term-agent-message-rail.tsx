@@ -7,6 +7,7 @@
 import { getCachedUserOutline, loadUserOutline } from "@/app/store/outline-cache";
 import { AISessionsServiceType } from "@/app/store/services";
 import { ensureSessionNote } from "@/app/store/session-note-cache";
+import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { type OutlinePrompt, SessionOutlineRail } from "@/app/view/session-outline-rail";
@@ -18,6 +19,21 @@ import { cn, fireAndForget, useAtomValueSafe } from "@/util/util";
 import * as React from "react";
 
 const OutlinePreviewMaxLength = 400;
+
+// 刷新节奏（见下方刷新 effect）：
+// - 快重试：新会话首条用户消息落盘前 outline 必然为空，3s 一次把「首拉即空永久停落」
+//   旧问题盖住；上限 ~2 分钟后降级，避免用户只是开着 agent 没说话时无限空转。
+// - 事件驱动：agentstatus 每次 turn 后都会来事件，去抖后立刻 forced 补拉。
+// - 慢轮询：没有装 hook 的 provider 靠 30s 轮询兑底。
+const OutlineFastRetryDelayMs = 3_000;
+const OutlineFastRetryMaxAttempts = 40;
+const OutlineSlowIntervalMs = 30_000;
+const OutlineStatusDebounceMs = 800;
+const OutlineStatusMinIntervalMs = 2_000;
+
+function hasUserPrompts(outline: AISessionsUserOutlineResponse | null): boolean {
+    return (outline?.messages ?? []).some((message) => message.role === "user" && message.text?.trim() !== "");
+}
 
 type TermAgentMessageRailProps = {
     blockId: string;
@@ -78,17 +94,97 @@ const TermAgentMessageRail = React.memo(({ blockId, blockData, termWrap }: TermA
         if (sessionId !== "") ensureSessionNote(service, sessionId, connection);
     }, [connection, service, sessionId]);
 
-    const refreshOutline = React.useCallback(() => {
-        if (sessionId === "") return;
-        loadUserOutline(service, sessionId, { connection, limit: 50 })
-            .then(setOutline)
-            .catch(() => undefined);
-    }, [connection, service, sessionId]);
-
+    // Outline 刷新调度：只在 sessionId 变化时拉一次的旧实现，让新会话「首拉即空 → 轨道
+    // 永久消失」（第一条用户消息在首拉之后才落盘）。这里改成：挂载先拉一次 →
+    // 空结果快重试 / 非空慢轮询，同时订阅 agentstatus 事件做即时 forced 补拉。
     React.useEffect(() => {
-        setOutline(sessionId === "" ? null : getCachedUserOutline(sessionId, connection));
-        refreshOutline();
-    }, [connection, refreshOutline, sessionId]);
+        if (sessionId === "") {
+            setOutline(null);
+            return;
+        }
+        setOutline(getCachedUserOutline(sessionId, connection));
+        let disposed = false;
+        let refreshTimer: number | null = null;
+        let statusTimer: number | null = null;
+        let fastAttempts = 0;
+        let fastMode = true;
+        let lastForcedAt = 0;
+
+        const clearRefreshTimer = (): void => {
+            if (refreshTimer != null) {
+                window.clearTimeout(refreshTimer);
+                refreshTimer = null;
+            }
+        };
+
+        const schedule = (delayMs: number): void => {
+            clearRefreshTimer();
+            refreshTimer = window.setTimeout(() => {
+                refreshTimer = null;
+                load(false);
+            }, delayMs);
+        };
+
+        const scheduleAfterResult = (hasPrompts: boolean): void => {
+            if (hasPrompts) {
+                fastMode = false;
+                schedule(OutlineSlowIntervalMs);
+                return;
+            }
+            if (fastMode && ++fastAttempts <= OutlineFastRetryMaxAttempts) {
+                schedule(OutlineFastRetryDelayMs);
+                return;
+            }
+            fastMode = false;
+            schedule(OutlineSlowIntervalMs);
+        };
+
+        function load(force: boolean): void {
+            if (disposed) return;
+            // 窗口隐藏时不打 RPC，短延迟重排等可见。
+            if (document.visibilityState === "hidden") {
+                schedule(OutlineFastRetryDelayMs);
+                return;
+            }
+            if (force) lastForcedAt = Date.now();
+            loadUserOutline(service, sessionId, { connection, limit: 50, forceRefresh: force })
+                .then((next) => {
+                    if (disposed) return;
+                    setOutline(next);
+                    scheduleAfterResult(hasUserPrompts(next));
+                })
+                .catch(() => {
+                    if (disposed) return;
+                    // 会话文件还没创建（新建块比第一条消息早）等错误按空结果重试。
+                    scheduleAfterResult(false);
+                });
+        }
+
+        load(false);
+
+        const unsubscribe = waveEventSubscribeSingle({
+            eventType: "agentstatus",
+            scope: WOS.makeORef("block", blockId),
+            handler: () => {
+                if (disposed || document.visibilityState === "hidden") return;
+                if (Date.now() - lastForcedAt < OutlineStatusMinIntervalMs) return;
+                if (statusTimer != null) return;
+                statusTimer = window.setTimeout(() => {
+                    statusTimer = null;
+                    if (disposed) return;
+                    clearRefreshTimer();
+                    load(true);
+                }, OutlineStatusDebounceMs);
+            },
+        });
+
+        return () => {
+            disposed = true;
+            clearRefreshTimer();
+            if (statusTimer != null) window.clearTimeout(statusTimer);
+            unsubscribe();
+        };
+    }, [blockId, connection, service, sessionId]);
 
     // sessionId 回写 meta，让 Block Header 与 TUI 共用同一真相源。
     const persistedSessionId = React.useMemo(() => {

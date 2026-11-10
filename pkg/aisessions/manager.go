@@ -453,6 +453,41 @@ func (m *Manager) summaryFileRefreshSupported() bool {
 	return len(m.Providers) > 0
 }
 
+// DetectChangedSessionFiles reports how many session files are new or changed
+// since the index last saw them. It is stat-only: it lists files and compares
+// mtime/size against the sqlite index; it never parses a session body and never
+// writes. Deletions are not detected (the normal list refresh path marks
+// missing files); it is meant as a cheap "something changed, refetch" probe for
+// the local session watcher.
+func (m *Manager) DetectChangedSessionFiles(ctx context.Context) (int, error) {
+	if !m.summaryFileRefreshSupported() {
+		return 0, nil
+	}
+	sqliteIdx, sqliteErr := m.openSQLiteIndex()
+	if sqliteErr != nil {
+		debugf("Manager.DetectChangedSessionFiles sqlite open skipped path=%q err=%v", m.SQLitePath, sqliteErr)
+		return 0, sqliteErr
+	}
+	defer sqliteIdx.Close()
+	total := 0
+	for _, provider := range m.Providers {
+		fileProvider, ok := provider.(SummaryFileProvider)
+		if !ok {
+			continue
+		}
+		files, err := fileProvider.ListFiles(ctx)
+		if err != nil {
+			return total, err
+		}
+		changed, err := sqliteIdx.ChangedFiles(ctx, files)
+		if err != nil {
+			return total, err
+		}
+		total += len(changed)
+	}
+	return total, nil
+}
+
 func (m *Manager) refreshChangedSummaries(ctx context.Context, sqliteIdx *SQLiteIndex) []error {
 	var summaries []SessionSummary
 	var errs []error

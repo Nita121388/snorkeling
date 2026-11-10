@@ -3202,6 +3202,13 @@ declare global {
         count: number;
     };
 
+    // aisessions.SessionsChangedEvent
+    type SessionsChangedEvent = {
+        connection?: string;
+        changed?: number;
+        at?: number;
+    };
+
     // wconfig.SettingsType
     type SettingsType = {
         "app:*"?: boolean;

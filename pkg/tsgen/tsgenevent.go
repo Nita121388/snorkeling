@@ -48,6 +48,7 @@ var WaveEventDataTypes = map[string]reflect.Type{
 	wps.Event_AISessionsScanStatus:       reflect.TypeOf(aisessions.ScanStatusEvent{}),
 	wps.Event_AISessionsTitleUpdated:     reflect.TypeOf(aisessions.TitleUpdatedEvent{}),
 	wps.Event_AISessionsGenerationStatus: reflect.TypeOf(aisessions.GenerationStatusEvent{}),
+	wps.Event_AISessionsSessionsChanged:  reflect.TypeOf(aisessions.SessionsChangedEvent{}),
 	wps.Event_AISessionsAnnotationAssist: reflect.TypeOf(aisessions.AnnotationAssistEvent{}),
 }
 

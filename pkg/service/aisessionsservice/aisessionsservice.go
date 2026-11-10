@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,12 +33,12 @@ const VendorConfigurationUnavailableError = "Vendor configuration is no longer a
 type AISessionsService struct{}
 
 type AISessionsListRequest struct {
-	Source              string   `json:"source,omitempty"`
-	Project             string   `json:"project,omitempty"`
-	Projects            []string `json:"projects,omitempty"`
-	ExcludeProjects     []string `json:"excludeProjects,omitempty"`
-	Query               string   `json:"query,omitempty"`
-	Connection          string   `json:"connection,omitempty"`
+	Source          string   `json:"source,omitempty"`
+	Project         string   `json:"project,omitempty"`
+	Projects        []string `json:"projects,omitempty"`
+	ExcludeProjects []string `json:"excludeProjects,omitempty"`
+	Query           string   `json:"query,omitempty"`
+	Connection      string   `json:"connection,omitempty"`
 	// Origin selects a scan root ("" / "local" = this machine, otherwise an
 	// external dump id from the Origins RPC). Takes precedence over Connection.
 	Origin              string   `json:"origin,omitempty"`
@@ -103,10 +104,10 @@ type AISessionsNoteAndTagsRequest struct {
 // session. Built-in properties keep their dedicated RPCs. Force is reserved for
 // the AI worker: without it, a source=user value must not be overwritten.
 type AISessionsSetPropsRequest struct {
-	ID         string                            `json:"id"`
-	Connection string                            `json:"connection,omitempty"`
+	ID         string                             `json:"id"`
+	Connection string                             `json:"connection,omitempty"`
 	Props      map[string]aisessions.PropertyCell `json:"props"`
-	Force      bool                              `json:"force,omitempty"`
+	Force      bool                               `json:"force,omitempty"`
 }
 
 type AISessionsRenameTagRequest struct {
@@ -196,7 +197,7 @@ type AISessionsGeneratePropertiesRequest struct {
 }
 
 type AISessionsGeneratePropertiesResponse struct {
-	Summary    aisessions.SessionSummary        `json:"summary"`
+	Summary    aisessions.SessionSummary       `json:"summary"`
 	Properties []aisessions.PropertySuggestion `json:"properties"`
 }
 
@@ -494,6 +495,105 @@ func makeGenerationStatusPublisher(connection string) func(aisessions.Generation
 	}
 }
 
+// ── Local session-file watcher ─────────────────────────────────────────────
+//
+// The AISessions list used to learn about new/changed session files only on
+// its own 60s poll. This watcher turns that into an event: every tick it runs
+// a stat-only change probe (Manager.DetectChangedSessionFiles) and publishes
+// `aisessions:sessionschanged` when anything moved. The GUI answers the event
+// with its normal List RPC, so filtering / sorting / attach stay in one place.
+//
+// Cost notes:
+//   - lazy: started by the first local List, never for remote connections;
+//   - skipped entirely while nobody subscribes to the event (AISessions closed);
+//   - stat-only: no session body is parsed here, no DB writes happen;
+//   - WAVETERM_AI_SESSIONS_WATCH_INTERVAL_MS overrides the 5s interval (<=0 off).
+
+const (
+	localSessionsWatchDefaultInterval = 5 * time.Second
+	localSessionsWatchTickTimeout     = 10 * time.Second
+	sessionsChangedPublishMinInterval = 2 * time.Second
+)
+
+var (
+	localSessionsWatcherOnce     sync.Once
+	sessionsChangedPublishMu     sync.Mutex
+	sessionsChangedLastPublishAt time.Time
+)
+
+func localSessionsWatchInterval() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("WAVETERM_AI_SESSIONS_WATCH_INTERVAL_MS"))
+	if raw == "" {
+		return localSessionsWatchDefaultInterval
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil {
+		aiSessionsDebugf("sessions watcher interval %q is not a number; using default", raw)
+		return localSessionsWatchDefaultInterval
+	}
+	if ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// ensureLocalSessionsWatcher starts the process-wide local session-file
+// watcher (once). No-op when the interval is disabled via env.
+func ensureLocalSessionsWatcher() {
+	interval := localSessionsWatchInterval()
+	if interval <= 0 {
+		return
+	}
+	localSessionsWatcherOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for range ticker.C {
+				// No listener (AISessions not open anywhere) → skip the disk probe.
+				if !wps.Broker.HasSubscribers(wps.Event_AISessionsSessionsChanged) {
+					continue
+				}
+				runLocalSessionsWatchTick()
+			}
+		}()
+	})
+}
+
+func runLocalSessionsWatchTick() {
+	ctx, cancelFn := context.WithTimeout(context.Background(), localSessionsWatchTickTimeout)
+	defer cancelFn()
+	changed, err := newLocalManager().DetectChangedSessionFiles(ctx)
+	if err != nil {
+		aiSessionsDebugf("sessions watcher detect error: %v", err)
+		return
+	}
+	if changed <= 0 {
+		return
+	}
+	publishSessionsChangedThrottled(changed)
+}
+
+// publishSessionsChangedThrottled drops a publish when the previous one is
+// newer than sessionsChangedPublishMinInterval. A dropped publish is not
+// queued: the next watcher tick re-reports any still-unread changes.
+func publishSessionsChangedThrottled(changed int) {
+	sessionsChangedPublishMu.Lock()
+	now := time.Now()
+	if !sessionsChangedLastPublishAt.IsZero() && now.Sub(sessionsChangedLastPublishAt) < sessionsChangedPublishMinInterval {
+		sessionsChangedPublishMu.Unlock()
+		return
+	}
+	sessionsChangedLastPublishAt = now
+	sessionsChangedPublishMu.Unlock()
+	wps.Broker.Publish(wps.WaveEvent{
+		Event: wps.Event_AISessionsSessionsChanged,
+		Data: aisessions.SessionsChangedEvent{
+			Changed: changed,
+			At:      now.UnixMilli(),
+		},
+	})
+}
+
 // scanProgressThrottle keeps wps events bounded: at most one per 200ms, unless a
 // scan finishes or a large batch lands.
 type scanProgressThrottle struct {
@@ -596,6 +696,11 @@ func (svc *AISessionsService) List_Meta() tsgenmeta.MethodMeta {
 func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListRequest) (*AISessionsListResponse, error) {
 	if request == nil {
 		request = &AISessionsListRequest{}
+	}
+	// Local lists also (lazily) start the session-file watcher that powers
+	// aisessions:sessionschanged; remote connections are excluded by design.
+	if conncontroller.IsLocalConnName(request.Connection) {
+		ensureLocalSessionsWatcher()
 	}
 	// 合并视图：内存聚合所有 origin，只读、不建共享索引。
 	if strings.TrimSpace(request.Origin) == OriginAllID {
@@ -1474,7 +1579,6 @@ func (svc *AISessionsService) AnnotationSave(ctx context.Context, request *AISes
 	view := row.ToView(false)
 	return &view, nil
 }
-
 
 // loadDetailForAnnotations 加载会话详情，并保证拿得到 anchorKey。
 //

@@ -19,9 +19,9 @@ function renderRail(prompts: OutlinePrompt[]): string {
 describe("SessionOutlineRail threshold", () => {
     it("renders the rail with exactly 1 user message (new session)", () => {
         const html = renderRail([{ seq: 1, preview: "first message" }]);
-        expect(html).toContain("aria-label=\"1/first message\"");
+        expect(html).toContain('aria-label="1/first message"');
         // Rail geometry: 36px wide pill slot rendered
-        expect(html).toContain("style=\"width:36px\"");
+        expect(html).toContain('style="width:36px"');
     });
 
     it("renders 2 ticks for 2 user messages (restored session)", () => {
@@ -29,12 +29,20 @@ describe("SessionOutlineRail threshold", () => {
             { seq: 1, preview: "first message" },
             { seq: 2, preview: "second message" },
         ]);
-        expect(html).toContain("aria-label=\"1/first message\"");
-        expect(html).toContain("aria-label=\"2/second message\"");
+        expect(html).toContain('aria-label="1/first message"');
+        expect(html).toContain('aria-label="2/second message"');
     });
 
     it("returns empty output with 0 prompts (brand-new session, nothing to show)", () => {
         const html = renderRail([]);
         expect(html).toBe("");
+    });
+
+    it("scroll container clips horizontal overflow (no bottom horizontal scrollbar)", () => {
+        // overflow-y:auto forces the other axis from visible→auto; without
+        // overflow-x-hidden a 4px vertical scrollbar (content height > max-h)
+        // makes the 36px ticks overflow the 32px content box → horizontal bar.
+        const html = renderRail([{ seq: 1, preview: "first message" }]);
+        expect(html).toContain("overflow-x-hidden");
     });
 });
