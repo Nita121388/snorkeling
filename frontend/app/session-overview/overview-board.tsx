@@ -4,7 +4,7 @@
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { useAgentReadContext } from "@/app/agent-status/use-agent-status-view";
 import { cn, makeIconClass } from "@/util/util";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgentStatusChip } from "./agent-status-chip";
 import {
     formatBoardAge,
@@ -123,7 +123,7 @@ function BoardAvatar({ avatar }: { avatar: OverviewBoardAvatar }) {
     );
 }
 
-export function BoardCard({
+function BoardCardImpl({
     card,
     status,
     columnKey,
@@ -177,6 +177,15 @@ export function BoardCard({
     };
     const openCardFromTarget = (event: React.MouseEvent) => {
         if (event.target !== event.currentTarget) return;
+        // 命中即开弹窗：拦掉冒泡，不让 block frame 的 setBlockClickedTrue 再追加一轮
+        // 焦点搬运（setFocusTarget/focusNode —— focusNode 还会走一次 layout model 持久化 IPC）
+        // 与随之而来的额外重渲 —— 那一轮发生在弹窗入场动画的同一帧里，是「点开弹窗顿一下」
+        // 的放大器之一（11-10-overview-board-click-perf）。
+        // 键盘 Enter/Space 路径不受影响；action 按钮/chip 自己已 stopPropagation。
+        // 注意：这是 bubble 阶段的拦截，capture 阶段的 document 监听（hover 卡消失、
+        // chat composer 退出）照旧生效；唯一可见副作用是 block sidebar 的
+        // 「点外侧关闭」（bubble 阶段）不再被这一下点击触发。
+        event.stopPropagation();
         openCard();
     };
 
@@ -337,6 +346,14 @@ export function BoardCard({
         </div>
     );
 }
+
+/**
+ * BoardCard 必须走 memo：面板的一次无关重渲（如 markBlockViewed 写的 blockViewedAtAtom）
+ * 会带着整块看板全部卡片重跑，上百张卡是几十 ms 级 long task，把弹窗入场动画的
+ * 首帧压在后面（11-10-overview-board-click-perf）。memo 生效的前提是父级的
+ * onOpenCard / onJumpCard / onCloseCard / onDeleteSession 全部引用稳定（useCallback）。
+ */
+export const BoardCard = memo(BoardCardImpl);
 
 export function OverviewBoard({
     cards,

@@ -51,6 +51,22 @@ Questions to answer:
 
 ---
 
+## 列表/看板型渲染：卡片必须 memo + 回调必须稳定引用 (2026-11-10, task 11-10-overview-board-click-perf)
+
+- **每张卡片 = 一个 `React.memo` 组件**（`BoardCard` 内部名 `BoardCardImpl` + `export const BoardCard = memo(...)`）。
+  不 memo 的卡片墙在面板任何一次重渲（状态 atom tick、`markBlockViewed` 换 map 引用、选中态）都会全量重跑，
+  上百张卡就是几十 ms 级 long task。
+- **父级传给卡片的每个回调必须 `React.useCallback`**。内联箭头函数（`onOpenCard={(card) => ...}`）
+  每次渲染换引用，memo 全部失效——这是「加了 memo 还是卡」的常见原因。
+- **重文件里的大组件回调定义提到组件顶部集中**（本仓 `SessionOverviewPanel`），JSX 只写 `onOpenCard={handleOpenBoardCard}`。
+- **点击开浮层的路径要 `event.stopPropagation()`**：卡片 click 会冒泡到 block frame 的 `setBlockClickedTrue`，
+  后者跑 `setFocusTarget()` + `focusNode()`（layout model 持久化 IPC）——这一轮会叠加进弹窗入场动画的首帧里。
+  拦截只挡 bubble 阶段；capture 阶段的 document 监听（hover 卡消失 / composer 退出）不受影响。
+- 判别方法：新增单测锁结构（`(BoardCard).$$typeof === Symbol.for("react.memo")`）+ 点击语义
+  （开弹窗时 wrapper 不收到 click；点子元素不开）。
+
+---
+
 ## SCSS / 断言两条硬约束 (2026-11-05, 夜间自主开发)
 
 - **改 SCSS 前先确认锚点唯一**：`@container` 里的选择器列表（`.a,\n.b,\n.c {`）和独立规则长得很像，

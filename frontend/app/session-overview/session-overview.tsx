@@ -2238,6 +2238,112 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
         },
         [changeOpenSessionNote, closeSessionNoteInline, openNoteBlockId]
     );
+    /*
+     * 看板 4 个动作回调必须引用稳定（useCallback）：BoardCard 已套 React.memo，
+     * 内联箭头函数每渲染换引用会让 memo 形同虚设 —— 点击开弹窗时整板全量重渲，
+     * 首帧被 long task 压住，弹窗入场兹画就掉帧。见 11-10-overview-board-click-perf。
+     * 下文 OverviewBoard 只能传这四个引用，不要再写内联箭头函数。
+     */
+    const handleOpenBoardCard = React.useCallback(
+        (card: OverviewBoardCard) => {
+            // agent 卡片开弹窗这条路径不写 selectedBlockId：它只被列表视图的
+            // highlightedBlockId 消费，看板分支写它等于让整个面板陷弹窗挂载再重渲一帧。
+            overviewModel.markBlockViewed(card.blockId);
+            const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
+            if (card.isAgentLike && block != null) {
+                // 看板手上已有同一份 SessionSummary，直接预置进 note-cache：
+                // 否则弹窗会先渲染空壳，等一次 Summary RPC 回来后内容才弹入
+                // （实测 200~400ms 空白期，远端连接更久）。
+                const blockConnection =
+                    typeof block.block?.meta?.connection === "string"
+                        ? (block.block.meta.connection as string).trim()
+                        : "";
+                primeSessionNote(
+                    card.sessionId,
+                    summaries[card.sessionId]?.summary ?? details[card.sessionId]?.detail?.summary ?? null,
+                    blockConnection
+                );
+                modalsModel.pushModal("AgentCardModal", {
+                    blockId: card.blockId,
+                    blockData: block.block,
+                    tabId: card.tabId,
+                });
+                return;
+            }
+            if (block != null) {
+                setSelectedBlockId(card.blockId);
+                overviewModel.jumpToBlock(block.tabId, block.blockId);
+            }
+        },
+        [blocks, details, overviewModel, summaries]
+    );
+    const handleJumpBoardCard = React.useCallback(
+        (card: OverviewBoardCard) => {
+            setSelectedBlockId(card.blockId);
+            overviewModel.markBlockViewed(card.blockId);
+            if (card.tabId !== "") {
+                overviewModel.jumpToBlock(card.tabId, card.blockId);
+            }
+        },
+        [overviewModel]
+    );
+    const handleCloseBoardCard = React.useCallback(
+        (card: OverviewBoardCard) => {
+            const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
+            if (block == null) return;
+            setSessionAction((current) => ({ ...current, error: "" }));
+            closeOverviewBlock(block)
+                .catch((error) => {
+                    setSessionAction((current) => ({
+                        ...current,
+                        error: error instanceof Error ? error.message : String(error),
+                    }));
+                })
+                .finally(() => model.refresh());
+        },
+        [blocks, model]
+    );
+    const handleDeleteBoardSession = React.useCallback(
+        (card: OverviewBoardCard) => {
+            const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
+            if (block == null || !block.sessionId || sessionAction.deletingSessionId) return;
+            modalsModel.pushModal("ConfirmModal", {
+                title: "删除会话文件",
+                message: `Delete session file for "${block.title}"?\n\n移到回收站可从 deleted storage 恢复；彻底删除无法恢复。`,
+                cancelLabel: "取消",
+                actions: [
+                    { label: "移到回收站", value: "recycle", tone: "secondary" },
+                    { label: "彻底删除", value: "delete-permanently", tone: "destructive" },
+                ],
+                onAction: (action: string) => {
+                    if (action !== "recycle" && action !== "delete-permanently") return;
+                    setSelectedBlockId(block.blockId);
+                    setSessionAction({ deletingSessionId: block.sessionId, error: "" });
+                    const request =
+                        action === "delete-permanently"
+                            ? sessionService.DeletePermanently(block.sessionId, "")
+                            : sessionService.Delete(block.sessionId, "");
+                    request
+                        .then(() => fireAndForget(() => closeOverviewBlock(block)))
+                        .catch((error) => {
+                            setSessionAction({
+                                deletingSessionId: "",
+                                error: error instanceof Error ? error.message : String(error),
+                            });
+                        })
+                        .finally(() => {
+                            setSessionAction((current) =>
+                                current.deletingSessionId === block.sessionId
+                                    ? { deletingSessionId: "", error: current.error }
+                                    : current
+                            );
+                            model.refresh();
+                        });
+                },
+            });
+        },
+        [blocks, model, sessionAction.deletingSessionId, sessionService]
+    );
     const highlightedBlockId = selectedBlockInOverview
         ? selectedBlockId
         : currentBlockInOverview
@@ -2571,94 +2677,10 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 miniTimelines={miniTimelines}
                                 now={now}
                                 onAckStatus={ackAgentStatus}
-                                onOpenCard={(card) => {
-                                    setSelectedBlockId(card.blockId);
-                                    overviewModel.markBlockViewed(card.blockId);
-                                    const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
-                                    if (card.isAgentLike && block != null) {
-                                        // 看板手上已有同一份 SessionSummary，直接预置进 note-cache：
-                                        // 否则弹窗会先渲染空壳，等一次 Summary RPC 回来后内容才弹入
-                                        // （实测 200~400ms 空白期，远端连接更久）。
-                                        const blockConnection =
-                                            typeof block.block?.meta?.connection === "string"
-                                                ? (block.block.meta.connection as string).trim()
-                                                : "";
-                                        primeSessionNote(
-                                            card.sessionId,
-                                            summaries[card.sessionId]?.summary ??
-                                                details[card.sessionId]?.detail?.summary ??
-                                                null,
-                                            blockConnection
-                                        );
-                                        modalsModel.pushModal("AgentCardModal", {
-                                            blockId: card.blockId,
-                                            blockData: block.block,
-                                            tabId: card.tabId,
-                                        });
-                                        return;
-                                    }
-                                    if (block != null) {
-                                        overviewModel.jumpToBlock(block.tabId, block.blockId);
-                                    }
-                                }}
-                                onJumpCard={(card) => {
-                                    setSelectedBlockId(card.blockId);
-                                    overviewModel.markBlockViewed(card.blockId);
-                                    if (card.tabId !== "") {
-                                        overviewModel.jumpToBlock(card.tabId, card.blockId);
-                                    }
-                                }}
-                                onCloseCard={(card) => {
-                                    const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
-                                    if (block == null) return;
-                                    setSessionAction((current) => ({ ...current, error: "" }));
-                                    closeOverviewBlock(block)
-                                        .catch((error) => {
-                                            setSessionAction((current) => ({
-                                                ...current,
-                                                error: error instanceof Error ? error.message : String(error),
-                                            }));
-                                        })
-                                        .finally(() => model.refresh());
-                                }}
-                                onDeleteSession={(card) => {
-                                    const block = blocks.find((b) => b.blockId === card.blockId) ?? null;
-                                    if (block == null || !block.sessionId || sessionAction.deletingSessionId) return;
-                                    modalsModel.pushModal("ConfirmModal", {
-                                        title: "删除会话文件",
-                                        message: `Delete session file for "${block.title}"?\n\n移到回收站可从 deleted storage 恢复；彻底删除无法恢复。`,
-                                        cancelLabel: "取消",
-                                        actions: [
-                                            { label: "移到回收站", value: "recycle", tone: "secondary" },
-                                            { label: "彻底删除", value: "delete-permanently", tone: "destructive" },
-                                        ],
-                                        onAction: (action: string) => {
-                                            if (action !== "recycle" && action !== "delete-permanently") return;
-                                            setSelectedBlockId(block.blockId);
-                                            setSessionAction({ deletingSessionId: block.sessionId, error: "" });
-                                            const request =
-                                                action === "delete-permanently"
-                                                    ? sessionService.DeletePermanently(block.sessionId, "")
-                                                    : sessionService.Delete(block.sessionId, "");
-                                            request
-                                                .then(() => fireAndForget(() => closeOverviewBlock(block)))
-                                                .catch((error) => {
-                                                    setSessionAction({
-                                                        deletingSessionId: "",
-                                                        error: error instanceof Error ? error.message : String(error),
-                                                    });
-                                                })
-                                                .finally(() => {
-                                                    setSessionAction((current) =>
-                                                        current.deletingSessionId === block.sessionId
-                                                            ? { deletingSessionId: "", error: current.error }
-                                                            : current
-                                                    );
-                                                    model.refresh();
-                                                });
-                                        },
-                                    });
-                                }}
+                                onOpenCard={handleOpenBoardCard}
+                                onJumpCard={handleJumpBoardCard}
+                                onCloseCard={handleCloseBoardCard}
+                                onDeleteSession={handleDeleteBoardSession}
                                 deletingSessionId={sessionAction.deletingSessionId}
                             />
                         )
