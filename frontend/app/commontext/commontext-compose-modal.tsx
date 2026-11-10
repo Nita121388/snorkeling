@@ -4,15 +4,12 @@
 import { Button } from "@/app/element/button";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
-import { getBlockComponentModel, atoms } from "@/app/store/global";
-import { blockComponentModelMap } from "@/app/store/global-atoms";
-import { getLayoutModelForStaticTab } from "@/layout/index";
-import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
+import { atoms } from "@/app/store/global";
 import { fireAndForget } from "@/util/util";
-import { atom, useAtomValue } from "jotai";
+import { useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
-import { copyCommonText, insertOrCopyCommonText, sendTextToFocusedTerm } from "./commontext-insert";
+import { copyCommonText, insertOrCopyCommonText } from "./commontext-insert";
 import { computeEditorMaxHeight } from "./commontext-editor-size";
 import {
     materializePastedImages,
@@ -46,6 +43,7 @@ import { loadCommonTextSortKey, saveCommonTextSortKey } from "./commontext-sort-
 import { PageIconSlot } from "./commontext-page-icon";
 import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
 import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
+import { CommontextSendButton } from "./commontext-send-button";
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
@@ -222,54 +220,6 @@ const restoreOpenState = (): ComposeState => {
     };
 };
 
-// Resolves the truly-active block of the focused layout node. Layout nodes use
-// either `blockId` (single-block) or `blockIds` + `activeBlockId` (inline-tabs
-// container holding several blocks) — `data.blockId` alone misses the latter, so
-// we go through `getLayoutDataActiveBlockId`, the same helper `closeFocusedNode`
-// / `keymodel` use. Returns the blockId only when it's a term view, else null.
-// Drives the Send button's availability so users see it disabled up-front
-// instead of clicking first, and feeds `sendTextToFocusedTerm` so Send doesn't
-// route through the modal's own textarea.
-const focusedTermBlockIdAtom = atom<string | null>((get) => {
-    const layoutModel = getLayoutModelForStaticTab();
-    if (layoutModel == null) return null;
-    const focusedNode = get(layoutModel.focusedNode);
-    const blockId = getLayoutDataActiveBlockId(focusedNode?.data);
-    if (blockId == null) return null;
-    const bcm = getBlockComponentModel(blockId);
-    if (bcm?.viewModel?.viewType !== "term") return null;
-    return blockId;
-});
-
-// All term-block ids visible in the current static tab. Used as a fallback chain
-// when the focused block isn't a term (e.g. focus is on the AI panel, a file
-// viewer, or the compose modal's own editor). Without this, "Send" silently
-// failed whenever the user opened the modal without keeping focus on a terminal
-// — modal focus moved to the textarea, so the user had no way to re-focus the
-// term without closing the modal first.
-const availableTermBlockIdsAtom = atom<string[]>((get) => {
-    // preferred: the statically-tracked term belonging to the focused layout node
-    const focusedTermId = get(focusedTermBlockIdAtom);
-    const seen = new Set<string>();
-    const out: string[] = [];
-    // We don't have a layout-walk helper handy, so enumerate every block in the
-    // app via the model map and keep the ones whose viewModel is a term. The
-    // focused term (if any) is always first so "Send" defaults to the user's
-    // most recently relevant terminal.
-    if (focusedTermId != null) {
-        out.push(focusedTermId);
-        seen.add(focusedTermId);
-    }
-    for (const [blockId, bcm] of blockComponentModelMap.entries()) {
-        if (blockId == null || seen.has(blockId)) continue;
-        if (bcm?.viewModel?.viewType === "term") {
-            out.push(blockId);
-            seen.add(blockId);
-        }
-    }
-    return out;
-});
-
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
     // editor 默认收缩为单行高度（与 Title/Action 控件视觉对齐），聚焦时再撑开到多行，
@@ -277,8 +227,6 @@ const CommonTextComposeModal = memo(() => {
     // "草稿含换行"会作为初始展开判定，防止多行草稿被压缩成单行截断。
     const [editorExpanded, setEditorExpanded] = useState(false);
     const settings = useAtomValue(atoms.settingsAtom);
-    const availableTermBlockIds = useAtomValue(availableTermBlockIdsAtom);
-    const canSendToTerm = availableTermBlockIds.length > 0;
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
@@ -805,26 +753,6 @@ const CommonTextComposeModal = memo(() => {
         }
     };
 
-    const handleSendToTerm = () => {
-        const text = state.editor;
-        if (text.trim() === "") {
-            setStatus("Nothing to send", "err");
-            return;
-        }
-        // Pick from the candidate chain (focused term → fallback terms in this
-        // tab) so that opening the modal without focus on a terminal no longer
-        // silently drops the Send. `sendTextToFocusedTerm` returns the blockId
-        // it actually pasted into, or null when every candidate's TermWrap was
-        // not live (panel mid-transition).
-        const target = sendTextToFocusedTerm(text, availableTermBlockIds);
-        if (target != null) {
-            // Send 成功即关弹窗：失败分支保留弹窗让用户读到错误并重试。
-            close();
-        } else {
-            setStatus("No live terminal — focus a terminal and retry", "err");
-        }
-    };
-
     const handleListItemCopy = async (item: CommonTextItem) => {
         try {
             await copyCommonText(item.text);
@@ -833,17 +761,6 @@ const CommonTextComposeModal = memo(() => {
             setStatus("Copied", "ok");
         } catch (err) {
             setStatus(`Copy failed: ${(err as Error).message ?? "unknown"}`, "err");
-        }
-    };
-
-    const handleListItemSend = (item: CommonTextItem) => {
-        const target = sendTextToFocusedTerm(item.text, availableTermBlockIds);
-        if (target != null) {
-            // 详情区 Send 成功即关弹窗，与 editor 上方 Send 同语义；失败保留弹窗供重试。
-            fireAndForget(() => recordCommonTextUse(item.id));
-            close();
-        } else {
-            setStatus("No live terminal — focus a terminal and retry", "err");
         }
     };
 
@@ -1287,19 +1204,11 @@ const CommonTextComposeModal = memo(() => {
                     <Button className="grey" onClick={handleCopy} title="Copy editor content to clipboard">
                         <i className="fa fa-regular fa-copy" />
                     </Button>
-                    {canSendToTerm ? (
-                        <Button className="grey" onClick={handleSendToTerm} title="Paste into the focused terminal">
-                            <i className="fa fa-solid fa-terminal mr-1" />
-                            Send
-                        </Button>
-                    ) : (
-                        <span title="Focus a terminal to enable Send" className="inline-flex">
-                            <Button className="grey" disabled>
-                                <i className="fa fa-solid fa-terminal mr-1" />
-                                Send
-                            </Button>
-                        </span>
-                    )}
+                    <CommontextSendButton
+                        text={state.editor}
+                        onSent={close}
+                        onStatus={setStatus}
+                    />
                     {editorTags.length > 0 && (
                         <SessionTagChips
                             tags={editorTags.slice(0, MAX_TAG_CHIPS)}
@@ -1782,23 +1691,14 @@ const CommonTextComposeModal = memo(() => {
                                 {/* 详情 footer：自动保存模式——无 Save/Cancel，仅行为条 + 右侧自动保存状态。
                                     不带 border-t，靠外层 gap 与上面分隔。 */}
                                 <div className="shrink-0 flex items-center gap-1.5 flex-wrap">
-                                    {canSendToTerm ? (
-                                        <Button
-                                            className="grey"
-                                            onClick={() => handleListItemSend(detailItem)}
-                                            title="Send to focused terminal"
-                                        >
-                                            <i className="fa fa-regular fa-paper-plane mr-1" />
-                                            Send
-                                        </Button>
-                                    ) : (
-                                        <span title="Focus a terminal to enable Send" className="inline-flex">
-                                            <Button className="grey" disabled>
-                                                <i className="fa fa-regular fa-paper-plane mr-1" />
-                                                Send
-                                            </Button>
-                                        </span>
-                                    )}
+                                    <CommontextSendButton
+                                        text={detailItem.text}
+                                        onSent={() => {
+                                            fireAndForget(() => recordCommonTextUse(detailItem.id));
+                                            close();
+                                        }}
+                                        onStatus={setStatus}
+                                    />
                                     <Button
                                         className="grey"
                                         onClick={() => fireAndForget(async () => handleListItemCopy(detailItem))}

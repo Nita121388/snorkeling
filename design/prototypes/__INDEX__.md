@@ -32,6 +32,7 @@
 - `commontext/commontext-compose-modal-improved.html` — （单文件原型）
 - `commontext/commontext-list-meta-sort/` — 同步状态：✅ 已落地（2026-11-05，`frontend/app/commontext/`，分支 `feat/commontext-list-meta-sort`）
 - `commontext/commontext-pinned-detail-insert.html` — （单文件原型）
+- `commontext/commontext-send-agent-block/` — 同步状态：● 已落地（2026-11-10，`frontend/app/commontext/commontext-send-button.tsx` + `pending-input.ts` + `term.tsx`）
 - `commontext/commontext-search-virtual.html` — （单文件原型）
 
 ## connections-settings
@@ -39,6 +40,7 @@
 
 ## design-foundations
 - `design-foundations/brand/` — 
+- `design-foundations/skeleton-loaders/` — 同步状态：▲ 设计活跃（未实现）｜20 种水下主题骨架加载动画画廊：焦散/声呐/气泡/潮位等，可切暗亮主题、点卡复制 CSS，含两轮评审记录
 - `design-foundations/design-system.html` — （单文件原型）
 - `design-foundations/light-theme-variations.html` — （单文件原型）
 - `design-foundations/review-boundary/` — 
@@ -84,6 +86,9 @@
 - `vcs/vcs-repo-switcher-v2/` — 同步状态：◐ 部分落地
 - `vcs/vcs-status-settings/` — 状态：**设计中（待确认）**，未改动真实代码
 - `vcs/vcs-remote-sync-widget/` — 同步状态：◐ 部分落地（代码已实现，真机截图验证待做），Remote 区上游行 + Incoming/Outgoing 列表美化
+
+## updater
+- `updater/updater-flow/` — 同步状态：▲ 设计活跃（未实现）｜镜像源：frontend/app/tab/updatebanner.tsx, frontend/app/modals/about.tsx, emain/updater.ts
 
 ## _archive
 - `_archive/meta/__REVIEW_GUIDE__.md`（历史审阅指南）

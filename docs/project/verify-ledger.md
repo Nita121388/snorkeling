@@ -132,3 +132,13 @@
 | 2026-11-10 12:07 | term-failure-copy | ❌ 9/10 | launch+reset | `20261110T12074-term-failure-copy` | 2aea7a7e |
 | 2026-11-10 12:08 | term-failure-copy | ✅ 10/10 | launch+reset | `20261110T12080-term-failure-copy` | 2aea7a7e |
 | 2026-11-10 12:08 | commontext-send-agent-block | ❌ 11/13 | launch+reset | `20261110T12054-commontext-send-agent-block` | 2aea7a7e |
+| 2026-11-10 12:26 | commontext-send-agent-block | ❌ 0/3（fatal） | launch+reset | `20261110T12240-commontext-send-agent-block` | 3100c401 |
+| 2026-11-10 12:33 | commontext-send-agent-block | ❌ 0/3（fatal） | launch+reset | `20261110T12305-commontext-send-agent-block` | 3100c401 |
+| 2026-11-10 12:36 | commontext-send-agent-block | ✅ 14/14 | launch+reset | `20261110T12351-commontext-send-agent-block` | 3100c401 |
+| 2026-11-10 12:42 | vcs-conflict-copy | ❌ 2/3 | launch+reset | `20261110T12410-vcs-conflict-copy` | 3100c401 |
+| 2026-11-10 12:45 | vcs-conflict-copy | ❌ 1/3 | launch+reset | `20261110T12433-vcs-conflict-copy` | 3100c401 |
+| 2026-11-10 12:48 | vcs-conflict-copy | ✅ 11/11 | launch+reset | `20261110T12463-vcs-conflict-copy` | 3100c401 |
+| 2026-11-10 12:50 | vcs-conflict-copy | ✅ 11/11 | launch+reset | `20261110T12483-vcs-conflict-copy` | 3100c401 |
+| 2026-11-10 12:52 | vcs-conflict-copy | ✅ 11/11 | launch+reset | `20261110T12502-vcs-conflict-copy` | 3100c401 |
+| 2026-11-10 12:54 | vcs-conflict-copy | ✅ 11/11 | launch+reset | `20261110T12531-vcs-conflict-copy` | 3100c401 |
+| 2026-11-10 12:57 | vcs-conflict-copy | ⚠️ 0/0（无断言） | launch+reset | `20261110T12562-vcs-conflict-copy` | 3100c401 |

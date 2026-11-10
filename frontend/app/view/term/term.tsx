@@ -585,6 +585,12 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 const text = takePendingInput(blockId);
                 if (text != null && text !== "") {
                     termWrap.terminal.paste(text);
+                    // 可观测事件：验证台 / 后续 UI 状态提示用（与 fallback 事件对称）。
+                    window.dispatchEvent(
+                        new CustomEvent("snorkeling:pending-input-injected", {
+                            detail: { blockId, length: text.length },
+                        })
+                    );
                 }
                 return;
             }

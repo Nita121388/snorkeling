@@ -614,3 +614,20 @@ CommonText 列表行右槽（`w-[58px] h-7`）挂 `group-hover:opacity-0`，hove
 - 判据形式：造一个必失败的 run（folder 指向 `/etc/hosts/...` 之类必失败路径、并先播种 ≥1 条
   item —— 空 item 集的 run 会静默成功，失败态永远出不来），断言 payload 含 `last error:` 与
   journal 事件行。`scripts/verify/sync-diagnostics-copy` 已实现。
+
+---
+
+## pending input 注入：按「事件」验证，不要按 TUI 输入框文本验证 (2026-11-10, task 11-10-commontext-send-agent-block)
+
+CommonText「新建 agent block 并发送」靠 pending-input 队列把文本在 TUI 就绪后 `terminal.paste` 注入，
+验证时踩到的三个坑（`scripts/verify/commontext-send-agent-block/` 已固化）：
+
+- **不要依赖 `cmd:initialinput`**：全仓零消费点（见 `docs/project/agent-session-plan.md`），靠它注入必然静默失败。
+  注入时机只走 `computeInjectDecision`（首输出 + 静默窗口，TTL 兜底），消费端在 `term.tsx`。
+- **TUI 首启提示会吞掉注入按键**：claude 的「目录信任」选择菜单、codex 的「Update available」提示都会先于 composer 出现，
+  此时 paste 的字符不进输入框。所以**不要断言 buffer 里出现发送文本**——改为断言
+  `snorkeling:pending-input-injected` 自定义事件（`term.tsx` 注入成功时派发，与 fallback 事件对称）。
+- **`window.term` 只能代表「最后一次创建的 TermWrap」，不是「你要看的那个块」**：新建 Tab 会先建默认终端，
+  多块/多 tab 时读它必串块。要断言某块的终端内容，用带 blockId 的事件或显式选择器，别用 `window.term`。
+- **多 agent 并行跑 verify 必须错开端口**：`VERIFY_PROFILE=verify-x VERIFY_VITE_PORT=51871 VERIFY_CDP_PORT=9237`。
+  共用默认端口时两台验证台会互相读对方的块（实测注入断言读到了另一台的 `term-failure-copy` 块）。

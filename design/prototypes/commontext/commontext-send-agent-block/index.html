@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CommonText Send → Agent × Type 原型</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<style>
+  /* ============================================================
+     镜像源：
+       frontend/app/commontext/commontext-compose-modal.tsx  (编辑器 footer / Send 按钮)
+       frontend/app/workspace/agent-launch.ts                (profile + AgentLaunchTarget)
+       frontend/app/modals/agentcardmodal.tsx                (agent card 字段)
+       frontend/app/view/term/agent-hover-card.tsx           (块头 agent 信息)
+     token 锚到 snorkeling 现有主题（同 commontext-compose-modal-improved.html）
+     ============================================================ */
+  :root {
+    --bg: #222222;
+    --fg: #f7f7f7;
+    --secondary: rgb(195, 200, 194);
+    --muted: rgb(140, 145, 140);
+    --accent: rgb(88, 193, 66);
+    --accent-hover: rgb(118, 223, 96);
+    --error: rgb(229, 77, 46);
+    --warning: rgb(224, 185, 86);
+    --border: rgba(255, 255, 255, 0.16);
+    --border-soft: rgba(255, 255, 255, 0.08);
+    --modal-bg: #2a2a2a;
+    --panel: #141618;
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --surface-soft: rgba(255, 255, 255, 0.04);
+    --highlight-bg: rgba(88, 193, 66, 0.12);
+    --editor-bg: rgba(0, 0, 0, 0.25);
+    --working: #57d9a3;
+    --done: #6fb3e0;
+    --idle: #8b9298;
+    --blocked: #e8c87c;
+    --brand: #a78bfa;
+    --font-mono: "Hack", "JetBrains Mono", "Consolas", monospace;
+    --font-sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+  }
+  [data-theme="light"] {
+    --bg: #ebe5d9;
+    --fg: #4c3924;
+    --secondary: #675033;
+    --muted: #777167;
+    --accent: #a76fca;
+    --accent-hover: #955ab8;
+    --error: #d32f2f;
+    --warning: #e65100;
+    --border: #ded8ca;
+    --border-soft: #e6e0d2;
+    --modal-bg: #fffdf8;
+    --panel: #faf7f0;
+    --hover-bg: rgba(167, 111, 202, 0.10);
+    --surface-soft: #f0ede6;
+    --highlight-bg: rgba(167, 111, 202, 0.20);
+    --editor-bg: #faf7f0;
+    --working: #12915f;
+    --done: #2b7fc4;
+    --idle: #7c848b;
+    --blocked: #b17b12;
+    --brand: #6d4bd6;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.5 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    padding: 20px 22px 80px;
+  }
+
+  /* ── 顶栏 ───────────────────────────────── */
+  .topbar {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 0 0 14px; border-bottom: 1px solid var(--border-soft); margin-bottom: 18px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 280px; }
+  .brand h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .2px; }
+  .brand .sub { font-size: 12px; color: var(--muted); }
+  .brand .sub code { font-family: var(--font-mono); font-size: 11px; background: var(--surface-soft); padding: 1px 5px; border-radius: 4px; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .seg { display: inline-flex; background: var(--surface-soft); border: 1px solid var(--border-soft); border-radius: 7px; padding: 2px; }
+  .seg button {
+    appearance: none; border: 0; background: transparent; color: var(--secondary);
+    font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 5px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .seg button.active { background: var(--modal-bg); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .ghost {
+    appearance: none; border: 1px solid var(--border-soft); background: transparent; color: var(--secondary);
+    font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 7px; cursor: pointer;
+  }
+  .ghost:hover { color: var(--fg); border-color: var(--border); }
+
+  /* ── 舞台：左工作区 + 右 CommonText ───────── */
+  .stage { display: grid; grid-template-columns: minmax(420px, 1.05fr) minmax(430px, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 980px) { .stage { grid-template-columns: 1fr; } }
+
+  .stage-label {
+    font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 8px 2px;
+  }
+
+  /* 工作区 mock */
+  .workspace {
+    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 10px;
+    overflow: hidden; display: flex; flex-direction: column; min-height: 520px;
+  }
+  .ws-tabbar {
+    display: flex; align-items: center; gap: 4px; padding: 7px 9px;
+    border-bottom: 1px solid var(--border-soft); background: color-mix(in srgb, var(--panel) 60%, var(--bg));
+  }
+  .ws-tab {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary);
+    padding: 4px 9px; border-radius: 6px;
+  }
+  .ws-tab.active { background: var(--surface-soft); color: var(--fg); }
+  .ws-tab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  .ws-body { padding: 10px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+
+  .blk {
+    border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden;
+    background: var(--editor-bg); transition: border-color .15s, box-shadow .15s;
+  }
+  .blk.focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--highlight-bg); }
+  .blk-head {
+    display: flex; align-items: center; gap: 8px; padding: 6px 9px;
+    border-bottom: 1px solid var(--border-soft); background: var(--surface-soft);
+  }
+  .blk-head .bi { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; flex: none; background: var(--highlight-bg); color: var(--accent); }
+  .blk-head .bi.plain { background: var(--surface-soft); color: var(--secondary); }
+  .blk-head .titles { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+  .blk-head .t1 { font-size: 12px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blk-head .t2 { font-size: 10.5px; color: var(--muted); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blk-head .spacer { flex: 1; }
+  .blk-body {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--secondary);
+    padding: 10px 11px; min-height: 78px; white-space: pre-wrap; word-break: break-word;
+  }
+  .blk-body .prompt { color: var(--accent); }
+  .blk-body .ghostline { color: var(--muted); }
+
+  /* status chip */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-family: var(--font-sans);
+    padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border-soft);
+    background: var(--surface-soft); color: var(--secondary); white-space: nowrap;
+  }
+  .chip .sd { width: 6px; height: 6px; border-radius: 50%; background: var(--idle); }
+  .chip.working .sd { background: var(--working); box-shadow: 0 0 0 3px color-mix(in srgb, var(--working) 22%, transparent); }
+  .chip.done .sd { background: var(--done); }
+  .chip.pending .sd { background: var(--warning); animation: blink 1.1s infinite; }
+  .chip.pending { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* agent 小卡（块头 hover / 目标选择共用） */
+  .mini-agent-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+  }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 8px; flex: none;
+    display: grid; place-items: center; font-size: 13px; font-weight: 600;
+    background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand);
+    border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
+  }
+  .avatar.claude { background: color-mix(in srgb, #e08a5a 18%, transparent); color: #e08a5a; border-color: color-mix(in srgb, #e08a5a 30%, transparent); }
+  .avatar.codex { background: color-mix(in srgb, var(--working) 16%, transparent); color: var(--working); border-color: color-mix(in srgb, var(--working) 30%, transparent); }
+  .avatar.pi { background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand); border-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+  .mini-agent-card .mac-main { min-width: 0; flex: 1; }
+  .mini-agent-card .mac-name { font-size: 12.5px; color: var(--fg); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-agent-card .mac-meta { font-size: 10.5px; color: var(--muted); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-agent-card .mac-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+  .mini-agent-card .mac-time { font-size: 10px; color: var(--muted); font-family: var(--font-mono); }
+
+  /* ── CommonText 弹窗 ─────────────────────── */
+  .modal {
+    background: var(--modal-bg); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.35); display: flex; flex-direction: column; position: relative;
+  }
+  .modal-head {
+    display: flex; align-items: center; gap: 8px; padding: 11px 14px 9px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .modal-head .title { font-size: 13px; font-weight: 600; }
+  .modal-head .hint { font-size: 11px; color: var(--muted); }
+  .modal-head .spacer { flex: 1; }
+  .icon-btn {
+    appearance: none; width: 26px; height: 26px; border-radius: 6px; border: 0; background: transparent;
+    color: var(--secondary); cursor: pointer; display: grid; place-items: center; font-size: 12px;
+  }
+  .icon-btn:hover { background: var(--hover-bg); color: var(--fg); }
+
+  .editor-wrap { padding: 12px 14px 0; }
+  .editor {
+    width: 100%; resize: none; background: var(--editor-bg); color: var(--fg);
+    border: 1px solid var(--border-soft); border-radius: 7px; padding: 9px 10px;
+    font: 13px/1.55 var(--font-mono); min-height: 96px; outline: none;
+  }
+  .editor:focus { border-color: var(--border); }
+
+  .editor-foot {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 9px 14px 12px;
+  }
+  .btn {
+    appearance: none; display: inline-flex; align-items: center; gap: 6px;
+    font: inherit; font-size: 12px; padding: 6px 10px; border-radius: 7px; cursor: pointer;
+    background: var(--surface-soft); color: var(--secondary); border: 1px solid var(--border-soft);
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .btn:hover { background: var(--hover-bg); color: var(--fg); }
+  .btn i { font-size: 11px; }
+  .btn.icon { width: 30px; justify-content: center; padding: 6px 0; }
+
+  /* Send split button */
+  .send-split { display: inline-flex; align-items: stretch; border-radius: 7px; overflow: hidden; }
+  .send-split .btn.main {
+    border-radius: 7px 0 0 7px; border-right: 0; padding-right: 6px;
+    background: var(--highlight-bg); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  .send-split .btn.main:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent-hover); }
+  .send-split .btn.caret {
+    border-radius: 0 7px 7px 0; padding: 0 8px; width: auto;
+    background: var(--highlight-bg); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+    border-left: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  }
+  .send-split .btn.caret:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .send-split.disabled .btn { opacity: .45; cursor: not-allowed; }
+  .send-target-hint { font-size: 11px; color: var(--muted); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .send-target-hint b { color: var(--secondary); font-weight: 550; }
+
+  .tag-chip {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: var(--highlight-bg); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  /* ── Send 目标选择 popover ───────────────── */
+  .popover {
+    position: absolute; z-index: 40; top: 100%; margin-top: 8px; right: 0;
+    width: 384px; background: var(--modal-bg); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.4);
+    padding: 8px; display: none;
+  }
+  .popover.open { display: block; }
+  .pop-sec { padding: 4px 2px 6px; }
+  .pop-sec + .pop-sec { border-top: 1px solid var(--border-soft); margin-top: 4px; padding-top: 8px; }
+  .pop-sec-head {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted);
+    padding: 2px 6px 6px;
+  }
+  .pop-sec-head .n { margin-left: auto; font-family: var(--font-mono); letter-spacing: 0; text-transform: none; }
+  .pop-sec-head .pick { margin-left: auto; font-family: var(--font-mono); letter-spacing: 0; text-transform: none; font-size: 10px; color: var(--muted); }
+
+  /* 聚焦 agent block 行 */
+  .focus-row {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 7px 8px; border-radius: 7px; cursor: pointer; border: 1px solid transparent;
+    background: transparent; color: var(--fg); text-align: left; font: inherit;
+  }
+  .focus-row:hover { background: var(--hover-bg); }
+  .focus-row.active { background: var(--highlight-bg); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .focus-row[disabled] { opacity: .5; cursor: not-allowed; }
+  .focus-row[disabled]:hover { background: transparent; }
+  .focus-row .fr-main { flex: 1; min-width: 0; }
+  .focus-row .check { color: var(--accent); font-size: 11px; visibility: hidden; }
+  .focus-row.active .check { visibility: visible; }
+
+  .warn-line {
+    display: flex; gap: 7px; align-items: flex-start; padding: 7px 8px; margin: 2px 4px;
+    border-radius: 7px; font-size: 11px; color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 26%, transparent);
+  }
+  .warn-line i { margin-top: 2px; }
+
+  /* 选择 Agents */
+  .profiles { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 4px 0; }
+  .profile-chip {
+    appearance: none; font: inherit; font-size: 11.5px; padding: 5px 9px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border-soft); background: var(--surface-soft); color: var(--secondary);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .profile-chip:hover { color: var(--fg); border-color: var(--border); }
+  .profile-chip.on { background: var(--highlight-bg); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 34%, transparent); }
+  .profile-chip .star { font-size: 9px; color: var(--warning); }
+  .profile-chip .pdot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* 选择 Type（tab 选择器） */
+  .type-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px 0; position: relative; }
+  .type-picker {
+    flex: 1; min-width: 0; appearance: none; font: inherit; font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 7px; text-align: left;
+    padding: 7px 9px; border-radius: 7px; border: 1px solid var(--border-soft);
+    background: var(--surface-soft); color: var(--fg);
+  }
+  .type-picker:hover { border-color: var(--border); }
+  .type-picker i.fa-table-columns { font-size: 10px; color: var(--secondary); }
+  .type-picker .tp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .type-picker .tp-badge {
+    font-size: 9.5px; padding: 1px 6px; border-radius: 999px; background: var(--highlight-bg);
+    color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); white-space: nowrap;
+  }
+  .type-picker .tp-badge.neutral { background: var(--surface-soft); color: var(--muted); border-color: var(--border-soft); }
+  .type-picker .caret { margin-left: auto; font-size: 9px; color: var(--muted); }
+
+  .add-tab {
+    appearance: none; width: 32px; height: 32px; flex: none; border-radius: 7px; cursor: pointer;
+    border: 1px dashed var(--border); background: transparent; color: var(--secondary);
+    display: grid; place-items: center; font-size: 12px;
+  }
+  .add-tab:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--highlight-bg); }
+
+  .type-menu {
+    position: absolute; left: 4px; right: 4px; top: calc(100% + 4px); z-index: 5;
+    background: var(--modal-bg); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.4); padding: 4px; display: none;
+  }
+  .type-menu.open { display: block; }
+  .type-item {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: 6px;
+    appearance: none; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 12px;
+    cursor: pointer; text-align: left;
+  }
+  .type-item:hover { background: var(--hover-bg); }
+  .type-item .ti-sub { font-size: 10px; color: var(--muted); margin-left: auto; font-family: var(--font-mono); }
+  .type-item .ti-check { color: var(--accent); font-size: 10px; visibility: hidden; margin-left: auto; }
+  .type-item.on .ti-check { visibility: visible; }
+  .type-item.sep { border-top: 1px solid var(--border-soft); margin-top: 3px; padding-top: 7px; }
+  .type-item i { font-size: 10px; color: var(--secondary); width: 12px; text-align: center; }
+
+  .pop-foot {
+    display: flex; align-items: flex-start; gap: 6px; padding: 8px 6px 3px;
+    border-top: 1px solid var(--border-soft); margin-top: 6px;
+    font-size: 10.5px; color: var(--muted); line-height: 1.55;
+  }
+  .pop-foot i { color: var(--warning); margin-top: 2px; }
+  .pop-foot b { color: var(--secondary); font-weight: 550; }
+
+  /* 底部确认行：选好前三项后点确认执行 */
+  .pop-actions {
+    display: flex; align-items: center; gap: 7px; padding: 8px 6px 3px;
+    border-top: 1px solid var(--border-soft); margin-top: 6px;
+  }
+  .pa-summary {
+    flex: 1; min-width: 0; font-size: 10.5px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .pa-summary b { color: var(--secondary); font-weight: 550; }
+  .btn.primary {
+    background: var(--highlight-bg); color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  .btn.primary:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent-hover); }
+  .btn.ghost-btn { border-color: transparent; }
+
+  /* toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(12px);
+    background: var(--modal-bg); border: 1px solid var(--border); border-radius: 9px;
+    padding: 9px 14px; font-size: 12.5px; color: var(--fg); box-shadow: 0 14px 36px rgba(0,0,0,.4);
+    display: flex; align-items: center; gap: 9px; opacity: 0; pointer-events: none;
+    transition: opacity .2s, transform .2s; z-index: 80; max-width: min(560px, 92vw);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast i { color: var(--accent); }
+  .toast.warn i { color: var(--warning); }
+  .toast .t-sub { color: var(--muted); font-size: 11px; }
+
+  /* 说明卡 */
+  .notes { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+  .note-card { border: 1px solid var(--border-soft); border-radius: 9px; padding: 11px 13px; background: color-mix(in srgb, var(--surface-soft) 45%, transparent); }
+  .note-card h3 { margin: 0 0 6px; font-size: 12px; color: var(--fg); font-weight: 600; }
+  .note-card h3 .badge { font-size: 9.5px; padding: 1px 6px; border-radius: 999px; background: var(--surface-soft); color: var(--secondary); margin-left: 6px; font-weight: 500; letter-spacing: .02em; }
+  .note-card p { margin: 0; font-size: 11.5px; color: var(--secondary); line-height: 1.6; }
+  .note-card code { font-family: var(--font-mono); font-size: 10.5px; background: var(--surface-soft); padding: 1px 5px; border-radius: 4px; }
+  .note-card ul { margin: 0; padding-left: 16px; font-size: 11.5px; color: var(--secondary); line-height: 1.7; }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body data-theme="dark">
+
+<header class="topbar">
+  <div class="brand">
+    <h1>CommonText Send → Agent × Type</h1>
+    <span class="sub">镜像 <code>commontext-compose-modal.tsx</code> · <code>agent-launch.ts</code></span>
+  </div>
+  <div class="controls">
+    <div class="seg" id="scenario">
+      <button data-scen="agent" class="active"><span style="width:6px;height:6px;border-radius:50%;background:var(--working);display:inline-block"></span>聚焦 Agent Block</button>
+      <button data-scen="plain"><span style="width:6px;height:6px;border-radius:50%;background:var(--idle);display:inline-block"></span>聚焦普通终端</button>
+    </div>
+    <button class="ghost" id="theme-btn"><i class="fa-regular fa-lightbulb"></i> 浅色</button>
+    <button class="ghost" id="reset-btn"><i class="fa-solid fa-rotate-left"></i> 重置</button>
+  </div>
+</header>
+
+<main class="stage">
+  <!-- 左：工作区（块 + 聚焦态 + tab） -->
+  <section>
+    <p class="stage-label">Workspace · Tabs</p>
+    <div class="workspace">
+      <div class="ws-tabbar" id="ws-tabbar">
+        <span class="ws-tab active" data-tab="current"><span class="dot"></span>snorkeling</span>
+        <span class="ws-tab" data-tab="files"><i class="fa-regular fa-folder" style="font-size:10px"></i> files</span>
+        <span class="ws-tab" data-tab="vcs"><i class="fa-solid fa-code-branch" style="font-size:10px"></i> vcs</span>
+        <span class="spacer" style="flex:1"></span>
+        <span style="font-size:10.5px;color:var(--muted)" id="ws-count">2 blocks</span>
+      </div>
+      <div class="ws-body" id="ws-body">
+        <!-- Agent block（可聚焦 / 可被替换成普通终端） -->
+        <div class="blk focused" id="blk-agent" data-kind="agent">
+          <div class="blk-head">
+            <span class="bi"><i class="fa-solid fa-robot"></i></span>
+            <div class="titles">
+              <span class="t1">claude · opus-4.6</span>
+              <span class="t2">/Users/nita/Primary/projects/snorkeling</span>
+            </div>
+            <span class="spacer"></span>
+            <span class="chip working" id="agent-chip"><span class="sd"></span>Working</span>
+            <span class="mac-time" style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">12:34</span>
+          </div>
+          <div class="blk-body" id="agent-body"><span class="ghostline">✻ Claude Code · ready</span>
+<span class="prompt">❯</span> <span id="agent-input" class="ghostline">等待输入…</span></div>
+        </div>
+
+        <!-- 普通终端 -->
+        <div class="blk" id="blk-plain" data-kind="plain">
+          <div class="blk-head">
+            <span class="bi plain"><i class="fa-solid fa-terminal"></i></span>
+            <div class="titles">
+              <span class="t1">zsh</span>
+              <span class="t2">~/Primary/projects/snorkeling</span>
+            </div>
+            <span class="spacer"></span>
+            <span class="chip"><span class="sd"></span>Idle</span>
+          </div>
+          <div class="blk-body"><span class="prompt">❯</span> npm run dev</div>
+        </div>
+
+        <!-- 新建块占位（发送到新块时插入） -->
+        <div class="blk hidden" id="blk-new">
+          <div class="blk-head">
+            <span class="bi" id="new-bi"><i class="fa-solid fa-robot"></i></span>
+            <div class="titles">
+              <span class="t1" id="new-title">codex</span>
+              <span class="t2" id="new-meta">starting…</span>
+            </div>
+            <span class="spacer"></span>
+            <span class="chip pending" id="new-chip"><span class="sd"></span>启动中</span>
+          </div>
+          <div class="blk-body" id="new-body"><span class="ghostline">正在启动 agent TUI…</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 右：CommonText 弹窗 -->
+  <section>
+    <p class="stage-label">Common Text · Compose</p>
+    <div class="modal">
+      <div class="modal-head">
+        <i class="fa-solid fa-align-left" style="font-size:12px;color:var(--secondary)"></i>
+        <span class="title">Common Text</span>
+        <span class="hint">Esc 关闭</span>
+        <span class="spacer"></span>
+        <button class="icon-btn" title="关闭"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="editor-wrap">
+        <textarea class="editor" id="editor" spellcheck="false">帮我看一下 11-10-cfa-core 的 payload 契约，把三段式结构和调用方对齐之后给我一个 checklist。</textarea>
+      </div>
+
+      <div class="editor-foot">
+        <button class="btn icon" title="Filter"><i class="fa-solid fa-filter"></i></button>
+        <button class="btn icon" title="Clear"><i class="fa-solid fa-eraser"></i></button>
+        <button class="btn icon" title="Add"><i class="fa-solid fa-plus"></i></button>
+        <button class="btn" title="Copy"><i class="fa-regular fa-copy"></i></button>
+
+        <!-- Send split：主按钮 = 当前解析出的目标；caret = 目标选择 -->
+        <div class="send-split" id="send-split">
+          <button class="btn main" id="send-main" title="Send 到当前目标">
+            <i class="fa-solid fa-paper-plane"></i> Send
+          </button>
+          <button class="btn caret" id="send-caret" title="选择 Agent / Type">
+            <i class="fa-solid fa-chevron-down" style="font-size:9px"></i>
+          </button>
+        </div>
+        <span class="send-target-hint" id="send-hint">→ <b>聚焦 Claude</b></span>
+
+        <span class="tag-chip">#checklist</span>
+        <span class="tag-chip">#cfa</span>
+
+        <!-- Send 目标 popover -->
+        <div class="popover" id="popover">
+          <!-- 1. 已存在的聚焦 agent block（规则 1/2） -->
+          <div class="pop-sec">
+            <div class="pop-sec-head"><i class="fa-solid fa-crosshairs" style="font-size:9px"></i> 聚焦的 Agent Block <span class="n">已存在</span></div>
+            <div id="focused-area"></div>
+          </div>
+
+          <!-- 2. 选择 Agents -->
+          <div class="pop-sec">
+            <div class="pop-sec-head"><i class="fa-solid fa-robot" style="font-size:9px"></i> 选择 Agents <span class="pick" id="agents-note">默认 = 聚焦块</span></div>
+            <div class="profiles" id="profiles"></div>
+          </div>
+
+          <!-- 3. 选择 Type（默认当前 Type，其他可选，+ 新建 Tab） -->
+          <div class="pop-sec">
+            <div class="pop-sec-head"><i class="fa-solid fa-table-columns" style="font-size:9px"></i> 选择 Type <span class="pick">默认 = 当前 Tab</span></div>
+            <div class="type-row">
+              <button class="type-picker" id="type-picker">
+                <i class="fa-solid fa-table-columns"></i>
+                <span class="tp-name" id="type-name">snorkeling</span>
+                <span class="tp-badge" id="type-badge">当前</span>
+                <i class="fa-solid fa-chevron-down caret"></i>
+              </button>
+              <button class="add-tab" id="add-tab" title="新建 Tab"><i class="fa-solid fa-plus"></i></button>
+              <div class="type-menu" id="type-menu"></div>
+            </div>
+          </div>
+
+          <!-- 4. 选择 Folder（项目目录 / cwd） -->
+          <div class="pop-sec">
+            <div class="pop-sec-head"><i class="fa-solid fa-folder-open" style="font-size:9px"></i> 选择 Folder <span class="pick" id="folder-note">默认 = 聚焦块目录</span></div>
+            <div class="type-row">
+              <button class="type-picker" id="folder-picker">
+                <i class="fa-solid fa-folder"></i>
+                <span class="tp-name" id="folder-name">~/Primary/projects/snorkeling</span>
+                <span class="tp-badge" id="folder-badge">聚焦</span>
+                <i class="fa-solid fa-chevron-down caret"></i>
+              </button>
+              <button class="add-tab" id="folder-browse" title="浏览其他目录…"><i class="fa-solid fa-ellipsis"></i></button>
+              <div class="type-menu" id="folder-menu"></div>
+            </div>
+          </div>
+
+          <!-- 底部：选好 Agents / Type / Folder 后点确认执行 -->
+          <div class="pop-actions">
+            <span class="pa-summary" id="pa-summary"></span>
+            <button class="btn ghost-btn" id="pop-cancel">取消</button>
+            <button class="btn primary" id="pop-send"><i class="fa-solid fa-paper-plane"></i> 发送</button>
+          </div>
+
+          <div class="pop-foot">
+            <i class="fa-solid fa-circle-info"></i>
+            <span id="pop-foot-text">选好 Agents / Type / Folder 后点确认；新建块的文本会排队，<b>TUI 就绪后自动注入</b>。</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 说明 -->
+<div class="notes">
+  <div class="note-card">
+    <h3>规则 1 · 只有 Agent Block 可发 <span class="badge">硬约束</span></h3>
+    <p>Send 目标收窄为 <code>term</code> 块且带 <code>agent:*</code> meta。普通终端不再出现在目标里；聚焦普通终端时「聚焦块」项禁用并给出提示。</p>
+  </div>
+  <div class="note-card">
+    <h3>规则 2 · 目标展示 Agent Card <span class="badge">新增点</span></h3>
+    <p>目标行直接用 agent 小卡：头像 / 标题 / <code>provider · model</code> / 状态 chip / 运行时长，字段对齐 <code>agentcardmodal.tsx</code>。</p>
+  </div>
+  <div class="note-card">
+    <h3>规则 3 · 三项正交选择 <span class="badge">已改</span></h3>
+    <ul>
+      <li><b>选择 Agents</b>：profile，默认跟随聚焦块</li>
+      <li><b>选择 Type</b>：默认当前 Tab，下拉可选其他 Tab，<code>+</code> 新建 Tab</li>
+      <li><b>选择 Folder</b>：新建块的项目目录（cwd），默认聚焦块目录，可选其他项目目录或浏览</li>
+    </ul>
+  </div>
+  <div class="note-card">
+    <h3>解析规则 · 无重复入口 <span class="badge">核心</span></h3>
+    <p>Agent = 聚焦块 agent 且 Type = 当前 Tab 且 Folder = 聚焦块目录 → <b>直接注入聚焦块</b>；否则 → <b>按所选 Type + Folder 新建 agent block</b>。</p>
+  </div>
+</div>
+
+<div class="toast" id="toast"><i class="fa-solid fa-check"></i><span id="toast-text"></span><span class="t-sub" id="toast-sub"></span></div>
+
+<script>
+  /* ── 数据（镜像 agent-launch.ts 的 profile / AgentLaunchTarget） ── */
+  const PROFILES = [
+    { name: "claude", label: "Claude Code", model: "anthropic/claude-opus-4-6" },
+    { name: "codex", label: "Codex", model: "gpt-5.1-codex", isDefault: true },
+    { name: "pi", label: "Pi", model: "deepseek-v4.1-flash" },
+    { name: "opencode", label: "OpenCode", model: "—" },
+    { name: "gemini", label: "Gemini", model: "gemini-2.5-pro" },
+  ];
+
+  const TABS = [
+    { id: "current", name: "snorkeling", isCurrent: true },
+    { id: "files", name: "files", isCurrent: false },
+    { id: "vcs", name: "vcs", isCurrent: false },
+  ];
+
+  /* 目录候选：镜像 AgentLaunchTarget 的 cwd 语义（agent-launch.ts 的 collectAgentLaunchTargetsInTab） */
+  const DIRS = [
+    { id: "focused", path: "~/Primary/projects/snorkeling", note: "聚焦块目录" },
+    { id: "loop", path: "~/Primary/projects/loop", note: "项目" },
+    { id: "obsidian", path: "~/Primary/obsidians/Obsidian", note: "项目" },
+    { id: "home", path: "~", note: "主目录" },
+  ];
+
+  const FOCUSED_AGENT = {
+    blockId: "blk-agent",
+    profile: "claude",
+    title: "claude · opus-4.6",
+    provider: "anthropic",
+    model: "claude-opus-4-6",
+    status: "working",
+    statusLabel: "Working",
+    runtime: "12:34",
+    cwd: "~/Primary/projects/snorkeling",
+  };
+
+  const state = {
+    scenario: "agent",       // agent | plain
+    agents: "claude",        // 选择 Agents
+    type: "current",         // 选择 Type: current | tab:<id> | new-tab
+    folder: "focused",       // 选择 Folder: DIRS id
+    newTabName: "agent-tab",
+  };
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+  const profileOf = (name) => PROFILES.find((p) => p.name === name);
+  const avatarFor = (profile) => ({
+    cls: profile,
+    letter: (profileOf(profile)?.label || profile).slice(0, 1).toUpperCase(),
+  });
+
+  function agentCardHTML(a) {
+    const av = avatarFor(a.profile);
+    return `
+      <div class="mini-agent-card">
+        <div class="avatar ${av.cls}">${av.letter}</div>
+        <div class="mac-main">
+          <div class="mac-name">${a.title}</div>
+          <div class="mac-meta">${a.provider} · ${a.model} · ${a.cwd}</div>
+        </div>
+        <div class="mac-side">
+          <span class="chip ${a.status}"><span class="sd"></span>${a.statusLabel}</span>
+          <span class="mac-time"><i class="fa-regular fa-clock" style="font-size:8px"></i> ${a.runtime}</span>
+        </div>
+      </div>`;
+  }
+
+  /* ── 解析：本次 Send 是「注入已存在」还是「新建」 ── */
+  function resolveTarget() {
+    const focusedUsable = state.scenario === "agent";
+    if (
+      focusedUsable &&
+      state.agents === FOCUSED_AGENT.profile &&
+      state.type === "current" &&
+      state.folder === "focused"
+    ) {
+      return { kind: "existing", label: `聚焦 ${profileOf(state.agents).label}` };
+    }
+    const tabLabel =
+      state.type === "current"
+        ? "当前 Tab"
+        : state.type === "new-tab"
+          ? "新 Tab"
+          : TABS.find((t) => `tab:${t.id}` === state.type)?.name || "Tab";
+    const dir = DIRS.find((d) => d.id === state.folder) || DIRS[0];
+    return {
+      kind: "create",
+      tab: state.type,
+      tabLabel,
+      folderPath: dir.path,
+      label: `新建 ${profileOf(state.agents).label} · ${tabLabel} · ${dir.path}`,
+    };
+  }
+
+  /* ── 渲染聚焦块行 ── */
+  function renderFocusedArea() {
+    const area = $("#focused-area");
+    if (state.scenario === "agent") {
+      const active =
+        state.agents === FOCUSED_AGENT.profile && state.type === "current";
+      area.innerHTML = `
+        <button class="focus-row ${active ? "active" : ""}" id="focus-row">
+          <div class="fr-main">${agentCardHTML(FOCUSED_AGENT)}</div>
+          <i class="fa-solid fa-check check"></i>
+        </button>`;
+      $("#focus-row").onclick = () => {
+        state.agents = FOCUSED_AGENT.profile;
+        state.type = "current";
+        state.folder = "focused";
+        renderAll();
+      };
+    } else {
+      area.innerHTML = `
+        <button class="focus-row" disabled>
+          <div class="fr-main">
+            <div class="mini-agent-card" style="opacity:.75">
+              <div class="avatar" style="background:var(--surface-soft);color:var(--secondary);border-color:var(--border-soft)"><i class="fa-solid fa-terminal" style="font-size:11px"></i></div>
+              <div class="mac-main">
+                <div class="mac-name" style="color:var(--secondary)">zsh</div>
+                <div class="mac-meta">普通终端 — 不是 Agent Block，不可发送</div>
+              </div>
+              <div class="mac-side"><span class="chip"><span class="sd"></span>Idle</span></div>
+            </div>
+          </div>
+        </button>
+        <div class="warn-line">
+          <i class="fa-solid fa-triangle-exclamation" style="font-size:10px"></i>
+          <span>当前聚焦块是普通终端。请用下方「选择 Agents」+「选择 Type」直接新建一个 Agent Block。</span>
+        </div>`;
+    }
+  }
+
+  /* ── 渲染 Agents chips ── */
+  function renderProfiles() {
+    const box = $("#profiles");
+    box.innerHTML = PROFILES.map((p) => {
+      const on = state.agents === p.name;
+      return `<button class="profile-chip ${on ? "on" : ""}" data-profile="${p.name}">
+        ${p.label}${p.isDefault ? ' <i class="fa-solid fa-star star" title="default profile"></i>' : ""}
+      </button>`;
+    }).join("");
+    box.querySelectorAll("[data-profile]").forEach((btn) => {
+      btn.onclick = () => {
+        state.agents = btn.dataset.profile;
+        renderAll();
+      };
+    });
+    $("#agents-note").textContent =
+      state.scenario === "agent" ? "默认 = 聚焦块" : "默认 = 默认 profile";
+  }
+
+  /* ── 渲染 Type 选择器 ── */
+  function renderType() {
+    const isNewTab = state.type === "new-tab";
+    const tab =
+      state.type === "current"
+        ? TABS.find((t) => t.isCurrent)
+        : TABS.find((t) => `tab:${t.id}` === state.type);
+    $("#type-name").textContent = isNewTab ? state.newTabName : tab?.name || "snorkeling";
+    const badge = $("#type-badge");
+    badge.textContent = isNewTab ? "新建" : state.type === "current" ? "当前" : "已存在";
+    badge.className = "tp-badge" + (isNewTab || state.type !== "current" ? " neutral" : "");
+
+    $("#type-menu").innerHTML =
+      TABS.map(
+        (t) => `<button class="type-item ${state.type === (t.isCurrent ? "current" : `tab:${t.id}`) ? "on" : ""}" data-type="${t.isCurrent ? "current" : `tab:${t.id}`}">
+          <i class="fa-regular ${t.isCurrent ? "fa-square" : "fa-folder"}"></i>
+          <span>${t.name}</span>
+          <span class="ti-sub">${t.isCurrent ? "当前" : "已存在"}</span>
+          <i class="fa-solid fa-check ti-check"></i>
+        </button>`
+      ).join("") +
+      `<button class="type-item sep ${isNewTab ? "on" : ""}" data-type="new-tab">
+        <i class="fa-solid fa-plus"></i>
+        <span>新建 Tab</span>
+        <span class="ti-sub">${state.newTabName}</span>
+        <i class="fa-solid fa-check ti-check"></i>
+      </button>`;
+
+    $$("#type-menu [data-type]").forEach((btn) => {
+      btn.onclick = () => {
+        state.type = btn.dataset.type;
+        $("#type-menu").classList.remove("open");
+        renderAll();
+      };
+    });
+  }
+
+  /* ── 渲染 Folder 选择器 ── */
+  function renderFolder() {
+    const dir = DIRS.find((d) => d.id === state.folder) || DIRS[0];
+    $("#folder-name").textContent = dir.path;
+    const badge = $("#folder-badge");
+    badge.textContent =
+      dir.id === "focused" ? (state.scenario === "agent" ? "聚焦" : "工作区") : "已选";
+    badge.className = "tp-badge" + (dir.id === "focused" && state.scenario === "agent" ? "" : " neutral");
+
+    $("#folder-menu").innerHTML =
+      DIRS.map(
+        (d) => `<button class="type-item ${state.folder === d.id ? "on" : ""}" data-dir="${d.id}">
+          <i class="fa-regular ${d.id === "home" ? "fa-house" : "fa-folder"}"></i>
+          <span>${d.path}</span>
+          <span class="ti-sub">${d.note}</span>
+          <i class="fa-solid fa-check ti-check"></i>
+        </button>`
+      ).join("") +
+      `<button class="type-item sep" data-dir="browse">
+        <i class="fa-solid fa-ellipsis"></i>
+        <span>浏览其他目录…</span>
+        <i class="fa-solid fa-check ti-check" style="visibility:hidden"></i>
+      </button>`;
+
+    $$("#folder-menu [data-dir]").forEach((btn) => {
+      btn.onclick = () => {
+        const id = btn.dataset.dir;
+        if (id === "browse") {
+          showToast("打开目录选择器", "原型内以 loop 项目目录为例", false);
+          state.folder = "loop";
+        } else {
+          state.folder = id;
+        }
+        $("#folder-menu").classList.remove("open");
+        renderAll();
+      };
+    });
+  }
+
+  /* ── 底部确认：按钮文案随选择实时变 ── */
+  function renderActions() {
+    const r = resolveTarget();
+    const btn = $("#pop-send");
+    const sum = $("#pa-summary");
+    if (r.kind === "existing") {
+      btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> 发送`;
+      sum.innerHTML = `目标 = <b>聚焦块（已存在）</b> · ${profileOf(state.agents).label} · ${r.folderPath} · 直接注入，不新建`;
+    } else {
+      btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> 发送`;
+      sum.innerHTML = `目标 = <b>新建</b> · ${r.tabLabel} · ${r.folderPath}`;
+    }
+    const hint = $("#send-hint");
+    hint.innerHTML = `→ <b>${r.kind === "existing" ? "聚焦 " + profileOf(state.agents).label : "新建 " + profileOf(state.agents).label + " · " + r.tabLabel}</b>`;
+  }
+
+  function renderAll() {
+    renderFocusedArea();
+    renderProfiles();
+    renderType();
+    renderFolder();
+    renderActions();
+  }
+
+  /* ── popover 开关 ── */
+  $("#send-caret").onclick = (e) => {
+    e.stopPropagation();
+    $("#popover").classList.toggle("open");
+  };
+  $("#pop-cancel").onclick = () => {
+    $("#popover").classList.remove("open");
+  };
+  $("#pop-send").onclick = (e) => {
+    e.stopPropagation();
+    sendNow();
+  };
+  $("#type-picker").onclick = (e) => {
+    e.stopPropagation();
+    $("#folder-menu").classList.remove("open");
+    $("#type-menu").classList.toggle("open");
+  };
+  $("#folder-picker").onclick = (e) => {
+    e.stopPropagation();
+    $("#type-menu").classList.remove("open");
+    $("#folder-menu").classList.toggle("open");
+  };
+  $("#add-tab").onclick = (e) => {
+    e.stopPropagation();
+    state.type = "new-tab";
+    renderAll();
+    // workspace 里同步出现新 tab（原型演示）
+    ensureNewTabChip();
+  };
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#popover")) $("#popover").classList.remove("open");
+    if (!e.target.closest(".type-row")) $("#type-menu").classList.remove("open");
+  });
+
+  function ensureNewTabChip() {
+    if ($("#ws-tab-new")) return;
+    const chip = document.createElement("span");
+    chip.className = "ws-tab";
+    chip.id = "ws-tab-new";
+    chip.innerHTML = `<span class="dot" style="background:var(--warning)"></span>${state.newTabName}`;
+    $("#ws-count").before(chip);
+  }
+
+  /* ── toast ── */
+  function showToast(main, sub, warn) {
+    const t = $("#toast");
+    t.classList.toggle("warn", !!warn);
+    t.querySelector("i").className = warn ? "fa-solid fa-triangle-exclamation" : "fa-solid fa-check";
+    $("#toast-text").textContent = main;
+    $("#toast-sub").textContent = sub || "";
+    t.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => t.classList.remove("show"), 3200);
+  }
+
+  const escapeHtml = (s) =>
+    s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  /* ── 发送 ── */
+  function sendNow() {
+    const text = $("#editor").value.trim();
+    if (!text) {
+      showToast("Nothing to send", "", true);
+      return;
+    }
+    $("#popover").classList.remove("open");
+    $("#type-menu").classList.remove("open");
+    const r = resolveTarget();
+
+    if (r.kind === "existing") {
+      const input = $("#agent-input");
+      input.className = "prompt";
+      input.textContent = "";
+      let i = 0;
+      const tick = setInterval(() => {
+        i += Math.max(2, Math.round(text.length / 28));
+        input.textContent = text.slice(0, i);
+        if (i >= text.length) {
+          clearInterval(tick);
+          input.textContent = text;
+          showToast(`已发送到 ${FOCUSED_AGENT.title}`, "聚焦块 · 已直接注入", false);
+        }
+      }, 40);
+      return;
+    }
+
+    // 新建块
+    const p = profileOf(state.agents);
+    const av = avatarFor(p.name);
+    const blk = $("#blk-new");
+    blk.classList.remove("hidden");
+    $("#new-bi").className = "bi " + av.cls;
+    $("#new-bi").innerHTML = `<i class="fa-solid fa-robot"></i>`;
+    const targetName =
+      r.tab === "current"
+        ? TABS.find((t) => t.isCurrent).name
+        : r.tab === "new-tab"
+          ? state.newTabName
+          : TABS.find((t) => `tab:${t.id}` === r.tab)?.name;
+    $("#new-title").textContent = `${p.label.toLowerCase()} · ${p.model === "—" ? "default" : p.model}`;
+    $("#new-meta").textContent = `tab: ${targetName} · ${r.folderPath} · starting…`;
+    $("#new-chip").className = "chip pending";
+    $("#new-chip").innerHTML = `<span class="sd"></span>启动中`;
+    $("#new-body").innerHTML = `<span class="ghostline">正在启动 agent TUI…</span>`;
+    const newTabId = (r.tab === "new-tab") ? "new-tab" : (r.tab === "current" ? "current" : r.tab.split(":")[1]);
+    $$("#ws-tabbar .ws-tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === newTabId));
+    blk.classList.add("focused");
+    $("#blk-agent").classList.remove("focused");
+    $("#blk-plain").classList.remove("focused");
+    if (r.tab === "new-tab") ensureNewTabChip();
+
+    showToast(`已创建 ${p.label} 块 · tab ${targetName}`, `cwd ${r.folderPath} · 文本排队中 — TUI 就绪后自动注入`, false);
+
+    setTimeout(() => {
+      $("#new-chip").className = "chip working";
+      $("#new-chip").innerHTML = `<span class="sd"></span>Working`;
+      $("#new-body").innerHTML = `<span class="ghostline">✻ ${p.label} · ready（TUI 就绪）</span>\n<span class="prompt">❯</span> <span class="ghostline">注入中…</span>`;
+      $("#new-meta").textContent = `tab: ${targetName} · ${r.folderPath}`;
+    }, 1800);
+
+    setTimeout(() => {
+      $("#new-body").innerHTML = `<span class="ghostline">✻ ${p.label} · ready</span>\n<span class="prompt">❯</span> ${escapeHtml(text)}`;
+      showToast(`已注入文本到新建 ${p.label} 块`, "pending input 已消费", false);
+    }, 3300);
+  }
+
+  $("#send-main").onclick = (e) => {
+    e.stopPropagation();
+    sendNow();
+  };
+
+  /* ── 场景切换 ── */
+  $("#scenario").onclick = (e) => {
+    const btn = e.target.closest("button[data-scen]");
+    if (!btn) return;
+    $$("#scenario button").forEach((b) => b.classList.toggle("active", b === btn));
+    state.scenario = btn.dataset.scen;
+    if (state.scenario === "plain" && state.agents === FOCUSED_AGENT.profile && state.type === "current") {
+      // 保持配置；解析自然变成「新建」
+    }
+    $("#blk-agent").classList.toggle("focused", state.scenario === "agent");
+    $("#blk-plain").classList.toggle("focused", state.scenario === "plain");
+    $("#blk-new").classList.add("hidden");
+    renderAll();
+  };
+
+  /* ── 主题 / 重置 ── */
+  $("#theme-btn").onclick = () => {
+    const light = document.body.dataset.theme === "dark";
+    document.body.dataset.theme = light ? "light" : "dark";
+    $("#theme-btn").innerHTML = light
+      ? '<i class="fa-regular fa-moon"></i> 深色'
+      : '<i class="fa-regular fa-lightbulb"></i> 浅色';
+  };
+
+  $("#reset-btn").onclick = () => {
+    state.agents = "claude";
+    state.type = "current";
+    state.folder = "focused";
+    $("#editor").value = "帮我看一下 11-10-cfa-core 的 payload 契约，把三段式结构和调用方对齐之后给我一个 checklist。";
+    $("#blk-new").classList.add("hidden");
+    $("#agent-input").textContent = "等待输入…";
+    $("#agent-input").className = "ghostline";
+    const newChip = $("#ws-tab-new");
+    if (newChip) newChip.remove();
+    renderAll();
+    showToast("已重置", "", false);
+  };
+
+  /* ── 初始化 ── */
+  renderAll();
+</script>
+</body>
+</html>
