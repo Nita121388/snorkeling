@@ -60,12 +60,17 @@ settings-density 原型已把 Server status 卡与信号格形态定稿（commit
 
 ## Acceptance（命令 → 期望输出）
 
-- `go test ./pkg/syncmanager/... ./pkg/service/commontextservice/...` → 全绿；
-  新增 `SyncJournalTail` 超上限截断与 `SyncProbe` 非 server 短路两用例。
-- 手动把 folder 路径改错触发失败运行后：面板复制出的文本 `grep -c "ERROR"` ≥ 1、
-  `grep -c "Output"` ≥ 1、事件条数 ≤ 20。
-- 指向不存在的 server URL：复制文本含 `"checks"` 行 ≥ 1 且含 `"fix"` 行 ≥ 1。
-- 真机验证台对应 area 全绿 + 台账一行。
+- [x] `go test ./pkg/syncmanager/... ./pkg/service/commontextservice/...` → 全绿；新增 `SyncJournalTail` 超上限截断（`syncmanager_diag_test.go` clamp 到 100）与 `SyncProbe` 非 server 短路（`commontextservice_test.go`）两用例；`FormatEventLine` 与 CLI `log` 行格式逐字一致由 golden 测试锁死。
+- [x] 手动把 folder 路径改错触发失败运行：真机 verify 场景 3（folder 指向 /etc/hosts 下必失败路径 + 播种 1 条 item），复制文本含 `last error:`、`recent events (`、`### Task`、`### Output contract`，事件条数 ≤ 20。
+- [x] 指向不存在的 server URL：真机 verify 场景 2，复制文本含 `checks:` 行与 `fix:` 行，且含 `client protocol version:`。
+- [x] 真机验证台：新 area `scripts/verify/sync-diagnostics-copy/verify.mjs` → **20/20 全绿**（launch+reset），台账已记；area 已登记 README。
+
+## 实施偏离与附带修复（2026-11-10）
+
+- **Server status 卡未落地**（属 11-09-commontext-sync-config-fixes 后续）：本任务在 Status 组加了一个「Sync server」行（仅 server 传输时出现：Check 探测 + 不可达/协议不兼容时的 Copy for agent），作为卡落地前的最小承载面；卡形态本身仍留给后续任务。
+- 真机 verify 挖出两个真 bug 并修复：
+  1. `syncsettings.tsx runSyncNow`：失败路径不刷新状态 → lastError 永远到不了面板，补 `refreshSyncStatus()`。
+  2. `pkg/syncmanager`：`reload()` 成功时无条件清空 `lastError`，run 失败错误被抹（`GetStatus` 每次 reload）→ 拆分 `lastRunError`（run 错）与 `lastError`（build/配置错），状态取 `firstNonEmpty(lastRunError, lastError)`。
 
 ## Touch（白名单）
 

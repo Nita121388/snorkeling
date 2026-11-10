@@ -208,3 +208,22 @@ func TestSyncResolveValidations(t *testing.T) {
 		t.Fatalf("refused resolve must not write text, got %q", item.Text)
 	}
 }
+
+// TestSyncProbeNonServerShortCircuit: probing a non-server transport is meaningless noise; the
+// RPC must return the transport id without a probe instead of fabricating one.
+func TestSyncProbeNonServerShortCircuit(t *testing.T) {
+	svc := &CommonTextService{}
+	resp, err := svc.SyncProbe(context.Background())
+	if err != nil {
+		t.Fatalf("SyncProbe: %v", err)
+	}
+	if resp.Probe != nil {
+		t.Fatalf("non-server transport must not carry a probe, got %+v", resp.Probe)
+	}
+	if resp.Transport == "" {
+		t.Fatal("transport id must be reported even without a probe")
+	}
+	if resp.ClientProtocolVersion != 1 {
+		t.Fatalf("client protocol version must be reported, got %d", resp.ClientProtocolVersion)
+	}
+}

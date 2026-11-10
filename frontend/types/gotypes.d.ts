@@ -1102,6 +1102,14 @@ declare global {
         secretbindingscomplete: boolean;
     };
 
+    // syncclient.Check
+    type Check = {
+        id: string;
+        state: string;
+        detail?: string;
+        fix?: string;
+    };
+
     // waveobj.Client
     type Client = WaveObj & {
         windowids: string[];
@@ -1939,6 +1947,18 @@ declare global {
         conflicts: Entry[];
     };
 
+    // commontextservice.CommonTextSyncJournalTailRequest
+    type CommonTextSyncJournalTailRequest = {
+        n?: number;
+    };
+
+    // commontextservice.CommonTextSyncJournalTailResponse
+    type CommonTextSyncJournalTailResponse = {
+        n: number;
+        events: Event[];
+        lines: string[];
+    };
+
     // wshrpc.CommonTextSyncMarkSyncedData
     type CommonTextSyncMarkSyncedData = {
         results: PushItemResult[];
@@ -1952,6 +1972,13 @@ declare global {
     // wshrpc.CommonTextSyncPendingResult
     type CommonTextSyncPendingResult = {
         pending: CommonTextItemType[];
+    };
+
+    // commontextservice.CommonTextSyncProbeResponse
+    type CommonTextSyncProbeResponse = {
+        transport: string;
+        probe?: Probe;
+        clientProtocolVersion: number;
     };
 
     // commontextservice.CommonTextSyncResolveRequest
@@ -2130,6 +2157,24 @@ declare global {
         resolvedAt?: string;
     };
 
+    // syncjournal.Event
+    type Event = {
+        ts: string;
+        type: string;
+        trigger?: string;
+        items?: number;
+        since?: number;
+        rev?: number;
+        bytes?: number;
+        id?: string;
+        fields?: string[];
+        resolved?: string;
+        phase?: string;
+        msg?: string;
+        ok?: boolean;
+        ms?: number;
+    };
+
     // wshrpc.FetchSuggestionsData
     type FetchSuggestionsData = {
         suggestiontype: string;
@@ -2273,6 +2318,17 @@ declare global {
         maxAttempts: number;
         error?: string;
         updatedAt: number;
+    };
+
+    // syncproto.Health
+    type Health = {
+        service: string;
+        protocolVersion: number;
+        appVersion: string;
+        items: number;
+        rev: number;
+        requiresAuth: boolean;
+        capabilities?: string[];
     };
 
     // agentstatus.HookInstallResult
@@ -2631,6 +2687,14 @@ declare global {
     type Point = {
         x: number;
         y: number;
+    };
+
+    // syncclient.Probe
+    type Probe = {
+        url: string;
+        ready: boolean;
+        health?: Health;
+        checks: Check[];
     };
 
     // wshrpc.ProcessInfo

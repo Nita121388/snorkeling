@@ -19,6 +19,7 @@
 
 import { CommonTextService } from "@/app/store/services";
 import { CopyForAgent } from "@/app/element/copy-for-agent";
+import { buildAgentPayload, DIAGNOSIS_BRIEF, FIX_COMMAND_ONLY } from "@/app/element/agent-payload";
 import { atoms } from "@/app/store/global-atoms";
 import { modalsModel } from "@/app/store/modalmodel";
 import { RpcApi } from "@/app/store/wshclientapi";
@@ -202,6 +203,74 @@ type GroupKey = (typeof GroupKeys)[number];
 
 const CollapseStorageKey = "commontext:syncSettings:collapsed";
 
+// ── copy-for-agent payloads (sync diagnostics) ────────────────────────────────
+
+/**
+ * Last-sync failure payload. Events come pre-rendered by the backend (same lines
+ * `wsh commontext-sync log` prints), so the pasted block reads like CLI output.
+ */
+export function buildSyncFailurePayload(status: Status, deviceName: string, lines: string[]): string {
+    const contextLines = [
+        `- transport: ${status.transport}`,
+        `- device: ${deviceName || "(unnamed)"}`,
+        `- last run: ${status.lastRunAt ?? "(never)"}`,
+        `- interval: ${status.intervalSeconds}s`,
+        `- last error: ${status.lastError}`,
+        `- recent events (${lines.length}):`,
+        ...lines.map((line) => `  ${line}`),
+    ];
+    return buildAgentPayload({
+        context: contextLines.join("\n"),
+        task: "Diagnose why the last sync run failed and name the smallest fix.",
+        outputContract: DIAGNOSIS_BRIEF,
+    });
+}
+
+/** Server-unreachable / not-ready payload: the evidence is the probe checks, not a command. */
+export function buildProbePayload(resp: CommonTextSyncProbeResponse): string {
+    const probe = resp.probe;
+    const checks = (probe?.checks ?? []).map((c) =>
+        c.fix != null && c.fix !== ""
+            ? `  - ${c.id} ${c.state} — ${c.detail ?? ""}\n    fix: ${c.fix}`
+            : `  - ${c.id} ${c.state} — ${c.detail ?? ""}`
+    );
+    const contextLines = [
+        `- url: ${probe?.url ?? "(unset)"}`,
+        `- state: ${probe?.ready ? "reachable but not ready" : "unreachable"}`,
+        `- client protocol version: ${resp.clientProtocolVersion}`,
+        `- checks:`,
+        ...checks,
+    ];
+    return buildAgentPayload({
+        context: contextLines.join("\n"),
+        task: "Diagnose the unreachable sync server and name the smallest fix.",
+        outputContract: FIX_COMMAND_ONLY,
+    });
+}
+
+/** Protocol-incompatible payload: both versions + capabilities, so the agent can pick a side. */
+export function buildProtocolMismatchPayload(resp: CommonTextSyncProbeResponse): string {
+    const health = resp.probe?.health;
+    const contextLines = [
+        `- client protocol version: ${resp.clientProtocolVersion}`,
+        `- server protocol version: ${health?.protocolVersion ?? "(unknown)"}`,
+        `- server app version: ${health?.appVersion ?? "(unknown)"}`,
+        `- server capabilities: ${(health?.capabilities ?? []).join(", ") || "(none reported)"}`,
+    ];
+    return buildAgentPayload({
+        context: contextLines.join("\n"),
+        task: "Decide which side must be upgraded for protocol compatibility.",
+        outputContract: DIAGNOSIS_BRIEF,
+    });
+}
+
+/** Protocol gate mirrors syncproto.Compatible(): a mismatch means the two sides cannot talk. */
+export function isProtocolCompatible(resp: CommonTextSyncProbeResponse): boolean {
+    const health = resp.probe?.health;
+    if (health == null) return false;
+    return health.protocolVersion === resp.clientProtocolVersion;
+}
+
 /**
  * Formats an RFC3339 timestamp from the backend. Falls back to the raw string when unparseable —
  * showing "Invalid Date" would be worse than showing the value the backend sent.
@@ -337,6 +406,9 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
     const [baselinePending, setBaselinePending] = useState(false);
     const [switching, setSwitching] = useState(false);
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => loadCollapsedGroups());
+    // Sync diagnostics: latest probe (server transport only) and its in-flight state.
+    const [probe, setProbe] = useState<CommonTextSyncProbeResponse | null>(null);
+    const [probing, setProbing] = useState(false);
 
     // Re-sync the draft when the persisted values change and the user has no local edits.
     // Without the `dirty` guard an external settings write would silently clobber typing.
@@ -465,11 +537,32 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                 );
             } catch (err) {
                 setStatus(err instanceof Error ? err.message : String(err));
+                // 失败时 RPC 会 reject，面板拿不到返回体里的 lastError —— 必须重新拉一次
+                // 状态，否则复制给 agent 的入口永远不出现（真机验证台 2026-11-10 实踩）。
+                refreshSyncStatus();
             } finally {
                 setSyncingNow(false);
             }
         });
-    }, [syncingNow]);
+    }, [syncingNow, refreshSyncStatus]);
+
+    // Probe the configured sync server (same checks as `wsh commontext-sync doctor`). The probe
+    // result is the evidence the Copy-for-agent payload is built from — a failed reachability or
+    // protocol check is exactly the state a user cannot self-diagnose from the UI.
+    const runProbe = useCallback(() => {
+        if (probing) return;
+        setProbing(true);
+        fireAndForget(async () => {
+            try {
+                const resp = await CommonTextService.SyncProbe();
+                setProbe(resp ?? null);
+            } catch {
+                // Probe is informational; keep the previous state and let the user retry.
+            } finally {
+                setProbing(false);
+            }
+        });
+    }, [probing]);
 
     const transports = useMemo(() => buildTransportSpecs(draft), [draft]);
     const deviceId = (settings as Record<string, unknown> | undefined)?.[SyncSettingKeys.deviceId];
@@ -949,10 +1042,63 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                             }
                             rowKey="status-last"
                         >
+                            {syncStatus != null && syncStatus.lastError != null && syncStatus.lastError !== "" && (
+                                <CopyForAgent
+                                    title="Copy the last sync failure for an AI to diagnose"
+                                    text={async () => {
+                                        const journal = await CommonTextService.SyncJournalTail({ n: 20 });
+                                        return buildSyncFailurePayload(syncStatus, draft.deviceName, journal?.lines ?? []);
+                                    }}
+                                />
+                            )}
                             <span data-sync-status-time="" className="text-xs text-secondary">
                                 {syncStatus?.lastRunAt ? formatSyncTime(syncStatus.lastRunAt) : "—"}
                             </span>
                         </Row>
+                        {draft.transport === "server" && (
+                            <Row
+                                title="Sync server"
+                                description={
+                                    probe == null
+                                        ? "Run a check to verify the server is reachable and protocol-compatible."
+                                        : probe.probe?.ready === true && isProtocolCompatible(probe)
+                                          ? `Reachable · protocol v${probe.probe?.health?.protocolVersion ?? "?"} · checks passed.`
+                                          : probe.probe?.health != null && !isProtocolCompatible(probe)
+                                            ? `Protocol mismatch — server v${probe.probe.health.protocolVersion}, client v${probe.clientProtocolVersion}. Copy the details for an AI to decide which side to upgrade.`
+                                            : probe.probe?.ready === true
+                                              ? "Reachable, but some checks failed. Copy the details for an AI to diagnose."
+                                              : "Unreachable. Copy the probe details for an AI to diagnose."
+                                }
+                                rowKey="status-server"
+                            >
+                                {probe != null && (probe.probe?.ready !== true || !isProtocolCompatible(probe)) && (
+                                    <CopyForAgent
+                                        title={
+                                            probe.probe?.health != null && !isProtocolCompatible(probe)
+                                                ? "Copy the protocol mismatch for an AI to resolve"
+                                                : "Copy the server diagnostics for an AI to diagnose"
+                                        }
+                                        text={() => Promise.resolve(
+                                            probe.probe?.health != null && !isProtocolCompatible(probe)
+                                                ? buildProtocolMismatchPayload(probe)
+                                                : buildProbePayload(probe)
+                                        )}
+                                    />
+                                )}
+                                <button
+                                    type="button"
+                                    data-sync-action="probe-server"
+                                    disabled={probing}
+                                    onClick={runProbe}
+                                    className={cn(
+                                        "h-7 rounded border border-border px-3 text-xs text-primary",
+                                        probing ? "cursor-default opacity-50" : "cursor-pointer hover:bg-hover"
+                                    )}
+                                >
+                                    {probing ? "Checking…" : "Check"}
+                                </button>
+                            </Row>
+                        )}
                         <Row
                             title="Unresolved conflicts"
                             description={

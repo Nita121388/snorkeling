@@ -456,10 +456,22 @@ export class CommonTextServiceType {
         return callBackendService(this?.waveEnv, "commontext", "SyncConflictsCopy", Array.from(arguments))
     }
 
+    // recent common text sync journal events, rendered like `wsh commontext-sync log`
+    // @returns event count, raw events, and CLI-formatted lines
+    SyncJournalTail(request: CommonTextSyncJournalTailRequest): Promise<CommonTextSyncJournalTailResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncJournalTail", Array.from(arguments))
+    }
+
     // run one common text sync now
     // @returns sync status after the run
     SyncNow(request: CommonTextSyncNowRequest): Promise<CommonTextSyncStatusResponse> {
         return callBackendService(this?.waveEnv, "commontext", "SyncNow", Array.from(arguments))
+    }
+
+    // diagnose the configured sync server (same checks as `wsh commontext-sync doctor`); non-server transports return transport only
+    // @returns transport id, probe result (server only), and client protocol version
+    SyncProbe(): Promise<CommonTextSyncProbeResponse> {
+        return callBackendService(this?.waveEnv, "commontext", "SyncProbe", Array.from(arguments))
     }
 
     // resolve one sync conflict by writing the merged text (equivalent of `wsh commontext-sync resolve <id> --text-file`)

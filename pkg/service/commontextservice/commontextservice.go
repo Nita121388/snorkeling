@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/commontextstore"
+	"github.com/wavetermdev/waveterm/pkg/syncclient"
 	"github.com/wavetermdev/waveterm/pkg/syncconflict"
+	"github.com/wavetermdev/waveterm/pkg/syncjournal"
 	"github.com/wavetermdev/waveterm/pkg/syncmanager"
+	"github.com/wavetermdev/waveterm/pkg/syncproto"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
 	"github.com/wavetermdev/waveterm/pkg/wconfig"
 )
@@ -390,4 +393,81 @@ func (svc *CommonTextService) SyncResolve(ctx context.Context, request *CommonTe
 		return nil, err
 	}
 	return &CommonTextSyncStatusResponse{Status: syncmanager.GetStatus()}, nil
+}
+
+// ── sync diagnostics (failure / server unreachable / protocol mismatch) ────
+
+type CommonTextSyncJournalTailRequest struct {
+	// N limits how many events to return; <= 0 means 20, capped at 100 (JournalTail policy).
+	N int `json:"n,omitempty"`
+}
+
+type CommonTextSyncJournalTailResponse struct {
+	N      int                 `json:"n"`
+	Events []syncjournal.Event `json:"events"`
+	// Lines are the same events rendered exactly like `wsh commontext-sync log` prints them,
+	// so a pasted self-diagnosis payload reads like CLI output.
+	Lines []string `json:"lines"`
+}
+
+func (svc *CommonTextService) SyncJournalTail_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "recent common text sync journal events, rendered like `wsh commontext-sync log`",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "event count, raw events, and CLI-formatted lines",
+	}
+}
+
+func (svc *CommonTextService) SyncJournalTail(ctx context.Context, request *CommonTextSyncJournalTailRequest) (*CommonTextSyncJournalTailResponse, error) {
+	n := 0
+	if request != nil {
+		n = request.N
+	}
+	events, err := syncmanager.JournalTail(n)
+	if err != nil {
+		return nil, err
+	}
+	lines := make([]string, 0, len(events))
+	for _, ev := range events {
+		lines = append(lines, syncmanager.FormatEventLine(ev))
+	}
+	return &CommonTextSyncJournalTailResponse{N: len(events), Events: events, Lines: lines}, nil
+}
+
+type CommonTextSyncProbeResponse struct {
+	// Transport is the currently configured transport id; Probe is only meaningful for "server".
+	Transport string `json:"transport"`
+	// Probe is the same diagnostics `wsh commontext-sync doctor` runs; omitted for non-server
+	// transports where probing would be meaningless noise.
+	Probe *syncclient.Probe `json:"probe,omitempty"`
+	// ClientProtocolVersion is this build's sync protocol version, so the UI can compare without
+	// hardcoding it twice.
+	ClientProtocolVersion int `json:"clientProtocolVersion"`
+}
+
+func (svc *CommonTextService) SyncProbe_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "diagnose the configured sync server (same checks as `wsh commontext-sync doctor`); non-server transports return transport only",
+		ArgNames:   []string{"ctx"},
+		ReturnDesc: "transport id, probe result (server only), and client protocol version",
+	}
+}
+
+func (svc *CommonTextService) SyncProbe(ctx context.Context) (*CommonTextSyncProbeResponse, error) {
+	status := syncmanager.GetStatus()
+	resp := &CommonTextSyncProbeResponse{
+		Transport:             status.Transport,
+		ClientProtocolVersion: syncproto.ProtocolVersion,
+	}
+	if status.Transport != "server" {
+		// Probing a folder/git/none transport would be noise: those failures are local
+		// configuration problems the status panel already reports.
+		return resp, nil
+	}
+	probe, err := syncmanager.ProbeConfiguredServer(ctx)
+	if err != nil {
+		return resp, err
+	}
+	resp.Probe = probe
+	return resp, nil
 }

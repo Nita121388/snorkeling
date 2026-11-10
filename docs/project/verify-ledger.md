@@ -118,3 +118,10 @@
 | 2026-11-10 | vcshistory 提交行两行式对齐（新增 area `vcshistory-rows`） | ◑ L1：vitest `frontend/app/view/vcs/` 24/24 · tsc 改动文件 0 error（47=存量基线）· 行容器 class 与共享 CommitRow 逐字一致（`frontend/app/view/vcs/vcs-commit-row.tsx`）；真机 Electron/verify 台 **skipped（用户自验：nita 2026-11-10 明示「不需要真机验证」；脚本已就绪待回归）** | vitest + tsc + class 一致性 | 本台账 + `scripts/verify/vcshistory-rows/verify.mjs` | 见本次提交 |
 | 2026-11-10 | vcs 远程跳转入口（复用 area `vcs-panel-buttons`，新增 repo-header-remote-jump / upstream-clickable 断言） | ◑ L1：vitest `frontend/app/view/vcs/` 31/31（含 `vcs-remote.test.ts` 7 新用例）· eslint 改动文件 0 error · tsc 改动文件 0 新增 error（47=存量基线）；真机 verify **skipped**（nita 2026-11-10 明示「暂时不需要真机跑本次」；断言已入脚本待回归） | vitest + eslint + tsc | 本台账 + `scripts/verify/vcs-panel-buttons/verify.mjs` | 见本次提交 |
 | 2026-11-10 11:04 | sync-conflict-copy | ✅ 14/14 | launch+reset | `20261110T11010-sync-conflict-copy` | 777d87b6 |
+| 2026-11-10 11:24 | sync-diagnostics-copy | ❌ 15/20 | launch+reset | `20261110T11210-sync-diagnostics-copy` | b4124c1e |
+| 2026-11-10 11:28 | sync-diagnostics-copy | ❌ 15/20 | launch+reset | `20261110T11260-sync-diagnostics-copy` | b4124c1e |
+| 2026-11-10 11:31 | sync-diagnostics-copy | ❌ 15/20 | launch+reset | `20261110T11291-sync-diagnostics-copy` | b4124c1e |
+| 2026-11-10 11:34 | sync-diagnostics-copy | ❌ 15/20 | launch+reset | `20261110T11325-sync-diagnostics-copy` | b4124c1e |
+| 2026-11-10 11:37 | sync-diagnostics-copy | ❌ 15/20 | launch+reset | `20261110T11353-sync-diagnostics-copy` | b4124c1e |
+| 2026-11-10 11:41 | sync-diagnostics-copy | ❌ 15/20 | launch+reset | `20261110T11384-sync-diagnostics-copy` | b4124c1e |
+| 2026-11-10 11:45 | sync-diagnostics-copy | ✅ 20/20 | launch+reset | `20261110T11443-sync-diagnostics-copy` | b4124c1e |

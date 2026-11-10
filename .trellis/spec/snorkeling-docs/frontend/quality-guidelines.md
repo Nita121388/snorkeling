@@ -596,3 +596,21 @@ CommonText 列表行右槽（`w-[58px] h-7`）挂 `group-hover:opacity-0`，hove
   - 否（连接/网络/瞬时）→ 保持既有报错行为，**不清绑**（避免把有效会话误清）。
 - 判定必须带确切 id 匹配（`session not found: <id>`），只匹配文本前缀会把别的会话的 not-found 误判成当前绑定失效。
 - 用户主动点击会话行的 not-found 不在降级范围（应正常报错）。
+
+---
+
+## 状态面板的「可行动证据」不能被刷新路径清空 (2026-11-10, task 11-10-cfa-sync-diagnostics)
+
+真机验证台抓到的两个真 bug，都是「面板看起来正常，但用户需要的失败证据不见了」：
+
+- **run 错误与 build/配置错误必须分两个变量。** `syncmanager` 曾把两者存在同一个 `lastError` 里，
+  而 `GetStatus()`（面板每次打开/刷新都调）会先 `reload()`；`reload()` 重建 transport 成功就
+  `lastError = ""` —— run 失败的错误（journal 里明明记着 ERROR）在用户打开面板的瞬间被抹掉。
+  修法：`lastRunError`（run 失败，成功 run 才清）与 `lastError`（build/配置，reload 自己管），
+  状态返回 `firstNonEmpty(lastRunError, lastError)`。
+- **失败 RPC reject 之后要主动补拉状态。** 后端失败时返回 `(status, err)`，RPC 会 reject，
+  前端 `catch` 拿到不到返回体里的 lastError；`catch` 里必须 `refreshSyncStatus()`，否则依赖
+  lastError 的 Copy-for-agent 入口永远不出现。
+- 判据形式：造一个必失败的 run（folder 指向 `/etc/hosts/...` 之类必失败路径、并先播种 ≥1 条
+  item —— 空 item 集的 run 会静默成功，失败态永远出不来），断言 payload 含 `last error:` 与
+  journal 事件行。`scripts/verify/sync-diagnostics-copy` 已实现。

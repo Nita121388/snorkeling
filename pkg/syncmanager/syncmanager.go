@@ -26,6 +26,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/commontextstore"
 	"github.com/wavetermdev/waveterm/pkg/secretstore"
 	ctsync "github.com/wavetermdev/waveterm/pkg/sync"
+	"github.com/wavetermdev/waveterm/pkg/syncclient"
 	"github.com/wavetermdev/waveterm/pkg/syncconflict"
 	"github.com/wavetermdev/waveterm/pkg/syncjournal"
 	"github.com/wavetermdev/waveterm/pkg/syncproto"
@@ -76,7 +77,14 @@ var engine *engineHandle
 var timer *time.Timer
 var started bool
 var lastResult runSummary
+// lastError is a CONFIGURATION/BUILD error (reload could not construct the transport). reload()
+// owns it and clears it once the transport builds again.
 var lastError string
+// lastRunError is the most recent RUN failure. It must not share lastError: GetStatus calls
+// reload(), and clearing a run error on every reload would erase the failure the user needs to see
+// (and hand to an agent) the moment they open the panel. 2026-11-10 found by the sync-diagnostics
+// verify bench: the failed run was journaled but the panel showed "pulled 0 · applied 0" instead.
+var lastRunError string
 var lastRunAt time.Time
 
 type runSummary struct {
@@ -196,9 +204,9 @@ func SyncNow(ctx context.Context, trigger string) (Status, error) {
 	mu.Lock()
 	lastRunAt = time.Now()
 	if err != nil {
-		lastError = err.Error()
+		lastRunError = err.Error()
 	} else {
-		lastError = ""
+		lastRunError = ""
 		lastResult = runSummary{Pulled: res.Pulled, Applied: res.Applied, Pushed: res.Pushed}
 	}
 	mu.Unlock()
@@ -279,9 +287,9 @@ func SwitchTransport(ctx context.Context, patch map[string]any, baselineRaw stri
 	mu.Lock()
 	lastRunAt = time.Now()
 	if runErr != nil {
-		lastError = runErr.Error()
+		lastRunError = runErr.Error()
 	} else {
-		lastError = ""
+		lastRunError = ""
 		lastResult = runSummary{Pulled: res.Pulled, Applied: res.Applied, Pushed: res.Pushed}
 	}
 	mu.Unlock()
@@ -346,6 +354,78 @@ func GetStatus() Status {
 	return currentStatusLocked()
 }
 
+// ── sync diagnostics (copy-for-agent data sources) ─────────────────────────────
+
+// JournalTail returns up to n recent journal events (same order as ReadRecent), capped at 100
+// so a self-diagnosis payload cannot grow without bound. n <= 0 falls back to 20, the same
+// default as `wsh commontext-sync log`.
+func JournalTail(n int) ([]syncjournal.Event, error) {
+	if n <= 0 {
+		n = 20
+	}
+	if n > 100 {
+		n = 100
+	}
+	return syncjournal.ReadRecent(n)
+}
+
+// shortTimeStr renders an event timestamp the way the CLI does ("01-02 15:04:05", local time).
+// Kept beside FormatEventLine so the two never drift.
+func shortTimeStr(rfc3339 string) string {
+	t, err := time.Parse(time.RFC3339Nano, rfc3339)
+	if err != nil {
+		return rfc3339
+	}
+	return t.Local().Format("01-02 15:04:05")
+}
+
+// FormatEventLine renders one journal event. It mirrors `wsh commontext-sync log`'s
+// writeEventLine byte for byte (cmd/wsh/cmd/wshcmd-commontext-sync.go); any change there must be
+// mirrored here — a self-diagnosis payload the user pastes must read like the CLI output they
+// could have produced themselves. Pinned by golden tests (syncmanager_diag_test.go).
+func FormatEventLine(ev syncjournal.Event) string {
+	switch ev.Type {
+	case syncjournal.EventRunStart:
+		return fmt.Sprintf("%s  run start (%s)", shortTimeStr(ev.TS), ev.Trigger)
+	case syncjournal.EventPull:
+		return fmt.Sprintf("%s  pull   %d item(s) since rev %.0f", shortTimeStr(ev.TS), ev.Items, ev.Since)
+	case syncjournal.EventPush:
+		return fmt.Sprintf("%s  push   %d item(s) → rev %.0f", shortTimeStr(ev.TS), ev.Items, ev.Rev)
+	case syncjournal.EventConflict:
+		return fmt.Sprintf("%s  conflict  %s (%s) → %s", shortTimeStr(ev.TS), ev.Id,
+			strings.Join(ev.Fields, ","), ev.Resolved)
+	case syncjournal.EventError:
+		return fmt.Sprintf("%s  ERROR  %s: %s", shortTimeStr(ev.TS), ev.Phase, ev.Msg)
+	case syncjournal.EventRunEnd:
+		status := "ok"
+		if !ev.OK {
+			status = "failed"
+		}
+		return fmt.Sprintf("%s  run end  %s (%dms)", shortTimeStr(ev.TS), status, ev.Ms)
+	default:
+		return fmt.Sprintf("%s  %s", shortTimeStr(ev.TS), ev.Type)
+	}
+}
+
+// ProbeConfiguredServer runs the same diagnostics `wsh commontext-sync doctor` runs, using the
+// same settings + secret the configured server transport would use. It is only meaningful for
+// the server transport; the caller decides what "no server configured" renders as.
+func ProbeConfiguredServer(ctx context.Context) (*syncclient.Probe, error) {
+	settings, err := currentSettings()
+	if err != nil {
+		return nil, err
+	}
+	url := settingString(settings, keyServerUrl)
+	if strings.TrimSpace(url) == "" {
+		return nil, errors.New("server transport needs a URL")
+	}
+	token, err := serverToken()
+	if err != nil {
+		return nil, err
+	}
+	return syncclient.Diagnose(ctx, url, token, settingBool(settings, keyServerInsecure)), nil
+}
+
 // engineHandle bundles the engine with the metadata the status panel needs.
 type engineHandle struct {
 	transportId ctsync.TransportId
@@ -368,7 +448,7 @@ func currentStatusLocked() Status {
 		Transport:       transportId,
 		Configured:      configured,
 		Problem:         problem,
-		LastError:       lastError,
+		LastError:       firstNonEmpty(lastRunError, lastError),
 		LastPulled:      lastResult.Pulled,
 		LastApplied:     lastResult.Applied,
 		LastPushed:      lastResult.Pushed,
@@ -570,6 +650,15 @@ func settingBool(settings wconfig.SettingsType, key string) bool {
 		return settings.CommonTextSyncServerInsecure != nil && *settings.CommonTextSyncServerInsecure
 	}
 	return false
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func parseTransport(raw string) string {
