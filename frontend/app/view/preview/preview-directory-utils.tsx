@@ -487,6 +487,7 @@ async function openHistoryBlock(
             "vcshistory:repotype": repo.repotype,
             "vcshistory:repopath": repo.rootpath,
             "vcshistory:filepath": targetPath,
+            "vcshistory:browseurl": repo.browseurl ?? "",
             "vcshistory:title": `History: ${targetPath}`,
         } as any,
     };

@@ -1,15 +1,13 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
-import { ContextMenuModel } from "@/app/store/contextmenu";
-import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { globalStore } from "@/app/store/jotaiStore";
 import { clearVcsTreeStatusCache } from "@/app/view/preview/vcs-tree-status";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { createBlock, openLink } from "@/store/global";
-import { basename, fireAndForget, isBlank, makeConnRoute } from "@/util/util";
+import { createBlock } from "@/store/global";
+import { basename, isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
 
@@ -281,7 +279,6 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const basePath = useAtomValue(model.pathAtom);
     const selectedFile = useAtomValue(model.selectedFileAtom);
     const refreshNonce = useAtomValue(model.refreshNonce);
-    const blockMoveMenuItems = useBlockMoveMenuItems();
 
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string>(null);
@@ -506,6 +503,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 "vcshistory:repotype": repo.repotype,
                 "vcshistory:repopath": repo.rootpath,
                 "vcshistory:filepath": filePath,
+                "vcshistory:browseurl": repo.browseurl ?? "",
                 "vcshistory:title": `History: ${filePath}`,
             } as any,
         };
@@ -529,46 +527,6 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
             } as any,
         };
         await createBlock(blockDef);
-    };
-
-    const handleRepoContextMenu = (repo: VcsRepositoryInfo, e: React.MouseEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const repoPath = repo?.rootpath ?? "";
-        const repoRemoteUrl = repo?.remoteurl ?? "";
-        const repoBrowseUrl = repo?.browseurl ?? "";
-        const openUrl = !isBlankStr(repoBrowseUrl) ? repoBrowseUrl : repoRemoteUrl;
-        const copyUrl = !isBlankStr(repoRemoteUrl) ? repoRemoteUrl : repoBrowseUrl;
-        const menu: ContextMenuItem[] = [
-            {
-                label: "Copy Repository Path",
-                enabled: !isBlankStr(repoPath),
-                click: () => {
-                    fireAndForget(async () => {
-                        await navigator.clipboard.writeText(repoPath);
-                    });
-                },
-            },
-            {
-                label: "Copy Repository URL",
-                enabled: !isBlankStr(copyUrl),
-                click: () => {
-                    fireAndForget(async () => {
-                        await navigator.clipboard.writeText(copyUrl);
-                    });
-                },
-            },
-            {
-                label: "Open Remote Repository",
-                enabled: !isBlankStr(openUrl),
-                click: () => {
-                    fireAndForget(async () => {
-                        await openLink(openUrl);
-                    });
-                },
-            },
-        ];
-        ContextMenuModel.getInstance().showContextMenu(appendBlockMoveMenuItems(menu, blockMoveMenuItems), e);
     };
 
     if (connStatus?.status !== "connected") {

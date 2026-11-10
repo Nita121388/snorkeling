@@ -318,6 +318,9 @@ node scripts/verify/agent-card-seen/verify.mjs --attach     # 复用已起实例
 - 有文字的按钮是**主 CTA / 导航 / 段头折展**的特权；`Diff / History / Reset / Prev / Next`
   这类重复动作一律图标化（VCS 面板 17 处已收口，见
   `frontend/app/view/vcs/vcs-panel-buttons.test.ts` 的源码级守卫）。
+- `VcsIconButton` 的 `reveal="hover"` 依赖祖先行带 `group` class（组件内部只写
+  `group-hover:opacity-100`）；宿主容器忘了加 `group`，按钮就永远透明。外部链接图标同理
+  （2026-11-10 vcs-remote-jump：提交行 hover ↗ 必须把行容器写成 `group …`）。
 
 ---
 

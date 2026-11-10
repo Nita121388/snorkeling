@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { ContextMenuModel } from "@/app/store/contextmenu";
+import { buildCommitRemoteUrl, getRepoOpenUrl } from "@/app/view/vcs/vcs-remote";
+import { openLink } from "@/store/global";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
-import { isBlank, makeConnRoute } from "@/util/util";
+import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import React from "react";
 import { VcsIconButton } from "./vcs-icon-button";
 
@@ -219,8 +222,43 @@ export function VcsHistoryTab({
                             const fileLoading = !!filesLoading[revision];
                             const fileErr = filesError[revision] ?? "";
                             const files = filesByHash[revision] ?? [];
+                            const commitRemoteUrl =
+                                repo.repotype === "git" ? buildCommitRemoteUrl(repo.browseurl, revision) : "";
+                            const handleCommitContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+                                e.preventDefault();
+                                const menu: ContextMenuItem[] = [
+                                    {
+                                        label: "Copy Hash",
+                                        enabled: !isBlank(revision),
+                                        click: () => {
+                                            fireAndForget(async () => {
+                                                await navigator.clipboard.writeText(revision);
+                                            });
+                                        },
+                                    },
+                                    {
+                                        label: "Open Commit on Remote",
+                                        enabled: !isBlank(commitRemoteUrl),
+                                        click: () => {
+                                            fireAndForget(async () => {
+                                                await openLink(commitRemoteUrl);
+                                            });
+                                        },
+                                    },
+                                    {
+                                        label: "Open Remote Repository",
+                                        enabled: !isBlank(getRepoOpenUrl(repo)),
+                                        click: () => {
+                                            fireAndForget(async () => {
+                                                await openLink(getRepoOpenUrl(repo));
+                                            });
+                                        },
+                                    },
+                                ];
+                                ContextMenuModel.getInstance().showContextMenu(menu, e);
+                            };
                             return (
-                                <div key={`${revision}-${idx}`} className="px-2 py-1.5">
+                                <div key={`${revision}-${idx}`} className="group px-2 py-1.5" onContextMenu={handleCommitContextMenu}>
                                     <div
                                         className={`flex items-center gap-2 text-xs ${!isBlank(revision) ? "cursor-pointer" : ""}`}
                                         onClick={() => toggleCommit(commit)}
@@ -228,6 +266,20 @@ export function VcsHistoryTab({
                                         <span className="text-muted w-[12px] shrink-0">{isExpanded ? "▾" : "▸"}</span>
                                         <span className="font-mono text-secondary shrink-0">{shortHash(revision)}</span>
                                         <span className="truncate flex-1">{commit.subject || "(no message)"}</span>
+                                        {!isBlank(commitRemoteUrl) && (
+                                            <VcsIconButton
+                                                icon="arrow-up-right-from-square"
+                                                title="Open commit on remote"
+                                                size="sm"
+                                                reveal="hover"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    fireAndForget(async () => {
+                                                        await openLink(commitRemoteUrl);
+                                                    });
+                                                }}
+                                            />
+                                        )}
                                     </div>
                                     <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
                                         <span className="truncate">{commit.author || "unknown"}</span>

@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from "react";
+
 import { VcsIconButton } from "./vcs-icon-button";
+import { getRepoOpenUrl } from "./vcs-remote";
+import { ContextMenuModel } from "@/app/store/contextmenu";
+import { openLink } from "@/store/global";
+import { fireAndForget, isBlank } from "@/util/util";
 
 type View = "changes" | "branches" | "pipelines" | "history";
 type VcsSyncAction = "fetch" | "pull" | "push" | "update";
@@ -112,9 +117,49 @@ export function VcsRepoHeader({
     const untracked = countUntracked(repo);
     const totalChanged = changed + untracked;
     const remoteCount = getRemotePendingCount(repo);
+    const repoOpenUrl = getRepoOpenUrl(repo);
+
+    const handleHeaderContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        const repoPath = repo?.rootpath ?? "";
+        const copyUrl = !isBlank(repo?.remoteurl) ? repo.remoteurl : (repo?.browseurl ?? "");
+        const menu: ContextMenuItem[] = [
+            {
+                label: "Copy Repository Path",
+                enabled: !isBlank(repoPath),
+                click: () => {
+                    fireAndForget(async () => {
+                        await navigator.clipboard.writeText(repoPath);
+                    });
+                },
+            },
+            {
+                label: "Copy Repository URL",
+                enabled: !isBlank(copyUrl),
+                click: () => {
+                    fireAndForget(async () => {
+                        await navigator.clipboard.writeText(copyUrl);
+                    });
+                },
+            },
+            {
+                label: "Open Remote Repository",
+                enabled: !isBlank(repoOpenUrl),
+                click: () => {
+                    fireAndForget(async () => {
+                        await openLink(repoOpenUrl);
+                    });
+                },
+            },
+        ];
+        ContextMenuModel.getInstance().showContextMenu(menu, e);
+    };
 
     return (
-        <div className="flex h-8 shrink-0 items-center gap-1.5 px-2.5">
+        <div
+            className="flex h-8 shrink-0 items-center gap-1.5 px-2.5"
+            onContextMenu={handleHeaderContextMenu}
+        >
             <span className="text-muted text-[12px] shrink-0">⑂</span>
             <span className="text-[11px] text-muted truncate min-w-0">{repo.branch || "(no branch)"}</span>
             {repo.repotype === "git" && (ahead > 0 || behind > 0) && (
@@ -125,6 +170,17 @@ export function VcsRepoHeader({
                 </span>
             )}
             <div className="min-w-1 flex-1" />
+            {!isBlank(repoOpenUrl) && (
+                <VcsIconButton
+                    icon="arrow-up-right-from-square"
+                    title="Open remote repository"
+                    onClick={() => {
+                        fireAndForget(async () => {
+                            await openLink(repoOpenUrl);
+                        });
+                    }}
+                />
+            )}
             <span className={`text-[10px] tabular-nums px-1.5 py-[1px] rounded border border-border ${totalChanged > 0 ? "text-warning" : "text-muted"}`}>
                 {totalChanged} changed
             </span>

@@ -228,6 +228,39 @@ try {
 
     scanAndAssert("changes", scan);
 
+    // ⑤-0 远程跳转入口（11-10-vcs-remote-jump）：Repo Header ↗ 按钮 + Remote 区 upstream 可点
+    const jumpScan = await client.evaluate(`(() => {
+        const anchor = document.querySelector('[data-vcs-tab="1"]');
+        if (anchor == null) return null;
+        const frame = anchor.closest("[data-blockid]") || document.body;
+        const jumpBtn = [...frame.querySelectorAll("[data-vcs-icon-button]")].find(
+            (b) => (b.getAttribute("title") || "") === "Open remote repository"
+        );
+        let iconResolved = null;
+        if (jumpBtn != null) {
+            const i = jumpBtn.querySelector("i");
+            const c = i == null ? "none" : getComputedStyle(i, "::before").content;
+            iconResolved = !(c === "none" || c === "normal" || c === '""' || c === "");
+        }
+        const upstreamClickable = frame.querySelector(".hover\\:text-accent") != null;
+        const upstreamBlank = frame.querySelector(".italic.text-muted") != null;
+        return { jumpBtn: jumpBtn != null, aria: jumpBtn?.getAttribute("aria-label") ?? null, iconResolved, upstreamClickable, upstreamBlank };
+    })()`);
+    if (jumpScan == null) {
+        skipped.push("remote-jump（Changes 面板扫不到）");
+    } else {
+        reporter.check(
+            "repo-header-remote-jump",
+            jumpScan.jumpBtn && jumpScan.iconResolved === true && jumpScan.aria === "Open remote repository",
+            JSON.stringify(jumpScan)
+        );
+        if (jumpScan.upstreamBlank) {
+            skipped.push("upstream-clickable（No upstream，无可点行）");
+        } else {
+            reporter.check("upstream-clickable", jumpScan.upstreamClickable, "upstream 行 hover:text-accent 可点");
+        }
+    }
+
     const skipped = [];
     for (const view of TAB_ORDER.slice(1)) {
         const clicked = await switchTab(view);

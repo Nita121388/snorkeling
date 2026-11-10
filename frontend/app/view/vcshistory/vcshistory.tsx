@@ -3,6 +3,7 @@
 
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { buildCommitRemoteUrl } from "@/app/view/vcs/vcs-remote";
 import { CommitGroup, CommitRow } from "@/app/view/vcs/vcs-commit-row";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -49,6 +50,7 @@ export class VcsHistoryViewModel implements ViewModel {
     repoTypeAtom: Atom<string>;
     repoPathAtom: Atom<string>;
     filePathAtom: Atom<string>;
+    browseUrlAtom: Atom<string>;
     titleAtom: Atom<string>;
     connection: Atom<string>;
     connStatus: Atom<ConnStatus>;
@@ -123,6 +125,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
     const repoType = useAtomValue(model.repoTypeAtom);
     const repoPath = useAtomValue(model.repoPathAtom);
     const filePath = useAtomValue(model.filePathAtom);
+    const browseUrl = useAtomValue(model.browseUrlAtom);
     const refreshNonce = useAtomValue(model.refreshNonce);
 
     const [loading, setLoading] = React.useState(true);
@@ -297,6 +300,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                         expandable={expandable}
                                         expanded={expanded}
                                         onToggle={() => toggleCommit(commit)}
+                                        remoteOpenUrl={repoType === "git" ? buildCommitRemoteUrl(browseUrl, revision) : undefined}
                                     />
                                     {expandable && expanded && (
                                         <div className="mb-1 ml-4 mt-1.5 rounded border border-border bg-surface-strong">
