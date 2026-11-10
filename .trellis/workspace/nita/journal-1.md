@@ -135,3 +135,11 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
 - 修复：pi 单行直取 + model_change 兜底；codex 新增跨行 codexMessageParser。真实数据 169/169、7/7 填充。
 - 待办：G7 人验收——重新构建 app 后看 Agent 悬浮卡/Tab more/弹窗副标题不再是「未指定」（codex delta 路径消息可能缺 Model，已记 design 取舍）。gemini 无 session provider，属独立能力缺口。
 - loop 引擎在本机路径失效（E:/primary/... Windows 路径），未记台账。
+
+## 2026-11-10 · CommonText Send 目标选择器（2af9d894）
+
+- 四轮原型迭代后定稿：聚焦 Agent Block（agent 小卡）+ 选择 Agents / Type（Tab，+新建）/ Folder（cwd，+浏览）三项正交 + 底部确认「发送」；existing 当且仅当三项全等聚焦块，否则按所选 Tab+Folder 新建块。
+- pending input 队列独立模块（首输出+600ms 静默窗口→terminal.paste，TTL 60s 回退剪贴板），绝不依赖 cmd:initialinput（零消费点坑）。
+- 单测 25 个 + commontext 回归 124 全绿；真机 verify 台 scripts/verify/commontext-send-agent-block 14/14 PASS。
+- 踩坑（已写 quality-guidelines）：TUI 首启提示（claude 目录信任 / codex 升级提示）会吞注入按键 → 验证按 snorkeling:pending-input-injected 事件断言，不读 TUI 文本；多 agent 并行跑 verify 必须用 VERIFY_PROFILE/端口错开（否则两台验证台互读对方的块）。
+- 提交混入：term.tsx 的 pending-input effect 先被并行 agent 的 f30e14c8（feat(cfa)）捎带提交，其余全部在本任务 2af9d894；task 已归档。
