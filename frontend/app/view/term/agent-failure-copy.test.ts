@@ -16,11 +16,12 @@ import {
     TERM_FAILURE_MAX_LINES,
 } from "./agent-failure-copy";
 
-const failedStatus = (exitCode: number) => ({
-    shellprocstatus: "done",
-    shellprocexitcode: exitCode,
-});
-const runningStatus = { shellprocstatus: "running", shellprocexitcode: 0 };
+const failedStatus = (exitCode: number): BlockControllerRuntimeStatus =>
+    ({ shellprocstatus: "done", shellprocexitcode: exitCode }) as BlockControllerRuntimeStatus;
+const runningStatus: BlockControllerRuntimeStatus = {
+    shellprocstatus: "running",
+    shellprocexitcode: 0,
+} as BlockControllerRuntimeStatus;
 const cmdMeta = { controller: "cmd", "cmd:args": ["npm", "test"], "cmd:cwd": "/repo" };
 
 describe("shouldShowTermFailureCopy", () => {
