@@ -55,13 +55,14 @@ payload 三段式（与 `syncconflict.RenderMarkdown` 既有行为对齐）：
 **不在本树内**：Agent 卡片「卡住会话尾部复制」——语义与
 `10-24-aisessions-agent-copy-context` 已有线重合，在该任务里作为第四个消费面接入，不新开子任务。
 
-## 跨子任务验收（父任务收口判据）
+## 跨子任务验收（父任务收口判据）——已收口（2026-11-10）
 
-1. `grep -rn "Reply with\|output the merged\|只回" frontend/app/element/` —— 输出契约常量只此一处定义，无散抄。
-2. 全仓 `navigator.clipboard.writeText` 调用点中，「拼 prompt 文本」的必须经 `buildAgentPayload`；
-   纯复制标识符（blockId / 命令）的除外。
-3. 任一消费面的 e2e：复制 → 粘贴出的文本含 Task 与 Output contract 两段（`grep -c` ≥ 2 个小节标题）。
-4. 每个子任务收尾各自跑真机验证台并写台账；父任务收口时核对 6 个子任务全部 archive。
+- [x] 1. `grep -rn "Reply with\|output the merged\|只回" frontend/app/element/` → 三个契约常量只此 `agent-payload.ts` 一处定义，无散抄。
+- [x] 2. 全仓 `navigator.clipboard.writeText` 调用点中，「拼 prompt 文本」的全部经 `buildAgentPayload`（copy-for-agent.tsx / file-conflict-modal.tsx→buildConflictCopyText 已迁移）；其余均为复制内容本体/标识符（href、code block、选区、id、revision、url 等），不属 Copy-for-agent 语义面。
+- [x] 3. 每个消费面的 e2e 都断言了 `### Task` + `### Output contract` 两段：sync-conflict-copy 14/14、sync-diagnostics-copy 20/20、term-failure-copy 11/11、vcs-conflict-copy 17/17、waveconfig-json-error 11/11。
+- [x] 4. 6 个子任务各自跑真机验证台并写台账（共 5 个新 area），全部 archive。
+
+附带产出：真机验证台挖出并修复 4 个真 bug——syncmanager reload 抹掉 run 错误（lastRunError 拆分）、SyncNow 失败面板不刷新、term 失败 command 拼接丢可执行文件名、fileread 不接受 conn:local 路由。
 
 ## Out of Scope
 
