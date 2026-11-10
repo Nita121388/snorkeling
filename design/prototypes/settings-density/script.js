@@ -128,8 +128,11 @@
         const cur = parseInt(el.textContent, 10) || 0;
         el.textContent = String(Math.max(0, cur + delta));
         const panel = st.closest(".wcfg-panel");
+        if (panel && panel.id === "panel-sync") {
+            markSyncDirty(st);
+            return;
+        }
         flashStamp(panel && panel.id === "panel-general" ? "stamp-general" : "stamp-notify");
-        markSyncDirty(st);
     }
 
     /* ---------- RadioCard ---------- */
@@ -140,8 +143,12 @@
             $$(".rc", deck).forEach((c) => c.classList.remove("on"));
             card.classList.add("on");
             const panel = card.closest(".wcfg-panel");
+            // Sync 是草稿型面板：不闪印章，只点亮 Save
+            if (panel && panel.id === "panel-sync") {
+                markSyncDirty(card);
+                return;
+            }
             flashStamp(panel && panel.id === "panel-general" ? "stamp-general" : "stamp-notify");
-            markSyncDirty(card);
         });
     });
 
@@ -233,6 +240,7 @@
         if (syncDirtyHint) syncDirtyHint.style.display = "";
     }
 
+    /* 所有控件变脏都点亮 Save：input（文本/开关）直接听；stepper / seg / radio 行在各自 handler 里调 */
     $$("[data-sync-dirty]").forEach((el) => {
         if (el.tagName === "INPUT") {
             el.addEventListener("input", markSyncDirty);
@@ -247,8 +255,128 @@
         })
     );
 
-    // segmented（冲突策略 / 推送模式）
-    $$(".acc .seg button").forEach((b) => {
+    /* ---------- Sync：传输方式切换 → 后端配置卡 / 组标题 / baseline 选择卡 ---------- */
+    // 镜像 syncsettings.tsx：radio 永远可点，选中后下方 Backend 组随传输切换；
+    // 从活动传输切到另一个（git/server，演示中两端都已有数据）时弹出 baseline 选择卡。
+    const syncBackendNames = { folder: "Local folder", git: "Git repository", server: "Self-hosted service" };
+
+    function selectSyncTransport(id) {
+        $$("#sync-transports .rc").forEach((c) => c.classList.toggle("on", c.dataset.transport === id));
+        $$("[data-sync-backend]").forEach((b) => (b.style.display = b.dataset.syncBackend === id ? "" : "none"));
+        const title = $("#sync-backend-title");
+        if (title) {
+            title.textContent = syncBackendNames[id] || "Backend";
+            // Off 时极简视图：隐藏组标题，只留一行说明 + Save
+            title.style.display = id === "none" ? "none" : "";
+        }
+        // none 时隐藏非传输相关组：按传输渐进展开（镜像真实代码的按传输裁剪）
+        ["#sync-device-group", "#sync-status-group", "#sync-advanced-group"].forEach((sel) => {
+            const g = $(sel);
+            if (g) g.style.display = id === "none" ? "none" : "";
+        });
+        const bl = $("#sync-baseline-group");
+        if (bl) {
+            bl.style.display = id === "git" || id === "server" ? "" : "none";
+            const target = $("#bl-target");
+            if (target) target.textContent = syncBackendNames[id] || "";
+        }
+        // Server status 卡只在 Self-hosted service 下出现（其他传输没有 /health 可读）
+        const srvStatus = $("#sync-server-status-group");
+        if (srvStatus) srvStatus.style.display = id === "server" ? "" : "none";
+    }
+
+    $$("#sync-transports .rc").forEach((card) =>
+        card.addEventListener("click", () => selectSyncTransport(card.dataset.transport))
+    );
+
+    // baseline：选边 = 演示一次切接完成；Cancel 回到 Local folder
+    const blCancel = $("#bl-cancel");
+    if (blCancel)
+        blCancel.addEventListener("click", () => {
+            selectSyncTransport("folder");
+        });
+    ["#bl-local", "#bl-remote"].forEach((sel) => {
+        const b = $(sel);
+        if (b)
+            b.addEventListener("click", () => {
+                const bl = $("#sync-baseline-group");
+                if (bl) bl.style.display = "none";
+            });
+    });
+
+    /* token 按钮：Configure → Replace（演示 keyring 已配置） */
+    $$("[data-token-btn]").forEach((b) =>
+        b.addEventListener("click", () => {
+            b.textContent = "Replace token…";
+        })
+    );
+
+    /* 冲突策略 radio 行 */
+    $$(".radio-list .radio-row").forEach((row) =>
+        row.addEventListener("click", () => {
+            $$(".radio-row", row.parentElement).forEach((r) => r.classList.remove("on"));
+            row.classList.add("on");
+            markSyncDirty(row);
+        })
+    );
+
+    /* ---------- Sync：Server status 卡（仅 Self-hosted service） ----------
+       状态用信号格（对齐 connectionbutton.tsx 的 signal-bars 语汇）：4=强，2=降级，0=斜线不可达，-1=检测中。
+       版本、条目数/rev、鉴权、能力来自 /health → Probe。 */
+    const srvSignal = $("#srv-signal");
+    const srvStateBlocks = $$("[data-srv-state]");
+    const SrvLevelMap = { ok: "4", fair: "2", fail: "0" };
+    const SrvLabelMap = { ok: "reachable", fair: "degraded — slow", fail: "unreachable" };
+
+    function setSrvSignal(level, label) {
+        if (!srvSignal) return;
+        srvSignal.dataset.level = level;
+        srvSignal.setAttribute("aria-label", label);
+        srvSignal.title = label;
+    }
+
+    function setSrvDemo(state) {
+        srvStateBlocks.forEach((el) => (el.style.display = el.dataset.srvState === state ? "" : "none"));
+        setSrvSignal(SrvLevelMap[state] || "0", SrvLabelMap[state] || "unreachable");
+        $$("#srv-demo button").forEach((b) => b.classList.toggle("on", b.dataset.srvDemo === state));
+    }
+
+    $$("#srv-demo button").forEach((b) =>
+        b.addEventListener("click", () => setSrvDemo(b.dataset.srvDemo))
+    );
+
+    const srvCheckBtn = $("#srv-check-btn");
+    if (srvCheckBtn)
+        srvCheckBtn.addEventListener("click", () => {
+            if (srvCheckBtn.disabled) return;
+            srvCheckBtn.disabled = true;
+            srvCheckBtn.textContent = "Checking…";
+            setSrvSignal("-1", "checking");
+            setTimeout(() => {
+                srvCheckBtn.disabled = false;
+                srvCheckBtn.textContent = "Check now";
+                const cur = $("#srv-demo button.on");
+                setSrvDemo(cur ? cur.dataset.srvDemo : "ok");
+            }, 900);
+        });
+
+    /* Sync now：演示一次手动同步 */
+    const syncNowBtn = $("#sync-now-btn");
+    if (syncNowBtn)
+        syncNowBtn.addEventListener("click", () => {
+            if (syncNowBtn.disabled) return;
+            syncNowBtn.disabled = true;
+            syncNowBtn.textContent = "Syncing…";
+            setTimeout(() => {
+                syncNowBtn.disabled = false;
+                syncNowBtn.textContent = "Sync now";
+                const t = $("#status-last-time");
+                if (t) t.textContent = new Date().toTimeString().slice(0, 5);
+            }, 1200);
+        });
+
+    // segmented（server 推送模式等）：选中态互换 + 草稿变脏
+    $$(".wcfg-panel .seg button").forEach((b) => {
         b.addEventListener("click", () => {
             $$("button", b.parentElement).forEach((x) => x.classList.remove("on"));
             b.classList.add("on");

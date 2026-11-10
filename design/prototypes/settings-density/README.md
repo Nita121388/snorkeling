@@ -34,6 +34,7 @@
 | `.switch` | `element/toggle.scss` `.checkbox-toggle` | 32×20 / thumb 16，几何一致 |
 | `.stepper` | **新增**（原为裸 `<input type="number">`） | 30 秒 / 13 px 这类数值设置 |
 | `.radiocards` / `.rc` | **新增**（HeroUI RadioGroup card 变体） | 选择型设置卡片化：默认 Agent、Sync 传输方式 |
+| `.radio-row` / `.radio-dot` | **新增**（Sync 冲突策略） | 整行可点的 radio 行，组内无线 |
 | `.acc` | **新增**（HeroUI Accordion） | 高级项默认折叠（90+ 键、冲突策略、git 间隔） |
 | `.saved-stamp` | **新增** | 即时保存的安静反馈，替代各面板手写的 "Saving..." |
 | `.save-bar` | `syncsettings.tsx` header Save | 草稿型面板的唯一保存位置（面板底部右） |
@@ -64,9 +65,27 @@
 2. **General**（当前为纯 Monaco JSON 编辑器）——新增 `Visual` 层：默认 Agent 的 RadioCard 组、
    Interface（字号 stepper ×2 + Block 序号开关）、Windows & tabs、Updates，底部
    `settings.json` 折叠卡 + `Edit all 100+ keys in Raw JSON →`；`Raw JSON` 保留为第二个 Tab。
-3. **Sync**（`syncsettings.tsx`）——4 张传输方式 RadioCard（含 blocked 态与 `recommended` 徽标）、
-   This device 表单卡（输入右缘对齐 + 合并 Browse 按钮）、Advanced 折叠（冲突策略 / git 间隔 / 推送模式）、
+3. **Sync**（`syncsettings.tsx`）——**按传输渐进展开**，核心路径只有 Transport → Backend → This device → Status → Save：
+   - **Transport**：4 张 RadioCard（blocked 态永远可点——选不中就看不到后端字段，死锁）；
+   - **Baseline 选择卡**：从活动传输切到另一个时出现，「This device wins / Remote wins / Cancel」，
+     两套数据相遇必须明说哪边赢；
+   - **Backend**：组标题与字段随所选传输切换（folder 路径+监视开关 / git remote+token+间隔 /
+     server URL+token+推送模式+insecure），用户只看到所选方式的字段；
+   - **Server status**（仅 Self-hosted service）：服务端版本与健康——**信号格图标**（对齐
+     `connectionbutton.tsx` 的 signal-bars 语汇：4 格绿=强 / 2 格橙=降级 / 斜线=不可达 / 呼吸=检测中，
+     tooltip 承载完整文案）+ `app 0.14.6 · protocol v1`、`214 items · rev 3187`、token accepted、
+     realtime not supported；不可达态给 `offline` + 可复制 `wsh commontext-sync doctor --json`
+     （数据源：真实代码 `/health` → `syncclient.Probe`，当前只有 CLI 能看到，落地时需加 RPC）；
+   - **This device**：name + 只读 Device ID；
+   - **Status**（live 徽标）：last sync、**Waiting to upload（pending 计数，后端
+     `Status.Pending` 已有但现面板未渲染）**、未解决冲突数、Sync now；
+   - **Advanced**（默认折叠）：Conflicts（3 选 1 radio 行）+ Scope（Common Text 锁定 + tombstones）+
+     Maintenance（Re-sync / Reset，danger 色）；
+   - **Off · local only**：极简视图——隐藏组标题、This device、Status、Advanced，
+     只剩一行说明卡 + Save；
    底部唯一 Save 条（草稿模型明说）。
+   交互验证：`node verify-runs/settings-density-sync/smoke.mjs`（headless Chrome + CDP，68 项断言
+   + 9 张截图存于同目录）。
 
 左栏改为 5 组（Appearance / Basics / Agents / Sync & cloud / Security）+ 搜索框。
 
@@ -135,7 +154,11 @@ node ~/.pi/agent/skills/design-taste-frontend/scripts/inspect.mjs \
    `tab:confirmclose` / `app:confirmquit` / `autoupdate:enabled` 等高频键，Raw JSON 保留 Tab。
 3. **P3 左栏**：`ConfigFile` 加 `group` 字段，`ConfigSidebar` 按组渲染小标题 + 搜索框（过滤条目名与键名）。
 4. **P4 保存印章**：统一 `saveStamp` 状态机，替换各面板手写 "Saving..."。
-5. 每个 P 都要走真机验证台（`scripts/verify/`）与台账，按仓库 `AGENTS.md` 的收尾规则。
+5. **P5 Sync 补齐**（本次原型新增）：
+   - `syncmanager.Status` 已有 `pending` 字段但 `syncsettings.tsx` 未渲染 —— 补「Waiting to upload」行；
+   - `ServerTransport.Probe()` 已实现但无 RPC 暴露、面板不可见 —— 加 `CommonTextService.SyncProbe` RPC +
+     Server status 卡（版本 / 条目 rev / 鉴权 / 能力，不可达时给 `wsh commontext-sync doctor --json`）。
+6. 每个 P 都要走真机验证台（`scripts/verify/`）与台账，按仓库 `AGENTS.md` 的收尾规则。
 
 ## 目录文件
 

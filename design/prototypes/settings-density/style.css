@@ -24,6 +24,7 @@
     --modal-bg-color: #faf7f1;
     --error-color: #d32f2f;
     --warning-color: #e65100;
+    --success-color: #2e7d32;
     --codeblock-bg-color: #1c1c1c;
     --codeblock-text-color: #e6e6e6;
     --code-token-comment: #768390;
@@ -55,6 +56,7 @@
     --modal-bg-color: #1f1f1f;
     --error-color: #ff6b6b;
     --warning-color: #ffb74d;
+    --success-color: rgb(140, 210, 100);
     --codeblock-bg-color: #1c1c1c;
     --codeblock-text-color: #e6e6e6;
     --code-token-comment: #768390;
@@ -553,6 +555,13 @@ h2.set-group-title {
 .acc.open .acc-body { display: block; }
 .acc-body .set-row { padding-left: 16px; padding-right: 16px; }
 
+/* Advanced 折叠内的子组（Conflicts / Scope / Maintenance）：卡内行回到正常卡内边距 */
+.acc-body .subgroup { margin-bottom: 26px; }
+.acc-body .subgroup:last-child { margin-bottom: 4px; }
+.acc-body .subgroup .set-group-title { padding-left: 16px; padding-right: 16px; }
+.acc-body .subgroup .set-row { padding-left: 4px; padding-right: 4px; }
+.acc-body .subgroup .radio-row { padding-left: 4px; padding-right: 4px; }
+
 /* ---------- 已保存印章（即时保存反馈） ---------- */
 
 .saved-stamp {
@@ -612,6 +621,167 @@ h2.set-group-title {
 .btn.text-btn:hover { background: transparent; text-decoration: underline; }
 
 .rc .rc-desc .warn-line { color: var(--set-warn-text); }
+
+/* ---------- Sync：baseline 选择卡（两个活动传输间切换，二选一哪边赢） ---------- */
+.sync-baseline {
+    border: 1px solid var(--action-soft-border-color);
+    background: var(--hover-bg-color);
+    border-radius: var(--set-card-radius);
+    padding: 14px 16px 15px;
+    max-width: 880px;
+}
+.sync-baseline .bl-title { font-size: 13px; font-weight: 600; color: var(--main-text-color); }
+.sync-baseline .bl-desc {
+    font-size: 12.5px;
+    line-height: var(--set-desc-lh);
+    color: var(--secondary-text-color);
+    margin-top: 5px;
+}
+.sync-baseline .bl-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+.sync-baseline .bl-note { font-size: 11px; color: var(--grey-text-color); }
+.sync-baseline .bl-fine {
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--grey-text-color);
+    margin-top: 10px;
+}
+
+/* ---------- Sync：冲突策略 radio 行（整行可点，组内无线） ---------- */
+.radio-list .radio-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: var(--set-row-pad-y) var(--set-card-pad-x);
+    cursor: pointer;
+}
+.radio-row .radio-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-color);
+    background: var(--surface-color);
+    flex-shrink: 0;
+    margin-top: 2px;
+    transition: border-color 0.12s, box-shadow 0.12s;
+}
+.radio-row:hover .radio-dot { border-color: var(--accent-color); }
+.radio-row.on .radio-dot {
+    border-color: var(--accent-color);
+    box-shadow: inset 0 0 0 4.5px var(--accent-color);
+}
+
+/* ---------- Sync：实时状态组 ---------- */
+.live-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--action-soft-text-color);
+    vertical-align: 1px;
+}
+.live-chip .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-color);
+}
+.st-time {
+    font-size: 12px;
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
+}
+.st-num {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--secondary-text-color);
+}
+.st-num.ok { color: var(--action-soft-text-color); }
+.st-num.warn { color: var(--warning-color); }
+.mono-id { font-size: 12px; color: var(--secondary-text-color); }
+
+/* Server status 卡：可达性/能力小胶囊 */
+.st-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 1.5px 8px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    vertical-align: 1px;
+}
+.st-chip.ok {
+    color: var(--action-soft-text-color);
+    background: var(--action-soft-bg-color);
+    border-color: var(--action-soft-border-color);
+}
+.st-chip.warn { color: var(--warning-color); border-color: var(--warning-color); }
+
+/* 服务端健康度：信号格（对齐 connectionbutton.tsx 的 signal-bars 语汇）
+   4 格=强 / 3 格=良 / 2 格=降级 / 斜线=不可达 / -1=检测中呼吸。 */
+.st-signal {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 12px;
+    position: relative;
+    vertical-align: 1px;
+}
+.st-signal .bar {
+    width: 3px;
+    border-radius: 1px;
+    background: var(--border-color);
+    transition: background-color 0.15s;
+}
+.st-signal .bar:nth-child(1) { height: 4px; }
+.st-signal .bar:nth-child(2) { height: 6.5px; }
+.st-signal .bar:nth-child(3) { height: 9px; }
+.st-signal .bar:nth-child(4) { height: 12px; }
+.st-signal[data-level="4"] .bar { background: var(--success-color); }
+.st-signal[data-level="3"] .bar:nth-child(-n+3) { background: var(--success-color); }
+.st-signal[data-level="2"] .bar:nth-child(-n+2) { background: var(--warning-color); }
+.st-signal[data-level="0"] .bar { background: var(--border-color); }
+.st-signal[data-level="0"]::after {
+    content: "";
+    position: absolute;
+    inset: -2px -1px -2px -1px;
+    background: linear-gradient(
+        to top right,
+        transparent 46%,
+        var(--warning-color) 46%,
+        var(--warning-color) 54%,
+        transparent 54%
+    );
+}
+.st-signal[data-level="-1"] .bar {
+    background: var(--secondary-text-color);
+    animation: sig-pulse 1s ease-in-out infinite;
+}
+@keyframes sig-pulse {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 1; }
+}
+
+/* 卡尾：原型演示开关 + Check now（演示可达/不可达两态） */
+.srv-footer .row-ctrl { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.demo-tag { font-size: 10px; color: var(--grey-text-color); letter-spacing: 0.04em; }
+.seg.seg-mini { background: var(--surface-strong-color); }
+.seg.seg-mini button { font-size: 11px; padding: 3px 9px; color: var(--secondary-text-color); }
+.seg.seg-mini button.on { background: var(--surface-color); color: var(--main-text-color); box-shadow: 0 0 0 1px var(--border-soft-color); }
+
+/* 危险动作（Reset 这类不可逆/清状态的次要按钮） */
+.btn.danger { color: var(--error-color); }
+.btn.danger:hover { background: var(--hover-bg-color); color: var(--error-color); }
 
 /* ---------- 设置效果预览（右轨，§8.2 "show what the setting produces"） ---------- */
 

@@ -443,23 +443,25 @@
                 <div class="set-group">
                     <h2 class="set-group-title">Transport</h2>
                     <div class="radiocards grid2" id="sync-transports" style="max-width:880px">
-                        <div class="rc on" data-rc data-sync-dirty>
+                        <!-- 卡永远可点（真实代码契约：radio 永远可点，选不中=用户永远看不到该后端字段，死锁）。
+                             能否真正生效由下方 Backend 字段是否填全决定。 -->
+                        <div class="rc on" data-rc data-transport="folder" data-sync-dirty>
                             <span class="rc-flag">recommended</span>
                             <div class="rc-check"></div>
                             <div class="rc-name">Local folder</div>
                             <div class="rc-desc">commontext.json in a cloud-drive folder; picks up external changes.</div>
                         </div>
-                        <div class="rc blocked" data-rc data-sync-dirty>
+                        <div class="rc" data-rc data-transport="git" data-sync-dirty>
                             <div class="rc-check"></div>
                             <div class="rc-name">Git repository</div>
                             <div class="rc-desc">Private repo, periodic commits — real history, visible conflicts.<br><span class="warn-line">Set an access token first (Settings → Secrets).</span></div>
                         </div>
-                        <div class="rc blocked" data-rc data-sync-dirty>
+                        <div class="rc" data-rc data-transport="server" data-sync-dirty>
                             <div class="rc-check"></div>
                             <div class="rc-name">Self-hosted service</div>
                             <div class="rc-desc">Your own sync server over HTTP/WebSocket, token auth.<br><span class="warn-line">Enter the server URL and token first.</span></div>
                         </div>
-                        <div class="rc" data-rc data-sync-dirty>
+                        <div class="rc" data-rc data-transport="none" data-sync-dirty>
                             <div class="rc-check"></div>
                             <div class="rc-name">Off · local only</div>
                             <div class="rc-desc">No transport. Items stay on this machine.</div>
@@ -467,62 +469,329 @@
                     </div>
                 </div>
 
-                <div class="set-group">
-                    <h2 class="set-group-title">This device</h2>
-                    <div class="set-card" style="max-width:880px">
-                        <div class="set-row">
-                            <div class="row-text">
-                                <div class="row-title">Device name</div>
-                                <div class="row-desc">How this machine shows up in sync history.</div>
-                            </div>
-                            <div class="row-ctrl"><input class="set-input" value="nita-MBP" style="width:306px" data-sync-dirty></div>
+                <!-- Baseline 选择卡：从活动传输切到另一个（git/server）时出现 —— 两套数据相遇，必须明说哪边赢 -->
+                <div class="set-group" id="sync-baseline-group" style="display:none">
+                    <div class="sync-baseline">
+                        <div class="bl-title">Switching from <b>Local folder</b> to <b id="bl-target">Git repository</b></div>
+                        <div class="bl-desc">Both sides already hold data, and their revision numbers come from different transports so they cannot be compared. Pick which side to trust for items that differ — nothing is deleted either way.</div>
+                        <div class="bl-actions">
+                            <button class="btn" id="bl-local">This device wins</button>
+                            <button class="btn" id="bl-remote">Remote wins</button>
+                            <button class="btn text-btn" id="bl-cancel">Cancel</button>
+                            <span class="bl-note">Runs one full re-sync before saving</span>
                         </div>
-                        <div class="set-row">
-                            <div class="row-text">
-                                <div class="row-title">Cloud-drive folder</div>
-                                <div class="row-desc">Where commontext.json lives.</div>
-                            </div>
-                            <div class="row-ctrl joined">
-                                <input class="set-input mono" value="~/Library/Mobile Documents/iCloud/Snorkeling" data-sync-dirty>
-                                <button class="btn">Browse</button>
-                            </div>
-                        </div>
+                        <div class="bl-fine">This device wins — local items overwrite the remote; remote-only items are pulled in. Remote wins — remote items overwrite local; local-only items are pushed as new.</div>
                     </div>
                 </div>
 
-                <div class="set-group">
-                    <div class="acc" id="acc-sync-advanced">
-                        <div class="acc-head">▸ <span class="chev"></span> Advanced <span class="acc-sub">conflicts · git · server</span></div>
-                        <div class="acc-body" style="max-width:640px">
+                <!-- Backend：组标题与字段随所选传输切换（镜像 syncsettings.tsx 的 Backend 组） -->
+                <div class="set-group" id="sync-backend-group">
+                    <h2 class="set-group-title" id="sync-backend-title">Local folder</h2>
+                    <div class="set-card" style="max-width:880px">
+                        <div data-sync-backend="folder">
                             <div class="set-row">
                                 <div class="row-text">
-                                    <div class="row-title">Conflict policy</div>
-                                    <div class="row-desc">What happens when both sides changed an item.</div>
+                                    <div class="row-title">File path</div>
+                                    <div class="row-desc">commontext.json inside a synced folder. Writes use a temp file + atomic rename, so a reader never sees half a file.</div>
                                 </div>
-                                <div class="row-ctrl">
-                                    <div class="seg" style="background:var(--surface-strong-color)" data-sync-dirty>
-                                        <button class="on">Row merge</button><button>Newest</button><button>Manual</button>
-                                    </div>
+                                <div class="row-ctrl joined">
+                                    <input class="set-input mono" value="~/Library/Mobile Documents/iCloud/Snorkeling" data-sync-dirty>
+                                    <button class="btn">Browse</button>
                                 </div>
                             </div>
                             <div class="set-row">
                                 <div class="row-text">
-                                    <div class="row-title">Git commit interval</div>
-                                    <div class="row-desc">How often changes are committed.</div>
+                                    <div class="row-title">Watch for external changes</div>
+                                    <div class="row-desc">Refresh the list when another device (or the cloud client) changes the file.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <label class="switch"><input type="checkbox" checked data-sync-dirty><span class="track"></span></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div data-sync-backend="git" style="display:none">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Remote</div>
+                                    <div class="row-desc">Private repository. A failed push never blocks local use; the reason shows in the sync panel.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <input class="set-input mono" value="git@github.com:nita/snorkeling-sync.git" style="width:306px" data-sync-dirty>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Access token</div>
+                                    <div class="row-desc">Stored in the OS keyring, never in settings.json.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <button class="btn" data-token-btn>Configure token…</button>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Commit interval</div>
+                                    <div class="row-desc">Periodic commit + pull; Sync now in Status runs one immediately.</div>
                                 </div>
                                 <div class="row-ctrl">
                                     <div class="stepper" data-sync-dirty><button aria-label="decrease">−</button><span class="st-val">15</span><button aria-label="increase">+</button></div>
                                     <span class="st-unit">min</span>
                                 </div>
                             </div>
+                        </div>
+                        <div data-sync-backend="server" style="display:none">
                             <div class="set-row">
                                 <div class="row-text">
-                                    <div class="row-title">Server push mode</div>
-                                    <div class="row-desc">Realtime streams edits; on save batches them.</div>
+                                    <div class="row-title">Server URL</div>
+                                    <div class="row-desc">Include the scheme. For a LAN server use http://192.168.1.10:8787 and enable Allow insecure below.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <input class="set-input mono" value="https://sync.example.com" style="width:306px" data-sync-dirty>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Token</div>
+                                    <div class="row-desc">Server auth token, stored in the OS keyring.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <button class="btn" data-token-btn>Configure token…</button>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Push mode</div>
+                                    <div class="row-desc">Realtime uses WebSocket when available and falls back to polling.</div>
                                 </div>
                                 <div class="row-ctrl">
                                     <div class="seg" style="background:var(--surface-strong-color)" data-sync-dirty>
                                         <button class="on">Realtime</button><button>On save</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Allow insecure http://</div>
+                                    <div class="row-desc">Permits plaintext connections (LAN or self-signed). Keep this off on the public internet.</div>
+                                </div>
+                                <div class="row-ctrl">
+                                    <label class="switch"><input type="checkbox" data-sync-dirty><span class="track"></span></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div data-sync-backend="none" style="display:none">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Local only</div>
+                                    <div class="row-desc">No transport is configured. Items live in the local database and nothing is uploaded.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Server status：只在 Self-hosted service 出现。数据来自 /health → Probe（appVersion / protocolVersion / items / rev / requiresAuth / capabilities），
+                     同 `wsh commontext-sync doctor --json` 的检查项。
+                     状态用信号格图标（对齐 connectionbutton.tsx 的 signal-bars 语汇）：4 格=强，2 格=降级，斜线=不可达。 -->
+                <div class="set-group" id="sync-server-status-group" style="display:none">
+                    <h2 class="set-group-title">Server status <span class="st-signal" id="srv-signal" data-level="4" role="img" aria-label="reachable" title="reachable"><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span></span></h2>
+                    <div class="set-card" style="max-width:880px">
+                        <div data-srv-state="ok">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Version</div>
+                                    <div class="row-desc">Protocol version is the hard compatibility gate; app version is informational only.</div>
+                                </div>
+                                <div class="row-ctrl"><span class="mono-id mono">app 0.14.6 · protocol v1</span></div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Server data</div>
+                                    <div class="row-desc">Counted at the last check. Your local cursor sits behind until the next sync runs.</div>
+                                </div>
+                                <div class="row-ctrl"><span class="st-time">214 items · rev 3187</span></div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Auth</div>
+                                    <div class="row-desc">Token accepted. Capabilities: snapshot · push · incremental.</div>
+                                </div>
+                                <div class="row-ctrl"><span class="st-num ok">accepted</span></div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Realtime push</div>
+                                    <div class="row-desc">Not implemented on the server transport yet — edits go out on save, or on the next tick.</div>
+                                </div>
+                                <div class="row-ctrl"><span class="st-chip warn">not supported</span></div>
+                            </div>
+                        </div>
+                        <div data-srv-state="fair" style="display:none">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Degraded</div>
+                                    <div class="row-desc">Reachable but slow — last probe took 8.2s and 3 attempts timed out this hour. Sync keeps running on the normal interval.</div>
+                                </div>
+                                <div class="row-ctrl"><span class="st-num warn">slow</span></div>
+                            </div>
+                        </div>
+                        <div data-srv-state="fail" style="display:none">
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Unreachable</div>
+                                    <div class="row-desc">Could not connect to <span class="mono">https://sync.example.com</span> — last attempt 14:31. Retries on the normal interval; local edits keep working.</div>
+                                </div>
+                                <div class="row-ctrl"><span class="st-num warn">offline</span></div>
+                            </div>
+                            <div class="set-row">
+                                <div class="row-text">
+                                    <div class="row-title">Diagnose</div>
+                                    <div class="row-desc mono" style="user-select:all">wsh commontext-sync doctor --json</div>
+                                </div>
+                                <div class="row-ctrl"><button class="btn">Copy</button></div>
+                            </div>
+                        </div>
+                        <div class="set-row srv-footer">
+                            <div class="row-text">
+                                <div class="row-desc">Same checks the CLI runs — every failure carries an executable fix command.</div>
+                            </div>
+                            <div class="row-ctrl">
+                                <span class="demo-tag">原型演示</span>
+                                <div class="seg seg-mini" id="srv-demo">
+                                    <button class="on" data-srv-demo="ok">强</button>
+                                    <button data-srv-demo="fair">降级</button>
+                                    <button data-srv-demo="fail">不可达</button>
+                                </div>
+                                <button class="btn" id="srv-check-btn">Check now</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="set-group" id="sync-device-group">
+                    <h2 class="set-group-title">This device</h2>
+                    <div class="set-card" style="max-width:880px">
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Device name</div>
+                                <div class="row-desc">How this machine shows up in sync history. Renaming does not rewrite history — old items keep the name they were created with.</div>
+                            </div>
+                            <div class="row-ctrl"><input class="set-input" value="nita-MBP" style="width:306px" data-sync-dirty></div>
+                        </div>
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Device ID</div>
+                                <div class="row-desc">Generated once and never changes, so a renamed machine is still recognized as the same device.</div>
+                            </div>
+                            <div class="row-ctrl"><span class="mono-id mono" title="d-8f3a41c9b2e7a05c31f">d-8f3a41c9…</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="set-group" id="sync-status-group">
+                    <h2 class="set-group-title">Status <span class="live-chip"><span class="live-dot"></span>live</span></h2>
+                    <div class="set-card" style="max-width:880px">
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Last sync</div>
+                                <div class="row-desc">pulled 12 · applied 3 · pushed 0 — syncs every 15 min once configured.</div>
+                            </div>
+                            <div class="row-ctrl"><span class="st-time" id="status-last-time">14:32</span></div>
+                        </div>
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Waiting to upload</div>
+                                <div class="row-desc">Items the remote has not confirmed yet; the next sync sends them. Same signal as the orange dot in the Common Text list — 0 means everything is uploaded.</div>
+                            </div>
+                            <div class="row-ctrl"><span class="st-num warn" id="status-pending">3</span></div>
+                        </div>
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Unresolved conflicts</div>
+                                <div class="row-desc">Nothing to resolve. With conflicts: <span class="mono">wsh commontext-sync conflicts --copy</span> hands them to an AI.</div>
+                            </div>
+                            <div class="row-ctrl"><span class="st-num ok">0</span></div>
+                        </div>
+                        <div class="set-row">
+                            <div class="row-text">
+                                <div class="row-title">Sync now</div>
+                                <div class="row-desc">Run one sync immediately instead of waiting for the timer.</div>
+                            </div>
+                            <div class="row-ctrl"><button class="btn" id="sync-now-btn">Sync now</button></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 渐进式：低频组收进 Advanced 折叠，核心路径只剩 Transport → Backend → This device → Status → Save -->
+                <div class="set-group" id="sync-advanced-group">
+                    <div class="acc" id="acc-sync-advanced">
+                        <div class="acc-head">▸ <span class="chev"></span> Advanced <span class="acc-sub">conflicts · scope · maintenance</span></div>
+                        <div class="acc-body">
+                            <div class="subgroup">
+                                <h2 class="set-group-title">Conflicts</h2>
+                                <div class="set-card radio-list" style="max-width:880px">
+                                    <div class="radio-row on">
+                                        <span class="radio-dot"></span>
+                                        <div class="row-text">
+                                            <div class="row-title">Merge per row <span class="row-badge">recommended</span></div>
+                                            <div class="row-desc">Auto-merge when possible; only a same-field double edit becomes a conflict.</div>
+                                        </div>
+                                    </div>
+                                    <div class="radio-row">
+                                        <span class="radio-dot"></span>
+                                        <div class="row-text">
+                                            <div class="row-title">Newest wins</div>
+                                            <div class="row-desc">Take the newer updatedat and silently overwrite the older side.</div>
+                                        </div>
+                                    </div>
+                                    <div class="radio-row">
+                                        <span class="radio-dot"></span>
+                                        <div class="row-text">
+                                            <div class="row-title">Always ask</div>
+                                            <div class="row-desc">Stop and ask on every conflict; syncing stays paused until resolved.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="subgroup">
+                                <h2 class="set-group-title">Scope</h2>
+                                <div class="set-card" style="max-width:880px">
+                                    <div class="set-row disabled">
+                                        <div class="row-text">
+                                            <div class="row-title">Common Text</div>
+                                            <div class="row-desc">This release syncs Common Text only. Other domains (settings, notes, sessions) are out of scope.</div>
+                                        </div>
+                                        <div class="row-ctrl">
+                                            <label class="switch"><input type="checkbox" checked disabled><span class="track"></span></label>
+                                        </div>
+                                    </div>
+                                    <div class="set-row">
+                                        <div class="row-text">
+                                            <div class="row-title">Sync deletions (tombstones)</div>
+                                            <div class="row-desc">When off, a delete stays local and the other machine pushes the item back.</div>
+                                        </div>
+                                        <div class="row-ctrl">
+                                            <label class="switch"><input type="checkbox" checked data-sync-dirty><span class="track"></span></label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="subgroup">
+                                <h2 class="set-group-title">Maintenance</h2>
+                                <div class="set-card" style="max-width:880px">
+                                    <div class="set-row">
+                                        <div class="row-text">
+                                            <div class="row-title">Full re-sync</div>
+                                            <div class="row-desc">Ignore the local cursor and reconcile the whole remote snapshot once.</div>
+                                        </div>
+                                        <div class="row-ctrl"><button class="btn">Re-sync</button></div>
+                                    </div>
+                                    <div class="set-row">
+                                        <div class="row-text">
+                                            <div class="row-title">Reset sync state</div>
+                                            <div class="row-desc">Clears the local cursor and rev cache only. Items and the remote file are untouched.</div>
+                                        </div>
+                                        <div class="row-ctrl"><button class="btn danger">Reset</button></div>
                                     </div>
                                 </div>
                             </div>
