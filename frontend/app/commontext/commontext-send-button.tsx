@@ -6,31 +6,34 @@
 // 规则：只有 Agent Block（term + agent:* meta）才能作为「已存在」目标；其余组合都会新建 agent block，
 // 文本经 pending-input 排队，TUI 就绪后由 term 视图注入。
 
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import { useAgentReadContext } from "@/app/agent-status/use-agent-status-view";
-import { createPortal } from "react-dom";
-import { blockComponentModelMap } from "@/app/store/global-atoms";
 import { Button } from "@/app/element/button";
+import { SplitButton } from "@/app/element/splitbutton";
 import { AgentStatusChip } from "@/app/session-overview/agent-status-chip";
 import { filterSessionOverviewTabIds } from "@/app/session-overview/session-overview-model";
 import { atoms, createBlock, getApi } from "@/app/store/global";
+import { blockComponentModelMap } from "@/app/store/global-atoms";
 import { globalStore } from "@/app/store/jotaiStore";
 import { ObjectService } from "@/app/store/services";
 import * as WOS from "@/app/store/wos";
+import { stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
 import {
     createAgentBlockDefForProfile,
     getCurrentWorkspaceContextMeta,
-    getAgentProfileOptions,
     type AgentProfileOption,
 } from "@/app/workspace/agent-launch";
+import { useDetectedAgentProfileOptions } from "@/app/workspace/use-agent-profile-options";
 import { getLayoutModelForStaticTab } from "@/layout/index";
 import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import { fireAndForget } from "@/util/util";
+import { FloatingPortal, offset, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
+import clsx from "clsx";
 import { atom, useAtomValue } from "jotai";
 import * as React from "react";
-import { stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
 import { sendTextToFocusedTerm } from "./commontext-insert";
-import { registerPendingInput } from "./pending-input";
 import {
     collectFolderCandidates,
     defaultSendFolder,
@@ -40,6 +43,7 @@ import {
     type FolderCandidate,
     type SendTabSelection,
 } from "./commontext-send-target";
+import { registerPendingInput } from "./pending-input";
 
 // ───────────────────────── 共享配置（弹窗内多处 Send 共用） ─────────────────────────
 
@@ -61,11 +65,6 @@ export type SendStatusKind = "info" | "ok" | "err";
 export type SendStatusHandler = (message: string, kind?: SendStatusKind) => void;
 
 const DefaultRuntimeOpts: RuntimeOpts = { termsize: { rows: 25, cols: 80 } };
-
-/** popover 挂 body：.modal 有 overflow:hidden，inline 渲染会被截断。 */
-function Portal({ children }: { children: React.ReactNode }): React.ReactPortal {
-    return createPortal(children, document.body);
-}
 
 // ───────────────────────── 派生 atoms ─────────────────────────
 
@@ -226,13 +225,7 @@ export async function executeCommonTextSend(input: {
             blockId = await createBlock(blockDef, false);
         } else if (config.tab.kind === "existing") {
             const targetTabId = config.tab.tabId;
-            blockId = await ObjectService.CreateBlockInTab(
-                targetTabId,
-                blockDef,
-                DefaultRuntimeOpts,
-                true,
-                false
-            );
+            blockId = await ObjectService.CreateBlockInTab(targetTabId, blockDef, DefaultRuntimeOpts, true, false);
             getApi().setActiveTab(targetTabId);
         } else {
             const workspace = globalStore.get(atoms.workspace);
@@ -300,56 +293,72 @@ const AgentMiniCard = ({ info }: { info: AgentBlockInfo }) => {
     );
 };
 
-const popoverShellClass =
-    "fixed z-[var(--zindex-tooltip,1000)] w-[380px] max-w-[92vw] rounded-[10px] border border-border bg-modalbg shadow-[0_16px_40px_rgba(0,0,0,0.4)] p-2 flex flex-col gap-0.5";
+const sectionHeadClass = "flex items-center gap-1.5 text-xxs text-muted mb-1.5";
 
-const sectionHeadClass = "flex items-center gap-1.5 px-1.5 pb-1.5 text-[10.5px] uppercase tracking-wider text-muted";
+const menuItemClass =
+    "split-menu-item flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-left text-[12px] cursor-pointer bg-transparent border-0 text-[color:var(--main-text-color)] hover:bg-hoverbg";
 
-/** Type（Tab）候选行 + Folder 候选行共用的下拉菜单 */
-function PickerMenu(props: {
+// ─── 面板内下拉（Type / Folder 二级菜单） ───
+// 面板本体（SplitButton 弹层）带 max-height + overflow:auto，绝对定位子元素会被裁剪，
+// 所以二级菜单自己走 FloatingPortal（body 上无定位容器，zIndex 1001 稳定在面板之上）。
+// 挂在面板 children 里（React 树内）→ 面板的 useDismiss outsidePress 拿得到 insideReactTree，
+// 点二级菜单不会误关面板；Escape 在这里拦截（stopPropagation），只关本级菜单。
+function AnchoredMenu(props: {
     open: boolean;
-    anchorRect: DOMRect | null;
+    anchor: HTMLElement | null;
+    label: string;
     onClose: () => void;
     children: React.ReactNode;
 }) {
-    if (!props.open || props.anchorRect == null) return null;
-    const top = Math.min(props.anchorRect.bottom + 6, window.innerHeight - 240);
-    const left = Math.max(8, Math.min(props.anchorRect.left, window.innerWidth - 392));
+    const { refs, floatingStyles, context } = useFloating({
+        open: props.open,
+        onOpenChange: (open) => {
+            if (!open) props.onClose();
+        },
+        placement: "bottom-start",
+        strategy: "fixed",
+        elements: { reference: props.anchor },
+        middleware: [offset(6)],
+    });
+    // Escape 由下方 onKeyDown 手动处理（要 stopPropagation，避免连面板一起关）
+    const dismiss = useDismiss(context, { escapeKey: false, outsidePress: true });
+    const { getFloatingProps } = useInteractions([dismiss]);
+    if (!props.open || props.anchor == null) return null;
     return (
-        <Portal>
-            <div className="fixed inset-0" onClick={props.onClose} onContextMenu={(e) => { e.preventDefault(); props.onClose(); }}>
-                <div
-                    className={popoverShellClass}
-                    style={{ top, left }}
-                    onClick={(e) => e.stopPropagation()}
-                    data-commontext-send-picker=""
-                >
-                    {props.children}
-                </div>
+        <FloatingPortal>
+            <div
+                ref={refs.setFloating}
+                role="menu"
+                aria-label={props.label}
+                data-commontext-send-picker=""
+                className="rounded-lg border border-border/70 bg-modalbg/95 backdrop-blur-2xl shadow-2xl p-1 flex flex-col gap-0.5 max-h-[280px] overflow-y-auto overflow-x-hidden"
+                style={{ ...floatingStyles, zIndex: 1001, width: "min(360px, 92vw)" }}
+                onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        props.onClose();
+                    }
+                }}
+                {...getFloatingProps()}
+            >
+                {props.children}
             </div>
-        </Portal>
+        </FloatingPortal>
     );
 }
 
-const menuItemClass =
-    "flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-left text-[12px] hover:bg-hoverbg cursor-pointer bg-transparent border-0 text-[color:var(--main-text-color)]";
+// ─── Send 目标面板（挂在 SplitButton 弹层内） ───
 
-// ─── Send 目标 popover ───
-
-function SendTargetPopover(props: {
-    anchorRect: DOMRect;
-    text: string;
-    onSent: () => void;
-    onStatus: SendStatusHandler;
-    onClose: () => void;
-}) {
+function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: SendStatusHandler; close: () => void }) {
     const [config, setConfig] = useAtomConfig();
+    const personaMap = useAgentPersonas();
     const focusedAgent = useAtomValue(focusedAgentBlockInfoAtom);
     const settings = useAtomValue(atoms.settingsAtom);
     const tabCandidates = useAtomValue(sendTabCandidatesAtom);
-    const profiles = React.useMemo(() => getAgentProfileOptions(settings), [settings]);
+    const profiles = useDetectedAgentProfileOptions(settings);
     const [menuOpen, setMenuOpen] = React.useState<"tab" | "folder" | null>(null);
-    const [menuAnchor, setMenuAnchor] = React.useState<DOMRect | null>(null);
+    const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
 
     const workspaceCwd = getWorkspaceContextCwd();
     const homeDir = getHomeDir();
@@ -363,13 +372,21 @@ function SendTargetPopover(props: {
     });
 
     const openMenu = (kind: "tab" | "folder", event: React.MouseEvent<HTMLElement>) => {
-        setMenuAnchor(event.currentTarget.getBoundingClientRect());
+        setMenuAnchor(event.currentTarget);
         setMenuOpen(kind);
     };
 
+    const closeMenu = () => setMenuOpen(null);
+
     const doSend = () => {
         fireAndForget(async () => {
-            const ok = await executeCommonTextSend({ text: props.text, config, focusedAgent, profiles, onStatus: props.onStatus });
+            const ok = await executeCommonTextSend({
+                text: props.text,
+                config,
+                focusedAgent,
+                profiles,
+                onStatus: props.onStatus,
+            });
             if (ok) props.onSent();
         });
     };
@@ -377,193 +394,235 @@ function SendTargetPopover(props: {
     const currentTabName = tabCandidates.find((t) => t.isCurrent)?.name;
     const selectedTabName =
         config.tab.kind === "current"
-            ? currentTabName ?? "当前 Tab"
+            ? (currentTabName ?? "当前 Tab")
             : config.tab.kind === "new"
               ? "新 Tab"
-              : tabCandidates.find((t) => t.tabId === (config.tab as { tabId: string }).tabId)?.name ?? "Tab";
+              : (tabCandidates.find((t) => t.tabId === (config.tab as { tabId: string }).tabId)?.name ?? "Tab");
 
     return (
-        <Portal>
-            <div className="fixed inset-0" onClick={props.onClose} onContextMenu={(e) => { e.preventDefault(); props.onClose(); }}>
-                <div
-                    className={popoverShellClass}
-                    style={{
-                        top: Math.min(props.anchorRect.bottom + 6, window.innerHeight - 300),
-                        right: Math.max(8, window.innerWidth - props.anchorRect.right),
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    data-commontext-send-popover
-                >
-                    {/* 1. 聚焦 Agent Block */}
-                    <div className="px-1 pb-1">
-                        <div className={sectionHeadClass}>
-                            <i className="fa-solid fa-crosshairs text-[9px]" />
-                            聚焦的 Agent Block
-                            <span className="ml-auto font-mono normal-case tracking-normal">已存在</span>
+        <div className="flex flex-col gap-0.5" data-commontext-send-popover>
+            {/* 1. 聚焦 Agent Block */}
+            <div className="px-2.5 pt-2 pb-1.5">
+                <div className={sectionHeadClass}>
+                    <i className="fa-solid fa-crosshairs text-[9px]" />
+                    聚焦的 Agent Block
+                    <span className="ml-auto font-mono normal-case tracking-normal">已存在</span>
+                </div>
+                {focusedAgent != null ? (
+                    <button
+                        type="button"
+                        className={menuItemClass + (preview.kind === "existing" ? " bg-actionsoft" : "")}
+                        onClick={() => setConfig({ profile: null, tab: { kind: "current" }, folder: null })}
+                        title="使用聚焦块：Agent / Type / Folder 三项跟随聚焦块"
+                    >
+                        <div className="min-w-0 flex-1">
+                            <AgentMiniCard info={focusedAgent} />
                         </div>
-                        {focusedAgent != null ? (
-                            <button
-                                type="button"
-                                className={menuItemClass + (preview.kind === "existing" ? " bg-actionsoft" : "")}
-                                onClick={() =>
-                                    setConfig({ profile: null, tab: { kind: "current" }, folder: null })
-                                }
-                                title="使用聚焦块：Agent / Type / Folder 三项跟随聚焦块"
-                            >
-                                <div className="min-w-0 flex-1">
-                                    <AgentMiniCard info={focusedAgent} />
-                                </div>
-                                <i
-                                    className={
-                                        "fa-solid fa-check text-[11px] text-accent " +
-                                        (preview.kind === "existing" ? "" : "invisible")
-                                    }
-                                />
-                            </button>
-                        ) : (
-                            <>
-                                <div className="px-2 py-2 text-[11.5px] text-muted">
-                                    当前聚焦块不是 Agent Block — 不可直接发送
-                                </div>
-                                <div className="mx-1 mb-1 flex items-start gap-2 rounded-md border border-[color-mix(in_srgb,var(--error-color,orange)_26%,transparent)] bg-[color-mix(in_srgb,var(--error-color,orange)_10%,transparent)] px-2 py-1.5 text-[11px] text-[color:var(--error-color,orange)]">
-                                    <i className="fa-solid fa-triangle-exclamation text-[10px] mt-0.5" />
-                                    <span>请用下方选择 Agents / Type / Folder 新建一个 Agent Block。</span>
-                                </div>
-                            </>
-                        )}
-                    </div>
+                        <i
+                            className={
+                                "fa-solid fa-check text-[11px] text-accent " +
+                                (preview.kind === "existing" ? "" : "invisible")
+                            }
+                        />
+                    </button>
+                ) : (
+                    <>
+                        <div className="px-2 py-2 text-[11.5px] text-muted">
+                            当前聚焦块不是 Agent Block — 不可直接发送
+                        </div>
+                        <div className="mx-1 mb-1 flex items-start gap-2 rounded-md border border-[color-mix(in_srgb,var(--error-color,orange)_26%,transparent)] bg-[color-mix(in_srgb,var(--error-color,orange)_10%,transparent)] px-2 py-1.5 text-[11px] text-[color:var(--error-color,orange)]">
+                            <i className="fa-solid fa-triangle-exclamation text-[10px] mt-0.5" />
+                            <span>请用下方选择 Agents / Type / Folder 新建一个 Agent Block。</span>
+                        </div>
+                    </>
+                )}
+            </div>
 
-                    {/* 2. 选择 Agents */}
-                    <div className="px-1 pb-1 border-t border-border-soft">
-                        <div className={sectionHeadClass}>
-                            <i className="fa-solid fa-robot text-[9px]" />
-                            选择 Agents
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 px-0.5">
-                            {profiles.map((profile) => (
+            {/* 2. 选择 Agents（样式对齐 New Agent 弹窗的 agent 选择行：左强调条 + 图标 + 默认勾） */}
+            <div className="px-2.5 pt-2 pb-1.5 border-t border-border/60">
+                <div className={sectionHeadClass}>
+                    <i className="fa-solid fa-robot text-[9px]" />
+                    选择 Agents
+                </div>
+                <div className="flex flex-wrap gap-0.5 px-0.5">
+                    {profiles.map((profile) => {
+                        const isSelected = preview.profileName === profile.name;
+                        const iconSpec = getAgentIcon(profile.name, { personas: personaMap });
+                        return (
+                            <div
+                                key={profile.name}
+                                className={clsx(
+                                    "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
+                                    isSelected ? "bg-accent/12 relative" : "hover:bg-surface-soft"
+                                )}
+                            >
+                                {isSelected ? (
+                                    <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" />
+                                ) : null}
                                 <button
-                                    key={profile.name}
                                     type="button"
-                                    className={
-                                        "text-[11.5px] px-2 py-1 rounded-md border cursor-pointer " +
-                                        (preview.profileName === profile.name
-                                            ? "bg-actionsoft text-accent border-[color-mix(in_srgb,var(--accent-color)_34%,transparent)]"
-                                            : "bg-surface-soft text-secondary border-border-soft hover:text-[color:var(--main-text-color)]")
-                                    }
+                                    className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-1 rounded-l-md text-xs font-medium border-none bg-transparent cursor-pointer"
                                     onClick={() => setConfig({ ...config, profile: profile.name })}
                                     title={profile.isDefault ? `${profile.label}（default）` : profile.label}
+                                    aria-pressed={isSelected}
                                 >
-                                    {profile.label}
-                                    {profile.isDefault ? <i className="fa-solid fa-star text-[9px] ml-1 text-[color:var(--error-color,orange)]" /> : null}
+                                    <span
+                                        className={clsx(
+                                            "shrink-0 flex items-center justify-center transition-colors",
+                                            isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
+                                        )}
+                                    >
+                                        {iconSpec == null ? null : iconSpec.kind === "emoji" ? (
+                                            <span className="agent-emoji-icon">{iconSpec.emoji}</span>
+                                        ) : (
+                                            iconSpec.icon
+                                        )}
+                                    </span>
+                                    <span
+                                        className={clsx(
+                                            isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
+                                        )}
+                                    >
+                                        {profile.label}
+                                    </span>
                                 </button>
-                            ))}
-                            {profiles.length === 0 ? (
-                                <span className="text-[11.5px] text-muted py-1">未探测到可用 agent</span>
-                            ) : null}
-                        </div>
-                    </div>
-
-                    {/* 3. 选择 Type（Tab） */}
-                    <div className="px-1 pb-1 border-t border-border-soft">
-                        <div className={sectionHeadClass}>
-                            <i className="fa-solid fa-table-columns text-[9px]" />
-                            选择 Type
-                            <span className="ml-auto font-mono normal-case tracking-normal">默认 = 当前 Tab</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 px-0.5">
-                            <button
-                                type="button"
-                                className="flex-1 min-w-0 flex items-center gap-2 text-[12px] px-2 py-1.5 rounded-md border border-border-soft bg-surface-soft hover:border-border cursor-pointer"
-                                onClick={(e) => openMenu("tab", e)}
-                                title="选择目标 Tab"
-                            >
-                                <i className="fa-solid fa-table-columns text-[10px] text-secondary" />
-                                <span className="truncate">{selectedTabName}</span>
                                 <span
-                                    className={
-                                        "text-[9.5px] px-1.5 py-px rounded-full " +
-                                        (config.tab.kind === "current"
-                                            ? "bg-actionsoft text-accent"
-                                            : "bg-surface-soft text-muted")
-                                    }
+                                    className={clsx(
+                                        "w-5 h-5 shrink-0 inline-flex items-center justify-center",
+                                        profile.isDefault ? "text-accent" : "text-transparent"
+                                    )}
+                                    aria-label={profile.isDefault ? "default agent" : undefined}
+                                    title={profile.isDefault ? "默认 agent" : undefined}
                                 >
-                                    {config.tab.kind === "current" ? "当前" : config.tab.kind === "new" ? "新建" : "已存在"}
+                                    {profile.isDefault ? <i className="fa-solid fa-check text-[10px]" /> : null}
                                 </span>
-                                <i className="fa-solid fa-chevron-down text-[9px] text-muted ml-auto" />
-                            </button>
-                            <button
-                                type="button"
-                                className="h-[32px] w-[32px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer"
-                                onClick={() => setConfig({ ...config, tab: { kind: "new" } })}
-                                title="新建 Tab"
-                            >
-                                <i className="fa-solid fa-plus" />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* 4. 选择 Folder（cwd） */}
-                    <div className="px-1 pb-1 border-t border-border-soft">
-                        <div className={sectionHeadClass}>
-                            <i className="fa-solid fa-folder-open text-[9px]" />
-                            选择 Folder
-                            <span className="ml-auto font-mono normal-case tracking-normal">默认 = 聚焦块目录</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 px-0.5">
-                            <button
-                                type="button"
-                                className="flex-1 min-w-0 flex items-center gap-2 text-[12px] px-2 py-1.5 rounded-md border border-border-soft bg-surface-soft hover:border-border cursor-pointer"
-                                onClick={(e) => openMenu("folder", e)}
-                                title="选择项目目录（cwd）"
-                            >
-                                <i className="fa-solid fa-folder text-[10px] text-secondary" />
-                                <span className="truncate font-mono text-[11px]">{preview.folder || "继承工作区目录"}</span>
-                                <span
-                                    className={
-                                        "text-[9.5px] px-1.5 py-px rounded-full " +
-                                        (config.folder == null ? "bg-actionsoft text-accent" : "bg-surface-soft text-muted")
-                                    }
-                                >
-                                    {config.folder == null ? "跟随" : "已选"}
-                                </span>
-                                <i className="fa-solid fa-chevron-down text-[9px] text-muted ml-auto" />
-                            </button>
-                            <button
-                                type="button"
-                                className="h-[32px] w-[32px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer"
-                                onClick={() => browseFolder(setConfig, config, props.onStatus)}
-                                title="浏览其他目录…"
-                            >
-                                <i className="fa-solid fa-ellipsis" />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* 5. 确认行 */}
-                    <div className="flex items-center gap-2 px-1.5 pt-2 border-t border-border-soft">
-                        <span className="min-w-0 flex-1 text-[10.5px] text-muted truncate">
-                            目标 ={" "}
-                            <b className="font-medium text-secondary">
-                                {preview.kind === "existing" ? "聚焦块（已存在）" : "新建"}
-                                {preview.kind === "create" && preview.cwd ? ` · ${preview.cwd}` : ""}
-                            </b>
-                        </span>
-                        <Button className="grey" onClick={props.onClose}>
-                            取消
-                        </Button>
-                        <Button className="green" onClick={doSend} disabled={preview.profileName == null} title={preview.label}>
-                            <i className="fa-solid fa-paper-plane mr-1" />
-                            发送
-                        </Button>
-                    </div>
+                            </div>
+                        );
+                    })}
+                    {profiles.length === 0 ? (
+                        <span className="text-[11.5px] text-muted py-1">未探测到可用 agent</span>
+                    ) : null}
                 </div>
             </div>
 
-            {/* Type / Folder 的二级下拉 */}
-            <PickerMenu
+            {/* 3. 选择 Type（Tab） */}
+            <div className="px-2.5 pt-2 pb-1.5 border-t border-border/60">
+                <div className={sectionHeadClass}>
+                    <i className="fa-solid fa-table-columns text-[9px]" />
+                    选择 Type
+                    <span className="ml-auto font-mono normal-case tracking-normal">默认 = 当前 Tab</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-0.5">
+                    <button
+                        type="button"
+                        className="flex-1 min-w-0 flex items-center gap-2 text-[12px] px-2 py-1.5 rounded-md border border-border/60 bg-surface-soft hover:border-border cursor-pointer"
+                        onClick={(e) => (menuOpen === "tab" ? closeMenu() : openMenu("tab", e))}
+                        onKeyDown={(e) => {
+                            if (e.key === "Escape" && menuOpen === "tab") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                closeMenu();
+                            }
+                        }}
+                        title="选择目标 Tab"
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen === "tab"}
+                    >
+                        <i className="fa-solid fa-table-columns text-[10px] text-secondary" />
+                        <span className="truncate">{selectedTabName}</span>
+                        <span
+                            className={
+                                "text-[9.5px] px-1.5 py-px rounded-full " +
+                                (config.tab.kind === "current"
+                                    ? "bg-actionsoft text-accent"
+                                    : "bg-surface-soft text-muted")
+                            }
+                        >
+                            {config.tab.kind === "current" ? "当前" : config.tab.kind === "new" ? "新建" : "已存在"}
+                        </span>
+                        <i className="fa-solid fa-chevron-down text-[9px] text-muted ml-auto" />
+                    </button>
+                    <button
+                        type="button"
+                        className="h-[32px] w-[32px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer"
+                        onClick={() => setConfig({ ...config, tab: { kind: "new" } })}
+                        title="新建 Tab"
+                    >
+                        <i className="fa-solid fa-plus" />
+                    </button>
+                </div>
+            </div>
+
+            {/* 4. 选择 Folder（cwd） */}
+            <div className="px-2.5 pt-2 pb-1.5 border-t border-border/60">
+                <div className={sectionHeadClass}>
+                    <i className="fa-solid fa-folder-open text-[9px]" />
+                    选择 Folder
+                    <span className="ml-auto font-mono normal-case tracking-normal">默认 = 聚焦块目录</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-0.5">
+                    <button
+                        type="button"
+                        className="flex-1 min-w-0 flex items-center gap-2 text-[12px] px-2 py-1.5 rounded-md border border-border/60 bg-surface-soft hover:border-border cursor-pointer"
+                        onClick={(e) => (menuOpen === "folder" ? closeMenu() : openMenu("folder", e))}
+                        onKeyDown={(e) => {
+                            if (e.key === "Escape" && menuOpen === "folder") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                closeMenu();
+                            }
+                        }}
+                        title="选择项目目录（cwd）"
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen === "folder"}
+                    >
+                        <i className="fa-solid fa-folder text-[10px] text-secondary" />
+                        <span className="truncate font-mono text-[11px]">{preview.folder || "继承工作区目录"}</span>
+                        <span
+                            className={
+                                "text-[9.5px] px-1.5 py-px rounded-full " +
+                                (config.folder == null ? "bg-actionsoft text-accent" : "bg-surface-soft text-muted")
+                            }
+                        >
+                            {config.folder == null ? "跟随" : "已选"}
+                        </span>
+                        <i className="fa-solid fa-chevron-down text-[9px] text-muted ml-auto" />
+                    </button>
+                    <button
+                        type="button"
+                        className="h-[32px] w-[32px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer"
+                        onClick={() => browseFolder(setConfig, config, props.onStatus)}
+                        title="浏览其他目录…"
+                    >
+                        <i className="fa-solid fa-ellipsis" />
+                    </button>
+                </div>
+            </div>
+
+            {/* 5. 确认行 */}
+            <div className="flex items-center gap-2 px-2.5 py-2 border-t border-border/60">
+                <span className="min-w-0 flex-1 text-[10.5px] text-muted truncate">
+                    目标 ={" "}
+                    <b className="font-medium text-secondary">
+                        {preview.kind === "existing" ? "聚焦块（已存在）" : "新建"}
+                        {preview.kind === "create" && preview.cwd ? ` · ${preview.cwd}` : ""}
+                    </b>
+                </span>
+                <Button className="grey" onClick={props.close}>
+                    取消
+                </Button>
+                <Button className="green" onClick={doSend} disabled={preview.profileName == null} title={preview.label}>
+                    <i className="fa-solid fa-paper-plane mr-1" />
+                    发送
+                </Button>
+            </div>
+
+            {/* Type / Folder 的二级下拉（portal 到 body，zIndex 1001，不被面板 overflow 裁剪） */}
+            <AnchoredMenu
                 open={menuOpen === "tab"}
-                anchorRect={menuAnchor}
-                onClose={() => setMenuOpen(null)}
+                anchor={menuOpen === "tab" ? menuAnchor : null}
+                label="选择目标 Tab"
+                onClose={closeMenu}
             >
                 {tabCandidates.map((tab) => (
                     <button
@@ -576,31 +635,33 @@ function SendTargetPopover(props: {
                                 ...config,
                                 tab: tab.isCurrent ? { kind: "current" } : { kind: "existing", tabId: tab.tabId },
                             });
-                            setMenuOpen(null);
+                            closeMenu();
                         }}
                     >
                         <i className="fa-regular fa-square text-[10px] text-secondary" />
                         <span className="truncate">{tab.name}</span>
-                        <span className="ml-auto text-[10px] text-muted font-mono">{tab.isCurrent ? "当前" : "已存在"}</span>
+                        <span className="ml-auto text-[10px] text-muted font-mono">
+                            {tab.isCurrent ? "当前" : "已存在"}
+                        </span>
                     </button>
                 ))}
                 <button
                     type="button"
-                    className={menuItemClass + " border-t border-border-soft mt-1 pt-1.5"}
+                    className={menuItemClass + " border-t border-border/60 mt-1 pt-1.5"}
                     onClick={() => {
                         setConfig({ ...config, tab: { kind: "new" } });
-                        setMenuOpen(null);
+                        closeMenu();
                     }}
                 >
                     <i className="fa-solid fa-plus text-[10px] text-secondary" />
                     <span>新建 Tab</span>
-                    <i className="fa-solid fa-check text-[10px] ml-auto text-accent invisible" />
                 </button>
-            </PickerMenu>
-            <PickerMenu
+            </AnchoredMenu>
+            <AnchoredMenu
                 open={menuOpen === "folder"}
-                anchorRect={menuAnchor}
-                onClose={() => setMenuOpen(null)}
+                anchor={menuOpen === "folder" ? menuAnchor : null}
+                label="选择项目目录"
+                onClose={closeMenu}
             >
                 {folderCandidates.map((candidate) => (
                     <button
@@ -609,7 +670,7 @@ function SendTargetPopover(props: {
                         className={menuItemClass}
                         onClick={() => {
                             setConfig({ ...config, folder: candidate.path });
-                            setMenuOpen(null);
+                            closeMenu();
                         }}
                     >
                         <i className="fa-regular fa-folder text-[10px] text-secondary" />
@@ -620,8 +681,8 @@ function SendTargetPopover(props: {
                 {folderCandidates.length === 0 ? (
                     <span className="px-2 py-1.5 text-[11px] text-muted">无可用目录</span>
                 ) : null}
-            </PickerMenu>
-        </Portal>
+            </AnchoredMenu>
+        </div>
     );
 }
 
@@ -664,8 +725,12 @@ function useAtomConfig(): [CommontextSendConfig, (config: CommontextSendConfig) 
 }
 
 /**
- * Send split button：主键按当前配置直接发送；caret 打开目标选择 popover。
+ * Send split button：主段按当前配置直接发送；caret 段打开目标选择面板。
  * 弹窗内多处共用一个配置 atom（commontextSendConfigAtom）。
+ *
+ * 历史 bug（2026-11-11）：旧实现自建 <div class="fixed inset-0"> 遮罩把弹层挂 body，
+ * 遮罩 position:fixed + z-index:auto 自成层叠上下文，把内部 z-1000 困在 .modal-wrapper(z:500)
+ * 之下 → 弹层开了但完全看不见/不可点。现改为 SplitButton（floating-ui，无定位 body 容器）。
  */
 export const CommontextSendButton = ({
     text,
@@ -677,12 +742,10 @@ export const CommontextSendButton = ({
     onStatus: SendStatusHandler;
 }) => {
     const [popoverOpen, setPopoverOpen] = React.useState(false);
-    const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null);
-    const buttonRef = React.useRef<HTMLDivElement | null>(null);
     const config = useAtomValue(commontextSendConfigAtom);
     const focusedAgent = useAtomValue(focusedAgentBlockInfoAtom);
     const settings = useAtomValue(atoms.settingsAtom);
-    const profiles = React.useMemo(() => getAgentProfileOptions(settings), [settings]);
+    const profiles = useDetectedAgentProfileOptions(settings);
     const preview = React.useMemo(
         () => previewSendTarget({ config, focusedAgent, profiles, workspaceCwd: getWorkspaceContextCwd() }),
         [config, focusedAgent, profiles]
@@ -695,43 +758,25 @@ export const CommontextSendButton = ({
         });
     };
 
-    const openPopover = () => {
-        if (buttonRef.current != null) {
-            setAnchorRect(buttonRef.current.getBoundingClientRect());
-        }
-        setPopoverOpen(true);
-    };
-
     return (
-        <div ref={buttonRef} className="inline-flex" data-commontext-send-button>
-            <Button
-                className="grey rounded-r-none border-r-0"
-                onClick={quickSend}
-                title={`Send（${preview.label}）— 点右侧箭头选择目标`}
-                disabled={preview.profileName == null && preview.kind === "create"}
-            >
-                <i className="fa-solid fa-paper-plane mr-1" />
-                Send
-            </Button>
-            <Button
-                className="grey rounded-l-none"
-                onClick={openPopover}
-                title="选择 Agent / Type / Folder"
-                aria-label="选择发送目标"
-                aria-haspopup="menu"
-                aria-expanded={popoverOpen}
-            >
-                <i className="fa-solid fa-chevron-down text-[9px]" />
-            </Button>
-            {popoverOpen && anchorRect != null ? (
-                <SendTargetPopover
-                    anchorRect={anchorRect}
-                    text={text}
-                    onSent={onSent}
-                    onStatus={onStatus}
-                    onClose={() => setPopoverOpen(false)}
-                />
-            ) : null}
+        <div className="inline-flex" data-commontext-send-button>
+            <SplitButton
+                icon={<i className="fa-solid fa-paper-plane" />}
+                label="Send"
+                onPrimaryClick={quickSend}
+                primaryTitle={`Send（${preview.label}）— 点右侧箭头选择目标`}
+                primaryDisabled={preview.profileName == null && preview.kind === "create"}
+                caretTitle="选择 Agent / Type / Folder"
+                caretAriaLabel="选择发送目标"
+                open={popoverOpen}
+                onOpenChange={setPopoverOpen}
+                menuLabel="发送目标"
+                menuWidth={380}
+                menuClassName="commontext-send-target-panel"
+                render={({ close }) => (
+                    <SendTargetPanel text={text} onSent={onSent} onStatus={onStatus} close={close} />
+                )}
+            />
         </div>
     );
 };

@@ -244,3 +244,25 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
   aisessions 列表是虚拟化的，目标行不在视口里时 `row.click()` 直接落空）。
 - **多窗口时按"轨数→块数→面积"挑 renderer。** 用户多开窗口时会有多个 page target，最小化窗口 `innerWidth=0`，
   `pickLiveRenderer` 只按块数选可能选到没有目标元素的窗口；选择器探测成功的窗口优先。
+
+## 踩坑记录（2026-11-11, CommonText Send 目标选择器）
+
+- **合成 `.click()` 会假绿 + elementFromPoint 才是"真看见了"。** 旧台子全部用 `element.click()` 断言 DOM 存在性，
+  结果弹层被 `.modal-wrapper` 整个盖住（真实用户完全看不见）时 14/14 全绿。判定"弹层真的可见可点"必须两件一起：
+  ① 真实指针（`Input.dispatchMouseEvent` mouseMoved→Pressed→Released，见 `realClick()`）；
+  ② 命中测试 `document.elementFromPoint(x,y)` 返回的元素必须 `弹层元素.contains(hit)`。
+  只断言"DOM 节点存在"的台子一律视为假绿。
+- **`position:fixed` + `z-index:auto` 的全屏遮罩会困死内部弹层的 z-index。** 自建
+  `<div class="fixed inset-0">` 当点击关闭遮罩（挂 body），它自成层叠上下文，内部 shell 写 `z-1000`
+  也逃不出去；而 `.modal-wrapper` 是 `position:fixed; z-index:500`（var(--zindex-modal-wrapper)），
+  在 body 层叠上下文里直接压过遮罩 → 弹层永远压在弹窗下面。正解：用 floating-ui 的 `FloatingPortal`
+  （它追加到 body 的是**无定位样式**的普通 div，不是层叠上下文，floating 子元素 zIndex 1000 直接参与
+  body 层叠）+ `useDismiss` 管外点关闭，**不要自建全屏遮罩**。新控件：`frontend/app/element/splitbutton.tsx`。
+- **真实点击的探针会撞上「Electron 窗口被遮挡 → visibilityState=hidden」**：renderer 页面
+  `visibilityState === "hidden"` 时 CDP `Input.dispatchMouseEvent` 根本不投递（探针里挂 window 捕获监听
+  收不到任何事件），但 `element.click()` 合成点击照常生效——又一个"合成绿、真实红"的放大器。
+  真实指针断言前先探 `document.visibilityState`，hidden 时把窗口带前置（或换未被遮挡的实例）。
+- **verify 实例与 `npm run build:prod` 不要并行。** 两者共用源码/构建管线，并行时 vite dev（51799）
+  卡死到 curl 000、renderer 空白、`initPromise timed out`，看起来像"实例起不来"，其实是 CPU/IO 打满。
+  排查顺序：先 `curl http://127.0.0.1:<vite>`，000 就查有没有并行构建/其他重活在跑（Get-Process node 按 CPU 排序），
+  杀掉后重起一轮；连续失败两次以上先停手，别让子代理无限重试。
