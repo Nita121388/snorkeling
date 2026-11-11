@@ -1,8 +1,8 @@
 # CommonText Send → 选择 Agent / Block 直接建块
 
-> 同步状态：● 已落地（2026-11-10，`frontend/app/commontext/commontext-send-button.tsx` + `pending-input.ts` + `term.tsx`）
-> 镜像源：frontend/app/commontext/commontext-compose-modal.tsx, frontend/app/workspace/agent-launch.ts, frontend/app/modals/agentcardmodal.tsx, frontend/app/view/term/agent-hover-card.tsx
-> 最后同步：2026-11-10
+> 同步状态：◐ 部分落地（发送链路 / 目标二选一 / Agents logo 行已落地；**发送时机 = 原型中，未实现**）
+> 镜像源：frontend/app/commontext/commontext-compose-modal.tsx, frontend/app/commontext/commontext-send-button.tsx, frontend/app/workspace/agent-launch.ts, pkg/scheduler, pkg/wconfig/settingsconfig.go(ScheduledTaskType)
+> 最后同步：2026-11-11（v4：选择目标二选一 + Agents 纯 logo + 发送时机 + 外部 agent）
 
 ## 一句话
 
@@ -48,3 +48,45 @@ popover 底部是**确认按钮**（选择 → 确认两段式，不做隐式自
 - pending input 队列建议独立模块（如 `frontend/app/commontext/pending-input.ts`），term 就绪（首输出 + 静默窗口）后经 `insertTextIntoTerm` 同一 PTY 路径注入；TTL 兜底回退剪贴板。**不要依赖 `cmd:initialinput`**（全仓库零消费点，见 `docs/project/agent-session-plan.md` 评审）。
 - `focusedTermBlockIdAtom` / `availableTermBlockIdsAtom` 需收窄为「agent block」判定（`viewModel.viewType === "term"` + `agent:provider` meta）。
 - 解析规则抽成纯函数（如 `resolveCommonTextSendTarget({focusedAgent, agents, type, folder})`），便于单测覆盖组合（existing / create×Tab×Folder）。
+
+## v4 变更（2026-11-11）
+
+### 已落地（与原型一致）
+
+- **选择目标 = 显式二选一**：`聚焦块 / 新建` 两枚 chip（accent 软底 + 左 2px 强调条 + ✓），下方一行落点摘要。
+  `mode: "focused" | "create"`，`create` 强制新建（「同款新建」），不再靠三项全等推导。
+- **选择 Agent = 纯 logo 单行**：32×32、不换行（`overflow-x:auto`）、选中名字只出现在 section 标题右侧、
+  默认项右上小圆点、`title`/`aria-label`/`aria-pressed` 齐备。
+- **注入后补回车提交**：`submitTermInput`（`ControllerInputCommand("")`），paste 后 ~150ms 发送。
+
+### 原型中（未实现，本轮设计目标）
+
+**发送时机三档**
+
+| 档位 | 语义 | 依赖 | 失败处理 |
+|---|---|---|---|
+| 立即 | 注入聚焦块 / 建块后注入，均补回车 | TUI 在场 | 无块可注入 → 报错 |
+| 延迟 30s / 5min / 30min | 内存队列 + TTL，到点目标块仍在才注入 | app 在场 + 块存活 | 块没了 → 通知，不重试、不落任务 |
+| 定时（一次 / 每天 / cron） | **headless ScheduledTask**：到点调度器直接跑一次 agent CLI | 无需 TUI / 块 | 结果进任务历史 + 通知 |
+
+- 复用基建：`pkg/scheduler`（cronexpr + runner：cron/interval/once/daily/weekly + 时区）、
+  `ScheduledTaskType`（`scheduledtasks:items`）、7 个 RPC（Create/Update/Delete/List/Get/RunNow/History）、
+  前端 `wshclientapi.ts` 已生成对应命令。
+- 确认按钮文案随时机变：`发送` / `5 分钟后发送` / `创建定时任务`；摘要行与 Send hint 同步。
+- 定时任务正文 = CommonText 条目正文；Provider/Model/Workdir 取当前 Send 配置。
+
+**外部 Agent（能力已备，缺门面）**
+
+- 已有：Agent Control Surface 把 UI 能力映射成 MCP stdio 工具（`pkg/agentmcp/tools.go`，现有 11 个
+  `snorkeling_*` 工具，1:1 映射既有 wsh RPC；`wsh mcp` 为 server 入口；scoped token 见
+  `11-11-agent-control-surface`）。
+- 待加：
+  - `snorkeling_commontext_send`（正文 / 条目 id + 目标模式；只允许「新建块」或 headless，**禁止注入任意已存在会话**）
+  - `snorkeling_scheduledtask_create | list | delete`（映射既有 RPC）
+  - `wsh scheduledtask create|list|run`（薄封装，给 shell 型 agent）
+
+### 原型交互补充
+
+- 发送时机段：`立即 / 延迟 / 定时` 三枚 chip；延迟展开三档、定时展开「一次 / 每天 / cron」+ 时间输入。
+- 聚焦普通终端时，「聚焦块」chip 禁用并提示只能新建；切场景自动落到 `新建`。
+- 原型内发送 / 延迟 / 定时分别给不同 toast（说明真实落地路径差异）。

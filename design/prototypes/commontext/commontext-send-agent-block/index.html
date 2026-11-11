@@ -659,8 +659,28 @@
     </ul>
   </div>
   <div class="note-card">
-    <h3>解析规则 · 无重复入口 <span class="badge">核心</span></h3>
-    <p>Agent = 聚焦块 agent 且 Type = 当前 Tab 且 Folder = 聚焦块目录 → <b>直接注入聚焦块</b>；否则 → <b>按所选 Type + Folder 新建 agent block</b>。</p>
+    <h3>选择目标 · 显式二选一 <span class="badge">2026-11-11 已改</span></h3>
+    <p>不再只靠「三项全等」推导：<b>聚焦块 / 新建</b> 是两枚显式 chip，✓ 跟实际落点走。选了与聚焦块同款 agent 时也能「同款新建」。默认 <code>focused</code>；点「新建」= 强制 create。</p>
+  </div>
+  <div class="note-card">
+    <h3>发送时机 · 两套语义 <span class="badge">本轮新增</span></h3>
+    <ul>
+      <li><b>立即</b>：注入（聚焦块）或建块后注入，<b>注入后补回车提交</b>（只 paste 不提交 = agent 收不到）。</li>
+      <li><b>延迟 ≤30 分钟</b>：内存队列 + TTL；到点目标块仍在 → 注入 + 回车；块没了 → 通知，不重试、不落任务系统。</li>
+      <li><b>定时（一次 / 每天 / cron）</b>：复用 <code>ScheduledTask</code>（<code>pkg/scheduler</code>，cron/interval/once/daily/weekly + headless CLI runner）；<b>不依赖 TUI / 块在场</b>，跨重启有效；结果进任务历史 + 系统通知，不进交互会话。</li>
+    </ul>
+  </div>
+  <div class="note-card">
+    <h3>外部 Agent 接入 <span class="badge">能力已备</span></h3>
+    <p>Agent Control Surface 已把 UI 能力映射成 MCP stdio 工具（<code>snorkeling_*</code>，1:1 映射既有 wsh RPC）。本轮需求新增两个门面：</p>
+    <ul>
+      <li><code>snorkeling_commontext_send</code>：按正文 / 条目 id 发送（限「新建块」或 headless，禁止注入任意已存在会话）。</li>
+      <li><code>snorkeling_scheduledtask_create | list | delete</code>：直接映射既有 RPC；另加 <code>wsh scheduledtask create|list|run</code> 薄封装给 shell 型 agent。</li>
+    </ul>
+  </div>
+  <div class="note-card">
+    <h3>解析规则（仍成立） <span class="badge">核心</span></h3>
+    <p><b>focused</b> 且 Agent = 聚焦块 agent 且 Type = 当前 Tab 且 Folder = 聚焦块目录 → 直接注入聚焦块；其余（含 mode=create）→ 按所选 Type + Folder 新建 agent block。</p>
   </div>
 </div>
 
@@ -1264,6 +1284,7 @@
     if (state.scenario === "plain" && state.agents === FOCUSED_AGENT.profile && state.type === "current") {
       // 保持配置；解析自然变成「新建」
     }
+    if (state.scenario === "plain") state.mode = "create";
     $("#blk-agent").classList.toggle("focused", state.scenario === "agent");
     $("#blk-plain").classList.toggle("focused", state.scenario === "plain");
     $("#blk-new").classList.add("hidden");
