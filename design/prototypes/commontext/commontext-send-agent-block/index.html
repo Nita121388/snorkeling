@@ -293,6 +293,78 @@
   .profile-chip .star { font-size: 9px; color: var(--warning); }
   .profile-chip .pdot { width: 6px; height: 6px; border-radius: 50%; }
 
+  /* 选择目标 chips（与 Agents chip 同语言：accent 软底 + 左强调条 + ✓） */
+  .mode-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px 0; flex-wrap: nowrap; }
+  .mode-chip {
+    position: relative; appearance: none; font: inherit; font-size: 11.5px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 8px;
+    border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--muted);
+  }
+  .mode-chip:hover { background: var(--surface-soft); color: var(--secondary); }
+  .mode-chip.on { background: var(--highlight-bg); color: var(--fg); }
+  .mode-chip.on::before {
+    content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+    border-radius: 999px; background: var(--accent);
+  }
+  .mode-chip .mc-check { font-size: 10px; color: var(--accent); visibility: hidden; }
+  .mode-chip.on .mc-check { visibility: visible; }
+  .mode-chip[disabled] { opacity: .45; cursor: not-allowed; }
+  .mode-summary { padding: 4px 6px 0; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mode-summary b { color: var(--secondary); font-weight: 550; }
+
+  /* Agents 纯 logo 行：单行不换行，多余横向滚动 */
+  .logo-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px 0; overflow-x: auto; overflow-y: hidden; }
+  .logo-row::-webkit-scrollbar { height: 4px; }
+  .logo-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .logo-chip {
+    position: relative; flex: none; width: 32px; height: 32px; appearance: none; cursor: pointer;
+    display: grid; place-items: center; border: 1px solid transparent; border-radius: 7px;
+    background: transparent; color: var(--muted); font: inherit;
+  }
+  .logo-chip:hover { background: var(--surface-soft); color: var(--secondary); }
+  .logo-chip.on { background: var(--highlight-bg); color: var(--fg); }
+  .logo-chip.on::before {
+    content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+    border-radius: 999px; background: var(--accent);
+  }
+  .logo-chip .lgi { font-size: 14px; }
+  .logo-chip .default-dot {
+    position: absolute; right: 4px; top: 4px; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* 发送时机 */
+  .timing-chips { display: flex; align-items: center; gap: 6px; padding: 2px 4px 0; flex-wrap: nowrap; }
+  .timing-chip {
+    position: relative; appearance: none; font: inherit; font-size: 11.5px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 8px;
+    border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--muted);
+  }
+  .timing-chip:hover { background: var(--surface-soft); color: var(--secondary); }
+  .timing-chip.on { background: var(--highlight-bg); color: var(--fg); }
+  .timing-chip.on::before {
+    content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+    border-radius: 999px; background: var(--accent);
+  }
+  .timing-detail { padding: 6px 4px 0; display: flex; flex-direction: column; gap: 5px; }
+  .timing-sub { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+  .timing-sub .ts-label { font-size: 10.5px; color: var(--muted); flex: none; }
+  .timing-sub .sub-chip {
+    appearance: none; font: inherit; font-size: 10.5px; cursor: pointer; padding: 3px 9px;
+    border-radius: 999px; border: 1px solid var(--border-soft); background: var(--surface-soft); color: var(--secondary);
+  }
+  .timing-sub .sub-chip:hover { color: var(--fg); }
+  .timing-sub .sub-chip.on { background: var(--highlight-bg); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .timing-input {
+    font: inherit; font-size: 11px; font-family: var(--font-mono); color: var(--fg);
+    background: var(--surface-soft); border: 1px solid var(--border-soft); border-radius: 6px;
+    padding: 3px 8px; min-width: 0; flex: 1;
+  }
+  .timing-input:focus { outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: transparent; }
+  .timing-hint { display: flex; gap: 6px; align-items: flex-start; font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+  .timing-hint i { font-size: 9px; margin-top: 2px; color: var(--secondary); flex: none; }
+  .timing-hint b { color: var(--secondary); font-weight: 550; }
+
   /* 选择 Type（tab 选择器） */
   .type-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px 0; position: relative; }
   .type-picker {
@@ -501,16 +573,17 @@
 
         <!-- Send 目标 popover -->
         <div class="popover" id="popover">
-          <!-- 1. 已存在的聚焦 agent block（规则 1/2） -->
+          <!-- 1. 选择目标：聚焦块 / 新建 二选一（与 Agents chip 同语言） -->
           <div class="pop-sec">
-            <div class="pop-sec-head"><i class="fa-solid fa-crosshairs" style="font-size:9px"></i> 聚焦的 Agent Block <span class="n">已存在</span></div>
-            <div id="focused-area"></div>
+            <div class="pop-sec-head"><i class="fa-solid fa-crosshairs" style="font-size:9px"></i> 选择目标 <span class="n">二选一</span></div>
+            <div class="mode-row" id="mode-row"></div>
+            <div class="mode-summary" id="mode-summary"></div>
           </div>
 
-          <!-- 2. 选择 Agents -->
+          <!-- 2. 选择 Agent：纯 logo 单行不换行（选中名字只在标题右侧） -->
           <div class="pop-sec">
-            <div class="pop-sec-head"><i class="fa-solid fa-robot" style="font-size:9px"></i> 选择 Agents <span class="pick" id="agents-note">默认 = 聚焦块</span></div>
-            <div class="profiles" id="profiles"></div>
+            <div class="pop-sec-head"><i class="fa-solid fa-robot" style="font-size:9px"></i> 选择 Agent <span class="n" id="agents-name"></span></div>
+            <div class="logo-row" id="profiles"></div>
           </div>
 
           <!-- 3. 选择 Type（默认当前 Type，其他可选，+ 新建 Tab） -->
@@ -543,7 +616,14 @@
             </div>
           </div>
 
-          <!-- 底部：选好 Agents / Type / Folder 后点确认执行 -->
+          <!-- 5. 发送时机：立即 / 延迟（当前会话）/ 定时（headless 任务） -->
+          <div class="pop-sec">
+            <div class="pop-sec-head"><i class="fa-regular fa-clock" style="font-size:9px"></i> 发送时机 <span class="pick" id="timing-note">默认 = 立即</span></div>
+            <div class="timing-chips" id="timing-chips"></div>
+            <div id="timing-detail"></div>
+          </div>
+
+          <!-- 底部：选好 Agents / Type / Folder / 时机 后点确认执行 -->
           <div class="pop-actions">
             <span class="pa-summary" id="pa-summary"></span>
             <button class="btn ghost-btn" id="pop-cancel">取消</button>
@@ -624,10 +704,18 @@
 
   const state = {
     scenario: "agent",       // agent | plain
-    agents: "claude",        // 选择 Agents
+    mode: "focused",         // 选择目标: focused | create（显式二选一，不再纯推导）
+    agents: "claude",        // 选择 Agent
     type: "current",         // 选择 Type: current | tab:<id> | new-tab
     folder: "focused",       // 选择 Folder: DIRS id
     newTabName: "agent-tab",
+    // 发送时机：now 立即 | delay 延迟注入当前会话 | schedule 定时 headless 任务
+    timing: "now",
+    delayMin: 5,             // 30s / 5min / 30min（0.5 表示 30 秒）
+    scheduleKind: "daily",   // once | daily | cron
+    runAt: "09:30",          // daily HH:MM
+    onceAt: "",              // once：本地 datetime-local 值
+    cronExpr: "0 9 * * 1-5", // cron 表达式
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -655,11 +743,14 @@
       </div>`;
   }
 
-  /* ── 解析：本次 Send 是「注入已存在」还是「新建」 ── */
+  /* ── 解析：本次 Send 是「注入已存在」还是「新建」 ──
+     mode === "create" → 永远新建（即使三项与聚焦块全等，即「同款新建」）；
+     mode === "focused" → 三项全等才落 existing，否则新建。 */
   function resolveTarget() {
     const focusedUsable = state.scenario === "agent";
     if (
       focusedUsable &&
+      state.mode === "focused" &&
       state.agents === FOCUSED_AGENT.profile &&
       state.type === "current" &&
       state.folder === "focused"
@@ -682,51 +773,72 @@
     };
   }
 
-  /* ── 渲染聚焦块行 ── */
-  function renderFocusedArea() {
-    const area = $("#focused-area");
-    if (state.scenario === "agent") {
-      const active =
-        state.agents === FOCUSED_AGENT.profile && state.type === "current";
-      area.innerHTML = `
-        <button class="focus-row ${active ? "active" : ""}" id="focus-row">
-          <div class="fr-main">${agentCardHTML(FOCUSED_AGENT)}</div>
-          <i class="fa-solid fa-check check"></i>
-        </button>`;
-      $("#focus-row").onclick = () => {
-        state.agents = FOCUSED_AGENT.profile;
-        state.type = "current";
-        state.folder = "focused";
-        renderAll();
-      };
-    } else {
-      area.innerHTML = `
-        <button class="focus-row" disabled>
-          <div class="fr-main">
-            <div class="mini-agent-card" style="opacity:.75">
-              <div class="avatar" style="background:var(--surface-soft);color:var(--secondary);border-color:var(--border-soft)"><i class="fa-solid fa-terminal" style="font-size:11px"></i></div>
-              <div class="mac-main">
-                <div class="mac-name" style="color:var(--secondary)">zsh</div>
-                <div class="mac-meta">普通终端 — 不是 Agent Block，不可发送</div>
-              </div>
-              <div class="mac-side"><span class="chip"><span class="sd"></span>Idle</span></div>
-            </div>
-          </div>
-        </button>
-        <div class="warn-line">
-          <i class="fa-solid fa-triangle-exclamation" style="font-size:10px"></i>
-          <span>当前聚焦块是普通终端。请用下方「选择 Agents」+「选择 Type」直接新建一个 Agent Block。</span>
-        </div>`;
+  /* ── 渲染目标模式 chips（聚焦块 / 新建 显式二选一）+ 摘要行 ── */
+  function renderTargetModes() {
+    const row = $("#mode-row");
+    const focusedUsable = state.scenario === "agent";
+    const r = resolveTarget();
+    const existingSelected = r.kind === "existing";
+    row.innerHTML = `
+      <button class="mode-chip ${existingSelected ? "on" : ""}" id="mode-focused" ${focusedUsable ? "" : "disabled"}
+        title="发送到聚焦的 Agent Block（Agent / Type / Folder 三项跟随）">
+        <i class="fa-solid fa-bullseye" style="font-size:10px"></i>
+        <span>聚焦块</span>
+        <i class="fa-solid fa-check mc-check"></i>
+      </button>
+      <button class="mode-chip ${existingSelected ? "" : "on"}" id="mode-create"
+        title="新建一个 Agent Block（保留当前 Agent / Type / Folder 选择）">
+        <i class="fa-solid fa-plus" style="font-size:10px"></i>
+        <span>新建</span>
+        <i class="fa-solid fa-check mc-check"></i>
+      </button>
+      ${focusedUsable ? "" : '<span style="font-size:10.5px;color:var(--muted)">当前聚焦块不是 Agent Block</span>'}`;
+
+    $("#mode-focused").onclick = () => {
+      if (!focusedUsable) return;
+      state.mode = "focused";
+      state.agents = FOCUSED_AGENT.profile;
+      state.type = "current";
+      state.folder = "focused";
+      renderAll();
+    };
+    $("#mode-create").onclick = () => {
+      state.mode = "create";
+      renderAll();
+    };
+
+    const p = profileOf(state.agents);
+    $("#mode-summary").innerHTML =
+      r.kind === "existing"
+        ? `聚焦块 · <b>${FOCUSED_AGENT.title}</b> · ${FOCUSED_AGENT.cwd}`
+        : `新建 · <b>${p.label}</b> · ${r.tabLabel} · ${r.folderPath}`;
+
+    if (!focusedUsable) {
+      const warn = document.createElement("div");
+      warn.className = "warn-line";
+      warn.style.margin = "6px 4px 0";
+      warn.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="font-size:10px"></i><span>当前聚焦块是普通终端，只能「新建」；选好 Agent / Type / Folder 即可。</span>`;
+      $("#mode-summary").after(warn);
     }
   }
 
-  /* ── 渲染 Agents chips ── */
+  /* ── 渲染 Agents：纯 logo 单行不换行 ── */
+  const LOGO_ICON = {
+    claude: "fa-solid fa-drumstick-bite",
+    codex: "fa-solid fa-infinity",
+    pi: "fa-solid fa-ship",
+    opencode: "fa-solid fa-code",
+    gemini: "fa-solid fa-gem",
+  };
   function renderProfiles() {
     const box = $("#profiles");
     box.innerHTML = PROFILES.map((p) => {
       const on = state.agents === p.name;
-      return `<button class="profile-chip ${on ? "on" : ""}" data-profile="${p.name}">
-        ${p.label}${p.isDefault ? ' <i class="fa-solid fa-star star" title="default profile"></i>' : ""}
+      const icon = LOGO_ICON[p.name] || "fa-solid fa-robot";
+      return `<button class="logo-chip ${on ? "on" : ""}" data-profile="${p.name}"
+          title="${p.label}${p.isDefault ? "（默认）" : ""}" aria-label="${p.label}" aria-pressed="${on}">
+        <i class="${icon} lgi"></i>
+        ${p.isDefault ? '<span class="default-dot" title="默认 agent"></span>' : ""}
       </button>`;
     }).join("");
     box.querySelectorAll("[data-profile]").forEach((btn) => {
@@ -735,8 +847,129 @@
         renderAll();
       };
     });
-    $("#agents-note").textContent =
-      state.scenario === "agent" ? "默认 = 聚焦块" : "默认 = 默认 profile";
+    $("#agents-name").textContent = profileOf(state.agents).label;
+  }
+
+  /* ── 渲染发送时机：立即 / 延迟 / 定时 ── */
+  const DELAYS = [
+    { min: 0.5, label: "30 秒" },
+    { min: 5, label: "5 分钟" },
+    { min: 30, label: "30 分钟" },
+  ];
+  function timingLabel() {
+    if (state.timing === "now") return "立即";
+    if (state.timing === "delay") {
+      const d = DELAYS.find((d) => d.min === state.delayMin) || DELAYS[1];
+      return d.label;
+    }
+    if (state.scheduleKind === "once") return state.onceAt ? `定时一次` : "定时一次";
+    if (state.scheduleKind === "daily") return `每天 ${state.runAt}`;
+    return `cron ${state.cronExpr}`;
+  }
+  function renderTiming() {
+    const chips = $("#timing-chips");
+    chips.innerHTML = ["now", "delay", "schedule"]
+      .map((t) => {
+        const meta = {
+          now: { icon: "fa-bolt", label: "立即" },
+          delay: { icon: "fa-hourglass-half", label: "延迟" },
+          schedule: { icon: "fa-calendar-days", label: "定时" },
+        }[t];
+        const on = state.timing === t;
+        return `<button class="timing-chip ${on ? "on" : ""}" data-timing="${t}">
+          <i class="fa-solid ${meta.icon}" style="font-size:10px"></i>
+          <span>${meta.label}</span>
+          <i class="fa-solid fa-check mc-check" style="font-size:10px;visibility:${on ? "visible" : "hidden"};color:var(--accent)"></i>
+        </button>`;
+      })
+      .join("");
+    chips.querySelectorAll("[data-timing]").forEach((btn) => {
+      btn.onclick = () => {
+        state.timing = btn.dataset.timing;
+        renderAll();
+      };
+    });
+    $("#timing-note").textContent = `默认 = 立即 · ${timingLabel()}`;
+
+    const detail = $("#timing-detail");
+    if (state.timing === "now") {
+      detail.innerHTML = `
+        <div class="timing-hint">
+          <i class="fa-solid fa-circle-info"></i>
+          <span><b>立即</b> = 聚焦块 → 直接注入 + 回车提交；新建块 → 建块后 TUI 就绪自动注入 + 回车提交。</span>
+        </div>`;
+      return;
+    }
+    if (state.timing === "delay") {
+      detail.innerHTML = `
+        <div class="timing-sub">
+          <span class="ts-label">延迟</span>
+          ${DELAYS.map(
+            (d) =>
+              `<button class="sub-chip ${state.delayMin === d.min ? "on" : ""}" data-delay="${d.min}">${d.label}</button>`
+          ).join("")}
+        </div>
+        <div class="timing-hint">
+          <i class="fa-solid fa-circle-info"></i>
+          <span><b>短延迟</b>（≤30 分钟）：到点若目标块仍在 → 注入 + 回车提交；块被关掉 → <b>通知你，不重试</b>（不落任务系统）。适合「等我喝口水再发」。</span>
+        </div>`;
+      detail.querySelectorAll("[data-delay]").forEach((btn) => {
+        btn.onclick = () => {
+          state.delayMin = parseFloat(btn.dataset.delay);
+          renderAll();
+        };
+      });
+      return;
+    }
+    // schedule：headless ScheduledTask
+    detail.innerHTML = `
+      <div class="timing-sub">
+        <span class="ts-label">频率</span>
+        <button class="sub-chip ${state.scheduleKind === "once" ? "on" : ""}" data-sk="once">一次</button>
+        <button class="sub-chip ${state.scheduleKind === "daily" ? "on" : ""}" data-sk="daily">每天</button>
+        <button class="sub-chip ${state.scheduleKind === "cron" ? "on" : ""}" data-sk="cron">cron</button>
+      </div>
+      <div class="timing-sub">
+        <span class="ts-label">${state.scheduleKind === "cron" ? "表达式" : "时间"}</span>
+        ${
+          state.scheduleKind === "once"
+            ? `<input class="timing-input" id="once-input" type="datetime-local" value="${state.onceAt}">`
+            : state.scheduleKind === "daily"
+              ? `<input class="timing-input" id="runat-input" type="time" value="${state.runAt}">`
+              : `<input class="timing-input" id="cron-input" type="text" value="${state.cronExpr}" spellcheck="false">`
+        }
+      </div>
+      <div class="timing-hint">
+        <i class="fa-solid fa-diagram-project"></i>
+        <span><b>定时 = headless 任务</b>（复用 ScheduledTask：cron / interval / once）：到点由调度器直接以 CLI 跑一次 agent，<b>不依赖 TUI / 块在场</b>，跨重启有效；结果进任务历史 + 系统通知，不进入你的交互会话。</span>
+      </div>`;
+    detail.querySelectorAll("[data-sk]").forEach((btn) => {
+      btn.onclick = () => {
+        state.scheduleKind = btn.dataset.sk;
+        renderAll();
+      };
+    });
+    const runat = $("#runat-input");
+    if (runat)
+      runat.oninput = () => {
+        state.runAt = runat.value;
+        $("#timing-note").textContent = `默认 = 立即 · ${timingLabel()}`;
+        renderActions();
+      };
+    const once = $("#once-input");
+    if (once)
+      once.oninput = () => {
+        state.onceAt = once.value;
+        $("#timing-note").textContent = `默认 = 立即 · ${timingLabel()}`;
+        renderActions();
+      };
+    const cron = $("#cron-input");
+    if (cron)
+      cron.oninput = () => {
+        state.cronExpr = cron.value;
+        $("#timing-note").textContent = `默认 = 立即 · ${timingLabel()}`;
+        renderActions();
+      };
   }
 
   /* ── 渲染 Type 选择器 ── */
@@ -815,27 +1048,47 @@
     });
   }
 
-  /* ── 底部确认：按钮文案随选择实时变 ── */
+  /* ── 底部确认：按钮文案随「目标 + 时机」实时变 ── */
+  function actionLabel() {
+    if (state.timing === "delay") return `${timingLabel()}后发送`;
+    if (state.timing === "schedule") return "创建定时任务";
+    return "发送";
+  }
+  function timingSummary() {
+    if (state.timing === "now") return "立即";
+    if (state.timing === "delay") return `延迟 ${timingLabel()}（当前会话）`;
+    return `定时 ${timingLabel()}（headless）`;
+  }
   function renderActions() {
     const r = resolveTarget();
     const btn = $("#pop-send");
     const sum = $("#pa-summary");
-    if (r.kind === "existing") {
-      btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> 发送`;
-      sum.innerHTML = `目标 = <b>聚焦块（已存在）</b> · ${profileOf(state.agents).label} · ${r.folderPath} · 直接注入，不新建`;
-    } else {
-      btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> 发送`;
-      sum.innerHTML = `目标 = <b>新建</b> · ${r.tabLabel} · ${r.folderPath}`;
-    }
+    const icon =
+      state.timing === "schedule"
+        ? '<i class="fa-regular fa-calendar-check"></i>'
+        : state.timing === "delay"
+          ? '<i class="fa-regular fa-hourglass-half"></i>'
+          : '<i class="fa-solid fa-paper-plane"></i>';
+    btn.innerHTML = `${icon} ${actionLabel()}`;
+    sum.innerHTML =
+      (r.kind === "existing"
+        ? `目标 = <b>聚焦块</b> · ${profileOf(state.agents).label} · 直接注入`
+        : `目标 = <b>新建</b> · ${r.tabLabel} · ${r.folderPath}`) +
+      ` · <b>${timingSummary()}</b>`;
     const hint = $("#send-hint");
-    hint.innerHTML = `→ <b>${r.kind === "existing" ? "聚焦 " + profileOf(state.agents).label : "新建 " + profileOf(state.agents).label + " · " + r.tabLabel}</b>`;
+    const base =
+      r.kind === "existing"
+        ? `聚焦 ${profileOf(state.agents).label}`
+        : `新建 ${profileOf(state.agents).label} · ${r.tabLabel}`;
+    hint.innerHTML = `→ <b>${base}</b>${state.timing === "now" ? "" : ` · ${timingSummary()}`}`;
   }
 
   function renderAll() {
-    renderFocusedArea();
+    renderTargetModes();
     renderProfiles();
     renderType();
     renderFolder();
+    renderTiming();
     renderActions();
   }
 
@@ -907,6 +1160,38 @@
     $("#popover").classList.remove("open");
     $("#type-menu").classList.remove("open");
     const r = resolveTarget();
+
+    // 定时 = headless ScheduledTask：不注入 TUI，结果走任务历史 + 通知
+    if (state.timing === "schedule") {
+      const p = profileOf(state.agents);
+      const schedule =
+        state.scheduleKind === "once"
+          ? `一次性 @ ${state.onceAt || "（未选时间）"}`
+          : state.scheduleKind === "daily"
+            ? `每天 ${state.runAt}`
+            : `cron "${state.cronExpr}"`;
+      showToast(
+        `已创建定时任务 · ${p.label}`,
+        `${schedule} · headless · cwd ${r.folderPath} · 到点由调度器跑一次，不会进入当前会话`,
+        false
+      );
+      return;
+    }
+
+    // 延迟 = 短窗口内存队列：到点目标块还在才注入
+    if (state.timing === "delay") {
+      const p = profileOf(state.agents);
+      const when = timingLabel();
+      showToast(
+        `已排入延迟队列 · ${when}后`,
+        `${r.kind === "existing" ? "目标 = 聚焦块" : "目标 = 新建 " + p.label + " · " + r.tabLabel} · 到点若块仍在则注入 + 回车；块被关掉只通知，不重试`,
+        false
+      );
+      setTimeout(() => {
+        showToast(`延迟时间到 · ${when}`, "色块/目标仍存在 → 已注入并回车提交", false);
+      }, Math.min(3000, state.delayMin * 600));
+      return;
+    }
 
     if (r.kind === "existing") {
       const input = $("#agent-input");
@@ -995,9 +1280,16 @@
   };
 
   $("#reset-btn").onclick = () => {
+    state.mode = "focused";
     state.agents = "claude";
     state.type = "current";
     state.folder = "focused";
+    state.timing = "now";
+    state.delayMin = 5;
+    state.scheduleKind = "daily";
+    state.runAt = "09:30";
+    state.onceAt = "";
+    state.cronExpr = "0 9 * * 1-5";
     $("#editor").value = "帮我看一下 11-10-cfa-core 的 payload 契约，把三段式结构和调用方对齐之后给我一个 checklist。";
     $("#blk-new").classList.add("hidden");
     $("#agent-input").textContent = "等待输入…";
