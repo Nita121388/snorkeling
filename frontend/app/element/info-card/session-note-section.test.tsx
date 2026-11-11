@@ -33,6 +33,8 @@ const h = vi.hoisted(() => ({
     setSessionProperty: vi.fn(async (_args: any) => ({ ok: true })),
     patchSessionProperty: vi.fn(async (_args: any) => ({ ok: true })),
     saveSessionProps: vi.fn(async () => ({ status: "ok", summary: {} })),
+    schemaBase: [] as any[],
+    setPropertySchema: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/app/view/aisessions/property/property-list", () => ({
@@ -60,9 +62,9 @@ vi.mock("@/app/view/aisessions/undo-toast", () => ({
 }));
 
 vi.mock("@/app/view/aisessions/property/property-schema", () => ({
-    usePropertySchema: () => [],
-    setPropertySchema: vi.fn(async () => undefined),
-    upsertSchemaDef: (schema: unknown[]) => schema,
+    usePropertySchema: () => h.schemaBase,
+    setPropertySchema: h.setPropertySchema,
+    upsertSchemaDef: (schema: any[], def: any) => [...(schema ?? []), def],
 }));
 
 vi.mock("@/app/store/use-available-session-tags", () => ({
@@ -110,6 +112,7 @@ import { SessionNoteSection } from "./session-note-section";
 const summary = {
     key: FULL_KEY,
     id: RAW_ID,
+    source: "pi",
     title: "测试会话",
     note: "note body",
     tags: ["旧标签"],
@@ -177,6 +180,8 @@ afterEach(() => {
     h.setSessionProperty.mockClear();
     h.patchSessionProperty.mockClear();
     h.saveSessionProps.mockClear();
+    h.setPropertySchema.mockClear();
+    h.schemaBase = [];
 });
 
 describe("SessionNoteSection 写路径 id 契约", () => {
@@ -196,6 +201,31 @@ describe("SessionNoteSection 写路径 id 契约", () => {
         expect(args.sessionId).toBe(RAW_ID);
         expect(args.sessionId).not.toBe(FULL_KEY);
         expect(args.def.key).toBe("tags");
+    });
+
+    it("addProperty 范围三选一：session 不写模板；agent 写 agent:pi；global 写空 scope", () => {
+        mount();
+        const onAdd = h.listProps.onAddProperty as (key: string, type: string, scope: string) => void;
+
+        act(() => {
+            onAdd("priority", "select", "session");
+        });
+        expect(h.setSessionProperty).toHaveBeenCalledTimes(1);
+        expect(h.setPropertySchema).not.toHaveBeenCalled();
+
+        act(() => {
+            onAdd("risk", "status", "agent");
+        });
+        expect(h.setPropertySchema).toHaveBeenCalledTimes(1);
+        const agentDefs = (h.setPropertySchema.mock.calls[0] as unknown[])[0] as any[];
+        expect(agentDefs.at(-1)).toMatchObject({ key: "risk", scope: "agent:pi" });
+
+        act(() => {
+            onAdd("owner", "text", "global");
+        });
+        expect(h.setPropertySchema).toHaveBeenCalledTimes(2);
+        const globalDefs = (h.setPropertySchema.mock.calls[1] as unknown[])[0] as any[];
+        expect(globalDefs.at(-1)).toMatchObject({ key: "owner", scope: "" });
     });
 
     it("自定义属性重命名用裸 sessionId 写入", () => {

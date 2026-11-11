@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-09T04:05:38Z",
+  "updatedAt": "2026-11-11T01:17:34Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -136,6 +136,23 @@
         "ok": true,
         "executedAt": "2026-11-09T02:37:23Z",
         "by": "compliance"
+      }
+    },
+    "F-1111-agent-property-scope": {
+      "g1": {
+        "at": "2026-11-11T01:12:22Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "9c8bafba3b4b"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-F-1111-agent-property-scope.txt",
+        "at": "2026-11-11T01:17:15Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-11T01:17:34Z",
+        "by": "self"
       }
     },
     "N-1105-cmd-window-flash": {

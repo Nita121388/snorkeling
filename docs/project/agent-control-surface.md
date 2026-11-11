@@ -87,7 +87,7 @@ Never call `Manager.Summary` in a loop over live sessions — each cache miss ru
 ```
 wsh agent card get <sessionKey|sessionId|this> [--block <id>] [--json]
 wsh agent card set <...> [--note <s>] [--title <s>] [--tags-set|--tags-add|--tags-remove <s>...]
-                         [--prop key=type:value]... [--force]
+                         [--prop key=type:value]... [--prop-scope session|agent|all] [--force]
                          [--dry-run | --yes --expected-hash <hash>]
 ```
 
@@ -107,6 +107,15 @@ Write safety:
   lands as `titleSource = "ai"` (title contract: `user > ai`).
 - A custom property whose `source == "user"` is skipped, reported in `skipped[]`;
   `--force` overwrites.
+- **Property scope** (`--prop-scope`, default `session`): where the property
+  *definition* becomes visible. `session` writes the value only (legacy
+  behaviour, byte-identical); `agent` additionally upserts the definition into
+  the `agent:propertyschema` config with `scope="agent:<provider>"` (e.g.
+  `agent:pi`, derived from the target session); `all` upserts it with an empty
+  scope (global template). Unknown scope values are rejected with `E_USAGE`
+  instead of silently degrading. The schema write happens only after a
+  successful real apply; `agent card get` returns the scope-filtered schema
+  (`schema: key (type, scope=...)`) so callers can read definitions back.
 - Built-in keys (`note`/`tags`/`starred`/`title_source`/`created_at`/`updated_at`)
   are refused outright — they are virtually mapped by the UI, never custom props.
 - A stale hash (the user edited the card meanwhile) fails with `E_CONFLICT` and no

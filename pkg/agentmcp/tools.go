@@ -290,7 +290,7 @@ func toolSpecs() []toolSpec {
 		},
 		{
 			Name:        "snorkeling_agent_card_set",
-			Description: "Write the session card. Dry-run unless confirm is true, and a real write requires expectedhash from a fresh get. User-authored titles are protected.",
+			Description: "Write the session card. Dry-run unless confirm is true, and a real write requires expectedhash from a fresh get. User-authored titles are protected. Property scope: session (default) / agent (all sessions of this agent) / all (global template).",
 			Scope:       ScopeData,
 			Annotations: &Annotations{Title: "Card: write", DestructiveHint: true},
 			Schema: obj(map[string]any{
@@ -298,7 +298,7 @@ func toolSpecs() []toolSpec {
 				"note":           str("note text"),
 				"title":          str("title (refused when user-authored unless force)"),
 				"tags":           map[string]any{"type": "object", "description": "{add:[], remove:[], set:[]}"},
-				"props":          map[string]any{"type": "object", "description": "key -> {type, value}"},
+				"props":          map[string]any{"type": "object", "description": "key -> {type, value, name, scope: session|agent|all}"},
 				"force":          boolean("overwrite user-authored title/props"),
 				"expectedhash":   str("hash from a fresh agent_card_get (required for a real write)"),
 				"dryrun":         boolean("preview without writing (default true)"),

@@ -15,7 +15,7 @@
 import { createBlock } from "@/app/store/global";
 import type { SessionNoteState } from "@/app/store/session-note-hook";
 import { GenActionButton } from "@/app/view/aisessions/gen-action-button";
-import { PropertyList } from "@/app/view/aisessions/property/property-list";
+import { PropertyList, type PropertyAddScope } from "@/app/view/aisessions/property/property-list";
 import { AIPropertiesButton } from "@/app/view/aisessions/property/property-ai";
 import { usePropertySchema, setPropertySchema, upsertSchemaDef } from "@/app/view/aisessions/property/property-schema";
 import { patchSessionProperty, setSessionProperty } from "@/app/view/aisessions/property/property-store";
@@ -150,8 +150,9 @@ export function SessionNoteSection({
     );
 
     const addProperty = React.useCallback(
-        (key: string, type: PropertyType, saveToTemplate: boolean) => {
+        (key: string, type: PropertyType, scope: PropertyAddScope) => {
             // 新建的空属性需要非 null 初值才能落库（SetProps 把 null 当删除）。
+            // 值永远只写当前会话；scope 只影响「定义」是否写进全局模板。
             const initial: PropertyValue =
                 type === "multi_select" || type === "person" || type === "relation"
                     ? []
@@ -162,17 +163,22 @@ export function SessionNoteSection({
                 { key, name: humanizeKey(key), type, order: 100, scope: "session", builtin: false },
                 initial
             );
-            if (saveToTemplate) {
+            if (scope !== "session") {
+                const source = (summary?.source ?? "").trim();
+                // agent 范围必须能解析出 Agent 标识；没有 source 时退化为仅此会话
+                // （UI 已禁用该选项，这里再兜一层，避免写出 "agent:" 空值）。
+                if (scope === "agent" && source === "") return;
                 const next = upsertSchemaDef(schema, {
                     key,
                     name: humanizeKey(key),
                     type,
                     order: schema.length + 1,
+                    scope: scope === "agent" ? `agent:${source}` : "",
                 });
                 void setPropertySchema(next);
             }
         },
-        [writeProperty, schema]
+        [writeProperty, schema, summary]
     );
 
     const deleteProperty = React.useCallback(

@@ -77,6 +77,14 @@ Patch version 1 supports:
 
 For real apply, `session_note.update` and `common_text.update` require `expectedHash` or `expectedUpdatedAt`. This prevents silent overwrites after concurrent user edits. `tag.rename` does not require per-record preconditions.
 
+`session_prop.update` props entries accept an optional `scope`: `"session"` (default,
+empty behaves the same — the value is written per-session only, legacy behaviour),
+`"agent"` (the definition is additionally upserted into the `agent:propertyschema`
+config as `scope="agent:<provider>"`, all sessions of that agent see it) or
+`"all"` (global template definition). The schema upsert itself happens in the
+command layer (`agent card set`) after a successful apply, not in the data patch;
+unknown scope values are rejected. Values always stay per-session.
+
 `tags.set: []` is an explicit request to clear tags. `tags.add` and `tags.remove` can be used for incremental changes.
 
 Unknown operation fields and unknown `tags` fields are rejected.

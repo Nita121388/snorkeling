@@ -385,3 +385,138 @@ describe("PropertyList — 全局标签清单候选", () => {
         expect(document.querySelector(".ptag-option-count")).toBeNull();
     });
 });
+
+// ─── 新增属性浮层（范围三选一）───
+//
+// 锁定的回归点（11-11-agent-property-scope）：
+//  1. `+ Add property` 打开浮层面板，而不是 footer 里的内联表单；
+//  2. 范围三选一默认「仅此会话」，切换后提交参数随之变化；
+//  3. 三种范围：session / agent / global；
+//  4. Enter 提交、Esc 关闭、空名禁用、重名行内报错。
+describe("PropertyList — 新增属性浮层（范围三选一）", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+        vi.useRealTimers();
+    });
+
+    const agentSummary = () =>
+        makeSummary({
+            key: "pi:agent-prop:/tmp/p.jsonl",
+            id: "agent-prop",
+            source: "pi",
+            tags: [],
+            note: "",
+            props: {},
+        } as Partial<SessionSummary>);
+
+    const popover = () => document.querySelector('[data-testid="property-add-popover"]');
+    const nameInput = () => document.querySelector<HTMLInputElement>('[data-testid="property-add-name"]');
+    const submit = () => document.querySelector<HTMLButtonElement>('[data-testid="property-add-submit"]');
+    const errorEl = () => document.querySelector('[data-testid="property-add-error"]');
+    const scopeOption = (scope: string) =>
+        document.querySelector<HTMLElement>(`[data-testid="property-add-scope"][data-scope="${scope}"]`);
+    const typeButton = () => document.querySelector<HTMLButtonElement>('[data-testid="property-add-type"]');
+    const typeOption = (type: string) =>
+        document.querySelector<HTMLElement>(`[data-testid="property-add-type-option"][data-type="${type}"]`);
+
+    function openPopover() {
+        const add = document.querySelector(".property-add");
+        click(add);
+    }
+
+    function setValue(input: HTMLInputElement, value: string) {
+        act(() => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+            setter.call(input, value);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+    }
+
+    function keyPress(input: Element | null, key: string) {
+        act(() => {
+            input!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+        });
+    }
+
+    it("打开浮层：名字 / 类型 / 三个范围，默认仅此会话，旧内联表单消失", () => {
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onAddProperty={vi.fn()} />);
+        expect(document.querySelector(".property-add-form")).toBeNull();
+
+        openPopover();
+
+        expect(popover()).not.toBeNull();
+        expect(nameInput()).not.toBeNull();
+        expect(typeButton()).not.toBeNull();
+        expect(scopeOption("session")!.classList.contains("is-active")).toBe(true);
+        expect(scopeOption("agent")).not.toBeNull();
+        expect(scopeOption("global")).not.toBeNull();
+        expect(document.querySelector(".property-add-form")).toBeNull();
+        expect(submit()!.disabled).toBe(true);
+    });
+
+    it("切到「仅此 Agent」后 Add → onAddProperty(key,type,'agent')", () => {
+        const onAdd = vi.fn();
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onAddProperty={onAdd} />);
+        openPopover();
+        setValue(nameInput()!, "Priority");
+        click(scopeOption("agent"));
+        click(submit());
+
+        expect(onAdd).toHaveBeenCalledTimes(1);
+        expect(onAdd.mock.calls[0][0]).toBe("priority");
+        expect(onAdd.mock.calls[0][2]).toBe("agent");
+        expect(popover()).toBeNull();
+    });
+
+    it("默认范围提交是 session；切 global 提交 global", () => {
+        const onAdd = vi.fn();
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onAddProperty={onAdd} />);
+
+        openPopover();
+        setValue(nameInput()!, "Owner");
+        click(submit());
+        expect(onAdd.mock.calls[0][2]).toBe("session");
+
+        openPopover();
+        setValue(nameInput()!, "Cycle");
+        click(scopeOption("global"));
+        click(submit());
+        expect(onAdd.mock.calls[1][2]).toBe("global");
+    });
+
+    it("类型下拉选 Multi-select 后提交，类型参数正确", () => {
+        const onAdd = vi.fn();
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onAddProperty={onAdd} />);
+        openPopover();
+        setValue(nameInput()!, "Risks");
+        click(typeButton());
+        click(typeOption("multi_select"));
+        click(submit());
+        expect(onAdd.mock.calls[0][1]).toBe("multi_select");
+    });
+
+    it("Enter 提交、Esc 关闭；重名与空名有行内错误", () => {
+        const onAdd = vi.fn();
+        mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onAddProperty={onAdd} />);
+
+        openPopover();
+        keyPress(nameInput(), "Escape");
+        expect(popover()).toBeNull();
+
+        openPopover();
+        setValue(nameInput()!, "note");
+        click(submit());
+        expect(onAdd).not.toHaveBeenCalled();
+        expect(errorEl()).not.toBeNull();
+        expect(errorEl()!.textContent).toContain("already exists");
+
+        setValue(nameInput()!, "Iterator");
+        keyPress(nameInput(), "Enter");
+        expect(onAdd).toHaveBeenCalledTimes(1);
+        expect(onAdd.mock.calls[0][2]).toBe("session");
+    });
+});

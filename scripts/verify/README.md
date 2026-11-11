@@ -101,6 +101,7 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `agent-card-tags`      | `verify.mjs` | Agent 卡片 Tags 候选：全局清单并入（候选含本会话未选标签）+ 候选项数字计数 + hover 卡与 AgentCardModal 候选一致（独立 profile + 端口 9234） | ✅       |
 | `commontext-meta-sort` | `verify.mjs` | CommonText 列表元信息列 / 图标排序控件 / 搜索态禁用 / 次数写入（独立 profile + 端口 9251）                  | ✅       |
 | `commontext-send-agent-block` | `verify.mjs` | CommonText Send 目标选择器：split button + popover 四段（聚焦 agent 小卡 / Agents / Type / Folder）+ 确认发送 → 新建 agent 块 + pending input 注入（injected 事件断言，多 agent 并行用 VERIFY_PROFILE/端口错开） | ✅       |
+| `agent-property-scope` | `verify.mjs` | Agent 属性 scope：浮层面板（3 范围默认 session / 类型下拉 9 项 / Esc）+ UI 与外部写入（agent card set 同链）落 settings.json + codex 跨 Agent 过滤（ai-sessions 用临时目录隔离，独立 profile + 端口 9235） | —       |
 | `theme-monochrome`     | `verify.mjs` | 三主题矩阵：dark/light token 基线不变 + monochrome 目标值生效 + 终端 default-monochrome 16 色可读可辨（另有 check.py 纯静态判据，不启 GUI） | ✅       |
 | `aisessions-run-indicator` | `verify.mjs` | AI Sessions 行内运行指示：左列单点（非 animate-spin 四点）/ 右侧徽章在 row-meta 末尾且 ml-auto 贴右 / 徽章高 15px / 无第二个 GUI Chat spinner | ✅       |
 | `agent-session-rail` | `verify.mjs` | 会话轨水平滚动轴回归：用 >37 条用户消息的真实会话播种 TUI 轨，断言 overflow-x hidden / 无横向溢出 / 竖滚动条真出现（独立 profile + 端口 9233） | ✅       |
@@ -110,3 +111,4 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `term-failure-copy`    | `verify.mjs` | 终端失败复制：真实 exit 3 命令块驱动——失败提示条 + Copy for agent payload（命令行/cwd/exit code/末段输出/三段式契约）；exit 0 块不渲染 | ✅       |
 | `vcs-conflict-copy`   | `verify.mjs` | VCS 冲突/失败复制：真实 git 仓库（amend 非快进 → push 被拒；双分支改同一行 → merge 冲突）驱动——失败卡复制含 stderr 被拒原因、冲突条复制含三标记 + `=== path ===` 分段、干净仓库无冲突条 | ✅       |
 | `waveconfig-json-error` | `verify.mjs` | 设置 JSON 校验失败复制：Monaco 真实键入坏 JSON（char 事件驱动 EditContext）→ Save → 失败条 + payload（行列/±5 行片段/键名/三段式契约）；初始合法态无按钮；修复后失败条消失 | ✅       |
+| `newtab-empty`       | `verify.mjs` | 新建 Tab 不自动建 Terminal：点 Add Tab → 空 Tab「暂无 Block」引导 + 全页 0 个 block；点「新建 Terminal」→ 出块可出门 | ✅       |

@@ -86,8 +86,8 @@ export type PropertyListProps = {
     onOpenNoteDialog?: () => void;
     /** 值变更（内置与自定义都走这里，由上层决定写哪个 RPC）。 */
     onChange?: (key: string, value: PropertyValue, def: PropertyDef) => void;
-    /** 新建自定义属性（detail 模式 + canEdit 时展示入口）。saveToTemplate=true 时同时写入全局模板。 */
-    onAddProperty?: (key: string, type: PropertyType, saveToTemplate: boolean) => void;
+    /** 新建自定义属性（detail / agent 布局 + canEdit 时展示入口）。范围三选一见 PropertyAddScope。 */
+    onAddProperty?: (key: string, type: PropertyType, scope: PropertyAddScope) => void;
     /** 删除自定义属性（仅 non-builtin）。 */
     onDeleteProperty?: (key: string) => void;
     /** 重命名自定义属性（改显示名，不改 key）。 */
@@ -111,6 +111,14 @@ export type PropertyListProps = {
 };
 
 const CreatableTypes: PropertyType[] = ["text", "number", "select", "multi_select", "status", "date", "person", "checkbox", "url"];
+
+/**
+ * 新建属性的定义范围（决定「定义」写到哪里；「值」永远只写当前会话）：
+ *  - session：只写当前会话 props，不动模板（默认）；
+ *  - agent：额外把定义写进全局模板，scope="agent:<source>"（仅该 Agent 的会话可见）；
+ *  - global：额外把定义写进全局模板，scope=""（所有会话可见）。
+ */
+export type PropertyAddScope = "session" | "agent" | "global";
 
 /** 多值类型：浮层里点击是 toggle，写回数组。 */
 const MultiValueTypes: ReadonlySet<PropertyType> = new Set<PropertyType>(["multi_select", "person", "relation"]);
@@ -369,36 +377,42 @@ function InlineEditor({
     );
 }
 
-function AddPropertyForm({
-    existingKeys,
-    adding,
-    setAdding,
-    onSubmit,
-    inline = false,
-}: {
+/** 新建属性的类型菜单图标（与 retype 下拉共用 CreatableTypes）。 */
+const AddableTypeIcons: Record<string, string> = {
+    text: "fa-font",
+    number: "fa-hashtag",
+    select: "fa-circle-dot",
+    multi_select: "fa-tags",
+    status: "fa-circle-half-stroke",
+    date: "fa-calendar",
+    person: "fa-user",
+    checkbox: "fa-square-check",
+    url: "fa-link",
+};
+
+type AddPropertyPanelProps = {
     existingKeys: string[];
-    adding: boolean;
-    setAdding: (value: boolean) => void;
-    onSubmit: (key: string, type: PropertyType, saveToTemplate: boolean) => void;
-    /** hover 卡底部单行：触发器文字更短、无内边距，展开后的表单占满一整行。 */
-    inline?: boolean;
-}) {
+    /** 「仅此 Agent」的标签（当前会话 source，如 pi）；空则禁用该选项。 */
+    agentLabel?: string;
+    onSubmit: (key: string, type: PropertyType, scope: PropertyAddScope) => void;
+    onClose: () => void;
+};
+
+/**
+ * 新建属性浮层面板（替换旧的内联表单，见原型 design/prototypes/agent/property-add-scope/）：
+ *  - 名字（图标输入框）+ 类型（自定义下拉，替掉 native select）+ 范围三选一（默认「仅此会话」）；
+ *  - Enter 提交 / Esc 关闭；空名禁用 Add；重名 / 空名行内报错；
+ *  - 外壳用 PropertyValuePopover（portal 到 body + 视口铺位 + info-card pin），
+ *    与属性值编辑浮层同一套定位语义。
+ */
+function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPropertyPanelProps) {
     const [name, setName] = React.useState("");
     const [type, setType] = React.useState<PropertyType>("text");
-    const [saveToTemplate, setSaveToTemplate] = React.useState(true);
+    const [scope, setScope] = React.useState<PropertyAddScope>("session");
+    const [typeMenuOpen, setTypeMenuOpen] = React.useState(false);
     const [error, setError] = React.useState("");
 
-    if (!adding) {
-        return (
-            <button
-                type="button"
-                className={cn("property-add", inline && "property-add--inline")}
-                onClick={() => setAdding(true)}
-            >
-                <i className="fa-sharp fa-solid fa-plus" /> {inline ? "Add property" : "Add a property"}
-            </button>
-        );
-    }
+    const agentDisabled = (agentLabel ?? "").trim() === "";
 
     const submit = () => {
         const key = slugifyPropertyKey(name);
@@ -410,54 +424,154 @@ function AddPropertyForm({
             setError("Property already exists");
             return;
         }
-        setError("");
-        onSubmit(key, type, saveToTemplate);
-        setName("");
-        setType("text");
-        setSaveToTemplate(true);
+        onSubmit(key, type, scope);
+        onClose();
     };
 
     return (
-        <div className="property-add-form">
-            <input
-                autoFocus
-                className="property-edit-input"
-                aria-label="Property name"
-                placeholder="Property name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                onKeyDown={(event) => {
-                    if (event.key === "Enter") submit();
-                    if (event.key === "Escape") setAdding(false);
-                }}
-            />
-            <select
-                className="property-select"
-                aria-label="Property type"
-                value={type}
-                onChange={(event) => setType(event.target.value as PropertyType)}
-            >
-                {CreatableTypes.map((t) => (
-                    <option key={t} value={t}>
-                        {typeLabel(t)}
-                    </option>
-                ))}
-            </select>
-            <label className="property-add-template">
+        <div className="property-add-panel" data-testid="property-add-popover" role="dialog" aria-label="Add property">
+            <div className="property-add-panel__name">
+                <i className="fa-sharp fa-solid fa-pen" aria-hidden="true" />
                 <input
-                    type="checkbox"
-                    checked={saveToTemplate}
-                    onChange={(event) => setSaveToTemplate(event.target.checked)}
+                    autoFocus
+                    data-testid="property-add-name"
+                    className="property-edit-input"
+                    aria-label="Property name"
+                    placeholder="Property name"
+                    value={name}
+                    onChange={(event) => {
+                        setName(event.target.value);
+                        if (error !== "") setError("");
+                    }}
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            submit();
+                        }
+                        if (event.key === "Escape") {
+                            event.preventDefault();
+                            onClose();
+                        }
+                    }}
                 />
-                Save to template
-            </label>
-            <button type="button" className="property-add-ok" onClick={submit}>
-                Add
+            </div>
+            <button
+                type="button"
+                data-testid="property-add-type"
+                className="property-add-panel__type"
+                aria-haspopup="listbox"
+                aria-expanded={typeMenuOpen}
+                onClick={() => setTypeMenuOpen(!typeMenuOpen)}
+            >
+                <i className={cn("fa-sharp fa-solid", AddableTypeIcons[type] ?? "fa-font")} aria-hidden="true" />
+                <span className="property-add-panel__type-name">{typeLabel(type)}</span>
+                <i className="fa-sharp fa-solid fa-chevron-down property-add-panel__caret" aria-hidden="true" />
             </button>
-            <button type="button" className="property-add-cancel" onClick={() => setAdding(false)} aria-label="Cancel">
-                <i className="fa-sharp fa-solid fa-xmark" />
-            </button>
-            {error ? <span className="property-add-error">{error}</span> : null}
+            {typeMenuOpen ? (
+                <div className="property-add-panel__type-menu" role="listbox" aria-label="Property type">
+                    {CreatableTypes.map((t) => (
+                        <button
+                            key={t}
+                            type="button"
+                            role="option"
+                            aria-selected={t === type}
+                            data-testid="property-add-type-option"
+                            data-type={t}
+                            className={cn("property-add-panel__type-item", t === type && "is-active")}
+                            onClick={() => {
+                                setType(t);
+                                setTypeMenuOpen(false);
+                            }}
+                        >
+                            <i className={cn("fa-sharp fa-solid", AddableTypeIcons[t] ?? "fa-font")} aria-hidden="true" />
+                            <span>{typeLabel(t)}</span>
+                            {t === type ? <i className="fa-sharp fa-solid fa-check" aria-hidden="true" /> : null}
+                        </button>
+                    ))}
+                </div>
+            ) : null}
+            <div className="property-add-panel__scope" role="radiogroup" aria-label="Apply to">
+                <div className="property-add-panel__scope-title">Apply to</div>
+                {(
+                    [
+                        {
+                            id: "session",
+                            icon: "fa-file-lines",
+                            title: "仅此会话",
+                            desc: "只写到当前会话，不动任何模板",
+                            chip: "默认",
+                        },
+                        {
+                            id: "agent",
+                            icon: "fa-robot",
+                            title: agentDisabled ? "仅此 Agent" : `仅此 Agent（${agentLabel}）`,
+                            desc: agentDisabled
+                                ? "当前会话没有 Agent 标识，不可用"
+                                : `所有 ${agentLabel} 会话出现该属性，其它 Agent 不受影响`,
+                        },
+                        {
+                            id: "global",
+                            icon: "fa-globe",
+                            title: "所有会话",
+                            desc: "写入全局模板，全部 Agent 的会话可见",
+                        },
+                    ] as Array<{ id: PropertyAddScope; icon: string; title: string; desc: string; chip?: string }>
+                ).map((opt) => {
+                    const disabled = opt.id === "agent" && agentDisabled;
+                    return (
+                        <label
+                            key={opt.id}
+                            data-testid="property-add-scope"
+                            data-scope={opt.id}
+                            className={cn(
+                                "property-add-panel__scope-opt",
+                                scope === opt.id && "is-active",
+                                disabled && "is-disabled"
+                            )}
+                        >
+                            <input
+                                type="radio"
+                                name="property-add-scope"
+                                value={opt.id}
+                                checked={scope === opt.id}
+                                disabled={disabled}
+                                onChange={() => setScope(opt.id)}
+                            />
+                            <i className={cn("fa-sharp fa-solid", opt.icon)} aria-hidden="true" />
+                            <span className="property-add-panel__scope-txt">
+                                <span className="property-add-panel__scope-t">{opt.title}</span>
+                                <span className="property-add-panel__scope-d">{opt.desc}</span>
+                            </span>
+                            {opt.chip != null ? <span className="property-add-panel__scope-chip">{opt.chip}</span> : null}
+                        </label>
+                    );
+                })}
+            </div>
+            {error !== "" ? (
+                <div className="property-add-panel__error" data-testid="property-add-error">
+                    {error}
+                </div>
+            ) : null}
+            <div className="property-add-panel__footer">
+                <span className="property-add-panel__hint">Enter 创建 · Esc 关闭</span>
+                <button
+                    type="button"
+                    data-testid="property-add-cancel"
+                    className="property-add-panel__cancel"
+                    onClick={onClose}
+                >
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    data-testid="property-add-submit"
+                    className="property-add-panel__ok"
+                    disabled={slugifyPropertyKey(name) === ""}
+                    onClick={submit}
+                >
+                    Add
+                </button>
+            </div>
         </div>
     );
 }
@@ -506,6 +620,8 @@ export function PropertyList({
     const [popoverAnchor, setPopoverAnchor] = React.useState<HTMLElement | null>(null);
     const valueBtnRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
     const [adding, setAdding] = React.useState(false);
+    // 新建属性浮层的锚点（+ Add property 按钮）。
+    const addBtnRef = React.useRef<HTMLButtonElement | null>(null);
     const [menuKey, setMenuKey] = React.useState<string | null>(null);
     const [renamingKey, setRenamingKey] = React.useState<string | null>(null);
     const [retypeKey, setRetypeKey] = React.useState<string | null>(null);
@@ -813,35 +929,49 @@ export function PropertyList({
             {isAgent ? (
                 <div className="property-footer">
                     {canEdit && onAddProperty != null ? (
-                        <AddPropertyForm
-                            inline
-                            existingKeys={entries.map((entry) => entry.def.key)}
-                            adding={adding}
-                            setAdding={setAdding}
-                            onSubmit={(key, type, saveToTemplate) => {
-                                setAdding(false);
-                                onAddProperty(key, type, saveToTemplate);
-                            }}
-                        />
+                        <button
+                            type="button"
+                            ref={addBtnRef}
+                            className="property-add property-add--inline"
+                            aria-expanded={adding}
+                            onClick={() => setAdding(!adding)}
+                        >
+                            <i className="fa-sharp fa-solid fa-plus" aria-hidden="true" /> Add property
+                        </button>
                     ) : null}
                     {footer != null ? <div className="property-footer__right">{footer}</div> : null}
                 </div>
             ) : mode === "detail" && canEdit && onAddProperty != null ? (
                 <div className="property-actions">
-                    <AddPropertyForm
-                        existingKeys={entries.map((entry) => entry.def.key)}
-                        adding={adding}
-                        setAdding={setAdding}
-                        onSubmit={(key, type, saveToTemplate) => {
-                            setAdding(false);
-                            onAddProperty(key, type, saveToTemplate);
-                        }}
-                    />
+                    <button
+                        type="button"
+                        ref={addBtnRef}
+                        className="property-add"
+                        aria-expanded={adding}
+                        onClick={() => setAdding(!adding)}
+                    >
+                        <i className="fa-sharp fa-solid fa-plus" aria-hidden="true" /> Add a property
+                    </button>
                     {footer != null ? <div className="property-actions__aux">{footer}</div> : null}
                 </div>
             ) : (
                 footer
             )}
+            {/* 新建属性浮层面板（替换旧的内联表单）。portal 到 body + 视口钳位，
+                agent 悬停卡与 detail 弹窗共用同一个组件。 */}
+            {canEdit && onAddProperty != null && adding ? (
+                <PropertyValuePopover open anchor={addBtnRef.current} onClose={() => setAdding(false)}>
+                    <AddPropertyPanel
+                        existingKeys={entries.map((entry) => entry.def.key)}
+                        agentLabel={(summary?.source ?? "").trim()}
+                        onSubmit={(key, type, scope) => {
+                            setAdding(false);
+                            onAddProperty(key, type, scope);
+                        }}
+                        onClose={() => setAdding(false)}
+                    />
+                </PropertyValuePopover>
+            ) : null}
             {/* 浮层下拉编辑器（共享层，与 md 预览属性卡同源）。
                 挂在列表尾部、portal 到 body：不参与行内布局，不会被窄卡宽度挤压。 */}
             {popoverEntry != null ? (

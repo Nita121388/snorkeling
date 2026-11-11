@@ -769,3 +769,51 @@ func TestScopedBackupDisabledByEnvFullMode(t *testing.T) {
 		t.Fatalf("expected the whole-database backup under %s=full, got %#v", BackupModeEnv, report.Backups)
 	}
 }
+
+func TestValidatePropScopes(t *testing.T) {
+	valid := PatchOperation{
+		Type: "session_prop.update",
+		Props: map[string]PropPatch{
+			"a": {Type: "text", Value: "x"},
+			"b": {Type: "text", Value: "x", Scope: "session"},
+			"c": {Type: "text", Value: "x", Scope: "agent"},
+			"d": {Type: "text", Value: "x", Scope: "all"},
+		},
+	}
+	if err := validatePropScopes(valid); err != nil {
+		t.Fatalf("valid scopes rejected: %v", err)
+	}
+	invalid := PatchOperation{
+		Type:  "session_prop.update",
+		Props: map[string]PropPatch{"a": {Type: "text", Value: "x", Scope: "team"}},
+	}
+	err := validatePropScopes(invalid)
+	if err == nil || !strings.Contains(err.Error(), "team") {
+		t.Fatalf("invalid scope must fail with the offending value, got %v", err)
+	}
+}
+
+func TestPropScopeMessages(t *testing.T) {
+	op := PatchOperation{
+		Type: "session_prop.update",
+		Props: map[string]PropPatch{
+			"session-only": {Type: "text", Value: "x"},
+			"agent-only":   {Type: "text", Value: "x", Scope: "agent"},
+			"global-one":   {Type: "text", Value: "x", Scope: "all"},
+		},
+	}
+	messages := propScopeMessages(op)
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 scope messages, got %d: %v", len(messages), messages)
+	}
+	joined := strings.Join(messages, "\n")
+	if !strings.Contains(joined, "agent-only") || !strings.Contains(joined, "agent:propertyschema") {
+		t.Fatalf("agent scope message missing: %v", messages)
+	}
+	if !strings.Contains(joined, "global-one") || !strings.Contains(joined, "global template") {
+		t.Fatalf("all scope message missing: %v", messages)
+	}
+	if strings.Contains(joined, "session-only") {
+		t.Fatalf("session scope must stay silent: %v", messages)
+	}
+}

@@ -632,6 +632,7 @@ declare global {
         type: string;
         value: any;
         name?: string;
+        scope?: string;
     };
 
     // wshrpc.AgentCardResult
@@ -646,6 +647,7 @@ declare global {
         persona: any;
         hash: string;
         updatedat: number;
+        schema?: AgentPropertyDefType[];
     };
 
     // wshrpc.AgentCardSetRequest
@@ -723,6 +725,7 @@ declare global {
         order?: number;
         aiManaged?: boolean;
         aiInstruction?: string;
+        scope?: string;
     };
 
     // wshrpc.AgentSkillInstallResult

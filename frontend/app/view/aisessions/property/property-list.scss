@@ -290,45 +290,270 @@
     }
 }
 
-.property-add-form {
+/* 新建属性浮层面板（外壳由共享的 .property-value-popover 提供：圆角/阴影/Portal/铺位）。
+   范围三选一是本面板的核心：session（默认）/ agent / global。 */
+.property-add-panel {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-    margin: 2px 4px;
-    font-size: 11px;
-
-    .property-edit-input {
-        flex: 1 1 110px;
-    }
-
-    .property-select {
-        flex: 0 0 auto;
-        width: auto;
-    }
-}
-
-.property-add-ok,
-.property-add-cancel {
-    flex: 0 0 auto;
-    padding: 1px 6px;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    background: transparent;
+    flex-direction: column;
+    gap: 8px;
+    width: 304px;
+    max-width: min(340px, calc(100vw - 24px));
+    padding: 10px;
+    font-size: 11.5px;
+    line-height: 1.45;
     color: var(--main-text-color);
-    font-size: 11px;
-    cursor: pointer;
-}
 
-.property-add-ok {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-}
+    &__name {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 5px 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        background: color-mix(in srgb, var(--main-text-color) 4%, transparent);
+        transition: border-color 100ms ease;
 
-.property-add-error {
-    flex: 1 1 100%;
-    color: var(--error-color, #d44c47);
-    font-size: 10px;
+        &:focus-within {
+            border-color: var(--accent-color);
+        }
+
+        > i {
+            color: var(--secondary-text-color);
+            font-size: 10px;
+        }
+
+        .property-edit-input {
+            flex: 1;
+            min-width: 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: var(--main-text-color);
+            font-size: 12px;
+
+            &:focus {
+                box-shadow: none;
+            }
+        }
+    }
+
+    &__type {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        width: 100%;
+        padding: 5px 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        background: transparent;
+        color: var(--main-text-color);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--hover-bg-color);
+        }
+
+        > i {
+            color: var(--secondary-text-color);
+            font-size: 10px;
+        }
+
+        .property-add-panel__caret {
+            margin-left: auto;
+            transition: transform 120ms ease;
+        }
+
+        &[aria-expanded="true"] .property-add-panel__caret {
+            transform: rotate(180deg);
+        }
+    }
+
+    &__type-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        max-height: 216px;
+        padding: 3px;
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        overflow-y: auto;
+    }
+
+    &__type-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 7px;
+        border: none;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--main-text-color);
+        font: inherit;
+        font-size: 11px;
+        text-align: left;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--hover-bg-color);
+        }
+
+        > i:first-child {
+            color: var(--secondary-text-color);
+            font-size: 10px;
+        }
+
+        > span {
+            flex: 1;
+        }
+
+        > .fa-check {
+            color: var(--accent-color);
+            font-size: 10px;
+        }
+    }
+
+    &__scope {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    &__scope-title {
+        margin: 1px 2px 3px;
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+    }
+
+    &__scope-opt {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 7px;
+        border: 1px solid transparent;
+        border-radius: 5px;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--hover-bg-color);
+        }
+
+        > input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        > i {
+            flex: none;
+            color: var(--secondary-text-color);
+            font-size: 11px;
+        }
+
+        &.is-active {
+            background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+            border-color: color-mix(in srgb, var(--accent-color) 35%, transparent);
+
+            > i {
+                color: var(--accent-color);
+            }
+        }
+
+        &.is-disabled {
+            cursor: default;
+            opacity: 0.55;
+
+            &:hover {
+                background: transparent;
+            }
+        }
+    }
+
+    &__scope-txt {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    &__scope-t {
+        font-size: 11.5px;
+        font-weight: 600;
+    }
+
+    &__scope-d {
+        font-size: 10.5px;
+        color: var(--secondary-text-color);
+        line-height: 1.45;
+    }
+
+    &__scope-chip {
+        align-self: center;
+        flex: none;
+        padding: 0 6px;
+        border: 1px solid color-mix(in srgb, var(--accent-color) 30%, transparent);
+        border-radius: 9px;
+        background: color-mix(in srgb, var(--accent-color) 6%, transparent);
+        color: var(--accent-color);
+        font-size: 9.5px;
+        line-height: 15px;
+    }
+
+    &__error {
+        padding: 0 2px;
+        color: var(--error-color, #d44c47);
+        font-size: 10.5px;
+    }
+
+    &__footer {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 2px;
+    }
+
+    &__hint {
+        margin-right: auto;
+        color: var(--secondary-text-color);
+        font-size: 10px;
+    }
+
+    &__cancel,
+    &__ok {
+        padding: 3px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 5px;
+        background: transparent;
+        color: var(--main-text-color);
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 550;
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+            background: var(--hover-bg-color);
+        }
+    }
+
+    &__ok {
+        border-color: var(--accent-color);
+        background: var(--accent-color);
+        color: var(--overlay-text-color, var(--main-bg-color));
+
+        &:disabled {
+            opacity: 0.45;
+            cursor: default;
+        }
+
+        &:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--accent-color) 85%, #000);
+        }
+    }
 }
 
 .property-ai {
@@ -348,8 +573,7 @@
     gap: 6px;
     margin: 6px 4px 2px;
 
-    .property-add,
-    .property-add-form {
+    .property-add {
         margin: 0;
     }
 
@@ -557,14 +781,7 @@
     }
 }
 
-.property-add-template {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    color: var(--secondary-text-color);
-    font-size: 10px;
-    cursor: pointer;
-}
+/* （旧内联表单的 Save to template 复选框已删除，见 property-add-panel 的范围三选一。） */
 
 /* ═══════════════════════════════════════════════════════════════════════
    agent 布局（Agent hover card 专用）
@@ -714,11 +931,6 @@
             background: transparent;
             color: var(--main-text-color);
         }
-    }
-
-    .property-add-form {
-        flex: 1 1 100%;
-        margin: 0 0 2px;
     }
 
     .property-ai {

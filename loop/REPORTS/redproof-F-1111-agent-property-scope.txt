@@ -1,0 +1,7 @@
+# 红证（2026-11-11）：新增 5 用例在旧代码上失败（浮层/范围三选一尚未实现），既有 16 用例通过
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m16 passed[39m[22m[90m (21)[39m
+[2m   Start at [22m 09:16:59
+[2m   Duration [22m 14.20s[2m (transform 1.40s, setup 67ms, collect 2.10s, tests 1.58s, environment 4.65s, prepare 610ms)[22m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml

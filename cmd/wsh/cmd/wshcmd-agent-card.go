@@ -23,6 +23,7 @@ var (
 	agentCardTagsAdd      []string
 	agentCardTagsRemove   []string
 	agentCardProps        []string
+	agentCardPropScope    string
 	agentCardForce        bool
 	agentCardExpectedHash string
 	agentCardDryRun       bool
@@ -64,7 +65,8 @@ Examples:
   wsh agent card set this --note "整理完成" --yes --expected-hash <hash>
   wsh agent card set this --title "ACS 设计" --yes --expected-hash <hash>
   wsh agent card set this --title "ACS 设计" --force --yes --expected-hash <hash>
-  wsh agent card set this --prop 优先级=select:P1 --yes --expected-hash <hash>`,
+  wsh agent card set this --prop 优先级=select:P1 --yes --expected-hash <hash>
+  wsh agent card set this --prop 优先级=select:P1 --prop-scope agent --dry-run`,
 	Args:    cobra.ExactArgs(1),
 	RunE:    agentCardSetRun,
 	PreRunE: preRunSetupRpcClient,
@@ -84,6 +86,7 @@ func init() {
 	agentCardSetCmd.Flags().StringSliceVar(&agentCardTagsAdd, "tags-add", nil, "add tags (idempotent)")
 	agentCardSetCmd.Flags().StringSliceVar(&agentCardTagsRemove, "tags-remove", nil, "remove tags")
 	agentCardSetCmd.Flags().StringArrayVar(&agentCardProps, "prop", nil, "set a custom property as key=type:value (repeatable)")
+	agentCardSetCmd.Flags().StringVar(&agentCardPropScope, "prop-scope", "session", "visibility of this call's --prop definitions: session | agent | all")
 	agentCardSetCmd.Flags().BoolVar(&agentCardForce, "force", false, "overwrite user-authored title / property values")
 	agentCardSetCmd.Flags().StringVar(&agentCardExpectedHash, "expected-hash", "", "precondition hash from 'agent card get' (required for --yes)")
 	agentCardSetCmd.Flags().BoolVar(&agentCardDryRun, "dry-run", false, "preview the field-level diff without writing")
@@ -123,8 +126,22 @@ func agentCardGetRun(cmd *cobra.Command, args []string) (rtnErr error) {
 			WriteStdout("  %s = %v (%s, %s)\n", key, prop.Value, orDash(prop.Type), orDash(prop.Source))
 		}
 	}
+	if len(res.Schema) > 0 {
+		WriteStdout("schema:\n")
+		for _, def := range res.Schema {
+			WriteStdout("  %s (%s, scope=%s)\n", orDash(def.Key), orDash(def.Type), orDash(schemaScopeLabel(def.Scope)))
+		}
+	}
 	WriteStdout("hash:        %s\n", res.Hash)
 	return nil
+}
+
+// schemaScopeLabel renders the settings-side scope for humans.
+func schemaScopeLabel(scope string) string {
+	if strings.TrimSpace(scope) == "" {
+		return "all sessions"
+	}
+	return scope
 }
 
 func agentCardSetRun(cmd *cobra.Command, args []string) (rtnErr error) {
@@ -154,9 +171,17 @@ func agentCardSetRun(cmd *cobra.Command, args []string) (rtnErr error) {
 			Remove: agentCardTagsRemove,
 		}
 	}
+	propScope, err := normalizePropScope(agentCardPropScope)
+	if err != nil {
+		return err
+	}
 	props, err := parseCardProps(agentCardProps)
 	if err != nil {
 		return err
+	}
+	for key, prop := range props {
+		prop.Scope = propScope
+		props[key] = prop
 	}
 	if len(props) > 0 {
 		req.Props = props
@@ -174,6 +199,20 @@ func agentCardSetRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	}
 	agentCardPrintSummary(res)
 	return nil
+}
+
+// normalizePropScope validates --prop-scope. Unknown values are an error:
+// silently falling back to session would misrepresent the caller's intent.
+func normalizePropScope(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "session":
+		return "session", nil
+	case "agent":
+		return "agent", nil
+	case "all":
+		return "all", nil
+	}
+	return "", fmt.Errorf("invalid --prop-scope %q: expected session, agent or all", raw)
 }
 
 // parseCardProps parses repeated --prop key=type:value flags. A bare key=value

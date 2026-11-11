@@ -8,6 +8,7 @@ import {
     formatValue,
     humanizeKey,
     isEmptyValue,
+    schemaVisibleTo,
     slugifyPropertyKey,
     tagToOption,
     toPropertyDefs,
@@ -179,5 +180,60 @@ describe("toPropertyDefs with global schema", () => {
         expect(owner.def.name).toBe("Owner");
         expect(owner.cell.value).toBeNull();
         expect(owner.def.type).toBe("person");
+    });
+});
+
+// ─── 模板 scope 过滤（仅此会话 / 仅此 Agent / 所有会话）───
+describe("toPropertyDefs — 模板 scope 过滤", () => {
+    const schema = [
+        { key: "global_one", name: "Global One", type: "text", order: 1 },
+        { key: "pi_only", name: "Pi Only", type: "text", order: 2, scope: "agent:pi" },
+        { key: "codex_only", name: "Codex Only", type: "text", order: 3, scope: "agent:codex" },
+    ];
+
+    it("pi 会话只看到全局 + agent:pi 的定义，且映射出 scope", () => {
+        const entries = toPropertyDefs(makeSummary({ source: "pi", props: {} }), schema);
+        const keys = entries.filter((entry) => !entry.def.builtin).map((entry) => entry.def.key);
+        expect(keys).toContain("global_one");
+        expect(keys).toContain("pi_only");
+        expect(keys).not.toContain("codex_only");
+
+        const global = entries.find((entry) => entry.def.key === "global_one")!;
+        const agent = entries.find((entry) => entry.def.key === "pi_only")!;
+        expect(global.def.scope).toBe("global");
+        expect(agent.def.scope).toBe("agent");
+    });
+
+    it("codex 会话看到的是 agent:codex，不是 agent:pi", () => {
+        const entries = toPropertyDefs(makeSummary({ source: "codex", props: {} }), schema);
+        const keys = entries.filter((entry) => !entry.def.builtin).map((entry) => entry.def.key);
+        expect(keys).toContain("codex_only");
+        expect(keys).not.toContain("pi_only");
+    });
+
+    it("source 缺失时只保留全局定义（安全降级）", () => {
+        const entries = toPropertyDefs(makeSummary({ source: "", props: {} }), schema);
+        const keys = entries.filter((entry) => !entry.def.builtin).map((entry) => entry.def.key);
+        expect(keys).toEqual(["global_one"]);
+    });
+
+    it("别的 Agent 的模板项不参与 name/type 补全（同 key 不串味）", () => {
+        const entries = toPropertyDefs(
+            makeSummary({ source: "pi", props: { stage: { value: "plan", type: "text" } } }),
+            [{ key: "stage", name: "Codex Stage", type: "select", options: ["plan"], order: 1, scope: "agent:codex" }]
+        );
+        const stage = entries.find((entry) => entry.def.key === "stage")!;
+        // 值行用 props 自己推断的类型与 humanize 名称，而不是 codex 模板的名称/类型
+        expect(stage.def.type).toBe("text");
+        expect(stage.def.name).toBe("Stage");
+    });
+
+    it("schemaVisibleTo 只认空 scope 与匹配的 agent:<source>", () => {
+        expect(schemaVisibleTo({ key: "a", scope: "" }, "pi")).toBe(true);
+        expect(schemaVisibleTo({ key: "a" }, "pi")).toBe(true);
+        expect(schemaVisibleTo({ key: "a", scope: "agent:pi" }, "pi")).toBe(true);
+        expect(schemaVisibleTo({ key: "a", scope: "agent:pi" }, "PI")).toBe(true);
+        expect(schemaVisibleTo({ key: "a", scope: "agent:pi" }, "codex")).toBe(false);
+        expect(schemaVisibleTo({ key: "a", scope: "agent:pi" }, "")).toBe(false);
     });
 });

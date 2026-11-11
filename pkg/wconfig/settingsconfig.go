@@ -87,6 +87,11 @@ type AgentPropertyDefType struct {
 	Order         int      `json:"order,omitempty"`
 	AIManaged     bool     `json:"aiManaged,omitempty"`
 	AIInstruction string   `json:"aiInstruction,omitempty"`
+	// Scope limits which sessions see this definition: "" = all sessions
+	// (global template, the legacy default), "agent:<source>" = only sessions
+	// from that agent (e.g. "agent:pi"). Session values live per-session
+	// regardless; scope only controls definition visibility.
+	Scope string `json:"scope,omitempty"`
 }
 
 // CommonTextCreatedByType records who authored an item.

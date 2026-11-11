@@ -178,3 +178,21 @@
 | 2026-11-10 14:48 | waveconfig-json-error | ❌ 10/11 | launch+reset | `20261110T14460-waveconfig-json-error` | 5aeb6467 |
 | 2026-11-10 14:52 | waveconfig-json-error | ❌ 10/11 | launch+reset | `20261110T14494-waveconfig-json-error` | 5aeb6467 |
 | 2026-11-10 14:55 | waveconfig-json-error | ✅ 11/11 | launch+reset | `20261110T14523-waveconfig-json-error` | b60a6a7d |
+| 2026-11-11 01:07 | commontext-send-agent-block | ❌ fatal（未跑） | launch+reset | `20261111T01001-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 01:18 | commontext-send-agent-block | ❌ fatal（未跑） | launch+reset | `20261111T01124-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 01:27 | commontext-send-agent-block | ❌ fatal（未跑） | launch+reset | `20261111T01201-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 01:36 | commontext-send-agent-block | ❌ 3/3（fatal） | launch+reset | `20261111T01291-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 01:48 | commontext-send-agent-block | ❌ fatal（未跑） | launch+reset | `20261111T01412-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 01:53 | commontext-send-agent-block | ❌ 21/25 | attach | `20261111T01501-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 01:55 | commontext-send-agent-block | ❌ 21/25 | attach | `20261111T01522-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 02:02 | commontext-send-agent-block | ❌ 3/4（fatal） | attach | `20261111T02020-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 02:05 | commontext-send-agent-block | ❌ 21/25 | attach | `20261111T02030-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 02:08 | commontext-send-agent-block | ❌ 3/4（fatal） | attach | `20261111T02074-commontext-send-agent-block` | 9f619450 |
+| 2026-11-11 02:18 | newtab-empty | ✅ 1/1 | launch+reset | `20261111T02184-newtab-empty` | 9f619450 |
+| 2026-11-11 02:19 | newtab-empty | ❌ 1/3（fatal） | launch+reset | `20261111T02190-newtab-empty` | 9f619450 |
+| 2026-11-11 02:29 | newtab-empty | ❌ fatal（未跑） | launch+reset | `20261111T02264-newtab-empty` | 9f619450 |
+| 2026-11-11 02:35 | agent-property-scope | ❌ fatal（未跑） | launch+reset | `20261111T02283-agent-property-scope` | 9f619450 |
+| 2026-11-11 02:38 | newtab-empty | ❌ fatal（未跑） | launch+reset | `20261111T02312-newtab-empty` | 9f619450 |
+| 2026-11-11 02:42 | newtab-empty | ❌ fatal（未跑） | attach | `20261111T02412-newtab-empty` | 9f619450 |
+| 2026-11-11 02:44 | agent-property-scope | ❌ fatal（未跑） | launch+reset | `20261111T02442-agent-property-scope` | 9f619450 |
+| 2026-11-11 10:57 | agent-property-scope | — 未跑（用户要求不跑真机验证；判据由 vitest property/info-card + go test agentcontrol/agentdata 覆盖） | skipped | — | working-tree |

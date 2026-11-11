@@ -10,6 +10,7 @@
 - `agent/new-agent-panel/` — 同步状态：◐ 部分落地（阶段 1 已实现，继承开关为 future concept）
 - `agent/new-agent-vendor.html` — （单文件原型）
 - `agent/notion-property-agent-card/` — 同步状态：▲ 设计活跃（未实现）
+- `agent/property-add-scope/` — 同步状态：◐ 部分落地（UI 浮层 + scope 数据模型 + 外部通道已实现，真机验证未跑）
 
 ## aisessions
 - `aisessions/aisessions-annotation-card-ux/` — 同步状态：▲ 设计活跃（未实现）

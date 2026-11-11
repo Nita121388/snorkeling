@@ -17,6 +17,7 @@ import (
 
 	"github.com/wavetermdev/waveterm/pkg/agentdata"
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
@@ -51,6 +52,7 @@ func GetAgentCard(ctx context.Context, req wshrpc.AgentCardGetRequest) (*wshrpc.
 	}
 	record := wshrpc.SessionLiveRecord{}
 	applySummary(&record, summary)
+	schema := filterSchemaForSession(wconfig.ReadFullConfig().Settings.AgentPropertySchema, summary.Source)
 	return &wshrpc.AgentCardResult{
 		Version:     wshrpc.AgentControlVersion,
 		SessionKey:  summary.Key,
@@ -62,6 +64,7 @@ func GetAgentCard(ctx context.Context, req wshrpc.AgentCardGetRequest) (*wshrpc.
 		Persona:     nil,
 		Hash:        agentdata.HashSession(summary),
 		UpdatedAt:   summary.UpdatedAt,
+		Schema:      schema,
 	}, nil
 }
 
@@ -79,6 +82,10 @@ func SetAgentCard(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.
 			WithHint("use 'wsh session list' or 'wsh session live' to find a session key")
 	}
 
+	if err := validateCardPropScopes(req.Props); err != nil {
+		return nil, newError(CodeUsage, "%s", err.Error()).
+			WithHint("scope must be session (default), agent or all")
+	}
 	operations, err := buildCardOperations(summary.Key, req)
 	if err != nil {
 		return nil, err
@@ -116,6 +123,16 @@ func SetAgentCard(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.
 	if applyErr != nil {
 		return result, mapApplyError(applyErr)
 	}
+	if !dryRun {
+		// The value is committed at this point. agent/all scopes additionally
+		// publish the definition to agent:propertyschema; a failure there is
+		// surfaced (not hidden) but never rolls back the per-session value.
+		if err := syncPropertySchema(summary.Key, req.Props); err != nil {
+			result.Messages = append(result.Messages, "schema write failed: "+err.Error())
+			return result, newError(CodeInternal, "schema write failed: %s", err.Error())
+		}
+		result.Messages = append(result.Messages, schemaSyncMessages(summary.Key, req.Props)...)
+	}
 	return result, nil
 }
 
@@ -150,7 +167,7 @@ func buildCardOperations(sessionKey string, req wshrpc.AgentCardSetRequest) ([]a
 	if len(req.Props) > 0 {
 		props := make(map[string]agentdata.PropPatch, len(req.Props))
 		for key, prop := range req.Props {
-			props[key] = agentdata.PropPatch{Type: prop.Type, Value: prop.Value, Name: prop.Name}
+			props[key] = agentdata.PropPatch{Type: prop.Type, Value: prop.Value, Name: prop.Name, Scope: prop.Scope}
 		}
 		operations = append(operations, agentdata.PatchOperation{
 			Type:       "session_prop.update",

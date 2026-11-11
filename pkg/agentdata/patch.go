@@ -63,6 +63,22 @@ type PropPatch struct {
 	Value any    `json:"value"`
 	// Name optionally renames the user-visible label.
 	Name string `json:"name,omitempty"`
+	// Scope controls where the property *definition* becomes visible:
+	// "session" (default/empty) = this session only, "agent" = every session
+	// of the same agent, "all" = global template. The value itself is always
+	// written per-session; agent/all additionally upsert agent:propertyschema
+	// (done by the command layer, not by this data pipeline).
+	Scope string `json:"scope,omitempty"`
+}
+
+// ValidPropertyScope reports whether scope is one of the three supported
+// values. Empty means "session" (the pre-scope behaviour).
+func ValidPropertyScope(scope string) bool {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "", "session", "agent", "all":
+		return true
+	}
+	return false
 }
 
 func (op *PatchOperation) UnmarshalJSON(data []byte) error {
@@ -614,6 +630,9 @@ func existingPropsFor(ctx context.Context, key string) (map[string]aisessions.Pr
 }
 
 func previewSessionProps(ctx context.Context, report OperationReport, op PatchOperation) (OperationReport, error) {
+	if err := validatePropScopes(op); err != nil {
+		return report, err
+	}
 	summary, err := loadSessionForControl(ctx, op.SessionKey)
 	if err != nil {
 		return report, err
@@ -633,10 +652,14 @@ func previewSessionProps(ctx context.Context, report OperationReport, op PatchOp
 		report.AffectedCount = 1
 	}
 	report.Messages = append(report.Messages, "session properties validated")
+	report.Messages = append(report.Messages, propScopeMessages(op)...)
 	return report, nil
 }
 
 func applySessionProps(ctx context.Context, report OperationReport, op PatchOperation) (OperationReport, error) {
+	if err := validatePropScopes(op); err != nil {
+		return report, err
+	}
 	summary, err := loadSessionForControl(ctx, op.SessionKey)
 	if err != nil {
 		return report, err
@@ -656,6 +679,44 @@ func applySessionProps(ctx context.Context, report OperationReport, op PatchOper
 		report.AffectedCount = 1
 	}
 	return report, nil
+}
+
+// validatePropScopes rejects unknown scope values instead of silently
+// degrading them to "session" (the caller's intent must be explicit).
+func validatePropScopes(op PatchOperation) error {
+	keys := make([]string, 0, len(op.Props))
+	for key := range op.Props {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		scope := op.Props[key].Scope
+		if !ValidPropertyScope(scope) {
+			return fmt.Errorf("invalid scope %q for property %q: expected session, agent or all", scope, key)
+		}
+	}
+	return nil
+}
+
+// propScopeMessages tells the dry-run reader which properties will touch the
+// global schema (the command layer performs that write after a successful apply).
+func propScopeMessages(op PatchOperation) []string {
+	keys := make([]string, 0, len(op.Props))
+	for key := range op.Props {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var messages []string
+	for _, key := range keys {
+		scope := strings.ToLower(strings.TrimSpace(op.Props[key].Scope))
+		switch scope {
+		case "agent":
+			messages = append(messages, key+": scope agent -> agent:propertyschema will be updated (all sessions of this agent)")
+		case "all":
+			messages = append(messages, key+": scope all -> agent:propertyschema will be updated (global template)")
+		}
+	}
+	return messages
 }
 
 // sessionPropSuggestions splits an operation into AI-writable suggestions and

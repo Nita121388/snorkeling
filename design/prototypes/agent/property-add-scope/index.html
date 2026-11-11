@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Card · Add Property 范围三选一 · 原型</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="page">
+        <header class="doc-head">
+            <h1>Add property · 范围三选一 + 表单美化</h1>
+            <p class="subtitle">
+                Agent 卡片「新增属性」的两个问题：① 范围不可选 —— 当前只有「本会话 + Save to template（默认勾选 = 悄悄改全局模板）」，
+                没有「只给我的 pi 会话加」这一档；② 控件丑 —— footer 一行挤 5 个控件，native select + 10px 复选框在窄卡里毫无质感。
+                本原型回答新表单的视觉与交互：浮层面板 + 类型选择器 + <b>范围三选一</b>（仅此会话 / 仅此 Agent / 所有会话）。
+            </p>
+            <div class="toolbar">
+                <span class="tool-label">Demo</span>
+                <span class="tool-sep"></span>
+                <span class="tool-note">右卡可交互：点 + Add property → 填名字 → 选类型 → 选范围 → Add</span>
+                <span class="tool-sep"></span>
+                <button class="seg" id="btn-reset" type="button">重置演示</button>
+            </div>
+        </header>
+
+        <div class="stage">
+            <!-- ═══════════ Before：当前实现（静态） ═══════════ -->
+            <section class="demo-col">
+                <div class="demo-label">
+                    <span class="tag tag--muted">Before</span>
+                    当前实现 · AddPropertyForm（静态对照）
+                </div>
+
+                <div class="info-card agent-card">
+                    <div class="agent-card-head">
+                        <div class="agent-card-avatar">pi</div>
+                        <div class="agent-card-id">
+                            <div class="agent-card-name">重构 renderer 滚动锚定</div>
+                            <div class="agent-card-meta">pi · claude · 2 小时前</div>
+                        </div>
+                        <span class="agent-chip agent-chip--done"><span class="dot"></span>done</span>
+                    </div>
+
+                    <div class="property-list property-list--agent">
+                        <div class="property-row property-row--agent" data-property-key="updated_at">
+                            <span class="property-row__icon" data-icon="clock"></span>
+                            <span class="property-row__name">Updated</span>
+                            <span class="property-row__value"><span class="property-text">2 小时前</span></span>
+                        </div>
+                        <div class="property-row property-row--agent" data-property-key="created_at">
+                            <span class="property-row__icon" data-icon="calendar"></span>
+                            <span class="property-row__name">Created</span>
+                            <span class="property-row__value"><span class="property-text">11 月 09 日</span></span>
+                        </div>
+                        <div class="property-row property-row--agent" data-property-key="tags">
+                            <span class="property-row__icon" data-icon="tag"></span>
+                            <span class="property-row__name">Tags</span>
+                            <span class="property-row__value">
+                                <span class="property-chips">
+                                    <span class="property-chip property-chip--blue">renderer</span>
+                                    <span class="property-chip property-chip--green">perf</span>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="property-row property-row--agent is-note" data-property-key="note">
+                            <span class="property-row__icon" data-icon="note"></span>
+                            <span class="property-row__name">Note</span>
+                            <span class="property-row__value">
+                                <span class="property-text">滚动锚定在虚拟行挂载时会跳，先测 rowHeight 估算再谈 memo。</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- 旧表单：footer 里横排展开（真实 DOM：property-add-form） -->
+                    <div class="property-footer">
+                        <div class="property-add-form">
+                            <input class="property-edit-input" value="Priority" aria-label="Property name" />
+                            <select class="property-select" aria-label="Property type">
+                                <option>Text</option>
+                                <option selected>Multi-select</option>
+                                <option>Status</option>
+                                <option>Checkbox</option>
+                            </select>
+                            <label class="property-add-template">
+                                <input type="checkbox" checked />
+                                Save to template
+                            </label>
+                            <button class="property-add-ok" type="button">Add</button>
+                            <button class="property-add-cancel" type="button" aria-label="Cancel">✕</button>
+                        </div>
+                    </div>
+                </div>
+
+                <ul class="pain">
+                    <li><b>Save to template 默认勾选</b> —— 每次新建属性都在悄悄改全局模板，用户大概率不知情。</li>
+                    <li>一行 5 个控件互相挤压，native select 和 10px 复选框与卡片其余部分的视觉语言完全脱节。</li>
+                    <li>范围只有两档（本会话 / 全局），<b>没有「只针对某个 Agent」</b>——想给所有 pi 会话加个属性只能污染全局模板。</li>
+                </ul>
+            </section>
+
+            <!-- ═══════════ After：新方案（可交互） ═══════════ -->
+            <section class="demo-col">
+                <div class="demo-label">
+                    <span class="tag tag--accent">After</span>
+                    新方案 · 浮层面板 + 范围三选一（可交互）
+                </div>
+
+                <div class="info-card agent-card" id="card-after">
+                    <div class="agent-card-head">
+                        <div class="agent-card-avatar">pi</div>
+                        <div class="agent-card-id">
+                            <div class="agent-card-name">重构 renderer 滚动锚定</div>
+                            <div class="agent-card-meta">pi · claude · 2 小时前</div>
+                        </div>
+                        <span class="agent-chip agent-chip--done"><span class="dot"></span>done</span>
+                    </div>
+
+                    <div class="property-list property-list--agent" id="props-after">
+                        <div class="property-row property-row--agent" data-property-key="updated_at">
+                            <span class="property-row__icon" data-icon="clock"></span>
+                            <span class="property-row__name">Updated</span>
+                            <span class="property-row__value"><span class="property-text">2 小时前</span></span>
+                        </div>
+                        <div class="property-row property-row--agent" data-property-key="created_at">
+                            <span class="property-row__icon" data-icon="calendar"></span>
+                            <span class="property-row__name">Created</span>
+                            <span class="property-row__value"><span class="property-text">11 月 09 日</span></span>
+                        </div>
+                        <div class="property-row property-row--agent" data-property-key="tags">
+                            <span class="property-row__icon" data-icon="tag"></span>
+                            <span class="property-row__name">Tags</span>
+                            <span class="property-row__value">
+                                <span class="property-chips">
+                                    <span class="property-chip property-chip--blue">renderer</span>
+                                    <span class="property-chip property-chip--green">perf</span>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="property-row property-row--agent is-note" data-property-key="note">
+                            <span class="property-row__icon" data-icon="note"></span>
+                            <span class="property-row__name">Note</span>
+                            <span class="property-row__value">
+                                <span class="property-text">滚动锚定在虚拟行挂载时会跳，先测 rowHeight 估算再谈 memo。</span>
+                            </span>
+                        </div>
+                        <!-- 新建的自定义属性行由 script.js 注入到这里 -->
+                    </div>
+
+                    <div class="property-footer">
+                        <button class="property-add property-add--inline" id="btn-add" type="button">
+                            <span data-icon="plus"></span> Add property
+                        </button>
+                    </div>
+
+                    <!-- 新表单：portal 风格浮层，锚在 + Add property 下方 -->
+                    <div class="pp-popover" id="popover" role="dialog" aria-label="新增属性" hidden>
+                        <div class="pp-name">
+                            <span class="pp-ic" data-icon="pencil"></span>
+                            <input id="pp-input" placeholder="Property name" autocomplete="off" spellcheck="false" />
+                        </div>
+
+                        <button class="pp-type" id="pp-type" type="button" aria-expanded="false" aria-haspopup="listbox">
+                            <span class="pp-ic" id="pp-type-ic"></span>
+                            <span id="pp-type-name">Text</span>
+                            <span class="pp-caret" data-icon="chevron"></span>
+                        </button>
+                        <div class="pp-type-menu" id="pp-type-menu" role="listbox" aria-label="Property type" hidden></div>
+
+                        <div class="pp-scope" role="radiogroup" aria-label="适用范围">
+                            <div class="pp-scope-title">Apply to</div>
+                            <label class="pp-scope-opt is-active" data-scope="session">
+                                <input type="radio" name="pp-scope" value="session" checked />
+                                <span class="pp-scope-ic" data-icon="doc"></span>
+                                <span class="pp-scope-txt">
+                                    <span class="pp-scope-t">仅此会话</span>
+                                    <span class="pp-scope-d">只写到当前会话，不动任何模板</span>
+                                </span>
+                                <span class="pp-scope-chip">默认</span>
+                            </label>
+                            <label class="pp-scope-opt" data-scope="agent">
+                                <input type="radio" name="pp-scope" value="agent" />
+                                <span class="pp-scope-ic" data-icon="robot"></span>
+                                <span class="pp-scope-txt">
+                                    <span class="pp-scope-t">仅此 Agent（pi）</span>
+                                    <span class="pp-scope-d">所有 pi 会话出现该属性；codex / opencode 不受影响</span>
+                                </span>
+                            </label>
+                            <label class="pp-scope-opt" data-scope="all">
+                                <input type="radio" name="pp-scope" value="all" />
+                                <span class="pp-scope-ic" data-icon="globe"></span>
+                                <span class="pp-scope-txt">
+                                    <span class="pp-scope-t">所有会话</span>
+                                    <span class="pp-scope-d">写入全局模板，全部 Agent 的会话可见</span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div class="pp-error" id="pp-error" hidden></div>
+
+                        <div class="pp-footer">
+                            <span class="pp-hint">Enter 创建 · Esc 关闭</span>
+                            <button class="pp-btn pp-btn--ghost" id="pp-cancel" type="button">Cancel</button>
+                            <button class="pp-btn pp-btn--primary" id="pp-submit" type="button" disabled>Add</button>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="demo-hint">提交后属性行落在上方卡片里，同时下方矩阵实时显示三种会话各自能不能看到它。</p>
+            </section>
+        </div>
+
+        <!-- ═══════════ 范围语义矩阵 ═══════════ -->
+        <section class="matrix-section">
+            <h2>范围语义矩阵（交互结果）</h2>
+            <table class="matrix" id="matrix">
+                <thead>
+                    <tr>
+                        <th>属性</th>
+                        <th>范围</th>
+                        <th>本会话（pi）</th>
+                        <th>另一个 pi 会话</th>
+                        <th>codex 会话</th>
+                    </tr>
+                </thead>
+                <tbody id="matrix-body">
+                    <tr class="matrix-empty" id="matrix-empty">
+                        <td colspan="5">还没有新建属性 —— 点右卡的 + Add property 试三种范围。</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="legend">
+                ✓ = 该会话的属性行出现这个定义（值为空显示 <span class="property-empty--dash">—</span>）；
+                属性的<b>值永远只写到值所在的会话</b>，模板只控制「定义的可见范围」。
+            </p>
+        </section>
+
+        <!-- ═══════════ 设计决策备注 ═══════════ -->
+        <section class="notes">
+            <h2>设计决策备注</h2>
+            <ol>
+                <li><b>默认「仅此会话」</b>：替换掉当前 Save to template 默认勾 true 的行为 —— 改全局模板必须是显式选择，不是默认副作用。</li>
+                <li><b>三种范围都写当前会话的初值</b>：建完即可填，体验与今天一致；模板只管可见性。</li>
+                <li><b>数据模型</b>：<code>AgentPropertyDefType</code> 增加 <code>Scope string</code>（<code>""</code>=全局 / <code>"agent:pi"</code>=按 Agent），
+                    缺省空 = 全局，旧数据零迁移；<code>toPropertyDefs</code> 只并入 scope 匹配的模板项。</li>
+                <li><b>「某个 Agent」目前按 origin 粒度</b>（pi / codex / opencode）。如果要按 model 或 persona 粒度，scope 编码改为 <code>agent:&lt;origin&gt;:&lt;model&gt;</code> —— 待拍板。</li>
+                <li><b>Save to template 复选框删除</b>，被三选一取代；md 预览属性卡不传 schema，不受影响。</li>
+                <li><b>Non-goals</b>：模板管理界面、既有属性「改范围」的行菜单项（第二期 Property menu → Scope）。</li>
+            </ol>
+        </section>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

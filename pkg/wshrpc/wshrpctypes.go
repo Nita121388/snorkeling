@@ -756,6 +756,10 @@ type AgentCardResult struct {
 	Persona   *any   `json:"persona"`
 	Hash      string `json:"hash"`
 	UpdatedAt int64  `json:"updatedat"`
+	// Schema lists the property definitions visible to this session, already
+	// filtered by scope ("" = global, "agent:<source>" = this agent). External
+	// callers use it to learn which properties exist and where they apply.
+	Schema []wconfig.AgentPropertyDefType `json:"schema,omitempty"`
 }
 
 // AgentCardTagPatch mirrors agentdata.TagPatch without importing it: agentdata
@@ -773,6 +777,9 @@ type AgentCardPropPatch struct {
 	Type  string `json:"type"`
 	Value any    `json:"value"`
 	Name  string `json:"name,omitempty"`
+	// Scope is "session" (default/empty), "agent" or "all". agent/all also
+	// upsert the property definition into agent:propertyschema.
+	Scope string `json:"scope,omitempty"`
 }
 
 // AgentCardChangeReport mirrors agentdata.ChangeReport.

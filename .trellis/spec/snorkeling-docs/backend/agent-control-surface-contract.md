@@ -125,3 +125,28 @@ CLI 必须把 `Code` 映射成稳定退出码，`--json` 时输出结构化错�
 
 判据（改动此路径时必须重新采数）：单会话 note/标签写入 **< 2 s**、新增备份文件 **< 1 MB**、
 `patch-audit.jsonl` 里 `success:true` 且 `operations` 非 null。
+
+---
+
+## 10. 属性定义 scope（会话 / 仅此 Agent / 全局）
+
+自定义属性有**两个正交的东西**，改动时必须分开想：
+
+|  | 值（`SessionSummary.Props[key]`） | 定义（`agent:propertyschema`） |
+|---|---|---|
+| 存哪 | per-session（SQLite / meta） | settings.json 全局模板 |
+| 谁能改 | `agentdata` patch（`session_prop.update`） | `wconfig.SetBaseConfigValue`（命令层） |
+| scope 影响 | 不影响（值永远只写目标会话） | 影响「哪些会话能看到这条定义」 |
+
+- **两套编码**：API/CLI/MCP 用 `session | agent | all`（空 = session）；settings 里用
+  `""`（全局）| `"agent:<source>"`。转换只允许发生在 `pkg/agentcontrol/card_schema.go`
+  （`schemaScopeFor`），别在别处再写一份映射。
+- **agent 的 source 取自会话 key 前缀**（`pi:...` → `agent:pi`），不是 `origin`
+  （origin 是扫描来源/机器，见 `SessionSummary.Origin` 注释）。
+- **模板写入只发生在命令层**（`agent card set` 成功 apply 之后），`agentdata` 保持数据域单写者；
+  前端同理：值走 `setSessionProps`，模板走 `SetConfigCommand`。
+- **不传 scope = 旧行为**（不写模板）——这是外部调用向后兼容的判据；改这段必须保证
+  `--prop` 不带 `--prop-scope` 时 `settings.json` 一字不改。
+- **非法 scope 必须报错**（`E_USAGE`），不允许静默降级成 session。
+- 读取侧 `agent card get` 返回按会话 source 过滤后的 `schema`（含 scope 原值），
+  别让外部 Agent 自己猜哪些定义适用。

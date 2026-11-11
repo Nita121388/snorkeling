@@ -73,7 +73,13 @@ export type PropertyDef = {
     type: PropertyType;
     options?: SelectOption[];
     order: number;
-    scope: "session" | "agent";
+    /**
+     * 定义的作用域：
+     *  - session：只存在于本会话 props（值行的默认）；
+     *  - agent：模板项 scope="agent:<source>"，仅该 Agent 的会话可见；
+     *  - global：模板项 scope 为空/缺省，所有会话可见。
+     */
+    scope: "session" | "agent" | "global";
     builtin: boolean;
     /** 允许后台 AI 自动写（仅自定义属性可 true）。 */
     aiManaged?: boolean;
@@ -167,6 +173,24 @@ function schemaKey(def: SchemaDef): string {
     return slugifyPropertyKey(def.key ?? "");
 }
 
+/**
+ * 模板项对某个会话是否可见：
+ *  - Scope 为空 / 缺省 = 全局，所有会话可见（旧数据零迁移）；
+ *  - "agent:<source>" = 只对同 source 的会话可见；
+ *  - 其它未知值一律不可见（安全降级，不猜）。
+ */
+export function schemaVisibleTo(def: SchemaDef, source: string): boolean {
+    const scope = (def.scope ?? "").trim().toLowerCase();
+    if (scope === "") return true;
+    const provider = (source ?? "").trim().toLowerCase();
+    return provider !== "" && scope === `agent:${provider}`;
+}
+
+/** 模板项 → PropertyDef.scope（供 UI 区分定义来源）。 */
+export function schemaDefScope(def: SchemaDef): "agent" | "global" {
+    return (def.scope ?? "").trim() === "" ? "global" : "agent";
+}
+
 export function toPropertyDefs(summary: SessionSummary | null | undefined, schema?: SchemaDef[]): PropertyEntry[] {
     if (summary == null) return [];
     const entries: PropertyEntry[] = [];
@@ -202,8 +226,11 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
     pushBuiltin(BUILTIN_PROP_KEYS.note, "text", summary.note ?? "");
 
     // 全局模板（wconfig agent:propertyschema）按 key 建索引。
+    // scope 过滤在建索引之前：别的 Agent 的模板项既不出现，也不参与
+    // name/type/options 补全（避免同名 key 跨 Agent 串味）。
     const schemaByKey = new Map<string, SchemaDef>();
     for (const def of schema ?? []) {
+        if (!schemaVisibleTo(def, summary.source ?? "")) continue;
         const k = schemaKey(def);
         if (k !== "") schemaByKey.set(k, def);
     }
@@ -276,7 +303,7 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
                     (typeof schemaDef.order === "number" && schemaDef.order > 0
                         ? schemaDef.order
                         : 1000 + schemaSeq),
-                scope: "session",
+                scope: schemaDefScope(schemaDef),
                 builtin: false,
                 aiManaged: schemaDef.aiManaged === true,
                 aiInstruction: schemaDef.aiInstruction,
