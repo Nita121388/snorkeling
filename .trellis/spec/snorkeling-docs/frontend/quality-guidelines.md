@@ -640,3 +640,27 @@ CommonText「新建 agent block 并发送」靠 pending-input 队列把文本在
   多块/多 tab 时读它必串块。要断言某块的终端内容，用带 blockId 的事件或显式选择器，别用 `window.term`。
 - **多 agent 并行跑 verify 必须错开端口**：`VERIFY_PROFILE=verify-x VERIFY_VITE_PORT=51871 VERIFY_CDP_PORT=9237`。
   共用默认端口时两台验证台会互相读对方的块（实测注入断言读到了另一台的 `term-failure-copy` 块）。
+
+---
+
+## 浮层三条硬约束：不要自建遮罩 / 弹层对齐 New Agent / px 前先确认 token 存在 (2026-11-11, task 11-11-commontext-send-splitbutton)
+
+- **禁止自建 `<div class="fixed inset-0">` 全屏遮罩当「点击关闭」层。** `position:fixed` + `z-index:auto`
+  自成层叠上下文，会把内部弹层的 `z-index:1000` 困死；而 `.modal-wrapper` 是
+  `position:fixed; z-index:500`（`--zindex-modal-wrapper`），在 body 层叠上下文里直接压过遮罩
+  → 弹层「渲染了但完全看不见、不可点」，而 DOM 断言全绿（假绿）。
+  正解：`@floating-ui/react` 的 `FloatingPortal`（往 body 追加的是**无定位样式**的普通 div，不是层叠上下文，
+  floating 子元素 zIndex 1000 直接参与 body 层叠）+ `useDismiss`（外点/Escape）判关闭。
+  现成控件：`frontend/app/element/splitbutton.tsx`（split button + 浮层，可直接复用）。
+- **弹层/弹窗的视觉面层以 New Agent 浮窗为基准**（`workspace/widgets.tsx` AgentTargetFloatingWindow）：
+  `bg-modalbg/80 backdrop-blur-2xl border border-border/70 rounded-xl shadow-2xl`，
+  分区用 `border-b border-border/60` + 标题 `text-xxs text-muted`；选中行用
+  `bg-accent/12` + 左侧 `w-[2px] bg-accent` 强调条 + `getAgentIcon` 图标 + 默认项勾。
+  新弹层不另起一套配色，否则深色/单色主题下会突然出现刺眼的分割线。
+- **写 Tailwind 颜色工具类前先确认 token 真的存在**（`frontend/tailwindsetup.css` 的 `@theme inline`）：
+  `border-border-soft` 是**不存在**的 token（只有 `--color-border`），写了不会报错，而是退回 preflight 的
+  `border-color: currentColor` —— 深色主题下变成浅色分割线，看起来"莫名其妙很突兀"。
+  项目内合法写法：`border-border`、`border-border/60`、`border-border/70`。
+- **agent profile 列表必须带探测**：`getAgentProfileOptions(settings)` 不传 availableCommands 时会退化成
+  「全部 profile 都算检测到」，把用户没装的 agent（gemini 等）也列出来。用
+  `useDetectedAgentProfileOptions(settings)`（`workspace/use-agent-profile-options.ts`）。
