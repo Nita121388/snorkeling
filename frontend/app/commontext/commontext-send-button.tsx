@@ -47,7 +47,16 @@ import { registerPendingInput } from "./pending-input";
 
 // ───────────────────────── 共享配置（弹窗内多处 Send 共用） ─────────────────────────
 
+export type CommontextSendMode = "focused" | "create";
+
 export type CommontextSendConfig = {
+    /**
+     * 目标模式（显式二选一，2026-11-11 起）：
+     *   "focused" = 优先发送到聚焦的 Agent Block（三项与聚焦块全等时落 existing，否则新建）；
+     *   "create"  = 强制新建，即使三项与聚焦块全等（「同款新建」）。
+     * 旧实现只靠「三项全等」推导 ✓，导致聚焦块与所选 agent 同款时无法切到新建。
+     */
+    mode: CommontextSendMode;
     /** null = 跟随聚焦块的 agent（无聚焦时用 default profile） */
     profile: string | null;
     tab: SendTabSelection;
@@ -56,6 +65,7 @@ export type CommontextSendConfig = {
 };
 
 export const commontextSendConfigAtom = atom<CommontextSendConfig>({
+    mode: "focused",
     profile: null,
     tab: { kind: "current" },
     folder: null,
@@ -155,6 +165,7 @@ export function previewSendTarget(input: {
             provider: profileName,
             tab: config.tab,
             folder: config.folder ?? "",
+            forceCreate: config.mode === "create",
         },
         focusedAgent,
         { profileLabel }
@@ -401,23 +412,35 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
 
     return (
         <div className="flex flex-col gap-0.5" data-commontext-send-popover>
-            {/* 1. 聚焦 Agent Block */}
+            {/* 1. 发送目标：显式二选一（聚焦块 / 新建）
+                ✓ 跟着「实际落点」走（preview.kind），不再只靠三项推导：
+                聚焦块与所选 agent 同款时，用户仍能显式选「新建 Agent Block」。
+                data-* 供真机验证台定位两个目标模式行。 */}
             <div className="px-2.5 pt-2 pb-1.5">
                 <div className={sectionHeadClass}>
                     <i className="fa-solid fa-crosshairs text-[9px]" />
-                    聚焦的 Agent Block
-                    <span className="ml-auto font-mono normal-case tracking-normal">已存在</span>
+                    发送目标
+                    <span className="ml-auto font-mono normal-case tracking-normal">二选一</span>
                 </div>
+
+                {/* 1a. 聚焦的 Agent Block（有聚焦 agent block 才可选） */}
                 {focusedAgent != null ? (
                     <button
                         type="button"
+                        data-commontext-send-mode="focused"
                         className={menuItemClass + (preview.kind === "existing" ? " bg-actionsoft" : "")}
-                        onClick={() => setConfig({ profile: null, tab: { kind: "current" }, folder: null })}
-                        title="使用聚焦块：Agent / Type / Folder 三项跟随聚焦块"
+                        onClick={() =>
+                            setConfig({ mode: "focused", profile: null, tab: { kind: "current" }, folder: null })
+                        }
+                        title="发送到聚焦块：Agent / Type / Folder 三项跟随聚焦块"
+                        aria-pressed={preview.kind === "existing"}
                     >
                         <div className="min-w-0 flex-1">
                             <AgentMiniCard info={focusedAgent} />
                         </div>
+                        <span className="shrink-0 text-[9.5px] px-1.5 py-px rounded-full bg-surface-soft text-muted">
+                            已存在
+                        </span>
                         <i
                             className={
                                 "fa-solid fa-check text-[11px] text-accent " +
@@ -426,16 +449,37 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                         />
                     </button>
                 ) : (
-                    <>
-                        <div className="px-2 py-2 text-[11.5px] text-muted">
-                            当前聚焦块不是 Agent Block — 不可直接发送
-                        </div>
-                        <div className="mx-1 mb-1 flex items-start gap-2 rounded-md border border-[color-mix(in_srgb,var(--error-color,orange)_26%,transparent)] bg-[color-mix(in_srgb,var(--error-color,orange)_10%,transparent)] px-2 py-1.5 text-[11px] text-[color:var(--error-color,orange)]">
-                            <i className="fa-solid fa-triangle-exclamation text-[10px] mt-0.5" />
-                            <span>请用下方选择 Agents / Type / Folder 新建一个 Agent Block。</span>
-                        </div>
-                    </>
+                    <div className="px-2 py-1 text-[11.5px] text-muted">当前聚焦块不是 Agent Block — 不可直接发送</div>
                 )}
+
+                {/* 1b. 新建 Agent Block（始终可选：即使 Agent/Type/Folder 与聚焦块全等） */}
+                <button
+                    type="button"
+                    data-commontext-send-mode="create"
+                    className={menuItemClass + (preview.kind === "create" ? " bg-actionsoft" : "")}
+                    onClick={() => setConfig({ ...config, mode: "create" })}
+                    title="新建一个 Agent Block（保留当前 Agents / Type / Folder 选择）"
+                    aria-pressed={preview.kind === "create"}
+                >
+                    <i className="fa-solid fa-plus text-[10px] text-secondary shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">新建 Agent Block</span>
+                    <span className="shrink-0 text-[9.5px] px-1.5 py-px rounded-full bg-surface-soft text-muted">
+                        新建
+                    </span>
+                    <i
+                        className={
+                            "fa-solid fa-check text-[11px] text-accent " +
+                            (preview.kind === "create" ? "" : "invisible")
+                        }
+                    />
+                </button>
+
+                {focusedAgent == null ? (
+                    <div className="mx-1 mb-1 mt-0.5 flex items-start gap-2 rounded-md border border-[color-mix(in_srgb,var(--error-color,orange)_26%,transparent)] bg-[color-mix(in_srgb,var(--error-color,orange)_10%,transparent)] px-2 py-1.5 text-[11px] text-[color:var(--error-color,orange)]">
+                        <i className="fa-solid fa-triangle-exclamation text-[10px] mt-0.5" />
+                        <span>请用下方选择 Agents / Type / Folder 新建一个 Agent Block。</span>
+                    </div>
+                ) : null}
             </div>
 
             {/* 2. 选择 Agents（样式对齐 New Agent 弹窗的 agent 选择行：左强调条 + 图标 + 默认勾） */}

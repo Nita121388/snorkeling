@@ -238,13 +238,31 @@ try {
   const popText = await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, {
     timeoutMs: 10000,
   });
-  const sections = ["聚焦的 Agent Block", "选择 Agents", "选择 Type", "选择 Folder", "取消", "发送"];
+  // 2026-11-11 起第一段改为「发送目标：聚焦块 / 新建」显式二选一
+  const sections = ["发送目标", "新建 Agent Block", "选择 Agents", "选择 Type", "选择 Folder", "取消", "发送"];
   const missingSections = sections.filter((s) => !(popText ?? "").includes(s));
   reporter.check(
     "popover-sections",
     missingSections.length === 0,
     missingSections.length === 0 ? sections.join(" / ") : `missing: ${missingSections.join(", ")}`
   );
+  // 目标模式行（聚焦块 / 新建 二选一）：干净实例无聚焦 agent block → 只有「新建」可选且为选中态
+  const modeRows = await client.evaluate(`(() => {
+        const p = document.querySelector(${JSON.stringify("[data-commontext-send-popover]")});
+        if (!p) return null;
+        return [...p.querySelectorAll("[data-commontext-send-mode]")].map((b) => ({
+            mode: b.getAttribute("data-commontext-send-mode"),
+            pressed: b.getAttribute("aria-pressed"),
+            text: (b.textContent || "").replace(/\s+/g, " ").trim().slice(0, 24),
+        }));
+    })()`);
+  const createRow = (modeRows ?? []).find((r) => r.mode === "create");
+  reporter.check(
+    "send-target-mode-rows",
+    createRow != null && createRow.pressed === "true",
+    JSON.stringify(modeRows ?? [])
+  );
+
   // 可见性：popover 中心点必须真的落在 popover 内（被 modal 盖住时这里必红）
   const popRect = await client.evaluate(RECT_OF(MENU));
   const popHit = await client.evaluate(HIT_IN(popRect, MENU));

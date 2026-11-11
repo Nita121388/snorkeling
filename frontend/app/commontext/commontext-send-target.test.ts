@@ -27,9 +27,7 @@ const focusedClaude: AgentBlockInfo = {
 
 describe("extractAgentBlockInfo", () => {
     it("accepts a term block with agent:provider", () => {
-        const info = extractAgentBlockInfo(
-            makeBlock({ view: "term", "agent:provider": "claude", "cmd:cwd": "/a/b" })
-        );
+        const info = extractAgentBlockInfo(makeBlock({ view: "term", "agent:provider": "claude", "cmd:cwd": "/a/b" }));
         expect(info).not.toBeNull();
         expect(info!.provider).toBe("claude");
         expect(info!.cwd).toBe("/a/b");
@@ -104,6 +102,24 @@ describe("resolveSendTarget", () => {
         expect(r.kind === "existing" && r.block.blockId).toBe("b1");
     });
 
+    // 2026-11-11：面板「新建 Agent Block」显式选项 → forceCreate。
+    // 场景：聚焦块与所选 agent 同款（三项全等），旧逻辑只能落 existing，用户无法切到「新建」。
+    it("forceCreate wins over a perfect three-way match (explicit 新建 mode)", () => {
+        const r = resolveSendTarget({ ...currentSel, forceCreate: true }, focusedClaude, {
+            profileLabel: "Claude Code",
+        });
+        expect(r.kind).toBe("create");
+        expect(r.kind === "create" && r.cwd).toBe(focusedClaude.cwd);
+        expect(r.kind === "create" && r.label).toContain("新建 Claude Code");
+    });
+
+    it("forceCreate=false keeps the existing judgement", () => {
+        const r = resolveSendTarget({ ...currentSel, forceCreate: false }, focusedClaude, {
+            profileLabel: "Claude Code",
+        });
+        expect(r.kind).toBe("existing");
+    });
+
     it("resolves to create when the focused block is not an agent block", () => {
         expect(resolveSendTarget(currentSel, null).kind).toBe("create");
     });
@@ -124,11 +140,9 @@ describe("resolveSendTarget", () => {
     });
 
     it("resolves to create when folder differs from the focused cwd", () => {
-        const r = resolveSendTarget(
-            { ...currentSel, folder: "~/Primary/projects/loop" },
-            focusedClaude,
-            { homeDir: "/Users/nita" }
-        );
+        const r = resolveSendTarget({ ...currentSel, folder: "~/Primary/projects/loop" }, focusedClaude, {
+            homeDir: "/Users/nita",
+        });
         expect(r.kind).toBe("create");
         expect(r.kind === "create" && r.cwd).toBe("~/Primary/projects/loop");
     });

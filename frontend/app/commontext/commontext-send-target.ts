@@ -32,7 +32,10 @@ function readString(meta: Record<string, unknown>, key: string): string {
  * 与 session-overview 的 isAgentMeta 同语义，但只认 term 块：
  * `view=agent` 是 GUI 聊天块，不在本功能范围（无 TUI 可注入）。
  */
-export function extractAgentBlockInfo(block: AgentBlockLike | null | undefined, blockId?: string): AgentBlockInfo | null {
+export function extractAgentBlockInfo(
+    block: AgentBlockLike | null | undefined,
+    blockId?: string
+): AgentBlockInfo | null {
     if (block == null) return null;
     const meta = block.meta ?? {};
     if (meta.view !== "term") return null;
@@ -87,6 +90,12 @@ export type SendTargetSelection = {
     tab: SendTabSelection;
     /** 目标 cwd；空字符串表示「跟随聚焦块」 */
     folder: string | null;
+    /**
+     * 强制新建：true 时即使三项与聚焦块全等也不落 existing。
+     * 面板里的「新建 Agent Block」显式选项靠这个——否则选了与聚焦块同款 agent 时
+     * 无法从「聚焦块」切到「新建」（2026-11-11 用户反馈）。
+     */
+    forceCreate?: boolean;
 };
 
 export type ResolvedSendTarget =
@@ -130,7 +139,8 @@ function tabLabel(tab: SendTabSelection): string {
 
 /**
  * 解析本次 Send 的落点：
- *   existing 当且仅当 聚焦块是 agent block
+ *   existing 当且仅当 !forceCreate
+ *     && 聚焦块是 agent block
  *     && provider 匹配所选 profile
  *     && tab 为当前 Tab
  *     && folder 与聚焦块 cwd 相同（folder 为空 = 跟随聚焦块）
@@ -145,6 +155,7 @@ export function resolveSendTarget(
     const profileProvider = normalizeProviderKey(selection.provider ?? selection.agentProfile);
     const folder = selection.folder ?? "";
     if (
+        selection.forceCreate !== true &&
         focusedAgent != null &&
         normalizeProviderKey(focusedAgent.provider) === profileProvider &&
         selection.tab.kind === "current" &&
