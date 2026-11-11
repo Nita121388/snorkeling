@@ -321,12 +321,11 @@ func CreateTab(ctx context.Context, workspaceId string, tabName string, activate
 		}
 	}
 
-	// No need to apply an initial layout for the initial launch, since the starter layout will get applied after onboarding modal dismissal
+	// New tabs start with no blocks (the frontend renders the "no blocks" hint;
+	// users add blocks explicitly via Alt+N / the new-block button).
+	// The initial launch is also excluded since the starter layout will get applied
+	// after onboarding modal dismissal.
 	if !isInitialLaunch {
-		err = ApplyPortableLayout(ctx, tab.OID, GetNewTabLayout(), true)
-		if err != nil {
-			return tab.OID, fmt.Errorf("error applying new tab layout: %w", err)
-		}
 		tabBg := getTabBackground()
 		if tabBg != "" {
 			tabORef := waveobj.ORefFromWaveObj(tab)
