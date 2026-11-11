@@ -3,7 +3,7 @@ id: F-1106-move-block-tab-menu
 title: "Move Block to Tab：菜单 4→1 条 + 弹窗内新建 / 每行双图标动作"
 type: feature
 priority: P1
-status: accepted
+status: released
 origin: self
 source: "2026-11-06T12:44:52Z"
 task: 11-06-move-block-tab-menu
