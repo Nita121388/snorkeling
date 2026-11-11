@@ -57,22 +57,22 @@ popover 底部是**确认按钮**（选择 → 确认两段式，不做隐式自
   `mode: "focused" | "create"`，`create` 强制新建（「同款新建」），不再靠三项全等推导。
 - **选择 Agent = 纯 logo 单行**：32×32、不换行（`overflow-x:auto`）、选中名字只出现在 section 标题右侧、
   默认项右上小圆点、`title`/`aria-label`/`aria-pressed` 齐备。
-- **注入后补回车提交**：`submitTermInput`（`ControllerInputCommand("")`），paste 后 ~150ms 发送。
+- **注入后补回车提交**：`submitTermInput`（`ControllerInputCommand("
+")`），paste 后 ~150ms 发送。
 
 ### 原型中（未实现，本轮设计目标）
 
-**发送时机三档**
+**发送时机（两档）**
 
-| 档位 | 语义 | 依赖 | 失败处理 |
-|---|---|---|---|
-| 立即 | 注入聚焦块 / 建块后注入，均补回车 | TUI 在场 | 无块可注入 → 报错 |
-| 延迟 30s / 5min / 30min | 内存队列 + TTL，到点目标块仍在才注入 | app 在场 + 块存活 | 块没了 → 通知，不重试、不落任务 |
-| 定时（一次 / 每天 / cron） | **headless ScheduledTask**：到点调度器直接跑一次 agent CLI | 无需 TUI / 块 | 结果进任务历史 + 通知 |
+| 档位 | 语义 | 依赖 |
+|---|---|---|
+| 立即 | 注入聚焦块 / 建块后注入，均补回车 | TUI 在场 |
+| 定时（一次 / 每天 / cron） | **headless ScheduledTask**：到点调度器直接跑一次 agent CLI | 无需 TUI / 块；结果进任务历史 + 通知 |
 
 - 复用基建：`pkg/scheduler`（cronexpr + runner：cron/interval/once/daily/weekly + 时区）、
   `ScheduledTaskType`（`scheduledtasks:items`）、7 个 RPC（Create/Update/Delete/List/Get/RunNow/History）、
   前端 `wshclientapi.ts` 已生成对应命令。
-- 确认按钮文案随时机变：`发送` / `5 分钟后发送` / `创建定时任务`；摘要行与 Send hint 同步。
+- 确认按钮文案随时机变：`发送` / `创建定时任务`；摘要行与 Send hint 同步。
 - 定时任务正文 = CommonText 条目正文；Provider/Model/Workdir 取当前 Send 配置。
 
 **外部 Agent（能力已备，缺门面）**
@@ -87,6 +87,6 @@ popover 底部是**确认按钮**（选择 → 确认两段式，不做隐式自
 
 ### 原型交互补充
 
-- 发送时机段：`立即 / 延迟 / 定时` 三枚 chip；延迟展开三档、定时展开「一次 / 每天 / cron」+ 时间输入。
+- 发送时机段：`立即 / 定时` 两枚 chip；定时展开「一次 / 每天 / cron」+ 时间输入。面板内不写解释文案。
 - 聚焦普通终端时，「聚焦块」chip 禁用并提示只能新建；切场景自动落到 `新建`。
 - 原型内发送 / 延迟 / 定时分别给不同 toast（说明真实落地路径差异）。

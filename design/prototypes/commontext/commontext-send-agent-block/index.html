@@ -361,10 +361,6 @@
     padding: 3px 8px; min-width: 0; flex: 1;
   }
   .timing-input:focus { outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: transparent; }
-  .timing-hint { display: flex; gap: 6px; align-items: flex-start; font-size: 10.5px; color: var(--muted); line-height: 1.5; }
-  .timing-hint i { font-size: 9px; margin-top: 2px; color: var(--secondary); flex: none; }
-  .timing-hint b { color: var(--secondary); font-weight: 550; }
-
   /* 选择 Type（tab 选择器） */
   .type-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px 0; position: relative; }
   .type-picker {
@@ -616,7 +612,7 @@
             </div>
           </div>
 
-          <!-- 5. 发送时机：立即 / 延迟（当前会话）/ 定时（headless 任务） -->
+          <!-- 5. 发送时机：立即 / 定时（headless 任务） -->
           <div class="pop-sec">
             <div class="pop-sec-head"><i class="fa-regular fa-clock" style="font-size:9px"></i> 发送时机 <span class="pick" id="timing-note">默认 = 立即</span></div>
             <div class="timing-chips" id="timing-chips"></div>
@@ -632,7 +628,7 @@
 
           <div class="pop-foot">
             <i class="fa-solid fa-circle-info"></i>
-            <span id="pop-foot-text">选好 Agents / Type / Folder 后点确认；新建块的文本会排队，<b>TUI 就绪后自动注入</b>。</span>
+            <span id="pop-foot-text">新建块的文本会在 <b>TUI 就绪后自动注入</b>。</span>
           </div>
         </div>
       </div>
@@ -663,11 +659,10 @@
     <p>不再只靠「三项全等」推导：<b>聚焦块 / 新建</b> 是两枚显式 chip，✓ 跟实际落点走。选了与聚焦块同款 agent 时也能「同款新建」。默认 <code>focused</code>；点「新建」= 强制 create。</p>
   </div>
   <div class="note-card">
-    <h3>发送时机 · 两套语义 <span class="badge">本轮新增</span></h3>
+    <h3>发送时机 <span class="badge">本轮新增</span></h3>
     <ul>
-      <li><b>立即</b>：注入（聚焦块）或建块后注入，<b>注入后补回车提交</b>（只 paste 不提交 = agent 收不到）。</li>
-      <li><b>延迟 ≤30 分钟</b>：内存队列 + TTL；到点目标块仍在 → 注入 + 回车；块没了 → 通知，不重试、不落任务系统。</li>
-      <li><b>定时（一次 / 每天 / cron）</b>：复用 <code>ScheduledTask</code>（<code>pkg/scheduler</code>，cron/interval/once/daily/weekly + headless CLI runner）；<b>不依赖 TUI / 块在场</b>，跨重启有效；结果进任务历史 + 系统通知，不进交互会话。</li>
+      <li><b>立即</b>：注入 + 回车提交。</li>
+      <li><b>定时（一次 / 每天 / cron）</b>：复用 <code>ScheduledTask</code>（headless，跨重启有效）；结果进任务历史 + 通知。</li>
     </ul>
   </div>
   <div class="note-card">
@@ -729,9 +724,8 @@
     type: "current",         // 选择 Type: current | tab:<id> | new-tab
     folder: "focused",       // 选择 Folder: DIRS id
     newTabName: "agent-tab",
-    // 发送时机：now 立即 | delay 延迟注入当前会话 | schedule 定时 headless 任务
+    // 发送时机：now 立即 | schedule 定时（headless ScheduledTask）
     timing: "now",
-    delayMin: 5,             // 30s / 5min / 30min（0.5 表示 30 秒）
     scheduleKind: "daily",   // once | daily | cron
     runAt: "09:30",          // daily HH:MM
     onceAt: "",              // once：本地 datetime-local 值
@@ -870,29 +864,19 @@
     $("#agents-name").textContent = profileOf(state.agents).label;
   }
 
-  /* ── 渲染发送时机：立即 / 延迟 / 定时 ── */
-  const DELAYS = [
-    { min: 0.5, label: "30 秒" },
-    { min: 5, label: "5 分钟" },
-    { min: 30, label: "30 分钟" },
-  ];
+  /* ── 渲染发送时机：立即 / 定时 ── */
   function timingLabel() {
     if (state.timing === "now") return "立即";
-    if (state.timing === "delay") {
-      const d = DELAYS.find((d) => d.min === state.delayMin) || DELAYS[1];
-      return d.label;
-    }
-    if (state.scheduleKind === "once") return state.onceAt ? `定时一次` : "定时一次";
+    if (state.scheduleKind === "once") return "定时一次";
     if (state.scheduleKind === "daily") return `每天 ${state.runAt}`;
     return `cron ${state.cronExpr}`;
   }
   function renderTiming() {
     const chips = $("#timing-chips");
-    chips.innerHTML = ["now", "delay", "schedule"]
+    chips.innerHTML = ["now", "schedule"]
       .map((t) => {
         const meta = {
           now: { icon: "fa-bolt", label: "立即" },
-          delay: { icon: "fa-hourglass-half", label: "延迟" },
           schedule: { icon: "fa-calendar-days", label: "定时" },
         }[t];
         const on = state.timing === t;
@@ -913,32 +897,7 @@
 
     const detail = $("#timing-detail");
     if (state.timing === "now") {
-      detail.innerHTML = `
-        <div class="timing-hint">
-          <i class="fa-solid fa-circle-info"></i>
-          <span><b>立即</b> = 聚焦块 → 直接注入 + 回车提交；新建块 → 建块后 TUI 就绪自动注入 + 回车提交。</span>
-        </div>`;
-      return;
-    }
-    if (state.timing === "delay") {
-      detail.innerHTML = `
-        <div class="timing-sub">
-          <span class="ts-label">延迟</span>
-          ${DELAYS.map(
-            (d) =>
-              `<button class="sub-chip ${state.delayMin === d.min ? "on" : ""}" data-delay="${d.min}">${d.label}</button>`
-          ).join("")}
-        </div>
-        <div class="timing-hint">
-          <i class="fa-solid fa-circle-info"></i>
-          <span><b>短延迟</b>（≤30 分钟）：到点若目标块仍在 → 注入 + 回车提交；块被关掉 → <b>通知你，不重试</b>（不落任务系统）。适合「等我喝口水再发」。</span>
-        </div>`;
-      detail.querySelectorAll("[data-delay]").forEach((btn) => {
-        btn.onclick = () => {
-          state.delayMin = parseFloat(btn.dataset.delay);
-          renderAll();
-        };
-      });
+      detail.innerHTML = "";
       return;
     }
     // schedule：headless ScheduledTask
@@ -959,10 +918,7 @@
               : `<input class="timing-input" id="cron-input" type="text" value="${state.cronExpr}" spellcheck="false">`
         }
       </div>
-      <div class="timing-hint">
-        <i class="fa-solid fa-diagram-project"></i>
-        <span><b>定时 = headless 任务</b>（复用 ScheduledTask：cron / interval / once）：到点由调度器直接以 CLI 跑一次 agent，<b>不依赖 TUI / 块在场</b>，跨重启有效；结果进任务历史 + 系统通知，不进入你的交互会话。</span>
-      </div>`;
+      `;
     detail.querySelectorAll("[data-sk]").forEach((btn) => {
       btn.onclick = () => {
         state.scheduleKind = btn.dataset.sk;
@@ -1070,14 +1026,12 @@
 
   /* ── 底部确认：按钮文案随「目标 + 时机」实时变 ── */
   function actionLabel() {
-    if (state.timing === "delay") return `${timingLabel()}后发送`;
     if (state.timing === "schedule") return "创建定时任务";
     return "发送";
   }
   function timingSummary() {
     if (state.timing === "now") return "立即";
-    if (state.timing === "delay") return `延迟 ${timingLabel()}（当前会话）`;
-    return `定时 ${timingLabel()}（headless）`;
+    return `定时 ${timingLabel()}`;
   }
   function renderActions() {
     const r = resolveTarget();
@@ -1086,9 +1040,7 @@
     const icon =
       state.timing === "schedule"
         ? '<i class="fa-regular fa-calendar-check"></i>'
-        : state.timing === "delay"
-          ? '<i class="fa-regular fa-hourglass-half"></i>'
-          : '<i class="fa-solid fa-paper-plane"></i>';
+        : '<i class="fa-solid fa-paper-plane"></i>';
     btn.innerHTML = `${icon} ${actionLabel()}`;
     sum.innerHTML =
       (r.kind === "existing"
@@ -1198,21 +1150,6 @@
       return;
     }
 
-    // 延迟 = 短窗口内存队列：到点目标块还在才注入
-    if (state.timing === "delay") {
-      const p = profileOf(state.agents);
-      const when = timingLabel();
-      showToast(
-        `已排入延迟队列 · ${when}后`,
-        `${r.kind === "existing" ? "目标 = 聚焦块" : "目标 = 新建 " + p.label + " · " + r.tabLabel} · 到点若块仍在则注入 + 回车；块被关掉只通知，不重试`,
-        false
-      );
-      setTimeout(() => {
-        showToast(`延迟时间到 · ${when}`, "色块/目标仍存在 → 已注入并回车提交", false);
-      }, Math.min(3000, state.delayMin * 600));
-      return;
-    }
-
     if (r.kind === "existing") {
       const input = $("#agent-input");
       input.className = "prompt";
@@ -1306,7 +1243,6 @@
     state.type = "current";
     state.folder = "focused";
     state.timing = "now";
-    state.delayMin = 5;
     state.scheduleKind = "daily";
     state.runAt = "09:30";
     state.onceAt = "";
