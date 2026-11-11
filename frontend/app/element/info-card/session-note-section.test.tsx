@@ -65,6 +65,7 @@ vi.mock("@/app/view/aisessions/property/property-schema", () => ({
     usePropertySchema: () => h.schemaBase,
     setPropertySchema: h.setPropertySchema,
     upsertSchemaDef: (schema: any[], def: any) => [...(schema ?? []), def],
+    removeSchemaDef: (schema: any[], key: string) => (schema ?? []).filter((d: any) => d.key !== key),
 }));
 
 vi.mock("@/app/store/use-available-session-tags", () => ({
@@ -201,6 +202,33 @@ describe("SessionNoteSection 写路径 id 契约", () => {
         expect(args.sessionId).toBe(RAW_ID);
         expect(args.sessionId).not.toBe(FULL_KEY);
         expect(args.def.key).toBe("tags");
+    });
+
+    it("deleteProperty 同时删值和模板定义（否则行会以空值回来）", () => {
+        h.schemaBase = [{ key: "priority", name: "Priority", type: "text" }];
+        mount();
+        const onDelete = h.listProps.onDeleteProperty as (key: string) => void;
+
+        act(() => {
+            onDelete("priority");
+        });
+
+        expect(h.setSessionProperty).toHaveBeenCalledTimes(1);
+        const args = h.setSessionProperty.mock.calls[0][0] as any;
+        expect(args.def.key).toBe("priority");
+        expect(args.value).toBeNull();
+        expect(h.setPropertySchema).toHaveBeenCalledTimes(1);
+        expect((h.setPropertySchema.mock.calls[0] as unknown[])[0]).toEqual([]);
+    });
+
+    it("deleteProperty 对纯会话属性不写模板", () => {
+        h.schemaBase = [];
+        mount();
+        act(() => {
+            (h.listProps.onDeleteProperty as (key: string) => void)("local_only");
+        });
+        expect(h.setSessionProperty).toHaveBeenCalledTimes(1);
+        expect(h.setPropertySchema).not.toHaveBeenCalled();
     });
 
     it("addProperty 范围三选一：session 不写模板；agent 写 agent:pi；global 写空 scope", () => {

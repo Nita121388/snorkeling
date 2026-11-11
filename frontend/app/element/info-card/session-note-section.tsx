@@ -17,7 +17,7 @@ import type { SessionNoteState } from "@/app/store/session-note-hook";
 import { GenActionButton } from "@/app/view/aisessions/gen-action-button";
 import { PropertyList, type PropertyAddScope } from "@/app/view/aisessions/property/property-list";
 import { AIPropertiesButton } from "@/app/view/aisessions/property/property-ai";
-import { usePropertySchema, setPropertySchema, upsertSchemaDef } from "@/app/view/aisessions/property/property-schema";
+import { usePropertySchema, setPropertySchema, removeSchemaDef, upsertSchemaDef } from "@/app/view/aisessions/property/property-schema";
 import { patchSessionProperty, setSessionProperty } from "@/app/view/aisessions/property/property-store";
 import { toPropertyDefs } from "@/app/view/aisessions/property/property-model";
 import { saveSessionProps } from "@/app/store/session-note-cache";
@@ -183,12 +183,19 @@ export function SessionNoteSection({
 
     const deleteProperty = React.useCallback(
         (key: string) => {
+            // 删除 = 值 + 模板定义一起删（2026-11-11 用户反馈「属性删不掉」）。
+            // 只清会话值的话，agent/global scope 的定义会让这行立刻以空值回来；
+            // 纯模板行（无值）更是完全删不动。
             writeProperty(
                 { key, name: humanizeKey(key), type: "text", order: 100, scope: "session", builtin: false },
                 null
             );
+            const next = removeSchemaDef(schema, key);
+            if (next.length !== schema.length) {
+                void setPropertySchema(next);
+            }
         },
-        [writeProperty]
+        [writeProperty, schema]
     );
 
     const renameProperty = React.useCallback(

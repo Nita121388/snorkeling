@@ -150,3 +150,7 @@ CLI 必须把 `Code` 映射成稳定退出码，`--json` 时输出结构化错�
 - **非法 scope 必须报错**（`E_USAGE`），不允许静默降级成 session。
 - 读取侧 `agent card get` 返回按会话 source 过滤后的 `schema`（含 scope 原值），
   别让外部 Agent 自己猜哪些定义适用。
+- **删除 = 值 + 定义一起删**：只清会话值的话，agent/global scope 的定义会让属性行立刻以
+  空值回来（2026-11-11 用户反馈「属性删不掉」）。UI 的 Delete 必须同时调
+  `setSessionProperty(key, null)` 和 `removeSchemaDef`；纯模板行（本会话无值）只能靠删定义。
+  两条删除都不可省。

@@ -499,6 +499,33 @@ describe("PropertyList — 新增属性浮层（范围三选一）", () => {
         expect(onAdd.mock.calls[0][1]).toBe("multi_select");
     });
 
+    it("模板定义行（本会话无值）也能删：菜单 Delete 调 onDeleteProperty", () => {
+        const onDelete = vi.fn();
+        mount(
+            <PropertyList
+                summary={agentSummary()}
+                mode="detail"
+                layout="agent"
+                canEdit
+                schema={[{ key: "cycle", name: "Cycle", type: "text", order: 1, scope: "" }]}
+                onChange={vi.fn()}
+                onAddProperty={vi.fn()}
+                onDeleteProperty={onDelete}
+            />
+        );
+        const rowEl = row("cycle");
+        expect(rowEl).not.toBeNull();
+        const menuBtn = rowEl!.querySelector(".property-row__menu-btn");
+        expect(menuBtn).not.toBeNull();
+        click(menuBtn);
+        const del = Array.from(rowEl!.querySelectorAll(".property-row__menu button")).find(
+            (b) => b.textContent?.trim() === "Delete"
+        );
+        expect(del).toBeDefined();
+        click(del!);
+        expect(onDelete).toHaveBeenCalledWith("cycle");
+    });
+
     it("Enter 提交、Esc 关闭；重名与空名有行内错误", () => {
         const onAdd = vi.fn();
         mount(<PropertyList summary={agentSummary()} mode="detail" layout="agent" canEdit onAddProperty={onAdd} />);

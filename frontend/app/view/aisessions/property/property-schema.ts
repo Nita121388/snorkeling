@@ -6,6 +6,7 @@
 // 与 per-session props 分离：schema 是「定义」（key/name/type/options/order/scope），
 // session props 是「值」。用户从表单新建属性时可选择同时写入 schema（在所有会话可用）。
 
+import { slugifyPropertyKey } from "@/app/view/aisessions/property/property-model";
 import { useSettingsKeyAtom } from "@/app/store/global";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -40,6 +41,9 @@ export function upsertSchemaDef(current: PropertySchemaDef[], def: PropertySchem
     return defs;
 }
 
+// 按 slugified key 匹配：toPropertyDefs 建索引时就是用这个口径归一化 schema key 的，
+// settings.json 里手写的 "Priority" 与表单建的 "priority" 应视为同一条定义。
 export function removeSchemaDef(current: PropertySchemaDef[], key: string): PropertySchemaDef[] {
-    return current.filter((d) => d.key !== key);
+    const normalized = slugifyPropertyKey(key);
+    return current.filter((d) => slugifyPropertyKey(d.key ?? "") !== normalized);
 }
