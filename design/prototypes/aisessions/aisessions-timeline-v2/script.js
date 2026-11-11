@@ -285,7 +285,7 @@
         const newer = BUCKETS[newerIdx];
         const older = BUCKETS[newerIdx + 1];
         if (newer == null || older == null) return 0;
-        return Math.max(0, older.offset - newer.offset - 1);
+        return Math.max(0, newer.offset - older.offset - 1);
     }
 
     // ── rail ──
@@ -333,15 +333,21 @@
         const list = clusters();
         const parts = [];
 
-        // 桶刻度 / 稀疏标记：按「桶日界线」的时间比例放，越过窗口范围就跳过。
+        // 桶刻度 / 稀疏标记：放在「相邻两桶批注的时间中点」，比桶日界线稳定
+        // （日界线常落在窗口时间范围外，直接映射会被钳到两端、刻度跑到轴头）。
         if (minTs != null && maxTs != null && maxTs > minTs) {
             const geoTop = RailPad;
             const geoBottom = Math.max(geoTop + RailDotMinGap, height - RailPad);
             const frac = (ts) => Math.min(1, Math.max(0, (ts - minTs) / (maxTs - minTs)));
             loadedBuckets().forEach((bucket, idx) => {
-                if (idx === 0) return; // 最新桶不画上边界
-                const dayStart = new Date(BASE.getTime() + bucket.offset * DAY).setHours(0, 0, 0, 0);
-                const y = geoTop + frac(dayStart) * (geoBottom - geoTop);
+                if (idx === 0) return; // 最新桶无上边界
+                const newer = loadedBuckets()[idx - 1];
+                const msgTs = (bucketRef, ann) =>
+                    bucketRef.messages.find((m) => m.seq === ann.seq)?.t ?? ann.t;
+                const newerTs = Math.max(...newer.annotations.map((ann) => msgTs(newer, ann)));
+                const olderTs = Math.min(...bucket.annotations.map((ann) => msgTs(bucket, ann)));
+                const boundaryTs = (newerTs + olderTs) / 2;
+                const y = geoTop + frac(boundaryTs) * (geoBottom - geoTop);
                 parts.push(`<div class="rail-tick" style="top:${y.toFixed(1)}px"></div>`);
                 const gap = bucketGapDays(idx - 1);
                 if (gap > 0) {
@@ -437,7 +443,7 @@
                             `<span class="tool-status"></span>` +
                             `<span class="tool-name">${esc(msg.tool)}</span>` +
                             `<span>${esc(msg.text)}</span>` +
-                            (anns.length > 0 ? badge(anns, hasAgent) : "") +
+                            (anns.length > 0 ? badge(anns) : "") +
                             `</div>`
                     );
                     continue;
@@ -446,7 +452,7 @@
                     `<div class="msg is-${msg.role}" data-seq="${msg.seq}" id="msg-${msg.seq}">` +
                         `<div class="msg-meta"><span class="msg-role">${esc(roleLabel)}</span><span>#${msg.seq}</span><span>${time}</span></div>` +
                         `<div class="msg-text">${esc(msg.text)}</div>` +
-                        (anns.length > 0 ? badge(anns, hasAgent) : "") +
+                        (anns.length > 0 ? badge(anns) : "") +
                         `</div>`
                 );
             }
@@ -657,7 +663,11 @@
     }
 
     function goLatest() {
-        el.flow.scrollTo({ top: el.flow.scrollHeight, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+        if (typeof el.flow.scrollTo === "function") {
+            el.flow.scrollTo({ top: el.flow.scrollHeight, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+        } else {
+            el.flow.scrollTop = el.flow.scrollHeight;
+        }
     }
 
     const EXT_TARGETS = [45, 42, 43, 40, 46];
@@ -842,7 +852,7 @@
     updatePlayhead();
 
     // smoke 测试入口（原型专用，不供生产使用）
-    window.__proto = {
+    window.__timelineProto = {
         state,
         BUCKETS,
         render,

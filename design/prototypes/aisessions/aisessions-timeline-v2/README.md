@@ -23,7 +23,7 @@ open design/prototypes/aisessions/aisessions-timeline-v2/index.html
 
 ## 数据（固定 mock，与 smoke 测试联动）
 
-5 个时间桶（11-11 今天 → 10-30），10 条批注（user / AI draft / agent 三种来源），桶间有 2 段稀疏间隔（跳过 3 天 / 跳过 2 天）。初始窗口 = 最近 2 桶。
+5 个时间桶（11-11 今天 → 10-31），10 条批注（user / AI draft / agent 三种来源），桶间有 3 段稀疏间隔（跳过 3 / 2 / 2 天）。初始窗口 = 最近 2 桶。
 
 | 桶 | 日期 | 消息 | 批注 |
 |---|---|---|---|
@@ -33,7 +33,7 @@ open design/prototypes/aisessions/aisessions-timeline-v2/index.html
 | b2 | 11-06 | seq 22–26 | milestone(user) · note(user) |
 | b3 | 11-03 | seq 16–20 | decision(user) |
 | — | 跳过 2 天 | | |
-| b4 | 10-30 | seq 8–14 | note(user) · question(user) |
+| b4 | 10-31 | seq 8–14 | note(user) · question(user) |
 
 ## 交互对照
 

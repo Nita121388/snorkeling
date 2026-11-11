@@ -255,6 +255,12 @@ button {
     line-height: 1.2;
     font-variant-numeric: tabular-nums;
 }
+.rail.collapsed .rail-dot,
+.rail.collapsed .rail-tick,
+.rail.collapsed .rail-gap,
+.rail.collapsed .rail-playhead {
+    display: none; /* 折叠态只留轴线（对齐真实组件 §2.4） */
+}
 .rail-body {
     position: relative;
     flex: 1;
@@ -367,18 +373,26 @@ button {
 }
 
 /* ── 6. flow ── */
+.flow-wrap {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+}
 .flow {
     position: relative;
     flex: 1;
-    min-width: 0;
+    min-height: 0;
     overflow-y: auto;
     padding: 0 clamp(16px, 6vw, 120px) 96px;
     scroll-behavior: smooth;
 }
 .load-older {
     display: block;
-    width: 100%;
-    margin: 10px 0 4px;
+    flex: none;
+    width: calc(100% - clamp(32px, 12vw, 240px));
+    margin: 10px auto 4px;
     padding: 7px 0;
     border: 1px dashed var(--border-color);
     border-radius: 8px;
@@ -732,9 +746,9 @@ button {
 
 /* ── 8. pills ── */
 .fab-latest {
-    position: sticky;
-    bottom: 14px;
-    float: right;
+    position: absolute;
+    right: clamp(16px, 6vw, 120px);
+    bottom: 18px;
     z-index: 5;
     padding: 6px 12px;
     border: 1px solid var(--border-color);
@@ -748,6 +762,9 @@ button {
 .fab-latest:hover {
     color: var(--main-text-color);
     border-color: var(--border-strong-color);
+}
+.fab-latest[hidden] {
+    display: none !important;
 }
 .jump-menu {
     position: fixed;

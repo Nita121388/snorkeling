@@ -14,6 +14,7 @@
 
 ## aisessions
 - `aisessions/aisessions-annotation-card-ux/` — 同步状态：▲ 设计活跃（未实现）
+- `aisessions/aisessions-timeline-v2/` — 同步状态：▲ 设计活跃（未实现；设计文档 `design/plans/aisessions-annotation-timeline-v2.md`）
 - `aisessions/aisessions-chat-redesign/` — 同步状态：▲ 设计活跃（未实现）｜● 已落地｜▼ 过时待清理｜◐ 部分落地
 - `aisessions/aisessions-fold-redesign/` — 同步状态：▲ 设计活跃（未实现）
 - `aisessions/aisessions-freshness-encoding/` — 同步状态：（待确认）
