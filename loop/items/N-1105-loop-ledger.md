@@ -3,7 +3,7 @@ id: N-1105-loop-ledger
 title: "loop 台账骨架 + 门引擎"
 type: arch
 priority: P0
-status: accepted
+status: released
 origin: internal
 source: "2026-11-05 昼夜循环工作流立项"
 task: 11-05-day-night-loop

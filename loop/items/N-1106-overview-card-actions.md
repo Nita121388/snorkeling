@@ -3,7 +3,7 @@ id: N-1106-overview-card-actions
 title: "Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删"
 type: feature
 priority: P1
-status: accepted
+status: released
 origin: self
 source: "nita 2026-11-06 会话要求（先设计后开工）"
 task: 11-06-overview-board-card-actions

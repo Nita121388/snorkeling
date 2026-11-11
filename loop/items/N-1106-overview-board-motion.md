@@ -3,7 +3,7 @@ id: N-1106-overview-board-motion
 title: "Overview 看板卡片跨列移动动画（FLIP + WAAPI）"
 type: feature
 priority: P1
-status: open
+status: released
 origin: self
 source: "nita 2026-11-06 会话要求（先设计后开工）"
 task: 11-06-overview-board-motion
@@ -12,6 +12,7 @@ touch: [frontend/app/session-overview/**, scripts/verify/overview-board/**, docs
 rollback: "纯前端；OVERVIEW_BOARD_MOTION_ENABLED=false 一行降级回瞬移，或 git revert 单次提交"
 budget: {minutes: 90, retries: 1}
 releaseCandidate: false
+score: {value: 4, by: nita, at: "2026-11-11T06:22:54Z", note: null}
 createdAt: "2026-11-06T01:05:49Z"
 ---
 
