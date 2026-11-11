@@ -239,7 +239,7 @@ try {
     timeoutMs: 10000,
   });
   // 2026-11-11 起第一段改为「发送目标：聚焦块 / 新建」显式二选一
-  const sections = ["发送目标", "新建 Agent Block", "选择 Agents", "选择 Type", "选择 Folder", "取消", "发送"];
+  const sections = ["选择目标", "新建", "选择 Agent", "选择 Type", "选择 Folder", "取消", "发送"];
   const missingSections = sections.filter((s) => !(popText ?? "").includes(s));
   reporter.check(
     "popover-sections",
@@ -281,10 +281,9 @@ try {
 
   // 3. Agents chip 真实点击（Codex → Claude Code）→ 主按钮 hint 必须跟着变
   const beforeTitle = sendButton.title;
+  // Agents 行是纯 logo chip（无文字），按 data-commontext-agent-chip 定位
   const claudePoint = await client.evaluate(`(() => {
-        const p = document.querySelector(${JSON.stringify(POPOVER)});
-        if (!p) return null;
-        const b = [...p.querySelectorAll("button")].find((x) => (x.textContent || "").includes("Claude Code") && x.textContent.trim().length <= 40);
+        const b = document.querySelector(${JSON.stringify('[data-commontext-send-popover] [data-commontext-agent-chip="claude"]')});
         if (!b) return null;
         const r = b.getBoundingClientRect();
         return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) };

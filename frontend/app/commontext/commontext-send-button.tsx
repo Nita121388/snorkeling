@@ -7,11 +7,8 @@
 // 文本经 pending-input 排队，TUI 就绪后由 term 视图注入。
 
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
-import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
-import { useAgentReadContext } from "@/app/agent-status/use-agent-status-view";
 import { Button } from "@/app/element/button";
 import { SplitButton } from "@/app/element/splitbutton";
-import { AgentStatusChip } from "@/app/session-overview/agent-status-chip";
 import { filterSessionOverviewTabIds } from "@/app/session-overview/session-overview-model";
 import { atoms, createBlock, getApi } from "@/app/store/global";
 import { blockComponentModelMap } from "@/app/store/global-atoms";
@@ -264,47 +261,38 @@ export async function executeCommonTextSend(input: {
 
 // ───────────────────────── UI ─────────────────────────
 
-/** 聚焦块 agent 小卡：头像 + 标题 + cwd + 状态 chip（复用 AgentStatusChip，不新增状态映射）。 */
-const AgentMiniCard = ({ info }: { info: AgentBlockInfo }) => {
-    const statusAtom = React.useMemo(() => AgentStatusStore.getInstance().acquire(info.blockId), [info.blockId]);
-    React.useEffect(() => {
-        const store = AgentStatusStore.getInstance();
-        return () => store.release(info.blockId);
-    }, [info.blockId]);
-    const status = useAtomValue(statusAtom);
-    const readContext = useAgentReadContext(info.blockId, status);
-    const providerLabel = info.provider ? info.provider.charAt(0).toUpperCase() + info.provider.slice(1) : "Agent";
-    const title = info.model ? `${providerLabel} · ${info.model}` : providerLabel;
-    return (
-        <div className="flex items-center gap-2.5 min-w-0">
-            <div
-                className="shrink-0 h-[30px] w-[30px] rounded-lg grid place-items-center text-[13px] font-semibold bg-actionsoft text-accent"
-                data-agent-avatar={info.provider}
-            >
-                {providerLabel.slice(0, 1)}
-            </div>
-            <div className="min-w-0 flex-1">
-                <div className="text-[12.5px] font-medium truncate">{info.title ?? title}</div>
-                <div className="text-[10.5px] text-muted font-mono truncate">
-                    {info.provider}
-                    {info.model ? ` · ${info.model}` : ""}
-                    {info.cwd ? ` · ${info.cwd}` : ""}
-                </div>
-            </div>
-            <div className="shrink-0">
-                <AgentStatusChip
-                    variant="card"
-                    status={status}
-                    now={Date.now()}
-                    unread={readContext.read === "unread"}
-                    blockId={info.blockId}
-                />
-            </div>
-        </div>
-    );
-};
-
 const sectionHeadClass = "flex items-center gap-1.5 text-xxs text-muted mb-1.5";
+
+/** 目标模式 chip（与 Agents 行同款视觉：accent 软底 + 左强调条 + 选中 ✓）。 */
+function TargetChip(props: {
+    mode: "focused" | "create";
+    selected: boolean;
+    icon: React.ReactNode;
+    label: string;
+    title: string;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            data-commontext-send-mode={props.mode}
+            className={clsx(
+                "relative inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md text-xs transition-colors cursor-pointer border-0",
+                props.selected
+                    ? "bg-accent/12 text-foreground"
+                    : "bg-transparent text-muted hover:bg-surface-soft hover:text-secondary"
+            )}
+            onClick={props.onClick}
+            title={props.title}
+            aria-pressed={props.selected}
+        >
+            {props.selected ? <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" /> : null}
+            <span className="shrink-0">{props.icon}</span>
+            <span className="shrink-0">{props.label}</span>
+            <i className={clsx("fa-solid fa-check text-[10px]", props.selected ? "text-accent" : "invisible")} />
+        </button>
+    );
+}
 
 const menuItemClass =
     "split-menu-item flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-left text-[12px] cursor-pointer bg-transparent border-0 text-[color:var(--main-text-color)] hover:bg-hoverbg";
@@ -412,135 +400,97 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
 
     return (
         <div className="flex flex-col gap-0.5" data-commontext-send-popover>
-            {/* 1. 发送目标：显式二选一（聚焦块 / 新建）
-                ✓ 跟着「实际落点」走（preview.kind），不再只靠三项推导：
-                聚焦块与所选 agent 同款时，用户仍能显式选「新建 Agent Block」。
-                data-* 供真机验证台定位两个目标模式行。 */}
-            <div className="px-2.5 pt-2 pb-1.5">
+            {/* 1. 选择目标：显式二选一（聚焦块 / 新建），chip 语言与 Agents 行一致
+                ✓ 跟着「实际落点」走（preview.kind）：聚焦块与所选 agent 同款时仍能显式选「新建」。
+                data-commontext-send-mode 供真机验证台定位两行。 */}
+            <div className="px-2.5 pt-2 pb-1">
                 <div className={sectionHeadClass}>
                     <i className="fa-solid fa-crosshairs text-[9px]" />
-                    发送目标
+                    选择目标
                     <span className="ml-auto font-mono normal-case tracking-normal">二选一</span>
                 </div>
-
-                {/* 1a. 聚焦的 Agent Block（有聚焦 agent block 才可选） */}
-                {focusedAgent != null ? (
-                    <button
-                        type="button"
-                        data-commontext-send-mode="focused"
-                        className={menuItemClass + (preview.kind === "existing" ? " bg-actionsoft" : "")}
-                        onClick={() =>
-                            setConfig({ mode: "focused", profile: null, tab: { kind: "current" }, folder: null })
-                        }
-                        title="发送到聚焦块：Agent / Type / Folder 三项跟随聚焦块"
-                        aria-pressed={preview.kind === "existing"}
-                    >
-                        <div className="min-w-0 flex-1">
-                            <AgentMiniCard info={focusedAgent} />
-                        </div>
-                        <span className="shrink-0 text-[9.5px] px-1.5 py-px rounded-full bg-surface-soft text-muted">
-                            已存在
-                        </span>
-                        <i
-                            className={
-                                "fa-solid fa-check text-[11px] text-accent " +
-                                (preview.kind === "existing" ? "" : "invisible")
+                <div className="flex items-center gap-1 px-0.5" data-commontext-send-modes>
+                    {focusedAgent != null ? (
+                        <TargetChip
+                            mode="focused"
+                            selected={preview.kind === "existing"}
+                            icon={<i className="fa-solid fa-bullseye text-[10px]" />}
+                            label="聚焦块"
+                            title="发送到聚焦的 Agent Block（Agent / Type / Folder 三项跟随）"
+                            onClick={() =>
+                                setConfig({ mode: "focused", profile: null, tab: { kind: "current" }, folder: null })
                             }
                         />
-                    </button>
-                ) : (
-                    <div className="px-2 py-1 text-[11.5px] text-muted">当前聚焦块不是 Agent Block — 不可直接发送</div>
-                )}
-
-                {/* 1b. 新建 Agent Block（始终可选：即使 Agent/Type/Folder 与聚焦块全等） */}
-                <button
-                    type="button"
-                    data-commontext-send-mode="create"
-                    className={menuItemClass + (preview.kind === "create" ? " bg-actionsoft" : "")}
-                    onClick={() => setConfig({ ...config, mode: "create" })}
-                    title="新建一个 Agent Block（保留当前 Agents / Type / Folder 选择）"
-                    aria-pressed={preview.kind === "create"}
-                >
-                    <i className="fa-solid fa-plus text-[10px] text-secondary shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">新建 Agent Block</span>
-                    <span className="shrink-0 text-[9.5px] px-1.5 py-px rounded-full bg-surface-soft text-muted">
-                        新建
-                    </span>
-                    <i
-                        className={
-                            "fa-solid fa-check text-[11px] text-accent " +
-                            (preview.kind === "create" ? "" : "invisible")
-                        }
+                    ) : null}
+                    <TargetChip
+                        mode="create"
+                        selected={preview.kind === "create"}
+                        icon={<i className="fa-solid fa-plus text-[10px]" />}
+                        label="新建"
+                        title="新建一个 Agent Block（保留当前 Agent / Type / Folder 选择）"
+                        onClick={() => setConfig({ ...config, mode: "create" })}
                     />
-                </button>
-
-                {focusedAgent == null ? (
-                    <div className="mx-1 mb-1 mt-0.5 flex items-start gap-2 rounded-md border border-[color-mix(in_srgb,var(--error-color,orange)_26%,transparent)] bg-[color-mix(in_srgb,var(--error-color,orange)_10%,transparent)] px-2 py-1.5 text-[11px] text-[color:var(--error-color,orange)]">
-                        <i className="fa-solid fa-triangle-exclamation text-[10px] mt-0.5" />
-                        <span>请用下方选择 Agents / Type / Folder 新建一个 Agent Block。</span>
-                    </div>
-                ) : null}
+                    {focusedAgent == null ? (
+                        <span className="text-[10.5px] text-muted truncate">当前聚焦块不是 Agent Block</span>
+                    ) : null}
+                </div>
+                <div className="mt-1 px-0.5 text-[10.5px] text-muted truncate" data-commontext-send-summary>
+                    {preview.kind === "existing"
+                        ? `聚焦块 · ${focusedAgent?.title ?? preview.profileLabel}${preview.cwd ? ` · ${preview.cwd}` : ""}`
+                        : `新建 · ${preview.profileLabel}${preview.cwd ? ` · ${preview.cwd}` : ""}`}
+                </div>
             </div>
 
-            {/* 2. 选择 Agents（样式对齐 New Agent 弹窗的 agent 选择行：左强调条 + 图标 + 默认勾） */}
+            {/* 2. 选择 Agent：纯 logo 单行（不换行，选中名字只出现在标题右侧） */}
             <div className="px-2.5 pt-2 pb-1.5 border-t border-border/60">
                 <div className={sectionHeadClass}>
                     <i className="fa-solid fa-robot text-[9px]" />
-                    选择 Agents
+                    选择 Agent
+                    <span
+                        className="ml-auto font-mono normal-case tracking-normal text-secondary"
+                        data-commontext-agent-name
+                    >
+                        {profiles.find((p) => p.name === preview.profileName)?.label ?? "—"}
+                    </span>
                 </div>
-                <div className="flex flex-wrap gap-0.5 px-0.5">
+                <div
+                    className="flex items-center gap-1 px-0.5 overflow-x-auto overflow-y-hidden pb-0.5"
+                    data-commontext-agent-row
+                >
                     {profiles.map((profile) => {
                         const isSelected = preview.profileName === profile.name;
                         const iconSpec = getAgentIcon(profile.name, { personas: personaMap });
                         return (
-                            <div
+                            <button
                                 key={profile.name}
+                                type="button"
+                                data-commontext-agent-chip={profile.name}
                                 className={clsx(
-                                    "group inline-flex items-center h-[30px] rounded-md transition-colors cursor-pointer",
-                                    isSelected ? "bg-accent/12 relative" : "hover:bg-surface-soft"
+                                    "relative shrink-0 h-[32px] w-[32px] grid place-items-center rounded-md transition-colors cursor-pointer border-0",
+                                    isSelected
+                                        ? "bg-accent/12 text-foreground"
+                                        : "bg-transparent text-muted hover:bg-surface-soft hover:text-secondary"
                                 )}
+                                onClick={() => setConfig({ ...config, profile: profile.name })}
+                                title={profile.isDefault ? `${profile.label}（默认）` : profile.label}
+                                aria-label={profile.label}
+                                aria-pressed={isSelected}
                             >
                                 {isSelected ? (
                                     <span className="absolute left-0 top-1 bottom-1 w-[2px] bg-accent rounded-full" />
                                 ) : null}
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center gap-1.5 h-full pl-2.5 pr-1 rounded-l-md text-xs font-medium border-none bg-transparent cursor-pointer"
-                                    onClick={() => setConfig({ ...config, profile: profile.name })}
-                                    title={profile.isDefault ? `${profile.label}（default）` : profile.label}
-                                    aria-pressed={isSelected}
-                                >
+                                {iconSpec == null ? null : iconSpec.kind === "emoji" ? (
+                                    <span className="agent-emoji-icon">{iconSpec.emoji}</span>
+                                ) : (
+                                    iconSpec.icon
+                                )}
+                                {profile.isDefault ? (
                                     <span
-                                        className={clsx(
-                                            "shrink-0 flex items-center justify-center transition-colors",
-                                            isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
-                                        )}
-                                    >
-                                        {iconSpec == null ? null : iconSpec.kind === "emoji" ? (
-                                            <span className="agent-emoji-icon">{iconSpec.emoji}</span>
-                                        ) : (
-                                            iconSpec.icon
-                                        )}
-                                    </span>
-                                    <span
-                                        className={clsx(
-                                            isSelected ? "text-foreground" : "text-muted group-hover:text-secondary"
-                                        )}
-                                    >
-                                        {profile.label}
-                                    </span>
-                                </button>
-                                <span
-                                    className={clsx(
-                                        "w-5 h-5 shrink-0 inline-flex items-center justify-center",
-                                        profile.isDefault ? "text-accent" : "text-transparent"
-                                    )}
-                                    aria-label={profile.isDefault ? "default agent" : undefined}
-                                    title={profile.isDefault ? "默认 agent" : undefined}
-                                >
-                                    {profile.isDefault ? <i className="fa-solid fa-check text-[10px]" /> : null}
-                                </span>
-                            </div>
+                                        className="absolute right-1 top-1 w-1 h-1 rounded-full bg-accent"
+                                        title="默认 agent"
+                                    />
+                                ) : null}
+                            </button>
                         );
                     })}
                     {profiles.length === 0 ? (

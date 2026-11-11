@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getBlockComponentModel, getFocusedBlockId } from "@/app/store/global";
-import type { TermViewModel } from "@/app/view/term/term-model";
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
+import type { TermViewModel } from "@/app/view/term/term-model";
+import { stringToBase64 } from "@/util/util";
 
 export function isEditableElement(target: Element | null): target is HTMLElement {
     if (!(target instanceof HTMLElement)) {
@@ -71,6 +74,24 @@ export async function insertOrCopyCommonText(
 }
 
 /**
+ * 注入后补「回车提交」的延时：paste 只把内容放进 TUI 输入框，TUI 需要一点时间吃进 bracketed paste
+ * 才会把回车当作提交（太早按会被当成粘贴内容的一部分）。
+ */
+export const SubmitAfterPasteDelayMs = 150;
+
+/**
+ * 向 term 块发一个真正的回车键（经 PTY，同 termsticker / term-model 的按键路径）。
+ * CommonText 的语义是「发送」——只 paste 不回车，agent 永远收不到（用户实测 bug）。
+ */
+export function submitTermInput(blockId: string): void {
+    if (blockId == null || blockId === "") return;
+    const b64data = stringToBase64("\r");
+    RpcApi.ControllerInputCommand(TabRpcClient, { blockid: blockId, inputdata64: b64data }).catch((error) => {
+        console.warn("[commontext] submit (enter) failed", { blockId, error });
+    });
+}
+
+/**
  * Paste the given text into the terminal identified by `viewModel` using xterm's
  * own `paste` path. This is the same mechanism `termwrap.ts` uses for clipboard
  * paste (see `this.terminal.paste(data.text)`), so it correctly routes through
@@ -129,6 +150,8 @@ export function sendTextToFocusedTerm(text: string, candidates: string[]): strin
         const viewModel = bcm?.viewModel;
         if (viewModel != null && viewModel.viewType === "term") {
             if (insertTextIntoTerm(viewModel as TermViewModel, cleanText)) {
+                // 只 paste 不回车 = agent 收不到。补一个延时提交（见 submitTermInput）。
+                window.setTimeout(() => submitTermInput(blockId), SubmitAfterPasteDelayMs);
                 return blockId;
             }
         }

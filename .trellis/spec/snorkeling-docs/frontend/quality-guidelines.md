@@ -664,3 +664,17 @@ CommonText「新建 agent block 并发送」靠 pending-input 队列把文本在
 - **agent profile 列表必须带探测**：`getAgentProfileOptions(settings)` 不传 availableCommands 时会退化成
   「全部 profile 都算检测到」，把用户没装的 agent（gemini 等）也列出来。用
   `useDetectedAgentProfileOptions(settings)`（`workspace/use-agent-profile-options.ts`）。
+
+---
+
+## 「发送」类注入 = paste + 回车提交，缺一不可 (2026-11-11, task 11-11-commontext-send-submit-and-style)
+
+- `terminal.paste(text)` 只把文本放进 TUI 输入框，**不会提交**——用户看到文字粘进去但 agent 永远收不到
+  （CommonText Send 双路径实测 bug：聚焦块 `sendTextToFocusedTerm` + 新建块 pending-input 注入都只 paste）。
+- 正解：paste 后延迟 ~150ms（`SubmitAfterPasteDelayMs`，给 TUI 吃进 bracketed paste 的时间）经
+  `RpcApi.ControllerInputCommand` 发 `"\r"`（`frontend/app/commontext/commontext-insert.ts` 的
+  `submitTermInput`，与 termsticker/term-model 的 `sendDataToController` 同一 PTY 按键通道）。
+  太早发会把回车当粘贴内容的一部分。
+- 单测锁结构事实（`commontext-insert.test.ts`）：走 ControllerInputCommand 且载荷是 `stringToBase64("\r")`。
+- **共享文件不要顺手跑全文件 prettier --write**：term.tsx 当时带着另一路未提交改动，全文件格式化会把
+  别人的在建工作卷进自己的 diff（45+/50-）。对共享文件只做最小编辑，格式化留给文件的主人。

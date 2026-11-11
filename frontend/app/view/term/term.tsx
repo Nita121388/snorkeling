@@ -4,6 +4,7 @@
 import ClaudeColorSvg from "@/app/asset/claude-color.svg";
 import { SubBlock } from "@/app/block/block";
 import { peekPendingInput, takePendingInput, computeInjectDecision } from "@/app/commontext/pending-input";
+import { SubmitAfterPasteDelayMs, submitTermInput } from "@/app/commontext/commontext-insert";
 import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import { NullErrorBoundary } from "@/app/element/errorboundary";
@@ -585,6 +586,9 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 const text = takePendingInput(blockId);
                 if (text != null && text !== "") {
                     termWrap.terminal.paste(text);
+                    // 只 paste 不回车 = agent 收不到（用户实测：文字粘进输入框但没发送）。
+                    // 延迟一点让 TUI 先吃进 bracketed paste，再补一个真正的回车提交。
+                    window.setTimeout(() => submitTermInput(blockId), SubmitAfterPasteDelayMs);
                     // 可观测事件：验证台 / 后续 UI 状态提示用（与 fallback 事件对称）。
                     window.dispatchEvent(
                         new CustomEvent("snorkeling:pending-input-injected", {
