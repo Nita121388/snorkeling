@@ -1,0 +1,20 @@
+# F-1112-persona-core 红证（red proof）— 实现前基线
+时间: 2026-11-12 19:28:41
+
+## 判据现状（全部红 = 器具可复现失败）
+
+$ go test ./pkg/persona/...
+# ./pkg/persona/...
+pattern ./pkg/persona/...: lstat ./pkg/persona/: no such file or directory
+FAIL	./pkg/persona/... [setup failed]
+exit=0
+
+$ go build ./cmd/wsh/ && ./build/wsh persona --help（wsh persona 命令不存在）
+Error: unknown command "persona" for "wsh"
+Run 'wsh --help' for usage.
+exit=0
+
+$ find pkg/persona -type f 2>/dev/null | wc -l（包不存在）
+       0
+
+结论: pkg/persona 不存在、wsh persona 子命令不存在 → 全部判据红，属可复现红而非环境坏。

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-11T01:17:34Z",
+  "updatedAt": "2026-11-12T11:35:11Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -155,6 +155,23 @@
         "by": "self"
       }
     },
+    "F-1112-persona-core-r2": {
+      "g1": {
+        "at": "2026-11-12T11:35:10Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "6b66c6b84b3c"
+      },
+      "g2": {
+        "redProof": "loop/red/F-1112-persona-core.txt",
+        "at": "2026-11-12T11:35:10Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-12T11:35:11Z",
+        "by": "compliance"
+      }
+    },
     "N-1105-cmd-window-flash": {
       "g2": {
         "redProof": "node --test server/lib/spawn-guard.test.mjs → 6 passed；校准 BAD 样本 = 修复前 version.mjs 的真实 execFileSync 行，findMissingWindowsHide 必须抓到（未修复时为红）",
@@ -219,6 +236,16 @@
       "id": "N-1106-agent-card-tag-picker",
       "reason": "规划前提过期（tags 已是共享 Wolai 浮层编辑器，非逗号文本框）；按实际代码重写 PRD 后重新建包，避免旧判据带错方向",
       "at": "2026-11-06T05:21:22Z"
+    },
+    {
+      "id": "F-1112-persona-core",
+      "reason": "判据用占位符 <tmproot>，prove 无法执行；重建为自包含命令",
+      "at": "2026-11-12T11:31:10Z"
+    },
+    {
+      "id": "F-1112-persona-core-r1",
+      "reason": "判据6 rename smoke smoke2 后 grep -c smoke 恒≥1（新id含旧id子串），判据不可满足；修正为 rename smoke second",
+      "at": "2026-11-12T11:34:54Z"
     }
   ]
 }

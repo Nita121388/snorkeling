@@ -1,3 +1,5 @@
+> **Confirmed: 2026-11-12 @nita**
+
 # A1 persona 核心：目录布局 + scaffold + wsh persona CLI
 
 ## Goal
