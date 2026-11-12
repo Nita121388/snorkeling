@@ -18,6 +18,7 @@ import (
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/ccswitch"
+	"github.com/wavetermdev/waveterm/pkg/persona"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
@@ -64,6 +65,13 @@ type AISessionsListRequest struct {
 type AISessionsListResponse struct {
 	Sessions     []aisessions.SessionSummary     `json:"sessions"`
 	ProjectPaths []aisessions.ProjectPathSummary `json:"projectPaths,omitempty"`
+	// PersonaRoot is the local persona root (design A1.5 §4); empty when no
+	// persona home bases exist or the root is unreadable.
+	PersonaRoot string `json:"personaRoot,omitempty"`
+	// Personas is the trimmed local roster (id/name/emoji/role only). The
+	// frontend folds <PersonaRoot>/<id> project buckets into 🎭 groups and
+	// labels rows whose props.persona points at one of these ids.
+	Personas []PersonaSummary `json:"personas,omitempty"`
 	// Scanning reports that a background summary scan is still filling the
 	// index; the GUI renders skeleton rows plus a progress strip until it ends.
 	Scanning bool `json:"scanning"`
@@ -71,6 +79,84 @@ type AISessionsListResponse struct {
 	Total    int  `json:"total"`
 	// AttachTruncated reports that hierarchy context rows hit the cap.
 	AttachTruncated bool `json:"attachTruncated,omitempty"`
+}
+
+// PersonaSummary is the trimmed roster entry sent to the frontend: identity
+// card fields only, deliberately without origin/createdBy machine fields.
+type PersonaSummary struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Emoji string `json:"emoji,omitempty"`
+	Role  string `json:"role,omitempty"`
+}
+
+// personaRosterCache is a tiny TTL cache over persona.List: every List call
+// with IncludeProjectPaths would otherwise re-read every persona.json (50
+// personas = 50 small file reads). Failures are cached too, so an unreadable
+// root cannot become a stat storm.
+type personaRosterCache struct {
+	mu       sync.Mutex
+	loadedAt time.Time
+	root     string
+	personas []PersonaSummary
+}
+
+var personaRoster personaRosterCache
+
+// personaRosterTTL is a var so tests can shorten it.
+var personaRosterTTL = 5 * time.Second
+
+// loadPersonaRoster returns the local persona root and trimmed roster,
+// degrading to empty values when either is unavailable (an unreadable root
+// must never sink the session list).
+func loadPersonaRoster() (string, []PersonaSummary) {
+	personaRoster.mu.Lock()
+	defer personaRoster.mu.Unlock()
+	now := time.Now()
+	if personaRoster.loadedAt.IsZero() || now.Sub(personaRoster.loadedAt) > personaRosterTTL {
+		root, err := persona.ResolveRoot("")
+		if err != nil {
+			aiSessionsDebugf("persona roster root error: %v", err)
+			personaRoster.root = ""
+			personaRoster.personas = nil
+			personaRoster.loadedAt = now
+		} else {
+			list, err := persona.List(root)
+			if err != nil {
+				aiSessionsDebugf("persona roster list error: %v", err)
+				personaRoster.root = ""
+				personaRoster.personas = nil
+			} else if len(list) == 0 {
+				// No persona home bases on this machine (or the root is missing):
+				// report no persona dimension at all instead of a root nothing
+				// under it can match.
+				personaRoster.root = ""
+				personaRoster.personas = nil
+			} else {
+				personaRoster.root = root
+				personaRoster.personas = personaSummaries(list)
+			}
+			personaRoster.loadedAt = now
+		}
+	}
+	return personaRoster.root, personaRoster.personas
+}
+
+// personaSummaries trims machine fields off the roster for the wire.
+func personaSummaries(list []persona.Persona) []PersonaSummary {
+	if len(list) == 0 {
+		return nil
+	}
+	out := make([]PersonaSummary, 0, len(list))
+	for _, p := range list {
+		out = append(out, PersonaSummary{
+			ID:    p.ID,
+			Name:  p.Name,
+			Emoji: p.Emoji,
+			Role:  p.Role,
+		})
+	}
+	return out
 }
 
 type AISessionsTagsRequest struct {
@@ -744,6 +830,7 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	}
 	if request.IncludeProjectPaths {
 		response.ProjectPaths = result.ProjectPaths
+		response.PersonaRoot, response.Personas = loadPersonaRoster()
 	}
 	return response, nil
 }

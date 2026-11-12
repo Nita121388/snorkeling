@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-12T12:15:30Z",
+  "updatedAt": "2026-11-12T12:27:55Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -153,6 +153,40 @@
         "ok": true,
         "executedAt": "2026-11-11T01:17:34Z",
         "by": "self"
+      }
+    },
+    "F-1112-persona-agent-create": {
+      "g1": {
+        "at": "2026-11-12T12:27:54Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "799bbd130eac"
+      },
+      "g2": {
+        "redProof": "loop/red/F-1112-persona-a15-a25.txt",
+        "at": "2026-11-12T12:27:55Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-12T12:27:55Z",
+        "by": "compliance"
+      }
+    },
+    "F-1112-persona-aisessions-r1": {
+      "g1": {
+        "at": "2026-11-12T12:27:54Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "a4032386d0af"
+      },
+      "g2": {
+        "redProof": "loop/red/F-1112-persona-a15-a25.txt",
+        "at": "2026-11-12T12:27:54Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-12T12:27:54Z",
+        "by": "compliance"
       }
     },
     "F-1112-persona-core-r2": {

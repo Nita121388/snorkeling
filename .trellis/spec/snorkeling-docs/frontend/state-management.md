@@ -191,3 +191,18 @@ inline tab / Tab 圆点（store）。结果同一个 block：
    否则另一面会因为只认自己那份判定而"复活"。参见 `session-overview.tsx` 的 `ackAgentStatus`。
 4. **showing 判定只看 `state`**：`done` 长期保留直到下一次非 idle 事件或 ack；不要用"时间窗口"（例如
    15 分钟内才显示）作为单侧显示条件——时间窗口会让同一状态在两个面不同时消失。
+
+---
+
+## persona 归属判定：props.persona 是唯一归属，路径命中只管折叠（2026-11-12, task 11-12-persona-aisessions）
+
+AISessions 里"一个会话属于哪个人设"必须只读 `summary.props.persona`（显式、人/AI 可改，
+写入通道 `wsh agent card set --prop persona=<id>`，A3 登场管线也调它）。行标 🎭、persona
+筛选、登场史计数（`countSessionsOfPersona`）都只读它，**禁止**从路径反推归属。
+
+路径（`projectPath` 位于 persona 根目录下且根的第一级子目录名是名册 id，`/`/`\` 都认、
+大小写不敏感）只用于**分组折叠**：命中 → 桶 key `persona:<id>`、组名 `🎭 <emoji> <name>`、
+不渲染路径。两机制职责不同：折叠解决"据点伪项目混排"，props.persona 解决"归属与统计"。
+判定逻辑收口在 `frontend/app/view/aisessions/utils.ts` 的纯函数
+（`buildPersonaContext` / `makePersonaPathMatcher` / `personaIdOfSession`），不要在组件里
+散写第二份路径匹配。

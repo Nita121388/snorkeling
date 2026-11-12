@@ -89,6 +89,9 @@ func (svc *AISessionsService) listAllOrigins(ctx context.Context, request *AISes
 	}
 	if request.IncludeProjectPaths {
 		response.ProjectPaths = mergeProjectPaths(projectPaths)
+		// The merged view still shows the LOCAL roster: persona homes live on
+		// this machine, and only paths under PersonaRoot fold (design A1.5 §3.2).
+		response.PersonaRoot, response.Personas = loadPersonaRoster()
 	}
 	return response, nil
 }

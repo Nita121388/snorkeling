@@ -338,6 +338,8 @@ declare global {
     type AISessionsListResponse = {
         sessions: SessionSummary[];
         projectPaths?: ProjectPathSummary[];
+        personaRoot?: string;
+        personas?: PersonaSummary[];
         scanning: boolean;
         scanned: number;
         total: number;
@@ -2677,6 +2679,14 @@ declare global {
         kind: string;
         count: number;
         lastAt: number;
+    };
+
+    // aisessionsservice.PersonaSummary
+    type PersonaSummary = {
+        id: string;
+        name: string;
+        emoji?: string;
+        role?: string;
     };
 
     // wconfig.PinnedDirectoryType

@@ -10,7 +10,7 @@ import { buildSessionTree, hiddenChildCount, visibleChildren, type SessionTreeNo
 import { NewSessionKey } from "./types";
 import { countSubSessions, makeSessionComparator } from "./utils";
 import type { SessionRunningState } from "./use-sessions-running";
-import type { ProjectSessionGroup } from "./utils";
+import { personaIdOfSession, type PersonaContext, type ProjectSessionGroup } from "./utils";
 
 /** A session folder bucket is keyed by its basename, or this constant for 未归类. */
 export const UnclassifiedKey = "";
@@ -142,6 +142,8 @@ type GroupedSessionListProps = {
     connection?: string;
     /** 本次筛选的命中集（不含 attached 上下文行）；无筛选时为 undefined。 */
     matchedKeys?: Set<string>;
+    /** 人设名册（行标 🎭 用）：id → 名册条目；无名单时不渲染行标。 */
+    personaById?: PersonaContext["byId"];
 };
 
 export function GroupedSessionList({
@@ -171,6 +173,7 @@ export function GroupedSessionList({
     expandAllTags,
     connection,
     matchedKeys,
+    personaById,
 }: GroupedSessionListProps) {
     const newSession = sessions.find((session) => session.key === NewSessionKey);
 
@@ -188,6 +191,14 @@ export function GroupedSessionList({
                       ? makeSessionComparator(sortChain, countSubSessions(sessions))
                       : undefined
               );
+
+    /** 一个行的行标人设（🎭 + 名字/裸 id）；无归属或无名册时为 null。 */
+    const rowPersona = (session: SessionSummary) => {
+        const personaId = personaIdOfSession(session);
+        if (personaId === "") return null;
+        const persona = personaById?.get(personaId);
+        return { id: personaId, name: persona?.name || personaId, emoji: persona?.emoji };
+    };
 
     /** 渲染一个树节点及其（已展开的）子节点；子会话超过 20 个时追加「显示全部」。 */
     const renderNode = (node: SessionTreeNode, isLastChild: boolean): ReactNode => {
@@ -229,6 +240,7 @@ export function GroupedSessionList({
                     isLastChild={isLastChild}
                     expandAllTags={expandAllTags}
                     connection={connection}
+                    persona={rowPersona(node.session)}
                 />
                 {children.length > 0 ? (
                     // 子会话去掉每行的 border-b，靠容器底边收束整块展开区。

@@ -1,0 +1,22 @@
+# A1.5 / A2.5 红证（red proof）— 实现前基线 2026-11-12 20:27:38
+
+## A1.5（F-1112-persona-aisessions-r1）判据现状
+$ grep -n "PersonaRoot\|Personas " pkg/service/aisessionsservice/aisessionsservice.go
+0
+0 处：字段不存在
+$ grep -n "personaCtx" frontend/app/view/aisessions/utils.ts
+0
+0 处：分组无 persona 维度
+
+## A2.5（F-1112-persona-agent-create）判据现状
+$ ls pkg/persona/proposal.go pkg/persona/memory.go
+ls: pkg/persona/memory.go: No such file or directory
+ls: pkg/persona/proposal.go: No such file or directory
+$ wsh persona memory add（子命令不存在）
+Error: unknown flag: --section
+$ agent guide 里 persona 条目数
+0
+0
+
+结论: 全部判据红且可复现（字段/文件/子命令/能力表条目均不存在），属缺实现而非环境坏。
+授权来源: 用户 2026-11-12 会话原话「全部授权，请你自主推进不用等我」。

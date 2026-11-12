@@ -385,3 +385,64 @@ describe("right-side run badge wiring", () => {
         expect(markup).not.toContain("fa-spinner");
     });
 });
+
+describe("persona row chip (A1.5)", () => {
+    function renderRow(extra: Partial<SessionSummary> = {}): string {
+        const session = {
+            key: "k",
+            id: "k",
+            source: "pi",
+            createdAt: 0,
+            updatedAt: 0,
+            ...extra,
+        } as unknown as SessionSummary;
+        return renderToStaticMarkup(
+            <SessionRow
+                session={session}
+                selected={false}
+                onSelect={() => {}}
+                onMark={() => {}}
+                onNoteSave={() => Promise.resolve(true)}
+                onResume={() => {}}
+                onJumpToBlock={() => {}}
+            />
+        );
+    }
+
+    it("renders 🎭 + persona name as a chip when a persona is supplied", () => {
+        const markup = renderRow();
+        const personaMarkup = renderToStaticMarkup(
+            <SessionRow
+                session={{ key: "k", id: "k", source: "pi", createdAt: 0, updatedAt: 0 } as unknown as SessionSummary}
+                selected={false}
+                onSelect={() => {}}
+                onMark={() => {}}
+                onNoteSave={() => Promise.resolve(true)}
+                onResume={() => {}}
+                onJumpToBlock={() => {}}
+                persona={{ id: "demo", name: "Demo", emoji: "🦊" }}
+            />
+        );
+        expect(personaMarkup).toContain('data-persona-id="demo"');
+        expect(personaMarkup).toContain("🎭 Demo");
+        // 无 persona 的行（同一条 markup 基线）不应出现行标。
+        expect(markup).not.toContain("data-persona-id");
+    });
+
+    it("falls back to the bare id when the roster entry is unknown", () => {
+        const personaMarkup = renderToStaticMarkup(
+            <SessionRow
+                session={{ key: "k", id: "k", source: "pi", createdAt: 0, updatedAt: 0 } as unknown as SessionSummary}
+                selected={false}
+                onSelect={() => {}}
+                onMark={() => {}}
+                onNoteSave={() => Promise.resolve(true)}
+                onResume={() => {}}
+                onJumpToBlock={() => {}}
+                persona={{ id: "ghost", name: "ghost" }}
+            />
+        );
+        expect(personaMarkup).toContain('data-persona-id="ghost"');
+        expect(personaMarkup).toContain("🎭 ghost");
+    });
+});

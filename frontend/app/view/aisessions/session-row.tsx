@@ -209,6 +209,8 @@ export function SessionRow({
     expandAllTags = false,
     /** 远端会话需要带 connection（供弹窗编辑时的 Summary/NoteAndTags RPC）。 */
     connection = "",
+    /** 行标人设（props.persona 非空时由上层查名册得到）；null/缺省不渲染。 */
+    persona = null,
 }: {
     session: SessionSummary;
     selected: boolean;
@@ -250,6 +252,8 @@ export function SessionRow({
     expandAllTags?: boolean;
     /** 远端会话需要带 connection（供弹窗编辑时的 Summary/NoteAndTags RPC）。 */
     connection?: string;
+    /** 行标人设：🎭 + 人设名；查不到名册时 name 已退化为裸 id。 */
+    persona?: { id: string; name: string; emoji?: string } | null;
 }) {
     const isChild = depth > 0;
     // 上下文行（后端为了保住父子结构带出来的行）→ 次要色 + 图标 + tooltip 说明。
@@ -648,6 +652,15 @@ export function SessionRow({
                          * 之前这里是第二个 spinner，与左列 RunningDot 构成两个互不知晓的
                          * 「在跑」标记，同一行出现两次「运行中」。
                          */}
+                        {persona != null ? (
+                            <span
+                                className="max-w-40 truncate rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent"
+                                title={`Persona: ${persona.id}`}
+                                data-persona-id={persona.id}
+                            >
+                                🎭 {persona.name || persona.id}
+                            </span>
+                        ) : null}
                         {session.vendorid ? (
                             <span
                                 className="max-w-40 truncate rounded border border-border px-1.5 py-0.5 text-[10px] text-primary"

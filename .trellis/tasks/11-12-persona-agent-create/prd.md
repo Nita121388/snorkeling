@@ -1,3 +1,5 @@
+> **Confirmed: 2026-11-12 @nita**
+
 # A2.5 Agent 自创建：CLI + MCP + proposals 闸门
 
 ## Goal

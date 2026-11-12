@@ -1,3 +1,5 @@
+> **Confirmed: 2026-11-12 @nita**
+
 # A1.5 AISessions 集成：persona 属性 + 🎭 分组折叠 + 登场史
 
 ## Goal

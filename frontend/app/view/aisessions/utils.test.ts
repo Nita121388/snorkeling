@@ -14,8 +14,10 @@ import {
 import {
     applySelectionRange,
     buildBatchCopyText,
+    buildPersonaContext,
     buildSessionDetailTimeline,
     classifySnippet,
+    countSessionsOfPersona,
     countSubSessions,
     describeSessionDates,
     formatFileSize,
@@ -27,8 +29,11 @@ import {
     heatLevel,
     isReadableMessage,
     isSessionNotFoundError,
+    makePersonaPathMatcher,
     makeSessionComparator,
     MessageHeatThresholds,
+    personaGroupLabel,
+    personaIdOfSession,
     pruneSelectionToVisible,
     readAttachMode,
     readExpandAllTagsPreference,
@@ -40,6 +45,7 @@ import {
     sortSessions,
     UnclassifiedGroupName,
     writeExpandAllTagsPreference,
+    type PersonaContext,
 } from "./utils";
 
 function makeMessage(seq: number, role: string, text: string): Message {
@@ -868,6 +874,119 @@ describe("groupSessionsByProject with sort chain", () => {
             makeSessionComparator([{ field: "messages", desc: true }], new Map())
         );
         expect(groups[0].tree.map((n) => n.session.key)).toEqual(["big", "small"]);
+    });
+});
+
+describe("persona folding (A1.5)", () => {
+    const Root = "/Users/me/.snorkeling/personas";
+
+    function s(key: string, project: string, over: Partial<SessionSummary> = {}): SessionSummary {
+        return { key, id: key, source: "pi", projectPath: project, updatedAt: 1000, ...over } as SessionSummary;
+    }
+
+    function ctx(root = Root): PersonaContext {
+        return buildPersonaContext(root, [
+            { id: "demo", name: "Demo", emoji: "🦊", role: "guard" },
+            { id: "archivist", name: "Archivist" },
+        ])!;
+    }
+
+    it("folds a session under the persona base into a 🎭 group keyed by persona:<id>", () => {
+        const groups = groupSessionsByProject(
+            [s("a", `${Root}/demo`), s("b", `${Root}/demo/work`)],
+            true,
+            undefined,
+            undefined,
+            ctx()
+        );
+        expect(groups).toHaveLength(1);
+        expect(groups[0].personaId).toBe("demo");
+        expect(groups[0].path).toBe("persona:demo");
+        expect(groups[0].name).toBe("🎭 🦊 Demo");
+        expect(groups[0].sessions).toHaveLength(2);
+        // AC2 探针：组名/路径里不能出现 rootdir 原文。
+        expect(groups[0].name).not.toContain(Root);
+        expect(groups[0].path).not.toContain(Root);
+    });
+
+    it("matches Windows separators and ignores path case", () => {
+        const groups = groupSessionsByProject(
+            [s("a", "c:\\Users\\Me\\.SNORKELING\\Personas\\Demo\\work")],
+            true,
+            undefined,
+            undefined,
+            ctx("C:\\Users\\Me\\.snorkeling\\personas")
+        );
+        expect(groups[0].personaId).toBe("demo");
+        expect(groups[0].name).toBe("🎭 🦊 Demo");
+    });
+
+    it("leaves non-persona paths untouched", () => {
+        const groups = groupSessionsByProject(
+            [s("a", `${Root}/not-in-roster/work`), s("b", "/work/demo")],
+            true,
+            undefined,
+            undefined,
+            ctx()
+        );
+        expect(groups.map((group) => group.personaId)).toEqual([undefined, undefined]);
+        expect(groups.map((group) => group.name).sort()).toEqual(["demo", "work"]);
+    });
+
+    it("does not collide with a real project that shares the persona basename", () => {
+        const groups = groupSessionsByProject(
+            [s("persona", `${Root}/demo`), s("real", "/work/demo")],
+            true,
+            undefined,
+            undefined,
+            ctx()
+        );
+        expect(groups).toHaveLength(2);
+        const personaGroup = groups.find((group) => group.personaId === "demo")!;
+        const realGroup = groups.find((group) => group.personaId == null)!;
+        expect(personaGroup.path).toBe("persona:demo");
+        expect(realGroup.path).toBe("/work/demo");
+        expect(realGroup.name).toBe("demo");
+        expect(personaGroup.sessions.map((session) => session.key)).toEqual(["persona"]);
+        expect(realGroup.sessions.map((session) => session.key)).toEqual(["real"]);
+    });
+
+    it("matches a path prefix only on segment boundaries", () => {
+        const match = makePersonaPathMatcher(ctx());
+        expect(match(`${Root}/demo`)).toBe("demo");
+        expect(match(`${Root}/demolition`)).toBe("");
+        expect(match(`${Root}-sibling/demo`)).toBe("");
+        expect(match(Root)).toBe("");
+    });
+
+    it("buildPersonaContext returns undefined without a root or roster", () => {
+        expect(buildPersonaContext("", [{ id: "demo", name: "Demo" }])).toBeUndefined();
+        expect(buildPersonaContext(Root, [])).toBeUndefined();
+        expect(buildPersonaContext(undefined, undefined)).toBeUndefined();
+    });
+
+    it("personaGroupLabel falls back to the bare id", () => {
+        expect(personaGroupLabel({ id: "demo", name: "" })).toBe("🎭 demo");
+        expect(personaGroupLabel({ id: "demo", name: "Demo", emoji: "🦊" })).toBe("🎭 🦊 Demo");
+    });
+
+    it("reads props.persona and counts 登场史 consistently", () => {
+        const withPersona = (key: string, persona: string): SessionSummary =>
+            s(key, "/work/x", { props: { persona: { value: persona } } } as Partial<SessionSummary>);
+        const list = [
+            withPersona("a", "demo"),
+            withPersona("b", "demo"),
+            withPersona("c", "archivist"),
+            s("d", "/work/x"),
+        ];
+        expect(personaIdOfSession(list[0])).toBe("demo");
+        expect(personaIdOfSession(list[3])).toBe("");
+        expect(countSessionsOfPersona(list, "demo")).toBe(2);
+        // 与「按 persona 过滤」的条数一致（同一条口径）。
+        expect(list.filter((session) => personaIdOfSession(session) === "demo").length).toBe(
+            countSessionsOfPersona(list, "demo")
+        );
+        expect(countSessionsOfPersona(list, "")).toBe(0);
     });
 });
 

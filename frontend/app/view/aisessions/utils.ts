@@ -351,7 +351,73 @@ export type ProjectSessionGroup = {
     tree: SessionTreeNode[];
     /** Whether this bucket holds sessions with no usable project path. */
     unclassified: boolean;
+    /** 命中人设据点时的人设 id（design A1.5 §3.2）：组名改为 🎭 人设名，不显示路径。 */
+    personaId?: string;
 };
+
+/** 名册条目（后端 AISessionsListResponse.personas 下发的精简人设）。 */
+export type PersonaContext = {
+    /** 本机人设根目录（persona 据点的父目录）。 */
+    root: string;
+    /** 人设 id → 名册条目。 */
+    byId: Map<string, PersonaSummary>;
+};
+
+/** 从列表响应构建分组用的人设上下文；名册为空时返回 undefined（旧行为不变）。 */
+export function buildPersonaContext(
+    personaRoot: string | undefined,
+    personas: PersonaSummary[] | undefined
+): PersonaContext | undefined {
+    const root = (personaRoot ?? "").trim();
+    const list = personas ?? [];
+    if (root === "" || list.length === 0) return undefined;
+    return { root, byId: new Map(list.map((persona) => [persona.id, persona] as const)) };
+}
+
+/** 人设组的展示名：🎭 + emoji（有则）+ 人设名；查不到名册条目时退化为裸 id。 */
+export function personaGroupLabel(persona: { id: string; name: string; emoji?: string }): string {
+    const emoji = persona.emoji ? `${persona.emoji} ` : "";
+    return `🎭 ${emoji}${persona.name || persona.id}`;
+}
+
+/** 读取会话的 persona 归属（design A1.5 §3.1：props.persona 是唯一显式归属）。 */
+export function personaIdOfSession(session: SessionSummary): string {
+    const cell = session?.props?.["persona"];
+    const value = (cell as { value?: unknown } | undefined)?.value;
+    if (typeof value === "string") return value.trim();
+    return "";
+}
+
+/** 登场史口径（design A1.5 §5.4）：当前列表里 props.persona 命中该人设的会话数。 */
+export function countSessionsOfPersona(sessions: SessionSummary[], personaId: string): number {
+    const id = (personaId ?? "").trim();
+    if (id === "") return 0;
+    return sessions.reduce((count, session) => count + (personaIdOfSession(session) === id ? 1 : 0), 0);
+}
+
+/**
+ * 构建路径→人设的匹配器（纯函数，供 groupSessionsByProject 与测试共用）。
+ *
+ * 命中规则（design A1.5 §3.2）：路径位于 personaCtx.root 之下，且 root 的
+ * 第一级子目录名是名册里的某个 id；分隔符 `/`、`\` 都认，比较大小写不敏感
+ *（Windows 路径 + macOS 卷名大小写漂移都不能让折叠失效）。
+ */
+export function makePersonaPathMatcher(personaCtx: PersonaContext): (projectPath: string) => string {
+    const root = personaCtx.root.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+    const byLower = new Map<string, string>();
+    for (const [id, persona] of personaCtx.byId) {
+        byLower.set(id.toLowerCase(), persona.id);
+    }
+    return (projectPath: string): string => {
+        const trimmed = (projectPath ?? "").trim().replace(/[/\\]+$/, "");
+        if (root === "" || byLower.size === 0 || trimmed === "") return "";
+        const normalized = trimmed.replace(/\\/g, "/").toLowerCase();
+        if (normalized !== root && !normalized.startsWith(`${root}/`)) return "";
+        const firstSegment = normalized === root ? "" : (normalized.slice(root.length + 1).split("/")[0] ?? "");
+        if (firstSegment === "") return "";
+        return byLower.get(firstSegment) ?? "";
+    };
+}
 
 export const UnclassifiedGroupName = "未归类";
 
@@ -380,23 +446,40 @@ export function basenamePath(path: string): string {
  * @param descending 旧的方向参数：只在 `compare` 缺省时生效（兼容旧调用点 / 测试）。
  * @param compare    排序链比较器。传了它，组内会话与顶层行都按它排；
  *                   **分组顺序仍按最近活跃时间**（不让文件夹随消息数乱跳）。
+ * @param personaCtx 人设上下文（design A1.5 §3.2）。命中据点时桶 key 改为
+ *                   `persona:<id>`（与真项目同名也不碰撞），组名改为 🎭 人设名。
  */
 export function groupSessionsByProject(
     sessions: SessionSummary[],
     descending = true,
     compare?: (left: SessionSummary, right: SessionSummary) => number,
-    matchedKeys?: Set<string>
+    matchedKeys?: Set<string>,
+    personaCtx?: PersonaContext
 ): ProjectSessionGroup[] {
     const buckets = new Map<string, ProjectSessionGroup>();
+    const matchPersona = personaCtx != null ? makePersonaPathMatcher(personaCtx) : null;
     for (const session of sessions) {
         const path = (session.projectPath ?? "").trim();
-        const key = path === "" ? "" : basenamePath(path);
-        const name = key === "" ? UnclassifiedGroupName : key;
+        const personaId = matchPersona != null && path !== "" ? matchPersona(path) : "";
+        const key = personaId !== "" ? `persona:${personaId}` : path === "" ? "" : basenamePath(path);
+        const name =
+            personaId !== ""
+                ? personaGroupLabel(personaCtx?.byId.get(personaId) ?? { id: personaId, name: personaId })
+                : key === ""
+                  ? UnclassifiedGroupName
+                  : key;
         const existing = buckets.get(key);
         if (existing) {
             existing.sessions.push(session);
         } else {
-            buckets.set(key, { name, path, sessions: [session], tree: [], unclassified: key === "" });
+            buckets.set(key, {
+                name,
+                path: personaId !== "" ? key : path,
+                sessions: [session],
+                tree: [],
+                unclassified: key === "",
+                personaId: personaId !== "" ? personaId : undefined,
+            });
         }
     }
     const groups = [...buckets.values()];
