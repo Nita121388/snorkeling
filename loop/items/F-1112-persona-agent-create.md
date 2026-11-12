@@ -3,7 +3,7 @@ id: F-1112-persona-agent-create
 title: "A2.5 Agent 自创建：CLI + propose 闸门 + 配额 + memory 纪律"
 type: feature
 priority: P1
-status: open
+status: accepted
 origin: self
 source: "2026-11-12T12:13:15Z"
 task: 11-12-persona-agent-create
@@ -12,6 +12,7 @@ touch: [pkg/persona/**, cmd/wsh/cmd/wshcmd-persona.go, pkg/agentguide/**, pkg/ag
 rollback: null
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
+score: {value: 4, by: nita, at: "2026-11-12T14:46:22Z", note: "用户 2026-11-12 会话明确授权代理验收。8/8 判据绿；并顺带修复 A1 截断缺陷（回归 7/7）；5 处偏离均披露于实现汇报。"}
 createdAt: "2026-11-12T12:13:15Z"
 ---
 

@@ -3,7 +3,7 @@ id: F-1112-persona-aisessions-r1
 title: "A1.5 AISessions 集成：persona 属性 + 🎭 分组折叠 + 登场史"
 type: feature
 priority: P1
-status: open
+status: accepted
 origin: self
 source: "2026-11-12T12:16:00Z"
 task: 11-12-persona-aisessions
@@ -12,6 +12,7 @@ touch: [pkg/service/aisessionsservice/**, pkg/persona/**, frontend/types/gotypes
 rollback: null
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
+score: {value: 4, by: nita, at: "2026-11-12T14:46:22Z", note: "用户 2026-11-12 会话明确授权代理验收。4/4 判据绿（vitest 570）；AC3 props.persona 活体验证留 A3 登场管线闭环。"}
 createdAt: "2026-11-12T12:16:00Z"
 ---
 
