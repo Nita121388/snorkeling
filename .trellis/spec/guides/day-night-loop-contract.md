@@ -74,3 +74,14 @@ node loop/queue.mjs verify-ledger                     # 台账可解析
 1. **hash 永远在最后一次编辑之后取**。凡是要在签完字后追加内容（评审记录、确认行、备注），必须把它放在 hash 覆盖区间**之外**，或者取 hash 之后再单独提交。
 2. **hash 只能由引擎函数产出**：`lib/hash.mjs` 的 `fileHash()` / `prdHash()`（CRLF 归一 + trimEnd）。
    裸 `sha256sum` 与引擎口径不同，两者混用会让同一份文件出现两个"正确"的 hash。
+
+### L-0005 loop 命令的未知 flag 被静默忽略：**预检 ≠ 只读**
+
+2026-11-12 实测：`queue gate --id X --gate g1 --by nita --dry-run` —— `gate` 根本没有 `--dry-run`，
+未知 flag 被当空气，命令**真的把 g1 签了**（并往 prd.md 写了 `Confirmed:` 行），等于主 agent 伪造人门凭据。
+
+三条硬规则：
+
+1. **只读预检只许用 `queue list / show / derive / board --json`。** `gate / add / run --emit-pick / accept / drop / lead` 全是写操作，不要带猜测性 flag 去"试一下"。
+2. **`gate` 的 `--by` 必须是人手给出的那一刻**；agent 只有在用户当次对话里明确说过「可以/开工/签字」时才能代录，且必须在验收记录写清来源原话。夜里没有这句话 → 包保持 `blocked:g1`，不是「想办法让它 clear」。
+3. **误签的补救路径 = `queue drop` + 重建新 id**（`gates.json` / ledger 不手改）。drop 理由必须写清误签原因；被写进 prd.md 的 `Confirmed:` 行要一并删除（它不在 hash 区间内，删了不改 hash）。

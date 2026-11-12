@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-12T11:35:11Z",
+  "updatedAt": "2026-11-12T12:15:30Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -246,6 +246,11 @@
       "id": "F-1112-persona-core-r1",
       "reason": "判据6 rename smoke smoke2 后 grep -c smoke 恒≥1（新id含旧id子串），判据不可满足；修正为 rename smoke second",
       "at": "2026-11-12T11:34:54Z"
+    },
+    {
+      "id": "F-1112-persona-aisessions",
+      "reason": "g1 被误签：主 agent 以 queue gate --dry-run 预检，但该命令无 dry-run 且忽略未知 flag，实际落签 --by nita。属伪造人门凭据，重建工作项待人手签",
+      "at": "2026-11-12T12:15:30Z"
     }
   ]
 }
