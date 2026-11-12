@@ -37,22 +37,46 @@ type Options struct {
 	Creator *Provenance
 	// OriginInfo overrides the machine origin entry.
 	OriginInfo *Origin
+	// Agent marks the caller as an agent (A2.5 gate, design §2). Non-nil and
+	// DryRun means "propose, do not scaffold"; non-nil and applied means the
+	// scaffold is stamped createdBy.kind=agent.
+	Agent *Provenance
+	// ApprovedBy is stamped when a human approves an agent proposal.
+	ApprovedBy *Provenance
+	// Charter is an optional CHARTER.md draft (--charter-file). It replaces
+	// the generated skeleton at apply time; it is never written on propose.
+	Charter string
+	// MemoryDraft is an optional session-note draft (--memory-from-session).
+	// It is appended to MEMORY/inbox.md as a facts proposal, never to
+	// facts.md directly (memory discipline §6).
+	MemoryDraft string
 }
 
 // PlannedFile is one file the scaffold would write, with a small preview.
 type PlannedFile struct {
-	Path   string `json:"path"`
-	Bytes  string `json:"bytes"`
-	Exists bool   `json:"exists"` // already on disk (idempotent hit)
+	Path string `json:"path"`
+	// Bytes is the full file body (Create writes exactly this, guarded by
+	// TestCreateWritesFullFiles). It is deliberately not JSON-marshalled:
+	// the wire shows Preview only, so `--json` stays small and preview-y.
+	Bytes string `json:"-"`
+	// Preview is a one-line excerpt for dry-run reports and `--json`.
+	Preview string `json:"preview,omitempty"`
+	Exists  bool   `json:"exists"` // already on disk (idempotent hit)
 }
 
 // CreateResult reports what Create did (or would do under --dry-run).
 type CreateResult struct {
 	Persona Persona       `json:"persona"`
 	Dir     string        `json:"dir"`
-	Files   []PlannedFile `json:"files"`
+	Files   []PlannedFile `json:"files,omitempty"`
 	Created bool          `json:"created"` // false = idempotent hit, nothing written
 	Applied bool          `json:"applied"` // true = written to disk
+	// Proposal is set when an agent caller was gated into the propose path
+	// (design §2): a proposal file was written (or reused) and NO home base
+	// was scaffolded.
+	Proposal *Proposal `json:"proposal,omitempty"`
+	// ProposalReused reports that an identical pending proposal already existed.
+	ProposalReused bool `json:"proposalReused,omitempty"`
 }
 
 // Create scaffolds a persona home base. Idempotent: if <root>/<id>/.persona/
@@ -87,6 +111,22 @@ func Create(opts Options) (*CreateResult, error) {
 	if opts.Now != nil {
 		now = opts.Now()
 	}
+
+	// A2.5 propose gate (design §2, decision D1): an agent identity without
+	// --yes proposes instead of scaffolding. The human path below is unchanged
+	// (F-1112 frozen criteria).
+	if opts.Agent != nil && opts.DryRun {
+		prop, reused, err := Propose(opts)
+		if err != nil {
+			return nil, err
+		}
+		if prop != nil {
+			return &CreateResult{Dir: dir, Created: true, Applied: false, Proposal: prop, ProposalReused: reused}, nil
+		}
+		// prop == nil: the persona appeared between the idempotency check
+		// above and here; fall through and let the scaffold path read it back.
+	}
+
 	p := Persona{
 		SchemaVersion: SchemaVersion,
 		ID:            id,
@@ -97,7 +137,18 @@ func Create(opts Options) (*CreateResult, error) {
 		Model:         strings.TrimSpace(opts.Model),
 		CreatedAt:     now.UTC().Format(time.RFC3339),
 		CreatedBy:     opts.Creator,
+		ApprovedBy:    opts.ApprovedBy,
 		Origin:        opts.OriginInfo,
+	}
+	if p.CreatedBy == nil && opts.Agent != nil {
+		agent := *opts.Agent
+		if agent.Kind == "" {
+			agent.Kind = "agent"
+		}
+		if agent.Ts == "" {
+			agent.Ts = p.CreatedAt
+		}
+		p.CreatedBy = &agent
 	}
 	if p.CreatedBy == nil {
 		p.CreatedBy = &Provenance{Kind: "human", Name: currentUser(), Ts: p.CreatedAt}
@@ -119,6 +170,20 @@ func Create(opts Options) (*CreateResult, error) {
 		}
 		if err := os.WriteFile(f.Path, []byte(f.Bytes), 0o644); err != nil {
 			return nil, fmt.Errorf("writing %s: %w", f.Path, err)
+		}
+	}
+	// Optional drafts (--charter-file / --memory-from-session). Both stay
+	// inside the memory discipline: the session note goes to inbox.md, never
+	// to facts.md directly.
+	if opts.Charter != "" {
+		charterPath := filepath.Join(dir, ".persona", "CHARTER.md")
+		if err := os.WriteFile(charterPath, []byte(opts.Charter), 0o644); err != nil {
+			return nil, fmt.Errorf("writing %s: %w", charterPath, err)
+		}
+	}
+	if opts.MemoryDraft != "" {
+		if err := appendInbox(root, id, "facts", opts.MemoryDraft, opts.Agent, now); err != nil {
+			return nil, err
 		}
 	}
 	if _, err := WriteRoster(root); err != nil {
@@ -155,13 +220,19 @@ func plannedFiles(dir string, p Persona) []PlannedFile {
 	out := make([]PlannedFile, 0, len(entries))
 	for _, e := range entries {
 		full := filepath.Join(dir, filepath.FromSlash(e.rel))
-		body := e.body()
-		preview := body
-		const maxPreview = 400
-		if len(preview) > maxPreview {
-			preview = preview[:maxPreview] + "…"
+		// Bytes is the full file body, not a preview: Create writes exactly
+		// what it reports. (An earlier version truncated this field at 400
+		// bytes for display, which corrupted every scaffolded file longer
+		// than that — including persona.json once provenance pushed it over.)
+		// Preview stays wire-only: first line, capped at 120 chars.
+		preview := e.body()
+		if idx := strings.IndexByte(preview, '\n'); idx >= 0 {
+			preview = preview[:idx]
 		}
-		out = append(out, PlannedFile{Path: full, Bytes: preview})
+		if len(preview) > 120 {
+			preview = preview[:120] + "…"
+		}
+		out = append(out, PlannedFile{Path: full, Bytes: e.body(), Preview: preview})
 	}
 	return out
 }

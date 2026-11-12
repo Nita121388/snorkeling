@@ -54,7 +54,10 @@ type Persona struct {
 	Model         string      `json:"model,omitempty"`
 	CreatedAt     string      `json:"createdAt"`
 	CreatedBy     *Provenance `json:"createdBy,omitempty"`
-	Origin        *Origin     `json:"origin,omitempty"`
+	// ApprovedBy is stamped when a human approved an agent proposal (A2.5):
+	// createdBy keeps the agent identity, approvedBy records the human.
+	ApprovedBy *Provenance `json:"approvedBy,omitempty"`
+	Origin     *Origin     `json:"origin,omitempty"`
 }
 
 // Provenance records who created the persona (human or agent), mirroring the

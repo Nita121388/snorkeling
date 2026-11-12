@@ -74,6 +74,20 @@ Flags: `<key|id|this>`, `--json`
 
 - The hash is required to write: pass it back as --expected-hash.
 
+### `wsh persona list`
+
+Every persona home base on this machine, from a directory scan.
+
+Flags: `--json`
+
+- Reads plain files; works even when the app is not running.
+
+### `wsh persona get`
+
+One persona identity card (persona.json) and its CHARTER.
+
+Flags: `<id>`, `--json`
+
 
 ## Navigate
 
@@ -111,6 +125,34 @@ Flags: `--note`, `--title`, `--tags-add`, `--tags-set`, `--tags-remove`, `--prop
 - Dry-run unless --yes, and a real write needs --expected-hash from a fresh get.
 - E_CONFLICT means someone else edited: re-read, do not pass --force.
 - titleSource=user is refused without --force.
+
+### `wsh persona create`
+
+Propose a new persona home base (agents never scaffold directly).
+
+Flags: `--name`, `--emoji`, `--role`, `--provider`, `--model`, `--from-session <key|this>`, `--agent-name`, `--charter-file`, `--memory-from-session`, `--dry-run`, `--yes`, `--json`
+
+- With --from-session/--agent-name and no --yes this writes .index/proposals/<slug>.json, not a persona: a human must run `persona approve <slug> --yes`.
+- Idempotent: an existing slug is reused; a pending identical proposal is read back.
+- Quota: 2 proposals per agent session per UTC day; the 3rd fails with zero writes.
+
+### `wsh persona memory add`
+
+Append persona memory: journal directly, facts/lessons as inbox proposals.
+
+Flags: `<id>`, `--section facts|lessons|journal`, `--text`, `--from-session <key|this>`, `--agent-name`, `--yes`, `--json`
+
+- journal needs --yes; facts/lessons always land in MEMORY/inbox.md and exit 1 — --yes does not override that.
+- Never write facts.md/lessons.md/CHARTER.md directly; propose through inbox.md.
+
+### `wsh persona approve`
+
+Approve a pending persona proposal and scaffold it.
+
+Flags: `<slug>`, `--yes`, `--json`
+
+- --yes is mandatory: approval is a human decision.
+- createdBy keeps the agent identity; approvedBy records the human.
 
 
 ## Inside the app only

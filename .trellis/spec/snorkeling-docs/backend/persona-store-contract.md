@@ -1,4 +1,4 @@
-# Persona 存储契约（A1 数据地基）
+# Persona 存储契约（A1 数据地基 + A2.5 propose 闸门）
 
 > 代码：`pkg/persona/`、`cmd/wsh/cmd/wshcmd-persona.go`
 > 设计：`design/plans/persona-system.md` §3.1 / §3.2 / §3.6 / §4.5
@@ -24,6 +24,18 @@
 7. **scope 门词表。** `persona.Scope = "data"` 是写操作的 scope 级别；A1 只有本地人类
    CLI，真正的强制点在 A2.5（`agentscope.commandScopes` + `agentguide` 的 MCP 工具）。
    不要在 A1 往 `commandScopes` 塞不存在的 command（假门）。
+8. **propose 按调用者身份分流（A2.5）。** 人类路径永远是 A1 语义；只要调用者被标成
+   agent（`Options.Agent != nil`，来自 `--from-session`/`--agent-name`），无 `--yes`
+   就只能写 `.index/proposals/<slug>.json`，绝不 scaffold。别把这条塞进 `DryRun`
+   以外的分支，也别改人类路径的字节行为（F-1112 判据冻结）。
+9. **配额只在有归属时生效。** 键 = `proposedBy.sessionId`，窗口 = 自然日（UTC），上限 2；
+   数据源是 proposal 文件本身（扫描计数），不引入独立状态文件。无 sessionId 不计数。
+   第 3 条必须 `ErrQuotaExceeded` + 零写入 + 非 0 退出。
+10. **记忆纪律不因身份而变。** `journal` 可直接 append；`facts`/`lessons`/CHARTER 只能写
+    `MEMORY/inbox.md` 提议。`AddMemory` 对 facts/lessons 恒返回 `ErrRefusedDirectWrite`
+    （inbox 已写、CLI 退出码 1），`--yes` 不改变该行为；人写的档案措辞更硬、行为同一。
+11. **`PlannedFile.Bytes` 是正文，不是预览。** Create 写的就是它报告的内容；任何显示用
+    截断都必须留在渲染层（A1 曾把预览当正文写，损坏 >400 字节文件）。
 
 ## 判据口径
 
@@ -33,4 +45,20 @@ go build ./cmd/wsh/
 wsh persona create --name smoke --root /tmp/p --dry-run   # 0 落盘
 wsh persona create --name smoke --root /tmp/p --yes       # .persona/ >= 9 文件
 wsh persona rename smoke second --root /tmp/p --yes       # 旧目录消失、名册 0 引用
+```
+
+## A2.5 判据口径
+
+```bash
+go test ./pkg/persona/... ./pkg/agentguide/... ./pkg/agentskill/...
+go build -o /tmp/wsh ./cmd/wsh/
+
+d=$(mktemp -d)
+wsh persona create --root "$d" --name p1 --from-session s1   # proposal 存在、目录不存在
+wsh persona create --root "$d" --name p2 --from-session s1   # 第 2 条 OK
+wsh persona create --root "$d" --name p3 --from-session s1   # 退出非 0、p3 proposal 不存在
+wsh persona create --root "$d" --name smoke --yes            # 人类路径直接落地
+wsh persona memory add smoke --section lessons --text x --root "$d" --yes   # 退出 1 + inbox 含 x
+wsh persona memory add smoke --section journal --text j --root "$d" --yes   # 退出 0 + journal 含 j
+wsh agent guide --json | grep -c '"cmd": "persona'           # >= 3
 ```

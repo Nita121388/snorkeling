@@ -107,6 +107,19 @@ func Commands() []Command {
 			Notes:   []string{"The hash is required to write: pass it back as --expected-hash."},
 		},
 		{
+			Cmd:     "persona list",
+			Scope:   "observe",
+			Summary: "Every persona home base on this machine, from a directory scan.",
+			Flags:   []string{"--json"},
+			Notes:   []string{"Reads plain files; works even when the app is not running."},
+		},
+		{
+			Cmd:     "persona get",
+			Scope:   "observe",
+			Summary: "One persona identity card (persona.json) and its CHARTER.",
+			Flags:   []string{"<id>", "--json"},
+		},
+		{
 			Cmd:     "block open",
 			Scope:   "navigate",
 			Summary: "Open a block: file, url, terminal, preview or agent view.",
@@ -145,6 +158,41 @@ func Commands() []Command {
 				"Dry-run unless --yes, and a real write needs --expected-hash from a fresh get.",
 				"E_CONFLICT means someone else edited: re-read, do not pass --force.",
 				"titleSource=user is refused without --force.",
+			},
+		},
+		{
+			Cmd:     "persona create",
+			Scope:   "data",
+			Summary: "Propose a new persona home base (agents never scaffold directly).",
+			Flags: []string{
+				"--name", "--emoji", "--role", "--provider", "--model",
+				"--from-session <key|this>", "--agent-name", "--charter-file",
+				"--memory-from-session", "--dry-run", "--yes", "--json",
+			},
+			Notes: []string{
+				"With --from-session/--agent-name and no --yes this writes .index/proposals/<slug>.json, not a persona: a human must run `persona approve <slug> --yes`.",
+				"Idempotent: an existing slug is reused; a pending identical proposal is read back.",
+				"Quota: 2 proposals per agent session per UTC day; the 3rd fails with zero writes.",
+			},
+		},
+		{
+			Cmd:     "persona memory add",
+			Scope:   "data",
+			Summary: "Append persona memory: journal directly, facts/lessons as inbox proposals.",
+			Flags:   []string{"<id>", "--section facts|lessons|journal", "--text", "--from-session <key|this>", "--agent-name", "--yes", "--json"},
+			Notes: []string{
+				"journal needs --yes; facts/lessons always land in MEMORY/inbox.md and exit 1 — --yes does not override that.",
+				"Never write facts.md/lessons.md/CHARTER.md directly; propose through inbox.md.",
+			},
+		},
+		{
+			Cmd:     "persona approve",
+			Scope:   "data",
+			Summary: "Approve a pending persona proposal and scaffold it.",
+			Flags:   []string{"<slug>", "--yes", "--json"},
+			Notes: []string{
+				"--yes is mandatory: approval is a human decision.",
+				"createdBy keeps the agent identity; approvedBy records the human.",
 			},
 		},
 		{
@@ -223,10 +271,10 @@ func RedLines() []string {
 
 // Guide is the machine-readable shape of `wsh agent guide --json`.
 type Guide struct {
-	Version  int    `json:"version"`
-	Commands []Command `json:"commands"`
+	Version  int                              `json:"version"`
+	Commands []Command                        `json:"commands"`
 	Errors   []struct{ Code, Meaning string } `json:"errors"`
-	RedLines []string `json:"redlines"`
+	RedLines []string                         `json:"redlines"`
 }
 
 // JSON returns the machine-readable guide.

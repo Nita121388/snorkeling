@@ -2,7 +2,7 @@
 
 > 设计：`design/plans/persona-system.md`（§3.1 布局 / §3.2 gitignore / §4.5 写入纪律）
 > 任务：`.trellis/tasks/11-12-persona-core/`（loop 包 `F-1112-persona-core-r2`）
-> 状态：A1 已落地（`pkg/persona` + `wsh persona`）；A1.5 已落地（见 §7）；A2/A3/A4/A5/A5.5/A6 未开始
+> 状态：A1 / A1.5 / A2.5（CLI 部分）已落地；A2/A3/A4/A5/A5.5/A6 未开始
 
 ## 1. 代码位置
 
@@ -66,7 +66,7 @@ loop 包 `F-1112-persona-core-r2` 的 7 条判据由 `queue prove` 机器采数�
 
 - ~~A1.5：AISessions `persona` 属性、🎭 分组折叠、登场史~~（已落地，见 §7）
 - A2：右键/launcher/card 三个交互创建入口 + 两步向导
-- A2.5：MCP 工具 + proposals 闸门 + 配额 + provenance 批准流
+- ~~A2.5：MCP 工具 + proposals 闸门 + 配额 + provenance 批准流~~（CLI 部分已落地，见 §8；MCP 工具等 `11-09-agent-block-create`）
 - A3：widget 🎭 + hover 弹窗 + `persona:<id>` block meta（rename 钩子在此接实；登场时写 `props.persona` 的 launch 管线也在 A3）
 - A4：`persona://` 名册 Block
 - A5 / A5.5：同步 v1 / rootdir 设置 + relocate + journal 轮转
@@ -86,3 +86,74 @@ loop 包 `F-1112-persona-core-r2` 的 7 条判据由 `queue prove` 机器采数�
 - 兼容：字段全可选，旧前端/旧后端互相降级；回滚 = revert 单 commit。
 
 验证：`npx vitest run frontend/app/view/aisessions`（570+，含 persona 折叠/行标/登场史一致性）；`go test ./pkg/service/aisessionsservice/`（含 persona_roster_test 的填充/降级/缓存三测）。
+
+## 8. A2.5 Agent 自创建（CLI 已落地）
+
+任务：`.trellis/tasks/11-12-persona-agent-create/`。代码：`pkg/persona/proposal.go`、
+`pkg/persona/memory.go`、`cmd/wsh/cmd/wshcmd-persona.go`（扩展）。
+
+### propose 分流（设计 §2，对 PRD 的收窄）
+
+按调用者身份分流，A1 人类路径零变化（F-1112 冻结判据不动）：
+
+| 调用者（CLI 证据） | 无 `--yes` | `--yes` |
+|---|---|---|
+| 人类（无 `--from-session` 无 `--agent-name`） | A1 dry-run 预览（零落盘） | 直接落地，`createdBy.kind=human` |
+| agent（`--from-session <key>\|this` 或 `--agent-name`） | 写 `.index/proposals/<slug>.json`，不建目录 | auto 落地，`createdBy.kind=agent` |
+
+- `--from-session this` 走 RPC（`AgentCardGetCommand` 同款 `this` 解析，`WAVETERM_BLOCKID`）；RPC 不可用时报错并提示用字面 key
+- `--charter-file` / `--memory-from-session` 只取文本做初稿（charter 覆盖生成的骨架；会话 note/tags 作为 inbox 事实草稿），不复制会话身份
+
+### proposal 文件与批准流
+
+`.index/proposals/<slug>.json`：`schemaVersion/kind=persona.proposal/slug/proposedAt/
+proposedBy{kind,name,sessionId}/options{name,emoji,role,provider,model[,charter,memoryDraft]}/status=pending`。
+
+- 幂等两路：persona 已存在 → 复用返回不写 proposal；同 slug proposal 已存在 → 读回返回不覆盖
+- `wsh persona propose list`（`--json` 可用）；`approve <slug> --yes`（`--yes` 必须显式）→
+  落地 scaffold（`createdBy` 保留 agent + 加 `approvedBy{kind:"human",ts}`）、删 proposal、重扫名册；
+  `reject <slug> --yes` → 删 proposal + `.index/proposals/journal.md` 留一行（persona 尚不存在，
+  留痕落在 proposals 自己的 journal，不动任何人设）
+
+### 配额（防泛滥，设计 §5）
+
+- 键 = `proposedBy.sessionId`；窗口 = 自然日（UTC，proposedAt）；上限 2
+- 数据源 = proposal 文件本身（扫描计数，无独立状态文件）；第 3 条 → `ErrQuotaExceeded`，零写入、非 0 退出
+- 无会话上下文（纯 `--agent-name`）不计数（诚实降级）
+
+### 记忆纪律（memory add，设计 §6）
+
+- `journal` → 直接 append 带时间戳行 + 出处（`--yes` 确认写权限），退出 0
+- `facts`/`lessons` → 恒走 `MEMORY/inbox.md` 结构化提议块（来源/目标/内容），返回
+  `ErrRefusedDirectWrite` → 退出码 1；`--yes` 不改行为（闸门本身）
+- `createdBy.kind=human` 的人设措辞更硬（「human-authored persona」），行为同一
+- journal append 后重扫名册（last-active 变化）
+
+### dormant（90 天，设计 §7）
+
+- last-active 代理 = max(`journal.md` mtime, `persona.json.createdAt`)；名册行超 90 天前缀 `💤`
+- 只标不删；登场史（`props.persona`）并入待 A1.5 后续
+
+### agentguide / skill 同步
+
+`persona list/get`（observe）、`persona create/memory add/approve`（data）注册进
+`pkg/agentguide`；`pkg/agentskill/.../reference/commands.md` 由 `agentguide.SkillMarkdown()`
+重新生成（`TestSkillCommandsMatchGuide` 强校验）。
+
+### 顺手修的 A1 缺陷
+
+`plannedFiles` 曾把 400 字节的「预览」当文件正文写（`Bytes` 字段截断 + `…`），导致所有
+>400 字节的 scaffold 文件（agents 契约模板、带 provenance 的 persona.json）全部损坏。
+A2.5 验收时暴露（带 agent+approver provenance 的 persona.json 超 400 字节变成非法 JSON），
+修复为 `Bytes` 携带完整正文（`TestCreateWritesFullFiles` 守护）。
+
+### 验证
+
+```bash
+go test ./pkg/persona/... ./pkg/agentguide/... ./pkg/agentskill/...
+d=$(mktemp -d) && wsh persona create --root $d --name p1 --from-session s1   # proposal 落盘、目录不建
+wsh persona approve p1 --root $d --yes                                       # 落地 + approvedBy
+wsh persona memory add p1 --section lessons --text x --root $d --yes        # 退出 1 + inbox
+```
+
+A2.5 的 7 条判据（PROPOSE/QUOTA/MEMORY_DISCIPLINE/JOURNAL/GUIDE_PERSONA 等）全绿。
