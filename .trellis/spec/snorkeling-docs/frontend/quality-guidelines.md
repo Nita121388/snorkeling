@@ -138,6 +138,29 @@ Questions to answer:
 
 ---
 
+## 设置面板排版：组卡 + 行不留发丝线 (2026-11-12, task 11-12-settings-density-sync)
+
+`waveconfig` 的设置面板原来用 `divide-y` 发丝线把行连成一列，读起来像表格。排版原语的唯一真身是
+`frontend/app/element/setting-card.tsx`：
+`SettingGroup` / `SettingCard` / `SettingRow` / `RadioCard(Group)` / `RadioRow(Group)` /
+`AdvancedSection` / `SaveBar` / `SignalBars` / `SettingInput` / `SettingValue` / `SettingButton` /
+`SettingSegmented`。新面板**不要**自己写 `divide-y` 行容器或裸 `<input type="radio">`。
+
+- 组 = 标题在组卡**外**上方（12px/500 secondary）+ 组卡（`bg-surface` + 1px `border-border` + radius 10）；
+  行 `min-h-[58px]`，**组内不用发丝线**，靠行高与 32px 组间距分隔；标题 14/500，描述 12.5/1.5、距标题 3px。
+- **草稿型面板只有一个保存位置**（`SaveBar`，底部）。不要同时留 header Save + 面板内 Save。
+- 二选一/多选一用 `SettingSegmented` 或 `RadioCard`，不要再用裸文本输入框表达枚举
+  （`commontext:sync:server:pushmode` 曾是需要记字符串的坑）。
+- 「前置未配置」不能写成不可点的 radio：那等于让用户永远看不到该后端的字段（死锁）。
+  用 `RadioCard` 的 `warn` 行说明原因，卡保持可点；能不能真正生效由字段是否填全决定。
+- 验证台依赖的 `data-*` 必须透传到宿主 DOM —— 原语用 `attrs` 参数（行级 `data-sync-row`、卡级
+  `data-sync-transport`）。改结构前后各跑一次 `grep -o 'data-sync-[a-z-]*' | sort -u` 做差集，
+  丢属性就是丢断言。
+- 颜色只用主题 token（`surface` / `border` / `actionsoft*` / `accent` / `success|warning|error`）。
+  **`--border-soft-color` 不存在**，引用它等于静默失效。
+
+---
+
 ## Required Patterns
 
 <!-- Patterns that must always be used -->

@@ -11,6 +11,7 @@ import {
     draftToSettingsPatch,
     isProtocolCompatible,
     readSyncDraft,
+    signalLevelForProbe,
     SyncSettingDefaults,
     SyncSettingKeys,
     type SyncSettingsDraft,
@@ -248,5 +249,56 @@ describe("sync diagnostics payloads", () => {
             },
         };
         expect(isProtocolCompatible(mismatch)).toBe(false);
+    });
+});
+
+describe("syncsettings server status derivation", () => {
+    const probeWith = (over: Partial<CommonTextSyncProbeResponse["probe"]>): CommonTextSyncProbeResponse => ({
+        transport: "server",
+        clientProtocolVersion: 1,
+        probe: { url: "https://sync.example.com", ready: true, checks: [], ...over },
+    });
+
+    it("maps probe states to signal levels: none=-1, unreachable=0, mismatch=2, ok=4", () => {
+        expect(signalLevelForProbe(null)).toBe(-1);
+        expect(signalLevelForProbe({ transport: "server", clientProtocolVersion: 1 })).toBe(0);
+        expect(
+            signalLevelForProbe(
+                probeWith({
+                    ready: false,
+                    health: undefined,
+                })
+            )
+        ).toBe(0);
+        // ready 但协议不匹配 → 降级（2），不是不可达
+        expect(
+            signalLevelForProbe(
+                probeWith({
+                    health: {
+                        service: "waveterm-sync",
+                        protocolVersion: 3,
+                        appVersion: "0",
+                        items: 0,
+                        rev: 0,
+                        requiresAuth: false,
+                    },
+                })
+            )
+        ).toBe(2);
+        // ready 且协议一致 → 强（4）
+        expect(
+            signalLevelForProbe(
+                probeWith({
+                    health: {
+                        service: "waveterm-sync",
+                        protocolVersion: 1,
+                        appVersion: "0",
+                        items: 214,
+                        rev: 3187,
+                        requiresAuth: false,
+                    },
+                })
+            )
+        ).toBe(4);
     });
 });

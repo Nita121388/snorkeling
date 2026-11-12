@@ -196,3 +196,5 @@
 | 2026-11-11 02:42 | newtab-empty | ❌ fatal（未跑） | attach | `20261111T02412-newtab-empty` | 9f619450 |
 | 2026-11-11 02:44 | agent-property-scope | ❌ fatal（未跑） | launch+reset | `20261111T02442-agent-property-scope` | 9f619450 |
 | 2026-11-11 10:57 | agent-property-scope | — 未跑（用户要求不跑真机验证；判据由 vitest property/info-card + go test agentcontrol/agentdata 覆盖） | skipped | — | working-tree |
+| 2026-11-12 00:55 | sync-diagnostics-copy | ⚠️ 0/0（无断言） | launch+reset | `20261112T00484-sync-diagnostics-copy` | 3128e846 |
+| 2026-11-12 01:28 | sync-diagnostics-copy | ⚠️ 0/0（无断言） | launch+reset | `20261112T01212-sync-diagnostics-copy` | 3128e846 |
