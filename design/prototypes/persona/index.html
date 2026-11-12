@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Persona System 原型 · 🎭 人设</title>
+        <link rel="stylesheet" href="./style.css" />
+    </head>
+    <body>
+        <header class="proto-bar">
+            <div class="proto-title">
+                <span class="proto-logo">🎭</span>
+                <span class="proto-name">Persona System</span>
+                <span class="proto-tag">▲ 设计活跃</span>
+            </div>
+            <nav class="proto-scenarios" role="tablist">
+                <button class="scn active" data-scn="A" role="tab">A · 右键创建 + 向导</button>
+                <button class="scn" data-scn="B" role="tab">B · 🎭 悬浮登场</button>
+                <button class="scn" data-scn="C" role="tab">C · 人设名册 Block</button>
+            </nav>
+            <div class="proto-right">
+                <button class="ghost-btn" id="themeBtn" title="切换明暗">◐</button>
+            </div>
+        </header>
+
+        <!-- ============ 场景 A：右键创建 + 向导 ============ -->
+        <main class="stage" id="scnA">
+            <div class="win">
+                <div class="win-tabs">
+                    <div class="win-tab active">AI 会话</div>
+                    <div class="win-tab">终端</div>
+                    <div class="win-tab">VCS</div>
+                    <div class="win-tab-spacer"></div>
+                    <div class="win-winbtns"><i></i><i></i><i></i></div>
+                </div>
+
+                <div class="sess-wrap">
+                    <div class="sess-toolbar">
+                        <div class="sess-title">AI Sessions</div>
+                        <div class="sess-count">4 个活跃会话</div>
+                        <div class="sess-filter">⌕ 搜索 <span class="kbd">⌘K</span></div>
+                    </div>
+                    <div class="sess-list" id="sessList">
+                        <div class="sess-row" data-title="实时监控图表横向伸缩修复" data-provider="pi" data-model="deepseek-v4.1" data-proj="ChemClin.Workbench">
+                            <span class="emoji">📈</span>
+                            <span class="sess-main">
+                                <span class="sess-name">实时监控图表横向伸缩修复</span>
+                                <span class="sess-sub">pi · deepseek-v4.1 · ChemClin.Workbench</span>
+                            </span>
+                            <span class="chip chip-done">待验证</span>
+                            <span class="sess-time">2 分钟前</span>
+                        </div>
+                        <div class="sess-row" data-title="批注时间线v2深入设计与原型" data-provider="pi" data-model="deepseek-v4.1" data-proj="snorkeling">
+                            <span class="emoji">🧭</span>
+                            <span class="sess-main">
+                                <span class="sess-name">批注时间线v2深入设计与原型</span>
+                                <span class="sess-sub">pi · deepseek-v4.1 · snorkeling</span>
+                            </span>
+                            <span class="chip chip-work">原型设计中</span>
+                            <span class="sess-time">1 分钟前</span>
+                        </div>
+                        <div class="sess-row" data-title="数据包采集：补丁来源与 DB 快照" data-provider="pi" data-model="kimi-k2" data-proj="工具建设-2026-11">
+                            <span class="emoji">📦</span>
+                            <span class="sess-main">
+                                <span class="sess-name">数据包采集：补丁来源与 DB 快照</span>
+                                <span class="sess-sub">pi · kimi-k2 · 工具建设-2026-11</span>
+                            </span>
+                            <span class="chip chip-done">待验证</span>
+                            <span class="sess-time">25 分钟前</span>
+                        </div>
+                        <div class="sess-row" data-title="改 Dump 界面逻辑" data-provider="pi" data-model="deepseek-v4.1" data-proj="LiCASmart">
+                            <span class="emoji">🩺</span>
+                            <span class="sess-main">
+                                <span class="sess-name">改 Dump 界面逻辑</span>
+                                <span class="sess-sub">pi · deepseek-v4.1 · LiCASmart</span>
+                            </span>
+                            <span class="chip chip-work">开发中</span>
+                            <span class="sess-time">10 分钟前</span>
+                        </div>
+                    </div>
+                    <div class="sess-hint">在任意会话行 <b>右键</b> → 「🎭 设为新人设」</div>
+                </div>
+            </div>
+
+            <!-- 右键菜单 -->
+            <div class="ctxmenu" id="ctxMenu" hidden>
+                <div class="ctx-item" data-act="open">↗ 在新 Tab 打开</div>
+                <div class="ctx-item" data-act="star">⭐ 标记</div>
+                <div class="ctx-item" data-act="note">📝 编辑 Note</div>
+                <div class="ctx-sep"></div>
+                <div class="ctx-item ctx-new" data-act="persona">
+                    <span>🎭 设为新人设…</span><span class="ctx-kbd">P</span>
+                </div>
+            </div>
+
+            <!-- 创建向导 -->
+            <div class="modal-wrap" id="wizardWrap" hidden>
+                <div class="wizard" role="dialog" aria-label="设为新人设">
+                    <div class="wiz-head">
+                        <div class="wiz-title">设为新人设</div>
+                        <div class="wiz-step"><b id="wizStepNo">1</b> / 2</div>
+                    </div>
+
+                    <div class="wiz-body" id="wizStep1">
+                        <div class="wiz-section-label">身份</div>
+                        <div class="wiz-idrow">
+                            <button class="emoji-btn" id="emojiBtn" title="选 emoji">🧰</button>
+                            <div class="emoji-pop" id="emojiPop" hidden>
+                                <div class="emoji-grid">
+                                    <button>🎭</button><button>🧰</button><button>📊</button><button>🌐</button>
+                                    <button>🔍</button><button>🛠️</button><button>📦</button><button>🧪</button>
+                                    <button>🎯</button><button>🧭</button><button>🩺</button><button>🗂️</button>
+                                </div>
+                            </div>
+                            <div class="wiz-idfields">
+                                <input class="txt" id="personaName" value="备份管家" placeholder="人设名字" />
+                                <div class="slug-line">目录名 <code id="slugPreview">backup-guard</code> <span class="hint-inline">自动生成，可改</span></div>
+                            </div>
+                        </div>
+                        <div class="wiz-derived" id="derivedLine">
+                            来源会话 <b>实时监控图表横向伸缩修复</b> · pi · deepseek-v4.1 · ChemClin.Workbench
+                        </div>
+
+                        <div class="wiz-section-label">据点（工作目录）</div>
+                        <label class="radio-row">
+                            <input type="radio" name="loc" checked />
+                            <span class="radio-body">
+                                <span class="radio-title">全局人设根目录</span>
+                                <span class="radio-path">D:/Data/personas/ <span style="color:var(--tertiary-text-color)">(设置 → 🎭 人设 可改)</span></span>
+                            </span>
+                            <button class="mini-btn" id="rootChange">更改…</button>
+                        </label>
+                        <label class="radio-row">
+                            <input type="radio" name="loc" />
+                            <span class="radio-body">
+                                <span class="radio-title">单独指定目录</span>
+                                <span class="radio-path">E:/Projects/backup-guard/</span>
+                            </span>
+                            <button class="mini-btn">浏览…</button>
+                        </label>
+
+                        <div class="wiz-section-label">记忆初稿来源</div>
+                        <div class="check-row"><label><input type="checkbox" checked /> 会话 Note 与 Tags</label></div>
+                        <div class="check-row"><label><input type="checkbox" checked /> 本会话批注（12 条）</label></div>
+                    </div>
+
+                    <div class="wiz-body" id="wizStep2" hidden>
+                        <div class="wiz-section-label">将创建（创建即生成，展示即真实）</div>
+                        <pre class="tree" id="treePreview"></pre>
+                        <div class="wiz-note">
+                            <code>agents/</code> 下的 <code>AGENTS.md</code>（pi / codex 读）、<code>CLAUDE.md</code>（Claude Code 读）、<code>GEMINI.md</code>
+                            与根级 <code>AGENTS.md</code> 指针均为生成物（GENERATED，gitignore，登场时幂等重建）；唯一真源是
+                            <code>.persona/CHARTER.md</code> + <code>.persona/MEMORY/</code>。零 CLI 改造。
+                        </div>
+                    </div>
+
+                    <div class="wiz-foot">
+                        <button class="ghost-btn" id="wizCancel">取消</button>
+                        <div class="foot-right">
+                            <button class="ghost-btn" id="wizPrev" hidden>← 上一步</button>
+                            <button class="primary-btn" id="wizNext">下一步 →</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toast" id="toast" hidden></div>
+        </main>
+
+        <!-- ============ 场景 B：右侧 widget 悬浮登场 ============ -->
+        <main class="stage" id="scnB" hidden>
+            <div class="win">
+                <div class="win-tabs">
+                    <div class="win-tab active">工作区</div>
+                    <div class="win-tab">AI 会话</div>
+                    <div class="win-tab-spacer"></div>
+                    <div class="win-winbtns"><i></i><i></i><i></i></div>
+                </div>
+                <div class="ws-layout">
+                    <div class="ws-main" id="wsMain">
+                        <div class="ws-block">
+                            <div class="ws-block-head"><span class="dot dot-work"></span> pi · 批注时间线v2</div>
+                            <div class="ws-block-body mono">
+                                <div class="term-line"><span class="term-dim">$</span> 正在改 design/prototypes/aisessions/…</div>
+                                <div class="term-line term-dim">✓ all checks passed</div>
+                                <div class="term-line"><span class="term-cursor">▌</span></div>
+                            </div>
+                        </div>
+                        <div class="ws-block ws-block-small">
+                            <div class="ws-block-head"><span class="dot"></span> Files</div>
+                            <div class="ws-block-body mono term-dim">design/ · frontend/ · pkg/ · loop/</div>
+                        </div>
+                    </div>
+
+                    <!-- 右侧 widget 条 -->
+                    <div class="widgets-bar">
+                        <div class="wbtn" title="终端">▤</div>
+                        <div class="wbtn" title="AI">◈</div>
+                        <div class="wbtn" title="文件">🗂</div>
+                        <div class="wbtn" title="VCS">⑂</div>
+                        <div class="wbtn wbtn-persona" id="personaWidget" title="人设">🎭</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- hover 弹窗 -->
+            <div class="pop" id="personaPop" hidden>
+                <div class="pop-head">
+                    <span>🎭 叫人设登场</span>
+                    <span class="pop-esc">esc</span>
+                </div>
+
+                <div class="pop-section">
+                    <div class="pop-label">选 Agent<span class="pop-hint">谁上身</span></div>
+                    <div class="agent-grid" id="agentGrid">
+                        <button class="agent-cell active" data-agent="pi">pi</button>
+                        <button class="agent-cell" data-agent="codex">codex</button>
+                        <button class="agent-cell" data-agent="claude">claude</button>
+                        <button class="agent-cell" data-agent="opencode">opencode</button>
+                    </div>
+                    <select class="sel" id="modelSel">
+                        <option>deepseek-v4.1</option>
+                        <option>kimi-k2</option>
+                        <option>qwen3-max</option>
+                    </select>
+                </div>
+
+                <div class="pop-section">
+                    <div class="pop-label">选人设<span class="pop-hint">谁登场 · 据点即工作目录</span></div>
+                    <div class="persona-list" id="personaList">
+                        <button class="prow active" data-id="backup-guard" data-name="备份管家">
+                            <span class="pemoji">🧰</span>
+                            <span class="pmain"><span class="pname">备份管家</span><span class="psub">备份与归档</span></span>
+                            <span class="pstate on">● 登场中</span>
+                        </button>
+                        <button class="prow" data-id="data-butler" data-name="数据管家">
+                            <span class="pemoji">📊</span>
+                            <span class="pmain"><span class="pname">数据管家</span><span class="psub">数据清洗与报表</span></span>
+                            <span class="pstate">○ 空闲</span>
+                        </button>
+                        <button class="prow" data-id="release-envoy" data-name="发布专员">
+                            <span class="pemoji">🌐</span>
+                            <span class="pmain"><span class="pname">发布专员</span><span class="psub">发版与通道管理</span></span>
+                            <span class="pstate">○ 空闲</span>
+                        </button>
+                        <button class="prow prow-new" data-new="1">
+                            <span class="pemoji">＋</span>
+                            <span class="pmain"><span class="pname">新建人设…</span><span class="psub">从当前会话生成，或手填</span></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pop-section pop-inject">
+                    <label class="switch-row">
+                        <input type="checkbox" id="injectChk" />
+                        <span class="switch-body">
+                            <span class="switch-title">注入本次主工作目录</span>
+                            <span class="switch-sub">cwd 仍是人设据点；此开关只在首条提示里告知主工作目录</span>
+                        </span>
+                    </label>
+                    <div class="inject-path mono" id="injectPath" hidden>E:/code/snorkeling</div>
+                </div>
+
+                <div class="pop-foot">
+                    <div class="pop-summary" id="popSummary">pi · deepseek-v4.1 · 🧰 备份管家</div>
+                    <button class="primary-btn" id="launchBtn">开始登场 ↵</button>
+                </div>
+            </div>
+
+            <!-- 登场后新增 block -->
+            <div class="ws-launched" id="launchedBlock" hidden>
+                <div class="ws-block">
+                    <div class="ws-block-head">
+                        <span class="dot dot-work"></span> 🧰 备份管家 <span class="bh-sep">·</span> pi <span class="bh-sep">·</span> deepseek-v4.1
+                        <span class="bh-right">cwd D:/Data/personas/backup-guard/</span>
+                    </div>
+                    <div class="ws-block-body mono">
+                        <div class="term-line"><span class="term-prompt">[登场上下文]</span> 本次主工作目录: <b>E:/code/snorkeling</b></div>
+                        <div class="term-line term-dim">读取 CHARTER.md · MEMORY/facts.md TL;DR · PERSONAS.md（3 位同事）</div>
+                        <div class="term-line term-dim">注入 ≈ 640 tokens（L0 名册 3 行 + L1 本人摘要）</div>
+                        <div class="term-line">&gt; 今天我管的活：备份检查 <span class="term-cursor">▌</span></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ============ 场景 C：人设名册 Block ============ -->
+        <main class="stage" id="scnC" hidden>
+            <div class="win">
+                <div class="win-tabs">
+                    <div class="win-tab active">🎭 人设名册</div>
+                    <div class="win-tab">AI 会话</div>
+                    <div class="win-tab-spacer"></div>
+                    <div class="win-winbtns"><i></i><i></i><i></i></div>
+                </div>
+
+                <div class="roster">
+                    <!-- 待批准区 -->
+                    <div class="pending" id="pendingBox">
+                        <div class="pending-head">
+                            <span class="pending-title">⚡ 待批准 · 1</span>
+                            <span class="pending-sub">agent 提议创建的人设</span>
+                        </div>
+                        <div class="pending-row">
+                            <span class="pemoji">🔍</span>
+                            <span class="pmain">
+                                <span class="pname">日志巡检员</span>
+                                <span class="psub">「每天扫一遍 LiCASmart 日志找异常」· 由 pi 提议 · 3 分钟前</span>
+                            </span>
+                            <span class="pending-src">⚡AI 自建</span>
+                            <span class="pending-actions">
+                                <button class="ghost-btn tiny" data-reject>驳回</button>
+                                <button class="primary-btn tiny" data-approve>批准</button>
+                            </span>
+                        </div>
+                        <div class="pending-quota">本会话今日配额 2/2 · 提议永远不落盘，批准才生成目录</div>
+                    </div>
+
+                    <div class="roster-body">
+                        <aside class="roster-list" id="rosterList">
+                            <div class="roster-filter">
+                                <span class="rf-label">人设 (3)</span>
+                                <label class="rf-chk"><input type="checkbox" /> 仅登场中</label>
+                            </div>
+                            <button class="rrow active" data-id="backup-guard">
+                                <span class="pemoji">🧰</span>
+                                <span class="pmain"><span class="pname">备份管家</span><span class="psub">备份与归档 · pi</span></span>
+                                <span class="pstate on">●</span>
+                            </button>
+                            <button class="rrow" data-id="data-butler">
+                                <span class="pemoji">📊</span>
+                                <span class="pmain"><span class="pname">数据管家</span><span class="psub">数据清洗与报表 · pi</span></span>
+                                <span class="pstate">○</span>
+                            </button>
+                            <button class="rrow" data-id="release-envoy">
+                                <span class="pemoji">🌐</span>
+                                <span class="pmain"><span class="pname">发布专员</span><span class="psub">发版与通道 · claude</span></span>
+                                <span class="pstate">○</span>
+                            </button>
+                            <button class="rrow rrow-new" data-new="1">＋ 新建人设…</button>
+
+                            <div class="dormant">
+                                <button class="dormant-head" id="dormantToggle">💤 休眠 (2) <span class="chev">▸</span></button>
+                                <div class="dormant-body" id="dormantBody" hidden>
+                                    <div class="rrow rrow-muted"><span class="pemoji">🗂️</span><span class="pmain"><span class="pname">文档归档员</span><span class="psub">90 天未登场</span></span></div>
+                                    <div class="rrow rrow-muted"><span class="pemoji">🧪</span><span class="pmain"><span class="pname">回归测试员</span><span class="psub">120 天未登场</span></span></div>
+                                </div>
+                            </div>
+                        </aside>
+
+                        <section class="roster-detail" id="rosterDetail">
+                            <div class="rd-head">
+                                <span class="rd-emoji">🧰</span>
+                                <div class="rd-titlewrap">
+                                    <div class="rd-title" id="rdTitle">备份管家</div>
+                                    <div class="rd-meta" id="rdMeta">pi · deepseek-v4.1 · 创建于 11-06 · <span class="badge-human">人建</span></div>
+                                </div>
+                                <span class="chip chip-live" id="rdState">● 登场中 2h13m</span>
+                            </div>
+
+                            <div class="rd-section">
+                                <div class="rd-label">职责（CHARTER）</div>
+                                <ul class="rd-charter" id="rdCharter">
+                                    <li>每日备份检查：确认关键目录有当日快照</li>
+                                    <li>归档异常：失败重试 + 台账登记</li>
+                                    <li>不管：代码修改、发版（那是发布专员的活）</li>
+                                </ul>
+                            </div>
+
+                            <div class="rd-section">
+                                <div class="rd-label">据点</div>
+                                <div class="rd-base mono" id="rdBase">D:/Data/personas/backup-guard/ <button class="mini-btn">打开</button></div>
+                            </div>
+
+                            <div class="rd-section">
+                                <div class="rd-label">记忆 <span class="rd-hint">纯 Markdown · 渐进披露</span></div>
+                                <div class="mem-grid">
+                                    <div class="mem-cell"><b>12</b><span>facts</span><em>注入 TL;DR 5</em></div>
+                                    <div class="mem-cell"><b>8</b><span>lessons</span><em>注入标题 8</em></div>
+                                    <div class="mem-cell"><b>3</b><span>playbook</span><em>按需读</em></div>
+                                    <div class="mem-cell"><b>1.1K</b><span>tok 注入</span><em>≤2K 硬顶</em></div>
+                                </div>
+                                <div class="mem-bar"><span style="width:55%"></span></div>
+                                <div class="mem-note">L0 名册 3 行 + L1 本人摘要 ≈ 640 tok</div>
+                            </div>
+
+                            <div class="rd-section">
+                                <div class="rd-label">登场史</div>
+                                <div class="hist">
+                                    <span class="hist-d">11-12</span><span class="hist-ok">✓</span>
+                                    <span class="hist-d">11-11</span><span class="hist-ok">✓</span>
+                                    <span class="hist-d">11-10</span><span class="hist-bad">✗</span>
+                                    <button class="mini-btn">全部…</button>
+                                </div>
+                            </div>
+
+                            <div class="rd-foot">
+                                <button class="primary-btn" id="rdLaunch">叫TA登场</button>
+                                <button class="ghost-btn">⋯ 同步 / 编辑档案</button>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <script src="./script.js"></script>
+    </body>
+</html>

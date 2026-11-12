@@ -58,6 +58,9 @@
 - `files-preview/markdown-banner/` — 同步状态：● 已落地（真实组件已实现）
 - `files-preview/save-conflict-protection/` — 同步状态：▲ 设计活跃（未实现）
 
+## logging
+- `logging/diagnostics-hub/` — 同步状态：▲ 设计活跃（未实现）｜AI 调用审计 × 运行日志融合面：三视图（审计 / 运行日志 / 联合时间线）+ 双向跳转 + 共享详情抽屉 + 导出诊断包。设计文档 `design/plans/project-logging.md`；smoke test 30 项 PASS
+
 ## misc
 
 ## overview-dashboard
@@ -68,6 +71,9 @@
 - `overview-dashboard/overview-card-click/` — 同步状态：（待确认）
 - `overview-dashboard/overview-group-views/` — 同步状态：（待确认）
 - `overview-dashboard/overview-kanban/` — 
+
+## persona
+- `persona/` — 同步状态：▲ 设计活跃（未实现）｜设计文档 `design/plans/persona-system.md`（人设系统：右键创建向导 / 🎭 悬浮登场 / 人设名册 Block / 渐进披露 L0-L1-L2）
 
 ## tabs-shell-launch
 - `tabs-shell-launch/block-sidebar/` — 同步状态：▲ 设计活跃（未实现）

@@ -201,6 +201,12 @@
                 border-bottom: 1px solid var(--border-color);
                 border-radius: var(--block-border-radius) var(--block-border-radius) 0 0;
 
+                // 首图标是 agent emoji 人格时，左内边距从 7px 收到 5px：
+                // emoji 是纯字形、槽内无 padding 补偿，7px 会显得四周发空。
+                &:has(.block-frame-view-icon.agent-brand-icon) {
+                    padding-left: 5px;
+                }
+
                 .block-frame-default-header-iconview {
                     display: flex;
                     flex-shrink: 3;
@@ -225,6 +231,19 @@
                             // 父级 iconview 是 overflow-x: hidden（跑马灯用），
                             // 溢出部分会被硬切出一条竖边。按钮自身裁掉。
                             overflow: hidden;
+
+                            // 块头的 agent emoji：字形撑满 16px 图标槽，消掉槽内空隙。
+                            // 全局 .agent-emoji-icon 仍是 13px 盒子（inline tab 跑马灯 /
+                            // aisessions 虚拟行依赖盒子宽度不漂），只在块头槽内放大；
+                            // 用三选择器压过 app.scss 与 agent-persona.scss 里
+                            // 两份重复的 .agent-emoji-icon 定义（胜者取决于 import 顺序）。
+                            .agent-emoji-icon {
+                                width: var(--header-icon-width);
+                                min-width: var(--header-icon-width);
+                                height: var(--header-icon-width);
+                                line-height: var(--header-icon-width);
+                                font-size: var(--header-icon-width);
+                            }
                         }
                     }
 
