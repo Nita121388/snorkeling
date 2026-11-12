@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>批注时间线 v2 · 时间桶分页 / UI / 外部 Agent 写入 · 原型</title>
+        <title>批注时间线 v2 · 深度原型</title>
         <link rel="stylesheet" href="style.css" />
     </head>
     <body>
@@ -12,43 +12,158 @@
                 <span class="dot-mark"></span>
                 <div>
                     <div class="pt-main">Annotation Timeline v2</div>
-                    <div class="pt-sub">时间桶分页 · UI 美化 · 外部 agent 写入 · ▲ 原型</div>
+                    <div class="pt-sub">时间桶分页 · 视觉规格 · 外部 agent 写入 · ▲ 原型</div>
                 </div>
             </div>
             <div class="proto-controls">
+                <label class="proto-select">
+                    <span>场景</span>
+                    <select id="scenario">
+                        <option value="normal">正常（含 AI 草稿）</option>
+                        <option value="empty">空态</option>
+                        <option value="drafts">多条草稿</option>
+                        <option value="orphan">锚点漂移</option>
+                        <option value="dense">密集批注</option>
+                        <option value="loading">加载更早中</option>
+                        <option value="error">加载失败</option>
+                        <option value="external">外部写入到达</option>
+                    </select>
+                </label>
                 <span class="proto-hint" id="stateReadout">窗口 2/5 桶 · 5 条批注</span>
                 <button id="dateJump" class="proto-btn" type="button" aria-expanded="false">日期跳转 ▾</button>
                 <button id="extWrite" class="proto-btn" type="button">模拟外部写入</button>
+                <button id="helpBtn" class="proto-btn" type="button" aria-expanded="false">键盘 ?</button>
                 <button id="themeToggle" class="proto-btn" type="button">Light</button>
             </div>
         </header>
 
-        <main class="stage">
-            <aside class="rail" id="rail" aria-label="Annotation timeline">
-                <div class="rail-head" id="railHead">
-                    <div class="rail-title" id="railToggle" title="Collapse annotation timeline">Notes</div>
-                    <button class="rail-ai" type="button" title="Generate annotation timeline with AI">
-                        <span class="rail-ai-icon">✨</span><span class="rail-ai-label">AI</span>
-                    </button>
-                    <!-- 视口外新批注 pill：默认隐藏，外部写入到达时出现 -->
-                    <button class="rail-newpill" id="newPill" type="button" hidden></button>
+        <div class="app">
+            <!-- 会话详情头（v1 已有，这里只做壳，证明 rail/flow 的相对位置） -->
+            <section class="detail-header">
+                <div class="dh-left">
+                    <span class="agent-avatar" aria-hidden="true">π</span>
+                    <div class="dh-title">
+                        <span class="dh-name">会话恢复后的模型解析修复</span>
+                        <span class="dh-meta">
+                            <span class="chip chip-run">● running</span>
+                            <span>claude-sonnet-4.5</span>
+                            <span>· 39 msgs</span>
+                            <span>· 12 anns</span>
+                        </span>
+                    </div>
                 </div>
-                <div class="rail-body" id="railBody"></div>
-            </aside>
-            <section class="flow-wrap">
-                <!-- 「加载更早」：窗口未到最早桶时始终在顶（滚动区外，不被重渲染清掉） -->
-                <button class="load-older" id="loadOlder" type="button"></button>
-                <div class="flow" id="flow" aria-label="Session detail"></div>
-                <!-- 回到最新：向上滚出一段距离后出现 -->
-                <button class="fab-latest" id="fabLatest" type="button" hidden>↓ 回到最新</button>
+                <div class="dh-actions">
+                    <!-- 视图/分页方式 chip：真实 UI 的主入口（详情头，⋯ 左边） -->
+                    <button id="pageModeBtn" class="dh-mode" type="button" aria-expanded="false" title="分页方式">
+                        <span aria-hidden="true">▦</span><span id="pageModeLabel">全部</span>
+                    </button>
+                    <button class="icon-btn" type="button" title="折叠详情" aria-label="折叠详情">▾</button>
+                    <button class="icon-btn" type="button" title="更多" aria-label="更多">⋯</button>
+                </div>
             </section>
-        </main>
 
-        <!-- 日期跳转下拉（#dateJump 触发，fixed 定位到按钮下方） -->
+            <main class="stage">
+                <aside class="rail" id="rail" aria-label="批注时间线">
+                    <div class="rail-head" id="railHead">
+                        <div class="rail-head-row">
+                            <span class="rail-title" id="railToggle" title="折叠批注时间线">Notes</span>
+                            <span class="rail-count" id="railCount">5</span>
+                            <button class="rail-collapse" id="railCollapse" type="button" title="折叠" aria-label="折叠批注时间线">‹</button>
+                        </div>
+                        <!-- 工具行：AI 生成 / 类型过滤（过滤收进弹出层，不再挤在 44px 内换行） -->
+                        <div class="rail-tools">
+                            <button class="rail-tool" id="railAiBtn" type="button" title="用 AI 生成批注时间线" aria-label="用 AI 生成批注时间线">
+                                <span class="rail-ai-icon">✨</span>
+                            </button>
+                            <button class="rail-tool" id="railFilterBtn" type="button" title="按类型过滤" aria-label="按类型过滤" aria-expanded="false">
+                                <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+                                    <path fill="currentColor" d="M1 2.2h10L7.1 6.7v3.8L4.9 9.4V6.7z" />
+                                </svg>
+                            </button>
+                            <!-- 轴顶端帽：加载更早不占主界面一整行 -->
+                            <button class="rail-tool rail-more" id="railMore" type="button" aria-label="加载更早的批注" hidden></button>
+                        </div>
+                        <!-- 草稿条：存在 draft 时出现 -->
+                        <div class="rail-drafts" id="railDrafts" hidden>
+                            <span class="rd-count"><span aria-hidden="true">✎</span><span id="draftCount">0</span></span>
+                            <span class="rd-actions">
+                                <button type="button" id="discardAll" title="丢弃全部草稿" aria-label="丢弃全部草稿">✕</button>
+                                <button type="button" id="acceptAll" title="采纳全部草稿" aria-label="采纳全部草稿">✓</button>
+                            </span>
+                        </div>
+                        <button class="rail-newpill" id="newPill" type="button" role="status" aria-live="polite" hidden></button>
+                    </div>
+                    <div class="rail-body" id="railBody" tabindex="0" role="navigation" aria-label="批注时间线"></div>
+                    <div class="rail-tip" id="railTip" hidden></div>
+                    <!-- 类型过滤弹出层（fixed 定位在 rail 右侧） -->
+                    <div class="filter-pop" id="filterPop" hidden>
+                        <div class="fp-head">按类型过滤</div>
+                        <div class="fp-list" id="filterList"></div>
+                        <button class="fp-clear" id="filterClear" type="button">清除筛选</button>
+                    </div>
+                </aside>
+
+                <section class="flow-wrap">
+                    <div class="flow" id="flow" aria-label="会话内容"></div>
+                    <!-- 内容分页（锁定单桶）时的翻页条：浮动居中，不占内容行 -->
+                    <div class="page-bar" id="pageBar" hidden>
+                        <button id="pagePrev" type="button" aria-label="上一页（更早）">‹</button>
+                        <!-- 上下文入口：翻页条文字本身可点，就地改分页方式 -->
+                        <button class="page-info" id="pageInfo" type="button" title="更改分页方式">今天 · 11-11 · 1/5</button>
+                        <button id="pageNext" type="button" aria-label="下一页（更新）">›</button>
+                    </div>
+                    <div class="composer">
+                        <textarea class="composer-input" placeholder="继续这个会话…（原型占位）"></textarea>
+                        <div class="composer-actions">
+                            <span class="composer-hint">⏎ 发送</span>
+                            <button class="composer-send" type="button">Send</button>
+                        </div>
+                    </div>
+                    <button class="fab-latest" id="fabLatest" type="button" hidden>↓ 回到最新</button>
+                </section>
+            </main>
+        </div>
+
         <div class="jump-menu" id="jumpMenu" hidden></div>
-
-        <!-- 悬浮卡层：脱离 rail 的滚动/层叠限制，钉在视口坐标系 -->
+        <!-- 分页方式弹层（模式 + 子参数） -->
+        <div class="pm-pop" id="pageModePop" hidden>
+            <div class="pm-head">分页方式</div>
+            <button class="pm-row" type="button" role="menuitemradio" data-pm="all" aria-checked="true">
+                <span aria-hidden="true">☲</span><span>显示全部</span><span class="pm-sub">&le;500 条默认</span>
+            </button>
+            <button class="pm-row" type="button" role="menuitemradio" data-pm="day" aria-checked="false">
+                <span aria-hidden="true">☷</span><span>按日期</span><span class="pm-sub">每天一页</span>
+            </button>
+            <button class="pm-row" type="button" role="menuitemradio" data-pm="turn" aria-checked="false">
+                <span aria-hidden="true">⇄</span><span>按用户会话</span><span class="pm-sub">每轮一页</span>
+            </button>
+            <div class="pm-group">按时间节点</div>
+            <div class="pm-chips">
+                <button class="pm-chip" type="button" data-pm-interval="1">1h</button>
+                <button class="pm-chip" type="button" data-pm-interval="6">6h</button>
+                <button class="pm-chip" type="button" data-pm-interval="12">12h</button>
+                <button class="pm-chip" type="button" data-pm-interval="24">24h</button>
+            </div>
+            <div class="pm-group">按数量</div>
+            <div class="pm-chips">
+                <button class="pm-chip" type="button" data-pm-count="20">20 条</button>
+                <button class="pm-chip" type="button" data-pm-count="50">50 条</button>
+                <button class="pm-chip" type="button" data-pm-count="100">100 条</button>
+            </div>
+        </div>
         <div class="card-layer" id="cardLayer" aria-live="polite"></div>
+        <div class="modal-layer" id="modalLayer" hidden></div>
+        <div class="help-pop" id="helpPop" hidden>
+            <div class="help-title">键盘</div>
+            <dl>
+                <dt>↑ / ↓</dt><dd>上一条 / 下一条批注（rail 聚焦时）</dd>
+                <dt>Home / End</dt><dd>最早 / 最新一条</dd>
+                <dt>⏎ / Space</dt><dd>钉住卡片 + 跳转</dd>
+                <dt>← / →</dt><dd>卡片内上一条 / 下一条</dd>
+                <dt>e</dt><dd>编辑当前批注</dd>
+                <dt>Esc</dt><dd>关闭最上层</dd>
+            </dl>
+        </div>
 
         <script src="script.js"></script>
     </body>

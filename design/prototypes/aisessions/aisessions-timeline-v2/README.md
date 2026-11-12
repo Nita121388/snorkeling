@@ -1,17 +1,13 @@
-# Session Detail · 批注时间线 v2 — 时间桶分页 / UI 美化 / 外部 Agent 写入 — 原型
+# Session Detail · 批注时间线 v2 — 深度原型
 
 > 同步状态：▲ 设计活跃（未实现）
-> 镜像源：`frontend/app/view/aisessions/annotation-rail.tsx`, `frontend/app/view/aisessions/annotation-card.tsx`, `frontend/app/view/aisessions/annotation-model.ts`, `frontend/app/view/aisessions/annotation-store.ts`
+> 镜像源：`frontend/app/view/aisessions/annotation-rail.tsx`, `annotation-card.tsx`, `annotation-editor.tsx`, `annotation-model.ts`, `annotation-store.ts`, `session-detail.tsx`, `tool-group.tsx`
 > 最后同步：2026-11-11
-> 设计文档：`design/plans/aisessions-annotation-timeline-v2.md`
+> 设计文档：`design/plans/aisessions-annotation-timeline-v2.md`（v2 深版：分页协议 / 视觉与交互规格 / 外部写入协议）
 
 ## 目的
 
-批注时间线 v2 的交互原型，对应设计文档的三块：
-
-1. **时间桶分页（D1）**：批注按天聚桶；初始只加载最近 2 个桶，顶部「加载更早」前插（滚动锚定不跳）、日期跳转直达任意桶、「回到最新」浮动 pill；桶间隔 ≥2 天画「… 跳过 N 天 …」稀疏折叠。
-2. **UI 美化（D2）**：消息流日期分段头（sticky：`今天 · N 条批注` + 密度微条）；rail 圆点三态不变 + **agent 角标**（右上 4px）；悬浮卡批注加类型图标 + 来源徽章三档（You / AI / 🤖 agent）。
-3. **外部 Agent 写入（D3）**：「模拟外部写入」按钮演示 `wsh annotation add` 落库后的效果——agent 批注直接 accepted、卡内 `🤖 pi · HH:MM` 徽章、视口外新批注只出「N 条新批注 ↓」pill，不劫持滚动。
+批注时间线 v2 的**深度原型**：不只是一个 happy path demo，而是把设计文档里的分页协议、组件树、状态矩阵、键盘模型和外部写入协议做成交互可验证的形态。
 
 ## 打开方式
 
@@ -19,41 +15,110 @@
 open design/prototypes/aisessions/aisessions-timeline-v2/index.html
 ```
 
-纯静态，无依赖、无构建。顶部 `Light/Dark` 切换对照明暗（配色 token 取自 `frontend/app/theme.scss` 暗色默认值）。
+纯静态，无依赖、无构建。顶部「场景」下拉切换状态矩阵（8 态），`Light/Dark` 对照明暗。
 
-## 数据（固定 mock，与 smoke 测试联动）
+## 组件覆盖（对齐设计文档 §4.1 组件树）
 
-5 个时间桶（11-11 今天 → 10-31），10 条批注（user / AI draft / agent 三种来源），桶间有 3 段稀疏间隔（跳过 3 / 2 / 2 天）。初始窗口 = 最近 2 桶。
-
-| 桶 | 日期 | 消息 | 批注 |
-|---|---|---|---|
-| b0 | 今天 11-11 | seq 40–46 | note(user) · milestone(🤖 pi) · decision(user) |
-| b1 | 昨天 11-10 | seq 30–38 | question(AI draft) · note(🤖 codex) |
-| — | 跳过 3 天 | | |
-| b2 | 11-06 | seq 22–26 | milestone(user) · note(user) |
-| b3 | 11-03 | seq 16–20 | decision(user) |
-| — | 跳过 2 天 | | |
-| b4 | 10-31 | seq 8–14 | note(user) · question(user) |
-
-## 交互对照
-
-| 操作 | 行为 |
+| 组件 | 覆盖点 |
 |---|---|
-| hover 圆点 | 150ms 出卡（对齐真实 `HoverDelayMs`） |
-| 单击圆点 | 钉住卡片 + 跳转对应消息 + 1200ms flash（对齐真实行为） |
-| 「加载更早」 | 前插一个桶，**滚动位置不跳**（scrollHeight 补偿） |
-| 日期跳转 ▾ | 列出全部桶；未加载的桶直接补齐窗口后滚到该桶头 |
-| 「回到最新」 | 滚到底部（向上滚出 300px 才出现） |
-| 模拟外部写入 | 落一条 `source=agent, author=pi` 的批注 → rail agent 角标 + 顶部「1 条新批注 ↓」pill |
-| 点 pill | 加载并跳到新批注，计数清零（不自动跳） |
+| 会话头 | agent 图标 + 标题 + running chip + 消息/批注计数（外壳，证明 rail/flow 相对位置） |
+| rail 头 | Notes + 计数徽标、折叠、工具行（✨ 生成 / ⌗ 类型过滤收进弹出层）、草稿条（采纳/丢弃全部）、新批注 pill |
+| rail 体 | **行对齐 gutter**（标记贴在批注所属消息行上，滚动同步；视口外不渲染）、渐隐轴、**类型色实心核**（note 灰 / milestone 绿 / decision 琥珀 / question 红，核内左上高光 + kind 色柔光晕；草稿空心、孤儿警告核、agent 角标；不用近黑核）、hover 光晕、轴 scrub（悬停时间 tooltip + 点轴跳最近批注） |
+| 消息流 | 日期分段头（sticky + 相对日期 chip（今天/昨天 accent 微调）+ 绝对日期 + 计数 + 密度微条）、user/assistant/代码块/tool/toolgroup/thinking/subagent 六种行、批注角标、跳转 flash 1200ms |
+| 分页 | **轴顶端帽 `↑N`**（加载更早不占主界面一行）、前插 + scrollTop 补偿、日期跳转（未加载桶直接补齐窗口）、「回到最新」、端帽加载态（脉冲）/错误态（!，点击重试）；**rail 永不出滚动条**（自适应间距压缩） |
+| 悬浮卡 | 节点身份（类型图标 + #seq + 时间）、来源徽章三档（You / ✨AI·草稿 / 🤖 agent·时间）、上下条导航 `‹ 1/5 ›`、孤儿黄条（重新指定/删除）、Edit/采纳/丢弃 |
+| 编辑器 | kind chips、标题/正文/标签、删除、✨ AI 补全、**外部条目只读态**（append-only 说明条 + 禁用保存） |
+| composer | 底部输入框占位，rail marginBottom 让位（对齐真实 bottomInset） |
 
-## 与真实组件的对齐点
+## 为什么是「行对齐 gutter」（v4 视觉重构的关键决策）
 
-- rail 结构 / 圆点三态 / playhead / 折叠 16px：镜像 `annotation-rail.tsx` 现状，只新增 agent 角标与桶刻度。
-- 悬浮卡 320px / max-height 60vh / pinned 语义：镜像 `annotation-card.tsx`。
-- 桶构建纯函数（`buildTimeBuckets`）的输入输出形态见设计文档 §3.2，落地时进 `annotation-model.ts`。
+独立时间轴上的圆点（不管线性时间还是分带）都会浮在没有内容的位置上——空白轴上的一颗孤点，这就是「丑」的根因。
+改为 **gutter 模式**（参考 VS Code SCM gutter / GitHub PR 行内批注）：标记 y = 它批注的那条消息行的屏幕 y，滚动时 rAF 同步；视口外的标记直接不渲染。
+结果：标记与内容空间一一对应、不溢出、无滚动条；日期结构交给右侧消息流的日分隔头（Linear/Slack 语言）。
 
-## 状态说明
+## 分页模式（四种可选）
 
-- 本原型只做交互与视觉验证，**不含**真实 RPC / 游标 / 幂等逻辑，契约以设计文档 §5.2 为准。
-- smoke 测试：`node design/prototypes/aisessions/aisessions-timeline-v2/smoke.test.cjs`
+顶部「分页 ▾」选择，小数据量（≤500 条）默认显示全部，超过自动切按日期（手动选过则尊重用户）：
+
+| 模式 | 页 = | 说明 |
+|---|---|---|
+| 显示全部 | 不分页 | 默认；连续滚动，端帽 `↑N` 加载更早 |
+| 按日期 | 一个日历日 | 回看跨天会话 |
+| 按用户会话 | 一条 user 消息到下一个 user 前为一轮 | 按「问→答」轮次回看，最贴合对话语义 |
+| 按时间段 | 1h / 6h / 12h / 24h 窗口 | 单日超长、按天看粒太碎 |
+| 按数量 | 20 / 50 / 100 条（尾锚定） | 均匀流水式阅读 |
+
+- 非 all 模式：顶部浮出翻页条 `‹ 今天 · 11-11 · 2/2 · 7 条消息 ›`，`← / →` 同义
+- 作用域收窄：rail 标记、悬浮卡、过滤计数、草稿条、读数只反映当前页
+- 翻到最旧页自动补数据（沿用游标）；跳到别页的消息（日期跳转 / 新批注 pill / 卡片 Jump）自动切页
+- count 模式从最新端切块（尾锚定）：prepend 更早内容只会在前面新增页，当前页成员不变
+
+URL：`?mode=day` / `?interval=6` / `?count=20`，`?page=N`（从最旧页起 0）
+
+## Node 节点（时间线关键位置标记）
+
+Node 不是「一条批注内容」，而是时间线上的关键位置点：
+
+- 消息 hover 出「◇ 标记节点」快捷钮；**幂等**（已标记则跳转查看）
+- 不要求写正文：卡片标题回退为「节点」，无正文时不渲染空块
+- rail 上是**菱形**标记（四种批注是圆形），中性色
+- 与四种批注类型同表共存（kind=node）：锚点、来源、草稿、导出全部继承
+- 类型过滤弹层含 Node（共 5 类）
+
+URL：`?node=42`（在 #42 打一个节点，配合 `&card=42` 看卡片）
+
+### 入口位置（真实 UI）
+
+原型顶栏是**审阅壳**；产品里的入口是：
+
+- **主入口**：会话详情头右侧的视图 chip（`▦ 全部` / `▦ 按日` / `▦ 6h` / `▦ 20 条`），点开模式菜单
+- **上下文入口**：翻页条文字可点（`今天 · 11-11 · 2/2`），就地改模式
+- **默认值**：设置 → AI 会话 →「默认分页方式」（自动 / 全部 / 按日 / 时间段 / 数量）
+- **持久化**：每个 tab 的会话详情记住自己的选择，菜单内可「跟随默认」
+
+不放：rail 工具条（52px 塞不下菜单）、详情头常驻分段控件。
+
+## 键盘模型（设计文档 §4.4）
+
+Tab 进 rail → `↑/↓` 逐条批注（roving focus）→ `Home/End` 首尾 → `⏎` 钉住 + 跳转 → 卡片内 `←/→` 上下条 → `e` 编辑 → `Esc` 逐层关闭；**内容分页时（无卡片）`←/→` 翻页**。顶部「键盘 ?」查看速查卡。
+
+## 场景矩阵（顶部下拉）
+
+| 场景 | 演示 |
+|---|---|
+| 正常 | AI 草稿条 1 条、agent 批注 2 条（角标 + 徽章）、六种消息行 |
+| 空态 | 无批注：淡轴 + 生成入口 + 空态提示 |
+| 多条草稿 | 草稿条 3 条；「采纳全部 / 丢弃全部」 |
+| 锚点漂移 | #36 孤儿：warning 圆点 + 卡内黄条「重新指定 / 删除」 |
+| 密集批注 | 9 cluster 挤在一天：28px 最小间距松弛，圆点不重叠 |
+| 加载更早中 | 点轴顶端帽 `↑N` → 900ms 脉冲 → 前插（视口不跳） |
+| 加载失败 | 错误条 + 重试按钮 |
+| 外部写入到达 | 视口外 2 条 agent 批注 → pill「2 条新批注 ↓」，点击才跳转 |
+
+## 交互对照（与真实组件对齐）
+
+| 操作 | 行为 | 对齐 |
+|---|---|---|
+| hover 圆点 | 150ms 出卡 | 真实 `HoverDelayMs` |
+| 单击圆点 | 钉住卡片 + 跳转 + 1200ms flash | 真实 `AnnotationFlashMs` |
+| 加载更早 | 点轴顶端帽 `↑N` → 前插桶 + scrollHeight 补偿，主界面零占用 | 设计文档 §3.8 |
+| 日期跳转 | 未加载桶补齐窗口后滚到桶头 | 设计文档 §3.10 |
+| 外部写入 | append-only + 幂等键提示；视口外只出 pill | 设计文档 §5.4 |
+| 外部条目 | 卡内 Edit 禁用；编辑器只读态 + 说明条 | 设计文档 §5.4 不变量 1 |
+
+## 测试
+
+```bash
+node design/prototypes/aisessions/aisessions-timeline-v2/smoke.test.cjs   # 72 项断言
+```
+
+覆盖：分页窗口推进 / 稀疏折叠 / 端帽三态 / kind 过滤 / 8 场景矩阵 / 键盘 roving focus / 卡片（钉住·导航·孤儿）/ 编辑器（保存·只读）/ 外部写入 pill。
+
+- **rail 永不出滚动条**：gutter 模式只渲染可见行上的标记，天然不溢出；相邻标记仅用 `MarkerMinGap=16px` 做最小错开，不压缩、不裁切。
+- 「加载更早」不在主界面占行：入口是时间线轴顶端的端帽（`↑N` / 加载中 `…` / 失败 `!` 三态），与时间线的「向上延伸」心智一致。
+
+## 说明与边界
+
+- 原型只验证交互与视觉规格，**不含**真实游标 RPC / 幂等 / scope 校验；契约以设计文档 §3.3 / §5 为准。
+- 场景数据固定（2026-11-11 为「今天」），与 smoke 测试联动；改数据先跑测试。
+- 落地时按设计文档 §6 的 B1–B3 文件级改动清单进 Trellis 工作项。
