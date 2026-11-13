@@ -217,6 +217,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "PersonaRoster", Array.from(arguments))
     }
 
+    // storage accounting per persona home base (archive/history/work)
+    // @returns persona root and per-persona storage buckets
+    PersonaStats(request: AISessionsPersonaStatsRequest): Promise<AISessionsPersonaStatsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "PersonaStats", Array.from(arguments))
+    }
+
     // list AI prompt features with their built-in defaults
     // @returns prompt feature metadata for the settings page
     PromptTemplates(request: AISessionsPromptTemplatesRequest): Promise<AISessionsPromptTemplatesResponse> {

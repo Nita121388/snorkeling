@@ -1,0 +1,15 @@
+== red proof F-1113-persona-relocate-r1 @ 94d49e44 ==
+-- relocate.go
+pkg/persona/relocate.go
+-- settings key
+	PersonaRootDir          string `json:"persona:rootdir,omitempty"`
+exit=0
+-- panel
+exit=1
+-- relocate cmd
+var personaRelocateCmd = &cobra.Command{
+	personaRelocateCmd.Flags().StringVar(&personaRelocateExclude, "exclude", "", "comma-separated persona ids that stay behind")
+	personaRelocateCmd.Flags().BoolVar(&personaRelocateCopyNotMove, "copy-not-move", false, "keep a copy at the old root (insurance)")
+	personaRelocateCmd.Flags().BoolVar(&personaDryRun, "dry-run", false, "explicitly force a preview (writes already default to dry-run)")
+	personaCmd.AddCommand(personaJournalCmd, personaDistillCmd, personaRelocateCmd, personaStatsCmd)
+exit=0

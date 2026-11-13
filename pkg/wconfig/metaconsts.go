@@ -38,6 +38,12 @@ const (
 	ConfigKey_CommonTextSyncServerInsecure   = "commontext:sync:server:allowinsecure"
 	ConfigKey_CommonTextSyncTombstones       = "commontext:sync:synctombstones"
 
+	ConfigKey_PersonaRootDir                 = "persona:rootdir"
+	ConfigKey_PersonaJournalRotate           = "persona:journalrotate"
+	ConfigKey_PersonaDormantDays             = "persona:dormantdays"
+	ConfigKey_PersonaSoftLimitMb             = "persona:softlimitmb"
+	ConfigKey_PersonaSoftLimitAction         = "persona:softlimitaction"
+
 	ConfigKey_AgentClear                     = "agent:*"
 	ConfigKey_AgentDefaultProfile            = "agent:defaultprofile"
 	ConfigKey_AgentProfiles                  = "agent:profiles"

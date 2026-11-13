@@ -95,6 +95,14 @@ type PersonaSummary struct {
 	Model    string `json:"model,omitempty"`
 }
 
+// personaSettingsRoot reads settings.json's persona:rootdir through the live
+// config watcher (A5.5). pkg/persona stays stdlib-only, so the app is the layer
+// that knows about settings; an empty value keeps A1's default.
+func personaSettingsRoot() string {
+	settings := wconfig.GetWatcher().GetFullConfig().Settings
+	return strings.TrimSpace(settings.PersonaRootDir)
+}
+
 // personaRosterCache is a tiny TTL cache over persona.List: every List call
 // with IncludeProjectPaths would otherwise re-read every persona.json (50
 // personas = 50 small file reads). Failures are cached too, so an unreadable
@@ -119,7 +127,7 @@ func loadPersonaRoster() (string, []PersonaSummary) {
 	defer personaRoster.mu.Unlock()
 	now := time.Now()
 	if personaRoster.loadedAt.IsZero() || now.Sub(personaRoster.loadedAt) > personaRosterTTL {
-		root, err := persona.ResolveRoot("")
+		root, err := persona.ResolveRoot(personaSettingsRoot())
 		if err != nil {
 			aiSessionsDebugf("persona roster root error: %v", err)
 			personaRoster.root = ""
@@ -922,6 +930,47 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 		derivePersonaProps(response.Sessions, response.PersonaRoot, response.Personas)
 	}
 	return response, nil
+}
+
+// AISessionsPersonaStatsRequest is empty today; kept as a struct so the wire
+// shape can grow without breaking callers.
+type AISessionsPersonaStatsRequest struct{}
+
+type AISessionsPersonaStatsResponse struct {
+	Root     string                 `json:"root,omitempty"`
+	Personas []persona.StorageStats `json:"personas,omitempty"`
+}
+
+func (svc *AISessionsService) PersonaStats_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "storage accounting per persona home base (archive/history/work)",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "persona root and per-persona storage buckets",
+	}
+}
+
+// PersonaStats feeds the settings panel's capacity strip (design §3.4): three
+// buckets per persona, measured from disk. It shares the settings-resolved root
+// with PersonaRoster so the panel and the roster never disagree.
+func (svc *AISessionsService) PersonaStats(ctx context.Context, request *AISessionsPersonaStatsRequest) (*AISessionsPersonaStatsResponse, error) {
+	root, err := persona.ResolveRoot(personaSettingsRoot())
+	if err != nil {
+		return nil, err
+	}
+	list, err := persona.List(root)
+	if err != nil {
+		return nil, err
+	}
+	resp := &AISessionsPersonaStatsResponse{Root: root}
+	for _, p := range list {
+		stats, err := persona.StorageOf(root, p.ID)
+		if err != nil {
+			aiSessionsDebugf("persona stats %s: %v", p.ID, err)
+			continue
+		}
+		resp.Personas = append(resp.Personas, *stats)
+	}
+	return resp, nil
 }
 
 func (svc *AISessionsService) PersonaRoster_Meta() tsgenmeta.MethodMeta {

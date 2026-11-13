@@ -513,6 +513,26 @@
         "commontext:sync:synctombstones": {
           "type": "boolean"
         },
+        "persona:rootdir": {
+          "type": "string"
+        },
+        "persona:journalrotate": {
+          "type": "boolean"
+        },
+        "persona:dormantdays": {
+          "type": "integer"
+        },
+        "persona:softlimitmb": {
+          "type": "integer"
+        },
+        "persona:softlimitaction": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "warn-distill",
+            "readonly"
+          ]
+        },
         "agent:*": {
           "type": "boolean"
         },

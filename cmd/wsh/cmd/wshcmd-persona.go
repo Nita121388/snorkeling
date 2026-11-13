@@ -12,6 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wavetermdev/waveterm/pkg/persona"
+	"github.com/wavetermdev/waveterm/pkg/waveobj"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 )
@@ -55,6 +57,9 @@ var (
 	personaJournalState     string
 	personaDistillUndo      bool
 	personaDistillThreshold int
+
+	personaRelocateExclude     string
+	personaRelocateCopyNotMove bool
 )
 
 var personaCmd = &cobra.Command{
@@ -208,6 +213,29 @@ var personaSyncModeCmd = &cobra.Command{
 	RunE:  personaSyncModeRun,
 }
 
+// A5.5: move the persona home to another disk, account for storage and rotate
+// the journal by month.
+var personaRelocateCmd = &cobra.Command{
+	Use:   "relocate <new-root>",
+	Short: "Move every persona home to a new root (dry-run unless --yes)",
+	Args:  cobra.ExactArgs(1),
+	RunE:  personaRelocateRun,
+}
+
+var personaStatsCmd = &cobra.Command{
+	Use:   "stats [id]",
+	Short: "Storage accounting: archive / history / work buckets",
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  personaStatsRun,
+}
+
+var personaJournalRotateCmd = &cobra.Command{
+	Use:   "rotate <id>",
+	Short: "Rotate journal lines from earlier months into MEMORY/archive/YYYY-MM.md",
+	Args:  cobra.ExactArgs(1),
+	RunE:  personaJournalRotateRun,
+}
+
 // A6: shift journal, human-gated inbox decisions and memory distillation.
 var personaJournalCmd = &cobra.Command{
 	Use:   "journal",
@@ -279,6 +307,12 @@ func init() {
 	personaCreateCmd.Flags().StringVar(&personaCharterFile, "charter-file", "", "use this file's text as the CHARTER.md draft (written on scaffold, stored in the proposal)")
 	personaCreateCmd.Flags().BoolVar(&personaMemoryFromSession, "memory-from-session", false, "use the calling session's note/tags as a MEMORY/inbox.md draft")
 	personaCreateCmd.Flags().StringVar(&personaBlockFlag, "block", "", "block id for --from-session this (defaults to WAVETERM_BLOCKID)")
+	personaCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if strings.TrimSpace(personaRoot) == "" && strings.TrimSpace(os.Getenv(persona.EnvRoot)) == "" {
+			personaRoot = personaRootFromSettings()
+		}
+		return nil
+	}
 	personaCmd.PersistentFlags().BoolVar(&personaJSON, "json", false, "output as JSON")
 	personaCmd.PersistentFlags().BoolVar(&personaYes, "yes", false, "apply writes (default is dry-run)")
 	personaCmd.PersistentFlags().StringVar(&personaRoot, "root", "", "persona root dir (default ~/.snorkeling/personas, override with PERSONA_ROOT)")
@@ -297,14 +331,17 @@ func init() {
 	personaDistillCmd.Flags().BoolVar(&personaDryRun, "dry-run", false, "preview the diff without writing")
 	personaDistillCmd.Flags().BoolVar(&personaDistillUndo, "undo", false, "restore the most recent distill backup")
 	personaDistillCmd.Flags().IntVar(&personaDistillThreshold, "threshold", 0, "entry count that triggers distillation (default 20)")
+	personaRelocateCmd.Flags().StringVar(&personaRelocateExclude, "exclude", "", "comma-separated persona ids that stay behind")
+	personaRelocateCmd.Flags().BoolVar(&personaRelocateCopyNotMove, "copy-not-move", false, "keep a copy at the old root (insurance)")
+	personaRelocateCmd.Flags().BoolVar(&personaDryRun, "dry-run", false, "explicitly force a preview (writes already default to dry-run)")
 	personaProposeCmd.AddCommand(personaProposeListCmd)
 	personaCmd.AddCommand(personaCreateCmd, personaListCmd, personaGetCmd, personaRenameCmd,
 		personaProposeCmd, personaApproveCmd, personaRejectCmd, personaMemoryCmd, personaSyncCmd)
 	personaSyncCmd.AddCommand(personaSyncInitCmd, personaSyncStatusCmd, personaSyncPullCmd,
 		personaSyncPushCmd, personaSyncRebuildCmd, personaSyncModeCmd)
-	personaJournalCmd.AddCommand(personaJournalAppendCmd)
+	personaJournalCmd.AddCommand(personaJournalAppendCmd, personaJournalRotateCmd)
 	personaMemoryCmd.AddCommand(personaMemoryAddCmd, personaMemoryInboxCmd, personaMemoryApproveCmd, personaMemoryRejectCmd)
-	personaCmd.AddCommand(personaJournalCmd, personaDistillCmd)
+	personaCmd.AddCommand(personaJournalCmd, personaDistillCmd, personaRelocateCmd, personaStatsCmd)
 	rootCmd.AddCommand(personaCmd)
 }
 
@@ -473,11 +510,11 @@ func personaListRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() {
 		sendActivity("persona list", rtnErr == nil)
 	}()
-	root, err := persona.ResolveRoot(personaRoot)
+	root, err := persona.ResolveRoot(personaRootFlagValue())
 	if err != nil {
 		return err
 	}
-	personas, err := persona.List(personaRoot)
+	personas, err := persona.List(root)
 	if err != nil {
 		return err
 	}
@@ -560,11 +597,11 @@ func personaProposeListRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() {
 		sendActivity("persona propose list", rtnErr == nil)
 	}()
-	root, err := persona.ResolveRoot(personaRoot)
+	root, err := persona.ResolveRoot(personaRootFlagValue())
 	if err != nil {
 		return err
 	}
-	props, err := persona.ListProposals(personaRoot)
+	props, err := persona.ListProposals(root)
 	if err != nil {
 		return err
 	}
@@ -677,10 +714,47 @@ func writeJSONObj(v any) error {
 	return nil
 }
 
+// personaRootFromSettings reads settings.json's persona:rootdir without needing
+// the app (A5.5). Empty means "fall through to the A1 default".
+func personaRootFromSettings() string {
+	m, cerrs := wconfig.ReadWaveHomeConfigFile(wconfig.SettingsFile)
+	if len(cerrs) > 0 {
+		return ""
+	}
+	raw, ok := m["persona:rootdir"]
+	if !ok {
+		return ""
+	}
+	str, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(str)
+}
+
+// personaRootFlagValue resolves the root for CLI calls: --root > PERSONA_ROOT >
+// settings.json persona:rootdir > A1 default. The explicit value is returned so
+// persona.ResolveRoot can apply its own expansion rules.
+func personaRootFlagValue() string {
+	if strings.TrimSpace(personaRoot) != "" {
+		return personaRoot
+	}
+	if strings.TrimSpace(os.Getenv(persona.EnvRoot)) != "" {
+		return ""
+	}
+	return personaRootFromSettings()
+}
+
+// writePersonaRootSetting merges persona:rootdir into settings.json through the
+// validated config path (never a raw file rewrite).
+func writePersonaRootSetting(root string) error {
+	return wconfig.SetBaseConfigValue(waveobj.MetaMapType{"persona:rootdir": root})
+}
+
 // ---- A5 sync runners -------------------------------------------------------
 
 func personaSyncRoot() (string, error) {
-	return persona.ResolveRoot(personaRoot)
+	return persona.ResolveRoot(personaRootFlagValue())
 }
 
 func personaSyncInitRun(cmd *cobra.Command, args []string) (rtnErr error) {
@@ -959,5 +1033,125 @@ func personaDistillRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	}
 	WriteStdout("distill %s: %d → %d entries (removed %d, TL;DR %d) dryRun=%v backup=%s\n",
 		result.ID, result.Before, result.After, result.Removed, result.TLDR, result.DryRun, orDash(result.Backup))
+	return nil
+}
+
+// ---- A5.5 relocate / stats / rotation runners -----------------------------
+
+func personaRelocateRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona relocate", rtnErr == nil)
+	}()
+	root, err := persona.ResolveRoot(personaRootFlagValue())
+	if err != nil {
+		return err
+	}
+	exclude := []string{}
+	for _, id := range strings.Split(personaRelocateExclude, ",") {
+		if strings.TrimSpace(id) != "" {
+			exclude = append(exclude, strings.TrimSpace(id))
+		}
+	}
+	opts := persona.RelocateOptions{
+		DryRun:      !personaYes || personaDryRun,
+		Exclude:     exclude,
+		CopyNotMove: personaRelocateCopyNotMove,
+	}
+	result, err := persona.Relocate(root, args[0], opts)
+	if err != nil {
+		return err
+	}
+	if !opts.DryRun {
+		// The new root only becomes the configured home after a verified move;
+		// a failed relocation leaves settings untouched. When PERSONA_ROOT is set
+		// the caller is deliberately overriding the config (tests / sandboxes),
+		// so settings.json is left alone.
+		if strings.TrimSpace(os.Getenv(persona.EnvRoot)) == "" {
+			if err := writePersonaRootSetting(result.Plan.To); err != nil {
+				return fmt.Errorf("relocation succeeded but settings.json was not updated: %w", err)
+			}
+		}
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"result": result})
+	}
+	WriteStdout("relocate %s → %s: %d persona(s), %d file(s), %d byte(s)\n",
+		result.Plan.From, result.Plan.To, len(result.Plan.Entries), result.Plan.Files, result.Plan.Bytes)
+	if len(result.Plan.Excluded) > 0 {
+		WriteStdout("  excluded: %s\n", strings.Join(result.Plan.Excluded, ", "))
+	}
+	if opts.DryRun {
+		WriteStdout("dry-run: nothing moved (--yes to apply)\n")
+		return nil
+	}
+	WriteStdout("moved and verified; settings persona:rootdir updated\n")
+	return nil
+}
+
+func personaStatsRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona stats", rtnErr == nil)
+	}()
+	root, err := persona.ResolveRoot(personaRootFlagValue())
+	if err != nil {
+		return err
+	}
+	var ids []string
+	if len(args) == 1 {
+		ids = []string{args[0]}
+	} else {
+		personas, err := persona.List(root)
+		if err != nil {
+			return err
+		}
+		for _, p := range personas {
+			ids = append(ids, p.ID)
+		}
+	}
+	stats := make([]*persona.StorageStats, 0, len(ids))
+	for _, id := range ids {
+		one, err := persona.StorageOf(root, id)
+		if err != nil {
+			return err
+		}
+		stats = append(stats, one)
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"root": root, "personas": stats})
+	}
+	for _, one := range stats {
+		WriteStdout("%s: archive %d B / history %d B / work %d B (syncable %d B, total %d B)\n",
+			one.ID, one.ArchiveBytes, one.HistoryBytes, one.WorkBytes, one.SyncableBytes, one.TotalBytes)
+	}
+	return nil
+}
+
+func personaJournalRotateRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona journal rotate", rtnErr == nil)
+	}()
+	root, err := persona.ResolveRoot(personaRootFlagValue())
+	if err != nil {
+		return err
+	}
+	if !personaYes {
+		rotated, _, err := persona.RotateJournal(root, args[0], nil)
+		if err != nil {
+			return err
+		}
+		if personaJSON {
+			return writeJSONObj(map[string]any{"dryRun": true, "id": args[0], "rotated": rotated})
+		}
+		WriteStdout("dry-run: %d line(s) would rotate (--yes to apply)\n", rotated)
+		return nil
+	}
+	rotated, archive, err := persona.RotateJournal(root, args[0], nil)
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"id": args[0], "rotated": rotated, "archive": archive})
+	}
+	WriteStdout("rotated %d line(s) → %s\n", rotated, archive)
 	return nil
 }

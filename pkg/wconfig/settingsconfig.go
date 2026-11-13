@@ -255,6 +255,15 @@ type SettingsType struct {
 	CommonTextSyncServerInsecure *bool  `json:"commontext:sync:server:allowinsecure,omitempty"`
 	CommonTextSyncTombstones     *bool  `json:"commontext:sync:synctombstones,omitempty"`
 
+	// Persona system (design/plans/persona-system.md §3.5). RootDir moves the
+	// whole persona home to another disk; the governance keys are the storage
+	// guard rails (journal rotation / dormant hint / soft size limit).
+	PersonaRootDir          string `json:"persona:rootdir,omitempty"`
+	PersonaJournalRotate    *bool  `json:"persona:journalrotate,omitempty"`
+	PersonaDormantDays      int    `json:"persona:dormantdays,omitempty"`
+	PersonaSoftLimitMb      int    `json:"persona:softlimitmb,omitempty"`
+	PersonaSoftLimitAction  string `json:"persona:softlimitaction,omitempty" jsonschema:"enum=warn,enum=warn-distill,enum=readonly"`
+
 	AgentClear          bool                              `json:"agent:*,omitempty"`
 	AgentDefaultProfile string                            `json:"agent:defaultprofile,omitempty"`
 	AgentProfiles       map[string]AgentProfileConfigType `json:"agent:profiles,omitempty"`

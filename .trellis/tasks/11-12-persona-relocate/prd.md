@@ -1,26 +1,40 @@
+> **Confirmed: 2026-11-13 @nita**
+
 # A5.5 位置设置与大文件治理（rootdir + relocate + 轮转）
+
+> 用户 2026-11-13 授权继续开发；真机验证留用户手动 → 设置页三态改为 vitest 组件断言 + 探针。
 
 ## Goal
 
-人设家可以搬到大盘；搬家不丢人设、不断 git 历史、不把本机产物同步出去。
+人设家可以搬到大盘；搬家不丢人设、不断 git 历史、不把本机产物同步出去；记忆不会无限膨胀。
 
 ## Requirements
 
-- `settings.json: "persona:rootdir"`（绝对路径、可写校验；可移动盘/网络路径黄色警告）
-- 设置面板「🎭 人设」节：根目录选择 + 容量条（人设数/总大小/剩余空间）+ [迁移…] + 存储治理（journal 按月轮转、30 天休眠提示、50MB 软上限三动作）+ 单人设覆盖表
-- `wsh persona relocate <new-root> --dry-run|--yes [--exclude] [--copy-not-move]`：清单 → 逐目录 move → 更新 settings → 重扫名册 → 校验文件数/字节数 → 失败回滚
-- 只改 rootdir 不迁移 → 设置页黄条「X 个人设仍在旧位置」
-- journal 满月轮转 → `.persona/MEMORY/archive/YYYY-MM.md`，主文件归零
-- 容量口径三项分开（档案/归档/产物）
+- `settings.json: "persona:rootdir"`：app 侧（名册 RPC）与 CLI 都按 `--root > PERSONA_ROOT > settings > 默认` 解析
+- `wsh persona relocate <new-root> [--dry-run|--yes] [--exclude a,b] [--copy-not-move]`：
+  清单 → 逐目录 move（跨盘 copy+remove）→ 校验文件数/字节数 → 重建名册 → 更新 settings；失败自动回滚
+- `wsh persona stats [id] --json`：容量三项（档案 / 归档 / 产物）+ syncable 口径
+- journal 按月轮转：`wsh persona journal rotate <id>` + `AppendJournal` 跨月自动轮转 → `MEMORY/archive/YYYY-MM.md`
+- 设置面板「🎭 人设」节：根目录输入 + 容量三项 + 迁移按钮（调用 relocate dry-run/apply）+ 治理开关（journal 轮转 / 休眠天数 / 软上限）
 
 ## Acceptance Criteria
 
-- [ ] `go test ./pkg/persona/...` → ok（relocate 校验/回滚用例）
-- [ ] `relocate --dry-run` 输出目录级清单且 mtime 不变（零写入）
-- [ ] `--yes` 后新旧 rootdir 文件数一致、旧目录空、`git log` 行数前后一致
-- [ ] 跨月写入触发轮转：archive 文件存在且 journal.md < 10KB
-- [ ] 设置页三态（正常/黄条/非法路径）真机断言各 1 条
+- [ ] `go test ./pkg/persona/... ./pkg/service/aisessionsservice/...` → `ok`
+- [ ] `go build ./cmd/wsh/ && echo BUILD_OK` → `BUILD_OK`
+- [ ] `go test ./pkg/persona/ -run TestRelocate -v` → 含 `PASS`
+- [ ] `go test ./pkg/persona/ -run TestRotateJournal -v` → 含 `PASS`
+- [ ] `npx vitest run frontend/app/view/waveconfig` → `passed`
+- [ ] `npx tsc --noEmit -p tsconfig.json | grep -c "error TS" || true` → `<=47`
+- [ ] `grep personaRelocateCmd cmd/wsh/cmd/wshcmd-persona.go` → 含 `personaRelocateCmd`
+- [ ] `grep persona:rootdir pkg/wconfig/settingsconfig.go` → 含 `persona:rootdir`
+- [ ] `grep PersonaSettingsContent frontend/app/view/waveconfig/waveconfig-model.ts` → 含 `PersonaSettingsContent`
 
 ## 依赖
 
-A1。
+A1；A5（settings 根与 sync 共存）；A6（journal 写入器，轮转挂在其写路径）。
+
+## 假设与偏离
+
+1. `PERSONA_ROOT` 存在时不写 settings（沙箱/测试信号），避免 CLI 测试污染真实配置。
+2. relocate 的「迁移…」在设置面板里先 dry-run 展示清单，再二次确认 apply。
+3. 真机三态断言改为组件单测 + tsc；Electron 手动验证留用户。

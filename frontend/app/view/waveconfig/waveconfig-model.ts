@@ -6,15 +6,16 @@ import { globalStore } from "@/app/store/jotaiStore";
 import type { TabModel } from "@/app/store/tab-model";
 import { makeORef } from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
 import { AgentAccessSettingsContent } from "@/app/view/waveconfig/agentaccesssettings";
-import { SyncSettingsContent } from "@/app/view/waveconfig/syncsettings";
-import { type WaveConfigSaveFailure, describeJsonFailure } from "@/app/view/waveconfig/waveconfig-json-error";
+import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
 import { AIPromptsVisualContent } from "@/app/view/waveconfig/aipromptsettings";
+import { PersonaSettingsContent } from "@/app/view/waveconfig/personasettings";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
+import { SyncSettingsContent } from "@/app/view/waveconfig/syncsettings";
 import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
 import { WaveAIVisualContent } from "@/app/view/waveconfig/waveaivisual";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
+import { describeJsonFailure, type WaveConfigSaveFailure } from "@/app/view/waveconfig/waveconfig-json-error";
 import { applyVisibleSettingsDefaults } from "@/app/view/waveconfig/waveconfig-settings";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
 import { fileInfoRequest } from "@/util/fileinfo";
@@ -102,6 +103,16 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             description: "Common Text cloud sync",
             hasJsonView: false,
             visualComponent: SyncSettingsContent,
+        },
+        {
+            // A5.5: the persona home base lives on a configurable root, so the panel that moves it,
+            // measures it and caps its growth belongs on this surface next to Sync — both answer
+            // "what of this leaves the machine?".
+            name: "Persona",
+            path: "personasettings",
+            description: "🎭 Home base, storage and governance",
+            hasJsonView: false,
+            visualComponent: PersonaSettingsContent,
         },
         {
             name: "Connections",

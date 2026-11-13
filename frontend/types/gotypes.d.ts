@@ -399,6 +399,15 @@ declare global {
         personas?: PersonaSummary[];
     };
 
+    // aisessionsservice.AISessionsPersonaStatsRequest
+    type AISessionsPersonaStatsRequest = object;
+
+    // aisessionsservice.AISessionsPersonaStatsResponse
+    type AISessionsPersonaStatsResponse = {
+        root?: string;
+        personas?: StorageStats[];
+    };
+
     // aisessionsservice.AISessionsPromptTemplatesRequest
     type AISessionsPromptTemplatesRequest = object;
 
@@ -3264,6 +3273,11 @@ declare global {
         "commontext:sync:server:hastoken"?: boolean;
         "commontext:sync:server:allowinsecure"?: boolean;
         "commontext:sync:synctombstones"?: boolean;
+        "persona:rootdir"?: string;
+        "persona:journalrotate"?: boolean;
+        "persona:dormantdays"?: number;
+        "persona:softlimitmb"?: number;
+        "persona:softlimitaction"?: string;
         "agent:*"?: boolean;
         "agent:defaultprofile"?: string;
         "agent:profiles"?: {[key: string]: AgentProfileConfigType};
@@ -3449,6 +3463,19 @@ declare global {
         style: {[key: string]: any};
         clickopts?: StickerClickOptsType;
         display: StickerDisplayOptsType;
+    };
+
+    // persona.StorageStats
+    type StorageStats = {
+        id: string;
+        archiveBytes: number;
+        archiveFiles: number;
+        historyBytes: number;
+        historyFiles: number;
+        workBytes: number;
+        workFiles: number;
+        totalBytes: number;
+        syncableBytes: number;
     };
 
     // wshrpc.StreamMeta

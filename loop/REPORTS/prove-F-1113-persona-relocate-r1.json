@@ -1,0 +1,59 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "cmd": "go test ./pkg/persona/... ./pkg/service/aisessionsservice/...",
+      "expect": "ok",
+      "ok": true,
+      "tail": "ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t(cached) | ok  \tgithub.com/wavetermdev/waveterm/pkg/service/aisessionsservice\t20.583s"
+    },
+    {
+      "cmd": "go build ./cmd/wsh/ && echo BUILD_OK",
+      "expect": "BUILD_OK",
+      "ok": true,
+      "tail": "BUILD_OK"
+    },
+    {
+      "cmd": "go test ./pkg/persona/ -run TestRelocate -v",
+      "expect": "PASS",
+      "ok": true,
+      "tail": "--- PASS: TestRelocateRollsBackOnFailure (0.21s) | PASS | ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t1.305s"
+    },
+    {
+      "cmd": "go test ./pkg/persona/ -run TestRotateJournal -v",
+      "expect": "PASS",
+      "ok": true,
+      "tail": "--- PASS: TestRotateJournalMovesOldMonthsOnly (0.04s) | PASS | ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t0.176s"
+    },
+    {
+      "cmd": "npx vitest run frontend/app/view/waveconfig",
+      "expect": "passed",
+      "ok": true,
+      "tail": "\u001b[2m   Duration \u001b[22m 7.49s\u001b[2m (transform 4.62s, setup 566ms, collect 23.59s, tests 173ms, environment 9ms, prepare 6.87s)\u001b[22m |  | JUNIT report written to E:/code/snorkeling/test-results.xml"
+    },
+    {
+      "cmd": "npx tsc --noEmit -p tsconfig.json | grep -c \"error TS\" || true",
+      "expect": "<=47",
+      "ok": true,
+      "tail": "47"
+    },
+    {
+      "cmd": "grep personaRelocateCmd cmd/wsh/cmd/wshcmd-persona.go",
+      "expect": "personaRelocateCmd",
+      "ok": true,
+      "tail": "\tpersonaRelocateCmd.Flags().BoolVar(&personaRelocateCopyNotMove, \"copy-not-move\", false, \"keep a copy at the old root (insurance)\") | \tpersonaRelocateCmd.Flags().BoolVar(&personaDryRun, \"dry-run\", false, \"explicitly force a preview (writes already default to dry-run)\") | \tpersonaCmd.AddCommand(perso"
+    },
+    {
+      "cmd": "grep persona:rootdir pkg/wconfig/settingsconfig.go",
+      "expect": "persona:rootdir",
+      "ok": true,
+      "tail": "PersonaRootDir          string `json:\"persona:rootdir,omitempty\"`"
+    },
+    {
+      "cmd": "grep PersonaSettingsContent frontend/app/view/waveconfig/waveconfig-model.ts",
+      "expect": "PersonaSettingsContent",
+      "ok": true,
+      "tail": "import { PersonaSettingsContent } from \"@/app/view/waveconfig/personasettings\"; |             visualComponent: PersonaSettingsContent,"
+    }
+  ]
+}

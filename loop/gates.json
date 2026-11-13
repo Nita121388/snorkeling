@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-13T03:48:48Z",
+  "updatedAt": "2026-11-13T04:37:26Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -272,6 +272,23 @@
       "g5": {
         "ok": true,
         "executedAt": "2026-11-13T03:48:48Z",
+        "by": "compliance"
+      }
+    },
+    "F-1113-persona-relocate-r1": {
+      "g1": {
+        "at": "2026-11-13T04:37:25Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "c9c7abe9429f"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-F-1113-persona-relocate-r1.txt（relocate.go/设置面板/settings 键均不存在）",
+        "at": "2026-11-13T04:37:25Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-13T04:37:26Z",
         "by": "compliance"
       }
     },

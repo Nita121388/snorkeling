@@ -276,3 +276,38 @@ loop prove 7/7 全绿。真机验证留用户手动。
 - 蒸馏 v1 是显式 CLI 的纯 Go 变换，不接前端 AutoGenerate RPC / 后台 worker
   （记忆的唯一写路径是 `wsh persona`，接 RPC 会多一份事实来源）。
 - inbox 目标只认三个白名单相对路径；`CHARTER.md` 也只 append，绝不重写人写正文。
+
+## 12. A5.5 位置设置 / relocate / 轮转 / 容量（已落地）
+
+任务：`.trellis/tasks/11-12-persona-relocate/`（loop 包 `F-1113-persona-relocate-r1`）。
+
+| 单元 | 文件 | 说明 |
+|---|---|---|
+| 配置 | `pkg/wconfig/settingsconfig.go` | `persona:rootdir` + `journalrotate` / `dormantdays` / `softlimitmb` / `softlimitaction` |
+| 纯逻辑 | `pkg/persona/relocate.go` | `PlanRelocate` / `Relocate`（跨盘 copy 回退 + 逐条校验 + 逆序回滚）/ `StorageOf` / `RotateJournal` |
+| 写路径 | `pkg/persona/journal.go` | `AppendJournal` 跨月 best-effort 自动轮转 |
+| app 侧根 | `pkg/service/aisessionsservice` | `personaSettingsRoot()` → 名册 / 容量 RPC 都读 settings |
+| CLI | `cmd/wsh/cmd/wshcmd-persona.go` | root 优先级、`relocate` / `stats` / `journal rotate`、settings 合并写 |
+| 设置面板 | `frontend/app/view/waveconfig/personasettings.tsx` | 根目录 + 容量三桶 + 治理开关 + 可复制迁移命令 |
+
+### 契约
+
+- root 优先级：`--root` > `PERSONA_ROOT` > `settings.json persona:rootdir` > `~/.snorkeling/personas`；
+  `PERSONA_ROOT` 存在时 `relocate --yes` **不写 settings**（沙箱信号，避免污染真实配置）。
+- `relocate`：dry-run 零写入；apply 逐目录 move（rename，跨盘 copy+remove），校验文件数/字节数，
+  失败按已搬列表逆序回滚；`--copy-not-move` 保留旧副本；成功后 `wconfig.SetBaseConfigValue` 合并写 settings。
+- 容量三项：档案（`.persona/` 去掉 `MEMORY/archive`）/ 归档（`MEMORY/archive`）/ 产物（`work/`），
+  `syncable = 档案 + 归档`。RPC `aisessions.PersonaStats` 供设置面板使用。
+- 轮转：journal 行时间戳月份 ≠ 当前月 → 按行分月追加到 `MEMORY/archive/YYYY-MM.md`，主文件只留当前月与注释头。
+
+### 验证
+
+6 个新 Go 测试（dry-run 零写、move+校验+名册重建、注入失败回滚、三桶口径、轮转、跨月自动轮转）；
+面板 13 例 vitest（字节格式化 / rootdir 校验 / 草稿 / 治理默认值）；waveconfig 14 文件 97 例全绿；
+tsc 47 基线零新增；loop prove 9/9 全绿。Electron 真机三态验证留用户手动。
+
+### 有意收窄
+
+- 设置面板的「迁移」不做破坏性按钮：给可复制的 `wsh persona relocate … --dry-run|--yes` 命令，
+  先在终端看清单再应用（避免 UI 里一键搬家的不可逆风险）。
+- 软上限三动作（warn / warn-distill / readonly）v1 只落配置与面板，后台强制点留后续包。

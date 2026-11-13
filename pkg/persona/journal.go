@@ -95,6 +95,11 @@ func AppendJournal(root, id string, entry JournalEntry) (*JournalResult, error) 
 	if entry.Now != nil {
 		now = entry.Now()
 	}
+	// A5.5: crossing a month boundary rotates the old entries into
+	// MEMORY/archive/YYYY-MM.md before the new line lands, so journal.md never
+	// grows without bound. Best effort: a rotation failure must not lose the
+	// shift entry the caller asked for.
+	_, _ = MaybeRotateJournal(resolved, id, func() time.Time { return now })
 	ts := now.UTC().Format(time.RFC3339)
 	source := strings.TrimSpace(entry.Source)
 	if source == "" {
