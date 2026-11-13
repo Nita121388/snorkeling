@@ -19,13 +19,17 @@ const mockState = vi.hoisted(() => {
     return {
         staticTabIdAtom,
         staticTabId: "tab-owner",
+        // true = 模拟 initGlobalAtoms 已完成；false = 模拟模块求值早于 initGlobal（atoms === undefined）
+        atomsAvailable: true,
         highlights: [] as Array<{ blockId: string; icon: string } | null>,
         refocused: [] as string[],
     };
 });
 
 vi.mock("@/app/store/global", () => ({
-    atoms: { staticTabId: mockState.staticTabIdAtom },
+    get atoms() {
+        return mockState.atomsAvailable ? { staticTabId: mockState.staticTabIdAtom } : undefined;
+    },
     globalStore: {
         get: (atom: unknown) => (atom === mockState.staticTabIdAtom ? mockState.staticTabId : undefined),
     },
@@ -58,6 +62,7 @@ describe("block-jump-signal", () => {
     beforeEach(() => {
         vi.useFakeTimers();
         mockState.staticTabId = "tab-owner";
+        mockState.atomsAvailable = true;
         mockState.highlights = [];
         mockState.refocused = [];
         window.localStorage.removeItem(BlockJumpStorageKey);
@@ -128,5 +133,26 @@ describe("block-jump-signal", () => {
         fireStorageEvent({ tabId: "tab-owner", blockId: "block-owner", seq: Date.now() });
         // 一次信号只产生一轮高亮设置
         expect(mockState.highlights.filter((h) => h != null)).toHaveLength(1);
+    });
+
+    // 回归：2026-11-13 窗口黑屏死锁。真实故障是 blockframe 在模块求值期（早于 initGlobal）
+    // 调用 install，此时 global-atoms 的 atoms 仍是 undefined；只要 localStorage 里残留一条
+    // block-jump 信号，handleSignal 就会在模块顶层抛 TypeError，整个 renderer 不启动。
+    it("atoms 未初始化时 install 不抛异常且信号被忽略（回归：黑屏死锁）", () => {
+        mockState.atomsAvailable = false;
+        window.localStorage.setItem(
+            BlockJumpStorageKey,
+            JSON.stringify({ tabId: "tab-owner", blockId: "block-early", seq: Date.now() })
+        );
+        expect(() => installBlockJumpSignalListener()).not.toThrow();
+        expect(mockState.highlights).toHaveLength(0);
+
+        // 同时也毒住 storage 事件路径，同样不能抛
+        expect(() =>
+            fireStorageEvent({ tabId: "tab-owner", blockId: "block-early", seq: Date.now() })
+        ).not.toThrow();
+        vi.runAllTimers();
+        expect(mockState.highlights).toHaveLength(0);
+        expect(mockState.refocused).toHaveLength(0);
     });
 });

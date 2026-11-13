@@ -86,15 +86,22 @@ function applyBlockJump(blockId: string): void {
 
 function handleSignal(signal: BlockJumpSignal): void {
     if (typeof window === "undefined") return;
+    // atoms 尚未初始化（renderer 加载早期）：忽略信号，绝不抛异常。
+    // 回归背景（2026-11-13）：曾因模块顶层 install 早于 initGlobal 就绪、加上 localStorage
+    // 残留信号，在此处抛 TypeError，导致整个 renderer 模块图报废、窗口永不 show、黑屏死锁。
+    if (atoms == null) return;
     if (signal.tabId !== globalStore.get(atoms.staticTabId)) return;
     if (Date.now() - signal.seq > FreshWindowMs) return;
     applyBlockJump(signal.blockId);
 }
 
 /**
- * 安装跨 renderer 定位信号监听。由 blockframe 模块加载时调用——每个会渲染块的
+ * 安装跨 renderer 定位信号监听。由 blockframe 在首个 BlockFrame 挂载时调用——每个会渲染块的
  * renderer 恰好装一次（模块级 installed 防重入）。安装时补读一次最近信号，覆盖
  * 「目标 view 在跳转后才创建」的场景。
+ *
+ * 注意：必须在 initGlobal/initGlobalAtoms 之后安装。模块求值期（import 链）调用时 atoms
+ * 还未赋值，曾经的模块顶层调用因此导致整个 renderer 启动失败。
  */
 export function installBlockJumpSignalListener(): void {
     if (installed || typeof window === "undefined") return;

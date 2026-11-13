@@ -31,10 +31,6 @@ import { BlockEnv } from "./blockenv";
 import { installBlockJumpSignalListener } from "./block-jump-signal";
 import { BlockFrameProps } from "./blocktypes";
 
-// 跨 renderer 的「定位到块」信号监听：模块加载时装一次（每个渲染块的 renderer 必经此处）。
-// Overview 跳转其他 tab 的块时，目标 renderer 靠它执行高亮 + refocus。
-installBlockJumpSignalListener();
-
 const BlockMask = React.memo(({ nodeModel }: { nodeModel: NodeModel }) => {
     const waveEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
@@ -273,6 +269,13 @@ const BlockFrame = React.memo((props: BlockFrameProps) => {
     const blockId = props.nodeModel.blockId;
     const blockIsNull = jotai.useAtomValue(waveEnv.wos.isWaveObjectNullAtom(makeORef("block", blockId)));
     const numBlocks = jotai.useAtomValue(tabModel.tabNumBlocksAtom);
+    // 跨 renderer 的「定位到块」信号监听：首个 BlockFrame 挂载后装一次（每个渲染块的 renderer
+    // 必经此处）。挂载点晚于 initWave/initGlobal → atoms 已完成初始化，避免模块求值期访问
+    // global-atoms 的 atoms 得到 undefined。模块级 installed 防重入，多 BlockFrame 并存也只装一次。
+    // Overview 跳转其他 tab 的块时，目标 renderer 靠它执行高亮 + refocus。
+    React.useEffect(() => {
+        installBlockJumpSignalListener();
+    }, []);
     if (!blockId || blockIsNull) {
         return null;
     }
