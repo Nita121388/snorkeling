@@ -3,7 +3,7 @@ id: F-1113-persona-sync-r1
 title: "A5 跨机同步 v1：rootdir 单仓 + gitignore + rebuild + journal 冲突合并"
 type: feature
 priority: P1
-status: open
+status: accepted
 origin: self
 source: "2026-11-13T03:35:43Z"
 task: 11-12-persona-sync
@@ -12,6 +12,7 @@ touch: [pkg/persona/**, cmd/wsh/cmd/wshcmd-persona.go, pkg/agentguide/**, pkg/ag
 rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
+score: {value: 4, by: nita, at: "2026-11-13T03:46:45Z", note: "用户 2026-11-13 会话原话授权代理验收「继续开发直到完成」；真机验证按用户要求留手动。7/7 判据机器采数全绿，双 clone 真 git 往返通过。commit 见 git log。"}
 createdAt: "2026-11-13T03:35:43Z"
 ---
 

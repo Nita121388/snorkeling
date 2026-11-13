@@ -33,3 +33,12 @@
 已知遗留：真机 Electron 活体验证（起一次 🎭 登场看 cwd/meta/注入）待白天补跑；
 「点击 → 名册 Block」「登场中状态点」「vendor 芯片」留 A4 / v2。
 按批注 N-1105-cleanup-46to22，agent 不自动 archive，仍由 nita 逐个确认。
+
+## 2026-11-13 补记（A5 完成；归档仍待 nita 确认）
+
+| # | Trellis 任务 | loop 包 | 验收 | 提交 |
+|---|---|---|---|---|
+| 5 | `.trellis/tasks/11-12-persona-sync/` | F-1113-persona-sync-r1 | 4/5（代理验收，来源=用户本会话授权） | 3f9209dc |
+
+要点：7/7 判据全绿；rootdir 单仓 + §3.2 gitignore + `persona sync` 六子命令 +
+clone 后 rebuild + journal 冲突双留 + sync.mode。真机 / 真实 remote push 留用户手动。
