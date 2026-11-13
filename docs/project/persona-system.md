@@ -342,22 +342,29 @@ loop prove 6/6 全绿。Electron 真机验证留用户手动。
 - 「登场中/空闲」状态点与休眠折叠留后续（需要会话活跃聚合）；v1 用最近 journal 行做「最近登场」代理。
 - 待批准区只读（写操作走 CLI，保持 human-gated）。
 
-## 14. A2 创建向导（部分落地：后端就绪，UI 待补）
+## 14. A2 创建向导（已落地）
 
-任务：`.trellis/tasks/11-12-persona-create-ui/`（loop 包 `F-1113-persona-create-ui-r1`，**parked**）。
+任务：`.trellis/tasks/11-12-persona-create-ui/`（loop 包 `F-1113-persona-create-ui-r2`；r1 因判据命令 `grep` 缺 `-r` 判红已 drop）。
 
-已完成：
+| 单元 | 文件 | 说明 |
+|---|---|---|
+| 后端预览 | `pkg/service/aisessionsservice` | `PersonaScaffoldPreview` RPC = `persona.Create(DryRun:true)`，与 CLI 同一份 `plannedFiles` |
+| 纯逻辑 | `frontend/app/view/persona/persona-create-model.ts` | `slugPreview`（对齐 Go Slugify）/ `buildCreateCommand` / `mergePrefill` / `validateCreateDraft` / `treeDepth` |
+| 向导 | `frontend/app/view/persona/persona-create-wizard.tsx` | `PersonaCreateWizard` 两步弹窗 + `openPersonaCreateWizard(prefill)` 总线 |
+| 注册 | `frontend/app/modals/modalregistry.tsx` | `PersonaCreateWizard` 入表 |
+| 入口 | `frontend/app/view/aisessions/aisessions.tsx`、`frontend/app/block/blockframe-header.tsx` | AISessions 视图菜单 + agent block 头部右键 |
 
-- 后端 `aisessions.PersonaScaffoldPreview` RPC：调 `persona.Create(DryRun:true)` 返回
-  `{dir,id,files:[{path,preview,exists}]}` —— 与 `wsh persona create --dry-run` 同一份 `plannedFiles`，
-  向导文件树不可能与 CLI 漂移。
-- prd / design / implement 规划工件已落盘（含 v1 偏离：向导只生成并展示 `wsh persona create … --yes`
-  命令，不在 GUI 里直接落盘，保持 propose 闸门）。
+### 契约
 
-未完成（本次会话工具链故障，子代理派发连续无返回）：
+- 步骤 1 身份（名字必填、emoji/role/provider/model 可选，实时 `id` slug 预览）；
+  步骤 2 文件树来自 `PersonaScaffoldPreview`（`+` 新建 / `•` 已存在），右侧给可复制的
+  `wsh persona create --name … --yes` 命令。
+- **向导不落盘**：propose 闸门保持在 CLI 侧；Esc 关闭；`P` 快捷键留后续。
+- slug 预览对齐 Go `Slugify` 的 ASCII 行为；空名/非 ASCII 名 Go 会追加短 hash，
+  向导里标注「以 CLI 为准」。
 
-- `persona-create-wizard.tsx` 两步向导（身份 → 预览 + 命令）与 `persona-create-model.ts` 纯逻辑 + 单测
-- 三处入口接线（AISessions 行右键 / agent block 头部右键 / Session Detail ⋯ 菜单）
-- 键盘 `P` 打开
+### 验证
 
-恢复方式：重开一包（或同一任务重取件），从 `implement.md` 的 Step 2 继续；后端 RPC 与类型已可用。
+`frontend/app/view/persona` 28 例（含 13 例向导纯逻辑）、`frontend/app/view/aisessions` 781 例全绿；
+tsc 47 基线零新增；loop prove 7/7 全绿。三处入口中 AISessions 视图菜单与 agent block 头部右键已接，
+Session Detail ⋯ 菜单入口留后续（同一总线，接入成本很低）。真机验证留用户手动。

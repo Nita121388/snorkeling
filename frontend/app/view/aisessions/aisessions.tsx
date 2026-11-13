@@ -1,25 +1,29 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
+import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
 import { restoreMinimizedBlockToLayout } from "@/app/block/block-minimize";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
 import type { RefreshStatus } from "@/app/element/refresh-status-icon";
 import { RefreshStatusIcon, deriveRefreshStatus } from "@/app/element/refresh-status-icon";
+import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsServiceType } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { openPersonaCreateWizard } from "@/app/view/persona/persona-create-wizard";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
-import { modalsModel } from "@/app/store/modalmodel";
 import { isDragMovement, keysUnderRect, rectToCss, type Rect } from "@/util/selectionrect";
 import { cn, fireAndForget } from "@/util/util";
 import * as jotai from "jotai";
-import * as React from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
+import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import "../../session-overview/session-overview.scss";
@@ -27,28 +31,7 @@ import { autoGenerate } from "./aisession-gen-store";
 import { GroupModeSwitch, IconButton, type ListGroupMode } from "./controls";
 import { EmptyState } from "./empty-state";
 import { FilterPanel } from "./filter-panel";
-import { DefaultOpenState, openSessionMatches, type OpenState } from "./open-sessions";
-import { useOpenSessions } from "./open-sessions-store";
 import { FilterPresetMenu } from "./filter-preset-menu";
-import { FoldMenu, type SubSessionsFold } from "./fold-menu";
-import { OriginSwitcher } from "./origin-switcher";
-import {
-    OriginMetaKey,
-    buildOriginMeta,
-    parseOriginMeta,
-    recallOrigin,
-    rememberOrigin,
-    resolveRestoredOriginId,
-} from "./origin-state";
-import {
-    FilterStateMetaKey,
-    buildFilterStateMeta,
-    parseFilterStateMeta,
-    recallFilterState,
-    rememberFilterState,
-    resolveRestoredPresetId,
-    type PersistedFilterState,
-} from "./filter-state-persist";
 import {
     DefaultFilterPresetFilter,
     MaxFilterPresets,
@@ -61,6 +44,27 @@ import {
     type FilterPresetFilter,
     type FilterPresetView,
 } from "./filter-presets";
+import {
+    FilterStateMetaKey,
+    buildFilterStateMeta,
+    parseFilterStateMeta,
+    recallFilterState,
+    rememberFilterState,
+    resolveRestoredPresetId,
+    type PersistedFilterState,
+} from "./filter-state-persist";
+import { FoldMenu, type SubSessionsFold } from "./fold-menu";
+import { DefaultOpenState, openSessionMatches, type OpenState } from "./open-sessions";
+import { useOpenSessions } from "./open-sessions-store";
+import {
+    OriginMetaKey,
+    buildOriginMeta,
+    parseOriginMeta,
+    recallOrigin,
+    rememberOrigin,
+    resolveRestoredOriginId,
+} from "./origin-state";
+import { OriginSwitcher } from "./origin-switcher";
 import { SkeletonSessionRows } from "./scan-progress";
 import { mergeScanStatus, type ScanStatus } from "./scan-status-logic";
 import { SessionBatchBar } from "./session-batch-bar";
@@ -83,9 +87,6 @@ import { mergeSessionTimeline } from "./session-timeline-sync";
 import { collectParentKeys, collectParentsOfMatches } from "./session-tree";
 import { SortMenu } from "./sort-menu";
 import { defaultChatSource } from "./sources";
-import { getAgentIcon } from "@/app/view/term/agent-logo";
-import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
-import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
 import type {
     AttachMode,
     DateRangeFilter,
@@ -112,8 +113,8 @@ import { useSessionsRunning, type SessionRunningState } from "./use-sessions-run
 import type { BatchCopyKind } from "./utils";
 import {
     applySelectionRange,
-    buildPersonaContext,
     buildBatchCopyText,
+    buildPersonaContext,
     copyText,
     countSubSessions,
     emptySessionsText,
@@ -178,7 +179,8 @@ export class AiSessionsViewModel implements ViewModel {
         // （provider emoji / 会话 emoji / 品牌 logo）——列表块即使内联展开了详情也不应跟着变。
         const blockData = get(this.blockAtom);
         const meta = (blockData?.meta ?? {}) as Record<string, unknown>;
-        const isDetailBlock = typeof meta["aisessions:sessionid"] === "string" && meta["aisessions:sessionid"].trim() !== "";
+        const isDetailBlock =
+            typeof meta["aisessions:sessionid"] === "string" && meta["aisessions:sessionid"].trim() !== "";
         if (!isDetailBlock) {
             return "comments";
         }
@@ -397,6 +399,10 @@ export class AiSessionsViewModel implements ViewModel {
         const currentInterval = this.getAutoRefreshIntervalMs();
         const showAuditButton = getShowAuditButton(globalStore.get(this.blockAtom)?.meta);
         return [
+            {
+                label: "🎭 Set as New Persona…",
+                click: () => openPersonaCreateWizard({ source: "aisessions" }),
+            },
             {
                 label: "Auto Refresh",
                 type: "submenu",
@@ -1985,14 +1991,11 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     // smart 走 null（保持 per-parent 展开 + 命中自动展开）；folded/expanded 走全局覆盖。
     const subSessionsOverride: SubSessionsOverride =
         subSessionsFold === "folded" ? "collapsed" : subSessionsFold === "expanded" ? "expanded" : null;
-    const setSubSessionsOverride = useCallback(
-        (next: SubSessionsOverride) => {
-            const mapped: SubSessionsFold = next === "collapsed" ? "folded" : next === "expanded" ? "expanded" : "smart";
-            setSubSessionsFold(mapped);
-            writeSubSessionsFold(mapped);
-        },
-        []
-    );
+    const setSubSessionsOverride = useCallback((next: SubSessionsOverride) => {
+        const mapped: SubSessionsFold = next === "collapsed" ? "folded" : next === "expanded" ? "expanded" : "smart";
+        setSubSessionsFold(mapped);
+        writeSubSessionsFold(mapped);
+    }, []);
     const allParentKeys = useMemo(() => [...collectParentKeys(sessions)], [sessions]);
 
     const toggleExpandParent = useCallback(
@@ -2767,14 +2770,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     <button
                                         type="button"
                                         title={
-                                            activeFilterCount > 0
-                                                ? `Filters: ${activeFilterCount} active`
-                                                : "Filters"
+                                            activeFilterCount > 0 ? `Filters: ${activeFilterCount} active` : "Filters"
                                         }
                                         aria-label={
-                                            activeFilterCount > 0
-                                                ? `Filters: ${activeFilterCount} active`
-                                                : "Filters"
+                                            activeFilterCount > 0 ? `Filters: ${activeFilterCount} active` : "Filters"
                                         }
                                         aria-pressed={filtersOpen}
                                         onClick={() => setFiltersOpen((current) => !current)}

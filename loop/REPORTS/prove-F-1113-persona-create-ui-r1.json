@@ -1,0 +1,41 @@
+{
+  "ok": false,
+  "results": [
+    {
+      "cmd": "npx vitest run frontend/app/view/persona frontend/app/view/aisessions",
+      "expect": "passed",
+      "ok": true,
+      "tail": "\u001b[2m   Duration \u001b[22m 33.42s\u001b[2m (transform 37.01s, setup 3.63s, collect 172.47s, tests 10.44s, environment 60.18s, prepare 49.91s)\u001b[22m |  | JUNIT report written to E:/code/snorkeling/test-results.xml"
+    },
+    {
+      "cmd": "npx tsc --noEmit -p tsconfig.json | grep -c \"error TS\" || true",
+      "expect": "<=47",
+      "ok": true,
+      "tail": "47"
+    },
+    {
+      "cmd": "go test ./pkg/persona/... ./pkg/service/aisessionsservice/...",
+      "expect": "ok",
+      "ok": true,
+      "tail": "ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t(cached)"
+    },
+    {
+      "cmd": "grep PersonaCreateWizard frontend/app/view/persona/persona-create-wizard.tsx",
+      "expect": "PersonaCreateWizard",
+      "ok": true,
+      "tail": "export { PersonaCreateWizard }; | export function openPersonaCreateWizard(prefill?: PersonaCreatePrefill): void { |     modalsModel.pushModal(PersonaCreateWizard.displayName!, prefill ?? {});"
+    },
+    {
+      "cmd": "grep \"PersonaScaffoldPreview(request: AISessionsPersonaScaffoldPreviewRequest)\" frontend/app/store/services.ts",
+      "expect": "PersonaScaffoldPreview(request: AISessionsPersonaScaffoldPreviewRequest)",
+      "ok": true,
+      "tail": "PersonaScaffoldPreview(request: AISessionsPersonaScaffoldPreviewRequest): Promise<AISessionsPersonaScaffoldPreviewResponse> {"
+    },
+    {
+      "cmd": "grep persona-create-wizard frontend/app/view/aisessions/",
+      "expect": "persona-create-wizard",
+      "ok": false,
+      "tail": "grep: frontend/app/view/aisessions/: Is a directory"
+    }
+  ]
+}

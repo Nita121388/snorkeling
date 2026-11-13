@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-13T05:15:21Z",
+  "updatedAt": "2026-11-13T07:58:24Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -309,20 +309,20 @@
         "by": "compliance"
       }
     },
-    "F-1113-persona-create-ui-r1": {
+    "F-1113-persona-create-ui-r2": {
       "g1": {
-        "at": "2026-11-13T05:15:20Z",
+        "at": "2026-11-13T07:58:23Z",
         "by": "nita",
         "verdict": "confirmed",
         "prdHash": "6c69d61e862e"
       },
       "g2": {
-        "redProof": "loop/REPORTS/redproof-F-1113-persona-create-ui-r1.txt（向导文件与入口接线均不存在；后端预览 RPC 已先行实现，如实记录）",
-        "at": "2026-11-13T05:15:21Z"
+        "redProof": "loop/REPORTS/redproof-F-1113-persona-create-ui-r1.txt（向导组件/入口接线原不存在）；r1 仅判据 6 grep 缺 -r 判红（drop 理由留痕）",
+        "at": "2026-11-13T07:58:24Z"
       },
       "g5": {
         "ok": true,
-        "executedAt": "2026-11-13T05:15:21Z",
+        "executedAt": "2026-11-13T07:58:24Z",
         "by": "compliance"
       }
     },
@@ -397,6 +397,11 @@
       "id": "F-1113-persona-widget-launch-r1",
       "reason": "判据 8 改用 test 0 -ge 1 仍不可满足：prove 用 execSync shell:true，Windows 下是 cmd.exe，不支持  命令替换（实测 test: extra argument '-c'）。且带空格的双引号 grep 模式在 cmd.exe 下匹配失败（实测 0）。重建为 -r2：判据改为无空格裸模式 + 字面量行断言（cmd.exe / bash 双验证通过）。",
       "at": "2026-11-13T02:23:09Z"
+    },
+    {
+      "id": "F-1113-persona-create-ui-r1",
+      "reason": "判据 6 写成 grep persona-create-wizard frontend/app/view/aisessions/（目录没加 -r），cmd.exe/bash 下都报 Is a directory 判红——是判据命令自身的 bug（L-0006 同类），不是实现缺失。重建为 r2：判据改 grep -rn。",
+      "at": "2026-11-13T07:57:54Z"
     }
   ]
 }

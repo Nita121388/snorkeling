@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { MessageModal } from "@/app/modals/messagemodal";
+import { SyncConflictModal } from "@/app/modals/syncconflictmodal";
 import { NewInstallOnboardingModal } from "@/app/onboarding/onboarding";
 import { UpgradeOnboardingModal } from "@/app/onboarding/onboarding-upgrade";
 import { UpgradeOnboardingPatch } from "@/app/onboarding/onboarding-upgrade-patch";
+import { PersonaCreateWizard } from "@/app/view/persona/persona-create-wizard";
 import { ExportOptionsModal } from "@/app/view/preview/plugins/export/export-options-modal";
 import { EnvModalView } from "@/app/view/term/envmodal";
 import { WidgetQuickLaunchModal } from "@/app/workspace/widget-quick-launch";
 import { DeleteFileModal, PublishAppModal, RenameFileModal } from "@/builder/builder-apppanel";
 import { SetSecretDialog } from "@/builder/tabs/builder-secrettab";
-import { SyncConflictModal } from "@/app/modals/syncconflictmodal";
 import { AboutModal } from "./about";
-import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
 import { AgentCardModal } from "./agentcardmodal";
+import { AgentHookSettingsModal } from "./agenthooksettingsmodal";
 import { AISessionDetailModal } from "./aisessiondetailmodal";
 import { AISessionNoteModal } from "./aisessionnotemodal";
 import { CloseTabModal } from "./closetabmodal";
@@ -35,6 +36,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [AgentHookSettingsModal.displayName || "AgentHookSettingsModal"]: AgentHookSettingsModal,
     [EnvModalView.displayName || "EnvModalView"]: EnvModalView,
     [MessageModal.displayName || "MessageModal"]: MessageModal,
+    [PersonaCreateWizard.displayName || "PersonaCreateWizard"]: PersonaCreateWizard,
     [WidgetQuickLaunchModal.displayName || "WidgetQuickLaunchModal"]: WidgetQuickLaunchModal,
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,
