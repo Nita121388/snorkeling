@@ -376,8 +376,8 @@ export function buildPersonaContext(
 
 /** 人设组的展示名：🎭 + emoji（有则）+ 人设名；查不到名册条目时退化为裸 id。 */
 export function personaGroupLabel(persona: { id: string; name: string; emoji?: string }): string {
-    const emoji = persona.emoji ? `${persona.emoji} ` : "";
-    return `🎭 ${emoji}${persona.name || persona.id}`;
+    const emoji = persona.emoji ? `${persona.emoji} ` : "🦸 ";
+    return `${emoji}${persona.name || persona.id}`;
 }
 
 /** 读取会话的 persona 归属（design A1.5 §3.1：props.persona 是唯一显式归属）。 */

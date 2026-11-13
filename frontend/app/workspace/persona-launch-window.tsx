@@ -6,6 +6,7 @@
 // work directory into the first prompt. The launch semantics live in
 // persona-launch.ts (pure); this component only renders and routes.
 
+import { openPersonaCreateWizard } from "@/app/view/persona/persona-create-wizard";
 import type { AgentProfileOption } from "@/app/workspace/agent-launch";
 import {
     buildPersonaLaunchBlockDef,
@@ -252,16 +253,16 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                 className="z-50 w-[min(92vw,380px)] rounded-lg border border-border bg-modalbg shadow-xl"
             >
                 <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                    <span className="text-sm">🎭</span>
-                    <span className="text-sm font-medium text-muted">叫人设登场</span>
-                    <span className="ml-auto text-[10px] text-muted/70">↑↓ 选择 · ↵ 登场 · esc 关闭</span>
+                    <span className="text-sm">🦸</span>
+                    <span className="text-sm font-medium text-muted">Select Hero</span>
+                    <span className="ml-auto text-[10px] text-muted/70">↑↓ select · ↵ confirm · esc close</span>
                 </div>
 
                 {/* ① 选 Agent（谁上身） */}
                 <div className="px-4 pt-3">
                     <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted/80">Agent</div>
                     {profileOptions.length === 0 ? (
-                        <div className="text-xs text-muted">未检测到可用 Agent 命令</div>
+                        <div className="text-xs text-muted">No agent commands detected</div>
                     ) : (
                         <div className="flex flex-wrap gap-1.5">
                             {profileOptions.map((profile) => {
@@ -297,7 +298,9 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                         value={modelInput}
                         onChange={(e) => setModelInput(e.target.value)}
                         placeholder={
-                            isBlank(selectedPersona?.model) ? "model（可选，默认取人设卡）" : selectedPersona.model
+                            isBlank(selectedPersona?.model)
+                                ? "model (optional, defaults to the hero card)"
+                                : selectedPersona.model
                         }
                         className="mt-2 w-full rounded border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent"
                     />
@@ -306,7 +309,7 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                 {/* ② 选人设（谁登场） */}
                 <div className="mt-3 px-4">
                     <div className="mb-1.5 flex items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-muted/80">
-                        <span>人设</span>
+                        <span>Heroes</span>
                         <span className="text-muted/60">{roster.root ? personas.length : ""}</span>
                     </div>
                     <div
@@ -318,17 +321,19 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                         {loading ? (
                             <div className="flex items-center justify-center py-6 text-muted">
                                 <i className="fa fa-solid fa-spinner fa-spin mr-2"></i>
-                                <span className="text-xs">正在读取人设名册…</span>
+                                <span className="text-xs">Loading heroes…</span>
                             </div>
                         ) : loadError != null ? (
-                            <div className="px-3 py-6 text-center text-xs text-error">名册读取失败：{loadError}</div>
+                            <div className="px-3 py-6 text-center text-xs text-error">
+                                Failed to load heroes: {loadError}
+                            </div>
                         ) : personas.length === 0 ? (
                             <div className="px-3 py-6 text-center text-xs text-muted">
-                                本机还没有人设。终端运行：
+                                No heroes yet. Run in a terminal:
                                 <code className="mx-1 rounded bg-surface-soft px-1">
-                                    wsh persona create --name &lt;名&gt; --yes
+                                    wsh persona create --name &lt;name&gt; --yes
                                 </code>
-                                创建第一个。
+                                to create the first one.
                             </div>
                         ) : (
                             personas.map((persona, idx) => {
@@ -347,7 +352,7 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                                         title={persona.role || persona.id}
                                     >
                                         <span className="w-5 text-center">
-                                            {isBlank(persona.emoji) ? "🎭" : persona.emoji}
+                                            {isBlank(persona.emoji) ? "🦸" : persona.emoji}
                                         </span>
                                         <span className="min-w-0 flex-1 truncate text-sm">
                                             {personaRosterLabel(persona)}
@@ -359,12 +364,13 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                                 );
                             })
                         )}
-                        <div
-                            className="cursor-not-allowed border-t border-border/40 px-3 py-2 text-xs text-muted/50"
-                            title="创建向导在 A2 提供"
+                        <button
+                            type="button"
+                            className="w-full cursor-pointer border-t border-border/40 px-3 py-2 text-left text-xs text-secondary transition-colors hover:bg-hoverbg hover:text-foreground"
+                            onClick={() => openPersonaCreateWizard({ source: "hero-picker" })}
                         >
-                            ＋ 新建人设…
-                        </div>
+                            ＋ New hero…
+                        </button>
                     </div>
                 </div>
 
@@ -377,8 +383,8 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                         )}
                         title={
                             mainWorkdir == null
-                                ? "当前没有可识别的主工作目录"
-                                : "首条提示前置「[登场上下文] 本次主工作目录」，不勾 = 纯人设任务"
+                                ? "No main working directory detected"
+                                : "Prepend the main working directory to the first prompt; unchecked = pure hero task"
                         }
                     >
                         <input
@@ -389,8 +395,8 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                             className="mt-0.5"
                         />
                         <span className="min-w-0 flex-1 text-xs">
-                            注入本次主工作目录
-                            <span className="ml-1 break-all text-muted/80">{mainWorkdir ?? "（未识别到）"}</span>
+                            Inject main working directory
+                            <span className="ml-1 break-all text-muted/80">{mainWorkdir ?? "(none detected)"}</span>
                         </span>
                     </label>
                     <div className="mt-3 flex justify-end gap-2">
@@ -399,7 +405,7 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                             className="cursor-pointer rounded border border-border bg-surface px-3 py-1 text-xs text-secondary transition-colors hover:text-foreground"
                             onClick={onClose}
                         >
-                            取消
+                            Cancel
                         </button>
                         <button
                             type="button"
@@ -412,7 +418,7 @@ export const PersonaLaunchFloatingWindow = memo(function PersonaLaunchFloatingWi
                             )}
                             onClick={launch}
                         >
-                            🎭 登场
+                            Confirm
                         </button>
                     </div>
                 </div>

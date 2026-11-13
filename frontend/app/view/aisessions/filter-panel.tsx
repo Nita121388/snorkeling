@@ -321,11 +321,7 @@ export function FilterPanel({
                 <div className="flex items-center gap-2.5 border-t border-border/40 py-1.5">
                     <i className="fa-sharp fa-solid fa-robot w-3.5 shrink-0 text-center text-[11px] text-secondary" />
                     <SegTrack className="min-w-0 flex-1">
-                        <SegButton
-                            active={source === ""}
-                            title="All agents"
-                            onClick={() => setSource("")}
-                        >
+                        <SegButton active={source === ""} title="All agents" onClick={() => setSource("")}>
                             <span className="text-xs">All</span>
                         </SegButton>
                         {CHAT_SOURCES.map((s) => {
@@ -367,7 +363,9 @@ export function FilterPanel({
                                     title={persona.role ? `${persona.id} — ${persona.role}` : persona.id}
                                     onClick={() => togglePersonaFilter?.(persona.id)}
                                 >
-                                    <span className="truncate text-xs">🎭 {persona.name || persona.id}</span>
+                                    <span className="truncate text-xs">
+                                        {(persona.emoji ? persona.emoji + " " : "🦸 ") + (persona.name || persona.id)}
+                                    </span>
                                 </SegButton>
                             ))}
                         </SegTrack>
@@ -456,9 +454,7 @@ export function FilterPanel({
                                     return null;
                                 }
                                 const active =
-                                    pathMode === "include"
-                                        ? selectedPaths.has(opt.root)
-                                        : excludedPaths.has(opt.root);
+                                    pathMode === "include" ? selectedPaths.has(opt.root) : excludedPaths.has(opt.root);
                                 return (
                                     <SegButton
                                         key={opt.root}
@@ -539,7 +535,9 @@ export function FilterPanel({
                                     <button
                                         type="button"
                                         title={`Include ${pathFilterToPrefix(pathFilter)}`}
-                                        aria-pressed={selectedPaths.has(normalizePathPrefix(pathFilterToPrefix(pathFilter)))}
+                                        aria-pressed={selectedPaths.has(
+                                            normalizePathPrefix(pathFilterToPrefix(pathFilter))
+                                        )}
                                         onClick={() => togglePathSelection(pathFilterToPrefix(pathFilter))}
                                         className={cn(
                                             "inline-flex h-5 w-5 items-center justify-center rounded-md text-[9px] cursor-pointer",
@@ -553,7 +551,9 @@ export function FilterPanel({
                                     <button
                                         type="button"
                                         title={`Exclude ${pathFilterToPrefix(pathFilter)}`}
-                                        aria-pressed={excludedPaths.has(normalizePathPrefix(pathFilterToPrefix(pathFilter)))}
+                                        aria-pressed={excludedPaths.has(
+                                            normalizePathPrefix(pathFilterToPrefix(pathFilter))
+                                        )}
                                         onClick={() => togglePathExclude(pathFilterToPrefix(pathFilter))}
                                         className={cn(
                                             "inline-flex h-5 w-5 items-center justify-center rounded-md text-[9px] cursor-pointer",
@@ -582,9 +582,7 @@ export function FilterPanel({
                                         subPath: childSubPath,
                                     });
                                     const active =
-                                        pathMode === "include"
-                                            ? selectedPaths.has(prefix)
-                                            : excludedPaths.has(prefix);
+                                        pathMode === "include" ? selectedPaths.has(prefix) : excludedPaths.has(prefix);
                                     const covered =
                                         pathMode === "include" &&
                                         !active &&
@@ -755,29 +753,33 @@ export function FilterPanel({
                     {dateActive ? (
                         <ActiveChip label={dateLabel(dateRange)} onRemove={() => setDateRange({ preset: "all" })} />
                     ) : null}
-                    {pathActive ? (
-                        pathSelections.map((prefix) => (
-                            <ActiveChip
-                                key={`path:${prefix}`}
-                                icon="fa-solid fa-folder-tree"
-                                label={pathSelectionLabel(prefix)}
-                                title={prefix === PathFilterOtherRoot ? "Other (empty / unrecognized projectPath)" : prefix}
-                                onRemove={() => togglePathSelection(prefix)}
-                            />
-                        ))
-                    ) : null}
-                    {pathExcludeActive ? (
-                        pathExcludes.map((prefix) => (
-                            <ActiveChip
-                                key={`exclPath:${prefix}`}
-                                tone="exclude"
-                                icon="fa-solid fa-ban"
-                                label={pathSelectionLabel(prefix)}
-                                title={prefix === PathFilterOtherRoot ? "Exclude Other" : `Exclude ${prefix}`}
-                                onRemove={() => togglePathExclude(prefix)}
-                            />
-                        ))
-                    ) : null}
+                    {pathActive
+                        ? pathSelections.map((prefix) => (
+                              <ActiveChip
+                                  key={`path:${prefix}`}
+                                  icon="fa-solid fa-folder-tree"
+                                  label={pathSelectionLabel(prefix)}
+                                  title={
+                                      prefix === PathFilterOtherRoot
+                                          ? "Other (empty / unrecognized projectPath)"
+                                          : prefix
+                                  }
+                                  onRemove={() => togglePathSelection(prefix)}
+                              />
+                          ))
+                        : null}
+                    {pathExcludeActive
+                        ? pathExcludes.map((prefix) => (
+                              <ActiveChip
+                                  key={`exclPath:${prefix}`}
+                                  tone="exclude"
+                                  icon="fa-solid fa-ban"
+                                  label={pathSelectionLabel(prefix)}
+                                  title={prefix === PathFilterOtherRoot ? "Exclude Other" : `Exclude ${prefix}`}
+                                  onRemove={() => togglePathExclude(prefix)}
+                              />
+                          ))
+                        : null}
                     {tagFilters.map((tag) => (
                         <ActiveChip key={tag} label={`#${tag}`} onRemove={() => toggleTagFilter(tag)} />
                     ))}
@@ -797,7 +799,7 @@ export function FilterPanel({
                             <ActiveChip
                                 key={`persona:${personaId}`}
                                 icon="fa-solid fa-masks-theater"
-                                label={`🎭 ${persona?.name || personaId}`}
+                                label={`${persona?.emoji ? persona.emoji + " " : "🦸 "}${persona?.name || personaId}`}
                                 title={`Persona: ${personaId}`}
                                 onRemove={() => togglePersonaFilter?.(personaId)}
                             />

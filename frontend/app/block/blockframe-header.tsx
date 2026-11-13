@@ -143,7 +143,7 @@ export function showBlockContextMenu(
         menu.push({ type: "separator" }, ...makeBlockMoveMenuItems(blockId, blockEnv, moveContext));
     }
     menu.push({
-        label: "🎭 Set as New Persona…",
+        label: "Set as New Hero…",
         click: () => openPersonaCreateWizard({ source: "block" }),
     });
     const extraItems = viewModel?.getSettingsMenuItems?.();

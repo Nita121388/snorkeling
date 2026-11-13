@@ -145,7 +145,7 @@ describe("charterExcerpt", () => {
 describe("empty state + commands", () => {
     it("guides the user to the CLI create line", () => {
         expect(emptyStateText()).toContain(PersonaCreateCommand);
-        expect(PersonaCreateCommand).toBe("wsh persona create --name <名> --yes");
+        expect(PersonaCreateCommand).toBe("wsh persona create --name <name> --yes");
     });
 
     it("builds the copyable memory commands from the CLI contract", () => {

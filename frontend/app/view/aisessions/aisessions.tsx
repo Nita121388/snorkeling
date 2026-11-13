@@ -400,7 +400,7 @@ export class AiSessionsViewModel implements ViewModel {
         const showAuditButton = getShowAuditButton(globalStore.get(this.blockAtom)?.meta);
         return [
             {
-                label: "🎭 Set as New Persona…",
+                label: "Set as New Hero…",
                 click: () => openPersonaCreateWizard({ source: "aisessions" }),
             },
             {

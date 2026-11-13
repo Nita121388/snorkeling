@@ -97,7 +97,7 @@ export function mergePrefill(prefill: PersonaCreatePrefill | null | undefined): 
 /** Returns an error message, or "" when the identity step is submittable. */
 export function validateCreateDraft(draft: PersonaCreateDraft | null | undefined): string {
     if ((draft?.name ?? "").trim() === "") {
-        return "名字不能为空";
+        return "Name is required";
     }
     return "";
 }

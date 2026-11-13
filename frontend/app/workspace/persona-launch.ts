@@ -86,9 +86,9 @@ export function personaRosterLabel(persona: PersonaRosterEntry | null | undefine
 export function personaInjectionPrompt(persona: PersonaRosterEntry, mainWorkdir: string, homeBase: string): string {
     const name = isBlank(persona?.name) ? (persona?.id ?? "") : persona.name;
     return (
-        `[登场上下文] 本次主工作目录: ${mainWorkdir.trim()}。` +
-        `你是 ${isBlank(persona?.emoji) ? "" : persona.emoji}${name}（${persona?.id ?? ""}），` +
-        `家仍在 ${homeBase}；需要读记忆先看 .persona/。`
+        `[Hero context] Main working directory: ${mainWorkdir.trim()}. ` +
+        `You are ${isBlank(persona?.emoji) ? "" : persona.emoji + " "}${name} (${persona?.id ?? ""}); ` +
+        `your home base is ${homeBase}; read your memory under .persona/.`
     );
 }
 

@@ -176,7 +176,11 @@ const Widget = memo(
                 divOnPointerLeave={isTargetWidget ? (e) => onWidgetHoverEnd?.(widgetId, widget, e) : undefined}
             >
                 <div style={{ color: widget.color }}>
-                    <i className={makeIconClass(icon, true, { defaultIcon: "browser" })}></i>
+                    {icon != null && /[^\x00-\x7F]/.test(icon) ? (
+                        <span>{icon}</span>
+                    ) : (
+                        <i className={makeIconClass(icon, true, { defaultIcon: "browser" })}></i>
+                    )}
                 </div>
                 {mode === "normal" && !isBlank(widget.label) ? (
                     <div

@@ -247,7 +247,7 @@ function PersonaDetail({
                     onClick={() => onLaunch(row)}
                     className="shrink-0 rounded border border-accent/40 bg-accentbg px-2.5 py-1 text-[11px] text-accent hover:bg-hover"
                 >
-                    叫TA登场
+                    Confirm
                 </button>
             </div>
 
@@ -269,24 +269,25 @@ function PersonaDetail({
                         <CapacityCell label="syncable" bytes={storage?.syncableBytes ?? 0} />
                     </div>
                     <div className="mt-1 text-[10px] text-muted">
-                        total {formatBytes(storage?.totalBytes ?? 0)} · 同步只带 archive/history（
-                        {formatBytes(storage?.syncableBytes ?? 0)}）
+                        total {formatBytes(storage?.totalBytes ?? 0)} · sync ships archive/history only (
+                        {formatBytes(storage?.syncableBytes ?? 0)})
                     </div>
                 </section>
 
                 <section className="mb-4">
                     <div className="mb-1.5 flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted">
-                        <span>待批准提议</span>
+                        <span>Pending proposals</span>
                         <span className="rounded-full bg-warning/15 px-1.5 py-[1px] text-[10px] normal-case text-warning">
                             ⚡{row.pendingProposals}
                         </span>
                     </div>
                     {row.pendingProposals === 0 ? (
-                        <div className="text-[11px] text-muted">没有待批准的记忆提议。</div>
+                        <div className="text-[11px] text-muted">No pending memory proposals.</div>
                     ) : (
                         <div className="flex flex-col gap-1.5">
                             <div className="text-[11px] text-secondary">
-                                v1 只读：先看提议列表拿到 stamp，再用命令逐条批准（写操作留在 CLI）。
+                                Read-only in v1: copy a stamp from the proposals list and approve it via the CLI (writes
+                                stay in the CLI).
                             </div>
                             <CopyLine text={personaInboxCommand(row.id)} />
                             <CopyLine text={personaApproveCommand(row.id)} />
@@ -345,24 +346,24 @@ function PersonaView({ model }: PersonaViewProps) {
     return (
         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-block">
             <div className="flex items-center gap-2 border-b border-border/60 px-3 py-1.5">
-                <span className="text-[11px] text-secondary">人设名册</span>
+                <span className="text-[11px] text-secondary">Heroes</span>
                 <span className="truncate font-mono text-[10px] text-muted" title={overview?.root ?? ""}>
                     {overview?.root ?? ""}
                 </span>
-                <span className="ml-auto shrink-0 text-[10px] text-muted">{rows.length} 位</span>
+                <span className="ml-auto shrink-0 text-[10px] text-muted">{rows.length} total</span>
                 <button
                     type="button"
                     onClick={onRefresh}
                     disabled={loading}
                     className="shrink-0 rounded border border-border/70 px-1.5 py-0.5 text-[10px] text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
                 >
-                    {loading ? "刷新中…" : "Refresh"}
+                    {loading ? "Refreshing…" : "Refresh"}
                 </button>
             </div>
 
             {error !== "" && (
                 <div className="border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-[11px] text-secondary">
-                    读取名册失败：{error}
+                    Failed to load heroes: {error}
                 </div>
             )}
 
@@ -387,7 +388,7 @@ function PersonaView({ model }: PersonaViewProps) {
                         <PersonaDetail row={selectedRow} root={overview?.root ?? ""} onLaunch={onLaunch} />
                     ) : (
                         <div className="flex flex-1 items-center justify-center text-[11px] text-muted">
-                            选一个人设查看详情
+                            Select a hero to see details
                         </div>
                     )}
                 </div>

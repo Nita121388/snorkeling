@@ -409,7 +409,7 @@ describe("persona row chip (A1.5)", () => {
         );
     }
 
-    it("renders 🎭 + persona name as a chip when a persona is supplied", () => {
+    it("renders the persona emoji + name as a chip when a persona is supplied", () => {
         const markup = renderRow();
         const personaMarkup = renderToStaticMarkup(
             <SessionRow
@@ -424,7 +424,7 @@ describe("persona row chip (A1.5)", () => {
             />
         );
         expect(personaMarkup).toContain('data-persona-id="demo"');
-        expect(personaMarkup).toContain("🎭 Demo");
+        expect(personaMarkup).toContain("🦊 Demo");
         // 无 persona 的行（同一条 markup 基线）不应出现行标。
         expect(markup).not.toContain("data-persona-id");
     });
@@ -443,6 +443,6 @@ describe("persona row chip (A1.5)", () => {
             />
         );
         expect(personaMarkup).toContain('data-persona-id="ghost"');
-        expect(personaMarkup).toContain("🎭 ghost");
+        expect(personaMarkup).toContain("🦸 ghost");
     });
 });

@@ -102,11 +102,11 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
     return (
         <Modal
             className="persona-create-wizard w-[min(94vw,720px)]"
-            title="🎭 设为新人设"
+            title="🦸 Set as New Hero"
             subtitle={
                 step === StepIdentity
-                    ? "步骤 1 / 2 · 身份"
-                    : `步骤 2 / 2 · 预览${scaffoldDir ? ` · ${scaffoldDir}` : ""}`
+                    ? "Step 1 of 2 · Identity"
+                    : `Step 2 of 2 · Preview${scaffoldDir ? ` · ${scaffoldDir}` : ""}`
             }
             onClose={close}
             footer={
@@ -117,7 +117,7 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                             className="cursor-pointer rounded border border-border bg-surface px-3 py-1 text-xs text-secondary transition-colors hover:text-foreground"
                             onClick={() => setStep(StepIdentity)}
                         >
-                            上一步
+                            Back
                         </button>
                     ) : null}
                     {step === StepIdentity ? (
@@ -132,7 +132,7 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                             )}
                             onClick={goPreview}
                         >
-                            下一步 · 预览文件树
+                            Next
                         </button>
                     ) : (
                         <button
@@ -140,7 +140,7 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                             className="cursor-pointer rounded bg-accent px-3 py-1 text-xs text-white hover:opacity-90"
                             onClick={close}
                         >
-                            完成（命令已就绪）
+                            Done
                         </button>
                     )}
                 </div>
@@ -150,7 +150,7 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                 <div className="flex flex-col gap-3 px-1 pb-1">
                     <label className="flex flex-col gap-1">
                         <span className="text-[10px] font-medium uppercase tracking-wide text-muted/80">
-                            名字（必填）
+                            Name (required)
                         </span>
                         <input
                             type="text"
@@ -161,11 +161,11 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                             autoFocus
                         />
                         <span className={clsy(nameError)}>
-                            {nameError !== "" ? nameError : `id 预览：${idPreview || "—"}`}
+                            {nameError !== "" ? nameError : `id preview: ${idPreview || "—"}`}
                         </span>
                     </label>
                     <div className="grid grid-cols-2 gap-3">
-                        <Field label="Emoji" value={draft.emoji} onChange={setField("emoji")} placeholder="🎭" />
+                        <Field label="Emoji" value={draft.emoji} onChange={setField("emoji")} placeholder="🦸" />
                         <Field
                             label="Provider"
                             value={draft.provider}
@@ -173,18 +173,24 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                             placeholder="pi"
                         />
                         <Field
-                            label="Role（一句话职责）"
+                            label="Role (one line)"
                             value={draft.role}
                             onChange={setField("role")}
-                            placeholder="备份归档"
+                            placeholder="backup & archive"
                         />
-                        <Field label="Model" value={draft.model} onChange={setField("model")} placeholder="（可选）" />
+                        <Field
+                            label="Model"
+                            value={draft.model}
+                            onChange={setField("model")}
+                            placeholder="(optional)"
+                        />
                     </div>
                     <p className="text-[11px] text-muted/80">
-                        来源：{source || "—"}
-                        {projectPath ? ` · 主工作目录 ${projectPath}` : ""}。记忆初稿（会话 Note/Tags）由 CLI 参数
+                        Source: {source || "—"}
+                        {projectPath ? ` · main working dir ${projectPath}` : ""}. Memory draft (session Note/Tags)
+                        comes from the
                         <code className="mx-1 rounded bg-surface-soft px-1">--memory-from-session</code>
-                        提供，本向导不直接写 MEMORY。
+                        flag; this wizard never writes MEMORY.
                     </p>
                 </div>
             ) : (
@@ -193,7 +199,7 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                         {loading ? (
                             <div className="flex items-center justify-center py-8 text-muted">
                                 <i className="fa fa-solid fa-spinner fa-spin mr-2"></i>
-                                <span className="text-xs">正在生成文件树…</span>
+                                <span className="text-xs">Building file tree…</span>
                             </div>
                         ) : error !== "" ? (
                             <div className="px-3 py-6 text-center text-xs text-error">
@@ -204,7 +210,7 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                                         className="cursor-pointer rounded border border-border px-2 py-0.5 text-xs hover:border-accent"
                                         onClick={() => fetchPreview(draft)}
                                     >
-                                        重试
+                                        Retry
                                     </button>
                                 </div>
                             </div>
@@ -233,8 +239,8 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                     </div>
                     <div className="flex min-h-0 flex-col gap-2">
                         <div className="text-[11px] text-muted/80">
-                            目录名 <code className="rounded bg-surface-soft px-1">{idPreview || "—"}</code>
-                            （最终以 CLI 为准）
+                            Directory name <code className="rounded bg-surface-soft px-1">{idPreview || "—"}</code>
+                            (CLI is authoritative)
                         </div>
                         <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded border border-border bg-surface p-2 font-mono text-[11px] text-secondary">
                             {command}
@@ -245,13 +251,14 @@ function PersonaCreateWizard({ source, sessionTitle, projectPath, onClose }: Per
                                 className="cursor-pointer rounded border border-border bg-surface px-3 py-1 text-xs text-secondary hover:text-foreground"
                                 onClick={copyCommand}
                             >
-                                复制命令
+                                Copy command
                             </button>
                         </div>
                         <p className="text-[11px] text-muted/70">
-                            本向导不直接落盘：命令由你执行，propose 闸门保持在 CLI 侧。加
+                            This wizard never writes to disk: run the command yourself so the propose gate stays on the
+                            CLI side. Add
                             <code className="mx-1 rounded bg-surface-soft px-1">--memory-from-session</code>
-                            可把会话 Note/Tags 变成 MEMORY 初稿提议。
+                            to turn session Note/Tags into a MEMORY draft proposal.
                         </p>
                     </div>
                 </div>

@@ -15,6 +15,7 @@ import { GenActionButton } from "./gen-action-button";
 import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
 import type { OpenLevel } from "./open-sessions";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
+import { SessionRunBadge } from "./session-run-badge";
 import { SessionTagChips } from "./session-tag-chips";
 import {
     extractSessionTagsFromNote,
@@ -26,7 +27,6 @@ import {
     stripSessionTagHashes,
 } from "./session-tags";
 import { getChatSource } from "./sources";
-import { SessionRunBadge } from "./session-run-badge";
 import { TitleSourceBadge } from "./title-source-badge";
 import type { SessionRunningState } from "./use-sessions-running";
 import {
@@ -658,7 +658,7 @@ export function SessionRow({
                                 title={`Persona: ${persona.id}`}
                                 data-persona-id={persona.id}
                             >
-                                🎭 {persona.name || persona.id}
+                                {(persona.emoji ? persona.emoji + " " : "🦸 ") + (persona.name || persona.id)}
                             </span>
                         ) : null}
                         {session.vendorid ? (

@@ -902,7 +902,7 @@ describe("persona folding (A1.5)", () => {
         expect(groups).toHaveLength(1);
         expect(groups[0].personaId).toBe("demo");
         expect(groups[0].path).toBe("persona:demo");
-        expect(groups[0].name).toBe("🎭 🦊 Demo");
+        expect(groups[0].name).toBe("🦊 Demo");
         expect(groups[0].sessions).toHaveLength(2);
         // AC2 探针：组名/路径里不能出现 rootdir 原文。
         expect(groups[0].name).not.toContain(Root);
@@ -918,7 +918,7 @@ describe("persona folding (A1.5)", () => {
             ctx("C:\\Users\\Me\\.snorkeling\\personas")
         );
         expect(groups[0].personaId).toBe("demo");
-        expect(groups[0].name).toBe("🎭 🦊 Demo");
+        expect(groups[0].name).toBe("🦊 Demo");
     });
 
     it("leaves non-persona paths untouched", () => {
@@ -966,8 +966,8 @@ describe("persona folding (A1.5)", () => {
     });
 
     it("personaGroupLabel falls back to the bare id", () => {
-        expect(personaGroupLabel({ id: "demo", name: "" })).toBe("🎭 demo");
-        expect(personaGroupLabel({ id: "demo", name: "Demo", emoji: "🦊" })).toBe("🎭 🦊 Demo");
+        expect(personaGroupLabel({ id: "demo", name: "" })).toBe("🦸 demo");
+        expect(personaGroupLabel({ id: "demo", name: "Demo", emoji: "🦊" })).toBe("🦊 Demo");
     });
 
     it("reads props.persona and counts 登场史 consistently", () => {

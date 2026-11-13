@@ -105,7 +105,7 @@ describe("PersonaView", () => {
         const { model, store } = makeModel({ root: "/home/me/.snorkeling/personas", personas: [] });
         render(model, store);
         expect(container.textContent).toContain(PersonaCreateCommand);
-        expect(container.textContent).toContain("0 位");
+        expect(container.textContent).toContain("0 total");
     });
 
     it("renders one list row per persona with role, provider/model, journal line and ⚡ count", () => {
@@ -122,7 +122,7 @@ describe("PersonaView", () => {
         expect(text).toContain("pi / deepseek-v3");
         expect(text).toContain("归档了一批备份");
         expect(text).toContain("⚡2");
-        expect(container.textContent).toContain("1 位");
+        expect(container.textContent).toContain("1 total");
     });
 
     it("shows the CHARTER body and the copyable approval commands in the detail pane", () => {
@@ -135,7 +135,7 @@ describe("PersonaView", () => {
         expect(container.textContent).toContain("管备份");
         expect(container.textContent).toContain("wsh persona memory inbox backup-guard");
         expect(container.textContent).toContain("wsh persona memory approve backup-guard <stamp> --yes");
-        expect(container.textContent).toContain("叫TA登场");
+        expect(container.textContent).toContain("Confirm");
     });
 
     it("switches the detail pane when another row is selected", () => {
@@ -166,6 +166,6 @@ describe("PersonaView", () => {
             target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
         expect(container.textContent).toContain("night-watch");
-        expect(container.textContent).toContain("没有待批准的记忆提议");
+        expect(container.textContent).toContain("No pending memory proposals");
     });
 });

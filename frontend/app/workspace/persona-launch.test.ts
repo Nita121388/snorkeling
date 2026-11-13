@@ -51,8 +51,8 @@ describe("personaRosterLabel", () => {
 describe("personaInjectionPrompt", () => {
     it("carries the main workdir, name, id and home base", () => {
         const prompt = personaInjectionPrompt(persona, "E:/code/snorkeling", "C:/personas/backup-guard");
-        expect(prompt).toContain("[登场上下文] 本次主工作目录: E:/code/snorkeling");
-        expect(prompt).toContain("🎭Backup Guard（backup-guard）");
+        expect(prompt).toContain("[Hero context] Main working directory: E:/code/snorkeling");
+        expect(prompt).toContain("🎭 Backup Guard (backup-guard)");
         expect(prompt).toContain("C:/personas/backup-guard");
         expect(prompt).toContain(".persona/");
     });
@@ -110,8 +110,8 @@ describe("buildPersonaLaunchBlockDef", () => {
         expect(meta[AgentPersonaInjectWorkdirMetaKey]).toBe("E:/code/snorkeling");
         const args = meta["cmd:args"] as string[];
         const last = args[args.length - 1];
-        expect(last).toContain("[登场上下文] 本次主工作目录: E:/code/snorkeling");
-        expect(last).toBe(args.find((a) => a.includes("[登场上下文]")));
+        expect(last).toContain("[Hero context] Main working directory: E:/code/snorkeling");
+        expect(last).toBe(args.find((a) => a.includes("[Hero context]")));
     });
 
     it("keeps the meta but skips the positional arg for providers outside the allowlist", () => {
@@ -126,7 +126,7 @@ describe("buildPersonaLaunchBlockDef", () => {
         const meta = blockDef.meta as Record<string, unknown>;
         expect(meta[AgentPersonaInjectWorkdirMetaKey]).toBe("E:/code/snorkeling");
         const args = (meta["cmd:args"] as string[] | undefined) ?? [];
-        expect(args.some((a) => a.includes("[登场上下文]"))).toBe(false);
+        expect(args.some((a) => a.includes("[Hero context]"))).toBe(false);
     });
 
     it("does not inject when the toggle is off", () => {
@@ -139,7 +139,7 @@ describe("buildPersonaLaunchBlockDef", () => {
         expect(injectionApplied).toBe(false);
         const meta = blockDef.meta as Record<string, unknown>;
         expect(meta[AgentPersonaInjectWorkdirMetaKey]).toBeUndefined();
-        expect((meta["cmd:args"] as string[] | undefined)?.some((a) => a.includes("[登场上下文]"))).toBe(false);
+        expect((meta["cmd:args"] as string[] | undefined)?.some((a) => a.includes("[Hero context]"))).toBe(false);
     });
 
     it("honours explicit popup profile and model picks over persona.json", () => {

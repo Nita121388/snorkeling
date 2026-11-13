@@ -368,3 +368,12 @@ loop prove 6/6 全绿。Electron 真机验证留用户手动。
 `frontend/app/view/persona` 28 例（含 13 例向导纯逻辑）、`frontend/app/view/aisessions` 781 例全绿；
 tsc 47 基线零新增；loop prove 7/7 全绿。三处入口中 AISessions 视图菜单与 agent block 头部右键已接，
 Session Detail ⋯ 菜单入口留后续（同一总线，接入成本很低）。真机验证留用户手动。
+
+## 15. 命名分层与 UI 词汇（2026-11-13 用户定稿）
+
+- **用户可见层 = Hero**：图标 🦸（弃用 masks-theater 面具——吓人）；词汇统一英文
+  Select / Hero / Confirm（弃用「登场/召唤」舞台腔）。组名/行标 = 人设自有 emoji，缺省回退 🦸。
+- **代码标识层 = persona（暂）**：包名 `pkg/persona`、CLI `wsh persona`、settings `persona:*`、
+  block meta `persona`、RPC `Persona*` 保持不变。
+- 「persona → Hero 全量改名」已确认可行：全部 persona 代码在 0.0.127 tag 之后（未发版，零兼容成本），
+  待作为独立改名包执行（含 `.persona/` 磁盘布局是否改为 `.hero/` 的决策）。

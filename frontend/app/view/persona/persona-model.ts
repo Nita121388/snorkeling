@@ -10,25 +10,25 @@
 import { isBlank } from "@/util/util";
 
 /** Fallback avatar when a persona.json carries no emoji. */
-export const DefaultPersonaEmoji = "🎭";
+export const DefaultPersonaEmoji = "🦸";
 
 /** Shown when neither provider nor model is declared. */
-export const UnknownProviderModel = "未指定";
+export const UnknownProviderModel = "unknown";
 
 /** Shown when the persona has no `role` and its CHARTER has no usable first line. */
-export const EmptyRoleText = "（未写职责）";
+export const EmptyRoleText = "(no role)";
 
 /** Shown when the persona has no journal entries yet. */
-export const EmptyJournalText = "（暂无 journal）";
+export const EmptyJournalText = "(no journal yet)";
 
 /** Shown in the detail pane when CHARTER.md is empty. */
-export const EmptyCharterText = "（CHARTER.md 为空）";
+export const EmptyCharterText = "(CHARTER.md is empty)";
 
 /** Default number of CHARTER lines rendered as an excerpt. */
 export const DefaultCharterLines = 6;
 
 /** Empty-roster guidance (design §6): the CLI is the only create path in v1. */
-export const PersonaCreateCommand = "wsh persona create --name <名> --yes";
+export const PersonaCreateCommand = "wsh persona create --name <name> --yes";
 
 /** One roster row: identity + list-line summary + detail payload. */
 export type PersonaRosterRow = {
@@ -161,7 +161,7 @@ export function deriveRosterRows(overview: AISessionsPersonaOverviewResponse | n
 
 /** Empty-roster guidance text (the CLI create line is the actionable part). */
 export function emptyStateText(): string {
-    return `还没有人设。先在终端里建一个：${PersonaCreateCommand}`;
+    return `No heroes yet. Create one in a terminal: ${PersonaCreateCommand}`;
 }
 
 /** Copyable human-approval command for one pending memory proposal. */
