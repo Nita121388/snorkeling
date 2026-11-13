@@ -42,3 +42,11 @@
 
 要点：7/7 判据全绿；rootdir 单仓 + §3.2 gitignore + `persona sync` 六子命令 +
 clone 后 rebuild + journal 冲突双留 + sync.mode。真机 / 真实 remote push 留用户手动。
+
+## 2026-11-13 补记（A6 完成；归档仍待 nita 确认）
+
+| # | Trellis 任务 | loop 包 | 验收 | 提交 |
+|---|---|---|---|---|
+| 6 | `.trellis/tasks/11-12-persona-journal/` | F-1113-persona-journal-r1 | 4/5（代理验收，来源=用户本会话授权） | 见 git log |
+
+要点：7/7 判据全绿；journal 写入器 + 提议制（批准/驳回/幂等/审计）+ 蒸馏（去重/TL;DR/undo）。

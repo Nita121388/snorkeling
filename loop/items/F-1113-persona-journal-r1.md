@@ -3,7 +3,7 @@ id: F-1113-persona-journal-r1
 title: "A6 journal 写入器 + 提议制记忆 + 蒸馏（含回滚）"
 type: feature
 priority: P1
-status: open
+status: accepted
 origin: self
 source: "2026-11-13T03:48:30Z"
 task: 11-12-persona-journal
@@ -12,6 +12,7 @@ touch: [pkg/persona/**, cmd/wsh/cmd/wshcmd-persona.go, pkg/agentguide/**, pkg/ag
 rollback: null
 budget: {minutes: 240, retries: 2}
 releaseCandidate: false
+score: {value: 4, by: nita, at: "2026-11-13T04:01:24Z", note: "用户 2026-11-13 会话原话授权代理验收「继续开发直到完成」；真机验证留用户手动。7/7 判据机器采数全绿，9 个新 Go 测试含覆盖率与回滚断言。"}
 createdAt: "2026-11-13T03:48:30Z"
 ---
 
