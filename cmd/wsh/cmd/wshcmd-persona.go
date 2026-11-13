@@ -51,6 +51,10 @@ var (
 
 	personaSection string
 	personaText    string
+
+	personaJournalState     string
+	personaDistillUndo      bool
+	personaDistillThreshold int
 )
 
 var personaCmd = &cobra.Command{
@@ -204,6 +208,47 @@ var personaSyncModeCmd = &cobra.Command{
 	RunE:  personaSyncModeRun,
 }
 
+// A6: shift journal, human-gated inbox decisions and memory distillation.
+var personaJournalCmd = &cobra.Command{
+	Use:   "journal",
+	Short: "Shift journal (append-only, machine-owned)",
+}
+
+var personaJournalAppendCmd = &cobra.Command{
+	Use:   "append <id>",
+	Short: "Append one shift-journal line (needs --yes)",
+	Args:  cobra.ExactArgs(1),
+	RunE:  personaJournalAppendRun,
+}
+
+var personaMemoryInboxCmd = &cobra.Command{
+	Use:   "inbox <id>",
+	Short: "List pending / approved / dismissed memory proposals",
+	Args:  cobra.ExactArgs(1),
+	RunE:  personaMemoryInboxRun,
+}
+
+var personaMemoryApproveCmd = &cobra.Command{
+	Use:   "approve <id> <stamp>",
+	Short: "Human approval: append the proposal to long-term memory (needs --yes)",
+	Args:  cobra.ExactArgs(2),
+	RunE:  personaMemoryApproveRun,
+}
+
+var personaMemoryRejectCmd = &cobra.Command{
+	Use:   "reject <id> <stamp>",
+	Short: "Dismiss a proposal but keep it for audit (needs --yes)",
+	Args:  cobra.ExactArgs(2),
+	RunE:  personaMemoryRejectRun,
+}
+
+var personaDistillCmd = &cobra.Command{
+	Use:   "distill <id>",
+	Short: "De-duplicate long-term memory and refresh the TL;DR (--dry-run|--yes|--undo)",
+	Args:  cobra.ExactArgs(1),
+	RunE:  personaDistillRun,
+}
+
 var personaMemoryAddCmd = &cobra.Command{
 	Use:   "add <id>",
 	Short: "Append memory (journal direct; facts/lessons become inbox proposals)",
@@ -244,12 +289,22 @@ func init() {
 	personaMemoryAddCmd.Flags().StringVar(&personaAgentName, "agent-name", "", "record this agent name as the source")
 	personaMemoryAddCmd.Flags().StringVar(&personaBlockFlag, "block", "", "block id for --from-session this (defaults to WAVETERM_BLOCKID)")
 	personaMemoryAddCmd.Flags().BoolVar(&personaDryRun, "dry-run", false, "explicitly force a preview and write nothing")
+	personaJournalAppendCmd.Flags().StringVar(&personaJournalState, "state", "done", "shift state: working|blocked|done|stale")
+	personaJournalAppendCmd.Flags().StringVar(&personaText, "text", "", "one-line shift summary")
+	personaJournalAppendCmd.Flags().StringVar(&personaFromSession, "from-session", "", "record this agent session as the source (or 'this')")
+	personaJournalAppendCmd.Flags().StringVar(&personaAgentName, "agent-name", "", "record this agent name as the source")
+	personaJournalAppendCmd.Flags().StringVar(&personaBlockFlag, "block", "", "block id for --from-session this")
+	personaDistillCmd.Flags().BoolVar(&personaDryRun, "dry-run", false, "preview the diff without writing")
+	personaDistillCmd.Flags().BoolVar(&personaDistillUndo, "undo", false, "restore the most recent distill backup")
+	personaDistillCmd.Flags().IntVar(&personaDistillThreshold, "threshold", 0, "entry count that triggers distillation (default 20)")
 	personaProposeCmd.AddCommand(personaProposeListCmd)
-	personaMemoryCmd.AddCommand(personaMemoryAddCmd)
 	personaCmd.AddCommand(personaCreateCmd, personaListCmd, personaGetCmd, personaRenameCmd,
 		personaProposeCmd, personaApproveCmd, personaRejectCmd, personaMemoryCmd, personaSyncCmd)
 	personaSyncCmd.AddCommand(personaSyncInitCmd, personaSyncStatusCmd, personaSyncPullCmd,
 		personaSyncPushCmd, personaSyncRebuildCmd, personaSyncModeCmd)
+	personaJournalCmd.AddCommand(personaJournalAppendCmd)
+	personaMemoryCmd.AddCommand(personaMemoryAddCmd, personaMemoryInboxCmd, personaMemoryApproveCmd, personaMemoryRejectCmd)
+	personaCmd.AddCommand(personaJournalCmd, personaDistillCmd)
 	rootCmd.AddCommand(personaCmd)
 }
 
@@ -757,5 +812,152 @@ func personaSyncModeRun(cmd *cobra.Command, args []string) (rtnErr error) {
 		return writeJSONObj(map[string]any{"verb": "mode", "id": args[0], "mode": mode, "path": path})
 	}
 	WriteStdout("%s sync.mode = %s (%s)\n", args[0], mode, path)
+	return nil
+}
+
+// ---- A6 journal / inbox / distill runners ---------------------------------
+
+func personaJournalAppendRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona journal append", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	agent, err := personaResolveAgent()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(personaText) == "" {
+		return fmt.Errorf("--text is required")
+	}
+	entry := persona.JournalEntry{
+		State:   personaJournalState,
+		Summary: personaText,
+		Source:  persona.SourceLabel(agent),
+	}
+	if !personaYes {
+		if personaJSON {
+			return writeJSONObj(map[string]any{"dryRun": true, "id": args[0], "state": entry.State, "text": entry.Summary, "source": entry.Source})
+		}
+		WriteStdout("dry-run: would append journal line for %s (--yes to write)\n", args[0])
+		return nil
+	}
+	result, err := persona.AppendJournal(root, args[0], entry)
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"result": result})
+	}
+	WriteStdout("appended: %s", result.Line)
+	return nil
+}
+
+func personaMemoryInboxRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona memory inbox", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	items, err := persona.ListInbox(root, args[0])
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"id": args[0], "items": items})
+	}
+	if len(items) == 0 {
+		WriteStdout("no memory proposals for %s\n", args[0])
+		return nil
+	}
+	for _, item := range items {
+		WriteStdout("%s [%s] %s → %s: %s\n", item.Stamp, item.Status, item.Section, item.Target, item.Content)
+	}
+	return nil
+}
+
+func personaMemoryApproveRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona memory approve", rtnErr == nil)
+	}()
+	if !personaYes {
+		return fmt.Errorf("approval is a human decision: pass --yes to apply")
+	}
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	result, err := persona.ApproveInbox(root, args[0], args[1], nil)
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"result": result})
+	}
+	WriteStdout("%s: %s → %s (changed=%v)\n", result.Stamp, result.Status, result.Target, result.Changed)
+	return nil
+}
+
+func personaMemoryRejectRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona memory reject", rtnErr == nil)
+	}()
+	if !personaYes {
+		return fmt.Errorf("rejection is a human decision: pass --yes to apply")
+	}
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	result, err := persona.DismissInbox(root, args[0], args[1])
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"result": result})
+	}
+	WriteStdout("%s: %s (changed=%v)\n", result.Stamp, result.Status, result.Changed)
+	return nil
+}
+
+func personaDistillRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona distill", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	if personaDistillUndo {
+		if !personaYes {
+			return fmt.Errorf("--undo writes files: pass --yes to apply")
+		}
+		path, err := persona.UndoDistill(root, args[0])
+		if err != nil {
+			return err
+		}
+		if personaJSON {
+			return writeJSONObj(map[string]any{"undo": path})
+		}
+		WriteStdout("restored from %s\n", path)
+		return nil
+	}
+	dryRun := !personaYes || personaDryRun
+	result, err := persona.Distill(root, args[0], persona.DistillOptions{
+		Threshold: personaDistillThreshold,
+		DryRun:    dryRun,
+	})
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"result": result})
+	}
+	WriteStdout("distill %s: %d → %d entries (removed %d, TL;DR %d) dryRun=%v backup=%s\n",
+		result.ID, result.Before, result.After, result.Removed, result.TLDR, result.DryRun, orDash(result.Backup))
 	return nil
 }

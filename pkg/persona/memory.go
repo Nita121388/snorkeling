@@ -127,6 +127,13 @@ func appendInbox(root, id, section, text string, agent *Provenance, now time.Tim
 }
 
 // memorySourceLabel renders the provenance line: who proposed this.
+// SourceLabel is the exported provenance label for CLI callers that write a
+// shift journal line (A6). The single implementation stays here so journal
+// lines, inbox proposals and journal audits all read the same way.
+func SourceLabel(agent *Provenance) string {
+	return memorySourceLabel(agent)
+}
+
 func memorySourceLabel(agent *Provenance) string {
 	if agent == nil {
 		return "human:" + currentUser()

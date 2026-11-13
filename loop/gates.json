@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-13T03:36:01Z",
+  "updatedAt": "2026-11-13T03:48:48Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -255,6 +255,23 @@
       "g5": {
         "ok": true,
         "executedAt": "2026-11-13T03:36:01Z",
+        "by": "compliance"
+      }
+    },
+    "F-1113-persona-journal-r1": {
+      "g1": {
+        "at": "2026-11-13T03:48:48Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "dd0da9c6c875"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-F-1113-persona-journal-r1.txt（journal.go/distill.go 不存在、TestInbox/TestDistill 无测试、personaJournalCmd 无命中）",
+        "at": "2026-11-13T03:48:48Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-13T03:48:48Z",
         "by": "compliance"
       }
     },

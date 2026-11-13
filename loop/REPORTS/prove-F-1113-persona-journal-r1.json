@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "cmd": "go test ./pkg/persona/... ./pkg/service/aisessionsservice/...",
+      "expect": "ok",
+      "ok": true,
+      "tail": "ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t(cached) | ok  \tgithub.com/wavetermdev/waveterm/pkg/service/aisessionsservice\t32.198s"
+    },
+    {
+      "cmd": "go build ./cmd/wsh/ && echo BUILD_OK",
+      "expect": "BUILD_OK",
+      "ok": true,
+      "tail": "BUILD_OK"
+    },
+    {
+      "cmd": "go test ./pkg/persona/ -run TestJournal -v",
+      "expect": "PASS",
+      "ok": true,
+      "tail": "--- PASS: TestJournalAppendFormatAndGuards (0.05s) | PASS | ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t0.196s"
+    },
+    {
+      "cmd": "go test ./pkg/persona/ -run TestInbox -v",
+      "expect": "PASS",
+      "ok": true,
+      "tail": "--- PASS: TestInboxTargetWhitelistRejectsEscape (0.03s) | PASS | ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t0.367s"
+    },
+    {
+      "cmd": "go test ./pkg/persona/ -run TestDistill -v",
+      "expect": "PASS",
+      "ok": true,
+      "tail": "--- PASS: TestDistillNormalizesWhitespaceDuplicates (0.00s) | PASS | ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t1.118s"
+    },
+    {
+      "cmd": "npx tsc --noEmit -p tsconfig.json | grep -c \"error TS\" || true",
+      "expect": "<=47",
+      "ok": true,
+      "tail": "47"
+    },
+    {
+      "cmd": "grep personaJournalCmd cmd/wsh/cmd/wshcmd-persona.go",
+      "expect": "personaJournalCmd",
+      "ok": true,
+      "tail": "var personaJournalCmd = &cobra.Command{ | \tpersonaJournalCmd.AddCommand(personaJournalAppendCmd) | \tpersonaCmd.AddCommand(personaJournalCmd, personaDistillCmd)"
+    }
+  ]
+}

@@ -242,3 +242,37 @@ work/ 不外泄、rebuild 不碰真源、gitignore 幂等、冲突双留、mode 
 - `pull/push` 是 git 薄封装，remote 由人配置，不自动猜。
 - 「clone 后首次登场自动重建」v1 由显式 `wsh persona sync rebuild` 提供；自动挂钩登场留 A4 名册 Block。
 - journal 冲突合并是纯函数 + CLI 状态提示，未注册 git merge driver。
+
+## 11. A6 journal / 提议制 / 蒸馏（已落地）
+
+任务：`.trellis/tasks/11-12-persona-journal/`（loop 包 `F-1113-persona-journal-r1`）。
+
+| 单元 | 文件 | 说明 |
+|---|---|---|
+| 当班留痕 + 提议制 | `pkg/persona/journal.go` | `AppendJournal` / `ListInbox` / `ApproveInbox` / `DismissInbox` |
+| 蒸馏 | `pkg/persona/distill.go` | `Distill` / `UndoDistill` / TL;DR 维护 / 去重 |
+| CLI | `cmd/wsh/cmd/wshcmd-persona.go` | `persona journal append` / `memory inbox\|approve\|reject` / `distill` |
+
+### 契约
+
+- journal 行：`- <RFC3339> [<working|blocked|done|stale>] <来源> — <一句摘要>`；append-only，
+  追加后刷新 `.index/PERSONAS.md`（💤 休眠判定的 last-active 代理）。
+- inbox 块沿用 A2.5：`## <ts> <section> propose` + `- 来源/目标/内容`；
+  旧块无 `- 状态:` 视为 pending。**批准 = 人的动作**（CLI 强制 `--yes`）：
+  内容 append 到白名单目标（`MEMORY/facts.md|lessons.md|CHARTER.md`），标记 `approved`，
+  并写一条 journal 审计；重复批准是 no-op。驳回只标记 `dismissed`，正文与出处都保留。
+- 蒸馏：facts `## 正文` / lessons 全文的 `- ` 条目按规范化文本去重；`## TL;DR` 重写为
+  最近 ≤5 条；写前备份 `MEMORY/archive/.distill-backup-<ts>.json`（随 git 走），
+  `--undo` 精确还原字节。低于阈值且无重复 → 字节级 no-op（不产生 TL;DR churn / 备份）。
+
+### 验证
+
+9 个新 Go 测试（journal 格式与守卫、inbox 解析/批准/驳回/幂等/legacy/路径逃逸、
+蒸馏去重+100% 覆盖率+undo+no-op）；`go build ./cmd/wsh/` BUILD_OK；tsc 47 基线零新增；
+loop prove 7/7 全绿。真机验证留用户手动。
+
+### 有意收窄
+
+- 蒸馏 v1 是显式 CLI 的纯 Go 变换，不接前端 AutoGenerate RPC / 后台 worker
+  （记忆的唯一写路径是 `wsh persona`，接 RPC 会多一份事实来源）。
+- inbox 目标只认三个白名单相对路径；`CHARTER.md` 也只 append，绝不重写人写正文。

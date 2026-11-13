@@ -1,0 +1,9 @@
+== red proof F-1113-persona-journal-r1 @ cb639607 ==
+-- journal.go
+ls: cannot access 'pkg/persona/journal.go': No such file or directory
+-- inbox/distill tests
+testing: warning: no tests to run
+PASS
+ok  	github.com/wavetermdev/waveterm/pkg/persona	0.543s [no tests to run]
+-- personaJournalCmd
+exit=1

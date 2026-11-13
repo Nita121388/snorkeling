@@ -88,6 +88,14 @@ One persona identity card (persona.json) and its CHARTER.
 
 Flags: `<id>`, `--json`
 
+### `wsh persona memory inbox`
+
+List pending / approved / dismissed long-term-memory proposals.
+
+Flags: `<id>`, `--json`
+
+- Old proposal blocks without a 状态 line are parsed as pending.
+
 ### `wsh persona sync status`
 
 Rootdir git state: clean, branch, remote and unmerged paths.
@@ -152,6 +160,33 @@ Flags: `<id>`, `--section facts|lessons|journal`, `--text`, `--from-session <key
 
 - journal needs --yes; facts/lessons always land in MEMORY/inbox.md and exit 1 — --yes does not override that.
 - Never write facts.md/lessons.md/CHARTER.md directly; propose through inbox.md.
+
+### `wsh persona journal append`
+
+Append one shift-journal line (timestamp + state + summary + source).
+
+Flags: `<id>`, `--text`, `--state working|blocked|done|stale`, `--from-session <key|this>`, `--agent-name`, `--yes`, `--json`
+
+- Dry-run unless --yes; the journal is the last-active proxy for the 💤 dormant marker.
+
+### `wsh persona memory approve`
+
+Human gate: append a pending proposal to facts/lessons/CHARTER and audit it in the journal.
+
+Flags: `<id>`, `<stamp>`, `--yes`, `--json`
+
+- --yes is mandatory: agents may propose, never approve.
+- Idempotent: approving twice never duplicates the fact.
+- persona memory reject keeps the proposal marked dismissed for audit.
+
+### `wsh persona distill`
+
+De-duplicate facts/lessons, refresh the ≤5-entry TL;DR, and back up for --undo.
+
+Flags: `<id>`, `--threshold`, `--dry-run`, `--yes`, `--undo`, `--json`
+
+- Below the threshold with no duplicates it is a byte-for-byte no-op.
+- --undo restores the exact previous bytes from MEMORY/archive/.distill-backup-*.json.
 
 ### `wsh persona sync init`
 

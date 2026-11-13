@@ -120,6 +120,13 @@ func Commands() []Command {
 			Flags:   []string{"<id>", "--json"},
 		},
 		{
+			Cmd:     "persona memory inbox",
+			Scope:   "observe",
+			Summary: "List pending / approved / dismissed long-term-memory proposals.",
+			Flags:   []string{"<id>", "--json"},
+			Notes:   []string{"Old proposal blocks without a 状态 line are parsed as pending."},
+		},
+		{
 			Cmd:     "persona sync status",
 			Scope:   "observe",
 			Summary: "Rootdir git state: clean, branch, remote and unmerged paths.",
@@ -191,6 +198,27 @@ func Commands() []Command {
 				"journal needs --yes; facts/lessons always land in MEMORY/inbox.md and exit 1 — --yes does not override that.",
 				"Never write facts.md/lessons.md/CHARTER.md directly; propose through inbox.md.",
 			},
+		},
+		{
+			Cmd:     "persona journal append",
+			Scope:   "data",
+			Summary: "Append one shift-journal line (timestamp + state + summary + source).",
+			Flags:   []string{"<id>", "--text", "--state working|blocked|done|stale", "--from-session <key|this>", "--agent-name", "--yes", "--json"},
+			Notes:   []string{"Dry-run unless --yes; the journal is the last-active proxy for the 💤 dormant marker."},
+		},
+		{
+			Cmd:     "persona memory approve",
+			Scope:   "data",
+			Summary: "Human gate: append a pending proposal to facts/lessons/CHARTER and audit it in the journal.",
+			Flags:   []string{"<id>", "<stamp>", "--yes", "--json"},
+			Notes:   []string{"--yes is mandatory: agents may propose, never approve.", "Idempotent: approving twice never duplicates the fact.", "persona memory reject keeps the proposal marked dismissed for audit."},
+		},
+		{
+			Cmd:     "persona distill",
+			Scope:   "data",
+			Summary: "De-duplicate facts/lessons, refresh the ≤5-entry TL;DR, and back up for --undo.",
+			Flags:   []string{"<id>", "--threshold", "--dry-run", "--yes", "--undo", "--json"},
+			Notes:   []string{"Below the threshold with no duplicates it is a byte-for-byte no-op.", "--undo restores the exact previous bytes from MEMORY/archive/.distill-backup-*.json."},
 		},
 		{
 			Cmd:     "persona sync init",
