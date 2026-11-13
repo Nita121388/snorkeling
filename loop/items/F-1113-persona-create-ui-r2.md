@@ -3,7 +3,7 @@ id: F-1113-persona-create-ui-r2
 title: "A2 创建向导：两步向导 + 三入口 + 同源文件树预览"
 type: feature
 priority: P1
-status: open
+status: accepted
 origin: self
 source: "2026-11-13T07:58:23Z"
 task: 11-12-persona-create-ui
@@ -12,6 +12,7 @@ touch: [pkg/service/aisessionsservice/**, frontend/app/view/persona/**, frontend
 rollback: null
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
+score: {value: 4, by: nita, at: "2026-11-13T08:07:59Z", note: "用户 2026-11-13 会话原话授权代理验收「继续 需要将未完成的完成，真机验证交给我即可」。7/7 判据机器采数全绿；Session Detail ⋯ 入口留后续（同一总线接入成本很低）。commit 00bf0ea8。"}
 createdAt: "2026-11-13T07:58:23Z"
 ---
 

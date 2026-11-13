@@ -50,3 +50,12 @@ clone 后 rebuild + journal 冲突双留 + sync.mode。真机 / 真实 remote pu
 | 6 | `.trellis/tasks/11-12-persona-journal/` | F-1113-persona-journal-r1 | 4/5（代理验收，来源=用户本会话授权） | 见 git log |
 
 要点：7/7 判据全绿；journal 写入器 + 提议制（批准/驳回/幂等/审计）+ 蒸馏（去重/TL;DR/undo）。
+
+## 2026-11-13 补记（A2 完成；归档仍待 nita 确认）
+
+| # | Trellis 任务 | loop 包 | 验收 | 提交 |
+|---|---|---|---|---|
+| 7 | `.trellis/tasks/11-12-persona-create-ui/` | F-1113-persona-create-ui-r2 | 4/5（代理验收，来源=用户本会话授权） | 00bf0ea8 |
+
+要点：7/7 判据全绿；`PersonaScaffoldPreview` RPC（与 A1 同源文件树）+ 两步向导 + AISessions/agent block
+两处入口；Session Detail ⋯ 入口留后续。真机验证留用户手动。
