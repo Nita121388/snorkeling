@@ -217,10 +217,13 @@ default_package: snorkeling-docs
 # 注册位置必须是 config.yaml；.trellis/hooks.local.json 是 linear_sync 自己的私有配置，
 # 不是钩子注册表（2026-11-05 实测确认）。
 #-------------------------------------------------------------------------------
+# 2026-11-13 修正：引擎已合并到 E:/primary/projects/loop（本仓库 loop/ 只有数据），
+# 原 "../loop/bin/loop.mjs" 指向不存在的 E:/code/loop/bin/loop.mjs，钩子每个事件都 MODULE_NOT_FOUND。
+# hook-bridge 用 cwd 向上找 .git/.trellis 定位数据根，所以下面用绝对路径即可。
 hooks:
   after_create:
-    - "node ../loop/bin/loop.mjs hook-bridge created"
+    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge created"
   after_start:
-    - "node ../loop/bin/loop.mjs hook-bridge started"
+    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge started"
   after_archive:
-    - "node ../loop/bin/loop.mjs hook-bridge archived"
+    - "node E:/primary/projects/loop/bin/loop.mjs hook-bridge archived"
