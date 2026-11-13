@@ -45,15 +45,21 @@ type anthropicChatMessage struct {
 }
 
 func (m *anthropicChatMessage) GetMessageId() string {
+	if m == nil {
+		return ""
+	}
 	return m.MessageId
 }
 
 func (m *anthropicChatMessage) GetRole() string {
+	if m == nil {
+		return ""
+	}
 	return m.Role
 }
 
 func (m *anthropicChatMessage) GetUsage() *uctypes.AIUsage {
-	if m.Usage == nil {
+	if m == nil || m.Usage == nil {
 		return nil
 	}
 

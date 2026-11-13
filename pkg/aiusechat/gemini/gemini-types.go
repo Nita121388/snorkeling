@@ -20,15 +20,21 @@ type GeminiChatMessage struct {
 }
 
 func (m *GeminiChatMessage) GetMessageId() string {
+	if m == nil {
+		return ""
+	}
 	return m.MessageId
 }
 
 func (m *GeminiChatMessage) GetRole() string {
+	if m == nil {
+		return ""
+	}
 	return m.Role
 }
 
 func (m *GeminiChatMessage) GetUsage() *uctypes.AIUsage {
-	if m.Usage == nil {
+	if m == nil || m.Usage == nil {
 		return nil
 	}
 	return &uctypes.AIUsage{

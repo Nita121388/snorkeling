@@ -188,6 +188,9 @@ func getUsage(msgs []uctypes.GenAIMessage) uctypes.AIUsage {
 	var rtn uctypes.AIUsage
 	var found bool
 	for _, msg := range msgs {
+		if msg == nil {
+			continue
+		}
 		if usage := msg.GetUsage(); usage != nil {
 			if !found {
 				rtn = *usage
@@ -554,6 +557,12 @@ func WaveAIPostMessageWrap(ctx context.Context, sseHandler *sse.SSEHandlerCh, me
 	convertedMessage, err := backend.ConvertAIMessageToNativeChatMessage(*message)
 	if err != nil {
 		return fmt.Errorf("message conversion failed: %w", err)
+	}
+	// Conversion may legitimately decline a message and return (nil, nil).
+	// Storing a typed-nil would poison chat.NativeMessages and later panic on
+	// method dispatch (e.g. GetUsage/GetMessageId), so reject it here.
+	if convertedMessage == nil {
+		return fmt.Errorf("message conversion returned no native message")
 	}
 
 	// Post message to chat store

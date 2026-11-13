@@ -236,15 +236,21 @@ type ChatUsage struct {
 }
 
 func (m *StoredChatMessage) GetMessageId() string {
+	if m == nil {
+		return ""
+	}
 	return m.MessageId
 }
 
 func (m *StoredChatMessage) GetRole() string {
+	if m == nil {
+		return ""
+	}
 	return m.Message.Role
 }
 
 func (m *StoredChatMessage) GetUsage() *uctypes.AIUsage {
-	if m.Usage == nil {
+	if m == nil || m.Usage == nil {
 		return nil
 	}
 	return &uctypes.AIUsage{

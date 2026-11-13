@@ -73,6 +73,11 @@ func RunCompletion(ctx context.Context, opts uctypes.AIOptsType, systemPrompt st
 	if err != nil {
 		return "", fmt.Errorf("converting completion input: %w", err)
 	}
+	// Guard against a nil native message: storing it would make
+	// chat.NativeMessages contain a typed-nil and panic later.
+	if nativeUser == nil {
+		return "", fmt.Errorf("converting completion input: no native message produced")
+	}
 	if err := chatstore.DefaultChatStore.PostMessage(chatId, &opts, nativeUser); err != nil {
 		return "", fmt.Errorf("seeding completion chat: %w", err)
 	}

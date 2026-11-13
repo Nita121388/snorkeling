@@ -136,18 +136,21 @@ type openAIErrorType struct {
 }
 
 func (m *OpenAIChatMessage) GetMessageId() string {
+	if m == nil {
+		return ""
+	}
 	return m.MessageId
 }
 
 func (m *OpenAIChatMessage) GetRole() string {
-	if m.Message != nil {
-		return m.Message.Role
+	if m == nil || m.Message == nil {
+		return ""
 	}
-	return ""
+	return m.Message.Role
 }
 
 func (m *OpenAIChatMessage) GetUsage() *uctypes.AIUsage {
-	if m.Usage == nil {
+	if m == nil || m.Usage == nil {
 		return nil
 	}
 	return &uctypes.AIUsage{
