@@ -4,11 +4,13 @@
 package aisessionsservice
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/persona"
 )
 
@@ -102,5 +104,106 @@ func TestLoadPersonaRosterCachesWithinTTL(t *testing.T) {
 	_, refreshed := loadPersonaRoster()
 	if len(refreshed) != 2 {
 		t.Fatalf("refreshed load count = %d, want 2 (cache expired)", len(refreshed))
+	}
+}
+
+func TestPersonaRosterRPCReturnsRootAndProviderModel(t *testing.T) {
+	root := t.TempDir()
+	writeTestPersona(t, root, "alpha", `{"schemaVersion":1,"id":"alpha","name":"Alpha","provider":"pi","model":"gpt-5.2","createdAt":"2026-11-12T00:00:00Z"}`)
+	t.Setenv(persona.EnvRoot, root)
+	resetPersonaRosterForTest()
+
+	svc := &AISessionsService{}
+	resp, err := svc.PersonaRoster(context.Background(), &AISessionsPersonaRosterRequest{})
+	if err != nil {
+		t.Fatalf("PersonaRoster: %v", err)
+	}
+	if resp.Root != root {
+		t.Fatalf("root = %q, want %q", resp.Root, root)
+	}
+	if len(resp.Personas) != 1 {
+		t.Fatalf("personas = %d, want 1", len(resp.Personas))
+	}
+	p := resp.Personas[0]
+	if p.ID != "alpha" || p.Provider != "pi" || p.Model != "gpt-5.2" {
+		t.Fatalf("summary = %+v, want provider/model passthrough", p)
+	}
+}
+
+func TestPersonaRosterRPCDegradesToEmpty(t *testing.T) {
+	t.Setenv(persona.EnvRoot, filepath.Join(t.TempDir(), "nope"))
+	resetPersonaRosterForTest()
+
+	svc := &AISessionsService{}
+	resp, err := svc.PersonaRoster(context.Background(), &AISessionsPersonaRosterRequest{})
+	if err != nil {
+		t.Fatalf("PersonaRoster on unreadable root: %v", err)
+	}
+	if resp.Root != "" || len(resp.Personas) != 0 {
+		t.Fatalf("resp = %+v, want empty degradation", resp)
+	}
+}
+
+func TestDerivePersonaProps(t *testing.T) {
+	root := filepath.ToSlash(t.TempDir())
+	personas := []PersonaSummary{
+		{ID: "backup", Name: "Backup"},
+		{ID: "writer", Name: "Writer"},
+	}
+	mkRow := func(projectPath string, existing map[string]aisessions.PropertyCell) aisessions.SessionSummary {
+		return aisessions.SessionSummary{ProjectPath: projectPath, Props: existing}
+	}
+
+	rows := []aisessions.SessionSummary{
+		mkRow(root+"/backup", nil),                        // home base itself
+		mkRow(root+"/backup/work/notes.md", nil),          // one level under it
+		mkRow(root+"/backup-guard", nil),                  // segment boundary: must NOT match backup
+		mkRow(root+"/writer", nil),                        // second persona
+		mkRow("E:/some/real/project", nil),                // unrelated project
+		mkRow(root+"/backup", map[string]aisessions.PropertyCell{ // explicit value wins
+			"persona": {Value: "hand-written", Source: "user"},
+		}),
+	}
+	derivePersonaProps(rows, root, personas)
+
+	if got := rows[0].Props["persona"]; got.Value != "backup" || got.Source != PersonaDerivedSource {
+		t.Fatalf("rows[0] = %+v, want derived backup", got)
+	}
+	if got := rows[1].Props["persona"]; got.Value != "backup" {
+		t.Fatalf("rows[1] = %+v, want derived backup for nested path", got)
+	}
+	if _, ok := rows[2].Props["persona"]; ok {
+		t.Fatalf("rows[2] segment boundary violated: %+v", rows[2].Props["persona"])
+	}
+	if got := rows[3].Props["persona"]; got.Value != "writer" {
+		t.Fatalf("rows[3] = %+v, want derived writer", got)
+	}
+	if len(rows[4].Props) != 0 {
+		t.Fatalf("rows[4] should stay untouched: %+v", rows[4].Props)
+	}
+	if got := rows[5].Props["persona"]; got.Value != "hand-written" {
+		t.Fatalf("rows[5] explicit value overwritten: %+v", got)
+	}
+}
+
+func TestDerivePersonaPropsNormalizesSeparatorsAndCase(t *testing.T) {
+	personas := []PersonaSummary{{ID: "backup", Name: "Backup"}}
+	rows := []aisessions.SessionSummary{
+		{ProjectPath: `E:\Personas\Backup\BACKUP\work`},
+	}
+	// Root declared with backslashes, mixed case AND a parent hop: the match
+	// must still be segment-exact against the cleaned <root>/<id>.
+	derivePersonaProps(rows, `e:/personas/backup/../backup`, personas)
+	if got := rows[0].Props["persona"]; got.Value != "backup" {
+		t.Fatalf("rows[0] = %+v, want derived backup across separators/case", got)
+	}
+}
+
+func TestDerivePersonaPropsNoRosterIsNoop(t *testing.T) {
+	rows := []aisessions.SessionSummary{{ProjectPath: "E:/anywhere"}}
+	derivePersonaProps(rows, "", []PersonaSummary{{ID: "backup"}})
+	derivePersonaProps(rows, "E:/root", nil)
+	if len(rows[0].Props) != 0 {
+		t.Fatalf("no roster must be a no-op: %+v", rows[0].Props)
 	}
 }

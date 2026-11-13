@@ -85,3 +85,26 @@ node loop/queue.mjs verify-ledger                     # 台账可解析
 1. **只读预检只许用 `queue list / show / derive / board --json`。** `gate / add / run --emit-pick / accept / drop / lead` 全是写操作，不要带猜测性 flag 去"试一下"。
 2. **`gate` 的 `--by` 必须是人手给出的那一刻**；agent 只有在用户当次对话里明确说过「可以/开工/签字」时才能代录，且必须在验收记录写清来源原话。夜里没有这句话 → 包保持 `blocked:g1`，不是「想办法让它 clear」。
 3. **误签的补救路径 = `queue drop` + 重建新 id**（`gates.json` / ledger 不手改）。drop 理由必须写清误签原因；被写进 prd.md 的 `Confirmed:` 行要一并删除（它不在 hash 区间内，删了不改 hash）。
+
+### L-0006 prove 判据的期望值只认三种形态，且命令在 Windows 上跑的是 cmd.exe
+
+2026-11-13 实测（A3 包连 drop 两次才弄清）：`queue prove` 的 `matchesExpect`（`lib/prove.mjs`）
+只支持 **`<=N`**、**字面量 includes**、**`31/31` 形态的子串** 三种期望；写成 `>=1` 永远判红
+（实测 tail=`2` 仍是 FAIL）。且判据命令经 `execSync(..., shell: true)` 执行——**Windows 下是
+cmd.exe**，不是 bash：`$(...)` 命令替换直接报 `test: extra argument '-c'`；grep 模式带空格时
+cmd 的引号剥离会让匹配悄悄变 0。
+
+三条硬规则：
+
+1. **期望值只会写三种形态**：`<=N`（数字上界）、字面量子串（输出里必须出现这句话）、
+   `31/31`（计数形态）。要断言「至少出现一次」，用字面量断言定义行本身（如
+   `grep AgentPersonaIdMetaKey file` + expect `export const AgentPersonaIdMetaKey = "…"`），
+   计数无关。
+2. **判据命令必须 cmd.exe / bash 双兼容**：不用 `$()`、不用 `test -ge`、grep 模式不带空格
+   （要么裸模式，要么无空格前缀）、`^` 锚是 cmd 的转义符不许出现在模式里。
+3. **拿不准先在两个 shell 里各跑一遍**：`cmd //c "<cmd>"`（Git Bash 里）+ 直接 bash，
+   两边输出一致才写进 accept。
+
+教训 L-0006b（同日第二脚）：prove 下跑大 vitest 套件（64 文件 781 例）会 OOM
+（`ERR_IPC_CHANNEL_CLOSED` / heap out of memory）——`NODE_OPTIONS=--max-old-space-size=8192`
+必须带在 prove 的环境里；第一跑红了先按 flaky 重试一次再下结论（预算 retries 内重试合规）。

@@ -211,6 +211,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Origins", Array.from(arguments))
     }
 
+    // list local persona roster for the stage-entry popup
+    // @returns persona root and trimmed roster entries
+    PersonaRoster(request: AISessionsPersonaRosterRequest): Promise<AISessionsPersonaRosterResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "PersonaRoster", Array.from(arguments))
+    }
+
     // list AI prompt features with their built-in defaults
     // @returns prompt feature metadata for the settings page
     PromptTemplates(request: AISessionsPromptTemplatesRequest): Promise<AISessionsPromptTemplatesResponse> {

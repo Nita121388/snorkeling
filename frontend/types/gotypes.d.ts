@@ -390,6 +390,15 @@ declare global {
         origins: AISessionsOrigin[];
     };
 
+    // aisessionsservice.AISessionsPersonaRosterRequest
+    type AISessionsPersonaRosterRequest = object;
+
+    // aisessionsservice.AISessionsPersonaRosterResponse
+    type AISessionsPersonaRosterResponse = {
+        root?: string;
+        personas?: PersonaSummary[];
+    };
+
     // aisessionsservice.AISessionsPromptTemplatesRequest
     type AISessionsPromptTemplatesRequest = object;
 
@@ -2687,6 +2696,8 @@ declare global {
         name: string;
         emoji?: string;
         role?: string;
+        provider?: string;
+        model?: string;
     };
 
     // wconfig.PinnedDirectoryType

@@ -1,14 +1,17 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
+import { LaunchHoverOpenDelayMs } from "@/app/element/hover-timing";
 import { MiddleEllipsis } from "@/app/element/middle-ellipsis";
 import { Tooltip } from "@/app/element/tooltip";
-import { LaunchHoverOpenDelayMs } from "@/app/element/hover-timing";
 import * as WOS from "@/app/store/wos";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TabTargetModal } from "@/app/tab/tab-target-modal";
+import { type PathSelection } from "@/app/view/preview/path-panel-model";
+import { pathUsageAtom, removePathUsage } from "@/app/view/preview/path-usage-store";
+import { NewFilesFloatingWindow } from "@/app/view/preview/preview-new-files";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
-import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     AgentDefaultLaunchTargetMetaKey,
@@ -31,6 +34,7 @@ import {
     getLaunchTargetDefaultKey,
     moveDefaultProfileFirst,
     moveDefaultTargetFirst,
+    PersonaWidgetId,
     resolveAgentBlockCommandForLaunch,
     resolveDefaultLaunchTarget,
     TerminalDefaultLaunchTargetMetaKey,
@@ -40,12 +44,10 @@ import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/work
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import { subscribeLaunchPopup, type LaunchPopupAnchor } from "@/app/workspace/launch-popup-bus";
 import { getNoteDirectory, makeNoteBlockDef, NoteWidgetAction } from "@/app/workspace/note-block";
+import { PersonaLaunchFloatingWindow } from "@/app/workspace/persona-launch-window";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { openWidgetQuickLaunch } from "@/app/workspace/widget-quick-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
-import { type PathSelection } from "@/app/view/preview/path-panel-model";
-import { pathUsageAtom, removePathUsage } from "@/app/view/preview/path-usage-store";
-import { NewFilesFloatingWindow } from "@/app/view/preview/preview-new-files";
 import type { LayoutTreeInsertNodeAction } from "@/layout/index";
 import { getLayoutModelForStaticTab, LayoutTreeActionType, newLayoutNode } from "@/layout/index";
 import { modalsModel } from "@/store/modalmodel";
@@ -88,6 +90,7 @@ export type WidgetsEnv = WaveEnvSubset<{
     services: {
         client: WaveEnv["services"]["client"];
         object: WaveEnv["services"]["object"];
+        aisessions: WaveEnv["services"]["aisessions"];
     };
     wos: WaveEnv["wos"];
     createBlock: WaveEnv["createBlock"];
@@ -142,7 +145,11 @@ const Widget = memo(
         const [isTruncated, setIsTruncated] = useState(false);
         const labelRef = useRef<HTMLDivElement>(null);
         const icon = widgetId === "defwidget@sessions" && widget.icon === "messages-square" ? "comments" : widget.icon;
-        const isTargetWidget = widgetId === DefaultTerminalWidgetId || widgetId === DefaultAgentWidgetId || widgetId === DefaultFilesWidgetId;
+        const isTargetWidget =
+            widgetId === DefaultTerminalWidgetId ||
+            widgetId === DefaultAgentWidgetId ||
+            widgetId === DefaultFilesWidgetId ||
+            widgetId === PersonaWidgetId;
 
         useEffect(() => {
             if (mode === "normal" && labelRef.current) {
@@ -1833,6 +1840,10 @@ const Widgets = memo(() => {
         return Array.isArray(saved) ? saved : [];
     }, [settings]);
     const filesHoverTimerRef = useRef<number | null>(null);
+    // Persona stage-entry window (A3)：同 Agent/Files 一样 hover 定时打开，互斥其它浮窗。
+    const [isPersonaLaunchOpen, setIsPersonaLaunchOpen] = useState(false);
+    const [personaReferenceElement, setPersonaReferenceElement] = useState<HTMLElement | null>(null);
+    const personaHoverTimerRef = useRef<number | null>(null);
     // ponytail: bus 发起的（Blocks 组「＋」菜单 / Quick Launch）二级浮窗，需要把 open 状态回传给发起方，
     // 且其居中意图（centered）要透传给浮窗本身。两个 ref 在 subscribeLaunchPopup 命中时写入，
     // 浮窗关闭时回传 false 并复位。仅 bus 来源置位，右侧 WidgetsBar 自身 hover 不会误触回调。
@@ -2001,11 +2012,7 @@ const Widgets = memo(() => {
     // 路径中枢浮窗（Files）：右侧 WidgetsBar 的悬浮入口与 Blocks 组「＋」菜单共用同一面板。
     // 组入口经 launch-popup-bus 发起，sinkNodeId 非空时创建结果落回发起组（见 createBlockInGroupSink）。
     const openFilesWindowAt = useCallback(
-        (
-            referenceElement: LaunchPopupAnchor,
-            sinkNodeId: string | null,
-            fallbackConnection: string | null
-        ) => {
+        (referenceElement: LaunchPopupAnchor, sinkNodeId: string | null, fallbackConnection: string | null) => {
             // 先关两个 target selector：它们会把 groupSinkNodeId 置 null，所以必须先关再设。
             // notifyBus=false：这里只是「换一个二级浮窗」，不是二级被用户关掉，
             // 回传 false 会让一级菜单误判二级已关（提前收起 + Esc 一次关两层）。
@@ -2032,6 +2039,27 @@ const Widgets = memo(() => {
         }
         setGroupSinkNodeId(null);
     }, []);
+
+    // Persona stage-entry window (A3)：互斥其它三个浮窗。notifyBus 语义同上三个 close。
+    const closePersonaLaunchWindow = useCallback(() => {
+        setIsPersonaLaunchOpen(false);
+        setPersonaReferenceElement(null);
+        if (personaHoverTimerRef.current != null) {
+            window.clearTimeout(personaHoverTimerRef.current);
+            personaHoverTimerRef.current = null;
+        }
+    }, []);
+
+    const openPersonaLaunchWindow = useCallback(
+        (referenceElement: HTMLElement) => {
+            closeAgentTargetSelector(false);
+            closeTerminalTargetSelector(false);
+            closeFilesWindow(false);
+            setPersonaReferenceElement(referenceElement);
+            setIsPersonaLaunchOpen(true);
+        },
+        [closeAgentTargetSelector, closeTerminalTargetSelector, closeFilesWindow]
+    );
 
     const createBlockInCurrentTab = useCallback(
         (blockDef: BlockDef, magnified: boolean) => env.createBlock(blockDef, magnified),
@@ -2318,6 +2346,13 @@ const Widgets = memo(() => {
                 return;
             }
 
+            // 🎭 Persona（A3）：点击 = 打开登场浮窗（hover 同款）。名册 Block 入口在 A4
+            // 落地后改为从浮窗头部进入。
+            if (widgetId === PersonaWidgetId) {
+                openPersonaLaunchWindow(e.currentTarget);
+                return;
+            }
+
             if (widgetId === DefaultAgentWidgetId) {
                 const launchTargets = getCurrentTabAgentLaunchTargets();
                 const defaultTarget = resolveDefaultLaunchTarget(launchTargets, agentDefaultTargetKey);
@@ -2441,8 +2476,23 @@ const Widgets = memo(() => {
                     setIsFilesWindowOpen(true);
                 }, WidgetHoverOpenDelayMs);
             }
+
+            if (widgetId === PersonaWidgetId) {
+                if (personaHoverTimerRef.current != null) {
+                    window.clearTimeout(personaHoverTimerRef.current);
+                }
+                personaHoverTimerRef.current = window.setTimeout(() => {
+                    openPersonaLaunchWindow(referenceElement);
+                }, WidgetHoverOpenDelayMs);
+            }
         },
-        [agentProfileOptions.length, openAgentTargetPopup, openTerminalTargetPopup, refreshCcSwitchVendors]
+        [
+            agentProfileOptions.length,
+            openAgentTargetPopup,
+            openTerminalTargetPopup,
+            openPersonaLaunchWindow,
+            refreshCcSwitchVendors,
+        ]
     );
 
     // Cancel any pending hover-open timer when the pointer leaves the launch card.
@@ -2460,6 +2510,10 @@ const Widgets = memo(() => {
         if (filesHoverTimerRef.current != null) {
             window.clearTimeout(filesHoverTimerRef.current);
             filesHoverTimerRef.current = null;
+        }
+        if (personaHoverTimerRef.current != null) {
+            window.clearTimeout(personaHoverTimerRef.current);
+            personaHoverTimerRef.current = null;
         }
     }, []);
 
@@ -2552,6 +2606,7 @@ const Widgets = memo(() => {
     const anyFloatingOpen =
         isAppsOpen ||
         isSettingsOpen ||
+        isPersonaLaunchOpen ||
         (isAgentTargetOpen && groupSinkNodeId == null) ||
         (isTerminalTargetOpen && groupSinkNodeId == null);
     const expanded = pinned || anyFloatingOpen;
@@ -2783,6 +2838,31 @@ const Widgets = memo(() => {
                     launchEnv={terminalLaunchEnv}
                     onLaunchEnvChange={setTerminalLaunchEnv}
                     centered={launchPopupCenteredRef.current}
+                />
+            )}
+            {personaReferenceElement != null && (
+                <PersonaLaunchFloatingWindow
+                    isOpen={isPersonaLaunchOpen}
+                    onClose={closePersonaLaunchWindow}
+                    referenceElement={personaReferenceElement}
+                    settings={settings}
+                    profileOptions={agentProfileOptions}
+                    fetchRoster={async () => {
+                        const roster = await env.services.aisessions.PersonaRoster({});
+                        return { root: roster?.root ?? "", personas: roster?.personas ?? [] };
+                    }}
+                    getMainWorkdir={() => {
+                        const target = resolveDefaultLaunchTarget(
+                            getCurrentTabAgentLaunchTargets(),
+                            agentDefaultTargetKey
+                        );
+                        return target?.cwd ?? null;
+                    }}
+                    onLaunch={(blockDef) => {
+                        fireAndForget(async () => {
+                            await env.createBlock(blockDef, false);
+                        });
+                    }}
                 />
             )}
             {filesReferenceElement != null && (

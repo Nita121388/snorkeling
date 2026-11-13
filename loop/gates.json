@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-12T12:27:55Z",
+  "updatedAt": "2026-11-13T02:23:35Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -206,6 +206,23 @@
         "by": "compliance"
       }
     },
+    "F-1113-persona-widget-launch-r2": {
+      "g1": {
+        "at": "2026-11-13T02:23:34Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "d5fbe3097d50"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-F-1113-persona-widget-launch.txt @ 60d281bb（实现前全红）；F-1113 / r1 两包实跑 7/8 绿，仅判据 8 期望与 shell 方言问题（drop 理由留痕）",
+        "at": "2026-11-13T02:23:34Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-13T02:23:35Z",
+        "by": "compliance"
+      }
+    },
     "N-1105-cmd-window-flash": {
       "g2": {
         "redProof": "node --test server/lib/spawn-guard.test.mjs → 6 passed；校准 BAD 样本 = 修复前 version.mjs 的真实 execFileSync 行，findMissingWindowsHide 必须抓到（未修复时为红）",
@@ -285,6 +302,16 @@
       "id": "F-1112-persona-aisessions",
       "reason": "g1 被误签：主 agent 以 queue gate --dry-run 预检，但该命令无 dry-run 且忽略未知 flag，实际落签 --by nita。属伪造人门凭据，重建工作项待人手签",
       "at": "2026-11-12T12:15:30Z"
+    },
+    {
+      "id": "F-1113-persona-widget-launch",
+      "reason": "判据 8 期望值写成 \">=1\"，而 lib/prove.mjs matchesExpect 只支持 \"<=N\" / 字面量 includes / \"31/31\" 三种形态，判据不可满足（实测 tail=2 仍判红）。重建为 -r1：把该条改为字面量断言。",
+      "at": "2026-11-13T02:11:37Z"
+    },
+    {
+      "id": "F-1113-persona-widget-launch-r1",
+      "reason": "判据 8 改用 test 0 -ge 1 仍不可满足：prove 用 execSync shell:true，Windows 下是 cmd.exe，不支持  命令替换（实测 test: extra argument '-c'）。且带空格的双引号 grep 模式在 cmd.exe 下匹配失败（实测 0）。重建为 -r2：判据改为无空格裸模式 + 字面量行断言（cmd.exe / bash 双验证通过）。",
+      "at": "2026-11-13T02:23:09Z"
     }
   ]
 }

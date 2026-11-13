@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -83,11 +84,15 @@ type AISessionsListResponse struct {
 
 // PersonaSummary is the trimmed roster entry sent to the frontend: identity
 // card fields only, deliberately without origin/createdBy machine fields.
+// Provider/Model are launch defaults for the A3 stage-entry popup and are
+// intentionally empty for personas that never declared them.
 type PersonaSummary struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Emoji string `json:"emoji,omitempty"`
-	Role  string `json:"role,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Emoji    string `json:"emoji,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
 
 // personaRosterCache is a tiny TTL cache over persona.List: every List call
@@ -150,13 +155,94 @@ func personaSummaries(list []persona.Persona) []PersonaSummary {
 	out := make([]PersonaSummary, 0, len(list))
 	for _, p := range list {
 		out = append(out, PersonaSummary{
-			ID:    p.ID,
-			Name:  p.Name,
-			Emoji: p.Emoji,
-			Role:  p.Role,
+			ID:       p.ID,
+			Name:     p.Name,
+			Emoji:    p.Emoji,
+			Role:     p.Role,
+			Provider: p.Provider,
+			Model:    p.Model,
 		})
 	}
 	return out
+}
+
+// PersonaPropertyKey is the session property a stage entry (A3) owns: the id
+// of the persona whose home base the session runs in.
+const PersonaPropertyKey = "persona"
+
+// PersonaDerivedSource tags derived cells so writers can tell a read-time
+// enrichment apart from a user/AI-authored value (which is never overwritten).
+const PersonaDerivedSource = "persona-derived"
+
+// AISessionsPersonaRosterRequest is empty today; kept as a struct so the RPC
+// surface can grow (e.g. includeDormant) without breaking the wire shape.
+type AISessionsPersonaRosterRequest struct{}
+
+type AISessionsPersonaRosterResponse struct {
+	// Root is the local persona root; empty when this machine has no home bases
+	// or the root is unreadable (callers render "no personas yet" in that case).
+	Root     string           `json:"root,omitempty"`
+	Personas []PersonaSummary `json:"personas,omitempty"`
+}
+
+// derivePersonaProps fills props.persona on rows whose projectPath lives under
+// a persona home base, so a stage entry (A3) is attributed without any write.
+//
+// Rules (design A3 §2.3):
+//   - an explicit props.persona always wins — derived values never overwrite;
+//   - the match is segment-bounded (<root>/<id> or <root>/<id>/…), so a persona
+//     named "backup" cannot claim <root>/backup-guard's sessions;
+//   - both separators and case are normalized (Windows roots are C:\… while pi
+//     encodes session dirs with '/').
+//
+// Mutates rows in place; no-op when the roster is unavailable.
+func derivePersonaProps(rows []aisessions.SessionSummary, root string, personas []PersonaSummary) {
+	if strings.TrimSpace(root) == "" || len(personas) == 0 || len(rows) == 0 {
+		return
+	}
+	normalizedRoot := normalizeMatchPath(root)
+	for idx := range rows {
+		if rows[idx].Props != nil {
+			if _, ok := rows[idx].Props[PersonaPropertyKey]; ok {
+				continue
+			}
+		}
+		projectPath := strings.TrimSpace(rows[idx].ProjectPath)
+		if projectPath == "" {
+			continue
+		}
+		normalizedProject := normalizeMatchPath(projectPath)
+		for _, p := range personas {
+			id := strings.TrimSpace(p.ID)
+			if id == "" {
+				continue
+			}
+			homeBase := normalizedRoot + "/" + strings.ToLower(id)
+			if normalizedProject != homeBase && !strings.HasPrefix(normalizedProject, homeBase+"/") {
+				continue
+			}
+			if rows[idx].Props == nil {
+				rows[idx].Props = make(map[string]aisessions.PropertyCell, 1)
+			}
+			rows[idx].Props[PersonaPropertyKey] = aisessions.PropertyCell{
+				Value:  id,
+				Type:   "text",
+				Source: PersonaDerivedSource,
+			}
+			break
+		}
+	}
+}
+
+// normalizeMatchPath lowercases and slash-normalizes a path for prefix matching.
+// Clean resolves ".."/"." segments so a root declared with parent hops still
+// matches the same directory spelled plainly.
+func normalizeMatchPath(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	trimmed = strings.ReplaceAll(trimmed, "\\", "/")
+	trimmed = path.Clean(trimmed)
+	trimmed = strings.TrimRight(trimmed, "/")
+	return strings.ToLower(trimmed)
 }
 
 type AISessionsTagsRequest struct {
@@ -831,8 +917,28 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	if request.IncludeProjectPaths {
 		response.ProjectPaths = result.ProjectPaths
 		response.PersonaRoot, response.Personas = loadPersonaRoster()
+		// A3 stage attribution: a session whose cwd is a persona home base
+		// belongs to that persona even before anyone writes props.persona.
+		derivePersonaProps(response.Sessions, response.PersonaRoot, response.Personas)
 	}
 	return response, nil
+}
+
+func (svc *AISessionsService) PersonaRoster_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "list local persona roster for the stage-entry popup",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "persona root and trimmed roster entries",
+	}
+}
+
+// PersonaRoster returns the local persona roster for the A3 stage-entry popup
+// (root + identity-card fields). It reuses the same 5s TTL cache the session
+// list uses, so opening the popup never turns into a per-persona file read
+// storm, and an unreadable root degrades to an empty roster instead of an error.
+func (svc *AISessionsService) PersonaRoster(ctx context.Context, request *AISessionsPersonaRosterRequest) (*AISessionsPersonaRosterResponse, error) {
+	root, personas := loadPersonaRoster()
+	return &AISessionsPersonaRosterResponse{Root: root, Personas: personas}, nil
 }
 
 func (svc *AISessionsService) BackupStats_Meta() tsgenmeta.MethodMeta {

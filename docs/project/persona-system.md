@@ -2,7 +2,7 @@
 
 > 设计：`design/plans/persona-system.md`（§3.1 布局 / §3.2 gitignore / §4.5 写入纪律）
 > 任务：`.trellis/tasks/11-12-persona-core/`（loop 包 `F-1112-persona-core-r2`）
-> 状态：A1 / A1.5 / A2.5（CLI 部分）已落地；A2/A3/A4/A5/A5.5/A6 未开始
+> 状态：A1 / A1.5 / A2.5（CLI 部分）/ A3 已落地；A2/A4/A5/A5.5/A6 未开始
 
 ## 1. 代码位置
 
@@ -67,8 +67,8 @@ loop 包 `F-1112-persona-core-r2` 的 7 条判据由 `queue prove` 机器采数�
 - ~~A1.5：AISessions `persona` 属性、🎭 分组折叠、登场史~~（已落地，见 §7）
 - A2：右键/launcher/card 三个交互创建入口 + 两步向导
 - ~~A2.5：MCP 工具 + proposals 闸门 + 配额 + provenance 批准流~~（CLI 部分已落地，见 §8；MCP 工具等 `11-09-agent-block-create`）
-- A3：widget 🎭 + hover 弹窗 + `persona:<id>` block meta（rename 钩子在此接实；登场时写 `props.persona` 的 launch 管线也在 A3）
-- A4：`persona://` 名册 Block
+- ~~A3：widget 🎭 + hover 弹窗 + `persona` block meta + 登场管线~~（已落地，见 §9；rename 钩子留 A4/A5）
+- A4：`persona://` 名册 Block（🎭 点击回名册的入口也在此接回）
 - A5 / A5.5：同步 v1 / rootdir 设置 + relocate + journal 轮转
 - A6：journal 写入器 + 提议制记忆 + 蒸馏
 
@@ -157,3 +157,50 @@ wsh persona memory add p1 --section lessons --text x --root $d --yes        # �
 ```
 
 A2.5 的 7 条判据（PROPOSE/QUOTA/MEMORY_DISCIPLINE/JOURNAL/GUIDE_PERSONA 等）全绿。
+
+## 9. A3 widget 🎭 登场（已落地）
+
+任务：`.trellis/tasks/11-12-persona-widget-launch/`（loop 包 `F-1113-persona-widget-launch-r2`）。
+登场 = `agent-launch` 现有管线 + 3 个 meta 差异，没有新进程模型。
+
+### 代码位置
+
+| 单元 | 文件 | 说明 |
+|---|---|---|
+| 前端纯逻辑 | `frontend/app/workspace/persona-launch.ts` | `PersonaWidgetId` / `AgentPersonaIdMetaKey`（block meta 键 = `persona`）/ `makePersonaHomeBase` / `personaInjectionPrompt` / `buildPersonaLaunchBlockDef` |
+| 登场浮窗 | `frontend/app/workspace/persona-launch-window.tsx` | 三段式：选 Agent（provider 芯片 + 模型输入）/ 选人设 / 注入开关 |
+| widget 接线 | `frontend/app/workspace/widgets.tsx` | 🎭 hover > 300ms / 点击 → 浮窗；与 Agent/Terminal/Files 浮窗互斥 |
+| 模型临时覆盖 | `frontend/app/workspace/agent-launch.ts` | `createAgentBlockDefForProfile(..., modelOverride?)` —— 一次性、不回写 persona.json |
+| 后端 RPC | `pkg/service/aisessionsservice/aisessionsservice.go` | `aisessions.PersonaRoster`（复用 5s TTL 名册缓存）；`derivePersonaProps` |
+| 默认 widget | `pkg/wconfig/defaultconfig/widgets.json` | `defwidget@persona`（`masks-theater`；无 `blockdef` 无 `action` → 不进 Quick Launch / 组「＋」菜单，只挂右条） |
+
+### meta 契约（登场时写入 block meta）
+
+| 键 | 值 | 条件 |
+|---|---|---|
+| `persona` | `<id>` | 恒写（A4 名册 / 悬浮卡读它） |
+| `cmd:cwd` | `<personaroot>/<id>` | 恒写（继承 agent-launch 的 context） |
+| `persona:injectworkdir` | 本次主工作目录绝对路径 | 勾选注入时 |
+| `cmd:args` 末尾一项 | `[登场上下文] 本次主工作目录: …` | 勾选注入 **且** provider ∈ {pi, codex, claude, gemini}（位置参数被当首轮 prompt）；allowlist 外跳过注入、meta 仍写 |
+
+### props.persona 派生补带（A1.5 AC3 收口）
+
+- 会话 `projectPath` 落在 `<root>/<id>` 下（段边界、`/`/`\` 都认、大小写不敏感、`..` 清洗）且自身无
+  `props.persona` 时，`List`（`IncludeProjectPaths`）行数据就地补带
+  `PropertyCell{Value: id, Source: "persona-derived"}`。
+- 纯视图补带：不写 SQLite、永不覆盖显式值（`wsh agent card set --prop persona=<id>` 仍是唯一持久真相）。
+
+### 对 PRD 的收窄（已披露）
+
+- 点击 = 打开登场浮窗（设计原文「点击 → 名册 Block」留 A4 接回）。
+- v1 无「登场中/空闲」状态点（需要会话→persona 活跃判定，归 A4 聚合）；浮窗显示 emoji + 名 + 职责。
+- v1 无 cc-switch vendor 芯片、无 GUI 对话模式登场。
+
+### 验证
+
+- `go test ./pkg/service/aisessionsservice/ -run TestDerivePersonaProps -v`（命中 / 段边界 / 已存值不覆盖 / 分隔符与大小写）
+- `npx vitest run frontend/app/workspace/persona-launch`（17 例）
+- `npx vitest run frontend/app/view/aisessions`（781 例，A1.5 无回归）
+- `npx tsc --noEmit` → 47 = 基线零新增
+- loop 包 `F-1113-persona-widget-launch-r2` prove 8/8 全绿
+- 活体验证（真 Electron 里起一次 🎭 登场，确认 cwd/meta/注入落到位）待白天补跑。

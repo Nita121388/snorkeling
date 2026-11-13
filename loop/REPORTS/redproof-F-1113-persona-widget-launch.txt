@@ -1,0 +1,16 @@
+== red proof F-1113-persona-widget-launch @ 60d281bb 2026-11-13T01:33:16Z ==
+-- cmd: npx vitest run frontend/app/workspace/persona-launch
+[2mfilter: [22m[33mfrontend/app/workspace/persona-launch[39m
+[2minclude: [22m[33m**/*.{test,spec}.?(c|m)[jt]s?(x)[39m
+[2mexclude:  [22m[33m**/node_modules/**[2m, [22mscripts/**/*.test.mjs[2m, [22mtests/**/*.test.mjs[2m, [22m**/dist/**[2m, [22m**/.claude/worktrees/**[2m, [22m**/verify-runs/**[2m, [22m**/.gitnexus/**[2m, [22m**/.runcfg/**[2m, [22mdesign/**[39m
+
+JUNIT report written to E:/code/snorkeling/test-results.xml
+-- cmd: node -e widgets.json defwidget@persona
+exit=1
+-- cmd: grep -c AgentPersonaIdMetaKey frontend/app/workspace/persona-launch.ts
+grep: frontend/app/workspace/persona-launch.ts: No such file or directory
+exit=2
+-- cmd: go test ./pkg/service/aisessionsservice/ -run TestDerivePersonaProps -v
+/usr/bin/bash: line 10: go: command not found
+-- cmd: go build ./cmd/wsh/
+/usr/bin/bash: line 12: go: command not found

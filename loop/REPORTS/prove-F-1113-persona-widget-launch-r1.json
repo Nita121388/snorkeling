@@ -1,0 +1,53 @@
+{
+  "ok": false,
+  "results": [
+    {
+      "cmd": "go test ./pkg/persona/... ./pkg/service/aisessionsservice/...",
+      "expect": "ok",
+      "ok": true,
+      "tail": "ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t(cached) | ok  \tgithub.com/wavetermdev/waveterm/pkg/service/aisessionsservice\t(cached)"
+    },
+    {
+      "cmd": "go build ./cmd/wsh/ && echo BUILD_OK",
+      "expect": "BUILD_OK",
+      "ok": true,
+      "tail": "BUILD_OK"
+    },
+    {
+      "cmd": "go test ./pkg/service/aisessionsservice/ -run TestDerivePersonaProps -v",
+      "expect": "PASS",
+      "ok": true,
+      "tail": "--- PASS: TestDerivePersonaPropsNoRosterIsNoop (0.00s) | PASS | ok  \tgithub.com/wavetermdev/waveterm/pkg/service/aisessionsservice\t(cached)"
+    },
+    {
+      "cmd": "npx vitest run frontend/app/workspace/persona-launch",
+      "expect": "passed",
+      "ok": true,
+      "tail": "\u001b[2m   Duration \u001b[22m 7.27s\u001b[2m (transform 1.46s, setup 116ms, collect 3.73s, tests 12ms, environment 0ms, prepare 406ms)\u001b[22m |  | JUNIT report written to E:/code/snorkeling/test-results.xml"
+    },
+    {
+      "cmd": "npx vitest run frontend/app/view/aisessions",
+      "expect": "passed",
+      "ok": true,
+      "tail": "\u001b[2m   Duration \u001b[22m 31.64s\u001b[2m (transform 33.88s, setup 2.55s, collect 152.09s, tests 9.65s, environment 62.63s, prepare 44.06s)\u001b[22m |  | JUNIT report written to E:/code/snorkeling/test-results.xml"
+    },
+    {
+      "cmd": "npx tsc --noEmit -p tsconfig.json | grep -c \"error TS\" || true",
+      "expect": "<=47",
+      "ok": true,
+      "tail": "47"
+    },
+    {
+      "cmd": "node -e \"const w=require(\"\"./pkg/wconfig/defaultconfig/widgets.json\"\");process.exit(w[\"\"defwidget@persona\"\"]?.icon===\"\"masks-theater\"\"?0:1)\" && echo PERSONA_WIDGET_OK",
+      "expect": "PERSONA_WIDGET_OK",
+      "ok": true,
+      "tail": "PERSONA_WIDGET_OK"
+    },
+    {
+      "cmd": "test $(grep -c \"AgentPersonaIdMetaKey\" frontend/app/workspace/persona-launch.ts) -ge 1 && echo PERSONA_METAKEY_OK",
+      "expect": "PERSONA_METAKEY_OK",
+      "ok": false,
+      "tail": "test: extra argument '-c'"
+    }
+  ]
+}

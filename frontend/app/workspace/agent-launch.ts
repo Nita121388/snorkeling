@@ -27,6 +27,8 @@ const DefaultHomeLaunchTargetCwd = "~";
 export const DefaultAgentWidgetId = "defwidget@agent";
 export const DefaultTerminalWidgetId = "defwidget@terminal";
 export const DefaultFilesWidgetId = "defwidget@files";
+// Right WidgetsBar entry for the persona stage popup (A3, see persona-launch.ts).
+export const PersonaWidgetId = "defwidget@persona";
 export const AgentDefaultLaunchTargetMetaKey = "agent:defaultlaunchtarget";
 export const TerminalDefaultLaunchTargetMetaKey = "term:defaultlaunchtarget";
 
@@ -950,9 +952,10 @@ export function createDefaultAgentBlockDef(
     context?: AgentLaunchContext,
     vendorOptions?: CcSwitchVendor[],
     vendorId?: string,
-    vendorModel?: string
+    vendorModel?: string,
+    modelOverride?: string
 ): BlockDef {
-    return createAgentBlockDef(settings, context, undefined, vendorOptions, vendorId, vendorModel);
+    return createAgentBlockDef(settings, context, undefined, vendorOptions, vendorId, vendorModel, modelOverride);
 }
 
 export function createAgentBlockDefForProfile(
@@ -961,9 +964,10 @@ export function createAgentBlockDefForProfile(
     context?: AgentLaunchContext,
     vendorOptions?: CcSwitchVendor[],
     vendorId?: string,
-    vendorModel?: string
+    vendorModel?: string,
+    modelOverride?: string
 ): BlockDef {
-    return createAgentBlockDef(settings, context, profileName, vendorOptions, vendorId, vendorModel);
+    return createAgentBlockDef(settings, context, profileName, vendorOptions, vendorId, vendorModel, modelOverride);
 }
 
 function createAgentBlockDef(
@@ -972,7 +976,8 @@ function createAgentBlockDef(
     profileName?: string,
     vendorOptions?: CcSwitchVendor[],
     vendorId?: string,
-    vendorModel?: string
+    vendorModel?: string,
+    modelOverride?: string
 ): BlockDef {
     const contextMeta = resolveContextMeta(context);
     const profile = getProfileConfig(settings, profileName);
@@ -985,6 +990,12 @@ function createAgentBlockDef(
     let requestedModel = profileModel;
     if (!isBlank(vendorId) && !isBlank(vendorModel)) {
         requestedModel = vendorModel!.trim();
+    }
+    // A per-launch model override (persona stage entry, A3) beats the profile
+    // default but — like the vendor pick — is a temporary shift value: it is
+    // never written back to the profile or persona.json.
+    if (!isBlank(modelOverride)) {
+        requestedModel = modelOverride!.trim();
     }
     if (requestedModel != null) {
         if (!isBlank(modelFlag)) {

@@ -34,6 +34,12 @@
             }
         }
     },
+    "defwidget@persona": {
+        "display:order": -3.5,
+        "icon": "masks-theater",
+        "label": "persona",
+        "description": "Call a persona onto the stage (hover for the picker)"
+    },
     "defwidget@sessions": {
         "display:order": -2,
         "icon": "comments",

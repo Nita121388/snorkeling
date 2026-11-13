@@ -206,3 +206,35 @@ AISessions 里"一个会话属于哪个人设"必须只读 `summary.props.person
 判定逻辑收口在 `frontend/app/view/aisessions/utils.ts` 的纯函数
 （`buildPersonaContext` / `makePersonaPathMatcher` / `personaIdOfSession`），不要在组件里
 散写第二份路径匹配。
+
+### A3 补带例外（2026-11-13, task 11-12-persona-widget-launch）
+
+「禁止从路径反推归属」这条约束的**主语是前端组件**：任何前端组件不得自己拿 projectPath
+猜 persona。A3 起，后端 `aisessionsservice.List`（`IncludeProjectPaths`）会在行上补带
+`props.persona`：
+
+- 条件：projectPath 命中 `<root>/<id>`（段边界），且该行**没有**显式 `props.persona`；
+- 值：`{value: id, type: "text", source: "persona-derived"}` —— **`source` 必须带**，
+  这是它与用户/AI 写入值的唯一区别；
+- 纯视图补带，不写 SQLite、不参与 `SetProps` 合并；显式值（含 `wsh agent card set`
+  写的）永不覆盖，前端依然只读 `summary.props.persona` 一个字段。
+
+因此"前端唯一真相 = props.persona"不变；变的是它的来源多了一个可辨识的机器派生通道，
+让登场会话在还没来得及写 card 时也有归属。要按来源区分展示（比如派生值弱化）时，
+读 `cell.source`，不要另写路径匹配。
+
+### 登场 blockDef 的 meta 契约（A3）
+
+`frontend/app/workspace/persona-launch.ts` 的 `buildPersonaLaunchBlockDef` 是登场 block
+的唯一构造口：
+
+| meta | 值 | 不变量 |
+|---|---|---|
+| `cmd:cwd` | `<root>/<id>` | 永远是据点，不随"注入主工作目录"开关变 |
+| `persona` | `<id>` | 恒写；A4 名册/悬浮卡从这个键读归属，不要改成 `agent:persona` 之类前缀 |
+| `persona:injectworkdir` | 绝对路径 | 仅勾选注入时写 |
+| `cmd:args` 末项 | `[登场上下文] 本次主工作目录: …` | 仅 provider ∈ {pi, codex, claude, gemini}；allowlist 外只写 meta 不追加位置参数 |
+
+provider/model 的 per-登场覆盖是临时值，**禁止回写** `persona.json` 或 settings profile。
+浮窗里的「＋新建人设」在 A2 落地前必须保持置灰；「点击 🎭」在 A4 落地前打开登场浮窗，
+A4 落地后改回打开 `persona://` 名册 Block。
