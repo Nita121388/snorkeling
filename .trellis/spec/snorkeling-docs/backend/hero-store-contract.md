@@ -1,7 +1,7 @@
 # Persona 存储契约（A1 数据地基 + A2.5 propose 闸门）
 
-> 代码：`pkg/persona/`、`cmd/wsh/cmd/wshcmd-persona.go`
-> 设计：`design/plans/persona-system.md` §3.1 / §3.2 / §3.6 / §4.5
+> 代码：`pkg/hero/`、`cmd/wsh/cmd/wshcmd-hero.go`
+> 设计：`design/plans/persona-system.md`（历史快照，persona 时代的原名） §3.1 / §3.2 / §3.6 / §4.5
 > 实现事实：`docs/project/hero-system.md`
 
 ## 不变量（改代码前先读）
@@ -21,7 +21,7 @@
    显示名不进名册（token 预算）。名册写入用临时文件 + `os.Rename` 原子替换。
 6. **归档也是记忆的一部分。** `MEMORY/archive/` 随 git 同步；`work/` 与
    `*.local.json` 不同步（`.gitignore` 由 scaffold 生成）。
-7. **scope 门词表。** `persona.Scope = "data"` 是写操作的 scope 级别；A1 只有本地人类
+7. **scope 门词表。** `hero.Scope = "data"` 是写操作的 scope 级别；A1 只有本地人类
    CLI，真正的强制点在 A2.5（`agentscope.commandScopes` + `agentguide` 的 MCP 工具）。
    不要在 A1 往 `commandScopes` 塞不存在的 command（假门）。
 8. **propose 按调用者身份分流（A2.5）。** 人类路径永远是 A1 语义；只要调用者被标成
@@ -40,7 +40,7 @@
 ## 判据口径
 
 ```bash
-go test ./pkg/persona/...
+go test ./pkg/hero/...
 go build ./cmd/wsh/
 wsh hero create --name smoke --root /tmp/p --dry-run   # 0 落盘
 wsh hero create --name smoke --root /tmp/p --yes       # .hero/ >= 9 文件
@@ -50,7 +50,7 @@ wsh hero rename smoke second --root /tmp/p --yes       # 旧目录消失、名�
 ## A2.5 判据口径
 
 ```bash
-go test ./pkg/persona/... ./pkg/agentguide/... ./pkg/agentskill/...
+go test ./pkg/hero/... ./pkg/agentguide/... ./pkg/agentskill/...
 go build -o /tmp/wsh ./cmd/wsh/
 
 d=$(mktemp -d)
@@ -60,5 +60,5 @@ wsh hero create --root "$d" --name p3 --from-session s1   # 退出非 0、p3 pro
 wsh hero create --root "$d" --name smoke --yes            # 人类路径直接落地
 wsh hero memory add smoke --section lessons --text x --root "$d" --yes   # 退出 1 + inbox 含 x
 wsh hero memory add smoke --section journal --text j --root "$d" --yes   # 退出 0 + journal 含 j
-wsh agent guide --json | grep -c '"cmd": "persona'           # >= 3
+wsh agent guide --json | grep -c '"cmd": "hero'           # >= 3
 ```
