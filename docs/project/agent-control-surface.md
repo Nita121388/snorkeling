@@ -121,7 +121,7 @@ Write safety:
 - A stale hash (the user edited the card meanwhile) fails with `E_CONFLICT` and no
   partial write happens.
 
-`persona` is always `null`: avatar/persona live only in frontend localStorage
+`hero` is always `null`: avatar/hero live only in frontend localStorage
 (design §15 D3), so the backend cannot read or write them.
 
 ### Precondition semantics (important)

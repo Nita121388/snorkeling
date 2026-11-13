@@ -17,9 +17,9 @@
 
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SortMenu } from "./sort-menu";
 import type { SessionSortChain } from "./types";
 
@@ -46,7 +46,7 @@ function options(): HTMLElement[] {
 }
 
 beforeEach(() => {
-    // 本文件不读 localStorage（SortMenu 是纯受控组件），不要 stub window —— 
+    // 本文件不读 localStorage（SortMenu 是纯受控组件），不要 stub window ——
     // 覆盖 window 会拿走 clearTimeout，floating-ui 的 effect cleanup 直接炸。
     Element.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 200, 30);
 });
@@ -128,9 +128,9 @@ describe("SortMenu", () => {
             onChange
         );
         act(() => trigger().click());
-        const resetBtn = Array.from(
-            document.querySelectorAll<HTMLButtonElement>("button")
-        ).find((b) => b.textContent?.includes("Reset to default"))!;
+        const resetBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
+            b.textContent?.includes("Reset to default")
+        )!;
         act(() => resetBtn.click());
         expect(onChange).toHaveBeenCalledWith([{ field: "time", desc: true }]);
         // 受控组件：父层不更新时按钮摘要不变，所以只断言 onChange 载荷。

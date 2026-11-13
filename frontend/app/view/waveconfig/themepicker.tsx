@@ -5,10 +5,10 @@ import { atoms, useSettingsKeyAtom } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect } from "react";
-import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 
 interface ThemeCardDef {
     mode: AppThemeMode;
@@ -41,7 +41,9 @@ function MiniTermPreview() {
                 </div>
                 <div className="text-secondary">✓ done in 1.4s</div>
                 <div className="flex gap-1 pt-0.5">
-                    <span className="px-1 py-0.5 rounded-sm bg-action text-actiontext text-[7px] font-semibold">Run</span>
+                    <span className="px-1 py-0.5 rounded-sm bg-action text-actiontext text-[7px] font-semibold">
+                        Run
+                    </span>
                     <span className="px-1 py-0.5 rounded-sm border border-border text-muted-foreground text-[7px]">
                         Cancel
                     </span>
@@ -113,7 +115,7 @@ const ThemePickerContent = memo(({ model: _model }: { model: WaveConfigViewModel
                                 "hover:border-foreground/40 hover:shadow-md",
                                 isActive
                                     ? "border-border bg-[var(--main-bg-color)] ring-1 ring-inset ring-foreground/25"
-                                    : "border-border bg-[var(--main-bg-color)]",
+                                    : "border-border bg-[var(--main-bg-color)]"
                             )}
                         >
                             {isActive && (

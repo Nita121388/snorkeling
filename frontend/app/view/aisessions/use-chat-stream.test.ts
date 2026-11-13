@@ -1,12 +1,15 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSseDataLine, runChatStream, type ChatEvent } from "./use-chat-stream";
 
 describe("parseSseDataLine", () => {
     it("parses a valid data frame", () => {
-        expect(parseSseDataLine('data: {"type":"assistant_delta","text":"Hi "}')).toEqual({ type: "assistant_delta", text: "Hi " });
+        expect(parseSseDataLine('data: {"type":"assistant_delta","text":"Hi "}')).toEqual({
+            type: "assistant_delta",
+            text: "Hi ",
+        });
     });
     it("returns null for blank lines", () => {
         expect(parseSseDataLine("")).toBeNull();
@@ -45,7 +48,11 @@ describe("runChatStream", () => {
             vi.fn().mockImplementation(() => {
                 const stream = new ReadableStream<Uint8Array>({
                     start(controller) {
-                        controller.enqueue(encoder.encode('data: {"type":"assistant_delta","text":"Hi "}\n\ndata: {"type":"assistant_delta","text":"there"}\n\ndata: {"type":"turn_end","turnId":"t1"}\n\n'));
+                        controller.enqueue(
+                            encoder.encode(
+                                'data: {"type":"assistant_delta","text":"Hi "}\n\ndata: {"type":"assistant_delta","text":"there"}\n\ndata: {"type":"turn_end","turnId":"t1"}\n\n'
+                            )
+                        );
                         controller.close();
                     },
                 });
@@ -57,7 +64,11 @@ describe("runChatStream", () => {
             vi.stubGlobal("fetch", (...args: any[]) => {
                 const stream = new ReadableStream({
                     start(controller: ReadableStreamDefaultController) {
-                        controller.enqueue(encoder.encode('data: {"type":"assistant_delta","text":"Hi "}\n\ndata: {"type":"assistant_delta","text":"there"}\n\ndata: {"type":"turn_end","turnId":"t1"}\n\n'));
+                        controller.enqueue(
+                            encoder.encode(
+                                'data: {"type":"assistant_delta","text":"Hi "}\n\ndata: {"type":"assistant_delta","text":"there"}\n\ndata: {"type":"turn_end","turnId":"t1"}\n\n'
+                            )
+                        );
                         controller.close();
                     },
                 });
@@ -92,7 +103,9 @@ describe("runChatStream", () => {
                 const stream = new ReadableStream({
                     start(controller: ReadableStreamDefaultController) {
                         const enc = new TextEncoder();
-                        controller.enqueue(enc.encode(': stream-start\n\ndata: {not json}\n\ndata: {"type":"turn_end"}\n\n'));
+                        controller.enqueue(
+                            enc.encode(': stream-start\n\ndata: {not json}\n\ndata: {"type":"turn_end"}\n\n')
+                        );
                         controller.close();
                     },
                 });
@@ -101,10 +114,15 @@ describe("runChatStream", () => {
         );
 
         const done = new Promise<void>((resolve) => {
-            void runChatStream("/x", { source: "pi", sessionId: "s1", message: "hi" }, {
-                onEvent: (evt) => events.push(evt),
-                onDone: () => resolve(),
-            }, new AbortController().signal);
+            void runChatStream(
+                "/x",
+                { source: "pi", sessionId: "s1", message: "hi" },
+                {
+                    onEvent: (evt) => events.push(evt),
+                    onDone: () => resolve(),
+                },
+                new AbortController().signal
+            );
         });
         await done;
         expect(events).toHaveLength(1);

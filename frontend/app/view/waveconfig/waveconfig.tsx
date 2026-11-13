@@ -1,12 +1,12 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CopyForAgent } from "@/app/element/copy-for-agent";
 import { Tooltip } from "@/app/element/tooltip";
 import { globalStore } from "@/app/store/jotaiStore";
 import { tryReinjectKey } from "@/app/store/keymodel";
-import { CopyForAgent } from "@/app/element/copy-for-agent";
-import { buildSettingsJsonFailurePayload } from "@/app/view/waveconfig/waveconfig-json-error";
 import { CodeEditor } from "@/app/view/codeeditor/codeeditor";
+import { buildSettingsJsonFailurePayload } from "@/app/view/waveconfig/waveconfig-json-error";
 import type { ConfigFile, WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";

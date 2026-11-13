@@ -25,11 +25,7 @@ describe("parseSlashQuery", () => {
 });
 
 describe("filterSlashItems", () => {
-    const items = [
-        { name: "skill:brave-search" },
-        { name: "Model" },
-        { name: "compact" },
-    ];
+    const items = [{ name: "skill:brave-search" }, { name: "Model" }, { name: "compact" }];
 
     it("is case-insensitive prefix match", () => {
         expect(filterSlashItems(items, "mod").map((i) => i.name)).toEqual(["Model"]);
@@ -43,15 +39,8 @@ describe("filterSlashItems", () => {
 
 describe("mergeSlashItems", () => {
     it("puts builtins first and sorts dynamic commands by name", () => {
-        const merged = mergeSlashItems([
-            { name: "zeta" },
-            { name: "alpha" },
-        ]);
-        expect(merged.slice(0, BUILTIN_SLASH_COMMANDS.length).map((i) => i.source)).toEqual([
-            "gui",
-            "gui",
-            "gui",
-        ]);
+        const merged = mergeSlashItems([{ name: "zeta" }, { name: "alpha" }]);
+        expect(merged.slice(0, BUILTIN_SLASH_COMMANDS.length).map((i) => i.source)).toEqual(["gui", "gui", "gui"]);
         expect(merged.map((i) => i.name)).toEqual(["model", "think", "compact", "alpha", "zeta"]);
     });
 

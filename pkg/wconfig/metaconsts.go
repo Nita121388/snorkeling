@@ -38,11 +38,11 @@ const (
 	ConfigKey_CommonTextSyncServerInsecure   = "commontext:sync:server:allowinsecure"
 	ConfigKey_CommonTextSyncTombstones       = "commontext:sync:synctombstones"
 
-	ConfigKey_PersonaRootDir                 = "persona:rootdir"
-	ConfigKey_PersonaJournalRotate           = "persona:journalrotate"
-	ConfigKey_PersonaDormantDays             = "persona:dormantdays"
-	ConfigKey_PersonaSoftLimitMb             = "persona:softlimitmb"
-	ConfigKey_PersonaSoftLimitAction         = "persona:softlimitaction"
+	ConfigKey_HeroRootDir                    = "hero:rootdir"
+	ConfigKey_HeroJournalRotate              = "hero:journalrotate"
+	ConfigKey_HeroDormantDays                = "hero:dormantdays"
+	ConfigKey_HeroSoftLimitMb                = "hero:softlimitmb"
+	ConfigKey_HeroSoftLimitAction            = "hero:softlimitaction"
 
 	ConfigKey_AgentClear                     = "agent:*"
 	ConfigKey_AgentDefaultProfile            = "agent:defaultprofile"

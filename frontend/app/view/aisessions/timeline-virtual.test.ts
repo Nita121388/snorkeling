@@ -389,7 +389,12 @@ describe("toolGroup helpers", () => {
     });
 
     it("maps every tool itemKey in a group to the shared anchor seq", () => {
-        const map = buildAnchorKeyToSeq([groupRow([{ seq: 1, itemKey: "k1" }, { seq: 2, itemKey: "k2" }])]);
+        const map = buildAnchorKeyToSeq([
+            groupRow([
+                { seq: 1, itemKey: "k1" },
+                { seq: 2, itemKey: "k2" },
+            ]),
+        ]);
         expect(map.get("k1")).toBe(42);
         expect(map.get("k2")).toBe(42);
     });
@@ -412,11 +417,13 @@ describe("buildSeqTimestamps", () => {
 
 describe("buildTimePositions", () => {
     it("normalizes across the real timestamp span", () => {
-        expect(buildTimePositions([
-            { seq: 1, ts: 0 + 1000 },
-            { seq: 2, ts: 6000 },
-            { seq: 3, ts: 11_000 },
-        ])).toEqual([0, 0.5, 1]);
+        expect(
+            buildTimePositions([
+                { seq: 1, ts: 0 + 1000 },
+                { seq: 2, ts: 6000 },
+                { seq: 3, ts: 11_000 },
+            ])
+        ).toEqual([0, 0.5, 1]);
     });
 
     it("centers a single node", () => {
@@ -424,18 +431,16 @@ describe("buildTimePositions", () => {
     });
 
     it("falls back to uniform spacing when timestamps are missing", () => {
-        expect(buildTimePositions([
-            { seq: 1, ts: 1000 },
-            { seq: 2 },
-            { seq: 3, ts: 3000 },
-        ])).toEqual([0, 0.5, 1]);
+        expect(buildTimePositions([{ seq: 1, ts: 1000 }, { seq: 2 }, { seq: 3, ts: 3000 }])).toEqual([0, 0.5, 1]);
     });
 
     it("falls back to uniform spacing when the span is zero", () => {
-        expect(buildTimePositions([
-            { seq: 1, ts: 1000 },
-            { seq: 2, ts: 1000 },
-        ])).toEqual([0, 1]);
+        expect(
+            buildTimePositions([
+                { seq: 1, ts: 1000 },
+                { seq: 2, ts: 1000 },
+            ])
+        ).toEqual([0, 1]);
     });
 });
 
@@ -474,11 +479,21 @@ describe("nearestAnnotatedSeq", () => {
 
 describe("timeRangeOf", () => {
     it("returns the span when at least two timestamps exist", () => {
-        expect(timeRangeOf([{ seq: 1, ts: 1000 }, { seq: 2, ts: 5000 }])).toEqual({ min: 1000, max: 5000 });
+        expect(
+            timeRangeOf([
+                { seq: 1, ts: 1000 },
+                { seq: 2, ts: 5000 },
+            ])
+        ).toEqual({ min: 1000, max: 5000 });
     });
 
     it("returns null for a single timestamp or zero span", () => {
         expect(timeRangeOf([{ seq: 1, ts: 1000 }])).toBeNull();
-        expect(timeRangeOf([{ seq: 1, ts: 1000 }, { seq: 2, ts: 1000 }])).toBeNull();
+        expect(
+            timeRangeOf([
+                { seq: 1, ts: 1000 },
+                { seq: 2, ts: 1000 },
+            ])
+        ).toBeNull();
     });
 });

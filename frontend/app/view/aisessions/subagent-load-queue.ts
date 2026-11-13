@@ -99,11 +99,7 @@ export class SubagentLoadQueue {
         }
     }
 
-    private finish<T>(
-        entry: QueueEntry<T>,
-        generationAtStart: number,
-        outcome: SubagentLoadOutcome<T>
-    ): void {
+    private finish<T>(entry: QueueEntry<T>, generationAtStart: number, outcome: SubagentLoadOutcome<T>): void {
         this.running -= 1;
         if (generationAtStart !== this.generation || this.cancelledIds.has(entry.id)) {
             // 已取消：仍然 resolve（否则调用方 Promise 悬挂），但由调用方按世代号丢弃。

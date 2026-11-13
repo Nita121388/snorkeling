@@ -7,8 +7,17 @@
 // 触发器 icon-only（28×28）：只显示图标；非默认状态（不再是 smart + tags folded）
 // 在右上角点一个小 accent 点，完整状态走 title / aria-label。
 
-import { autoUpdate, flip, FloatingPortal, offset, shift, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
 import { cn } from "@/util/util";
+import {
+    autoUpdate,
+    flip,
+    FloatingPortal,
+    offset,
+    shift,
+    useDismiss,
+    useFloating,
+    useInteractions,
+} from "@floating-ui/react";
 import { useState } from "react";
 
 export type SubSessionsFold = "folded" | "expanded" | "smart";

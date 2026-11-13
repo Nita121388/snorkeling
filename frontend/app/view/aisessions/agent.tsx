@@ -15,6 +15,7 @@ import { getCurrentWorkspaceContextMeta } from "@/app/workspace/agent-launch";
 import { globalStore } from "@/store/jotaiStore";
 import * as jotai from "jotai";
 import { useCallback, useEffect, useState } from "react";
+import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import { SessionDetailPane, type SessionDetailController } from "./session-detail";
 import {
     AiSessionNoteUpdatedEvent,
@@ -22,7 +23,6 @@ import {
     isAISessionNoteUpdatedEvent,
 } from "./session-note-events";
 import { mergeSessionTimeline } from "./session-timeline-sync";
-import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import { defaultChatSource } from "./sources";
 import { NewSessionKey } from "./types";
 import { getErrorMessage, isSessionNotFoundError, restoreMetaForSession } from "./utils";

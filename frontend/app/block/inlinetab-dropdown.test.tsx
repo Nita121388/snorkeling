@@ -213,7 +213,7 @@ describe("InlineTabDropdownMenu agent icon", () => {
         document.querySelectorAll(".inline-tab-block-dropdown-menu").forEach((el) => el.remove());
     });
 
-    test("agent rows without a persona render the brand logo, not the terminal view icon", () => {
+    test("agent rows without a hero render the brand logo, not the terminal view icon", () => {
         const h = renderMenu({
             tabs: [
                 { id: "b1", title: "pi", icon: "terminal", isActive: false, agentProvider: "pi" },

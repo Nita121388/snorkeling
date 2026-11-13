@@ -169,7 +169,7 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
    全新 profile 里往往只有一个 term 块 —— emoji 头像 / 会话标题 / 状态 chip 这些最关键的断言
    只能 skipped，等于没验。做法（overview-board 已落地）：`createBlock({ meta: { "agent:provider": "claude" } })`
    + `BlockService.ReportAgentStatus({ state: "working", ... })` 造一张真卡片，断言跑完再删块清场。
-2. **persona / 外部 store 不能靠写 localStorage 生效。**
+2. **hero / 外部 store 不能靠写 localStorage 生效。**
    同文档写 localStorage 不触发 `storage` 事件，已初始化的 store 不会重读 → emoji 断言永远看到 logo。
    必须调 store 的写入函数（`setAgentPersona("claude", "🦊")`）。
 3. **`connect()` 可能挑到空白窗口。** 多窗口/多 target 场景下先 `waitForApp(client, 30000)`
@@ -179,6 +179,16 @@ async function hoverUntil(client, point, probe, ready, { tries = 14, waitMs = 70
 5. **并行开发会撞 scaffold。** 两个 agent 同时跑验证台启动器时，`run-task` 的
    `mv scaffold/node_modules scaffold/nm/node_modules` 会因竞争失败（exit 1，日志在
    `.cache/verify/launch-verify.log`）。撞见就等 20s 重试；长期解法是各自 worktree + 独立端口。
+6. **启动器整体故障时用 jsdom DOM 台兜住行为断言，不要死磕。** 2026-11-13 实测：
+   Electron 启动器集体失灵（`electron:dev` exit 4/255、tab `initPromise` 120s 超时、CDP
+   ECONNREFUSED），连基准台 newtab-empty 都红，真机台 5 连 fatal。判定方法：跑一个
+   与改动无关的基准台（newtab-empty），它也红 → 是环境不是代码。兑底方案：把同一批
+   断言写成 jsdom 组件级测试（`*.dom.test.tsx`），红证用「旧源 git show HEAD:<file> 换回
+   重跑」拿数字（pre-fix 2 failed / post-fix 2 passed），台账记 skipped 待环境修复后补跑真机。
+   jsdom 台的三个前置坑：`initGlobalAtoms()` 要先调（atoms 懒初始化，不调时 `atoms.fullConfigAtom`
+   undefined）；jotai 必须 `<Provider store={globalStore}>` 包住被测组件（`globalStore` 不是
+   默认 store，不包则 set 完 useAtomValue 读不到）；`matchMedia` / `ResizeObserver` /
+   `Element.scrollTo` / `scrollIntoView` 都要 polyfill（jsdom 没带）。
 
 ## 7. 沉淀位置
 

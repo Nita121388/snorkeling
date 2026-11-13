@@ -196,9 +196,9 @@ export function FilterPanel({
     availablePathRoots,
     pathChildren,
     pathAncestors,
-    availablePersonas,
-    personaFilters = [],
-    togglePersonaFilter,
+    availableHeroes,
+    heroFilters = [],
+    toggleHeroFilter,
 }: {
     openState: OpenState;
     setOpenState: (value: OpenState) => void;
@@ -230,11 +230,11 @@ export function FilterPanel({
     availablePathRoots: PathRootOption[];
     pathChildren: PathCountGroup[];
     pathAncestors: PathAncestorSegment[];
-    /** persona 筛选选项：名册 ∪ 当前列表出现过的 props.persona（查不到名册时 name 为空串）。 */
-    availablePersonas?: PersonaSummary[];
-    /** 已选 persona id 集合（多选；空集 = 不过滤）。 */
-    personaFilters?: string[];
-    togglePersonaFilter?: (personaId: string) => void;
+    /** hero 筛选选项：名册 ∪ 当前列表出现过的 props.hero（查不到名册时 name 为空串）。 */
+    availableHeroes?: HeroSummary[];
+    /** 已选 hero id 集合（多选；空集 = 不过滤）。 */
+    heroFilters?: string[];
+    toggleHeroFilter?: (heroId: string) => void;
 }) {
     // 含/排 模式：chips 点击根据当前模式分发（同一段内互斥，避免一个 chip 承载三态）。
     const [tagMode, setTagMode] = useState<Mode>("include");
@@ -267,7 +267,7 @@ export function FilterPanel({
         tagExcludeActive ||
         tagPresenceActive ||
         sourceActive ||
-        personaFilters.length > 0;
+        heroFilters.length > 0;
     return (
         <div className="m-2.5 overflow-hidden rounded-xl border border-border/60 bg-modalbg shadow-sm">
             <div className="flex items-center justify-end px-2.5 pt-2 pb-1">
@@ -345,26 +345,26 @@ export function FilterPanel({
                         <span className="text-[11px] text-secondary">{getChatSource(source).label}</span>
                     ) : null}
                 </div>
-                {availablePersonas.length > 0 ? (
+                {availableHeroes.length > 0 ? (
                     <div className="flex items-center gap-2.5 border-t border-border/40 py-1.5">
-                        <i className="fa-sharp fa-solid fa-masks-theater w-3.5 shrink-0 text-center text-[11px] text-secondary" />
+                        <i className="fa-sharp fa-solid fa-user-shield w-3.5 shrink-0 text-center text-[11px] text-secondary" />
                         <SegTrack className="min-w-0 flex-1">
                             <SegButton
-                                active={personaFilters.length === 0}
-                                title="All personas"
-                                onClick={() => personaFilters.forEach((id) => togglePersonaFilter?.(id))}
+                                active={heroFilters.length === 0}
+                                title="All heroes"
+                                onClick={() => heroFilters.forEach((id) => toggleHeroFilter?.(id))}
                             >
                                 <span className="text-xs">All</span>
                             </SegButton>
-                            {availablePersonas.map((persona) => (
+                            {availableHeroes.map((hero) => (
                                 <SegButton
-                                    key={persona.id}
-                                    active={personaFilters.includes(persona.id)}
-                                    title={persona.role ? `${persona.id} — ${persona.role}` : persona.id}
-                                    onClick={() => togglePersonaFilter?.(persona.id)}
+                                    key={hero.id}
+                                    active={heroFilters.includes(hero.id)}
+                                    title={hero.role ? `${hero.id} — ${hero.role}` : hero.id}
+                                    onClick={() => toggleHeroFilter?.(hero.id)}
                                 >
                                     <span className="truncate text-xs">
-                                        {(persona.emoji ? persona.emoji + " " : "🦸 ") + (persona.name || persona.id)}
+                                        {(hero.emoji ? hero.emoji + " " : "🦸 ") + (hero.name || hero.id)}
                                     </span>
                                 </SegButton>
                             ))}
@@ -793,15 +793,15 @@ export function FilterPanel({
                             onRemove={() => toggleExcludeTag(tag)}
                         />
                     ))}
-                    {personaFilters.map((personaId) => {
-                        const persona = availablePersonas.find((item) => item.id === personaId);
+                    {heroFilters.map((heroId) => {
+                        const hero = availableHeroes.find((item) => item.id === heroId);
                         return (
                             <ActiveChip
-                                key={`persona:${personaId}`}
-                                icon="fa-solid fa-masks-theater"
-                                label={`${persona?.emoji ? persona.emoji + " " : "🦸 "}${persona?.name || personaId}`}
-                                title={`Persona: ${personaId}`}
-                                onRemove={() => togglePersonaFilter?.(personaId)}
+                                key={`hero:${heroId}`}
+                                icon="fa-solid fa-user-shield"
+                                label={`${hero?.emoji ? hero.emoji + " " : "🦸 "}${hero?.name || heroId}`}
+                                title={`Hero: ${heroId}`}
+                                onRemove={() => toggleHeroFilter?.(heroId)}
                             />
                         );
                     })}

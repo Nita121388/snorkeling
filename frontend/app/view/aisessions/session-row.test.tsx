@@ -386,7 +386,7 @@ describe("right-side run badge wiring", () => {
     });
 });
 
-describe("persona row chip (A1.5)", () => {
+describe("hero row chip (A1.5)", () => {
     function renderRow(extra: Partial<SessionSummary> = {}): string {
         const session = {
             key: "k",
@@ -409,9 +409,9 @@ describe("persona row chip (A1.5)", () => {
         );
     }
 
-    it("renders the persona emoji + name as a chip when a persona is supplied", () => {
+    it("renders the hero emoji + name as a chip when a hero is supplied", () => {
         const markup = renderRow();
-        const personaMarkup = renderToStaticMarkup(
+        const heroMarkup = renderToStaticMarkup(
             <SessionRow
                 session={{ key: "k", id: "k", source: "pi", createdAt: 0, updatedAt: 0 } as unknown as SessionSummary}
                 selected={false}
@@ -420,17 +420,17 @@ describe("persona row chip (A1.5)", () => {
                 onNoteSave={() => Promise.resolve(true)}
                 onResume={() => {}}
                 onJumpToBlock={() => {}}
-                persona={{ id: "demo", name: "Demo", emoji: "🦊" }}
+                hero={{ id: "demo", name: "Demo", emoji: "🦊" }}
             />
         );
-        expect(personaMarkup).toContain('data-persona-id="demo"');
-        expect(personaMarkup).toContain("🦊 Demo");
-        // 无 persona 的行（同一条 markup 基线）不应出现行标。
-        expect(markup).not.toContain("data-persona-id");
+        expect(heroMarkup).toContain('data-hero-id="demo"');
+        expect(heroMarkup).toContain("🦊 Demo");
+        // 无 hero 的行（同一条 markup 基线）不应出现行标。
+        expect(markup).not.toContain("data-hero-id");
     });
 
     it("falls back to the bare id when the roster entry is unknown", () => {
-        const personaMarkup = renderToStaticMarkup(
+        const heroMarkup = renderToStaticMarkup(
             <SessionRow
                 session={{ key: "k", id: "k", source: "pi", createdAt: 0, updatedAt: 0 } as unknown as SessionSummary}
                 selected={false}
@@ -439,10 +439,10 @@ describe("persona row chip (A1.5)", () => {
                 onNoteSave={() => Promise.resolve(true)}
                 onResume={() => {}}
                 onJumpToBlock={() => {}}
-                persona={{ id: "ghost", name: "ghost" }}
+                hero={{ id: "ghost", name: "ghost" }}
             />
         );
-        expect(personaMarkup).toContain('data-persona-id="ghost"');
-        expect(personaMarkup).toContain("🦸 ghost");
+        expect(heroMarkup).toContain('data-hero-id="ghost"');
+        expect(heroMarkup).toContain("🦸 ghost");
     });
 });

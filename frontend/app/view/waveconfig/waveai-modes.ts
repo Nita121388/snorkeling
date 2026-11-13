@@ -11,12 +11,12 @@
 // Storage format is unchanged (AIModeConfigType / waveai.json); existing
 // consumers such as the AI panel mode picker are untouched.
 
-import { globalStore } from "@/app/store/jotaiStore";
 import { atoms } from "@/app/store/global-atoms";
-import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { globalStore } from "@/app/store/jotaiStore";
 import { RpcApi } from "@/app/store/wshclientapi";
-import { stringToBase64 } from "@/util/util";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
+import { stringToBase64 } from "@/util/util";
 
 export type WaveAIModeEntry = {
     key: string;
@@ -72,11 +72,7 @@ export async function deleteWaveAIMode(model: WaveConfigViewModel, key: string):
 }
 
 /** Rename a mode's display name (key stays stable). */
-export async function renameWaveAIMode(
-    model: WaveConfigViewModel,
-    key: string,
-    displayName: string
-): Promise<void> {
+export async function renameWaveAIMode(model: WaveConfigViewModel, key: string, displayName: string): Promise<void> {
     const current = getWaveAIModes();
     const config = current[key];
     if (config == null) {

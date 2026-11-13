@@ -7,8 +7,8 @@ import { AiFileDiffViewModel } from "@/app/view/aifilediff/aifilediff";
 import { AgentViewModel } from "@/app/view/aisessions/agent";
 import { AiSessionsViewModel } from "@/app/view/aisessions/aisessions";
 import { HelpViewModel } from "@/app/view/helpview/helpview";
+import { HeroViewModel } from "@/app/view/hero/hero";
 import { LauncherViewModel } from "@/app/view/launcher/launcher";
-import { PersonaViewModel } from "@/app/view/persona/persona";
 import { PreviewModel } from "@/app/view/preview/preview-model";
 import { ProcessViewerViewModel } from "@/app/view/processviewer/processviewer";
 import { QuickTipsViewModel } from "@/app/view/quicktipsview/quicktipsview";
@@ -50,7 +50,7 @@ const BuiltinViewModels: ReadonlyArray<readonly [string, ViewModelClass]> = [
     ["vcscommits", VcsCommitsViewModel],
     ["vcsdiff", VcsDiffViewModel],
     ["vcshistory", VcsHistoryViewModel],
-    ["persona", PersonaViewModel],
+    ["hero", HeroViewModel],
 ];
 
 function registerBuiltinViews(): void {

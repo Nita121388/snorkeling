@@ -1,9 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
 import type { AISessionsServiceType } from "@/app/store/services";
-import { autoGenerate, getBatchGenCounts, getGenSnapshot, genCacheKey } from "./aisession-gen-store";
+import { describe, expect, it } from "vitest";
+import { autoGenerate, genCacheKey, getBatchGenCounts, getGenSnapshot } from "./aisession-gen-store";
 
 function fakeService(impl: Partial<AISessionsServiceType>): AISessionsServiceType {
     return impl as unknown as AISessionsServiceType;

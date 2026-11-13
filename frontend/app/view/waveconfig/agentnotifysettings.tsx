@@ -11,15 +11,15 @@
 // The defaults come from frontend/util/sharedconst.ts — the same constants the main process uses —
 // so the displayed values can never drift from the effective behavior.
 
+import { Toggle } from "@/app/element/toggle";
 import { atoms } from "@/app/store/global-atoms";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { Toggle } from "@/app/element/toggle";
+import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import { AGENT_OS_NOTIFY_DEFAULTS, AGENT_OS_NOTIFY_SETTING_KEYS } from "@/util/sharedconst";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useState } from "react";
-import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 
 type NotifyBoolKey = "masterEnabled" | "doneEnabled" | "blockedEnabled" | "notifyWhenFocused";
 type NotifyNumberKey = "idleMinMs" | "cooldownMs";
@@ -45,7 +45,8 @@ export function resolveAgentOsNotifySettings(settings: SettingsType): AgentOsNot
     return {
         masterEnabled: settings[AGENT_OS_NOTIFY_SETTING_KEYS.masterEnabled] ?? AGENT_OS_NOTIFY_DEFAULTS.masterEnabled,
         doneEnabled: settings[AGENT_OS_NOTIFY_SETTING_KEYS.doneEnabled] ?? AGENT_OS_NOTIFY_DEFAULTS.doneEnabled,
-        blockedEnabled: settings[AGENT_OS_NOTIFY_SETTING_KEYS.blockedEnabled] ?? AGENT_OS_NOTIFY_DEFAULTS.blockedEnabled,
+        blockedEnabled:
+            settings[AGENT_OS_NOTIFY_SETTING_KEYS.blockedEnabled] ?? AGENT_OS_NOTIFY_DEFAULTS.blockedEnabled,
         notifyWhenFocused:
             settings[AGENT_OS_NOTIFY_SETTING_KEYS.notifyWhenFocused] ?? AGENT_OS_NOTIFY_DEFAULTS.notifyWhenFocused,
         blockedMinIntervalMs:
@@ -155,15 +156,12 @@ const AgentNotifySettingsContent = memo(({ model: _model }: { model: WaveConfigV
         <div className="p-6 h-full overflow-auto">
             <div className="max-w-2xl">
                 <div className="text-sm text-muted-foreground mb-2">
-                    Snorkeling raises a native toast when an agent finishes or asks for input. These
-                    switches control how often that happens.
+                    Snorkeling raises a native toast when an agent finishes or asks for input. These switches control
+                    how often that happens.
                 </div>
 
                 <div className="divide-y divide-border">
-                    <SectionRow
-                        title="Agent notifications"
-                        description="Master switch for every agent toast."
-                    >
+                    <SectionRow title="Agent notifications" description="Master switch for every agent toast.">
                         <Toggle
                             checked={masterEnabled}
                             onChange={(v) => setBool("masterEnabled", v)}

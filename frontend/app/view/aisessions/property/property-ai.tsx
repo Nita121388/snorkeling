@@ -155,7 +155,10 @@ export function AIPropertiesButton({
                             <li key={suggestion.key} className="property-ai-item">
                                 <span className="property-ai-key">{suggestion.name || suggestion.key}</span>
                                 <span className="property-ai-type">{suggestion.type}</span>
-                                <span className="property-ai-value" title={summarizeValue(suggestion.type, suggestion.value)}>
+                                <span
+                                    className="property-ai-value"
+                                    title={summarizeValue(suggestion.type, suggestion.value)}
+                                >
                                     {summarizeValue(suggestion.type, suggestion.value)}
                                 </span>
                             </li>

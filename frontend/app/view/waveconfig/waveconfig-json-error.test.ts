@@ -36,7 +36,7 @@ describe("extractJsonErrorPosition", () => {
     });
 
     it("converts a bare position offset into line and column", () => {
-        const content = "{\n  \"a\": 1,,\n}";
+        const content = '{\n  "a": 1,,\n}';
         const pos = extractJsonErrorPosition("Unexpected token ',' ... in JSON at position 12", content);
         expect(pos).toEqual({ line: 2, column: 11 });
     });

@@ -4,11 +4,11 @@
 import type { AISessionsServiceType } from "@/app/store/services";
 import { cn } from "@/util/util";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { AnimatedExpand, MessageCard } from "./session-message";
-import { SessionDetailSkeleton } from "./session-detail-skeleton";
-import { CancelledError, SubagentLoadQueue, isCancelled } from "./subagent-load-queue";
 import { DurationBar } from "./duration-bar";
 import { formatDuration, subagentDurationMs } from "./fold-duration";
+import { SessionDetailSkeleton } from "./session-detail-skeleton";
+import { AnimatedExpand, MessageCard } from "./session-message";
+import { CancelledError, SubagentLoadQueue, isCancelled } from "./subagent-load-queue";
 
 /** 嵌套深度上限：超过只显示摘要，避免无限展开。 */
 export const MaxSubagentDepth = 3;
@@ -129,7 +129,10 @@ export const SubagentCard = memo(function SubagentCard({
                     ...detail,
                     messages,
                     toolCalls,
-                    summary: { ...detail.summary, messageCount: value.summary?.messageCount ?? detail.summary.messageCount },
+                    summary: {
+                        ...detail.summary,
+                        messageCount: value.summary?.messageCount ?? detail.summary.messageCount,
+                    },
                     hasMore: value.hasMore ?? false,
                     nextMessageOffset: value.nextMessageOffset ?? messages.length,
                 };
@@ -321,79 +324,87 @@ export const SubagentCard = memo(function SubagentCard({
                     className="ml-2 border-l pl-3 pb-1"
                     style={{ borderLeftColor: "color-mix(in srgb, var(--agent-stale-color) 35%, transparent)" }}
                 >
-                {match.status === "ambiguous" ? (
-                    <div className="space-y-1 py-1">
-                        <div className="text-[10px] text-secondary">Multiple candidates matched. Pick the correct child session:</div>
-                        {match.candidates?.map((candidate) => (
-                            <button
-                                key={candidate.sessionKey}
-                                type="button"
-                                className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] transition-colors hover:bg-hover cursor-pointer"
-                                onClick={() => openSession(candidate.sessionKey)}
-                            >
-                                <i className="fa-sharp fa-solid fa-up-right-from-square text-[9px] text-secondary" />
-                                <span className="min-w-0 flex-1 truncate">{candidate.name || candidate.sessionKey}</span>
-                            </button>
-                        ))}
-                    </div>
-                ) : null}
-
-                {match.status === "matched" ? (
-                    <div className="space-y-2 py-1">
-                        <div className="text-[10px] text-secondary">Child session</div>
-                        {state.loading ? (
-                            // 骨架占位：让用户立刻看到"正在加载"的结构，而不是一行静止文字
-                            <SessionDetailSkeleton rows={3} />
-                        ) : state.error !== "" ? (
-                            <div className="space-y-1.5">
-                                <div className="text-[10px] text-error">{state.error}</div>
-                                {state.detail != null ? (
-                                    <div className="text-[10px] text-secondary">Loaded content is preserved.</div>
-                                ) : null}
+                    {match.status === "ambiguous" ? (
+                        <div className="space-y-1 py-1">
+                            <div className="text-[10px] text-secondary">
+                                Multiple candidates matched. Pick the correct child session:
+                            </div>
+                            {match.candidates?.map((candidate) => (
                                 <button
+                                    key={candidate.sessionKey}
                                     type="button"
-                                    className="flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-secondary transition-colors hover:bg-hover hover:text-primary"
-                                    onClick={retry}
+                                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] transition-colors hover:bg-hover cursor-pointer"
+                                    onClick={() => openSession(candidate.sessionKey)}
                                 >
-                                    <i className="fa-sharp fa-solid fa-rotate-right text-[9px]" />
-                                    Retry
+                                    <i className="fa-sharp fa-solid fa-up-right-from-square text-[9px] text-secondary" />
+                                    <span className="min-w-0 flex-1 truncate">
+                                        {candidate.name || candidate.sessionKey}
+                                    </span>
                                 </button>
-                            </div>
-                        ) : (
-                            <div className={cn("space-y-1")}>
-                                {state.detail?.messages?.map((message) => (
-                                    <MessageCard
-                                        key={message.itemKey ?? message.seq}
-                                        message={message}
-                                        registerRef={() => {}}
-                                        groupStart={false}
-                                    />
-                                ))}
-                                {state.loadingMore ? (
-                                    <div
-                                        className="flex items-center gap-1.5 px-1 py-1 text-[10px] text-secondary"
-                                        role="status"
-                                        aria-live="polite"
+                            ))}
+                        </div>
+                    ) : null}
+
+                    {match.status === "matched" ? (
+                        <div className="space-y-2 py-1">
+                            <div className="text-[10px] text-secondary">Child session</div>
+                            {state.loading ? (
+                                // 骨架占位：让用户立刻看到"正在加载"的结构，而不是一行静止文字
+                                <SessionDetailSkeleton rows={3} />
+                            ) : state.error !== "" ? (
+                                <div className="space-y-1.5">
+                                    <div className="text-[10px] text-error">{state.error}</div>
+                                    {state.detail != null ? (
+                                        <div className="text-[10px] text-secondary">Loaded content is preserved.</div>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-secondary transition-colors hover:bg-hover hover:text-primary"
+                                        onClick={retry}
                                     >
-                                        <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />
-                                        <span>Loading more…</span>
-                                    </div>
-                                ) : null}
-                                {state.nested.map((childMatch) => (
-                                    <SubagentCard
-                                        key={childMatch.call.itemKey ?? childMatch.call.entryId ?? subagentSummary(childMatch)}
-                                        match={childMatch}
-                                        depth={depth + 1}
-                                        service={service}
-                                        connection={connection}
-                                        onOpenSession={onOpenSession}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ) : null}
-            </div>
+                                        <i className="fa-sharp fa-solid fa-rotate-right text-[9px]" />
+                                        Retry
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className={cn("space-y-1")}>
+                                    {state.detail?.messages?.map((message) => (
+                                        <MessageCard
+                                            key={message.itemKey ?? message.seq}
+                                            message={message}
+                                            registerRef={() => {}}
+                                            groupStart={false}
+                                        />
+                                    ))}
+                                    {state.loadingMore ? (
+                                        <div
+                                            className="flex items-center gap-1.5 px-1 py-1 text-[10px] text-secondary"
+                                            role="status"
+                                            aria-live="polite"
+                                        >
+                                            <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />
+                                            <span>Loading more…</span>
+                                        </div>
+                                    ) : null}
+                                    {state.nested.map((childMatch) => (
+                                        <SubagentCard
+                                            key={
+                                                childMatch.call.itemKey ??
+                                                childMatch.call.entryId ??
+                                                subagentSummary(childMatch)
+                                            }
+                                            match={childMatch}
+                                            depth={depth + 1}
+                                            service={service}
+                                            connection={connection}
+                                            onOpenSession={onOpenSession}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
+                </div>
             </AnimatedExpand>
         </div>
     );

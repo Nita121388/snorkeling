@@ -163,7 +163,9 @@ describe("liveTurnToTimelineItems", () => {
         const items = liveTurnToTimelineItems(turn, false);
         expect(items[0]).toMatchObject({ kind: "message", message: { role: "user", text: "build it" } });
         // thinking + 连续 text 合并为一条 assistant 消息
-        const assistant = items.find((i) => i.kind === "message" && i.message.role === "assistant" && i.message.text === "Let me \ncheck.");
+        const assistant = items.find(
+            (i) => i.kind === "message" && i.message.role === "assistant" && i.message.text === "Let me \ncheck."
+        );
         expect(assistant).toBeTruthy();
         if (assistant && assistant.kind === "message") {
             expect(assistant.message.thinking).toBe("planning");

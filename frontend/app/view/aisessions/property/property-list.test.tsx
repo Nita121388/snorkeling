@@ -17,10 +17,7 @@ function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
 describe("PropertyList", () => {
     it("shows note, tags and starred for a card", () => {
         const markup = renderToStaticMarkup(
-            <PropertyList
-                summary={makeSummary({ note: "refactor auth", tags: ["fix"], marked: true })}
-                mode="card"
-            />
+            <PropertyList summary={makeSummary({ note: "refactor auth", tags: ["fix"], marked: true })} mode="card" />
         );
         expect(markup).toContain("Note");
         expect(markup).toContain("refactor auth");

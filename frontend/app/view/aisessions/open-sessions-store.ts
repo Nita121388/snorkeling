@@ -8,10 +8,11 @@
 // 纯逻辑投影在 open-sessions.ts；这里只负责「读实时状态 + 节流 + 缓存」。
 
 import { atoms, globalStore, WOS } from "@/app/store/global";
+import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import { getLayoutModelForStaticTab } from "@/layout/lib/layoutModelHooks";
 import { getMinimizedBlockIdsFromTab } from "@/layout/lib/minimizedBlocks";
-import { getLayoutDataActiveBlockId } from "@/layout/lib/inlineTabs";
 import { useSyncExternalStore } from "react";
+import type { OpenLevel } from "./open-sessions";
 import {
     collectOpenSessionBlocks,
     collectRenderedBlockIds,
@@ -23,7 +24,6 @@ import {
     type OpenSessionsContext,
     type OpenSessionsSnapshot,
 } from "./open-sessions";
-import type { OpenLevel } from "./open-sessions";
 
 const RecomputeDebounceMs = 100;
 

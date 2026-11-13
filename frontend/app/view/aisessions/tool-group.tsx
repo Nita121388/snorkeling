@@ -9,9 +9,9 @@
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import { memo, useEffect, useRef, useState } from "react";
-import { describeRun } from "./tool-describe";
-import { formatDuration } from "./fold-duration";
 import { DurationBar } from "./duration-bar";
+import { formatDuration } from "./fold-duration";
+import { describeRun } from "./tool-describe";
 
 interface ToolGroupProps {
     /** 组内工具调用的名称列表 */
@@ -101,8 +101,7 @@ export const ToolGroup = memo(function ToolGroup({
                 </span>
                 {hasDiff && (
                     <span className="shrink-0 font-mono text-[10px]">
-                        <span className="text-success">+{added}</span>{" "}
-                        <span className="text-error">-{removed}</span>
+                        <span className="text-success">+{added}</span> <span className="text-error">-{removed}</span>
                     </span>
                 )}
             </button>

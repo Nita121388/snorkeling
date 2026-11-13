@@ -3,13 +3,13 @@
 
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ScanStatus } from "./scan-status-logic";
 import {
     InitialScanStatus,
     normalizeScanStatusEvent,
     reduceScanStatus,
     shouldNotifyScanDone,
 } from "./scan-status-logic";
-import type { ScanStatus } from "./scan-status-logic";
 
 /**
  * 订阅后端 aisessions:scanstatus 事件，暴露后台 summary 扫描进度。

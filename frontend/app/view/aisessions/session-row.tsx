@@ -209,8 +209,8 @@ export function SessionRow({
     expandAllTags = false,
     /** 远端会话需要带 connection（供弹窗编辑时的 Summary/NoteAndTags RPC）。 */
     connection = "",
-    /** 行标人设（props.persona 非空时由上层查名册得到）；null/缺省不渲染。 */
-    persona = null,
+    /** 行标人设（props.hero 非空时由上层查名册得到）；null/缺省不渲染。 */
+    hero = null,
 }: {
     session: SessionSummary;
     selected: boolean;
@@ -253,7 +253,7 @@ export function SessionRow({
     /** 远端会话需要带 connection（供弹窗编辑时的 Summary/NoteAndTags RPC）。 */
     connection?: string;
     /** 行标人设：🎭 + 人设名；查不到名册时 name 已退化为裸 id。 */
-    persona?: { id: string; name: string; emoji?: string } | null;
+    hero?: { id: string; name: string; emoji?: string } | null;
 }) {
     const isChild = depth > 0;
     // 上下文行（后端为了保住父子结构带出来的行）→ 次要色 + 图标 + tooltip 说明。
@@ -377,14 +377,14 @@ export function SessionRow({
 
     const personaMap = useAgentPersonas();
     const sessionEmojiMap = useSessionEmojis();
-    // Session-level persona: history rows carry the session id (== `agent:sessionid`),
+    // Session-level hero: history rows carry the session id (== `agent:sessionid`),
     // so "仅此会话" set on any surface also shows up here (and vice versa).
     const sourceIcon = getAgentIcon(session.source, {
         personas: personaMap,
         sessionEmojis: sessionEmojiMap,
         sessionId: session.id,
     });
-    const openPersonaPicker = useCallback(
+    const openHeroPicker = useCallback(
         (event: ReactMouseEvent<HTMLElement>) => {
             event.stopPropagation();
             // History rows always know session.id, so default to the "仅此会话"
@@ -634,9 +634,9 @@ export function SessionRow({
                             type="button"
                             className="inline-flex cursor-pointer items-center gap-1 rounded border-none bg-transparent p-0 text-left text-inherit hover:text-primary"
                             title={`设置 ${session.source} 的 emoji 人格`}
-                            aria-label={`Set ${session.source} emoji persona`}
+                            aria-label={`Set ${session.source} emoji hero`}
                             data-row-action="true"
-                            onClick={openPersonaPicker}
+                            onClick={openHeroPicker}
                         >
                             {sourceIcon?.kind === "emoji" ? (
                                 <span className="agent-emoji-icon agent-emoji-icon--row" title={session.source}>
@@ -652,13 +652,13 @@ export function SessionRow({
                          * 之前这里是第二个 spinner，与左列 RunningDot 构成两个互不知晓的
                          * 「在跑」标记，同一行出现两次「运行中」。
                          */}
-                        {persona != null ? (
+                        {hero != null ? (
                             <span
                                 className="max-w-40 truncate rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent"
-                                title={`Persona: ${persona.id}`}
-                                data-persona-id={persona.id}
+                                title={`Hero: ${hero.id}`}
+                                data-hero-id={hero.id}
                             >
-                                {(persona.emoji ? persona.emoji + " " : "🦸 ") + (persona.name || persona.id)}
+                                {(hero.emoji ? hero.emoji + " " : "🦸 ") + (hero.name || hero.id)}
                             </span>
                         ) : null}
                         {session.vendorid ? (

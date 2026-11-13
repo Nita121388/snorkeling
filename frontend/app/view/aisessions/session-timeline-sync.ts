@@ -21,7 +21,7 @@ export function mergeSessionTimeline(
     currentMessages: Message[],
     currentCursor: TimelineCursor,
     deltaMessages: Message[],
-    nextCursor: TimelineCursor,
+    nextCursor: TimelineCursor
 ): SessionTimelineMergeResult {
     const hasCursorRewind =
         nextCursor != null &&
@@ -33,9 +33,6 @@ export function mergeSessionTimeline(
     }
 
     const existingSeqs = new Set(currentMessages.map((message) => message.seq));
-    const messages = [
-        ...currentMessages,
-        ...deltaMessages.filter((message) => !existingSeqs.has(message.seq)),
-    ];
+    const messages = [...currentMessages, ...deltaMessages.filter((message) => !existingSeqs.has(message.seq))];
     return { messages, cursor: nextCursor ?? currentCursor, resetRequired: false };
 }

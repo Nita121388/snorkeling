@@ -15,9 +15,7 @@ const ErrorDisplay = memo(({ message, variant = "error" }: ErrorDisplayProps) =>
     const icon = variant === "error" ? "fa-circle-exclamation" : "fa-triangle-exclamation";
     const baseClasses = "flex items-center gap-2 p-4 border rounded-lg";
     const variantClasses =
-        variant === "error"
-            ? "bg-error/10 border-error/20 text-error"
-            : "bg-warning/10 border-warning/20 text-warning";
+        variant === "error" ? "bg-error/10 border-error/20 text-error" : "bg-warning/10 border-warning/20 text-warning";
 
     return (
         <div className={`${baseClasses} ${variantClasses}`}>
@@ -88,9 +86,7 @@ const SecretListView = memo(({ secretNames, onSelectSecret, onAddSecret }: Secre
                 {secretNames.map((name) => (
                     <div
                         key={name}
-                        className={cn(
-                            "flex items-center gap-3 p-4 hover:bg-hover cursor-pointer transition-colors"
-                        )}
+                        className={cn("flex items-center gap-3 p-4 hover:bg-hover cursor-pointer transition-colors")}
                         onClick={() => onSelectSecret(name)}
                     >
                         <i className="fa-sharp fa-solid fa-key text-accent" />
@@ -145,9 +141,7 @@ const AddSecretForm = memo(
                         type="text"
                         className={cn(
                             "px-3 py-2 bg-surface border rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
-                            isNameInvalid
-                                ? "border-error focus:border-error"
-                                : "border-border focus:border-accent"
+                            isNameInvalid ? "border-error focus:border-error" : "border-border focus:border-accent"
                         )}
                         value={newSecretName}
                         onChange={(e) => onNameChange(e.target.value)}
@@ -214,7 +208,7 @@ const SecretDetailView = memo(({ model }: SecretDetailViewProps) => {
     }
 
     return (
-            <div className="flex flex-col gap-4 min-h-full p-6 bg-panel rounded-lg">
+        <div className="flex flex-col gap-4 min-h-full p-6 bg-panel rounded-lg">
             <div className="flex items-center gap-2">
                 <i className="fa-sharp fa-solid fa-key text-accent" />
                 <h3 className="text-lg font-semibold">{secretName}</h3>

@@ -233,7 +233,14 @@ describe("sync diagnostics payloads", () => {
             probe: {
                 url: "https://sync.example.com",
                 ready: true,
-                health: { service: "waveterm-sync", protocolVersion: 1, appVersion: "0", items: 0, rev: 0, requiresAuth: false },
+                health: {
+                    service: "waveterm-sync",
+                    protocolVersion: 1,
+                    appVersion: "0",
+                    items: 0,
+                    rev: 0,
+                    requiresAuth: false,
+                },
                 checks: [],
             },
         };
@@ -244,7 +251,14 @@ describe("sync diagnostics payloads", () => {
             probe: {
                 url: "https://sync.example.com",
                 ready: true,
-                health: { service: "waveterm-sync", protocolVersion: 3, appVersion: "0", items: 0, rev: 0, requiresAuth: false },
+                health: {
+                    service: "waveterm-sync",
+                    protocolVersion: 3,
+                    appVersion: "0",
+                    items: 0,
+                    rev: 0,
+                    requiresAuth: false,
+                },
                 checks: [],
             },
         };

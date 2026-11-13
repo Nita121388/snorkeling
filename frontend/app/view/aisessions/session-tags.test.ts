@@ -31,10 +31,7 @@ describe("session-tags", () => {
     });
 
     it("normalizes and labels tags consistently", () => {
-        expect(normalizeSessionTags(["#Review", "review", "#研究", "+legacy", "bad tag"])).toEqual([
-            "review",
-            "研究",
-        ]);
+        expect(normalizeSessionTags(["#Review", "review", "#研究", "+legacy", "bad tag"])).toEqual(["review", "研究"]);
         expect(mergeSessionTags(["review"], ["#urgent", "Review"])).toEqual(["review", "urgent"]);
         expect(sessionTagsLabel(["review", "研究"])).toBe("#review #研究");
     });

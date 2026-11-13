@@ -55,9 +55,7 @@ export function subagentInfoFromToolCall(toolCall: { name?: string; summary?: st
 } {
     const args = parseSummaryArgs(toolCall.summary);
     const agent =
-        firstStringValue(args, ["agent", "subagent_type", "agent_type"]) ||
-        (toolCall.name ?? "").trim() ||
-        "subagent";
+        firstStringValue(args, ["agent", "subagent_type", "agent_type"]) || (toolCall.name ?? "").trim() || "subagent";
     const task = firstStringValue(args, ["task", "prompt", "description", "instructions"]);
     return { agent, task };
 }

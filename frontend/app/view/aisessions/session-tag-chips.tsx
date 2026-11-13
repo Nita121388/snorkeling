@@ -54,9 +54,7 @@ function SessionTagChips({
                     >
                         <span className="truncate">{tag}</span>
                         {count != null ? <span className="text-[10px] opacity-70">{count}</span> : null}
-                        {removable ? (
-                            <i className="fa-sharp fa-solid fa-xmark text-[9px] opacity-60" />
-                        ) : null}
+                        {removable ? <i className="fa-sharp fa-solid fa-xmark text-[9px] opacity-60" /> : null}
                     </button>
                 );
             })}

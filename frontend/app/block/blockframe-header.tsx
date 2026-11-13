@@ -34,7 +34,7 @@ import { uxCloseBlock } from "@/app/store/keymodel";
 import { useTabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { NewTabRowKey, TabRowAction, TabTargetModal } from "@/app/tab/tab-target-modal";
-import { openPersonaCreateWizard } from "@/app/view/persona/persona-create-wizard";
+import { openHeroCreateWizard } from "@/app/view/hero/hero-create-wizard";
 import { canOpenAgentFolder, openAgentFolderInCurrentTab } from "@/app/view/term/agent-folder";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
@@ -144,7 +144,7 @@ export function showBlockContextMenu(
     }
     menu.push({
         label: "Set as New Hero…",
-        click: () => openPersonaCreateWizard({ source: "block" }),
+        click: () => openHeroCreateWizard({ source: "block" }),
     });
     const extraItems = viewModel?.getSettingsMenuItems?.();
     if (extraItems && extraItems.length > 0) menu.push({ type: "separator" }, ...extraItems);

@@ -30,7 +30,9 @@ describe("normalizeScanStatusEvent", () => {
     });
 
     it("treats an empty connection string as local", () => {
-        expect(normalizeScanStatusEvent({ connection: "", scanned: 0, total: 5, running: true, done: false })).not.toBeNull();
+        expect(
+            normalizeScanStatusEvent({ connection: "", scanned: 0, total: 5, running: true, done: false })
+        ).not.toBeNull();
     });
 
     it("returns null for missing or malformed payloads", () => {

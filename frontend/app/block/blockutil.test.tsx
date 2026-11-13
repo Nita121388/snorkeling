@@ -31,7 +31,7 @@ describe("blockViewToIcon / blockViewToName canonical map", () => {
         "vcscommits",
         "vcsdiff",
         "vcshistory",
-        "persona",
+        "hero",
     ];
 
     it("covers every built-in view so minimized BlockBar blocks keep a real icon", () => {

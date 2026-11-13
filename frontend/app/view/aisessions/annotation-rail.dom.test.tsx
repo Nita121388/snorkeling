@@ -169,9 +169,7 @@ describe("AnnotationRail bottom inset", () => {
     // 竖轴和圆点压到输入框上。bottomInset 必须转成 marginBottom 让位。
     it("reserves composer height at the bottom via marginBottom", () => {
         act(() => {
-            root.render(
-                <AnnotationRail annotations={[makeAnnotation()]} onJump={vi.fn()} bottomInset={172} />
-            );
+            root.render(<AnnotationRail annotations={[makeAnnotation()]} onJump={vi.fn()} bottomInset={172} />);
         });
         const railRoot = container.firstElementChild as HTMLElement;
         expect(railRoot.style.marginBottom).toBe("172px");
@@ -208,7 +206,6 @@ describe("AnnotationRail dot states (2026-10-26 视觉重构)", () => {
         expect(cls).not.toContain("rounded-md");
     });
 });
-
 
 describe("AnnotationRail Close fully dismisses card", () => {
     // 回归：钉住后点 ✕ 只清了 pinnedIndex，没清 openIndex，导致卡片不关、✕ 还消失。

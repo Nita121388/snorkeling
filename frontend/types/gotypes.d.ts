@@ -310,6 +310,50 @@ declare global {
         suggestion: TitleSuggestion;
     };
 
+    // aisessionsservice.AISessionsHeroOverviewRequest
+    type AISessionsHeroOverviewRequest = object;
+
+    // aisessionsservice.AISessionsHeroOverviewResponse
+    type AISessionsHeroOverviewResponse = {
+        root?: string;
+        heroes?: HeroOverviewEntry[];
+    };
+
+    // aisessionsservice.AISessionsHeroRosterRequest
+    type AISessionsHeroRosterRequest = object;
+
+    // aisessionsservice.AISessionsHeroRosterResponse
+    type AISessionsHeroRosterResponse = {
+        root?: string;
+        heroes?: HeroSummary[];
+    };
+
+    // aisessionsservice.AISessionsHeroScaffoldPreviewRequest
+    type AISessionsHeroScaffoldPreviewRequest = {
+        name: string;
+        emoji?: string;
+        role?: string;
+        provider?: string;
+        model?: string;
+    };
+
+    // aisessionsservice.AISessionsHeroScaffoldPreviewResponse
+    type AISessionsHeroScaffoldPreviewResponse = {
+        dir?: string;
+        id?: string;
+        files?: PlannedFile[];
+        proposal?: boolean;
+    };
+
+    // aisessionsservice.AISessionsHeroStatsRequest
+    type AISessionsHeroStatsRequest = object;
+
+    // aisessionsservice.AISessionsHeroStatsResponse
+    type AISessionsHeroStatsResponse = {
+        root?: string;
+        heroes?: StorageStats[];
+    };
+
     // aisessionsservice.AISessionsListRequest
     type AISessionsListRequest = {
         source?: string;
@@ -338,8 +382,8 @@ declare global {
     type AISessionsListResponse = {
         sessions: SessionSummary[];
         projectPaths?: ProjectPathSummary[];
-        personaRoot?: string;
-        personas?: PersonaSummary[];
+        heroRoot?: string;
+        heroes?: HeroSummary[];
         scanning: boolean;
         scanned: number;
         total: number;
@@ -388,50 +432,6 @@ declare global {
     // aisessionsservice.AISessionsOriginsResponse
     type AISessionsOriginsResponse = {
         origins: AISessionsOrigin[];
-    };
-
-    // aisessionsservice.AISessionsPersonaOverviewRequest
-    type AISessionsPersonaOverviewRequest = object;
-
-    // aisessionsservice.AISessionsPersonaOverviewResponse
-    type AISessionsPersonaOverviewResponse = {
-        root?: string;
-        personas?: PersonaOverviewEntry[];
-    };
-
-    // aisessionsservice.AISessionsPersonaRosterRequest
-    type AISessionsPersonaRosterRequest = object;
-
-    // aisessionsservice.AISessionsPersonaRosterResponse
-    type AISessionsPersonaRosterResponse = {
-        root?: string;
-        personas?: PersonaSummary[];
-    };
-
-    // aisessionsservice.AISessionsPersonaScaffoldPreviewRequest
-    type AISessionsPersonaScaffoldPreviewRequest = {
-        name: string;
-        emoji?: string;
-        role?: string;
-        provider?: string;
-        model?: string;
-    };
-
-    // aisessionsservice.AISessionsPersonaScaffoldPreviewResponse
-    type AISessionsPersonaScaffoldPreviewResponse = {
-        dir?: string;
-        id?: string;
-        files?: PlannedFile[];
-        proposal?: boolean;
-    };
-
-    // aisessionsservice.AISessionsPersonaStatsRequest
-    type AISessionsPersonaStatsRequest = object;
-
-    // aisessionsservice.AISessionsPersonaStatsResponse
-    type AISessionsPersonaStatsResponse = {
-        root?: string;
-        personas?: StorageStats[];
     };
 
     // aisessionsservice.AISessionsPromptTemplatesRequest
@@ -2380,6 +2380,40 @@ declare global {
         capabilities?: string[];
     };
 
+    // hero.Hero
+    type Hero = {
+        schemaVersion: number;
+        id: string;
+        name: string;
+        emoji?: string;
+        role?: string;
+        provider?: string;
+        model?: string;
+        createdAt: string;
+        createdBy?: Provenance;
+        approvedBy?: Provenance;
+        origin?: Origin;
+    };
+
+    // aisessionsservice.HeroOverviewEntry
+    type HeroOverviewEntry = {
+        hero: Hero;
+        charter?: string;
+        storage: StorageStats;
+        pendingProposals: number;
+        lastJournalLine?: string;
+    };
+
+    // aisessionsservice.HeroSummary
+    type HeroSummary = {
+        id: string;
+        name: string;
+        emoji?: string;
+        role?: string;
+        provider?: string;
+        model?: string;
+    };
+
     // agentstatus.HookInstallResult
     type HookInstallResult = {
         Provider: string;
@@ -2708,7 +2742,7 @@ declare global {
         platform?: string;
     };
 
-    // persona.Origin
+    // hero.Origin
     type Origin = {
         deviceId?: string;
         deviceName?: string;
@@ -2732,40 +2766,6 @@ declare global {
         lastAt: number;
     };
 
-    // persona.Persona
-    type Persona = {
-        schemaVersion: number;
-        id: string;
-        name: string;
-        emoji?: string;
-        role?: string;
-        provider?: string;
-        model?: string;
-        createdAt: string;
-        createdBy?: Provenance;
-        approvedBy?: Provenance;
-        origin?: Origin;
-    };
-
-    // aisessionsservice.PersonaOverviewEntry
-    type PersonaOverviewEntry = {
-        persona: Persona;
-        charter?: string;
-        storage: StorageStats;
-        pendingProposals: number;
-        lastJournalLine?: string;
-    };
-
-    // aisessionsservice.PersonaSummary
-    type PersonaSummary = {
-        id: string;
-        name: string;
-        emoji?: string;
-        role?: string;
-        provider?: string;
-        model?: string;
-    };
-
     // wconfig.PinnedDirectoryType
     type PinnedDirectoryType = {
         path: string;
@@ -2773,7 +2773,7 @@ declare global {
         addedAt?: number;
     };
 
-    // persona.PlannedFile
+    // hero.PlannedFile
     type PlannedFile = {
         path: string;
         preview?: string;
@@ -2888,7 +2888,7 @@ declare global {
         confidence?: number;
     };
 
-    // persona.Provenance
+    // hero.Provenance
     type Provenance = {
         kind: string;
         name?: string;
@@ -3345,11 +3345,11 @@ declare global {
         "commontext:sync:server:hastoken"?: boolean;
         "commontext:sync:server:allowinsecure"?: boolean;
         "commontext:sync:synctombstones"?: boolean;
-        "persona:rootdir"?: string;
-        "persona:journalrotate"?: boolean;
-        "persona:dormantdays"?: number;
-        "persona:softlimitmb"?: number;
-        "persona:softlimitaction"?: string;
+        "hero:rootdir"?: string;
+        "hero:journalrotate"?: boolean;
+        "hero:dormantdays"?: number;
+        "hero:softlimitmb"?: number;
+        "hero:softlimitaction"?: string;
         "agent:*"?: boolean;
         "agent:defaultprofile"?: string;
         "agent:profiles"?: {[key: string]: AgentProfileConfigType};
@@ -3537,7 +3537,7 @@ declare global {
         display: StickerDisplayOptsType;
     };
 
-    // persona.StorageStats
+    // hero.StorageStats
     type StorageStats = {
         id: string;
         archiveBytes: number;

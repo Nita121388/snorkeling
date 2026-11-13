@@ -74,21 +74,21 @@ Flags: `<key|id|this>`, `--json`
 
 - The hash is required to write: pass it back as --expected-hash.
 
-### `wsh persona list`
+### `wsh hero list`
 
-Every persona home base on this machine, from a directory scan.
+Every hero home base on this machine, from a directory scan.
 
 Flags: `--json`
 
 - Reads plain files; works even when the app is not running.
 
-### `wsh persona get`
+### `wsh hero get`
 
-One persona identity card (persona.json) and its CHARTER.
+One hero identity card (hero.json) and its CHARTER.
 
 Flags: `<id>`, `--json`
 
-### `wsh persona memory inbox`
+### `wsh hero memory inbox`
 
 List pending / approved / dismissed long-term-memory proposals.
 
@@ -96,7 +96,7 @@ Flags: `<id>`, `--json`
 
 - Old proposal blocks without a 状态 line are parsed as pending.
 
-### `wsh persona sync status`
+### `wsh hero sync status`
 
 Rootdir git state: clean, branch, remote and unmerged paths.
 
@@ -142,26 +142,26 @@ Flags: `--note`, `--title`, `--tags-add`, `--tags-set`, `--tags-remove`, `--prop
 - E_CONFLICT means someone else edited: re-read, do not pass --force.
 - titleSource=user is refused without --force.
 
-### `wsh persona create`
+### `wsh hero create`
 
-Propose a new persona home base (agents never scaffold directly).
+Propose a new hero home base (agents never scaffold directly).
 
 Flags: `--name`, `--emoji`, `--role`, `--provider`, `--model`, `--from-session <key|this>`, `--agent-name`, `--charter-file`, `--memory-from-session`, `--dry-run`, `--yes`, `--json`
 
-- With --from-session/--agent-name and no --yes this writes .index/proposals/<slug>.json, not a persona: a human must run `persona approve <slug> --yes`.
+- With --from-session/--agent-name and no --yes this writes .index/proposals/<slug>.json, not a hero: a human must run `hero approve <slug> --yes`.
 - Idempotent: an existing slug is reused; a pending identical proposal is read back.
 - Quota: 2 proposals per agent session per UTC day; the 3rd fails with zero writes.
 
-### `wsh persona memory add`
+### `wsh hero memory add`
 
-Append persona memory: journal directly, facts/lessons as inbox proposals.
+Append hero memory: journal directly, facts/lessons as inbox proposals.
 
 Flags: `<id>`, `--section facts|lessons|journal`, `--text`, `--from-session <key|this>`, `--agent-name`, `--yes`, `--json`
 
 - journal needs --yes; facts/lessons always land in MEMORY/inbox.md and exit 1 — --yes does not override that.
 - Never write facts.md/lessons.md/CHARTER.md directly; propose through inbox.md.
 
-### `wsh persona journal append`
+### `wsh hero journal append`
 
 Append one shift-journal line (timestamp + state + summary + source).
 
@@ -169,7 +169,7 @@ Flags: `<id>`, `--text`, `--state working|blocked|done|stale`, `--from-session <
 
 - Dry-run unless --yes; the journal is the last-active proxy for the 💤 dormant marker.
 
-### `wsh persona memory approve`
+### `wsh hero memory approve`
 
 Human gate: append a pending proposal to facts/lessons/CHARTER and audit it in the journal.
 
@@ -177,9 +177,9 @@ Flags: `<id>`, `<stamp>`, `--yes`, `--json`
 
 - --yes is mandatory: agents may propose, never approve.
 - Idempotent: approving twice never duplicates the fact.
-- persona memory reject keeps the proposal marked dismissed for audit.
+- hero memory reject keeps the proposal marked dismissed for audit.
 
-### `wsh persona distill`
+### `wsh hero distill`
 
 De-duplicate facts/lessons, refresh the ≤5-entry TL;DR, and back up for --undo.
 
@@ -188,7 +188,7 @@ Flags: `<id>`, `--threshold`, `--dry-run`, `--yes`, `--undo`, `--json`
 - Below the threshold with no duplicates it is a byte-for-byte no-op.
 - --undo restores the exact previous bytes from MEMORY/archive/.distill-backup-*.json.
 
-### `wsh persona sync init`
+### `wsh hero sync init`
 
 Initialize the rootdir git repo with the §3.2 .gitignore and an initial archive commit.
 
@@ -196,15 +196,15 @@ Flags: `--json`
 
 - Only the first init commits; later calls never commit in-flight user edits.
 
-### `wsh persona sync rebuild`
+### `wsh hero sync rebuild`
 
-After a clone, rebuild PERSONAS.md and generated provider contracts.
+After a clone, rebuild HEROES.md and generated provider contracts.
 
 Flags: `--json`
 
-- Writes only GENERATED files; CHARTER / MEMORY / persona.json are never touched.
+- Writes only GENERATED files; CHARTER / MEMORY / hero.json are never touched.
 
-### `wsh persona sync pull|push`
+### `wsh hero sync pull|push`
 
 git pull / git push the rootdir repo (remote must be configured by a human).
 
@@ -213,9 +213,9 @@ Flags: `--json`
 - A missing remote surfaces git's own error; it is never swallowed.
 - work/, *.local.json, agents/, AGENTS.md and .index/ are ignored and never leave the machine.
 
-### `wsh persona approve`
+### `wsh hero approve`
 
-Approve a pending persona proposal and scaffold it.
+Approve a pending hero proposal and scaffold it.
 
 Flags: `<slug>`, `--yes`, `--json`
 

@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import {
-    MaxSubagentDepth,
-    canExpandSubagent,
-    subagentRowStatus,
-    subagentSummary,
-} from "./subagent-card";
+import { MaxSubagentDepth, canExpandSubagent, subagentRowStatus, subagentSummary } from "./subagent-card";
 
 function matched(): SubagentMatch {
     return {

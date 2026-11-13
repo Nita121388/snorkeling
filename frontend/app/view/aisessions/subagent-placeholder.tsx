@@ -7,11 +7,7 @@
  * 折叠态一行：agent + task + 状态点 + 一个「未载入子会话」提示。
  * 不可展开，但至少让用户知道"这里派发了一个子代理"，而不是静默退化成普通工具行。
  */
-export function SubagentPlaceholderCard({
-    match,
-}: {
-    match: SubagentMatch;
-}) {
+export function SubagentPlaceholderCard({ match }: { match: SubagentMatch }) {
     const agentName = (match.call.agent ?? "").trim() || "subagent";
     const taskText = (match.call.task ?? "").replace(/\s+/g, " ").trim();
     return (

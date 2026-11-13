@@ -7,9 +7,9 @@
 // 分支一旦退化（比如无 AgentStatus 时又编造 "Working"，或 chat 态被渲染成按钮），
 // 用户看到的就是新的语义混淆 —— 而这次改动本来就是为了消掉语义混淆。
 
+import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { describe, expect, it } from "vitest";
 import { buildSessionRunBadgeView } from "./session-run-badge-view";
-import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import type { SessionRunningState } from "./use-sessions-running";
 
 const Now = 1_700_000_000_000;

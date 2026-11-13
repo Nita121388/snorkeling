@@ -4,7 +4,12 @@
 import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { Modal } from "@/app/modals/modal";
 import { AISessionsServiceType } from "@/app/store/services";
-import { type OutlinePrompt, SessionOutlineRail, useActiveMessageSeq, useActiveOutlineSeq } from "@/app/view/session-outline-rail";
+import {
+    type OutlinePrompt,
+    SessionOutlineRail,
+    useActiveMessageSeq,
+    useActiveOutlineSeq,
+} from "@/app/view/session-outline-rail";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { cn } from "@/util/util";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -22,7 +27,6 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { autoGenerate } from "./aisession-gen-store";
-import { RenameTitleInputClass } from "./title-edit";
 import { replaceAnnotationDrafts, requestAnnotationDrafts } from "./annotation-assist";
 import { AnnotationEditor } from "./annotation-editor";
 import {
@@ -42,19 +46,26 @@ import {
 import { ChatComposer } from "./chat-composer";
 import { CopyIconButton, IconButton } from "./controls";
 import { EmptyState } from "./empty-state";
+import { toolGroupDurationMs } from "./fold-duration";
 import { GenActionButton } from "./gen-action-button";
 import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
-import { useSessionOpenEntry } from "./open-sessions-store";
 import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
+import { useSessionOpenEntry } from "./open-sessions-store";
 import { openAISessionDetailFromList } from "./session-detail-block";
 import { SessionDetailSkeleton } from "./session-detail-skeleton";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { MessageCard, ToolCallRow } from "./session-message";
 import { NoteAutoSaveDelayMs, shouldAutoSaveNote } from "./session-note-autosave";
 import { SessionTagChips } from "./session-tag-chips";
-import { extractSessionTagsFromNote, mergeSessionTags, removeSessionTagFromNote, sessionTagsEqual } from "./session-tags";
+import {
+    extractSessionTagsFromNote,
+    mergeSessionTags,
+    removeSessionTagFromNote,
+    sessionTagsEqual,
+} from "./session-tags";
 import { defaultChatSource, getChatSource, isSourceAvailable, useChatSourceAvailability } from "./sources";
 import { SubagentCard } from "./subagent-card";
+import { isSubagentToolName, synthesizeSubagentMatch } from "./subagent-detect";
 import { SubagentPlaceholderCard } from "./subagent-placeholder";
 import {
     VirtualOverscan,
@@ -62,18 +73,17 @@ import {
     buildAnchorKeyToSeq,
     buildSeqToIndex,
     buildTimelineAnnotationAnchors,
+    outlineProbeOffset as computeOutlineProbeOffset,
     createRafCoalescer,
     estimateTimelineRowHeight,
     groupConsecutiveTools,
     isNearBottom,
-    outlineProbeOffset as computeOutlineProbeOffset,
     shouldVirtualize,
     timelineItemKey,
 } from "./timeline-virtual";
+import { RenameTitleInputClass } from "./title-edit";
 import { TitleSourceBadge } from "./title-source-badge";
 import { describeToolGroupKind } from "./tool-describe";
-import { toolGroupDurationMs } from "./fold-duration";
-import { isSubagentToolName, synthesizeSubagentMatch } from "./subagent-detect";
 import { ToolGroup } from "./tool-group";
 import { type ChatEvent, type ChatRequestBody, useChatStreams } from "./use-chat-stream";
 import { liveTurnToTimelineItems, useLiveTurns } from "./use-live-turn";
@@ -118,7 +128,6 @@ const NewChatLiveTurnKey = "__new-chat-live-turn__";
 function sourceDotClass(source: string): string {
     return getChatSource(source).dotClass ?? "bg-secondary";
 }
-
 
 export type SessionDetailController = {
     // 可选：供子代理折叠卡片加载子会话内容 / 打开子会话块。
@@ -1134,9 +1143,7 @@ export function SessionDetailPane({
     // 只有子代理派发工具行才查折叠数据；其余工具保持原卡片。
     const subagentMatchFor = useCallback(
         (item: { toolCall: ToolCall }) =>
-            isSubagentToolName(item.toolCall.name)
-                ? subagentMatchesByKey.get(item.toolCall.itemKey ?? "")
-                : undefined,
+            isSubagentToolName(item.toolCall.name) ? subagentMatchesByKey.get(item.toolCall.itemKey ?? "") : undefined,
         [subagentMatchesByKey]
     );
 
@@ -1202,10 +1209,9 @@ export function SessionDetailPane({
         async (nextNote: string): Promise<boolean> => {
             if (summary == null || noteSaveStatus === "saving") return false;
             const parsed = extractSessionTagsFromNote(nextNote);
-            const tags = mergeSessionTags(
-                mergeSessionTags(summary.tags ?? [], parsed.tags),
-                aiTags
-            ).filter((tag) => !removedTags.includes(tag));
+            const tags = mergeSessionTags(mergeSessionTags(summary.tags ?? [], parsed.tags), aiTags).filter(
+                (tag) => !removedTags.includes(tag)
+            );
             if (parsed.note === (summary.note ?? "") && sessionTagsEqual(tags, summary.tags)) {
                 setNoteError("");
                 setRemovedTags([]);
@@ -1720,17 +1726,17 @@ export function SessionDetailPane({
                         <SubagentCard
                             match={subagentMatch}
                             service={model.service}
-                        connection={connection || undefined}
-                        onOpenSession={(sessionKey) => {
-                            if (model.blockId) {
-                                // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
-                                void openAISessionDetailFromList(sessionKey, model.blockId, {
-                                    cwd: subagentTabCwd || undefined,
-                                });
-                            }
-                        }}
-                    />
-                );
+                            connection={connection || undefined}
+                            onOpenSession={(sessionKey) => {
+                                if (model.blockId) {
+                                    // 不强制单开：同一子会话已开着就聚焦，避免重复堆块。
+                                    void openAISessionDetailFromList(sessionKey, model.blockId, {
+                                        cwd: subagentTabCwd || undefined,
+                                    });
+                                }
+                            }}
+                        />
+                    );
                 }
             }
             return (

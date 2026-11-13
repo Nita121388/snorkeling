@@ -62,7 +62,7 @@ const ViewMetaMap: Record<string, { name: string; icon: string }> = {
     scheduledtasks: { name: "Scheduled Tasks", icon: "clock" },
     aisessions: { name: "AI Sessions", icon: "comments" },
     agent: { name: "Agent", icon: "robot" },
-    persona: { name: "Personas", icon: "masks-theater" },
+    hero: { name: "Heroes", icon: "user-shield" },
 };
 
 export function blockViewToIcon(view: string): string {

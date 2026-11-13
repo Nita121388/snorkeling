@@ -14,7 +14,7 @@
 // unit-tested, and every entry point (💡 Copy Context, the hover button,
 // Quote to Input) is guaranteed to emit byte-identical text.
 
-import type { SessionCopyMeta, SessionContextResolver } from "@/app/element/copy-context-contract";
+import type { SessionContextResolver, SessionCopyMeta } from "@/app/element/copy-context-contract";
 import { formatDateTimeToSecond } from "./utils";
 
 /** Hard cap for the body text; exceeding it appends a truncation note. */
@@ -188,9 +188,7 @@ function buildSessionBody(src: SessionCopySource, covered: readonly SessionCopyM
     }
     // Range: rebuild full messages from the model. DOM fragments would be
     // partial, and virtualization may have unmounted the offscreen rows.
-    return covered
-        .map((message) => `**${message.role || "assistant"}:**\n\n${message.text.trim()}`)
-        .join("\n\n");
+    return covered.map((message) => `**${message.role || "assistant"}:**\n\n${message.text.trim()}`).join("\n\n");
 }
 
 /**

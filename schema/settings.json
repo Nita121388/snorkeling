@@ -513,19 +513,19 @@
         "commontext:sync:synctombstones": {
           "type": "boolean"
         },
-        "persona:rootdir": {
+        "hero:rootdir": {
           "type": "string"
         },
-        "persona:journalrotate": {
+        "hero:journalrotate": {
           "type": "boolean"
         },
-        "persona:dormantdays": {
+        "hero:dormantdays": {
           "type": "integer"
         },
-        "persona:softlimitmb": {
+        "hero:softlimitmb": {
           "type": "integer"
         },
-        "persona:softlimitaction": {
+        "hero:softlimitaction": {
           "type": "string",
           "enum": [
             "warn",

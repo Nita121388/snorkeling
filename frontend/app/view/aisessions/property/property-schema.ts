@@ -6,10 +6,10 @@
 // 与 per-session props 分离：schema 是「定义」（key/name/type/options/order/scope），
 // session props 是「值」。用户从表单新建属性时可选择同时写入 schema（在所有会话可用）。
 
-import { slugifyPropertyKey } from "@/app/view/aisessions/property/property-model";
 import { useSettingsKeyAtom } from "@/app/store/global";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { slugifyPropertyKey } from "@/app/view/aisessions/property/property-model";
 import * as React from "react";
 
 export type PropertySchemaDef = AgentPropertyDefType;

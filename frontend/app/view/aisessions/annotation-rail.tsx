@@ -158,9 +158,7 @@ export function AnnotationRail({
     // 节点按真实时间戳分布；时间不可用时 buildTimePositions 回落为均分。
     const positions = React.useMemo(
         () =>
-            buildTimePositions(
-                clusters.map((cluster) => ({ seq: cluster.seq, ts: seqToTimestamp?.get(cluster.seq) }))
-            ),
+            buildTimePositions(clusters.map((cluster) => ({ seq: cluster.seq, ts: seqToTimestamp?.get(cluster.seq) }))),
         [clusters, seqToTimestamp]
     );
     const timeRange = React.useMemo(
@@ -264,7 +262,6 @@ export function AnnotationRail({
 
     const cardIndex = pinnedIndex ?? openIndex;
     const hoveredCluster = cardIndex != null ? clusters[cardIndex] : null;
-
 
     const railContentHeight = bodyOffsetTop + bodyHeight;
     // 悬浮卡上提到 rail 根节点渲染。dotTop = 圆点中心在 rail 根坐标系里的纵向位置

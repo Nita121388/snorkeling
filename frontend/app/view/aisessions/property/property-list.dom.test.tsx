@@ -116,7 +116,14 @@ describe("PropertyList interactions", () => {
     });
 
     it("展开 More properties 后出现只读行，其编辑按钮 disabled", () => {
-        mount(<PropertyList summary={makeSummary({ createdAt: 1767225600000 })} mode="detail" canEdit onChange={vi.fn()} />);
+        mount(
+            <PropertyList
+                summary={makeSummary({ createdAt: 1767225600000 })}
+                mode="detail"
+                canEdit
+                onChange={vi.fn()}
+            />
+        );
 
         expect(row("created_at")).toBeNull();
         expandMore();
@@ -314,11 +321,13 @@ describe("PropertyList — 全局标签清单候选", () => {
                 mode="detail"
                 canEdit
                 onChange={vi.fn()}
-                tagCatalog={{ tags: [
-                    { tag: "fix", count: 12 },
-                    { tag: "refactor", count: 3 },
-                    { tag: "ui", count: 7 },
-                ] }}
+                tagCatalog={{
+                    tags: [
+                        { tag: "fix", count: 12 },
+                        { tag: "refactor", count: 3 },
+                        { tag: "ui", count: 7 },
+                    ],
+                }}
             />
         );
 
@@ -339,11 +348,13 @@ describe("PropertyList — 全局标签清单候选", () => {
                 mode="detail"
                 canEdit
                 onChange={vi.fn()}
-                tagCatalog={{ tags: [
-                    { tag: "alpha", count: 2 },
-                    { tag: "beta", count: 5 },
-                    { tag: "gamma", count: 2 },
-                ] }}
+                tagCatalog={{
+                    tags: [
+                        { tag: "alpha", count: 2 },
+                        { tag: "beta", count: 5 },
+                        { tag: "gamma", count: 2 },
+                    ],
+                }}
             />
         );
 

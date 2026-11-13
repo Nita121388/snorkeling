@@ -58,15 +58,7 @@ export function formatExpiry(expiresAt: number, now: number): string {
     return `in ${Math.round(hours / 24)}d`;
 }
 
-function Row({
-    title,
-    description,
-    children,
-}: {
-    title: string;
-    description: string;
-    children: React.ReactNode;
-}) {
+function Row({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
     return (
         <div className="flex items-start gap-4 py-3">
             <div className="flex-1 min-w-0">
@@ -245,7 +237,9 @@ const AgentAccessSettingsContent = memo(() => {
                 processes never receive the app's own key: they get a short-lived scoped token that you can revoke here.
             </div>
 
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-5">Create a token</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-5">
+                Create a token
+            </div>
             <div className="divide-y divide-border">
                 <Row title="Agent name" description="Shown in the audit log, so make it recognisable.">
                     <input
@@ -292,7 +286,10 @@ const AgentAccessSettingsContent = memo(() => {
                         aria-label="Token file path"
                     />
                 </Row>
-                <Row title="Generate" description="Creates the token and writes the file. Nothing is printed to the terminal.">
+                <Row
+                    title="Generate"
+                    description="Creates the token and writes the file. Nothing is printed to the terminal."
+                >
                     <button
                         className="border border-border rounded px-3 py-1 text-sm hover:bg-hoverbg disabled:opacity-50"
                         onClick={grant}
@@ -435,10 +432,9 @@ const AgentAccessSettingsContent = memo(() => {
             )}
 
             <div className="mt-6 text-xs text-muted-foreground">
-                Every call is written to{" "}
-                <span className="font-mono">agent-data/audit/control-audit.jsonl</span> (time, command, agent name, jti
-                prefix, allowed/denied). Tokens are rate limited to 60 calls per minute. The MCP transport is stdio only —
-                no port is opened.
+                Every call is written to <span className="font-mono">agent-data/audit/control-audit.jsonl</span> (time,
+                command, agent name, jti prefix, allowed/denied). Tokens are rate limited to 60 calls per minute. The
+                MCP transport is stdio only — no port is opened.
             </div>
         </div>
     );

@@ -5,12 +5,12 @@
 // - session not found → 清 block meta 绑定 + 回落 New Chat，不把内部错误留给用户
 // - 其他失败（网络/连接）→ 保持既有报错行为，不清绑定
 
-import { makeMockWaveEnv } from "@/preview/mock/mockwaveenv";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { globalStore } from "@/store/jotaiStore";
-import { NewSessionKey } from "./types";
-import { AgentViewModel } from "./agent";
 import type { AISessionsServiceType } from "@/app/store/services";
+import { makeMockWaveEnv } from "@/preview/mock/mockwaveenv";
+import { globalStore } from "@/store/jotaiStore";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentViewModel } from "./agent";
+import { NewSessionKey } from "./types";
 
 const { RpcApiMock } = vi.hoisted(() => {
     return { RpcApiMock: { SetMetaCommand: vi.fn().mockResolvedValue({}) } };
@@ -101,9 +101,10 @@ describe("AgentViewModel.restoreBoundSession", () => {
     });
 
     it("keeps the loaded detail when the bound session resolves", async () => {
-        const detailImpl = vi
-            .fn()
-            .mockResolvedValue({ summary: { key: `pi:${LostSessionId}:/tmp/s.jsonl`, id: LostSessionId }, messages: [] });
+        const detailImpl = vi.fn().mockResolvedValue({
+            summary: { key: `pi:${LostSessionId}:/tmp/s.jsonl`, id: LostSessionId },
+            messages: [],
+        });
         const model = makeModel(detailImpl);
 
         await model.restoreBoundSession();

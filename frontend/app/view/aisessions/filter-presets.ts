@@ -7,8 +7,8 @@
 // 快照范围见 prd.md：9 个筛选维度 + 可选排序链/分组模式。
 // 不包含 pathFilter（浏览位置）和 query（瞬时时搜索词）。
 
-import { normalizeSessionTags } from "./session-tags";
 import { DefaultOpenState, type OpenState } from "./open-sessions";
+import { normalizeSessionTags } from "./session-tags";
 import type {
     AttachMode,
     DatePreset,

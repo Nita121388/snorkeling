@@ -8,11 +8,14 @@
 //
 // @vitest-environment jsdom
 
-import { clearSessionContextResolvers, registerSessionContextResolver } from "@/app/element/copy-context-contract";
+import {
+    clearSessionContextResolvers,
+    registerSessionContextResolver,
+    sessionContextAttrs,
+} from "@/app/element/copy-context-contract";
 import { getCopyContextTextFromDom } from "@/app/element/selection-copy-overlay";
 import { afterEach, describe, expect, it } from "vitest";
 import { formatSessionContext, makeSessionContextResolver } from "./copy-context";
-import { sessionContextAttrs } from "@/app/element/copy-context-contract";
 
 function setDom(html: string): void {
     document.body.innerHTML = html;
@@ -74,9 +77,7 @@ describe("getCopyContextTextFromDom — session contract", () => {
 
 describe("getCopyContextTextFromDom — file contract (regression)", () => {
     it("still resolves the file + source line branch unchanged", () => {
-        setDom(
-            `<div data-copy-context-path="E:\\a.ts"><span data-source-line="12">hello world</span></div>`
-        );
+        setDom(`<div data-copy-context-path="E:\\a.ts"><span data-source-line="12">hello world</span></div>`);
         const text = getCopyContextTextFromDom(selectNodeText(document.querySelector("span")!));
         expect(text).toBe("E:\\a.ts:12\n```markdown\nhello world\n```");
     });
@@ -98,7 +99,10 @@ describe("entry point consistency", () => {
         const hover = formatSessionContext({ summary, messages, seqStart: 2, seqEnd: 2, selectedText: "a" });
 
         // 💡 path: DOM annotation → resolver registry → formatter.
-        registerSessionContextResolver("s", makeSessionContextResolver(() => ({ summary, messages, seqRange: null })));
+        registerSessionContextResolver(
+            "s",
+            makeSessionContextResolver(() => ({ summary, messages, seqRange: null }))
+        );
         setDom(
             `<div ${Object.entries(sessionContextAttrs({ sessionId: "s", seq: 2 }))
                 .map(([k, v]) => `${k}='${v.replace(/'/g, "&apos;")}'`)

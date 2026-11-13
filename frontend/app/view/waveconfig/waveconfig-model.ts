@@ -9,7 +9,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { AgentAccessSettingsContent } from "@/app/view/waveconfig/agentaccesssettings";
 import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
 import { AIPromptsVisualContent } from "@/app/view/waveconfig/aipromptsettings";
-import { PersonaSettingsContent } from "@/app/view/waveconfig/personasettings";
+import { HeroSettingsContent } from "@/app/view/waveconfig/herosettings";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { SyncSettingsContent } from "@/app/view/waveconfig/syncsettings";
 import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
@@ -105,14 +105,14 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             visualComponent: SyncSettingsContent,
         },
         {
-            // A5.5: the persona home base lives on a configurable root, so the panel that moves it,
+            // A5.5: the hero home base lives on a configurable root, so the panel that moves it,
             // measures it and caps its growth belongs on this surface next to Sync — both answer
             // "what of this leaves the machine?".
-            name: "Persona",
-            path: "personasettings",
+            name: "Hero",
+            path: "herosettings",
             description: "🎭 Home base, storage and governance",
             hasJsonView: false,
-            visualComponent: PersonaSettingsContent,
+            visualComponent: HeroSettingsContent,
         },
         {
             name: "Connections",

@@ -205,9 +205,7 @@ export function isNearBottom(totalSize: number, scrollTop: number, clientHeight:
 }
 
 /** 从消息列表构建 seq → 时间戳（毫秒）；缺失/非正值不入 Map。 */
-export function buildSeqTimestamps(
-    messages: ReadonlyArray<{ seq: number; timestamp?: number }>
-): Map<number, number> {
+export function buildSeqTimestamps(messages: ReadonlyArray<{ seq: number; timestamp?: number }>): Map<number, number> {
     const map = new Map<number, number>();
     for (const message of messages) {
         const ts = message.timestamp ?? 0;
@@ -292,9 +290,7 @@ export function nearestAnnotatedSeq(target: number | null, sortedSeqs: readonly 
 }
 
 /** 一组节点的时间跨度；有效时间戳少于两个或跨度为 0 时返回 null。 */
-export function timeRangeOf(
-    items: ReadonlyArray<{ seq: number; ts?: number }>
-): { min: number; max: number } | null {
+export function timeRangeOf(items: ReadonlyArray<{ seq: number; ts?: number }>): { min: number; max: number } | null {
     const values = items.map((item) => item.ts).filter((ts): ts is number => ts != null && ts > 0);
     if (values.length < 2) return null;
     const min = Math.min(...values);

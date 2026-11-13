@@ -1,17 +1,10 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { newLayoutNode } from "@/layout/lib/layoutNode";
 import { getLayoutModelForStaticTab } from "@/layout/lib/layoutModelHooks";
+import { newLayoutNode } from "@/layout/lib/layoutNode";
 import { LayoutTreeActionType, LayoutTreeSplitHorizontalAction } from "@/layout/lib/types";
-import {
-    atoms,
-    createBlock,
-    createBlockSplitHorizontally,
-    globalStore,
-    refocusNode,
-    WOS,
-} from "@/store/global";
+import { atoms, createBlock, createBlockSplitHorizontally, globalStore, refocusNode, WOS } from "@/store/global";
 import { ObjectService } from "@/store/services";
 
 // 会话详情「分离到独立块」。
@@ -98,11 +91,7 @@ export function planSessionDetailOpen(input: {
     if (!input.forceNewBlock && input.existingBlockId != null) {
         return { kind: "focus", blockId: input.existingBlockId };
     }
-    if (
-        !input.forceNewBlock &&
-        input.hostBlockId != null &&
-        input.hostBlockId !== input.existingBlockId
-    ) {
+    if (!input.forceNewBlock && input.hostBlockId != null && input.hostBlockId !== input.existingBlockId) {
         return { kind: "tab", hostBlockId: input.hostBlockId };
     }
     return { kind: "split" };

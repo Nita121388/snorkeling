@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
+import { getTabDisplayMode, subscribeTabDisplayMode } from "@/app/agent-persona/tab-display-store";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
-import { getTabDisplayMode, subscribeTabDisplayMode } from "@/app/agent-persona/tab-display-store";
 import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
@@ -56,7 +56,17 @@ import { isBlank, makeIconClass, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import type { Atom } from "jotai";
 import { atom, useAtomValue } from "jotai";
-import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+    memo,
+    Suspense,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    useSyncExternalStore,
+} from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { minimizeGroupToFloat } from "./block-minimize";
 import {

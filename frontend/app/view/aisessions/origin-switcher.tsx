@@ -8,8 +8,17 @@
 // - 底部 ⚙ Edit origins… 打开外部根管理（P3）；
 // - 只读 origin 显示锁标，提示 imported / read-only。
 
-import { FloatingPortal, autoUpdate, flip, offset, shift, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
 import { cn } from "@/util/util";
+import {
+    FloatingPortal,
+    autoUpdate,
+    flip,
+    offset,
+    shift,
+    useDismiss,
+    useFloating,
+    useInteractions,
+} from "@floating-ui/react";
 import { useState } from "react";
 
 export interface OriginSwitcherProps {
@@ -126,7 +135,9 @@ export function OriginSwitcher({ origins, selectedId, onSelect, onEdit, onManage
                         {...getFloatingProps()}
                         className="z-50 flex w-64 flex-col overflow-hidden rounded-lg border border-border bg-modalbg shadow-xl"
                     >
-                        <div className="border-b border-border/40 px-2.5 py-1.5 text-[12px] text-secondary">Origins</div>
+                        <div className="border-b border-border/40 px-2.5 py-1.5 text-[12px] text-secondary">
+                            Origins
+                        </div>
                         <div className="max-h-72 overflow-y-auto p-1.5">
                             {origins.map((origin) => (
                                 <OriginRow

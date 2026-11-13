@@ -27,8 +27,8 @@ const DefaultHomeLaunchTargetCwd = "~";
 export const DefaultAgentWidgetId = "defwidget@agent";
 export const DefaultTerminalWidgetId = "defwidget@terminal";
 export const DefaultFilesWidgetId = "defwidget@files";
-// Right WidgetsBar entry for the persona stage popup (A3, see persona-launch.ts).
-export const PersonaWidgetId = "defwidget@persona";
+// Right WidgetsBar entry for the hero stage popup (A3, see hero-launch.ts).
+export const HeroWidgetId = "defwidget@hero";
 export const AgentDefaultLaunchTargetMetaKey = "agent:defaultlaunchtarget";
 export const TerminalDefaultLaunchTargetMetaKey = "term:defaultlaunchtarget";
 
@@ -991,9 +991,9 @@ function createAgentBlockDef(
     if (!isBlank(vendorId) && !isBlank(vendorModel)) {
         requestedModel = vendorModel!.trim();
     }
-    // A per-launch model override (persona stage entry, A3) beats the profile
+    // A per-launch model override (hero stage entry, A3) beats the profile
     // default but — like the vendor pick — is a temporary shift value: it is
-    // never written back to the profile or persona.json.
+    // never written back to the profile or hero.json.
     if (!isBlank(modelOverride)) {
         requestedModel = modelOverride!.trim();
     }

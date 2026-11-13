@@ -9,29 +9,29 @@
 //  - AI 写入的值右侧 ✨，hover 显示来源。
 //  - note 作为长文本单独占行（点击进入既有 note 编辑态）。
 
-import { cn } from "@/util/util";
 import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";
+import { cn } from "@/util/util";
 import * as React from "react";
+import { formatSessionRelativeTime } from "../utils";
+import "./property-list.scss";
 import {
-    formatDateValue,
+    BUILTIN_PROP_KEYS,
     formatDateTimeValue,
+    formatDateValue,
     formatValue,
     humanizeKey,
     isEmptyValue,
-    type SchemaDef,
-    slugifyPropertyKey,
-    typeLabel,
     type PropertyDef,
     type PropertyEntry,
     type PropertySource,
     type PropertyType,
     type PropertyValue,
+    type SchemaDef,
     type SelectOption,
+    slugifyPropertyKey,
     toPropertyDefs,
-    BUILTIN_PROP_KEYS,
+    typeLabel,
 } from "./property-model";
-import { formatSessionRelativeTime } from "../utils";
-import "./property-list.scss";
 
 const CardPropertyLimit = 5;
 /** detail（弹窗 / 详情卡）的主区行数上限。比悬浮卡大，但不再是无限铺 schema 空属性。 */
@@ -110,7 +110,17 @@ export type PropertyListProps = {
     canEdit?: boolean;
 };
 
-const CreatableTypes: PropertyType[] = ["text", "number", "select", "multi_select", "status", "date", "person", "checkbox", "url"];
+const CreatableTypes: PropertyType[] = [
+    "text",
+    "number",
+    "select",
+    "multi_select",
+    "status",
+    "date",
+    "person",
+    "checkbox",
+    "url",
+];
 
 /**
  * 新建属性的定义范围（决定「定义」写到哪里；「值」永远只写当前会话）：
@@ -148,11 +158,7 @@ function itemsFromValue(value: PropertyValue): string[] {
  *   2. def.options 次之 —— 保持 md 预览与自定义 select 的既有顺序语义；
  *   3. 全局清单最后 —— 按 count 降序、同 count 字母序，让「用得多的」浮上来。
  */
-function dropdownOptions(
-    def: PropertyDef,
-    value: PropertyValue,
-    catalog?: SessionTagSummary[]
-): string[] {
+function dropdownOptions(def: PropertyDef, value: PropertyValue, catalog?: SessionTagSummary[]): string[] {
     const out: string[] = [];
     const seen = new Set<string>();
     const push = (raw: string) => {
@@ -307,7 +313,11 @@ function ValueDisplay({
             );
         }
         case "formula":
-            return <span className="property-readonly"><i className="fa-solid fa-function" /> {formatValue(def, value)}</span>;
+            return (
+                <span className="property-readonly">
+                    <i className="fa-solid fa-function" /> {formatValue(def, value)}
+                </span>
+            );
         default:
             // 内置 note 为空时与其它属性同形（Tags 空也显示 Empty），
             // 不再留一个既不显示 Empty、也没有占位文案的空白行。
@@ -368,7 +378,9 @@ function InlineEditor({
             className="property-edit-input"
             aria-label={`Edit ${def.name}`}
             type={def.type === "date" ? "date" : def.type === "number" ? "number" : "text"}
-            value={def.type === "date" && typeof value === "number" ? new Date(value).toISOString().slice(0, 10) : draft}
+            value={
+                def.type === "date" && typeof value === "number" ? new Date(value).toISOString().slice(0, 10) : draft
+            }
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
             onBlur={commit}
@@ -483,7 +495,10 @@ function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPr
                                 setTypeMenuOpen(false);
                             }}
                         >
-                            <i className={cn("fa-sharp fa-solid", AddableTypeIcons[t] ?? "fa-font")} aria-hidden="true" />
+                            <i
+                                className={cn("fa-sharp fa-solid", AddableTypeIcons[t] ?? "fa-font")}
+                                aria-hidden="true"
+                            />
                             <span>{typeLabel(t)}</span>
                             {t === type ? <i className="fa-sharp fa-solid fa-check" aria-hidden="true" /> : null}
                         </button>
@@ -542,7 +557,9 @@ function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPr
                                 <span className="property-add-panel__scope-t">{opt.title}</span>
                                 <span className="property-add-panel__scope-d">{opt.desc}</span>
                             </span>
-                            {opt.chip != null ? <span className="property-add-panel__scope-chip">{opt.chip}</span> : null}
+                            {opt.chip != null ? (
+                                <span className="property-add-panel__scope-chip">{opt.chip}</span>
+                            ) : null}
                         </label>
                     );
                 })}
@@ -717,7 +734,10 @@ export function PropertyList({
         const isNote = def.key === "note";
         const isCheckbox = def.type === "checkbox";
         const editable = canEdit && !def.readOnly && onChange != null;
-        const manageable = canEdit && !def.builtin && (onDeleteProperty != null || onRenameProperty != null || onRetypeProperty != null);
+        const manageable =
+            canEdit &&
+            !def.builtin &&
+            (onDeleteProperty != null || onRenameProperty != null || onRetypeProperty != null);
         const isEditing = editingKey === def.key && editable;
         // 可下拉编辑（多值标签 / 单选）：当前行的浮层是不是开着。
         const isDropdown = editable && DropdownTypes.has(def.type);
@@ -849,27 +869,65 @@ export function PropertyList({
                     {manageable && menuKey === def.key ? (
                         <div className="property-row__menu" role="menu">
                             {onRenameProperty != null ? (
-                                <button type="button" role="menuitem" onClick={() => { setMenuKey(null); setRenamingKey(def.key); }}>
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                        setMenuKey(null);
+                                        setRenamingKey(def.key);
+                                    }}
+                                >
                                     Rename
                                 </button>
                             ) : null}
                             {onRetypeProperty != null ? (
-                                <button type="button" role="menuitem" onClick={() => { setMenuKey(null); setRetypeKey(def.key); }}>
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                        setMenuKey(null);
+                                        setRetypeKey(def.key);
+                                    }}
+                                >
                                     Change type
                                 </button>
                             ) : null}
                             {onMoveProperty != null ? (
                                 <>
-                                    <button type="button" role="menuitem" disabled={!canUp} onClick={() => { setMenuKey(null); onMoveProperty(def.key, -1); }}>
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={!canUp}
+                                        onClick={() => {
+                                            setMenuKey(null);
+                                            onMoveProperty(def.key, -1);
+                                        }}
+                                    >
                                         Move up
                                     </button>
-                                    <button type="button" role="menuitem" disabled={!canDown} onClick={() => { setMenuKey(null); onMoveProperty(def.key, 1); }}>
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={!canDown}
+                                        onClick={() => {
+                                            setMenuKey(null);
+                                            onMoveProperty(def.key, 1);
+                                        }}
+                                    >
                                         Move down
                                     </button>
                                 </>
                             ) : null}
                             {onDeleteProperty != null ? (
-                                <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuKey(null); onDeleteProperty(def.key); }}>
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="is-danger"
+                                    onClick={() => {
+                                        setMenuKey(null);
+                                        onDeleteProperty(def.key);
+                                    }}
+                                >
                                     Delete
                                 </button>
                             ) : null}
@@ -884,8 +942,7 @@ export function PropertyList({
     const showNotePlaceholder = !isAgent && mode === "card" && shownPrimary.length === 0;
     const noteEntry = entries.find((entry) => entry.def.key === "note");
     // 当前打开的浮层对应的属性行（取最新 entry：值变更后梯子里的值也要跟上）。
-    const popoverEntry =
-        popoverKey == null ? null : (entries.find((entry) => entry.def.key === popoverKey) ?? null);
+    const popoverEntry = popoverKey == null ? null : (entries.find((entry) => entry.def.key === popoverKey) ?? null);
 
     return (
         <div

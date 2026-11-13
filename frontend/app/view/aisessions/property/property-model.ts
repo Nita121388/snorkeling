@@ -195,7 +195,13 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
     if (summary == null) return [];
     const entries: PropertyEntry[] = [];
 
-    const pushBuiltin = (key: string, type: PropertyType, value: PropertyValue, readOnly = false, options?: SelectOption[]) => {
+    const pushBuiltin = (
+        key: string,
+        type: PropertyType,
+        value: PropertyValue,
+        readOnly = false,
+        options?: SelectOption[]
+    ) => {
         entries.push({
             def: {
                 key,
@@ -257,9 +263,7 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
                   ? [String(cell.value)]
                   : [];
             const fromValues = values.map(tagToOption);
-            options = schemaDef?.options?.length
-                ? schemaDef.options.map(tagToOption)
-                : fromValues;
+            options = schemaDef?.options?.length ? schemaDef.options.map(tagToOption) : fromValues;
         }
         const name = (cell.name ?? "").trim() || (schemaDef?.name ?? "").trim() || humanizeKey(key);
         const baseOrder = typeof cell.order === "number" && cell.order > 0 ? cell.order : seq;
@@ -300,9 +304,7 @@ export function toPropertyDefs(summary: SessionSummary | null | undefined, schem
                 options: schemaDef.options?.length ? schemaDef.options.map(tagToOption) : undefined,
                 order:
                     100 +
-                    (typeof schemaDef.order === "number" && schemaDef.order > 0
-                        ? schemaDef.order
-                        : 1000 + schemaSeq),
+                    (typeof schemaDef.order === "number" && schemaDef.order > 0 ? schemaDef.order : 1000 + schemaSeq),
                 scope: schemaDefScope(schemaDef),
                 builtin: false,
                 aiManaged: schemaDef.aiManaged === true,

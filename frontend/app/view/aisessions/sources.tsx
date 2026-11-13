@@ -1,9 +1,9 @@
-import { getWebServerEndpoint } from "@/util/endpoints";
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { getWebServerEndpoint } from "@/util/endpoints";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export const CHAT_SOURCES = [
     { id: "pi", label: "Pi", dotClass: "bg-source-pi" },
@@ -72,7 +72,7 @@ export const isSourceAvailable = (id: string, availableSources: ReadonlySet<stri
     availableSources.has(id);
 
 /**
- * Persona-aware icons for the source chips. Lives in a hook (not the module-level
+ * Hero-aware icons for the source chips. Lives in a hook (not the module-level
  * CHAT_SOURCES constant) so switching a provider emoji re-renders the chips.
  */
 export function useChatSourceIcons(): Record<string, ReactNode> {

@@ -124,9 +124,8 @@ export async function patchSessionProperty(args: {
     const existing = summary.props?.[key];
     const existingValue = (existing?.value as PropertyValue) ?? null;
     const nextType = (type ?? (existing?.type as PropertyType) ?? "text") as PropertyType;
-    const value: PropertyValue = existingValue == null || existingValue === ""
-        ? emptyValueForType(nextType)
-        : existingValue;
+    const value: PropertyValue =
+        existingValue == null || existingValue === "" ? emptyValueForType(nextType) : existingValue;
     const cell: PropertyCell = {
         value,
         type: nextType,

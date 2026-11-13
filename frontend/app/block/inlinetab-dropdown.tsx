@@ -17,9 +17,9 @@ type TabInfo = {
     icon: string;
     /** Agent provider of the row's block; null for non-agent rows. */
     agentProvider?: string | null;
-    /** Agent session id (session-level persona lookup); null when unresolved. */
+    /** Agent session id (session-level hero lookup); null when unresolved. */
     agentSessionId?: string | null;
-    /** Block meta, for the legacy block-level `agent:emoji` persona. */
+    /** Block meta, for the legacy block-level `agent:emoji` hero. */
     agentMeta?: MetaType | null;
     isActive: boolean;
     /** Connection meta, used for the remote badge label. */

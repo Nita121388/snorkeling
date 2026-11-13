@@ -33,7 +33,14 @@ function makeCluster(annotation: AnnotationLike): AnnotationRailCluster {
     return {
         key: annotation.anchorKey,
         seq: annotation.seq,
-        items: [{ key: annotation.anchorKey, anchorKey: annotation.anchorKey, seq: annotation.seq, annotations: [annotation] }],
+        items: [
+            {
+                key: annotation.anchorKey,
+                anchorKey: annotation.anchorKey,
+                seq: annotation.seq,
+                annotations: [annotation],
+            },
+        ],
         hasAccepted: true,
         hasDraft: false,
         hasOrphan: false,
@@ -123,7 +130,9 @@ describe("AnnotationCard node text editing", () => {
 
     it("hides the edit affordance when the caller cannot save", () => {
         act(() => {
-            root.render(<AnnotationCard cluster={makeCluster(makeAnnotation())} nodePreview="live node text" onJump={vi.fn()} />);
+            root.render(
+                <AnnotationCard cluster={makeCluster(makeAnnotation())} nodePreview="live node text" onJump={vi.fn()} />
+            );
         });
         expect(container.querySelector('button[aria-label="Edit node text"]')).toBeNull();
     });

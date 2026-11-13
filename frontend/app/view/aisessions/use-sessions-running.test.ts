@@ -29,11 +29,7 @@ describe("projectSessionRunning", () => {
     });
 
     it("marks a session running when any one of its blocks is running", () => {
-        const blocks = [
-            block("b1", "s1"),
-            block("b2", "s1"),
-            block("b3", "s1"),
-        ];
+        const blocks = [block("b1", "s1"), block("b2", "s1"), block("b3", "s1")];
         const statuses = {
             b1: statusOf("b1", "done"),
             b2: statusOf("b2", "running"),
@@ -47,10 +43,7 @@ describe("projectSessionRunning", () => {
     });
 
     it("omits sessions whose blocks are all done or init", () => {
-        const blocks = [
-            block("b1", "s1"),
-            block("b2", "s2"),
-        ];
+        const blocks = [block("b1", "s1"), block("b2", "s2")];
         const statuses = {
             b1: statusOf("b1", "done"),
             b2: statusOf("b2", "init"),
@@ -64,10 +57,7 @@ describe("projectSessionRunning", () => {
     });
 
     it("omits blocks with no status yet", () => {
-        const blocks = [
-            block("b1", "s1"),
-            block("b2", "s2"),
-        ];
+        const blocks = [block("b1", "s1"), block("b2", "s2")];
         const statuses = { b1: null, b2: statusOf("b2", "running") };
 
         const map = projectSessionRunning(blocks, statuses);
@@ -85,12 +75,7 @@ describe("projectSessionRunning", () => {
     });
 
     it("tracks multiple independent sessions in one pass", () => {
-        const blocks = [
-            block("b1", "s1"),
-            block("b2", "s1"),
-            block("b3", "s2"),
-            block("b4", "s3"),
-        ];
+        const blocks = [block("b1", "s1"), block("b2", "s1"), block("b3", "s2"), block("b4", "s3")];
         const statuses = {
             b1: statusOf("b1", "done"),
             b2: statusOf("b2", "running"),

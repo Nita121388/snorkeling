@@ -9,8 +9,8 @@
 // least one pending message — mirrors the v2 design language (floating rounded
 // surface, low-contrast borders, theme tokens).
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/util/util";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { QueuedMessage } from "./message-queue-store";
 
 type MessageQueuePillProps = {
@@ -64,14 +64,11 @@ export function MessageQueuePill({
         });
     }, []);
 
-    const handleDragOver = useCallback(
-        (e: React.DragEvent, idx: number) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
-            dragOverIdxRef.current = idx;
-        },
-        []
-    );
+    const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        dragOverIdxRef.current = idx;
+    }, []);
 
     const handleDrop = useCallback(
         (e: React.DragEvent, targetIdx: number) => {
@@ -125,12 +122,7 @@ export function MessageQueuePill({
                     className="absolute bottom-full left-0 z-40 mb-1 max-h-56 w-full overflow-y-auto rounded-xl border border-border bg-modalbg py-1 shadow-2xl"
                 >
                     {active != null ? (
-                        <QueueRow
-                            item={active}
-                            sending
-                            onPromote={onPromote}
-                            onCancel={onCancel}
-                        />
+                        <QueueRow item={active} sending onPromote={onPromote} onCancel={onCancel} />
                     ) : null}
                     {items.map((item, idx) => (
                         <QueueRow
@@ -164,16 +156,7 @@ type QueueRowProps = {
     onCancel: (id: string) => void;
 };
 
-function QueueRow({
-    item,
-    sending,
-    onDragStart,
-    onDragOver,
-    onDrop,
-    onDragEnd,
-    onPromote,
-    onCancel,
-}: QueueRowProps) {
+function QueueRow({ item, sending, onDragStart, onDragOver, onDrop, onDragEnd, onPromote, onCancel }: QueueRowProps) {
     const cancelled = item.status === "cancelled";
     return (
         <div
@@ -196,18 +179,13 @@ function QueueRow({
             <span
                 className={cn(
                     "inline-flex h-4 items-center rounded px-1 text-[9px] font-semibold",
-                    item.priority === "high"
-                        ? "bg-warning/15 text-warning"
-                        : "bg-info/15 text-info"
+                    item.priority === "high" ? "bg-warning/15 text-warning" : "bg-info/15 text-info"
                 )}
             >
                 {item.priority === "high" ? "⚡" : "N"}
             </span>
             <span
-                className={cn(
-                    "min-w-0 flex-1 truncate",
-                    cancelled ? "line-through text-muted" : "text-primary"
-                )}
+                className={cn("min-w-0 flex-1 truncate", cancelled ? "line-through text-muted" : "text-primary")}
                 title={messagePreview(item)}
             >
                 {messagePreview(item)}

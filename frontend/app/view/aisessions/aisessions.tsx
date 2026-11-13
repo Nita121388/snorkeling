@@ -13,7 +13,7 @@ import type { TabModel } from "@/app/store/tab-model";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { openPersonaCreateWizard } from "@/app/view/persona/persona-create-wizard";
+import { openHeroCreateWizard } from "@/app/view/hero/hero-create-wizard";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { getLayoutModelForTabById } from "@/layout/index";
@@ -114,7 +114,7 @@ import type { BatchCopyKind } from "./utils";
 import {
     applySelectionRange,
     buildBatchCopyText,
-    buildPersonaContext,
+    buildHeroContext,
     copyText,
     countSubSessions,
     emptySessionsText,
@@ -124,6 +124,7 @@ import {
     formatRelativeRefreshTime,
     getErrorMessage,
     groupSessionsByProject,
+    heroIdOfSession,
     isSessionNotFoundError,
     makeSessionComparator,
     normalizePathPrefix,
@@ -131,7 +132,6 @@ import {
     pathAncestorSegments,
     pathFilterEqual,
     pathSelectionsEqual,
-    personaIdOfSession,
     pruneSelectionToVisible,
     readAttachMode,
     readExpandAllTagsPreference,
@@ -264,9 +264,9 @@ export class AiSessionsViewModel implements ViewModel {
     availableTagsAtom = jotai.atom<SessionTagSummary[]>([]);
     projectPathsAtom = jotai.atom<ProjectPathSummary[]>([]);
     /** 本机人设名册（design A1.5 §4，IncludeProjectPaths 时随列表下发）。 */
-    personaRosterAtom = jotai.atom<{ root: string; personas: PersonaSummary[] }>({ root: "", personas: [] });
-    /** persona 多选筛选（客户端过滤，design A1.5 §5.3）；空集 = 不过滤。 */
-    personaFiltersAtom = jotai.atom<string[]>([]);
+    heroRosterAtom = jotai.atom<{ root: string; heroes: HeroSummary[] }>({ root: "", heroes: [] });
+    /** hero 多选筛选（客户端过滤，design A1.5 §5.3）；空集 = 不过滤。 */
+    heroFiltersAtom = jotai.atom<string[]>([]);
     loadingAtom = jotai.atom<boolean>(true);
     detailLoadingAtom = jotai.atom<boolean>(false);
     detailDeltaLoadingAtom = jotai.atom<boolean>(false);
@@ -401,7 +401,7 @@ export class AiSessionsViewModel implements ViewModel {
         return [
             {
                 label: "Set as New Hero…",
-                click: () => openPersonaCreateWizard({ source: "aisessions" }),
+                click: () => openHeroCreateWizard({ source: "aisessions" }),
             },
             {
                 label: "Auto Refresh",
@@ -577,9 +577,9 @@ export class AiSessionsViewModel implements ViewModel {
             const sessions = response?.sessions ?? [];
             globalStore.set(this.attachTruncatedAtom, response?.attachTruncated ?? false);
             globalStore.set(this.projectPathsAtom, response?.projectPaths ?? []);
-            globalStore.set(this.personaRosterAtom, {
-                root: response?.personaRoot ?? "",
-                personas: response?.personas ?? [],
+            globalStore.set(this.heroRosterAtom, {
+                root: response?.heroRoot ?? "",
+                heroes: response?.heroes ?? [],
             });
             // 后台扫描仍在补索引：记下进度，列表尾部用骨架行占位。
             globalStore.set(this.scanStatusAtom, {
@@ -781,16 +781,16 @@ export class AiSessionsViewModel implements ViewModel {
         globalStore.set(this.pathFilterAtom, DefaultPathFilter);
         globalStore.set(this.pathSelectionsAtom, DefaultPathSelections);
         globalStore.set(this.pathExcludesAtom, DefaultPathExcludes);
-        globalStore.set(this.personaFiltersAtom, []);
+        globalStore.set(this.heroFiltersAtom, []);
     }
 
-    /** persona 多选筛选（只影响当前列表行的客户端过滤，不重拉后端）。 */
-    togglePersonaFilter(personaId: string): void {
-        const id = (personaId ?? "").trim();
+    /** hero 多选筛选（只影响当前列表行的客户端过滤，不重拉后端）。 */
+    toggleHeroFilter(heroId: string): void {
+        const id = (heroId ?? "").trim();
         if (id === "") return;
-        const current = globalStore.get(this.personaFiltersAtom);
+        const current = globalStore.get(this.heroFiltersAtom);
         globalStore.set(
-            this.personaFiltersAtom,
+            this.heroFiltersAtom,
             current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
         );
     }
@@ -1829,8 +1829,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const newChatEpoch = jotai.useAtomValue(model.newChatEpochAtom);
     const newSession = jotai.useAtomValue(model.newSessionAtom);
     const projectPaths = jotai.useAtomValue(model.projectPathsAtom);
-    const personaRoster = jotai.useAtomValue(model.personaRosterAtom);
-    const personaFilters = jotai.useAtomValue(model.personaFiltersAtom);
+    const heroRoster = jotai.useAtomValue(model.heroRosterAtom);
+    const heroFilters = jotai.useAtomValue(model.heroFiltersAtom);
     const selectedKey = jotai.useAtomValue(model.selectedKeyAtom);
     const source = jotai.useAtomValue(model.sourceAtom);
     const query = jotai.useAtomValue(model.queryAtom);
@@ -1939,21 +1939,21 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     );
     const openState = jotai.useAtomValue(model.openStateAtom);
     const openSessionsSnapshot = useOpenSessions();
-    // persona 多选筛选纯客户端（design A1.5 §5.3）：行数据已在手，无需后端索引。
-    const personaFilterSet = useMemo(() => new Set(personaFilters), [personaFilters]);
+    // hero 多选筛选纯客户端（design A1.5 §5.3）：行数据已在手，无需后端索引。
+    const heroFilterSet = useMemo(() => new Set(heroFilters), [heroFilters]);
     const visibleSessions = useMemo(() => {
         let base = sortSessions(sessions, sortChain, subSessionCounts);
         // 打开状态筛选纯前端：后端不知道哪些会话有打开的块。
         if (openState !== "any") {
             base = base.filter((session) => openSessionMatches(openSessionsSnapshot, session.id, openState));
         }
-        // persona 筛选同属纯前端：props.persona ∈ 选中集；空选 = 不过滤。
+        // hero 筛选同属纯前端：props.hero ∈ 选中集；空选 = 不过滤。
         // New Chat 占位没有归属，但它是新会话入口，仍然钉在列表顶部（不过滤）。
-        if (personaFilterSet.size > 0) {
-            base = base.filter((session) => personaFilterSet.has(personaIdOfSession(session)));
+        if (heroFilterSet.size > 0) {
+            base = base.filter((session) => heroFilterSet.has(heroIdOfSession(session)));
         }
         return newSession != null ? [newSession, ...base] : base;
-    }, [sessions, sortChain, subSessionCounts, newSession, openState, openSessionsSnapshot, personaFilterSet]);
+    }, [sessions, sortChain, subSessionCounts, newSession, openState, openSessionsSnapshot, heroFilterSet]);
     // 多选集合始终是「当前可见会话」的子集：筛选 / 刷新后消失的会话不该继续
     // 留在选区内，否则批量栏的「复制 5 个 ID」实际只有 2 条在结果里。
     // New Chat 占位没有 id / filePath，进选区只会让复制产物出现空行，排除它。
@@ -2065,8 +2065,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         pathActive ||
         pathExcludeActive ||
         excludeTagsActive;
-    const personaFilterActive = personaFilters.length > 0;
-    // persona 筛选是客户端过滤：不进 remoteFilterActive（后端 attach 语义不变，
+    const heroFilterActive = heroFilters.length > 0;
+    // hero 筛选是客户端过滤：不进 remoteFilterActive（后端 attach 语义不变，
     // matchedKeys 仍只能由后端筛选模板得出），但 UI 上计入生效筛选数。
     const filterActive = remoteFilterActive;
     const filterBusy = loading && remoteFilterActive;
@@ -2080,7 +2080,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         normalizedExcludeTags.length +
         (tagPresenceActive ? 1 : 0) +
         (source !== "" ? 1 : 0) +
-        personaFilters.length;
+        heroFilters.length;
     // 当前筛选快照（与 ViewModel.captureCurrentFilter 保持一致，供方案保存/脏检查）。
     const currentFilterSnapshot = useMemo<FilterPresetFilter>(
         () => ({
@@ -2131,18 +2131,18 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const attachTruncated = jotai.useAtomValue(model.attachTruncatedAtom);
 
     /** 本机人设上下文（分组折叠 + 行标共用）；无名册时为 undefined。 */
-    const personaCtx = useMemo(() => buildPersonaContext(personaRoster.root, personaRoster.personas), [personaRoster]);
-    /** persona 筛选 chip 的选项：名册 ∪ 当前列表里出现过的 props.persona（查不到名册的显示裸 id）。 */
-    const availablePersonas = useMemo(() => {
-        const byId = new Map<string, PersonaSummary>(personaRoster.personas.map((persona) => [persona.id, persona]));
+    const heroCtx = useMemo(() => buildHeroContext(heroRoster.root, heroRoster.heroes), [heroRoster]);
+    /** hero 筛选 chip 的选项：名册 ∪ 当前列表里出现过的 props.hero（查不到名册的显示裸 id）。 */
+    const availableHeroes = useMemo(() => {
+        const byId = new Map<string, HeroSummary>(heroRoster.heroes.map((hero) => [hero.id, hero]));
         for (const session of sessions) {
-            const id = personaIdOfSession(session);
+            const id = heroIdOfSession(session);
             if (id !== "" && !byId.has(id)) {
                 byId.set(id, { id, name: "" });
             }
         }
         return [...byId.values()];
-    }, [personaRoster.personas, sessions]);
+    }, [heroRoster.heroes, sessions]);
     /*
      * The 按项目 cut of the same pool. The New Chat placeholder is pinned above
      * every group (it has no folder yet), so it is set aside before grouping;
@@ -2150,8 +2150,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
      */
     const groupedSessions = useMemo(() => {
         const base = newSession != null ? visibleSessions.slice(1) : visibleSessions;
-        return groupSessionsByProject(base, sortDescending, sessionComparator, matchedKeys ?? undefined, personaCtx);
-    }, [visibleSessions, newSession, sortDescending, sessionComparator, matchedKeys, personaCtx]);
+        return groupSessionsByProject(base, sortDescending, sessionComparator, matchedKeys ?? undefined, heroCtx);
+    }, [visibleSessions, newSession, sortDescending, sessionComparator, matchedKeys, heroCtx]);
 
     // 搜索/筛选命中子会话时自动展开它的父：父可能是后端补带的上下文行
     // （attached === "parent"），也可能是同样命中的普通父行。只展开「有命中子行」
@@ -2402,7 +2402,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                 loading,
                 visibleSessions.length,
                 detail != null,
-                filterActive || personaFilterActive,
+                filterActive || heroFilterActive,
                 error
             )
         ) {
@@ -2411,7 +2411,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         }
         if (loading || visibleSessions.length > 0 || detail != null) return;
         globalStore.set(model.selectedKeyAtom, "");
-    }, [detail, error, filterActive, personaFilterActive, loading, model, visibleSessions.length]);
+    }, [detail, error, filterActive, heroFilterActive, loading, model, visibleSessions.length]);
 
     const setSource = useCallback(
         (next: SourceFilter) => {
@@ -2872,9 +2872,9 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     availablePathRoots={availablePathRoots}
                                     pathChildren={pathChildren}
                                     pathAncestors={pathAncestors}
-                                    availablePersonas={availablePersonas}
-                                    personaFilters={personaFilters}
-                                    togglePersonaFilter={(personaId) => model.togglePersonaFilter(personaId)}
+                                    availableHeroes={availableHeroes}
+                                    heroFilters={heroFilters}
+                                    toggleHeroFilter={(heroId) => model.toggleHeroFilter(heroId)}
                                 />
                             ) : null}
                             <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] text-secondary">
@@ -2976,7 +2976,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 sortChain={sortChain}
                                                 sortDescending={sortDescending}
                                                 matchedKeys={matchedKeys ?? undefined}
-                                                personaById={personaCtx?.byId}
+                                                heroById={heroCtx?.byId}
                                                 selectedKey={selectedKey}
                                                 selectedKeys={selectedKeySet}
                                                 onSelectNew={() => {

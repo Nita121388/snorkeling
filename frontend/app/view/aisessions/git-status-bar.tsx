@@ -267,7 +267,15 @@ export const GitStatusBar = memo(
                         title={`上下文 ${typeof contextUsagePercent === "number" ? `${Math.round(contextUsagePercent)}%` : "未知"}；输入 ${formatTokenCount(usage?.input) ?? "-"}；输出 ${formatTokenCount(usage?.output) ?? "-"}`}
                     >
                         {typeof contextUsagePercent === "number" ? (
-                            <span className={cn(contextUsagePercent >= 85 ? "text-error" : contextUsagePercent >= 70 ? "text-warning" : "text-secondary")}>
+                            <span
+                                className={cn(
+                                    contextUsagePercent >= 85
+                                        ? "text-error"
+                                        : contextUsagePercent >= 70
+                                          ? "text-warning"
+                                          : "text-secondary"
+                                )}
+                            >
                                 ◔ {Math.round(contextUsagePercent)}%
                             </span>
                         ) : null}

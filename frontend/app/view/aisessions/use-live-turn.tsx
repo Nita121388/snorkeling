@@ -17,9 +17,9 @@
 
 import { WaveStreamdown } from "@/app/element/streamdown";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { ChatEvent } from "./use-chat-stream";
 import { ThinkingDisclosure, ToolCallRow } from "./session-message";
 import { ToolGroup } from "./tool-group";
+import type { ChatEvent } from "./use-chat-stream";
 import type { SessionDetailTimelineItem } from "./utils";
 
 export type LiveToolRun = {
@@ -71,7 +71,11 @@ function matchesTool(tool: LiveToolRun, evt: ChatEvent): boolean {
 }
 
 /** 从尾部找最近一个匹配的工具 item 并更新（工具可能同名/乱序结束）。 */
-function updateLastMatchingTool(items: LiveItem[], evt: ChatEvent, patch: (tool: LiveToolRun) => LiveToolRun): LiveItem[] {
+function updateLastMatchingTool(
+    items: LiveItem[],
+    evt: ChatEvent,
+    patch: (tool: LiveToolRun) => LiveToolRun
+): LiveItem[] {
     for (let i = items.length - 1; i >= 0; i--) {
         const item = items[i];
         if (item.kind === "tool" && matchesTool(item.tool, evt)) {
@@ -299,10 +303,7 @@ const LiveSeqBase = 10_000_000;
  *  - text 段 → assistant Message 的正文（连续 text 合并为一条，避免实时碎块）；
  *  - tool 项 → ToolCall 项，带 liveStatus 以保留 running/完成态。
  */
-export function liveTurnToTimelineItems(
-    turn: LiveTurn,
-    userMessagePersisted = false
-): SessionDetailTimelineItem[] {
+export function liveTurnToTimelineItems(turn: LiveTurn, userMessagePersisted = false): SessionDetailTimelineItem[] {
     const items: SessionDetailTimelineItem[] = [];
     let seq = LiveSeqBase;
 
@@ -367,7 +368,17 @@ export function liveTurnToTimelineItems(
  * style as persisted MessageCard (no bubble) so the turn_end handoff does
  * not shift layout; tool rows share ToolCallRow with persisted ToolCallCard.
  */
-export function LiveTurnBlock({ turn, userMessagePersisted = false, onRetry, onContinue }: { turn: LiveTurn; userMessagePersisted?: boolean; onRetry?: () => void; onContinue?: () => void }) {
+export function LiveTurnBlock({
+    turn,
+    userMessagePersisted = false,
+    onRetry,
+    onContinue,
+}: {
+    turn: LiveTurn;
+    userMessagePersisted?: boolean;
+    onRetry?: () => void;
+    onContinue?: () => void;
+}) {
     // live 工具行展开状态（key = items 数组下标；items 只追加，顺序稳定）
     const [openLiveTools, setOpenLiveTools] = useState<Record<number, boolean>>({});
     const items = turn.items;
@@ -416,10 +427,16 @@ export function LiveTurnBlock({ turn, userMessagePersisted = false, onRetry, onC
                         );
                     } else {
                         // 多个连续工具：包装 ToolGroup
-                        const isAnyRunning = toolBuf.some(({ item }) => item.tool.status == null || item.tool.status === "running");
+                        const isAnyRunning = toolBuf.some(
+                            ({ item }) => item.tool.status == null || item.tool.status === "running"
+                        );
                         const toolNames = toolBuf.map(({ item }) => item.tool.name);
                         const toolArgsList = toolBuf.map(({ item }) => {
-                            try { return item.tool.args ? JSON.parse(item.tool.args) : undefined; } catch { return undefined; }
+                            try {
+                                return item.tool.args ? JSON.parse(item.tool.args) : undefined;
+                            } catch {
+                                return undefined;
+                            }
                         });
                         groups.push(
                             <ToolGroup
@@ -440,10 +457,14 @@ export function LiveTurnBlock({ turn, userMessagePersisted = false, onRetry, onC
                                             key={`live-tool-${idx}`}
                                             name={tool.name}
                                             preview={liveToolPreview(tool.args)}
-                                            status={running ? "running" : tool.status === "failed" ? "failed" : "completed"}
+                                            status={
+                                                running ? "running" : tool.status === "failed" ? "failed" : "completed"
+                                            }
                                             animateStatus={!running}
                                             expanded={openLiveTools[idx] ?? false}
-                                            onToggle={() => setOpenLiveTools((current) => ({ ...current, [idx]: !current[idx] }))}
+                                            onToggle={() =>
+                                                setOpenLiveTools((current) => ({ ...current, [idx]: !current[idx] }))
+                                            }
                                         >
                                             {detailParts.length > 0 ? (
                                                 <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded bg-panel p-2 text-[11px] leading-4 text-primary">
@@ -467,7 +488,9 @@ export function LiveTurnBlock({ turn, userMessagePersisted = false, onRetry, onC
                         flushToolBuf();
                         const isLast = idx === items.length - 1;
                         if (item.kind === "thinking") {
-                            groups.push(<ThinkingDisclosure key={`live-thinking-${idx}`} text={item.text} streaming={isLast} />);
+                            groups.push(
+                                <ThinkingDisclosure key={`live-thinking-${idx}`} text={item.text} streaming={isLast} />
+                            );
                         } else {
                             groups.push(
                                 <div key={`live-text-${idx}`} className="w-full min-w-0 px-1 py-0.5 text-sm">
@@ -494,7 +517,9 @@ export function LiveTurnBlock({ turn, userMessagePersisted = false, onRetry, onC
                         <i className="fa-sharp fa-solid fa-triangle-exclamation text-[11px]" />
                         <span>出错了</span>
                     </div>
-                    <div className="whitespace-pre-wrap break-words text-xs leading-5 text-primary">{turn.error.message}</div>
+                    <div className="whitespace-pre-wrap break-words text-xs leading-5 text-primary">
+                        {turn.error.message}
+                    </div>
                     <div className="flex items-center gap-2 pt-0.5">
                         <button
                             type="button"

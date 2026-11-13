@@ -12,10 +12,10 @@ import { cn } from "@/util/util";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { filterSlashItems, mergeSlashItems, parseSlashQuery, slashSourceLabel, type SlashItem } from "./chat-slash";
 import { GitStatusBar } from "./git-status-bar";
-import { chatSourcesForAvailability, getChatSource, type AvailableChatSourceDef } from "./sources";
-import { runChatCommand, type ChatRequestBody, type ChatStreamStatus } from "./use-chat-stream";
 import { MessageQueuePill } from "./message-queue-pill";
 import type { QueuedMessage } from "./message-queue-store";
+import { chatSourcesForAvailability, getChatSource, type AvailableChatSourceDef } from "./sources";
+import { runChatCommand, type ChatRequestBody, type ChatStreamStatus } from "./use-chat-stream";
 
 type PendingImage = {
     id: string;

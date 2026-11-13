@@ -175,6 +175,30 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "GenerateTitle", Array.from(arguments))
     }
 
+    // hero roster with charter, storage, pending proposals and last journal line
+    // @returns hero overview rows
+    HeroOverview(request: AISessionsHeroOverviewRequest): Promise<AISessionsHeroOverviewResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "HeroOverview", Array.from(arguments))
+    }
+
+    // list local hero roster for the stage-entry popup
+    // @returns hero root and trimmed roster entries
+    HeroRoster(request: AISessionsHeroRosterRequest): Promise<AISessionsHeroRosterResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "HeroRoster", Array.from(arguments))
+    }
+
+    // dry-run preview of the hero scaffold (single source of truth with the CLI)
+    // @returns planned files for the wizard's file-tree step
+    HeroScaffoldPreview(request: AISessionsHeroScaffoldPreviewRequest): Promise<AISessionsHeroScaffoldPreviewResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "HeroScaffoldPreview", Array.from(arguments))
+    }
+
+    // storage accounting per hero home base (archive/history/work)
+    // @returns hero root and per-hero storage buckets
+    HeroStats(request: AISessionsHeroStatsRequest): Promise<AISessionsHeroStatsResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "HeroStats", Array.from(arguments))
+    }
+
     // list local AI sessions
     // @returns AI session summaries
     List(request: AISessionsListRequest): Promise<AISessionsListResponse> {
@@ -209,30 +233,6 @@ export class AISessionsServiceType {
     // @returns available AI session origins
     Origins(request: AISessionsOriginsRequest): Promise<AISessionsOriginsResponse> {
         return callBackendService(this?.waveEnv, "aisessions", "Origins", Array.from(arguments))
-    }
-
-    // persona roster with charter, storage, pending proposals and last journal line
-    // @returns persona overview rows
-    PersonaOverview(request: AISessionsPersonaOverviewRequest): Promise<AISessionsPersonaOverviewResponse> {
-        return callBackendService(this?.waveEnv, "aisessions", "PersonaOverview", Array.from(arguments))
-    }
-
-    // list local persona roster for the stage-entry popup
-    // @returns persona root and trimmed roster entries
-    PersonaRoster(request: AISessionsPersonaRosterRequest): Promise<AISessionsPersonaRosterResponse> {
-        return callBackendService(this?.waveEnv, "aisessions", "PersonaRoster", Array.from(arguments))
-    }
-
-    // dry-run preview of the persona scaffold (single source of truth with the CLI)
-    // @returns planned files for the wizard's file-tree step
-    PersonaScaffoldPreview(request: AISessionsPersonaScaffoldPreviewRequest): Promise<AISessionsPersonaScaffoldPreviewResponse> {
-        return callBackendService(this?.waveEnv, "aisessions", "PersonaScaffoldPreview", Array.from(arguments))
-    }
-
-    // storage accounting per persona home base (archive/history/work)
-    // @returns persona root and per-persona storage buckets
-    PersonaStats(request: AISessionsPersonaStatsRequest): Promise<AISessionsPersonaStatsResponse> {
-        return callBackendService(this?.waveEnv, "aisessions", "PersonaStats", Array.from(arguments))
     }
 
     // list AI prompt features with their built-in defaults

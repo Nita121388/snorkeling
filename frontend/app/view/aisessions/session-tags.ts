@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 function normalizeSessionTag(tag: string): string {
-    const normalized = tag
-        .trim()
-        .toLowerCase()
-        .replace(/^#+/, "")
-        .replace(/#+$/, "");
+    const normalized = tag.trim().toLowerCase().replace(/^#+/, "").replace(/#+$/, "");
     return /^[\p{L}\p{N}_-]+$/u.test(normalized) ? normalized : "";
 }
 

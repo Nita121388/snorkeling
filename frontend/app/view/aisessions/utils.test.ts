@@ -4,9 +4,9 @@
 import { PlatformMacOS, PlatformWindows, setPlatform } from "@/util/platformutil";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+    attachModeStorageKey,
     DefaultAttachMode,
     DefaultSortChain,
-    attachModeStorageKey,
     expandAllTagsStorageKey,
     MaxSortChainLength,
     sanitizeSortChain,
@@ -14,10 +14,10 @@ import {
 import {
     applySelectionRange,
     buildBatchCopyText,
-    buildPersonaContext,
+    buildHeroContext,
     buildSessionDetailTimeline,
     classifySnippet,
-    countSessionsOfPersona,
+    countSessionsOfHero,
     countSubSessions,
     describeSessionDates,
     formatFileSize,
@@ -27,13 +27,13 @@ import {
     freshnessLevel,
     groupSessionsByProject,
     heatLevel,
+    heroGroupLabel,
+    heroIdOfSession,
     isReadableMessage,
     isSessionNotFoundError,
-    makePersonaPathMatcher,
+    makeHeroPathMatcher,
     makeSessionComparator,
     MessageHeatThresholds,
-    personaGroupLabel,
-    personaIdOfSession,
     pruneSelectionToVisible,
     readAttachMode,
     readExpandAllTagsPreference,
@@ -45,7 +45,7 @@ import {
     sortSessions,
     UnclassifiedGroupName,
     writeExpandAllTagsPreference,
-    type PersonaContext,
+    type HeroContext,
 } from "./utils";
 
 function makeMessage(seq: number, role: string, text: string): Message {
@@ -94,12 +94,16 @@ describe("isSessionNotFoundError", () => {
 
     it("rejects errors that are not session-not-found", () => {
         expect(isSessionNotFoundError(new Error("failed to fetch"), NotFoundId)).toBe(false);
-        expect(isSessionNotFoundError(new Error("call aisessions.Detail error: context deadline exceeded"), NotFoundId)).toBe(false);
+        expect(
+            isSessionNotFoundError(new Error("call aisessions.Detail error: context deadline exceeded"), NotFoundId)
+        ).toBe(false);
         expect(isSessionNotFoundError("session not foundish")).toBe(false);
     });
 
     it("rejects a not-found error for a different session id", () => {
-        expect(isSessionNotFoundError(new Error("session not found: 00000000-0000-0000-0000-000000000000"), NotFoundId)).toBe(false);
+        expect(
+            isSessionNotFoundError(new Error("session not found: 00000000-0000-0000-0000-000000000000"), NotFoundId)
+        ).toBe(false);
     });
 
     it("handles blank input without throwing", () => {
@@ -877,21 +881,21 @@ describe("groupSessionsByProject with sort chain", () => {
     });
 });
 
-describe("persona folding (A1.5)", () => {
-    const Root = "/Users/me/.snorkeling/personas";
+describe("hero folding (A1.5)", () => {
+    const Root = "/Users/me/.snorkeling/heroes";
 
     function s(key: string, project: string, over: Partial<SessionSummary> = {}): SessionSummary {
         return { key, id: key, source: "pi", projectPath: project, updatedAt: 1000, ...over } as SessionSummary;
     }
 
-    function ctx(root = Root): PersonaContext {
-        return buildPersonaContext(root, [
+    function ctx(root = Root): HeroContext {
+        return buildHeroContext(root, [
             { id: "demo", name: "Demo", emoji: "🦊", role: "guard" },
             { id: "archivist", name: "Archivist" },
         ])!;
     }
 
-    it("folds a session under the persona base into a 🎭 group keyed by persona:<id>", () => {
+    it("folds a session under the hero base into a 🎭 group keyed by hero:<id>", () => {
         const groups = groupSessionsByProject(
             [s("a", `${Root}/demo`), s("b", `${Root}/demo/work`)],
             true,
@@ -900,8 +904,8 @@ describe("persona folding (A1.5)", () => {
             ctx()
         );
         expect(groups).toHaveLength(1);
-        expect(groups[0].personaId).toBe("demo");
-        expect(groups[0].path).toBe("persona:demo");
+        expect(groups[0].heroId).toBe("demo");
+        expect(groups[0].path).toBe("hero:demo");
         expect(groups[0].name).toBe("🦊 Demo");
         expect(groups[0].sessions).toHaveLength(2);
         // AC2 探针：组名/路径里不能出现 rootdir 原文。
@@ -911,17 +915,17 @@ describe("persona folding (A1.5)", () => {
 
     it("matches Windows separators and ignores path case", () => {
         const groups = groupSessionsByProject(
-            [s("a", "c:\\Users\\Me\\.SNORKELING\\Personas\\Demo\\work")],
+            [s("a", "c:\\Users\\Me\\.SNORKELING\\Heroes\\Demo\\work")],
             true,
             undefined,
             undefined,
-            ctx("C:\\Users\\Me\\.snorkeling\\personas")
+            ctx("C:\\Users\\Me\\.snorkeling\\heroes")
         );
-        expect(groups[0].personaId).toBe("demo");
+        expect(groups[0].heroId).toBe("demo");
         expect(groups[0].name).toBe("🦊 Demo");
     });
 
-    it("leaves non-persona paths untouched", () => {
+    it("leaves non-hero paths untouched", () => {
         const groups = groupSessionsByProject(
             [s("a", `${Root}/not-in-roster/work`), s("b", "/work/demo")],
             true,
@@ -929,64 +933,59 @@ describe("persona folding (A1.5)", () => {
             undefined,
             ctx()
         );
-        expect(groups.map((group) => group.personaId)).toEqual([undefined, undefined]);
+        expect(groups.map((group) => group.heroId)).toEqual([undefined, undefined]);
         expect(groups.map((group) => group.name).sort()).toEqual(["demo", "work"]);
     });
 
-    it("does not collide with a real project that shares the persona basename", () => {
+    it("does not collide with a real project that shares the hero basename", () => {
         const groups = groupSessionsByProject(
-            [s("persona", `${Root}/demo`), s("real", "/work/demo")],
+            [s("hero", `${Root}/demo`), s("real", "/work/demo")],
             true,
             undefined,
             undefined,
             ctx()
         );
         expect(groups).toHaveLength(2);
-        const personaGroup = groups.find((group) => group.personaId === "demo")!;
-        const realGroup = groups.find((group) => group.personaId == null)!;
-        expect(personaGroup.path).toBe("persona:demo");
+        const heroGroup = groups.find((group) => group.heroId === "demo")!;
+        const realGroup = groups.find((group) => group.heroId == null)!;
+        expect(heroGroup.path).toBe("hero:demo");
         expect(realGroup.path).toBe("/work/demo");
         expect(realGroup.name).toBe("demo");
-        expect(personaGroup.sessions.map((session) => session.key)).toEqual(["persona"]);
+        expect(heroGroup.sessions.map((session) => session.key)).toEqual(["hero"]);
         expect(realGroup.sessions.map((session) => session.key)).toEqual(["real"]);
     });
 
     it("matches a path prefix only on segment boundaries", () => {
-        const match = makePersonaPathMatcher(ctx());
+        const match = makeHeroPathMatcher(ctx());
         expect(match(`${Root}/demo`)).toBe("demo");
         expect(match(`${Root}/demolition`)).toBe("");
         expect(match(`${Root}-sibling/demo`)).toBe("");
         expect(match(Root)).toBe("");
     });
 
-    it("buildPersonaContext returns undefined without a root or roster", () => {
-        expect(buildPersonaContext("", [{ id: "demo", name: "Demo" }])).toBeUndefined();
-        expect(buildPersonaContext(Root, [])).toBeUndefined();
-        expect(buildPersonaContext(undefined, undefined)).toBeUndefined();
+    it("buildHeroContext returns undefined without a root or roster", () => {
+        expect(buildHeroContext("", [{ id: "demo", name: "Demo" }])).toBeUndefined();
+        expect(buildHeroContext(Root, [])).toBeUndefined();
+        expect(buildHeroContext(undefined, undefined)).toBeUndefined();
     });
 
-    it("personaGroupLabel falls back to the bare id", () => {
-        expect(personaGroupLabel({ id: "demo", name: "" })).toBe("🦸 demo");
-        expect(personaGroupLabel({ id: "demo", name: "Demo", emoji: "🦊" })).toBe("🦊 Demo");
+    it("heroGroupLabel falls back to the bare id", () => {
+        expect(heroGroupLabel({ id: "demo", name: "" })).toBe("🦸 demo");
+        expect(heroGroupLabel({ id: "demo", name: "Demo", emoji: "🦊" })).toBe("🦊 Demo");
     });
 
-    it("reads props.persona and counts 登场史 consistently", () => {
-        const withPersona = (key: string, persona: string): SessionSummary =>
-            s(key, "/work/x", { props: { persona: { value: persona } } } as Partial<SessionSummary>);
-        const list = [
-            withPersona("a", "demo"),
-            withPersona("b", "demo"),
-            withPersona("c", "archivist"),
-            s("d", "/work/x"),
-        ];
-        expect(personaIdOfSession(list[0])).toBe("demo");
-        expect(personaIdOfSession(list[3])).toBe("");
-        expect(countSessionsOfPersona(list, "demo")).toBe(2);
-        // 与「按 persona 过滤」的条数一致（同一条口径）。
-        expect(list.filter((session) => personaIdOfSession(session) === "demo").length).toBe(
-            countSessionsOfPersona(list, "demo")
+    it("reads props.hero and counts 登场史 consistently", () => {
+        const withHero = (key: string, hero: string): SessionSummary =>
+            s(key, "/work/x", { props: { hero: { value: hero } } } as Partial<SessionSummary>);
+        const list = [withHero("a", "demo"), withHero("b", "demo"), withHero("c", "archivist"), s("d", "/work/x")];
+        expect(heroIdOfSession(list[0])).toBe("demo");
+        expect(heroIdOfSession(list[3])).toBe("");
+        expect(countSessionsOfHero(list, "demo")).toBe(2);
+        // 与「按 hero 过滤」的条数一致（同一条口径）。
+        expect(list.filter((session) => heroIdOfSession(session) === "demo").length).toBe(
+            countSessionsOfHero(list, "demo")
         );
-        expect(countSessionsOfPersona(list, "")).toBe(0);
+        expect(countSessionsOfHero(list, "")).toBe(0);
     });
 });
 
@@ -1004,7 +1003,10 @@ describe("readAttachMode", () => {
     it("keeps a stored 精确 / 只带子代理 choice", () => {
         for (const stored of ["off", "children"] as const) {
             vi.stubGlobal("window", {
-                localStorage: { getItem: (key: string) => (key === attachModeStorageKey ? stored : null), setItem: () => {} },
+                localStorage: {
+                    getItem: (key: string) => (key === attachModeStorageKey ? stored : null),
+                    setItem: () => {},
+                },
             });
             expect(readAttachMode()).toBe(stored);
         }
@@ -1030,9 +1032,9 @@ describe("classifySnippet", () => {
     });
 
     it("keeps Chinese prose as prose", () => {
-        expect(
-            classifySnippet("下面按时间线把昨晚这一整夜做完的事情完整讲一遍，重点是有没有回落到基线。")
-        ).toBe("prose");
+        expect(classifySnippet("下面按时间线把昨晚这一整夜做完的事情完整讲一遍，重点是有没有回落到基线。")).toBe(
+            "prose"
+        );
     });
 
     it("treats empty snippets as prose", () => {

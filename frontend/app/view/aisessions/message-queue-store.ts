@@ -13,8 +13,8 @@
 // turn_end calls takeNext() to pull the next message (respecting priority),
 // hands its body to handleChatSend, then complete() when that turn ends.
 
-import type { ChatRequestBody } from "./use-chat-stream";
 import { useSyncExternalStore } from "react";
+import type { ChatRequestBody } from "./use-chat-stream";
 
 export type QueuedMessagePriority = "high" | "normal";
 export type QueuedMessageStatus = "queued" | "cancelled";

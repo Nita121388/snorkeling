@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { MessageQueueStore, type QueuedMessage } from "./message-queue-store";
+import { MessageQueueStore } from "./message-queue-store";
 
 function makeBody(msg: string) {
     return { source: "pi", message: msg };

@@ -1,8 +1,6 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, it } from "vitest";
-import { formatDateTimeToSecond } from "./utils";
 import {
     clearSessionContextResolvers,
     parseSessionCopyMeta,
@@ -10,6 +8,7 @@ import {
     resolveSessionContext,
     sessionContextAttrs,
 } from "@/app/element/copy-context-contract";
+import { afterEach, describe, expect, it } from "vitest";
 import {
     CopyContextMaxChars,
     fencedBlock,
@@ -20,6 +19,7 @@ import {
     type SessionCopyMessage,
     type SessionCopySource,
 } from "./copy-context";
+import { formatDateTimeToSecond } from "./utils";
 
 function message(seq: number, role: string, text: string, extra?: Partial<SessionCopyMessage>): SessionCopyMessage {
     return { seq, role, text, ...extra };
@@ -110,9 +110,7 @@ describe("formatSessionContext", () => {
     });
 
     it("falls back to the session id when the title is blank", () => {
-        const text = formatSessionContext(
-            source({ summary: { id: "sess-3", source: "pi", title: "   " } })
-        );
+        const text = formatSessionContext(source({ summary: { id: "sess-3", source: "pi", title: "   " } }));
         expect(text).toContain("session: sess-3");
     });
 
@@ -242,7 +240,9 @@ describe("formatTermContext", () => {
 
     it("omits optional lines and defaults connection to local", () => {
         const text = formatTermContext({ blockId: "b2", text: "x" });
-        expect(text).toBe(["<context>", "block: b2", "connection: local", "</context>", "", "```", "x", "```"].join("\n"));
+        expect(text).toBe(
+            ["<context>", "block: b2", "connection: local", "</context>", "", "```", "x", "```"].join("\n")
+        );
     });
 
     it("normalizes a reversed line range", () => {
@@ -300,14 +300,13 @@ describe("sessionContextAttrs / resolver registry", () => {
     it("uses the tracked range over the anchor message", () => {
         const state = {
             summary: { id: "s1", source: "claude", title: "T", projectPath: "E:\\p" },
-            messages: [
-                message(1, "user", "q"),
-                message(2, "assistant", "a"),
-                message(3, "assistant", "b"),
-            ],
+            messages: [message(1, "user", "q"), message(2, "assistant", "a"), message(3, "assistant", "b")],
             seqRange: { start: 1, end: 3 },
         };
-        const unregister = registerSessionContextResolver("s1", makeSessionContextResolver(() => state));
+        const unregister = registerSessionContextResolver(
+            "s1",
+            makeSessionContextResolver(() => state)
+        );
         const text = resolveSessionContext({ sessionId: "s1", seq: 3 }, "ignored");
         unregister();
         expect(text).toContain("message-seq: 1-3");
@@ -320,7 +319,10 @@ describe("sessionContextAttrs / resolver registry", () => {
             messages: [message(5, "user", "hello"), message(6, "assistant", "hi")],
             seqRange: null,
         };
-        registerSessionContextResolver("s2", makeSessionContextResolver(() => state));
+        registerSessionContextResolver(
+            "s2",
+            makeSessionContextResolver(() => state)
+        );
         const text = resolveSessionContext({ sessionId: "s2", seq: 5 }, "hello");
         expect(text).toContain("message-seq: 5");
         expect(text).toContain("role: user");
@@ -328,18 +330,27 @@ describe("sessionContextAttrs / resolver registry", () => {
 
     it("drops the resolver on unregister and on replacement", () => {
         const state = { summary: { id: "s3" }, messages: [message(1, "user", "x")], seqRange: null };
-        const first = registerSessionContextResolver("s3", makeSessionContextResolver(() => state));
+        const first = registerSessionContextResolver(
+            "s3",
+            makeSessionContextResolver(() => state)
+        );
         first();
         expect(resolveSessionContext({ sessionId: "s3", seq: 1 }, "x")).toBeNull();
 
-        registerSessionContextResolver("s3", makeSessionContextResolver(() => state));
+        registerSessionContextResolver(
+            "s3",
+            makeSessionContextResolver(() => state)
+        );
         // A stale unregister from the first registration must not evict the second.
         first();
         expect(resolveSessionContext({ sessionId: "s3", seq: 1 }, "x")).not.toBeNull();
     });
 
     it("returns null when the state getter yields nothing", () => {
-        registerSessionContextResolver("s4", makeSessionContextResolver(() => null));
+        registerSessionContextResolver(
+            "s4",
+            makeSessionContextResolver(() => null)
+        );
         expect(resolveSessionContext({ sessionId: "s4", seq: 1 }, "x")).toBeNull();
     });
 });

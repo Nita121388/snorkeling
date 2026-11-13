@@ -34,7 +34,7 @@ import {
     getLaunchTargetDefaultKey,
     moveDefaultProfileFirst,
     moveDefaultTargetFirst,
-    PersonaWidgetId,
+    HeroWidgetId,
     resolveAgentBlockCommandForLaunch,
     resolveDefaultLaunchTarget,
     TerminalDefaultLaunchTargetMetaKey,
@@ -44,7 +44,7 @@ import { CcSwitchAppType, CcSwitchVendor, loadCcSwitchVendors } from "@/app/work
 import { DevRuntimeButton } from "@/app/workspace/dev-runtime";
 import { subscribeLaunchPopup, type LaunchPopupAnchor } from "@/app/workspace/launch-popup-bus";
 import { getNoteDirectory, makeNoteBlockDef, NoteWidgetAction } from "@/app/workspace/note-block";
-import { PersonaLaunchFloatingWindow } from "@/app/workspace/persona-launch-window";
+import { HeroLaunchFloatingWindow } from "@/app/workspace/hero-launch-window";
 import { runWidgetAction } from "@/app/workspace/widget-actions";
 import { openWidgetQuickLaunch } from "@/app/workspace/widget-quick-launch";
 import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
@@ -149,7 +149,7 @@ const Widget = memo(
             widgetId === DefaultTerminalWidgetId ||
             widgetId === DefaultAgentWidgetId ||
             widgetId === DefaultFilesWidgetId ||
-            widgetId === PersonaWidgetId;
+            widgetId === HeroWidgetId;
 
         useEffect(() => {
             if (mode === "normal" && labelRef.current) {
@@ -1844,10 +1844,10 @@ const Widgets = memo(() => {
         return Array.isArray(saved) ? saved : [];
     }, [settings]);
     const filesHoverTimerRef = useRef<number | null>(null);
-    // Persona stage-entry window (A3)：同 Agent/Files 一样 hover 定时打开，互斥其它浮窗。
-    const [isPersonaLaunchOpen, setIsPersonaLaunchOpen] = useState(false);
-    const [personaReferenceElement, setPersonaReferenceElement] = useState<HTMLElement | null>(null);
-    const personaHoverTimerRef = useRef<number | null>(null);
+    // Hero stage-entry window (A3)：同 Agent/Files 一样 hover 定时打开，互斥其它浮窗。
+    const [isHeroLaunchOpen, setIsHeroLaunchOpen] = useState(false);
+    const [heroReferenceElement, setHeroReferenceElement] = useState<HTMLElement | null>(null);
+    const heroHoverTimerRef = useRef<number | null>(null);
     // ponytail: bus 发起的（Blocks 组「＋」菜单 / Quick Launch）二级浮窗，需要把 open 状态回传给发起方，
     // 且其居中意图（centered）要透传给浮窗本身。两个 ref 在 subscribeLaunchPopup 命中时写入，
     // 浮窗关闭时回传 false 并复位。仅 bus 来源置位，右侧 WidgetsBar 自身 hover 不会误触回调。
@@ -2044,23 +2044,23 @@ const Widgets = memo(() => {
         setGroupSinkNodeId(null);
     }, []);
 
-    // Persona stage-entry window (A3)：互斥其它三个浮窗。notifyBus 语义同上三个 close。
-    const closePersonaLaunchWindow = useCallback(() => {
-        setIsPersonaLaunchOpen(false);
-        setPersonaReferenceElement(null);
-        if (personaHoverTimerRef.current != null) {
-            window.clearTimeout(personaHoverTimerRef.current);
-            personaHoverTimerRef.current = null;
+    // Hero stage-entry window (A3)：互斥其它三个浮窗。notifyBus 语义同上三个 close。
+    const closeHeroLaunchWindow = useCallback(() => {
+        setIsHeroLaunchOpen(false);
+        setHeroReferenceElement(null);
+        if (heroHoverTimerRef.current != null) {
+            window.clearTimeout(heroHoverTimerRef.current);
+            heroHoverTimerRef.current = null;
         }
     }, []);
 
-    const openPersonaLaunchWindow = useCallback(
+    const openHeroLaunchWindow = useCallback(
         (referenceElement: HTMLElement) => {
             closeAgentTargetSelector(false);
             closeTerminalTargetSelector(false);
             closeFilesWindow(false);
-            setPersonaReferenceElement(referenceElement);
-            setIsPersonaLaunchOpen(true);
+            setHeroReferenceElement(referenceElement);
+            setIsHeroLaunchOpen(true);
         },
         [closeAgentTargetSelector, closeTerminalTargetSelector, closeFilesWindow]
     );
@@ -2350,15 +2350,15 @@ const Widgets = memo(() => {
                 return;
             }
 
-            // 🎭 Persona（A4）：点击 = 打开人设名册 Block（design §6）；hover 仍然打开
+            // 🎭 Hero（A4）：点击 = 打开人设名册 Block（design §6）；hover 仍然打开
             // 登场浮窗（见下方 hover 分支）。名册是「谁在当班」的总览入口，登场选择仍在 hover。
-            if (widgetId === PersonaWidgetId) {
+            if (widgetId === HeroWidgetId) {
                 closeAgentTargetSelector();
                 closeTerminalTargetSelector();
                 closeFilesWindow();
-                closePersonaLaunchWindow();
+                closeHeroLaunchWindow();
                 fireAndForget(async () => {
-                    await env.createBlock({ meta: { view: "persona" } }, widget.magnified);
+                    await env.createBlock({ meta: { view: "hero" } }, widget.magnified);
                 });
                 return;
             }
@@ -2401,7 +2401,7 @@ const Widgets = memo(() => {
             agentProfileOptions.length,
             closeAgentTargetSelector,
             closeFilesWindow,
-            closePersonaLaunchWindow,
+            closeHeroLaunchWindow,
             closeTerminalTargetSelector,
             env,
             isAgentTargetOpen,
@@ -2488,12 +2488,12 @@ const Widgets = memo(() => {
                 }, WidgetHoverOpenDelayMs);
             }
 
-            if (widgetId === PersonaWidgetId) {
-                if (personaHoverTimerRef.current != null) {
-                    window.clearTimeout(personaHoverTimerRef.current);
+            if (widgetId === HeroWidgetId) {
+                if (heroHoverTimerRef.current != null) {
+                    window.clearTimeout(heroHoverTimerRef.current);
                 }
-                personaHoverTimerRef.current = window.setTimeout(() => {
-                    openPersonaLaunchWindow(referenceElement);
+                heroHoverTimerRef.current = window.setTimeout(() => {
+                    openHeroLaunchWindow(referenceElement);
                 }, WidgetHoverOpenDelayMs);
             }
         },
@@ -2501,7 +2501,7 @@ const Widgets = memo(() => {
             agentProfileOptions.length,
             openAgentTargetPopup,
             openTerminalTargetPopup,
-            openPersonaLaunchWindow,
+            openHeroLaunchWindow,
             refreshCcSwitchVendors,
         ]
     );
@@ -2522,9 +2522,9 @@ const Widgets = memo(() => {
             window.clearTimeout(filesHoverTimerRef.current);
             filesHoverTimerRef.current = null;
         }
-        if (personaHoverTimerRef.current != null) {
-            window.clearTimeout(personaHoverTimerRef.current);
-            personaHoverTimerRef.current = null;
+        if (heroHoverTimerRef.current != null) {
+            window.clearTimeout(heroHoverTimerRef.current);
+            heroHoverTimerRef.current = null;
         }
     }, []);
 
@@ -2617,7 +2617,7 @@ const Widgets = memo(() => {
     const anyFloatingOpen =
         isAppsOpen ||
         isSettingsOpen ||
-        isPersonaLaunchOpen ||
+        isHeroLaunchOpen ||
         (isAgentTargetOpen && groupSinkNodeId == null) ||
         (isTerminalTargetOpen && groupSinkNodeId == null);
     const expanded = pinned || anyFloatingOpen;
@@ -2851,16 +2851,16 @@ const Widgets = memo(() => {
                     centered={launchPopupCenteredRef.current}
                 />
             )}
-            {personaReferenceElement != null && (
-                <PersonaLaunchFloatingWindow
-                    isOpen={isPersonaLaunchOpen}
-                    onClose={closePersonaLaunchWindow}
-                    referenceElement={personaReferenceElement}
+            {heroReferenceElement != null && (
+                <HeroLaunchFloatingWindow
+                    isOpen={isHeroLaunchOpen}
+                    onClose={closeHeroLaunchWindow}
+                    referenceElement={heroReferenceElement}
                     settings={settings}
                     profileOptions={agentProfileOptions}
                     fetchRoster={async () => {
-                        const roster = await env.services.aisessions.PersonaRoster({});
-                        return { root: roster?.root ?? "", personas: roster?.personas ?? [] };
+                        const roster = await env.services.aisessions.HeroRoster({});
+                        return { root: roster?.root ?? "", heroes: roster?.heroes ?? [] };
                     }}
                     getMainWorkdir={() => {
                         const target = resolveDefaultLaunchTarget(

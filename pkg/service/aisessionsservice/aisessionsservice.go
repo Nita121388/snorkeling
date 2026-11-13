@@ -19,7 +19,7 @@ import (
 
 	"github.com/wavetermdev/waveterm/pkg/aisessions"
 	"github.com/wavetermdev/waveterm/pkg/ccswitch"
-	"github.com/wavetermdev/waveterm/pkg/persona"
+	"github.com/wavetermdev/waveterm/pkg/hero"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/tsgen/tsgenmeta"
@@ -66,13 +66,13 @@ type AISessionsListRequest struct {
 type AISessionsListResponse struct {
 	Sessions     []aisessions.SessionSummary     `json:"sessions"`
 	ProjectPaths []aisessions.ProjectPathSummary `json:"projectPaths,omitempty"`
-	// PersonaRoot is the local persona root (design A1.5 §4); empty when no
-	// persona home bases exist or the root is unreadable.
-	PersonaRoot string `json:"personaRoot,omitempty"`
-	// Personas is the trimmed local roster (id/name/emoji/role only). The
-	// frontend folds <PersonaRoot>/<id> project buckets into 🎭 groups and
-	// labels rows whose props.persona points at one of these ids.
-	Personas []PersonaSummary `json:"personas,omitempty"`
+	// HeroRoot is the local hero root (design A1.5 §4); empty when no
+	// hero home bases exist or the root is unreadable.
+	HeroRoot string `json:"heroRoot,omitempty"`
+	// Heroes is the trimmed local roster (id/name/emoji/role only). The
+	// frontend folds <HeroRoot>/<id> project buckets into 🎭 groups and
+	// labels rows whose props.hero points at one of these ids.
+	Heroes []HeroSummary `json:"heroes,omitempty"`
 	// Scanning reports that a background summary scan is still filling the
 	// index; the GUI renders skeleton rows plus a progress strip until it ends.
 	Scanning bool `json:"scanning"`
@@ -82,11 +82,11 @@ type AISessionsListResponse struct {
 	AttachTruncated bool `json:"attachTruncated,omitempty"`
 }
 
-// PersonaSummary is the trimmed roster entry sent to the frontend: identity
+// HeroSummary is the trimmed roster entry sent to the frontend: identity
 // card fields only, deliberately without origin/createdBy machine fields.
 // Provider/Model are launch defaults for the A3 stage-entry popup and are
-// intentionally empty for personas that never declared them.
-type PersonaSummary struct {
+// intentionally empty for heroes that never declared them.
+type HeroSummary struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Emoji    string `json:"emoji,omitempty"`
@@ -95,74 +95,74 @@ type PersonaSummary struct {
 	Model    string `json:"model,omitempty"`
 }
 
-// personaSettingsRoot reads settings.json's persona:rootdir through the live
-// config watcher (A5.5). pkg/persona stays stdlib-only, so the app is the layer
+// heroSettingsRoot reads settings.json's hero:rootdir through the live
+// config watcher (A5.5). pkg/hero stays stdlib-only, so the app is the layer
 // that knows about settings; an empty value keeps A1's default.
-func personaSettingsRoot() string {
+func heroSettingsRoot() string {
 	settings := wconfig.GetWatcher().GetFullConfig().Settings
-	return strings.TrimSpace(settings.PersonaRootDir)
+	return strings.TrimSpace(settings.HeroRootDir)
 }
 
-// personaRosterCache is a tiny TTL cache over persona.List: every List call
-// with IncludeProjectPaths would otherwise re-read every persona.json (50
-// personas = 50 small file reads). Failures are cached too, so an unreadable
+// heroRosterCache is a tiny TTL cache over hero.List: every List call
+// with IncludeProjectPaths would otherwise re-read every hero.json (50
+// heroes = 50 small file reads). Failures are cached too, so an unreadable
 // root cannot become a stat storm.
-type personaRosterCache struct {
+type heroRosterCache struct {
 	mu       sync.Mutex
 	loadedAt time.Time
 	root     string
-	personas []PersonaSummary
+	heroes   []HeroSummary
 }
 
-var personaRoster personaRosterCache
+var heroRoster heroRosterCache
 
-// personaRosterTTL is a var so tests can shorten it.
-var personaRosterTTL = 5 * time.Second
+// heroRosterTTL is a var so tests can shorten it.
+var heroRosterTTL = 5 * time.Second
 
-// loadPersonaRoster returns the local persona root and trimmed roster,
+// loadHeroRoster returns the local hero root and trimmed roster,
 // degrading to empty values when either is unavailable (an unreadable root
 // must never sink the session list).
-func loadPersonaRoster() (string, []PersonaSummary) {
-	personaRoster.mu.Lock()
-	defer personaRoster.mu.Unlock()
+func loadHeroRoster() (string, []HeroSummary) {
+	heroRoster.mu.Lock()
+	defer heroRoster.mu.Unlock()
 	now := time.Now()
-	if personaRoster.loadedAt.IsZero() || now.Sub(personaRoster.loadedAt) > personaRosterTTL {
-		root, err := persona.ResolveRoot(personaSettingsRoot())
+	if heroRoster.loadedAt.IsZero() || now.Sub(heroRoster.loadedAt) > heroRosterTTL {
+		root, err := hero.ResolveRoot(heroSettingsRoot())
 		if err != nil {
-			aiSessionsDebugf("persona roster root error: %v", err)
-			personaRoster.root = ""
-			personaRoster.personas = nil
-			personaRoster.loadedAt = now
+			aiSessionsDebugf("hero roster root error: %v", err)
+			heroRoster.root = ""
+			heroRoster.heroes = nil
+			heroRoster.loadedAt = now
 		} else {
-			list, err := persona.List(root)
+			list, err := hero.List(root)
 			if err != nil {
-				aiSessionsDebugf("persona roster list error: %v", err)
-				personaRoster.root = ""
-				personaRoster.personas = nil
+				aiSessionsDebugf("hero roster list error: %v", err)
+				heroRoster.root = ""
+				heroRoster.heroes = nil
 			} else if len(list) == 0 {
-				// No persona home bases on this machine (or the root is missing):
-				// report no persona dimension at all instead of a root nothing
+				// No hero home bases on this machine (or the root is missing):
+				// report no hero dimension at all instead of a root nothing
 				// under it can match.
-				personaRoster.root = ""
-				personaRoster.personas = nil
+				heroRoster.root = ""
+				heroRoster.heroes = nil
 			} else {
-				personaRoster.root = root
-				personaRoster.personas = personaSummaries(list)
+				heroRoster.root = root
+				heroRoster.heroes = heroSummaries(list)
 			}
-			personaRoster.loadedAt = now
+			heroRoster.loadedAt = now
 		}
 	}
-	return personaRoster.root, personaRoster.personas
+	return heroRoster.root, heroRoster.heroes
 }
 
-// personaSummaries trims machine fields off the roster for the wire.
-func personaSummaries(list []persona.Persona) []PersonaSummary {
+// heroSummaries trims machine fields off the roster for the wire.
+func heroSummaries(list []hero.Hero) []HeroSummary {
 	if len(list) == 0 {
 		return nil
 	}
-	out := make([]PersonaSummary, 0, len(list))
+	out := make([]HeroSummary, 0, len(list))
 	for _, p := range list {
-		out = append(out, PersonaSummary{
+		out = append(out, HeroSummary{
 			ID:       p.ID,
 			Name:     p.Name,
 			Emoji:    p.Emoji,
@@ -174,44 +174,44 @@ func personaSummaries(list []persona.Persona) []PersonaSummary {
 	return out
 }
 
-// PersonaPropertyKey is the session property a stage entry (A3) owns: the id
-// of the persona whose home base the session runs in.
-const PersonaPropertyKey = "persona"
+// HeroPropertyKey is the session property a stage entry (A3) owns: the id
+// of the hero whose home base the session runs in.
+const HeroPropertyKey = "hero"
 
-// PersonaDerivedSource tags derived cells so writers can tell a read-time
+// HeroDerivedSource tags derived cells so writers can tell a read-time
 // enrichment apart from a user/AI-authored value (which is never overwritten).
-const PersonaDerivedSource = "persona-derived"
+const HeroDerivedSource = "hero-derived"
 
-// AISessionsPersonaRosterRequest is empty today; kept as a struct so the RPC
+// AISessionsHeroRosterRequest is empty today; kept as a struct so the RPC
 // surface can grow (e.g. includeDormant) without breaking the wire shape.
-type AISessionsPersonaRosterRequest struct{}
+type AISessionsHeroRosterRequest struct{}
 
-type AISessionsPersonaRosterResponse struct {
-	// Root is the local persona root; empty when this machine has no home bases
-	// or the root is unreadable (callers render "no personas yet" in that case).
-	Root     string           `json:"root,omitempty"`
-	Personas []PersonaSummary `json:"personas,omitempty"`
+type AISessionsHeroRosterResponse struct {
+	// Root is the local hero root; empty when this machine has no home bases
+	// or the root is unreadable (callers render "no heroes yet" in that case).
+	Root   string        `json:"root,omitempty"`
+	Heroes []HeroSummary `json:"heroes,omitempty"`
 }
 
-// derivePersonaProps fills props.persona on rows whose projectPath lives under
-// a persona home base, so a stage entry (A3) is attributed without any write.
+// deriveHeroProps fills props.hero on rows whose projectPath lives under
+// a hero home base, so a stage entry (A3) is attributed without any write.
 //
 // Rules (design A3 §2.3):
-//   - an explicit props.persona always wins — derived values never overwrite;
-//   - the match is segment-bounded (<root>/<id> or <root>/<id>/…), so a persona
+//   - an explicit props.hero always wins — derived values never overwrite;
+//   - the match is segment-bounded (<root>/<id> or <root>/<id>/…), so a hero
 //     named "backup" cannot claim <root>/backup-guard's sessions;
 //   - both separators and case are normalized (Windows roots are C:\… while pi
 //     encodes session dirs with '/').
 //
 // Mutates rows in place; no-op when the roster is unavailable.
-func derivePersonaProps(rows []aisessions.SessionSummary, root string, personas []PersonaSummary) {
-	if strings.TrimSpace(root) == "" || len(personas) == 0 || len(rows) == 0 {
+func deriveHeroProps(rows []aisessions.SessionSummary, root string, heroes []HeroSummary) {
+	if strings.TrimSpace(root) == "" || len(heroes) == 0 || len(rows) == 0 {
 		return
 	}
 	normalizedRoot := normalizeMatchPath(root)
 	for idx := range rows {
 		if rows[idx].Props != nil {
-			if _, ok := rows[idx].Props[PersonaPropertyKey]; ok {
+			if _, ok := rows[idx].Props[HeroPropertyKey]; ok {
 				continue
 			}
 		}
@@ -220,7 +220,7 @@ func derivePersonaProps(rows []aisessions.SessionSummary, root string, personas 
 			continue
 		}
 		normalizedProject := normalizeMatchPath(projectPath)
-		for _, p := range personas {
+		for _, p := range heroes {
 			id := strings.TrimSpace(p.ID)
 			if id == "" {
 				continue
@@ -232,10 +232,10 @@ func derivePersonaProps(rows []aisessions.SessionSummary, root string, personas 
 			if rows[idx].Props == nil {
 				rows[idx].Props = make(map[string]aisessions.PropertyCell, 1)
 			}
-			rows[idx].Props[PersonaPropertyKey] = aisessions.PropertyCell{
+			rows[idx].Props[HeroPropertyKey] = aisessions.PropertyCell{
 				Value:  id,
 				Type:   "text",
-				Source: PersonaDerivedSource,
+				Source: HeroDerivedSource,
 			}
 			break
 		}
@@ -924,73 +924,73 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	}
 	if request.IncludeProjectPaths {
 		response.ProjectPaths = result.ProjectPaths
-		response.PersonaRoot, response.Personas = loadPersonaRoster()
-		// A3 stage attribution: a session whose cwd is a persona home base
-		// belongs to that persona even before anyone writes props.persona.
-		derivePersonaProps(response.Sessions, response.PersonaRoot, response.Personas)
+		response.HeroRoot, response.Heroes = loadHeroRoster()
+		// A3 stage attribution: a session whose cwd is a hero home base
+		// belongs to that hero even before anyone writes props.hero.
+		deriveHeroProps(response.Sessions, response.HeroRoot, response.Heroes)
 	}
 	return response, nil
 }
 
-// AISessionsPersonaOverviewRequest is empty today (A4 roster block).
-type AISessionsPersonaOverviewRequest struct{}
+// AISessionsHeroOverviewRequest is empty today (A4 roster block).
+type AISessionsHeroOverviewRequest struct{}
 
-// PersonaOverviewEntry is one roster row with everything the A4 block renders:
+// HeroOverviewEntry is one roster row with everything the A4 block renders:
 // identity, charter excerpt, storage buckets, pending proposals and the last
 // journal line (the "recent shift" proxy; full history comes from AISessions).
-type PersonaOverviewEntry struct {
-	Persona          persona.Persona      `json:"persona"`
-	Charter          string               `json:"charter,omitempty"`
-	Storage          persona.StorageStats `json:"storage"`
-	PendingProposals int                  `json:"pendingProposals"`
-	LastJournalLine  string               `json:"lastJournalLine,omitempty"`
+type HeroOverviewEntry struct {
+	Hero             hero.Hero         `json:"hero"`
+	Charter          string            `json:"charter,omitempty"`
+	Storage          hero.StorageStats `json:"storage"`
+	PendingProposals int               `json:"pendingProposals"`
+	LastJournalLine  string            `json:"lastJournalLine,omitempty"`
 }
 
-type AISessionsPersonaOverviewResponse struct {
-	Root     string                 `json:"root,omitempty"`
-	Personas []PersonaOverviewEntry `json:"personas,omitempty"`
+type AISessionsHeroOverviewResponse struct {
+	Root   string              `json:"root,omitempty"`
+	Heroes []HeroOverviewEntry `json:"heroes,omitempty"`
 }
 
-func (svc *AISessionsService) PersonaOverview_Meta() tsgenmeta.MethodMeta {
+func (svc *AISessionsService) HeroOverview_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
-		Desc:       "persona roster with charter, storage, pending proposals and last journal line",
+		Desc:       "hero roster with charter, storage, pending proposals and last journal line",
 		ArgNames:   []string{"ctx", "request"},
-		ReturnDesc: "persona overview rows",
+		ReturnDesc: "hero overview rows",
 	}
 }
 
-// PersonaOverview feeds the A4 roster block (design §6). Read-only: it never
-// writes a home base. One row per persona directory, same root resolution as
-// PersonaRoster/PersonaStats so the three surfaces cannot disagree.
-func (svc *AISessionsService) PersonaOverview(ctx context.Context, request *AISessionsPersonaOverviewRequest) (*AISessionsPersonaOverviewResponse, error) {
-	root, err := persona.ResolveRoot(personaSettingsRoot())
+// HeroOverview feeds the A4 roster block (design §6). Read-only: it never
+// writes a home base. One row per hero directory, same root resolution as
+// HeroRoster/HeroStats so the three surfaces cannot disagree.
+func (svc *AISessionsService) HeroOverview(ctx context.Context, request *AISessionsHeroOverviewRequest) (*AISessionsHeroOverviewResponse, error) {
+	root, err := hero.ResolveRoot(heroSettingsRoot())
 	if err != nil {
 		return nil, err
 	}
-	list, err := persona.List(root)
+	list, err := hero.List(root)
 	if err != nil {
 		return nil, err
 	}
-	resp := &AISessionsPersonaOverviewResponse{Root: root}
+	resp := &AISessionsHeroOverviewResponse{Root: root}
 	for _, p := range list {
-		entry := PersonaOverviewEntry{Persona: p}
-		if full, charter, err := persona.Get(root, p.ID); err == nil && full != nil {
+		entry := HeroOverviewEntry{Hero: p}
+		if full, charter, err := hero.Get(root, p.ID); err == nil && full != nil {
 			entry.Charter = charter
 		}
-		if stats, err := persona.StorageOf(root, p.ID); err == nil && stats != nil {
+		if stats, err := hero.StorageOf(root, p.ID); err == nil && stats != nil {
 			entry.Storage = *stats
 		}
-		if items, err := persona.ListInbox(root, p.ID); err == nil {
+		if items, err := hero.ListInbox(root, p.ID); err == nil {
 			for _, item := range items {
-				if item.Status == persona.InboxStatusPending {
+				if item.Status == hero.InboxStatusPending {
 					entry.PendingProposals++
 				}
 			}
 		}
-		if barr, err := os.ReadFile(filepath.Join(root, p.ID, ".persona", "MEMORY", "journal.md")); err == nil {
+		if barr, err := os.ReadFile(filepath.Join(root, p.ID, ".hero", "MEMORY", "journal.md")); err == nil {
 			entry.LastJournalLine = lastJournalLine(string(barr))
 		}
-		resp.Personas = append(resp.Personas, entry)
+		resp.Heroes = append(resp.Heroes, entry)
 	}
 	return resp, nil
 }
@@ -1008,10 +1008,10 @@ func lastJournalLine(body string) string {
 	return ""
 }
 
-// AISessionsPersonaScaffoldPreviewRequest mirrors persona create's identity
+// AISessionsHeroScaffoldPreviewRequest mirrors hero create's identity
 // fields; the preview is ALWAYS a dry run (the A2 wizard asks the backend what
 // would be written so the file tree cannot drift from A1's scaffold).
-type AISessionsPersonaScaffoldPreviewRequest struct {
+type AISessionsHeroScaffoldPreviewRequest struct {
 	Name     string `json:"name"`
 	Emoji    string `json:"emoji,omitempty"`
 	Role     string `json:"role,omitempty"`
@@ -1019,26 +1019,26 @@ type AISessionsPersonaScaffoldPreviewRequest struct {
 	Model    string `json:"model,omitempty"`
 }
 
-type AISessionsPersonaScaffoldPreviewResponse struct {
-	Dir      string                `json:"dir,omitempty"`
-	Id       string                `json:"id,omitempty"`
-	Files    []persona.PlannedFile `json:"files,omitempty"`
-	Proposal bool                  `json:"proposal,omitempty"`
+type AISessionsHeroScaffoldPreviewResponse struct {
+	Dir      string             `json:"dir,omitempty"`
+	Id       string             `json:"id,omitempty"`
+	Files    []hero.PlannedFile `json:"files,omitempty"`
+	Proposal bool               `json:"proposal,omitempty"`
 }
 
-func (svc *AISessionsService) PersonaScaffoldPreview_Meta() tsgenmeta.MethodMeta {
+func (svc *AISessionsService) HeroScaffoldPreview_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
-		Desc:       "dry-run preview of the persona scaffold (single source of truth with the CLI)",
+		Desc:       "dry-run preview of the hero scaffold (single source of truth with the CLI)",
 		ArgNames:   []string{"ctx", "request"},
 		ReturnDesc: "planned files for the wizard's file-tree step",
 	}
 }
 
-// PersonaScaffoldPreview is the A2 wizard step 2 data source: it calls the
-// same persona.Create with DryRun=true the CLI uses, so the rendered tree and
-// the eventual `wsh persona create --yes` output can never differ.
-func (svc *AISessionsService) PersonaScaffoldPreview(ctx context.Context, request *AISessionsPersonaScaffoldPreviewRequest) (*AISessionsPersonaScaffoldPreviewResponse, error) {
-	result, err := persona.Create(persona.Options{
+// HeroScaffoldPreview is the A2 wizard step 2 data source: it calls the
+// same hero.Create with DryRun=true the CLI uses, so the rendered tree and
+// the eventual `wsh hero create --yes` output can never differ.
+func (svc *AISessionsService) HeroScaffoldPreview(ctx context.Context, request *AISessionsHeroScaffoldPreviewRequest) (*AISessionsHeroScaffoldPreviewResponse, error) {
+	result, err := hero.Create(hero.Options{
 		Name:     request.Name,
 		Emoji:    request.Emoji,
 		Role:     request.Role,
@@ -1049,70 +1049,70 @@ func (svc *AISessionsService) PersonaScaffoldPreview(ctx context.Context, reques
 	if err != nil {
 		return nil, err
 	}
-	return &AISessionsPersonaScaffoldPreviewResponse{
+	return &AISessionsHeroScaffoldPreviewResponse{
 		Dir:      result.Dir,
-		Id:       result.Persona.ID,
+		Id:       result.Hero.ID,
 		Files:    result.Files,
 		Proposal: result.Proposal != nil,
 	}, nil
 }
 
-// AISessionsPersonaStatsRequest is empty today; kept as a struct so the wire
+// AISessionsHeroStatsRequest is empty today; kept as a struct so the wire
 // shape can grow without breaking callers.
-type AISessionsPersonaStatsRequest struct{}
+type AISessionsHeroStatsRequest struct{}
 
-type AISessionsPersonaStatsResponse struct {
-	Root     string                 `json:"root,omitempty"`
-	Personas []persona.StorageStats `json:"personas,omitempty"`
+type AISessionsHeroStatsResponse struct {
+	Root   string              `json:"root,omitempty"`
+	Heroes []hero.StorageStats `json:"heroes,omitempty"`
 }
 
-func (svc *AISessionsService) PersonaStats_Meta() tsgenmeta.MethodMeta {
+func (svc *AISessionsService) HeroStats_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
-		Desc:       "storage accounting per persona home base (archive/history/work)",
+		Desc:       "storage accounting per hero home base (archive/history/work)",
 		ArgNames:   []string{"ctx", "request"},
-		ReturnDesc: "persona root and per-persona storage buckets",
+		ReturnDesc: "hero root and per-hero storage buckets",
 	}
 }
 
-// PersonaStats feeds the settings panel's capacity strip (design §3.4): three
-// buckets per persona, measured from disk. It shares the settings-resolved root
-// with PersonaRoster so the panel and the roster never disagree.
-func (svc *AISessionsService) PersonaStats(ctx context.Context, request *AISessionsPersonaStatsRequest) (*AISessionsPersonaStatsResponse, error) {
-	root, err := persona.ResolveRoot(personaSettingsRoot())
+// HeroStats feeds the settings panel's capacity strip (design §3.4): three
+// buckets per hero, measured from disk. It shares the settings-resolved root
+// with HeroRoster so the panel and the roster never disagree.
+func (svc *AISessionsService) HeroStats(ctx context.Context, request *AISessionsHeroStatsRequest) (*AISessionsHeroStatsResponse, error) {
+	root, err := hero.ResolveRoot(heroSettingsRoot())
 	if err != nil {
 		return nil, err
 	}
-	list, err := persona.List(root)
+	list, err := hero.List(root)
 	if err != nil {
 		return nil, err
 	}
-	resp := &AISessionsPersonaStatsResponse{Root: root}
+	resp := &AISessionsHeroStatsResponse{Root: root}
 	for _, p := range list {
-		stats, err := persona.StorageOf(root, p.ID)
+		stats, err := hero.StorageOf(root, p.ID)
 		if err != nil {
-			aiSessionsDebugf("persona stats %s: %v", p.ID, err)
+			aiSessionsDebugf("hero stats %s: %v", p.ID, err)
 			continue
 		}
-		resp.Personas = append(resp.Personas, *stats)
+		resp.Heroes = append(resp.Heroes, *stats)
 	}
 	return resp, nil
 }
 
-func (svc *AISessionsService) PersonaRoster_Meta() tsgenmeta.MethodMeta {
+func (svc *AISessionsService) HeroRoster_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
-		Desc:       "list local persona roster for the stage-entry popup",
+		Desc:       "list local hero roster for the stage-entry popup",
 		ArgNames:   []string{"ctx", "request"},
-		ReturnDesc: "persona root and trimmed roster entries",
+		ReturnDesc: "hero root and trimmed roster entries",
 	}
 }
 
-// PersonaRoster returns the local persona roster for the A3 stage-entry popup
+// HeroRoster returns the local hero roster for the A3 stage-entry popup
 // (root + identity-card fields). It reuses the same 5s TTL cache the session
-// list uses, so opening the popup never turns into a per-persona file read
+// list uses, so opening the popup never turns into a per-hero file read
 // storm, and an unreadable root degrades to an empty roster instead of an error.
-func (svc *AISessionsService) PersonaRoster(ctx context.Context, request *AISessionsPersonaRosterRequest) (*AISessionsPersonaRosterResponse, error) {
-	root, personas := loadPersonaRoster()
-	return &AISessionsPersonaRosterResponse{Root: root, Personas: personas}, nil
+func (svc *AISessionsService) HeroRoster(ctx context.Context, request *AISessionsHeroRosterRequest) (*AISessionsHeroRosterResponse, error) {
+	root, heroes := loadHeroRoster()
+	return &AISessionsHeroRosterResponse{Root: root, Heroes: heroes}, nil
 }
 
 func (svc *AISessionsService) BackupStats_Meta() tsgenmeta.MethodMeta {

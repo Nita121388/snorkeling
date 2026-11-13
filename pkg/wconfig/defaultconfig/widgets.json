@@ -34,7 +34,7 @@
             }
         }
     },
-    "defwidget@persona": {
+    "defwidget@hero": {
         "display:order": -3.5,
         "icon": "🦸",
         "label": "hero",

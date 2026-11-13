@@ -159,7 +159,6 @@ export function clusterRailItems(
     return clusters;
 }
 
-
 export function annotationsForSeq(annotations: AnnotationLike[], seq: number): AnnotationLike[] {
     return sortAnnotations(annotations.filter((annotation) => annotation.seq === seq));
 }

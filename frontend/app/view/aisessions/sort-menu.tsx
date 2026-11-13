@@ -16,16 +16,19 @@
 //
 // 纯受控组件：所有状态由父层 sortChainAtom 持有，这里只发 onChange。
 
-import { autoUpdate, flip, FloatingPortal, offset, shift, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
 import { cn } from "@/util/util";
-import { useState } from "react";
 import {
-    DefaultSortChain,
-    MaxSortChainLength,
-    SessionSortChain,
-    SessionSortField,
-    SessionSortKey,
-} from "./types";
+    autoUpdate,
+    flip,
+    FloatingPortal,
+    offset,
+    shift,
+    useDismiss,
+    useFloating,
+    useInteractions,
+} from "@floating-ui/react";
+import { useState } from "react";
+import { DefaultSortChain, MaxSortChainLength, SessionSortChain, SessionSortField, SessionSortKey } from "./types";
 
 const FieldLabels: Record<SessionSortField, { name: string; icon: string }> = {
     // `time` 沿用旧字段名（localStorage 兼容），显示上明确写成 Updated。
@@ -86,8 +89,7 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
     const available = (Object.keys(FieldLabels) as SessionSortField[]).filter((field) => !inChain.has(field));
     const chainFull = activeChain.length >= MaxSortChainLength;
     const primary = activeChain[0];
-    const isDefaultChain =
-        activeChain.length === 1 && activeChain[0].field === "time" && activeChain[0].desc === true;
+    const isDefaultChain = activeChain.length === 1 && activeChain[0].field === "time" && activeChain[0].desc === true;
     const multiKey = activeChain.length > 1;
 
     const { refs, floatingStyles, context } = useFloating({
@@ -173,9 +175,7 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                                         className="min-w-0 flex-1 cursor-pointer truncate text-left hover:text-accent"
                                         title="Toggle direction"
                                         aria-label={`Toggle direction for ${FieldLabels[key.field].name}`}
-                                        onClick={() =>
-                                            onChange(toggleDirection(activeChain, index))
-                                        }
+                                        onClick={() => onChange(toggleDirection(activeChain, index))}
                                     >
                                         {optionLabel(key.field, key.desc)}
                                     </button>
@@ -202,7 +202,11 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                                             role="menuitem"
                                             data-add-field={field}
                                             disabled={disabled}
-                                            title={disabled ? `Max ${MaxSortChainLength} keys` : `Add ${FieldLabels[field].name}`}
+                                            title={
+                                                disabled
+                                                    ? `Max ${MaxSortChainLength} keys`
+                                                    : `Add ${FieldLabels[field].name}`
+                                            }
                                             onClick={() => onChange(appendKey(activeChain, field))}
                                             className={cn(
                                                 "flex h-[30px] w-full items-center gap-1.5 rounded px-2 text-xs transition-colors",

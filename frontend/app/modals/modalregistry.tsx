@@ -6,7 +6,7 @@ import { SyncConflictModal } from "@/app/modals/syncconflictmodal";
 import { NewInstallOnboardingModal } from "@/app/onboarding/onboarding";
 import { UpgradeOnboardingModal } from "@/app/onboarding/onboarding-upgrade";
 import { UpgradeOnboardingPatch } from "@/app/onboarding/onboarding-upgrade-patch";
-import { PersonaCreateWizard } from "@/app/view/persona/persona-create-wizard";
+import { HeroCreateWizard } from "@/app/view/hero/hero-create-wizard";
 import { ExportOptionsModal } from "@/app/view/preview/plugins/export/export-options-modal";
 import { EnvModalView } from "@/app/view/term/envmodal";
 import { WidgetQuickLaunchModal } from "@/app/workspace/widget-quick-launch";
@@ -36,7 +36,7 @@ const modalRegistry: { [key: string]: React.ComponentType<any> } = {
     [AgentHookSettingsModal.displayName || "AgentHookSettingsModal"]: AgentHookSettingsModal,
     [EnvModalView.displayName || "EnvModalView"]: EnvModalView,
     [MessageModal.displayName || "MessageModal"]: MessageModal,
-    [PersonaCreateWizard.displayName || "PersonaCreateWizard"]: PersonaCreateWizard,
+    [HeroCreateWizard.displayName || "HeroCreateWizard"]: HeroCreateWizard,
     [WidgetQuickLaunchModal.displayName || "WidgetQuickLaunchModal"]: WidgetQuickLaunchModal,
     [AISessionDetailModal.displayName || "AISessionDetailModal"]: AISessionDetailModal,
     [AISessionNoteModal.displayName || "AISessionNoteModal"]: AISessionNoteModal,

@@ -1,8 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
 import { FlexDirection, type LayoutNode } from "@/layout/lib/types";
+import { describe, expect, it } from "vitest";
 import {
     collectOpenSessionBlocks,
     collectRenderedBlockIds,
@@ -10,11 +10,11 @@ import {
     normalizeOpenConnection,
     openLevelSatisfies,
     openSessionKey,
-    openSessionsEqual,
     openSessionMatches,
+    openSessionsEqual,
     projectOpenSessions,
-    type OpenSessionsContext,
     type OpenSessionBlockSource,
+    type OpenSessionsContext,
 } from "./open-sessions";
 
 function blockSource(blockId: string, tabId: string, meta: Record<string, unknown>): OpenSessionBlockSource {
@@ -79,9 +79,30 @@ describe("projectOpenSessions", () => {
     it("maps each block to its level", () => {
         const blocks = [
             { blockId: "b_open", tabId: "t_other", sessionId: "s", source: "chat" as const, connection: "", cwd: "" },
-            { blockId: "b_visible", tabId: "t_other2", sessionId: "s2", source: "chat" as const, connection: "", cwd: "" },
-            { blockId: "b_active", tabId: "tab_main", sessionId: "s3", source: "chat" as const, connection: "", cwd: "" },
-            { blockId: "b_focused", tabId: "tab_main", sessionId: "s4", source: "chat" as const, connection: "", cwd: "" },
+            {
+                blockId: "b_visible",
+                tabId: "t_other2",
+                sessionId: "s2",
+                source: "chat" as const,
+                connection: "",
+                cwd: "",
+            },
+            {
+                blockId: "b_active",
+                tabId: "tab_main",
+                sessionId: "s3",
+                source: "chat" as const,
+                connection: "",
+                cwd: "",
+            },
+            {
+                blockId: "b_focused",
+                tabId: "tab_main",
+                sessionId: "s4",
+                source: "chat" as const,
+                connection: "",
+                cwd: "",
+            },
         ];
         const snap = projectOpenSessions(blocks, baseCtx, 1000);
         expect(snap.byKey.get(openSessionKey("", "s"))?.level).toBe("open");
@@ -94,7 +115,14 @@ describe("projectOpenSessions", () => {
     it("merges duplicate blocks for one session, promoting the highest level", () => {
         const blocks = [
             { blockId: "b_low", tabId: "t_other", sessionId: "dup", source: "chat" as const, connection: "", cwd: "" },
-            { blockId: "b_high", tabId: "tab_main", sessionId: "dup", source: "chat" as const, connection: "", cwd: "" },
+            {
+                blockId: "b_high",
+                tabId: "tab_main",
+                sessionId: "dup",
+                source: "chat" as const,
+                connection: "",
+                cwd: "",
+            },
         ];
         const snap = projectOpenSessions(
             blocks,
@@ -114,7 +142,11 @@ describe("projectOpenSessions", () => {
             { blockId: "b1", tabId: "t1", sessionId: "same", source: "chat" as const, connection: "", cwd: "" },
             { blockId: "b2", tabId: "t1", sessionId: "same", source: "chat" as const, connection: "box", cwd: "" },
         ];
-        const snap = projectOpenSessions(blocks, { ...baseCtx, activeTabId: "t1", renderedBlockIds: new Set(["b1", "b2"]) }, 1);
+        const snap = projectOpenSessions(
+            blocks,
+            { ...baseCtx, activeTabId: "t1", renderedBlockIds: new Set(["b1", "b2"]) },
+            1
+        );
         // 两个 key：本地空连接 + 远程 box
         expect(snap.byKey.size).toBe(2);
         expect(snap.bySessionId.size).toBe(1);
@@ -137,7 +169,12 @@ describe("collectRenderedBlockIds", () => {
             children: [
                 leafNode("b_a"),
                 // InlineTab 组：只激活 b_b 渲染，b_c 不渲染
-                { id: "group", flexDirection: FlexDirection.Row, size: 1, data: { blockIds: ["b_b", "b_c"], activeBlockId: "b_b" } as never },
+                {
+                    id: "group",
+                    flexDirection: FlexDirection.Row,
+                    size: 1,
+                    data: { blockIds: ["b_b", "b_c"], activeBlockId: "b_b" } as never,
+                },
             ],
         };
         const ids = collectRenderedBlockIds(root, new Set(["b_a"]), new Set(["b_b"]));
