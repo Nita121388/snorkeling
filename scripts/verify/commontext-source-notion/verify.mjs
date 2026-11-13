@@ -13,9 +13,10 @@
 //   2. 设备下拉在多设备时出现，选中后行数按 origin.deviceid 收敛；单设备时不出现。
 //   3. 空结果文案按起因分流：查询无命中 vs 筛选清空。
 //   4. 列表行来源徽标存在且 kind 与数据一致（agent / human）。
-//   5. Notion 页面头：page icon 槽存在、标题为大字号、属性网格含 5 行且 Computer 值
-//      形如 `设备名 platform · deviceId`。
+//   5. Notion 页面头：page icon 槽存在、标题为大字号、属性区默认折叠成一行 icon 摘要，
+//      chevron 展开后属性网格含 5 行且 Computer 值形如 `设备名 platform · deviceId`。
 //   6. 筛选是硬过滤：creator=agent 时行数等于数据里 agent 条目数（不被 limit 挤掉）。
+//   7. Editor 收起按钮：多行草稿聚焦展开后一键收起，手动收起态下聚焦不再自动弹开。
 //
 // 用法：
 //   node scripts/verify/commontext-source-notion/verify.mjs              # 起干净实例 → 跑 → 自动关
@@ -78,6 +79,10 @@ const SNAPSHOT_FN = `(() => {
     const iconButton = modal.querySelector("[data-commontext-page-icon]");
     const titleInput = modal.querySelector("[data-commontext-detail-title]");
     const propRows = [...modal.querySelectorAll("[data-commontext-property]")];
+    const propsToggle = modal.querySelector("[data-commontext-properties-toggle]");
+    const propsSummary = [...modal.querySelectorAll("[data-commontext-properties-summary]")];
+    const editorToggle = modal.querySelector("[data-commontext-editor-toggle]");
+    const composer = modal.querySelector("[data-commontext-composer]");
     const props = {};
     for (const row of propRows) {
         const label = row.getAttribute("data-commontext-property");
@@ -113,6 +118,11 @@ const SNAPSHOT_FN = `(() => {
         titleFontSize: titleInput == null ? null : getComputedStyle(titleInput).fontSize,
         propertyLabels: propRows.map((r) => r.getAttribute("data-commontext-property")),
         properties: props,
+        propsState:
+            modal.querySelector("[data-commontext-properties]")?.getAttribute("data-commontext-properties") ?? null,
+        propsSummaryKeys: propsSummary.map((s) => s.getAttribute("data-commontext-properties-summary")),
+        propsSummaryText: propsSummary.map((s) => text(s)),
+        composerHeight: composer == null ? 0 : h(composer),
     };
 })()`;
 
@@ -228,17 +238,17 @@ try {
     timeoutMs: 20000,
   });
   for (let i = 0; i < 30; i++) {
-    const remaining = await client.evaluate(`(() => document.querySelectorAll(${JSON.stringify(
-      `${MODAL} [data-commontext-title]`
-    )}).length)()`);
+    const remaining = await client.evaluate(
+      `(() => document.querySelectorAll(${JSON.stringify(`${MODAL} [data-commontext-title]`)}).length)()`
+    );
     if (remaining === 0) break;
     const deleted = await clickSelector(client, `${MODAL} [title="Delete this text"]`);
     if (!deleted) break;
     await sleep(250);
   }
-  const cleared = await client.evaluate(`(() => document.querySelectorAll(${JSON.stringify(
-    `${MODAL} [data-commontext-title]`
-  )}).length)()`);
+  const cleared = await client.evaluate(
+    `(() => document.querySelectorAll(${JSON.stringify(`${MODAL} [data-commontext-title]`)}).length)()`
+  );
   reporter.check("precondition-list-empty", cleared === 0, { remaining: cleared });
   await client.evaluate(`(() => { localStorage.removeItem("commontext:sortKey"); return true; })()`);
 
@@ -274,11 +284,7 @@ try {
   reporter.check("rows-rendered", base?.rowCount === 3, base?.titles);
 
   // ── 2. 来源筛选控件 ─────────────────────────────────────────────────────
-  reporter.check(
-    "creator-filters-three",
-    sameOrder(base?.creatorKeys, ["all", "human", "agent"]),
-    base?.creatorKeys
-  );
+  reporter.check("creator-filters-three", sameOrder(base?.creatorKeys, ["all", "human", "agent"]), base?.creatorKeys);
   reporter.check("creator-default-all", base?.activeCreator === "all", base?.activeCreator);
   reporter.check(
     "creator-counts-match-rows",
@@ -325,22 +331,39 @@ try {
   await clickSelector(client, SEARCH_INPUT);
   await client.evaluate(setReactValueExpression(SEARCH_INPUT, "zzzznomatch"));
   const noMatch = await waitForProbe(client, probeSnapshot(), (s) => (s?.rowCount ?? 1) === 0, { timeoutMs: 15000 });
-  reporter.check(
-    "empty-text-says-matching",
-    (noMatch?.emptyText ?? "").includes("matching"),
-    noMatch?.emptyText
-  );
+  reporter.check("empty-text-says-matching", (noMatch?.emptyText ?? "").includes("matching"), noMatch?.emptyText);
   await client.evaluate(setReactValueExpression(SEARCH_INPUT, ""));
   await waitForProbe(client, probeSnapshot(), (s) => (s?.rowCount ?? 0) === 3, { timeoutMs: 15000 });
 
-  // ── 6. Notion 式详情页 ─────────────────────────────────────────────────
+  // ── 6. Notion 式详情页（属性区默认折叠，展开后验完整网格） ───────────────
   await clickSelector(client, rowSelector("Bravo refund"));
-  const detail = await waitForProbe(
+  const detailCollapsed = await waitForProbe(
     client,
     probeSnapshot(),
-    (s) => (s?.propertyLabels?.length ?? 0) >= 5,
+    (s) => (s?.propsState ?? "") === "collapsed" && (s?.propsSummaryKeys?.length ?? 0) >= 4,
     { timeoutMs: 15000 }
   );
+  reporter.check(
+    "props-collapsed-by-default",
+    detailCollapsed?.propsState === "collapsed" && (detailCollapsed?.propsSummaryKeys?.length ?? 0) >= 4,
+    { state: detailCollapsed?.propsState, summaryKeys: detailCollapsed?.propsSummaryKeys }
+  );
+  reporter.check(
+    "props-collapse-hides-grid-rows",
+    (detailCollapsed?.propertyLabels?.length ?? 0) === 0,
+    detailCollapsed?.propertyLabels
+  );
+  reporter.check(
+    "props-summary-has-values",
+    Array.isArray(detailCollapsed?.propsSummaryText) && detailCollapsed.propsSummaryText.every((t) => t !== ""),
+    detailCollapsed?.propsSummaryText
+  );
+  const propsOpened = await clickSelector(client, `${MODAL} [data-commontext-properties-toggle]`);
+  const detail = await waitForProbe(client, probeSnapshot(), (s) => (s?.propertyLabels?.length ?? 0) >= 5, {
+    timeoutMs: 15000,
+  });
+  reporter.check("props-toggle-click", propsOpened === true, propsOpened);
+  reporter.check("props-expand-shows-grid", detail?.propsState === "expanded", detail?.propsState);
   reporter.check("page-icon-slot-present", detail?.iconPresent === true, detail?.iconPresent);
   reporter.check(
     "title-is-heading-sized",
@@ -368,6 +391,45 @@ try {
     detail?.properties?.["Created by"]
   );
   await reporter.shot(client, "03-notion-detail");
+
+  // ── 6.5 Editor 收起按钮：多行草稿一键收起，手动收起态聚焦不弹开 ───────────
+  // 先把多行草稿写进 editor 并聚焦展开（多行内容在失焦判定里会一直保持展开）。
+  await clickSelector(client, COMPOSER);
+  await client.evaluate(setReactValueExpression(COMPOSER, "line one\nline two"));
+  const expanded = await waitForProbe(client, probeSnapshot(), (s) => (s?.composerHeight ?? 0) >= 110, {
+    timeoutMs: 15000,
+  });
+  reporter.check("editor-focus-expands-multiline", (expanded?.composerHeight ?? 0) >= 110, {
+    composerHeight: expanded?.composerHeight,
+  });
+  const collapsedByButton = await clickSelector(client, `${MODAL} [data-commontext-editor-toggle]`);
+  const collapsed = await waitForProbe(client, probeSnapshot(), (s) => (s?.composerHeight ?? 999) <= 45, {
+    timeoutMs: 15000,
+  });
+  reporter.check("editor-collapse-button-clicked", collapsedByButton === true, collapsedByButton);
+  reporter.check("editor-collapse-shrinks-to-single-row", (collapsed?.composerHeight ?? 999) <= 45, {
+    composerHeight: collapsed?.composerHeight,
+  });
+  // 收起态下点正文不再自动展开（手动收起优先）；正文保留。
+  await clickSelector(client, COMPOSER);
+  const stillCollapsed = await waitForProbe(client, probeSnapshot(), (s) => (s?.composerHeight ?? 999) <= 45, {
+    timeoutMs: 15000,
+  });
+  reporter.check("editor-stays-collapsed-on-focus", (stillCollapsed?.composerHeight ?? 999) <= 45, {
+    composerHeight: stillCollapsed?.composerHeight,
+  });
+  await reporter.shot(client, "04-editor-collapsed");
+  // 再点按钮展开，恢复多行。
+  await clickSelector(client, `${MODAL} [data-commontext-editor-toggle]`);
+  const reExpanded = await waitForProbe(client, probeSnapshot(), (s) => (s?.composerHeight ?? 0) >= 110, {
+    timeoutMs: 15000,
+  });
+  reporter.check("editor-expand-restores-multiline", (reExpanded?.composerHeight ?? 0) >= 110, {
+    composerHeight: reExpanded?.composerHeight,
+  });
+  // 清掉 editor，避免影响后续步骤
+  await client.evaluate(setReactValueExpression(COMPOSER, ""));
+  await sleep(200);
 
   // ── 7. 切回列表确认筛选与详情互不干扰 ───────────────────────────────────
   // 先确保没有浮层（page icon 的 emoji picker）盖住筛选行：点同一个 page icon 收起它。

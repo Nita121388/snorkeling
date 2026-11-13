@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-13T07:58:24Z",
+  "updatedAt": "2026-11-13T16:04:00Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -364,6 +364,12 @@
       "g2": {
         "redProof": "loop/red/N-1109-overview-board-empty-status-label.txt",
         "at": "2026-11-09T03:38:26Z"
+      }
+    },
+    "N-1113-commontext-editor-collapse": {
+      "g2": {
+        "redProof": "pre-fix 2 failed / post-fix 2 passed (npx vitest run frontend/app/commontext/commontext-compose-modal.dom.test.tsx; 真机台 commontext-source-notion 本机启动器故障，改 jsdom DOM 台兜底，断言集同源)",
+        "at": "2026-11-13T16:04:00Z"
       }
     }
   },

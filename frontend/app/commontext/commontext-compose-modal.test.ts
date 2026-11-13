@@ -130,4 +130,34 @@ describe("CommonTextComposeModal hook order", () => {
         // 墓碑不上列表：可见条目必须先过滤
         expect(source).toContain("getLiveCommonTextItems(getCommonTextItemsFromSettings(settings))");
     });
+
+    it("offers an explicit editor collapse toggle that overrides focus auto-expand", () => {
+        // 多行草稿在失焦折叠判定里永远保持展开，这个按钮是唯一把上半部让给
+        // 下半部分的通道；手动收起后聚焦不再自动弹开，再点恢复自动行为。
+        expect(source).toContain('data-commontext-editor-toggle=""');
+        expect(source).toContain("const [editorManuallyCollapsed, setEditorManuallyCollapsed] = useState(false);");
+        expect(source).toContain("if (!editorManuallyCollapsed) setEditorExpanded(true);");
+        // 手动收起态不受失焦折叠判定影响（多行内容否则会被 blur 计时重新撞开）
+        expect(source).toContain("if (editorManuallyCollapsed) return;");
+        expect(source).toContain("const toggleEditorCollapse = () => {");
+        // 键盘通道：Alt+↑ 切换收起/展开
+        expect(source).toContain('event.altKey && event.key === "ArrowUp"');
+        // 每次打开弹窗重置手动收起态，不继承上次的临时选择
+        expect(source).toContain("setEditorManuallyCollapsed(false);");
+        // 粘贴图片不再越过手动收起态自动展开
+        expect(source).toContain("if (!editorManuallyCollapsed) setEditorExpanded(true);");
+    });
+
+    it("collapses the detail property grid to a one-line icon summary by default", () => {
+        // 默认折叠成 icon+短值单行（完整语义走 tooltip），chevron 展开 5 行网格；
+        // 锚点保留 data-commontext-property（展开态）供验证台断言。
+        expect(source).toContain('data-commontext-properties={propertiesExpanded ? "expanded" : "collapsed"}');
+        expect(source).toContain('data-commontext-properties-toggle=""');
+        expect(source).toContain("aria-expanded={propertiesExpanded}");
+        expect(source).toContain("data-commontext-properties-summary={s.key}");
+        // 展开网格按需渲染（propertiesExpanded && ...），默认只有摘要行
+        expect(source).toContain("{propertiesExpanded &&");
+        // 每次打开弹窗重置折叠态：默认折叠
+        expect(source).toContain("setPropertiesExpanded(false);");
+    });
 });

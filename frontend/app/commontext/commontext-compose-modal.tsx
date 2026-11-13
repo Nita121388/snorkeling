@@ -5,45 +5,45 @@ import { Button } from "@/app/element/button";
 import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
 import { atoms } from "@/app/store/global";
+import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
+import { extractSessionTagsFromNote, removeSessionTagFromNote } from "@/app/view/aisessions/session-tags";
+import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/aisessions/utils";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
-import { copyCommonText, insertOrCopyCommonText } from "./commontext-insert";
 import { computeEditorMaxHeight } from "./commontext-editor-size";
+import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
+import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
+import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
+import { copyCommonText, insertOrCopyCommonText } from "./commontext-insert";
 import {
-    materializePastedImages,
-    pickPastedImages,
-    spliceTextAtRange,
-    type PasteImageInsertResult,
-} from "./commontext-paste-image";
-import {
-    deleteCommonTextItem,
     DefaultCommonTextSortKey,
+    deleteCommonTextItem,
     filterCommonTextItemsByTags,
+    getCommonTextCreatorKind,
+    getCommonTextDeviceSummaries,
     getCommonTextItems,
     getCommonTextItemsFromSettings,
-    getLiveCommonTextItems,
-    getCommonTextTagSummaries,
-    recordCommonTextUse,
-    getCommonTextDeviceSummaries,
-    getCommonTextCreatorKind,
     getCommonTextOriginDeviceId,
     getCommonTextOriginDeviceName,
+    getCommonTextTagSummaries,
+    getLiveCommonTextItems,
+    recordCommonTextUse,
     searchCommonTextComposeItems,
     upsertCommonTextItem,
     type CommonTextCreatorFilter,
     type CommonTextItem,
     type CommonTextSortKey,
 } from "./commontext-model";
-import { extractSessionTagsFromNote, removeSessionTagFromNote } from "@/app/view/aisessions/session-tags";
-import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
-import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/aisessions/utils";
-import { loadCommonTextSortKey, saveCommonTextSortKey } from "./commontext-sort-preference";
 import { PageIconSlot } from "./commontext-page-icon";
-import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
-import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
+import {
+    materializePastedImages,
+    pickPastedImages,
+    spliceTextAtRange,
+    type PasteImageInsertResult,
+} from "./commontext-paste-image";
 import { CommontextSendButton } from "./commontext-send-button";
+import { loadCommonTextSortKey, saveCommonTextSortKey } from "./commontext-sort-preference";
 
 const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
@@ -226,6 +226,11 @@ const CommonTextComposeModal = memo(() => {
     // 避免每次打开弹窗都被一个 120px 的 textarea 撑高、抢走主视觉。
     // "草稿含换行"会作为初始展开判定，防止多行草稿被压缩成单行截断。
     const [editorExpanded, setEditorExpanded] = useState(false);
+    // 手动收起态：置位后 onFocus 不再自动展开（否则收起按钮一点就"失效"）。
+    // 这是多行草稿唯一的收窄通道——失焦折叠判定见 valueHasNewline 会一直保持展开。
+    const [editorManuallyCollapsed, setEditorManuallyCollapsed] = useState(false);
+    // 详情属性网格默认折叠成一行 icon 摘要，chevron 展开完整网格；每次打开弹窗重置。
+    const [propertiesExpanded, setPropertiesExpanded] = useState(false);
     const settings = useAtomValue(atoms.settingsAtom);
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -235,7 +240,9 @@ const CommonTextComposeModal = memo(() => {
     const modalRef = useRef<HTMLDivElement>(null);
     // 当前生效的尺寸样式；打开弹窗时由 loadComposeModalSize() 初始化，resize 时实时更新。
     // useState 而非纯 ref：尺寸变化要触发 modal 节点 style 重渲染，光改 ref 不够。
-    const [modalSize, setModalSize] = useState<ComposeModalSize>(() => loadComposeModalSize() ?? { w: ComposeModalDefaultW, h: ComposeModalDefaultH });
+    const [modalSize, setModalSize] = useState<ComposeModalSize>(
+        () => loadComposeModalSize() ?? { w: ComposeModalDefaultW, h: ComposeModalDefaultH }
+    );
     // 展开态 Editor 上限随弹窗高度缩放：modalSize.h 在用户拖拽时被 ResizeObserver 写成真实 px；
     // 首次打开存的可能是 "min(78vh, 620px)" 兜底字符串，parseFloat 拿不到就回退 modalRef 实测高度。
     // ponytail: 回退常量 620 只在首帧生效，RO 首 tick 后 modalSize.h 即变真实像素，无需额外监听。
@@ -263,10 +270,7 @@ const CommonTextComposeModal = memo(() => {
     const unmountedRef = useRef(false);
 
     // 墓碑（已删除、等同步上传的条目）不进列表/标签统计：它们在库里存在只是为了把删除推出去。
-    const allItems = useMemo(
-        () => getLiveCommonTextItems(getCommonTextItemsFromSettings(settings)),
-        [settings]
-    );
+    const allItems = useMemo(() => getLiveCommonTextItems(getCommonTextItemsFromSettings(settings)), [settings]);
     const tagSummaries = useMemo(() => getCommonTextTagSummaries(allItems).slice(0, MAX_TAG_CHIPS), [allItems]);
     // 无标签条目数：驱动 untagged chip 的计数展示，与筛选走同一 normalize 口径。
     const untaggedCount = useMemo(
@@ -284,8 +288,7 @@ const CommonTextComposeModal = memo(() => {
     // 计数与设备清单按「当前 tag/查询过滤后的集合」统计，与列表实际可见范围一致：
     // 若按全量统计，chip 上的数字会与点下去后的行数不符。
     const sourceScopeItems = useMemo(
-        () =>
-            filterCommonTextItemsByTags(allItems, state.selectedTags, { untagged: state.untaggedOnly }),
+        () => filterCommonTextItemsByTags(allItems, state.selectedTags, { untagged: state.untaggedOnly }),
         [allItems, state.selectedTags, state.untaggedOnly]
     );
     const creatorCounts = useMemo(() => {
@@ -301,16 +304,21 @@ const CommonTextComposeModal = memo(() => {
 
     const filteredItems = useMemo(() => {
         if (!state.open) return [];
-        return searchCommonTextComposeItems(allItems, state.editorFilterDismissed ? "" : state.editor, state.manualQuery, {
-            limit: LIST_LIMIT,
-            selectedTags: state.selectedTags,
-            untagged: state.untaggedOnly,
-            caret: state.editorCaret,
-            insertedIds: state.insertedIds,
-            sortKey: state.sortKey,
-            creator: state.creatorFilter,
-            device: state.deviceFilter,
-        });
+        return searchCommonTextComposeItems(
+            allItems,
+            state.editorFilterDismissed ? "" : state.editor,
+            state.manualQuery,
+            {
+                limit: LIST_LIMIT,
+                selectedTags: state.selectedTags,
+                untagged: state.untaggedOnly,
+                caret: state.editorCaret,
+                insertedIds: state.insertedIds,
+                sortKey: state.sortKey,
+                creator: state.creatorFilter,
+                device: state.deviceFilter,
+            }
+        );
     }, [
         allItems,
         state.creatorFilter,
@@ -415,6 +423,46 @@ const CommonTextComposeModal = memo(() => {
         ];
     }, [detailItem]);
 
+    // 折叠态属性摘要：icon + 短值，完整语义走 tooltip。与展开网格同源（同一批派生字段），
+    // 不再重复算一遍 device/platform。
+    const detailPropertySummary = useMemo(() => {
+        const item = detailItem;
+        if (item == null)
+            return [] as { key: string; icon: string; iconClass: string; text: React.ReactNode; title: string }[];
+        const kind = getCommonTextCreatorKind(item);
+        const device = getCommonTextOriginDeviceName(item);
+        const deviceId = getCommonTextOriginDeviceId(item);
+        return [
+            {
+                key: "creator",
+                icon: kind === "agent" ? "fa-robot" : "fa-user",
+                iconClass: kind === "agent" ? "text-sky-300" : "text-orange-300",
+                text: describeCommonTextCreatorName(item),
+                title: describeCommonTextSource(item),
+            },
+            {
+                key: "computer",
+                icon: "fa-computer",
+                iconClass: "text-muted",
+                text: device,
+                title: `${device} · ${deviceId}`,
+            },
+            {
+                key: "updated",
+                icon: "fa-pen",
+                iconClass: "text-muted",
+                text: formatSessionRelativeTime(item.updatedat),
+                title: `Updated ${compactCommonTextTime(item.updatedat, true)}`,
+            },
+            {
+                key: "used",
+                icon: "fa-repeat",
+                iconClass: "text-muted",
+                text: String(item.usagecount ?? 0),
+                title: `Used ${item.usagecount ?? 0} time(s)`,
+            },
+        ];
+    }, [detailItem]);
 
     // 详情区一旦选中某 item 即永远编辑态（点选即编辑），不存在只读中间态。
     // detailDirty 仅用来提示"有未保存改动"，控制 footer 上 Save 行为是否禁言。
@@ -449,6 +497,9 @@ const CommonTextComposeModal = memo(() => {
             // 不主动聚焦 editor：避免一打开就把弹窗撑成编辑多行态。多行草稿按文本本身初始展开，
             // 让用户视觉上立刻知道草稿还在；单行草稿保持紧凑单行高，等用户点进去再撑开。
             setEditorExpanded(next.editor.includes("\n"));
+            // 每次打开都从「自动展开 + 属性折叠」的默认态开始，不继承上次的手动收起。
+            setEditorManuallyCollapsed(false);
+            setPropertiesExpanded(false);
         };
         window.addEventListener(OpenCommonTextSearchEvent, handleOpen);
         return () => window.removeEventListener(OpenCommonTextSearchEvent, handleOpen);
@@ -543,7 +594,15 @@ const CommonTextComposeModal = memo(() => {
     useEffect(() => {
         if (!state.open) return;
         listScrollRef.current?.scrollTo({ top: 0 });
-    }, [state.editor, state.editorCaret, state.insertedIds, state.manualQuery, state.open, state.selectedTags, state.untaggedOnly]);
+    }, [
+        state.editor,
+        state.editorCaret,
+        state.insertedIds,
+        state.manualQuery,
+        state.open,
+        state.selectedTags,
+        state.untaggedOnly,
+    ]);
 
     useEffect(() => {
         if (!state.open) return;
@@ -616,6 +675,18 @@ const CommonTextComposeModal = memo(() => {
     const setEditor = (editor: string, editorCaret: number) =>
         update({ editor, editorCaret, editorFilterDismissed: false, selectedIndex: 0 });
 
+    // Editor 收起/展开切换：手动收起优先于聚焦自动展开；再次点按钮恢复自动行为。
+    // 收起不清正文——内容仍留在 textarea 里，展开即恢复。
+    const toggleEditorCollapse = () => {
+        if (editorExpanded) {
+            setEditorManuallyCollapsed(true);
+            setEditorExpanded(false);
+        } else {
+            setEditorManuallyCollapsed(false);
+            setEditorExpanded(true);
+        }
+    };
+
     const setManualQuery = (manualQuery: string) => update({ manualQuery, selectedIndex: 0 });
 
     const updateEditorCaret = (target: HTMLTextAreaElement) =>
@@ -664,10 +735,7 @@ const CommonTextComposeModal = memo(() => {
         if (editor != null) {
             requestAnimationFrame(() => {
                 editor.focus();
-                editor.setSelectionRange(
-                    Math.min(prevCaret, newText.length),
-                    Math.min(prevCaret, newText.length)
-                );
+                editor.setSelectionRange(Math.min(prevCaret, newText.length), Math.min(prevCaret, newText.length));
             });
         }
     };
@@ -1025,7 +1093,8 @@ const CommonTextComposeModal = memo(() => {
                 };
             });
             // 图片引用是块级内容，粘完把 editor 撑开展示（折叠态只有一行高，看不见引用）。
-            setEditorExpanded(true);
+            // 但手动收起优先：用户显式收起时不再自动弹开。
+            if (!editorManuallyCollapsed) setEditorExpanded(true);
             const editor = editorRef.current;
             if (editor != null) {
                 requestAnimationFrame(() => {
@@ -1049,6 +1118,12 @@ const CommonTextComposeModal = memo(() => {
         if (event.key === "Escape") {
             event.preventDefault();
             close();
+            return;
+        }
+        // Alt+↑ 快捷收起/展开 editor：不想用鼠标点右上角按钮时的键盘通道。
+        if (event.altKey && event.key === "ArrowUp") {
+            event.preventDefault();
+            toggleEditorCollapse();
             return;
         }
     };
@@ -1104,61 +1179,90 @@ const CommonTextComposeModal = memo(() => {
                     <div>
                         <div className="text-base font-semibold">Common Text</div>
                         <div className="text-[11px] text-muted">
-                            Compose text. Click + to add a new item to the top, then edit it on the right; click a row (or press Enter) to edit it; Insert drops it into the editor.
+                            Compose text. Click + to add a new item to the top, then edit it on the right; click a row
+                            (or press Enter) to edit it; Insert drops it into the editor.
                         </div>
                     </div>
                 </div>
 
-                <textarea
-                    ref={editorRef}
-                    // 验证台靠这个属性稳定拿到 editor（弹窗里还有详情 textarea）。
-                    data-commontext-composer=""
-                    // 展开态上限由 editorMaxHeight 动态给（随弹窗高度缩放），不再写死 max-h-[280px]。
-                    style={editorExpanded ? { maxHeight: editorMaxHeight } : undefined}
-                    className={
-                        "shrink-0 resize-y rounded border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed transition-[min-height] " +
-                        (editorExpanded
-                            ? "min-h-[120px]"
-                            : "min-h-0 h-9 resize-none overflow-hidden whitespace-nowrap leading-5")
-                    }
-                    rows={editorExpanded ? undefined : 1}
-                    value={state.editor}
-                    onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        // expanded 只由 onFocus 拉起、onBlur 依据文本收回——onChange 不去重置它，
-                        // 否则用户在聚焦态敲普通字符（无换行）会被立即打回单行高度，
-                        // 出现"聚焦时展开、一开始编辑又缩回"的闪烁。
-                        setEditor(value, event.currentTarget.selectionStart ?? value.length);
-                    }}
-                    onFocus={() => {
-                        // 取消还未触发的折叠延时，避免 editor 间切换/快速回流时被误塌。
-                        if (editorCollapseTimerRef.current != null) {
-                            window.clearTimeout(editorCollapseTimerRef.current);
-                            editorCollapseTimerRef.current = null;
+                {/* Editor 包裹层：收起/展开按钮贴右上角，不占正文布局；点击不抢 editor 焦点。 */}
+                <div className="relative shrink-0" data-commontext-editor-wrap="">
+                    <button
+                        type="button"
+                        data-commontext-editor-toggle=""
+                        aria-pressed={editorExpanded}
+                        aria-label={editorExpanded ? "Collapse editor" : "Expand editor"}
+                        title={editorExpanded ? "Collapse editor (free space for the list below)" : "Expand editor"}
+                        // 不抢焦点：点按钮不触发 editor blur 的折叠计时，也不打断中文输入。
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={(event) => {
+                            event.preventDefault();
+                            toggleEditorCollapse();
+                        }}
+                        className={
+                            "absolute right-1.5 top-1.5 z-10 inline-flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-hoverbg hover:text-primary cursor-pointer " +
+                            (editorManuallyCollapsed ? "bg-modalbg/90 text-accent" : "bg-modalbg/70 text-secondary/50")
                         }
-                        setEditorExpanded(true);
-                    }}
-                    onBlur={(event) => {
-                        // 给 600ms 缓冲：让用户能从 editor 移动到下方 Send/Copy 等按钮，
-                        // 期间 editor 暂时失焦但还未塌回单行，避免按钮还未点中 editor 已缩。
-                        // 用事件目标当前值而非 state.editor，避开闭包陷阱拿到旧 text 导致失焦不收回。
-                        const valueHasNewline = event.currentTarget.value.includes("\n");
-                        if (editorCollapseTimerRef.current != null) {
-                            window.clearTimeout(editorCollapseTimerRef.current);
+                    >
+                        <i
+                            className={
+                                "fa fa-solid text-[10px] " + (editorExpanded ? "fa-chevron-up" : "fa-chevron-down")
+                            }
+                        />
+                    </button>
+                    <textarea
+                        ref={editorRef}
+                        // 验证台靠这个属性稳定拿到 editor（弹窗里还有详情 textarea）。
+                        data-commontext-composer=""
+                        // 展开态上限由 editorMaxHeight 动态给（随弹窗高度缩放），不再写死 max-h-[280px]。
+                        style={editorExpanded ? { maxHeight: editorMaxHeight } : undefined}
+                        className={
+                            "block w-full resize-y rounded border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed transition-[min-height] " +
+                            (editorExpanded
+                                ? "min-h-[120px]"
+                                : "min-h-0 h-9 resize-none overflow-hidden whitespace-nowrap leading-5")
                         }
-                        editorCollapseTimerRef.current = window.setTimeout(() => {
-                            editorCollapseTimerRef.current = null;
-                            setEditorExpanded(valueHasNewline);
-                        }, 600);
-                    }}
-                    onSelect={(event) => updateEditorCaret(event.currentTarget)}
-                    onPaste={handleEditorPaste}
-                    onKeyDown={handleEditorKeyDown}
-                    onCompositionStart={handleCompositionStart}
-                    onCompositionEnd={handleCompositionEnd}
-                    placeholder="Compose here. The list below suggests common text matching what you type."
-                    spellCheck={false}
-                />
+                        rows={editorExpanded ? undefined : 1}
+                        value={state.editor}
+                        onChange={(event) => {
+                            const value = event.currentTarget.value;
+                            // expanded 只由 onFocus 拉起、onBlur 依据文本收回——onChange 不去重置它，
+                            // 否则用户在聚焦态敲普通字符（无换行）会被立即打回单行高度，
+                            // 出现"聚焦时展开、一开始编辑又缩回"的闪烁。
+                            setEditor(value, event.currentTarget.selectionStart ?? value.length);
+                        }}
+                        onFocus={() => {
+                            // 取消还未触发的折叠延时，避免 editor 间切换/快速回流时被误塌。
+                            if (editorCollapseTimerRef.current != null) {
+                                window.clearTimeout(editorCollapseTimerRef.current);
+                                editorCollapseTimerRef.current = null;
+                            }
+                            if (!editorManuallyCollapsed) setEditorExpanded(true);
+                        }}
+                        onBlur={(event) => {
+                            // 手动收起态不受失焦折叠判定影响——多行草稿否则会一直保持展开。
+                            if (editorManuallyCollapsed) return;
+                            // 给 600ms 缓冲：让用户能从 editor 移动到下方 Send/Copy 等按钮，
+                            // 期间 editor 暂时失焦但还未塌回单行，避免按钮还未点中 editor 已缩。
+                            // 用事件目标当前值而非 state.editor，避开闭包陷阱拿到旧 text 导致失焦不收回。
+                            const valueHasNewline = event.currentTarget.value.includes("\n");
+                            if (editorCollapseTimerRef.current != null) {
+                                window.clearTimeout(editorCollapseTimerRef.current);
+                            }
+                            editorCollapseTimerRef.current = window.setTimeout(() => {
+                                editorCollapseTimerRef.current = null;
+                                setEditorExpanded(valueHasNewline);
+                            }, 600);
+                        }}
+                        onSelect={(event) => updateEditorCaret(event.currentTarget)}
+                        onPaste={handleEditorPaste}
+                        onKeyDown={handleEditorKeyDown}
+                        onCompositionStart={handleCompositionStart}
+                        onCompositionEnd={handleCompositionEnd}
+                        placeholder="Compose here. The list below suggests common text matching what you type."
+                        spellCheck={false}
+                    />
+                </div>
 
                 {/* Action row */}
                 <div className="shrink-0 flex items-center gap-2">
@@ -1204,11 +1308,7 @@ const CommonTextComposeModal = memo(() => {
                     <Button className="grey" onClick={handleCopy} title="Copy editor content to clipboard">
                         <i className="fa fa-regular fa-copy" />
                     </Button>
-                    <CommontextSendButton
-                        text={state.editor}
-                        onSent={close}
-                        onStatus={setStatus}
-                    />
+                    <CommontextSendButton text={state.editor} onSent={close} onStatus={setStatus} />
                     {editorTags.length > 0 && (
                         <SessionTagChips
                             tags={editorTags.slice(0, MAX_TAG_CHIPS)}
@@ -1259,10 +1359,7 @@ const CommonTextComposeModal = memo(() => {
                                 </InputRightElement>
                             </InputGroup>
                             {allItems.length > 0 && (
-                                <div
-                                    className="mt-2 flex min-w-0 items-center gap-1.5"
-                                    data-commontext-source-row=""
-                                >
+                                <div className="mt-2 flex min-w-0 items-center gap-1.5" data-commontext-source-row="">
                                     <div
                                         role="group"
                                         aria-label="Filter by creator"
@@ -1278,7 +1375,13 @@ const CommonTextComposeModal = memo(() => {
                                                     aria-pressed={active}
                                                     title={option.label}
                                                     aria-label={option.label}
-                                                    onClick={() => setState((cur) => ({ ...cur, creatorFilter: option.key, selectedIndex: 0 }))}
+                                                    onClick={() =>
+                                                        setState((cur) => ({
+                                                            ...cur,
+                                                            creatorFilter: option.key,
+                                                            selectedIndex: 0,
+                                                        }))
+                                                    }
                                                     className={
                                                         "inline-flex items-center gap-1 px-2 py-0.5 text-[11px] leading-none cursor-pointer transition-colors " +
                                                         (active
@@ -1287,7 +1390,10 @@ const CommonTextComposeModal = memo(() => {
                                                     }
                                                 >
                                                     <i className={option.icon + " text-[10px]"} />
-                                                    <span className="tabular-nums" data-commontext-creator-count={option.key}>
+                                                    <span
+                                                        className="tabular-nums"
+                                                        data-commontext-creator-count={option.key}
+                                                    >
                                                         {creatorCounts[option.key]}
                                                     </span>
                                                 </button>
@@ -1301,7 +1407,11 @@ const CommonTextComposeModal = memo(() => {
                                             title="Filter by originating computer"
                                             value={state.deviceFilter}
                                             onChange={(e) =>
-                                                setState((cur) => ({ ...cur, deviceFilter: e.target.value, selectedIndex: 0 }))
+                                                setState((cur) => ({
+                                                    ...cur,
+                                                    deviceFilter: e.target.value,
+                                                    selectedIndex: 0,
+                                                }))
                                             }
                                             className="min-w-0 max-w-[160px] shrink truncate h-[22px] rounded-md border border-border bg-surface-soft px-1.5 text-[11px] text-secondary cursor-pointer focus:outline-none focus:border-accent"
                                         >
@@ -1436,26 +1546,30 @@ const CommonTextComposeModal = memo(() => {
                                             data-common-text-index={index}
                                             // 验证台按标题定位行：DOM 次序即真实排序结果，便于断言重排。
                                             data-commontext-title={item.title}
-                                        className={
-                                            "group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
-                                            (state.selectedIndex === index
-                                                ? "border-actionsoftborder bg-actionsoft"
-                                                : "border-transparent hover:bg-hoverbg")
-                                        }
-                                        // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
-                                        // 详情随每一行跳变。详情只在 click 时进编辑态。这里绝不能
-                                        // setState(尤 selectedIndex)：每次 setState 触发整弹窗重渲染，
-                                        // 上方 editor 的 textarea 会被 React 重新过一遍 DOM，正在用
-                                        // 中文输入法合到一半的拼音就这一过被打飞，光标丢、字打不进。
-                                        // 视觉上鼠标 hover 走下面 "hover:bg-hoverbg" 兜底，无需这里做事。
-                                        onClick={() => handleListItemClick(item)}
+                                            className={
+                                                "group flex items-start gap-1.5 border-l-2 px-3 py-1.5 cursor-pointer transition-colors " +
+                                                (state.selectedIndex === index
+                                                    ? "border-actionsoftborder bg-actionsoft"
+                                                    : "border-transparent hover:bg-hoverbg")
+                                            }
+                                            // hover 仅高亮行、不联动右侧详情：避免鼠标在列表里扫过时右侧
+                                            // 详情随每一行跳变。详情只在 click 时进编辑态。这里绝不能
+                                            // setState(尤 selectedIndex)：每次 setState 触发整弹窗重渲染，
+                                            // 上方 editor 的 textarea 会被 React 重新过一遍 DOM，正在用
+                                            // 中文输入法合到一半的拼音就这一过被打飞，光标丢、字打不进。
+                                            // 视觉上鼠标 hover 走下面 "hover:bg-hoverbg" 兜底，无需这里做事。
+                                            onClick={() => handleListItemClick(item)}
                                         >
                                             <div className="pt-0.5 w-4 shrink-0 text-secondary">
-                                                {item.pinned ? <i className="fa fa-solid fa-thumbtack text-[11px]" /> : null}
+                                                {item.pinned ? (
+                                                    <i className="fa fa-solid fa-thumbtack text-[11px]" />
+                                                ) : null}
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex min-w-0 items-center gap-1.5">
-                                                    <span className="min-w-0 truncate text-xs font-medium">{item.title}</span>
+                                                    <span className="min-w-0 truncate text-xs font-medium">
+                                                        {item.title}
+                                                    </span>
                                                     <CommonTextSyncDot item={item} />
                                                     <span
                                                         data-commontext-creator-badge={getCommonTextCreatorKind(item)}
@@ -1540,29 +1654,31 @@ const CommonTextComposeModal = memo(() => {
                                                     className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
-                                                            fireAndForget(async () => {
+                                                        fireAndForget(async () => {
                                                             const result = await insertOrCopyCommonText(item.text);
                                                             setStatus(
-                                                                result === "inserted" ? "Inserted" : "Copied (no target)",
+                                                                result === "inserted"
+                                                                    ? "Inserted"
+                                                                    : "Copied (no target)",
                                                                 result === "inserted" ? "ok" : "info"
-                                                        );
-                                                        // 先把详情区未落盘的草稿写完再计数：两条写路径都是
-                                                        // "读全表 → 改 → 写全表"，交错会把用户刚改的正文覆盖掉。
-                                                        // 顺手取消防抖定时器，免得同一份草稿再被写一遍。
-                                                        if (detailSaveTimerRef.current != null) {
-                                                            window.clearTimeout(detailSaveTimerRef.current);
-                                                            detailSaveTimerRef.current = null;
-                                                        }
-                                                        await flushDetailSave({ keepDirty: true });
-                                                        // 行内插入/无目标回退复制同样是一次使用：与详情 Insert 同口径计数。
-                                                        await recordCommonTextUse(item.id);
-                                                    });
-                                                }}
-                                            >
-                                                <i className="fa fa-regular fa-paste text-[12px]" />
-                                            </span>
+                                                            );
+                                                            // 先把详情区未落盘的草稿写完再计数：两条写路径都是
+                                                            // "读全表 → 改 → 写全表"，交错会把用户刚改的正文覆盖掉。
+                                                            // 顺手取消防抖定时器，免得同一份草稿再被写一遍。
+                                                            if (detailSaveTimerRef.current != null) {
+                                                                window.clearTimeout(detailSaveTimerRef.current);
+                                                                detailSaveTimerRef.current = null;
+                                                            }
+                                                            await flushDetailSave({ keepDirty: true });
+                                                            // 行内插入/无目标回退复制同样是一次使用：与详情 Insert 同口径计数。
+                                                            await recordCommonTextUse(item.id);
+                                                        });
+                                                    }}
+                                                >
+                                                    <i className="fa fa-regular fa-paste text-[12px]" />
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
                                     );
                                 })
                             )}
@@ -1576,7 +1692,10 @@ const CommonTextComposeModal = memo(() => {
                                 <i className="fa fa-regular fa-square text-[28px] opacity-40" />
                                 <div>No item selected — click a row to edit</div>
                                 <div className="text-[11px] text-muted/70">
-                                    <kbd className="px-1.5 py-0.5 rounded border border-border bg-surface-soft">Enter</kbd> on a row also opens it
+                                    <kbd className="px-1.5 py-0.5 rounded border border-border bg-surface-soft">
+                                        Enter
+                                    </kbd>{" "}
+                                    on a row also opens it
                                 </div>
                             </div>
                         ) : (
@@ -1598,7 +1717,11 @@ const CommonTextComposeModal = memo(() => {
                                         type="text"
                                         value={state.detailTitle}
                                         onChange={(e) =>
-                                            setState((cur) => ({ ...cur, detailTitle: e.target.value, detailDirty: true }))
+                                            setState((cur) => ({
+                                                ...cur,
+                                                detailTitle: e.target.value,
+                                                detailDirty: true,
+                                            }))
                                         }
                                         placeholder="Untitled"
                                         className="flex-1 min-w-0 h-8 px-1 -ml-1 rounded border border-transparent bg-transparent text-[17px] font-semibold leading-8 hover:bg-surface-soft focus:outline-none focus:border-border focus:bg-modalbg transition-colors"
@@ -1608,7 +1731,11 @@ const CommonTextComposeModal = memo(() => {
                                     <button
                                         type="button"
                                         onClick={() => fireAndForget(async () => handleDetailTogglePin())}
-                                        title={detailItem.pinned ? "Unpin this text" : "Pin this text to the top of the list"}
+                                        title={
+                                            detailItem.pinned
+                                                ? "Unpin this text"
+                                                : "Pin this text to the top of the list"
+                                        }
                                         className={
                                             "shrink-0 mt-0.5 w-8 h-8 inline-flex items-center justify-center rounded-md border transition-colors cursor-pointer " +
                                             (detailItem.pinned
@@ -1620,23 +1747,55 @@ const CommonTextComposeModal = memo(() => {
                                     </button>
                                 </div>
 
-                                {/* 属性网格：label 定宽 + 值，行间只用细分隔线（不套卡片）。
-                                    值与 label 各自独立类名——嵌套会继承 grid 项样式把行高压乱。 */}
-                                <div className="shrink-0 flex flex-col" data-commontext-properties="">
-                                    {detailProperties.map((prop) => (
-                                        <div
-                                            key={prop.label}
-                                            data-commontext-property={prop.label}
-                                            className="flex items-start gap-2 border-b border-border/40 py-1 last:border-b-0"
-                                        >
-                                            <div className="w-[104px] shrink-0 text-[10.5px] leading-5 text-muted">
-                                                {prop.label}
+                                {/* 属性区：默认折叠成一行 icon+数字摘要（完整语义走 tooltip），
+                                    chevron 展开完整 5 行网格。折叠把纵向空间留给 Text 正文。 */}
+                                <div
+                                    className="shrink-0 flex flex-col"
+                                    data-commontext-properties={propertiesExpanded ? "expanded" : "collapsed"}
+                                >
+                                    <button
+                                        type="button"
+                                        data-commontext-properties-toggle=""
+                                        aria-expanded={propertiesExpanded}
+                                        title={propertiesExpanded ? "Hide properties" : "Show all properties"}
+                                        onClick={() => setPropertiesExpanded((v) => !v)}
+                                        className="flex w-full min-w-0 items-center gap-2 rounded px-1 -mx-1 py-1 text-[11px] leading-5 text-secondary hover:bg-surface-soft transition-colors cursor-pointer"
+                                    >
+                                        {detailPropertySummary.map((s) => (
+                                            <span
+                                                key={s.key}
+                                                data-commontext-properties-summary={s.key}
+                                                title={s.title}
+                                                className="inline-flex min-w-0 shrink-0 items-center gap-1"
+                                            >
+                                                <i className={"fa fa-solid text-[9px] " + s.iconClass + " " + s.icon} />
+                                                <span className="truncate tabular-nums">{s.text}</span>
+                                            </span>
+                                        ))}
+                                        <i
+                                            className={
+                                                "ml-auto shrink-0 fa fa-solid fa-chevron-right text-[9px] text-muted transition-transform " +
+                                                (propertiesExpanded ? "rotate-90" : "")
+                                            }
+                                        />
+                                    </button>
+                                    {/* 展开态：label 定宽 + 值，行间只用细分隔线（不套卡片）。
+                                        值与 label 各自独立类名——嵌套会继承 grid 项样式把行高压乱。 */}
+                                    {propertiesExpanded &&
+                                        detailProperties.map((prop) => (
+                                            <div
+                                                key={prop.label}
+                                                data-commontext-property={prop.label}
+                                                className="flex items-start gap-2 border-b border-border/40 py-1 last:border-b-0"
+                                            >
+                                                <div className="w-[104px] shrink-0 text-[10.5px] leading-5 text-muted">
+                                                    {prop.label}
+                                                </div>
+                                                <div className="min-w-0 flex-1 text-[11px] leading-5 text-secondary">
+                                                    {prop.value}
+                                                </div>
                                             </div>
-                                            <div className="min-w-0 flex-1 text-[11px] leading-5 text-secondary">
-                                                {prop.value}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
                                 </div>
 
                                 {/* 详情 body：永远 textarea 形态（点选即编辑），卡片样式对齐原型尺寸。
@@ -1649,7 +1808,11 @@ const CommonTextComposeModal = memo(() => {
                                         ref={detailTextRef}
                                         value={state.detailText}
                                         onChange={(e) =>
-                                            setState((cur) => ({ ...cur, detailText: e.target.value, detailDirty: true }))
+                                            setState((cur) => ({
+                                                ...cur,
+                                                detailText: e.target.value,
+                                                detailDirty: true,
+                                            }))
                                         }
                                         placeholder="Text to insert — type #tag inline to tag this item"
                                         className="w-full h-full min-h-0 resize-none rounded-lg border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
@@ -1670,7 +1833,9 @@ const CommonTextComposeModal = memo(() => {
                                     </div>
                                     {tagSummaries.length === 0 ? (
                                         <div className="text-[11px] text-muted py-1">
-                                            No tags yet — type <code className="px-1 rounded bg-surface-soft">#tag</code> in Text to create one
+                                            No tags yet — type{" "}
+                                            <code className="px-1 rounded bg-surface-soft">#tag</code> in Text to create
+                                            one
                                         </div>
                                     ) : (
                                         <div className="max-h-24 overflow-y-auto pr-1 -mr-1">
@@ -1707,7 +1872,10 @@ const CommonTextComposeModal = memo(() => {
                                         <i className="fa fa-regular fa-copy mr-1" />
                                         Copy
                                     </Button>
-                                    <Button onClick={() => handleInsertDetail(detailItem)} title="Insert into editor at caret">
+                                    <Button
+                                        onClick={() => handleInsertDetail(detailItem)}
+                                        title="Insert into editor at caret"
+                                    >
                                         <i className="fa fa-solid fa-arrow-up mr-1" />
                                         Insert
                                     </Button>

@@ -198,3 +198,11 @@
 | 2026-11-11 10:57 | agent-property-scope | — 未跑（用户要求不跑真机验证；判据由 vitest property/info-card + go test agentcontrol/agentdata 覆盖） | skipped | — | working-tree |
 | 2026-11-12 00:55 | sync-diagnostics-copy | ⚠️ 0/0（无断言） | launch+reset | `20261112T00484-sync-diagnostics-copy` | 3128e846 |
 | 2026-11-12 01:28 | sync-diagnostics-copy | ⚠️ 0/0（无断言） | launch+reset | `20261112T01212-sync-diagnostics-copy` | 3128e846 |
+| 2026-11-13 14:36 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261113T14364-commontext-source-notion` | 4d4bcd3a |
+| 2026-11-13 14:37 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261113T14294-commontext-source-notion` | 4d4bcd3a |
+| 2026-11-13 14:43 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261113T14374-commontext-source-notion` | 3671f090 |
+| 2026-11-13 14:56 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261113T14485-commontext-source-notion` | 3671f090 |
+| 2026-11-13 15:04 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261113T14564-commontext-source-notion` | 3671f090 |
+| 2026-11-13 15:09 | newtab-empty | ❌ fatal（未跑） | launch+reset | `20261113T15064-newtab-empty` | unknown |
+| 2026-11-13 23:56 | commontext-editor-collapse（与 commontext-source-notion 同源断言） | ✅ 2/2（jsdom DOM 台；红证：旧源 2 failed → 新源 2 passed） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` | working-tree |
+| 2026-11-13 23:56 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：Electron 启动器故障（连 newtab-empty 同故障：electron:dev exit 4/255、initPromise 120s 超时、CDP ECONNREFUSED），本机 5 次尝试全 fatal；行为断言由上一行 jsdom 台兜住 | skipped | `20261113T14364…14564` | 3671f090 |
