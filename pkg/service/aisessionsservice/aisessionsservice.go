@@ -1008,6 +1008,55 @@ func lastJournalLine(body string) string {
 	return ""
 }
 
+// AISessionsPersonaScaffoldPreviewRequest mirrors persona create's identity
+// fields; the preview is ALWAYS a dry run (the A2 wizard asks the backend what
+// would be written so the file tree cannot drift from A1's scaffold).
+type AISessionsPersonaScaffoldPreviewRequest struct {
+	Name     string `json:"name"`
+	Emoji    string `json:"emoji,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+}
+
+type AISessionsPersonaScaffoldPreviewResponse struct {
+	Dir      string                `json:"dir,omitempty"`
+	Id       string                `json:"id,omitempty"`
+	Files    []persona.PlannedFile `json:"files,omitempty"`
+	Proposal bool                  `json:"proposal,omitempty"`
+}
+
+func (svc *AISessionsService) PersonaScaffoldPreview_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "dry-run preview of the persona scaffold (single source of truth with the CLI)",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "planned files for the wizard's file-tree step",
+	}
+}
+
+// PersonaScaffoldPreview is the A2 wizard step 2 data source: it calls the
+// same persona.Create with DryRun=true the CLI uses, so the rendered tree and
+// the eventual `wsh persona create --yes` output can never differ.
+func (svc *AISessionsService) PersonaScaffoldPreview(ctx context.Context, request *AISessionsPersonaScaffoldPreviewRequest) (*AISessionsPersonaScaffoldPreviewResponse, error) {
+	result, err := persona.Create(persona.Options{
+		Name:     request.Name,
+		Emoji:    request.Emoji,
+		Role:     request.Role,
+		Provider: request.Provider,
+		Model:    request.Model,
+		DryRun:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &AISessionsPersonaScaffoldPreviewResponse{
+		Dir:      result.Dir,
+		Id:       result.Persona.ID,
+		Files:    result.Files,
+		Proposal: result.Proposal != nil,
+	}, nil
+}
+
 // AISessionsPersonaStatsRequest is empty today; kept as a struct so the wire
 // shape can grow without breaking callers.
 type AISessionsPersonaStatsRequest struct{}

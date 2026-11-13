@@ -408,6 +408,23 @@ declare global {
         personas?: PersonaSummary[];
     };
 
+    // aisessionsservice.AISessionsPersonaScaffoldPreviewRequest
+    type AISessionsPersonaScaffoldPreviewRequest = {
+        name: string;
+        emoji?: string;
+        role?: string;
+        provider?: string;
+        model?: string;
+    };
+
+    // aisessionsservice.AISessionsPersonaScaffoldPreviewResponse
+    type AISessionsPersonaScaffoldPreviewResponse = {
+        dir?: string;
+        id?: string;
+        files?: PlannedFile[];
+        proposal?: boolean;
+    };
+
     // aisessionsservice.AISessionsPersonaStatsRequest
     type AISessionsPersonaStatsRequest = object;
 
@@ -2684,17 +2701,17 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
-    // persona.Origin
-    type Origin = {
-        deviceId?: string;
-        deviceName?: string;
-        platform?: string;
-    };
-
     // syncproto.Origin
     type Origin = {
         deviceid?: string;
         devicename?: string;
+        platform?: string;
+    };
+
+    // persona.Origin
+    type Origin = {
+        deviceId?: string;
+        deviceName?: string;
         platform?: string;
     };
 
@@ -2754,6 +2771,13 @@ declare global {
         path: string;
         label?: string;
         addedAt?: number;
+    };
+
+    // persona.PlannedFile
+    type PlannedFile = {
+        path: string;
+        preview?: string;
+        exists: boolean;
     };
 
     // waveobj.Point

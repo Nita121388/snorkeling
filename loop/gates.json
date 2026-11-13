@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-13T04:50:15Z",
+  "updatedAt": "2026-11-13T05:15:21Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -306,6 +306,23 @@
       "g5": {
         "ok": true,
         "executedAt": "2026-11-13T04:50:15Z",
+        "by": "compliance"
+      }
+    },
+    "F-1113-persona-create-ui-r1": {
+      "g1": {
+        "at": "2026-11-13T05:15:20Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "6c69d61e862e"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-F-1113-persona-create-ui-r1.txt（向导文件与入口接线均不存在；后端预览 RPC 已先行实现，如实记录）",
+        "at": "2026-11-13T05:15:21Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-13T05:15:21Z",
         "by": "compliance"
       }
     },

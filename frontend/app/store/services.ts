@@ -223,6 +223,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "PersonaRoster", Array.from(arguments))
     }
 
+    // dry-run preview of the persona scaffold (single source of truth with the CLI)
+    // @returns planned files for the wizard's file-tree step
+    PersonaScaffoldPreview(request: AISessionsPersonaScaffoldPreviewRequest): Promise<AISessionsPersonaScaffoldPreviewResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "PersonaScaffoldPreview", Array.from(arguments))
+    }
+
     // storage accounting per persona home base (archive/history/work)
     // @returns persona root and per-persona storage buckets
     PersonaStats(request: AISessionsPersonaStatsRequest): Promise<AISessionsPersonaStatsResponse> {
