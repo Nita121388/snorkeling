@@ -1,0 +1,10 @@
+== red proof F-1113-persona-sync-r1 @ 2663e0da ==
+-- grep SyncModeShared pkg/persona/sync.go
+grep: pkg/persona/sync.go: No such file or directory
+exit=2
+-- grep personaSyncCmd
+exit=1
+-- go test -run TestSync -v
+testing: warning: no tests to run
+PASS
+ok  	github.com/wavetermdev/waveterm/pkg/persona	0.187s [no tests to run]

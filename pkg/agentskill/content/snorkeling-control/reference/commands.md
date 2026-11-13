@@ -88,6 +88,14 @@ One persona identity card (persona.json) and its CHARTER.
 
 Flags: `<id>`, `--json`
 
+### `wsh persona sync status`
+
+Rootdir git state: clean, branch, remote and unmerged paths.
+
+Flags: `--json`
+
+- A bare rootdir reports initialized=false; it is a valid state, not an error.
+
 
 ## Navigate
 
@@ -144,6 +152,31 @@ Flags: `<id>`, `--section facts|lessons|journal`, `--text`, `--from-session <key
 
 - journal needs --yes; facts/lessons always land in MEMORY/inbox.md and exit 1 — --yes does not override that.
 - Never write facts.md/lessons.md/CHARTER.md directly; propose through inbox.md.
+
+### `wsh persona sync init`
+
+Initialize the rootdir git repo with the §3.2 .gitignore and an initial archive commit.
+
+Flags: `--json`
+
+- Only the first init commits; later calls never commit in-flight user edits.
+
+### `wsh persona sync rebuild`
+
+After a clone, rebuild PERSONAS.md and generated provider contracts.
+
+Flags: `--json`
+
+- Writes only GENERATED files; CHARTER / MEMORY / persona.json are never touched.
+
+### `wsh persona sync pull|push`
+
+git pull / git push the rootdir repo (remote must be configured by a human).
+
+Flags: `--json`
+
+- A missing remote surfaces git's own error; it is never swallowed.
+- work/, *.local.json, agents/, AGENTS.md and .index/ are ignored and never leave the machine.
 
 ### `wsh persona approve`
 

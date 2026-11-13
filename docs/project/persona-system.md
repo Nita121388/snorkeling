@@ -204,3 +204,41 @@ A2.5 的 7 条判据（PROPOSE/QUOTA/MEMORY_DISCIPLINE/JOURNAL/GUIDE_PERSONA 等
 - `npx tsc --noEmit` → 47 = 基线零新增
 - loop 包 `F-1113-persona-widget-launch-r2` prove 8/8 全绿
 - 活体验证（真 Electron 里起一次 🎭 登场，确认 cwd/meta/注入落到位）待白天补跑。
+
+## 10. A5 跨机同步 v1（已落地）
+
+任务：`.trellis/tasks/11-12-persona-sync/`（loop 包 `F-1113-persona-sync-r1`）。
+rootdir 本身是单个 git 仓库；只有档案区跨机，机器本地状态全部 gitignore。
+
+### 代码位置
+
+| 单元 | 文件 | 说明 |
+|---|---|---|
+| 纯逻辑 | `pkg/persona/sync.go` | `EnsureRootGitignore` / `SyncInit` / `SyncStatusOf` / `SyncPull` / `SyncPush` / `RebuildGenerated` / `MergeJournalTexts` / `NormalizeSyncMode` / `SetSyncMode` |
+| CLI | `cmd/wsh/cmd/wshcmd-persona.go` | `persona sync init\|status\|pull\|push\|rebuild\|mode` |
+| Agent 能力表 | `pkg/agentguide/agentguide.go` + skill 参考（生成物） | 3 条 sync 命令注册 |
+
+### 不变量
+
+- root `.gitignore`（§3.2）= `*.local.json` / `work/` / `agents/` / `AGENTS.md` / `.index/` / 噪声；
+  幂等追加，**不删用户已有行**。
+- `SyncInit` 只在**首次**初始化时提交初始快照；之后绝不自动 commit 用户在途编辑。
+- `RebuildGenerated` 用 A1 的 `plannedFiles` **同一份模板**，只写 4 个 GENERATED 路径
+  （`.persona/agents/{AGENTS,CLAUDE,GEMINI}.md` + 根 `AGENTS.md`）并重建 `.index/PERSONAS.md`；
+  CHARTER / MEMORY / persona.json / persona.local.json 永不覆盖（单测锁内容不变）。
+- journal 冲突：`MergeJournalTexts` 剥掉 git conflict markers、去重、稳定排序，**双方条目都保留**；
+  `MergeJournalNote` 写 inbox 提示，不静默丢。
+- `sync.mode = shared|own` 写在本机专属 `persona.local.json`（A1 已有 `SyncConfig`），不跨机。
+
+### 验证
+
+`go test ./pkg/persona/ -run TestSync -v`（7 例，含 `TestSyncTwoCloneRoundTrip` 双 clone 真 git 往返、
+work/ 不外泄、rebuild 不碰真源、gitignore 幂等、冲突双留、mode 校验）；
+`go build ./cmd/wsh/` BUILD_OK；tsc 47 基线零新增；loop prove 7/7 全绿。
+真机 / 真实 remote 的 push 留用户手动验证。
+
+### 有意收窄
+
+- `pull/push` 是 git 薄封装，remote 由人配置，不自动猜。
+- 「clone 后首次登场自动重建」v1 由显式 `wsh persona sync rebuild` 提供；自动挂钩登场留 A4 名册 Block。
+- journal 冲突合并是纯函数 + CLI 状态提示，未注册 git merge driver。

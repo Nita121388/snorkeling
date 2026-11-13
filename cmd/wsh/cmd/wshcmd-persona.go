@@ -155,6 +155,55 @@ var personaMemoryCmd = &cobra.Command{
 	Short: "Read/write persona memory (journal direct; facts/lessons via inbox)",
 }
 
+// A5 sync: the rootdir itself is the git repo. init/status/pull/push are thin
+// git wrappers; rebuild regenerates the derived artifacts after a clone.
+var personaSyncCmd = &cobra.Command{
+	Use:   "sync",
+	Short: "Cross-machine sync (rootdir git repo + generated-artifact rebuild)",
+}
+
+var personaSyncInitCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Initialize the rootdir git repo and its §3.2 .gitignore",
+	Args:  cobra.NoArgs,
+	RunE:  personaSyncInitRun,
+}
+
+var personaSyncStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show repo state (clean / branch / remote / unmerged paths)",
+	Args:  cobra.NoArgs,
+	RunE:  personaSyncStatusRun,
+}
+
+var personaSyncPullCmd = &cobra.Command{
+	Use:   "pull",
+	Short: "git pull the rootdir repo",
+	Args:  cobra.NoArgs,
+	RunE:  personaSyncPullRun,
+}
+
+var personaSyncPushCmd = &cobra.Command{
+	Use:   "push",
+	Short: "git push the rootdir repo",
+	Args:  cobra.NoArgs,
+	RunE:  personaSyncPushRun,
+}
+
+var personaSyncRebuildCmd = &cobra.Command{
+	Use:   "rebuild",
+	Short: "Rebuild PERSONAS.md + generated provider contracts after a clone",
+	Args:  cobra.NoArgs,
+	RunE:  personaSyncRebuildRun,
+}
+
+var personaSyncModeCmd = &cobra.Command{
+	Use:   "mode <id> <shared|own>",
+	Short: "Set a persona's sync.mode in its (ignored) persona.local.json",
+	Args:  cobra.ExactArgs(2),
+	RunE:  personaSyncModeRun,
+}
+
 var personaMemoryAddCmd = &cobra.Command{
 	Use:   "add <id>",
 	Short: "Append memory (journal direct; facts/lessons become inbox proposals)",
@@ -198,7 +247,9 @@ func init() {
 	personaProposeCmd.AddCommand(personaProposeListCmd)
 	personaMemoryCmd.AddCommand(personaMemoryAddCmd)
 	personaCmd.AddCommand(personaCreateCmd, personaListCmd, personaGetCmd, personaRenameCmd,
-		personaProposeCmd, personaApproveCmd, personaRejectCmd, personaMemoryCmd)
+		personaProposeCmd, personaApproveCmd, personaRejectCmd, personaMemoryCmd, personaSyncCmd)
+	personaSyncCmd.AddCommand(personaSyncInitCmd, personaSyncStatusCmd, personaSyncPullCmd,
+		personaSyncPushCmd, personaSyncRebuildCmd, personaSyncModeCmd)
 	rootCmd.AddCommand(personaCmd)
 }
 
@@ -568,5 +619,143 @@ func writeJSONObj(v any) error {
 		return fmt.Errorf("encoding json: %w", err)
 	}
 	WriteStdout("%s\n", string(barr))
+	return nil
+}
+
+// ---- A5 sync runners -------------------------------------------------------
+
+func personaSyncRoot() (string, error) {
+	return persona.ResolveRoot(personaRoot)
+}
+
+func personaSyncInitRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona sync init", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	status, err := persona.SyncInit(root)
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"verb": "init", "status": status})
+	}
+	WriteStdout("persona sync repo ready: %s (clean=%v, branch=%s)\n", root, status.Clean, status.Branch)
+	return nil
+}
+
+func personaSyncStatusRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona sync status", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	status, err := persona.SyncStatusOf(root)
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"verb": "status", "status": status})
+	}
+	if !status.Initialized {
+		WriteStdout("not a git repo yet: %s (run `wsh persona sync init`)\n", root)
+		return nil
+	}
+	state := "clean"
+	if !status.Clean {
+		state = fmt.Sprintf("%d pending change(s)", len(status.Changes))
+	}
+	WriteStdout("%s · %s · branch=%s remote=%s\n", root, state, orDash(status.Branch), orDash(status.Remote))
+	for _, change := range status.Changes {
+		WriteStdout("  %s\n", change)
+	}
+	for _, path := range status.Unmerged {
+		WriteStdout("  ! unmerged: %s (merge journal with `wsh persona sync rebuild` after resolving)\n", path)
+	}
+	return nil
+}
+
+func personaSyncPullRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona sync pull", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	out, err := persona.SyncPull(root)
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"verb": "pull", "output": out})
+	}
+	WriteStdout("%s", out)
+	return nil
+}
+
+func personaSyncPushRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona sync push", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	out, err := persona.SyncPush(root)
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"verb": "push", "output": out})
+	}
+	WriteStdout("%s", out)
+	return nil
+}
+
+func personaSyncRebuildRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona sync rebuild", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	result, err := persona.RebuildGenerated(root)
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"verb": "rebuild", "result": result})
+	}
+	WriteStdout("rebuilt %d generated file(s) for %d persona(s); roster: %s\n", result.Files, result.Personas, result.Roster)
+	return nil
+}
+
+func personaSyncModeRun(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("persona sync mode", rtnErr == nil)
+	}()
+	root, err := personaSyncRoot()
+	if err != nil {
+		return err
+	}
+	path, err := persona.SetSyncMode(root, args[0], args[1])
+	if err != nil {
+		return err
+	}
+	mode, err := persona.NormalizeSyncMode(args[1])
+	if err != nil {
+		return err
+	}
+	if personaJSON {
+		return writeJSONObj(map[string]any{"verb": "mode", "id": args[0], "mode": mode, "path": path})
+	}
+	WriteStdout("%s sync.mode = %s (%s)\n", args[0], mode, path)
 	return nil
 }

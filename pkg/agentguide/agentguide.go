@@ -120,6 +120,13 @@ func Commands() []Command {
 			Flags:   []string{"<id>", "--json"},
 		},
 		{
+			Cmd:     "persona sync status",
+			Scope:   "observe",
+			Summary: "Rootdir git state: clean, branch, remote and unmerged paths.",
+			Flags:   []string{"--json"},
+			Notes:   []string{"A bare rootdir reports initialized=false; it is a valid state, not an error."},
+		},
+		{
 			Cmd:     "block open",
 			Scope:   "navigate",
 			Summary: "Open a block: file, url, terminal, preview or agent view.",
@@ -184,6 +191,27 @@ func Commands() []Command {
 				"journal needs --yes; facts/lessons always land in MEMORY/inbox.md and exit 1 — --yes does not override that.",
 				"Never write facts.md/lessons.md/CHARTER.md directly; propose through inbox.md.",
 			},
+		},
+		{
+			Cmd:     "persona sync init",
+			Scope:   "data",
+			Summary: "Initialize the rootdir git repo with the §3.2 .gitignore and an initial archive commit.",
+			Flags:   []string{"--json"},
+			Notes:   []string{"Only the first init commits; later calls never commit in-flight user edits."},
+		},
+		{
+			Cmd:     "persona sync rebuild",
+			Scope:   "data",
+			Summary: "After a clone, rebuild PERSONAS.md and generated provider contracts.",
+			Flags:   []string{"--json"},
+			Notes:   []string{"Writes only GENERATED files; CHARTER / MEMORY / persona.json are never touched."},
+		},
+		{
+			Cmd:     "persona sync pull|push",
+			Scope:   "data",
+			Summary: "git pull / git push the rootdir repo (remote must be configured by a human).",
+			Flags:   []string{"--json"},
+			Notes:   []string{"A missing remote surfaces git's own error; it is never swallowed.", "work/, *.local.json, agents/, AGENTS.md and .index/ are ignored and never leave the machine."},
 		},
 		{
 			Cmd:     "persona approve",

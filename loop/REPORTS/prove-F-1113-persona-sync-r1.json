@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "cmd": "go test ./pkg/persona/... ./pkg/service/aisessionsservice/...",
+      "expect": "ok",
+      "ok": true,
+      "tail": "ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t6.002s | ok  \tgithub.com/wavetermdev/waveterm/pkg/service/aisessionsservice\t25.125s"
+    },
+    {
+      "cmd": "go build ./cmd/wsh/ && echo BUILD_OK",
+      "expect": "BUILD_OK",
+      "ok": true,
+      "tail": "BUILD_OK"
+    },
+    {
+      "cmd": "go test ./pkg/persona/ -run TestSync -v",
+      "expect": "PASS",
+      "ok": true,
+      "tail": "--- PASS: TestSyncTwoCloneRoundTrip (3.51s) | PASS | ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t5.075s"
+    },
+    {
+      "cmd": "npx tsc --noEmit -p tsconfig.json | grep -c \"error TS\" || true",
+      "expect": "<=47",
+      "ok": true,
+      "tail": "47"
+    },
+    {
+      "cmd": "grep SyncModeShared pkg/persona/sync.go",
+      "expect": "SyncModeShared",
+      "ok": true,
+      "tail": "\t\treturn SyncModeShared, nil | \tcase SyncModeShared: | \t\treturn SyncModeShared, nil"
+    },
+    {
+      "cmd": "grep personaSyncCmd cmd/wsh/cmd/wshcmd-persona.go",
+      "expect": "personaSyncCmd",
+      "ok": true,
+      "tail": "var personaSyncCmd = &cobra.Command{ | \t\tpersonaProposeCmd, personaApproveCmd, personaRejectCmd, personaMemoryCmd, personaSyncCmd) | \tpersonaSyncCmd.AddCommand(personaSyncInitCmd, personaSyncStatusCmd, personaSyncPullCmd,"
+    },
+    {
+      "cmd": "go test ./pkg/persona/ -run TestSyncJournalConflict -v",
+      "expect": "PASS",
+      "ok": true,
+      "tail": "--- PASS: TestSyncJournalConflictKeepsBothSides (0.00s) | PASS | ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t0.172s"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-13T02:23:35Z",
+  "updatedAt": "2026-11-13T03:36:01Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -239,6 +239,23 @@
       "g2": {
         "redProof": "loop/red/N-1108-agent-chip-phase-duration.txt",
         "at": "2026-11-08T06:05:39Z"
+      }
+    },
+    "F-1113-persona-sync-r1": {
+      "g1": {
+        "at": "2026-11-13T03:36:00Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "fea9ce996b01"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-F-1113-persona-sync-r1.txt（sync.go 不存在 / personaSyncCmd 不存在 / TestSync 无测试）",
+        "at": "2026-11-13T03:36:01Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-13T03:36:01Z",
+        "by": "compliance"
       }
     },
     "N-1105-queue-failopen": {
