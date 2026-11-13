@@ -19,3 +19,17 @@
    5 处偏离已披露（见实现汇报）；`--from-session this` 的 RPC 解析未在活体 app 验证。
 
 确认方式（任选）：`python3 .trellis/scripts/task.py archive <dir>`，或说「归档 1、2」由我执行。
+
+---
+
+## 2026-11-13 补记（A3 完成；归档仍待 nita 确认）
+
+| # | Trellis 任务 | loop 包 | 验收 | 提交 |
+|---|---|---|---|---|
+| 4 | `.trellis/tasks/11-12-persona-widget-launch/` | F-1113-persona-widget-launch-r2 | 4/5（代理验收，来源=用户本会话授权） | 91cdb4e4 |
+
+要点：8/8 判据机器采数全绿；`PersonaRoster` RPC + `derivePersonaProps` 收口 A1.5 AC3；
+🎭 浮窗 / 登场管线 / 默认 widget 已落地并写进 `docs/project/persona-system.md` §9。
+已知遗留：真机 Electron 活体验证（起一次 🎭 登场看 cwd/meta/注入）待白天补跑；
+「点击 → 名册 Block」「登场中状态点」「vendor 芯片」留 A4 / v2。
+按批注 N-1105-cleanup-46to22，agent 不自动 archive，仍由 nita 逐个确认。
