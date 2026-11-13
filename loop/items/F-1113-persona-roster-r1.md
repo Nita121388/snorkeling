@@ -3,7 +3,7 @@ id: F-1113-persona-roster-r1
 title: "A4 人设名册 Block persona://（列表/详情 + 登场复用）"
 type: feature
 priority: P1
-status: open
+status: accepted
 origin: self
 source: "2026-11-13T04:50:14Z"
 task: 11-12-persona-roster-block
@@ -12,6 +12,7 @@ touch: [pkg/service/aisessionsservice/**, frontend/app/view/persona/**, frontend
 rollback: null
 budget: {minutes: 300, retries: 2}
 releaseCandidate: false
+score: {value: 4, by: nita, at: "2026-11-13T05:13:45Z", note: "用户 2026-11-13 会话原话授权代理验收；真机验证留用户手动。6/6 判据机器采数全绿。"}
 createdAt: "2026-11-13T04:50:14Z"
 ---
 
