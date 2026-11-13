@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "cmd": "go test ./pkg/persona/... ./pkg/service/aisessionsservice/...",
+      "expect": "ok",
+      "ok": true,
+      "tail": "ok  \tgithub.com/wavetermdev/waveterm/pkg/persona\t(cached) | ok  \tgithub.com/wavetermdev/waveterm/pkg/service/aisessionsservice\t20.917s"
+    },
+    {
+      "cmd": "go build ./cmd/wsh/ && echo BUILD_OK",
+      "expect": "BUILD_OK",
+      "ok": true,
+      "tail": "BUILD_OK"
+    },
+    {
+      "cmd": "npx vitest run frontend/app/view/persona",
+      "expect": "passed",
+      "ok": true,
+      "tail": "\u001b[2m   Duration \u001b[22m 8.10s\u001b[2m (transform 1.25s, setup 50ms, collect 2.77s, tests 174ms, environment 2.12s, prepare 660ms)\u001b[22m |  | JUNIT report written to E:/code/snorkeling/test-results.xml"
+    },
+    {
+      "cmd": "npx tsc --noEmit -p tsconfig.json | grep -c \"error TS\" || true",
+      "expect": "<=47",
+      "ok": true,
+      "tail": "47"
+    },
+    {
+      "cmd": "grep PersonaViewModel frontend/app/view/persona/persona.tsx",
+      "expect": "PersonaViewModel",
+      "ok": true,
+      "tail": "export class PersonaViewModel implements ViewModel { |     model: PersonaViewModel;"
+    },
+    {
+      "cmd": "grep \"PersonaOverview(request: AISessionsPersonaOverviewRequest)\" frontend/app/store/services.ts",
+      "expect": "PersonaOverview(request: AISessionsPersonaOverviewRequest)",
+      "ok": true,
+      "tail": "PersonaOverview(request: AISessionsPersonaOverviewRequest): Promise<AISessionsPersonaOverviewResponse> {"
+    }
+  ]
+}

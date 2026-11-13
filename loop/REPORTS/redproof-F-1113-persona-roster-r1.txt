@@ -1,0 +1,4 @@
+== red proof F-1113-persona-roster-r1 @ 5fbf6134 ==
+ls: cannot access 'frontend/app/view/persona/persona.tsx': No such file or directory
+grep: frontend/app/view/persona/persona.tsx: No such file or directory
+exit=2

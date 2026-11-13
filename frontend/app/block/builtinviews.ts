@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { SessionOverviewViewModel } from "@/app/session-overview/session-overview";
-import { AgentViewModel } from "@/app/view/aisessions/agent";
 import { AiAuditViewModel } from "@/app/view/aiaudit/aiaudit-model";
 import { AiFileDiffViewModel } from "@/app/view/aifilediff/aifilediff";
+import { AgentViewModel } from "@/app/view/aisessions/agent";
 import { AiSessionsViewModel } from "@/app/view/aisessions/aisessions";
 import { HelpViewModel } from "@/app/view/helpview/helpview";
 import { LauncherViewModel } from "@/app/view/launcher/launcher";
+import { PersonaViewModel } from "@/app/view/persona/persona";
 import { PreviewModel } from "@/app/view/preview/preview-model";
 import { ProcessViewerViewModel } from "@/app/view/processviewer/processviewer";
 import { QuickTipsViewModel } from "@/app/view/quicktipsview/quicktipsview";
@@ -20,8 +21,8 @@ import { VcsCommitsViewModel } from "@/app/view/vcscommits/vcscommits";
 import { VcsDiffViewModel } from "@/app/view/vcsdiff/vcsdiff";
 import { VcsHistoryViewModel } from "@/app/view/vcshistory/vcshistory";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
-import { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import { WaveAiModel } from "@/app/view/waveai/waveai";
+import { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import { WebViewModel } from "@/app/view/webview/webview";
 import { registerViewModel } from "./blockregistry";
 
@@ -49,6 +50,7 @@ const BuiltinViewModels: ReadonlyArray<readonly [string, ViewModelClass]> = [
     ["vcscommits", VcsCommitsViewModel],
     ["vcsdiff", VcsDiffViewModel],
     ["vcshistory", VcsHistoryViewModel],
+    ["persona", PersonaViewModel],
 ];
 
 function registerBuiltinViews(): void {

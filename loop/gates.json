@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-13T04:37:26Z",
+  "updatedAt": "2026-11-13T04:50:15Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -289,6 +289,23 @@
       "g5": {
         "ok": true,
         "executedAt": "2026-11-13T04:37:26Z",
+        "by": "compliance"
+      }
+    },
+    "F-1113-persona-roster-r1": {
+      "g1": {
+        "at": "2026-11-13T04:50:15Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "6634fdc42848"
+      },
+      "g2": {
+        "redProof": "loop/REPORTS/redproof-F-1113-persona-roster-r1.txt（view 文件不存在；后端 PersonaOverview RPC 已先行实现，如实记录）",
+        "at": "2026-11-13T04:50:15Z"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-13T04:50:15Z",
         "by": "compliance"
       }
     },

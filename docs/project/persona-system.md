@@ -311,3 +311,33 @@ tsc 47 基线零新增；loop prove 9/9 全绿。Electron 真机三态验证留�
 - 设置面板的「迁移」不做破坏性按钮：给可复制的 `wsh persona relocate … --dry-run|--yes` 命令，
   先在终端看清单再应用（避免 UI 里一键搬家的不可逆风险）。
 - 软上限三动作（warn / warn-distill / readonly）v1 只落配置与面板，后台强制点留后续包。
+
+## 13. A4 人设名册 Block（persona://，已落地）
+
+任务：`.trellis/tasks/11-12-persona-roster-block/`（loop 包 `F-1113-persona-roster-r1`）。
+
+| 单元 | 文件 | 说明 |
+|---|---|---|
+| 后端 | `pkg/service/aisessionsservice` | `PersonaOverview` 只读聚合（identity + charter + storage + pendingProposals + lastJournalLine） |
+| 视图 | `frontend/app/view/persona/persona.tsx` | `PersonaViewModel` / `PersonaView`（列表 + 详情双栏） |
+| 纯逻辑 | `frontend/app/view/persona/persona-model.ts` | 行派生 / 字节格式化 / charter 截断 / 空态 |
+| 注册 | `frontend/app/block/builtinviews.ts` | `["persona", PersonaViewModel]` |
+| 入口 | `frontend/app/workspace/widgets.tsx` | 🎭 **点击 → 名册 Block**（hover 仍打开登场浮窗） |
+
+### 契约
+
+- 打开即拉一次 `PersonaOverview`；刷新按钮重拉；空名册显示 `wsh persona create --name <名> --yes` 引导。
+- 列表行：emoji + 名字 + 职责 + provider/model + 最近一条 journal 行（「最近登场」代理）+ ⚡待批准数。
+- 详情：CHARTER 全文、容量三桶（档案/归档/产物）+ syncable、待批准逐条 + 可复制
+  `wsh persona memory approve <id> <stamp> --yes`（v1 只读，不在视图内做破坏性写）。
+- [叫TA登场]：复用 A3 `buildPersonaLaunchBlockDef`（cwd=据点、meta.persona=id），不注入主工作目录。
+
+### 验证
+
+`npx vitest run frontend/app/view/persona`（13 例：纯逻辑 + DOM 空态/行渲染）；tsc 47 基线零新增；
+loop prove 6/6 全绿。Electron 真机验证留用户手动。
+
+### 有意收窄
+
+- 「登场中/空闲」状态点与休眠折叠留后续（需要会话活跃聚合）；v1 用最近 journal 行做「最近登场」代理。
+- 待批准区只读（写操作走 CLI，保持 human-gated）。

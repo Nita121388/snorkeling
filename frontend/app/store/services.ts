@@ -211,6 +211,12 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "Origins", Array.from(arguments))
     }
 
+    // persona roster with charter, storage, pending proposals and last journal line
+    // @returns persona overview rows
+    PersonaOverview(request: AISessionsPersonaOverviewRequest): Promise<AISessionsPersonaOverviewResponse> {
+        return callBackendService(this?.waveEnv, "aisessions", "PersonaOverview", Array.from(arguments))
+    }
+
     // list local persona roster for the stage-entry popup
     // @returns persona root and trimmed roster entries
     PersonaRoster(request: AISessionsPersonaRosterRequest): Promise<AISessionsPersonaRosterResponse> {

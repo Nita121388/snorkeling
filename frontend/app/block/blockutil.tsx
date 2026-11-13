@@ -8,8 +8,8 @@ import { IconButton, ToggleIconButton } from "@/element/iconbutton";
 import { MagnifyIcon } from "@/element/magnify";
 import { MenuButton } from "@/element/menubutton";
 import { copyText } from "@/util/clipboard";
-import { cn } from "@/util/util";
 import * as util from "@/util/util";
+import { cn } from "@/util/util";
 import clsx from "clsx";
 import * as jotai from "jotai";
 import * as React from "react";
@@ -62,6 +62,7 @@ const ViewMetaMap: Record<string, { name: string; icon: string }> = {
     scheduledtasks: { name: "Scheduled Tasks", icon: "clock" },
     aisessions: { name: "AI Sessions", icon: "comments" },
     agent: { name: "Agent", icon: "robot" },
+    persona: { name: "Personas", icon: "masks-theater" },
 };
 
 export function blockViewToIcon(view: string): string {
@@ -247,10 +248,7 @@ export const HeaderCopyTextElem = React.memo(({ elem, preview }: { elem: HeaderC
 
     React.useEffect(() => {
         if (status === "idle") return;
-        const handle = window.setTimeout(
-            () => setStatus("idle"),
-            status === "copied" ? 1200 : 1600
-        );
+        const handle = window.setTimeout(() => setStatus("idle"), status === "copied" ? 1200 : 1600);
         return () => window.clearTimeout(handle);
     }, [status]);
 

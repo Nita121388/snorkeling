@@ -390,6 +390,15 @@ declare global {
         origins: AISessionsOrigin[];
     };
 
+    // aisessionsservice.AISessionsPersonaOverviewRequest
+    type AISessionsPersonaOverviewRequest = object;
+
+    // aisessionsservice.AISessionsPersonaOverviewResponse
+    type AISessionsPersonaOverviewResponse = {
+        root?: string;
+        personas?: PersonaOverviewEntry[];
+    };
+
     // aisessionsservice.AISessionsPersonaRosterRequest
     type AISessionsPersonaRosterRequest = object;
 
@@ -2675,6 +2684,13 @@ declare global {
         "waveai:maxoutputtokens"?: number;
     };
 
+    // persona.Origin
+    type Origin = {
+        deviceId?: string;
+        deviceName?: string;
+        platform?: string;
+    };
+
     // syncproto.Origin
     type Origin = {
         deviceid?: string;
@@ -2697,6 +2713,30 @@ declare global {
         kind: string;
         count: number;
         lastAt: number;
+    };
+
+    // persona.Persona
+    type Persona = {
+        schemaVersion: number;
+        id: string;
+        name: string;
+        emoji?: string;
+        role?: string;
+        provider?: string;
+        model?: string;
+        createdAt: string;
+        createdBy?: Provenance;
+        approvedBy?: Provenance;
+        origin?: Origin;
+    };
+
+    // aisessionsservice.PersonaOverviewEntry
+    type PersonaOverviewEntry = {
+        persona: Persona;
+        charter?: string;
+        storage: StorageStats;
+        pendingProposals: number;
+        lastJournalLine?: string;
     };
 
     // aisessionsservice.PersonaSummary
@@ -2822,6 +2862,14 @@ declare global {
         type: string;
         value: any;
         confidence?: number;
+    };
+
+    // persona.Provenance
+    type Provenance = {
+        kind: string;
+        name?: string;
+        sessionId?: string;
+        ts?: string;
     };
 
     // syncproto.PushItemResult

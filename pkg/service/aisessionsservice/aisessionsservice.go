@@ -932,6 +932,82 @@ func (svc *AISessionsService) List(ctx context.Context, request *AISessionsListR
 	return response, nil
 }
 
+// AISessionsPersonaOverviewRequest is empty today (A4 roster block).
+type AISessionsPersonaOverviewRequest struct{}
+
+// PersonaOverviewEntry is one roster row with everything the A4 block renders:
+// identity, charter excerpt, storage buckets, pending proposals and the last
+// journal line (the "recent shift" proxy; full history comes from AISessions).
+type PersonaOverviewEntry struct {
+	Persona          persona.Persona      `json:"persona"`
+	Charter          string               `json:"charter,omitempty"`
+	Storage          persona.StorageStats `json:"storage"`
+	PendingProposals int                  `json:"pendingProposals"`
+	LastJournalLine  string               `json:"lastJournalLine,omitempty"`
+}
+
+type AISessionsPersonaOverviewResponse struct {
+	Root     string                 `json:"root,omitempty"`
+	Personas []PersonaOverviewEntry `json:"personas,omitempty"`
+}
+
+func (svc *AISessionsService) PersonaOverview_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		Desc:       "persona roster with charter, storage, pending proposals and last journal line",
+		ArgNames:   []string{"ctx", "request"},
+		ReturnDesc: "persona overview rows",
+	}
+}
+
+// PersonaOverview feeds the A4 roster block (design §6). Read-only: it never
+// writes a home base. One row per persona directory, same root resolution as
+// PersonaRoster/PersonaStats so the three surfaces cannot disagree.
+func (svc *AISessionsService) PersonaOverview(ctx context.Context, request *AISessionsPersonaOverviewRequest) (*AISessionsPersonaOverviewResponse, error) {
+	root, err := persona.ResolveRoot(personaSettingsRoot())
+	if err != nil {
+		return nil, err
+	}
+	list, err := persona.List(root)
+	if err != nil {
+		return nil, err
+	}
+	resp := &AISessionsPersonaOverviewResponse{Root: root}
+	for _, p := range list {
+		entry := PersonaOverviewEntry{Persona: p}
+		if full, charter, err := persona.Get(root, p.ID); err == nil && full != nil {
+			entry.Charter = charter
+		}
+		if stats, err := persona.StorageOf(root, p.ID); err == nil && stats != nil {
+			entry.Storage = *stats
+		}
+		if items, err := persona.ListInbox(root, p.ID); err == nil {
+			for _, item := range items {
+				if item.Status == persona.InboxStatusPending {
+					entry.PendingProposals++
+				}
+			}
+		}
+		if barr, err := os.ReadFile(filepath.Join(root, p.ID, ".persona", "MEMORY", "journal.md")); err == nil {
+			entry.LastJournalLine = lastJournalLine(string(barr))
+		}
+		resp.Personas = append(resp.Personas, entry)
+	}
+	return resp, nil
+}
+
+// lastJournalLine returns the last non-comment, non-blank line of a journal.
+func lastJournalLine(body string) string {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "<!--") {
+			continue
+		}
+		return line
+	}
+	return ""
+}
+
 // AISessionsPersonaStatsRequest is empty today; kept as a struct so the wire
 // shape can grow without breaking callers.
 type AISessionsPersonaStatsRequest struct{}

@@ -2346,10 +2346,16 @@ const Widgets = memo(() => {
                 return;
             }
 
-            // 🎭 Persona（A3）：点击 = 打开登场浮窗（hover 同款）。名册 Block 入口在 A4
-            // 落地后改为从浮窗头部进入。
+            // 🎭 Persona（A4）：点击 = 打开人设名册 Block（design §6）；hover 仍然打开
+            // 登场浮窗（见下方 hover 分支）。名册是「谁在当班」的总览入口，登场选择仍在 hover。
             if (widgetId === PersonaWidgetId) {
-                openPersonaLaunchWindow(e.currentTarget);
+                closeAgentTargetSelector();
+                closeTerminalTargetSelector();
+                closeFilesWindow();
+                closePersonaLaunchWindow();
+                fireAndForget(async () => {
+                    await env.createBlock({ meta: { view: "persona" } }, widget.magnified);
+                });
                 return;
             }
 
@@ -2391,6 +2397,7 @@ const Widgets = memo(() => {
             agentProfileOptions.length,
             closeAgentTargetSelector,
             closeFilesWindow,
+            closePersonaLaunchWindow,
             closeTerminalTargetSelector,
             env,
             isAgentTargetOpen,
