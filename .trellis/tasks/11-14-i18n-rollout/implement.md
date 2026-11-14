@@ -119,3 +119,13 @@ npm test && node scripts/check-tsc-baseline.mjs
   - **真机踩到的新坑**：① 主进程 bundle 是 ESM，`require()` 直接抛 "Cannot find module" → Uncaught Exception → 整应用退出——IPC handler 里禁止用 `require`，循环依赖用动态 `import()`；② 新 worktree 的 electron 二进制不完整（`install.js` 解压缺 `Electron Framework`，且 `path.txt`missing → vitest 全量 50 条 unhandled error。修复：从主仓同版本拷 `dist/` + 手写 `path.txt`。
 - **P1 待做**：onboarding 迁移 + `scan-hardcoded.mjs`/`check-parity.mjs` CLI 版 + `docs/docs/i18n.mdx` 手册落地
 - **Pattern B 类型验证结论**（供手册回写）：i18next 27 + react-i18next 18 下，`t()` 必须用全限定 key（`t("common:settings.languageTitle")`），ns 绑定的短 key 会直接被拒； 表达式位置无需 `as never`。
+
+- **P1 ✅ 已完成**（commit `defed3e4c`，分支 `origin/feat/i18n-rollout`）
+  - onboarding 23 文件 + preview 全迁：scan `--dir frontend/app/onboarding` = 0（12 条 allowlist：CLI 命令名/配置键名，带 reason）
+  - 闸门落地：`scripts/i18n/scan-hardcoded.mjs`（TS AST：jsx-text/attr/cjk）+ `check-parity.mjs` + `npm run i18n:check`（全仓口径在 P2 清完前保持红，逐批用 `--dir` 验收；P3 才接 CI）
+  - 手册 `docs/docs/i18n.mdx` 重建到当前 main（Pattern A–I + 三个新坑：ESM require、jsdom 宿主 locale、electron dist 半装）
+  - 旧分支 zh 资源里 46 个英文占位值全部补翻；其余同值 key 为品牌名/仓库名
+  - tsc 47 = 基线 · npm test 279/3123 全绿 · parity 0
+  - 真机：向导首屏中文（「欢迎使用 Snorkeling」+「继续」），截图 `verify-runs/20261114T13594-i18n-p1/onboarding-zh.png`；向导内 AI 面板 demo 文案英文属 `aipanel.tsx`（P2 B1 范围）
+  - **新坑（vite）**：改 JSON 资源后 `location.reload()` 不会让静态 import 的 locale 模块刷新（网络层新、模块图旧）——dev 实例必须重启才吃到新资源
+  - **下一步 P2 B1**：`app/tab` + `app/aipanel`（attr 21 / CJK 42）
