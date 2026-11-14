@@ -8,8 +8,10 @@
 
 import { AISessionsServiceType } from "@/app/store/services";
 import { saveSessionNote } from "@/app/store/session-note-cache";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 export type NoteUndoSnapshot = { note: string; tags: string[] };
 
@@ -61,7 +63,7 @@ export function useNoteUndo(service: AISessionsServiceType, sessionKey: string, 
         dismiss();
         const result = await saveSessionNote(service, sessionKey, connection, target.note, target.tags);
         if (result.status !== "ok") {
-            setError(result.error || "Undo failed");
+            setError(result.error || i18n.t("aisessions:undo.failed"));
         }
     }, [connection, dismiss, pending, service, sessionKey]);
 
@@ -81,6 +83,7 @@ export function UndoNoteBar({
     onDismiss: () => void;
     className?: string;
 }) {
+    const { t } = useTranslation("aisessions");
     if (pending == null) {
         return error ? <span className={cn("text-[10px] text-error", className)}>{error}</span> : null;
     }
@@ -92,7 +95,7 @@ export function UndoNoteBar({
             )}
             role="status"
         >
-            <span>Note replaced by AI</span>
+            <span>{t("aisessions:undo.noteReplaced")}</span>
             <button
                 type="button"
                 className="cursor-pointer rounded px-1.5 py-0.5 font-medium text-accent hover:bg-accent/10"
@@ -102,13 +105,13 @@ export function UndoNoteBar({
                 }}
                 data-row-action="true"
             >
-                Undo
+                {t("aisessions:undo.undo")}
             </button>
             <button
                 type="button"
                 className="cursor-pointer text-secondary hover:text-primary"
-                title="Dismiss"
-                aria-label="Dismiss"
+                title={t("aisessions:undo.dismiss")}
+                aria-label={t("aisessions:undo.dismiss")}
                 onClick={(event) => {
                     event.stopPropagation();
                     onDismiss();

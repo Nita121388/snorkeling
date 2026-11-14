@@ -11,7 +11,8 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PropertyList } from "./property-list";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -53,6 +54,10 @@ function expandMore() {
 }
 
 const row = (key: string) => document.querySelector(`[data-property-key="${key}"]`);
+
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 describe("PropertyList interactions", () => {
     beforeEach(() => {

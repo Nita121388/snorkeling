@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AISessionsServiceType } from "@/app/store/services";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DurationBar } from "./duration-bar";
 import { formatDuration, subagentDurationMs } from "./fold-duration";
 import { SessionDetailSkeleton } from "./session-detail-skeleton";
@@ -246,6 +248,7 @@ export const SubagentCard = memo(function SubagentCard({
     }, [expandable, cancelInFlight]);
 
     const agentName = (match.call.agent ?? "").trim() || "subagent";
+    const { t } = useTranslation("aisessions");
     const taskText = (match.call.task ?? "").replace(/\s+/g, " ").trim();
     const failed = subagentRowStatus(match) === "failed";
     // 折叠态即可显示的时长：子会话最后更新时间 - 派发时间。不依赖子会话内容加载。
@@ -282,7 +285,7 @@ export const SubagentCard = memo(function SubagentCard({
                         durationMs={durationMs}
                         maxDurationMs={0}
                         showText
-                        label={`Total ${formatDuration(durationMs)}`}
+                        label={i18n.t("aisessions:subagentCard.total", { duration: formatDuration(durationMs) })}
                         fillColor="var(--agent-stale-color)"
                     />
                 ) : null}
@@ -315,7 +318,7 @@ export const SubagentCard = memo(function SubagentCard({
                         }}
                     >
                         <i className="fa-sharp fa-solid fa-up-right-from-square text-[9px]" />
-                        Open
+                        {t("aisessions:subagentCard.open")}
                     </button>
                 ) : null}
             </div>
@@ -327,7 +330,7 @@ export const SubagentCard = memo(function SubagentCard({
                     {match.status === "ambiguous" ? (
                         <div className="space-y-1 py-1">
                             <div className="text-[10px] text-secondary">
-                                Multiple candidates matched. Pick the correct child session:
+                                {t("aisessions:subagentCard.ambiguous")}
                             </div>
                             {match.candidates?.map((candidate) => (
                                 <button
@@ -347,7 +350,7 @@ export const SubagentCard = memo(function SubagentCard({
 
                     {match.status === "matched" ? (
                         <div className="space-y-2 py-1">
-                            <div className="text-[10px] text-secondary">Child session</div>
+                            <div className="text-[10px] text-secondary">{t("aisessions:subagentCard.childSession")}</div>
                             {state.loading ? (
                                 // 骨架占位：让用户立刻看到"正在加载"的结构，而不是一行静止文字
                                 <SessionDetailSkeleton rows={3} />
@@ -355,7 +358,9 @@ export const SubagentCard = memo(function SubagentCard({
                                 <div className="space-y-1.5">
                                     <div className="text-[10px] text-error">{state.error}</div>
                                     {state.detail != null ? (
-                                        <div className="text-[10px] text-secondary">Loaded content is preserved.</div>
+                                        <div className="text-[10px] text-secondary">
+                                            {t("aisessions:subagentCard.contentPreserved")}
+                                        </div>
                                     ) : null}
                                     <button
                                         type="button"
@@ -363,7 +368,7 @@ export const SubagentCard = memo(function SubagentCard({
                                         onClick={retry}
                                     >
                                         <i className="fa-sharp fa-solid fa-rotate-right text-[9px]" />
-                                        Retry
+                                        {t("aisessions:subagentCard.retry")}
                                     </button>
                                 </div>
                             ) : (
@@ -383,7 +388,7 @@ export const SubagentCard = memo(function SubagentCard({
                                             aria-live="polite"
                                         >
                                             <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />
-                                            <span>Loading more…</span>
+                                            <span>{t("aisessions:subagentCard.loadingMore")}</span>
                                         </div>
                                     ) : null}
                                     {state.nested.map((childMatch) => (

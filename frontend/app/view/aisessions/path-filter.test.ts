@@ -1,7 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { initI18n } from "@/i18n/config";
+import { beforeEach, describe, expect, it } from "vitest";
 import { normalizeSessionTags } from "./session-tags";
 import { DefaultPathFilter, PathFilterOtherRoot } from "./types";
 import {
@@ -24,6 +25,10 @@ import {
 function distOf(entries: [string, number][]): ProjectPathSummary[] {
     return entries.map(([path, count]) => ({ path, count }));
 }
+
+beforeEach(async () => {
+    await initI18n("en");
+});
 
 describe("path-filter utils (v2 — distribution-driven navigation)", () => {
     it("extractPathRoots clusters by windows drive, ~ and /, with Other tail", () => {

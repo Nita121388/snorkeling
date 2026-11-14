@@ -16,7 +16,9 @@
 //
 // 纯受控组件：所有状态由父层 sortChainAtom 持有，这里只发 onChange。
 
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
+import { useTranslation } from "react-i18next";
 import {
     autoUpdate,
     flip,
@@ -30,25 +32,36 @@ import {
 import { useState } from "react";
 import { DefaultSortChain, MaxSortChainLength, SessionSortChain, SessionSortField, SessionSortKey } from "./types";
 
-const FieldLabels: Record<SessionSortField, { name: string; icon: string }> = {
+const FieldKeys: Record<SessionSortField, string> = {
     // `time` 沿用旧字段名（localStorage 兼容），显示上明确写成 Updated。
-    time: { name: "Updated", icon: "fa-clock" },
-    created: { name: "Created", icon: "fa-calendar-plus" },
-    messages: { name: "Messages", icon: "fa-comment-dots" },
-    subagents: { name: "Sub-sessions", icon: "fa-sitemap" },
+    time: "aisessions:sort.fields.time",
+    created: "aisessions:sort.fields.created",
+    messages: "aisessions:sort.fields.messages",
+    subagents: "aisessions:sort.fields.subagents",
 };
 
-const DirectionLabels: Record<SessionSortField, { desc: string; asc: string }> = {
-    time: { desc: "Newest updated", asc: "Oldest updated" },
-    created: { desc: "Newest created", asc: "Oldest created" },
-    messages: { desc: "Most messages", asc: "Fewest messages" },
-    subagents: { desc: "Most sub-sessions", asc: "Fewest sub-sessions" },
+const FieldIcons: Record<SessionSortField, string> = {
+    time: "fa-clock",
+    created: "fa-calendar-plus",
+    messages: "fa-comment-dots",
+    subagents: "fa-sitemap",
+};
+
+const DirectionKeys: Record<SessionSortField, { desc: string; asc: string }> = {
+    time: { desc: "aisessions:sort.direction.time.desc", asc: "aisessions:sort.direction.time.asc" },
+    created: { desc: "aisessions:sort.direction.created.desc", asc: "aisessions:sort.direction.created.asc" },
+    messages: { desc: "aisessions:sort.direction.messages.desc", asc: "aisessions:sort.direction.messages.asc" },
+    subagents: { desc: "aisessions:sort.direction.subagents.desc", asc: "aisessions:sort.direction.subagents.asc" },
 };
 
 const CircledNumbers = ["①", "②", "③"];
 
+function fieldName(field: SessionSortField): string {
+    return i18n.t(FieldKeys[field] as never);
+}
+
 function optionLabel(field: SessionSortField, desc: boolean): string {
-    return desc ? DirectionLabels[field].desc : DirectionLabels[field].asc;
+    return i18n.t((desc ? DirectionKeys[field].desc : DirectionKeys[field].asc) as never);
 }
 
 /** 按钮上显示的当前链摘要：单键用方向文案，多键用 `Time·Msgs·Subs`。 */
@@ -57,7 +70,7 @@ export function sortChainSummary(chain: SessionSortChain): string {
     if (active.length === 1) {
         return optionLabel(active[0].field, active[0].desc);
     }
-    return active.map((key) => FieldLabels[key.field].name).join("·");
+    return active.map((key) => fieldName(key.field)).join("·");
 }
 
 function toggleDirection(chain: SessionSortChain, index: number): SessionSortChain {
@@ -82,11 +95,12 @@ export interface SortMenuProps {
 }
 
 export function SortMenu({ chain, onChange }: SortMenuProps) {
+    const { t } = useTranslation("aisessions");
     const [open, setOpen] = useState(false);
     const [reference, setReference] = useState<HTMLButtonElement | null>(null);
     const activeChain = chain.length > 0 ? chain : DefaultSortChain;
     const inChain = new Set(activeChain.map((key) => key.field));
-    const available = (Object.keys(FieldLabels) as SessionSortField[]).filter((field) => !inChain.has(field));
+    const available = (Object.keys(FieldKeys) as SessionSortField[]).filter((field) => !inChain.has(field));
     const chainFull = activeChain.length >= MaxSortChainLength;
     const primary = activeChain[0];
     const isDefaultChain = activeChain.length === 1 && activeChain[0].field === "time" && activeChain[0].desc === true;
@@ -110,8 +124,8 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={open}
-                aria-label={`Sort by ${sortChainSummary(activeChain)}`}
-                title={`Sort by ${sortChainSummary(activeChain)}`}
+                aria-label={i18n.t("aisessions:sort.sortBy", { summary: sortChainSummary(activeChain) })}
+                title={i18n.t("aisessions:sort.sortBy", { summary: sortChainSummary(activeChain) })}
                 onClick={() => setOpen((current) => !current)}
                 className={cn(
                     "relative flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border/70 transition-colors",
@@ -122,7 +136,7 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                           : "bg-background text-primary ring-1 ring-accent/40 hover:bg-hover"
                 )}
             >
-                <i className={cn("fa-sharp fa-solid text-[11px]", FieldLabels[primary.field].icon)} />
+                <i className={cn("fa-sharp fa-solid text-[11px]", FieldIcons[primary.field])} />
                 {multiKey ? (
                     <span className="absolute right-[1px] top-[1px] inline-flex h-[13px] min-w-[13px] items-center justify-center rounded-full bg-accent px-1 text-[8px] font-bold leading-none text-black tabular-nums">
                         {activeChain.length}
@@ -148,7 +162,7 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                         className="z-50 flex flex-col overflow-hidden rounded-lg border border-border bg-modalbg shadow-xl backdrop-blur"
                     >
                         <div className="flex items-center justify-between px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted">
-                            <span>Sort by</span>
+                            <span>{t("aisessions:sort.header")}</span>
                             <span>
                                 {activeChain.length} / {MaxSortChainLength}
                             </span>
@@ -167,22 +181,22 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                                     <i
                                         className={cn(
                                             "fa-sharp fa-solid w-3 shrink-0 text-[10px] text-secondary",
-                                            FieldLabels[key.field].icon
+                                            FieldIcons[key.field]
                                         )}
                                     />
                                     <button
                                         type="button"
                                         className="min-w-0 flex-1 cursor-pointer truncate text-left hover:text-accent"
-                                        title="Toggle direction"
-                                        aria-label={`Toggle direction for ${FieldLabels[key.field].name}`}
+                                        title={t("aisessions:sort.toggleDirection")}
+                                        aria-label={i18n.t("aisessions:sort.toggleDirectionFor", { name: fieldName(key.field) })}
                                         onClick={() => onChange(toggleDirection(activeChain, index))}
                                     >
                                         {optionLabel(key.field, key.desc)}
                                     </button>
                                     <button
                                         type="button"
-                                        aria-label={`Remove ${FieldLabels[key.field].name} from sort`}
-                                        title="Remove"
+                                        aria-label={i18n.t("aisessions:sort.removeFromSort", { name: fieldName(key.field) })}
+                                        title={t("aisessions:sort.remove")}
                                         className="shrink-0 cursor-pointer rounded p-0.5 text-[10px] text-muted opacity-0 transition group-hover:opacity-100 hover:text-primary"
                                         onClick={() => onChange(removeKey(activeChain, index))}
                                     >
@@ -204,8 +218,8 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                                             disabled={disabled}
                                             title={
                                                 disabled
-                                                    ? `Max ${MaxSortChainLength} keys`
-                                                    : `Add ${FieldLabels[field].name}`
+                                                    ? i18n.t("aisessions:sort.maxKeys", { count: MaxSortChainLength })
+                                                    : i18n.t("aisessions:sort.addField", { name: fieldName(field) })
                                             }
                                             onClick={() => onChange(appendKey(activeChain, field))}
                                             className={cn(
@@ -219,7 +233,7 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                                             <i
                                                 className={cn(
                                                     "fa-sharp fa-solid w-3 shrink-0 text-[10px]",
-                                                    FieldLabels[field].icon
+                                                    FieldIcons[field]
                                                 )}
                                             />
                                             <span className="min-w-0 flex-1 truncate text-left">
@@ -241,7 +255,7 @@ export function SortMenu({ chain, onChange }: SortMenuProps) {
                                 className="flex h-[28px] w-full cursor-pointer items-center gap-1.5 rounded px-2 text-xs text-secondary transition-colors hover:bg-hover hover:text-primary"
                             >
                                 <i className="fa-sharp fa-solid fa-rotate-left text-[10px]" />
-                                <span>Reset to default</span>
+                                <span>{t("aisessions:sort.reset")}</span>
                             </button>
                         </div>
                     </div>

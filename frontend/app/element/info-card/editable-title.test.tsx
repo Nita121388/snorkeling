@@ -16,10 +16,16 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { i18n, initI18n } from "@/i18n/config";
 import { EditableTitle } from "./editable-title";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// 组件内的 aria-label 走 i18n；未初始化时 t() 返回 key 本身，断言会假红。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 const containers: HTMLDivElement[] = [];
 const roots: ReturnType<typeof createRoot>[] = [];
@@ -89,7 +95,9 @@ describe("EditableTitle — 展示态", () => {
 
     it("AI 标题渲染 TitleSourceBadge", () => {
         const container = mount(<EditableTitle title="会话" titleSource="ai" onCommit={async () => null} />);
-        expect(container.querySelector('[aria-label="AI-generated title"]')).not.toBeNull();
+        // 不复算文案字面量：徽标 aria-label 走 i18n，断言按当前 locale 复算（Pattern I）。
+        const label = i18n.t("aisessions:titleBadge.aiGenerated");
+        expect(container.querySelector(`[aria-label="${label}"]`)).not.toBeNull();
     });
 
     it("用户标题不渲染 AI 徽标（TitleSourceBadge 只在 ai 时出现）", () => {

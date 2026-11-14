@@ -3,9 +3,11 @@
 
 import ClaudeColorSvg from "@/app/asset/claude-color.svg";
 import { Tooltip } from "@/app/element/tooltip";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import type { MouseEventHandler, ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { copyText } from "./utils";
 
 export function SourceButton({
@@ -127,7 +129,10 @@ export function SubSessionsToggle({
     onToggle: () => void;
 }) {
     const disabled = parentCount === 0;
-    const label = allExpanded ? "Collapse all sub-sessions" : "Expand all sub-sessions";
+    const { t } = useTranslation("aisessions");
+    const label = allExpanded
+        ? t("aisessions:controls.collapseAllSubSessions")
+        : t("aisessions:controls.expandAllSubSessions");
     return (
         <button
             type="button"
@@ -138,7 +143,7 @@ export function SubSessionsToggle({
                     : "bg-surface text-secondary hover:bg-hover hover:text-primary",
                 disabled && "cursor-default opacity-50 hover:bg-surface hover:text-secondary"
             )}
-            title={disabled ? "No sub-sessions to expand" : `${label} (${parentCount})`}
+            title={disabled ? t("aisessions:controls.noSubSessions") : i18n.t("aisessions:controls.labelWithCount", { label, count: parentCount })}
             aria-label={label}
             aria-pressed={allExpanded}
             disabled={disabled}
@@ -157,6 +162,8 @@ export function SubSessionsToggle({
  * 偏好写入 localStorage 跨会话保持；单行的 Show less 仍然可用，只收起自己。
  */
 export function ExpandAllTagsButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+    const { t } = useTranslation("aisessions");
+    const label = expanded ? t("aisessions:controls.collapseTags") : t("aisessions:controls.expandTags");
     return (
         <button
             type="button"
@@ -167,8 +174,8 @@ export function ExpandAllTagsButton({ expanded, onToggle }: { expanded: boolean;
                     : "border-border/70 bg-surface text-secondary hover:bg-hover hover:text-primary"
             )}
             onClick={onToggle}
-            title={expanded ? "Collapse tags in every row" : "Expand all tags in every row"}
-            aria-label={expanded ? "Collapse tags in every row" : "Expand all tags in every row"}
+            title={label}
+            aria-label={label}
             aria-pressed={expanded}
         >
             <i className={cn("fa-sharp fa-solid text-[11px]", expanded ? "fa-tags" : "fa-tag")} />
@@ -186,14 +193,15 @@ export type ListGroupMode = "project" | "time";
  * control at the same size as its neighbours rather than a second sort affordance.
  */
 export function GroupModeSwitch({ mode, onChange }: { mode: ListGroupMode; onChange: (mode: ListGroupMode) => void }) {
+    const { t } = useTranslation("aisessions");
     const options: { value: ListGroupMode; label: string; icon: string }[] = [
-        { value: "project", label: "Project", icon: "fa-folder" },
-        { value: "time", label: "Time", icon: "fa-clock" },
+        { value: "project", label: t("aisessions:controls.project"), icon: "fa-folder" },
+        { value: "time", label: t("aisessions:controls.time"), icon: "fa-clock" },
     ];
     return (
         <div
             role="tablist"
-            aria-label="List grouping"
+            aria-label={t("aisessions:controls.listGrouping")}
             className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border/70 bg-surface p-0.5"
         >
             {options.map(({ value, label, icon }) => {
@@ -204,7 +212,7 @@ export function GroupModeSwitch({ mode, onChange }: { mode: ListGroupMode; onCha
                         type="button"
                         role="tab"
                         aria-selected={current}
-                        title={current ? `View by ${label}` : `Switch to ${label}`}
+                        title={current ? i18n.t("aisessions:controls.viewBy", { label }) : i18n.t("aisessions:controls.switchTo", { label })}
                         onClick={() => onChange(value)}
                         className={cn(
                             "flex h-[22px] cursor-pointer items-center gap-1 rounded px-2 text-xs transition-colors",

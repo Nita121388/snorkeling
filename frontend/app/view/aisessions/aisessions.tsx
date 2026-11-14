@@ -16,6 +16,7 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { openHeroCreateWizard } from "@/app/view/hero/hero-create-wizard";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { createBlock, createBlockSplitHorizontally, refocusNode, setActiveTab } from "@/store/global";
 import { globalStore } from "@/store/jotaiStore";
@@ -25,6 +26,7 @@ import * as jotai from "jotai";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { isSameSessionSummary } from "../../session-overview/session-overview-session-cache";
 import "../../session-overview/session-overview.scss";
 import { autoGenerate } from "./aisession-gen-store";
@@ -333,7 +335,7 @@ export class AiSessionsViewModel implements ViewModel {
                               elemtype: "iconbutton" as const,
                               className: "aisessions-audit",
                               icon: "clipboard-list",
-                              title: "Open AI Audit",
+                              title: i18n.t("aisessions:menu.openAudit"),
                               zone: "pinned" as const,
                               click: () => {
                                   void createBlock({ meta: { view: "aiaudit" } }, false, true);
@@ -353,12 +355,15 @@ export class AiSessionsViewModel implements ViewModel {
                     ),
                     iconSpin: busy,
                     title: loading
-                        ? "Refreshing sessions…"
+                        ? i18n.t("aisessions:header.refreshing")
                         : scanning
                           ? scanStatus.total > 0
-                              ? `Syncing sessions ${scanStatus.scanned}/${scanStatus.total}`
-                              : "Syncing sessions…"
-                          : "Refresh sessions",
+                              ? i18n.t("aisessions:header.syncing", {
+                                    scanned: scanStatus.scanned,
+                                    total: scanStatus.total,
+                                })
+                              : i18n.t("aisessions:header.syncingUnknown")
+                          : i18n.t("aisessions:header.refresh"),
                     disabled: loading,
                     zone: "pinned",
                     click: () => {
@@ -400,15 +405,15 @@ export class AiSessionsViewModel implements ViewModel {
         const showAuditButton = getShowAuditButton(globalStore.get(this.blockAtom)?.meta);
         return [
             {
-                label: "Set as New Hero…",
+                label: i18n.t("aisessions:menu.setAsNewHero"),
                 click: () => openHeroCreateWizard({ source: "aisessions" }),
             },
             {
-                label: "Auto Refresh",
+                label: i18n.t("aisessions:menu.autoRefresh"),
                 type: "submenu",
                 submenu: [
                     ...AutoRefreshIntervalOptions.map((option) => ({
-                        label: option.label,
+                        label: i18n.t(option.labelKey),
                         type: "radio" as const,
                         checked: currentInterval === option.value,
                         click: () => this.setAutoRefreshIntervalMs(option.value),
@@ -417,13 +422,13 @@ export class AiSessionsViewModel implements ViewModel {
                 ],
             },
             {
-                label: "Show AI Audit Button",
+                label: i18n.t("aisessions:menu.showAuditButton"),
                 type: "checkbox",
                 checked: showAuditButton,
                 click: () => this.setShowAuditButton(!showAuditButton),
             },
             {
-                label: "Open AI Audit",
+                label: i18n.t("aisessions:menu.openAudit"),
                 click: () => {
                     void createBlock({ meta: { view: "aiaudit" } }, false, true);
                 },
@@ -455,7 +460,7 @@ export class AiSessionsViewModel implements ViewModel {
             key: NewSessionKey,
             id: "",
             source: defaultChatSource().id,
-            title: "New Chat",
+            title: i18n.t("aisessions:newChat.title"),
         });
         globalStore.set(this.selectedKeyAtom, NewSessionKey);
         globalStore.set(this.detailAtom, null);
@@ -1592,10 +1597,7 @@ export class AiSessionsViewModel implements ViewModel {
     async restoreSession(session: SessionSummary): Promise<void> {
         if (!session?.id || !session?.source) return;
         if (this.sessionOriginReadOnly(session)) {
-            globalStore.set(
-                this.errorAtom,
-                "This session comes from an imported dump; resuming it in a local terminal is not supported."
-            );
+            globalStore.set(this.errorAtom, i18n.t("aisessions:menu.restoreReadOnly"));
             return;
         }
         globalStore.set(this.restoringAtom, true);
@@ -1723,11 +1725,11 @@ const MaxAutoRefreshIntervalMs = 60 * 60_000;
 const SessionChangedRefreshDebounceMs = 500;
 const SessionChangedRefreshMinIntervalMs = 5_000;
 const AutoRefreshIntervalOptions = [
-    { label: "Off", value: 0 },
-    { label: "30 seconds", value: 30_000 },
-    { label: "1 minute", value: DefaultAutoRefreshIntervalMs },
-    { label: "2 minutes", value: 120_000 },
-    { label: "5 minutes", value: 300_000 },
+    { labelKey: "aisessions:autoRefresh.off", value: 0 },
+    { labelKey: "aisessions:autoRefresh.thirtySeconds", value: 30_000 },
+    { labelKey: "aisessions:autoRefresh.oneMinute", value: DefaultAutoRefreshIntervalMs },
+    { labelKey: "aisessions:autoRefresh.twoMinutes", value: 120_000 },
+    { labelKey: "aisessions:autoRefresh.fiveMinutes", value: 300_000 },
 ] as const;
 const DefaultSessionListWidth = 320;
 const MinSessionListWidth = 240;
@@ -1749,13 +1751,13 @@ function normalizeAutoRefreshIntervalMs(value: unknown): number {
 }
 
 function formatAutoRefreshInterval(intervalMs: number): string {
-    if (intervalMs <= 0) return "Off";
+    if (intervalMs <= 0) return i18n.t("aisessions:autoRefresh.off");
     if (intervalMs % 60_000 === 0) {
         const minutes = intervalMs / 60_000;
-        return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+        return i18n.t("aisessions:autoRefresh.minutes", { count: minutes });
     }
     const seconds = Math.round(intervalMs / 1000);
-    return `${seconds} seconds`;
+    return i18n.t("aisessions:autoRefresh.seconds", { count: seconds });
 }
 
 function readSessionListWidth(): number {
@@ -1795,17 +1797,19 @@ function customAutoRefreshMenuItems(currentInterval: number, model: AiSessionsVi
             ? []
             : [
                   {
-                      label: `Custom (${formatAutoRefreshInterval(currentInterval)})`,
+                      label: i18n.t("aisessions:autoRefresh.custom", {
+                          interval: formatAutoRefreshInterval(currentInterval),
+                      }),
                       type: "radio" as const,
                       checked: true,
                   },
               ]),
         { type: "separator" as const },
         {
-            label: "Custom...",
+            label: i18n.t("aisessions:autoRefresh.customItem"),
             click: () => {
                 const currentSeconds = currentInterval > 0 ? String(Math.round(currentInterval / 1000)) : "0";
-                const raw = window.prompt("Auto refresh interval in seconds. Use 0 to turn off.", currentSeconds);
+                const raw = window.prompt(i18n.t("aisessions:autoRefresh.prompt"), currentSeconds);
                 if (raw == null) return;
                 const seconds = Number(raw.trim());
                 if (!Number.isFinite(seconds)) return;
@@ -1823,6 +1827,7 @@ function formatBackupSize(size: number): string {
 }
 
 function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
+    const { t } = useTranslation("aisessions");
     const blockData = jotai.useAtomValue(model.blockAtom);
     const sessions = jotai.useAtomValue(model.sessionsAtom);
     const detail = jotai.useAtomValue(model.detailAtom);
@@ -2608,7 +2613,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
     const cleanupBackups = useCallback(() => {
         if (backupStats == null || backupStats.cleanupCount <= 0 || backupCleanupRunning) return;
         const confirmed = window.confirm(
-            `Delete ${backupStats.cleanupCount} old AI session backup file(s), freeing ${formatBackupSize(backupStats.cleanupSize)}?`
+            i18n.t("aisessions:list.backupCleanupConfirm", {
+                count: backupStats.cleanupCount,
+                size: formatBackupSize(backupStats.cleanupSize),
+            })
         );
         if (!confirmed) return;
         setBackupCleanupRunning(true);
@@ -2699,8 +2707,12 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
         ? formatRelativeRefreshTime(lastSessionsRefreshAt, refreshTimeNow)
         : "";
     const lastRefreshTitle = lastSessionsRefreshAt
-        ? `Last refreshed ${formatDateTimeToSecond(lastSessionsRefreshAt)}`
+        ? i18n.t("aisessions:list.lastRefreshed", { time: formatDateTimeToSecond(lastSessionsRefreshAt) })
         : "";
+    const filterButtonLabel =
+        activeFilterCount > 0
+            ? i18n.t("aisessions:filter.buttonActive", { count: activeFilterCount })
+            : i18n.t("aisessions:filter.button");
 
     return (
         <div ref={rootRef} className="flex h-full w-full min-h-0 flex-col bg-block-solid text-primary">
@@ -2721,9 +2733,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                             {originReadOnly ? (
                                 <div className="flex shrink-0 items-center gap-1.5 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-[11px] text-secondary">
                                     <i className="fa-solid fa-lock text-[10px] text-warning" />
-                                    <span className="min-w-0 truncate">
-                                        Imported dump · read-only · edits, delete and terminal actions are disabled
-                                    </span>
+                                    <span className="min-w-0 truncate">{t("aisessions:origin.readOnlyBanner")}</span>
                                 </div>
                             ) : null}
                             <div className="space-y-2 border-b border-border p-3">
@@ -2745,7 +2755,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                         <i className="fa-sharp fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-secondary" />
                                         <input
                                             className="h-8 w-full bg-transparent pl-7 pr-7 text-sm outline-none"
-                                            placeholder="Search title, note, path, tag, session ID"
+                                            placeholder={t("aisessions:search.placeholder")}
                                             value={query}
                                             onChange={(e) => setQuery(e.target.value)}
                                             onKeyDown={(e) => {
@@ -2760,7 +2770,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     </div>
                                     <IconButton
                                         icon="fa-chevron-left"
-                                        label="Collapse sessions list"
+                                        label={t("aisessions:list.collapse")}
                                         onClick={() => setSessionListCollapsed(true)}
                                     />
                                 </div>
@@ -2769,12 +2779,8 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     <div className="flex-1" />
                                     <button
                                         type="button"
-                                        title={
-                                            activeFilterCount > 0 ? `Filters: ${activeFilterCount} active` : "Filters"
-                                        }
-                                        aria-label={
-                                            activeFilterCount > 0 ? `Filters: ${activeFilterCount} active` : "Filters"
-                                        }
+                                        title={filterButtonLabel}
+                                        aria-label={filterButtonLabel}
                                         aria-pressed={filtersOpen}
                                         onClick={() => setFiltersOpen((current) => !current)}
                                         className={cn(
@@ -2825,8 +2831,10 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                     <div className="rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-[11px] text-secondary">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="min-w-0">
-                                                {backupStats.cleanupCount} old backup files use{" "}
-                                                {formatBackupSize(backupStats.cleanupSize)}.
+                                                {i18n.t("aisessions:list.backupCleanup", {
+                                                    count: backupStats.cleanupCount,
+                                                    size: formatBackupSize(backupStats.cleanupSize),
+                                                })}
                                             </span>
                                             <button
                                                 type="button"
@@ -2834,7 +2842,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                                                 disabled={backupCleanupRunning}
                                                 onClick={cleanupBackups}
                                             >
-                                                {backupCleanupRunning ? "Cleaning..." : "Clean up"}
+                                                {backupCleanupRunning ? t("aisessions:list.cleaning") : t("aisessions:list.cleanup")}
                                             </button>
                                         </div>
                                         {backupCleanupError !== "" ? (
@@ -2879,9 +2887,16 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                             ) : null}
                             <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] text-secondary">
                                 <span className="min-w-0 truncate">
-                                    {visibleSessions.length - contextRowCount} sessions
+                                    {i18n.t("aisessions:list.sessionsCount", {
+                                        count: visibleSessions.length - contextRowCount,
+                                    })}
                                     {contextRowCount > 0
-                                        ? ` (+${contextRowCount} 上下文${attachTruncated ? "，已截断" : ""})`
+                                        ? i18n.t(
+                                              attachTruncated
+                                                  ? "aisessions:list.contextSuffixTruncated"
+                                                  : "aisessions:list.contextSuffix",
+                                              { count: contextRowCount }
+                                          )
                                         : ""}
                                 </span>
                                 {lastRefreshLabel !== "" ? (
@@ -3063,7 +3078,7 @@ function AiSessionsView({ model }: ViewComponentProps<AiSessionsViewModel>) {
                     {!sessionListCollapsed && showsDetailPane ? (
                         <div
                             role="separator"
-                            aria-label="Resize sessions list"
+                            aria-label={t("aisessions:list.resize")}
                             aria-orientation="vertical"
                             className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize bg-transparent transition-colors hover:bg-accent/20"
                             onMouseDown={startSessionListResize}

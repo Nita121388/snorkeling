@@ -11,6 +11,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
 import type { AnnotationLike } from "./annotation-model";
 import { AnnotationRail } from "./annotation-rail";
 
@@ -34,7 +35,8 @@ function makeAnnotation(overrides: Partial<AnnotationLike> = {}): AnnotationLike
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-beforeEach(() => {
+beforeEach(async () => {
+    await initI18n("en");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);

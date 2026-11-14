@@ -7,8 +7,10 @@
 // 且在 force=false 时跳过 source=user 的值。因此这里不可能覆盖用户的 note/tags。
 
 import type { AISessionsServiceType } from "@/app/store/services";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { dispatchAISessionNoteUpdated } from "../session-note-events";
 
 const UndoWindowMs = 10_000;
@@ -43,6 +45,7 @@ export function AIPropertiesButton({
     /** hover 卡 footer：只渲染 ✨ 图标按钮，文案进 title / aria-label。 */
     compact?: boolean;
 }) {
+    const { t } = useTranslation("aisessions");
     const [status, setStatus] = React.useState<"idle" | "loading" | "ready" | "applying">("idle");
     const [suggestions, setSuggestions] = React.useState<PropertySuggestion[]>([]);
     const [error, setError] = React.useState("");
@@ -133,22 +136,26 @@ export function AIPropertiesButton({
                 <button
                     type="button"
                     className={cn("property-ai-trigger", compact && "property-ai-trigger--icon")}
-                    title="AI auto-fill"
-                    aria-label="AI auto-fill"
+                    title={t("aisessions:propertyAi.autoFill")}
+                    aria-label={t("aisessions:propertyAi.autoFill")}
                     onClick={() => void generate()}
                 >
-                    ✨{compact ? null : " AI auto-fill"}
+                    ✨{compact ? null : ` ${t("aisessions:propertyAi.autoFill")}`}
                 </button>
             ) : null}
-            {status === "loading" ? <span className="property-ai-status">Generating…</span> : null}
-            {status === "applying" ? <span className="property-ai-status">Applying…</span> : null}
+            {status === "loading" ? (
+                <span className="property-ai-status">{t("aisessions:propertyAi.generating")}</span>
+            ) : null}
+            {status === "applying" ? (
+                <span className="property-ai-status">{t("aisessions:propertyAi.applying")}</span>
+            ) : null}
             {status === "ready" && suggestions.length === 0 ? (
-                <span className="property-ai-status">No new properties suggested.</span>
+                <span className="property-ai-status">{t("aisessions:propertyAi.none")}</span>
             ) : null}
             {status === "ready" && suggestions.length > 0 ? (
                 <div className="property-ai-proposal">
                     <div className="property-ai-proposal-head">
-                        {suggestions.length} suggested {suggestions.length === 1 ? "property" : "properties"}
+                        {i18n.t("aisessions:propertyAi.suggestedCount", { count: suggestions.length })}
                     </div>
                     <ul className="property-ai-list">
                         {suggestions.map((suggestion) => (
@@ -166,10 +173,10 @@ export function AIPropertiesButton({
                     </ul>
                     <div className="property-ai-actions">
                         <button type="button" className="property-add-ok" onClick={() => void apply()}>
-                            Apply all
+                            {t("aisessions:propertyAi.applyAll")}
                         </button>
                         <button type="button" className="property-add-cancel" onClick={dismiss}>
-                            Dismiss
+                            {t("aisessions:propertyAi.dismiss")}
                         </button>
                     </div>
                 </div>
@@ -177,9 +184,9 @@ export function AIPropertiesButton({
             {status === "ready" && suggestions.length > 0 ? null : null}
             {restore != null ? (
                 <div className={cn("property-ai-undo")}>
-                    AI properties applied
+                    {t("aisessions:propertyAi.applied")}
                     <button type="button" onClick={() => void undo()}>
-                        Undo
+                        {t("aisessions:propertyAi.undo")}
                     </button>
                 </div>
             ) : null}

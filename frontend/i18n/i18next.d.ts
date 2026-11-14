@@ -3,6 +3,7 @@
 
 import "i18next";
 import type aipanel from "./locales/en/aipanel.json";
+import type aisessions from "./locales/en/aisessions.json";
 import type block from "./locales/en/block.json";
 import type blockEditor from "./locales/en/block-editor.json";
 import type common from "./locales/en/common.json";
@@ -41,6 +42,7 @@ declare module "i18next" {
             waveconfig: typeof waveconfig;
             term: typeof term;
             preview: typeof preview;
+            aisessions: typeof aisessions;
         };
     }
 }

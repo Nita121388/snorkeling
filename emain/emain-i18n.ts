@@ -31,6 +31,7 @@ import { createInstance, type i18n as I18nInstance } from "i18next";
 
 // Reuse the renderer's locale files verbatim — same JSON, same keys, same types.
 import enAipanel from "../frontend/i18n/locales/en/aipanel.json";
+import enAisessions from "../frontend/i18n/locales/en/aisessions.json";
 import enBlock from "../frontend/i18n/locales/en/block.json";
 import enBlockEditor from "../frontend/i18n/locales/en/block-editor.json";
 import enCommon from "../frontend/i18n/locales/en/common.json";
@@ -42,6 +43,7 @@ import enTab from "../frontend/i18n/locales/en/tab.json";
 import enTerm from "../frontend/i18n/locales/en/term.json";
 import enWaveconfig from "../frontend/i18n/locales/en/waveconfig.json";
 import zhAipanel from "../frontend/i18n/locales/zh/aipanel.json";
+import zhAisessions from "../frontend/i18n/locales/zh/aisessions.json";
 import zhBlock from "../frontend/i18n/locales/zh/block.json";
 import zhBlockEditor from "../frontend/i18n/locales/zh/block-editor.json";
 import zhCommon from "../frontend/i18n/locales/zh/common.json";
@@ -99,6 +101,7 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         waveconfig: enWaveconfig,
         term: enTerm,
         preview: enPreview,
+        aisessions: enAisessions,
     },
     zh: {
         common: zhCommon,
@@ -112,6 +115,7 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         waveconfig: zhWaveconfig,
         term: zhTerm,
         preview: zhPreview,
+        aisessions: zhAisessions,
     },
 };
 

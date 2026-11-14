@@ -9,6 +9,8 @@
 // - 只读 origin 显示锁标，提示 imported / read-only。
 
 import { cn } from "@/util/util";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 import {
     FloatingPortal,
     autoUpdate,
@@ -48,6 +50,7 @@ function OriginRow({
     onSelect: (id: string) => void;
     onEdit?: (origin: AISessionsOrigin) => void;
 }) {
+    const { t } = useTranslation("aisessions");
     return (
         <button
             type="button"
@@ -68,7 +71,7 @@ function OriginRow({
                 ) : null}
             </span>
             {origin.readOnly ? (
-                <i className="fa-solid fa-lock text-[10px] text-secondary/60" title="read-only (imported dump)" />
+                <i className="fa-solid fa-lock text-[10px] text-secondary/60" title={t("aisessions:origin.readOnly")} />
             ) : null}
             {origin.count > 0 ? (
                 <span className="shrink-0 rounded-full bg-surface px-1.5 text-[10px] font-semibold leading-4 text-secondary">
@@ -79,8 +82,8 @@ function OriginRow({
             {onEdit && origin.kind !== "local" ? (
                 <i
                     role="button"
-                    aria-label={`Edit ${origin.label}`}
-                    title={`Edit ${origin.label}`}
+                    aria-label={i18n.t("aisessions:origin.edit", { label: origin.label })}
+                    title={i18n.t("aisessions:origin.edit", { label: origin.label })}
                     onClick={(e) => {
                         e.stopPropagation();
                         onEdit(origin);
@@ -93,6 +96,7 @@ function OriginRow({
 }
 
 export function OriginSwitcher({ origins, selectedId, onSelect, onEdit, onManage }: OriginSwitcherProps) {
+    const { t } = useTranslation("aisessions");
     const [open, setOpen] = useState(false);
     const [reference, setReference] = useState<HTMLButtonElement | null>(null);
     const { refs, floatingStyles, context } = useFloating({
@@ -116,8 +120,8 @@ export function OriginSwitcher({ origins, selectedId, onSelect, onEdit, onManage
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={open}
-                aria-label={`Switch AI session origin: ${active?.label ?? "this machine"}`}
-                title={`Origin: ${active?.label ?? "this machine"}`}
+                aria-label={i18n.t("aisessions:origin.switch", { label: active?.label ?? t("aisessions:origin.thisMachine") })}
+                title={i18n.t("aisessions:origin.title", { label: active?.label ?? t("aisessions:origin.thisMachine") })}
                 onClick={() => setOpen((current) => !current)}
                 className={cn(
                     "flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border/70 px-2 text-xs transition-colors",
@@ -136,7 +140,7 @@ export function OriginSwitcher({ origins, selectedId, onSelect, onEdit, onManage
                         className="z-50 flex w-64 flex-col overflow-hidden rounded-lg border border-border bg-modalbg shadow-xl"
                     >
                         <div className="border-b border-border/40 px-2.5 py-1.5 text-[12px] text-secondary">
-                            Origins
+                            {t("aisessions:origin.origins")}
                         </div>
                         <div className="max-h-72 overflow-y-auto p-1.5">
                             {origins.map((origin) => (
@@ -164,7 +168,7 @@ export function OriginSwitcher({ origins, selectedId, onSelect, onEdit, onManage
                                     className="flex items-center gap-2 px-3 py-2 text-[12px] text-secondary transition-colors hover:bg-hover hover:text-primary"
                                 >
                                     <i className="fa-solid fa-gear text-[11px]" />
-                                    Edit origins…
+                                    {t("aisessions:origin.editOrigins")}
                                 </button>
                             </>
                         ) : null}

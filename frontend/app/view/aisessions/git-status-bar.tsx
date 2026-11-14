@@ -6,10 +6,12 @@
 // branches), and added/removed line counts + file count. Refreshes while the
 // agent is running and right after a branch switch.
 
+import { i18n } from "@/i18n/config";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { cn, makeConnRoute } from "@/util/util";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type GitStat = {
     branch: string;
@@ -51,6 +53,7 @@ export const GitStatusBar = memo(
         usage,
         className,
     }: GitStatusBarProps) => {
+        const { t } = useTranslation("aisessions");
         // makeConnRoute("") == "conn:local"; the VCS panel uses the same value so local
         // repos reach the wshremote server that implements the VCS commands.
         const route = useMemo(() => makeConnRoute(connection ?? ""), [connection]);
@@ -76,7 +79,7 @@ export const GitStatusBar = memo(
                 );
                 if (result.error) {
                     setStat(null);
-                    setSwitchError(`读取 Git 状态失败：${result.error}`);
+                    setSwitchError(i18n.t("aisessions:git.statFailed", { error: result.error }));
                     return;
                 }
                 setStat({
@@ -88,7 +91,7 @@ export const GitStatusBar = memo(
                 setSwitchError(null);
             } catch (error) {
                 setStat(null);
-                setSwitchError(`读取 Git 状态失败：${String(error)}`);
+                setSwitchError(i18n.t("aisessions:git.statFailed", { error: String(error) }));
             }
         }, [projectPath, route]);
 
@@ -211,11 +214,13 @@ export const GitStatusBar = memo(
                         "flex min-w-0 items-center gap-1 rounded px-1 text-secondary",
                         canChangeDirectory && "cursor-pointer hover:bg-hover hover:text-primary"
                     )}
-                    title={canChangeDirectory ? "切换项目目录（发送消息后不可切换）" : projectPath}
+                    title={canChangeDirectory ? t("aisessions:git.changeDirTitle") : projectPath}
                     onClick={() => void onChangeDirectory?.()}
                 >
                     <i className="fa-sharp fa-solid fa-folder text-[10px]" />
-                    <span className="max-w-32 truncate font-mono">{projectName ?? "选择目录"}</span>
+                    <span className="max-w-32 truncate font-mono">
+                        {projectName ?? t("aisessions:git.selectDir")}
+                    </span>
                     {canChangeDirectory && <i className="fa-sharp fa-solid fa-chevron-down text-[9px]" />}
                 </button>
                 {stat?.branch && (
@@ -224,7 +229,7 @@ export const GitStatusBar = memo(
                         <button
                             type="button"
                             className="flex max-w-52 items-center gap-1 rounded px-1.5 py-0.5 text-secondary hover:bg-hover hover:text-primary"
-                            title="查看和切换分支"
+                            title={t("aisessions:git.branchTitle")}
                             onClick={() => setBranchMenuOpen((open) => !open)}
                         >
                             <i className="fa-sharp fa-solid fa-code-branch text-[10px]" />
@@ -238,7 +243,7 @@ export const GitStatusBar = memo(
                         <span className="text-border">·</span>
                         <span
                             className="flex items-center gap-1.5 font-mono text-[11px]"
-                            title="当前工作区相对 HEAD 的改动"
+                            title={t("aisessions:git.diffTitle")}
                         >
                             {stat.files > 0 ? (
                                 <>
@@ -248,23 +253,32 @@ export const GitStatusBar = memo(
                                     {stat.removed > 0 && (
                                         <span className="text-[var(--error-color,#ef4444)]">−{stat.removed}</span>
                                     )}
-                                    <span className="text-secondary">· {stat.files} files</span>
+                                    <span className="text-secondary">
+                                        · {i18n.t("aisessions:git.files", { count: stat.files })}
+                                    </span>
                                 </>
                             ) : (
-                                <span className="text-secondary">clean</span>
+                                <span className="text-secondary">{t("aisessions:git.clean")}</span>
                             )}
                         </span>
                     </>
                 )}
                 {projectPath && !stat && (
                     <span className="truncate text-secondary" title={switchError ?? undefined}>
-                        {switchError ?? "Git 状态不可用"}
+                        {switchError ?? t("aisessions:git.unavailable")}
                     </span>
                 )}
                 {(typeof contextUsagePercent === "number" || usage?.input != null || usage?.output != null) && (
                     <div
                         className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[11px] text-secondary"
-                        title={`上下文 ${typeof contextUsagePercent === "number" ? `${Math.round(contextUsagePercent)}%` : "未知"}；输入 ${formatTokenCount(usage?.input) ?? "-"}；输出 ${formatTokenCount(usage?.output) ?? "-"}`}
+                        title={i18n.t("aisessions:git.contextUsage", {
+                            percent:
+                                typeof contextUsagePercent === "number"
+                                    ? `${Math.round(contextUsagePercent)}%`
+                                    : t("aisessions:git.unknown"),
+                            input: formatTokenCount(usage?.input) ?? "-",
+                            output: formatTokenCount(usage?.output) ?? "-",
+                        })}
                     >
                         {typeof contextUsagePercent === "number" ? (
                             <span
@@ -295,7 +309,7 @@ export const GitStatusBar = memo(
                             autoFocus
                             value={branchQuery}
                             onChange={(event) => setBranchQuery(event.target.value)}
-                            placeholder="搜索分支"
+                            placeholder={t("aisessions:git.searchBranches")}
                             className="mb-1 h-7 w-full rounded border border-border bg-transparent px-2 text-xs outline-none focus:border-secondary/50"
                         />
                         {switchError && (
@@ -323,7 +337,9 @@ export const GitStatusBar = memo(
                             </button>
                         ))}
                         {remoteBranches.length > 0 && (
-                            <div className="px-2 pb-1 pt-2 text-[10px] text-secondary">远程分支</div>
+                            <div className="px-2 pb-1 pt-2 text-[10px] text-secondary">
+                                {t("aisessions:git.remoteBranches")}
+                            </div>
                         )}
                         {remoteBranches.map((branch) => (
                             <button
@@ -341,7 +357,9 @@ export const GitStatusBar = memo(
                             </button>
                         ))}
                         {localBranches.length === 0 && remoteBranches.length === 0 && (
-                            <div className="px-2 py-3 text-center text-xs text-secondary">没有匹配的分支</div>
+                            <div className="px-2 py-3 text-center text-xs text-secondary">
+                                {t("aisessions:git.noBranches")}
+                            </div>
                         )}
                     </div>
                 )}

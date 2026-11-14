@@ -1,9 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DefaultOpenState, type OpenState } from "./open-sessions";
 import { CHAT_SOURCES, getChatSource, useChatSourceIcons } from "./sources";
 import type {
@@ -38,41 +40,42 @@ function dayEndMs(value: string): number {
     return Number.isFinite(t) ? t : 0;
 }
 
-const OpenStates: { value: OpenState; label: string }[] = [
-    { value: "any", label: "Any" },
-    { value: "open", label: "Open" },
-    { value: "visible", label: "Visible" },
-    { value: "active", label: "Active" },
+const OpenStates: { value: OpenState; labelKey: string }[] = [
+    { value: "any", labelKey: "aisessions:filter.openStates.any" },
+    { value: "open", labelKey: "aisessions:filter.openStates.open" },
+    { value: "visible", labelKey: "aisessions:filter.openStates.visible" },
+    { value: "active", labelKey: "aisessions:filter.openStates.active" },
 ];
 
-const DatePresets: { value: DatePreset; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "today", label: "Today" },
-    { value: "7d", label: "7d" },
-    { value: "30d", label: "30d" },
-    { value: "custom", label: "Custom" },
+const DatePresets: { value: DatePreset; labelKey: string }[] = [
+    { value: "all", labelKey: "aisessions:filter.date.all" },
+    { value: "today", labelKey: "aisessions:filter.date.today" },
+    { value: "7d", labelKey: "aisessions:filter.date.d7" },
+    { value: "30d", labelKey: "aisessions:filter.date.d30" },
+    { value: "custom", labelKey: "aisessions:filter.date.custom" },
 ];
 
-const MarkedOptions: { value: MarkedFilter; icon: string; label: string }[] = [
-    { value: "all", icon: "fa-solid fa-list", label: "All" },
-    { value: "starred", icon: "fa-solid fa-star", label: "Starred" },
-    { value: "unstarred", icon: "fa-regular fa-star", label: "Unstarred" },
+const MarkedOptions: { value: MarkedFilter; icon: string; labelKey: string }[] = [
+    { value: "all", icon: "fa-solid fa-list", labelKey: "aisessions:filter.marked.all" },
+    { value: "starred", icon: "fa-solid fa-star", labelKey: "aisessions:filter.marked.starred" },
+    { value: "unstarred", icon: "fa-regular fa-star", labelKey: "aisessions:filter.marked.unstarred" },
 ];
 
-const TagPresenceOptions: { value: TagPresenceFilter; icon: string; label: string }[] = [
-    { value: "any", icon: "fa-solid fa-tag", label: "Any tags" },
-    { value: "untagged", icon: "fa-regular fa-tag", label: "Untagged" },
+const TagPresenceOptions: { value: TagPresenceFilter; icon: string; labelKey: string }[] = [
+    { value: "any", icon: "fa-solid fa-tag", labelKey: "aisessions:filter.tagPresence.any" },
+    { value: "untagged", icon: "fa-regular fa-tag", labelKey: "aisessions:filter.tagPresence.untagged" },
 ];
 
 type Mode = "include" | "exclude";
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (next: Mode) => void }) {
+    const { t } = useTranslation("aisessions");
     return (
         <SegTrack>
-            <SegButton active={mode === "include"} title="Include" onClick={() => onChange("include")}>
+            <SegButton active={mode === "include"} title={t("aisessions:filter.include")} onClick={() => onChange("include")}>
                 <i className="fa-sharp fa-solid fa-check text-[10px]" />
             </SegButton>
-            <SegButton active={mode === "exclude"} title="Exclude" onClick={() => onChange("exclude")}>
+            <SegButton active={mode === "exclude"} title={t("aisessions:filter.exclude")} onClick={() => onChange("exclude")}>
                 <i className="fa-sharp fa-solid fa-ban text-[10px]" />
             </SegButton>
         </SegTrack>
@@ -80,16 +83,21 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (next: Mode) => 
 }
 
 function markedLabel(value: MarkedFilter): string {
-    return MarkedOptions.find((o) => o.value === value)?.label ?? "";
+    const key = MarkedOptions.find((o) => o.value === value)?.labelKey;
+    return key != null ? i18n.t(key as never) : "";
 }
 
 function tagPresenceLabel(value: TagPresenceFilter): string {
-    return TagPresenceOptions.find((o) => o.value === value)?.label ?? "";
+    const key = TagPresenceOptions.find((o) => o.value === value)?.labelKey;
+    return key != null ? i18n.t(key as never) : "";
 }
 
 function dateLabel(range: DateRangeFilter): string {
-    if (range.preset === "custom") return "Custom";
-    return DatePresets.find((p) => p.value === range.preset)?.label ?? "";
+    const key =
+        range.preset === "custom"
+            ? "aisessions:filter.date.custom"
+            : DatePresets.find((p) => p.value === range.preset)?.labelKey;
+    return key != null ? i18n.t(key as never) : "";
 }
 
 function SegTrack({ children, className }: { children: ReactNode; className?: string }) {
@@ -158,7 +166,7 @@ function ActiveChip({
             <span className="min-w-0 truncate">{label}</span>
             <button
                 type="button"
-                aria-label={`Remove ${label}`}
+                aria-label={i18n.t("aisessions:filter.remove", { label })}
                 onClick={onRemove}
                 className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] opacity-65 hover:opacity-100 hover:bg-surface-strong cursor-pointer"
             >
@@ -236,6 +244,7 @@ export function FilterPanel({
     heroFilters?: string[];
     toggleHeroFilter?: (heroId: string) => void;
 }) {
+    const { t } = useTranslation("aisessions");
     // 含/排 模式：chips 点击根据当前模式分发（同一段内互斥，避免一个 chip 承载三态）。
     const [tagMode, setTagMode] = useState<Mode>("include");
     const [pathMode, setPathMode] = useState<Mode>("include");
@@ -273,8 +282,8 @@ export function FilterPanel({
             <div className="flex items-center justify-end px-2.5 pt-2 pb-1">
                 <button
                     type="button"
-                    title="Clear all filters"
-                    aria-label="Clear all filters"
+                    title={t("aisessions:filter.clearAll")}
+                    aria-label={t("aisessions:filter.clearAll")}
                     onClick={onClearAll}
                     className={cn(
                         "flex h-6 w-6 items-center justify-center rounded-md text-secondary hover:text-accent cursor-pointer",
@@ -292,10 +301,10 @@ export function FilterPanel({
                             <SegButton
                                 key={opt.value}
                                 active={openState === opt.value}
-                                title={opt.label}
+                                title={t(opt.labelKey as never)}
                                 onClick={() => setOpenState(opt.value)}
                             >
-                                <span className="text-xs">{opt.label}</span>
+                                <span className="text-xs">{t(opt.labelKey as never)}</span>
                             </SegButton>
                         ))}
                     </SegTrack>
@@ -307,7 +316,7 @@ export function FilterPanel({
                             <SegButton
                                 key={opt.value}
                                 active={markedFilter === opt.value}
-                                title={opt.label}
+                                title={t(opt.labelKey as never)}
                                 onClick={() => setMarkedFilter(opt.value)}
                             >
                                 <i className={cn("fa-sharp text-[11px]", opt.icon)} />
@@ -321,8 +330,8 @@ export function FilterPanel({
                 <div className="flex items-center gap-2.5 border-t border-border/40 py-1.5">
                     <i className="fa-sharp fa-solid fa-robot w-3.5 shrink-0 text-center text-[11px] text-secondary" />
                     <SegTrack className="min-w-0 flex-1">
-                        <SegButton active={source === ""} title="All agents" onClick={() => setSource("")}>
-                            <span className="text-xs">All</span>
+                        <SegButton active={source === ""} title={t("aisessions:filter.allAgents")} onClick={() => setSource("")}>
+                            <span className="text-xs">{t("aisessions:filter.all")}</span>
                         </SegButton>
                         {CHAT_SOURCES.map((s) => {
                             const icon = sourceIcons[s.id];
@@ -351,10 +360,10 @@ export function FilterPanel({
                         <SegTrack className="min-w-0 flex-1">
                             <SegButton
                                 active={heroFilters.length === 0}
-                                title="All heroes"
+                                title={t("aisessions:filter.allHeroes")}
                                 onClick={() => heroFilters.forEach((id) => toggleHeroFilter?.(id))}
                             >
-                                <span className="text-xs">All</span>
+                                <span className="text-xs">{t("aisessions:filter.all")}</span>
                             </SegButton>
                             {availableHeroes.map((hero) => (
                                 <SegButton
@@ -376,24 +385,24 @@ export function FilterPanel({
                     <SegTrack className="flex-1">
                         <SegButton
                             active={attachMode === "off"}
-                            title="精确：只显示自身命中筛选的会话"
+                            title={t("aisessions:filter.attachExact")}
                             onClick={() => setAttachMode("off")}
                         >
-                            <span className="text-xs">精确</span>
+                            <span className="text-xs">{t("aisessions:filter.attachExactLabel")}</span>
                         </SegButton>
                         <SegButton
                             active={attachMode === "both"}
-                            title="智能：命中子代理时补带父，命中父代理时带出子代理"
+                            title={t("aisessions:filter.attachSmart")}
                             onClick={() => setAttachMode("both")}
                         >
-                            <span className="text-xs">智能</span>
+                            <span className="text-xs">{t("aisessions:filter.attachSmartLabel")}</span>
                         </SegButton>
                         <SegButton
                             active={attachMode === "children"}
-                            title="只带出子代理：命中父才展开子，命中子不回填父"
+                            title={t("aisessions:filter.attachChildren")}
                             onClick={() => setAttachMode("children")}
                         >
-                            <span className="text-xs">只带子</span>
+                            <span className="text-xs">{t("aisessions:filter.attachChildrenLabel")}</span>
                         </SegButton>
                     </SegTrack>
                 </div>
@@ -404,10 +413,10 @@ export function FilterPanel({
                             <SegButton
                                 key={preset.value}
                                 active={dateRange.preset === preset.value}
-                                title={preset.label}
+                                title={t(preset.labelKey as never)}
                                 onClick={() => setDateRange({ preset: preset.value })}
                             >
-                                {preset.label}
+                                {t(preset.labelKey as never)}
                             </SegButton>
                         ))}
                     </SegTrack>
@@ -440,14 +449,14 @@ export function FilterPanel({
                         <SegTrack className="min-w-0 flex-1">
                             <SegButton
                                 active={pathSelections.length === 0 && pathExcludes.length === 0}
-                                title="All paths"
+                                title={t("aisessions:filter.allPaths")}
                                 onClick={() => {
                                     setPathFilter(DefaultPathFilter);
                                     pathSelections.forEach((prefix) => togglePathSelection(prefix));
                                     pathExcludes.forEach((prefix) => togglePathExclude(prefix));
                                 }}
                             >
-                                <span className="text-xs">All</span>
+                                <span className="text-xs">{t("aisessions:filter.all")}</span>
                             </SegButton>
                             {availablePathRoots.map((opt) => {
                                 if (opt.isMore) {
@@ -461,8 +470,11 @@ export function FilterPanel({
                                         active={active}
                                         title={
                                             opt.isOther
-                                                ? `Other (empty / unrecognized projectPath) — ${opt.count}`
-                                                : `${opt.label} (${opt.count})`
+                                                ? i18n.t("aisessions:filter.otherCount", { count: opt.count })
+                                                : i18n.t("aisessions:filter.pathCount", {
+                                                      label: opt.label,
+                                                      count: opt.count,
+                                                  })
                                         }
                                         onClick={() => {
                                             if (pathMode === "include") {
@@ -534,7 +546,9 @@ export function FilterPanel({
                                 <span className="ml-auto inline-flex items-center gap-1">
                                     <button
                                         type="button"
-                                        title={`Include ${pathFilterToPrefix(pathFilter)}`}
+                                        title={i18n.t("aisessions:filter.includePath", {
+                                            prefix: pathFilterToPrefix(pathFilter),
+                                        })}
                                         aria-pressed={selectedPaths.has(
                                             normalizePathPrefix(pathFilterToPrefix(pathFilter))
                                         )}
@@ -550,7 +564,9 @@ export function FilterPanel({
                                     </button>
                                     <button
                                         type="button"
-                                        title={`Exclude ${pathFilterToPrefix(pathFilter)}`}
+                                        title={i18n.t("aisessions:filter.excludePath", {
+                                            prefix: pathFilterToPrefix(pathFilter),
+                                        })}
                                         aria-pressed={excludedPaths.has(
                                             normalizePathPrefix(pathFilterToPrefix(pathFilter))
                                         )}
@@ -605,8 +621,10 @@ export function FilterPanel({
                                                 type="button"
                                                 title={
                                                     covered
-                                                        ? `${prefix} — already covered by a parent selection`
-                                                        : `${pathMode === "include" ? "Include" : "Exclude"} ${prefix}`
+                                                        ? i18n.t("aisessions:filter.covered", { prefix })
+                                                        : pathMode === "include"
+                                                          ? i18n.t("aisessions:filter.includePath", { prefix })
+                                                          : i18n.t("aisessions:filter.excludePath", { prefix })
                                                 }
                                                 onClick={() =>
                                                     pathMode === "include"
@@ -625,7 +643,7 @@ export function FilterPanel({
                                             </button>
                                             <button
                                                 type="button"
-                                                title={`Browse ${prefix}`}
+                                                title={i18n.t("aisessions:filter.browse", { prefix })}
                                                 onClick={(event) => {
                                                     event.stopPropagation();
                                                     setPathFilter({
@@ -642,7 +660,9 @@ export function FilterPanel({
                                 })}
                             </div>
                         ) : pathChildren.length === 0 && pathAncestors.length > 0 ? (
-                            <span className="text-[10px] text-secondary/70">No deeper subdirectories</span>
+                            <span className="text-[10px] text-secondary/70">
+                                {t("aisessions:filter.noDeeper")}
+                            </span>
                         ) : null}
                     </div>
                 ) : null}
@@ -654,7 +674,7 @@ export function FilterPanel({
                                 <SegButton
                                     key={opt.value}
                                     active={tagPresence === opt.value}
-                                    title={opt.label}
+                                    title={t(opt.labelKey as never)}
                                     onClick={() => setTagPresence(opt.value)}
                                 >
                                     <i className={cn("fa-sharp text-[11px]", opt.icon)} />
@@ -687,8 +707,12 @@ export function FilterPanel({
                                             type="button"
                                             title={
                                                 tagMode === "include"
-                                                    ? `Include #${tagSummary.tag}`
-                                                    : `Exclude #${tagSummary.tag}`
+                                                    ? i18n.t("aisessions:filter.includePath", {
+                                                          prefix: `#${tagSummary.tag}`,
+                                                      })
+                                                    : i18n.t("aisessions:filter.excludeTag", {
+                                                          tag: tagSummary.tag,
+                                                      })
                                             }
                                             onClick={() =>
                                                 tagMode === "include"
@@ -761,7 +785,7 @@ export function FilterPanel({
                                   label={pathSelectionLabel(prefix)}
                                   title={
                                       prefix === PathFilterOtherRoot
-                                          ? "Other (empty / unrecognized projectPath)"
+                                          ? t("aisessions:filter.other")
                                           : prefix
                                   }
                                   onRemove={() => togglePathSelection(prefix)}
@@ -775,7 +799,11 @@ export function FilterPanel({
                                   tone="exclude"
                                   icon="fa-solid fa-ban"
                                   label={pathSelectionLabel(prefix)}
-                                  title={prefix === PathFilterOtherRoot ? "Exclude Other" : `Exclude ${prefix}`}
+                                  title={
+                                      prefix === PathFilterOtherRoot
+                                          ? t("aisessions:filter.excludeOther")
+                                          : i18n.t("aisessions:filter.excludePath", { prefix })
+                                  }
                                   onRemove={() => togglePathExclude(prefix)}
                               />
                           ))
@@ -789,7 +817,7 @@ export function FilterPanel({
                             tone="exclude"
                             icon="fa-solid fa-ban"
                             label={`#${tag}`}
-                            title={`Exclude #${tag}`}
+                            title={i18n.t("aisessions:filter.excludeTag", { tag })}
                             onRemove={() => toggleExcludeTag(tag)}
                         />
                     ))}
@@ -800,7 +828,7 @@ export function FilterPanel({
                                 key={`hero:${heroId}`}
                                 icon="fa-solid fa-user-shield"
                                 label={`${hero?.emoji ? hero.emoji + " " : "🦸 "}${hero?.name || heroId}`}
-                                title={`Hero: ${heroId}`}
+                                title={i18n.t("aisessions:filter.heroTitle", { id: heroId })}
                                 onRemove={() => toggleHeroFilter?.(heroId)}
                             />
                         );

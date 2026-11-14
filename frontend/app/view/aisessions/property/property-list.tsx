@@ -10,8 +10,10 @@
 //  - note 作为长文本单独占行（点击进入既有 note 编辑态）。
 
 import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { formatSessionRelativeTime } from "../utils";
 import "./property-list.scss";
 import {
@@ -199,7 +201,7 @@ function optionCountsFor(def: PropertyDef, catalog?: SessionTagSummary[]): Recor
 function sourceMarker(source: PropertySource): React.ReactNode {
     if (source !== "ai") return null;
     return (
-        <span className="property-ai-mark" title="AI generated">
+        <span className="property-ai-mark" title={i18n.t("aisessions:propertyList.aiGenerated")}>
             ✨
         </span>
     );
@@ -250,7 +252,7 @@ function ValueDisplay({
     const emptyNode = isAgent ? (
         <span className="property-empty property-empty--dash">—</span>
     ) : (
-        <span className="property-empty">Empty</span>
+        <span className="property-empty">{i18n.t("aisessions:propertyList.empty")}</span>
     );
     switch (def.type) {
         case "checkbox":
@@ -376,7 +378,7 @@ function InlineEditor({
         <input
             autoFocus
             className="property-edit-input"
-            aria-label={`Edit ${def.name}`}
+            aria-label={i18n.t("aisessions:propertyList.edit", { name: def.name })}
             type={def.type === "date" ? "date" : def.type === "number" ? "number" : "text"}
             value={
                 def.type === "date" && typeof value === "number" ? new Date(value).toISOString().slice(0, 10) : draft
@@ -384,7 +386,7 @@ function InlineEditor({
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
             onBlur={commit}
-            placeholder="Empty"
+            placeholder={i18n.t("aisessions:propertyList.empty")}
         />
     );
 }
@@ -418,6 +420,7 @@ type AddPropertyPanelProps = {
  *    与属性值编辑浮层同一套定位语义。
  */
 function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPropertyPanelProps) {
+    const { t } = useTranslation("aisessions");
     const [name, setName] = React.useState("");
     const [type, setType] = React.useState<PropertyType>("text");
     const [scope, setScope] = React.useState<PropertyAddScope>("session");
@@ -433,7 +436,7 @@ function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPr
             return;
         }
         if (existingKeys.includes(key)) {
-            setError("Property already exists");
+            setError(t("aisessions:propertyList.exists"));
             return;
         }
         onSubmit(key, type, scope);
@@ -441,15 +444,20 @@ function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPr
     };
 
     return (
-        <div className="property-add-panel" data-testid="property-add-popover" role="dialog" aria-label="Add property">
+        <div
+            className="property-add-panel"
+            data-testid="property-add-popover"
+            role="dialog"
+            aria-label={t("aisessions:propertyList.addProperty")}
+        >
             <div className="property-add-panel__name">
                 <i className="fa-sharp fa-solid fa-pen" aria-hidden="true" />
                 <input
                     autoFocus
                     data-testid="property-add-name"
                     className="property-edit-input"
-                    aria-label="Property name"
-                    placeholder="Property name"
+                    aria-label={t("aisessions:propertyList.propertyName")}
+                    placeholder={t("aisessions:propertyList.propertyName")}
                     value={name}
                     onChange={(event) => {
                         setName(event.target.value);
@@ -480,7 +488,7 @@ function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPr
                 <i className="fa-sharp fa-solid fa-chevron-down property-add-panel__caret" aria-hidden="true" />
             </button>
             {typeMenuOpen ? (
-                <div className="property-add-panel__type-menu" role="listbox" aria-label="Property type">
+                <div className="property-add-panel__type-menu" role="listbox" aria-label={t("aisessions:propertyList.propertyType")}>
                     {CreatableTypes.map((t) => (
                         <button
                             key={t}
@@ -505,30 +513,32 @@ function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPr
                     ))}
                 </div>
             ) : null}
-            <div className="property-add-panel__scope" role="radiogroup" aria-label="Apply to">
-                <div className="property-add-panel__scope-title">Apply to</div>
+            <div className="property-add-panel__scope" role="radiogroup" aria-label={t("aisessions:propertyList.applyTo")}>
+                <div className="property-add-panel__scope-title">{t("aisessions:propertyList.applyTo")}</div>
                 {(
                     [
                         {
                             id: "session",
                             icon: "fa-file-lines",
-                            title: "仅此会话",
-                            desc: "只写到当前会话，不动任何模板",
-                            chip: "默认",
+                            title: t("aisessions:propertyList.scopeSession"),
+                            desc: t("aisessions:propertyList.scopeSessionDesc"),
+                            chip: t("aisessions:propertyList.default"),
                         },
                         {
                             id: "agent",
                             icon: "fa-robot",
-                            title: agentDisabled ? "仅此 Agent" : `仅此 Agent（${agentLabel}）`,
+                            title: agentDisabled
+                                ? t("aisessions:propertyList.scopeAgent")
+                                : i18n.t("aisessions:propertyList.scopeAgentWith", { label: agentLabel }),
                             desc: agentDisabled
-                                ? "当前会话没有 Agent 标识，不可用"
-                                : `所有 ${agentLabel} 会话出现该属性，其它 Agent 不受影响`,
+                                ? t("aisessions:propertyList.scopeAgentDisabled")
+                                : i18n.t("aisessions:propertyList.scopeAgentDesc", { label: agentLabel }),
                         },
                         {
                             id: "global",
                             icon: "fa-globe",
-                            title: "所有会话",
-                            desc: "写入全局模板，全部 Agent 的会话可见",
+                            title: t("aisessions:propertyList.scopeAll"),
+                            desc: t("aisessions:propertyList.scopeAllDesc"),
                         },
                     ] as Array<{ id: PropertyAddScope; icon: string; title: string; desc: string; chip?: string }>
                 ).map((opt) => {
@@ -570,14 +580,14 @@ function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPr
                 </div>
             ) : null}
             <div className="property-add-panel__footer">
-                <span className="property-add-panel__hint">Enter 创建 · Esc 关闭</span>
+                <span className="property-add-panel__hint">{t("aisessions:propertyList.enterCreate")}</span>
                 <button
                     type="button"
                     data-testid="property-add-cancel"
                     className="property-add-panel__cancel"
                     onClick={onClose}
                 >
-                    Cancel
+                    {t("aisessions:propertyList.cancel")}
                 </button>
                 <button
                     type="button"
@@ -586,7 +596,7 @@ function AddPropertyPanel({ existingKeys, agentLabel, onSubmit, onClose }: AddPr
                     disabled={slugifyPropertyKey(name) === ""}
                     onClick={submit}
                 >
-                    Add
+                    {t("aisessions:propertyList.add")}
                 </button>
             </div>
         </div>
@@ -611,6 +621,7 @@ export function PropertyList({
     footer,
     canEdit = false,
 }: PropertyListProps) {
+    const { t } = useTranslation("aisessions");
     const isAgent = layout === "agent";
     const entries = React.useMemo(() => {
         const all = toPropertyDefs(summary, schema);
@@ -771,7 +782,7 @@ export function PropertyList({
                         <input
                             autoFocus
                             className="property-edit-input"
-                            aria-label={`Rename ${def.name}`}
+                            aria-label={i18n.t("aisessions:propertyList.rename", { name: def.name })}
                             defaultValue={def.name}
                             onKeyDown={(event) => {
                                 if (event.key === "Escape") {
@@ -804,7 +815,7 @@ export function PropertyList({
                         <select
                             autoFocus
                             className="property-select"
-                            aria-label={`Change type of ${def.name}`}
+                            aria-label={i18n.t("aisessions:propertyList.changeType", { name: def.name })}
                             value={def.type}
                             onChange={(event) => {
                                 const next = event.target.value as PropertyType;
@@ -826,7 +837,7 @@ export function PropertyList({
                             ref={(el) => {
                                 valueBtnRefs.current[def.key] = el;
                             }}
-                            aria-label={`Set ${def.name}`}
+                            aria-label={i18n.t("aisessions:propertyList.set", { name: def.name })}
                             // checkbox 用 switch 语义：点击即切换，读屏能报出当前状态。
                             role={isCheckbox ? "switch" : undefined}
                             aria-checked={isCheckbox ? cell.value === true : undefined}
@@ -842,8 +853,8 @@ export function PropertyList({
                         <button
                             type="button"
                             className="property-row__dialog-btn"
-                            aria-label="Open note in dialog"
-                            title="Open note in dialog"
+                            aria-label={t("aisessions:propertyList.openNote")}
+                            title={t("aisessions:propertyList.openNote")}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onOpenNoteDialog();
@@ -856,8 +867,8 @@ export function PropertyList({
                         <button
                             type="button"
                             className="property-row__menu-btn"
-                            aria-label={`Property menu for ${def.name}`}
-                            title="Property menu"
+                            aria-label={i18n.t("aisessions:propertyList.menuFor", { name: def.name })}
+                            title={t("aisessions:propertyList.propertyMenu")}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 setMenuKey(menuKey === def.key ? null : def.key);
@@ -877,7 +888,7 @@ export function PropertyList({
                                         setRenamingKey(def.key);
                                     }}
                                 >
-                                    Rename
+                                    {t("aisessions:propertyList.renameMenu")}
                                 </button>
                             ) : null}
                             {onRetypeProperty != null ? (
@@ -889,7 +900,7 @@ export function PropertyList({
                                         setRetypeKey(def.key);
                                     }}
                                 >
-                                    Change type
+                                    {t("aisessions:propertyList.changeTypeMenu")}
                                 </button>
                             ) : null}
                             {onMoveProperty != null ? (
@@ -903,7 +914,7 @@ export function PropertyList({
                                             onMoveProperty(def.key, -1);
                                         }}
                                     >
-                                        Move up
+                                        {t("aisessions:propertyList.moveUp")}
                                     </button>
                                     <button
                                         type="button"
@@ -914,7 +925,7 @@ export function PropertyList({
                                             onMoveProperty(def.key, 1);
                                         }}
                                     >
-                                        Move down
+                                        {t("aisessions:propertyList.moveDown")}
                                     </button>
                                 </>
                             ) : null}
@@ -928,7 +939,7 @@ export function PropertyList({
                                         onDeleteProperty(def.key);
                                     }}
                                 >
-                                    Delete
+                                    {t("aisessions:propertyList.delete")}
                                 </button>
                             ) : null}
                         </div>
@@ -955,10 +966,10 @@ export function PropertyList({
         >
             {showNotePlaceholder && noteEntry != null ? (
                 <div className="property-row is-note is-editable" data-property-key="note">
-                    <span className="property-row__name">Note</span>
+                    <span className="property-row__name">{t("aisessions:propertyList.note")}</span>
                     <span className="property-row__value">
                         <button type="button" className="property-row__button" onClick={() => onEditNote?.()}>
-                            <span className="property-empty">Click to add a note...</span>
+                            <span className="property-empty">{t("aisessions:propertyList.notePlaceholder")}</span>
                         </button>
                     </span>
                 </div>
@@ -978,9 +989,9 @@ export function PropertyList({
                     type="button"
                     className="property-more"
                     onClick={() => setExpanded(true)}
-                    aria-label={`Show ${moreCount} more properties`}
+                    aria-label={i18n.t("aisessions:propertyList.showMore", { count: moreCount })}
                 >
-                    More properties ({moreCount})
+                    {i18n.t("aisessions:propertyList.moreProperties", { count: moreCount })}
                 </button>
             ) : null}
             {isAgent ? (
@@ -993,7 +1004,8 @@ export function PropertyList({
                             aria-expanded={adding}
                             onClick={() => setAdding(!adding)}
                         >
-                            <i className="fa-sharp fa-solid fa-plus" aria-hidden="true" /> Add property
+                            <i className="fa-sharp fa-solid fa-plus" aria-hidden="true" />{" "}
+                            {t("aisessions:propertyList.addProperty")}
                         </button>
                     ) : null}
                     {footer != null ? <div className="property-footer__right">{footer}</div> : null}
@@ -1007,7 +1019,8 @@ export function PropertyList({
                         aria-expanded={adding}
                         onClick={() => setAdding(!adding)}
                     >
-                        <i className="fa-sharp fa-solid fa-plus" aria-hidden="true" /> Add a property
+                        <i className="fa-sharp fa-solid fa-plus" aria-hidden="true" />{" "}
+                        {t("aisessions:propertyList.addAProperty")}
                     </button>
                     {footer != null ? <div className="property-actions__aux">{footer}</div> : null}
                 </div>

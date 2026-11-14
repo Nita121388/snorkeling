@@ -7,6 +7,7 @@
 import { AISessionsServiceType } from "@/app/store/services";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { resolveMetadataAIMode } from "@/app/view/term/agent-ai-config";
+import { i18n } from "@/i18n/config";
 import type { AnnotationLike } from "./annotation-model";
 
 export type AnnotationAssistScope = "timeline" | "entry-title" | "entry-body" | "entry-tags";
@@ -74,7 +75,7 @@ function settleAssist(event: AnnotationAssistEvent): void {
         );
         return;
     }
-    pending.reject(new Error(event.error || `annotation generation ${event.state}`));
+    pending.reject(new Error(event.error || i18n.t("aisessions:assist.failedState", { state: event.state })));
 }
 
 export function ensureAssistListener(): void {
@@ -111,7 +112,7 @@ export function cancelActiveAnnotationAssist(sessionKey: string): void {
             const pending = pendingAssists.get(jobId);
             if (pending != null) {
                 window.clearTimeout(pending.timer);
-                pending.reject(new Error("cancelled"));
+                pending.reject(new Error(i18n.t("aisessions:assist.cancelled")));
                 pendingAssists.delete(jobId);
             }
             activeJobs.delete(jobId);
@@ -148,10 +149,10 @@ export async function requestAnnotationDrafts(context: AnnotationAssistContext):
             activeJobs.delete(jobId);
             if (state === "none") {
                 // 没收到任何事件：订阅没建立或后端没发布。
-                reject(new Error("AI 生成没有返回任何结果：事件未送达（检查 wps 订阅）"));
+                reject(new Error(i18n.t("aisessions:assist.noResult")));
                 return;
             }
-            reject(new Error("annotation generation timed out"));
+            reject(new Error(i18n.t("aisessions:assist.timeout")));
         }, 45_000);
         pendingAssists.set(jobId, { resolve, reject, timer });
         const early = earlyEvents.get(jobId);

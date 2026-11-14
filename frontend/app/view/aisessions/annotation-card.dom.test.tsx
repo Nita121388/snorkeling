@@ -10,6 +10,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
 import { AnnotationCard } from "./annotation-card";
 import type { AnnotationLike, AnnotationRailCluster } from "./annotation-model";
 
@@ -50,7 +51,8 @@ function makeCluster(annotation: AnnotationLike): AnnotationRailCluster {
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-beforeEach(() => {
+beforeEach(async () => {
+    await initI18n("en");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);

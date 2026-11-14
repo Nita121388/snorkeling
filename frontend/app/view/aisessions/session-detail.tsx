@@ -11,6 +11,7 @@ import {
     useActiveOutlineSeq,
 } from "@/app/view/session-outline-rail";
 import { getWebServerEndpoint } from "@/util/endpoints";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -26,6 +27,7 @@ import {
     useState,
 } from "react";
 import { flushSync } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { autoGenerate } from "./aisession-gen-store";
 import { replaceAnnotationDrafts, requestAnnotationDrafts } from "./annotation-assist";
 import { AnnotationEditor } from "./annotation-editor";
@@ -153,9 +155,9 @@ function normalizedSearchQuery(query: string): string {
 
 function toolCallDetailText(toolCall: ToolCall): string {
     return [
-        toolCall.summary ? `Input:\n${toolCall.summary}` : "",
-        toolCall.output ? `Output:\n${toolCall.output}` : "",
-        toolCall.exitCode ? `Exit code: ${toolCall.exitCode}` : "",
+        toolCall.summary ? `${i18n.t("aisessions:liveTurn.input")}\n${toolCall.summary}` : "",
+        toolCall.output ? `${i18n.t("aisessions:liveTurn.output")}\n${toolCall.output}` : "",
+        toolCall.exitCode ? i18n.t("aisessions:toolCall.exitCode", { code: toolCall.exitCode }) : "",
     ]
         .filter(Boolean)
         .join("\n\n");
@@ -189,6 +191,7 @@ function ToolCallCard({
     onToggle: () => void;
     liveStatus?: "running" | "completed" | "failed";
 }) {
+    const { t } = useTranslation("aisessions");
     const detailText = toolCallDetailText(toolCall);
     const hasError = Boolean(toolCall.exitCode) || liveStatus === "failed";
     return (
@@ -207,11 +210,11 @@ function ToolCallCard({
                         {trimToolCallText(detailText)}
                     </pre>
                     <div className="mt-2 flex items-center gap-2">
-                        <CopyIconButton text={detailText} label="Copy" size="xs" />
+                        <CopyIconButton text={detailText} label={i18n.t("common:common.copy")} size="xs" />
                     </div>
                 </>
             ) : (
-                <div className="text-secondary">No tool detail.</div>
+                <div className="text-secondary">{t("aisessions:liveTurn.noToolDetail")}</div>
             )}
         </ToolCallRow>
     );
@@ -287,6 +290,7 @@ export function SessionDetailPane({
     canChangeDirectory?: boolean;
     onChangeDirectory?: () => Promise<void>;
 }) {
+    const { t } = useTranslation("aisessions");
     const availableChatSources = useChatSourceAvailability();
     const [noteDraft, setNoteDraft] = useState("");
     const [noteEditorOpen, setNoteEditorOpen] = useState(false);
@@ -574,12 +578,17 @@ export function SessionDetailPane({
     const lastVisibleMessage = detailMessages[detailMessages.length - 1];
     const detailSearchSummary =
         normalizedDetailSearchQuery === ""
-            ? `${readableMessages.length} messages`
+            ? i18n.t("aisessions:detail.searchSummary.messages", { count: readableMessages.length })
             : detailSearchMatches.length === 0
-              ? "No matches"
+              ? i18n.t("aisessions:detail.searchSummary.noMatches")
               : activeSearchIndex >= 0
-                ? `${activeSearchIndex + 1} / ${detailSearchMatches.length}`
-                : `${detailSearchMatches.length} match${detailSearchMatches.length === 1 ? "" : "es"}`;
+                ? i18n.t("aisessions:detail.searchSummary.range", {
+                      current: activeSearchIndex + 1,
+                      total: detailSearchMatches.length,
+                  })
+                : i18n.t("aisessions:detail.searchSummary.matches", {
+                      count: detailSearchMatches.length,
+                  });
 
     // 批注的 seq 可能是历史脏数据（AI 草稿落库时恒为 0）。这里用 anchorKey 反推真实 seq：
     // 先按 seq 查行号，查不到再用 anchorKey→seq 兜底，避免 Jump 静默失败。
@@ -688,7 +697,7 @@ export function SessionDetailPane({
             });
             console.log("[annotation-ai] timeline drafts", drafts);
             if (drafts.length === 0) {
-                setAnnotationError("AI 没有产出任何批注（可能会话太短或全部锚点被拒）。");
+                setAnnotationError(i18n.t("aisessions:assist.timelineNoDrafts"));
                 return;
             }
             const inserted = await replaceAnnotationDrafts(summaryKey, connection, drafts);
@@ -1233,7 +1242,7 @@ export function SessionDetailPane({
                 setAiTags((t) => t.filter((x) => parsed.tags.includes(x)));
             }
             if (!saved) {
-                setNoteError("保存失败，请稍后重试");
+                setNoteError(i18n.t("aisessions:row.saveFailed"));
             }
             setNoteSaveStatus(saved ? (currentDraftSaved ? "saved" : "idle") : "error");
             if (pendingCloseRef.current) {
@@ -1787,13 +1796,13 @@ export function SessionDetailPane({
     }
     const noteStatusText =
         noteSaveStatus === "saving"
-            ? "Saving..."
+            ? t("aisessions:row.saving")
             : noteSaveStatus === "saved"
-              ? "Saved"
+              ? t("aisessions:row.saved")
               : noteSaveStatus === "error"
-                ? "Save failed"
+                ? t("aisessions:row.saveFailed")
                 : !noteUnchanged
-                  ? "Unsaved changes"
+                  ? t("aisessions:row.unsaved")
                   : "";
     const projectDirectory = summary?.projectPath?.trim() ?? "";
     const sessionFilePath = summary?.filePath?.trim() ?? "";
@@ -1804,13 +1813,15 @@ export function SessionDetailPane({
                     className="flex shrink-0 items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning"
                     role="status"
                 >
-                    <span className="min-w-0 flex-1 truncate">History sync paused: {historySyncError}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                        {i18n.t("aisessions:detail.historySyncPaused", { error: historySyncError })}
+                    </span>
                     <button
                         type="button"
                         className="shrink-0 cursor-pointer rounded border border-warning/40 px-2 py-0.5 text-[11px] hover:bg-warning/10"
                         onClick={() => void requestDetailDelta("manual")}
                     >
-                        Retry
+                        {t("aisessions:liveTurn.retry")}
                     </button>
                 </div>
             ) : null}
@@ -1818,7 +1829,7 @@ export function SessionDetailPane({
                 {onExpandSessionList ? (
                     <IconButton
                         icon="fa-chevron-right"
-                        label="Expand sessions list"
+                        label={t("aisessions:list.expand")}
                         onClick={onExpandSessionList}
                         className="mr-1 shrink-0"
                     />
@@ -1863,7 +1874,14 @@ export function SessionDetailPane({
                                     "inline-flex h-[22px] max-w-44 shrink-0 items-center overflow-hidden whitespace-nowrap rounded-full border px-2 text-[11px] text-secondary",
                                     actualModels.length > 1 ? "border-warning/60 text-warning" : "border-border"
                                 )}
-                                title={`Model${actualModels.length > 1 ? ` (multi-model: ${actualModels.join(", ")})` : ""}`}
+                                title={i18n.t("aisessions:detail.modelTitle", {
+                                    suffix:
+                                        actualModels.length > 1
+                                            ? i18n.t("aisessions:detail.modelMulti", {
+                                                  models: actualModels.join(", "),
+                                              })
+                                            : "",
+                                })}
                             >
                                 {chatAgentModel || actualModel}
                             </span>
@@ -1871,8 +1889,8 @@ export function SessionDetailPane({
                         {openBlockCount > 1 ? (
                             <span
                                 className="inline-flex h-[22px] shrink-0 items-center gap-1 rounded-full border border-border px-2 text-[11px] text-secondary"
-                                title={`Open in ${openBlockCount} blocks`}
-                                aria-label={`Open in ${openBlockCount} blocks`}
+                                title={i18n.t("aisessions:detail.openInBlocks", { count: openBlockCount })}
+                                aria-label={i18n.t("aisessions:detail.openInBlocks", { count: openBlockCount })}
                             >
                                 <i className="fa-sharp fa-solid fa-table-cells text-[10px]" />
                                 {openBlockCount}
@@ -1889,13 +1907,13 @@ export function SessionDetailPane({
                             />
                             <IconButton
                                 icon="fa-magnifying-glass"
-                                label="Search session"
+                                label={t("aisessions:detail.searchSession")}
                                 className={cn(searchExpanded && "border-accent bg-accent/10 text-accent")}
                                 onClick={() => setSearchExpanded((current) => !current)}
                             />
                             <IconButton
                                 icon="fa-star"
-                                label={summary.marked ? "Unmark session" : "Mark session"}
+                                label={summary.marked ? t("aisessions:detail.unmark") : t("aisessions:row.mark")}
                                 className={cn(
                                     !summary.marked && "text-secondary/50",
                                     summary.marked && "border-warning/60 bg-warning/10 text-warning"
@@ -1948,7 +1966,9 @@ export function SessionDetailPane({
                     </>
                 ) : (
                     <>
-                        <div className="min-w-0 flex-1 truncate text-sm font-medium text-primary">New Chat</div>
+                        <div className="min-w-0 flex-1 truncate text-sm font-medium text-primary">
+                            {t("aisessions:newChat.title")}
+                        </div>
                         <span className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-full border border-border px-2 text-[11px] text-secondary">
                             <span className={cn("h-1.5 w-1.5 rounded-full", sourceDotClass(composeSource))} />
                             {getChatSource(composeSource).label}
@@ -1968,7 +1988,9 @@ export function SessionDetailPane({
                 >
                     {annotationError ? null : <i className="fa-sharp fa-solid fa-spinner animate-spin text-[10px]" />}
                     <span className="min-w-0 flex-1 truncate">
-                        {annotationError ? `Annotation AI: ${annotationError}` : "Annotation AI: generating timeline…"}
+                        {annotationError
+                            ? i18n.t("aisessions:detail.annotationError", { error: annotationError })
+                            : t("aisessions:detail.annotationGenerating")}
                     </span>
                     {annotationError ? (
                         <button
@@ -1979,7 +2001,7 @@ export function SessionDetailPane({
                                 setAnnotationStatus("");
                             }}
                         >
-                            Dismiss
+                            {t("aisessions:undo.dismiss")}
                         </button>
                     ) : null}
                 </div>
@@ -2015,7 +2037,7 @@ export function SessionDetailPane({
                                     <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary" />
                                     <input
                                         className="h-7 w-full rounded border border-border bg-panel pl-7 pr-7 text-xs text-primary outline-none focus:border-accent"
-                                        placeholder="Search session detail"
+                                        placeholder={t("aisessions:detail.searchPlaceholder")}
                                         value={detailSearchQuery}
                                         onChange={(event) => {
                                             setDetailSearchQuery(event.target.value);
@@ -2027,8 +2049,8 @@ export function SessionDetailPane({
                                         <button
                                             type="button"
                                             className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary hover:text-primary"
-                                            title="Clear search"
-                                            aria-label="Clear search"
+                                            title={t("aisessions:detail.clearSearch")}
+                                            aria-label={t("aisessions:detail.clearSearch")}
                                             onClick={() => {
                                                 setDetailSearchQuery("");
                                                 setActiveSearchSeq(null);
@@ -2047,13 +2069,13 @@ export function SessionDetailPane({
                                     </div>
                                     <IconButton
                                         icon="fa-chevron-up"
-                                        label="Previous search match"
+                                        label={t("aisessions:detail.previousMatch")}
                                         disabled={detailSearchMatches.length === 0}
                                         onClick={jumpToPreviousSearchMatch}
                                     />
                                     <IconButton
                                         icon="fa-chevron-down"
-                                        label="Next search match"
+                                        label={t("aisessions:detail.nextMatch")}
                                         disabled={detailSearchMatches.length === 0}
                                         onClick={jumpToNextSearchMatch}
                                     />
@@ -2080,17 +2102,16 @@ export function SessionDetailPane({
                                     isNewChat ? (
                                         <div className="px-1 py-10">
                                             <div className="text-sm font-medium text-primary">
-                                                Start a new conversation
+                                                {t("aisessions:detail.startNewConversation")}
                                             </div>
                                             <div className="mt-1 text-xs leading-5 text-secondary">
-                                                After you send the first message, pi creates a session automatically; it
-                                                will appear in the list on the left.
+                                                {t("aisessions:detail.firstMessageHint")}
                                             </div>
                                         </div>
                                     ) : loading || deltaLoading ? (
                                         <SessionDetailSkeleton />
                                     ) : (
-                                        <EmptyState text="No readable messages." />
+                                        <EmptyState text={t("aisessions:detail.noReadableMessages")} />
                                     )
                                 ) : (
                                     <div>
@@ -2159,7 +2180,7 @@ export function SessionDetailPane({
                                                 aria-live="polite"
                                             >
                                                 <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
-                                                <span>Working</span>
+                                                <span>{t("aisessions:liveTurn.working")}</span>
                                             </div>
                                         ) : null}
                                         {/* 实时 turn 错误 UI：重试/继续（正文与工具已并入上方 renderItems 统一渲染） */}
@@ -2167,7 +2188,7 @@ export function SessionDetailPane({
                                             <div className="mt-2 flex flex-col gap-1.5 rounded-xl border border-error/25 bg-error/10 px-3.5 py-2.5">
                                                 <div className="flex items-center gap-1.5 text-xs font-medium text-error">
                                                     <i className="fa-sharp fa-solid fa-triangle-exclamation text-[11px]" />
-                                                    <span>出错了</span>
+                                                    <span>{t("aisessions:liveTurn.errorTitle")}</span>
                                                 </div>
                                                 <div className="whitespace-pre-wrap break-words text-xs leading-5 text-primary">
                                                     {liveTurn.error.message}
@@ -2187,7 +2208,7 @@ export function SessionDetailPane({
                                                         }}
                                                     >
                                                         <i className="fa-sharp fa-solid fa-forward text-[10px]" />
-                                                        <span>继续</span>
+                                                        <span>{t("aisessions:liveTurn.continue")}</span>
                                                     </button>
                                                     <button
                                                         type="button"
@@ -2210,7 +2231,7 @@ export function SessionDetailPane({
                                                         }}
                                                     >
                                                         <i className="fa-sharp fa-solid fa-rotate-right text-[10px]" />
-                                                        <span>重试</span>
+                                                        <span>{t("aisessions:liveTurn.retry")}</span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -2293,7 +2314,7 @@ export function SessionDetailPane({
                     <div className="space-y-3 text-primary">
                         <div className="space-y-1 pr-8">
                             <div className="flex items-center gap-2">
-                                <div className="text-base font-semibold">Session Note</div>
+                                <div className="text-base font-semibold">{t("aisessions:detail.sessionNote")}</div>
                                 <NoteAIButton status={noteAI.status} onGenerate={() => void noteAI.generate()} />
                             </div>
                             <div className="flex min-w-0 items-center gap-2 text-xs text-secondary">
@@ -2329,7 +2350,7 @@ export function SessionDetailPane({
                         <textarea
                             autoFocus
                             className="min-h-[140px] w-full resize-none rounded border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
-                            placeholder="Add a note, use #tag to add tags"
+                            placeholder={t("aisessions:row.notePlaceholder")}
                             value={noteDraft}
                             onChange={(event) => {
                                 latestNoteDraftRef.current = event.target.value;
@@ -2352,7 +2373,7 @@ export function SessionDetailPane({
                                 aria-live="polite"
                             >
                                 {dirtyDismiss && !noteSaving ? (
-                                    <span className="text-warning">未保存的改动将在关闭时丢弃</span>
+                                    <span className="text-warning">{t("aisessions:detail.discardOnClose")}</span>
                                 ) : (
                                     noteStatusText
                                 )}
@@ -2368,14 +2389,14 @@ export function SessionDetailPane({
                                         void saveNote("");
                                     }}
                                 >
-                                    Clear
+                                    {t("aisessions:detail.clear")}
                                 </button>
                                 <button
                                     type="button"
                                     className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
                                     onClick={saveAndClose}
                                 >
-                                    Close
+                                    {i18n.t("common:common.close")}
                                 </button>
                             </div>
                         </div>
@@ -2402,9 +2423,9 @@ export function SessionDetailPane({
                 >
                     <div className="space-y-4 text-primary">
                         <div className="space-y-1 pr-8">
-                            <div className="text-base font-semibold">Delete session?</div>
+                            <div className="text-base font-semibold">{t("aisessions:menu.deleteSessionTitle")}</div>
                             <div className="text-sm leading-5 text-secondary">
-                                The source file will be moved to deleted storage.
+                                {t("aisessions:menu.deleteSessionBody")}
                             </div>
                         </div>
                         <div className="flex justify-end gap-2">
@@ -2414,7 +2435,7 @@ export function SessionDetailPane({
                                 disabled={deleting}
                                 onClick={() => setDeleteConfirmOpen(false)}
                             >
-                                Cancel
+                                {i18n.t("common:common.cancel")}
                             </button>
                             <button
                                 type="button"
@@ -2428,7 +2449,9 @@ export function SessionDetailPane({
                                         deleting ? "fa-spinner animate-spin" : "fa-trash"
                                     )}
                                 />
-                                <span>{deleting ? "Deleting..." : "Delete"}</span>
+                                <span>
+                                    {deleting ? t("aisessions:menu.deleting") : i18n.t("common:common.delete")}
+                                </span>
                             </button>
                         </div>
                     </div>

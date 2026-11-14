@@ -1,8 +1,13 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { initI18n } from "@/i18n/config";
+import { beforeEach, describe, expect, it } from "vitest";
 import { describeRun, describeToolGroupCompact, describeToolGroupKind } from "./tool-describe";
+
+beforeEach(async () => {
+    await initI18n("en");
+});
 
 describe("describeRun", () => {
     it("maps the pi subagent dispatch tool to a readable label", () => {

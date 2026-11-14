@@ -7,9 +7,11 @@ import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { Tooltip } from "@/app/element/tooltip";
 import { modalsModel } from "@/app/store/modalmodel";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import type { MouseEventHandler, MouseEvent as ReactMouseEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { CopyIconButton, IconButton } from "./controls";
 import { GenActionButton } from "./gen-action-button";
 import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
@@ -148,6 +150,8 @@ export function RunningDot({
     runningState: SessionRunningState | null;
     onJumpToBlock: (runningState: SessionRunningState) => void;
 }): ReactElement | null {
+    // 不用 useTranslation：这个组件会被单测直接当作函数调用（见 session-row.test.tsx），
+    // hook 在 React 渲染器之外会抛 useContext 错误。翻译走单例，切换语言后下一帧即生效。
     if (runningState == null || runningState.status !== "running") return null;
     return (
         <Tooltip
@@ -157,10 +161,10 @@ export function RunningDot({
             divClassName="mt-0.5 inline-flex h-4 w-4 shrink-0"
             content={
                 <div className="max-w-[420px] whitespace-pre-wrap break-words text-[11px] leading-4">
-                    <div className="text-secondary">This session has a live block in the app.</div>
+                    <div className="text-secondary">{i18n.t("aisessions:row.liveBlock")}</div>
                     <div className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase text-secondary">
                         <span className="h-1.5 w-1.5 rounded-full bg-success/90 ring-2 ring-success/20" />
-                        <span>Click to jump to block</span>
+                        <span>{i18n.t("aisessions:row.jumpToBlock")}</span>
                     </div>
                 </div>
             }
@@ -168,7 +172,7 @@ export function RunningDot({
             <button
                 type="button"
                 className="session-row-live-dot-slot relative inline-flex h-4 w-4 shrink-0 cursor-pointer border-0 bg-transparent p-0"
-                aria-label="Jump to live block"
+                aria-label={i18n.t("aisessions:row.jumpAria")}
                 data-running-dot="true"
                 onClick={(event) => {
                     event.stopPropagation();
@@ -255,6 +259,7 @@ export function SessionRow({
     /** 行标人设：🎭 + 人设名；查不到名册时 name 已退化为裸 id。 */
     hero?: { id: string; name: string; emoji?: string } | null;
 }) {
+    const { t } = useTranslation("aisessions");
     const isChild = depth > 0;
     // 上下文行（后端为了保住父子结构带出来的行）→ 次要色 + 图标 + tooltip 说明。
     const attachKind = (session.attached ?? "").trim();
@@ -267,9 +272,9 @@ export function SessionRow({
               : "";
     const attachLabel =
         attachKind === "parent"
-            ? "上下文父会话（未命中本次筛选）"
+            ? i18n.t("aisessions:row.attachParent")
             : attachKind === "child"
-              ? "子代理（未命中本次筛选，父会话命中所致）"
+              ? i18n.t("aisessions:row.attachChild")
               : "";
     const childIcon =
         childKind === "fork" ? "fa-sharp fa-solid fa-code-branch" : "fa-sharp fa-solid fa-wand-magic-sparkles";
@@ -279,8 +284,8 @@ export function SessionRow({
     const showMatchBadge = matchedChildCount > 0 && childCount > 0 && matchedChildCount < childCount;
     const childBadge = showMatchBadge ? `${matchedChildCount}/${childCount}` : `${childCount}`;
     const childBadgeTitle = showMatchBadge
-        ? `${matchedChildCount} of ${childCount} sub-sessions match this filter`
-        : `${childCount} sub-session${childCount === 1 ? "" : "s"}`;
+        ? i18n.t("aisessions:row.matchBadge", { matched: matchedChildCount, count: childCount })
+        : i18n.t("aisessions:row.subSessions", { count: childCount });
     const [noteEditing, setNoteEditing] = useState(false);
     // 标签展开是纯 UI 态：不落盘、不跨会话记忆，避免行高跳动（design §4）。
     const [tagsExpanded, setTagsExpanded] = useState(false);
@@ -325,23 +330,35 @@ export function SessionRow({
         () =>
             [
                 session.title || session.id,
-                session.snippet ? `Content: ${session.snippet}` : "",
-                session.createdAt ? `Created: ${dateInfo.createdFull}` : "",
-                session.updatedAt || session.createdAt ? `Updated: ${dateInfo.updatedFull}` : "",
-                session.note ? `Note: ${session.note}` : "",
-                session.tags?.length ? `Tags: ${sessionTagsLabel(session.tags)}` : "",
+                session.snippet ? i18n.t("aisessions:row.tooltipContent", { text: session.snippet }) : "",
+                session.createdAt ? i18n.t("aisessions:row.tooltipCreated", { full: dateInfo.createdFull }) : "",
+                session.updatedAt || session.createdAt
+                    ? i18n.t("aisessions:row.tooltipUpdated", { full: dateInfo.updatedFull })
+                    : "",
+                session.note ? i18n.t("aisessions:row.tooltipNote", { note: session.note }) : "",
+                session.tags?.length
+                    ? i18n.t("aisessions:row.tooltipTags", { tags: sessionTagsLabel(session.tags) })
+                    : "",
                 // 消息数已不再直接写在行里（改成热力方块），这里补回精确值。
-                `Messages: ${session.messageCount ?? 0}`,
-                session.size != null ? `Size: ${formatFileSize(session.size)} (${session.size} bytes)` : "",
-                session.projectPath || session.filePath ? `Path: ${session.projectPath || session.filePath}` : "",
+                i18n.t("aisessions:row.tooltipMessages", { count: session.messageCount ?? 0 }),
+                session.size != null
+                    ? i18n.t("aisessions:row.tooltipSize", {
+                          size: formatFileSize(session.size),
+                          bytes: session.size,
+                      })
+                    : "",
+                session.projectPath || session.filePath
+                    ? i18n.t("aisessions:row.tooltipPath", { path: session.projectPath || session.filePath })
+                    : "",
                 // 搜索框支持按 session id/key 筛选，所以把 id 放在 tooltip 里方便查看/复制。
-                session.id ? `Session ID: ${session.id}` : "",
+                session.id ? i18n.t("aisessions:row.tooltipSessionId", { id: session.id }) : "",
                 attachLabel,
             ]
                 .filter(Boolean)
                 .join("\n\n"),
         // 只依赖完整时间字符串（基元值）：相对时间每帧都在变，不能让 memo 每次都失效。
-        [session, dateInfo.createdFull, dateInfo.updatedFull]
+        // i18n.language：切换语言后 tooltip 必须重算（否则一直是旧语言）。
+        [session, dateInfo.createdFull, dateInfo.updatedFull, attachLabel, i18n.language]
     );
 
     const parsedDraft = extractSessionTagsFromNote(noteDraft);
@@ -368,12 +385,12 @@ export function SessionRow({
     const hasNoteInfo = Boolean(session.note || sessionTags.length);
     const noteToggleLabel =
         !hasNoteInfo && !noteEditing
-            ? "Add note and tags"
+            ? i18n.t("aisessions:row.addNote")
             : noteEditing && noteUnchanged
-              ? "Collapse note and tags"
+              ? i18n.t("aisessions:row.toggleCollapse")
               : noteEditing
-                ? "Save and collapse note and tags"
-                : "Edit note and tags";
+                ? i18n.t("aisessions:row.toggleSaveCollapse")
+                : i18n.t("aisessions:row.toggleEdit");
 
     const personaMap = useAgentPersonas();
     const sessionEmojiMap = useSessionEmojis();
@@ -518,11 +535,13 @@ export function SessionRow({
                             type="button"
                             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary transition-colors hover:bg-hover hover:text-accent"
                             aria-expanded={expanded}
-                            aria-label={expanded ? "Collapse sub-sessions" : "Expand sub-sessions"}
+                            aria-label={
+                                expanded ? t("aisessions:row.collapseSub") : t("aisessions:row.expandSub")
+                            }
                             title={
                                 expanded
-                                    ? "Collapse sub-sessions"
-                                    : `Expand ${childCount} sub-session${childCount === 1 ? "" : "s"}`
+                                    ? t("aisessions:row.collapseSub")
+                                    : i18n.t("aisessions:row.expandSubCount", { count: childCount })
                             }
                             data-row-action="true"
                             onClick={(event) => {
@@ -543,7 +562,7 @@ export function SessionRow({
                             "text-secondary opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100",
                             session.marked && "text-accent opacity-100"
                         )}
-                        title="Mark session"
+                        title={t("aisessions:row.mark")}
                         data-row-action="true"
                         onClick={onMark}
                     >
@@ -556,7 +575,7 @@ export function SessionRow({
                         {isChild ? (
                             <i
                                 className={cn(childIcon, "shrink-0 text-[10px] text-secondary/80")}
-                                title={childKind === "fork" ? "Fork" : "Sub-agent session"}
+                                title={childKind === "fork" ? t("aisessions:row.fork") : t("aisessions:row.subagentSession")}
                             />
                         ) : null}
                         {isAttached ? (
@@ -602,13 +621,13 @@ export function SessionRow({
                         <button
                             type="button"
                             className="flex h-5 shrink-0 items-center gap-1 rounded border border-border px-2 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-secondary group-hover:opacity-100 group-focus-within:opacity-100"
-                            title="Resume session"
+                            title={t("aisessions:row.resume")}
                             data-row-action="true"
                             disabled={resumeDisabled}
                             onClick={onResume}
                         >
                             <i className="fa-sharp fa-solid fa-square-terminal" />
-                            <span>Resume</span>
+                            <span>{t("aisessions:row.resumeLabel")}</span>
                         </button>
                         <GenActionButton
                             sessionKey={session.key}
@@ -623,7 +642,7 @@ export function SessionRow({
                         <span data-row-action="true" className="inline-flex">
                             <CopyIconButton
                                 text={restoreCommandForSession(session)}
-                                label="Copy resume command"
+                                label={t("aisessions:row.copyResume")}
                                 size="xs"
                                 className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                             />
@@ -633,8 +652,8 @@ export function SessionRow({
                         <button
                             type="button"
                             className="inline-flex cursor-pointer items-center gap-1 rounded border-none bg-transparent p-0 text-left text-inherit hover:text-primary"
-                            title={`设置 ${session.source} 的 emoji 人格`}
-                            aria-label={`Set ${session.source} emoji hero`}
+                            title={i18n.t("aisessions:row.setHeroEmoji", { source: session.source })}
+                            aria-label={i18n.t("aisessions:row.setHeroEmojiAria", { source: session.source })}
                             data-row-action="true"
                             onClick={openHeroPicker}
                         >
@@ -655,7 +674,7 @@ export function SessionRow({
                         {hero != null ? (
                             <span
                                 className="max-w-40 truncate rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent"
-                                title={`Hero: ${hero.id}`}
+                                title={i18n.t("aisessions:row.heroTitle", { id: hero.id })}
                                 data-hero-id={hero.id}
                             >
                                 {(hero.emoji ? hero.emoji + " " : "🦸 ") + (hero.name || hero.id)}
@@ -666,18 +685,21 @@ export function SessionRow({
                                 className="max-w-40 truncate rounded border border-border px-1.5 py-0.5 text-[10px] text-primary"
                                 title={session.configdir || session.vendorid}
                             >
-                                Vendor {session.vendorid.slice(0, 8)}
+                                {i18n.t("aisessions:row.vendor", { id: session.vendorid.slice(0, 8) })}
                             </span>
                         ) : null}
                         {dateInfo.updatedText ? (
                             <span
                                 className="inline-flex items-center gap-1.5"
-                                title={`Updated: ${dateInfo.updatedFull}`}
+                                title={i18n.t("aisessions:row.updated", { full: dateInfo.updatedFull })}
                             >
                                 {/* 进度条自己带标题：条长只表达“比较新/比较旧”，悬停直接读多久前。 */}
                                 <span
                                     className="inline-block h-[5px] w-[26px] shrink-0 overflow-hidden rounded-[2px] bg-border"
-                                    title={`Updated ${dateInfo.updatedRelative} · ${dateInfo.updatedFull}`}
+                                    title={i18n.t("aisessions:row.updatedRelative", {
+                                        relative: dateInfo.updatedRelative,
+                                        full: dateInfo.updatedFull,
+                                    })}
                                 >
                                     <span
                                         className="block h-full rounded-[2px] bg-accent"
@@ -688,7 +710,9 @@ export function SessionRow({
                             </span>
                         ) : null}
                         {dateInfo.createdText ? (
-                            <span title={`Created: ${dateInfo.createdFull}`}>Created {dateInfo.createdText}</span>
+                            <span title={i18n.t("aisessions:row.created", { full: dateInfo.createdFull })}>
+                                {i18n.t("aisessions:row.createdLabel", { text: dateInfo.createdText })}
+                            </span>
                         ) : null}
                         {openLevel != null ? (
                             <span
@@ -700,9 +724,9 @@ export function SessionRow({
                                           ? "text-secondary"
                                           : "text-secondary/60"
                                 )}
-                                title={`Open (${openLevel})`}
+                                title={i18n.t("aisessions:row.open", { level: openLevel })}
                                 role="img"
-                                aria-label={`Open (${openLevel})`}
+                                aria-label={i18n.t("aisessions:row.open", { level: openLevel })}
                             >
                                 <i
                                     className={cn(
@@ -717,12 +741,15 @@ export function SessionRow({
                         <span className="inline-flex items-center gap-1.5" data-heat="metrics">
                             <HeatCell
                                 level={heatLevel(session.messageCount ?? 0, MessageHeatThresholds)}
-                                title={`${session.messageCount ?? 0} messages`}
+                                title={i18n.t("aisessions:row.messages", { count: session.messageCount ?? 0 })}
                             />
                             {session.size != null ? (
                                 <HeatCell
                                     level={heatLevel(session.size, SizeHeatThresholds)}
-                                    title={`${formatFileSize(session.size)} (${session.size} bytes)`}
+                                    title={i18n.t("aisessions:row.size", {
+                                        size: formatFileSize(session.size),
+                                        bytes: session.size,
+                                    })}
                                 />
                             ) : null}
                         </span>
@@ -763,8 +790,8 @@ export function SessionRow({
                                 <button
                                     type="button"
                                     className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
-                                    title="Add note and tags"
-                                    aria-label="Add note and tags"
+                                    title={t("aisessions:row.addNote")}
+                                    aria-label={t("aisessions:row.addNote")}
                                     data-row-action="true"
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -824,13 +851,17 @@ export function SessionRow({
                                         className="shrink-0 cursor-pointer rounded-md border border-accent/20 bg-accent/10 px-1.5 py-0.5 text-[10px] leading-none text-accent transition-colors hover:bg-accent/20"
                                         title={
                                             tagsOpen
-                                                ? "Show fewer tags"
-                                                : `Show ${sessionTags.length - DefaultVisibleTagCount} more tag(s)`
+                                                ? t("aisessions:row.fewerTags")
+                                                : i18n.t("aisessions:row.moreTags", {
+                                                      count: sessionTags.length - DefaultVisibleTagCount,
+                                                  })
                                         }
                                         aria-label={
                                             tagsOpen
-                                                ? "Show fewer tags"
-                                                : `Show ${sessionTags.length - DefaultVisibleTagCount} more tag(s)`
+                                                ? t("aisessions:row.fewerTags")
+                                                : i18n.t("aisessions:row.moreTags", {
+                                                      count: sessionTags.length - DefaultVisibleTagCount,
+                                                  })
                                         }
                                         data-row-action="true"
                                         onClick={(e) => {
@@ -844,7 +875,7 @@ export function SessionRow({
                                             toggleTags();
                                         }}
                                     >
-                                        {tagsOpen ? "Show less" : `+${hiddenTags}`}
+                                        {tagsOpen ? t("aisessions:row.showLess") : `+${hiddenTags}`}
                                     </button>
                                 ) : null}
                             </span>
@@ -852,8 +883,8 @@ export function SessionRow({
                                 <button
                                     type="button"
                                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
-                                    title="Open note in dialog"
-                                    aria-label="Open note in dialog"
+                                    title={t("aisessions:row.openNote")}
+                                    aria-label={t("aisessions:row.openNote")}
                                     data-row-action="true"
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -882,7 +913,7 @@ export function SessionRow({
                             />
                             <textarea
                                 className="min-h-[56px] w-full resize-none rounded border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-accent"
-                                placeholder="Add a note, use #tag to add tags"
+                                placeholder={t("aisessions:row.notePlaceholder")}
                                 value={noteDraft}
                                 onChange={(e) => {
                                     latestDraftRef.current = e.target.value;
@@ -901,7 +932,7 @@ export function SessionRow({
                                 <NoteAIButton status={noteAI.status} onGenerate={() => void noteAI.generate()} />
                                 <IconButton
                                     icon="fa-eraser"
-                                    label="Clear note"
+                                    label={t("aisessions:row.clearNote")}
                                     size="xs"
                                     disabled={noteSaving || (!session.note && noteDraft.trim() === "")}
                                     onClick={() => {
@@ -928,13 +959,13 @@ export function SessionRow({
                                     aria-live="polite"
                                 >
                                     {noteSaveStatus === "saving"
-                                        ? "Saving..."
+                                        ? t("aisessions:row.saving")
                                         : noteSaveStatus === "saved"
-                                          ? "Saved"
+                                          ? t("aisessions:row.saved")
                                           : noteSaveStatus === "error"
-                                            ? "Save failed"
+                                            ? t("aisessions:row.saveFailed")
                                             : !noteUnchanged
-                                              ? "Unsaved changes"
+                                              ? t("aisessions:row.unsaved")
                                               : ""}
                                 </span>
                             </div>

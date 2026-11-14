@@ -7,16 +7,18 @@
 // provider 原生标题，都不应该被误标成 AI。小图标 + tooltip，不抢视觉。
 
 import { cn } from "@/util/util";
+import { useTranslation } from "react-i18next";
 
 export function TitleSourceBadge({ titleSource, className }: { titleSource?: string | null; className?: string }) {
+    const { t } = useTranslation("aisessions");
     if (titleSource !== "ai") {
         return null;
     }
     return (
         <i
             className={cn("fa-sharp fa-solid fa-wand-magic-sparkles shrink-0 text-[9px] text-accent/70", className)}
-            title="AI-generated title"
-            aria-label="AI-generated title"
+            title={t("aisessions:titleBadge.aiGenerated")}
+            aria-label={t("aisessions:titleBadge.aiGenerated")}
         />
     );
 }

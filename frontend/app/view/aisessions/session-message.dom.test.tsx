@@ -9,6 +9,7 @@
 // @vitest-environment jsdom
 
 import { act } from "react";
+import { initI18n } from "@/i18n/config";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageCard } from "./session-message";
@@ -37,7 +38,8 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
 let container: HTMLDivElement;
 let root: Root;
 
-beforeEach(() => {
+beforeEach(async () => {
+    await initI18n("en");
     // React 19 需要显式声明 act 环境，否则每次 act 都会打一条 stderr 告警。
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement("div");

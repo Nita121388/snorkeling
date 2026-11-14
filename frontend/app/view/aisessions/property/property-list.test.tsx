@@ -1,9 +1,14 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { initI18n } from "@/i18n/config";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { PropertyList } from "./property-list";
+
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 function makeSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
     return {

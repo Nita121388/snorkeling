@@ -11,7 +11,9 @@
 //  - rail → 消息流单向（点击跳转）；不做滚动反向高亮。
 
 import { cn } from "@/util/util";
+import { i18n } from "@/i18n/config";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { AnnotationCard } from "./annotation-card";
 import {
     AnnotationRailCollapsedWidth,
@@ -93,6 +95,7 @@ export function AnnotationRail({
     const [openIndex, setOpenIndex] = React.useState<number | null>(null);
     // 点击刻度后"钉住"卡片：悬浮卡会因为鼠标移动瞬间消失，导致 Accept 点不到。
     const [pinnedIndex, setPinnedIndex] = React.useState<number | null>(null);
+    const { t } = useTranslation("aisessions");
     const hoverTimer = React.useRef<number | null>(null);
     const closeTimer = React.useRef<number | null>(null);
     const bodyRef = React.useRef<HTMLDivElement | null>(null);
@@ -205,8 +208,8 @@ export function AnnotationRail({
                 className="relative z-10 flex shrink-0 cursor-pointer flex-col items-center border-r border-border"
                 style={railBoxStyle}
                 onClick={toggleCollapsed}
-                title="Expand annotation timeline"
-                aria-label="Expand annotation timeline"
+                title={t("aisessions:annotationRail.expand")}
+                aria-label={t("aisessions:annotationRail.expand")}
             >
                 <div className="h-full bg-border" style={{ width: RailAxisWidth }} />
             </div>
@@ -224,17 +227,17 @@ export function AnnotationRail({
                     <div
                         className="w-full cursor-pointer text-center text-[9px] text-secondary hover:text-primary"
                         onClick={toggleCollapsed}
-                        title="Collapse annotation timeline"
+                        title={t("aisessions:annotationRail.collapse")}
                     >
-                        Notes
+                        {t("aisessions:annotationRail.notes")}
                     </div>
                     {onGenerateTimeline != null ? (
                         <button
                             type="button"
                             className="flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-accent bg-panel text-accent transition-colors hover:bg-hover disabled:opacity-60"
                             disabled={generating}
-                            title={generating ? "Generating…" : "Generate annotation timeline with AI"}
-                            aria-label="Generate annotation timeline with AI"
+                            title={generating ? t("aisessions:annotationRail.generating") : t("aisessions:annotationRail.generate")}
+                            aria-label={t("aisessions:annotationRail.generate")}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onGenerateTimeline();
@@ -250,10 +253,12 @@ export function AnnotationRail({
                     ) : null}
                     {!generating ? (
                         <span className="text-[9px] leading-3 text-secondary [writing-mode:vertical-rl]">
-                            No annotations
+                            {t("aisessions:annotationRail.noAnnotations")}
                         </span>
                     ) : (
-                        <span className="text-[9px] leading-3 text-accent [writing-mode:vertical-rl]">Generating</span>
+                        <span className="text-[9px] leading-3 text-accent [writing-mode:vertical-rl]">
+                            {t("aisessions:annotationRail.generatingShort")}
+                        </span>
                     )}
                 </div>
             </div>
@@ -279,16 +284,16 @@ export function AnnotationRail({
                     <div
                         className="w-full cursor-pointer text-[9px] text-secondary hover:text-primary"
                         onClick={toggleCollapsed}
-                        title="Collapse annotation timeline"
+                        title={t("aisessions:annotationRail.collapse")}
                     >
-                        Notes
+                        {t("aisessions:annotationRail.notes")}
                     </div>
                     {onGenerateTimeline != null ? (
                         <button
                             type="button"
                             className="flex h-5 w-full cursor-pointer items-center justify-center gap-1 rounded border border-accent bg-panel text-[9px] text-accent hover:bg-hover disabled:opacity-60"
                             disabled={generating}
-                            title="Generate annotation timeline with AI"
+                            title={t("aisessions:annotationRail.generate")}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onGenerateTimeline();
@@ -309,7 +314,7 @@ export function AnnotationRail({
                     {draftCount > 0 ? (
                         <div
                             className="flex w-full flex-col items-stretch gap-0.5 overflow-hidden rounded border border-accent bg-panel px-0.5 py-0.5 text-[9px] text-accent"
-                            title={`${draftCount} draft annotation${draftCount === 1 ? "" : "s"}`}
+                            title={i18n.t("aisessions:annotationRail.drafts", { count: draftCount })}
                         >
                             <span className="flex items-center justify-center gap-0.5 leading-3">
                                 <i className="fa-sharp fa-solid fa-pen-to-square text-[7px]" />
@@ -320,8 +325,8 @@ export function AnnotationRail({
                                     <button
                                         type="button"
                                         className="flex h-3.5 min-w-0 flex-1 cursor-pointer items-center justify-center rounded hover:bg-hover"
-                                        title="Discard all drafts"
-                                        aria-label="Discard all drafts"
+                                        title={t("aisessions:annotationRail.discardAll")}
+                                        aria-label={t("aisessions:annotationRail.discardAll")}
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             onDiscardAllDrafts();
@@ -334,8 +339,8 @@ export function AnnotationRail({
                                     <button
                                         type="button"
                                         className="flex h-3.5 min-w-0 flex-1 cursor-pointer items-center justify-center rounded font-medium hover:bg-hover"
-                                        title="Accept all drafts"
-                                        aria-label="Accept all drafts"
+                                        title={t("aisessions:annotationRail.acceptAll")}
+                                        aria-label={t("aisessions:annotationRail.acceptAll")}
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             onAcceptAllDrafts();
@@ -407,7 +412,7 @@ export function AnnotationRail({
                             >
                                 <button
                                     type="button"
-                                    aria-label={`Jump to annotation at #${cluster.seq}`}
+                                    aria-label={i18n.t("aisessions:annotationRail.jumpTo", { seq: cluster.seq })}
                                     className="mx-auto flex h-6 w-6 cursor-pointer items-center justify-center"
                                     onClick={() => {
                                         // 钉住卡片，避免鼠标一移开就消失导致点不到 Accept。

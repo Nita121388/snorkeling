@@ -1,8 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { initI18n } from "@/i18n/config";
 import { PlatformMacOS, PlatformWindows, setPlatform } from "@/util/platformutil";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     attachModeStorageKey,
     DefaultAttachMode,
@@ -43,7 +44,7 @@ import {
     shouldStartEmptyChat,
     SizeHeatThresholds,
     sortSessions,
-    UnclassifiedGroupName,
+    unclassifiedGroupName,
     writeExpandAllTagsPreference,
     type HeroContext,
 } from "./utils";
@@ -56,6 +57,12 @@ function makeMessage(seq: number, role: string, text: string): Message {
         charCount: text.length,
     };
 }
+
+// The module translates display strings through the i18n singleton (en is the
+// source of truth — see docs/docs/i18n.mdx Pattern F / I).
+beforeEach(async () => {
+    await initI18n("en");
+});
 
 function makeToolCall(seq: number, name: string): ToolCall {
     return {
@@ -509,7 +516,7 @@ describe("groupSessionsByProject", () => {
             makeSummary("d", "/Users/me/work/real"),
         ]);
         expect(groups[0].name).toBe("real");
-        expect(groups[1].name).toBe(UnclassifiedGroupName);
+        expect(groups[1].name).toBe(unclassifiedGroupName());
         expect(groups[1].unclassified).toBe(true);
         expect(groups[1].sessions.length).toBe(3);
     });

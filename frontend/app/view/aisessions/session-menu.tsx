@@ -4,8 +4,10 @@
 // 头栏 "···" 会话操作菜单：低频操作、会话信息与复制入口。
 // 对齐 .mockup/aisessions-chat-redesign 的极简头栏规范。
 
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { copyText } from "./utils";
 
 function MenuRow({
@@ -94,9 +96,12 @@ export function SessionMoreMenu({
     refreshing?: boolean;
     deleting?: boolean;
 }) {
+    const { t } = useTranslation("aisessions");
     const [open, setOpen] = useState(false);
     const [subOpen, setSubOpen] = useState(false);
     const [copiedLabel, setCopiedLabel] = useState("");
+    // 二级菜单「已复制」提示按 kind 记，不能从 label 文案反推（label 会随语言翻译）。
+    const [copiedKind, setCopiedKind] = useState("");
     const rootRef = useRef<HTMLDivElement | null>(null);
     // 二级菜单 hover 关闭防抖计时器：跨越行与弹窗间隙时避免误关。
     const subCloseTimer = useRef<number | null>(null);
@@ -128,11 +133,13 @@ export function SessionMoreMenu({
         };
     }, [open]);
 
-    const copyAndClose = useCallback((text: string, label: string) => {
+    const copyAndClose = useCallback((text: string, label: string, kind: string) => {
         void copyText(text);
         setCopiedLabel(label);
+        setCopiedKind(kind);
         window.setTimeout(() => {
             setCopiedLabel("");
+            setCopiedKind("");
             setOpen(false);
             setSubOpen(false);
         }, 700);
@@ -164,8 +171,8 @@ export function SessionMoreMenu({
         <div ref={rootRef} className="relative shrink-0">
             <button
                 type="button"
-                aria-label="Session actions"
-                title="More actions"
+                aria-label={t("aisessions:menu.actions")}
+                title={t("aisessions:menu.more")}
                 onClick={() => setOpen((current) => !current)}
                 className={cn(
                     "flex h-6 w-6 cursor-pointer items-center justify-center rounded text-secondary transition-colors hover:bg-hover hover:text-primary",
@@ -178,9 +185,9 @@ export function SessionMoreMenu({
                 <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-modalbg p-1 shadow-2xl">
                     <MenuRow
                         icon="fa-pen"
-                        label="Rename chat"
+                        label={t("aisessions:menu.rename")}
                         disabled={!onRename}
-                        disabledReason={onRename ? undefined : "Coming soon (needs backend title override)"}
+                        disabledReason={onRename ? undefined : t("aisessions:menu.renameSoon")}
                         onClick={
                             onRename
                                 ? () => {
@@ -189,51 +196,55 @@ export function SessionMoreMenu({
                                 : undefined
                         }
                     />
-                    <MenuRow icon="fa-note-sticky" label="Edit note & tags" onClick={() => closeAndRun(onEditNote)} />
+                    <MenuRow
+                        icon="fa-note-sticky"
+                        label={t("aisessions:menu.editNote")}
+                        onClick={() => closeAndRun(onEditNote)}
+                    />
                     {onGenerate != null ? (
                         <>
                             <MenuRow
                                 icon="fa-wand-magic-sparkles"
-                                label="Generate title with AI"
+                                label={t("aisessions:menu.genTitle")}
                                 disabled={!sessionKey}
-                                disabledReason={sessionKey ? undefined : "Session key unavailable"}
+                                disabledReason={sessionKey ? undefined : t("aisessions:menu.keyUnavailable")}
                                 onClick={() => closeAndRun(() => onGenerate("title"))}
                             />
                             <MenuRow
                                 icon="fa-wand-magic-sparkles"
-                                label="Generate note & tags with AI"
+                                label={t("aisessions:menu.genNote")}
                                 disabled={!sessionKey}
-                                disabledReason={sessionKey ? undefined : "Session key unavailable"}
+                                disabledReason={sessionKey ? undefined : t("aisessions:menu.keyUnavailable")}
                                 onClick={() => closeAndRun(() => onGenerate("metadata"))}
                             />
                         </>
                     ) : null}
                     <MenuRow
                         icon={restoring ? "fa-spinner animate-spin" : "fa-square-terminal"}
-                        label={restoring ? "Resuming…" : "Resume to terminal"}
+                        label={restoring ? t("aisessions:menu.resuming") : t("aisessions:menu.resume")}
                         disabled={restoring}
-                        disabledReason="Restoring session"
+                        disabledReason={t("aisessions:menu.restoring")}
                         onClick={() => closeAndRun(onResume)}
                     />
                     <MenuRow
                         icon={refreshing ? "fa-spinner animate-spin" : "fa-rotate"}
-                        label={refreshing ? "Refreshing…" : "Refresh session"}
+                        label={refreshing ? t("aisessions:menu.refreshing") : t("aisessions:menu.refresh")}
                         disabled={refreshing}
-                        disabledReason="Refreshing session"
+                        disabledReason={t("aisessions:menu.refreshingSession")}
                         onClick={() => closeAndRun(onRefresh)}
                     />
                     <MenuRow
                         icon="fa-folder-open"
-                        label="Open project folder"
+                        label={t("aisessions:menu.openProject")}
                         disabled={!projectDirectory}
-                        disabledReason="No project folder"
+                        disabledReason={t("aisessions:menu.noProject")}
                         onClick={() => closeAndRun(onOpenProjectDirectory)}
                     />
                     <MenuRow
                         icon="fa-file-arrow-up"
-                        label="Open session file"
+                        label={t("aisessions:menu.openFile")}
                         disabled={!sessionFilePath}
-                        disabledReason="No session file"
+                        disabledReason={t("aisessions:menu.noFile")}
                         onClick={() => closeAndRun(onOpenSessionFile)}
                     />
                     <div className="mx-2 my-1 h-px bg-border" />
@@ -247,7 +258,7 @@ export function SessionMoreMenu({
                     >
                         <MenuRow
                             icon="fa-copy"
-                            label={hasCopied ? copiedLabel : "Copy"}
+                            label={hasCopied ? copiedLabel : t("aisessions:menu.copy")}
                             onClick={() => setSubOpen((current) => !current)}
                             trailing={
                                 <i
@@ -266,36 +277,44 @@ export function SessionMoreMenu({
                                 <MenuRow
                                     icon="fa-folder"
                                     label={
-                                        hasCopied === true && copiedLabel.includes("directory")
-                                            ? "Copied ✓"
-                                            : "Working directory"
+                                        hasCopied === true && copiedKind === "directory"
+                                            ? t("aisessions:menu.copied")
+                                            : t("aisessions:menu.workingDir")
                                     }
                                     disabled={!projectDirectory}
-                                    disabledReason="No working directory"
-                                    onClick={() => copyAndClose(projectDirectory, "Copied working directory")}
+                                    disabledReason={t("aisessions:menu.noWorkingDir")}
+                                    onClick={() =>
+                                        copyAndClose(projectDirectory, t("aisessions:menu.copiedDir"), "directory")
+                                    }
                                 />
                                 <MenuRow
                                     icon="fa-file-lines"
-                                    label="Session file path"
+                                    label={t("aisessions:menu.filePath")}
                                     disabled={!sessionFilePath}
-                                    disabledReason="No session file"
-                                    onClick={() => copyAndClose(sessionFilePath, "Copied session file path")}
+                                    disabledReason={t("aisessions:menu.noFile")}
+                                    onClick={() =>
+                                        copyAndClose(sessionFilePath, t("aisessions:menu.copiedFilePath"), "filepath")
+                                    }
                                 />
                                 <MenuRow
                                     icon="fa-fingerprint"
-                                    label="Session ID"
-                                    onClick={() => copyAndClose(sessionId, "Copied session ID")}
+                                    label={t("aisessions:menu.sessionId")}
+                                    onClick={() => copyAndClose(sessionId, t("aisessions:menu.copiedId"), "id")}
                                 />
                                 <MenuRow
                                     icon="fa-terminal"
-                                    label="Resume command"
-                                    onClick={() => copyAndClose(restoreCommand, "Copied resume command")}
+                                    label={t("aisessions:menu.resumeCommand")}
+                                    onClick={() =>
+                                        copyAndClose(restoreCommand, t("aisessions:menu.copiedResume"), "resume")
+                                    }
                                 />
                                 <div className="mx-2 my-1 h-px bg-border" />
                                 <MenuRow
                                     icon="fa-brackets-curly"
-                                    label="Markdown (full)"
-                                    onClick={() => copyAndClose(buildMarkdown(), "Copied full Markdown")}
+                                    label={t("aisessions:menu.markdown")}
+                                    onClick={() =>
+                                        copyAndClose(buildMarkdown(), t("aisessions:menu.copiedMd"), "markdown")
+                                    }
                                 />
                             </div>
                         ) : null}
@@ -303,9 +322,9 @@ export function SessionMoreMenu({
                     <div className="mx-2 my-1 h-px bg-border" />
                     <MenuRow
                         icon={deleting ? "fa-spinner animate-spin" : "fa-trash"}
-                        label={deleting ? "Deleting…" : "Delete session…"}
+                        label={deleting ? t("aisessions:menu.deleting") : t("aisessions:menu.delete")}
                         disabled={deleting}
-                        disabledReason="Deleting session"
+                        disabledReason={t("aisessions:menu.deletingSession")}
                         danger
                         onClick={() => closeAndRun(onDelete)}
                     />

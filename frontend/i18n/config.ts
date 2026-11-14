@@ -6,6 +6,7 @@ import { initReactI18next } from "react-i18next";
 export { i18n };
 
 import enAipanel from "./locales/en/aipanel.json";
+import enAisessions from "./locales/en/aisessions.json";
 import enBlock from "./locales/en/block.json";
 import enBlockEditor from "./locales/en/block-editor.json";
 import enCommon from "./locales/en/common.json";
@@ -18,6 +19,7 @@ import enTab from "./locales/en/tab.json";
 import enTerm from "./locales/en/term.json";
 import enWaveconfig from "./locales/en/waveconfig.json";
 import zhAipanel from "./locales/zh/aipanel.json";
+import zhAisessions from "./locales/zh/aisessions.json";
 import zhBlock from "./locales/zh/block.json";
 import zhBlockEditor from "./locales/zh/block-editor.json";
 import zhCommon from "./locales/zh/common.json";
@@ -49,6 +51,7 @@ export const NS = [
     "waveconfig",
     "term",
     "preview",
+    "aisessions",
 ] as const;
 
 /**
@@ -111,6 +114,7 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 waveconfig: enWaveconfig,
                 term: enTerm,
                 preview: enPreview,
+                aisessions: enAisessions,
             },
             zh: {
                 common: zhCommon,
@@ -125,6 +129,7 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 waveconfig: zhWaveconfig,
                 term: zhTerm,
                 preview: zhPreview,
+                aisessions: zhAisessions,
             },
         },
         interpolation: {

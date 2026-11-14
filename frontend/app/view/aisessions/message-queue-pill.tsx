@@ -10,7 +10,9 @@
 // surface, low-contrast borders, theme tokens).
 
 import { cn } from "@/util/util";
+import { i18n } from "@/i18n/config";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { QueuedMessage } from "./message-queue-store";
 
 type MessageQueuePillProps = {
@@ -27,7 +29,7 @@ function messagePreview(item: QueuedMessage): string {
     const text = item.body.message?.trim();
     if (text) return text;
     if (item.body.command?.name) return `/${item.body.command.name}`;
-    return "New message";
+    return i18n.t("aisessions:queue.newMessage");
 }
 
 export function MessageQueuePill({
@@ -39,6 +41,7 @@ export function MessageQueuePill({
     onPromote,
     onReorder,
 }: MessageQueuePillProps) {
+    const { t } = useTranslation("aisessions");
     const [open, setOpen] = useState(false);
     const listRef = useRef<HTMLDivElement | null>(null);
     const dragIdRef = useRef<string | null>(null);
@@ -105,9 +108,13 @@ export function MessageQueuePill({
                     )}
                 />
                 <span className="flex-1">
-                    <span className="font-medium text-primary">{queuedCount}</span> queued
-                    {active != null ? <span className="ml-1 text-accent">· sending</span> : null}
-                    {highCount > 0 ? <span className="ml-1 text-warning">· {highCount} high</span> : null}
+                    <span className="font-medium text-primary">{queuedCount}</span> {t("aisessions:queue.queued")}
+                    {active != null ? <span className="ml-1 text-accent">{t("aisessions:queue.sending")}</span> : null}
+                    {highCount > 0 ? (
+                        <span className="ml-1 text-warning">
+                            {i18n.t("aisessions:queue.high", { count: highCount })}
+                        </span>
+                    ) : null}
                 </span>
                 <i
                     className={cn(
@@ -137,7 +144,7 @@ export function MessageQueuePill({
                         />
                     ))}
                     {items.length === 0 && active == null ? (
-                        <div className="px-3 py-2 text-center text-[11px] text-muted">Queue empty</div>
+                        <div className="px-3 py-2 text-center text-[11px] text-muted">{t("aisessions:queue.empty")}</div>
                     ) : null}
                 </div>
             ) : null}
@@ -157,6 +164,7 @@ type QueueRowProps = {
 };
 
 function QueueRow({ item, sending, onDragStart, onDragOver, onDrop, onDragEnd, onPromote, onCancel }: QueueRowProps) {
+    const { t } = useTranslation("aisessions");
     const cancelled = item.status === "cancelled";
     return (
         <div
@@ -195,7 +203,7 @@ function QueueRow({ item, sending, onDragStart, onDragOver, onDrop, onDragEnd, o
                     <button
                         type="button"
                         className="flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-hover hover:text-warning"
-                        title={item.priority === "high" ? "Move to normal" : "Send next (high priority)"}
+                        title={item.priority === "high" ? t("aisessions:queue.moveToNormal") : t("aisessions:queue.sendNext")}
                         onClick={(e) => {
                             e.stopPropagation();
                             onPromote(item.id);
@@ -206,7 +214,7 @@ function QueueRow({ item, sending, onDragStart, onDragOver, onDrop, onDragEnd, o
                     <button
                         type="button"
                         className="flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-hover hover:text-error"
-                        title="Cancel message"
+                        title={t("aisessions:queue.cancel")}
                         onClick={(e) => {
                             e.stopPropagation();
                             onCancel(item.id);

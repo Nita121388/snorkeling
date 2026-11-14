@@ -7,7 +7,9 @@
 // 面板走 FloatingPortal 挂到 body：block 容器本身有 overflow 裁剪，
 // 就地 absolute 定位会被 block 边框截断（与 SortMenu 同一套做法）。
 
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
+import { useTranslation } from "react-i18next";
 import {
     autoUpdate,
     flip,
@@ -57,6 +59,7 @@ export function FilterPresetMenu({
     onRename,
     onDelete,
 }: Props) {
+    const { t } = useTranslation("aisessions");
     const [open, setOpen] = useState(false);
     const [saving, setSaving] = useState(false);
     const [draftName, setDraftName] = useState("");
@@ -140,8 +143,8 @@ export function FilterPresetMenu({
                     onClick: () => setOpen((current) => !current),
                 })}
                 type="button"
-                title="Filter presets"
-                aria-label="Filter presets"
+                title={t("aisessions:filterPreset.title")}
+                aria-label={t("aisessions:filterPreset.title")}
                 aria-pressed={triggerActive}
                 className={cn(
                     "flex h-7 min-w-7 items-center justify-center gap-1 rounded-md px-1.5 transition-colors cursor-pointer",
@@ -172,7 +175,7 @@ export function FilterPresetMenu({
                                         autoFocus
                                         value={draftName}
                                         maxLength={40}
-                                        placeholder="Preset name"
+                                        placeholder={t("aisessions:filterPreset.presetName")}
                                         onChange={(e) => setDraftName(e.target.value)}
                                         onKeyDown={(e) => {
                                             if (e.key === "Enter") commitNew();
@@ -185,7 +188,7 @@ export function FilterPresetMenu({
                                     />
                                     <button
                                         type="button"
-                                        title="Save"
+                                        title={t("aisessions:filterPreset.save")}
                                         onClick={commitNew}
                                         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent hover:bg-accent/25 cursor-pointer"
                                     >
@@ -196,7 +199,11 @@ export function FilterPresetMenu({
                                 <button
                                     type="button"
                                     disabled={!canSave}
-                                    title={canSave ? "Save current filters as a preset" : "No active filters to save"}
+                                    title={
+                                        canSave
+                                            ? t("aisessions:filterPreset.saveCurrent")
+                                            : t("aisessions:filterPreset.noFilters")
+                                    }
                                     onClick={() => {
                                         setSaving(true);
                                         setRowMenu(null);
@@ -209,14 +216,14 @@ export function FilterPresetMenu({
                                     )}
                                 >
                                     <i className="fa-sharp fa-solid fa-plus text-[10px]" />
-                                    Save current as…
+                                    {t("aisessions:filterPreset.saveCurrentAs")}
                                 </button>
                             )}
                         </div>
                         <div className="border-b border-border/40 py-1">
                             <button
                                 type="button"
-                                title="Show only sessions with an open block"
+                                title={t("aisessions:filterPreset.openOnly")}
                                 aria-pressed={openActive}
                                 onClick={onApplyOpen}
                                 className={cn(
@@ -232,13 +239,15 @@ export function FilterPresetMenu({
                                             : "fa-regular fa-circle text-secondary/40"
                                     )}
                                 />
-                                <span className="min-w-0 flex-1 truncate">Open</span>
+                                <span className="min-w-0 flex-1 truncate">
+                                    {t("aisessions:filterPreset.open")}
+                                </span>
                             </button>
                         </div>
                         <div className="max-h-72 overflow-y-auto py-1">
                             {presets.length === 0 ? (
                                 <div className="px-3 py-4 text-center text-[11px] text-secondary/70">
-                                    No saved presets yet.
+                                    {t("aisessions:filterPreset.empty")}
                                 </div>
                             ) : (
                                 presets.map((preset) => {
@@ -267,7 +276,7 @@ export function FilterPresetMenu({
                                                     />
                                                     <button
                                                         type="button"
-                                                        title="Confirm rename"
+                                                        title={t("aisessions:filterPreset.confirmRename")}
                                                         onClick={commitRename}
                                                         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-accent hover:bg-hover cursor-pointer"
                                                     >
@@ -278,7 +287,7 @@ export function FilterPresetMenu({
                                                 <>
                                                     <button
                                                         type="button"
-                                                        title={`Apply preset: ${preset.name}`}
+                                                        title={i18n.t("aisessions:filterPreset.applyPreset", { name: preset.name })}
                                                         onClick={() => onApply(preset)}
                                                         className={cn(
                                                             "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-xs cursor-pointer hover:bg-hover",
@@ -296,14 +305,14 @@ export function FilterPresetMenu({
                                                         <span className="min-w-0 truncate">{preset.name}</span>
                                                         {isActive && activeDirty ? (
                                                             <i
-                                                                title="Filters changed since this preset was applied"
+                                                                title={t("aisessions:filterPreset.dirty")}
                                                                 className="fa-sharp fa-solid fa-pen shrink-0 text-[9px] text-warning"
                                                             />
                                                         ) : null}
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        title="Preset actions"
+                                                        title={t("aisessions:filterPreset.actions")}
                                                         aria-haspopup="menu"
                                                         aria-expanded={menuOpen}
                                                         onClick={(e) => openRowMenu(preset.id, e.currentTarget)}
@@ -333,7 +342,7 @@ export function FilterPresetMenu({
                         >
                             <MenuItem
                                 icon="fa-pen"
-                                label="Rename"
+                                label={t("aisessions:filterPreset.rename")}
                                 onClick={() => {
                                     setRenamingId(menuPreset.id);
                                     setRenameDraft(menuPreset.name);
@@ -342,7 +351,7 @@ export function FilterPresetMenu({
                             />
                             <MenuItem
                                 icon="fa-floppy-disk"
-                                label="Overwrite with current"
+                                label={t("aisessions:filterPreset.overwrite")}
                                 disabled={!canSave}
                                 onClick={() => {
                                     onOverwrite(menuPreset.id);
@@ -351,7 +360,7 @@ export function FilterPresetMenu({
                             />
                             <MenuItem
                                 icon="fa-trash"
-                                label="Delete"
+                                label={t("aisessions:filterPreset.delete")}
                                 tone="danger"
                                 onClick={() => {
                                     onDelete(menuPreset.id);
