@@ -12,6 +12,7 @@ import {
     isProtocolCompatible,
     readSyncDraft,
     signalLevelForProbe,
+    SyncBlockedReasonKeys,
     SyncSettingDefaults,
     SyncSettingKeys,
     type SyncSettingsDraft,
@@ -24,20 +25,22 @@ const baseDraft = (over: Partial<SyncSettingsDraft> = {}): SyncSettingsDraft => 
 
 describe("syncsettings availability", () => {
     it("blocks folder until a file path is set", () => {
-        expect(blockedReasonFor("folder", baseDraft())).toContain("path");
+        expect(blockedReasonFor("folder", baseDraft())).toBe(SyncBlockedReasonKeys.folderPath);
         expect(blockedReasonFor("folder", baseDraft({ folderPath: "~/x/commontext.json" }))).toBeNull();
         // Whitespace-only input must not unlock the row.
-        expect(blockedReasonFor("folder", baseDraft({ folderPath: "   " }))).toContain("path");
+        expect(blockedReasonFor("folder", baseDraft({ folderPath: "   " }))).toBe(SyncBlockedReasonKeys.folderPath);
     });
 
     it("blocks git until a token exists", () => {
-        expect(blockedReasonFor("git", baseDraft())).toContain("token");
+        expect(blockedReasonFor("git", baseDraft())).toBe(SyncBlockedReasonKeys.gitToken);
         expect(blockedReasonFor("git", baseDraft({ gitHasToken: true }))).toBeNull();
     });
 
     it("unlocks server in two steps: url, then token", () => {
-        expect(blockedReasonFor("server", baseDraft())).toContain("URL");
-        expect(blockedReasonFor("server", baseDraft({ serverUrl: "https://sync.example.com" }))).toContain("token");
+        expect(blockedReasonFor("server", baseDraft())).toBe(SyncBlockedReasonKeys.serverUrl);
+        expect(
+            blockedReasonFor("server", baseDraft({ serverUrl: "https://sync.example.com" }))
+        ).toBe(SyncBlockedReasonKeys.serverToken);
         expect(
             blockedReasonFor("server", baseDraft({ serverUrl: "https://sync.example.com", serverHasToken: true }))
         ).toBeNull();
@@ -50,7 +53,7 @@ describe("syncsettings availability", () => {
         const specs = buildTransportSpecs(baseDraft());
         const server = specs.find((s) => s.id === "server");
         expect(server?.blockedReason).not.toBeNull();
-        expect(server?.blockedReason).toContain("URL");
+        expect(server?.blockedReason).toBe(SyncBlockedReasonKeys.serverUrl);
     });
 
     it("never blocks none", () => {
@@ -61,8 +64,8 @@ describe("syncsettings availability", () => {
         const specs = buildTransportSpecs(baseDraft({ folderPath: "~/y.json", serverUrl: "https://s" }));
         expect(specs.map((s) => s.id)).toEqual(["folder", "git", "server", "none"]);
         expect(specs.find((s) => s.id === "folder")?.blockedReason).toBeNull();
-        expect(specs.find((s) => s.id === "git")?.blockedReason).toContain("token");
-        expect(specs.find((s) => s.id === "server")?.blockedReason).toContain("token");
+        expect(specs.find((s) => s.id === "git")?.blockedReason).toBe(SyncBlockedReasonKeys.gitToken);
+        expect(specs.find((s) => s.id === "server")?.blockedReason).toBe(SyncBlockedReasonKeys.serverToken);
         expect(specs.find((s) => s.id === "none")?.blockedReason).toBeNull();
         expect(specs.find((s) => s.id === "folder")?.recommended).toBe(true);
     });

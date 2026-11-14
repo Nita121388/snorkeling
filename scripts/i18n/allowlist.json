@@ -159,5 +159,82 @@
         "kind": "jsx-text",
         "text": "app:globalhotkey",
         "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::174865fed087",
+        "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
+        "kind": "jsx-text",
+        "text": "agent-data/audit/control-audit.jsonl",
+        "reason": "审计日志的相对文件路径（路径本身是数据，font-mono 展示，不翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::2c5d5b88672d",
+        "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
+        "kind": "jsx-text",
+        "text": "Codex",
+        "reason": "agent 宿主产品名（品牌名，不翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::37a5689f69ed",
+        "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
+        "kind": "jsx-text",
+        "text": "Claude Code / Cursor",
+        "reason": "agent 宿主产品名（品牌名，不翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::75739c05c2da",
+        "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
+        "kind": "jsx-text",
+        "text": "jti",
+        "reason": "JWT ID 的标准缩写（技术术语，列头指向 token 的 jti prefix，各语言通用不翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/secretscontent.tsx::attr::020b66c8d392",
+        "file": "frontend/app/view/waveconfig/secretscontent.tsx",
+        "kind": "attr",
+        "text": "MY_SECRET_NAME",
+        "reason": "占位符示例值（环境变量风格标识符，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/secretscontent.tsx::jsx-text::5f7a9aa8265f",
+        "file": "frontend/app/view/waveconfig/secretscontent.tsx",
+        "kind": "jsx-text",
+        "text": "wsh secret set [name]=[value]",
+        "reason": "CLI 命令示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/secretscontent.tsx::jsx-text::7e62f1a14418",
+        "file": "frontend/app/view/waveconfig/secretscontent.tsx",
+        "kind": "jsx-text",
+        "text": "wsh secret get [name]",
+        "reason": "CLI 命令示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/secretscontent.tsx::jsx-text::96e17769cf64",
+        "file": "frontend/app/view/waveconfig/secretscontent.tsx",
+        "kind": "jsx-text",
+        "text": "wsh secret list",
+        "reason": "CLI 命令示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/syncsettings.tsx::attr::3f46c5e61210",
+        "file": "frontend/app/view/waveconfig/syncsettings.tsx",
+        "kind": "attr",
+        "text": "git@github.com:you/snorkeling-sync.git",
+        "reason": "占位符示例值（示例 git remote URL，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/syncsettings.tsx::attr::7e1d324158aa",
+        "file": "frontend/app/view/waveconfig/syncsettings.tsx",
+        "kind": "attr",
+        "text": "https://sync.example.com",
+        "reason": "占位符示例值（示例服务器 URL，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/syncsettings.tsx::attr::7ed005e55ee3",
+        "file": "frontend/app/view/waveconfig/syncsettings.tsx",
+        "kind": "attr",
+        "text": "~/OneDrive/Snorkeling/commontext.json",
+        "reason": "占位符示例值（示例文件路径，非文案）"
     }
 ]

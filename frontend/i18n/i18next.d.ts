@@ -10,6 +10,7 @@ import type element from "./locales/en/element.json";
 import type onboarding from "./locales/en/onboarding.json";
 import type sessionOverview from "./locales/en/session-overview.json";
 import type tab from "./locales/en/tab.json";
+import type waveconfig from "./locales/en/waveconfig.json";
 
 /**
  * Type-safe i18next keys. Keys are derived from the bundled English resources
@@ -33,6 +34,7 @@ declare module "i18next" {
             commontext: typeof commontext;
             block: typeof block;
             element: typeof element;
+            waveconfig: typeof waveconfig;
         };
     }
 }
