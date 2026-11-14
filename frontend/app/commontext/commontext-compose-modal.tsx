@@ -166,6 +166,9 @@ const ComposeModalDefaultW = "min(85vw, 900px)";
 const ComposeModalDefaultH = "min(78vh, 620px)";
 const ComposeModalMinW = 500;
 const ComposeModalMinH = 350;
+// 收起态单行高度（= h-9 = leading-5 20px + p-2×2 16px）：拖高过（resize-y 会在元素上留下浏览器
+// 写入的 inline height）的 editor 收起时必须显式盖掉，否则 inline 高度压过 h-9、收不回一行。
+const EDITOR_COLLAPSED_HEIGHT_PX = 36;
 
 type ComposeModalSize = { w: string; h: string };
 
@@ -1214,8 +1217,14 @@ const CommonTextComposeModal = memo(() => {
                         ref={editorRef}
                         // 验证台靠这个属性稳定拿到 editor（弹窗里还有详情 textarea）。
                         data-commontext-composer=""
-                        // 展开态上限由 editorMaxHeight 动态给（随弹窗高度缩放），不再写死 max-h-[280px]。
-                        style={editorExpanded ? { maxHeight: editorMaxHeight } : undefined}
+                        // 展开态上限由 editorMaxHeight 动态给（随弹窗高度缩放），不再写死 max-h-[280px]；
+                        // 收起态显式给 height：React 只在收起时设置这个 prop，展开时移除它——
+                        // 这样既盖掉拖高留下的 inline 高度，又不影响展开后的拖高持久。
+                        style={
+                            editorExpanded
+                                ? { maxHeight: editorMaxHeight }
+                                : { height: `${EDITOR_COLLAPSED_HEIGHT_PX}px` }
+                        }
                         className={
                             "block w-full resize-y rounded border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-sm font-mono p-2 focus:outline-none focus:border-accent leading-relaxed transition-[min-height] " +
                             (editorExpanded

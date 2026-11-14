@@ -6,8 +6,8 @@
 // 锁定的两条交互：
 //   A. Editor 显式收起通道 —— 多行草稿在失焦折叠判定里永远保持展开（valueHasNewline），
 //      过去没有任何手动收缩手段，下半部列表/详情被持续挤压。这里断言：
-//      聚焦 → 展开；点收起按钮 → 折回单行且正文不丢；收起态下再聚焦不自动弹开；
-//      再点按钮 → 恢复多行。
+//      聚焦 → 展开；拖高（inline height）后点收起 → 必须折回单行（inline 高度被盖掉）且
+//      正文不丢；收起态下再聚焦不自动弹开；再点按钮 → 恢复多行且 inline 高度已清。
 //   B. 详情属性区默认折叠 —— 默认只渲染一行 icon 摘要（4 个 key），完整 5 行网格
 //      按需展开；锚点 data-commontext-properties 在 collapsed / expanded 之间切换。
 //
@@ -188,6 +188,20 @@ describe("CommonTextComposeModal — editor collapse", () => {
         // 多行草稿 + 聚焦 → 展开（既有行为不变）
         await typeIntoComposer("line one\nline two");
         await focusComposer();
+        expect(composer().className).toContain("min-h-[120px]");
+
+        // 用户拖高（resize-y 会在元素上留下浏览器写入的 inline height）后收起：
+        // inline 高度必须被显式盖掉，否则 h-9 被压住、收不回一行
+        await act(async () => {
+            composer().style.height = "300px";
+        });
+        await click(editorToggle());
+        expect(isCollapsed()).toBe(true);
+        expect(composer().style.height).toBe("36px");
+
+        // 再展开：inline 高度被移除，回到 CSS 展开态（保持展开，接上后续断言）
+        await click(editorToggle());
+        expect(composer().style.height).toBe("");
         expect(composer().className).toContain("min-h-[120px]");
 
         // 点收起 → 折回单行，正文不丢

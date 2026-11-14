@@ -146,6 +146,10 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("setEditorManuallyCollapsed(false);");
         // 粘贴图片不再越过手动收起态自动展开
         expect(source).toContain("if (!editorManuallyCollapsed) setEditorExpanded(true);");
+        // 拖高（resize-y inline height）后收起：收起态显式给 height 盖掉浏览器写入的 inline 高度，
+        // 否则 inline 优先级压过 h-9，收不回一行
+        expect(source).toContain("const EDITOR_COLLAPSED_HEIGHT_PX = 36;");
+        expect(source).toContain("{ height: `${EDITOR_COLLAPSED_HEIGHT_PX}px` }");
     });
 
     it("collapses the detail property grid to a one-line icon summary by default", () => {

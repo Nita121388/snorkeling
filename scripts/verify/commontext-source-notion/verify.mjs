@@ -402,6 +402,15 @@ try {
   reporter.check("editor-focus-expands-multiline", (expanded?.composerHeight ?? 0) >= 110, {
     composerHeight: expanded?.composerHeight,
   });
+  // 模拟 resize-y 拖高（真实拖拽会在元素上留下浏览器写入的 inline height），
+  // 收起必须显式盖掉它，否则 inline 压过 h-9、收不回一行（回归锁）。
+  const dragPlanted = await client.evaluate(`(() => {
+    const el = document.querySelector(${JSON.stringify(COMPOSER)});
+    if (!el) return false;
+    el.style.height = "300px";
+    return true;
+  })()`);
+  reporter.check("editor-drag-height-planted", dragPlanted === true, dragPlanted);
   const collapsedByButton = await clickSelector(client, `${MODAL} [data-commontext-editor-toggle]`);
   const collapsed = await waitForProbe(client, probeSnapshot(), (s) => (s?.composerHeight ?? 999) <= 45, {
     timeoutMs: 15000,
