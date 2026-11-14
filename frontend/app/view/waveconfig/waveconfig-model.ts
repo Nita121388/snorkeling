@@ -13,6 +13,7 @@ import { HeroSettingsContent } from "@/app/view/waveconfig/herosettings";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { SyncSettingsContent } from "@/app/view/waveconfig/syncsettings";
 import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
+import { LocalePickerContent } from "@/app/view/waveconfig/localepicker";
 import { WaveAIVisualContent } from "@/app/view/waveconfig/waveaivisual";
 import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import { describeJsonFailure, type WaveConfigSaveFailure } from "@/app/view/waveconfig/waveconfig-json-error";
@@ -80,6 +81,13 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             description: "Light / Dark / Monochrome / System",
             hasJsonView: false,
             visualComponent: ThemePickerContent,
+        },
+        {
+            name: "Language",
+            path: "uilocale",
+            description: "Interface language (Auto / English / 中文)",
+            hasJsonView: false,
+            visualComponent: LocalePickerContent,
         },
         {
             name: "Agent Notifications",

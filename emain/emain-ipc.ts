@@ -22,6 +22,7 @@ import {
     setWasActive,
 } from "./emain-activity";
 import { createBuilderWindow, getAllBuilderWindows, getBuilderWindowByWebContentsId } from "./emain-builder";
+import { coerceLocale, setMainLocale } from "./emain-i18n";
 import {
     callWithOriginalXdgCurrentDesktopAsync,
     getWaveConfigDir,
@@ -423,6 +424,25 @@ function saveImageFileWithNativeDialog(
 }
 
 export function initIpcHandlers() {
+    // Renderer pushes a `ui:locale` change (from I18nModel.setActiveLocale).
+    // Switches the main-process i18n instance, then rebuilds the application
+    // menu so native menu text follows the new locale. See `emain-i18n.ts`.
+    electron.ipcMain.on("set-locale", (_event, locale: string) => {
+        // Static import for i18n (no cycle); dynamic import for the menu module —
+        // `emain-menu.ts` imports `openBuilderWindow` from this file, so a static
+        // import here would create a cycle. Note: `require()` is NOT available in
+        // the ESM main bundle (it threw "Cannot find module" at boot).
+        const normalized = coerceLocale(locale);
+        fireAndForget(async () => {
+            await setMainLocale(normalized);
+            try {
+                const { makeAndSetAppMenu } = await import("./emain-menu");
+                makeAndSetAppMenu();
+            } catch (err) {
+                console.error("[i18n:main] menu rebuild after locale change failed", err);
+            }
+        });
+    });
     electron.ipcMain.on("open-external", (event, url) => {
         if (url && typeof url === "string") {
             fireAndForget(() =>

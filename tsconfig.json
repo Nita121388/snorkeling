@@ -23,6 +23,7 @@
             "@/store/*": ["frontend/app/store/*"],
             "@/view/*": ["frontend/app/view/*"],
             "@/element/*": ["frontend/app/element/*"],
+            "@/i18n/*": ["frontend/i18n/*"],
             "@/shadcn/*": ["frontend/app/shadcn/*"],
             "@/preview/*": ["frontend/preview/*"]
         },

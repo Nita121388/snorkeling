@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer, Rectangle, webUtils, WebviewTag } from "ele
 
 // update type in custom.d.ts (ElectronApi type)
 contextBridge.exposeInMainWorld("api", {
+    setLocale: (locale: string) => ipcRenderer.send("set-locale", locale),
     getAuthKey: () => ipcRenderer.sendSync("get-auth-key"),
     getIsDev: () => ipcRenderer.sendSync("get-is-dev"),
     getPlatform: () => ipcRenderer.sendSync("get-platform"),

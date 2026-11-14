@@ -29,6 +29,7 @@ import {
 import { initIpcHandlers } from "./emain-ipc";
 import { log } from "./emain-log";
 import { initMenuEventSubscriptions, makeAndSetAppMenu, makeDockTaskbar } from "./emain-menu";
+import { initI18nMain, resolveMainLocale } from "./emain-i18n";
 import {
     extractOpenPathsFromArgv,
     flushPendingExternalOpenPaths,
@@ -391,6 +392,9 @@ globalEvents.on("windows-updated", () => {
 async function appMain() {
     // Set disableHardwareAcceleration as early as possible, if required.
     const launchSettings = getLaunchSettings();
+    // Initialize main-process i18n before any menu construction — `makeAndSetAppMenu()`
+    // reads translated strings via `getI18nMain()/tmew()`. See `emain/emain-i18n.ts`.
+    initI18nMain(resolveMainLocale(launchSettings?.["ui:locale"], electronApp.getLocale()));
     if (launchSettings?.["window:disablehardwareacceleration"]) {
         console.log("disabling hardware acceleration, per launch settings");
         electronApp.disableHardwareAcceleration();

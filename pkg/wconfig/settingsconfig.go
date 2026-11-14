@@ -232,6 +232,7 @@ type SettingsType struct {
 	AppDisableCtrlShiftDisplay    bool   `json:"app:disablectrlshiftdisplay,omitempty"`
 	AppFocusFollowsCursor         string `json:"app:focusfollowscursor,omitempty" jsonschema:"enum=off,enum=on,enum=term"`
 	AppTabBar                     string `json:"app:tabbar,omitempty" jsonschema:"enum=top,enum=left"`
+	UiLocale                      string `json:"ui:locale,omitempty" jsonschema:"enum=auto,enum=en,enum=zh"`
 	AppTheme                      string `json:"app:theme,omitempty" jsonschema:"enum=system,enum=dark,enum=light,enum=monochrome"`
 
 	FeatureWaveAppBuilder bool `json:"feature:waveappbuilder,omitempty"`
