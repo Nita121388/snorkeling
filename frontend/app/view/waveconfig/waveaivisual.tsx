@@ -24,9 +24,11 @@ import {
 } from "@/app/view/waveconfig/waveai-modes";
 import { templateModeKey, templateToAIMode, WaveAITemplates } from "@/app/view/waveconfig/waveai-templates";
 import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type TestState =
     | { status: "idle" }
@@ -51,6 +53,7 @@ const isBuiltInMode = (key: string) => key.startsWith("waveai@");
 type ProbeStatus = "none" | "ok" | "error";
 
 export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: { model: WaveConfigViewModel }) {
+    const { t } = useTranslation("waveconfig");
     // Live mode map, re-renders on every backend broadcast (including our own writes).
     const modeConfigs = useAtomValue(atoms.waveaiModeConfigAtom) ?? {};
     const defaultMode = useAtomValue(getSettingsKeyAtom("waveai:defaultmode")) ?? "";
@@ -191,14 +194,14 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
         }
         const label = selectedEntry?.config["display:name"] || selectedKey;
         modalsModel.pushModal("ConfirmModal", {
-            title: "Delete AI provider",
-            message: `Delete "${label}"? The entry is removed from waveai.json. Existing sessions that already use it keep working until their mode is switched.`,
-            confirmLabel: "Delete",
+            title: i18n.t("waveconfig:waveAi.deleteProviderTitle"),
+            message: i18n.t("waveconfig:waveAi.deleteProviderMessage", { name: label }),
+            confirmLabel: i18n.t("common:common.delete"),
             destructive: true,
             onResolve: (confirmed: boolean) => {
                 if (!confirmed) return;
                 void deleteWaveAIMode(model, selectedKey).catch((err) =>
-                    showError(`Could not delete AI provider: ${errorText(err)}`)
+                    showError(i18n.t("waveconfig:waveAi.deleteFailed", { error: errorText(err) }))
                 );
                 if (defaultMode === selectedKey) {
                     void setDefaultWaveAIMode("");
@@ -226,7 +229,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
             setExpandedVendor(null);
             setSelectedModels({});
         } catch (err) {
-            const message = `Could not read cc-switch providers: ${errorText(err)}`;
+            const message = i18n.t("waveconfig:waveAi.ccSwitchReadFailed", { error: errorText(err) });
             setError(message);
             showError(message);
         } finally {
@@ -315,7 +318,10 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                 setAdding(false);
                 setExpandedVendor(null);
             } catch (err) {
-                const message = `Could not import ${vendor.name}: ${errorText(err)}`;
+                const message = i18n.t("waveconfig:waveAi.importFailed", {
+                    name: vendor.name,
+                    error: errorText(err),
+                });
                 setError(message);
                 showError(message);
             } finally {
@@ -417,16 +423,16 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                     <input
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
-                        placeholder="Filter models…"
+                        placeholder={t("waveconfig:waveAi.filterPlaceholder")}
                         spellCheck={false}
-                        aria-label="Filter models"
+                        aria-label={t("waveconfig:waveAi.filterAria")}
                         className="h-8 w-full rounded border border-border bg-panel pr-7 pl-7 text-xs text-primary outline-none placeholder:text-muted focus:border-accent"
                     />
                     {filter != "" && (
                         <button
                             type="button"
-                            aria-label="Clear filter"
-                            title="Clear filter"
+                            aria-label={t("waveconfig:waveAi.clearFilter")}
+                            title={t("waveconfig:waveAi.clearFilter")}
                             className="absolute top-1/2 right-1.5 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-hover hover:text-primary"
                             onClick={() => setFilter("")}
                         >
@@ -441,13 +447,15 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                     aria-expanded={adding}
                 >
                     <i className="fa-sharp fa-solid fa-plus text-[11px]" />
-                    Add provider
+                    {t("waveconfig:waveAi.addProvider")}
                 </button>
             </div>
 
             {adding && (
                 <section className="shrink-0 rounded-lg border border-border bg-panel p-3">
-                    <div className="mb-2 text-xs font-medium text-primary">Add from template</div>
+                    <div className="mb-2 text-xs font-medium text-primary">
+                        {t("waveconfig:waveAi.addFromTemplate")}
+                    </div>
                     <div className="mb-3 flex flex-wrap gap-1.5">
                         <button
                             type="button"
@@ -460,7 +468,11 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                             onClick={() => void handleLoadCcSwitch()}
                             disabled={loadingCcSwitch}
                             aria-expanded={ccSwitchOpen}
-                            title={ccSwitchOpen ? "Hide cc-switch providers" : "Import from cc-switch"}
+                            title={
+                                ccSwitchOpen
+                                    ? t("waveconfig:waveAi.hideCcSwitch")
+                                    : t("waveconfig:waveAi.importCcSwitch")
+                            }
                         >
                             {loadingCcSwitch ? (
                                 <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px]" />
@@ -478,12 +490,14 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                     </div>
                     {ccSwitchOpen && ccSwitchVendors.length === 0 && !loadingCcSwitch && (
                         <div className="mb-3 rounded border border-border bg-panel px-2.5 py-2 text-xs text-muted-foreground">
-                            No importable cc-switch providers found.
+                            {t("waveconfig:waveAi.noCcSwitchVendors")}
                         </div>
                     )}
                     {ccSwitchOpen && ccSwitchVendors.length > 0 && (
                         <div className="mb-3 max-h-60 overflow-y-auto rounded border border-border bg-panel p-2">
-                            <div className="px-1 pb-1 text-xxs font-medium text-secondary">cc-switch providers</div>
+                            <div className="px-1 pb-1 text-xxs font-medium text-secondary">
+                                {t("waveconfig:waveAi.ccSwitchProviders")}
+                            </div>
                             {ccSwitchVendors.map((vendor) => {
                                 const key = vendorKey(vendor);
                                 const models = vendorModels(vendor);
@@ -516,14 +530,16 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                             <div className="mx-1 mt-1 rounded border border-border/60 bg-panel p-1.5">
                                                 <div className="mb-1 flex items-center justify-between px-1">
                                                     <span className="text-xxs text-muted-foreground">
-                                                        Select models to import
+                                                        {t("waveconfig:waveAi.selectModels")}
                                                     </span>
                                                     <button
                                                         type="button"
                                                         className="cursor-pointer text-xxs text-accent hover:underline"
                                                         onClick={() => setVendorModelsState(vendor, !allChosen)}
                                                     >
-                                                        {allChosen ? "Clear all" : "Select all"}
+                                                        {allChosen
+                                                            ? t("waveconfig:waveAi.clearAll")
+                                                            : t("waveconfig:waveAi.selectAll")}
                                                     </button>
                                                 </div>
                                                 <div className="mb-1.5 max-h-36 overflow-y-auto">
@@ -558,8 +574,10 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                                         <i className="fa-sharp fa-solid fa-download text-[11px]" />
                                                     )}
                                                     {chosen.length === 0
-                                                        ? "Select at least one model"
-                                                        : `Import ${chosen.length}`}
+                                                        ? t("waveconfig:waveAi.importNone")
+                                                        : i18n.t("waveconfig:waveAi.importCount", {
+                                                              count: chosen.length,
+                                                          })}
                                                 </button>
                                             </div>
                                         )}
@@ -574,7 +592,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                 key={template.id}
                                 type="button"
                                 className="h-7 cursor-pointer rounded border border-border bg-panel px-2.5 text-left text-xs text-secondary hover:bg-hover hover:text-primary"
-                                title={template.note}
+                                title={t(template.noteKey)}
                                 onClick={() => handleAddFromTemplate(template.id)}
                             >
                                 {template.label}
@@ -593,17 +611,17 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                         className="shrink-0 cursor-pointer text-xs font-medium text-error hover:underline"
                         onClick={() => setError(null)}
                     >
-                        Dismiss
+                        {t("waveconfig:waveAi.dismiss")}
                     </button>
                 </div>
             )}
 
             {entries.length === 0 ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-                    <p className="text-sm text-secondary">No AI modes configured yet.</p>
+                    <p className="text-sm text-secondary">{t("waveconfig:waveAi.noModes")}</p>
                     <p className="max-w-md text-xs text-muted-foreground">
-                        Add a provider from a template above, or edit <code className="text-primary">waveai.json</code>{" "}
-                        in the JSON tab.
+                        {t("waveconfig:waveAi.noModesHintPrefix")} <code className="text-primary">waveai.json</code>{" "}
+                        {t("waveconfig:waveAi.noModesHintSuffix")}
                     </p>
                 </div>
             ) : (
@@ -614,7 +632,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                             {userEntries.length > 0 && (
                                 <div className="shrink-0 border-b border-border/60 px-3 py-1.5">
                                     <span className="text-xxs font-medium uppercase tracking-wide text-muted-foreground">
-                                        My Models
+                                        {t("waveconfig:waveAi.myModels")}
                                     </span>
                                 </div>
                             )}
@@ -652,7 +670,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                             </span>
                                             {isDefault && (
                                                 <span className="shrink-0 rounded bg-actionsoft px-1 text-xxs text-actionsofttext">
-                                                    Default
+                                                    {t("waveconfig:waveAi.defaultBadge")}
                                                 </span>
                                             )}
                                         </button>
@@ -660,7 +678,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                 })}
                                 {visibleUserEntries.length === 0 && (
                                     <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                                        No models match "{filter}".
+                                        {i18n.t("waveconfig:waveAi.noMatch", { filter })}
                                     </div>
                                 )}
                             </div>
@@ -670,7 +688,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                         <div className="min-w-0 flex-1 overflow-y-auto p-4 @xl:px-6 @xl:py-5">
                             {!selectedEntry || form == null ? (
                                 <div className="flex h-full items-center justify-center text-sm text-secondary">
-                                    Select a mode to edit it.
+                                    {t("waveconfig:waveAi.selectModeToEdit")}
                                 </div>
                             ) : (
                                 <div className="flex max-w-[640px] flex-col gap-5">
@@ -691,7 +709,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                                 <button
                                                     type="button"
                                                     className="flex h-7 w-full max-w-[320px] cursor-pointer items-center truncate rounded px-1.5 text-left text-sm font-semibold text-primary hover:bg-hover"
-                                                    title="Rename"
+                                                    title={t("waveconfig:waveAi.rename")}
                                                     onClick={() => {
                                                         setNameDraft(selectedEntry.config["display:name"]);
                                                         setRenaming(true);
@@ -721,21 +739,25 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                             disabled={defaultMode === selectedEntry.key}
                                             onClick={() => void setDefaultWaveAIMode(selectedEntry.key)}
                                         >
-                                            {defaultMode === selectedEntry.key ? "Default" : "Set default"}
+                                            {defaultMode === selectedEntry.key
+                                                ? t("waveconfig:waveAi.defaultBadge")
+                                                : t("waveconfig:waveAi.setDefault")}
                                         </button>
                                         <button
                                             type="button"
                                             className="h-7 shrink-0 cursor-pointer rounded border border-border px-2.5 text-xs text-error hover:bg-error/10"
                                             onClick={requestDelete}
                                         >
-                                            Delete
+                                            {t("waveconfig:waveAi.delete")}
                                         </button>
                                     </div>
 
                                     {/* Connection fields */}
                                     <div className="flex flex-col gap-3">
                                         <div>
-                                            <label className="mb-1 text-xs font-medium text-secondary">API type</label>
+                                            <label className="mb-1 text-xs font-medium text-secondary">
+                                                {t("waveconfig:waveAi.apiType")}
+                                            </label>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {ApiTypeOptions.map((opt) => (
                                                     <button
@@ -756,15 +778,15 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                         </div>
 
                                         <Field
-                                            label="Endpoint"
+                                            label={t("waveconfig:waveAi.endpoint")}
                                             value={form["ai:endpoint"] ?? ""}
                                             onChange={(v) => applyPatch({ "ai:endpoint": v })}
                                             placeholder="https://api.example.com/v1"
                                             mono
-                                            hint="Base URL and full request URL both work. A base URL such as https://host/v1 is expanded to the right path automatically."
+                                            hint={t("waveconfig:waveAi.endpointHint")}
                                         />
                                         <Field
-                                            label="Model"
+                                            label={t("waveconfig:waveAi.model")}
                                             value={form["ai:model"] ?? ""}
                                             onChange={(v) => applyPatch({ "ai:model": v })}
                                             placeholder="gpt-5-mini"
@@ -781,7 +803,9 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                                     disabled={fetchState.status === "fetching"}
                                                     onClick={() => void handleFetchModels()}
                                                 >
-                                                    {fetchState.status === "fetching" ? "Fetching…" : "Fetch models"}
+                                                    {fetchState.status === "fetching"
+                                                        ? t("waveconfig:waveAi.fetching")
+                                                        : t("waveconfig:waveAi.fetchModels")}
                                                 </button>
                                             }
                                         />
@@ -812,7 +836,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
 
                                         <div>
                                             <label className="mb-1 text-xs font-medium text-secondary">
-                                                API key secret
+                                                {t("waveconfig:waveAi.apiKeySecret")}
                                             </label>
                                             <div className="flex items-center gap-1.5">
                                                 <input
@@ -821,7 +845,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                                     onChange={(e) =>
                                                         applyPatch({ "ai:apitokensecretname": e.target.value })
                                                     }
-                                                    placeholder="Secret name, e.g. OPENAI_KEY"
+                                                    placeholder={t("waveconfig:waveAi.apiKeySecretPlaceholder")}
                                                     spellCheck={false}
                                                     className="h-8 min-w-0 flex-1 rounded border border-border bg-panel px-2.5 font-mono text-xs text-primary outline-none focus:border-accent"
                                                 />
@@ -850,12 +874,12 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                                         <i className="fa-sharp fa-solid fa-bolt" />
                                                     )}
                                                     {testState.status === "testing"
-                                                        ? "Testing…"
+                                                        ? t("waveconfig:waveAi.testing")
                                                         : testState.status === "ok"
                                                           ? `${testState.latencyMs}ms`
                                                           : testState.status === "error"
-                                                            ? "Test failed"
-                                                            : "Test connection"}
+                                                            ? t("waveconfig:waveAi.testFailed")
+                                                            : t("waveconfig:waveAi.testConnection")}
                                                 </button>
                                             </div>
                                             {testState.status === "ok" || testState.status === "error" ? (
@@ -870,7 +894,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                                     </p>
                                                     <span className="mt-0.5 shrink-0">
                                                         <CopyButton
-                                                            title="Copy message"
+                                                            title={t("waveconfig:waveAi.copyMessage")}
                                                             onClick={() =>
                                                                 void navigator.clipboard.writeText(testState.message)
                                                             }
@@ -879,7 +903,7 @@ export const WaveAIVisualContent = memo(function WaveAIVisualContent({ model }: 
                                                 </div>
                                             ) : null}
                                             <p className="mt-1 text-[11px] text-muted-foreground">
-                                                Save the key itself in Settings → Secrets under this name.
+                                                {t("waveconfig:waveAi.secretHint")}
                                             </p>
                                         </div>
                                     </div>
@@ -899,11 +923,15 @@ function errorText(err: unknown): string {
 
 /** A status line for fetch failures; keeps the message copyable. */
 function ErrorLine({ message }: { message: string }) {
+    const { t } = useTranslation("waveconfig");
     return (
         <div className="flex min-w-0 flex-1 items-start gap-1.5">
             <p className="min-w-0 flex-1 text-xs break-words text-error">{message}</p>
             <span className="mt-0.5 shrink-0">
-                <CopyButton title="Copy message" onClick={() => void navigator.clipboard.writeText(message)} />
+                <CopyButton
+                    title={t("waveconfig:waveAi.copyMessage")}
+                    onClick={() => void navigator.clipboard.writeText(message)}
+                />
             </span>
         </div>
     );

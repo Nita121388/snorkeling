@@ -218,7 +218,7 @@ are key-parity-clean, and no new tsc errors appear in its files.
 | `session-overview` / `commontext` | ✓ P2 B2 | All `frontend/app/session-overview/**` (board model/timeline/metrics are pure `.ts` — Pattern F via the `i18n` singleton) + `frontend/app/commontext/**` (compose modal, send button, send target, page icon). Chinese-first surfaces kept their original copy as the zh values (Pattern H); en is the translation. Column titles / fallback column names became functions (`getOverviewBoardColumnTitle()` etc.) so a runtime locale switch is picked up; tests recompute expectations via `i18n.t(...)` + `initI18n("en")` (Pattern I). 2 allowlist entries (`&nbsp;·` separator, `Enter` kbd key name). |
 | `block` | ✓ P2 B3 (part 1) | `frontend/app/block/**` — 79 scan findings + adjacent expression-position copy on the same surfaces (connstatusoverlay status/repair strings, connectionbutton tooltips, blockutil magnify/copy defaults, TabTargetModal cluster, info-card fallbacks). All hard-coded Chinese kept verbatim as the zh values (锁定标签 / 关闭其他（锁定除外） / 未保存的修改 / 已锁定 / 设置 emoji 人格 — Pattern H). `inlinetab-contextmenu.ts`, sidebar/float title helpers and `blockViewToName`'s view registry stay keyed; `ViewMetaMap` display names (`blockViewToName`) are **deliberately not migrated** here — it's a cross-module registry consumed by already-migrated modules (session-overview fallbacks); migrate it with the view-name batch (B7) together. 4 test files switch to `initI18n("en")` + en-source-of-truth literals (Pattern I). |
 | `element` | ✓ P2 B3 (part 2) — `block-editor/**` excluded (B5) | `frontend/app/element/**` minus `block-editor/` — 132 scan findings cleared (jsx-text 68 / attr 52 / cjk 12) across `quicktips`, `markdown`, `search`, `session-note-section`, `markdown-outline`, `image-lightbox`, `clipboard-float-actions`, `errorboundary`, `tag-editor`, `emojipalette` + zero-finding siblings. Load-time constant tables became render-time `t()` calls (`quicktips` keybind sections, `KeyBinding` digit key), Chinese-original strings kept verbatim as zh (界面渲染出错 / 保存失败：{{error}} / 复制为副本 / 移除 — Pattern H). 10 allowlist entries: 4 KeyCap modifier key names (`⌘ Cmd` / `Alt` / `^ Ctrl` / `⇧ Shift`), 4 CLI syntax samples (`wsh commands` / `wsh view` / `wsh edit` / `[filename…]`), 1 markdown image-syntax template (`![图片](`) that is written into the **user's document source**, not UI. `common` gained `copy` / `loading`. 3 test files init `initI18n("en")` (Pattern I). Cross-module components (`markdown` / `search` / `tag-editor`) kept props / className / `data-*` byte-identical — only the copy source changed. |
-| `view/waveconfig` + small views | ☐ P2 B4 | |
+| `view/waveconfig` | ✓ P2 B4 | B4a — `syncsettings` / `agentaccesssettings` / `secretscontent` / `agentnotifysettings` (264 keys, option tables keep `as const` key maps, +11 allowlist). **B4b** — the rest of the directory: `herosettings` / `waveaivisual` / `aipromptsettings` / `themepicker` / `waveconfig.tsx` / `waveconfig-model.ts` / `waveai-templates.ts`. The `ConfigFile` registry now carries `nameKey` / `descKey` template-literal key unions instead of display strings (Pattern C: `makeConfigFiles()` runs once, so a captured string would freeze the locale), model-side `setError` / `confirm()` copy goes through the `i18n` singleton (Pattern F), theme-card and AI-template tables use `as const satisfies` so `t()` keeps the literal key type. 18 allowlist entries in this directory (7 new: CLI flags `--yes` / `--copy-not-move`, env var `HERO_ROOT`, product name `cc-switch`, config file `waveai.json`, example endpoint URL + model id). Hero terminology: Hero stays untranslated, 据点 = home base, 名册 = roster, 登场 = launch. |
 | `view/term` / `view/preview` | ☐ P2 B6 | Largest prose surface (InfoCard / modals). |
 | remaining `view/*` + previews | ☐ P2 B7 | Sweep batch. |
 
@@ -233,6 +233,20 @@ are key-parity-clean, and no new tsc errors appear in its files.
 - **`require()` is not available in the ESM main bundle** (see Pattern G) — this
   crashed the whole app at boot until fixed.
 - **i18next 27 dropped `initImmediate`** from `InitOptions` (TS error if you pass it).
+- **`as const satisfies` when a table holds keys, not text**: `t(someString)` re-types as
+  `string` and is rejected. `[{ nameKey: "ns:a.b" }, …] as const satisfies readonly T[]`
+  keeps the literal union while still checking the object shape (theme cards, Hero soft-limit
+  options, `ConfigFile` registry, `WaveAITemplates`).
+- **Template-literal key unions for registries**: when the key set is derived from an id list,
+  `type NameKey = \`waveconfig:files.${ConfigFileId}.name\`` type-checks against the JSON and
+  still allows `i18n.t(file.nameKey)`. Only list ids whose key really exists in en/zh — a
+  union member without a resource entry fails the same check.
+- **CLI flags / env vars / file names inside `<code>` become their own JSX text nodes** once the
+  surrounding prose is translated, so they surface as new scan findings. Allowlist them with
+  reasons instead of inventing keys for them.
+- **Text-based verify probes break under a translated UI**: `scripts/verify/waveconfig-json-error`
+  finds the Save button by `textContent === "Save"`. Locale-tolerant probes should match a
+  `data-*` anchor or an `aria-label` key recomputed through `i18n.t()` (tracked for P3).
 - **New worktrees need a complete Electron dist**: `node_modules/electron` may install
   half-extracted (missing `Electron Framework` / `path.txt`) — copy `dist/` + `path.txt`
   from the main checkout of the same version, or every test reports unhandled

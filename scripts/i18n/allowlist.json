@@ -189,6 +189,27 @@
         "reason": "JWT ID 的标准缩写（技术术语，列头指向 token 的 jti prefix，各语言通用不翻译）"
     },
     {
+        "id": "frontend/app/view/waveconfig/herosettings.tsx::jsx-text::34ad9ac7226d",
+        "file": "frontend/app/view/waveconfig/herosettings.tsx",
+        "kind": "jsx-text",
+        "text": "--yes",
+        "reason": "CLI 旗标名（`wsh hero relocate` 的 `--yes`，代码片段内不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/herosettings.tsx::jsx-text::caae9a48ce60",
+        "file": "frontend/app/view/waveconfig/herosettings.tsx",
+        "kind": "jsx-text",
+        "text": "--copy-not-move",
+        "reason": "CLI 旗标名（`wsh hero relocate` 的 `--copy-not-move`，代码片段内不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/herosettings.tsx::jsx-text::e7be193a3a4b",
+        "file": "frontend/app/view/waveconfig/herosettings.tsx",
+        "kind": "jsx-text",
+        "text": "HERO_ROOT",
+        "reason": "环境变量名（`HERO_ROOT` 覆盖 hero 根目录，不可翻译）"
+    },
+    {
         "id": "frontend/app/view/waveconfig/secretscontent.tsx::attr::020b66c8d392",
         "file": "frontend/app/view/waveconfig/secretscontent.tsx",
         "kind": "attr",
@@ -236,5 +257,33 @@
         "kind": "attr",
         "text": "~/OneDrive/Snorkeling/commontext.json",
         "reason": "占位符示例值（示例文件路径，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/waveaivisual.tsx::attr::79dde6140408",
+        "file": "frontend/app/view/waveconfig/waveaivisual.tsx",
+        "kind": "attr",
+        "text": "gpt-5-mini",
+        "reason": "占位符示例值（示例模型 id，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/waveaivisual.tsx::attr::e7a2ce195de2",
+        "file": "frontend/app/view/waveconfig/waveaivisual.tsx",
+        "kind": "attr",
+        "text": "https://api.example.com/v1",
+        "reason": "占位符示例值（示例 API 端点 URL，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/waveaivisual.tsx::jsx-text::86ee9ce38626",
+        "file": "frontend/app/view/waveconfig/waveaivisual.tsx",
+        "kind": "jsx-text",
+        "text": "waveai.json",
+        "reason": "配置文件名（实际落盘文件，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/waveaivisual.tsx::jsx-text::f7d55d7cf1d2",
+        "file": "frontend/app/view/waveconfig/waveaivisual.tsx",
+        "kind": "jsx-text",
+        "text": "cc-switch",
+        "reason": "产品名（cc-switch = 第三方供应商配置工具，品牌名不翻译）"
     }
 ]

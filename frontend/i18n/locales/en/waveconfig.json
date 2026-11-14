@@ -318,5 +318,257 @@
         "cooldownTitle": "Cooldown",
         "cooldownDescription": "Repeat toasts of the same kind inside this window are merged into one summary. 0 disables the cooldown.",
         "cooldownAria": "Cooldown in seconds"
+    },
+    "files": {
+        "general": {
+            "name": "General"
+        },
+        "appTheme": {
+            "name": "App Theme",
+            "description": "Light / Dark / Monochrome / System"
+        },
+        "language": {
+            "name": "Language",
+            "description": "Interface language (Auto / English / 中文)"
+        },
+        "agentNotifications": {
+            "name": "Agent Notifications",
+            "description": "OS toasts for agent done / blocked"
+        },
+        "agentAccess": {
+            "name": "Agent Access",
+            "description": "Scoped tokens for agents outside the app"
+        },
+        "sync": {
+            "name": "Sync",
+            "description": "Common Text cloud sync"
+        },
+        "hero": {
+            "name": "Hero",
+            "description": "🎭 Home base, storage and governance"
+        },
+        "connections": {
+            "name": "Connections",
+            "description": "SSH hosts",
+            "descriptionWindows": "SSH hosts and WSL distros"
+        },
+        "sidebarWidgets": {
+            "name": "Sidebar Widgets"
+        },
+        "waveAiModes": {
+            "name": "Wave AI Modes",
+            "description": "Local models and BYOK"
+        },
+        "aiPrompts": {
+            "name": "AI Prompts",
+            "description": "Prompts for AI-generated session title / note & tags"
+        },
+        "tabBackgrounds": {
+            "name": "Tab Backgrounds"
+        },
+        "secrets": {
+            "name": "Secrets"
+        },
+        "presets": {
+            "name": "Presets"
+        },
+        "aiPresets": {
+            "name": "AI Presets"
+        }
+    },
+    "view": {
+        "deprecated": "deprecated",
+        "unsavedChanges": "Unsaved changes",
+        "saveTooltip": "Save ({{shortcut}})",
+        "visual": "Visual",
+        "rawJson": "Raw JSON",
+        "copyJsonError": "Copy this JSON error for an AI to fix",
+        "configError": "Config Error:"
+    },
+    "model": {
+        "discardConfirm": "You have unsaved changes. Discard and continue?",
+        "loadFailed": "Failed to load {{name}}: {{error}}",
+        "saveFailed": "Failed to save {{name}}: {{error}}",
+        "invalidJson": "Invalid JSON: {{error}}",
+        "jsonMustBeObject": "JSON must be an object, not an array, primitive, or null",
+        "invalidAiKeyPrefix": "Invalid key \"{{key}}\": all top-level keys must start with \"ai@\"",
+        "invalidKeyChars": "Invalid key \"{{key}}\": keys must only contain letters, numbers, underscores, @, dots, and hyphens",
+        "storageBackendUnavailable": "No appropriate secret manager found. Cannot manage secrets securely.",
+        "storageBackendError": "Error checking storage backend: {{error}}",
+        "secretsListFailed": "Failed to load secrets: {{error}}",
+        "secretNotFound": "Secret not found: {{name}}",
+        "secretLoadFailed": "Failed to load secret: {{error}}",
+        "secretSaveFailed": "Failed to save secret: {{error}}",
+        "secretDeleteFailed": "Failed to delete secret: {{error}}",
+        "secretNameEmpty": "Secret name cannot be empty",
+        "secretNameInvalid": "Invalid secret name: must start with a letter and contain only letters, numbers, and underscores",
+        "secretExists": "Secret \"{{name}}\" already exists",
+        "secretAddFailed": "Failed to add secret: {{error}}"
+    },
+    "themePicker": {
+        "system": "System",
+        "systemDescription": "Follow OS appearance",
+        "light": "Light",
+        "lightDescription": "Always light",
+        "dark": "Dark",
+        "darkDescription": "Always dark",
+        "monochrome": "Monochrome",
+        "monochromeDescription": "Black & white",
+        "osPrefix": "OS:",
+        "preview": {
+            "tab": "tab",
+            "command": "run build",
+            "done": "✓ done in 1.4s",
+            "run": "Run",
+            "cancel": "Cancel"
+        }
+    },
+    "aiPrompts": {
+        "title": "AI Prompts",
+        "subtitle": "Override the system prompt per feature. Empty fields keep the built-in default.",
+        "saving": "Saving…",
+        "saved": "Saved",
+        "unsavedChanges": "Unsaved changes",
+        "dismiss": "Dismiss",
+        "features": "Features",
+        "customized": "Customized",
+        "resetTooltip": "Clear overrides and use the built-in prompt",
+        "resetToDefault": "Reset to default",
+        "systemPrompt": "System prompt",
+        "systemPromptHint": "Empty = built-in default",
+        "systemPromptPlaceholder": "Leave empty to use the built-in prompt",
+        "systemPromptAria": "System prompt",
+        "extraInstructions": "Extra instructions",
+        "extraPlaceholder": "Appended after the system prompt, e.g. reply in Chinese",
+        "extraInstructionsAria": "Extra instructions",
+        "model": "Model",
+        "modelAria": "AI model",
+        "modelAuto": "Auto (default mode)",
+        "enabled": "Enabled",
+        "enabledTooltip": "When off, the card button reports a disabled error",
+        "autoTitleToggle": "Auto-generate titles in the background",
+        "autoTitleDescription": "Runs a serial, throttled background worker that title-cases sessions which still only have a raw first-message title. Each session is generated at most once; a hand-renamed title is never overwritten. Off by default to avoid spending model quota unexpectedly.",
+        "previewSummary": "Preview resolved prompt"
+    },
+    "waveAi": {
+        "filterPlaceholder": "Filter models…",
+        "filterAria": "Filter models",
+        "clearFilter": "Clear filter",
+        "addProvider": "Add provider",
+        "addFromTemplate": "Add from template",
+        "hideCcSwitch": "Hide cc-switch providers",
+        "importCcSwitch": "Import from cc-switch",
+        "noCcSwitchVendors": "No importable cc-switch providers found.",
+        "ccSwitchProviders": "cc-switch providers",
+        "selectModels": "Select models to import",
+        "clearAll": "Clear all",
+        "selectAll": "Select all",
+        "importNone": "Select at least one model",
+        "importCount": "Import {{count}}",
+        "dismiss": "Dismiss",
+        "noModes": "No AI modes configured yet.",
+        "noModesHintPrefix": "Add a provider from a template above, or edit",
+        "noModesHintSuffix": "in the JSON tab.",
+        "myModels": "My Models",
+        "defaultBadge": "Default",
+        "setDefault": "Set default",
+        "noMatch": "No models match \"{{filter}}\".",
+        "selectModeToEdit": "Select a mode to edit it.",
+        "rename": "Rename",
+        "delete": "Delete",
+        "apiType": "API type",
+        "endpoint": "Endpoint",
+        "endpointHint": "Base URL and full request URL both work. A base URL such as https://host/v1 is expanded to the right path automatically.",
+        "model": "Model",
+        "fetching": "Fetching…",
+        "fetchModels": "Fetch models",
+        "apiKeySecret": "API key secret",
+        "apiKeySecretPlaceholder": "Secret name, e.g. OPENAI_KEY",
+        "testing": "Testing…",
+        "testFailed": "Test failed",
+        "testConnection": "Test connection",
+        "copyMessage": "Copy message",
+        "secretHint": "Save the key itself in Settings → Secrets under this name.",
+        "deleteProviderTitle": "Delete AI provider",
+        "deleteProviderMessage": "Delete \"{{name}}\"? The entry is removed from waveai.json. Existing sessions that already use it keep working until their mode is switched.",
+        "deleteFailed": "Could not delete AI provider: {{error}}",
+        "ccSwitchReadFailed": "Could not read cc-switch providers: {{error}}",
+        "importFailed": "Could not import {{name}}: {{error}}",
+        "templates": {
+            "openaiResponses": "Newer OpenAI Responses API models. Replace the endpoint when using a proxy.",
+            "openaiChat": "OpenAI-compatible chat endpoints. Replace the endpoint when using a proxy.",
+            "anthropic": "Claude models through the Anthropic API. Replace the endpoint when using a compatible gateway.",
+            "googleGemini": "Gemini models through Google AI. The model name is part of this endpoint.",
+            "openrouter": "Many models through one OpenAI-compatible endpoint.",
+            "groq": "Fast OpenAI-compatible inference.",
+            "custom": "Ollama, LM Studio, vLLM, LiteLLM, or a private gateway"
+        }
+    },
+    "hero": {
+        "intro": "Heroes live in one root directory: a git-tracked home base each. Point that root at a bigger disk, keep an eye on what syncs, and cap how far a single hero may grow.",
+        "homeBase": "Home base",
+        "rootDirTitle": "Hero root directory",
+        "rootDirDescription": "Empty means the default ({{defaultRoot}}). Must be an absolute path — a relative path would resolve against the app's working directory.",
+        "rootDirAria": "Hero root directory",
+        "resolvedTitle": "Currently resolved",
+        "resolvedDescription": "Where the app reads hero homes right now (saved value, not the draft above).",
+        "storage": "Storage",
+        "noHeroes": "no heroes",
+        "heroCount_one": "{{count}} hero",
+        "heroCount_other": "{{count}} heroes",
+        "measuring": "Measuring…",
+        "refresh": "Refresh",
+        "measureFailedTitle": "Could not measure storage",
+        "unavailable": "unavailable",
+        "noHeroesTitle": "No heroes yet",
+        "noHeroesDescription": "Create one with `wsh hero create --name <name> --yes`, or let an agent propose one.",
+        "totalTitle": "Total",
+        "totalDescription": "archive + history are the only buckets that cross machines; work stays on this disk.",
+        "bucketValue": {
+            "archive": "{{size}} archive",
+            "history": "{{size}} history",
+            "work": "{{size}} work",
+            "syncable": "{{size}} syncable"
+        },
+        "filesOnDisk": "{{files}} files · {{size}} on disk",
+        "governanceTitle": "Storage governance",
+        "journalRotateTitle": "Rotate the journal by month",
+        "journalRotateDescription": "Move journal lines from earlier months into MEMORY/archive/YYYY-MM.md; the live file keeps the current month only.",
+        "journalRotateLabel": "Rotate by month",
+        "dormantTitle": "Dormant after",
+        "dormantDescription": "Days without a shift before the roster flags a hero as dormant.",
+        "dormantAria": "Dormant after days",
+        "daysUnit": "days",
+        "softLimitTitle": "Soft limit per hero",
+        "softLimitDescription": "A warning threshold, not a hard cap — nothing is deleted when a hero crosses it.",
+        "softLimitAria": "Soft limit in MB",
+        "softLimitActionTitle": "When the soft limit is crossed",
+        "softLimitAction": {
+            "warnTitle": "Warn only",
+            "warnDescription": "Show the size in the roster; the hero keeps working.",
+            "distillTitle": "Warn and distill",
+            "distillDescription": "Warn, then fold old memory entries into the distilled summary.",
+            "readonlyTitle": "Read only",
+            "readonlyDescription": "Block new memory writes until the hero is under the limit again."
+        },
+        "relocateTitle": "Move to a new location",
+        "relocateRowTitle": "Repointing does not move files",
+        "relocateRowDescription": "Changing the root above only tells the app where to look; existing hero homes stay on the old disk. Run the dry-run first — it lists every directory and size and writes nothing.",
+        "copyDryRun": "Copy dry-run",
+        "copyApply": "Copy apply",
+        "relocateNote": {
+            "prefix": "Dry-run shows the plan; add",
+            "apply": "to apply (per-directory move, file-count and byte check, rollback of the already-moved part on failure).",
+            "keepCopy": "keeps a copy at the old root. When",
+            "envSuffix": "is set, settings are not rewritten — the env var wins."
+        },
+        "saved": "Saved.",
+        "applyCommandCopied": "Apply command copied.",
+        "dryRunCommandCopied": "Dry-run command copied.",
+        "clipboardUnavailable": "Clipboard unavailable in this environment.",
+        "validateRootRelative": "Root directory must be an absolute path (or empty for the default).",
+        "validateIntEmpty": "Enter a whole number.",
+        "validateIntDigits": "Enter a whole number (digits only).",
+        "validateIntPositive": "Enter a number greater than 0."
     }
 }

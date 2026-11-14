@@ -40,9 +40,11 @@ import { AISessionsService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
+import { i18n } from "@/i18n/config";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 /** Default root (L0 of design §3.5): `pkg/hero.DefaultRootDir`. */
 export const DefaultHeroRoot = "~/.snorkeling/heroes";
@@ -75,23 +77,23 @@ export const HeroSettingDefaults: HeroSettingsDraft = {
     softLimitAction: "warn",
 };
 
-const SoftLimitActions: { id: HeroSoftLimitAction; title: string; description: string }[] = [
+const SoftLimitActions = [
     {
         id: "warn",
-        title: "Warn only",
-        description: "Show the size in the roster; the hero keeps working.",
+        titleKey: "waveconfig:hero.softLimitAction.warnTitle",
+        descKey: "waveconfig:hero.softLimitAction.warnDescription",
     },
     {
         id: "warn-distill",
-        title: "Warn and distill",
-        description: "Warn, then fold old memory entries into the distilled summary.",
+        titleKey: "waveconfig:hero.softLimitAction.distillTitle",
+        descKey: "waveconfig:hero.softLimitAction.distillDescription",
     },
     {
         id: "readonly",
-        title: "Read only",
-        description: "Block new memory writes until the hero is under the limit again.",
+        titleKey: "waveconfig:hero.softLimitAction.readonlyTitle",
+        descKey: "waveconfig:hero.softLimitAction.readonlyDescription",
     },
-];
+] as const satisfies readonly { id: HeroSoftLimitAction; titleKey: string; descKey: string }[];
 
 const BytesUnits = ["B", "KB", "MB", "GB", "TB"] as const;
 
@@ -125,15 +127,15 @@ export function validateHeroRootDir(value: string): string | null {
     const uncPath = trimmed.startsWith("\\\\");
     const posixAbs = trimmed.startsWith("/");
     if (windowsAbs || uncPath || posixAbs) return null;
-    return "Root directory must be an absolute path (or empty for the default).";
+    return i18n.t("waveconfig:hero.validateRootRelative");
 }
 
 /** `""` / `"abc"` / `"0"` / `"-3"` are rejected; the caller decides the label. */
 export function validatePositiveInt(value: string): string | null {
     const trimmed = value.trim();
-    if (trimmed === "") return "Enter a whole number.";
-    if (!/^\d+$/.test(trimmed)) return "Enter a whole number (digits only).";
-    if (Number(trimmed) <= 0) return "Enter a number greater than 0.";
+    if (trimmed === "") return i18n.t("waveconfig:hero.validateIntEmpty");
+    if (!/^\d+$/.test(trimmed)) return i18n.t("waveconfig:hero.validateIntDigits");
+    if (Number(trimmed) <= 0) return i18n.t("waveconfig:hero.validateIntPositive");
     return null;
 }
 
@@ -223,13 +225,14 @@ export function heroRelocateCommand(rootDir: string, mode: "dry-run" | "apply" =
 
 async function copyText(text: string): Promise<void> {
     if (typeof navigator === "undefined" || navigator.clipboard == null) {
-        throw new Error("Clipboard unavailable in this environment.");
+        throw new Error(i18n.t("waveconfig:hero.clipboardUnavailable"));
     }
     await navigator.clipboard.writeText(text);
 }
 
 export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigViewModel }) => {
     void _model;
+    const { t } = useTranslation("waveconfig");
 
     const settings = useAtomValue(atoms.settingsAtom);
     const stored = useMemo(() => readHeroDraft(settings), [settings]);
@@ -293,13 +296,13 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
             try {
                 await RpcApi.SetConfigCommand(TabRpcClient, draftToSettingsPatch(draft) as SettingsType);
                 setDirty(false);
-                setStatus("Saved.");
+                setStatus(t("waveconfig:hero.saved"));
                 refreshStats();
             } catch (err) {
                 setStatus(err instanceof Error ? err.message : String(err));
             }
         });
-    }, [draft, dormantError, refreshStats, rootError, softLimitError]);
+    }, [draft, dormantError, refreshStats, rootError, softLimitError, t]);
 
     const discard = useCallback(() => {
         setDraft(stored);
@@ -312,13 +315,17 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
             fireAndForget(async () => {
                 try {
                     await copyText(heroRelocateCommand(draft.rootDir, mode));
-                    setCopyNotice(mode === "apply" ? "Apply command copied." : "Dry-run command copied.");
+                    setCopyNotice(
+                        mode === "apply"
+                            ? t("waveconfig:hero.applyCommandCopied")
+                            : t("waveconfig:hero.dryRunCommandCopied")
+                    );
                 } catch (err) {
                     setCopyNotice(err instanceof Error ? err.message : String(err));
                 }
             });
         },
-        [draft.rootDir]
+        [draft.rootDir, t]
     );
 
     const dryRunCommand = heroRelocateCommand(draft.rootDir, "dry-run");
@@ -328,15 +335,17 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
         <div className="h-full overflow-auto p-6" data-hero-settings="">
             <div className="max-w-[880px]">
                 <p className="m-0 mb-7 max-w-[640px] text-[13.5px] leading-[1.55] text-muted-foreground">
-                    Heroes live in one root directory: a git-tracked home base each. Point that root at a bigger disk,
-                    keep an eye on what syncs, and cap how far a single hero may grow.
+                    {t("waveconfig:hero.intro")}
                 </p>
 
                 {/* ── Root directory ─────────────────────────────────────── */}
-                <SettingGroup title="Home base" extra={<span className="text-[11px] font-normal text-muted">L1</span>}>
+                <SettingGroup
+                    title={t("waveconfig:hero.homeBase")}
+                    extra={<span className="text-[11px] font-normal text-muted">L1</span>}
+                >
                     <SettingRow
-                        title="Hero root directory"
-                        description={`Empty means the default (${DefaultHeroRoot}). Must be an absolute path — a relative path would resolve against the app's working directory.`}
+                        title={t("waveconfig:hero.rootDirTitle")}
+                        description={i18n.t("waveconfig:hero.rootDirDescription", { defaultRoot: DefaultHeroRoot })}
                         attrs={{ "data-hero-rootdir-row": "1" }}
                     >
                         {rootError != null && (
@@ -348,15 +357,15 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                             value={draft.rootDir}
                             onChange={(next) => patch({ rootDir: next })}
                             placeholder={DefaultHeroRoot}
-                            ariaLabel="Hero root directory"
+                            ariaLabel={t("waveconfig:hero.rootDirAria")}
                             mono
                             width="w-[360px]"
                             attrs={{ "data-hero-rootdir": "1" }}
                         />
                     </SettingRow>
                     <SettingRow
-                        title="Currently resolved"
-                        description="Where the app reads hero homes right now (saved value, not the draft above)."
+                        title={t("waveconfig:hero.resolvedTitle")}
+                        description={t("waveconfig:hero.resolvedDescription")}
                     >
                         <SettingValue mono attrs={{ "data-hero-resolved-root": "1" }}>
                             {resolvedRoot}
@@ -366,61 +375,92 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
 
                 {/* ── Capacity: three buckets, straight from hero stats ── */}
                 <SettingGroup
-                    title="Storage"
+                    title={t("waveconfig:hero.storage")}
                     extra={
                         <span className="flex items-baseline gap-3">
                             <span className="text-[11px] font-normal text-muted">
                                 {totals.count === 0
-                                    ? "no heroes"
-                                    : `${totals.count} hero${totals.count === 1 ? "" : "s"}`}
+                                    ? t("waveconfig:hero.noHeroes")
+                                    : i18n.t("waveconfig:hero.heroCount", { count: totals.count })}
                             </span>
                             <SettingButton
                                 onClick={refreshStats}
                                 disabled={statsLoading}
                                 attrs={{ "data-hero-stats-refresh": "1" }}
                             >
-                                {statsLoading ? "Measuring…" : "Refresh"}
+                                {statsLoading ? t("waveconfig:hero.measuring") : t("waveconfig:hero.refresh")}
                             </SettingButton>
                         </span>
                     }
                 >
                     {statsError !== "" && (
-                        <SettingRow title="Could not measure storage" description={statsError}>
-                            <SettingValue tone="warn">unavailable</SettingValue>
+                        <SettingRow title={t("waveconfig:hero.measureFailedTitle")} description={statsError}>
+                            <SettingValue tone="warn">{t("waveconfig:hero.unavailable")}</SettingValue>
                         </SettingRow>
                     )}
                     {heroes.length === 0 ? (
                         <SettingRow
-                            title="No heroes yet"
-                            description="Create one with `wsh hero create --name <name> --yes`, or let an agent propose one."
+                            title={t("waveconfig:hero.noHeroesTitle")}
+                            description={t("waveconfig:hero.noHeroesDescription")}
                         >
                             <SettingValue>—</SettingValue>
                         </SettingRow>
                     ) : (
                         <>
                             <SettingRow
-                                title="Total"
-                                description="archive + history are the only buckets that cross machines; work stays on this disk."
+                                title={t("waveconfig:hero.totalTitle")}
+                                description={t("waveconfig:hero.totalDescription")}
                             >
-                                <SettingValue mono>{formatBytes(totals.archiveBytes)} archive</SettingValue>
-                                <SettingValue mono>{formatBytes(totals.historyBytes)} history</SettingValue>
-                                <SettingValue mono>{formatBytes(totals.workBytes)} work</SettingValue>
+                                <SettingValue mono>
+                                    {i18n.t("waveconfig:hero.bucketValue.archive", {
+                                        size: formatBytes(totals.archiveBytes),
+                                    })}
+                                </SettingValue>
+                                <SettingValue mono>
+                                    {i18n.t("waveconfig:hero.bucketValue.history", {
+                                        size: formatBytes(totals.historyBytes),
+                                    })}
+                                </SettingValue>
+                                <SettingValue mono>
+                                    {i18n.t("waveconfig:hero.bucketValue.work", {
+                                        size: formatBytes(totals.workBytes),
+                                    })}
+                                </SettingValue>
                                 <SettingValue mono tone="ok">
-                                    {formatBytes(totals.syncableBytes)} syncable
+                                    {i18n.t("waveconfig:hero.bucketValue.syncable", {
+                                        size: formatBytes(totals.syncableBytes),
+                                    })}
                                 </SettingValue>
                             </SettingRow>
                             {heroes.map((p) => (
                                 <SettingRow
                                     key={p.id}
                                     title={p.id}
-                                    description={`${p.archiveFiles + p.historyFiles + p.workFiles} files · ${formatBytes(p.totalBytes)} on disk`}
+                                    description={i18n.t("waveconfig:hero.filesOnDisk", {
+                                        files: p.archiveFiles + p.historyFiles + p.workFiles,
+                                        size: formatBytes(p.totalBytes),
+                                    })}
                                     attrs={{ "data-hero-stats-row": p.id }}
                                 >
-                                    <SettingValue mono>{formatBytes(p.archiveBytes)} archive</SettingValue>
-                                    <SettingValue mono>{formatBytes(p.historyBytes)} history</SettingValue>
-                                    <SettingValue mono>{formatBytes(p.workBytes)} work</SettingValue>
+                                    <SettingValue mono>
+                                        {i18n.t("waveconfig:hero.bucketValue.archive", {
+                                            size: formatBytes(p.archiveBytes),
+                                        })}
+                                    </SettingValue>
+                                    <SettingValue mono>
+                                        {i18n.t("waveconfig:hero.bucketValue.history", {
+                                            size: formatBytes(p.historyBytes),
+                                        })}
+                                    </SettingValue>
+                                    <SettingValue mono>
+                                        {i18n.t("waveconfig:hero.bucketValue.work", {
+                                            size: formatBytes(p.workBytes),
+                                        })}
+                                    </SettingValue>
                                     <SettingValue mono tone="ok">
-                                        {formatBytes(p.syncableBytes)} syncable
+                                        {i18n.t("waveconfig:hero.bucketValue.syncable", {
+                                            size: formatBytes(p.syncableBytes),
+                                        })}
                                     </SettingValue>
                                 </SettingRow>
                             ))}
@@ -429,47 +469,49 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                 </SettingGroup>
 
                 {/* ── Governance ─────────────────────────────────────────── */}
-                <SettingGroup title="Storage governance">
+                <SettingGroup title={t("waveconfig:hero.governanceTitle")}>
                     <SettingRow
-                        title="Rotate the journal by month"
-                        description="Move journal lines from earlier months into MEMORY/archive/YYYY-MM.md; the live file keeps the current month only."
+                        title={t("waveconfig:hero.journalRotateTitle")}
+                        description={t("waveconfig:hero.journalRotateDescription")}
                     >
                         <Toggle
                             checked={draft.journalRotate}
                             onChange={(next) => patch({ journalRotate: next })}
-                            label="Rotate by month"
+                            label={t("waveconfig:hero.journalRotateLabel")}
                         />
                     </SettingRow>
                     <SettingRow
-                        title="Dormant after"
-                        description="Days without a shift before the roster flags a hero as dormant."
+                        title={t("waveconfig:hero.dormantTitle")}
+                        description={t("waveconfig:hero.dormantDescription")}
                     >
                         {dormantError != null && <SettingValue tone="warn">{dormantError}</SettingValue>}
                         <SettingInput
                             value={draft.dormantDays}
                             onChange={(next) => patch({ dormantDays: next })}
-                            ariaLabel="Dormant after days"
+                            ariaLabel={t("waveconfig:hero.dormantAria")}
                             width="w-20"
                             attrs={{ "data-hero-dormantdays": "1" }}
                         />
-                        <SettingValue>days</SettingValue>
+                        <SettingValue>{t("waveconfig:hero.daysUnit")}</SettingValue>
                     </SettingRow>
                     <SettingRow
-                        title="Soft limit per hero"
-                        description="A warning threshold, not a hard cap — nothing is deleted when a hero crosses it."
+                        title={t("waveconfig:hero.softLimitTitle")}
+                        description={t("waveconfig:hero.softLimitDescription")}
                     >
                         {softLimitError != null && <SettingValue tone="warn">{softLimitError}</SettingValue>}
                         <SettingInput
                             value={draft.softLimitMb}
                             onChange={(next) => patch({ softLimitMb: next })}
-                            ariaLabel="Soft limit in MB"
+                            ariaLabel={t("waveconfig:hero.softLimitAria")}
                             width="w-20"
                             attrs={{ "data-hero-softlimitmb": "1" }}
                         />
                         <SettingValue>MB</SettingValue>
                     </SettingRow>
                     <div className="px-1 pb-3 pt-1">
-                        <div className="mb-2 text-sm font-medium text-primary">When the soft limit is crossed</div>
+                        <div className="mb-2 text-sm font-medium text-primary">
+                            {t("waveconfig:hero.softLimitActionTitle")}
+                        </div>
                         <RadioCardGroup name="hero-softlimitaction">
                             {SoftLimitActions.map((action) => (
                                 <RadioCard
@@ -478,8 +520,8 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                     value={action.id}
                                     selected={draft.softLimitAction === action.id}
                                     onSelect={() => patch({ softLimitAction: action.id })}
-                                    title={action.title}
-                                    description={action.description}
+                                    title={t(action.titleKey)}
+                                    description={t(action.descKey)}
                                     attrs={{ "data-hero-softlimitaction": action.id }}
                                 />
                             ))}
@@ -488,16 +530,16 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                 </SettingGroup>
 
                 {/* ── Migration: print the command, never run a destructive action ── */}
-                <SettingGroup title="Move to a new location">
+                <SettingGroup title={t("waveconfig:hero.relocateTitle")}>
                     <SettingRow
-                        title="Repointing does not move files"
-                        description="Changing the root above only tells the app where to look; existing hero homes stay on the old disk. Run the dry-run first — it lists every directory and size and writes nothing."
+                        title={t("waveconfig:hero.relocateRowTitle")}
+                        description={t("waveconfig:hero.relocateRowDescription")}
                     >
                         <SettingButton onClick={() => copyCommand("dry-run")} attrs={{ "data-hero-copy-dryrun": "1" }}>
-                            Copy dry-run
+                            {t("waveconfig:hero.copyDryRun")}
                         </SettingButton>
                         <SettingButton onClick={() => copyCommand("apply")} attrs={{ "data-hero-copy-apply": "1" }}>
-                            Copy apply
+                            {t("waveconfig:hero.copyApply")}
                         </SettingButton>
                     </SettingRow>
                     <div className="px-1 pb-3">
@@ -514,11 +556,10 @@ export const HeroSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                             {applyCommand}
                         </code>
                         <p className="m-0 mt-2 max-w-[640px] text-[12px] leading-[1.5] text-muted-foreground">
-                            Dry-run shows the plan; add <code className="font-mono">--yes</code> to apply (per-directory
-                            move, file-count and byte check, rollback of the already-moved part on failure).{" "}
-                            <code className="font-mono">--copy-not-move</code> keeps a copy at the old root. When{" "}
-                            <code className="font-mono">HERO_ROOT</code> is set, settings are not rewritten — the env
-                            var wins.
+                            {t("waveconfig:hero.relocateNote.prefix")} <code className="font-mono">--yes</code>{" "}
+                            {t("waveconfig:hero.relocateNote.apply")} <code className="font-mono">--copy-not-move</code>{" "}
+                            {t("waveconfig:hero.relocateNote.keepCopy")} <code className="font-mono">HERO_ROOT</code>{" "}
+                            {t("waveconfig:hero.relocateNote.envSuffix")}
                         </p>
                     </div>
                 </SettingGroup>

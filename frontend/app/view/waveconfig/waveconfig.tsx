@@ -10,17 +10,20 @@ import { buildSettingsJsonFailurePayload } from "@/app/view/waveconfig/waveconfi
 import type { ConfigFile, WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
 import { adaptFromReactOrNativeKeyEvent, checkKeyPressed, keydownWrapper } from "@/util/keyutil";
 import { cn } from "@/util/util";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import type * as MonacoTypes from "monaco-editor";
 import { memo, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ConfigSidebarProps {
     model: WaveConfigViewModel;
 }
 
 const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
+    const { t } = useTranslation("waveconfig");
     const selectedFile = useAtomValue(model.selectedFileAtom);
     const setIsMenuOpen = useSetAtom(model.isMenuOpenAtom);
     const configFiles = model.getConfigFiles();
@@ -37,7 +40,7 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
     return (
         <div className="flex flex-col w-48 border-r border-border bg-modalbg @w600:h-full @max-w600:absolute @max-w600:left-0.5 @max-w600:top-0 @max-w600:bottom-0.5 @max-w600:z-10 @max-w600:bg-background @max-w600:shadow-xl @max-w600:rounded-bl">
             <div className="flex items-center justify-between px-4 py-2 border-b border-border @w600:hidden">
-                <span className="font-semibold">Config Files</span>
+                <span className="font-semibold">{t("common:app.title")}</span>
                 <button
                     onClick={() => setIsMenuOpen(false)}
                     className="hover:bg-hoverbg rounded p-1 cursor-pointer transition-colors"
@@ -56,14 +59,14 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
                     }`}
                 >
                     <div className="flex items-center gap-1">
-                        <div className="whitespace-nowrap overflow-hidden text-ellipsis flex-1">{file.name}</div>
+                        <div className="whitespace-nowrap overflow-hidden text-ellipsis flex-1">{t(file.nameKey)}</div>
                         {configErrorFiles.has(file.path) && (
                             <i className="fa fa-solid fa-circle-exclamation text-error text-[14px] shrink-0" />
                         )}
                     </div>
-                    {file.description && (
+                    {file.descKey && (
                         <div className="text-xs text-muted mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
-                            {file.description}
+                            {t(file.descKey)}
                         </div>
                     )}
                 </div>
@@ -81,7 +84,7 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
                             }`}
                         >
                             <div className="flex items-center gap-2 overflow-hidden">
-                                <span className="text-secondary truncate">{file.name}</span>
+                                <span className="text-secondary truncate">{t(file.nameKey)}</span>
                                 <span
                                     className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
                                         selectedFile?.path === file.path
@@ -89,7 +92,7 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
                                             : "text-muted-foreground/70 bg-secondary/30"
                                     }`}
                                 >
-                                    deprecated
+                                    {t("waveconfig:view.deprecated")}
                                 </span>
                                 {configErrorFiles.has(file.path) && (
                                     <i className="fa fa-solid fa-circle-exclamation text-error text-[14px] ml-auto shrink-0" />
@@ -106,6 +109,7 @@ const ConfigSidebar = memo(({ model }: ConfigSidebarProps) => {
 ConfigSidebar.displayName = "ConfigSidebar";
 
 const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigViewModel>) => {
+    const { t } = useTranslation("waveconfig");
     const env = useWaveEnv<WaveConfigEnv>();
     const selectedFile = useAtomValue(model.selectedFileAtom);
     const [fileContent, setFileContent] = useAtom(model.fileContentAtom);
@@ -168,7 +172,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [hasChanges, isSaving, model]);
 
-    const saveTooltip = `Save (${model.saveShortcut})`;
+    const saveTooltip = i18n.t("waveconfig:view.saveTooltip", { shortcut: model.saveShortcut });
 
     return (
         <div className="@container flex flex-col w-full h-full">
@@ -194,10 +198,10 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                         <i className="fa fa-bars" />
                                     </button>
                                     <div className="text-lg font-semibold whitespace-nowrap shrink-0">
-                                        {selectedFile.name}
+                                        {t(selectedFile.nameKey)}
                                     </div>
                                     {selectedFile.docsUrl && (
-                                        <Tooltip content="View documentation">
+                                        <Tooltip content={t("common:docs.viewDocs")}>
                                             <a
                                                 href={`${selectedFile.docsUrl}?ref=waveconfig`}
                                                 target="_blank"
@@ -217,7 +221,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                         <>
                                             {hasChanges && (
                                                 <span className="text-xs text-warning pb-0.5 @max-w450:hidden">
-                                                    Unsaved changes
+                                                    {t("waveconfig:view.unsavedChanges")}
                                                 </span>
                                             )}
                                             <Tooltip content={saveTooltip} placement="bottom" divClassName="shrink-0">
@@ -230,7 +234,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                                             : "bg-action text-actiontext hover:bg-actionhover cursor-pointer"
                                                     }`}
                                                 >
-                                                    {isSaving ? "Saving..." : "Save"}
+                                                    {isSaving ? t("common:docs.saving") : t("common:docs.save")}
                                                 </button>
                                             </Tooltip>
                                         </>
@@ -252,7 +256,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                                 : "bg-transparent hover:bg-hover"
                                         )}
                                     >
-                                        Visual
+                                        {t("waveconfig:view.visual")}
                                     </button>
                                     {/* No guard needed: visual tab saves changes immediately via RPC */}
                                     <button
@@ -264,7 +268,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                                 : "bg-transparent hover:bg-hover"
                                         )}
                                     >
-                                        Raw JSON
+                                        {t("waveconfig:view.rawJson")}
                                     </button>
                                 </div>
                             )}
@@ -287,7 +291,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                                     <span className="min-w-0 flex-1">{validationError}</span>
                                     {saveFailure != null && (
                                         <CopyForAgent
-                                            title="Copy this JSON error for an AI to fix"
+                                            title={t("waveconfig:view.copyJsonError")}
                                             text={() => Promise.resolve(buildSettingsJsonFailurePayload(saveFailure))}
                                         />
                                     )}
@@ -302,7 +306,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                             <div className="flex-1 min-h-0">
                                 {isLoading ? (
                                     <div className="flex items-center justify-center h-full text-muted-foreground">
-                                        Loading...
+                                        {t("common:common.loading")}
                                     </div>
                                 ) : selectedFile.visualComponent &&
                                   (!selectedFile.hasJsonView || activeTab === "visual") ? (
@@ -330,7 +334,7 @@ const WaveConfigView = memo(({ blockId, model }: ViewComponentProps<WaveConfigVi
                 <div className="bg-error text-primary px-4 py-1 max-h-12 overflow-y-auto border-t border-error/50 shrink-0">
                     {configErrors.map((cerr, i) => (
                         <div key={i} className="text-sm">
-                            <span className="font-semibold">Config Error: </span>
+                            <span className="font-semibold">{t("waveconfig:view.configError")} </span>
                             {cerr.file}: {cerr.err}
                         </div>
                     ))}

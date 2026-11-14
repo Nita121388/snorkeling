@@ -318,5 +318,257 @@
         "cooldownTitle": "冷却窗口",
         "cooldownDescription": "同一类通知在窗口内重复出现时合并为一条摘要。0 表示禁用冷却。",
         "cooldownAria": "冷却窗口（秒）"
+    },
+    "files": {
+        "general": {
+            "name": "常规"
+        },
+        "appTheme": {
+            "name": "应用主题",
+            "description": "浅色 / 深色 / 黑白 / 系统"
+        },
+        "language": {
+            "name": "语言",
+            "description": "界面语言（自动 / English / 中文）"
+        },
+        "agentNotifications": {
+            "name": "Agent 通知",
+            "description": "agent 完成 / 需要输入时的系统弹窗"
+        },
+        "agentAccess": {
+            "name": "Agent 访问",
+            "description": "给应用外的 agent 的受限令牌"
+        },
+        "sync": {
+            "name": "同步",
+            "description": "Common Text 云同步"
+        },
+        "hero": {
+            "name": "Hero",
+            "description": "🎭 据点、存储与治理"
+        },
+        "connections": {
+            "name": "连接",
+            "description": "SSH 主机",
+            "descriptionWindows": "SSH 主机与 WSL 发行版"
+        },
+        "sidebarWidgets": {
+            "name": "侧栏小部件"
+        },
+        "waveAiModes": {
+            "name": "Wave AI 模式",
+            "description": "本地模型与 BYOK"
+        },
+        "aiPrompts": {
+            "name": "AI 提示词",
+            "description": "AI 生成会话标题 / 备注和标签的提示词"
+        },
+        "tabBackgrounds": {
+            "name": "标签页背景"
+        },
+        "secrets": {
+            "name": "密钥"
+        },
+        "presets": {
+            "name": "预设"
+        },
+        "aiPresets": {
+            "name": "AI 预设"
+        }
+    },
+    "view": {
+        "deprecated": "已弃用",
+        "unsavedChanges": "有未保存的更改",
+        "saveTooltip": "保存（{{shortcut}}）",
+        "visual": "可视化",
+        "rawJson": "原始 JSON",
+        "copyJsonError": "复制此 JSON 错误，交给 AI 修复",
+        "configError": "配置错误："
+    },
+    "model": {
+        "discardConfirm": "有未保存的更改。放弃并继续？",
+        "loadFailed": "加载 {{name}} 失败：{{error}}",
+        "saveFailed": "保存 {{name}} 失败：{{error}}",
+        "invalidJson": "无效 JSON：{{error}}",
+        "jsonMustBeObject": "JSON 必须是对象，不能是数组、基本类型或 null",
+        "invalidAiKeyPrefix": "无效键 \"{{key}}\"：所有顶层键必须以 \"ai@\" 开头",
+        "invalidKeyChars": "无效键 \"{{key}}\"：键只能包含字母、数字、下划线、@、点和中划线",
+        "storageBackendUnavailable": "未找到合适的密钥管理器，无法安全管理密钥。",
+        "storageBackendError": "检查存储后端出错：{{error}}",
+        "secretsListFailed": "加载密钥列表失败：{{error}}",
+        "secretNotFound": "找不到密钥：{{name}}",
+        "secretLoadFailed": "加载密钥失败：{{error}}",
+        "secretSaveFailed": "保存密钥失败：{{error}}",
+        "secretDeleteFailed": "删除密钥失败：{{error}}",
+        "secretNameEmpty": "密钥名称不能为空",
+        "secretNameInvalid": "无效的密钥名称：必须以字母开头，只包含字母、数字和下划线",
+        "secretExists": "密钥 \"{{name}}\" 已存在",
+        "secretAddFailed": "添加密钥失败：{{error}}"
+    },
+    "themePicker": {
+        "system": "系统",
+        "systemDescription": "跟随操作系统外观",
+        "light": "浅色",
+        "lightDescription": "始终浅色",
+        "dark": "深色",
+        "darkDescription": "始终深色",
+        "monochrome": "黑白",
+        "monochromeDescription": "纯黑白",
+        "osPrefix": "系统:",
+        "preview": {
+            "tab": "标签页",
+            "command": "运行构建",
+            "done": "✓ 1.4s 完成",
+            "run": "运行",
+            "cancel": "取消"
+        }
+    },
+    "aiPrompts": {
+        "title": "AI 提示词",
+        "subtitle": "按功能覆盖系统提示词。留空则保持内置默认值。",
+        "saving": "保存中…",
+        "saved": "已保存",
+        "unsavedChanges": "有未保存的更改",
+        "dismiss": "忽略",
+        "features": "功能",
+        "customized": "已自定义",
+        "resetTooltip": "清除覆盖值并恢复内置提示词",
+        "resetToDefault": "恢复默认",
+        "systemPrompt": "系统提示词",
+        "systemPromptHint": "留空 = 内置默认",
+        "systemPromptPlaceholder": "留空则使用内置提示词",
+        "systemPromptAria": "系统提示词",
+        "extraInstructions": "附加指令",
+        "extraPlaceholder": "追加在系统提示词之后，例如：用中文回答",
+        "extraInstructionsAria": "附加指令",
+        "model": "模型",
+        "modelAria": "AI 模型",
+        "modelAuto": "自动（默认模式）",
+        "enabled": "启用",
+        "enabledTooltip": "关闭后，卡片按钮会返回一个“已禁用”错误",
+        "autoTitleToggle": "后台自动生成标题",
+        "autoTitleDescription": "会运行一个串行、限速的后台任务，为仍只有原始首条消息标题的会话生成规范标题。每个会话最多生成一次；手动改过的标题不会被覆盖。默认关闭，避免意外消耗模型额度。",
+        "previewSummary": "预览最终提示词"
+    },
+    "waveAi": {
+        "filterPlaceholder": "筛选模型…",
+        "filterAria": "筛选模型",
+        "clearFilter": "清除筛选",
+        "addProvider": "添加提供方",
+        "addFromTemplate": "从模板添加",
+        "hideCcSwitch": "收起 cc-switch 提供方",
+        "importCcSwitch": "从 cc-switch 导入",
+        "noCcSwitchVendors": "没有可导入的 cc-switch 提供方。",
+        "ccSwitchProviders": "cc-switch 提供方",
+        "selectModels": "选择要导入的模型",
+        "clearAll": "全不选",
+        "selectAll": "全选",
+        "importNone": "请至少选择一个模型",
+        "importCount": "导入 {{count}} 个",
+        "dismiss": "忽略",
+        "noModes": "尚未配置任何 AI 模式。",
+        "noModesHintPrefix": "在上方从模板添加一个提供方，或在 JSON 标签页中编辑",
+        "noModesHintSuffix": "。",
+        "myModels": "我的模型",
+        "defaultBadge": "默认",
+        "setDefault": "设为默认",
+        "noMatch": "没有匹配“{{filter}}”的模型。",
+        "selectModeToEdit": "选择一个模式进行编辑。",
+        "rename": "重命名",
+        "delete": "删除",
+        "apiType": "API 类型",
+        "endpoint": "端点",
+        "endpointHint": "填基础 URL 或完整请求 URL 均可。形如 https://host/v1 的基础 URL 会自动展开为正确的路径。",
+        "model": "模型",
+        "fetching": "获取中…",
+        "fetchModels": "获取模型",
+        "apiKeySecret": "API 密钥",
+        "apiKeySecretPlaceholder": "密钥名称，例如 OPENAI_KEY",
+        "testing": "测试中…",
+        "testFailed": "测试失败",
+        "testConnection": "测试连接",
+        "copyMessage": "复制消息",
+        "secretHint": "密钥本身请保存到 设置 → 密钥，名称与此处一致。",
+        "deleteProviderTitle": "删除 AI 提供方",
+        "deleteProviderMessage": "删除“{{name}}”？该条目会从 waveai.json 中移除。已在使用它的现有会话在切换模式前仍可继续工作。",
+        "deleteFailed": "删除 AI 提供方失败：{{error}}",
+        "ccSwitchReadFailed": "读取 cc-switch 提供方失败：{{error}}",
+        "importFailed": "导入 {{name}} 失败：{{error}}",
+        "templates": {
+            "openaiResponses": "较新的 OpenAI Responses API 模型。使用代理时请替换端点。",
+            "openaiChat": "OpenAI 兼容的 chat 端点。使用代理时请替换端点。",
+            "anthropic": "通过 Anthropic API 使用 Claude 模型。使用兼容网关时请替换端点。",
+            "googleGemini": "通过 Google AI 使用 Gemini 模型。模型名是这个端点的一部分。",
+            "openrouter": "一个 OpenAI 兼容端点接入大量模型。",
+            "groq": "快速的 OpenAI 兼容推理。",
+            "custom": "Ollama、LM Studio、vLLM、LiteLLM 或私有网关"
+        }
+    },
+    "hero": {
+        "intro": "所有 Hero 都存放在一个根目录里：每个 Hero 一个由 git 追踪的据点。把这个根指到更大的磁盘，随时查看哪些内容会同步，并限制单个 Hero 最多能长多大。",
+        "homeBase": "据点",
+        "rootDirTitle": "Hero 根目录",
+        "rootDirDescription": "留空表示使用默认值（{{defaultRoot}}）。必须是绝对路径 —— 相对路径会解析到应用的工作目录。",
+        "rootDirAria": "Hero 根目录",
+        "resolvedTitle": "当前解析到",
+        "resolvedDescription": "应用现在实际读取 Hero 据点的位置（已保存值，不是上面的草稿）。",
+        "storage": "存储",
+        "noHeroes": "暂无 Hero",
+        "heroCount_one": "{{count}} 个 Hero",
+        "heroCount_other": "{{count}} 个 Hero",
+        "measuring": "测量中…",
+        "refresh": "刷新",
+        "measureFailedTitle": "无法测量存储",
+        "unavailable": "不可用",
+        "noHeroesTitle": "还没有 Hero",
+        "noHeroesDescription": "用 `wsh hero create --name <name> --yes` 创建一个，或让 agent 提议一个。",
+        "totalTitle": "总计",
+        "totalDescription": "只有 archive + history 这两类会跨机器同步；work 只留在本机磁盘。",
+        "bucketValue": {
+            "archive": "{{size}} 归档",
+            "history": "{{size}} 历史",
+            "work": "{{size}} 工作区",
+            "syncable": "{{size}} 可同步"
+        },
+        "filesOnDisk": "{{files}} 个文件 · 占用 {{size}}",
+        "governanceTitle": "存储治理",
+        "journalRotateTitle": "按月轮转日志",
+        "journalRotateDescription": "把更早月份的日志行移入 MEMORY/archive/YYYY-MM.md；活动文件只保留当前月。",
+        "journalRotateLabel": "按月轮转",
+        "dormantTitle": "休眠判定",
+        "dormantDescription": "连续多少天没有登场，名册就把该 Hero 标记为休眠。",
+        "dormantAria": "休眠天数",
+        "daysUnit": "天",
+        "softLimitTitle": "单个 Hero 软上限",
+        "softLimitDescription": "这只是告警阈值，不是硬限制 —— Hero 超限也不会删除任何东西。",
+        "softLimitAria": "软上限（MB）",
+        "softLimitActionTitle": "超过软上限时",
+        "softLimitAction": {
+            "warnTitle": "仅警告",
+            "warnDescription": "在名册里显示大小；Hero 继续工作。",
+            "distillTitle": "警告并蒸馏",
+            "distillDescription": "先警告，然后把旧的 memory 条目折叠进蒸馏摘要。",
+            "readonlyTitle": "只读",
+            "readonlyDescription": "阻止新的 memory 写入，直到 Hero 回到上限以内。"
+        },
+        "relocateTitle": "迁移到新位置",
+        "relocateRowTitle": "改指向不会移动文件",
+        "relocateRowDescription": "上面改根目录只是告诉应用去哪里找；现有 Hero 据点仍留在旧磁盘。先跑预演 —— 它会列出每个目录和大小，不写入任何东西。",
+        "copyDryRun": "复制预演命令",
+        "copyApply": "复制执行命令",
+        "relocateNote": {
+            "prefix": "预演只展示计划；加",
+            "apply": "才真正执行（逐目录移动、文件数与字节数校验，失败时回滚已移动的部分）。",
+            "keepCopy": "会在旧根目录保留一份副本。若设置了",
+            "envSuffix": "，则不会重写设置 —— 环境变量优先。"
+        },
+        "saved": "已保存。",
+        "applyCommandCopied": "已复制执行命令。",
+        "dryRunCommandCopied": "已复制预演命令。",
+        "clipboardUnavailable": "当前环境无法访问剪贴板。",
+        "validateRootRelative": "根目录必须是绝对路径（或留空使用默认值）。",
+        "validateIntEmpty": "请输入整数。",
+        "validateIntDigits": "请输入整数（只能是数字）。",
+        "validateIntPositive": "请输入大于 0 的数。"
     }
 }
