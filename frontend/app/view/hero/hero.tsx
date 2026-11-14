@@ -124,9 +124,9 @@ export class HeroViewModel implements ViewModel {
         }
     }
 
-    /** Open the hero's home base as a Files preview block. */
-    openHomeBase(homeBase: string): Promise<string> {
-        return this.env.createBlock({ meta: { view: "preview", file: homeBase } }, false);
+    /** Open a hero file (home base folder, CHARTER.md, …) as a Files preview block. */
+    openFile(path: string): Promise<string> {
+        return this.env.createBlock({ meta: { view: "preview", file: path } }, false);
     }
 
     /** Stage entry: reuse the A3 builder; never inject a main workdir here. */
@@ -145,8 +145,8 @@ export class HeroViewModel implements ViewModel {
 
 function CapacityCell({ label, bytes, files }: { label: string; bytes: number; files?: number }) {
     return (
-        <div className="rounded border border-border/70 bg-surface px-2.5 py-1.5">
-            <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
+        <div className="rounded border border-border bg-surface px-2.5 py-1.5">
+            <div className="text-[10px] uppercase tracking-wide text-secondary">{label}</div>
             <div className="mt-0.5 text-[13px] text-primary">{formatBytes(bytes)}</div>
             {files != null && <div className="text-[10px] text-secondary">{files} files</div>}
         </div>
@@ -163,7 +163,7 @@ function CopyLine({ text }: { text: string }) {
         });
     }, [text]);
     return (
-        <div className="flex items-center gap-2 rounded border border-border/70 bg-surface px-2 py-1">
+        <div className="flex items-center gap-2 rounded border border-border bg-surface px-2 py-1">
             <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-secondary" title={text}>
                 {text}
             </code>
@@ -211,8 +211,8 @@ function RosterRowView({
                 )}
             </div>
             <div className="mt-0.5 truncate text-[11px] text-secondary">{roleLine(row)}</div>
-            <div className="mt-0.5 truncate text-[10px] text-muted">{row.providerModel}</div>
-            <div className="mt-0.5 truncate text-[10px] text-muted" title={row.lastJournalLine || undefined}>
+            <div className="mt-0.5 truncate text-[10px] text-secondary">{row.providerModel}</div>
+            <div className="mt-0.5 truncate text-[10px] text-secondary" title={row.lastJournalLine || undefined}>
                 {row.lastJournalLine === "" ? EmptyJournalText : row.lastJournalLine}
             </div>
         </button>
@@ -223,12 +223,12 @@ function HeroDetail({
     row,
     root,
     onLaunch,
-    onOpenHomeBase,
+    onOpenFile,
 }: {
     row: HeroRosterRow;
     root: string;
     onLaunch: (row: HeroRosterRow) => void;
-    onOpenHomeBase: (homeBase: string) => void;
+    onOpenFile: (path: string) => void;
 }) {
     const storage = row.storage;
     const homeBase = heroHomeBaseHint(root, row.id);
@@ -245,14 +245,14 @@ function HeroDetail({
                     <div className="mt-0.5 truncate text-[11px] text-secondary">{row.providerModel}</div>
                     {homeBase !== "" && (
                         <div className="mt-0.5 flex items-center gap-1">
-                            <div className="truncate font-mono text-[10px] text-muted" title={homeBase}>
+                            <div className="truncate font-mono text-[10px] text-secondary" title={homeBase}>
                                 {homeBase}
                             </div>
                             <button
                                 type="button"
                                 className="shrink-0 cursor-pointer rounded border border-border/70 px-1.5 py-0 text-[10px] text-secondary transition-colors hover:border-accent hover:text-accent"
                                 title="Open home base in Files"
-                                onClick={() => onOpenHomeBase(homeBase)}
+                                onClick={() => onOpenFile(homeBase)}
                             >
                                 Open
                             </button>
@@ -270,7 +270,7 @@ function HeroDetail({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                 <section className="mb-4">
-                    <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted">Capacity</div>
+                    <div className="mb-1.5 text-[10px] uppercase tracking-wide text-secondary">Capacity</div>
                     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                         <CapacityCell
                             label="archive"
@@ -285,21 +285,21 @@ function HeroDetail({
                         <CapacityCell label="work" bytes={storage?.workBytes ?? 0} files={storage?.workFiles ?? 0} />
                         <CapacityCell label="syncable" bytes={storage?.syncableBytes ?? 0} />
                     </div>
-                    <div className="mt-1 text-[10px] text-muted">
+                    <div className="mt-1 text-[10px] text-secondary">
                         total {formatBytes(storage?.totalBytes ?? 0)} · sync ships archive/history only (
                         {formatBytes(storage?.syncableBytes ?? 0)})
                     </div>
                 </section>
 
                 <section className="mb-4">
-                    <div className="mb-1.5 flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted">
+                    <div className="mb-1.5 flex items-center gap-2 text-[10px] uppercase tracking-wide text-secondary">
                         <span>Pending proposals</span>
                         <span className="rounded-full bg-warning/15 px-1.5 py-[1px] text-[10px] normal-case text-warning">
                             ⚡{row.pendingProposals}
                         </span>
                     </div>
                     {row.pendingProposals === 0 ? (
-                        <div className="text-[11px] text-muted">No pending memory proposals.</div>
+                        <div className="text-[11px] text-secondary">No pending memory proposals.</div>
                     ) : (
                         <div className="flex flex-col gap-1.5">
                             <div className="text-[11px] text-secondary">
@@ -313,11 +313,21 @@ function HeroDetail({
                 </section>
 
                 <section>
-                    <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted">CHARTER</div>
+                    <div className="mb-1.5 flex items-center gap-2">
+                        <span className="text-[10px] uppercase tracking-wide text-secondary">CHARTER</span>
+                        <button
+                            type="button"
+                            className="cursor-pointer rounded border border-border/70 px-1.5 py-0 text-[10px] text-secondary transition-colors hover:border-accent hover:text-accent"
+                            title="Open .hero/CHARTER.md"
+                            onClick={() => onOpenFile(`${homeBase}/.hero/CHARTER.md`)}
+                        >
+                            Open
+                        </button>
+                    </div>
                     {charter === "" ? (
-                        <div className="text-[11px] text-muted">{EmptyCharterText}</div>
+                        <div className="text-[11px] text-secondary">{EmptyCharterText}</div>
                     ) : (
-                        <pre className="whitespace-pre-wrap break-words rounded border border-border/70 bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-secondary">
+                        <pre className="whitespace-pre-wrap break-words rounded border border-border bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-primary">
                             {charter}
                         </pre>
                     )}
@@ -343,9 +353,9 @@ function HeroView({ model }: HeroViewProps) {
         [model]
     );
 
-    const onOpenHomeBase = React.useCallback(
-        (homeBase: string) => {
-            fireAndForget(() => model.openHomeBase(homeBase));
+    const onOpenFile = React.useCallback(
+        (path: string) => {
+            fireAndForget(() => model.openFile(path));
         },
         [model]
     );
@@ -370,11 +380,11 @@ function HeroView({ model }: HeroViewProps) {
     return (
         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-block">
             <div className="flex items-center gap-2 border-b border-border/60 px-3 py-1.5">
-                <span className="text-[11px] text-secondary">Heroes</span>
-                <span className="truncate font-mono text-[10px] text-muted" title={overview?.root ?? ""}>
+                <span className="text-[11px] font-medium text-primary">Heroes</span>
+                <span className="truncate font-mono text-[10px] text-secondary" title={overview?.root ?? ""}>
                     {overview?.root ?? ""}
                 </span>
-                <span className="ml-auto shrink-0 text-[10px] text-muted">{rows.length} total</span>
+                <span className="ml-auto shrink-0 text-[10px] text-secondary">{rows.length} total</span>
                 <button
                     type="button"
                     onClick={onRefresh}
@@ -420,7 +430,7 @@ function HeroView({ model }: HeroViewProps) {
                             row={selectedRow}
                             root={overview?.root ?? ""}
                             onLaunch={onLaunch}
-                            onOpenHomeBase={onOpenHomeBase}
+                            onOpenFile={onOpenFile}
                         />
                     ) : (
                         <div className="flex flex-1 items-center justify-center text-[11px] text-muted">
