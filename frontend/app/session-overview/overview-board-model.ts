@@ -8,6 +8,7 @@
 // The single rollout switch lives here: set `OVERVIEW_BOARD_ENABLED = false` and the
 // panel goes back to the untouched list-only path.
 
+import { i18n } from "@/i18n/config";
 import { basename, formatCompactDuration } from "@/util/util";
 import { formatDateTimeToSecond } from "@/app/view/aisessions/utils";
 import type { ReactNode } from "react";
@@ -25,14 +26,19 @@ export const OverviewBoardStatuses = ["blocked", "working", "done", "idle", "sta
 
 export type OverviewBoardStatus = (typeof OverviewBoardStatuses)[number];
 
-/** Hardcoded Chinese labels, matching the existing overview copy style. */
-export const OverviewBoardColumnTitles: Record<OverviewBoardStatus, string> = {
-    blocked: "待我处理",
-    working: "进行中",
-    done: "已完成",
-    idle: "空闲",
-    stale: "陈旧",
-};
+/** Column title keys (i18n Pattern F: translate at read time so a locale switch is picked up). */
+const OverviewBoardColumnTitleKeys = {
+    blocked: "session-overview:board.statusBlocked",
+    working: "session-overview:board.statusWorking",
+    done: "session-overview:board.statusDone",
+    idle: "session-overview:board.statusIdle",
+    stale: "session-overview:board.statusStale",
+} as const satisfies Record<OverviewBoardStatus, string>;
+
+/** 状态列标题；读时翻译（跟随当前 locale）。 */
+export function getOverviewBoardColumnTitle(status: OverviewBoardStatus): string {
+    return i18n.t(OverviewBoardColumnTitleKeys[status]);
+}
 
 /**
  * Accepts either a raw state string or any object carrying a `state` (e.g. `AgentStatus`),
@@ -122,7 +128,7 @@ export function groupBlocksByStatus<T extends OverviewBoardBlockLike>(
             remaining -= columnBlocks.length;
         }
         if (columnBlocks.length === 0 && !includeEmpty) continue;
-        columns.push({ status, title: OverviewBoardColumnTitles[status], blocks: columnBlocks });
+        columns.push({ status, title: getOverviewBoardColumnTitle(status), blocks: columnBlocks });
     }
     return columns;
 }
@@ -155,11 +161,17 @@ export type OverviewBoardCardRef = {
     tags?: readonly string[];
 };
 
-export const OverviewBoardProviderFallbackTitle = "非 Agent";
+export function getOverviewBoardProviderFallbackTitle(): string {
+    return i18n.t("session-overview:board.providerFallback");
+}
 
-export const OverviewBoardProjectFallbackTitle = "无项目";
+export function getOverviewBoardProjectFallbackTitle(): string {
+    return i18n.t("session-overview:board.projectFallback");
+}
 
-export const OverviewBoardTagFallbackTitle = "无标签";
+export function getOverviewBoardTagFallbackTitle(): string {
+    return i18n.t("session-overview:board.tagFallback");
+}
 
 /** 状态分组：沿用固定 5 列 + `includeEmpty` 常显语义。 */
 export function groupOverviewCardsByStatus<T extends OverviewBoardCardRef>(
@@ -185,7 +197,11 @@ export function groupOverviewCardsByTab<T extends OverviewBoardCardRef>(
         const key = `tab:${card.tabId}`;
         let column = columns.get(key);
         if (column == null) {
-            column = { key, title: cleanText(card.tabName) || "Untitled", blocks: [] };
+            column = {
+                key,
+                title: cleanText(card.tabName) || i18n.t("session-overview:dialog.untitled"),
+                blocks: [],
+            };
             columns.set(key, column);
         }
         column.blocks.push(card);
@@ -202,7 +218,7 @@ export function groupOverviewCardsByProvider<T extends OverviewBoardCardRef>(
 ): OverviewBoardColumnModel<T>[] {
     const columns = new Map<string, OverviewBoardColumnModel<T>>();
     for (const card of cards) {
-        const title = cleanText(card.providerLabel) || OverviewBoardProviderFallbackTitle;
+        const title = cleanText(card.providerLabel) || getOverviewBoardProviderFallbackTitle();
         const key = `provider:${title}`;
         let column = columns.get(key);
         if (column == null) {
@@ -213,8 +229,8 @@ export function groupOverviewCardsByProvider<T extends OverviewBoardCardRef>(
     }
     return [...columns.values()].sort((a, b) => {
         // 「非 Agent」永远排最后（普通 term 块不该抢 agent 的位置），再按活跃度降序、名称升序。
-        const aFallback = a.title === OverviewBoardProviderFallbackTitle;
-        const bFallback = b.title === OverviewBoardProviderFallbackTitle;
+        const aFallback = a.title === getOverviewBoardProviderFallbackTitle();
+        const bFallback = b.title === getOverviewBoardProviderFallbackTitle();
         if (aFallback !== bFallback) return aFallback ? 1 : -1;
         if (b.blocks.length !== a.blocks.length) return b.blocks.length - a.blocks.length;
         return a.title.localeCompare(b.title);
@@ -233,7 +249,7 @@ export function groupOverviewCardsByProject<T extends OverviewBoardCardRef>(
     const columns = new Map<string, OverviewBoardColumnModel<T>>();
     for (const card of cards) {
         const project = cleanText(card.projectName);
-        const title = project === "" ? OverviewBoardProjectFallbackTitle : project;
+        const title = project === "" ? getOverviewBoardProjectFallbackTitle() : project;
         const key = `project:${title}`;
         let column = columns.get(key);
         if (column == null) {
@@ -243,8 +259,8 @@ export function groupOverviewCardsByProject<T extends OverviewBoardCardRef>(
         column.blocks.push(card);
     }
     return [...columns.values()].sort((a, b) => {
-        const aFallback = a.title === OverviewBoardProjectFallbackTitle;
-        const bFallback = b.title === OverviewBoardProjectFallbackTitle;
+        const aFallback = a.title === getOverviewBoardProjectFallbackTitle();
+        const bFallback = b.title === getOverviewBoardProjectFallbackTitle();
         if (aFallback !== bFallback) return aFallback ? 1 : -1;
         if (b.blocks.length !== a.blocks.length) return b.blocks.length - a.blocks.length;
         return a.title.localeCompare(b.title);
@@ -275,14 +291,14 @@ export function groupOverviewCardsByTags<T extends OverviewBoardCardRef>(
     for (const card of cards) {
         const tags = [...new Set((card.tags ?? []).map((tag) => cleanText(tag).replace(/^#+/, "")).filter((t) => t !== ""))];
         if (tags.length === 0) {
-            add(card, OverviewBoardTagFallbackTitle);
+            add(card, getOverviewBoardTagFallbackTitle());
             continue;
         }
         for (const tag of tags) add(card, tag);
     }
     return [...columns.values()].sort((a, b) => {
-        const aFallback = a.title === OverviewBoardTagFallbackTitle;
-        const bFallback = b.title === OverviewBoardTagFallbackTitle;
+        const aFallback = a.title === getOverviewBoardTagFallbackTitle();
+        const bFallback = b.title === getOverviewBoardTagFallbackTitle();
         if (aFallback !== bFallback) return aFallback ? 1 : -1;
         return a.title.localeCompare(b.title);
     });
@@ -420,7 +436,7 @@ export function resolveBoardCardTitle(input: ResolveBoardCardTitleInput): string
     const blockTitle = cleanText(input.blockTitle);
     const tabName = cleanText(input.tabName);
     if (!input.isAgentLike) {
-        return blockTitle || tabName || "Untitled";
+        return blockTitle || tabName || i18n.t("session-overview:dialog.untitled");
     }
     const sessionTitle = cleanText(input.sessionTitle);
     if (sessionTitle !== "") return sessionTitle;
@@ -489,8 +505,14 @@ export function formatBoardAge(updatedAtMs: number, nowMs: number): string {
 export function formatBoardAgeTitle(updatedAtMs: number, nowMs: number): string {
     const age = formatBoardAge(updatedAtMs, nowMs);
     if (age === "") return "";
-    const relative = age === "now" ? "刚刚" : `${age} 前`;
-    return `最后活动：${formatDateTimeToSecond(updatedAtMs)} · ${relative}`;
+    const relative =
+        age === "now"
+            ? i18n.t("session-overview:board.ageNow")
+            : i18n.t("session-overview:board.ageAgo", { age });
+    return i18n.t("session-overview:board.lastActivity", {
+        datetime: formatDateTimeToSecond(updatedAtMs),
+        relative,
+    });
 }
 
 /**

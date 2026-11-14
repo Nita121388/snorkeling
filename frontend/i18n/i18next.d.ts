@@ -6,6 +6,8 @@ import type common from "./locales/en/common.json";
 import type onboarding from "./locales/en/onboarding.json";
 import type tab from "./locales/en/tab.json";
 import type aipanel from "./locales/en/aipanel.json";
+import type sessionOverview from "./locales/en/session-overview.json";
+import type commontext from "./locales/en/commontext.json";
 
 /**
  * Type-safe i18next keys. Keys are derived from the bundled English resources
@@ -25,6 +27,8 @@ declare module "i18next" {
             onboarding: typeof onboarding;
             tab: typeof tab;
             aipanel: typeof aipanel;
+            "session-overview": typeof sessionOverview;
+            commontext: typeof commontext;
         };
     }
 }

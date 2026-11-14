@@ -19,6 +19,7 @@ import {
     type EmojiCatalog,
 } from "@/app/element/markdown-transform/emoji";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export type PageIconSlotProps = {
     emoji: string;
@@ -27,6 +28,7 @@ export type PageIconSlotProps = {
 };
 
 export function PageIconSlot({ emoji, title, onChange }: PageIconSlotProps) {
+    const { t } = useTranslation("commontext");
     const buttonRef = useRef<HTMLButtonElement>(null);
     const [open, setOpen] = useState(false);
     const [catalog, setCatalog] = useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog() ?? null);
@@ -78,8 +80,8 @@ export function PageIconSlot({ emoji, title, onChange }: PageIconSlotProps) {
                     e.stopPropagation();
                     toggle();
                 }}
-                title={emoji === "" ? "Add a page icon" : "Change page icon"}
-                aria-label="Page icon"
+                title={emoji === "" ? t("commontext:pageIcon.add") : t("commontext:pageIcon.change")}
+                aria-label={t("commontext:pageIcon.aria")}
                 className={
                     "flex h-8 w-8 items-center justify-center rounded-md border text-[18px] leading-none transition-colors cursor-pointer " +
                     (emoji === ""

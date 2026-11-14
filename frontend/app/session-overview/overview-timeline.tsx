@@ -7,6 +7,7 @@
 // 尾巴一小段用当前状态色（与列头色点 / 卡片 chip 同一套 token），历史段斜纹表示「状态未知」。
 // 位置/刻度全部来自 `overview-timeline-model.ts`（纯函数），这里只管渲染。
 
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import {
     buildTimelineBar,
@@ -53,11 +54,11 @@ function formatClock(atMs: number): string {
 function formatLastActivity(lastActivityAt: number, nowMs: number): string {
     if (!lastActivityAt || lastActivityAt <= 0) return "";
     const minutes = Math.floor(Math.max(0, nowMs - lastActivityAt) / 60_000);
-    if (minutes < 1) return "now";
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 1) return i18n.t("session-overview:timeline.lastActivityNow");
+    if (minutes < 60) return i18n.t("session-overview:timeline.lastActivityMinutes", { minutes });
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
+    if (hours < 24) return i18n.t("session-overview:timeline.lastActivityHours", { hours });
+    return i18n.t("session-overview:timeline.lastActivityDays", { days: Math.floor(hours / 24) });
 }
 
 export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTimelineProps) {
@@ -68,14 +69,22 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
     if (rows.length === 0) {
         return (
             <div className="session-overview-empty">
-                No agent sessions in the last {range >= 24 ? `${Math.round(range / 24)}d` : `${range}h`}.
+                {i18n.t("session-overview:timeline.empty", {
+                    range: range >= 24 ? `${Math.round(range / 24)}d` : `${range}h`,
+                })}
             </div>
         );
     }
     return (
-        <div className="session-overview-timeline" role="group" aria-label="Overview timeline">
+        <div
+            className="session-overview-timeline"
+            role="group"
+            aria-label={i18n.t("session-overview:timeline.groupLabel")}
+        >
             <div className="session-overview-timeline-axis">
-                <span className="session-overview-timeline-axis-label">Agent</span>
+                <span className="session-overview-timeline-axis-label">
+                    {i18n.t("session-overview:timeline.axisAgent")}
+                </span>
                 <div className="session-overview-timeline-ticks">
                     {ticks.map((tick, index) => (
                         <span
@@ -92,17 +101,29 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
                 {visible.map((row) => {
                     const bar = buildTimelineBar(row, { nowMs: now, windowMs });
                     const age = formatLastActivity(row.lastActivityAt, now);
-                    const meta = [row.providerLabel, row.projectName, `${row.messageCount} msgs`]
+                    const meta = [
+                        row.providerLabel,
+                        row.projectName,
+                        i18n.t("session-overview:timeline.msgs", { count: row.messageCount }),
+                    ]
                         .filter((part) => part !== "" && part !== "0 msgs")
                         .join(" · ");
                     const title = [
                         row.title,
                         meta,
-                        bar == null ? "outside window" : `${Math.round(bar.widthPct)}% of window`,
-                        bar != null && bar.segments.length > 1 ? `${bar.segments.length} 段状态` : "",
-                        bar?.completedPct != null ? `${formatClock(row.completedAt)} 完成` : "",
-                        row.startUnknown ? "start unknown" : "",
-                        row.live ? "live" : "",
+                        bar == null
+                            ? i18n.t("session-overview:timeline.outsideWindow")
+                            : i18n.t("session-overview:timeline.windowShare", {
+                                  percent: Math.round(bar.widthPct),
+                              }),
+                        bar != null && bar.segments.length > 1
+                            ? i18n.t("session-overview:timeline.segments", { count: bar.segments.length })
+                            : "",
+                        bar?.completedPct != null
+                            ? i18n.t("session-overview:timeline.completedAt", { time: formatClock(row.completedAt) })
+                            : "",
+                        row.startUnknown ? i18n.t("session-overview:timeline.startUnknown") : "",
+                        row.live ? i18n.t("session-overview:timeline.live") : "",
                     ]
                         .filter((part) => part !== "")
                         .join("\n");
@@ -122,7 +143,7 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
                                     onOpenSession(row);
                                 }
                             }}
-                            aria-label={`Open session ${row.title}`}
+                            aria-label={i18n.t("session-overview:timeline.openSession", { title: row.title })}
                         >
                             <div className="session-overview-timeline-row-id">
                                 <span className="session-overview-timeline-avatar" aria-hidden="true">
@@ -175,7 +196,7 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
                                             <span
                                                 className="session-overview-timeline-bar-completed"
                                                 style={{ left: `${bar.completedPct}%` }}
-                                                title="完成时刻"
+                                                title={i18n.t("session-overview:timeline.completedMarker")}
                                                 aria-hidden="true"
                                             />
                                         )}
@@ -189,31 +210,31 @@ export function OverviewTimeline({ rows, range, now, onOpenSession }: OverviewTi
             </div>
             {hiddenCount > 0 ? (
                 <div className="session-overview-timeline-more" data-hidden-count={hiddenCount}>
-                    还有 {hiddenCount} 个更早的会话未显示（按最后活动倒序，最多显示 40 行）
+                    {i18n.t("session-overview:timeline.moreHidden", { count: hiddenCount })}
                 </div>
             ) : null}
             <div className="session-overview-timeline-legend">
                 <span>
                     <i className="session-overview-timeline-legend-swatch is-working" />
-                    运行
+                    {i18n.t("session-overview:timeline.legendWorking")}
                 </span>
                 <span>
                     <i className="session-overview-timeline-legend-swatch is-idle" />
-                    空闲
+                    {i18n.t("session-overview:timeline.legendIdle")}
                 </span>
                 <span>
                     <i className="session-overview-timeline-legend-swatch is-completed" />
-                    完成点
+                    {i18n.t("session-overview:timeline.legendCompleted")}
                 </span>
                 <span>
                     <i className="session-overview-timeline-legend-swatch is-history" />
-                    状态未知（历史段）
+                    {i18n.t("session-overview:timeline.legendHistory")}
                 </span>
                 <span
                     className="session-overview-timeline-legend-hint"
-                    title="当前状态段的起点来自 AgentStatus.activeSince；多次状态交替需要后端保留转移序列，目前还画不出来。"
+                    title={i18n.t("session-overview:timeline.legendHintTitle")}
                 >
-                    条长 = 会话寿命；当前段起点 = activeSince
+                    {i18n.t("session-overview:timeline.legendHint")}
                 </span>
             </div>
         </div>

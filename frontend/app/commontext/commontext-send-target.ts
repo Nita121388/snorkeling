@@ -8,6 +8,8 @@
 //   3. Folder 候选从哪些块的 cwd 收集。
 // 与原型 design/prototypes/commontext/commontext-send-agent-block/ 的解析规则一致。
 
+import { i18n } from "@/i18n/config";
+
 export type AgentBlockInfo = {
     blockId: string;
     provider: string;
@@ -132,9 +134,9 @@ export function cwdEqual(a: string | null | undefined, b: string | null | undefi
 }
 
 function tabLabel(tab: SendTabSelection): string {
-    if (tab.kind === "current") return "当前 Tab";
-    if (tab.kind === "new") return "新 Tab";
-    return tab.tabName != null && tab.tabName !== "" ? tab.tabName : "Tab";
+    if (tab.kind === "current") return i18n.t("commontext:send.tabCurrentTab");
+    if (tab.kind === "new") return i18n.t("commontext:send.tabNewTab");
+    return tab.tabName != null && tab.tabName !== "" ? tab.tabName : i18n.t("commontext:send.tabFallback");
 }
 
 /**
@@ -161,12 +163,18 @@ export function resolveSendTarget(
         selection.tab.kind === "current" &&
         (folder === "" ? true : cwdEqual(folder, focusedAgent.cwd, opts?.homeDir))
     ) {
-        return { kind: "existing", label: `聚焦 ${label}`, block: focusedAgent };
+        return {
+            kind: "existing",
+            label: i18n.t("commontext:send.existingLabel", { label }),
+            block: focusedAgent,
+        };
     }
     const cwd = folder === "" ? (focusedAgent?.cwd ?? "") : folder;
     return {
         kind: "create",
-        label: `新建 ${label} · ${tabLabel(selection.tab)}${cwd === "" ? "" : ` · ${cwd}`}`,
+        label: `${i18n.t("commontext:send.createLabel", { label, tab: tabLabel(selection.tab) })}${
+            cwd === "" ? "" : ` · ${cwd}`
+        }`,
         tab: selection.tab,
         cwd,
     };
@@ -203,14 +211,14 @@ export function collectFolderCandidates(input: {
         out.push({ path: normalized, note });
     };
     if (input.focusedAgent != null) {
-        push(input.focusedAgent.cwd, "聚焦块目录");
+        push(input.focusedAgent.cwd, i18n.t("commontext:send.noteFocusedBlock"));
     }
     for (const block of input.blocks ?? []) {
-        push(block.info.cwd, "项目");
+        push(block.info.cwd, i18n.t("commontext:send.noteProject"));
     }
-    push(input.workspaceCwd, "当前工作区");
+    push(input.workspaceCwd, i18n.t("commontext:send.noteWorkspace"));
     if (input.homeDir != null) {
-        push(input.homeDir, "主目录");
+        push(input.homeDir, i18n.t("commontext:send.noteHome"));
     }
     return out;
 }

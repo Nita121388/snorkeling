@@ -16,6 +16,7 @@
 // （`frontend/app/session-overview/session-overview.tsx` 已有同名局部函数）。
 // 归一化规则在本仓已被抄了 3 份，这里不再加第 4 份。
 
+import { i18n } from "@/i18n/config";
 import {
     formatDateTimeToSecond,
     formatFileSize,
@@ -125,8 +126,8 @@ export function buildSessionMetrics(input: SessionMetricsInput): SessionMetricsV
             messageCount,
             MessageHeatThresholds,
             formatMessageCount(messageCount),
-            `${messageCount} 条消息`,
-            `${messageCount} messages`
+            i18n.t("session-overview:metrics.messageTitle", { count: messageCount }),
+            i18n.t("session-overview:metrics.messageAria", { count: messageCount })
         );
     }
 
@@ -137,8 +138,8 @@ export function buildSessionMetrics(input: SessionMetricsInput): SessionMetricsV
             size,
             SizeHeatThresholds,
             sizeText.replace(" ", ""),
-            `会话文件 ${sizeText}（${size} bytes）`,
-            `Session size ${sizeText}`
+            i18n.t("session-overview:metrics.sizeTitle", { size: sizeText, bytes: size }),
+            i18n.t("session-overview:metrics.sizeAria", { size: sizeText })
         );
     }
 
@@ -150,14 +151,18 @@ export function buildSessionMetrics(input: SessionMetricsInput): SessionMetricsV
         // 脏数据（updatedAt 早于 createdAt）钳到 0，不画出负跨度。
         const spanMs = Math.max(0, spanEnd - createdAt);
         const spanText = spanMs > 0 ? formatCompactSpan(spanMs) : "<1m";
-        const endLabel = live ? "现在" : formatDateTimeToSecond(spanEnd);
+        const endLabel = live ? i18n.t("session-overview:metrics.spanEndNow") : formatDateTimeToSecond(spanEnd);
         view.span = {
             ...heatMetric(
                 spanMs,
                 SpanHeatThresholds,
                 spanText,
-                `活跃跨度 ${formatSpanDetail(spanMs)}：${formatDateTimeToSecond(createdAt)} → ${endLabel}`,
-                `Active span ${spanText}`
+                i18n.t("session-overview:metrics.spanTitle", {
+                    detail: formatSpanDetail(spanMs),
+                    start: formatDateTimeToSecond(createdAt),
+                    end: endLabel,
+                }),
+                i18n.t("session-overview:metrics.spanAria", { span: spanText })
             ),
             mark: "↔",
         };
@@ -168,8 +173,8 @@ export function buildSessionMetrics(input: SessionMetricsInput): SessionMetricsV
         view.created = {
             // 跨年自动带年份（`2025-12-11`），同年只给 `12-11` —— 与 aisessions 列表行同一口径。
             text: formatSessionDateCompact(createdAt, nowMs, false),
-            title: `创建：${createdFull}`,
-            ariaLabel: `Created ${createdFull}`,
+            title: i18n.t("session-overview:metrics.createdTitle", { datetime: createdFull }),
+            ariaLabel: i18n.t("session-overview:metrics.createdAria", { datetime: createdFull }),
         };
     }
 

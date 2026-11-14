@@ -13,6 +13,10 @@ import enTab from "./locales/en/tab.json";
 import zhTab from "./locales/zh/tab.json";
 import enAipanel from "./locales/en/aipanel.json";
 import zhAipanel from "./locales/zh/aipanel.json";
+import enSessionOverview from "./locales/en/session-overview.json";
+import zhSessionOverview from "./locales/zh/session-overview.json";
+import enCommontext from "./locales/en/commontext.json";
+import zhCommontext from "./locales/zh/commontext.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -20,7 +24,7 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export type LocaleSetting = Locale | "auto";
 export const DEFAULT_LOCALE: Locale = "en";
 export const FALLBACK_LOCALE: Locale = "en";
-export const NS = ["common", "onboarding", "tab", "aipanel"] as const;
+export const NS = ["common", "onboarding", "tab", "aipanel", "session-overview", "commontext"] as const;
 
 /**
  * Normalize a `ui:locale` setting value ("auto" | "en" | "zh") into a concrete
@@ -69,8 +73,22 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
         ns: [...NS],
         defaultNS: "common",
         resources: {
-            en: { common: enCommon, onboarding: enOnboarding, tab: enTab, aipanel: enAipanel },
-            zh: { common: zhCommon, onboarding: zhOnboarding, tab: zhTab, aipanel: zhAipanel },
+            en: {
+                common: enCommon,
+                onboarding: enOnboarding,
+                tab: enTab,
+                aipanel: enAipanel,
+                "session-overview": enSessionOverview,
+                commontext: enCommontext,
+            },
+            zh: {
+                common: zhCommon,
+                onboarding: zhOnboarding,
+                tab: zhTab,
+                aipanel: zhAipanel,
+                "session-overview": zhSessionOverview,
+                commontext: zhCommontext,
+            },
         },
         interpolation: {
             escapeValue: false,

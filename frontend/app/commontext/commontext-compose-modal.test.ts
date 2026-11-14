@@ -18,37 +18,37 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("fa fa-regular fa-paste");
         expect(source).toContain("event.stopPropagation()");
         expect(source).toContain("insertOrCopyCommonText(item.text)");
-        expect(source).toContain('"Copied (no target)"');
+        expect(source).toContain('i18n.t("commontext:status.copiedNoTarget")');
     });
 
     it("offers an action-row button to dismiss editor-based filtering", () => {
         expect(source).toContain("editorFilterDismissed");
         expect(source).toContain("fa fa-solid fa-filter");
-        expect(source).toContain("Stop filtering by editor content");
+        expect(source).toContain('t("commontext:compose.filterStop")');
         expect(source).toContain("editorFilterDismissed: !state.editorFilterDismissed");
     });
 
     it("offers an untagged-only filter chip in the tag row", () => {
         expect(source).toContain("toggleUntagged");
         expect(source).toContain("untaggedOnly");
-        expect(source).toContain(">untagged</span>");
-        expect(source).toContain('title="Show items with no tags"');
+        expect(source).toContain('{t("commontext:compose.untagged")}');
+        expect(source).toContain('title={t("commontext:compose.showUntagged")}');
         // 与具体 tag 选择互斥：选 tag 时退出无标签筛选
         expect(source).toContain("untaggedOnly: false, selectedIndex: 0");
     });
 
     it("renders the icon-only sort control under the search box", () => {
         // 5 个排序键都是纯图标按钮：含义只走 title / aria-label，不占左栏宽度。
-        expect(source).toContain('aria-label="Sort common text list"');
+        expect(source).toContain('aria-label={t("commontext:compose.sortList")}');
         expect(source).toContain("data-commontext-sort={option.key}");
-        expect(source).toContain("aria-label={option.label}");
+        expect(source).toContain("aria-label={t(option.labelKey)}");
         // 图标名集中在 CommonTextSortOptions 表里，渲染时统一拼 `fa fa-solid ${icon}`
         expect(source).toContain('icon: "fa-clock-rotate-left"');
         expect(source).toContain('icon: "fa-fire"');
         expect(source).toContain('icon: "fa-arrow-down-a-z"');
         expect(source).toContain("fa fa-solid ${option.icon}");
         // 置顶说明常驻，相关度图标只在搜索态点亮
-        expect(source).toContain('title="Pinned items stay on top"');
+        expect(source).toContain('title={t("commontext:compose.pinTitle")}');
         expect(source).toContain("data-commontext-sort-relevance");
         // 用 aria-disabled 而非 disabled：disabled 按钮的 tooltip 在 Chromium 里不显示
         expect(source).toContain("aria-disabled={relevanceActive}");
@@ -95,8 +95,10 @@ describe("CommonTextComposeModal hook order", () => {
     it("shows created / updated / last-used / usage metadata in the detail footer", () => {
         expect(source).toContain('data-commontext-detail-meta=""');
         expect(source).toContain("data-commontext-detail-usage={detailItem.usagecount ?? 0}");
-        expect(source).toContain("Created ${compactCommonTextTime(detailItem.createdat, true)}");
-        expect(source).toContain("Last used ${compactCommonTextTime(detailItem.lastusedat, true)}");
+        expect(source).toContain('i18n.t("commontext:meta.timeCreated"');
+        expect(source).toContain("compactCommonTextTime(detailItem.createdat, true)");
+        expect(source).toContain('i18n.t("commontext:meta.timeLastUsed"');
+        expect(source).toContain("compactCommonTextTime(detailItem.lastusedat, true)");
     });
 
     it("keeps the detail textarea inside its flex slot instead of overlapping the tags panel", () => {
@@ -126,7 +128,7 @@ describe("CommonTextComposeModal hook order", () => {
         // 详情页脚：与列表同一份派生状态（后端 syncstate 投影），文案只有一处
         expect(source).toContain("data-commontext-detail-sync={detailItem.syncstate");
         expect(source).toContain("function describeCommonTextSyncState(");
-        expect(source).toContain('"Pending upload — the next sync will send it"');
+        expect(source).toContain('i18n.t("commontext:meta.pendingUpload")');
         // 墓碑不上列表：可见条目必须先过滤
         expect(source).toContain("getLiveCommonTextItems(getCommonTextItemsFromSettings(settings))");
     });
@@ -185,7 +187,7 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("// 已升格为列表条目：editor 里的草稿使命结束，立即清持久键。");
         // 可感知：footer 指示「Draft saved」
         expect(source).toContain("data-commontext-draft-status={draftStatus}");
-        expect(source).toContain("Draft saved");
+        expect(source).toContain('t("commontext:compose.draftSaved")');
     });
 
     it("moves tags into the properties grid and drops the bottom All tags panel", () => {

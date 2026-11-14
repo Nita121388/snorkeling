@@ -36,12 +36,16 @@ import enTab from "../frontend/i18n/locales/en/tab.json";
 import zhTab from "../frontend/i18n/locales/zh/tab.json";
 import enAipanel from "../frontend/i18n/locales/en/aipanel.json";
 import zhAipanel from "../frontend/i18n/locales/zh/aipanel.json";
+import enSessionOverview from "../frontend/i18n/locales/en/session-overview.json";
+import zhSessionOverview from "../frontend/i18n/locales/zh/session-overview.json";
+import enCommontext from "../frontend/i18n/locales/en/commontext.json";
+import zhCommontext from "../frontend/i18n/locales/zh/commontext.json";
 
 export const MAIN_SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type MainLocale = (typeof MAIN_SUPPORTED_LOCALES)[number];
 export const MAIN_DEFAULT_LOCALE: MainLocale = "en";
 export const MAIN_FALLBACK_LOCALE: MainLocale = "en";
-export const MAIN_NS = ["common", "tab", "aipanel"] as const;
+export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext"] as const;
 
 /** Normalize a raw `ui:locale` value into a supported locale ("en" fallback). */
 export function coerceLocale(value: unknown): MainLocale {
@@ -71,8 +75,20 @@ export function resolveMainLocale(setting: unknown, systemLocale?: string | null
 let i18nMain: I18nInstance | null = null;
 
 const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
-    en: { common: enCommon, tab: enTab, aipanel: enAipanel },
-    zh: { common: zhCommon, tab: zhTab, aipanel: zhAipanel },
+    en: {
+        common: enCommon,
+        tab: enTab,
+        aipanel: enAipanel,
+        "session-overview": enSessionOverview,
+        commontext: enCommontext,
+    },
+    zh: {
+        common: zhCommon,
+        tab: zhTab,
+        aipanel: zhAipanel,
+        "session-overview": zhSessionOverview,
+        commontext: zhCommontext,
+    },
 };
 
 /**

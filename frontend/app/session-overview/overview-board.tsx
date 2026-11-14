@@ -3,8 +3,10 @@
 
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { useAgentReadContext } from "@/app/agent-status/use-agent-status-view";
+import { i18n } from "@/i18n/config";
 import { cn, makeIconClass } from "@/util/util";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AgentStatusChip } from "./agent-status-chip";
 import {
     formatBoardAge,
@@ -154,6 +156,7 @@ function BoardCardImpl({
      */
     miniSegments?: readonly OverviewTimelineSegment[];
 }) {
+    const { t } = useTranslation("session-overview");
     const age = formatBoardAge(card.updatedAt, now);
     const ageTitle = formatBoardAgeTitle(card.updatedAt, now);
     const readContext = useAgentReadContext(card.blockId, status);
@@ -206,7 +209,7 @@ function BoardCardImpl({
                     openCard();
                 }
             }}
-            aria-label={`Open session ${card.title}`}
+            aria-label={i18n.t("session-overview:board.openSession", { title: card.title })}
             title={card.preview ? `${card.title}\n${card.preview}` : card.title}
         >
             <span className="session-overview-board-card-head" onClick={openCardFromTarget}>
@@ -228,8 +231,8 @@ function BoardCardImpl({
                             className="session-overview-board-card-action"
                             data-board-jump
                             onClick={() => onJumpCard?.(card)}
-                            aria-label={`Jump to ${card.title}`}
-                            title="定位到块"
+                            aria-label={i18n.t("session-overview:board.jumpToSession", { title: card.title })}
+                            title={t("session-overview:board.jumpToBlock")}
                         >
                             <i className={makeIconClass("location-crosshairs", false)} />
                         </button>
@@ -244,8 +247,8 @@ function BoardCardImpl({
                             )}
                             onClick={() => !isDeletingSession && onDeleteSession?.(card)}
                             disabled={isDeletingSession}
-                            aria-label={`Delete session ${card.title}`}
-                            title="删除会话文件"
+                            aria-label={i18n.t("session-overview:board.deleteSessionAria", { title: card.title })}
+                            title={t("session-overview:board.deleteSessionFile")}
                         >
                             <i className={makeIconClass(isDeletingSession ? "spinner" : "trash", false)} />
                         </button>
@@ -255,8 +258,8 @@ function BoardCardImpl({
                             type="button"
                             className="session-overview-board-card-action"
                             onClick={() => onCloseCard(card)}
-                            aria-label={`Close block ${card.title}`}
-                            title="关闭块"
+                            aria-label={i18n.t("session-overview:board.closeBlockAria", { title: card.title })}
+                            title={t("session-overview:board.closeBlock")}
                         >
                             <i className={makeIconClass("xmark", false)} />
                         </button>
@@ -298,7 +301,7 @@ function BoardCardImpl({
                     <span
                         className="session-overview-board-chip is-tag-more"
                         data-board-tag-overflow={tagChips.hiddenCount}
-                        title={`另有 ${tagChips.hiddenCount} 个标签`}
+                        title={i18n.t("session-overview:board.moreTags", { count: tagChips.hiddenCount })}
                     >
                         +{tagChips.hiddenCount}
                     </span>
@@ -370,6 +373,7 @@ export function OverviewBoard({
     deletingSessionId,
     onAckStatus,
 }: OverviewBoardProps) {
+    const { t } = useTranslation("session-overview");
     // 状态分组常显 5 列（空列给占位）；tab / provider 分组只显示有卡的列。
     const columns = groupOverviewCards(cards, presentedStatuses, group, {
         maxTotal,
@@ -514,19 +518,27 @@ export function OverviewBoard({
     }, [landing]);
 
     if (columns.length === 0) {
-        return <div className="session-overview-empty">No agent sessions match the current filters.</div>;
+        return <div className="session-overview-empty">{t("session-overview:board.empty")}</div>;
     }
 
     const isLanding = (columnKey: string) => landing.columnKeys.includes(columnKey);
 
     return (
-        <div className="session-overview-board" role="group" aria-label="Overview board" ref={boardRef}>
+        <div
+            className="session-overview-board"
+            role="group"
+            aria-label={t("session-overview:board.groupLabel")}
+            ref={boardRef}
+        >
             {columns.map((column) => (
                 <section
                     key={column.key}
                     className={cn("session-overview-board-column", column.blocks.length === 0 && "is-empty")}
                     data-column-key={column.key}
-                    aria-label={`${column.title}，${column.blocks.length} 个会话`}
+                    aria-label={i18n.t("session-overview:board.columnAria", {
+                        title: column.title,
+                        count: column.blocks.length,
+                    })}
                 >
                     <h3 className="session-overview-board-column-head">
                         {column.tone != null ? (
@@ -551,7 +563,9 @@ export function OverviewBoard({
                     </h3>
                     <div className="session-overview-board-cards">
                         {column.blocks.length === 0 ? (
-                            <div className="session-overview-board-empty">暂无</div>
+                            <div className="session-overview-board-empty">
+                                {t("session-overview:board.columnEmpty")}
+                            </div>
                         ) : (
                             column.blocks.map((card) => (
                                 <BoardCard

@@ -44,7 +44,9 @@ import {
     type CommonTextItem,
     type CommonTextSortKey,
 } from "./commontext-model";
+import { i18n } from "@/i18n/config";
 import { PageIconSlot } from "./commontext-page-icon";
+import { useTranslation } from "react-i18next";
 import {
     materializePastedImages,
     pickPastedImages,
@@ -58,20 +60,20 @@ const LIST_LIMIT = 500;
 const MAX_TAG_CHIPS = 16;
 
 /** 创建者筛选三档：图标 + 计数，含义全走 title / aria-label（与排序控件同口径）。 */
-const CommonTextCreatorFilters: { key: CommonTextCreatorFilter; icon: string; label: string }[] = [
-    { key: "all", icon: "fa-solid fa-layer-group", label: "All creators" },
-    { key: "human", icon: "fa-solid fa-user", label: "Created by a person" },
-    { key: "agent", icon: "fa-solid fa-robot", label: "Created by an agent" },
-];
+const CommonTextCreatorFilters = [
+    { key: "all", icon: "fa-solid fa-layer-group", labelKey: "commontext:meta.creatorAll" },
+    { key: "human", icon: "fa-solid fa-user", labelKey: "commontext:meta.creatorHuman" },
+    { key: "agent", icon: "fa-solid fa-robot", labelKey: "commontext:meta.creatorAgent" },
+] as const satisfies { key: CommonTextCreatorFilter; icon: string; labelKey: string }[];
 
 /** 排序控件：只用图标，含义全走 title / aria-label（不占左栏宽度）。 */
-const CommonTextSortOptions: { key: CommonTextSortKey; icon: string; label: string }[] = [
-    { key: "lastused-desc", icon: "fa-clock-rotate-left", label: "Recently used" },
-    { key: "updated-desc", icon: "fa-pen", label: "Recently updated" },
-    { key: "created-desc", icon: "fa-calendar-plus", label: "Recently created" },
-    { key: "usage-desc", icon: "fa-fire", label: "Most used" },
-    { key: "title-asc", icon: "fa-arrow-down-a-z", label: "Title A to Z" },
-];
+const CommonTextSortOptions = [
+    { key: "lastused-desc", icon: "fa-clock-rotate-left", labelKey: "commontext:meta.sortLastUsed" },
+    { key: "updated-desc", icon: "fa-pen", labelKey: "commontext:meta.sortUpdated" },
+    { key: "created-desc", icon: "fa-calendar-plus", labelKey: "commontext:meta.sortCreated" },
+    { key: "usage-desc", icon: "fa-fire", labelKey: "commontext:meta.sortUsage" },
+    { key: "title-asc", icon: "fa-arrow-down-a-z", labelKey: "commontext:meta.sortTitle" },
+] as const satisfies { key: CommonTextSortKey; icon: string; labelKey: string }[];
 
 /**
  * 同步状态的唯一文案来源：列表圆点 tooltip 与详情页脚都读它。
@@ -80,9 +82,9 @@ const CommonTextSortOptions: { key: CommonTextSortKey; icon: string; label: stri
 function describeCommonTextSyncState(item: CommonTextItem): string {
     if (item.syncstate === "synced") {
         const rev = item.syncedrev != null && item.syncedrev > 0 ? ` · rev ${item.syncedrev}` : "";
-        return `Synced${rev}`;
+        return `${i18n.t("commontext:compose.synced")}${rev}`;
     }
-    return "Pending upload — the next sync will send it";
+    return i18n.t("commontext:meta.pendingUpload");
 }
 
 /** 列表行标题右侧的小圆点：只在 pending 时出现，已同步不占布局。 */
@@ -104,7 +106,9 @@ function CommonTextSyncDot({ item }: { item: CommonTextItem }) {
 function describeCommonTextCreatorName(item: CommonTextItem): string {
     const name = item.createdby?.name?.trim();
     if (name != null && name !== "") return name;
-    return getCommonTextCreatorKind(item) === "agent" ? "agent" : "human";
+    return getCommonTextCreatorKind(item) === "agent"
+        ? i18n.t("commontext:meta.agentKind")
+        : i18n.t("commontext:meta.humanKind");
 }
 
 /** 徽标的 tooltip：谁 + 哪台机器 + 什么时候建的。 */
@@ -115,21 +119,25 @@ function describeCommonTextSource(item: CommonTextItem): string {
     const platform = item.origin?.platform?.trim();
     const deviceLabel = platform != null && platform !== "" ? `${device} · ${platform}` : device;
     const created = compactCommonTextTime(item.createdat, true);
-    return `Created by ${kind === "agent" ? `agent ${who}` : who} on ${deviceLabel}${created ? ` · ${created}` : ""}`;
+    return i18n.t("commontext:meta.createdByOn", {
+        who: kind === "agent" ? `${i18n.t("commontext:meta.agentPrefix")} ${who}` : who,
+        device: deviceLabel,
+        created: created ? ` · ${created}` : "",
+    });
 }
 
 function compactCommonTextTime(timestamp: number | undefined, withTime = false): string {
-    if (timestamp == null) return "never";
-    return formatSessionDateCompact(timestamp, Date.now(), withTime) || "never";
+    if (timestamp == null) return i18n.t("commontext:meta.never");
+    return formatSessionDateCompact(timestamp, Date.now(), withTime) || i18n.t("commontext:meta.never");
 }
 
 /** 列表行与详情页脚的完整时间信息：不可图标化的语义全下沉到 tooltip。 */
 function describeCommonTextTime(item: CommonTextItem): string {
     return [
-        `Created ${compactCommonTextTime(item.createdat, true)}`,
-        `Updated ${compactCommonTextTime(item.updatedat, true)}`,
-        `Last used ${compactCommonTextTime(item.lastusedat, true)}`,
-        `Used ${item.usagecount ?? 0} time(s)`,
+        i18n.t("commontext:meta.timeCreated", { time: compactCommonTextTime(item.createdat, true) }),
+        i18n.t("commontext:meta.timeUpdated", { time: compactCommonTextTime(item.updatedat, true) }),
+        i18n.t("commontext:meta.timeLastUsed", { time: compactCommonTextTime(item.lastusedat, true) }),
+        i18n.t("commontext:meta.usedTimes", { count: item.usagecount ?? 0 }),
     ].join("\n");
 }
 
@@ -239,6 +247,7 @@ const restoreOpenState = (): ComposeState => {
 };
 
 const CommonTextComposeModal = memo(() => {
+    const { t } = useTranslation("commontext");
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
     // 最新 state 镜像：卸载清理闭包里拿不到最新 state，草稿兜底落盘用它。
     const stateRef = useRef(state);
@@ -364,10 +373,10 @@ const CommonTextComposeModal = memo(() => {
     const sourceFilterActive = state.creatorFilter !== "all" || state.deviceFilter !== "any";
     const emptyListMessage =
         allItems.length === 0
-            ? "No common text yet"
+            ? i18n.t("commontext:list.emptyNoItems")
             : filteredItems.length === 0 && sourceFilterActive
-              ? "No items from this filter"
-              : "No matching text";
+              ? i18n.t("commontext:list.emptyFilter")
+              : i18n.t("commontext:list.emptySearch");
     const editorFilterActive =
         !state.editorFilterDismissed && state.manualQuery.trim() === "" && state.editor.trim() !== "";
     // 相关度接管列表次序的两种情形：搜索框有字（手动搜索），或编辑器过滤生效。
@@ -403,7 +412,7 @@ const CommonTextComposeModal = memo(() => {
         const deviceId = getCommonTextOriginDeviceId(item);
         return [
             {
-                label: "Created by",
+                label: i18n.t("commontext:meta.createdBy"),
                 value: (
                     <span className="inline-flex items-center gap-1">
                         <i
@@ -419,7 +428,7 @@ const CommonTextComposeModal = memo(() => {
                 ),
             },
             {
-                label: "Computer",
+                label: i18n.t("commontext:meta.computer"),
                 value: (
                     // gap-1 的间距会被 truncate 吃掉（flex 子项收缩到 0 宽时中间空隙不可见），
                     // 所以分隔符显式带空格，不依赖弹性间距。
@@ -433,20 +442,23 @@ const CommonTextComposeModal = memo(() => {
                 ),
             },
             {
-                label: "Created",
+                label: i18n.t("commontext:meta.created"),
                 value: <span>{compactCommonTextTime(item.createdat, true)}</span>,
             },
             {
-                label: "Updated",
+                label: i18n.t("commontext:meta.updated"),
                 value: <span>{formatSessionRelativeTime(item.updatedat)}</span>,
             },
             {
-                label: "Used",
+                label: i18n.t("commontext:meta.used"),
                 value: (
                     <span>
-                        {item.usagecount ?? 0} time{(item.usagecount ?? 0) === 1 ? "" : "s"}
+                        {i18n.t("commontext:meta.usedCount", { count: item.usagecount ?? 0 })}
                         {item.lastusedat != null && item.lastusedat > 0 && (
-                            <span className="text-muted"> · last {formatSessionRelativeTime(item.lastusedat)}</span>
+                            <span className="text-muted">
+                                {" "}
+                                · {i18n.t("commontext:meta.lastUsed")} {formatSessionRelativeTime(item.lastusedat)}
+                            </span>
                         )}
                     </span>
                 ),
@@ -470,7 +482,12 @@ const CommonTextComposeModal = memo(() => {
                 iconClass: "text-muted",
                 // 折叠态有标签时渲染层接管（与展开态同一个 chip 组件），空态给 0 占位。
                 text: detailTags.length === 0 ? "0" : "",
-                title: detailTags.length === 0 ? "No tags" : `Tags: ${detailTags.map((t) => "#" + t).join(" ")}`,
+                title:
+                    detailTags.length === 0
+                        ? i18n.t("commontext:meta.noTags")
+                        : i18n.t("commontext:meta.tagsList", {
+                              tags: detailTags.map((t) => "#" + t).join(" "),
+                          }),
             },
             {
                 key: "creator",
@@ -491,14 +508,16 @@ const CommonTextComposeModal = memo(() => {
                 icon: "fa-pen",
                 iconClass: "text-muted",
                 text: formatSessionRelativeTime(item.updatedat),
-                title: `Updated ${compactCommonTextTime(item.updatedat, true)}`,
+                title: i18n.t("commontext:meta.timeUpdated", {
+                    time: compactCommonTextTime(item.updatedat, true),
+                }),
             },
             {
                 key: "used",
                 icon: "fa-repeat",
                 iconClass: "text-muted",
                 text: String(item.usagecount ?? 0),
-                title: `Used ${item.usagecount ?? 0} time(s)`,
+                title: i18n.t("commontext:meta.usedTimes", { count: item.usagecount ?? 0 }),
             },
         ];
     }, [detailItem, detailTags]);
@@ -910,14 +929,17 @@ const CommonTextComposeModal = memo(() => {
     const handleCopy = async () => {
         const text = state.editor;
         if (text.trim() === "") {
-            setStatus("Nothing to copy", "err");
+            setStatus(i18n.t("commontext:status.nothingToCopy"), "err");
             return;
         }
         try {
             await copyCommonText(text);
-            setStatus("Copied", "ok");
+            setStatus(i18n.t("commontext:status.copied"), "ok");
         } catch (err) {
-            setStatus(`Copy failed: ${(err as Error).message ?? "unknown"}`, "err");
+            setStatus(
+                i18n.t("commontext:status.copyFailed", { error: (err as Error).message ?? i18n.t("commontext:status.unknown") }),
+                "err"
+            );
         }
     };
 
@@ -926,21 +948,27 @@ const CommonTextComposeModal = memo(() => {
             await copyCommonText(item.text);
             // 复制也是一次使用：此前只有 Insert/Send 计数，导致 usagecount 长期偏低。
             fireAndForget(() => recordCommonTextUse(item.id));
-            setStatus("Copied", "ok");
+            setStatus(i18n.t("commontext:status.copied"), "ok");
         } catch (err) {
-            setStatus(`Copy failed: ${(err as Error).message ?? "unknown"}`, "err");
+            setStatus(
+                i18n.t("commontext:status.copyFailed", { error: (err as Error).message ?? i18n.t("commontext:status.unknown") }),
+                "err"
+            );
         }
     };
 
     const handleListItemDelete = async (item: CommonTextItem) => {
-        if (!window.confirm("Delete this common text?")) {
+        if (!window.confirm(i18n.t("commontext:status.confirmDelete"))) {
             return;
         }
         try {
             await deleteCommonTextItem(item.id);
-            setStatus("Deleted", "ok");
+            setStatus(i18n.t("commontext:status.deleted"), "ok");
         } catch (err) {
-            setStatus(`Delete failed: ${(err as Error).message ?? "unknown"}`, "err");
+            setStatus(
+                i18n.t("commontext:status.deleteFailed", { error: (err as Error).message ?? i18n.t("commontext:status.unknown") }),
+                "err"
+            );
         }
     };
 
@@ -990,7 +1018,7 @@ const CommonTextComposeModal = memo(() => {
             if (!unmountedRef.current) {
                 setSaveStatus("err");
             }
-            saveStatusMsgRef.current = (err as Error)?.message ?? "save failed";
+            saveStatusMsgRef.current = (err as Error)?.message ?? i18n.t("commontext:status.saveFailedMsg");
         }
     };
 
@@ -1046,7 +1074,12 @@ const CommonTextComposeModal = memo(() => {
                 item.id
             );
         } catch (err) {
-            setStatus(`Tag update failed: ${(err as Error).message ?? "unknown"}`, "err");
+            setStatus(
+                i18n.t("commontext:status.tagUpdateFailed", {
+                    error: (err as Error).message ?? i18n.t("commontext:status.unknown"),
+                }),
+                "err"
+            );
         }
     };
 
@@ -1064,9 +1097,14 @@ const CommonTextComposeModal = memo(() => {
                 },
                 detailItem.id
             );
-            setStatus(detailItem.pinned ? "Unpinned" : "Pinned", "ok");
+            setStatus(detailItem.pinned ? i18n.t("commontext:status.unpinned") : i18n.t("commontext:status.pinned"), "ok");
         } catch (err) {
-            setStatus(`Pin toggle failed: ${(err as Error).message ?? "unknown"}`, "err");
+            setStatus(
+                i18n.t("commontext:status.pinFailed", {
+                    error: (err as Error).message ?? i18n.t("commontext:status.unknown"),
+                }),
+                "err"
+            );
         }
     };
 
@@ -1085,7 +1123,7 @@ const CommonTextComposeModal = memo(() => {
     const handleSaveDialog = () => {
         const rawDraft = state.editor;
         if (rawDraft.trim() === "") {
-            setStatus("Nothing to save", "err");
+            setStatus(i18n.t("commontext:status.nothingToSave"), "err");
             return;
         }
         const draftTags = extractSessionTagsFromNote(rawDraft).tags;
@@ -1229,7 +1267,12 @@ const CommonTextComposeModal = memo(() => {
         if (pasted.failures.length > 0) {
             setStatus(pasted.failures.join("; "), "err");
         } else if (pasted.written > 0) {
-            setStatus(pasted.written === 1 ? "Pasted image" : `Pasted ${pasted.written} images`, "ok");
+            setStatus(
+                pasted.written === 1
+                    ? i18n.t("commontext:status.pastedImage")
+                    : i18n.t("commontext:status.pastedImages", { count: pasted.written }),
+                "ok"
+            );
         }
     };
 
@@ -1299,11 +1342,8 @@ const CommonTextComposeModal = memo(() => {
                 {/* Header */}
                 <div className="shrink-0">
                     <div>
-                        <div className="text-base font-semibold">Common Text</div>
-                        <div className="text-[11px] text-muted">
-                            Compose text. Click + to add a new item to the top, then edit it on the right; click a row
-                            (or press Enter) to edit it; Insert drops it into the editor.
-                        </div>
+                        <div className="text-base font-semibold">{t("commontext:compose.title")}</div>
+                        <div className="text-[11px] text-muted">{t("commontext:compose.subtitle")}</div>
                     </div>
                 </div>
 
@@ -1313,8 +1353,16 @@ const CommonTextComposeModal = memo(() => {
                         type="button"
                         data-commontext-editor-toggle=""
                         aria-pressed={editorExpanded}
-                        aria-label={editorExpanded ? "Collapse editor" : "Expand editor"}
-                        title={editorExpanded ? "Collapse editor (free space for the list below)" : "Expand editor"}
+                        aria-label={
+                            editorExpanded
+                                ? t("commontext:compose.collapseEditor")
+                                : t("commontext:compose.expandEditor")
+                        }
+                        title={
+                            editorExpanded
+                                ? t("commontext:compose.collapseEditorFull")
+                                : t("commontext:compose.expandEditor")
+                        }
                         // 不抢焦点：点按钮不触发 editor blur 的折叠计时，也不打断中文输入。
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={(event) => {
@@ -1387,7 +1435,7 @@ const CommonTextComposeModal = memo(() => {
                         onKeyDown={handleEditorKeyDown}
                         onCompositionStart={handleCompositionStart}
                         onCompositionEnd={handleCompositionEnd}
-                        placeholder="Compose here. The list below suggests common text matching what you type."
+                        placeholder={t("commontext:compose.editorPlaceholder")}
                         spellCheck={false}
                     />
                 </div>
@@ -1398,10 +1446,10 @@ const CommonTextComposeModal = memo(() => {
                         type="button"
                         title={
                             state.editor.trim() === ""
-                                ? "Filter list by editor content (type in editor to enable)"
+                                ? t("commontext:compose.filterEnable")
                                 : state.editorFilterDismissed
-                                  ? "Filter list by editor content"
-                                  : "Stop filtering by editor content"
+                                  ? t("commontext:compose.filterActive")
+                                  : t("commontext:compose.filterStop")
                         }
                         disabled={state.editor.trim() === ""}
                         onClick={() =>
@@ -1422,18 +1470,18 @@ const CommonTextComposeModal = memo(() => {
                         className="grey"
                         disabled={state.editor.trim() === ""}
                         onClick={handleClearEditor}
-                        title="Clear editor"
+                        title={t("commontext:compose.clearEditor")}
                     >
                         <i className="fa fa-solid fa-eraser" />
                     </Button>
                     <Button
                         className="grey"
                         onClick={handleSaveDialog}
-                        title="Add new common text item (edit on the right)"
+                        title={t("commontext:compose.addItem")}
                     >
                         <i className="fa fa-solid fa-plus" />
                     </Button>
-                    <Button className="grey" onClick={handleCopy} title="Copy editor content to clipboard">
+                    <Button className="grey" onClick={handleCopy} title={t("commontext:compose.copyEditor")}>
                         <i className="fa fa-regular fa-copy" />
                     </Button>
                     <CommontextSendButton text={state.editor} onSent={close} onStatus={setStatus} />
@@ -1449,7 +1497,7 @@ const CommonTextComposeModal = memo(() => {
                         data-commontext-draft-status={draftStatus}
                         className={"shrink-0 text-[11px] text-muted " + (draftStatus === "idle" ? "hidden" : "")}
                     >
-                        {draftStatus === "saved" ? "Draft saved" : ""}
+                        {draftStatus === "saved" ? t("commontext:compose.draftSaved") : ""}
                     </span>
                     {state.status && (
                         <span
@@ -1484,8 +1532,8 @@ const CommonTextComposeModal = memo(() => {
                                     onKeyDown={handleSearchKeyDown}
                                     placeholder={
                                         state.editor.trim() !== ""
-                                            ? "Type to override editor-based suggestions"
-                                            : "Search common text"
+                                            ? t("commontext:compose.searchOverridePlaceholder")
+                                            : t("commontext:compose.searchPlaceholder")
                                     }
                                 />
                                 <InputRightElement>
@@ -1496,7 +1544,7 @@ const CommonTextComposeModal = memo(() => {
                                 <div className="mt-2 flex min-w-0 items-center gap-1.5" data-commontext-source-row="">
                                     <div
                                         role="group"
-                                        aria-label="Filter by creator"
+                                        aria-label={t("commontext:compose.filterCreator")}
                                         className="inline-flex shrink-0 items-center overflow-hidden rounded-md border border-border"
                                     >
                                         {CommonTextCreatorFilters.map((option) => {
@@ -1507,8 +1555,8 @@ const CommonTextComposeModal = memo(() => {
                                                     type="button"
                                                     data-commontext-creator={option.key}
                                                     aria-pressed={active}
-                                                    title={option.label}
-                                                    aria-label={option.label}
+                                                    title={t(option.labelKey)}
+                                                    aria-label={t(option.labelKey)}
                                                     onClick={() =>
                                                         setState((cur) => ({
                                                             ...cur,
@@ -1537,8 +1585,8 @@ const CommonTextComposeModal = memo(() => {
                                     {deviceSummaries.length > 1 && (
                                         <select
                                             data-commontext-device=""
-                                            aria-label="Filter by computer"
-                                            title="Filter by originating computer"
+                                            aria-label={t("commontext:compose.filterComputer")}
+                                            title={t("commontext:compose.filterComputerTitle")}
                                             value={state.deviceFilter}
                                             onChange={(e) =>
                                                 setState((cur) => ({
@@ -1549,7 +1597,7 @@ const CommonTextComposeModal = memo(() => {
                                             }
                                             className="min-w-0 max-w-[160px] shrink truncate h-[22px] rounded-md border border-border bg-surface-soft px-1.5 text-[11px] text-secondary cursor-pointer focus:outline-none focus:border-accent"
                                         >
-                                            <option value="any">Any computer</option>
+                                            <option value="any">{t("commontext:compose.anyComputer")}</option>
                                             {deviceSummaries.map((d) => (
                                                 <option key={d.deviceid} value={d.deviceid}>
                                                     {d.devicename} ({d.count})
@@ -1563,7 +1611,7 @@ const CommonTextComposeModal = memo(() => {
                                 <div className="mt-2 flex min-w-0 items-center gap-1.5" data-commontext-sort-row="">
                                     <div
                                         role="group"
-                                        aria-label="Sort common text list"
+                                        aria-label={t("commontext:compose.sortList")}
                                         className="inline-flex shrink-0 items-center overflow-hidden rounded-md border border-border"
                                     >
                                         {CommonTextSortOptions.map((option) => {
@@ -1573,15 +1621,15 @@ const CommonTextComposeModal = memo(() => {
                                                     key={option.key}
                                                     type="button"
                                                     data-commontext-sort={option.key}
-                                                    aria-label={option.label}
+                                                    aria-label={t(option.labelKey)}
                                                     aria-pressed={active}
                                                     // 用 aria-disabled 而不是 disabled：disabled 按钮在 Chromium 里
                                                     // 不派发鼠标事件，tooltip 也跟着失效——用户就看不到"为什么点不动"。
                                                     aria-disabled={relevanceActive}
                                                     title={
                                                         relevanceActive
-                                                            ? "Results are ranked by relevance — clear the search to sort"
-                                                            : option.label
+                                                            ? t("commontext:compose.sortDisabledTitle")
+                                                            : t(option.labelKey)
                                                     }
                                                     onClick={() => {
                                                         if (relevanceActive) return;
@@ -1603,8 +1651,8 @@ const CommonTextComposeModal = memo(() => {
                                     </div>
                                     <span
                                         role="img"
-                                        aria-label="Pinned items stay on top"
-                                        title="Pinned items stay on top"
+                                        aria-label={t("commontext:compose.pinTitle")}
+                                        title={t("commontext:compose.pinTitle")}
                                         className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-secondary/60"
                                     >
                                         <i className="fa fa-solid fa-thumbtack text-[10px]" />
@@ -1613,8 +1661,8 @@ const CommonTextComposeModal = memo(() => {
                                         <span
                                             data-commontext-sort-relevance=""
                                             role="img"
-                                            aria-label="Results ranked by relevance while searching"
-                                            title="Search ranks by relevance — clear the search to sort again"
+                                            aria-label={t("commontext:compose.relevanceAria")}
+                                            title={t("commontext:compose.relevanceTitle")}
                                             className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md bg-actionsoft px-1.5 text-accent"
                                         >
                                             <i className="fa fa-solid fa-wand-magic-sparkles text-[10px]" />
@@ -1627,7 +1675,7 @@ const CommonTextComposeModal = memo(() => {
                                     <button
                                         type="button"
                                         onClick={toggleUntagged}
-                                        title="Show items with no tags"
+                                        title={t("commontext:compose.showUntagged")}
                                         className={
                                             "inline-flex max-w-full shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] leading-none cursor-pointer transition-colors " +
                                             (state.untaggedOnly
@@ -1635,7 +1683,7 @@ const CommonTextComposeModal = memo(() => {
                                                 : "border-border bg-surface-soft text-secondary hover:bg-hover hover:text-primary")
                                         }
                                     >
-                                        <span className="truncate">untagged</span>
+                                        <span className="truncate">{t("commontext:compose.untagged")}</span>
                                         <span className="text-[10px] opacity-70">{untaggedCount}</span>
                                     </button>
                                     {tagSummaries.length > 0 && (
@@ -1783,8 +1831,10 @@ const CommonTextComposeModal = memo(() => {
                                                 <span
                                                     role="button"
                                                     tabIndex={-1}
-                                                    aria-label="Insert this common text into the focused target"
-                                                    title={`Insert into focused target · updated ${formatSessionRelativeTime(item.updatedat)}`}
+                                                    aria-label={t("commontext:compose.insertAria")}
+                                                    title={i18n.t("commontext:compose.insertTitle", {
+                                                        time: formatSessionRelativeTime(item.updatedat),
+                                                    })}
                                                     className="item-insert-btn absolute right-0 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded bg-modalbg text-secondary opacity-0 transition-opacity hover:bg-hoverbg hover:text-primary group-hover:opacity-100 cursor-pointer"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
@@ -1792,8 +1842,8 @@ const CommonTextComposeModal = memo(() => {
                                                             const result = await insertOrCopyCommonText(item.text);
                                                             setStatus(
                                                                 result === "inserted"
-                                                                    ? "Inserted"
-                                                                    : "Copied (no target)",
+                                                                    ? i18n.t("commontext:status.inserted")
+                                                                    : i18n.t("commontext:status.copiedNoTarget"),
                                                                 result === "inserted" ? "ok" : "info"
                                                             );
                                                             // 先把详情区未落盘的草稿写完再计数：两条写路径都是
@@ -1824,12 +1874,12 @@ const CommonTextComposeModal = memo(() => {
                         {detailItem == null ? (
                             <div className="flex flex-1 flex-col items-center justify-center gap-2.5 text-muted text-[13px] px-5 py-10 text-center">
                                 <i className="fa fa-regular fa-square text-[28px] opacity-40" />
-                                <div>No item selected — click a row to edit</div>
+                                <div>{t("commontext:compose.noItemSelected")}</div>
                                 <div className="text-[11px] text-muted/70">
                                     <kbd className="px-1.5 py-0.5 rounded border border-border bg-surface-soft">
                                         Enter
                                     </kbd>{" "}
-                                    on a row also opens it
+                                    {t("commontext:compose.enterHint")}
                                 </div>
                             </div>
                         ) : (
@@ -1857,7 +1907,7 @@ const CommonTextComposeModal = memo(() => {
                                                 detailDirty: true,
                                             }))
                                         }
-                                        placeholder="Untitled"
+                                        placeholder={t("commontext:compose.untitled")}
                                         className="flex-1 min-w-0 h-8 px-1 -ml-1 rounded border border-transparent bg-transparent text-[17px] font-semibold leading-8 hover:bg-surface-soft focus:outline-none focus:border-border focus:bg-modalbg transition-colors"
                                         spellCheck={false}
                                         data-commontext-detail-title=""
@@ -1867,8 +1917,8 @@ const CommonTextComposeModal = memo(() => {
                                         onClick={() => fireAndForget(async () => handleDetailTogglePin())}
                                         title={
                                             detailItem.pinned
-                                                ? "Unpin this text"
-                                                : "Pin this text to the top of the list"
+                                                ? t("commontext:compose.unpin")
+                                                : t("commontext:compose.pinToTop")
                                         }
                                         className={
                                             "shrink-0 mt-0.5 w-8 h-8 inline-flex items-center justify-center rounded-md border transition-colors cursor-pointer " +
@@ -1891,7 +1941,11 @@ const CommonTextComposeModal = memo(() => {
                                         type="button"
                                         data-commontext-properties-toggle=""
                                         aria-expanded={propertiesExpanded}
-                                        title={propertiesExpanded ? "Hide properties" : "Show all properties"}
+                                        title={
+                                            propertiesExpanded
+                                                ? t("commontext:compose.hideProperties")
+                                                : t("commontext:compose.showAllProperties")
+                                        }
                                         onClick={() => setPropertiesExpanded((v) => !v)}
                                         className="flex w-full min-w-0 items-center gap-2 rounded px-1 -mx-1 py-1 text-[11px] leading-5 text-secondary hover:bg-surface-soft transition-colors cursor-pointer"
                                     >
@@ -1937,17 +1991,17 @@ const CommonTextComposeModal = memo(() => {
                                             className="flex items-start gap-2 border-b border-border/40 py-1"
                                         >
                                             <div className="w-[104px] shrink-0 text-[10.5px] leading-5 text-muted">
-                                                Tags
+                                                {t("commontext:compose.tags")}
                                             </div>
                                             <div
                                                 ref={tagsValueRef}
                                                 data-commontext-tags-value=""
                                                 onClick={() => setTagsEditing(true)}
-                                                title="Edit tags"
+                                                title={t("commontext:compose.editTags")}
                                                 className="-mx-1 min-w-0 flex-1 flex flex-wrap items-center gap-1 rounded px-1 py-0.5 text-[11px] leading-5 hover:bg-surface-soft transition-colors cursor-pointer"
                                             >
                                                 {detailTags.length === 0 ? (
-                                                    <span className="text-muted/70">Empty</span>
+                                                    <span className="text-muted/70">{t("commontext:compose.tagsEmpty")}</span>
                                                 ) : (
                                                     <SessionTagChips tags={detailTags} selectedTags={detailTags} />
                                                 )}
@@ -1987,7 +2041,7 @@ const CommonTextComposeModal = memo(() => {
                                                 detailDirty: true,
                                             }))
                                         }
-                                        placeholder="Text to insert"
+                                        placeholder={t("commontext:compose.textToInsert")}
                                         className="w-full h-full min-h-0 resize-none rounded-lg border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
                                         spellCheck={false}
                                     />
@@ -2010,7 +2064,7 @@ const CommonTextComposeModal = memo(() => {
                                                 return counts;
                                             })()}
                                             multiple
-                                            placeholder="搜索或新建标签"
+                                            placeholder={t("commontext:compose.tagSearchPlaceholder")}
                                             onChange={(items) => applyDetailTags(items)}
                                             onClose={() => setTagsEditing(false)}
                                         />
@@ -2031,17 +2085,17 @@ const CommonTextComposeModal = memo(() => {
                                     <Button
                                         className="grey"
                                         onClick={() => fireAndForget(async () => handleListItemCopy(detailItem))}
-                                        title="Copy this text"
+                                        title={t("commontext:compose.copyThis")}
                                     >
                                         <i className="fa fa-regular fa-copy mr-1" />
-                                        Copy
+                                        {t("commontext:compose.copy")}
                                     </Button>
                                     <Button
                                         onClick={() => handleInsertDetail(detailItem)}
-                                        title="Insert into editor at caret"
+                                        title={t("commontext:compose.insertAtCaret")}
                                     >
                                         <i className="fa fa-solid fa-arrow-up mr-1" />
-                                        Insert
+                                        {t("commontext:compose.insert")}
                                     </Button>
                                     {/* 详情元信息：创建 / 更新 / 最近使用 / 次数。图标 + 数字，完整时间戳走 tooltip。 */}
                                     <div
@@ -2063,35 +2117,45 @@ const CommonTextComposeModal = memo(() => {
                                                         : "fa fa-solid fa-cloud-arrow-up text-[9px]"
                                                 }
                                             />
-                                            {detailItem.syncstate === "synced" ? "Synced" : "Pending"}
+                                            {detailItem.syncstate === "synced"
+                                                ? t("commontext:compose.synced")
+                                                : t("commontext:compose.pending")}
                                         </span>
                                         <span
                                             className="inline-flex items-center gap-1"
-                                            title={`Created ${compactCommonTextTime(detailItem.createdat, true)}`}
+                                            title={i18n.t("commontext:meta.timeCreated", {
+                                                time: compactCommonTextTime(detailItem.createdat, true),
+                                            })}
                                         >
                                             <i className="fa fa-regular fa-calendar-plus text-[10px]" />
                                             {compactCommonTextTime(detailItem.createdat)}
                                         </span>
                                         <span
                                             className="inline-flex items-center gap-1"
-                                            title={`Updated ${compactCommonTextTime(detailItem.updatedat, true)}`}
+                                            title={i18n.t("commontext:meta.timeUpdated", {
+                                                time: compactCommonTextTime(detailItem.updatedat, true),
+                                            })}
                                         >
                                             <i className="fa fa-solid fa-pen text-[9px]" />
                                             {formatSessionRelativeTime(detailItem.updatedat)}
                                         </span>
                                         <span
                                             className="inline-flex items-center gap-1"
-                                            title={`Last used ${compactCommonTextTime(detailItem.lastusedat, true)}`}
+                                            title={i18n.t("commontext:meta.timeLastUsed", {
+                                                time: compactCommonTextTime(detailItem.lastusedat, true),
+                                            })}
                                         >
                                             <i className="fa fa-solid fa-clock-rotate-left text-[10px]" />
                                             {detailItem.lastusedat != null
                                                 ? formatSessionRelativeTime(detailItem.lastusedat)
-                                                : "never"}
+                                                : t("commontext:meta.never")}
                                         </span>
                                         <span
                                             data-commontext-detail-usage={detailItem.usagecount ?? 0}
                                             className="inline-flex items-center gap-1"
-                                            title={`Used ${detailItem.usagecount ?? 0} time(s)`}
+                                            title={i18n.t("commontext:meta.usedTimes", {
+                                                count: detailItem.usagecount ?? 0,
+                                            })}
                                         >
                                             <i className="fa fa-solid fa-repeat text-[9px]" />
                                             {detailItem.usagecount ?? 0}
@@ -2111,15 +2175,15 @@ const CommonTextComposeModal = memo(() => {
                                                 title={saveStatus === "err" ? saveStatusMsgRef.current : undefined}
                                             >
                                                 {saveStatus === "saving"
-                                                    ? "Saving…"
+                                                    ? t("commontext:compose.saving")
                                                     : saveStatus === "saved"
-                                                      ? "Saved"
-                                                      : "Save failed"}
+                                                      ? t("commontext:compose.saved")
+                                                      : t("commontext:compose.saveFailed")}
                                             </span>
                                         )}
                                         <button
                                             type="button"
-                                            title="Delete this text"
+                                            title={t("commontext:compose.deleteThis")}
                                             className="shrink-0 h-7 w-7 inline-flex items-center justify-center rounded bg-transparent border-0 text-secondary hover:text-error hover:bg-error/10 transition-colors duration-150 cursor-pointer"
                                             onClick={() => fireAndForget(async () => handleListItemDelete(detailItem))}
                                         >

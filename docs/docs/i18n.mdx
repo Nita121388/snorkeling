@@ -215,7 +215,7 @@ are key-parity-clean, and no new tsc errors appear in its files.
 | `onboarding` | ✓ P1 | All `frontend/app/onboarding/**` + `onboarding.preview.tsx`. 12 allowlist entries (CLI/config-key names). |
 | `emain` | infra only (P0) | Main-process instance + IPC wired; string migration (app menu, updater dialogs) is P3. |
 | `tab` / `aipanel` | ✓ P2 B1 | All `frontend/app/tab/**` (incl. `tabcontextmenu.ts`, `tab-info-card-model.ts`, update banner, workspace switcher) + `frontend/app/aipanel/**` (incl. context menu, model `setError` strings, `ai-utils`). 1 allowlist entry (docs URL). Interpolated strings in components call `i18n.t(...)` (hook `t` rejects options without `defaultValue`); three test files init `initI18n("en")` (Pattern I). |
-| `session-overview` / `commontext` | ☐ P2 B2 | CJK-dense — Pattern H main battleground. |
+| `session-overview` / `commontext` | ✓ P2 B2 | All `frontend/app/session-overview/**` (board model/timeline/metrics are pure `.ts` — Pattern F via the `i18n` singleton) + `frontend/app/commontext/**` (compose modal, send button, send target, page icon). Chinese-first surfaces kept their original copy as the zh values (Pattern H); en is the translation. Column titles / fallback column names became functions (`getOverviewBoardColumnTitle()` etc.) so a runtime locale switch is picked up; tests recompute expectations via `i18n.t(...)` + `initI18n("en")` (Pattern I). 2 allowlist entries (`&nbsp;·` separator, `Enter` kbd key name). |
 | `block` / `element` | ☐ P2 B3/B5 | |
 | `view/waveconfig` + small views | ☐ P2 B4 | |
 | `view/term` / `view/preview` | ☐ P2 B6 | Largest prose surface (InfoCard / modals). |

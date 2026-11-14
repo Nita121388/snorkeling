@@ -1,5 +1,19 @@
 [
     {
+        "id": "frontend/app/commontext/commontext-compose-modal.tsx::jsx-text::00ef13a15be8",
+        "file": "frontend/app/commontext/commontext-compose-modal.tsx",
+        "kind": "jsx-text",
+        "text": "&nbsp;·",
+        "reason": "HTML 实体空格 + 间隔点（设备名与设备 id 之间的标点分隔符，非可翻译文案）"
+    },
+    {
+        "id": "frontend/app/commontext/commontext-compose-modal.tsx::jsx-text::2b9eceb7a86a",
+        "file": "frontend/app/commontext/commontext-compose-modal.tsx",
+        "kind": "jsx-text",
+        "text": "Enter",
+        "reason": "键盘键名（kbd 元素内的物理按键名，各语言通用，不翻译）"
+    },
+    {
         "id": "frontend/app/aipanel/telemetryrequired.tsx::jsx-text::6757bb5f336c",
         "file": "frontend/app/aipanel/telemetryrequired.tsx",
         "kind": "jsx-text",

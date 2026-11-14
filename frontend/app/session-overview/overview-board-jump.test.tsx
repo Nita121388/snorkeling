@@ -13,7 +13,8 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { i18n, initI18n } from "@/i18n/config";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { BoardCard } from "./overview-board";
 import type { OverviewBoardCard } from "./overview-board-model";
@@ -21,6 +22,11 @@ import type { OverviewBoardCard } from "./overview-board-model";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const NowMs = 1_700_000_000_000;
+
+// i18n 资源为 en 真源：迁移后按钮 title 由 i18n.t 产出，先把实例初始化到 en（Pattern I）。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 const workingStatus: AgentStatus = {
     blockId: "block-jump",
@@ -94,7 +100,7 @@ describe("BoardCard jump action", () => {
         const container = mountCard(makeCard(), { onJumpCard: () => {} });
         const button = jumpButton(container);
         expect(button).not.toBeNull();
-        expect(button?.title).toBe("定位到块");
+        expect(button?.title).toBe(i18n.t("session-overview:board.jumpToBlock"));
     });
 
     it("jump click fires onJumpCard and does not open the card", () => {
