@@ -55,6 +55,7 @@
     padding: 2px 4px;
     border-radius: 4px;
     font-size: 11px;
+    line-height: 1.4;
     color: var(--main-text-color, inherit);
     cursor: pointer;
 }
@@ -65,11 +66,33 @@
 
 // Shown when the session id is unknown: the session scope is unavailable, so
 // say out loud that the write is provider-wide instead of silently applying it.
-.agent-emoji-scope-note {
+.agent-emoji-scope-note,
+.agent-emoji-display-hint {
     padding: 2px 4px;
     font-size: 10px;
     line-height: 1.4;
     color: color-mix(in srgb, var(--main-text-color, #888) 65%, transparent);
+}
+
+// Footer stack: scope radios / emoji-only checkbox row / reset button share one
+// vertical rhythm (the reset button keeps its own smaller paddings).
+.agent-emoji-picker-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+// "Emoji only" checkbox row. The label reuses .agent-emoji-scope-option so the
+// checkbox row reads identically to the radio rows above (same font size, hover,
+// checked tint); the hint below it matches .agent-emoji-scope-note.
+.agent-emoji-display-row {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.agent-emoji-display-toggle {
+    width: fit-content;
 }
 
 .agent-emoji-scope-option.is-checked {
@@ -77,8 +100,13 @@
 }
 
 .agent-emoji-scope-option input {
-    accent-color: var(--accent-color, #58c4ff);
+    // Same box for radios and the emoji-only checkbox so the footer rows line up
+    // vertically (browser default radio/checkbox sizes drift by a pixel or two).
+    flex: 0 0 auto;
+    width: 13px;
+    height: 13px;
     margin: 0;
+    accent-color: var(--accent-color, #58c4ff);
 }
 
 .agent-emoji-reset {

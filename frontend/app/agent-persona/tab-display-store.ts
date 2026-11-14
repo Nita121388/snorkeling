@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { normalizeSessionEmojiKey } from "@/app/agent-persona/session-persona-store";
+import * as jotai from "jotai";
 
 export type TabDisplayMode = "full" | "emoji-only";
 
@@ -112,3 +113,18 @@ export function subscribeTabDisplayMode(l: () => void): () => void {
 export function getTabDisplaySnapshot(): Record<string, TabDisplayMode> {
     return snapshot;
 }
+
+/**
+ * jotai 镜像：外部快照（localStorage）本身不是 jotai 状态，atom getter 里 `get()` 它
+ * 拿不到重算通知。这个 revision atom 在 onMount 时订阅外部快照，快照一变就自增 ——
+ * 消费方（term-model 头部）只要在 getter 里 `get(tabDisplayModeRevisionAtom)` 就能
+ * 在「仅显示 Emoji」切换的同一帧重算，而不必改成 React 组件。
+ *
+ * 注意：这是**会话级**开关（key 是 sessionId），不要当成全局设置来读。
+ */
+export const tabDisplayModeRevisionAtom = jotai.atom(0);
+tabDisplayModeRevisionAtom.onMount = (setValue) => {
+    return subscribeTabDisplayMode(() => {
+        setValue((v) => v + 1);
+    });
+};

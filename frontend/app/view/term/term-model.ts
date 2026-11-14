@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
+import { getTabDisplayMode, tabDisplayModeRevisionAtom } from "@/app/agent-persona/tab-display-store";
 import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
 import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
 import { formatAgentProvider } from "@/app/agent-status/agent-status-derive";
@@ -106,6 +107,59 @@ function isFontFamilyAvailable(fontFamily: string): boolean {
     }
 }
 
+/**
+ * agent Block 头部的「仅显示 Emoji」镜像 atom。
+ *
+ * 这个开关是**会话级**的（tab-display-store，key = sessionId），不是全局设置：
+ * 只看本块的 agent 会话 id（显式 `agent:sessionid` meta 优先，否则从命令解析，
+ * 再落到 agentStatus 上报）。别的会话勾选不影响本块。
+ *
+ * 抽成模块级工厂：构造函数太重，单测直接拿真 atom 验证（term-header-emoji-only.test.ts）。
+ * `get(tabDisplayModeRevisionAtom)` 建立重算依赖 —— 外部 localStorage 快照不是 jotai
+ * 状态，picker 里勾/去掉勾后头部同帧重算。
+ */
+export function makeAgentHeaderEmojiOnlyAtom(
+    blockAtom: jotai.Atom<Block>,
+    agentStatusAtom: jotai.Atom<AgentStatus | null>
+): jotai.Atom<boolean> {
+    return jotai.atom((get) => {
+        get(tabDisplayModeRevisionAtom);
+        const blockMeta = get(blockAtom)?.meta;
+        const explicitSessionId =
+            typeof blockMeta?.["agent:sessionid"] === "string" && blockMeta["agent:sessionid"] !== ""
+                ? blockMeta["agent:sessionid"]
+                : "";
+        const sessionId =
+            explicitSessionId ||
+            resolveAgentSessionId(blockMeta ?? {}).sessionId ||
+            get(agentStatusAtom)?.sessionId ||
+            "";
+        return getTabDisplayMode(sessionId) === "emoji-only";
+    });
+}
+
+/**
+ * cmd 类 agent Block 头部的 cwd 路径元素。
+ *
+ * 「仅显示 Emoji」（会话级，见 tab-display-store）开启时返回 null —— 头部只留图标与
+ * 状态徽章，不再显示项目路径；否则返回可点击复制完整路径的 copytext 元素。
+ */
+export function buildCmdCwdHeaderElem(cmdCwd: unknown, emojiOnly: boolean): HeaderElem | null {
+    if (emojiOnly) {
+        return null;
+    }
+    if (typeof cmdCwd !== "string" || cmdCwd.trim().length === 0) {
+        return null;
+    }
+    return {
+        elemtype: "copytext",
+        text: cmdCwd,
+        displayText: basename(cmdCwd),
+        title: "Click to copy full path",
+        className: "text-muted",
+    };
+}
+
 export class TermViewModel implements ViewModel {
     viewType: string;
     nodeModel: BlockNodeModel;
@@ -118,6 +172,8 @@ export class TermViewModel implements ViewModel {
     viewIcon: jotai.Atom<IconButtonDecl>;
     viewName: jotai.Atom<string>;
     viewText: jotai.Atom<HeaderElem[]>;
+    /** 会话级「仅显示 Emoji」镜像：true 时头部隐藏 cwd 路径（跟随会话，非全局）。 */
+    emojiOnlyHeaderAtom: jotai.Atom<boolean>;
     blockBg: jotai.Atom<MetaType>;
     manageConnection: jotai.Atom<boolean>;
     filterOutNowsh?: jotai.Atom<boolean>;
@@ -301,15 +357,11 @@ export class TermViewModel implements ViewModel {
                     title: headerTitle,
                     noGrow: true,
                 });
-                if (typeof cmdCwd === "string" && cmdCwd.trim().length > 0) {
-                    const folderName = basename(cmdCwd);
-                    rtn.push({
-                        elemtype: "copytext",
-                        text: cmdCwd,
-                        displayText: folderName,
-                        title: "Click to copy full path",
-                        className: "text-muted",
-                    });
+                // 「仅显示 Emoji」开启时头部不显示项目路径（仅留图标与状态）。
+                // 该开关是会话级的，非 Agent 会话（无 sessionId）永远为 false，不受影响。
+                const cwdElem = buildCmdCwdHeaderElem(cmdCwd, get(this.emojiOnlyHeaderAtom));
+                if (cwdElem != null) {
+                    rtn.push(cwdElem);
                 }
                 const agentStatusElem = this.getAgentStatusHeaderElem(get, blockMeta);
                 if (agentStatusElem != null) {
@@ -535,6 +587,9 @@ export class TermViewModel implements ViewModel {
         // subscription is torn down. This eliminates the first-screen race where TermViewModel's
         // own subscription could miss the inaugural event before it registered.
         this.agentStatusAtom = AgentStatusStore.getInstance().acquire(blockId);
+        // viewText（上方已构造）在渲染时才读这个 atom，而 agentStatusAtom 到这里才建好，
+        // 所以在它之后创建才安全。
+        this.emojiOnlyHeaderAtom = makeAgentHeaderEmojiOnlyAtom(this.blockAtom, this.agentStatusAtom);
         this.shellProcStatus = jotai.atom((get) => {
             const fullStatus = get(this.shellProcFullStatus);
             return fullStatus?.shellprocstatus ?? "init";
