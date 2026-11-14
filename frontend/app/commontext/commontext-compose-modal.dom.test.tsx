@@ -108,6 +108,8 @@ const seedItems = [
         updatedat: now - 7_200_000,
         lastusedat: now - 1_200_000,
         usagecount: 2,
+        // 历史脏数据：tags 里带 # 前缀/后缀——读路径必须剥干净，chip 只显标签名
+        tags: ["#legacy", "work#"],
         createdby: { kind: "agent", name: "pi" },
         origin: { deviceid: "dev-1", devicename: "Workstation", platform: "win32" },
     },
@@ -396,6 +398,10 @@ describe("CommonTextComposeModal — detail properties fold", () => {
         });
         expect(detailTextarea().value).toContain("#urgent");
         expect(document.querySelector("[data-commontext-tags-value]")!.textContent).toContain("urgent");
+        // 折叠摘要行同步展示标签名（不是只有数量），且不带 # 前缀
+        const tagsSummary = document.querySelector('[data-commontext-properties-summary="tags"]');
+        expect(tagsSummary!.textContent).toContain("urgent");
+        expect(tagsSummary!.textContent).not.toContain("#");
 
         // chip × 删除 → 正文字面被抹掉
         const removeBtn = document.querySelector(".ptag-chip-remove") as HTMLButtonElement;
@@ -411,5 +417,28 @@ describe("CommonTextComposeModal — detail properties fold", () => {
             );
         });
         expect(document.querySelector('[data-testid="property-tag-editor"]')).toBeNull();
+    });
+
+    it("renders legacy #tag storage without the hash prefix in chips and picker options", async () => {
+        await openModal({ query: "Bravo" });
+        // 列表行 chip：历史 `#legacy` / `work#` 存量读出来即净，不显示 #
+        const row = document.querySelector("[data-common-text-index]")?.parentElement;
+        const rowChips = [...(row?.querySelectorAll("button") ?? [])]
+            .filter((b) => b.textContent === "legacy" || b.textContent === "work")
+            .map((b) => b.textContent);
+        expect(rowChips.sort()).toEqual(["legacy", "work"]);
+        // 左侧标签筛选 chips 同源：也不带 #
+        const allChips = [...document.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim());
+        expect(allChips.some((t) => t.startsWith("#"))).toBe(false);
+        // Tags 浮层候选（PropertyTagEditor 直接渲染原文，不经过 SessionTagChips 的归一）：
+        // 历史 #tag 存量必须已在读路径剥净，否则候选 chip 会显示 #legacy
+        await click(document.querySelector("[data-commontext-properties-toggle]"));
+        await click(document.querySelector("[data-commontext-tags-value]"));
+        const optionChips = [...document.querySelectorAll(".ptag-option-chip")].map((el) =>
+            (el.textContent ?? "").trim()
+        );
+        expect(optionChips).toContain("legacy");
+        expect(optionChips).toContain("work");
+        expect(optionChips.some((t) => t.startsWith("#"))).toBe(false);
     });
 });

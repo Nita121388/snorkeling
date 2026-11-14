@@ -6,8 +6,8 @@ import {
     DefaultCommonTextSortKey,
     filterCommonTextItemsByTags,
     findDuplicateCommonText,
-    getCommonTextTagSummaries,
     getCommonTextDeviceSummaries,
+    getCommonTextTagSummaries,
     getLiveCommonTextItems,
     isCommonTextTombstone,
     markCommonTextUsed,
@@ -43,6 +43,20 @@ describe("commontext-model", () => {
 
     it("deduplicates tags case-insensitively", () => {
         expect(normalizeCommonTextTags("email, support, Email,  ,ops")).toEqual(["email", "support", "ops"]);
+    });
+
+    it("strips # from tag values so legacy data renders without a hash prefix", () => {
+        // 历史数据里 tags 可能存成 `#tag` / `tag#`（甚至带前导空白）；读/写两侧都在这里收口，
+        // chip 只展示标签名——正文里的 #tag 字面语义不受影响。
+        expect(normalizeCommonTextTags(["#urgent", "work#", " #legacy ", "##deep"])).toEqual([
+            "urgent",
+            "work",
+            "legacy",
+            "deep",
+        ]);
+        expect(normalizeCommonTextTags("#a,#b, #A ")).toEqual(["a", "b"]);
+        // 仅由 # 组成的值剥完为空：丢弃而不是留一个空 chip
+        expect(normalizeCommonTextTags(["#", "ok"])).toEqual(["ok"]);
     });
 
     it("ignores non-string tags defensively", () => {
@@ -560,7 +574,12 @@ describe("commontext-model", () => {
         it("filters by creator kind", () => {
             expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "human" }))).toEqual(["a", "c"]);
             expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "agent" }))).toEqual(["b", "d"]);
-            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "all" }))).toEqual(["a", "b", "c", "d"]);
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "all" }))).toEqual([
+                "a",
+                "b",
+                "c",
+                "d",
+            ]);
         });
 
         it("filters by originating device", () => {
@@ -570,12 +589,12 @@ describe("commontext-model", () => {
         });
 
         it("combines creator and device as AND", () => {
-            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "human", device: "dev-work" }))).toEqual([
-                "c",
-            ]);
-            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "agent", device: "dev-home" }))).toEqual([
-                "b",
-            ]);
+            expect(
+                ids(searchCommonTextComposeItems(dataset, "", "", { creator: "human", device: "dev-work" }))
+            ).toEqual(["c"]);
+            expect(
+                ids(searchCommonTextComposeItems(dataset, "", "", { creator: "agent", device: "dev-home" }))
+            ).toEqual(["b"]);
         });
 
         it("applies the source filter before the result limit", () => {

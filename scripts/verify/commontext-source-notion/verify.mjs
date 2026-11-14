@@ -431,6 +431,11 @@ try {
     (tagAdded?.tagsValueText ?? "").includes("verifytag"),
     tagAdded?.tagsValueText
   );
+  // 折叠摘要行（首个 summary 项 = tags）必须展示标签名、且不带 # 前缀
+  const tagsSummaryText = tagAdded?.propsSummaryText?.[0] ?? "";
+  reporter.check("tags-summary-shows-names", tagsSummaryText.includes("verifytag") && !tagsSummaryText.includes("#"), {
+    tagsSummaryText,
+  });
   // 清场：Backspace 删尾 chip（草稿为空时）+ Esc 关浮层，正文里的字面回退
   await client.evaluate(`(() => {
     const input = document.querySelector(".ptag-input");

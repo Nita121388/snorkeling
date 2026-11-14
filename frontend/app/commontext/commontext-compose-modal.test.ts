@@ -202,6 +202,8 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).not.toContain("click to toggle in Text");
         expect(source).not.toContain(">All tags<");
         expect(source).not.toContain("handleDetailToggleTag");
+        // 折叠摘要展示标签名而不是只给数量（折叠态不能省略标签）
+        expect(source).toContain('text: detailTags.length > 0 ? detailTags.join(" · ") : "0",');
         // 写回仍走正文 #tag 最小 diff（不引入第二套 tag 存储），走既有自动保存
         expect(source).toContain("const applyDetailTags = (nextTags: string[]) => {");
         expect(source).toContain("removeSessionTagFromNote(nextText, tag)");

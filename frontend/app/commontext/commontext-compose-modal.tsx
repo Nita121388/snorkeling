@@ -463,7 +463,9 @@ const CommonTextComposeModal = memo(() => {
                 key: "tags",
                 icon: "fa-hashtag",
                 iconClass: "text-muted",
-                text: String(detailTags.length),
+                // 折叠态必须直接看到标签名（不能只给数量）：名字 join 起来、内层 truncate 防溢出；
+                // 无 tag 时给 0 占位，保证摘要行位置稳定。
+                text: detailTags.length > 0 ? detailTags.join(" · ") : "0",
                 title: detailTags.length === 0 ? "No tags" : `Tags: ${detailTags.map((t) => "#" + t).join(" ")}`,
             },
             {
@@ -1885,7 +1887,12 @@ const CommonTextComposeModal = memo(() => {
                                                 key={s.key}
                                                 data-commontext-properties-summary={s.key}
                                                 title={s.title}
-                                                className="inline-flex min-w-0 shrink-0 items-center gap-1"
+                                                // 标签名可能很长：tags 项允许收缩，靠内层 truncate 截断，
+                                                // 不把 creator/computer/updated 等项挤出视口。
+                                                className={
+                                                    "inline-flex min-w-0 items-center gap-1 " +
+                                                    (s.key === "tags" ? "" : "shrink-0")
+                                                }
                                             >
                                                 <i className={"fa fa-solid text-[9px] " + s.iconClass + " " + s.icon} />
                                                 <span className="truncate tabular-nums">{s.text}</span>

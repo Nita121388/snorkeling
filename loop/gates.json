@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-14T07:31:26Z",
+  "updatedAt": "2026-11-14T08:11:16Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -388,6 +388,12 @@
       "g2": {
         "redProof": "旧源 git show HEAD:frontend/app/commontext/commontext-compose-modal.tsx 换回后跑 commontext-compose-modal.dom.test.tsx + 源码断言 → 5 failed（draft 落盘/还原/橡皮/「+」/坏 JSON）；新源 → Test Files 15 passed / Tests 190 passed",
         "at": "2026-11-14T07:05:01Z"
+      }
+    },
+    "N-1114-commontext-tags-no-hash": {
+      "g2": {
+        "redProof": "旧源 git show HEAD:commontext-model.ts 换回 → ['#urgent','work#','#legacy','deep'] 不剥 #（2 failed：model normalize + 浮层候选 '#legacy'）；旧 compose-modal → 摘要只显数量 + 源码断言失败。新源 194 passed（15 files）",
+        "at": "2026-11-14T08:11:16Z"
       }
     },
     "N-1114-commontext-tags-property": {

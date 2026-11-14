@@ -122,7 +122,9 @@ export function normalizeCommonTextTags(tags: unknown): string[] {
         if (typeof rawTag !== "string") {
             continue;
         }
-        const normalized = rawTag.trim();
+        // 剥 # 前缀/后缀：历史数据里有 `#tag`（甚至 `tag#`）形态的 tags，读/写两侧都在这里收口，
+        // chip 只展示标签名；正文里的 `#tag` 字面语义不变（抽取时本就不带 #）。
+        const normalized = rawTag.trim().replace(/^#+/, "").replace(/#+$/, "");
         if (normalized === "") {
             continue;
         }
@@ -164,8 +166,7 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
     // 同步状态只认后端给出的两个值；其它（含缺失）一律按 pending —— 宁可多推一次，
     // 也不能把没上传的条目谎报成已同步。
     const syncstate: CommonTextSyncState = raw.syncstate === "synced" ? "synced" : "pending";
-    const syncedrev =
-        typeof raw.syncedrev === "number" && Number.isFinite(raw.syncedrev) ? raw.syncedrev : undefined;
+    const syncedrev = typeof raw.syncedrev === "number" && Number.isFinite(raw.syncedrev) ? raw.syncedrev : undefined;
     return {
         id,
         title,
@@ -202,7 +203,8 @@ function normalizeCommonTextOrigin(value: unknown): CommonTextOrigin {
         return { ...LegacyOrigin };
     }
     const raw = value as Record<string, unknown>;
-    const deviceid = typeof raw.deviceid === "string" && raw.deviceid.trim() !== "" ? raw.deviceid : LegacyOrigin.deviceid;
+    const deviceid =
+        typeof raw.deviceid === "string" && raw.deviceid.trim() !== "" ? raw.deviceid : LegacyOrigin.deviceid;
     const devicename =
         typeof raw.devicename === "string" && raw.devicename.trim() !== "" ? raw.devicename : LegacyOrigin.devicename;
     const platform = typeof raw.platform === "string" ? raw.platform : "";
@@ -436,7 +438,10 @@ export function getCommonTextCreatorKind(item: CommonTextItem): "human" | "agent
     return item.createdby?.kind === "agent" ? "agent" : "human";
 }
 
-export function commonTextItemMatchesCreator(item: CommonTextItem, filter: CommonTextCreatorFilter | undefined): boolean {
+export function commonTextItemMatchesCreator(
+    item: CommonTextItem,
+    filter: CommonTextCreatorFilter | undefined
+): boolean {
     if (filter == null || filter === "all") return true;
     return getCommonTextCreatorKind(item) === filter;
 }
@@ -458,7 +463,9 @@ export function getCommonTextOriginDeviceName(item: CommonTextItem): string {
 }
 
 /** 去重后的设备清单（按出现顺序），供筛选下拉与计数使用。 */
-export function getCommonTextDeviceSummaries(items: CommonTextItem[]): { deviceid: string; devicename: string; count: number }[] {
+export function getCommonTextDeviceSummaries(
+    items: CommonTextItem[]
+): { deviceid: string; devicename: string; count: number }[] {
     const byId = new Map<string, { deviceid: string; devicename: string; count: number }>();
     for (const item of items) {
         const id = getCommonTextOriginDeviceId(item);
@@ -575,7 +582,10 @@ export function searchCommonTextComposeItems(
     const sourceFiltered = items.filter(
         (item) => commonTextItemMatchesCreator(item, creator) && commonTextItemMatchesDevice(item, device)
     );
-    const baseItems = sortCommonTextItemsBy(filterCommonTextItemsByTags(sourceFiltered, selectedTags, { untagged }), sortKey);
+    const baseItems = sortCommonTextItemsBy(
+        filterCommonTextItemsByTags(sourceFiltered, selectedTags, { untagged }),
+        sortKey
+    );
     if (tokenWeights.size === 0) {
         return baseItems.slice(0, limit);
     }
