@@ -14,6 +14,7 @@
 // inherited from the existing agent-launch pipeline; this module must never
 // duplicate that logic.
 
+import { AgentEmojiMetaKey } from "@/app/view/term/agent-logo";
 import {
     createAgentBlockDefForProfile,
     createDefaultAgentBlockDef,
@@ -152,6 +153,13 @@ export function buildHeroLaunchBlockDef(params: BuildHeroLaunchBlockDefParams): 
 
     const meta = (blockDef.meta ?? {}) as MetaType & Record<string, unknown>;
     meta[AgentHeroIdMetaKey] = hero.id;
+    // The launched block inherits the hero's own emoji: getAgentIcon() already
+    // honors the block-level `agent:emoji` meta, so the header/card shows the
+    // hero identity instead of the provider brand logo.
+    const heroEmoji = typeof hero.emoji === "string" ? hero.emoji.trim() : "";
+    if (heroEmoji !== "") {
+        meta[AgentEmojiMetaKey] = heroEmoji;
+    }
 
     let injectionApplied = false;
     const mainWorkdir = typeof params.mainWorkdir === "string" ? params.mainWorkdir.trim() : "";

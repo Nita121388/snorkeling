@@ -124,6 +124,11 @@ export class HeroViewModel implements ViewModel {
         }
     }
 
+    /** Open the hero's home base as a Files preview block. */
+    openHomeBase(homeBase: string): Promise<string> {
+        return this.env.createBlock({ meta: { view: "preview", file: homeBase } }, false);
+    }
+
     /** Stage entry: reuse the A3 builder; never inject a main workdir here. */
     launch(row: HeroRosterRow | null, root: string, settings: SettingsType | undefined): Promise<string> {
         if (row == null) {
@@ -218,10 +223,12 @@ function HeroDetail({
     row,
     root,
     onLaunch,
+    onOpenHomeBase,
 }: {
     row: HeroRosterRow;
     root: string;
     onLaunch: (row: HeroRosterRow) => void;
+    onOpenHomeBase: (homeBase: string) => void;
 }) {
     const storage = row.storage;
     const homeBase = heroHomeBaseHint(root, row.id);
@@ -237,8 +244,18 @@ function HeroDetail({
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-secondary">{row.providerModel}</div>
                     {homeBase !== "" && (
-                        <div className="mt-0.5 truncate font-mono text-[10px] text-muted" title={homeBase}>
-                            {homeBase}
+                        <div className="mt-0.5 flex items-center gap-1">
+                            <div className="truncate font-mono text-[10px] text-muted" title={homeBase}>
+                                {homeBase}
+                            </div>
+                            <button
+                                type="button"
+                                className="shrink-0 cursor-pointer rounded border border-border/70 px-1.5 py-0 text-[10px] text-secondary transition-colors hover:border-accent hover:text-accent"
+                                title="Open home base in Files"
+                                onClick={() => onOpenHomeBase(homeBase)}
+                            >
+                                Open
+                            </button>
                         </div>
                     )}
                 </div>
@@ -326,6 +343,13 @@ function HeroView({ model }: HeroViewProps) {
         [model]
     );
 
+    const onOpenHomeBase = React.useCallback(
+        (homeBase: string) => {
+            fireAndForget(() => model.openHomeBase(homeBase));
+        },
+        [model]
+    );
+
     const onLaunch = React.useCallback(
         (row: HeroRosterRow) => {
             fireAndForget(async () => {
@@ -392,7 +416,12 @@ function HeroView({ model }: HeroViewProps) {
                         ))}
                     </div>
                     {selectedRow != null ? (
-                        <HeroDetail row={selectedRow} root={overview?.root ?? ""} onLaunch={onLaunch} />
+                        <HeroDetail
+                            row={selectedRow}
+                            root={overview?.root ?? ""}
+                            onLaunch={onLaunch}
+                            onOpenHomeBase={onOpenHomeBase}
+                        />
                     ) : (
                         <div className="flex flex-1 items-center justify-center text-[11px] text-muted">
                             Select a hero to see details
