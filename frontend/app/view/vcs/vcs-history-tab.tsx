@@ -5,10 +5,12 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { buildCommitRemoteUrl, getRepoOpenUrl } from "@/app/view/vcs/vcs-remote";
 import { openLink } from "@/store/global";
+import { i18n } from "@/i18n/config";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { VcsIconButton } from "./vcs-icon-button";
 
 type VcsUiEnv = WaveEnv;
@@ -41,6 +43,7 @@ export function VcsHistoryTab({
     onShowFileDiff?: (filePath: string, revision: string) => void;
 }) {
     const env = useWaveEnv<VcsUiEnv>();
+    const { t } = useTranslation("vcs");
     const route = React.useMemo(() => {
         if (isBlank(connection)) return null;
         return makeConnRoute(connection);
@@ -68,7 +71,7 @@ export function VcsHistoryTab({
     const loadCommits = React.useCallback(async () => {
         if (isBlank(repo.repotype) || isBlank(repo.rootpath)) {
             setLoading(false);
-            setError("Missing repository metadata.");
+            setError(t("vcs:history.missingMetadata"));
             return;
         }
         setLoading(true);
@@ -160,7 +163,7 @@ export function VcsHistoryTab({
                 <div className="mb-2 grid grid-cols-1 gap-1.5 md:grid-cols-[1.2fr_auto_auto_auto_auto_auto] md:items-center">
                     <input
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
-                        placeholder="Keyword (hash/author/subject)"
+                        placeholder={t("vcs:common.keywordPlaceholder")}
                         value={keywordInput}
                         onChange={(e) => setKeywordInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -172,14 +175,14 @@ export function VcsHistoryTab({
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
                         value={sinceInput}
                         onChange={(e) => setSinceInput(e.target.value)}
-                        title="Since"
+                        title={t("vcs:common.since")}
                     />
                     <input
                         type="date"
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
                         value={untilInput}
                         onChange={(e) => setUntilInput(e.target.value)}
-                        title="Until"
+                        title={t("vcs:common.until")}
                     />
                     <select
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
@@ -189,29 +192,29 @@ export function VcsHistoryTab({
                             setPage(1);
                         }}
                     >
-                        <option value="20">20 / page</option>
-                        <option value="50">50 / page</option>
-                        <option value="100">100 / page</option>
+                        <option value="20">{i18n.t("vcs:common.perPage", { count: 20 })}</option>
+                        <option value="50">{i18n.t("vcs:common.perPage", { count: 50 })}</option>
+                        <option value="100">{i18n.t("vcs:common.perPage", { count: 100 })}</option>
                     </select>
                     <VcsIconButton
                         icon="check"
-                        title="Apply filters"
+                        title={t("vcs:common.applyFilters")}
                         tone="accent"
                         className="border border-accent"
                         onClick={applyFilters}
                     />
                     <VcsIconButton
                         icon="rotate-left"
-                        title="Reset filters"
+                        title={t("vcs:common.resetFilters")}
                         className="border border-border"
                         onClick={resetFilters}
                     />
                 </div>
 
-                {loading && <div className="text-sm text-muted">Loading commits...</div>}
+                {loading && <div className="text-sm text-muted">{t("vcs:common.loadingCommits")}</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
                 {!loading && !error && commits.length === 0 && (
-                    <div className="text-sm text-muted">No commits found.</div>
+                    <div className="text-sm text-muted">{t("vcs:common.noCommits")}</div>
                 )}
 
                 {!loading && !error && commits.length > 0 && (
@@ -228,7 +231,7 @@ export function VcsHistoryTab({
                                 e.preventDefault();
                                 const menu: ContextMenuItem[] = [
                                     {
-                                        label: "Copy Hash",
+                                        label: t("vcs:history.copyHash"),
                                         enabled: !isBlank(revision),
                                         click: () => {
                                             fireAndForget(async () => {
@@ -237,7 +240,7 @@ export function VcsHistoryTab({
                                         },
                                     },
                                     {
-                                        label: "Open Commit on Remote",
+                                        label: t("vcs:history.openCommitOnRemote"),
                                         enabled: !isBlank(commitRemoteUrl),
                                         click: () => {
                                             fireAndForget(async () => {
@@ -246,7 +249,7 @@ export function VcsHistoryTab({
                                         },
                                     },
                                     {
-                                        label: "Open Remote Repository",
+                                        label: t("vcs:tabs.openRemoteRepository"),
                                         enabled: !isBlank(getRepoOpenUrl(repo)),
                                         click: () => {
                                             fireAndForget(async () => {
@@ -265,11 +268,11 @@ export function VcsHistoryTab({
                                     >
                                         <span className="text-muted w-[12px] shrink-0">{isExpanded ? "▾" : "▸"}</span>
                                         <span className="font-mono text-secondary shrink-0">{shortHash(revision)}</span>
-                                        <span className="truncate flex-1">{commit.subject || "(no message)"}</span>
+                                        <span className="truncate flex-1">{commit.subject || t("vcs:common.noMessage")}</span>
                                         {!isBlank(commitRemoteUrl) && (
                                             <VcsIconButton
                                                 icon="arrow-up-right-from-square"
-                                                title="Open commit on remote"
+                                                title={t("vcs:common.openCommitRemote")}
                                                 size="sm"
                                                 reveal="hover"
                                                 onClick={(e) => {
@@ -282,20 +285,20 @@ export function VcsHistoryTab({
                                         )}
                                     </div>
                                     <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
-                                        <span className="truncate">{commit.author || "unknown"}</span>
+                                        <span className="truncate">{commit.author || t("vcs:common.unknownAuthor")}</span>
                                         <span className="truncate">{commit.date || ""}</span>
                                     </div>
 
                                     {isExpanded && (
                                         <div className="mt-1.5 rounded border border-border bg-surface-strong">
                                             {fileLoading && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>
+                                                <div className="px-2 py-1 text-[11px] text-muted">{t("vcs:common.loadingFiles")}</div>
                                             )}
                                             {!fileLoading && !isBlank(fileErr) && (
                                                 <div className="px-2 py-1 text-[11px] text-error whitespace-pre-wrap">{fileErr}</div>
                                             )}
                                             {!fileLoading && isBlank(fileErr) && files.length === 0 && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">No changed files in this commit.</div>
+                                                <div className="px-2 py-1 text-[11px] text-muted">{t("vcs:common.noChangedFiles")}</div>
                                             )}
                                             {!fileLoading && isBlank(fileErr) && files.length > 0 && (
                                                 <div className="max-h-[240px] overflow-auto">
@@ -311,7 +314,7 @@ export function VcsHistoryTab({
                                                             {onShowFileDiff != null && (
                                                                 <VcsIconButton
                                                                     icon="code-compare"
-                                                                    title={`View diff of ${file.path}`}
+                                                                    title={i18n.t("vcs:history.viewDiff", { path: file.path })}
                                                                     size="sm"
                                                                     tone="accent"
                                                                     reveal="hover"
@@ -334,15 +337,15 @@ export function VcsHistoryTab({
                     <div className="mt-2 flex items-center justify-end gap-2 text-xs">
                         <VcsIconButton
                             icon="chevron-left"
-                            title="Previous page"
+                            title={t("vcs:common.prevPage")}
                             className="border border-border"
                             disabled={page <= 1}
                             onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                         />
-                        <span className="text-muted">Page {page}</span>
+                        <span className="text-muted">{i18n.t("vcs:common.page", { page })}</span>
                         <VcsIconButton
                             icon="chevron-right"
-                            title="Next page"
+                            title={t("vcs:common.nextPage")}
                             className="border border-border"
                             disabled={!hasMore}
                             onClick={() => setPage((prev) => prev + 1)}

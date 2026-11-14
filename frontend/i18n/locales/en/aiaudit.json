@@ -1,0 +1,162 @@
+{
+    "header": {
+        "title": "AI Audit",
+        "viewName": "AI Audit"
+    },
+    "feature": {
+        "title": "Title",
+        "metadata": "Note & Tags",
+        "annotationTimeline": "Timeline",
+        "annotationField": "Field",
+        "unknown": "unknown"
+    },
+    "scope": {
+        "agentCard": "agent card",
+        "sessionRow": "list row",
+        "detail": "detail header",
+        "batch": "batch bar",
+        "autoScan": "auto scan",
+        "auditRetry": "audit retry"
+    },
+    "state": {
+        "done": "done",
+        "failed": "failed",
+        "cancelled": "cancelled",
+        "running": "running",
+        "queued": "queued",
+        "stalled": "stalled",
+        "unknown": "unknown"
+    },
+    "stateFilter": {
+        "all": "All states",
+        "queued": "Queued / stalled",
+        "running": "Running",
+        "done": "Done",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+    },
+    "filter": {
+        "featureAria": "Filter by feature",
+        "stateAria": "Filter by state",
+        "allFeatures": "All features"
+    },
+    "search": {
+        "placeholder": "Search session / model / error / key",
+        "aria": "Search audit entries"
+    },
+    "refresh": {
+        "refreshing": "Refreshing…",
+        "refresh": "Refresh",
+        "aria": "Refresh"
+    },
+    "clear": {
+        "clear": "Clear 30d",
+        "confirm": "Confirm clear 30d",
+        "title": "Delete audit entries older than 30 days (asks to confirm)"
+    },
+    "stats": {
+        "loading": "Loading 24h summary…",
+        "calls24h": "24h calls",
+        "failed": "failed",
+        "avg": "avg",
+        "hourlyAria": "Calls per hour over the last 24 hours",
+        "bucketCalls_one": "{{count}} call",
+        "bucketCalls_other": "{{count}} calls",
+        "bucketFailed": "{{count}} failed",
+        "failedFilterClear": "Clear failed filter",
+        "failedFilterShow": "Show only failed entries",
+        "noFailures": "No failures in the last 24h",
+        "reclaimedTitle": "Orphaned queued rows reclaimed as failed",
+        "stalledReclaimed_one": "{{count}} stalled reclaimed",
+        "stalledReclaimed_other": "{{count}} stalled reclaimed"
+    },
+    "pending": {
+        "message": "New entries may have arrived while paging.",
+        "refresh": "Refresh"
+    },
+    "empty": {
+        "title": "No AI activity recorded yet.",
+        "hint": "Audit entries appear here whenever title, note, or annotation generation runs."
+    },
+    "table": {
+        "time": "Time",
+        "feature": "Feature",
+        "session": "Session",
+        "state": "State",
+        "result": "Result",
+        "duration": "Duration",
+        "actions": "Actions"
+    },
+    "row": {
+        "aria": "Audit entry {{id}}: {{feature}} {{label}}",
+        "stalledTitle": "Queued for {{duration}} with no completion callback",
+        "retry": "Re-run this generation"
+    },
+    "footer": {
+        "summary_one": "{{shown}} of {{total}} entry",
+        "summary_other": "{{shown}} of {{total}} entries",
+        "showingFirst": " · showing first {{shown}}",
+        "loadMore": "Load {{count}} more",
+        "loading": "Loading…",
+        "autoRefresh": "auto-refresh 4s"
+    },
+    "detail": {
+        "aria": "AI audit detail",
+        "loading": "Loading entry…",
+        "close": "Close detail",
+        "retry": "Retry",
+        "truncated": "Payload truncated — only the first 200k characters are stored.",
+        "noRequest": "No request payload stored.",
+        "noResponse": "No response payload stored."
+    },
+    "tabs": {
+        "summary": "Summary",
+        "request": "Request",
+        "response": "Response"
+    },
+    "summary": {
+        "feature": "Feature",
+        "scope": "Scope",
+        "trigger": "Trigger",
+        "model": "Model",
+        "connection": "Connection",
+        "local": "local",
+        "state": "State",
+        "results": "Results",
+        "anchors": "Anchors",
+        "anchorsKept": "{{kept}} / {{total}} kept",
+        "duration": "Duration",
+        "created": "Created",
+        "updated": "Updated",
+        "session": "Session",
+        "job": "Job",
+        "copy": "Copy summary"
+    },
+    "raw": {
+        "chars": "{{value}} chars",
+        "copied": "Copied",
+        "copy": "Copy",
+        "collapse": "Collapse",
+        "expand": "Expand"
+    },
+    "skeleton": {
+        "aria": "Loading audit entries"
+    },
+    "model": {
+        "cleared_one": "Cleared {{count}} entry older than {{days}} days",
+        "cleared_other": "Cleared {{count}} entries older than {{days}} days",
+        "retryQueued": "Retry queued for entry #{{id}}"
+    },
+    "format": {
+        "untitledSession": "Untitled session",
+        "noSession": "No session",
+        "noResults": "No results recorded",
+        "results_one": "{{count}} result",
+        "results_other": "{{count}} results",
+        "anchorsKept": "anchors kept {{kept}}/{{total}}"
+    },
+    "day": {
+        "today": "Today",
+        "yesterday": "Yesterday"
+    }
+}

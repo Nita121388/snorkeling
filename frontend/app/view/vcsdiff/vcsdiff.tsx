@@ -8,9 +8,11 @@ import { getFileLanguage } from "@/app/view/preview/preview-edit";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import * as WOS from "@/store/wos";
+import { i18n } from "@/i18n/config";
 import { isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 type VcsDiffEnv = WaveEnv;
 type VcsDiffMode = "side-by-side" | "inline";
@@ -40,7 +42,7 @@ export class VcsDiffViewModel implements ViewModel {
     env: VcsDiffEnv;
     blockAtom: Atom<Block>;
     viewIcon = atom("file-code");
-    viewName = atom("File Diff");
+    viewName = atom(i18n.t("vcs:diff.viewName"));
     hideViewName = atom(true);
     manageConnection = atom(true);
     filterOutNowsh = atom(true);
@@ -77,12 +79,12 @@ export class VcsDiffViewModel implements ViewModel {
             const filePath = get(this.filePathAtom);
             const revision = get(this.revisionAtom);
             if (isBlank(filePath)) {
-                return "Diff";
+                return i18n.t("vcs:diff.title");
             }
             if (isBlank(revision)) {
-                return `${filePath} (working tree)`;
+                return i18n.t("vcs:common.diffTitleWorkingTree", { path: filePath });
             }
-            return `${filePath} @ ${revision}`;
+            return i18n.t("vcs:common.diffTitleRevision", { path: filePath, revision });
         });
 
         this.connection = atom((get) => {
@@ -113,7 +115,7 @@ export class VcsDiffViewModel implements ViewModel {
                 {
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
-                    title: "Refresh",
+                    title: i18n.t("vcs:common.refresh"),
                     zone: "pinned",
                     click: () => {
                         globalStore.set(this.refreshNonce, (prev) => prev + 1);
@@ -130,6 +132,7 @@ export class VcsDiffViewModel implements ViewModel {
 
 function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
     const env = useWaveEnv<VcsDiffEnv>();
+    const { t } = useTranslation("vcs");
     const connection = useAtomValue(model.connection);
     const connStatus = useAtomValue(model.connStatus);
     const repoType = useAtomValue(model.repoTypeAtom);
@@ -186,7 +189,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
             }
             if (isBlank(repoType) || isBlank(repoPath) || isBlank(filePath)) {
                 setLoading(false);
-                setError("Missing vcsdiff metadata (repotype/repopath/filepath).");
+                setError(t("vcs:diff.missingMetadata"));
                 return;
             }
             setLoading(true);
@@ -215,11 +218,9 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                     setModifiedText(null);
                     setPatchText(response.diff ?? "");
                     if (!isBlank(response.diff)) {
-                        setRenderHint(
-                            "Showing raw patch because this diff is not renderable as a single-file visual diff."
-                        );
+                        setRenderHint(t("vcs:diff.rawPatchHint"));
                     } else {
-                        setRenderHint("No diff output.");
+                        setRenderHint(t("vcs:diff.noDiff"));
                     }
                 }
             } catch (e) {
@@ -248,7 +249,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
     if (connStatus?.status !== "connected") {
         return (
             <div className="h-full w-full flex items-center justify-center text-sm text-muted">
-                Connection unavailable.
+                {t("vcs:common.connectionUnavailable")}
             </div>
         );
     }
@@ -256,11 +257,11 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
     return (
         <div className="h-full w-full overflow-hidden p-2">
             <div className="h-full w-full overflow-auto rounded border border-border bg-surface-strong p-2">
-                {loading && <div className="text-sm text-muted">Loading diff...</div>}
+                {loading && <div className="text-sm text-muted">{t("vcs:diff.loading")}</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
                 {!loading && !error && (
                     <div className="mb-2 flex items-center gap-1.5">
-                        <span className="text-[11px] text-secondary">View</span>
+                        <span className="text-[11px] text-secondary">{t("vcs:diff.view")}</span>
                         <button
                             className={`rounded px-2 py-0.5 text-[11px] border cursor-pointer ${
                                 mode === "side-by-side"
@@ -270,7 +271,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                             onClick={() => setMode("side-by-side")}
                             disabled={modeSaving}
                         >
-                            Side by side
+                            {t("vcs:diff.sideBySide")}
                         </button>
                         <button
                             className={`rounded px-2 py-0.5 text-[11px] border cursor-pointer ${
@@ -281,7 +282,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                             onClick={() => setMode("inline")}
                             disabled={modeSaving}
                         >
-                            Inline
+                            {t("vcs:diff.inline")}
                         </button>
                     </div>
                 )}
@@ -298,7 +299,7 @@ function VcsDiffView({ model }: ViewComponentProps<VcsDiffViewModel>) {
                 )}
                 {!loading && !error && (originalText == null || modifiedText == null) && (
                     <div className="flex flex-col gap-2">
-                        <div className="text-sm text-muted">{renderHint || "No visual diff content available."}</div>
+                        <div className="text-sm text-muted">{renderHint || t("vcs:diff.noContent")}</div>
                         {!isBlank(patchText) && (
                             <pre className="overflow-auto rounded border border-border bg-surface p-2 font-mono text-[12px] leading-5 text-secondary whitespace-pre">
                                 {patchText}

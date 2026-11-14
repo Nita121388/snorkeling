@@ -30,6 +30,7 @@
 import { createInstance, type i18n as I18nInstance } from "i18next";
 
 // Reuse the renderer's locale files verbatim — same JSON, same keys, same types.
+import enAiaudit from "../frontend/i18n/locales/en/aiaudit.json";
 import enAipanel from "../frontend/i18n/locales/en/aipanel.json";
 import enAisessions from "../frontend/i18n/locales/en/aisessions.json";
 import enBlock from "../frontend/i18n/locales/en/block.json";
@@ -41,7 +42,9 @@ import enPreview from "../frontend/i18n/locales/en/preview.json";
 import enSessionOverview from "../frontend/i18n/locales/en/session-overview.json";
 import enTab from "../frontend/i18n/locales/en/tab.json";
 import enTerm from "../frontend/i18n/locales/en/term.json";
+import enVcs from "../frontend/i18n/locales/en/vcs.json";
 import enWaveconfig from "../frontend/i18n/locales/en/waveconfig.json";
+import zhAiaudit from "../frontend/i18n/locales/zh/aiaudit.json";
 import zhAipanel from "../frontend/i18n/locales/zh/aipanel.json";
 import zhAisessions from "../frontend/i18n/locales/zh/aisessions.json";
 import zhBlock from "../frontend/i18n/locales/zh/block.json";
@@ -53,13 +56,14 @@ import zhPreview from "../frontend/i18n/locales/zh/preview.json";
 import zhSessionOverview from "../frontend/i18n/locales/zh/session-overview.json";
 import zhTab from "../frontend/i18n/locales/zh/tab.json";
 import zhTerm from "../frontend/i18n/locales/zh/term.json";
+import zhVcs from "../frontend/i18n/locales/zh/vcs.json";
 import zhWaveconfig from "../frontend/i18n/locales/zh/waveconfig.json";
 
 export const MAIN_SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type MainLocale = (typeof MAIN_SUPPORTED_LOCALES)[number];
 export const MAIN_DEFAULT_LOCALE: MainLocale = "en";
 export const MAIN_FALLBACK_LOCALE: MainLocale = "en";
-export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext", "block", "element", "block-editor", "waveconfig", "term", "preview"] as const;
+export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext", "block", "element", "block-editor", "waveconfig", "term", "preview", "aisessions", "vcs", "aiaudit"] as const;
 
 /** Normalize a raw `ui:locale` value into a supported locale ("en" fallback). */
 export function coerceLocale(value: unknown): MainLocale {
@@ -102,6 +106,8 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         term: enTerm,
         preview: enPreview,
         aisessions: enAisessions,
+        vcs: enVcs,
+        aiaudit: enAiaudit,
     },
     zh: {
         common: zhCommon,
@@ -116,6 +122,8 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         term: zhTerm,
         preview: zhPreview,
         aisessions: zhAisessions,
+        vcs: zhVcs,
+        aiaudit: zhAiaudit,
     },
 };
 

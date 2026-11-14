@@ -5,8 +5,10 @@ import { CommitGroup, CommitRow } from "@/app/view/vcs/vcs-commit-row";
 import { filterVcsFileStatuses, VcsFileTypeFilterOptions } from "@/app/view/vcs/vcs-filter";
 import { getRepoOpenUrl } from "@/app/view/vcs/vcs-remote";
 import { openLink } from "@/store/global";
+import { i18n } from "@/i18n/config";
 import { fireAndForget, isBlank } from "@/util/util";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { VcsIconButton } from "./vcs-icon-button";
 
 const DefaultCommitMessage = "chore: update selected files";
@@ -40,6 +42,8 @@ function CollapsibleHeader({
     actions?: React.ReactNode;
 }) {
     const countLabel = typeof count === "number" ? ` (${count})` : "";
+    // 让组件订阅语言变化（切语言即时刷新）；插值走 i18n.t（hook 的 t 拒绝 options）。
+    useTranslation("vcs");
     return (
         <div
             className={`mt-2 flex w-full items-center gap-2 rounded px-2 py-1 text-xs font-medium ${
@@ -49,7 +53,11 @@ function CollapsibleHeader({
             <button
                 className="flex min-w-0 flex-1 items-center gap-2 text-left text-secondary hover:text-main cursor-pointer"
                 onClick={onToggle}
-                title={isOpen ? `Collapse ${title}` : `Expand ${title}`}
+                title={
+                    isOpen
+                        ? i18n.t("vcs:changes.collapseTitle", { title })
+                        : i18n.t("vcs:changes.expandTitle", { title })
+                }
             >
                 <span className="text-[11px] w-[12px] text-muted">{isOpen ? "▾" : "▸"}</span>
                 <span>
@@ -76,6 +84,7 @@ function RepoFileFilterBar({
     const search = filterState.search ?? "";
     const type = filterState.type ?? "all";
     const extension = filterState.extension ?? "";
+    const { t } = useTranslation("vcs");
     const filtersActive = search.trim() !== "" || type !== "all" || extension.trim() !== "";
     const controlClassName =
         "h-7 rounded-md border border-border bg-surface text-xs text-foreground outline-none " +
@@ -89,12 +98,12 @@ function RepoFileFilterBar({
                     type="text"
                     value={search}
                     onChange={(e) => onChange({ ...filterState, search: e.target.value })}
-                    placeholder="Search files"
+                    placeholder={t("vcs:changes.searchPlaceholder")}
                 />
                 {search.trim() !== "" && (
                     <VcsIconButton
                         icon="xmark"
-                        title="Clear search"
+                        title={t("vcs:changes.clearSearch")}
                         size="sm"
                         className="!absolute !right-1 !top-1/2 -translate-y-1/2"
                         onClick={() => onChange({ ...filterState, search: "" })}
@@ -107,13 +116,13 @@ function RepoFileFilterBar({
                     type="text"
                     value={extension}
                     onChange={(e) => onChange({ ...filterState, extension: e.target.value })}
-                    placeholder="Ext .ts"
-                    title="Filter by file extension, e.g. .ts or .tsx,.scss"
+                    placeholder={t("vcs:changes.extPlaceholder")}
+                    title={t("vcs:changes.extHint")}
                 />
                 {extension.trim() !== "" && (
                     <VcsIconButton
                         icon="xmark"
-                        title="Clear extension"
+                        title={t("vcs:changes.clearExtension")}
                         size="sm"
                         className="!absolute !right-1 !top-1/2 -translate-y-1/2"
                         onClick={() => onChange({ ...filterState, extension: "" })}
@@ -121,7 +130,7 @@ function RepoFileFilterBar({
                 )}
             </div>
             <label className="flex items-center gap-1.5 text-[11px] text-secondary">
-                <span>Type</span>
+                <span>{t("vcs:changes.typeLabel")}</span>
                 <div className="relative">
                     <select
                         className={`${controlClassName} appearance-none pl-2 pr-7 cursor-pointer`}
@@ -135,7 +144,7 @@ function RepoFileFilterBar({
                     >
                         {VcsFileTypeFilterOptions.map((option) => (
                             <option key={option.value} value={option.value} className="bg-panel text-foreground">
-                                {option.label}
+                                {i18n.t(option.labelKey)}
                             </option>
                         ))}
                     </select>
@@ -143,11 +152,11 @@ function RepoFileFilterBar({
                 </div>
             </label>
             <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-muted">
-                {filtersActive ? `${visibleCount}/${totalCount}` : `${totalCount} files`}
+                {filtersActive ? `${visibleCount}/${totalCount}` : i18n.t("vcs:changes.files", { count: totalCount })}
                 {filtersActive && (
                     <VcsIconButton
                         icon="rotate-left"
-                        title="Reset filters"
+                        title={t("vcs:common.resetFilters")}
                         size="sm"
                         onClick={() => onChange({ search: "", type: "all", extension: "" })}
                     />
@@ -170,6 +179,7 @@ function FileStatusRow({
     onOpenDiff: () => void;
     onShowHistory: () => void;
 }) {
+    const { t } = useTranslation("vcs");
     return (
         <div className="group flex w-max min-w-full items-center gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0">
             <input type="checkbox" checked={selected} onChange={onToggleSelected} className="cursor-pointer" />
@@ -177,7 +187,7 @@ function FileStatusRow({
             <span className="flex-1 min-w-[180px] whitespace-nowrap pr-3">{status.path}</span>
             <VcsIconButton
                 icon="code-compare"
-                title="Show diff"
+                title={t("vcs:changes.showDiff")}
                 size="sm"
                 tone="accent"
                 reveal="hover"
@@ -185,7 +195,7 @@ function FileStatusRow({
             />
             <VcsIconButton
                 icon="clock-rotate-left"
-                title="Show file history"
+                title={t("vcs:changes.showHistory")}
                 size="sm"
                 reveal="hover"
                 onClick={onShowHistory}
@@ -229,6 +239,7 @@ export function VcsChangesTab({
     onSyncAction: (action: VcsSyncAction) => void;
     syncRunning: boolean;
 }) {
+    const { t } = useTranslation("vcs");
     const statusList = repo.status ?? [];
     const changedList = statusList.filter((status) => !status.untracked);
     const untrackedList = statusList.filter((status) => !!status.untracked);
@@ -274,7 +285,11 @@ export function VcsChangesTab({
 
     return (
         <div className="flex-1 overflow-auto p-2">
-            {repo.statuserr && <div className="text-xs text-warning mb-2">Status warning: {repo.statuserr}</div>}
+            {repo.statuserr && (
+                <div className="text-xs text-warning mb-2">
+                    {i18n.t("vcs:changes.statusWarning", { error: repo.statuserr })}
+                </div>
+            )}
             <RepoFileFilterBar
                 filterState={fileFilterState}
                 onChange={setFileFilterState}
@@ -282,7 +297,7 @@ export function VcsChangesTab({
                 visibleCount={filteredStatusList.length}
             />
             <CollapsibleHeader
-                title="Changes"
+                title={t("vcs:changes.sectionChanges")}
                 count={filteredChangedList.length}
                 isOpen={sectionState.changes}
                 onToggle={() => setSectionOpen("changes", !sectionState.changes)}
@@ -291,7 +306,7 @@ export function VcsChangesTab({
                     <>
                         <VcsIconButton
                             icon="square-check"
-                            title="Select all changed files"
+                            title={t("vcs:changes.selectAllChanged")}
                             size="sm"
                             tone="accent"
                             disabled={filteredChangedList.length === 0}
@@ -299,7 +314,7 @@ export function VcsChangesTab({
                         />
                         <VcsIconButton
                             icon="square"
-                            title="Clear selection"
+                            title={t("vcs:changes.clearSelection")}
                             size="sm"
                             disabled={filteredChangedList.length === 0}
                             onClick={() => clearAllFor(filteredChangedList)}
@@ -317,7 +332,7 @@ export function VcsChangesTab({
                 </div>
             )}
             <CollapsibleHeader
-                title="Untracked"
+                title={t("vcs:changes.sectionUntracked")}
                 count={filteredUntrackedList.length}
                 isOpen={sectionState.untracked}
                 onToggle={() => setSectionOpen("untracked", !sectionState.untracked)}
@@ -326,7 +341,7 @@ export function VcsChangesTab({
                     <>
                         <VcsIconButton
                             icon="square-check"
-                            title="Select all untracked files"
+                            title={t("vcs:changes.selectAllUntracked")}
                             size="sm"
                             tone="accent"
                             disabled={filteredUntrackedList.length === 0}
@@ -334,7 +349,7 @@ export function VcsChangesTab({
                         />
                         <VcsIconButton
                             icon="square"
-                            title="Clear selection"
+                            title={t("vcs:changes.clearSelection")}
                             size="sm"
                             disabled={filteredUntrackedList.length === 0}
                             onClick={() => clearAllFor(filteredUntrackedList)}
@@ -354,7 +369,7 @@ export function VcsChangesTab({
             {isGit && (
                 <>
                     <CollapsibleHeader
-                        title="Remote"
+                        title={t("vcs:common.remote")}
                         count={ahead + behind}
                         isOpen={remoteSectionOpen}
                         onToggle={() => setSectionOpen("remote", !remoteSectionOpen)}
@@ -363,7 +378,11 @@ export function VcsChangesTab({
                             <>
                                 <VcsIconButton
                                     icon="rotate-right"
-                                    title={syncRunning && syncAction === "fetch" ? "Fetching…" : "Fetch"}
+                                    title={
+                                        syncRunning && syncAction === "fetch"
+                                            ? t("vcs:operations.verb.fetch")
+                                            : t("vcs:operations.label.fetch")
+                                    }
                                     loading={syncRunning && syncAction === "fetch"}
                                     size="sm"
                                     disabled={syncRunning}
@@ -371,7 +390,11 @@ export function VcsChangesTab({
                                 />
                                 <VcsIconButton
                                     icon="arrow-down-to-line"
-                                    title={syncRunning && syncAction === "pull" ? "Pulling…" : "Pull"}
+                                    title={
+                                        syncRunning && syncAction === "pull"
+                                            ? t("vcs:operations.verb.pull")
+                                            : t("vcs:operations.label.pull")
+                                    }
                                     loading={syncRunning && syncAction === "pull"}
                                     size="sm"
                                     tone="accent"
@@ -380,7 +403,11 @@ export function VcsChangesTab({
                                 />
                                 <VcsIconButton
                                     icon="arrow-up-from-bracket"
-                                    title={syncRunning && syncAction === "push" ? "Pushing…" : "Push"}
+                                    title={
+                                        syncRunning && syncAction === "push"
+                                            ? t("vcs:operations.verb.push")
+                                            : t("vcs:operations.label.push")
+                                    }
                                     loading={syncRunning && syncAction === "push"}
                                     size="sm"
                                     tone="accent"
@@ -395,8 +422,11 @@ export function VcsChangesTab({
                             <div className="flex items-center gap-2 rounded-[7px] bg-surface-soft px-2.5 py-[7px]">
                                 <i className="fa-sharp fa-solid fa-code-branch text-[11px] text-muted" />
                                 {isBlank(remote?.upstream) ? (
-                                    <span className="truncate text-xs italic text-muted" title="Upstream not configured">
-                                        No upstream
+                                    <span
+                                        className="truncate text-xs italic text-muted"
+                                        title={t("vcs:changes.upstreamNotConfigured")}
+                                    >
+                                        {t("vcs:changes.noUpstream")}
                                     </span>
                                 ) : isBlank(getRepoOpenUrl(repo)) ? (
                                     <span className="max-w-[220px] truncate font-mono text-xs text-secondary" title={remote?.upstream}>
@@ -418,26 +448,32 @@ export function VcsChangesTab({
                                 <span className="flex-1" />
                                 {ahead === 0 && behind === 0 ? (
                                     <span className="text-[11px] text-muted">
-                                        <span className="text-success">✓</span> in sync
+                                        <span className="text-success">✓</span> {t("vcs:changes.inSync")}
                                     </span>
                                 ) : (
                                     <span className="flex items-center gap-1.5 font-mono text-[11px]">
-                                        <span className={`text-success ${ahead > 0 ? "" : "opacity-55"}`} title={`Ahead by ${ahead}`}>
+                                        <span
+                                            className={`text-success ${ahead > 0 ? "" : "opacity-55"}`}
+                                            title={i18n.t("vcs:common.aheadBy", { count: ahead })}
+                                        >
                                             ↑{ahead}
                                         </span>
                                         <span className="text-muted opacity-50">·</span>
-                                        <span className={`text-error ${behind > 0 ? "" : "opacity-55"}`} title={`Behind by ${behind}`}>
+                                        <span
+                                            className={`text-error ${behind > 0 ? "" : "opacity-55"}`}
+                                            title={i18n.t("vcs:common.behindBy", { count: behind })}
+                                        >
                                             ↓{behind}
                                         </span>
                                     </span>
                                 )}
                             </div>
-                            <CommitGroup title="Incoming" count={incoming.length}>
+                            <CommitGroup title={t("vcs:common.incoming")} count={incoming.length}>
                                 {incoming.map((commit, idx) => (
                                     <CommitRow key={`incoming-${commit.hash}-${idx}`} commit={commit} railColor="bg-error" />
                                 ))}
                             </CommitGroup>
-                            <CommitGroup title="Outgoing" count={outgoing.length}>
+                            <CommitGroup title={t("vcs:common.outgoing")} count={outgoing.length}>
                                 {outgoing.map((commit, idx) => (
                                     <CommitRow key={`outgoing-${commit.hash}-${idx}`} commit={commit} railColor="bg-success" />
                                 ))}
@@ -449,7 +485,7 @@ export function VcsChangesTab({
             {!isGit && remoteFiles.length > 0 && (
                 <>
                     <CollapsibleHeader
-                        title="Remote"
+                        title={t("vcs:common.remote")}
                         count={remoteFiles.length}
                         isOpen={remoteSectionOpen}
                         onToggle={() => setSectionOpen("remote", !remoteSectionOpen)}
@@ -457,7 +493,11 @@ export function VcsChangesTab({
                         actions={
                             <VcsIconButton
                                 icon="arrow-down"
-                                title={syncRunning && syncAction === "update" ? "Updating…" : "Update remote files"}
+                                title={
+                                    syncRunning && syncAction === "update"
+                                        ? t("vcs:operations.verb.update")
+                                        : t("vcs:changes.updateRemoteFiles")
+                                }
                                 loading={syncRunning && syncAction === "update"}
                                 size="sm"
                                 disabled={syncRunning}
@@ -481,11 +521,15 @@ export function VcsChangesTab({
             )}
             {hasSelectedFiles && (
                 <>
-                    <textarea className="w-full min-h-[58px] rounded border border-border bg-panel/80 px-2 py-1.5 text-xs outline-none focus:border-accent" value={commitMessage} onChange={(e) => setCommitMessage(e.target.value)} placeholder="Commit message..." />
+                    <textarea className="w-full min-h-[58px] rounded border border-border bg-panel/80 px-2 py-1.5 text-xs outline-none focus:border-accent" value={commitMessage} onChange={(e) => setCommitMessage(e.target.value)} placeholder={t("vcs:changes.commitPlaceholder")} />
                     <div className="mt-2 flex items-center gap-2">
                         <button className="inline-flex items-center gap-1.5 rounded bg-action px-2.5 py-1 text-xs text-actiontext font-semibold hover:bg-actionhover disabled:opacity-50 cursor-pointer disabled:cursor-default" disabled={commitRunning} onClick={onCommit}>
                             <i className={commitRunning ? "fa-sharp fa-solid fa-spinner animate-spin text-[11px]" : "fa-sharp fa-solid fa-code-commit text-[11px]"} />
-                            <span>{commitRunning ? "Committing..." : `Commit (${selectedFiles.length})`}</span>
+                            <span>
+                                {commitRunning
+                                    ? t("vcs:changes.committing")
+                                    : i18n.t("vcs:changes.commit", { count: selectedFiles.length })}
+                            </span>
                         </button>
                     </div>
                 </>

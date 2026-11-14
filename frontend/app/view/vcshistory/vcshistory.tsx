@@ -8,9 +8,11 @@ import { CommitGroup, CommitRow } from "@/app/view/vcs/vcs-commit-row";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { createBlock } from "@/store/global";
+import { i18n } from "@/i18n/config";
 import { isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 type VcsHistoryEnv = WaveEnv;
 type CommitFilesMap = Record<string, VcsCommitFileInfo[]>;
@@ -41,7 +43,7 @@ export class VcsHistoryViewModel implements ViewModel {
     blockAtom: Atom<Block>;
 
     viewIcon = atom("clock-rotate-left");
-    viewName = atom("File History");
+    viewName = atom(i18n.t("vcs:pathHistory.viewName"));
     manageConnection = atom(true);
     filterOutNowsh = atom(true);
     noPadding = atom(true);
@@ -73,9 +75,9 @@ export class VcsHistoryViewModel implements ViewModel {
             }
             const filePath = get(this.filePathAtom);
             if (isBlank(filePath)) {
-                return "File History";
+                return i18n.t("vcs:pathHistory.viewName");
             }
-            return `History: ${filePath}`;
+            return i18n.t("vcs:common.historyTitle", { path: filePath });
         });
         this.connection = atom((get) => {
             const connValue = get(this.blockAtom)?.meta?.connection;
@@ -103,7 +105,7 @@ export class VcsHistoryViewModel implements ViewModel {
                 {
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
-                    title: "Refresh",
+                    title: i18n.t("vcs:common.refresh"),
                     zone: "pinned",
                     click: () => {
                         globalStore.set(this.refreshNonce, (prev) => prev + 1);
@@ -120,6 +122,7 @@ export class VcsHistoryViewModel implements ViewModel {
 
 function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
     const env = useWaveEnv<VcsHistoryEnv>();
+    const { t } = useTranslation("vcs");
     const connection = useAtomValue(model.connection);
     const connStatus = useAtomValue(model.connStatus);
     const repoType = useAtomValue(model.repoTypeAtom);
@@ -153,7 +156,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
             }
             if (isBlank(repoType) || isBlank(repoPath) || isBlank(filePath)) {
                 setLoading(false);
-                setError("Missing vcshistory metadata (repotype/repopath/filepath).");
+                setError(t("vcs:pathHistory.missingMetadata"));
                 return;
             }
             setLoading(true);
@@ -262,7 +265,10 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                     "vcsdiff:filepath": diffFilePath,
                     "vcsdiff:revision": revision,
                     "vcsdiff:mode": "side-by-side",
-                    "vcsdiff:title": `${diffFilePath} @ ${shortHash(revision)}`,
+                    "vcsdiff:title": i18n.t("vcs:common.diffTitleRevision", {
+                        path: diffFilePath,
+                        revision: shortHash(revision),
+                    }),
                 } as any,
             };
             await createBlock(blockDef);
@@ -272,19 +278,23 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
     };
 
     if (connStatus?.status !== "connected") {
-        return <div className="h-full w-full flex items-center justify-center text-sm text-muted">Connection unavailable.</div>;
+        return (
+            <div className="h-full w-full flex items-center justify-center text-sm text-muted">
+                {t("vcs:common.connectionUnavailable")}
+            </div>
+        );
     }
 
     return (
         <div className="h-full w-full overflow-hidden p-2">
             <div className="h-full w-full overflow-auto p-2">
-                {loading && <div className="text-sm text-muted">Loading path history...</div>}
+                {loading && <div className="text-sm text-muted">{t("vcs:pathHistory.loading")}</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
                 {!loading && !error && commits.length === 0 && (
-                    <div className="text-sm text-muted">No history entries found for this path.</div>
+                    <div className="text-sm text-muted">{t("vcs:pathHistory.noEntries")}</div>
                 )}
                 {!loading && !error && commits.length > 0 && (
-                    <CommitGroup title="History" count={commits.length}>
+                    <CommitGroup title={t("vcs:common.historyGroup")} count={commits.length}>
                         {commits.map((commit, idx) => {
                             const revision = commit.hash ?? "";
                             const expandable = !isBlank(revision);
@@ -305,7 +315,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                     {expandable && expanded && (
                                         <div className="mb-1 ml-4 mt-1.5 rounded border border-border bg-surface-strong">
                                             {filesLoading && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>
+                                                <div className="px-2 py-1 text-[11px] text-muted">{t("vcs:common.loadingFiles")}</div>
                                             )}
                                             {!filesLoading && !isBlank(filesError) && (
                                                 <div className="px-2 py-1 text-[11px] text-error whitespace-pre-wrap">
@@ -314,7 +324,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                             )}
                                             {!filesLoading && isBlank(filesError) && files.length === 0 && (
                                                 <div className="px-2 py-1 text-[11px] text-muted">
-                                                    No changed files found for this path in this commit.
+                                                    {t("vcs:pathHistory.noChangedFiles")}
                                                 </div>
                                             )}
                                             {!filesLoading && isBlank(filesError) && files.length > 0 && (
@@ -340,7 +350,7 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                                                         });
                                                                     }}
                                                                 >
-                                                                    {isOpening ? "Opening..." : "Diff"}
+                                                                    {isOpening ? t("vcs:pathHistory.opening") : t("vcs:common.diff")}
                                                                 </button>
                                                             </div>
                                                         );

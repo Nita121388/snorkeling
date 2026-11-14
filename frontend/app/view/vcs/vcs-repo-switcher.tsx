@@ -1,7 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { i18n } from "@/i18n/config";
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 const MaxVisibleChips = 4;
 
@@ -22,6 +24,8 @@ export function VcsRepoSwitcher({
     activeRepoId: string;
     onSelect: (repoId: string) => void;
 }) {
+    // 让芯片区订阅语言变化（"(no branch)" / "N more repositories" 随语言刷新）。
+    useTranslation("vcs");
     const [overflowOpen, setOverflowOpen] = React.useState(false);
     const moreRef = React.useRef<HTMLDivElement>(null);
 
@@ -68,7 +72,7 @@ export function VcsRepoSwitcher({
                     />
                     <span className="max-w-[120px] truncate">{repo.name}</span>
                     <span className={`font-mono text-[10px] ${repo.repoid === activeRepoId ? "opacity-85" : "text-muted"}`}>
-                        {repo.branch || "(no branch)"}
+                        {repo.branch || i18n.t("vcs:common.noBranch")}
                     </span>
                 </button>
             ))}
@@ -78,7 +82,7 @@ export function VcsRepoSwitcher({
                         type="button"
                         onClick={() => setOverflowOpen((v) => !v)}
                         className="flex h-6 items-center gap-1 rounded-full border border-border bg-surface px-2.5 text-[11px] text-secondary hover:bg-hoverbg cursor-pointer"
-                        title={`${overflow.length} more repositories`}
+                        title={i18n.t("vcs:repoSwitcher.moreRepositories", { count: overflow.length })}
                     >
                         +{overflow.length}
                     </button>
@@ -101,7 +105,7 @@ export function VcsRepoSwitcher({
                                     >
                                         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dirty ? "bg-warning" : "bg-success"}`} />
                                         <span className="min-w-0 flex-1 truncate font-medium">{repo.name}</span>
-                                        <span className="font-mono text-[10px] text-muted truncate max-w-[110px]">{repo.branch || "(no branch)"}</span>
+                                        <span className="font-mono text-[10px] text-muted truncate max-w-[110px]">{repo.branch || i18n.t("vcs:common.noBranch")}</span>
                                     </button>
                                 );
                             })}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import "i18next";
+import type aiaudit from "./locales/en/aiaudit.json";
 import type aipanel from "./locales/en/aipanel.json";
 import type aisessions from "./locales/en/aisessions.json";
 import type block from "./locales/en/block.json";
@@ -14,6 +15,7 @@ import type preview from "./locales/en/preview.json";
 import type sessionOverview from "./locales/en/session-overview.json";
 import type tab from "./locales/en/tab.json";
 import type term from "./locales/en/term.json";
+import type vcs from "./locales/en/vcs.json";
 import type waveconfig from "./locales/en/waveconfig.json";
 
 /**
@@ -43,6 +45,8 @@ declare module "i18next" {
             term: typeof term;
             preview: typeof preview;
             aisessions: typeof aisessions;
+            vcs: typeof vcs;
+            aiaudit: typeof aiaudit;
         };
     }
 }

@@ -1,0 +1,162 @@
+{
+    "header": {
+        "title": "AI 审计",
+        "viewName": "AI 审计"
+    },
+    "feature": {
+        "title": "标题",
+        "metadata": "备注与标签",
+        "annotationTimeline": "时间线",
+        "annotationField": "字段",
+        "unknown": "未知"
+    },
+    "scope": {
+        "agentCard": "Agent 悬浮卡",
+        "sessionRow": "列表行",
+        "detail": "详情头部",
+        "batch": "批量操作栏",
+        "autoScan": "自动扫描",
+        "auditRetry": "审计重试"
+    },
+    "state": {
+        "done": "已完成",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "running": "运行中",
+        "queued": "排队中",
+        "stalled": "停滞",
+        "unknown": "未知"
+    },
+    "stateFilter": {
+        "all": "全部状态",
+        "queued": "排队 / 停滞",
+        "running": "运行中",
+        "done": "已完成",
+        "failed": "失败",
+        "cancelled": "已取消"
+    },
+    "filter": {
+        "featureAria": "按功能筛选",
+        "stateAria": "按状态筛选",
+        "allFeatures": "全部功能"
+    },
+    "search": {
+        "placeholder": "搜索会话 / 模型 / 错误 / key",
+        "aria": "搜索审计记录"
+    },
+    "refresh": {
+        "refreshing": "刷新中…",
+        "refresh": "刷新",
+        "aria": "刷新"
+    },
+    "clear": {
+        "clear": "清理 30 天前",
+        "confirm": "确认清理 30 天前",
+        "title": "删除 30 天前的审计记录（会要求二次确认）"
+    },
+    "stats": {
+        "loading": "正在加载 24 小时统计…",
+        "calls24h": "24 小时调用",
+        "failed": "失败",
+        "avg": "平均",
+        "hourlyAria": "最近 24 小时每小时的调用数",
+        "bucketCalls_one": "{{count}} 次调用",
+        "bucketCalls_other": "{{count}} 次调用",
+        "bucketFailed": "{{count}} 次失败",
+        "failedFilterClear": "清除失败筛选",
+        "failedFilterShow": "只看失败记录",
+        "noFailures": "最近 24 小时没有失败",
+        "reclaimedTitle": "卡在排队状态的行已回收为失败",
+        "stalledReclaimed_one": "回收了 {{count}} 条停滞记录",
+        "stalledReclaimed_other": "回收了 {{count}} 条停滞记录"
+    },
+    "pending": {
+        "message": "翻页期间可能有新记录写入。",
+        "refresh": "刷新"
+    },
+    "empty": {
+        "title": "还没有记录到 AI 活动。",
+        "hint": "当标题、备注或批注生成运行时，审计记录会出现在这里。"
+    },
+    "table": {
+        "time": "时间",
+        "feature": "功能",
+        "session": "会话",
+        "state": "状态",
+        "result": "结果",
+        "duration": "耗时",
+        "actions": "操作"
+    },
+    "row": {
+        "aria": "审计记录 {{id}}：{{feature}} {{label}}",
+        "stalledTitle": "已排队 {{duration}} 但没有完成回调",
+        "retry": "重新运行这次生成"
+    },
+    "footer": {
+        "summary_one": "{{shown}} / {{total}} 条记录",
+        "summary_other": "{{shown}} / {{total}} 条记录",
+        "showingFirst": " · 只显示前 {{shown}} 条",
+        "loadMore": "再加载 {{count}} 条",
+        "loading": "加载中…",
+        "autoRefresh": "每 4 秒自动刷新"
+    },
+    "detail": {
+        "aria": "AI 审计详情",
+        "loading": "正在加载记录…",
+        "close": "关闭详情",
+        "retry": "重试",
+        "truncated": "内容已截断——只保留前 20 万个字符。",
+        "noRequest": "没有保存请求内容。",
+        "noResponse": "没有保存响应内容。"
+    },
+    "tabs": {
+        "summary": "概览",
+        "request": "请求",
+        "response": "响应"
+    },
+    "summary": {
+        "feature": "功能",
+        "scope": "来源",
+        "trigger": "触发方式",
+        "model": "模型",
+        "connection": "连接",
+        "local": "本地",
+        "state": "状态",
+        "results": "结果数",
+        "anchors": "锚点",
+        "anchorsKept": "保留 {{kept}} / {{total}}",
+        "duration": "耗时",
+        "created": "创建时间",
+        "updated": "更新时间",
+        "session": "会话",
+        "job": "任务",
+        "copy": "复制概览"
+    },
+    "raw": {
+        "chars": "{{value}} 个字符",
+        "copied": "已复制",
+        "copy": "复制",
+        "collapse": "收起",
+        "expand": "展开"
+    },
+    "skeleton": {
+        "aria": "正在加载审计记录"
+    },
+    "model": {
+        "cleared_one": "已清理 {{count}} 条 {{days}} 天前的记录",
+        "cleared_other": "已清理 {{count}} 条 {{days}} 天前的记录",
+        "retryQueued": "记录 #{{id}} 已加入重试队列"
+    },
+    "format": {
+        "untitledSession": "未命名会话",
+        "noSession": "无会话",
+        "noResults": "没有结果",
+        "results_one": "{{count}} 个结果",
+        "results_other": "{{count}} 个结果",
+        "anchorsKept": "保留锚点 {{kept}}/{{total}}"
+    },
+    "day": {
+        "today": "今天",
+        "yesterday": "昨天"
+    }
+}

@@ -1,7 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { initI18n, i18n } from "@/i18n/config";
 import {
     AuditStalledMs,
     bucketHeights,
@@ -18,7 +19,15 @@ import {
     stateMeta,
 } from "./aiaudit-format";
 
+// Pattern I：状态词/日期词/空态文案的期望值一律用 `i18n.t(...)` 复算，
+// 不把 en（更不把 zh）的字面量冻进测试。
+beforeAll(async () => {
+    await initI18n("en");
+});
+
 describe("formatDuration", () => {
+    // 时长单位（ms / s / m）是与 aisessions `fold-duration.ts` 一致的数字+单位格式，
+    // 不属于文案迁移范围（日期/数字格式模式归 11-02-datetime-format-config）。
     it("renders sub-second, second and minute ranges", () => {
         expect(formatDuration(0)).toBe("—");
         expect(formatDuration(-5)).toBe("—");
@@ -46,7 +55,9 @@ describe("state helpers", () => {
 
     it("labels stalled entries distinctly from queued", () => {
         const now = 1_000_000_000;
-        expect(stateLabel({ state: "queued", createdAt: now - AuditStalledMs - 1 }, now)).toBe("stalled");
+        expect(stateLabel({ state: "queued", createdAt: now - AuditStalledMs - 1 }, now)).toBe(
+            i18n.t("aiaudit:state.stalled")
+        );
         expect(stateLabel({ state: "queued", createdAt: now }, now)).toBe("queued");
         expect(stateLabel({ state: "failed", createdAt: now }, now)).toBe("failed");
     });
@@ -64,8 +75,8 @@ describe("time formatting", () => {
 
     it("labels days relative to now", () => {
         const now = new Date(2026, 2, 4, 15, 0, 0).getTime();
-        expect(dayLabel(new Date(2026, 2, 4, 1, 0, 0).getTime(), now)).toBe("Today");
-        expect(dayLabel(new Date(2026, 2, 3, 23, 0, 0).getTime(), now)).toBe("Yesterday");
+        expect(dayLabel(new Date(2026, 2, 4, 1, 0, 0).getTime(), now)).toBe(i18n.t("aiaudit:day.today"));
+        expect(dayLabel(new Date(2026, 2, 3, 23, 0, 0).getTime(), now)).toBe(i18n.t("aiaudit:day.yesterday"));
         expect(dayLabel(new Date(2026, 1, 27).getTime(), now)).toBe("Feb 27");
     });
 
@@ -88,7 +99,7 @@ describe("session helpers", () => {
     });
 
     it("falls back to a readable title when sessionTitle is blank", () => {
-        expect(sessionTitle({ sessionTitle: "  ", sessionKey: "pi:x" })).toBe("Untitled session");
+        expect(sessionTitle({ sessionTitle: "  ", sessionKey: "pi:x" })).toBe(i18n.t("aiaudit:format.untitledSession"));
         expect(sessionTitle({ sessionTitle: "Refactor", sessionKey: "pi:x" })).toBe("Refactor");
     });
 });
@@ -99,8 +110,8 @@ describe("resultLabel", () => {
         const label = resultLabel({ resultCount: 3, anchorTotal: 5, anchorKept: 1 });
         expect(label.primary).toBe("3");
         expect(label.secondary).toBe("1/5");
-        expect(label.title).toContain("3 results");
-        expect(label.title).toContain("anchors kept 1/5");
+        expect(label.title).toContain(i18n.t("aiaudit:format.results", { count: 3 }));
+        expect(label.title).toContain(i18n.t("aiaudit:format.anchorsKept", { kept: 1, total: 5 }));
     });
 });
 

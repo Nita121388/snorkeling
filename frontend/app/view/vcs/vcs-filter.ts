@@ -11,16 +11,20 @@ export type VcsFileTypeFilter =
     | "staged"
     | "unstaged";
 
-export const VcsFileTypeFilterOptions: { value: VcsFileTypeFilter; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "modified", label: "Modified" },
-    { value: "added", label: "Added" },
-    { value: "deleted", label: "Deleted" },
-    { value: "renamed", label: "Renamed" },
-    { value: "untracked", label: "Untracked" },
-    { value: "staged", label: "Staged" },
-    { value: "unstaged", label: "Unstaged" },
-];
+/**
+ * 类型筛选项。只存 `labelKey`（不在加载期冻结文案）：渲染期用 `i18n.t(option.labelKey)`
+ * 取值，切语言才能即时生效（Pattern C）。`as const` 保住 key 的字面量类型。
+ */
+export const VcsFileTypeFilterOptions = [
+    { value: "all", labelKey: "vcs:fileType.all" },
+    { value: "modified", labelKey: "vcs:fileType.modified" },
+    { value: "added", labelKey: "vcs:fileType.added" },
+    { value: "deleted", labelKey: "vcs:fileType.deleted" },
+    { value: "renamed", labelKey: "vcs:fileType.renamed" },
+    { value: "untracked", labelKey: "vcs:fileType.untracked" },
+    { value: "staged", labelKey: "vcs:fileType.staged" },
+    { value: "unstaged", labelKey: "vcs:fileType.unstaged" },
+] as const satisfies readonly { value: VcsFileTypeFilter; labelKey: string }[];
 
 function normalizeVcsStatusCode(status: VcsFileStatus): string {
     return (status?.code ?? "").trim().toUpperCase();

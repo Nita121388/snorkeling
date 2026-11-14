@@ -5,6 +5,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 export { i18n };
 
+import enAiaudit from "./locales/en/aiaudit.json";
 import enAipanel from "./locales/en/aipanel.json";
 import enAisessions from "./locales/en/aisessions.json";
 import enBlock from "./locales/en/block.json";
@@ -17,7 +18,9 @@ import enPreview from "./locales/en/preview.json";
 import enSessionOverview from "./locales/en/session-overview.json";
 import enTab from "./locales/en/tab.json";
 import enTerm from "./locales/en/term.json";
+import enVcs from "./locales/en/vcs.json";
 import enWaveconfig from "./locales/en/waveconfig.json";
+import zhAiaudit from "./locales/zh/aiaudit.json";
 import zhAipanel from "./locales/zh/aipanel.json";
 import zhAisessions from "./locales/zh/aisessions.json";
 import zhBlock from "./locales/zh/block.json";
@@ -30,6 +33,7 @@ import zhPreview from "./locales/zh/preview.json";
 import zhSessionOverview from "./locales/zh/session-overview.json";
 import zhTab from "./locales/zh/tab.json";
 import zhTerm from "./locales/zh/term.json";
+import zhVcs from "./locales/zh/vcs.json";
 import zhWaveconfig from "./locales/zh/waveconfig.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
@@ -52,6 +56,8 @@ export const NS = [
     "term",
     "preview",
     "aisessions",
+    "vcs",
+    "aiaudit",
 ] as const;
 
 /**
@@ -115,6 +121,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 term: enTerm,
                 preview: enPreview,
                 aisessions: enAisessions,
+                vcs: enVcs,
+                aiaudit: enAiaudit,
             },
             zh: {
                 common: zhCommon,
@@ -130,6 +138,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 term: zhTerm,
                 preview: zhPreview,
                 aisessions: zhAisessions,
+                vcs: zhVcs,
+                aiaudit: zhAiaudit,
             },
         },
         interpolation: {
