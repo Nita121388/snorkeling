@@ -10,9 +10,10 @@
 //
 // @vitest-environment jsdom
 
+import { initI18n } from "@/i18n/config";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RepoLine, formatRepoChanges } from "./repo-line";
 import { clearRepoInfoCache, writeRepoInfoCache } from "./use-repo-info";
 
@@ -31,10 +32,14 @@ function render(node: React.ReactNode): void {
     });
 }
 
+beforeAll(async () => {
+    // 文案走 i18n（en 为真源），先初始化再断言（Pattern I）。
+    await initI18n("en");
+});
+
 beforeEach(() => {
     clearRepoInfoCache();
 });
-
 afterEach(() => {
     act(() => {
         root?.unmount();

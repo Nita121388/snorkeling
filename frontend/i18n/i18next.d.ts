@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import "i18next";
-import type common from "./locales/en/common.json";
-import type onboarding from "./locales/en/onboarding.json";
-import type tab from "./locales/en/tab.json";
 import type aipanel from "./locales/en/aipanel.json";
-import type sessionOverview from "./locales/en/session-overview.json";
+import type block from "./locales/en/block.json";
+import type common from "./locales/en/common.json";
 import type commontext from "./locales/en/commontext.json";
+import type onboarding from "./locales/en/onboarding.json";
+import type sessionOverview from "./locales/en/session-overview.json";
+import type tab from "./locales/en/tab.json";
 
 /**
  * Type-safe i18next keys. Keys are derived from the bundled English resources
@@ -29,6 +30,7 @@ declare module "i18next" {
             aipanel: typeof aipanel;
             "session-overview": typeof sessionOverview;
             commontext: typeof commontext;
+            block: typeof block;
         };
     }
 }

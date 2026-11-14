@@ -34,6 +34,7 @@ import { resolveAgentSessionId } from "@/app/view/term/agent-session";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
+import { i18n } from "@/i18n/config";
 import type { LayoutNode } from "@/layout/index";
 import { getLayoutModelForTabById, TileItemType, useDebouncedNodeInnerRect } from "@/layout/index";
 import {
@@ -68,6 +69,7 @@ import {
     useSyncExternalStore,
 } from "react";
 import { useDrag, useDrop } from "react-dnd";
+import { useTranslation } from "react-i18next";
 import { minimizeGroupToFloat } from "./block-minimize";
 import {
     getInlineTabRuntimeOpts,
@@ -118,10 +120,10 @@ function getViewElem(
     viewModel: ViewModel
 ): React.ReactElement {
     if (isBlank(blockView)) {
-        return <CenteredDiv>No View</CenteredDiv>;
+        return <CenteredDiv>{i18n.t("block:view.noView")}</CenteredDiv>;
     }
     if (viewModel.viewComponent == null) {
-        return <CenteredDiv>No View Component</CenteredDiv>;
+        return <CenteredDiv>{i18n.t("block:view.noViewComponent")}</CenteredDiv>;
     }
     const VC = viewModel.viewComponent;
     return <VC key={blockId} blockId={blockId} blockRef={blockRef} contentRef={contentRef} model={viewModel} />;
@@ -189,6 +191,7 @@ const InlineTabLabel = memo(
         onDragEnd,
         sourceStripRef,
     }: InlineTabLabelProps) => {
+        const { t } = useTranslation("block");
         const waveEnv = useWaveEnv<BlockEnv>();
         const blockData = useAtomValue(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
         const blockView = useAtomValue(waveEnv.getBlockMetaKeyAtom(blockId, "view")) ?? "";
@@ -505,7 +508,7 @@ const InlineTabLabel = memo(
                     if (provider !== "agent") {
                         menu.push({ type: "separator" });
                         menu.push({
-                            label: "设置 emoji 人格",
+                            label: t("block:header.setEmojiPersona"),
                             click: () => {
                                 const rect = tabRef.current?.getBoundingClientRect();
                                 if (rect != null) {
@@ -590,7 +593,11 @@ const InlineTabLabel = memo(
                                 onDoubleClick={() => setIsEditing(true)}
                                 role="tab"
                                 aria-selected={isActive}
-                                aria-label={`Tab ${displayTitle}${isActive ? ", active" : ""}`}
+                                aria-label={
+                                    isActive
+                                        ? i18n.t("block:header.tabLabelActive", { title: displayTitle })
+                                        : i18n.t("block:header.tabLabel", { title: displayTitle })
+                                }
                                 tabIndex={isActive ? 0 : -1}
                             >
                                 {/* 图标槽: 供远程 badge 绝对定位参考, 自身不占额外宽度 */}
@@ -618,19 +625,24 @@ const InlineTabLabel = memo(
                                     {locality.isRemote && (
                                         <span
                                             className="inline-tab-block-tab-remote-dot"
-                                            title={`Remote: ${locality.connection}`}
-                                            aria-label="Remote connection"
+                                            title={i18n.t("block:header.remoteConnectionWith", {
+                                                connection: locality.connection,
+                                            })}
+                                            aria-label={t("block:header.remoteConnection")}
                                         />
                                     )}
                                 </span>
                                 {showTitle ? <span>{displayTitle}</span> : null}
                                 {isDirty ? (
-                                    <span className="inline-tab-block-tab-dirty-dot" title="未保存的修改" />
+                                    <span
+                                        className="inline-tab-block-tab-dirty-dot"
+                                        title={t("block:header.unsavedChanges")}
+                                    />
                                 ) : null}
                                 {isLocked ? (
                                     <i
                                         className={makeIconClass("lock", true) + " inline-tab-block-tab-lockicon"}
-                                        title="已锁定"
+                                        title={t("block:header.locked")}
                                     />
                                 ) : null}
                                 {statusDot != null ? (
@@ -665,7 +677,7 @@ const InlineTabLabel = memo(
                     <button
                         type="button"
                         className="inline-tab-block-tab-close"
-                        title="Close Block"
+                        title={t("block:header.closeBlock")}
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -766,6 +778,7 @@ function getDuplicateIndexes(blockIds: string[], titles: Record<string, string>)
 }
 
 const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { layoutData: TabLayoutData }) => {
+    const { t } = useTranslation("block");
     const waveEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
     const layoutModel = getLayoutModelForTabById(tabModel.tabId);
@@ -1100,8 +1113,8 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                         <button
                             type="button"
                             className="inline-tab-block-group-handle"
-                            title="Move Tab Group"
-                            aria-label="Move Tab Group"
+                            title={t("block:header.moveTabGroup")}
+                            aria-label={t("block:header.moveTabGroup")}
                         >
                             <i className={makeIconClass("grip-lines", true)} />
                         </button>
@@ -1140,7 +1153,11 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
                                 ref={morePillRef}
                                 className="inline-tab-block-more-btn"
                                 style={hiddenCount === 0 ? { display: "none" } : undefined}
-                                title={hiddenCount > 0 ? `${hiddenCount} more tabs` : "All tabs visible"}
+                                title={
+                                    hiddenCount > 0
+                                        ? i18n.t("block:header.moreTabs", { count: hiddenCount })
+                                        : t("block:header.allTabsVisible")
+                                }
                                 role="button"
                                 tabIndex={0}
                                 onClick={() => setMenuOpen((o) => !o)}
@@ -1209,6 +1226,7 @@ const BlockPreview = memo(({ nodeModel, viewModel }: FullBlockProps) => {
 });
 
 const BlockSubBlock = memo(({ nodeModel, viewModel }: FullSubBlockProps) => {
+    const { t } = useTranslation("block");
     const waveEnv = useWaveEnv<BlockEnv>();
     const blockIsNull = useAtomValue(waveEnv.wos.isWaveObjectNullAtom(makeORef("block", nodeModel.blockId)));
     const blockView = useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "view")) ?? "";
@@ -1225,7 +1243,7 @@ const BlockSubBlock = memo(({ nodeModel, viewModel }: FullSubBlockProps) => {
     return (
         <div key="content" className={clsx("block-content", { "block-no-padding": noPadding })} ref={contentRef}>
             <ErrorBoundary>
-                <Suspense fallback={<CenteredDiv>Loading...</CenteredDiv>}>{viewElem}</Suspense>
+                <Suspense fallback={<CenteredDiv>{t("block:view.loading")}</CenteredDiv>}>{viewElem}</Suspense>
             </ErrorBoundary>
         </div>
     );
@@ -1233,6 +1251,7 @@ const BlockSubBlock = memo(({ nodeModel, viewModel }: FullSubBlockProps) => {
 
 const BlockFull = memo(({ nodeModel, viewModel }: FullBlockProps) => {
     counterInc("render-BlockFull");
+    const { t } = useTranslation("block");
     const waveEnv = useWaveEnv<BlockEnv>();
     const focusElemRef = useRef<HTMLInputElement>(null);
     const blockRef = useRef<HTMLDivElement>(null);
@@ -1308,7 +1327,7 @@ const BlockFull = memo(({ nodeModel, viewModel }: FullBlockProps) => {
 
     const viewElem = useMemo(
         () => getViewElem(nodeModel.blockId, blockRef, contentRef, blockView, viewModel),
-        [nodeModel.blockId, blockView, viewModel]
+        [nodeModel.blockId, blockView, viewModel, i18n.language]
     );
 
     const handleChildFocus = useCallback(
@@ -1414,7 +1433,7 @@ const BlockFull = memo(({ nodeModel, viewModel }: FullBlockProps) => {
                 style={blockContentStyle}
             >
                 <ErrorBoundary>
-                    <Suspense fallback={<CenteredDiv>Loading...</CenteredDiv>}>{viewElem}</Suspense>
+                    <Suspense fallback={<CenteredDiv>{t("block:view.loading")}</CenteredDiv>}>{viewElem}</Suspense>
                 </ErrorBoundary>
             </div>
         </BlockFrame>

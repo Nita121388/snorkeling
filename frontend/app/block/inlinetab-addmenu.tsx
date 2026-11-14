@@ -1,6 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { LaunchHoverOpenDelayMs } from "@/app/element/hover-timing";
+import { Tooltip } from "@/app/element/tooltip";
+import { useWaveEnv } from "@/app/waveenv/waveenv";
 import {
     DefaultAgentWidgetId,
     DefaultFilesWidgetId,
@@ -8,18 +11,16 @@ import {
     extractTerminalContextMeta,
 } from "@/app/workspace/agent-launch";
 import { requestLaunchPopup, type LaunchPopupMode } from "@/app/workspace/launch-popup-bus";
-import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { getNoteDirectory, makeNoteBlockDef, NoteWidgetAction } from "@/app/workspace/note-block";
-import { Tooltip } from "@/app/element/tooltip";
-import { LaunchHoverOpenDelayMs } from "@/app/element/hover-timing";
-import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { getLayoutModelForTabById, LayoutTreeActionType, newLayoutNode } from "@/layout/index";
+import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import type { LayoutTreeInsertNodeAction } from "@/layout/index";
+import { getLayoutModelForTabById, LayoutTreeActionType, newLayoutNode } from "@/layout/index";
 import { makeORef } from "@/store/wos";
 import { fireAndForget, makeIconClass } from "@/util/util";
 import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from "@floating-ui/react";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { BlockEnv } from "./blockenv";
 
 // 悬浮 Terminal/Agent 菜单项多久后开二级浮窗（与右侧 WidgetsBar 共享同一延迟，见 hover-timing.ts）。
@@ -47,7 +48,10 @@ export type GroupAddableWidget = {
  * creating a block (e.g. commontext:search). Note is an action-only widget but is kept because
  * it resolves to a blockdef (a note preview for the notes directory).
  */
-export function pickGroupAddableWidgets(wmap: { [key: string]: WidgetConfigType }, workspaceId?: string): GroupAddableWidget[] {
+export function pickGroupAddableWidgets(
+    wmap: { [key: string]: WidgetConfigType },
+    workspaceId?: string
+): GroupAddableWidget[] {
     if (wmap == null) {
         return [];
     }
@@ -80,6 +84,7 @@ type InlineTabGroupAddButtonProps = {
  * the hovered menu item) while keeping this menu open; creation funnels back into this group.
  */
 export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: InlineTabGroupAddButtonProps) => {
+    const { t } = useTranslation("block");
     const waveEnv = useWaveEnv<BlockEnv>();
     const fullConfig = useAtomValue(waveEnv.atoms.fullConfigAtom);
     const workspaceId = useAtomValue(waveEnv.atoms.workspaceId);
@@ -93,7 +98,10 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
     );
     const activeBlock = useAtomValue(activeBlockAtom);
 
-    const addableWidgets = useMemo(() => pickGroupAddableWidgets(fullConfig?.widgets ?? {}, workspaceId), [fullConfig, workspaceId]);
+    const addableWidgets = useMemo(
+        () => pickGroupAddableWidgets(fullConfig?.widgets ?? {}, workspaceId),
+        [fullConfig, workspaceId]
+    );
 
     const closeMenu = useCallback(() => setMenuOpen(false), []);
 
@@ -297,13 +305,13 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
 
     return (
         <>
-            <Tooltip content="Add Widget to Group" placement="bottom" disable={menuOpen}>
+            <Tooltip content={t("block:inlineTab.addWidgetToGroup")} placement="bottom" disable={menuOpen}>
                 <button
                     ref={buttonRef}
                     type="button"
                     className="inline-tab-block-addbtn"
-                    title="Add Widget to Group"
-                    aria-label="Add Widget to Group"
+                    title={t("block:inlineTab.addWidgetToGroup")}
+                    aria-label={t("block:inlineTab.addWidgetToGroup")}
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                     onPointerEnter={() => {
@@ -387,7 +395,10 @@ export const InlineTabGroupAddButton = memo(({ nodeId, tabId, activeBlockId }: I
                                     </span>
                                     <span className="inline-tab-block-addmenu-label">{config.label}</span>
                                     {isTargetWidget && (
-                                        <span className="inline-tab-block-addmenu-hint" title="Choose launch target">
+                                        <span
+                                            className="inline-tab-block-addmenu-hint"
+                                            title={t("block:inlineTab.chooseLaunchTarget")}
+                                        >
                                             <i className={makeIconClass("chevron-right", true)} />
                                         </span>
                                     )}

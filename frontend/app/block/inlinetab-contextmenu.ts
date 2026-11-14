@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { i18n } from "@/i18n/config";
 import { BlockEnv } from "./blockenv";
 
 // 锁定标签 meta key: 仅作为标记, 不拦截正常关闭; 仅用于「关闭其他/全部(锁定除外)」时保留。
@@ -17,30 +18,30 @@ export function buildInlineTabContextMenu(
     onCloseAllExceptLocked: () => void,
     onToggleLock: () => void,
     onMinimizeGroup: () => void,
-    env: BlockEnv,
+    env: BlockEnv
 ): ContextMenuItem[] {
     const isLocked = lockedBlockIds.has(blockId);
     const hasLockedOther = blockIds.some((id) => id !== blockId && lockedBlockIds.has(id));
     const hasLocked = lockedBlockIds.size > 0;
     const menu: ContextMenuItem[] = [];
-    menu.push({ label: "锁定标签", type: "checkbox", checked: isLocked, click: onToggleLock });
+    menu.push({ label: i18n.t("block:inlineTab.lockTab"), type: "checkbox", checked: isLocked, click: onToggleLock });
     menu.push({ type: "separator" });
-    menu.push({ label: "关闭", click: onClose });
+    menu.push({ label: i18n.t("block:inlineTab.close"), click: onClose });
     if (blockIds.length >= 2) {
-        menu.push({ label: "关闭其他", click: onCloseOthers });
+        menu.push({ label: i18n.t("block:inlineTab.closeOthers"), click: onCloseOthers });
         // 仅当存在其它锁定标签时显示, 否则与「关闭其他」行为完全相同, 避免菜单冗余。
         if (hasLockedOther) {
-            menu.push({ label: "关闭其他（锁定除外）", click: onCloseOthersExceptLocked });
+            menu.push({ label: i18n.t("block:inlineTab.closeOthersExceptLocked"), click: onCloseOthersExceptLocked });
         }
     }
-    menu.push({ label: "关闭全部", click: onCloseAll });
+    menu.push({ label: i18n.t("block:inlineTab.closeAll"), click: onCloseAll });
     if (hasLocked) {
-        menu.push({ label: "关闭全部（锁定除外）", click: onCloseAllExceptLocked });
+        menu.push({ label: i18n.t("block:inlineTab.closeAllExceptLocked"), click: onCloseAllExceptLocked });
     }
-    menu.push({ label: "复制 BlockId", click: () => navigator.clipboard.writeText(blockId) });
+    menu.push({ label: i18n.t("block:inlineTab.copyBlockId"), click: () => navigator.clipboard.writeText(blockId) });
     if (blockIds.length >= 2) {
         menu.push({ type: "separator" });
-        menu.push({ label: "Minimize Group to BlockBar", click: onMinimizeGroup });
+        menu.push({ label: i18n.t("block:inlineTab.minimizeGroup"), click: onMinimizeGroup });
     }
     return menu;
 }

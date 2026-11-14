@@ -1,15 +1,17 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { getWaveObjectAtom, makeORef } from "@/app/store/wos";
-import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
 import { BlockInfoCard } from "@/app/block/block-info-card";
+import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
+import { getWaveObjectAtom, makeORef } from "@/app/store/wos";
+import { i18n } from "@/i18n/config";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { ObjectService } from "@/store/services";
 import { makeIconClass } from "@/util/util";
 import clsx from "clsx";
 import { type Atom, useAtomValue } from "jotai";
 import { type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
     deleteMinimizedGroup,
     getMinimizedBlockIds,
@@ -61,7 +63,7 @@ function getBlockTitle(block: Block | null | undefined): string {
         m.cmd ||
         m.view ||
         block?.oid ||
-        "Block"
+        i18n.t("block:blockList.fallbackTitle")
     );
 }
 
@@ -258,12 +260,19 @@ function SidebarIconItem({
     onRestore: (id: string) => void;
     onContextMenu: (e: ReactMouseEvent, item: SidebarBlockItem) => void;
 }) {
-    const blockData = useAtomValue(useMemo(() => getWaveObjectAtom<Block>(makeORef("block", item.blockId)), [item.blockId]));
+    const blockData = useAtomValue(
+        useMemo(() => getWaveObjectAtom<Block>(makeORef("block", item.blockId)), [item.blockId])
+    );
     const iconClass = item.icon ? makeIconClass(item.icon, false) : null;
     const hover = useInfoCardHover({ placement: "right" });
     // 除 Agent 外的其它 Block 也走同一套 InfoCard 分派：Note 有卡片，其余返回 null（fallback 原生 tooltip）。
     const cardContent = useMemo(
-        () => BlockInfoCard({ blockId: item.blockId, blockData: blockData ?? null, onOpen: () => onRestore(item.blockId) }),
+        () =>
+            BlockInfoCard({
+                blockId: item.blockId,
+                blockData: blockData ?? null,
+                onOpen: () => onRestore(item.blockId),
+            }),
         [item.blockId, blockData, onRestore]
     );
 
@@ -302,11 +311,12 @@ function SidebarGroupIconItem({
     onDeleteGroup: () => void;
     onContextMenu: (e: ReactMouseEvent, group: SidebarGroupItem) => void;
 }) {
+    const { t } = useTranslation("block");
     return (
         <div className={clsx("block-sidebar-group-item", expanded && "expanded")}>
             <div
                 className="block-sidebar-item block-sidebar-group-btn"
-                title={`Group (${group.members.length})`}
+                title={i18n.t("block:blockList.groupWithCount", { count: group.members.length })}
                 aria-expanded={expanded}
                 onClick={onToggleExpand}
                 onContextMenu={(e) => onContextMenu(e, group)}
@@ -323,7 +333,7 @@ function SidebarGroupIconItem({
                 >
                     <div className="block-sidebar-group-flyout-header">
                         <i className={makeIconClass("folder-open", false, { defaultIcon: "layer-group" })} />
-                        <span className="block-sidebar-group-flyout-title">Group</span>
+                        <span className="block-sidebar-group-flyout-title">{t("block:blockList.group")}</span>
                         <span className="block-sidebar-group-flyout-count">{group.members.length}</span>
                     </div>
                     <div className="block-sidebar-group-flyout-members">
@@ -351,16 +361,16 @@ function SidebarGroupIconItem({
                         <div
                             className="block-sidebar-group-flyout-action"
                             onClick={onRestoreGroup}
-                            title="Restore Group"
+                            title={t("block:blockList.restoreGroup")}
                         >
-                            <i className="fa-solid fa-arrow-up-right-from-square" /> Restore All
+                            <i className="fa-solid fa-arrow-up-right-from-square" /> {t("block:blockList.restoreAll")}
                         </div>
                         <div
                             className="block-sidebar-group-flyout-action danger"
                             onClick={onDeleteGroup}
-                            title="Delete Group"
+                            title={t("block:blockList.deleteGroup")}
                         >
-                            <i className="fa-solid fa-trash" /> Delete
+                            <i className="fa-solid fa-trash" /> {t("block:blockList.delete")}
                         </div>
                     </div>
                 </div>
@@ -372,6 +382,7 @@ function SidebarGroupIconItem({
 // ── main sidebar component ──
 
 function BlockSidebar({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> }) {
+    const { t } = useTranslation("block");
     const tab = useAtomValue(tabAtom);
     const minimizedBlockIds = getMinimizedBlockIds(tab);
     const minimizedGroups = getMinimizedGroups(tab);
@@ -570,7 +581,7 @@ function BlockSidebar({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> })
                             setCtx(null);
                         }}
                     >
-                        <i className="fa-solid fa-arrow-up-right-from-square" /> Restore
+                        <i className="fa-solid fa-arrow-up-right-from-square" /> {t("block:blockList.restore")}
                     </div>
                     <div className="block-sidebar-ctx-divider" />
                     <div
@@ -580,7 +591,7 @@ function BlockSidebar({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> })
                             setCtx(null);
                         }}
                     >
-                        <i className="fa-solid fa-trash" /> Delete
+                        <i className="fa-solid fa-trash" /> {t("block:blockList.delete")}
                     </div>
                 </div>
             )}
@@ -593,7 +604,7 @@ function BlockSidebar({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> })
                             setCtx(null);
                         }}
                     >
-                        <i className="fa-solid fa-arrow-up-right-from-square" /> Restore Group
+                        <i className="fa-solid fa-arrow-up-right-from-square" /> {t("block:blockList.restoreGroup")}
                     </div>
                     <div className="block-sidebar-ctx-divider" />
                     <div
@@ -603,7 +614,7 @@ function BlockSidebar({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> })
                             setCtx(null);
                         }}
                     >
-                        <i className="fa-solid fa-trash" /> Delete Group
+                        <i className="fa-solid fa-trash" /> {t("block:blockList.deleteGroup")}
                     </div>
                 </div>
             )}

@@ -7,12 +7,14 @@ import { MetaKeyAtomFnType, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv
 import { IconButton, ToggleIconButton } from "@/element/iconbutton";
 import { MagnifyIcon } from "@/element/magnify";
 import { MenuButton } from "@/element/menubutton";
+import { i18n } from "@/i18n/config";
 import { copyText } from "@/util/clipboard";
 import * as util from "@/util/util";
 import { cn } from "@/util/util";
 import clsx from "clsx";
 import * as jotai from "jotai";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 export type TabBackgroundEnv = WaveEnvSubset<{
     getTabMetaKeyAtom: MetaKeyAtomFnType<"bg:activebordercolor" | "bg:bordercolor" | "tab:background">;
@@ -226,7 +228,7 @@ export function makeMagnifyButtonDecl({
     return {
         elemtype: "iconbutton",
         icon: <MagnifyIcon enabled={magnified} />,
-        title: title ?? (magnified ? "Minimize" : "Magnify"),
+        title: title ?? (magnified ? i18n.t("block:blockActions.minimize") : i18n.t("block:blockActions.magnify")),
         click: toggleMagnify,
         disabled,
     };
@@ -234,15 +236,25 @@ export function makeMagnifyButtonDecl({
 
 export const OptMagnifyButton = React.memo(
     ({ magnified, toggleMagnify, disabled, title, className }: MagnifyButtonDeclOptions & { className?: string }) => {
+        // 订阅语言变化：默认 title（Minimize/Magnify）在渲染期由 i18n.t 求值，切语言要能刷新。
+        useTranslation("block");
         const magnifyDecl = makeMagnifyButtonDecl({ magnified, toggleMagnify, disabled, title });
         return <IconButton key="magnify" decl={magnifyDecl} className={cn("block-frame-magnify", className)} />;
     }
 );
 
 export const HeaderCopyTextElem = React.memo(({ elem, preview }: { elem: HeaderCopyText; preview: boolean }) => {
+    // 订阅语言变化：actionText 在渲染期由 i18n.t 求值，切语言要能刷新。
+    useTranslation("block");
     const [status, setStatus] = React.useState<"idle" | "copied" | "failed">("idle");
     const displayText = elem.displayText || util.basename(elem.text);
     const tooltipText = elem.tooltipText || elem.text;
+    const actionText =
+        status === "copied"
+            ? i18n.t("block:blockActions.copied")
+            : status === "failed"
+              ? i18n.t("block:blockActions.copyFailed")
+              : i18n.t("block:blockActions.clickToCopy");
 
     console.log("[HeaderCopyTextElem] rendering", { elemtype: elem.elemtype, text: elem.text, displayText, preview });
 
@@ -265,8 +277,6 @@ export const HeaderCopyTextElem = React.memo(({ elem, preview }: { elem: HeaderC
                 setStatus("failed");
             });
     };
-
-    const actionText = status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : "Click to copy";
 
     return (
         <Tooltip

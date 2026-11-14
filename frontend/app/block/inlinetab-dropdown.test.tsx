@@ -8,11 +8,12 @@
 
 // @vitest-environment jsdom
 
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { __resetAgentPersonasForTests, setAgentPersona } from "@/app/agent-persona/persona-store";
 import { __resetSessionEmojisForTests, setSessionEmoji } from "@/app/agent-persona/session-persona-store";
+import { initI18n } from "@/i18n/config";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type { InlineTabStatusDot } from "./inlinetab-agent-status";
 import { InlineTabDropdownMenu } from "./inlinetab-dropdown";
 
@@ -65,6 +66,11 @@ function renderMenu(props: Partial<MenuProps>): Handle {
 function items(): HTMLElement[] {
     return Array.from(document.querySelectorAll<HTMLElement>(".inline-tab-block-dropdown-item"));
 }
+
+beforeAll(async () => {
+    // 文案走 i18n（en 为真源），先初始化再断言（Pattern I）。
+    await initI18n("en");
+});
 
 describe("InlineTabDropdownMenu delete affordance", () => {
     beforeEach(() => {
@@ -215,9 +221,7 @@ describe("InlineTabDropdownMenu agent icon", () => {
 
     test("agent rows without a hero render the brand logo, not the terminal view icon", () => {
         const h = renderMenu({
-            tabs: [
-                { id: "b1", title: "pi", icon: "terminal", isActive: false, agentProvider: "pi" },
-            ],
+            tabs: [{ id: "b1", title: "pi", icon: "terminal", isActive: false, agentProvider: "pi" }],
         });
         const icon = items()[0].querySelector(".dropdown-item-icon");
         expect(icon.classList.contains("is-agent")).toBe(true);
@@ -229,9 +233,7 @@ describe("InlineTabDropdownMenu agent icon", () => {
     test("session and provider emoji personas win over the brand logo", () => {
         setAgentPersona("pi", "🦊");
         const h = renderMenu({
-            tabs: [
-                { id: "b1", title: "pi", icon: "terminal", isActive: false, agentProvider: "pi" },
-            ],
+            tabs: [{ id: "b1", title: "pi", icon: "terminal", isActive: false, agentProvider: "pi" }],
         });
         expect(items()[0].querySelector(".dropdown-item-icon .agent-emoji-icon")?.textContent).toBe("🦊");
         h.unmount();

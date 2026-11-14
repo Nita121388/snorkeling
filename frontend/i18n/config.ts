@@ -2,21 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import i18n from "i18next";
-export { i18n };
 import { initReactI18next } from "react-i18next";
+export { i18n };
 
-import enCommon from "./locales/en/common.json";
-import zhCommon from "./locales/zh/common.json";
-import enOnboarding from "./locales/en/onboarding.json";
-import zhOnboarding from "./locales/zh/onboarding.json";
-import enTab from "./locales/en/tab.json";
-import zhTab from "./locales/zh/tab.json";
 import enAipanel from "./locales/en/aipanel.json";
-import zhAipanel from "./locales/zh/aipanel.json";
-import enSessionOverview from "./locales/en/session-overview.json";
-import zhSessionOverview from "./locales/zh/session-overview.json";
+import enBlock from "./locales/en/block.json";
+import enCommon from "./locales/en/common.json";
 import enCommontext from "./locales/en/commontext.json";
+import enOnboarding from "./locales/en/onboarding.json";
+import enSessionOverview from "./locales/en/session-overview.json";
+import enTab from "./locales/en/tab.json";
+import zhAipanel from "./locales/zh/aipanel.json";
+import zhBlock from "./locales/zh/block.json";
+import zhCommon from "./locales/zh/common.json";
 import zhCommontext from "./locales/zh/commontext.json";
+import zhOnboarding from "./locales/zh/onboarding.json";
+import zhSessionOverview from "./locales/zh/session-overview.json";
+import zhTab from "./locales/zh/tab.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -24,7 +26,7 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export type LocaleSetting = Locale | "auto";
 export const DEFAULT_LOCALE: Locale = "en";
 export const FALLBACK_LOCALE: Locale = "en";
-export const NS = ["common", "onboarding", "tab", "aipanel", "session-overview", "commontext"] as const;
+export const NS = ["common", "onboarding", "tab", "aipanel", "session-overview", "commontext", "block"] as const;
 
 /**
  * Normalize a `ui:locale` setting value ("auto" | "en" | "zh") into a concrete
@@ -80,6 +82,7 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 aipanel: enAipanel,
                 "session-overview": enSessionOverview,
                 commontext: enCommontext,
+                block: enBlock,
             },
             zh: {
                 common: zhCommon,
@@ -88,6 +91,7 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 aipanel: zhAipanel,
                 "session-overview": zhSessionOverview,
                 commontext: zhCommontext,
+                block: zhBlock,
             },
         },
         interpolation: {
