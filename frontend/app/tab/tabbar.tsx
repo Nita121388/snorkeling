@@ -28,9 +28,23 @@ import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } fr
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
 import { collapseTabIds, collapsedTabIdsAtom } from "./tab-collapse-state";
+import {
+    computeDragDirection,
+    computeNewTabIndex,
+    type DragDirection,
+    DragPersistThresholdPx,
+    isBeyondEngageThreshold,
+    shouldEngageDrag,
+} from "./tab-drag-model";
 import { TabMoreMenu } from "./tab-more-menu";
 import { selectBarVisibleTabIds, TabMoreVisibilityContext } from "./tab-more-model";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
+import {
+    clearOptimisticActiveTab,
+    optimisticActiveTabIdAtom,
+    setOptimisticActiveTab,
+    useHighlightTabId,
+} from "./tab-optimistic-active";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import "./tabbar.scss";
 import { TabBarEnv } from "./tabbarenv";
@@ -44,10 +58,8 @@ const emptyTabAtom = atom<Tab | null>(null);
 
 const TabDefaultWidth = 130;
 const TabMinWidth = 100;
-// 拖拽启动位移阈值(px): mousedown 后移动超过该距离才进入拖拽态.
-// 零阈值会让双击重命名时两次点击之间的手抖立刻触发 setDraggingTab,
-// 布局在"拖拽分支(物理顺序+全宽重算)"与"两组布局"之间来回摆动, 第二击落空.
-const DragStartThresholdPx = 5;
+// 拖拽阈值/方向/落点判定统一在 ./tab-drag-model（R8）：engage = 8px 且连续 2 帧，
+// 持久化换位 = 50px。这里不再维护裸数字，避免两处阈值漂移。
 const MacOSTrafficLightsWidth = 74;
 const MacOSTahoeTrafficLightsWidth = 80;
 const ScrollEdgeTolerance = 1;
@@ -128,7 +140,6 @@ function strArrayIsEqual(a: string[], b: string[]) {
 const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) => {
     const env = useWaveEnv<TabBarEnv>();
     const [tabIds, setTabIds] = useState<string[]>([]);
-    const [dragStartPositions, setDragStartPositions] = useState<number[]>([]);
     const [draggingTab, setDraggingTab] = useState<string>();
     const [tabsLoaded, setTabsLoaded] = useState({});
     const [newTabId, setNewTabId] = useState<string | null>(null);
@@ -139,19 +150,24 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
     const tabRefs = useRef<React.RefObject<HTMLDivElement>[]>([]);
     const addBtnRef = useRef<HTMLButtonElement>(null);
     const moreMenuWrapRef = useRef<HTMLDivElement>(null);
-    const draggingRemovedRef = useRef(false);
     const draggingTabDataRef = useRef({
         tabId: "",
-        ref: { current: null },
+        ref: { current: null as HTMLDivElement | null },
         tabStartX: 0,
-        tabStartIndex: 0,
         tabIndex: 0,
-        initialOffsetX: null,
-        totalScrollOffset: null,
-        // 是否已越过 DragStartThresholdPx 进入拖拽态 (未越过前 mousemove 一律 early-return,
-        // 保护双击重命名/单击不被手抖触发的布局摆动破坏)
+        initialOffsetX: null as number | null,
+        totalScrollOffset: null as number | null,
+        // R8: 连续越过 engage 阈值的 mousemove 次数（位移 + 连续次数双条件）
+        consecutiveBeyondCount: 0,
         engaged: false,
         dragged: false,
+        // R8: 方向状态放 ref（旧实现是模块级变量，多窗口/多实例串扰）
+        prevX: null as number | null,
+        prevDirection: null as DragDirection | null,
+        // R8: 拖拽中的工作顺序（tabIds 副本；绝不原地改 React state）
+        workingOrder: null as string[] | null,
+        // R8: 拖拽开始时的实时位置快照（tabId → 左缘，代替已删除的 dragStartPositions 缓存）
+        startPositions: null as Map<string, number> | null,
     });
     const osInstanceRef = useRef<OverlayScrollbars>(null);
     const draggerLeftRef = useRef<HTMLDivElement>(null);
@@ -163,6 +179,9 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
     const scrollableRef = useRef<boolean>(false);
     const prevAllLoadedRef = useRef<boolean>(false);
     const activeTabId = useAtomValue(env.atoms.staticTabId);
+    // R9.1: 乐观高亮（仅视觉 prop；非视觉逻辑继续用 activeTabId）
+    const highlightTabId = useHighlightTabId(activeTabId);
+    const optimisticActiveTabId = useAtomValue(optimisticActiveTabIdAtom);
     // 让本工作区所有 tab (含 inline-tab 子 block) 在 AgentStatusStore 都持有订阅,
     // 非激活 tab 的 agent 状态点才能在 Tab 栏渲染.
     useAcquireWorkspaceBlockStatuses(tabIds);
@@ -230,8 +249,6 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
     }, []);
 
     useEffect(() => () => cancelPendingHideWrapperHover(), [cancelPendingHideWrapperHover]);
-    let prevDelta: number;
-    let prevDragDirection: string;
 
     // 默认隐藏的 Tab 只进「更多」下拉, 不进主栏 (hover / 菜单展开 / 拖拽都不再把它捞回来).
     const visibilityCtx = useMemo<TabMoreVisibilityContext>(
@@ -268,24 +285,12 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
         }
     }, [workspace, tabIds]);
 
-    const saveTabsPosition = useCallback(() => {
-        const tabs = tabRefs.current;
-        if (tabs === null) return;
-
-        const newStartPositions: number[] = tabIds.map(() => 0);
-        let cumulativeLeft = 0; // Start from the left edge
-
-        visibleTabIds.forEach((tabId) => {
-            const tabIndex = tabIds.indexOf(tabId);
-            const ref = tabRefs.current[tabIndex];
-            if (ref.current) {
-                newStartPositions[tabIndex] = cumulativeLeft;
-                cumulativeLeft += ref.current.getBoundingClientRect().width; // Add each tab's actual width to the cumulative position
-            }
-        });
-
-        setDragStartPositions(newStartPositions);
-    }, [tabIds, visibleTabIds]);
+    // R9.1: 后端确认（activetabid 广播到达）后清掉乐观高亮；安全超时在模块内兜底。
+    useEffect(() => {
+        if (optimisticActiveTabId != null && workspace?.activetabid === optimisticActiveTabId) {
+            clearOptimisticActiveTab();
+        }
+    }, [optimisticActiveTabId, workspace?.activetabid]);
 
     const setSizeAndPosition = (animate?: boolean) => {
         const tabBar = tabBarRef.current;
@@ -398,9 +403,13 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
         }
     };
 
+    // 窗口 resize 需要 debounce；但 setSizeAndPosition 每次渲染都是新函数，
+    // 用 ref 持有最新实现，避免 debounce 闭包锁死在首次渲染的旧 state 上。
+    const setSizeAndPositionRef = useRef(setSizeAndPosition);
+    setSizeAndPositionRef.current = setSizeAndPosition;
     const saveTabsPositionDebounced = useCallback(
-        debounce(100, () => saveTabsPosition()),
-        [saveTabsPosition]
+        debounce(100, () => setSizeAndPositionRef.current()),
+        []
     );
 
     const handleResizeTabs = useCallback(() => {
@@ -474,50 +483,11 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
         const allLoaded = visibleTabIds.length > 0 && visibleTabIds.every((id) => tabsLoaded[id]);
         if (allLoaded) {
             setSizeAndPosition(false);
-            saveTabsPosition();
             if (!prevAllLoadedRef.current) {
                 prevAllLoadedRef.current = true;
             }
         }
-    }, [visibleTabIds, tabsLoaded, newTabId, saveTabsPosition, hideAiButton, appUpdateStatus, zoomFactor, showMenuBar]);
-
-    const getDragDirection = (currentX: number) => {
-        let dragDirection: string;
-        if (currentX - prevDelta > 0) {
-            dragDirection = "+";
-        } else if (currentX - prevDelta === 0) {
-            dragDirection = prevDragDirection;
-        } else {
-            dragDirection = "-";
-        }
-        prevDelta = currentX;
-        prevDragDirection = dragDirection;
-        return dragDirection;
-    };
-
-    const getNewTabIndex = (currentX: number, tabIndex: number, dragDirection: string) => {
-        let newTabIndex = tabIndex;
-        const tabWidth = tabWidthRef.current;
-        const visibleTabIndex = visibleTabIds.indexOf(tabIds[tabIndex]);
-        if (dragDirection === "+") {
-            for (let i = visibleTabIndex + 1; i < visibleTabIds.length; i++) {
-                const otherTabIndex = tabIds.indexOf(visibleTabIds[i]);
-                const otherTabStart = dragStartPositions[otherTabIndex];
-                if (currentX + tabWidth > otherTabStart + tabWidth / 2) {
-                    newTabIndex = otherTabIndex;
-                }
-            }
-        } else {
-            for (let i = visibleTabIndex - 1; i >= 0; i--) {
-                const otherTabIndex = tabIds.indexOf(visibleTabIds[i]);
-                const otherTabEnd = dragStartPositions[otherTabIndex] + tabWidth;
-                if (currentX < otherTabEnd - tabWidth / 2) {
-                    newTabIndex = otherTabIndex;
-                }
-            }
-        }
-        return newTabIndex;
-    };
+    }, [visibleTabIds, tabsLoaded, newTabId, hideAiButton, appUpdateStatus, zoomFactor, showMenuBar]);
 
     const handleMouseMove = (event: MouseEvent) => {
         // 自愈: mouseup 可能丢失 (拖到窗口外松手 / 焦点落到原生菜单或其它窗口),
@@ -538,19 +508,42 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
         }
         let currentX = event.clientX - initialOffsetX - totalScrollOffset;
 
-        // 拖拽启动阈值: 未越过 DragStartThresholdPx 前不动任何状态/样式.
-        // 双击重命名两次点击间的手抖(通常 1~2px)会触发 mousemove, 零阈值下会立刻
-        // setDraggingTab → 布局切到拖拽分支(物理顺序+宽度重算)再切回, 第二击落空.
-        if (!draggingTabDataRef.current.engaged && Math.abs(currentX - tabStartX) < DragStartThresholdPx) {
-            return;
+        // R8: engage = 位移 ≥ 8px（按 zoomFactor 折算）+ 连续 2 次 mousemove。
+        // 未 engage 前一律 early-return，不写任何状态/样式 —— 保护单击/双击重命名
+        // 不被手抖触发的布局摆动破坏（旧实现 5px 单帧即可进入拖拽态）。
+        const deltaFromStart = currentX - tabStartX;
+        if (isBeyondEngageThreshold(deltaFromStart, zoomFactor)) {
+            draggingTabDataRef.current.consecutiveBeyondCount += 1;
+        } else {
+            draggingTabDataRef.current.consecutiveBeyondCount = 0;
         }
-        draggingTabDataRef.current.engaged = true;
+        if (!draggingTabDataRef.current.engaged) {
+            if (
+                !shouldEngageDrag({
+                    deltaPx: deltaFromStart,
+                    consecutiveMoves: draggingTabDataRef.current.consecutiveBeyondCount,
+                    zoomFactor,
+                })
+            ) {
+                return;
+            }
+            draggingTabDataRef.current.engaged = true;
+            // 工作顺序 = tabIds 副本（R8: 拖拽期间绝不原地改 React state）
+            draggingTabDataRef.current.workingOrder = [...tabIds];
+        }
 
         let tabBarRectWidth = tabBarRef.current.getBoundingClientRect().width;
         // for macos, it's offset to make space for the window buttons
         const tabBarRectLeftOffset = tabBarRef.current.getBoundingClientRect().left;
         const incrementDecrement = tabBarRectLeftOffset * 0.05;
-        const dragDirection = getDragDirection(currentX);
+        // R8: 方向状态放 ref（旧实现是组件内裸 let，每次渲染重置，多实例串扰）
+        const dragDirection = computeDragDirection(
+            currentX,
+            draggingTabDataRef.current.prevX,
+            draggingTabDataRef.current.prevDirection
+        );
+        draggingTabDataRef.current.prevX = currentX;
+        draggingTabDataRef.current.prevDirection = dragDirection;
         const scrollable = scrollableRef.current;
         const tabWidth = tabWidthRef.current;
 
@@ -581,8 +574,8 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
 
         setDraggingTab((prev) => (prev !== tabId ? tabId : prev));
 
-        // Check if the tab has moved 5 pixels
-        if (Math.abs(currentX - tabStartX) >= 50) {
+        // 持久化阈值沿用 50px：只有真正拖出这么远，mouseup 才提交顺序并落盘。
+        if (Math.abs(currentX - tabStartX) >= DragPersistThresholdPx) {
             draggingTabDataRef.current.dragged = true;
         }
 
@@ -608,34 +601,37 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
         ref.current!.style.transform = `translate3d(${currentX}px,0,0)`;
         ref.current!.style.zIndex = "100";
 
-        const tabIndex = draggingTabDataRef.current.tabIndex;
-        const newTabIndex = getNewTabIndex(currentX, tabIndex, dragDirection);
-
-        if (newTabIndex !== tabIndex) {
-            // Remove the dragged tab if not already done
-            if (!draggingRemovedRef.current) {
-                tabIds.splice(tabIndex, 1);
-                draggingRemovedRef.current = true;
-            }
-
-            // Find current index of the dragged tab in tempTabs
-            const currentIndexOfDraggingTab = tabIds.indexOf(tabId);
-
-            // Move the dragged tab to its new position
-            if (currentIndexOfDraggingTab !== -1) {
-                tabIds.splice(currentIndexOfDraggingTab, 1);
-            }
-            tabIds.splice(newTabIndex, 0, tabId);
-
-            // Update visual positions of the tabs
-            visibleTabIds.forEach((localTabId, index) => {
-                const ref = tabRefs.current.find((ref) => ref.current?.dataset.tabId === localTabId);
-                if (ref?.current && localTabId !== tabId) {
-                    ref.current.style.transform = `translate3d(${index * tabWidth}px,0,0)`;
-                    ref.current.classList.add("animate");
+        // R8: 落点比较用 mousedown 实时测量快照（tabId → 位置），与 tabIds 下标无关，
+        // 消灭「splice 后下标错位」与「stale dragStartPositions」两类误换位。
+        const workingOrder = draggingTabDataRef.current.workingOrder;
+        const startPositions = draggingTabDataRef.current.startPositions;
+        if (workingOrder == null || startPositions == null) {
+            return;
+        }
+        const newTabIndex = computeNewTabIndex({
+            currentX,
+            tabWidth,
+            dragDirection,
+            order: workingOrder,
+            draggedTabId: tabId,
+            startPositions,
+        });
+        const curIndex = workingOrder.indexOf(tabId);
+        if (newTabIndex >= 0 && newTabIndex !== curIndex) {
+            // 只在副本上换位（不碰 React state）
+            workingOrder.splice(curIndex, 1);
+            workingOrder.splice(newTabIndex, 0, tabId);
+            // 其余 Tab 按工作顺序落到新槽位
+            workingOrder.forEach((localTabId, index) => {
+                if (localTabId === tabId) {
+                    return;
+                }
+                const otherRef = tabRefs.current.find((r) => r.current?.dataset.tabId === localTabId);
+                if (otherRef?.current) {
+                    otherRef.current.style.transform = `translate3d(${index * tabWidth}px,0,0)`;
+                    otherRef.current.classList.add("animate");
                 }
             });
-
             draggingTabDataRef.current.tabIndex = newTabIndex;
         }
     };
@@ -659,31 +655,32 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
     );
 
     const handleMouseUp = (_event: MouseEvent) => {
-        const { tabIndex, dragged, engaged } = draggingTabDataRef.current;
+        const { dragged, engaged, workingOrder, tabId } = draggingTabDataRef.current;
+        const tabWidth = tabWidthRef.current;
 
-        if (dragged) {
-            // 真实拖拽结束: 拖拽期间布局顺序 == visibleTabIds, 用其计算落点 (原有逻辑不变)
-            const draggingTab = tabIds[tabIndex];
-            const tabWidth = tabWidthRef.current;
-            const visibleTabIndex = visibleTabIds.indexOf(draggingTab);
-            const finalLeftPosition = (visibleTabIndex === -1 ? tabIndex : visibleTabIndex) * tabWidth;
-            const ref = tabRefs.current.find((ref) => ref.current?.dataset.tabId === draggingTab);
+        if (dragged && workingOrder != null) {
+            // 真实拖拽结束: 用工作顺序计算落点 + 提交 state + 落盘。
+            // R8: 只有这里才写回 tabIds（副本）；旧实现靠原地 splice 改 state，
+            // 亚阈值拖拽会把顺序污染在内存里但不落盘 —— 表现为「顺序自己动了」。
+            const finalLeftPosition = Math.max(0, workingOrder.indexOf(tabId)) * tabWidth;
+            const ref = tabRefs.current.find((r) => r.current?.dataset.tabId === tabId);
             if (ref?.current) {
                 ref.current.classList.add("animate");
                 ref.current.style.transform = `translate3d(${finalLeftPosition}px,0,0)`;
             }
-            setUpdatedTabsDebounced(tabIds);
+            setTabIds(workingOrder);
+            setUpdatedTabsDebounced(workingOrder);
         } else {
             // 纯点击: 不改写 transform —— 位置由 setSizeAndPosition 维护.
-            // 之前用物理顺序 (visibleTabIds) 计算落点, 与 pinned 优先布局顺序不一致,
-            // 会把被点 tab 移走, 导致 click 落空 + tab 卡在错误位置.
             // Reset styles
             tabRefs.current.forEach((ref) => {
-                ref.current.style.zIndex = "0";
-                ref.current.classList.remove("animate");
+                if (ref.current) {
+                    ref.current.style.zIndex = "0";
+                    ref.current.classList.remove("animate");
+                }
             });
-            // 亚阈值拖拽 (engaged 但未越过 dragged 阈值) 期间 handleMouseMove 已经
-            // 写过内联 transform, 这里不清就会把 Tab 永久卡在半路, 看起来像被鼠标拖着。
+            // 亚阈值拖拽 (engaged 但未越过持久化阈值) 期间 handleMouseMove 已经
+            // 写过内联 transform, 这里不清就会把 Tab 永久卡在半路。
             // 重排一次, 让所有 Tab 回到布局计算出的位置。
             if (engaged) {
                 setSizeAndPosition();
@@ -696,43 +693,63 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
         // handleSelectTab 见到 dragged===true 直接 return, 表现为下拉里的 Tab 点不动。
         draggingTabDataRef.current.dragged = false;
         draggingTabDataRef.current.engaged = false;
+        draggingTabDataRef.current.consecutiveBeyondCount = 0;
+        draggingTabDataRef.current.workingOrder = null;
 
         document.removeEventListener("mouseup", handleMouseUp);
         document.removeEventListener("mousemove", handleMouseMove);
-        draggingRemovedRef.current = false;
     };
 
     const handleDragStart = useCallback(
         (event: React.MouseEvent<HTMLDivElement, MouseEvent>, tabId: string, ref: React.RefObject<HTMLDivElement>) => {
             if (event.button !== 0) return;
-
             const tabIndex = tabIds.indexOf(tabId);
-            const tabStartX = dragStartPositions[tabIndex]; // Starting X position of the tab
+            if (!ref.current || tabIndex < 0) return;
 
-            if (ref.current) {
-                draggingTabDataRef.current = {
-                    tabId: ref.current.dataset.tabId,
-                    ref,
-                    tabStartX,
-                    tabIndex,
-                    tabStartIndex: tabIndex,
-                    // mousedown 时就记录光标起点, 拖拽阈值从按下位置起算
-                    // (而不是第一次 mousemove, 避免小位移被当成"零偏移")
-                    initialOffsetX: event.clientX - tabStartX,
-                    totalScrollOffset: 0,
-                    engaged: false,
-                    dragged: false,
-                };
-
-                document.addEventListener("mousemove", handleMouseMove);
-                document.addEventListener("mouseup", handleMouseUp);
+            // R8: 起点与落点比较一律用 mousedown 时的实时 rect 快照。
+            // 旧实现依赖 saveTabsPosition 的缓存，而多个调用点（ResizeObserver /
+            // reinitVersion）只刷新一半 → stale 位置下小位移被误判跨过邻居中点。
+            const wrapperLeft =
+                tabsWrapperRef.current?.getBoundingClientRect().left ??
+                tabBarRef.current?.getBoundingClientRect().left ??
+                0;
+            const startPositions = new Map<string, number>();
+            for (const visibleTabId of visibleTabIds) {
+                const el = tabRefs.current[tabIds.indexOf(visibleTabId)]?.current;
+                if (el != null) {
+                    startPositions.set(visibleTabId, el.getBoundingClientRect().left - wrapperLeft);
+                }
             }
+            const tabStartX = startPositions.get(tabId) ?? 0;
+
+            draggingTabDataRef.current = {
+                tabId: ref.current.dataset.tabId,
+                ref,
+                tabStartX,
+                tabIndex,
+                // mousedown 时就记录光标起点, 拖拽阈值从按下位置起算
+                // (而不是第一次 mousemove, 避免小位移被当成"零偏移")
+                initialOffsetX: event.clientX - tabStartX,
+                totalScrollOffset: 0,
+                consecutiveBeyondCount: 0,
+                engaged: false,
+                dragged: false,
+                prevX: null,
+                prevDirection: null,
+                workingOrder: null,
+                startPositions,
+            };
+
+            document.addEventListener("mousemove", handleMouseMove);
+            document.addEventListener("mouseup", handleMouseUp);
         },
-        [tabIds, dragStartPositions, visibleTabIds]
+        [tabIds, visibleTabIds]
     );
 
     const handleSelectTab = (tabId: string) => {
         if (!draggingTabDataRef.current.dragged) {
+            // R9.1: 乐观高亮 —— 不等后端广播往返，主栏 active 立即跟随点击。
+            setOptimisticActiveTab(tabId);
             markTabOpened(tabId);
             env.electron.setActiveTab(tabId);
         }
@@ -750,8 +767,7 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
 
     useEffect(() => {
         setSizeAndPosition();
-        saveTabsPosition();
-    }, [visibleTabIds, saveTabsPosition]);
+    }, [visibleTabIds]);
 
     // 「更多」按钮宽度会随隐藏计数 (0 → 2 位数) 变化, 而 window resize 不会触发.
     // 单独监听它, 保证 spaceForTabs 始终按真实占用计算, Tab 不被遮挡.
@@ -949,9 +965,9 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
                     {!noTabs &&
                         visibleTabIds.map((tabId, segIndex) => {
                             const tabIndex = tabIds.indexOf(tabId);
-                            const isActive = activeTabId === tabId;
+                            const isActive = highlightTabId === tabId;
                             const showDivider =
-                                segIndex !== 0 && !isActive && segIndex !== visibleTabIds.indexOf(activeTabId) - 1;
+                                segIndex !== 0 && !isActive && segIndex !== visibleTabIds.indexOf(highlightTabId) - 1;
                             return (
                                 <TabComponent
                                     key={tabId}

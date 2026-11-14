@@ -125,6 +125,11 @@ function handleWSEvent(evtMsg: WSEventType) {
             if (ww == null) {
                 return;
             }
+            // R9.2: 点击路径已经入过同目标的 switchtab（或在执行中）→ 不再重复入队。
+            // 动作队列是串行的，同目标重复入队只会白占 [1] 槽位，放大其他点击的排队。
+            if (ww.isTabSwitchInFlight(activeTabUpdate.newactivetabid)) {
+                return;
+            }
             await ww.setActiveTab(activeTabUpdate.newactivetabid, false);
         } else {
             console.log("unhandled electron ws eventtype", evtMsg.eventtype);

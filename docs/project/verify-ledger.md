@@ -211,6 +211,7 @@
 | 2026-11-14 06:34 | tab-startup-restore | ❌ 1/3（fatal） | launch+reset+restart | `20261114T06185-tab-startup-restore` | 7a73cbd2a |
 | 2026-11-14 06:47 | tab-startup-restore（emain 恢复标记单测） | ✅ 4/4（红证：修复前 2 failed → 修复后 4 passed） | vitest | `emain/emain-window.test.ts` | working-tree |
 | 2026-11-14 06:47 | tab-startup-restore（真机重启台） | ⛔ 环境阻塞待补跑：dev 实例 tabview init 实测 3~4 分钟（14:29→14:31），两次超启动器 420s 窗口后 fatal（06:17 / 06:34 行）；行为断言由上行单测兜住，重启真机验证待 G7 人工确认 | skipped | `20261114T0610*` | working-tree |
+| 2026-11-14 07:05 | tab-drag-switch-fix（拖拽判定 / 乐观高亮 / 广播去重） | ✅ 21/21（红证：修复前 2 文件 ERR_MODULE_NOT_FOUND → 修复后 21 passed；tab 全套 102 passed） | vitest | `frontend/app/tab/tab-drag-model.test.ts` 等 | working-tree |
 | 2026-11-14 07:02 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261114T07004-commontext-source-notion` | 874b5ec9f |
 | 2026-11-14 07:05 | commontext-editor-draft（与 commontext-source-notion 同源断言） | ✅ 9/9（jsdom DOM 台 + 草稿模块单测 5 例；红证：旧源 5 failed → 新源 190 passed） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` + `commontext-editor-draft.test.ts` | 874b5ec9f |
 | 2026-11-14 07:05 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：Electron 启动器故障依旧（launcher exit=201，与 2026-11-13 5 连 fatal 同病）；真机台已补 editor-draft-persisted/cleared 断言，启动器修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | 874b5ec9f |

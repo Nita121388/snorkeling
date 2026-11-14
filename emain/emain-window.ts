@@ -557,6 +557,17 @@ export class WaveBrowserWindow extends BaseWindow {
         await this._queueActionInternal({ op: "createtab" });
     }
 
+    /**
+     * 该窗口的动作队列（含正在执行的 [0]，shift 在 finally）里是否已有切到 tabId 的 switchtab。
+     *
+     * R9.2：点击路径已经入队一次 switchtab（setInBackend=true）；后端 activetabid 广播
+     * 回来时（emain.ts 的 electron:updateactivetab）不必再入一次 —— 同目标的重复入队只会
+     * 占满串行队列槽位，放大其他点击的排队时间。
+     */
+    isTabSwitchInFlight(tabId: string): boolean {
+        return this.actionQueue.some((entry) => entry.op === "switchtab" && entry.tabId === tabId);
+    }
+
     async queueCloseTab(tabId: string) {
         await this._queueActionInternal({ op: "closetab", tabId });
     }

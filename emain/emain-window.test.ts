@@ -65,6 +65,31 @@ describe("markRestoredWorkspaceTabsOpened (startup restore)", () => {
     });
 });
 
+describe("WaveBrowserWindow.isTabSwitchInFlight (R9.2 broadcast dedupe)", () => {
+    const isTabSwitchInFlight = (
+        WaveBrowserWindow.prototype as unknown as {
+            isTabSwitchInFlight: (this: { actionQueue: unknown[] }, tabId: string) => boolean;
+        }
+    ).isTabSwitchInFlight;
+
+    it("detects the in-flight switchtab including the executing entry", () => {
+        const win = {
+            actionQueue: [
+                { op: "switchtab", tabId: "t1", setInBackend: true },
+                { op: "switchtab", tabId: "t2", setInBackend: false },
+            ],
+        };
+        expect(isTabSwitchInFlight.call(win, "t1")).toBe(true);
+        expect(isTabSwitchInFlight.call(win, "t2")).toBe(true);
+        expect(isTabSwitchInFlight.call(win, "t3")).toBe(false);
+    });
+
+    it("ignores non-switchtab entries even when they carry the same tab id", () => {
+        const win = { actionQueue: [{ op: "createtab" }, { op: "closetab", tabId: "t9" }] };
+        expect(isTabSwitchInFlight.call(win, "t9")).toBe(false);
+    });
+});
+
 describe("WaveBrowserWindow dev initialization timeout", () => {
     afterEach(() => {
         vi.restoreAllMocks();

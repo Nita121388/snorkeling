@@ -28,6 +28,12 @@ import { collapsedTabIdsAtom, collapseTabIds } from "./tab-collapse-state";
 import { selectBarVisibleTabIds } from "./tab-more-model";
 import { TabMoreMenu } from "./tab-more-menu";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
+import {
+    clearOptimisticActiveTab,
+    optimisticActiveTabIdAtom,
+    setOptimisticActiveTab,
+    useHighlightTabId,
+} from "./tab-optimistic-active";
 import { tabRecencyBumpAtom } from "./tab-recency-store";
 import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
@@ -211,6 +217,9 @@ function VTabWrapper({
 export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarProps) {
     const env = useWaveEnv<VTabBarEnv>();
     const activeTabId = useAtomValue(env.atoms.staticTabId);
+    // R9.1: 乐观高亮（仅视觉；非视觉逻辑继续用 activeTabId）
+    const highlightTabId = useHighlightTabId(activeTabId);
+    const optimisticActiveTabId = useAtomValue(optimisticActiveTabIdAtom);
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
     const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
@@ -392,6 +401,13 @@ export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarPro
         }
     }, [activeTabId, markTabOpened]);
 
+    // R9.1: 后端确认（activetabid 广播到达）后清掉乐观高亮；安全超时在模块内兜底。
+    useEffect(() => {
+        if (optimisticActiveTabId != null && workspace?.activetabid === optimisticActiveTabId) {
+            clearOptimisticActiveTab();
+        }
+    }, [optimisticActiveTabId, workspace?.activetabid]);
+
     const renderOrderedTabIds = useMemo(() => {
         // 默认隐藏的 Tab (本次启动未打开 / 手动收起 / 无未阅点) 只存在于「更多」下拉,
         // 不再进 Tab 栏 — hover / 菜单展开 / 拖拽都不把它捞回主栏.
@@ -499,11 +515,11 @@ export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarPro
                 }}
             >
                 {renderOrderedTabIds.map((tabId, index) => {
-                    const isActive = tabId === activeTabId;
+                    const isActive = tabId === highlightTabId;
                     const isHovered = tabId === hoveredTabId;
                     const isLast = index === renderOrderedTabIds.length - 1;
                     const nextTabId = renderOrderedTabIds[index + 1];
-                    const isNextActive = nextTabId === activeTabId;
+                    const isNextActive = nextTabId === highlightTabId;
                     const isNextHovered = nextTabId === hoveredTabId;
                     return (
                         <div key={tabId}>
@@ -522,6 +538,8 @@ export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarPro
                                 hoverResetVersion={hoverResetVersion}
                                 index={index}
                                 onSelect={() => {
+                                    // R9.1: 乐观高亮，主栏 active 立即跟随点击
+                                    setOptimisticActiveTab(tabId);
                                     markTabOpened(tabId);
                                     env.electron.setActiveTab(tabId);
                                 }}
