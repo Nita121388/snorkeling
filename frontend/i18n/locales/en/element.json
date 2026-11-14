@@ -1,173 +1,175 @@
 {
-    "clipboard": {
-        "paste": "Paste",
-        "pasteHintDisable": "Don't show this paste hint again"
+  "clipboard": {
+    "paste": "Paste",
+    "pasteHintDisable": "Don't show this paste hint again"
+  },
+  "copyForAgent": {
+    "label": "Copy for agent"
+  },
+  "emojiPalette": {
+    "searchPlaceholder": "Search emojis...",
+    "noResults": "No emojis found"
+  },
+  "errorBoundary": {
+    "title": "UI crashed",
+    "body": "The window itself is fine — a panel threw an error while rendering. Click {{reloadButton}} to reload and recover (terminal and AI session data are unaffected).",
+    "reload": "Reload"
+  },
+  "imageLightbox": {
+    "closeTitle": "Close (ESC)",
+    "closeLabel": "Close image",
+    "rotateTitle": "Rotate (R)",
+    "rotateLabel": "Rotate image"
+  },
+  "outline": {
+    "title": "Outline",
+    "show": "Show Markdown outline",
+    "hide": "Hide Markdown outline",
+    "pin": "Pin Markdown outline",
+    "unpin": "Unpin Markdown outline",
+    "resizeWidth": "Resize outline width",
+    "resizeHeight": "Resize outline height",
+    "resize": "Resize outline"
+  },
+  "scrollToBottom": {
+    "label": "Scroll to bottom"
+  },
+  "search": {
+    "placeholder": "Search",
+    "resultsLabel": "Search Results",
+    "resultsPosition": "{{position}} of {{count}} results",
+    "replacePlaceholder": "Replace",
+    "prevResult": "Previous Result (Shift+Enter)",
+    "nextResult": "Next Result (Enter)",
+    "close": "Close (Esc)",
+    "hideReplace": "Hide Replace",
+    "showReplace": "Show Replace",
+    "replaceTitle": "Replace (Enter)",
+    "replaceAllTitle": "Replace All (Shift+Enter)",
+    "regex": "Regular Expression",
+    "wholeWord": "Whole Word",
+    "caseSensitive": "Case Sensitive"
+  },
+  "selectionOverlay": {
+    "quickActions": "Quick actions",
+    "tag": "Tag"
+  },
+  "settings": {
+    "discard": "Discard",
+    "saving": "Saving…"
+  },
+  "tagEditor": {
+    "placeholder": "Search or enter options",
+    "remove": "Remove",
+    "removeLabel": "Remove {{value}}",
+    "create": "Create",
+    "empty": "No matching options"
+  },
+  "editableTitle": {
+    "saveFailed": "Save failed, please try again"
+  },
+  "sessionNote": {
+    "saveFailed": "Save failed: {{error}}",
+    "openInDialog": "Open card in dialog",
+    "openAiSettings": "Open AI settings",
+    "dismiss": "Dismiss",
+    "dismissSaveError": "Dismiss save error",
+    "notePlaceholder": "Note",
+    "sessionNoteLabel": "Session note"
+  },
+  "inlineEdit": {
+    "codeLanguage": "Code language"
+  },
+  "markdown": {
+    "linkActions": "Link actions",
+    "openLink": "Open link",
+    "editLink": "Edit link",
+    "close": "Close",
+    "target": "Target",
+    "textLabel": "Text",
+    "urlLabel": "URL",
+    "save": "Save",
+    "cancel": "Cancel",
+    "copied": "Copied",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "toggleTask": "Toggle task",
+    "languagePlaceholder": "language",
+    "setLanguage": "Set language",
+    "collapse": "Collapse",
+    "expandAll": "Expand all ({{count}} lines)",
+    "imageUnavailable": "Image unavailable",
+    "imageLoadFailed": "Unable to load image",
+    "imageResolveFailed": "Unable to resolve image path",
+    "dragToResize": "Drag to resize",
+    "resetNaturalSize": "Reset to natural size",
+    "editAltText": "Click to edit alt text",
+    "imageDescription": "Image description",
+    "pathCopied": "Path copied",
+    "fullPathCopied": "Full path copied",
+    "imagePath": "Image path",
+    "imgPlaceholder": "[img]",
+    "addDescription": "+ Add description",
+    "zoomIn": "Zoom in",
+    "copyImagePath": "Copy image path",
+    "copyFullImagePath": "Copy full image path",
+    "resetImageSize": "Reset image size",
+    "editPath": "Edit path",
+    "deleteImage": "Delete image",
+    "blockActions": "Block actions — drag to reorder",
+    "insertBlockAbove": "Insert block above",
+    "insertBlockBelow": "Insert block below",
+    "turnInto": "Turn into",
+    "listNumbering": "List numbering",
+    "copyBlock": "Copy",
+    "copyContext": "Copy Context",
+    "duplicateBlock": "Duplicate",
+    "deleteBlock": "Delete",
+    "restartFromOne": "Restart from 1",
+    "keepNumber": "Keep {{number}}",
+    "continueFromPrevious": "Continue from previous ({{number}})"
+  },
+  "quicktips": {
+    "headerIcons": "Header Icons",
+    "magnifyBlock": "Magnify a Block",
+    "connectRemote": "Connect to a remote server",
+    "browseSessions": "Browse local AI sessions",
+    "browseSessionsHint": "Use Sessions for Codex and Claude Code history",
+    "blockSettings": "Block Settings",
+    "closeBlock": "Close Block",
+    "importantKeybindings": "Important Keybindings",
+    "mainKeybindings": "Main Keybindings",
+    "newTab": "New Tab",
+    "newTerminalBlock": "New Terminal Block",
+    "openWaveAiPanel": "Open Wave AI Panel",
+    "tabSwitching": "Tab Switching ({{modifier}})",
+    "switchToNthTab": "Switch To Nth Tab",
+    "previousTab": "Previous Tab",
+    "nextTab": "Next Tab",
+    "blockNavigation": "Block Navigation (Ctrl-Shift)",
+    "navigateBetweenBlocks": "Navigate Between Blocks",
+    "focusNthBlock": "Focus Nth Block",
+    "focusWaveAi": "Focus Wave AI",
+    "splitBlocks": "Split Blocks",
+    "splitRight": "Split Right",
+    "splitBelow": "Split Below",
+    "splitInDirection": "Split in Direction",
+    "digitKey": "Number (1-9)",
+    "previewHint": "Preview files, directories, or web URLs",
+    "editHint": "Edit config and code files",
+    "moreTips": "More Tips",
+    "tips": {
+      "tabsTitle": "Tabs",
+      "tabsBody": "Right click any tab to change backgrounds or rename.",
+      "webViewTitle": "Web View",
+      "webViewBody": "Click the gear in the web view to set your homepage",
+      "terminalTitle": "Terminal",
+      "terminalBody": "Click the gear in the terminal to set your terminal theme and font size"
     },
-    "copyForAgent": {
-        "label": "Copy for agent"
-    },
-    "emojiPalette": {
-        "searchPlaceholder": "Search emojis...",
-        "noResults": "No emojis found"
-    },
-    "errorBoundary": {
-        "title": "UI crashed",
-        "body": "The window itself is fine — a panel threw an error while rendering. Click {{reloadButton}} to reload and recover (terminal and AI session data are unaffected).",
-        "reload": "Reload"
-    },
-    "imageLightbox": {
-        "closeTitle": "Close (ESC)",
-        "closeLabel": "Close image",
-        "rotateTitle": "Rotate (R)",
-        "rotateLabel": "Rotate image"
-    },
-    "outline": {
-        "title": "Outline",
-        "show": "Show Markdown outline",
-        "hide": "Hide Markdown outline",
-        "pin": "Pin Markdown outline",
-        "unpin": "Unpin Markdown outline",
-        "resizeWidth": "Resize outline width",
-        "resizeHeight": "Resize outline height",
-        "resize": "Resize outline"
-    },
-    "scrollToBottom": {
-        "label": "Scroll to bottom"
-    },
-    "search": {
-        "placeholder": "Search",
-        "resultsLabel": "Search Results",
-        "resultsPosition": "{{position}} of {{count}} results",
-        "replacePlaceholder": "Replace",
-        "prevResult": "Previous Result (Shift+Enter)",
-        "nextResult": "Next Result (Enter)",
-        "close": "Close (Esc)",
-        "hideReplace": "Hide Replace",
-        "showReplace": "Show Replace",
-        "replaceTitle": "Replace (Enter)",
-        "replaceAllTitle": "Replace All (Shift+Enter)",
-        "regex": "Regular Expression",
-        "wholeWord": "Whole Word",
-        "caseSensitive": "Case Sensitive"
-    },
-    "selectionOverlay": {
-        "quickActions": "Quick actions",
-        "tag": "Tag"
-    },
-    "settings": {
-        "discard": "Discard",
-        "saving": "Saving…"
-    },
-    "tagEditor": {
-        "placeholder": "Search or enter options",
-        "remove": "Remove",
-        "removeLabel": "Remove {{value}}"
-    },
-    "editableTitle": {
-        "saveFailed": "Save failed, please try again"
-    },
-    "sessionNote": {
-        "saveFailed": "Save failed: {{error}}",
-        "openInDialog": "Open card in dialog",
-        "openAiSettings": "Open AI settings",
-        "dismiss": "Dismiss",
-        "dismissSaveError": "Dismiss save error",
-        "notePlaceholder": "Note",
-        "sessionNoteLabel": "Session note"
-    },
-    "inlineEdit": {
-        "codeLanguage": "Code language"
-    },
-    "markdown": {
-        "linkActions": "Link actions",
-        "openLink": "Open link",
-        "editLink": "Edit link",
-        "close": "Close",
-        "target": "Target",
-        "textLabel": "Text",
-        "urlLabel": "URL",
-        "save": "Save",
-        "cancel": "Cancel",
-        "copied": "Copied",
-        "copyLink": "Copy link",
-        "linkCopied": "Link copied",
-        "toggleTask": "Toggle task",
-        "languagePlaceholder": "language",
-        "setLanguage": "Set language",
-        "collapse": "Collapse",
-        "expandAll": "Expand all ({{count}} lines)",
-        "imageUnavailable": "Image unavailable",
-        "imageLoadFailed": "Unable to load image",
-        "imageResolveFailed": "Unable to resolve image path",
-        "dragToResize": "Drag to resize",
-        "resetNaturalSize": "Reset to natural size",
-        "editAltText": "Click to edit alt text",
-        "imageDescription": "Image description",
-        "pathCopied": "Path copied",
-        "fullPathCopied": "Full path copied",
-        "imagePath": "Image path",
-        "imgPlaceholder": "[img]",
-        "addDescription": "+ Add description",
-        "zoomIn": "Zoom in",
-        "copyImagePath": "Copy image path",
-        "copyFullImagePath": "Copy full image path",
-        "resetImageSize": "Reset image size",
-        "editPath": "Edit path",
-        "deleteImage": "Delete image",
-        "blockActions": "Block actions — drag to reorder",
-        "insertBlockAbove": "Insert block above",
-        "insertBlockBelow": "Insert block below",
-        "turnInto": "Turn into",
-        "listNumbering": "List numbering",
-        "copyBlock": "Copy",
-        "copyContext": "Copy Context",
-        "duplicateBlock": "Duplicate",
-        "deleteBlock": "Delete",
-        "restartFromOne": "Restart from 1",
-        "keepNumber": "Keep {{number}}",
-        "continueFromPrevious": "Continue from previous ({{number}})"
-    },
-    "quicktips": {
-        "headerIcons": "Header Icons",
-        "magnifyBlock": "Magnify a Block",
-        "connectRemote": "Connect to a remote server",
-        "browseSessions": "Browse local AI sessions",
-        "browseSessionsHint": "Use Sessions for Codex and Claude Code history",
-        "blockSettings": "Block Settings",
-        "closeBlock": "Close Block",
-        "importantKeybindings": "Important Keybindings",
-        "mainKeybindings": "Main Keybindings",
-        "newTab": "New Tab",
-        "newTerminalBlock": "New Terminal Block",
-        "openWaveAiPanel": "Open Wave AI Panel",
-        "tabSwitching": "Tab Switching ({{modifier}})",
-        "switchToNthTab": "Switch To Nth Tab",
-        "previousTab": "Previous Tab",
-        "nextTab": "Next Tab",
-        "blockNavigation": "Block Navigation (Ctrl-Shift)",
-        "navigateBetweenBlocks": "Navigate Between Blocks",
-        "focusNthBlock": "Focus Nth Block",
-        "focusWaveAi": "Focus Wave AI",
-        "splitBlocks": "Split Blocks",
-        "splitRight": "Split Right",
-        "splitBelow": "Split Below",
-        "splitInDirection": "Split in Direction",
-        "digitKey": "Number (1-9)",
-        "previewHint": "Preview files, directories, or web URLs",
-        "editHint": "Edit config and code files",
-        "moreTips": "More Tips",
-        "tips": {
-            "tabsTitle": "Tabs",
-            "tabsBody": "Right click any tab to change backgrounds or rename.",
-            "webViewTitle": "Web View",
-            "webViewBody": "Click the gear in the web view to set your homepage",
-            "terminalTitle": "Terminal",
-            "terminalBody": "Click the gear in the terminal to set your terminal theme and font size"
-        },
-        "needHelp": "Need More Help?",
-        "joinDiscord": "Join Our Discord",
-        "configurationOptions": "Configuration Options",
-        "allKeybindings": "All Keybindings",
-        "fullDocumentation": "Full Documentation"
-    }
+    "needHelp": "Need More Help?",
+    "joinDiscord": "Join Our Discord",
+    "configurationOptions": "Configuration Options",
+    "allKeybindings": "All Keybindings",
+    "fullDocumentation": "Full Documentation"
+  }
 }

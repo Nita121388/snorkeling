@@ -32,6 +32,7 @@ import { createInstance, type i18n as I18nInstance } from "i18next";
 // Reuse the renderer's locale files verbatim — same JSON, same keys, same types.
 import enAipanel from "../frontend/i18n/locales/en/aipanel.json";
 import enBlock from "../frontend/i18n/locales/en/block.json";
+import enBlockEditor from "../frontend/i18n/locales/en/block-editor.json";
 import enCommon from "../frontend/i18n/locales/en/common.json";
 import enCommontext from "../frontend/i18n/locales/en/commontext.json";
 import enElement from "../frontend/i18n/locales/en/element.json";
@@ -40,6 +41,7 @@ import enTab from "../frontend/i18n/locales/en/tab.json";
 import enWaveconfig from "../frontend/i18n/locales/en/waveconfig.json";
 import zhAipanel from "../frontend/i18n/locales/zh/aipanel.json";
 import zhBlock from "../frontend/i18n/locales/zh/block.json";
+import zhBlockEditor from "../frontend/i18n/locales/zh/block-editor.json";
 import zhCommon from "../frontend/i18n/locales/zh/common.json";
 import zhCommontext from "../frontend/i18n/locales/zh/commontext.json";
 import zhElement from "../frontend/i18n/locales/zh/element.json";
@@ -51,7 +53,7 @@ export const MAIN_SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type MainLocale = (typeof MAIN_SUPPORTED_LOCALES)[number];
 export const MAIN_DEFAULT_LOCALE: MainLocale = "en";
 export const MAIN_FALLBACK_LOCALE: MainLocale = "en";
-export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext", "block", "element", "waveconfig"] as const;
+export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext", "block", "element", "block-editor", "waveconfig"] as const;
 
 /** Normalize a raw `ui:locale` value into a supported locale ("en" fallback). */
 export function coerceLocale(value: unknown): MainLocale {
@@ -89,6 +91,7 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         commontext: enCommontext,
         block: enBlock,
         element: enElement,
+        "block-editor": enBlockEditor,
         waveconfig: enWaveconfig,
     },
     zh: {
@@ -99,6 +102,7 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         commontext: zhCommontext,
         block: zhBlock,
         element: zhElement,
+        "block-editor": zhBlockEditor,
         waveconfig: zhWaveconfig,
     },
 };

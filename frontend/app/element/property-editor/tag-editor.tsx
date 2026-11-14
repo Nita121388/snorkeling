@@ -258,11 +258,11 @@ export function PropertyTagEditor({
                         <span className="ptag-option-chip" style={tagColorVars(draft.trim())}>
                             {draft.trim()}
                         </span>
-                        <span className="ptag-create-label">创建</span>
+                        <span className="ptag-create-label">{t("element:tagEditor.create")}</span>
                     </div>
                 )}
                 {rows === 0 && filtered.length === 0 && !showCreate && (
-                    <div className="ptag-empty">无匹配选项</div>
+                    <div className="ptag-empty">{t("element:tagEditor.empty")}</div>
                 )}
             </div>
         </div>

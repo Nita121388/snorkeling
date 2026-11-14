@@ -46,7 +46,9 @@ import { TableToolbar, type TableOp } from "@/app/element/block-editor/component
 import { execSlashCommand, lineStartOffset, transformSessionBlock } from "@/app/element/block-editor/exec";
 import { isBlockEditorFeatureEnabled } from "@/app/element/block-editor/flags";
 import {
+    blockActionLabel,
     filterSlashCommands,
+    inlineStyleLabel,
     isBlockActionEnabled,
     listBlockActions,
     listInlineStyles,
@@ -3464,7 +3466,7 @@ const Markdown = ({
                     const checked = action.targetKind === anchorBlockKind;
                     const enabled = !checked && isBlockActionEnabled(action, ctx);
                     return {
-                        label: action.label,
+                        label: blockActionLabel(action),
                         type: "checkbox" as const,
                         checked,
                         enabled,
@@ -4862,16 +4864,17 @@ const Markdown = ({
         };
         return listBlockActions().map((a) => ({
             id: a.id,
-            label: a.label,
+            label: blockActionLabel(a),
             active: a.targetKind === ctx.kind,
             enabled: a.targetKind !== ctx.kind && isBlockActionEnabled(a, ctx),
         }));
-    }, [inlineEdit.editSession, text]);
+        // i18n.language: labels resolve through i18n.t() — recompute on locale switch too.
+    }, [inlineEdit.editSession, text, i18n.language]);
 
     const currentBlockLabel = useMemo(() => {
         const active = toolbarBlockItems.find((i) => i.active);
-        return active?.label ?? "Text";
-    }, [toolbarBlockItems]);
+        return active?.label ?? i18n.t("block-editor:turnInto.text");
+    }, [toolbarBlockItems, i18n.language]);
 
     const normalizedScrollTargetText = useMemo(
         () => normalizeScrollTargetText(scrollTargetText ?? ""),
@@ -6087,7 +6090,7 @@ const Markdown = ({
                                     blockItems={toolbarBlockItems}
                                     styles={listInlineStyles().map((s) => ({
                                         id: s.id as InlineStyleId,
-                                        label: s.label,
+                                        label: inlineStyleLabel(s),
                                         hint: s.hint,
                                         active: hasInlineStyle(
                                             inlineEdit.draftText,

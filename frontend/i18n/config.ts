@@ -7,6 +7,7 @@ export { i18n };
 
 import enAipanel from "./locales/en/aipanel.json";
 import enBlock from "./locales/en/block.json";
+import enBlockEditor from "./locales/en/block-editor.json";
 import enCommon from "./locales/en/common.json";
 import enCommontext from "./locales/en/commontext.json";
 import enElement from "./locales/en/element.json";
@@ -16,6 +17,7 @@ import enTab from "./locales/en/tab.json";
 import enWaveconfig from "./locales/en/waveconfig.json";
 import zhAipanel from "./locales/zh/aipanel.json";
 import zhBlock from "./locales/zh/block.json";
+import zhBlockEditor from "./locales/zh/block-editor.json";
 import zhCommon from "./locales/zh/common.json";
 import zhCommontext from "./locales/zh/commontext.json";
 import zhElement from "./locales/zh/element.json";
@@ -39,6 +41,7 @@ export const NS = [
     "commontext",
     "block",
     "element",
+    "block-editor",
     "waveconfig",
 ] as const;
 
@@ -98,6 +101,7 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 commontext: enCommontext,
                 block: enBlock,
                 element: enElement,
+                "block-editor": enBlockEditor,
                 waveconfig: enWaveconfig,
             },
             zh: {
@@ -109,6 +113,7 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 commontext: zhCommontext,
                 block: zhBlock,
                 element: zhElement,
+                "block-editor": zhBlockEditor,
                 waveconfig: zhWaveconfig,
             },
         },

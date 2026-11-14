@@ -14,12 +14,14 @@ import type { BlockCtx, OpenPickerResult, SlashCommandSpec } from "../registry";
 function blockTransformCommand(
     id: string,
     label: string,
+    labelKey: string,
     kind: BlockKind,
     extra: { hint?: string; keywords?: string[]; group?: SlashCommandSpec["group"]; when?: SlashCommandSpec["when"] } = {}
 ): SlashCommandSpec {
     return {
         id,
         label,
+        labelKey,
         hint: extra.hint,
         keywords: extra.keywords,
         group: extra.group ?? "text",
@@ -32,10 +34,11 @@ function blockTransformCommand(
 }
 
 /** `> [!note]`-style callout: convert to quote, then tag the first line. */
-function calloutCommand(id: string, label: string, tag: string): SlashCommandSpec {
+function calloutCommand(id: string, label: string, labelKey: string, tag: string): SlashCommandSpec {
     return {
         id,
         label,
+        labelKey,
         keywords: ["callout", tag],
         group: "text",
         run: (ctx) => {
@@ -55,6 +58,7 @@ function calloutCommand(id: string, label: string, tag: string): SlashCommandSpe
 const dividerCommand: SlashCommandSpec = {
     id: "divider",
     label: "Divider",
+    labelKey: "block-editor:slashCommand.divider",
     hint: "---",
     keywords: ["hr", "rule", "line", "split"],
     group: "structure",
@@ -75,6 +79,7 @@ const dividerCommand: SlashCommandSpec = {
 const imageCommand: SlashCommandSpec = {
     id: "image",
     label: "Image",
+    labelKey: "block-editor:slashCommand.image",
     hint: "![]()",
     keywords: ["img", "picture", "photo", "img 图片"],
     group: "insert",
@@ -91,6 +96,7 @@ const imageCommand: SlashCommandSpec = {
 const wikiLinkCommand: SlashCommandSpec = {
     id: "wiki-link",
     label: "Wiki Link",
+    labelKey: "block-editor:slashCommand.wiki-link",
     hint: "[[…]]",
     keywords: ["link", "wikilink", "wiki"],
     group: "insert",
@@ -107,6 +113,7 @@ const wikiLinkCommand: SlashCommandSpec = {
 const emojiSlashCommand: SlashCommandSpec = {
     id: "emoji",
     label: "Emoji",
+    labelKey: "block-editor:slashCommand.emoji",
     hint: "😀",
     keywords: ["emoji", "biaoqing", "emoticon"],
     group: "insert",
@@ -117,22 +124,22 @@ const emojiSlashCommand: SlashCommandSpec = {
 
 export function builtinSlashCommands(): SlashCommandSpec[] {
     return [
-        blockTransformCommand("text", "Text", "text", { keywords: ["paragraph", "plain"] }),
-        blockTransformCommand("heading-1", "Heading 1", "heading1", { hint: "#", keywords: ["h1", "bt", "biaoti"] }),
-        blockTransformCommand("heading-2", "Heading 2", "heading2", { hint: "##", keywords: ["h2"] }),
-        blockTransformCommand("heading-3", "Heading 3", "heading3", { hint: "###", keywords: ["h3"] }),
-        blockTransformCommand("heading-4", "Heading 4", "heading4", { hint: "####", keywords: ["h4"] }),
-        blockTransformCommand("heading-5", "Heading 5", "heading5", { hint: "#####", keywords: ["h5"] }),
-        blockTransformCommand("heading-6", "Heading 6", "heading6", { hint: "######", keywords: ["h6"] }),
-        blockTransformCommand("bulleted-list", "Bulleted List", "bulleted", { hint: "•", keywords: ["ul", "list", "bullet"] }),
-        blockTransformCommand("numbered-list", "Numbered List", "numbered", { hint: "1.", keywords: ["ol", "ordered", "list"] }),
-        blockTransformCommand("todo-list", "To-do List", "todo", { hint: "☐", keywords: ["task", "checkbox", "todo"] }),
-        blockTransformCommand("quote", "Quote", "quote", { hint: ">", keywords: ["blockquote", "yhs", "yinyong"] }),
-        calloutCommand("callout-note", "Callout: Note", "note"),
-        calloutCommand("callout-warning", "Callout: Warning", "warning"),
-        calloutCommand("callout-tip", "Callout: Tip", "tip"),
-        blockTransformCommand("code-block", "Code Block", "code", { hint: "```", keywords: ["code", "dmk", "daimakuai"], group: "structure" }),
-        blockTransformCommand("table", "Table", "table", { hint: "⊞", keywords: ["biaoge", "grid"], group: "structure" }),
+        blockTransformCommand("text", "Text", "block-editor:slashCommand.text", "text", { keywords: ["paragraph", "plain"] }),
+        blockTransformCommand("heading-1", "Heading 1", "block-editor:slashCommand.heading-1", "heading1", { hint: "#", keywords: ["h1", "bt", "biaoti"] }),
+        blockTransformCommand("heading-2", "Heading 2", "block-editor:slashCommand.heading-2", "heading2", { hint: "##", keywords: ["h2"] }),
+        blockTransformCommand("heading-3", "Heading 3", "block-editor:slashCommand.heading-3", "heading3", { hint: "###", keywords: ["h3"] }),
+        blockTransformCommand("heading-4", "Heading 4", "block-editor:slashCommand.heading-4", "heading4", { hint: "####", keywords: ["h4"] }),
+        blockTransformCommand("heading-5", "Heading 5", "block-editor:slashCommand.heading-5", "heading5", { hint: "#####", keywords: ["h5"] }),
+        blockTransformCommand("heading-6", "Heading 6", "block-editor:slashCommand.heading-6", "heading6", { hint: "######", keywords: ["h6"] }),
+        blockTransformCommand("bulleted-list", "Bulleted List", "block-editor:slashCommand.bulleted-list", "bulleted", { hint: "•", keywords: ["ul", "list", "bullet"] }),
+        blockTransformCommand("numbered-list", "Numbered List", "block-editor:slashCommand.numbered-list", "numbered", { hint: "1.", keywords: ["ol", "ordered", "list"] }),
+        blockTransformCommand("todo-list", "To-do List", "block-editor:slashCommand.todo-list", "todo", { hint: "☐", keywords: ["task", "checkbox", "todo"] }),
+        blockTransformCommand("quote", "Quote", "block-editor:slashCommand.quote", "quote", { hint: ">", keywords: ["blockquote", "yhs", "yinyong"] }),
+        calloutCommand("callout-note", "Callout: Note", "block-editor:slashCommand.callout-note", "note"),
+        calloutCommand("callout-warning", "Callout: Warning", "block-editor:slashCommand.callout-warning", "warning"),
+        calloutCommand("callout-tip", "Callout: Tip", "block-editor:slashCommand.callout-tip", "tip"),
+        blockTransformCommand("code-block", "Code Block", "block-editor:slashCommand.code-block", "code", { hint: "```", keywords: ["code", "dmk", "daimakuai"], group: "structure" }),
+        blockTransformCommand("table", "Table", "block-editor:slashCommand.table", "table", { hint: "⊞", keywords: ["biaoge", "grid"], group: "structure" }),
         dividerCommand,
         imageCommand,
         wikiLinkCommand,

@@ -21,6 +21,13 @@
         "reason": "键盘键名（kbd 元素内的物理按键名，各语言通用，不翻译）"
     },
     {
+        "id": "frontend/app/element/block-editor/commands/slash.ts::cjk::4b5c94ac59de",
+        "file": "frontend/app/element/block-editor/commands/slash.ts",
+        "kind": "cjk",
+        "text": "img 图片",
+        "reason": "斜杠命令的中文搜索别名（搜索关键词数据，与 biaoqing/biaoti 等拼音关键词同类；不是 UI 展示文案，展示文案已走 block-editor:slashCommand.*）"
+    },
+    {
         "id": "frontend/app/element/markdown.tsx::cjk::08ef584a03e7",
         "file": "frontend/app/element/markdown.tsx",
         "kind": "cjk",

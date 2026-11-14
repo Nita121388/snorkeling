@@ -94,6 +94,9 @@ function scanFile(rel, file) {
             const text = node.getText(sf).replace(/\s+/g, " ").trim();
             // 纯标点/实体/短词不算文案；≥3 连续字母才算
             if (LATIN_RE.test(text) && !/^&\w+;$/.test(text)) add(node, "jsx-text", text);
+            // 纯 CJK JSX 文本（<button>保存</button>）两类规则都看不见：拉丁规则不命中、
+            // 字符串规则不覆盖 JsxText。这里单独报 cjk-jsx（2026-11-14 B5 发现的缺口）。
+            else if (CJK_RE.test(text)) add(node, "cjk-jsx", text);
         } else if (ts.isJsxAttribute(node) && ATTR_NAMES.has(node.name.getText(sf))) {
             const init = node.initializer;
             if (init && ts.isStringLiteral(init) && LATIN_RE.test(init.text)) {

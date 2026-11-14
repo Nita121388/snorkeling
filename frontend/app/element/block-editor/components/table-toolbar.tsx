@@ -7,6 +7,7 @@
  * cycles the caret column's separator cell. Pure ops live in markdown-transform/table.ts.
  */
 
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import type { TableAlign } from "../../markdown-transform/table";
 
@@ -53,32 +54,33 @@ function Btn({
 }
 
 export function TableToolbar({ anchor, currentAlign, contextValid, onOp }: TableToolbarProps) {
+    const { t } = useTranslation("block-editor");
     const stopMouse = (e: React.MouseEvent) => e.preventDefault();
     return createPortal(
         <div className="markdown-floating-toolbar markdown-table-toolbar" style={{ top: anchor.top, left: anchor.left }} onMouseDown={stopMouse}>
-            <Btn label="+ Row" title="Insert row below" disabled={!contextValid} onClick={() => onOp({ type: "insert-row" })} />
-            <Btn label="− Row" title="Delete row" disabled={!contextValid} onClick={() => onOp({ type: "delete-row" })} />
+            <Btn label={t("block-editor:tableToolbar.insertRow")} title={t("block-editor:tableToolbar.insertRowTitle")} disabled={!contextValid} onClick={() => onOp({ type: "insert-row" })} />
+            <Btn label={t("block-editor:tableToolbar.deleteRow")} title={t("block-editor:tableToolbar.deleteRowTitle")} disabled={!contextValid} onClick={() => onOp({ type: "delete-row" })} />
             <span className="markdown-toolbar-divider" />
-            <Btn label="+ Col" title="Insert column to the right" disabled={!contextValid} onClick={() => onOp({ type: "insert-col", side: "right" })} />
-            <Btn label="− Col" title="Delete column" disabled={!contextValid} onClick={() => onOp({ type: "delete-col" })} />
+            <Btn label={t("block-editor:tableToolbar.insertCol")} title={t("block-editor:tableToolbar.insertColTitle")} disabled={!contextValid} onClick={() => onOp({ type: "insert-col", side: "right" })} />
+            <Btn label={t("block-editor:tableToolbar.deleteCol")} title={t("block-editor:tableToolbar.deleteColTitle")} disabled={!contextValid} onClick={() => onOp({ type: "delete-col" })} />
             <span className="markdown-toolbar-divider" />
             <Btn
                 label="⇤"
-                title="Align left"
+                title={t("block-editor:tableToolbar.alignLeft")}
                 disabled={!contextValid}
                 active={currentAlign === "left"}
                 onClick={() => onOp({ type: "align", align: "left" })}
             />
             <Btn
                 label="⇹"
-                title="Align center"
+                title={t("block-editor:tableToolbar.alignCenter")}
                 disabled={!contextValid}
                 active={currentAlign === "center"}
                 onClick={() => onOp({ type: "align", align: "center" })}
             />
             <Btn
                 label="⇥"
-                title="Align right"
+                title={t("block-editor:tableToolbar.alignRight")}
                 disabled={!contextValid}
                 active={currentAlign === "right"}
                 onClick={() => onOp({ type: "align", align: "right" })}

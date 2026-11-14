@@ -4,6 +4,7 @@
 import "i18next";
 import type aipanel from "./locales/en/aipanel.json";
 import type block from "./locales/en/block.json";
+import type blockEditor from "./locales/en/block-editor.json";
 import type common from "./locales/en/common.json";
 import type commontext from "./locales/en/commontext.json";
 import type element from "./locales/en/element.json";
@@ -34,6 +35,7 @@ declare module "i18next" {
             commontext: typeof commontext;
             block: typeof block;
             element: typeof element;
+            "block-editor": typeof blockEditor;
             waveconfig: typeof waveconfig;
         };
     }

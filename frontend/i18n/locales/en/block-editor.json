@@ -1,0 +1,97 @@
+{
+    "docEmoji": {
+        "add": "Add document emoji",
+        "change": "Change document emoji",
+        "ariaLabel": "Document emoji"
+    },
+    "emojiPicker": {
+        "ariaLabel": "Emoji picker",
+        "removeAliasAria": "Remove alias {{alias}}",
+        "removeAliasTitle": "Remove this alias",
+        "aliasInputPlaceholder": "Type a meaning, e.g. \"done\", then press Enter",
+        "noteInputPlaceholder": "Optional: a one-line note (not searched)",
+        "aliasHint": "Aliases are searched first · Ctrl/Cmd+Enter saves · Esc goes back",
+        "clearAllTitle": "Delete all aliases and the note for this emoji",
+        "clear": "Clear",
+        "cancel": "Cancel",
+        "save": "Save",
+        "searchPlaceholder": "Search emoji…",
+        "removeEmojiTitle": "Remove emoji",
+        "aliasMatched": "Alias matches",
+        "noResults": "No emoji found"
+    },
+    "slashPalette": {
+        "ariaLabel": "Slash commands",
+        "empty": "No matching commands"
+    },
+    "slashCommand": {
+        "text": "Text",
+        "heading-1": "Heading 1",
+        "heading-2": "Heading 2",
+        "heading-3": "Heading 3",
+        "heading-4": "Heading 4",
+        "heading-5": "Heading 5",
+        "heading-6": "Heading 6",
+        "bulleted-list": "Bulleted List",
+        "numbered-list": "Numbered List",
+        "todo-list": "To-do List",
+        "quote": "Quote",
+        "callout-note": "Callout: Note",
+        "callout-warning": "Callout: Warning",
+        "callout-tip": "Callout: Tip",
+        "code-block": "Code Block",
+        "table": "Table",
+        "divider": "Divider",
+        "image": "Image",
+        "wiki-link": "Wiki Link",
+        "emoji": "Emoji"
+    },
+    "turnInto": {
+        "text": "Text",
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "heading4": "Heading 4",
+        "heading5": "Heading 5",
+        "heading6": "Heading 6",
+        "bulleted": "Bulleted List",
+        "numbered": "Numbered List",
+        "todo": "To-do List",
+        "quote": "Quote",
+        "code": "Code Block",
+        "table": "Table"
+    },
+    "inlineStyle": {
+        "bold": "Bold",
+        "italic": "Italic",
+        "strike": "Strikethrough",
+        "code": "Inline Code",
+        "link": "Link",
+        "kbd": "Kbd"
+    },
+    "toolbar": {
+        "turnInto": "Turn into"
+    },
+    "tableToolbar": {
+        "insertRow": "+ Row",
+        "insertRowTitle": "Insert row below",
+        "deleteRow": "− Row",
+        "deleteRowTitle": "Delete row",
+        "insertCol": "+ Col",
+        "insertColTitle": "Insert column to the right",
+        "deleteCol": "− Col",
+        "deleteColTitle": "Delete column",
+        "alignLeft": "Align left",
+        "alignCenter": "Align center",
+        "alignRight": "Align right"
+    },
+    "tableBlock": {
+        "expand": "Expand table",
+        "collapse": "Collapse table",
+        "alignLeft": "Align left",
+        "alignCenter": "Align center",
+        "alignRight": "Align right",
+        "deleteColumn": "Delete column",
+        "deleteRow": "Delete row"
+    }
+}
