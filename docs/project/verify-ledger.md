@@ -206,3 +206,8 @@
 | 2026-11-13 15:09 | newtab-empty | ❌ fatal（未跑） | launch+reset | `20261113T15064-newtab-empty` | unknown |
 | 2026-11-13 23:56 | commontext-editor-collapse（与 commontext-source-notion 同源断言） | ✅ 2/2（jsdom DOM 台；红证：旧源 2 failed → 新源 2 passed） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` | working-tree |
 | 2026-11-13 23:56 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：Electron 启动器故障（连 newtab-empty 同故障：electron:dev exit 4/255、initPromise 120s 超时、CDP ECONNREFUSED），本机 5 次尝试全 fatal；行为断言由上一行 jsdom 台兜住 | skipped | `20261113T14364…14564` | 3671f090 |
+| 2026-11-14 06:12 | tab-startup-restore | ✅ 1/1 | launch+reset+restart | `20261114T06120-tab-startup-restore` | 7a73cbd2a |
+| 2026-11-14 06:17 | tab-startup-restore | ❌ fatal（未跑） | launch+reset+restart | `20261114T06103-tab-startup-restore` | 7a73cbd2a |
+| 2026-11-14 06:34 | tab-startup-restore | ❌ 1/3（fatal） | launch+reset+restart | `20261114T06185-tab-startup-restore` | 7a73cbd2a |
+| 2026-11-14 06:47 | tab-startup-restore（emain 恢复标记单测） | ✅ 4/4（红证：修复前 2 failed → 修复后 4 passed） | vitest | `emain/emain-window.test.ts` | working-tree |
+| 2026-11-14 06:47 | tab-startup-restore（真机重启台） | ⛔ 环境阻塞待补跑：dev 实例 tabview init 实测 3~4 分钟（14:29→14:31），两次超启动器 420s 窗口后 fatal（06:17 / 06:34 行）；行为断言由上行单测兜住，重启真机验证待 G7 人工确认 | skipped | `20261114T0610*` | working-tree |

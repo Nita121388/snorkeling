@@ -35,8 +35,25 @@ export const MinWindowWidth = 800;
 export const MinWindowHeight = 500;
 const openedThisLaunchTabIds = new Set<string>();
 
-function getOpenedThisLaunchTabIds(): string[] {
+export function getOpenedThisLaunchTabIds(): string[] {
     return Array.from(openedThisLaunchTabIds);
+}
+
+/**
+ * 启动/开窗恢复：把 workspace 里已存在的 Tab 全部标记为「本次启动已打开」。
+ *
+ * 必须在首个 Tab renderer 初始化之前调用 —— renderer 通过同步 IPC
+ * (`getOpenedThisLaunchTabIds`) 在 atom 创建时读集合；若不提前标记，重启后
+ * `openedThisLaunchTabIds` 只含激活 Tab，渲染层会把其余全部藏进「更多」且灰化。
+ * 悬空 id / 会话概览 tab 被标记无副作用（仅进 Set）。
+ */
+export function markRestoredWorkspaceTabsOpened(tabIds: readonly string[] | null | undefined): void {
+    if (tabIds == null) {
+        return;
+    }
+    for (const tabId of tabIds) {
+        markTabOpenedThisLaunch(tabId);
+    }
 }
 
 function broadcastOpenedThisLaunchTabIds() {
@@ -949,6 +966,9 @@ export async function createBrowserWindow(
         workspace = await WorkspaceService.GetWorkspace(waveWindow.workspaceid);
     }
     console.log("createBrowserWindow", waveWindow.oid, workspace.oid, workspace);
+    // 启动/开窗恢复：先于首个 renderer 读集合（同步 IPC）把已存 Tab 全部标记为已打开，
+    // 否则重启后主栏只剩激活 Tab，其余全部藏进「更多」且灰化。
+    markRestoredWorkspaceTabsOpened(workspace.tabids);
     const bwin = new WaveBrowserWindow(waveWindow, fullConfig, opts);
 
     if (workspace.activetabid) {

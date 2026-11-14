@@ -43,7 +43,27 @@ vi.mock("./emain-util", () => ({
 vi.mock("./emain-wsh", () => ({ ElectronWshClient: {} }));
 vi.mock("./updater", () => ({ updater: { status: "idle" } }));
 
-import { WaveBrowserWindow } from "./emain-window";
+import { getOpenedThisLaunchTabIds, markRestoredWorkspaceTabsOpened, WaveBrowserWindow } from "./emain-window";
+
+describe("markRestoredWorkspaceTabsOpened (startup restore)", () => {
+    it("marks every restored workspace tab id as opened this launch", () => {
+        markRestoredWorkspaceTabsOpened(["restore-t1", "restore-t2", "restore-t3"]);
+        const opened = getOpenedThisLaunchTabIds();
+        expect(opened).toContain("restore-t1");
+        expect(opened).toContain("restore-t2");
+        expect(opened).toContain("restore-t3");
+    });
+
+    it("is idempotent and tolerates empty / null tab ids", () => {
+        markRestoredWorkspaceTabsOpened(["restore-t1"]);
+        const countBefore = getOpenedThisLaunchTabIds().filter((id) => id.startsWith("restore-")).length;
+        markRestoredWorkspaceTabsOpened([]);
+        markRestoredWorkspaceTabsOpened(null);
+        markRestoredWorkspaceTabsOpened(undefined);
+        const countAfter = getOpenedThisLaunchTabIds().filter((id) => id.startsWith("restore-")).length;
+        expect(countAfter).toBe(countBefore);
+    });
+});
 
 describe("WaveBrowserWindow dev initialization timeout", () => {
     afterEach(() => {
