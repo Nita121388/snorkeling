@@ -206,8 +206,11 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain('text: detailTags.length === 0 ? "0" : "",');
         expect(source).toContain('s.key === "tags" && detailTags.length > 0 ? (');
         expect(source).toContain('className="min-w-0 flex-wrap"');
-        // 写回仍走正文 #tag 最小 diff（不引入第二套 tag 存储），走既有自动保存
-        expect(source).toContain("const applyDetailTags = (nextTags: string[]) => {");
-        expect(source).toContain("removeSessionTagFromNote(nextText, tag)");
+        // 内容与标签分离：Tags 浮层直接写结构化 item.tags（不再改正文），写前先 flush 正文草稿
+        expect(source).toContain("const applyDetailTags = async (nextTags: string[]) => {");
+        expect(source).toContain("const tags = normalizeCommonTextTags(nextTags);");
+        expect(source).toContain("await flushDetailSave({ keepDirty: true });");
+        // 正文自动保存不再从正文抽 tags（tags 是结构化权威）
+        expect(source).not.toContain("tags: extractSessionTagsFromNote(text).tags");
     });
 });

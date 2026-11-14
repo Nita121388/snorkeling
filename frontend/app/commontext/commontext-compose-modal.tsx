@@ -6,7 +6,11 @@ import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
 import { atoms } from "@/app/store/global";
 import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
-import { extractSessionTagsFromNote, removeSessionTagFromNote } from "@/app/view/aisessions/session-tags";
+import {
+    extractSessionTagsFromNote,
+    removeSessionTagFromNote,
+    stripSessionTagHashes,
+} from "@/app/view/aisessions/session-tags";
 import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/aisessions/utils";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
@@ -32,6 +36,7 @@ import {
     getCommonTextOriginDeviceName,
     getCommonTextTagSummaries,
     getLiveCommonTextItems,
+    normalizeCommonTextTags,
     recordCommonTextUse,
     searchCommonTextComposeItems,
     upsertCommonTextItem,
@@ -307,10 +312,6 @@ const CommonTextComposeModal = memo(() => {
     // 这样剩余正文 send/copy 出去时不带走 #tag。
     const editorTags = useMemo(() => extractSessionTagsFromNote(state.editor).tags, [state.editor]);
 
-    // 详情区 tag 完全由 detailText 派生——与编辑器上方的 editorTags 同语义。手写 #tag 落在 Text
-    // 正文里，All Tags 面板据此决定 chip 亮灭；该 memo 也是 Save 时写回 item.tags 的真源。
-    const detailTags = useMemo(() => extractSessionTagsFromNote(state.detailText).tags, [state.detailText]);
-
     // 计数与设备清单按「当前 tag/查询过滤后的集合」统计，与列表实际可见范围一致：
     // 若按全量统计，chip 上的数字会与点下去后的行数不符。
     const sourceScopeItems = useMemo(
@@ -386,6 +387,10 @@ const CommonTextComposeModal = memo(() => {
         const idx = Math.min(state.selectedIndex, filteredItems.length - 1);
         return filteredItems[idx] ?? null;
     }, [filteredItems, state.detailId, state.selectedIndex, state.open]);
+
+    // 详情区 tags 是结构化唯一权威（item.tags，读路径已含历史字面迁移合并）；不再从正文抽取。
+    // 正文编辑不动 tags，tags 增删也不改正文——内容与标签分离。
+    const detailTags = useMemo(() => detailItem?.tags ?? [], [detailItem]);
 
     // Notion 式属性网格：来源信息是只读的（由写入侧决定），所以这里全部是派生值。
     // 值里的次要文本用独立 span，不嵌套 grid 项——嵌套会继承行样式把行高压乱。
@@ -957,7 +962,8 @@ const CommonTextComposeModal = memo(() => {
                 {
                     title,
                     text,
-                    tags: extractSessionTagsFromNote(text).tags,
+                    // 正文改动不动 tags（tags 是结构化权威，读路径迁移已合并历史字面）
+                    tags: detailItem?.tags ?? [],
                     pinned: detailItem?.pinned ?? false,
                     emoji: state.detailEmoji,
                 },
@@ -1015,34 +1021,37 @@ const CommonTextComposeModal = memo(() => {
 
     if (!state.open) return null;
 
-    // Tags 属性浮层提交（PropertyTagEditor 给最终 items）：按最小 diff 写回正文 #tag 字面。
-    // tag 与 text 完全同源——不建结构化字段；新增在末尾追加 ` #tag`，移除用 removeSessionTagFromNote；
-    // 置 detailDirty 走既有 800ms 自动保存，与正文手编同一条落盘路径。
-    const applyDetailTags = (nextTags: string[]) => {
-        setState((cur) => {
-            const normalize = (tag: string) => tag.trim().toLowerCase().replace(/^#+/, "").replace(/#+$/, "");
-            const current = extractSessionTagsFromNote(cur.detailText).tags;
-            const currentSet = new Set(current.map((t) => t.toLowerCase()));
-            const next = [...new Set(nextTags.map(normalize).filter((t) => t !== ""))];
-            const nextSet = new Set(next);
-            const toRemove = current.filter((t) => !nextSet.has(t.toLowerCase()));
-            const toAdd = next.filter((t) => !currentSet.has(t));
-            if (toRemove.length === 0 && toAdd.length === 0) return cur;
-            let nextText = cur.detailText;
-            for (const tag of toRemove) {
-                nextText = removeSessionTagFromNote(nextText, tag);
-            }
-            for (const tag of toAdd) {
-                // 同行末尾追加，单空格分隔；若 text 为空或已以空白结尾则不再加第二空格。
-                const sep = nextText === "" || /\s$/.test(nextText) ? "" : " ";
-                nextText = nextText + sep + "#" + tag;
-            }
-            return { ...cur, detailText: nextText, detailDirty: true };
-        });
+    // Tags 属性浮层提交（PropertyTagEditor 给最终 items）：直接写结构化权威字段 item.tags，
+    // 不再改正文（内容与标签分离）。写前先 flush 正文草稿——两条"读全表→改→写全表"路径不能交错，
+    // 否则刚 flush 的正文会被这次写回的旧副本覆盖。
+    const applyDetailTags = async (nextTags: string[]) => {
+        const item = detailItem;
+        if (item == null) return;
+        if (detailSaveTimerRef.current != null) {
+            window.clearTimeout(detailSaveTimerRef.current);
+            detailSaveTimerRef.current = null;
+        }
+        await flushDetailSave({ keepDirty: true });
+        const tags = normalizeCommonTextTags(nextTags);
+        try {
+            await upsertCommonTextItem(
+                {
+                    title: state.detailTitle.trim(),
+                    // 正文草稿为空说明用户正在清空正文（删除走显式 Delete）：保留后端正文，别误写空。
+                    text: state.detailText.trim() === "" ? item.text : state.detailText,
+                    tags,
+                    pinned: item.pinned,
+                    emoji: state.detailEmoji,
+                },
+                item.id
+            );
+        } catch (err) {
+            setStatus(`Tag update failed: ${(err as Error).message ?? "unknown"}`, "err");
+        }
     };
 
-    // 详情区 Pin toggle 按钮：立即把 pinned 翻转写回 settings，与 tag toggle 同属"点点即生效"。
-    // 用后端当前 item 的 title/text 副本，tags 从 text 抽（与渲染真源一致），避免误回写未 Save 的草稿。
+    // 详情区 Pin toggle 按钮：立即把 pinned 翻转写回 settings，与 tag 写入同属"点点即生效"。
+    // 用后端当前 item 的 title/text 副本（不回写未 Save 的正文草稿）；tags 用结构化权威字段。
     const handleDetailTogglePin = async () => {
         if (detailItem == null) return;
         try {
@@ -1050,7 +1059,7 @@ const CommonTextComposeModal = memo(() => {
                 {
                     title: detailItem.title,
                     text: detailItem.text,
-                    tags: extractSessionTagsFromNote(detailItem.text).tags,
+                    tags: detailItem.tags,
                     pinned: !detailItem.pinned,
                 },
                 detailItem.id
@@ -1071,12 +1080,17 @@ const CommonTextComposeModal = memo(() => {
         requestAnimationFrame(() => editorRef.current?.focus());
     };
 
+    // 「+」创建：草稿里的 #tag 字面在落条目那一刻拆分——tags 入结构化字段，
+    // 正文剥掉字面只存内容（剥完为空则回退原文，避免空条目）。
     const handleSaveDialog = () => {
-        const text = state.editor;
-        if (text.trim() === "") {
+        const rawDraft = state.editor;
+        if (rawDraft.trim() === "") {
             setStatus("Nothing to save", "err");
             return;
         }
+        const draftTags = extractSessionTagsFromNote(rawDraft).tags;
+        const strippedDraft = stripSessionTagHashes(rawDraft);
+        const text = strippedDraft.trim() === "" ? rawDraft : strippedDraft;
         // 不再弹独立的 SaveDialog：直接新建一条带 editor 正文的 item，让详情区接管就地编辑。
         // upsertCommonTextItem 收口 title 派生（normalizeCommonTextTitle）；新建后刷新 lastusedat
         // （让它排在默认「最近使用」排序的前排），但**不计 usagecount** —— 新建不是一次使用，
@@ -1085,7 +1099,7 @@ const CommonTextComposeModal = memo(() => {
             const item = await upsertCommonTextItem({
                 title: "",
                 text,
-                tags: extractSessionTagsFromNote(text).tags,
+                tags: draftTags,
                 pinned: false,
             });
             await recordCommonTextUse(item.id, { countUsage: false });
@@ -1973,7 +1987,7 @@ const CommonTextComposeModal = memo(() => {
                                                 detailDirty: true,
                                             }))
                                         }
-                                        placeholder="Text to insert — type #tag inline to tag this item"
+                                        placeholder="Text to insert"
                                         className="w-full h-full min-h-0 resize-none rounded-lg border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
                                         spellCheck={false}
                                     />

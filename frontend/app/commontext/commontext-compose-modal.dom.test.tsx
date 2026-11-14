@@ -36,16 +36,34 @@ vi.mock("./commontext-model", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./commontext-model")>();
     return {
         ...actual,
-        upsertCommonTextItem: vi.fn(async (draft: { text: string; title?: string }) => ({
-            id: "ct-mock-new",
-            title: draft.title || "Mock",
-            text: draft.text,
-            tags: [],
-            pinned: false,
-            createdat: Date.now(),
-            updatedat: Date.now(),
-            usagecount: 0,
-        })),
+        // upsert mock 与真实路径同构：写回 settings atom，让 tags 结构化写入在 UI 上可观察
+        // （动态 import 规避 vi.mock 提升作用域拿不到 jotai store 的问题）。
+        upsertCommonTextItem: vi.fn(async (draft: any, existingId?: string) => {
+            const { globalStore } = await import("@/app/store/jotaiStore");
+            const { atoms } = await import("@/app/store/global-atoms");
+            const config: any = globalStore.get(atoms.fullConfigAtom) ?? {};
+            const items: any[] = config.settings?.["commontext:items"] ?? [];
+            const idx = existingId != null ? items.findIndex((i) => i.id === existingId) : -1;
+            const base =
+                idx >= 0
+                    ? items[idx]
+                    : { id: existingId ?? "ct-mock-new", createdat: Date.now(), usagecount: 0, tags: [] };
+            const item = {
+                ...base,
+                title: draft.title || base.title || "Mock",
+                text: draft.text,
+                tags: draft.tags ?? [],
+                pinned: draft.pinned ?? base.pinned ?? false,
+                updatedat: Date.now(),
+                emoji: draft.emoji ?? base.emoji,
+            };
+            const next = idx >= 0 ? items.map((i, k) => (k === idx ? item : i)) : [item, ...items];
+            globalStore.set(atoms.fullConfigAtom, {
+                ...config,
+                settings: { ...config.settings, "commontext:items": next },
+            });
+            return item;
+        }),
         recordCommonTextUse: vi.fn(async () => undefined),
     };
 });
@@ -108,8 +126,6 @@ const seedItems = [
         updatedat: now - 7_200_000,
         lastusedat: now - 1_200_000,
         usagecount: 2,
-        // 历史脏数据：tags 里带 # 前缀/后缀——读路径必须剥干净，chip 只显标签名
-        tags: ["#legacy", "work#"],
         createdby: { kind: "agent", name: "pi" },
         origin: { deviceid: "dev-1", devicename: "Workstation", platform: "win32" },
     },
@@ -396,7 +412,8 @@ describe("CommonTextComposeModal — detail properties fold", () => {
         await act(async () => {
             input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
         });
-        expect(detailTextarea().value).toContain("#urgent");
+        // 内容与标签分离：tag 进结构化字段，正文不出现 #urgent 字面
+        expect(detailTextarea().value).not.toContain("#urgent");
         expect(document.querySelector("[data-commontext-tags-value]")!.textContent).toContain("urgent");
         // 折叠摘要行同步展示标签名（不是只有数量），且不带 # 前缀
         const tagsSummary = document.querySelector('[data-commontext-properties-summary="tags"]');
@@ -405,12 +422,14 @@ describe("CommonTextComposeModal — detail properties fold", () => {
         // 样式与展开态统一：摘要里是同一个 SessionTagChips chip（button），不是 join 纯文本
         expect(tagsSummary!.querySelector("button")).not.toBeNull();
 
-        // chip × 删除 → 正文字面被抹掉
+        // chip × 删除 → 结构化 tags 里被移除（正文全程不变）
         const removeBtn = document.querySelector(".ptag-chip-remove") as HTMLButtonElement;
+        const textBeforeRemove = detailTextarea().value;
         await act(async () => {
             removeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
         });
-        expect(detailTextarea().value.includes("#urgent")).toBe(false);
+        expect(document.querySelector("[data-commontext-tags-value]")!.textContent).not.toContain("urgent");
+        expect(detailTextarea().value).toBe(textBeforeRemove);
 
         // Esc 关闭浮层
         await act(async () => {
@@ -422,6 +441,20 @@ describe("CommonTextComposeModal — detail properties fold", () => {
     });
 
     it("renders legacy #tag storage without the hash prefix in chips and picker options", async () => {
+        // 历史脏数据：tags 带 # 前缀/后缀 + 正文里残留 #tag 字面——读路径惰性迁移必须：
+        // tags 剥净、正文字面剥掉进 tags（内容与标签分离）。
+        globalStore.set(atoms.fullConfigAtom, {
+            settings: {
+                "commontext:items": [
+                    seedItems[0],
+                    {
+                        ...seedItems[1],
+                        text: "Bravo refund policy #legacy #work",
+                        tags: ["#legacy", "work#"],
+                    },
+                ],
+            },
+        } as any);
         await openModal({ query: "Bravo" });
         // 列表行 chip：历史 `#legacy` / `work#` 存量读出来即净，不显示 #
         const row = document.querySelector("[data-common-text-index]")?.parentElement;

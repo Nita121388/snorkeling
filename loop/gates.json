@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-14T08:35:06Z",
+  "updatedAt": "2026-11-14T11:19:27Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -239,6 +239,23 @@
       "g2": {
         "redProof": "loop/red/N-1108-agent-chip-phase-duration.txt",
         "at": "2026-11-08T06:05:39Z"
+      }
+    },
+    "N-1114-commontext-tags-structured": {
+      "g2": {
+        "redProof": "旧源（HEAD model+modal）跑新断言 → 5 failed：'run deploy #urgent #ops'未剥字面、tags 未合并、只有标签条目 tags=[]、幂等失败、dom 正文含 '#urgent'；新源 197 passed（15 files）",
+        "at": "2026-11-14T11:16:39Z"
+      },
+      "g1": {
+        "at": "2026-11-14T11:16:39Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "2d33df8197b9"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-14T11:19:27Z",
+        "by": "pi"
       }
     },
     "N-1114-tab-drag-switch-fix": {

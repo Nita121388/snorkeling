@@ -5,6 +5,11 @@ import { atoms, getApi, globalStore } from "@/app/store/global";
 import { CommonTextService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+// 读路径惰性迁移依赖的正文抽取/标签剥离：历史数据里 tag 以 `#tag` 字面住在正文中
+// （item.tags 只是每次保存时从正文抽出的派生快照）。迁移单点收口在 normalizeCommonTextItem
+// ——所有读面（弹窗/插入/发送/搜索/同步）都从这里拿数据；任何一次 upsert 全量写 settings，
+// 迁移随下一次编辑落盘。迁移后 tags 是结构化唯一权威，正文只存内容。
+import { extractSessionTagsFromNote, stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
 
 export const CommonTextConfigKey = "commontext:items";
 const CommonTextAllowEmptySaveKey = "commontext:allow-empty-save";
@@ -143,15 +148,24 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
         return null;
     }
     const raw = value as Record<string, unknown>;
-    const text = typeof raw.text === "string" ? raw.text : "";
-    if (text.trim() === "") {
+    const rawText = typeof raw.text === "string" ? raw.text : "";
+    if (rawText.trim() === "") {
         return null;
     }
+    // 惰性迁移（历史兼容）：旧数据把 tag 以 `#tag` 字面写在正文里，item.tags 只是派生快照。
+    // 这里把两路合并进 tags，并把正文字面剥掉——内容与标签从此分离。
+    // 剥完为空（正文只有标签）时回退原文，避免条目被当成空文本丢掉。
+    const textTags = extractSessionTagsFromNote(rawText).tags;
+    const strippedText = stripSessionTagHashes(rawText);
+    const text = strippedText.trim() === "" ? rawText : strippedText;
     const now = Date.now();
     const id = typeof raw.id === "string" && raw.id !== "" ? raw.id : crypto.randomUUID();
     const title = normalizeCommonTextTitle(typeof raw.title === "string" ? raw.title : "", text);
     const shortcut = typeof raw.shortcut === "string" && raw.shortcut.trim() !== "" ? raw.shortcut.trim() : undefined;
-    const tags = normalizeCommonTextTags(raw.tags as string[] | string | undefined);
+    const tags = normalizeCommonTextTags([
+        ...normalizeCommonTextTags(raw.tags as string[] | string | undefined),
+        ...textTags,
+    ]);
     const createdat = typeof raw.createdat === "number" && Number.isFinite(raw.createdat) ? raw.createdat : now;
     const updatedat = typeof raw.updatedat === "number" && Number.isFinite(raw.updatedat) ? raw.updatedat : createdat;
     const lastusedat =

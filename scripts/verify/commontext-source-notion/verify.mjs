@@ -423,9 +423,12 @@ try {
       timeoutMs: 15000,
     }
   );
-  reporter.check("tags-create-appends-to-text", (tagAdded?.detailTextValue ?? "").includes("#verifytag"), {
-    detailTextTail: (tagAdded?.detailTextValue ?? "").slice(-40),
-  });
+  // 内容与标签分离：新建 tag 进结构化 tags，正文**不出现** #tag 字面（旧语义是追加进正文）
+  reporter.check(
+    "tags-create-separate-from-text",
+    !(tagAdded?.detailTextValue ?? "").includes("#verifytag") && (tagAdded?.tagsValueText ?? "").includes("verifytag"),
+    { detailTextTail: (tagAdded?.detailTextValue ?? "").slice(-40), tagsValueText: tagAdded?.tagsValueText }
+  );
   reporter.check(
     "tags-value-shows-chip",
     (tagAdded?.tagsValueText ?? "").includes("verifytag"),
@@ -453,11 +456,11 @@ try {
   const tagsCleaned = await waitForProbe(
     client,
     probeSnapshot(),
-    (s) => !(s?.detailTextValue ?? "").includes("#verifytag"),
+    (s) => !(s?.tagsValueText ?? "").includes("verifytag"),
     { timeoutMs: 15000 }
   );
-  reporter.check("tags-remove-strips-text", !(tagsCleaned?.detailTextValue ?? "").includes("#verifytag"), {
-    detailTextTail: (tagsCleaned?.detailTextValue ?? "").slice(-40),
+  reporter.check("tags-remove-drops-tag", !(tagsCleaned?.tagsValueText ?? "").includes("verifytag"), {
+    tagsValueText: tagsCleaned?.tagsValueText,
   });
   reporter.check("tags-popover-closed", tagsCleaned?.tagsPopoverOpen === false, tagsCleaned?.tagsPopoverOpen);
   // Computer 值必须是 `设备名 platform · deviceId` 三段，缺一段就说明 origin 快照没接上。
