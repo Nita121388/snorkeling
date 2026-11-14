@@ -28,7 +28,8 @@ import {
 } from "./hero-create-model";
 
 export type HeroCreateWizardProps = HeroCreatePrefill & {
-    onClose: () => void;
+    /** Direct-render close (tests). Modal-registry renders get popModal(). */
+    onClose?: () => void;
 };
 
 const StepIdentity = 1;
@@ -46,18 +47,27 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
     const nameError = validateCreateDraft(draft);
     const command = useMemo(() => buildCreateCommand(draft), [draft]);
 
-    const close = useCallback(() => onClose(), [onClose]);
+    const close = useCallback(() => {
+        // The modal registry does not inject onClose (ModalsRenderer spreads
+        // only the pushed props), so closing defaults to popModal(). A passed
+        // onClose (direct render / tests) wins.
+        if (onClose) {
+            onClose();
+        } else {
+            modalsModel.popModal();
+        }
+    }, [onClose]);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 e.preventDefault();
-                onClose();
+                close();
             }
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [onClose]);
+    }, [close]);
 
     const fetchPreview = useCallback((current: HeroCreateDraft) => {
         setLoading(true);

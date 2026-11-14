@@ -6,7 +6,9 @@
 // work directory into the first prompt. The launch semantics live in
 // hero-launch.ts (pure); this component only renders and routes.
 
+import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { openHeroCreateWizard } from "@/app/view/hero/hero-create-wizard";
+import { getAgentIcon } from "@/app/view/term/agent-logo";
 import type { AgentProfileOption } from "@/app/workspace/agent-launch";
 import {
     buildHeroLaunchBlockDef,
@@ -28,14 +30,6 @@ import {
 } from "@floating-ui/react";
 import clsx from "clsx";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-
-const ProfileColors: Record<string, string> = {
-    codex: "#10a37f",
-    claude: "#d97757",
-    gemini: "#4285f4",
-    opencode: "#e2b714",
-    pi: "#7c5cff",
-};
 
 const ProfileLabels: Record<string, string> = {
     codex: "Codex",
@@ -102,6 +96,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
     getMainWorkdir,
     onLaunch,
 }: HeroLaunchFloatingWindowProps) {
+    const agentPersonas = useAgentPersonas();
     const [roster, setRoster] = useState<HeroRoster>({ root: "", heroes: [] });
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -250,45 +245,62 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                 {...getFloatingProps()}
                 onPointerEnter={onPointerEnter}
                 onPointerLeave={onPointerLeave}
-                className="z-50 w-[min(92vw,380px)] rounded-lg border border-border bg-modalbg shadow-xl"
+                className="z-50 w-[min(92vw,400px)] rounded-xl border border-border/70 bg-modalbg/80 shadow-2xl backdrop-blur-2xl flex flex-col overflow-hidden"
             >
-                <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                    <span className="text-sm">🦸</span>
-                    <span className="text-sm font-medium text-muted">Select Hero</span>
-                    <span className="ml-auto text-[10px] text-muted/70">↑↓ select · ↵ confirm · esc close</span>
+                {/* header：与 New Agent 弹窗同一套 chrome（标题 + 右侧关闭 ×） */}
+                <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-3 py-2 text-sm font-medium text-foreground">
+                    <span>Select Hero</span>
+                    <button
+                        type="button"
+                        className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted transition-colors hover:bg-hoverbg hover:text-foreground"
+                        aria-label="Close"
+                        title="Close (esc)"
+                        onClick={onClose}
+                    >
+                        <i className="fa fa-solid fa-xmark" />
+                    </button>
                 </div>
 
-                {/* ① 选 Agent（谁上身） */}
-                <div className="px-4 pt-3">
-                    <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted/80">Agent</div>
+                {/* ① 选 Agent（与 New Agent 弹窗同款 chip 行：左侧 accent 条 + 图标 + 名字） */}
+                <div className="shrink-0 border-b border-border/60 px-3 pb-1.5 pt-2">
+                    <div className="mb-1.5 text-xxs text-muted">Select an agent type</div>
                     {profileOptions.length === 0 ? (
-                        <div className="text-xs text-muted">No agent commands detected</div>
+                        <div className="px-2 py-1.5 text-xs text-muted">No detected agents</div>
                     ) : (
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-0.5">
                             {profileOptions.map((profile) => {
-                                const isActive = profile.name === effectiveProfileName;
-                                const color = ProfileColors[profile.name] ?? "#888";
+                                const isSelected = profile.name === effectiveProfileName;
                                 return (
-                                    <button
+                                    <div
                                         key={profile.name}
-                                        type="button"
                                         className={clsx(
-                                            "cursor-pointer rounded border px-2 py-0.5 text-xs transition-colors",
-                                            isActive
-                                                ? "border-transparent text-white"
-                                                : "border-border bg-surface text-secondary hover:text-foreground"
+                                            "group inline-flex h-[30px] cursor-pointer items-center rounded-md transition-colors",
+                                            isSelected ? "relative bg-accent/12" : "hover:bg-surface-soft"
                                         )}
-                                        style={isActive ? { backgroundColor: color } : undefined}
-                                        onClick={() => {
-                                            setSelectedProfileName(profile.name);
-                                            if (isBlank(modelInput)) {
-                                                setModelInput("");
-                                            }
-                                        }}
-                                        title={profile.cmd}
                                     >
-                                        {ProfileLabels[profile.name] ?? profile.name}
-                                    </button>
+                                        {isSelected && (
+                                            <span className="absolute bottom-1 left-0 top-1 w-[2px] rounded-full bg-accent" />
+                                        )}
+                                        <button
+                                            type="button"
+                                            className="inline-flex h-full cursor-pointer items-center gap-1.5 rounded-l-md border-none bg-transparent pl-2.5 pr-2 text-xs font-medium"
+                                            onClick={() => setSelectedProfileName(profile.name)}
+                                            title={profile.cmd}
+                                        >
+                                            {(() => {
+                                                const spec = getAgentIcon(profile.name, { personas: agentPersonas });
+                                                if (spec == null) {
+                                                    return null;
+                                                }
+                                                return spec.kind === "emoji" ? (
+                                                    <span className="agent-emoji-icon">{spec.emoji}</span>
+                                                ) : (
+                                                    <span className="text-secondary">{spec.icon}</span>
+                                                );
+                                            })()}
+                                            {ProfileLabels[profile.name] ?? profile.name}
+                                        </button>
+                                    </div>
                                 );
                             })}
                         </div>
@@ -302,20 +314,22 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                                 ? "model (optional, defaults to the hero card)"
                                 : selectedHero.model
                         }
-                        className="mt-2 w-full rounded border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent"
+                        className="mt-2 h-[28px] w-full rounded border border-border/70 bg-surface px-2 text-xs outline-none focus:border-accent"
                     />
                 </div>
 
-                {/* ② 选人设（谁登场） */}
-                <div className="mt-3 px-4">
-                    <div className="mb-1.5 flex items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-muted/80">
-                        <span>Heroes</span>
-                        <span className="text-muted/60">{roster.root ? heroes.length : ""}</span>
+                {/* ② 选 hero（谁登场） */}
+                <div className="shrink-0 px-3 pb-1.5 pt-2">
+                    <div className="mb-1.5 flex items-center gap-2 text-xxs text-muted">
+                        <span>Select a hero</span>
+                        {roster.root && heroes.length > 0 ? (
+                            <span className="text-muted/60">({heroes.length})</span>
+                        ) : null}
                     </div>
                     <div
                         ref={listRef}
                         tabIndex={0}
-                        className="max-h-[min(40vh,280px)] overflow-y-auto overscroll-contain rounded border border-border/60 outline-none"
+                        className="max-h-[min(40vh,280px)] overflow-y-auto overscroll-contain rounded-md border border-border/70 outline-none"
                         onKeyDown={onKeyDown}
                     >
                         {loading ? (
@@ -328,12 +342,33 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                                 Failed to load heroes: {loadError}
                             </div>
                         ) : heroes.length === 0 ? (
-                            <div className="px-3 py-6 text-center text-xs text-muted">
-                                No heroes yet. Run in a terminal:
-                                <code className="mx-1 rounded bg-surface-soft px-1">
+                            <div className="flex flex-col items-center gap-2 px-6 py-8 text-center">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-soft text-lg text-muted/80">
+                                    🦸
+                                </div>
+                                <div className="text-xs font-medium text-secondary">No heroes yet</div>
+                                <div className="max-w-[280px] text-[11px] leading-relaxed text-muted">
+                                    A hero is a persistent role with a home base and memory. Create the first one in a
+                                    terminal:
+                                </div>
+                                <code
+                                    className="cursor-pointer select-all rounded border border-border/70 bg-surface px-2 py-1 font-mono text-[11px] text-accent transition-colors hover:border-accent"
+                                    onClick={() =>
+                                        void navigator.clipboard
+                                            .writeText("wsh hero create --name <name> --yes")
+                                            .catch(() => undefined)
+                                    }
+                                    title="Click to copy"
+                                >
                                     wsh hero create --name &lt;name&gt; --yes
                                 </code>
-                                to create the first one.
+                                <button
+                                    type="button"
+                                    className="cursor-pointer rounded border border-border/70 bg-surface px-3 py-1 text-xs text-secondary transition-colors hover:border-accent hover:text-accent"
+                                    onClick={() => openHeroCreateWizard({ source: "hero-picker" })}
+                                >
+                                    ＋ Or open the create wizard
+                                </button>
                             </div>
                         ) : (
                             heroes.map((hero, idx) => {
@@ -373,7 +408,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                 </div>
 
                 {/* ③ 注入开关 */}
-                <div className="mt-3 border-t border-border px-4 py-3">
+                <div className="shrink-0 border-t border-border/60 px-3 py-2.5">
                     <label
                         className={clsx(
                             "flex items-start gap-2",
@@ -400,7 +435,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                     <div className="mt-3 flex justify-end gap-2">
                         <button
                             type="button"
-                            className="cursor-pointer rounded border border-border bg-surface px-3 py-1 text-xs text-secondary transition-colors hover:text-foreground"
+                            className="cursor-pointer rounded border border-border/70 bg-surface px-3 py-1 text-xs text-secondary transition-colors hover:border-accent hover:text-accent"
                             onClick={onClose}
                         >
                             Cancel

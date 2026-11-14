@@ -368,9 +368,16 @@ function HeroView({ model }: HeroViewProps) {
             )}
 
             {rows.length === 0 ? (
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-                    <div className="text-[12px] text-secondary">{emptyStateText()}</div>
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 px-6 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-soft text-2xl text-muted/70">
+                        🦸
+                    </div>
+                    <div className="text-sm font-medium text-secondary">No heroes yet</div>
+                    <div className="max-w-[320px] text-[11px] leading-relaxed text-muted">{emptyStateText()}</div>
                     <CopyLine text={HeroCreateCommand} />
+                    <div className="text-[10px] text-muted/70">
+                        A hero keeps a home base and memory, and can be called to work from the right bar.
+                    </div>
                 </div>
             ) : (
                 <div className="flex min-h-0 flex-1">

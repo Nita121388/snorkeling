@@ -36,7 +36,7 @@
     },
     "defwidget@hero": {
         "display:order": -3.5,
-        "icon": "🦸",
+        "icon": "user-shield",
         "label": "hero",
         "description": "Select a hero to work (hover for the picker)"
     },
