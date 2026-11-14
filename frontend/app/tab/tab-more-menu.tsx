@@ -26,6 +26,8 @@ import {
 } from "@floating-ui/react";
 import { atom, Atom, useAtomValue } from "jotai";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import { InfoCardPortal, useInfoCardHover } from "@/app/element/info-card";
 import { TabMoreAgentCard } from "./tab-more-agent-card";
 import { collapsedTabIdsAtom } from "./tab-collapse-state";
@@ -242,6 +244,7 @@ const TabMoreRowIcon = memo(({ row }: { row: TabMoreRow }) => {
 /** 单行: 图标 + 名称 + 关闭. 不参与拖拽. */
 const TabMoreRowItem = memo(
     ({ row, onActivate, onClose }: { row: TabMoreRow; onActivate: () => void; onClose: () => void }) => {
+        const { t } = useTranslation("tab");
         // 置灰 = 该 Tab 当前在主栏不可见 (默认折叠 or 用户手动收起).
         // 未打开过的 Tab 不进置灰判定: 它可能在主栏可见, 下拉里不该跟折叠的混为一谈.
         // 有未阅点的永远不灰 — 那是用户必须立刻看到的状态.
@@ -291,7 +294,7 @@ const TabMoreRowItem = memo(
                 <span className="min-w-0 flex-1 truncate">{row.name}</span>
                 <button
                     type="button"
-                    aria-label="Close tab"
+                    aria-label={t("tab:moreMenu.closeTab")}
                     className="shrink-0 cursor-pointer rounded p-0.5 text-[10px] text-muted opacity-0 transition group-hover:opacity-100 hover:text-primary"
                     onClick={(event) => {
                         event.stopPropagation();
@@ -322,6 +325,7 @@ export function TabMoreMenu({
     onCollapseInactive,
     onOpenChange,
 }: TabMoreMenuProps) {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<TabMoreMenuEnv>();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
@@ -425,8 +429,16 @@ export function TabMoreMenu({
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={open}
-                aria-label={hiddenCount > 0 ? `More tabs (${hiddenCount} hidden)` : "More tabs"}
-                title={hiddenCount > 0 ? `${hiddenCount} 个 Tab 已折叠` : "所有 Tab 都已显示"}
+                aria-label={
+                    hiddenCount > 0
+                        ? i18n.t("tab:moreMenu.moreTabsHidden", { count: hiddenCount })
+                        : t("tab:moreMenu.moreTabs")
+                }
+                title={
+                    hiddenCount > 0
+                        ? i18n.t("tab:moreMenu.tabsCollapsed", { count: hiddenCount })
+                        : t("tab:moreMenu.allTabsShown")
+                }
                 onClick={() => setOpenState(!open)}
                 className={triggerClassName}
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -440,7 +452,7 @@ export function TabMoreMenu({
                 />
                 {variant === "vertical" && (
                     <>
-                        <span className="relative">更多</span>
+                        <span className="relative">{t("tab:moreMenu.more")}</span>
                         {hiddenCount > 0 && (
                             <span className="relative rounded-full bg-foreground/10 px-1.5 text-[10px] leading-[14px]">
                                 {hiddenCount}
@@ -474,7 +486,7 @@ export function TabMoreMenu({
                                     autoFocus
                                     value={query}
                                     onChange={(event) => setQuery(event.target.value)}
-                                    placeholder="搜索 Tab…"
+                                    placeholder={t("tab:moreMenu.searchPlaceholder")}
                                     className="w-full rounded bg-foreground/5 px-2 py-1 text-xs text-primary outline-none placeholder:text-muted"
                                 />
                             </div>
@@ -482,7 +494,7 @@ export function TabMoreMenu({
                         <div className="min-h-0 flex-1 overflow-y-auto p-1">
                             {visibleRows.length === 0 ? (
                                 <div className="px-2 py-4 text-center text-xs text-muted">
-                                    {rows.length === 0 ? "没有 Tab" : "没有匹配的 Tab"}
+                                    {rows.length === 0 ? t("tab:moreMenu.noTabs") : t("tab:moreMenu.noMatchingTabs")}
                                 </div>
                             ) : (
                                 visibleRows.map((row) => (
@@ -502,7 +514,7 @@ export function TabMoreMenu({
                                 className="flex h-[30px] w-full cursor-pointer items-center gap-2 rounded px-2 text-xs text-secondary transition-colors hover:bg-hover hover:text-primary"
                             >
                                 <i className="fa fa-solid fa-plus" style={{ fontSize: "10px" }} />
-                                <span>新建 Tab</span>
+                                <span>{t("tab:moreMenu.newTab")}</span>
                             </button>
                             {collapseTargets.length > 0 && (
                                 <button
@@ -511,7 +523,7 @@ export function TabMoreMenu({
                                     className="flex h-[30px] w-full cursor-pointer items-center gap-2 rounded px-2 text-xs text-secondary transition-colors hover:bg-hover hover:text-primary"
                                 >
                                     <i className="fa fa-solid fa-compress" style={{ fontSize: "10px" }} />
-                                    <span>收起未使用的 Tab</span>
+                                    <span>{t("tab:moreMenu.collapseUnusedTabs")}</span>
                                     <span className="ml-auto text-[10px] text-muted">{collapseTargets.length}</span>
                                 </button>
                             )}

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { WaveStreamdown } from "@/app/element/streamdown";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import { memo, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { getFileIcon } from "./ai-utils";
 import { AIFeedbackButtons } from "./aifeedbackbuttons";
 import { AIToolUseGroup } from "./aitooluse";
@@ -12,7 +14,7 @@ import { WaveAIModel } from "./waveai-model";
 
 const AIThinking = memo(
     ({
-        message = "AI is thinking...",
+        message = i18n.t("aipanel:message.aiThinking"),
         reasoningText,
         isWaitingApproval = false,
     }: {
@@ -64,6 +66,7 @@ interface UserMessageFilesProps {
 }
 
 const UserMessageFiles = memo(({ fileParts }: UserMessageFilesProps) => {
+    const { t } = useTranslation("aipanel");
     if (fileParts.length === 0) return null;
 
     return (
@@ -76,7 +79,7 @@ const UserMessageFiles = memo(({ fileParts }: UserMessageFilesProps) => {
                                 {file.data?.previewurl ? (
                                     <img
                                         src={file.data.previewurl}
-                                        alt={file.data?.filename || "File"}
+                                        alt={file.data?.filename || t("aipanel:message.fileFallback")}
                                         className="w-full h-full object-cover"
                                     />
                                 ) : (
@@ -90,9 +93,9 @@ const UserMessageFiles = memo(({ fileParts }: UserMessageFilesProps) => {
                             </div>
                             <div
                                 className="text-[10px] text-primary truncate w-full max-w-16"
-                                title={file.data?.filename || "File"}
+                                title={file.data?.filename || t("aipanel:message.fileFallback")}
                             >
-                                {file.data?.filename || "File"}
+                                {file.data?.filename || t("aipanel:message.fileFallback")}
                             </div>
                         </div>
                     </div>
@@ -190,14 +193,14 @@ const getThinkingMessage = (
     );
 
     if (hasPendingApprovals) {
-        return { message: "Waiting for Tool Approvals...", isWaitingApproval: true };
+        return { message: i18n.t("aipanel:message.waitingForApprovals"), isWaitingApproval: true };
     }
 
     const lastPart = parts[parts.length - 1];
 
     if (lastPart?.type === "reasoning") {
         const reasoningContent = lastPart.text || "";
-        return { message: "AI is thinking...", reasoningText: reasoningContent };
+        return { message: i18n.t("aipanel:message.aiThinking"), reasoningText: reasoningContent };
     }
 
     if (lastPart?.type === "text" && lastPart.text) {
@@ -208,6 +211,7 @@ const getThinkingMessage = (
 };
 
 export const AIMessage = memo(({ message, isStreaming }: AIMessageProps) => {
+    const { t } = useTranslation("aipanel");
     const parts = message.parts || [];
     const displayParts = parts.filter(isDisplayPart);
     const fileParts = parts.filter(
@@ -228,7 +232,7 @@ export const AIMessage = memo(({ message, isStreaming }: AIMessageProps) => {
                 )}
             >
                 {displayParts.length === 0 && !isStreaming && !thinkingData ? (
-                    <div className="whitespace-pre-wrap break-words">(no text content)</div>
+                    <div className="whitespace-pre-wrap break-words">{t("aipanel:message.noTextContent")}</div>
                 ) : (
                     <>
                         {groupedParts.map((group, index: number) =>

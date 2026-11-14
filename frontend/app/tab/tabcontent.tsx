@@ -14,6 +14,8 @@ import { PLATFORM, PlatformMacOS } from "@/util/platformutil";
 import { atom, useAtomValue } from "jotai";
 import * as React from "react";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 
 const tileGapSizeAtom = atom((get) => {
     const settings = get(atoms.settingsAtom);
@@ -21,6 +23,7 @@ const tileGapSizeAtom = atom((get) => {
 });
 
 const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPadding?: boolean }) => {
+    const { t } = useTranslation("tab");
     const oref = useMemo(() => WOS.makeORef("tab", tabId), [tabId]);
     const loadingAtom = useMemo(() => WOS.getWaveObjectLoadingAtom(oref), [oref]);
     const tabLoading = useAtomValue(loadingAtom);
@@ -55,9 +58,9 @@ const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPa
     let innerContent;
 
     if (tabLoading) {
-        innerContent = <CenteredDiv>Tab Loading</CenteredDiv>;
+        innerContent = <CenteredDiv>{t("tab:content.tabLoading")}</CenteredDiv>;
     } else if (!tabData) {
-        innerContent = <CenteredDiv>Tab Not Found</CenteredDiv>;
+        innerContent = <CenteredDiv>{t("tab:content.tabNotFound")}</CenteredDiv>;
     } else if ((tabData?.blockids?.length ?? 0) === 0) {
         innerContent = (
             <div
@@ -65,7 +68,7 @@ const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPa
                 className="flex h-full w-full flex-col items-center justify-center gap-2 text-secondary select-none"
             >
                 <i className="fa-solid fa-box-open text-2xl opacity-50" />
-                <span className="text-xs font-medium">暂无 Block</span>
+                <span className="text-xs font-medium">{t("tab:content.noBlocks")}</span>
                 <button
                     data-testid="empty-tab-new-terminal"
                     className="rounded-md border border-solid border-secondary px-2.5 py-1 text-[11px] font-medium hover:bg-surfaceactive"
@@ -79,10 +82,10 @@ const TabContent = React.memo(({ tabId, noTopPadding }: { tabId: string; noTopPa
                     }
                 >
                     <i className="fa-solid fa-terminal mr-1 opacity-70" />
-                    新建 Terminal
+                    {t("tab:content.newTerminal")}
                 </button>
                 <span className="text-[11px] opacity-60">
-                    或按 {PLATFORM === PlatformMacOS ? "⌘N" : "Alt+N"} 新建 Block
+                    {i18n.t("tab:content.newBlockHint", { key: PLATFORM === PlatformMacOS ? "⌘N" : "Alt+N" })}
                 </span>
             </div>
         );

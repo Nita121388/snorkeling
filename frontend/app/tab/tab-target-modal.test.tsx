@@ -17,7 +17,8 @@ import { makeMockWaveEnv } from "@/preview/mock/mockwaveenv";
 import { atom, Provider } from "jotai";
 import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
 import { TabTargetModal, type TabRowAction } from "./tab-target-modal";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -132,6 +133,11 @@ async function flush() {
         await new Promise((r) => setTimeout(r, 0));
     });
 }
+
+// 组件文案走 i18n.t：先把实例初始化到 en（Pattern I）。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 beforeEach(() => {
     // Modal 走 createPortal 挂到 #main（同 modal.dom.test.tsx 的做法）。

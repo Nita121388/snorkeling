@@ -9,6 +9,10 @@ import enCommon from "./locales/en/common.json";
 import zhCommon from "./locales/zh/common.json";
 import enOnboarding from "./locales/en/onboarding.json";
 import zhOnboarding from "./locales/zh/onboarding.json";
+import enTab from "./locales/en/tab.json";
+import zhTab from "./locales/zh/tab.json";
+import enAipanel from "./locales/en/aipanel.json";
+import zhAipanel from "./locales/zh/aipanel.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -16,7 +20,7 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export type LocaleSetting = Locale | "auto";
 export const DEFAULT_LOCALE: Locale = "en";
 export const FALLBACK_LOCALE: Locale = "en";
-export const NS = ["common", "onboarding"] as const;
+export const NS = ["common", "onboarding", "tab", "aipanel"] as const;
 
 /**
  * Normalize a `ui:locale` setting value ("auto" | "en" | "zh") into a concrete
@@ -65,8 +69,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
         ns: [...NS],
         defaultNS: "common",
         resources: {
-            en: { common: enCommon, onboarding: enOnboarding },
-            zh: { common: zhCommon, onboarding: zhOnboarding },
+            en: { common: enCommon, onboarding: enOnboarding, tab: enTab, aipanel: enAipanel },
+            zh: { common: zhCommon, onboarding: zhOnboarding, tab: zhTab, aipanel: zhAipanel },
         },
         interpolation: {
             escapeValue: false,

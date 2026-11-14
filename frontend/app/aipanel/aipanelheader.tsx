@@ -4,9 +4,12 @@
 import { handleWaveAIContextMenu } from "@/app/aipanel/aipanel-contextmenu";
 import { useAtomValue } from "jotai";
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import { WaveAIModel } from "./waveai-model";
 
 export const AIPanelHeader = memo(() => {
+    const { t } = useTranslation("aipanel");
     const model = WaveAIModel.getInstance();
     const widgetAccess = useAtomValue(model.widgetAccessAtom);
     const inBuilder = model.inBuilder;
@@ -26,14 +29,16 @@ export const AIPanelHeader = memo(() => {
         >
             <h2 className="text-primary text-sm @xs:text-lg font-semibold flex items-center gap-2 flex-shrink-0 whitespace-nowrap">
                 <i className="fa fa-sparkles text-accent"></i>
-                Wave AI
+                {t("aipanel:header.waveAI")}
             </h2>
 
             <div className="flex items-center flex-shrink-0 whitespace-nowrap">
                 {!inBuilder && (
                     <div className="flex items-center text-sm whitespace-nowrap">
-                        <span className="text-secondary @xs:hidden mr-1 text-[12px]">Context</span>
-                        <span className="text-secondary hidden @xs:inline mr-2 text-[12px]">Widget Context</span>
+                        <span className="text-secondary @xs:hidden mr-1 text-[12px]">{t("aipanel:header.context")}</span>
+                        <span className="text-secondary hidden @xs:inline mr-2 text-[12px]">
+                            {t("aipanel:header.widgetContext")}
+                        </span>
                         <button
                             onClick={() => {
                                 model.setWidgetAccess(!widgetAccess);
@@ -44,7 +49,9 @@ export const AIPanelHeader = memo(() => {
                             className={`relative inline-flex h-6 w-14 items-center rounded-full border transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
                                 widgetAccess ? "border-action bg-action" : "border-border bg-surface-strong"
                             }`}
-                            title={`Widget Access ${widgetAccess ? "ON" : "OFF"}`}
+                            title={i18n.t("aipanel:header.widgetAccessTitle", {
+                                state: widgetAccess ? t("aipanel:header.on") : t("aipanel:header.off"),
+                            })}
                             aria-pressed={widgetAccess}
                         >
                             <span
@@ -61,7 +68,7 @@ export const AIPanelHeader = memo(() => {
                                         : "ml-6 mr-1 text-right text-secondary"
                                 }`}
                             >
-                                {widgetAccess ? "ON" : "OFF"}
+                                {widgetAccess ? t("aipanel:header.on") : t("aipanel:header.off")}
                             </span>
                         </button>
                     </div>
@@ -70,7 +77,7 @@ export const AIPanelHeader = memo(() => {
                 <button
                     onClick={handleKebabClick}
                     className="text-secondary hover:bg-hover hover:text-primary cursor-pointer transition-colors p-1 rounded flex-shrink-0 ml-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                    title="More options"
+                    title={t("aipanel:header.moreOptions")}
                 >
                     <i className="fa fa-ellipsis-vertical"></i>
                 </button>

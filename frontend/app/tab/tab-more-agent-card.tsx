@@ -38,6 +38,8 @@ import { cn } from "@/util/util";
 import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { atom, Atom, useAtomValue } from "jotai";
 import { memo, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import { collectTabAgentBlocks, TabAgentBlockRef } from "./tab-more-model";
 
 type TabMoreAgentCardEnv = WaveEnvSubset<{ wos: WaveEnv["wos"] }>;
@@ -93,6 +95,7 @@ AgentBlockCard.displayName = "AgentBlockCard";
  * 不带 note/tags，避免多 agent 时卡片过高。
  */
 const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<TabMoreAgentCardEnv>();
     const blockAtom = useMemo(
         () => env.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)),
@@ -148,8 +151,8 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
                     <i className="fa-sharp fa-solid fa-microchip text-[10px]" />
                 )}
             </span>
-            <span className="shrink-0 truncate text-primary">{displayProvider !== "" ? displayProvider : "Agent"}</span>
-            <span className="min-w-0 flex-1 truncate text-muted">{model || "未指定"}</span>
+            <span className="shrink-0 truncate text-primary">{displayProvider !== "" ? displayProvider : t("tab:moreAgentCard.agentFallback")}</span>
+            <span className="min-w-0 flex-1 truncate text-muted">{model || t("tab:moreAgentCard.unspecified")}</span>
             {statusView != null && statusLabel !== "" && (
                 <span
                     data-testid="tab-more-agent-mini-status"
@@ -189,7 +192,7 @@ const AgentMiniRow = memo(({ blockId }: { blockId: string }) => {
             )}
             {sessionId !== "" && (
                 <CopyButton
-                    title="Copy session id"
+                    title={t("tab:moreAgentCard.copySessionId")}
                     onClick={async (event) => {
                         event.stopPropagation();
                         setCopyFailed(false);
@@ -215,6 +218,7 @@ export interface TabMoreAgentCardProps {
  * （与 `blockIds` 同一次 block 读取），这里只在打开时按状态时间排序。
  */
 export function TabMoreAgentCard({ agentBlockIds }: TabMoreAgentCardProps) {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<TabMoreAgentCardEnv>();
     const blockIds = agentBlockIds ?? [];
     const listKey = blockIds.join(" ");
@@ -231,7 +235,7 @@ export function TabMoreAgentCard({ agentBlockIds }: TabMoreAgentCardProps) {
         <div className="flex w-[300px] flex-col overflow-hidden rounded-lg border border-border bg-modalbg shadow-xl">
             <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-secondary">
                 <i className="fa-sharp fa-solid fa-robot text-[10px]" />
-                <span>{refs.length} agents in this tab</span>
+                <span>{i18n.t("tab:moreAgentCard.agentsInTab", { count: refs.length })}</span>
             </div>
             <AgentBlockCard blockId={refs[0].blockId} />
             {refs.slice(1).map((ref) => (

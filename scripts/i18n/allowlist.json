@@ -1,5 +1,12 @@
 [
     {
+        "id": "frontend/app/aipanel/telemetryrequired.tsx::jsx-text::6757bb5f336c",
+        "file": "frontend/app/aipanel/telemetryrequired.tsx",
+        "kind": "jsx-text",
+        "text": "https://docs.waveterm.dev/waveai-modes",
+        "reason": "文档 URL（链接目标与锚文本本身是 URL，不是可翻译文案）"
+    },
+    {
         "id": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx::jsx-text::e389cfd7b822",
         "file": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx",
         "kind": "jsx-text",

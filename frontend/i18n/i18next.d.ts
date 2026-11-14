@@ -4,6 +4,8 @@
 import "i18next";
 import type common from "./locales/en/common.json";
 import type onboarding from "./locales/en/onboarding.json";
+import type tab from "./locales/en/tab.json";
+import type aipanel from "./locales/en/aipanel.json";
 
 /**
  * Type-safe i18next keys. Keys are derived from the bundled English resources
@@ -21,6 +23,8 @@ declare module "i18next" {
         resources: {
             common: typeof common;
             onboarding: typeof onboarding;
+            tab: typeof tab;
+            aipanel: typeof aipanel;
         };
     }
 }

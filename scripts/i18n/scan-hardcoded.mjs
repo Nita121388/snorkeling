@@ -43,7 +43,8 @@ const ATTR_NAMES = new Set([
     "tooltip",
 ]);
 
-const DEFAULT_DIRS = ["frontend/app", "frontend/preview", "emain"];
+// 只扫随包发布的用户可见代码：测试断言与 preview fixture 不是产品文案（Pattern I 约束它们，不靠本闸门）。
+const DEFAULT_DIRS = ["frontend/app", "emain"];
 const EXCLUDE_DIRS = new Set(["node_modules", "dist", ".git", "verify-runs", ".runcfg", ".cache", "i18n"]);
 const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 const LATIN_RE = /[A-Za-z]{3,}/;
@@ -71,7 +72,7 @@ function listFiles(root, out) {
         const full = path.join(root, name);
         const st = statSync(full);
         if (st.isDirectory()) listFiles(full, out);
-        else if (/\.(tsx?|jsx?)$/.test(name)) out.push(full);
+        else if (/\.(tsx?|jsx?)$/.test(name) && !/\.test\.(tsx?|jsx?)$/.test(name) && !/\.preview\.(tsx?|jsx?)$/.test(name) && !name.endsWith(".d.ts")) out.push(full);
     }
     return out;
 }

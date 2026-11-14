@@ -1,0 +1,152 @@
+{
+    "feedback": {
+        "goodResponse": "好回答",
+        "badResponse": "差回答",
+        "copyMessage": "复制消息"
+    },
+    "message": {
+        "noTextContent": "(无文本内容)",
+        "aiThinking": "AI 正在思考...",
+        "waitingForApprovals": "等待工具批准...",
+        "fileFallback": "文件"
+    },
+    "mode": {
+        "aiModeTitle": "AI 模式：{{name}}",
+        "invalidMode": "无效（{{mode}}）",
+        "premiumSuffix": " (premium)",
+        "noToolsWarning": "警告：此自定义模式未在 \"ai:capabilities\" 数组中配置 \"tools\" 能力。没有工具支持，Wave AI 将无法与小组件或文件交互。",
+        "noToolsSupport": "无工具支持",
+        "startNewChatToSwitch": "（开启新对话后再切换）",
+        "enableTelemetryToUnlock": "（启用遥测以解锁 Wave AI Cloud）",
+        "newChat": "新对话",
+        "configureModes": "配置模式",
+        "sectionCurrent": "当前",
+        "sectionCompatible": "兼容模式",
+        "sectionIncompatible": "不兼容模式",
+        "sectionWaveCloud": "Wave AI Cloud",
+        "sectionCustom": "自定义",
+        "unknown": "未知",
+        "customProvider": "自定义",
+        "azureLabel": "{{name}} (azure)",
+        "modeLabel": "{{model}} ({{provider}})"
+    },
+    "panel": {
+        "dropFilesHere": "拖放文件到此处",
+        "dropFilesHint": "支持图片、PDF 和文本/代码文件",
+        "welcomeTitle": "欢迎使用 Wave AI",
+        "welcomeIntro": "Wave AI 是你的终端上下文助手。我可以读取终端输出、分析小组件、访问文件，帮你更快解决问题。",
+        "gettingStarted": "入门：",
+        "widgetContext": "小组件上下文",
+        "widgetContextOn": "开启时，我可以读取你的终端并分析小组件。",
+        "widgetContextOff": "关闭时，我处于沙箱中，无法访问系统。",
+        "dragDropHint": "拖放文件或图片以进行分析",
+        "toStartNewChat": "开启新对话",
+        "toTogglePanel": "切换面板",
+        "toFocus": "聚焦",
+        "keyShift": "Shift",
+        "keyAlt": "Alt",
+        "keyCtrl": "Ctrl",
+        "questionsOrFeedback": "有问题或反馈？",
+        "joinDiscord": "加入我们的 Discord",
+        "betaNote": "测试版：免费使用。每日限额帮助我们控制成本。",
+        "builderTitle": "WaveApp 构建器",
+        "builderIntro": "WaveApp 构建器帮助你创建可无缝集成到 Wave Terminal 的 wave 小组件。",
+        "closeError": "关闭错误",
+        "newChat": "新对话",
+        "anErrorOccurred": "发生错误",
+        "removeFile": "移除 {{name}}",
+        "filesRejected_one": "{{count}} 个文件被拒绝（不支持的类型）：{{names}}。支持：图片、PDF 和文本/代码文件。",
+        "filesRejected_other": "{{count}} 个文件被拒绝（不支持的类型）：{{names}}。支持：图片、PDF 和文本/代码文件。",
+        "cannotAddDirectories": "无法向 Wave AI 添加目录。请选择文件。",
+        "fileNotFound": "未找到文件：{{name}}",
+        "failedToLoadChat": "加载对话失败。正在开始新对话...",
+        "failedToReadFile": "读取文件失败：{{name}}",
+        "unsupportedFileType": "不支持的文件类型：{{name}}。支持：图片、PDF 和文本/代码文件。",
+        "failedToAddFile": "添加文件失败：{{message}}"
+    },
+    "header": {
+        "waveAI": "Wave AI",
+        "context": "上下文",
+        "widgetContext": "小组件上下文",
+        "widgetAccessTitle": "小组件访问：{{state}}",
+        "on": "开",
+        "off": "关",
+        "moreOptions": "更多选项"
+    },
+    "input": {
+        "placeholderContinue": "继续...",
+        "placeholderBuilder": "你想构建什么...",
+        "placeholderAsk": "问 Wave AI 任何问题...",
+        "attachFiles": "附加文件",
+        "stopResponseTitle": "停止响应",
+        "stopResponse": "停止响应",
+        "sendMessageTitle": "发送消息 (Enter)",
+        "sendMessage": "发送消息"
+    },
+    "rateLimit": {
+        "getMore": "获取更多",
+        "soon": "即将",
+        "premiumUsed": "{{used}}/{{limit}} Premium 已用",
+        "premium": "{{total}}/{{total}} Premium",
+        "nowOnBasic": "现为 Basic",
+        "reqs": "{{total}}/{{total}} 次请求",
+        "limitReached": "已达限额",
+        "resetsIn": "{{time}} 后重置"
+    },
+    "contextMenu": {
+        "maxOutputTokens": "最大输出 Token 数",
+        "hideWaveAI": "隐藏 Wave AI"
+    },
+    "fileSize": {
+        "image": "图片",
+        "pdf": "PDF",
+        "text": "文本文件",
+        "tooLarge": "{{type}} \"{{fileName}}\" 过大（{{fileSize}}）。最大允许 {{maxSize}}。"
+    },
+    "toolUse": {
+        "readingFiles": "读取文件",
+        "restoreBackupFile": "恢复备份文件",
+        "revertFile": "还原文件",
+        "openInDiffViewer": "在差异查看器中打开",
+        "showDiff": "显示差异",
+        "notApproved": "未批准",
+        "approve": "批准",
+        "approveAll": "全部批准 ({{count}})",
+        "deny": "拒绝",
+        "denyAll": "全部拒绝"
+    },
+    "byok": {
+        "title": "新功能：BYOK 与本地 AI 支持",
+        "body": "Wave AI 现支持自带密钥（BYOK）接入 OpenAI、Google Gemini、Azure 和 OpenRouter，以及通过 Ollama、LM Studio 等 OpenAI 兼容提供方运行本地模型。",
+        "configure": "配置 AI 模式",
+        "viewDocs": "查看文档"
+    },
+    "restoreModal": {
+        "successTitle": "备份已成功恢复",
+        "successBody": "文件 <file>{{file}}</file> 已恢复到之前的状态。",
+        "errorTitle": "恢复备份失败",
+        "errorIntro": "恢复备份时发生错误：",
+        "title": "恢复文件备份",
+        "confirmBody": "这将把 <file>{{file}}</file> 恢复到本次编辑之前的状态。",
+        "confirmBodyWithTime": "这将把 <file>{{file}}</file> 恢复到 {{time}} 之前的状态。",
+        "lostWarning": "本次编辑及后续编辑所做的更改将会丢失。",
+        "restoring": "恢复中...",
+        "confirmRestore": "确认恢复",
+        "cancel": "取消",
+        "close": "关闭"
+    },
+    "telemetry": {
+        "title": "Wave AI",
+        "intro": "Wave AI 免费使用，提供可与你的小组件交互的集成 AI 对话，帮你处理代码、分析文件并协助终端工作流。",
+        "keepsFree": "遥测让 Wave AI 保持免费",
+        "body1Prefix": "为了让 Wave AI 对所有人免费，我们需要少量",
+        "anonymous": "匿名",
+        "body1Suffix": "使用数据（应用版本、功能使用情况、系统信息）。",
+        "body2": "这帮助我们阻止自动化系统的滥用，确保它被像你一样的真实用户使用。",
+        "body3": "我们绝不会收集你的文件、提示词、按键、主机名或个人身份信息。Wave AI 由 OpenAI 的 API 提供支持，详情请参阅 OpenAI 的隐私政策。",
+        "docsIntro": "有关 BYOK 和本地模型支持的信息，请参阅",
+        "enabling": "启用中...",
+        "enableButton": "启用遥测并继续",
+        "privacyPolicy": "隐私政策"
+    }
+}

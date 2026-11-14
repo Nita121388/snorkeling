@@ -4,6 +4,8 @@
 import { cn } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import { formatFileSize, getFileIcon } from "./ai-utils";
 import type { WaveAIModel } from "./waveai-model";
 
@@ -12,6 +14,7 @@ interface AIDroppedFilesProps {
 }
 
 export const AIDroppedFiles = memo(({ model }: AIDroppedFilesProps) => {
+    const { t } = useTranslation("aipanel");
     const droppedFiles = useAtomValue(model.droppedFiles);
 
     if (droppedFiles.length === 0) {
@@ -29,7 +32,7 @@ export const AIDroppedFiles = memo(({ model }: AIDroppedFilesProps) => {
                         <button
                             onClick={() => model.removeFile(file.id)}
                             className="absolute top-1 right-1 w-4 h-4 bg-error hover:bg-error/80 rounded-full flex items-center justify-center text-actiontext text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent transition-opacity cursor-pointer"
-                            aria-label={`Remove ${file.name}`}
+                            aria-label={i18n.t("aipanel:panel.removeFile", { name: file.name })}
                         >
                             <i className="fa fa-times text-xs"></i>
                         </button>

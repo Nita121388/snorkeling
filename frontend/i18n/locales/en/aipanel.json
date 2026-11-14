@@ -1,0 +1,152 @@
+{
+    "feedback": {
+        "goodResponse": "Good Response",
+        "badResponse": "Bad Response",
+        "copyMessage": "Copy Message"
+    },
+    "message": {
+        "noTextContent": "(no text content)",
+        "aiThinking": "AI is thinking...",
+        "waitingForApprovals": "Waiting for Tool Approvals...",
+        "fileFallback": "File"
+    },
+    "mode": {
+        "aiModeTitle": "AI Mode: {{name}}",
+        "invalidMode": "Invalid ({{mode}})",
+        "premiumSuffix": " (premium)",
+        "noToolsWarning": "Warning: This custom mode was configured without the \"tools\" capability in the \"ai:capabilities\" array. Without tool support, Wave AI will not be able to interact with widgets or files.",
+        "noToolsSupport": "No Tools Support",
+        "startNewChatToSwitch": "(Start a New Chat to Switch)",
+        "enableTelemetryToUnlock": "(enable telemetry to unlock Wave AI Cloud)",
+        "newChat": "New Chat",
+        "configureModes": "Configure Modes",
+        "sectionCurrent": "Current",
+        "sectionCompatible": "Compatible Modes",
+        "sectionIncompatible": "Incompatible Modes",
+        "sectionWaveCloud": "Wave AI Cloud",
+        "sectionCustom": "Custom",
+        "unknown": "unknown",
+        "customProvider": "custom",
+        "azureLabel": "{{name}} (azure)",
+        "modeLabel": "{{model}} ({{provider}})"
+    },
+    "panel": {
+        "dropFilesHere": "Drop files here",
+        "dropFilesHint": "Images, PDFs, and text/code files supported",
+        "welcomeTitle": "Welcome to Wave AI",
+        "welcomeIntro": "Wave AI is your terminal assistant with context. I can read your terminal output, analyze widgets, access files, and help you solve problems faster.",
+        "gettingStarted": "Getting Started:",
+        "widgetContext": "Widget Context",
+        "widgetContextOn": "When ON, I can read your terminal and analyze widgets.",
+        "widgetContextOff": "When OFF, I'm sandboxed with no system access.",
+        "dragDropHint": "Drag & drop files or images for analysis",
+        "toStartNewChat": "to start a new chat",
+        "toTogglePanel": "to toggle panel",
+        "toFocus": "to focus",
+        "keyShift": "Shift",
+        "keyAlt": "Alt",
+        "keyCtrl": "Ctrl",
+        "questionsOrFeedback": "Questions or feedback?",
+        "joinDiscord": "Join our Discord",
+        "betaNote": "BETA: Free to use. Daily limits keep our costs in check.",
+        "builderTitle": "WaveApp Builder",
+        "builderIntro": "The WaveApp builder helps create wave widgets that integrate seamlessly into Wave Terminal.",
+        "closeError": "Close error",
+        "newChat": "New Chat",
+        "anErrorOccurred": "An error occurred",
+        "removeFile": "Remove {{name}}",
+        "filesRejected_one": "{{count}} file rejected (unsupported type): {{names}}. Supported: images, PDFs, and text/code files.",
+        "filesRejected_other": "{{count}} files rejected (unsupported type): {{names}}. Supported: images, PDFs, and text/code files.",
+        "cannotAddDirectories": "Cannot add directories to Wave AI. Please select a file.",
+        "fileNotFound": "File not found: {{name}}",
+        "failedToLoadChat": "Failed to load chat. Starting new chat...",
+        "failedToReadFile": "Failed to read file: {{name}}",
+        "unsupportedFileType": "File type not supported: {{name}}. Supported: images, PDFs, and text/code files.",
+        "failedToAddFile": "Failed to add file: {{message}}"
+    },
+    "header": {
+        "waveAI": "Wave AI",
+        "context": "Context",
+        "widgetContext": "Widget Context",
+        "widgetAccessTitle": "Widget Access {{state}}",
+        "on": "ON",
+        "off": "OFF",
+        "moreOptions": "More options"
+    },
+    "input": {
+        "placeholderContinue": "Continue...",
+        "placeholderBuilder": "What would you like to build...",
+        "placeholderAsk": "Ask Wave AI anything...",
+        "attachFiles": "Attach files",
+        "stopResponseTitle": "Stop Response",
+        "stopResponse": "Stop response",
+        "sendMessageTitle": "Send message (Enter)",
+        "sendMessage": "Send message"
+    },
+    "rateLimit": {
+        "getMore": "Get More",
+        "soon": "soon",
+        "premiumUsed": "{{used}}/{{limit}} Premium Used",
+        "premium": "{{total}}/{{total}} Premium",
+        "nowOnBasic": "Now on Basic",
+        "reqs": "{{total}}/{{total}} Reqs",
+        "limitReached": "Limit Reached",
+        "resetsIn": "Resets in {{time}}"
+    },
+    "contextMenu": {
+        "maxOutputTokens": "Max Output Tokens",
+        "hideWaveAI": "Hide Wave AI"
+    },
+    "fileSize": {
+        "image": "Image",
+        "pdf": "PDF",
+        "text": "Text file",
+        "tooLarge": "{{type}} \"{{fileName}}\" is too large ({{fileSize}}). Maximum size is {{maxSize}}."
+    },
+    "toolUse": {
+        "readingFiles": "Reading Files",
+        "restoreBackupFile": "Restore backup file",
+        "revertFile": "Revert File",
+        "openInDiffViewer": "Open in diff viewer",
+        "showDiff": "Show Diff",
+        "notApproved": "Not approved",
+        "approve": "Approve",
+        "approveAll": "Approve All ({{count}})",
+        "deny": "Deny",
+        "denyAll": "Deny All"
+    },
+    "byok": {
+        "title": "New: BYOK & Local AI Support",
+        "body": "Wave AI now supports bring-your-own-key (BYOK) with OpenAI, Google Gemini, Azure, and OpenRouter, plus local models via Ollama, LM Studio, and other OpenAI-compatible providers.",
+        "configure": "Configure AI Modes",
+        "viewDocs": "View Docs"
+    },
+    "restoreModal": {
+        "successTitle": "Backup Successfully Restored",
+        "successBody": "The file <file>{{file}}</file> has been restored to its previous state.",
+        "errorTitle": "Failed to Restore Backup",
+        "errorIntro": "An error occurred while restoring the backup:",
+        "title": "Restore File Backup",
+        "confirmBody": "This will restore <file>{{file}}</file> to its state before this edit was made.",
+        "confirmBodyWithTime": "This will restore <file>{{file}}</file> to its state before this edit was made ({{time}}).",
+        "lostWarning": "Any changes made by this edit and subsequent edits will be lost.",
+        "restoring": "Restoring...",
+        "confirmRestore": "Confirm Restore",
+        "cancel": "Cancel",
+        "close": "Close"
+    },
+    "telemetry": {
+        "title": "Wave AI",
+        "intro": "Wave AI is free to use and provides integrated AI chat that can interact with your widgets, help you with code, analyze files, and assist with your terminal workflows.",
+        "keepsFree": "Telemetry keeps Wave AI free",
+        "body1Prefix": "To keep Wave AI free for everyone, we require a small amount of",
+        "anonymous": "anonymous",
+        "body1Suffix": "usage data (app version, feature usage, system info).",
+        "body2": "This helps us block abuse by automated systems and ensure it's used by real people like you.",
+        "body3": "We never collect your files, prompts, keystrokes, hostnames, or personally identifying information. Wave AI is powered by OpenAI's APIs, please refer to OpenAI's privacy policy for details on how they handle your data.",
+        "docsIntro": "For information about BYOK and local model support, see",
+        "enabling": "Enabling...",
+        "enableButton": "Enable Telemetry and Continue",
+        "privacyPolicy": "Privacy Policy"
+    }
+}
