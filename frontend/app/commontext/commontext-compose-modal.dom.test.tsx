@@ -402,6 +402,8 @@ describe("CommonTextComposeModal — detail properties fold", () => {
         const tagsSummary = document.querySelector('[data-commontext-properties-summary="tags"]');
         expect(tagsSummary!.textContent).toContain("urgent");
         expect(tagsSummary!.textContent).not.toContain("#");
+        // 样式与展开态统一：摘要里是同一个 SessionTagChips chip（button），不是 join 纯文本
+        expect(tagsSummary!.querySelector("button")).not.toBeNull();
 
         // chip × 删除 → 正文字面被抹掉
         const removeBtn = document.querySelector(".ptag-chip-remove") as HTMLButtonElement;

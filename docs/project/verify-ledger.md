@@ -219,3 +219,4 @@
 | 2026-11-14 08:20 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：同 07:02 launcher exit=201（Electron 启动器故障依旧），本次未重复尝试；真机台已把 property-grid-five-rows 改六行并补 tags 浮层 9 条断言，修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | d7d5cb93e |
 | 2026-11-14 09:35 | commontext-tags-no-hash（与 commontext-source-notion 同源断言） | ✅ 15/15（model 单测 + dom 台 8 例 + 源码断言；红证：旧 model ['#legacy','work#'] 2 failed → 新 194 passed） | vitest jsdom | `frontend/app/commontext/commontext-model.test.ts` + dom 台 | 308b11b81 |
 | 2026-11-14 09:35 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：同日 07:02 launcher exit=201（故障依旧），未重复尝试；真机台已补 tags-summary-shows-names 断言，修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | 308b11b81 |
+| 2026-11-14 10:15 | commontext-tags-summary-chips | ✅ 194/194（dom 台摘要 chip 断言；红证：旧源 join 文本 2 failed → 新源 0） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` | d8dd97abc |

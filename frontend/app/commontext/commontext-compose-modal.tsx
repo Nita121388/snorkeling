@@ -463,9 +463,8 @@ const CommonTextComposeModal = memo(() => {
                 key: "tags",
                 icon: "fa-hashtag",
                 iconClass: "text-muted",
-                // 折叠态必须直接看到标签名（不能只给数量）：名字 join 起来、内层 truncate 防溢出；
-                // 无 tag 时给 0 占位，保证摘要行位置稳定。
-                text: detailTags.length > 0 ? detailTags.join(" · ") : "0",
+                // 折叠态有标签时渲染层接管（与展开态同一个 chip 组件），空态给 0 占位。
+                text: detailTags.length === 0 ? "0" : "",
                 title: detailTags.length === 0 ? "No tags" : `Tags: ${detailTags.map((t) => "#" + t).join(" ")}`,
             },
             {
@@ -1887,7 +1886,7 @@ const CommonTextComposeModal = memo(() => {
                                                 key={s.key}
                                                 data-commontext-properties-summary={s.key}
                                                 title={s.title}
-                                                // 标签名可能很长：tags 项允许收缩，靠内层 truncate 截断，
+                                                // 标签可能很多：tags 项允许收缩并换行（flex-wrap），
                                                 // 不把 creator/computer/updated 等项挤出视口。
                                                 className={
                                                     "inline-flex min-w-0 items-center gap-1 " +
@@ -1895,7 +1894,16 @@ const CommonTextComposeModal = memo(() => {
                                                 }
                                             >
                                                 <i className={"fa fa-solid text-[9px] " + s.iconClass + " " + s.icon} />
-                                                <span className="truncate tabular-nums">{s.text}</span>
+                                                {s.key === "tags" && detailTags.length > 0 ? (
+                                                    // 与展开态同一个 chip 组件：两态样式/尺寸一致
+                                                    <SessionTagChips
+                                                        tags={detailTags}
+                                                        selectedTags={detailTags}
+                                                        className="min-w-0 flex-wrap"
+                                                    />
+                                                ) : (
+                                                    <span className="truncate tabular-nums">{s.text}</span>
+                                                )}
                                             </span>
                                         ))}
                                         <i

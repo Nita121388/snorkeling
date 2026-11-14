@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-14T08:11:16Z",
+  "updatedAt": "2026-11-14T08:35:06Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -400,6 +400,12 @@
       "g2": {
         "redProof": "旧源 git show HEAD:frontend/app/commontext/commontext-compose-modal.tsx 换回后跑 dom 台+源码断言 → 3 failed（摘要 keys 缺 tags / 无 PropertyTagEditor import / Tags 浮层交互整体）；新源 → 192 passed（15 files）",
         "at": "2026-11-14T07:31:26Z"
+      }
+    },
+    "N-1114-commontext-tags-summary-chips": {
+      "g2": {
+        "redProof": "旧源（join 纯文本渲染）跑新断言 → 2 failed（摘要内无 chip button：expected null not to be null + 源码断言）；新源 194 passed（15 files）",
+        "at": "2026-11-14T08:35:06Z"
       }
     }
   },
