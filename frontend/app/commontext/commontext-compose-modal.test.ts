@@ -164,4 +164,27 @@ describe("CommonTextComposeModal hook order", () => {
         // 每次打开弹窗重置折叠态：默认折叠
         expect(source).toContain("setPropertiesExpanded(false);");
     });
+
+    it("auto-saves the editor draft to localStorage without clicking +", () => {
+        // 文本自动保存：800ms 防抖落 localStorage 持久草稿，关弹窗/重启不丢；
+        // 「+」不再是保住文本的必要动作，只保留「草稿升格为条目」的语义。
+        expect(source).toContain(
+            'import { clearEditorDraft, loadEditorDraft, saveEditorDraft } from "./commontext-editor-draft";'
+        );
+        expect(source).toContain("const EDITOR_DRAFT_DEBOUNCE_MS = 800;");
+        // 还原：无 query 打开走 localStorage（同进程与跨重启统一路径，内存 composeDraft 已删）
+        expect(source).toContain("const draft = loadEditorDraft();");
+        expect(source).toContain("editor: draft.text,");
+        // 关闭前强制 flush；基线相同（本次只是还原/查阅）跳过，避免误清持久草稿
+        expect(source).toContain("flushEditorDraft();");
+        expect(source).toContain("if (state.editor === lastDraftTextRef.current) return;");
+        // 橡皮与「+」立即清持久键，不等防抖
+        expect(source).toContain(
+            "// 显式清空 = 用户主动丢弃草稿：立即清持久键，不等 800ms 防抖（否则关得快一点草稿又回来了）。"
+        );
+        expect(source).toContain("// 已升格为列表条目：editor 里的草稿使命结束，立即清持久键。");
+        // 可感知：footer 指示「Draft saved」
+        expect(source).toContain("data-commontext-draft-status={draftStatus}");
+        expect(source).toContain("Draft saved");
+    });
 });

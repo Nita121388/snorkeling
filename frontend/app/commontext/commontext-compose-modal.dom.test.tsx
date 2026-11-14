@@ -30,9 +30,30 @@ vi.mock("./commontext-send-button", () => ({
     CommontextSendButton: () => null,
 }));
 
+// 「+」升格条目的链路要能跑完（否则无后端时 upsert 对 RpcApi 报错、editor 不会被清空）。
+// 只替换写路径两个函数，读取/排序等真实现保持不动。
+vi.mock("./commontext-model", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./commontext-model")>();
+    return {
+        ...actual,
+        upsertCommonTextItem: vi.fn(async (draft: { text: string; title?: string }) => ({
+            id: "ct-mock-new",
+            title: draft.title || "Mock",
+            text: draft.text,
+            tags: [],
+            pinned: false,
+            createdat: Date.now(),
+            updatedat: Date.now(),
+            usagecount: 0,
+        })),
+        recordCommonTextUse: vi.fn(async () => undefined),
+    };
+});
+
 import { atoms, initGlobalAtoms } from "@/app/store/global-atoms";
 import { globalStore } from "@/app/store/jotaiStore";
 import { CommonTextComposeModal } from "./commontext-compose-modal";
+import { EditorDraftKey } from "./commontext-editor-draft";
 import { OpenCommonTextSearchEvent } from "./commontext-events";
 
 // jsdom 没有 ResizeObserver / matchMedia：initGlobalAtoms 会直接调 matchMedia（非可选链）。
@@ -124,6 +145,8 @@ afterEach(async () => {
     modalHost.remove();
     document.body.innerHTML = "";
     globalStore.set(atoms.fullConfigAtom, null as any);
+    // 持久草稿落在 jsdom localStorage（同文件跨测试共享），每个用例后清空避免串。
+    localStorage.clear();
 });
 
 async function openModal(detail: Record<string, unknown> = {}): Promise<void> {
@@ -217,6 +240,87 @@ describe("CommonTextComposeModal — editor collapse", () => {
         await click(editorToggle());
         expect(composer().className).toContain("min-h-[120px]");
         expect(composer().value).toBe("line one\nline two");
+    });
+});
+
+function draftStatusEl(): Element | null {
+    return document.querySelector("[data-commontext-draft-status]");
+}
+
+function readPersistedDraft(): { text: string; caret: number } | null {
+    const raw = localStorage.getItem(EditorDraftKey);
+    return raw == null ? null : JSON.parse(raw);
+}
+
+describe("CommonTextComposeModal — editor draft autosave", () => {
+    beforeEach(() => {
+        // 只假 setTimeout/clearTimeout：草稿防抖是这条通道；rAF 等保留真实现（focus/合成路径靠它）。
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    async function advance(ms: number): Promise<void> {
+        await act(async () => {
+            vi.advanceTimersByTime(ms);
+        });
+    }
+
+    it("persists the draft after the debounce and restores it on the next open", async () => {
+        await openModal();
+        await typeIntoComposer("draft line one\ndraft line two");
+        // 防抖未到点不落盘
+        expect(readPersistedDraft()).toBeNull();
+        await advance(900);
+        expect(readPersistedDraft()?.text).toBe("draft line one\ndraft line two");
+        expect(draftStatusEl()?.getAttribute("data-commontext-draft-status")).toBe("saved");
+        expect(draftStatusEl()?.textContent).toBe("Draft saved");
+
+        // 模拟重启：整个组件卸载后重新挂载，无 query 打开 → 文本还原
+        await act(async () => root.unmount());
+        container.remove();
+        container = document.createElement("div");
+        document.body.appendChild(container);
+        root = createRoot(container);
+        await openModal();
+        expect(composer().value).toBe("draft line one\ndraft line two");
+        // 还原不冒「Draft saved」提示（本次没有改动）
+        expect(draftStatusEl()?.getAttribute("data-commontext-draft-status")).toBe("idle");
+    });
+
+    it("clears the persisted draft when the eraser empties the editor", async () => {
+        await openModal();
+        await typeIntoComposer("erase me");
+        await advance(900);
+        expect(readPersistedDraft()?.text).toBe("erase me");
+        await click(document.querySelector('button[title="Clear editor"]'));
+        expect(composer().value).toBe("");
+        expect(localStorage.getItem(EditorDraftKey)).toBeNull();
+    });
+
+    it("clears the persisted draft after + turns it into a list item", async () => {
+        await openModal();
+        await typeIntoComposer("promote me");
+        await advance(900);
+        expect(readPersistedDraft()?.text).toBe("promote me");
+        await click(document.querySelector('button[title="Add new common text item (edit on the right)"]'));
+        // fireAndForget 里的 upsert mock → setEditor("", 0) 需要几拍微任务
+        await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        expect(composer().value).toBe("");
+        expect(localStorage.getItem(EditorDraftKey)).toBeNull();
+    });
+
+    it("ignores and drops a corrupt draft payload on open", async () => {
+        localStorage.setItem(EditorDraftKey, "{definitely not json");
+        await openModal();
+        expect(composer().value).toBe("");
+        expect(localStorage.getItem(EditorDraftKey)).toBeNull();
     });
 });
 

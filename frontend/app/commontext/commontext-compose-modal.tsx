@@ -11,6 +11,7 @@ import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { clearEditorDraft, loadEditorDraft, saveEditorDraft } from "./commontext-editor-draft";
 import { computeEditorMaxHeight } from "./commontext-editor-size";
 import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
 import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
@@ -154,10 +155,9 @@ type ComposeState = {
     statusKind: "info" | "ok" | "err";
 };
 
-// 进程内草稿暂存：弹窗关闭后保留 editor 内容，下次无 query 打开时还原；重启进程即丢。
-// 带 detail.query 的外部触发（如选区 overlay 复制场景）不取草稿，避免与外部文本冲突。
-type ComposeDraft = Pick<ComposeState, "editor" | "editorCaret" | "insertedIds">;
-let composeDraft: ComposeDraft | null = null;
+// 进程内草稿已不再需要：editor 文本落 localStorage 持久草稿（跨重启不丢），见
+// commontext-editor-draft.ts。带 detail.query 的外部触发（如选区 overlay 复制场景）不读草稿，
+// 避免与外部文本冲突。
 
 // 弹窗尺寸偏好持久化：用户拖动右下角 resize 手柄后无感记入 localStorage，下次打开沿用。
 // 无设置 UI、无 schema 文件；存储失败（隐私模式等）静默 fallback 到默认尺寸。
@@ -169,6 +169,8 @@ const ComposeModalMinH = 350;
 // 收起态单行高度（= h-9 = leading-5 20px + p-2×2 16px）：拖高过（resize-y 会在元素上留下浏览器
 // 写入的 inline height）的 editor 收起时必须显式盖掉，否则 inline 高度压过 h-9、收不回一行。
 const EDITOR_COLLAPSED_HEIGHT_PX = 36;
+// Editor 持久草稿防抖窗口：与详情区自动保存（800ms）同节奏。
+const EDITOR_DRAFT_DEBOUNCE_MS = 800;
 
 type ComposeModalSize = { w: string; h: string };
 
@@ -216,15 +218,23 @@ const initialOpenState = (manualQuery = ""): ComposeState => ({
 });
 
 const restoreOpenState = (): ComposeState => {
-    if (composeDraft == null) return initialOpenState();
+    // 持久草稿（localStorage）：同进程重开与跨重启统一走这一条路径。
+    const draft = loadEditorDraft();
+    if (draft == null) return initialOpenState();
     return {
         ...initialOpenState(),
-        ...composeDraft,
+        editor: draft.text,
+        // caret 落盘时可能因外部编辑器变更越界，clamp 回文本长度。
+        editorCaret: Math.min(draft.caret, draft.text.length),
+        insertedIds: draft.insertedIds,
     };
 };
 
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
+    // 最新 state 镜像：卸载清理闭包里拿不到最新 state，草稿兜底落盘用它。
+    const stateRef = useRef(state);
+    stateRef.current = state;
     // editor 默认收缩为单行高度（与 Title/Action 控件视觉对齐），聚焦时再撑开到多行，
     // 避免每次打开弹窗都被一个 120px 的 textarea 撑高、抢走主视觉。
     // "草稿含换行"会作为初始展开判定，防止多行草稿被压缩成单行截断。
@@ -268,6 +278,13 @@ const CommonTextComposeModal = memo(() => {
     // 自动保存状态：与 state.status（Send/Copy/Delete 瞬时反馈）分开，贴在 footer 右下角。
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "err">("idle");
     const saveStatusMsgRef = useRef<string>("");
+    // 持久草稿（localStorage）：落盘指示与防抖计时。
+    const [draftStatus, setDraftStatus] = useState<"idle" | "saved">("idle");
+    const editorDraftTimerRef = useRef<number>(null);
+    const draftStatusFadeRef = useRef<number>(null);
+    // 已落盘的草稿文本基线：打开/还原时对齐它，只有「本次会话里用户改过文本」才写回，
+    // 避免外部 query 打开（editor 空、不动）时误清持久草稿。
+    const lastDraftTextRef = useRef<string>("");
     // unmount/closing guard——组件关闭或同步 flush 中途被卸载时置 true，
     // 之后所有 await 之 setState 都跳过，避免"setState on unmounted component"触发 React 19 卸载期 throw 白屏。
     const unmountedRef = useRef(false);
@@ -497,6 +514,13 @@ const CommonTextComposeModal = memo(() => {
                 }
             }
             setState(next);
+            // 草稿基线对齐本次打开后的 editor 内容：之后只有真正被用户改过才写回 localStorage。
+            if (editorDraftTimerRef.current != null) {
+                window.clearTimeout(editorDraftTimerRef.current);
+                editorDraftTimerRef.current = null;
+            }
+            lastDraftTextRef.current = next.editor;
+            setDraftStatus("idle");
             // 不主动聚焦 editor：避免一打开就把弹窗撑成编辑多行态。多行草稿按文本本身初始展开，
             // 让用户视觉上立刻知道草稿还在；单行草稿保持紧凑单行高，等用户点进去再撑开。
             setEditorExpanded(next.editor.includes("\n"));
@@ -634,11 +658,69 @@ const CommonTextComposeModal = memo(() => {
                 window.clearTimeout(detailSaveFadeRef.current);
                 detailSaveFadeRef.current = null;
             }
+            // 卸载前若草稿防抖还挂着：直接同步落盘（组件即将消失，setState 不再可用，只写不报状态）。
+            if (editorDraftTimerRef.current != null) {
+                window.clearTimeout(editorDraftTimerRef.current);
+                editorDraftTimerRef.current = null;
+                saveEditorDraft({
+                    text: stateRef.current.editor,
+                    caret: stateRef.current.editorCaret,
+                    insertedIds: stateRef.current.insertedIds,
+                });
+            }
+            if (draftStatusFadeRef.current != null) {
+                window.clearTimeout(draftStatusFadeRef.current);
+                draftStatusFadeRef.current = null;
+            }
             // 关闭弹窗已在 close() 里执行强制 flush，此处 React 卸载流不再重复 fire——
             // 避免组件已卸载却仍调用 setState（saveStatus / detailDirty）触发 React 卸载期 throw 白屏。
             unmountedRef.current = true;
         };
     }, []);
+
+    // 草稿落盘指示：saved 显示 1.5s 后淡回 idle，让自动保存可感知又不长期占位。
+    const markDraftSaved = () => {
+        setDraftStatus("saved");
+        if (draftStatusFadeRef.current != null) {
+            window.clearTimeout(draftStatusFadeRef.current);
+        }
+        draftStatusFadeRef.current = window.setTimeout(() => {
+            draftStatusFadeRef.current = null;
+            if (!unmountedRef.current) {
+                setDraftStatus((cur) => (cur === "saved" ? "idle" : cur));
+            }
+        }, 1500);
+    };
+
+    // 强制落盘：close / 卸载前的兑底。文本与基线相同（本次只是还原或查阅）则跳过，
+    // 避免外部 query 打开后直接关闭误清持久草稿。
+    const flushEditorDraft = () => {
+        if (editorDraftTimerRef.current != null) {
+            window.clearTimeout(editorDraftTimerRef.current);
+            editorDraftTimerRef.current = null;
+        }
+        if (state.editor === lastDraftTextRef.current) return;
+        saveEditorDraft({ text: state.editor, caret: state.editorCaret, insertedIds: state.insertedIds });
+        lastDraftTextRef.current = state.editor;
+    };
+
+    // 防抖自动保存：文本与已落盘值不同才排 800ms 写；pending 中即使文本未变（仅 caret/insertedIds
+    // 变动）也重排，避免后一次状态更新把前一次还没落盘的文本改动吞掉。
+    useEffect(() => {
+        if (!state.open) return;
+        const textChanged = state.editor !== lastDraftTextRef.current;
+        if (!textChanged && editorDraftTimerRef.current == null) return;
+        if (editorDraftTimerRef.current != null) {
+            window.clearTimeout(editorDraftTimerRef.current);
+        }
+        editorDraftTimerRef.current = window.setTimeout(() => {
+            editorDraftTimerRef.current = null;
+            saveEditorDraft({ text: state.editor, caret: state.editorCaret, insertedIds: state.insertedIds });
+            lastDraftTextRef.current = state.editor;
+            if (!unmountedRef.current) markDraftSaved();
+        }, EDITOR_DRAFT_DEBOUNCE_MS);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- markDraftSaved 是稳定的本地闭包
+    }, [state.open, state.editor, state.editorCaret, state.insertedIds]);
 
     const close = () => {
         if (compositionEndTimerRef.current != null) {
@@ -663,14 +745,9 @@ const CommonTextComposeModal = memo(() => {
         }
         fireAndForget(() => flushDetailSave({ keepDirty: true }));
         isComposingRef.current = false;
-        setState((cur) => {
-            composeDraft = {
-                editor: cur.editor,
-                editorCaret: cur.editorCaret,
-                insertedIds: cur.insertedIds,
-            };
-            return { ...cur, open: false };
-        });
+        // 关闭前强制落草稿：防抖窗口内的最后一刻改动也要保住（同进程重开与跨重启都能还原）。
+        flushEditorDraft();
+        setState((cur) => ({ ...cur, open: false }));
     };
 
     const update = (patch: Partial<ComposeState>) => setState((cur) => ({ ...cur, ...patch }));
@@ -967,6 +1044,10 @@ const CommonTextComposeModal = memo(() => {
     const handleClearEditor = () => {
         if (state.editor.trim() === "") return;
         setEditor("", 0);
+        // 显式清空 = 用户主动丢弃草稿：立即清持久键，不等 800ms 防抖（否则关得快一点草稿又回来了）。
+        clearEditorDraft();
+        lastDraftTextRef.current = "";
+        setDraftStatus("idle");
         requestAnimationFrame(() => editorRef.current?.focus());
     };
 
@@ -994,6 +1075,10 @@ const CommonTextComposeModal = memo(() => {
             // 3. 下一帧把光标聚焦到详情 textarea，让用户直接继续 refine
             setEditor("", 0);
             setEditorExpanded(false);
+            // 已升格为列表条目：editor 里的草稿使命结束，立即清持久键。
+            clearEditorDraft();
+            lastDraftTextRef.current = "";
+            setDraftStatus("idle");
             setState((cur) => ({
                 ...cur,
                 detailId: item.id,
@@ -1326,6 +1411,12 @@ const CommonTextComposeModal = memo(() => {
                             className="min-w-0 flex-1"
                         />
                     )}
+                    <span
+                        data-commontext-draft-status={draftStatus}
+                        className={"shrink-0 text-[11px] text-muted " + (draftStatus === "idle" ? "hidden" : "")}
+                    >
+                        {draftStatus === "saved" ? "Draft saved" : ""}
+                    </span>
                     {state.status && (
                         <span
                             className={

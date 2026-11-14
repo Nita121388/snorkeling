@@ -123,6 +123,15 @@ const SNAPSHOT_FN = `(() => {
         propsSummaryKeys: propsSummary.map((s) => s.getAttribute("data-commontext-properties-summary")),
         propsSummaryText: propsSummary.map((s) => text(s)),
         composerHeight: composer == null ? 0 : h(composer),
+        draftStatus:
+            modal.querySelector("[data-commontext-draft-status]")?.getAttribute("data-commontext-draft-status") ?? null,
+        draftText: (() => {
+            try {
+                return JSON.parse(localStorage.getItem("commontext:editorDraft") ?? "null")?.text ?? null;
+            } catch {
+                return null;
+            }
+        })(),
     };
 })()`;
 
@@ -439,6 +448,26 @@ try {
   // 清掉 editor，避免影响后续步骤
   await client.evaluate(setReactValueExpression(COMPOSER, ""));
   await sleep(200);
+
+  // ── 6.6 Editor 持久草稿：停手 800ms 自动落 localStorage，橡皮清空 ───────
+  // 「Draft saved」指示 1.5s 就淡回，探针轮询撞不上会假红，这里只锁持久化语义；
+  // 指示显示由 dom 台（commontext-compose-modal.dom.test.tsx）锁定。
+  const draftTyped = await client.evaluate(setReactValueExpression(COMPOSER, "draft autosave probe"));
+  reporter.check("editor-draft-typed", draftTyped === true, draftTyped);
+  const draftPersisted = await waitForProbe(client, probeSnapshot(), (s) => s?.draftText === "draft autosave probe", {
+    timeoutMs: 15000,
+  });
+  reporter.check("editor-draft-persisted-to-localstorage", draftPersisted?.draftText === "draft autosave probe", {
+    draftText: draftPersisted?.draftText,
+  });
+  const eraserClicked = await clickSelector(client, `${MODAL} [title="Clear editor"]`);
+  reporter.check("editor-draft-eraser-clicked", eraserClicked === true, eraserClicked);
+  const draftCleared = await waitForProbe(client, probeSnapshot(), (s) => s?.draftText == null, {
+    timeoutMs: 15000,
+  });
+  reporter.check("editor-draft-cleared-on-eraser", draftCleared?.draftText == null, {
+    draftText: draftCleared?.draftText,
+  });
 
   // ── 7. 切回列表确认筛选与详情互不干扰 ───────────────────────────────────
   // 先确保没有浮层（page icon 的 emoji picker）盖住筛选行：点同一个 page icon 收起它。
