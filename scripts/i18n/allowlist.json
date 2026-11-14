@@ -1,0 +1,72 @@
+[
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx::jsx-text::e389cfd7b822",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx",
+        "kind": "jsx-text",
+        "text": "`wsh ai`",
+        "reason": "CLI 命令名（非 UI 文案，命令本身不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0123.tsx::jsx-text::39a64ed345b2",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0123.tsx",
+        "kind": "jsx-text",
+        "text": "wsh secret list/get/set",
+        "reason": "CLI 命令名 + 子命令（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0141.tsx::jsx-text::ca8b0a60d3bc",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0141.tsx",
+        "kind": "jsx-text",
+        "text": "wsh",
+        "reason": "CLI 命令名（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0141.tsx::jsx-text::e1de5fc1f178",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0141.tsx",
+        "kind": "jsx-text",
+        "text": "app:focusfollowscursor",
+        "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0142.tsx::jsx-text::427bc0eabb89",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0142.tsx",
+        "kind": "jsx-text",
+        "text": "term:bellindicator",
+        "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0142.tsx::jsx-text::499b6944b581",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0142.tsx",
+        "kind": "jsx-text",
+        "text": "wsh badge",
+        "reason": "CLI 命令名（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0144.tsx::jsx-text::d9046979e8f7",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0144.tsx",
+        "kind": "jsx-text",
+        "text": "backgrounds.json",
+        "reason": "配置文件名（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0144.tsx::jsx-text::e7a28434c5b9",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0144.tsx",
+        "kind": "jsx-text",
+        "text": "presets/bg.json",
+        "reason": "配置文件路径（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0145.tsx::jsx-text::782f1b4fc6f2",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0145.tsx",
+        "kind": "jsx-text",
+        "text": "app:showsplitbuttons",
+        "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0145.tsx::jsx-text::db84e5781d1a",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0145.tsx",
+        "kind": "jsx-text",
+        "text": "app:globalhotkey",
+        "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    }
+]

@@ -3,6 +3,7 @@
 
 import "i18next";
 import type common from "./locales/en/common.json";
+import type onboarding from "./locales/en/onboarding.json";
 
 /**
  * Type-safe i18next keys. Keys are derived from the bundled English resources
@@ -10,13 +11,16 @@ import type common from "./locales/en/common.json";
  * `i18next-cli` (see `frontend/i18n/i18next-cli.config.ts`).
  *
  * Every new namespace must be registered here so `t("ns:key...")` keys are
- * type-checked against the bundled English JSON.
+ * type-checked against the bundled English JSON. Namespace keys are written as
+ * string literals (not identifiers) so hyphenated names register one-to-one
+ * with the runtime namespace.
  */
 declare module "i18next" {
     interface CustomTypeOptions {
         defaultNS: "common";
         resources: {
             common: typeof common;
+            onboarding: typeof onboarding;
         };
     }
 }

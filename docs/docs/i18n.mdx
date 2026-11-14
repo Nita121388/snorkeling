@@ -1,0 +1,229 @@
+---
+sidebar_position: 99
+id: "i18n"
+title: "Internationalization (i18n)"
+---
+
+# Internationalization (i18n)
+
+Snorkeling uses [`i18next`](https://www.i18next.com/) + [`react-i18next`](https://react.i18next.com/)
+for UI string translation. This document is the **single source of truth for the i18n rollout** —
+it records the established migration patterns, the architecture coordinates, the gate tooling,
+and the per-module progress.
+
+> **Status (2026-11):** P0 infrastructure landed on `feat/i18n-rollout` (i18next 27 /
+> react-i18next 18, `ui:locale` = auto/en/zh, dual renderer+main-process instances).
+> P1 onboarding module migrated. P2 batch migration in progress — see the
+> [Progress](#progress) table. The 2026-07 attempt lives on branch
+> `worktree-i18n-snorkeling` as a read-only reference.
+
+---
+
+## Architecture
+
+| Path | Purpose |
+|---|---|
+| `frontend/i18n/config.ts` | Renderer i18next instance + init. **All resources are statically imported** (no HttpBackend, no language detector — in Electron everything ships with the app). Exposes `i18n` singleton, `initI18n()`, `resolveLocale()`, `SUPPORTED_LOCALES`. |
+| `frontend/i18n/i18nmodel.ts` | Jotai singleton `I18nModel`: `activeLocaleAtom` + `setActiveLocale()` (applies to i18next **and** pushes to the main process via `api.setLocale`). |
+| `frontend/i18n/I18nProvider.tsx` | Mounted in `app.tsx` around `<Workspace>`. Inits i18next once, then pushes runtime `ui:locale` changes through `I18nModel`. |
+| `frontend/i18n/i18next.d.ts` | `CustomTypeOptions` resource registration — **every namespace must be registered here** so `t("ns:key")` is type-checked against the bundled English JSON. |
+| `frontend/i18n/locales/en/<ns>.json` | English resources. **Single source of truth** for keys + types. |
+| `frontend/i18n/locales/zh/<ns>.json` | Chinese resources. Key-for-key mirror of `en/` (enforced by `check-parity.mjs`). |
+| `emain/emain-i18n.ts` | **Separate** main-process i18next instance (`createInstance()`), synchronous init, idempotent. Electron-free so it is unit-testable. |
+| Wave config `ui:locale` | `"auto"` (default — follows the system locale), `"en"`, `"zh"`. Changing it from Settings > Language switches the renderer immediately and pushes to the main process, which rebuilds the native menus. |
+
+Key behaviors:
+
+- `defaultNS: "common"` — but always write **fully-qualified keys**: `t("common:settings.x")`,
+  `t("onboarding:features.next")`. Short ns-relative keys are rejected by the type checker
+  (react-i18next 18 behavior — verified).
+- Locale sync is **push, not pull**: the renderer owns the persisted `ui:locale`; the main
+  process boots from launch settings and receives changes via the `set-locale` IPC channel.
+- `auto` resolution: renderer uses `navigator.language`, main uses `app.getLocale()`;
+  both normalize to `en|zh` with `en` as the final fallback. Tests must **pin the
+  navigator language** — jsdom follows the host machine, so an unpinned test only passes
+  on the developer's machine.
+
+---
+
+## Migration Patterns
+
+### Pattern A — Plain literal string
+
+```tsx
+import { useTranslation } from "react-i18next";
+
+const { t } = useTranslation("onboarding");
+// ...
+{t("onboarding:features.footer.next")}
+```
+
+**Always use the fully-qualified key** (`ns:section.key`). Config tuples that carry
+keys must be `as const` so the key stays a literal union (see Pattern F).
+
+### Pattern B — Interpolation inside JSX: `<Trans>`
+
+For text that mixes static sentences with inline JSX (bold segments, `<code>`, `<kbd>`)
+or interpolation values, split the sentence into keys and compose with `<Trans>`:
+
+```tsx
+import { Trans, useTranslation } from "react-i18next";
+
+<Trans
+    ns={"onboarding" as const}
+    i18nKey={"onboarding:upgradeV0145.quakeBefore" as never}
+    t={t}
+/>
+<strong>{t("onboarding:upgradeV0145.quakeTitle")}</strong>
+<Trans ns={"onboarding" as const} i18nKey={"onboarding:upgradeV0145.quakeAfter" as never} t={t} />
+```
+
+Notes:
+
+- `ns={"onboarding" as const}` narrows the namespace literal for TS.
+- `i18nKey={"ns:key" as never}` remains the documented escape hatch when `values` are
+  passed (react-i18next's `Trans` typing). In plain **expression positions** `t()`
+  with a single fully-qualified key needs no escape hatch.
+- Version numbers and other dynamic fragments may be inlined into the key value
+  (avoiding interpolation) when the value is effectively static — the version patch
+  panels do this.
+
+### Pattern C — Configuration arrays with embedded display strings
+
+Don't bury translated substrings inside data structures. Refactor the data to hold
+**structural** values only, and translate at the render site (Pattern A/B). See
+`onboarding-upgrade-patch.tsx` (old branch phase 1) for the canonical before/after.
+
+### Pattern D — JSX angle brackets must remain HTML entities
+
+When `<` / `>` appear as literal text in JSX (e.g. a "Prev" button prefixed with `&lt;`),
+they must stay as HTML **entities**. Bare angle brackets make the JSX parser treat them
+as tag delimiters — `error TS1003`. When rewriting strings programmatically, build the
+entity as `chr(0x26) + "lt;"` — shells and Perl mangle the literal `&`/`;`.
+
+### Pattern E — `aria-label` / string attributes
+
+`<Trans>` returns JSX, not a string, so string attributes use template literals of
+bare `t()` calls:
+
+```tsx
+aria-label={`${collapsed ? t("tab:expand") : t("tab:collapse")} ${group.tabName}`}
+```
+
+Single-key string attributes can use `t("ns:key")` directly.
+
+### Pattern F — Plain `.ts` files (no React): the `i18n` singleton
+
+```ts
+import { i18n } from "@/i18n/config";
+
+menu.push({ label: i18n.t("tab:tab.rename"), click: () => { /* ... */ } });
+
+const FlagColors = [
+    { labelKey: "tab:flagColor.green", value: "#58C142" },
+] as const; // `as const` keeps labelKey a literal union for typed i18n.t()
+```
+
+### Pattern G — Main process: separate instance, **ESM rules**
+
+The main-process bundle is **ESM**. `require()` throws `Cannot find module` at boot →
+Uncaught Exception → the app exits. Never use `require()` in `emain/*`; use static
+imports, and **dynamic `import()` for cycles** (e.g. `emain-menu` ↔ `emain-ipc`):
+
+```ts
+import { coerceLocale, setMainLocale } from "./emain-i18n"; // static — no cycle
+fireAndForget(async () => {
+    await setMainLocale(normalized);
+    const { makeAndSetAppMenu } = await import("./emain-menu"); // dynamic — cycle
+    makeAndSetAppMenu();
+});
+```
+
+Translate with `getI18nMain().t("common:menu.file")` or the `tmew()` wrapper. Init is
+synchronous and idempotent (`initI18nMain` switches via `changeLanguage`, never re-inits).
+
+### Pattern H — Hardcoded Chinese is treated exactly like English
+
+Any CJK literal in a user-visible string is a finding of the scan gate. Migrate it to
+en/zh resources: the zh value is the original text, the en value is a translation.
+Do **not** assert Chinese strings in tests — `en` is the source of truth.
+
+### Pattern I — Tests must not assert literal copy
+
+Tests that assert UI copy should recompute it (`i18n.t(...)`) or assert on
+`data-testid` instead. Never freeze zh copy into a test.
+
+---
+
+## Gate tooling (R7 防回潮)
+
+| Command | Judges | Exit code |
+|---|---|---|
+| `npm run i18n:check` | full-repo hardcoded scan + en/zh key parity | any finding outside the allowlist, or any key diff → 1 |
+| `node scripts/i18n/scan-hardcoded.mjs --dir <path>` | incremental scan for one module dir (per-batch acceptance) | same |
+| `node scripts/i18n/check-parity.mjs` | en/zh key-set diff per namespace | diff → 1 |
+
+- `scan-hardcoded.mjs` parses with the TypeScript AST (no regex hacks): findings are
+  `jsx-text` (static JSX text with ≥3 letters), `attr` (constant `title`/`label`/`aria-label`/`placeholder`/… values), and `cjk` (CJK in any string literal — the mixed-language governance).
+- **Allowlist**: `scripts/i18n/allowlist.json`, matched by `file::kind::hash(text)`.
+  Every entry **must carry a reason** (CLI command names, config key names, brand names…).
+  `--update-baseline` adds current findings with an `UNREVIEWED` reason that a human must
+  replace before merge.
+- Type-debt gate is separate and unchanged: `node scripts/check-tsc-baseline.mjs`
+  (baseline `docs/project/tsc-baseline.json`, currently 47 — migration may not raise it).
+
+---
+
+## Standard steps for migrating a module
+
+1. **Register the namespace** in `frontend/i18n/i18next.d.ts` (+ `NS` and resources in
+   `config.ts`, + imports in `emain/emain-i18n.ts`).
+2. **Create** `frontend/i18n/locales/en/<ns>.json` and `zh/<ns>.json`, keyed by
+   screen/section (`{"upgradePatch": {"prevButton": "Previous ({{version}})"}}`).
+3. **Replace strings** using Patterns A–I above. Keep JSX structure, classes, and
+   behavior byte-identical apart from the copy source.
+4. **Update siblings**: tests asserting the old literals (Pattern I), `*.preview.tsx`
+   fixtures, mock data.
+5. **Run the gates** and make them produce numbers:
+   ```bash
+   node scripts/i18n/scan-hardcoded.mjs --dir frontend/app/<module>   # 0 new findings
+   node scripts/i18n/check-parity.mjs                                  # 0 diff
+   npx vitest run <module>                                             # green
+   node scripts/check-tsc-baseline.mjs                                 # ≤ baseline
+   ```
+6. Commit the batch as one revertable commit; update the [Progress](#progress) table.
+
+---
+
+## Progress
+
+A module is **done** when its only scan findings are allowlisted (with reasons), en/zh
+are key-parity-clean, and no new tsc errors appear in its files.
+
+| Module / Namespace | Status | Notes |
+|---|---|---|
+| `common` | ✓ P0 | Settings > Language panel is the dogfood consumer. |
+| `onboarding` | ✓ P1 | All `frontend/app/onboarding/**` + `onboarding.preview.tsx`. 12 allowlist entries (CLI/config-key names). |
+| `emain` | infra only (P0) | Main-process instance + IPC wired; string migration (app menu, updater dialogs) is P3. |
+| `tab` / `aipanel` | ☐ P2 B1 | |
+| `session-overview` / `commontext` | ☐ P2 B2 | CJK-dense — Pattern H main battleground. |
+| `block` / `element` | ☐ P2 B3/B5 | |
+| `view/waveconfig` + small views | ☐ P2 B4 | |
+| `view/term` / `view/preview` | ☐ P2 B6 | Largest prose surface (InfoCard / modals). |
+| remaining `view/*` + previews | ☐ P2 B7 | Sweep batch. |
+
+---
+
+## Tooling notes (gotchas encountered)
+
+- **Full keys only**: `t()` rejects ns-relative short keys — `t("onboarding:init.x")`
+  works, `t("init.x")` does not (even with `useTranslation("onboarding")` bound).
+- **jsdom follows the host locale** — pin `navigator.language` in any test that
+  exercises `resolveLocale("auto")` (see `frontend/i18n/i18n-config.test.ts`).
+- **`require()` is not available in the ESM main bundle** (see Pattern G) — this
+  crashed the whole app at boot until fixed.
+- **i18next 27 dropped `initImmediate`** from `InitOptions` (TS error if you pass it).
+- **New worktrees need a complete Electron dist**: `node_modules/electron` may install
+  half-extracted (missing `Electron Framework` / `path.txt`) — copy `dist/` + `path.txt`
+  from the main checkout of the same version, or every test reports unhandled
+  "Electron failed to install correctly" errors.

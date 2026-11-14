@@ -1,14 +1,14 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useTranslation } from "react-i18next";
+
 const UpgradeOnboardingModal_v0_14_1_Content = () => {
+    const { t } = useTranslation("onboarding");
     return (
         <div className="flex flex-col items-start w-full mb-2 unselectable">
             <div className="text-secondary leading-relaxed mb-4">
-                <p className="mb-0">
-                    Wave v0.14.1 fixes several high-impact terminal bugs and adds new config options for focus, cursor
-                    style, and block navigation.
-                </p>
+                <p className="mb-0">{t("onboarding:upgradeV0141.intro")}</p>
             </div>
 
             <div className="flex w-full items-start gap-4 mb-4">
@@ -16,21 +16,27 @@ const UpgradeOnboardingModal_v0_14_1_Content = () => {
                     <i className="text-[24px] text-accent fa-solid fa-terminal"></i>
                 </div>
                 <div className="flex flex-col items-start gap-2 flex-1">
-                    <div className="text-foreground text-base font-semibold leading-[18px]">Terminal Fixes</div>
+                    <div className="text-foreground text-base font-semibold leading-[18px]">
+                        {t("onboarding:upgradeV0141.terminalFixesTitle")}
+                    </div>
                     <div className="text-secondary leading-5">
                         <ul className="list-disc list-outside space-y-1 pl-5">
                             <li>
-                                <strong>Claude Code Scroll Fix</strong> - Fixed unexpected terminal scroll jumps
+                                <strong>{t("onboarding:upgradeV0141.claudeScrollTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0141.claudeScrollDesc")}
                             </li>
                             <li>
-                                <strong>IME Fix</strong> - Fixed Korean/CJK input losing or sticking characters
+                                <strong>{t("onboarding:upgradeV0141.imeTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0141.imeDesc")}
                             </li>
                             <li>
-                                <strong>Scroll Position on Resize</strong> - Terminal stays at bottom across resizes
+                                <strong>{t("onboarding:upgradeV0141.scrollResizeTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0141.scrollResizeDesc")}
                             </li>
                             <li>
-                                <strong>Terminal Scrollback Save</strong> - New context menu item and{" "}
-                                <code>wsh</code> command to save scrollback to a file
+                                <strong>{t("onboarding:upgradeV0141.scrollbackTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0141.scrollbackBefore")}{" "}
+                                <code>wsh</code> {t("onboarding:upgradeV0141.scrollbackAfter")}
                             </li>
                         </ul>
                     </div>
@@ -42,22 +48,28 @@ const UpgradeOnboardingModal_v0_14_1_Content = () => {
                     <i className="text-[24px] text-accent fa-solid fa-sliders"></i>
                 </div>
                 <div className="flex flex-col items-start gap-2 flex-1">
-                    <div className="text-foreground text-base font-semibold leading-[18px]">New Config Options</div>
+                    <div className="text-foreground text-base font-semibold leading-[18px]">
+                        {t("onboarding:upgradeV0141.configTitle")}
+                    </div>
                     <div className="text-secondary leading-5">
                         <ul className="list-disc list-outside space-y-1 pl-5">
                             <li>
-                                <strong>Focus Follows Cursor</strong> - New <code>app:focusfollowscursor</code> setting
-                                (off/on/term)
+                                <strong>{t("onboarding:upgradeV0141.focusFollowsTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0141.focusFollowsBefore")}{" "}
+                                <code>app:focusfollowscursor</code>{" "}
+                                {t("onboarding:upgradeV0141.focusFollowsAfter")}
                             </li>
                             <li>
-                                <strong>Terminal Cursor Style &amp; Blink</strong> - Configure cursor shape and blink
-                                per-block
+                                <strong>{t("onboarding:upgradeV0141.cursorStyleTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0141.cursorStyleDesc")}
                             </li>
                             <li>
-                                <strong>Vim-Style Block Navigation</strong> - Ctrl+Shift+H/J/K/L to navigate blocks
+                                <strong>{t("onboarding:upgradeV0141.vimTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0141.vimDesc")}
                             </li>
                             <li>
-                                <strong>New AI Providers</strong> - Added Groq and NanoGPT as built-in presets
+                                <strong>{t("onboarding:upgradeV0141.providersTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0141.providersDesc")}
                             </li>
                         </ul>
                     </div>

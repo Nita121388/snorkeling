@@ -3,6 +3,7 @@
 
 import { WaveStreamdown } from "@/app/element/streamdown";
 import { memo, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ChatConfig {
     userPrompt: string;
@@ -78,16 +79,19 @@ Need me to look at a longer slice (e.g., last 1000 lines) or a different time ra
     },
 ];
 
-const AIThinking = memo(() => (
-    <div className="flex items-center gap-2">
-        <div className="animate-pulse flex items-center">
-            <i className="fa fa-circle text-[10px]"></i>
-            <i className="fa fa-circle text-[10px] mx-1"></i>
-            <i className="fa fa-circle text-[10px]"></i>
+const AIThinking = memo(() => {
+    const { t } = useTranslation("onboarding");
+    return (
+        <div className="flex items-center gap-2">
+            <div className="animate-pulse flex items-center">
+                <i className="fa fa-circle text-[10px]"></i>
+                <i className="fa fa-circle text-[10px] mx-1"></i>
+                <i className="fa fa-circle text-[10px]"></i>
+            </div>
+            <span className="text-sm text-secondary">{t("onboarding:fakechat.thinking")}</span>
         </div>
-        <span className="text-sm text-secondary">AI is thinking...</span>
-    </div>
-));
+    );
+});
 
 AIThinking.displayName = "AIThinking";
 
@@ -200,30 +204,31 @@ const FakeAssistantMessage = memo(({ config, onComplete }: { config: ChatConfig;
 FakeAssistantMessage.displayName = "FakeAssistantMessage";
 
 const FakeAIPanelHeader = memo(() => {
+    const { t } = useTranslation("onboarding");
     return (
         <div className="py-2 pl-3 pr-1 border-b border-border flex items-center justify-between min-w-0 bg-panel">
             <h2 className="text-primary text-sm font-semibold flex items-center gap-2 flex-shrink-0 whitespace-nowrap">
                 <i className="fa fa-sparkles text-accent"></i>
-                Wave AI
+                {t("onboarding:fakechat.title")}
             </h2>
 
             <div className="flex items-center flex-shrink-0 whitespace-nowrap">
                 <div className="flex items-center text-sm whitespace-nowrap">
-                    <span className="text-secondary mr-1 text-[12px]">Context</span>
+                    <span className="text-secondary mr-1 text-[12px]">{t("onboarding:fakechat.context")}</span>
                     <button
                         className="relative inline-flex h-6 w-14 items-center rounded-full transition-colors bg-action focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                        title="Widget Access ON"
+                        title={t("onboarding:fakechat.widgetAccessOn")}
                     >
                         <span className="absolute inline-block h-4 w-4 transform rounded-full bg-actiontext transition-transform translate-x-8" />
                         <span className="relative z-10 text-xs text-actiontext transition-all ml-2.5 mr-6 text-left font-bold">
-                            ON
+                            {t("onboarding:fakechat.toggleOn")}
                         </span>
                     </button>
                 </div>
 
                 <button
                     className="text-secondary hover:bg-hoverbg hover:text-primary transition-colors p-1 rounded flex-shrink-0 ml-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                    title="More options"
+                    title={t("onboarding:fakechat.moreOptions")}
                 >
                     <i className="fa fa-ellipsis-vertical"></i>
                 </button>

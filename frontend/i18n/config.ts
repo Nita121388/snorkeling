@@ -7,6 +7,8 @@ import { initReactI18next } from "react-i18next";
 
 import enCommon from "./locales/en/common.json";
 import zhCommon from "./locales/zh/common.json";
+import enOnboarding from "./locales/en/onboarding.json";
+import zhOnboarding from "./locales/zh/onboarding.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -14,7 +16,7 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export type LocaleSetting = Locale | "auto";
 export const DEFAULT_LOCALE: Locale = "en";
 export const FALLBACK_LOCALE: Locale = "en";
-export const NS = ["common"] as const;
+export const NS = ["common", "onboarding"] as const;
 
 /**
  * Normalize a `ui:locale` setting value ("auto" | "en" | "zh") into a concrete
@@ -63,8 +65,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
         ns: [...NS],
         defaultNS: "common",
         resources: {
-            en: { common: enCommon },
-            zh: { common: zhCommon },
+            en: { common: enCommon, onboarding: enOnboarding },
+            zh: { common: zhCommon, onboarding: zhOnboarding },
         },
         interpolation: {
             escapeValue: false,

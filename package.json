@@ -31,6 +31,7 @@
         "coverage": "vitest run --coverage",
         "pslog:query": "node scripts/pslog-query.mjs",
         "trace:tab": "node scripts/trace-tab-switch.mjs",
+        "i18n:check": "node scripts/i18n/scan-hardcoded.mjs && node scripts/i18n/check-parity.mjs",
         "test": "vitest",
         "test:scripts": "node --test \"scripts/**/*.test.mjs\" \"tests/**/*.test.mjs\"",
         "postinstall": "node ./postinstall.cjs",
