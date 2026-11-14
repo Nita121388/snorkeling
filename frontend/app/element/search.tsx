@@ -7,6 +7,8 @@ import clsx from "clsx";
 import debug from "debug";
 import { atom, useAtom, WritableAtom } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import { IconButton, ToggleIconButton } from "./iconbutton";
 import { Input } from "./input";
 import "./search.scss";
@@ -59,6 +61,7 @@ const SearchComponent = ({
     onReplaceAll,
     replaceDisabled = false,
 }: SearchProps) => {
+    const { t } = useTranslation("element");
     const fallbackReplaceAtom = useMemo(() => atom(""), []);
     const [isOpen, setIsOpen] = useAtom<boolean>(isOpenAtom);
     const [search, setSearch] = useAtom<string>(searchAtom);
@@ -308,7 +311,7 @@ const SearchComponent = ({
     const prevDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "chevron-up",
-        title: "Previous Result (Shift+Enter)",
+        title: t("element:search.prevResult"),
         disabled: numResults === 0,
         click: onPrevWrapper,
     };
@@ -316,7 +319,7 @@ const SearchComponent = ({
     const nextDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "chevron-down",
-        title: "Next Result (Enter)",
+        title: t("element:search.nextResult"),
         disabled: numResults === 0,
         click: onNextWrapper,
     };
@@ -324,14 +327,14 @@ const SearchComponent = ({
     const closeDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "xmark-large",
-        title: "Close (Esc)",
+        title: t("element:search.close"),
         click: () => setIsOpen(false),
     };
 
     const replaceToggleDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: replaceExpanded ? "chevron-down" : "chevron-right",
-        title: replaceExpanded ? "Hide Replace" : "Show Replace",
+        title: replaceExpanded ? t("element:search.hideReplace") : t("element:search.showReplace"),
         click: () => {
             setReplaceExpanded((expanded) => {
                 const nextExpanded = !expanded;
@@ -347,7 +350,7 @@ const SearchComponent = ({
     const replaceDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "arrow-right",
-        title: "Replace (Enter)",
+        title: t("element:search.replaceTitle"),
         disabled: replaceActionsDisabled,
         click: onReplaceWrapper,
     };
@@ -355,14 +358,14 @@ const SearchComponent = ({
     const replaceAllDecl: IconButtonDecl = {
         elemtype: "iconbutton",
         icon: "arrows-rotate",
-        title: "Replace All (Shift+Enter)",
+        title: t("element:search.replaceAllTitle"),
         disabled: replaceActionsDisabled,
         click: onReplaceAllWrapper,
     };
 
-    const regexDecl = createToggleButtonDecl(regexAtom, "custom@regex", "Regular Expression");
-    const wholeWordDecl = createToggleButtonDecl(wholeWordAtom, "custom@whole-word", "Whole Word");
-    const caseSensitiveDecl = createToggleButtonDecl(caseSensitiveAtom, "custom@case-sensitive", "Case Sensitive");
+    const regexDecl = createToggleButtonDecl(regexAtom, "custom@regex", t("element:search.regex"));
+    const wholeWordDecl = createToggleButtonDecl(wholeWordAtom, "custom@whole-word", t("element:search.wholeWord"));
+    const caseSensitiveDecl = createToggleButtonDecl(caseSensitiveAtom, "custom@case-sensitive", t("element:search.caseSensitive"));
     const preventButtonFocus = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         const button = (e.target as HTMLElement).closest("button");
         if (button) {
@@ -396,7 +399,7 @@ const SearchComponent = ({
                             )}
                             <Input
                                 ref={inputRef}
-                                placeholder="Search"
+                                placeholder={t("element:search.placeholder")}
                                 value={search}
                                 onChange={setSearch}
                                 onKeyDown={onKeyDown}
@@ -410,8 +413,15 @@ const SearchComponent = ({
                             <div
                                 className={clsx("search-results", { empty: hasSearch && numResults === 0 })}
                                 aria-live="polite"
-                                aria-label="Search Results"
-                                title={hasSearch ? `${resultPosition} of ${numResults} results` : "Search Results"}
+                                aria-label={t("element:search.resultsLabel")}
+                                title={
+                                    hasSearch
+                                        ? i18n.t("element:search.resultsPosition", {
+                                              position: resultPosition,
+                                              count: numResults,
+                                          })
+                                        : t("element:search.resultsLabel")
+                                }
                             >
                                 {resultSummary}
                             </div>
@@ -434,7 +444,7 @@ const SearchComponent = ({
                             <div className="search-row replace-row">
                                 <Input
                                     ref={replaceInputRef}
-                                    placeholder="Replace"
+                                    placeholder={t("element:search.replacePlaceholder")}
                                     value={replaceValue}
                                     onChange={setReplaceValue}
                                     onKeyDown={onReplaceKeyDown}

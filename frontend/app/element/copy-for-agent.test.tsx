@@ -11,8 +11,9 @@
 // @vitest-environment jsdom
 
 import { act } from "react";
+import { initI18n } from "@/i18n/config";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     DIAGNOSIS_BRIEF,
     FIX_COMMAND_ONLY,
@@ -22,6 +23,11 @@ import {
 } from "./copy-for-agent";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeAll(async () => {
+    // 按钮文案走 i18n（en 为真源），先初始化再断言（Pattern I）。
+    await initI18n("en");
+});
 
 describe("buildAgentPayload", () => {
     it("assembles the three sections in order", () => {

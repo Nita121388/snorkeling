@@ -13,10 +13,16 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, test, vi } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
 import { RootErrorBoundary } from "./errorboundary";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeAll(async () => {
+    // 兜底卡片文案走 i18n（en 为真源），先初始化再断言（Pattern I）。
+    await initI18n("en");
+});
 
 function Boom(): never {
     throw new Error("boom-in-render");

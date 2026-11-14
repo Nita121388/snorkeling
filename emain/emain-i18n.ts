@@ -34,12 +34,14 @@ import enAipanel from "../frontend/i18n/locales/en/aipanel.json";
 import enBlock from "../frontend/i18n/locales/en/block.json";
 import enCommon from "../frontend/i18n/locales/en/common.json";
 import enCommontext from "../frontend/i18n/locales/en/commontext.json";
+import enElement from "../frontend/i18n/locales/en/element.json";
 import enSessionOverview from "../frontend/i18n/locales/en/session-overview.json";
 import enTab from "../frontend/i18n/locales/en/tab.json";
 import zhAipanel from "../frontend/i18n/locales/zh/aipanel.json";
 import zhBlock from "../frontend/i18n/locales/zh/block.json";
 import zhCommon from "../frontend/i18n/locales/zh/common.json";
 import zhCommontext from "../frontend/i18n/locales/zh/commontext.json";
+import zhElement from "../frontend/i18n/locales/zh/element.json";
 import zhSessionOverview from "../frontend/i18n/locales/zh/session-overview.json";
 import zhTab from "../frontend/i18n/locales/zh/tab.json";
 
@@ -47,7 +49,7 @@ export const MAIN_SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type MainLocale = (typeof MAIN_SUPPORTED_LOCALES)[number];
 export const MAIN_DEFAULT_LOCALE: MainLocale = "en";
 export const MAIN_FALLBACK_LOCALE: MainLocale = "en";
-export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext", "block"] as const;
+export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext", "block", "element"] as const;
 
 /** Normalize a raw `ui:locale` value into a supported locale ("en" fallback). */
 export function coerceLocale(value: unknown): MainLocale {
@@ -84,6 +86,7 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         "session-overview": enSessionOverview,
         commontext: enCommontext,
         block: enBlock,
+        element: enElement,
     },
     zh: {
         common: zhCommon,
@@ -92,6 +95,7 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         "session-overview": zhSessionOverview,
         commontext: zhCommontext,
         block: zhBlock,
+        element: zhElement,
     },
 };
 

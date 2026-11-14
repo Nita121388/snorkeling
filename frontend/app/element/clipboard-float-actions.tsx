@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
     clampSelectionCopyOverlayPosition,
     getCopyContextTextFromDom,
@@ -110,6 +111,7 @@ function writePasteHintDisabled(value: boolean): void {
 }
 
 export function ClipboardFloatActions() {
+    const { t } = useTranslation("element");
     const [copyPos, setCopyPos] = useState<SelectionCopyOverlayState | null>(null);
     const [pasteHint, setPasteHint] = useState<PasteHintState>(null);
     const [pasteHintDisabled, setPasteHintDisabled] = useState<boolean>(() => readPasteHintDisabled());
@@ -302,16 +304,16 @@ export function ClipboardFloatActions() {
                     <button
                         type="button"
                         className="h-5 rounded px-1.5 text-[11px] text-secondary hover:bg-hoverbg hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                        title="Paste"
+                        title={t("element:clipboard.paste")}
                         onClick={() => void handlePasteClick()}
                     >
                         <i className="fa fa-regular fa-paste mr-1" />
-                        Paste
+                        {t("element:clipboard.paste")}
                     </button>
                     <button
                         type="button"
                         className="h-5 w-5 rounded text-[10px] text-secondary hover:bg-hoverbg hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                        title="Don't show this paste hint again"
+                        title={t("element:clipboard.pasteHintDisable")}
                         onClick={handleDisablePasteHint}
                     >
                         <i className="fa fa-solid fa-eye-slash" />

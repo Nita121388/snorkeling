@@ -14,8 +14,9 @@
 // @vitest-environment jsdom
 
 import { act } from "react";
+import { initI18n } from "@/i18n/config";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     AdvancedSection,
     RadioCard,
@@ -29,6 +30,11 @@ import {
 } from "./setting-card";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeAll(async () => {
+    // SaveBar 文案走 i18n（en 为真源），先初始化再断言（Pattern I）。
+    await initI18n("en");
+});
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;

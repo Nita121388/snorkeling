@@ -6,8 +6,10 @@
   "common": {
     "cancel": "取消",
     "close": "关闭",
+    "copy": "复制",
     "delete": "删除",
     "edit": "编辑",
+    "loading": "加载中...",
     "ok": "确定",
     "save": "保存"
   },

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { cn, makeIconClass } from "@/util/util";
+import { useTranslation } from "react-i18next";
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 const OutlineDefaultWidth = 236;
@@ -140,6 +141,7 @@ export function MarkdownOutline({
     onTogglePinned?: () => void;
     onSelectItem: (item: MarkdownOutlineItem) => void;
 }) {
+    const { t } = useTranslation("element");
     const visible = placement === "sidebar" ? true : pinned || hovered;
     const outlineOpacityClassName = visible ? "opacity-100" : "opacity-30";
     const collapsedOpacityClassName = visible ? "opacity-100" : "opacity-60";
@@ -250,8 +252,8 @@ export function MarkdownOutline({
                 <button
                     type="button"
                     className="flex h-7 w-7 items-center justify-center rounded text-secondary hover:bg-hoverbg hover:text-foreground"
-                    title="Show Markdown outline"
-                    aria-label="Show Markdown outline"
+                    title={t("element:outline.show")}
+                    aria-label={t("element:outline.show")}
                     onClick={onToggleCollapsed}
                 >
                     <i className={makeIconClass("list-tree", false)} />
@@ -278,7 +280,9 @@ export function MarkdownOutline({
         >
             <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border px-2">
                 <i className={cn(makeIconClass("list-tree", false), "text-secondary")} />
-                <div className="min-w-0 flex-1 truncate font-medium text-foreground">Outline</div>
+                <div className="min-w-0 flex-1 truncate font-medium text-foreground">
+                    {t("element:outline.title")}
+                </div>
                 {placement === "overlay" && onTogglePinned != null ? (
                     <button
                         type="button"
@@ -286,8 +290,8 @@ export function MarkdownOutline({
                             "flex h-5 w-5 items-center justify-center rounded text-secondary hover:bg-hoverbg hover:text-foreground",
                             pinned && "text-accent"
                         )}
-                        title={pinned ? "Unpin Markdown outline" : "Pin Markdown outline"}
-                        aria-label={pinned ? "Unpin Markdown outline" : "Pin Markdown outline"}
+                        title={pinned ? t("element:outline.unpin") : t("element:outline.pin")}
+                        aria-label={pinned ? t("element:outline.unpin") : t("element:outline.pin")}
                         aria-pressed={pinned}
                         onClick={onTogglePinned}
                     >
@@ -298,8 +302,8 @@ export function MarkdownOutline({
                     <button
                         type="button"
                         className="flex h-5 w-5 items-center justify-center rounded text-secondary hover:bg-hoverbg hover:text-foreground"
-                        title="Hide Markdown outline"
-                        aria-label="Hide Markdown outline"
+                        title={t("element:outline.hide")}
+                        aria-label={t("element:outline.hide")}
                         onClick={onToggleCollapsed}
                     >
                         <i className={makeIconClass("chevron-right", false)} />
@@ -346,7 +350,7 @@ export function MarkdownOutline({
             {widthResizable ? (
                 <div
                     className="absolute bottom-0 left-0 top-0 z-10 w-2 cursor-ew-resize bg-transparent hover:bg-accent/35"
-                    title="Resize outline width"
+                    title={t("element:outline.resizeWidth")}
                     role="separator"
                     aria-orientation="vertical"
                     onPointerDown={(event) => handleResizeStart(event, { width: true, height: false })}
@@ -355,7 +359,7 @@ export function MarkdownOutline({
             {heightResizable ? (
                 <div
                     className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-transparent hover:bg-accent/35"
-                    title="Resize outline height"
+                    title={t("element:outline.resizeHeight")}
                     role="separator"
                     aria-orientation="horizontal"
                     onPointerDown={(event) => handleResizeStart(event, { width: false, height: true })}
@@ -364,7 +368,7 @@ export function MarkdownOutline({
             {widthResizable && heightResizable ? (
                 <div
                     className="absolute bottom-0 left-0 z-20 h-4 w-4 cursor-nesw-resize bg-transparent hover:bg-accent/45"
-                    title="Resize outline"
+                    title={t("element:outline.resize")}
                     role="separator"
                     aria-orientation="horizontal"
                     onPointerDown={(event) => handleResizeStart(event, { width: true, height: true })}

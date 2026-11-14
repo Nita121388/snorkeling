@@ -6,8 +6,10 @@
   "common": {
     "cancel": "Cancel",
     "close": "Close",
+    "copy": "Copy",
     "delete": "Delete",
     "edit": "Edit",
+    "loading": "Loading...",
     "ok": "OK",
     "save": "Save"
   },

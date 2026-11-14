@@ -1,5 +1,12 @@
 [
     {
+        "id": "frontend/app/aipanel/telemetryrequired.tsx::jsx-text::6757bb5f336c",
+        "file": "frontend/app/aipanel/telemetryrequired.tsx",
+        "kind": "jsx-text",
+        "text": "https://docs.waveterm.dev/waveai-modes",
+        "reason": "文档 URL（链接目标与锚文本本身是 URL，不是可翻译文案）"
+    },
+    {
         "id": "frontend/app/commontext/commontext-compose-modal.tsx::jsx-text::00ef13a15be8",
         "file": "frontend/app/commontext/commontext-compose-modal.tsx",
         "kind": "jsx-text",
@@ -14,11 +21,74 @@
         "reason": "键盘键名（kbd 元素内的物理按键名，各语言通用，不翻译）"
     },
     {
-        "id": "frontend/app/aipanel/telemetryrequired.tsx::jsx-text::6757bb5f336c",
-        "file": "frontend/app/aipanel/telemetryrequired.tsx",
+        "id": "frontend/app/element/markdown.tsx::cjk::08ef584a03e7",
+        "file": "frontend/app/element/markdown.tsx",
+        "kind": "cjk",
+        "text": "![图片](",
+        "reason": "写入用户 markdown 源文件的图片语法模板（alt 文本属于用户文档内容，不随 UI locale 变化）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::02bee0473b7c",
+        "file": "frontend/app/element/quicktips.tsx",
         "kind": "jsx-text",
-        "text": "https://docs.waveterm.dev/waveai-modes",
-        "reason": "文档 URL（链接目标与锚文本本身是 URL，不是可翻译文案）"
+        "text": "^ Ctrl",
+        "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::18e2fd8513e0",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "wsh view",
+        "reason": "CLI 命令名示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::1b1e5bdfc668",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "[filename]",
+        "reason": "CLI 参数占位语法（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::218bdd589cd7",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "[filename|url]",
+        "reason": "CLI 参数占位语法（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::497af06b9572",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "wsh edit",
+        "reason": "CLI 命令名示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::5937270a8b63",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "wsh commands",
+        "reason": "CLI 命令族标题（wsh = 本仓库命令行工具名，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::e30eff925100",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "Alt",
+        "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::e34a263e71ac",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "⇧ Shift",
+        "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::ea4e943e1ee8",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "⌘ Cmd",
+        "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
     },
     {
         "id": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx::jsx-text::e389cfd7b822",

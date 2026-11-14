@@ -28,6 +28,8 @@ import { EditableTitle } from "./editable-title";
 import { UndoNoteBar, useNoteUndo, type NoteUndoSnapshot } from "@/app/view/aisessions/undo-toast";
 import { modalsModel } from "@/app/store/modalmodel";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import {
     InfoCardError,
     InfoCardHead,
@@ -93,6 +95,8 @@ export function SessionNoteSection({
         error,
     } = state;
 
+    const { t } = useTranslation("element");
+
     const openAIConfig = React.useCallback(() => {
         void createBlock({ meta: { view: "waveconfig", file: "waveai.json" } }, false, true);
     }, []);
@@ -143,7 +147,7 @@ export function SessionNoteSection({
                 def,
                 value,
             }).then((result) => {
-                setWriteError(result.ok ? "" : `保存失败：${result.error}`);
+                setWriteError(result.ok ? "" : i18n.t("element:sessionNote.saveFailed", { error: result.error }));
             });
         },
         [connection, writeSessionId, state.service, summary]
@@ -307,8 +311,8 @@ export function SessionNoteSection({
                             <button
                                 type="button"
                                 className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-primary focus:opacity-100 group-hover:opacity-100"
-                                title="Open card in dialog"
-                                aria-label="Open card in dialog"
+                                title={t("element:sessionNote.openInDialog")}
+                                aria-label={t("element:sessionNote.openInDialog")}
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     onOpenCardDialog();
@@ -355,13 +359,13 @@ export function SessionNoteSection({
                             openAIConfig();
                         }}
                     >
-                        Open AI settings
+                        {t("element:sessionNote.openAiSettings")}
                     </button>
                     <button
                         type="button"
                         className="shrink-0 cursor-pointer text-secondary hover:text-primary"
-                        title="Dismiss"
-                        aria-label="Dismiss"
+                        title={t("element:sessionNote.dismiss")}
+                        aria-label={t("element:sessionNote.dismiss")}
                         onClick={(event) => {
                             event.stopPropagation();
                             setGenError("");
@@ -383,8 +387,8 @@ export function SessionNoteSection({
                     ref={inputRef}
                     value={noteDraft}
                     rows={4}
-                    placeholder="Note"
-                    aria-label="Session note"
+                    placeholder={t("element:sessionNote.notePlaceholder")}
+                    aria-label={t("element:sessionNote.sessionNoteLabel")}
                     spellCheck={false}
                     onChange={(event) => {
                         setNoteDraft(event.target.value);
@@ -462,8 +466,8 @@ export function SessionNoteSection({
                     <button
                         type="button"
                         className="shrink-0 cursor-pointer text-secondary hover:text-primary"
-                        title="Dismiss"
-                        aria-label="Dismiss save error"
+                        title={t("element:sessionNote.dismiss")}
+                        aria-label={t("element:sessionNote.dismissSaveError")}
                         onClick={(event) => {
                             event.stopPropagation();
                             setWriteError("");

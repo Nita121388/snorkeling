@@ -18,6 +18,7 @@
 
 import clsx from "clsx";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import ReactDOM from "react-dom";
 
 import "./image-lightbox.scss";
@@ -47,6 +48,7 @@ function computeFitZoom(img: HTMLImageElement): number | null {
 }
 
 export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
+    const { t } = useTranslation("element");
     const [zoom, setZoom] = useState(1);
     const [tx, setTx] = useState(0);
     const [ty, setTy] = useState(0);
@@ -187,10 +189,20 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
             onDoubleClick={handleDoubleClick}
         >
             <div className="image-lightbox-backdrop" onClick={handleBackdropClick} />
-            <button className="image-lightbox-close" title="Close (ESC)" onClick={onClose} aria-label="Close image">
+            <button
+                className="image-lightbox-close"
+                title={t("element:imageLightbox.closeTitle")}
+                onClick={onClose}
+                aria-label={t("element:imageLightbox.closeLabel")}
+            >
                 <i className="fa-sharp fa-solid fa-xmark" />
             </button>
-            <button className="image-lightbox-rotate" title="Rotate (R)" onClick={handleRotate} aria-label="Rotate image">
+            <button
+                className="image-lightbox-rotate"
+                title={t("element:imageLightbox.rotateTitle")}
+                onClick={handleRotate}
+                aria-label={t("element:imageLightbox.rotateLabel")}
+            >
                 <i className="fa-solid fa-rotate" />
             </button>
             <div

@@ -9,6 +9,7 @@ import enAipanel from "./locales/en/aipanel.json";
 import enBlock from "./locales/en/block.json";
 import enCommon from "./locales/en/common.json";
 import enCommontext from "./locales/en/commontext.json";
+import enElement from "./locales/en/element.json";
 import enOnboarding from "./locales/en/onboarding.json";
 import enSessionOverview from "./locales/en/session-overview.json";
 import enTab from "./locales/en/tab.json";
@@ -16,6 +17,7 @@ import zhAipanel from "./locales/zh/aipanel.json";
 import zhBlock from "./locales/zh/block.json";
 import zhCommon from "./locales/zh/common.json";
 import zhCommontext from "./locales/zh/commontext.json";
+import zhElement from "./locales/zh/element.json";
 import zhOnboarding from "./locales/zh/onboarding.json";
 import zhSessionOverview from "./locales/zh/session-overview.json";
 import zhTab from "./locales/zh/tab.json";
@@ -26,7 +28,16 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export type LocaleSetting = Locale | "auto";
 export const DEFAULT_LOCALE: Locale = "en";
 export const FALLBACK_LOCALE: Locale = "en";
-export const NS = ["common", "onboarding", "tab", "aipanel", "session-overview", "commontext", "block"] as const;
+export const NS = [
+    "common",
+    "onboarding",
+    "tab",
+    "aipanel",
+    "session-overview",
+    "commontext",
+    "block",
+    "element",
+] as const;
 
 /**
  * Normalize a `ui:locale` setting value ("auto" | "en" | "zh") into a concrete
@@ -83,6 +94,7 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 "session-overview": enSessionOverview,
                 commontext: enCommontext,
                 block: enBlock,
+                element: enElement,
             },
             zh: {
                 common: zhCommon,
@@ -92,6 +104,7 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 "session-overview": zhSessionOverview,
                 commontext: zhCommontext,
                 block: zhBlock,
+                element: zhElement,
             },
         },
         interpolation: {

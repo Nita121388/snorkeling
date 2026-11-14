@@ -6,6 +6,7 @@ import type aipanel from "./locales/en/aipanel.json";
 import type block from "./locales/en/block.json";
 import type common from "./locales/en/common.json";
 import type commontext from "./locales/en/commontext.json";
+import type element from "./locales/en/element.json";
 import type onboarding from "./locales/en/onboarding.json";
 import type sessionOverview from "./locales/en/session-overview.json";
 import type tab from "./locales/en/tab.json";
@@ -31,6 +32,7 @@ declare module "i18next" {
             "session-overview": typeof sessionOverview;
             commontext: typeof commontext;
             block: typeof block;
+            element: typeof element;
         };
     }
 }

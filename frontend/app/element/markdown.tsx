@@ -152,6 +152,8 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import { ContextMenuModel } from "../store/contextmenu";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 import { openLink } from "../store/global";
 import { RpcApi } from "../store/wshclientapi";
 import { TabRpcClient } from "../store/wshrpcutil";
@@ -696,6 +698,7 @@ function MarkdownLinkTooltip({
     onMouseLeave,
     rootRef,
 }: MarkdownLinkTooltipProps) {
+    const { t } = useTranslation("element");
     const innerRef = useRef<HTMLDivElement>(null);
     const wrapRef = rootRef ?? innerRef;
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -735,23 +738,23 @@ function MarkdownLinkTooltip({
                 visibility: pos != null ? "visible" : "hidden",
             }}
             role="dialog"
-            aria-label="Link actions"
+            aria-label={t("element:markdown.linkActions")}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
         >
-            <button type="button" onClick={onOpen} title="Open link" aria-label="Open link">
+            <button type="button" onClick={onOpen} title={t("element:markdown.openLink")} aria-label={t("element:markdown.openLink")}>
                 <i className="fa-sharp fa-solid fa-arrow-up-right-from-square" />
             </button>
             {onEdit != null && (
-                <button type="button" onClick={onEdit} title="Edit link" aria-label="Edit link">
+                <button type="button" onClick={onEdit} title={t("element:markdown.editLink")} aria-label={t("element:markdown.editLink")}>
                     <i className="fa-sharp fa-solid fa-pen" />
                 </button>
             )}
             <button
                 type="button"
                 onClick={copyHref}
-                title={copied ? "Copied" : "Copy link"}
-                aria-label={copied ? "Link copied" : "Copy link"}
+                title={copied ? t("element:markdown.copied") : t("element:markdown.copyLink")}
+                aria-label={copied ? t("element:markdown.linkCopied") : t("element:markdown.copyLink")}
             >
                 <i className={`fa-sharp fa-solid ${copied ? "fa-check" : "fa-copy"}`} />
             </button>
@@ -771,6 +774,7 @@ type MarkdownLinkEditorProps = {
 };
 
 function MarkdownLinkEditor({ anchor, mode, initialLabel, initialUrl, onSave, onCancel }: MarkdownLinkEditorProps) {
+    const { t } = useTranslation("element");
     const wrapRef = useRef<HTMLDivElement>(null);
     const firstInputRef = useRef<HTMLInputElement>(null);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -819,7 +823,7 @@ function MarkdownLinkEditor({ anchor, mode, initialLabel, initialUrl, onSave, on
                 visibility: pos != null ? "visible" : "hidden",
             }}
             role="dialog"
-            aria-label="Edit link"
+            aria-label={t("element:markdown.editLink")}
             // Keep the markdown root's click/dblclick handlers from firing while the form is up.
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
@@ -836,34 +840,34 @@ function MarkdownLinkEditor({ anchor, mode, initialLabel, initialUrl, onSave, on
             }}
         >
             <div className="markdown-link-editor-header">
-                <span>Edit link</span>
-                <button type="button" className="markdown-link-editor-close" onClick={onCancel} aria-label="Close">
+                <span>{t("element:markdown.editLink")}</span>
+                <button type="button" className="markdown-link-editor-close" onClick={onCancel} aria-label={t("element:markdown.close")}>
                     <i className="fa-sharp fa-solid fa-xmark" />
                 </button>
             </div>
             {isWiki ? (
                 <label className="markdown-link-editor-field">
-                    <span>Target</span>
+                    <span>{t("element:markdown.target")}</span>
                     <input ref={firstInputRef} value={url} onChange={(e) => setUrl(e.target.value)} />
                 </label>
             ) : (
                 <>
                     <label className="markdown-link-editor-field">
-                        <span>Text</span>
+                        <span>{t("element:markdown.textLabel")}</span>
                         <input ref={firstInputRef} value={label} onChange={(e) => setLabel(e.target.value)} />
                     </label>
                     <label className="markdown-link-editor-field">
-                        <span>URL</span>
+                        <span>{t("element:markdown.urlLabel")}</span>
                         <input value={url} onChange={(e) => setUrl(e.target.value)} />
                     </label>
                 </>
             )}
             <div className="markdown-link-editor-actions">
                 <button type="button" className="markdown-link-editor-save" onClick={submit}>
-                    Save
+                    {t("element:markdown.save")}
                 </button>
                 <button type="button" className="markdown-link-editor-cancel" onClick={onCancel}>
-                    Cancel
+                    {t("element:markdown.cancel")}
                 </button>
             </div>
         </div>
@@ -898,13 +902,14 @@ const MarkdownTaskCheckbox = ({
     props: React.InputHTMLAttributes<HTMLInputElement>;
     onToggle: (line: number) => void;
 }) => {
+    const { t } = useTranslation("element");
     return (
         <input
             type="checkbox"
             checked={Boolean(props.checked)}
             readOnly
             className="markdown-task-checkbox"
-            aria-label="Toggle task"
+            aria-label={t("element:markdown.toggleTask")}
             onClick={(e) => {
                 e.preventDefault(); // checkbox state derives from source text, not the DOM
                 e.stopPropagation(); // don't bubble into the click-to-edit handler
@@ -1051,6 +1056,7 @@ const CodeBlock = ({
     language,
     onApplyLanguage,
 }: CodeBlockProps) => {
+    const { t } = useTranslation("element");
     const [editingLang, setEditingLang] = useState(false);
     const [langDraft, setLangDraft] = useState("");
     const [expanded, setExpanded] = useState(false);
@@ -1100,7 +1106,7 @@ const CodeBlock = ({
                         className="codeblock-lang-input"
                         autoFocus
                         value={langDraft}
-                        placeholder="language"
+                        placeholder={t("element:markdown.languagePlaceholder")}
                         onChange={(e) => setLangDraft(e.target.value)}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") {
@@ -1119,7 +1125,7 @@ const CodeBlock = ({
                     <button
                         type="button"
                         className="codeblock-lang-badge"
-                        title="Set language"
+                        title={t("element:markdown.setLanguage")}
                         onClick={(e) => {
                             e.stopPropagation();
                             setLangDraft(language ?? "");
@@ -1132,7 +1138,7 @@ const CodeBlock = ({
                     language != null && <span className="codeblock-lang-badge is-static">{language}</span>
                 )}
                 <div className="codeblock-ops">
-                    <CopyButton onClick={handleCopy} title="Copy" />
+                    <CopyButton onClick={handleCopy} title={t("common:common.copy")} />
                     {onClickExecute && (
                         <IconButton
                             decl={{
@@ -1154,7 +1160,7 @@ const CodeBlock = ({
                         setExpanded((v) => !v);
                     }}
                 >
-                    {expanded ? "收起" : `展开全部（共 ${lineCount} 行）`}
+                    {expanded ? t("element:markdown.collapse") : i18n.t("element:markdown.expandAll", { count: lineCount })}
                 </button>
             )}
         </pre>
@@ -1240,6 +1246,7 @@ const MarkdownImg = ({
     fullText?: string;
     onInlineEditCommit?: (newFullText: string) => void;
 }) => {
+    const { t } = useTranslation("element");
     const [resolvedSrc, setResolvedSrc] = useState<string>(props.src);
     const [resolvedSrcSet, setResolvedSrcSet] = useState<string>(props.srcSet);
     const [resolvedStr, setResolvedStr] = useState<string>(null);
@@ -1296,7 +1303,7 @@ const MarkdownImg = ({
             setResolvedSrc(resolvedSrc);
             setResolvedSrcSet(resolvedSrcSet);
             setResolvedStr(null);
-            setImageLoadError(resolvedSrc == null ? "Unable to resolve image path" : null);
+            setImageLoadError(resolvedSrc == null ? i18n.t("element:markdown.imageResolveFailed") : null);
             setResolving(false);
         };
         resolveFn();
@@ -1524,17 +1531,17 @@ const MarkdownImg = ({
         e.preventDefault();
         e.stopPropagation();
         const menu: ContextMenuItem[] = [
-            { label: "Zoom in", click: () => setLightboxOpen(true) },
-            { label: "Copy image path", click: () => void copyImagePath() },
-            { label: "Copy full image path", click: () => void copyImageFullPath() },
+            { label: t("element:markdown.zoomIn"), click: () => setLightboxOpen(true) },
+            { label: t("element:markdown.copyImagePath"), click: () => void copyImagePath() },
+            { label: t("element:markdown.copyFullImagePath"), click: () => void copyImageFullPath() },
         ];
         if (canEdit) {
             menu.push({ type: "separator" });
             if (imgWidth != null) {
-                menu.push({ label: "Reset image size", click: clearImageSize });
+                menu.push({ label: t("element:markdown.resetImageSize"), click: clearImageSize });
             }
-            menu.push({ label: "Edit path", click: openPathInput });
-            menu.push({ label: "Delete image", click: deleteImage });
+            menu.push({ label: t("element:markdown.editPath"), click: openPathInput });
+            menu.push({ label: t("element:markdown.deleteImage"), click: deleteImage });
         }
         ContextMenuModel.getInstance().showContextMenu(menu, e);
     };
@@ -1547,8 +1554,11 @@ const MarkdownImg = ({
     }
     if (imageLoadError != null || resolvedSrc == null) {
         return (
-            <span className="markdown-img-error" title={`${imageLoadError ?? "Unable to load image"}: ${rawImgSrc}`}>
-                [Image unavailable: {rawImgSrc}]
+            <span
+                className="markdown-img-error"
+                title={`${imageLoadError ?? i18n.t("element:markdown.imageLoadFailed")}: ${rawImgSrc}`}
+            >
+                [{t("element:markdown.imageUnavailable")}: {rawImgSrc}]
             </span>
         );
     }
@@ -1581,13 +1591,13 @@ const MarkdownImg = ({
                         style={imgStyle}
                         onClick={handleImgClick}
                         onContextMenu={handleImgContextMenu}
-                        onError={() => setImageLoadError("Unable to load image")}
+                        onError={() => setImageLoadError(i18n.t("element:markdown.imageLoadFailed"))}
                     />
                     {hasResize && (showResizeHandle || isResizing) && (
                         <div
                             className="markdown-img-resize-handle"
                             onMouseDown={handleResizeMouseDown}
-                            title="Drag to resize"
+                            title={t("element:markdown.dragToResize")}
                         />
                     )}
                     {hasResize && imgWidth != null && (
@@ -1601,7 +1611,7 @@ const MarkdownImg = ({
                                     e.stopPropagation();
                                     clearImageSize();
                                 }}
-                                title="Reset to natural size"
+                                title={t("element:markdown.resetNaturalSize")}
                                 type="button"
                             >
                                 ×
@@ -1617,9 +1627,9 @@ const MarkdownImg = ({
                             setAltDraft(props.alt ?? "");
                             setAltEditing(true);
                         }}
-                        title="Click to edit alt text"
+                        title={t("element:markdown.editAltText")}
                     >
-                        {(props.alt ?? "") === "" ? "+ Add description" : props.alt}
+                        {(props.alt ?? "") === "" ? t("element:markdown.addDescription") : props.alt}
                     </div>
                 )}
                 {canEdit && altEditing && (
@@ -1628,7 +1638,7 @@ const MarkdownImg = ({
                             autoFocus
                             className="markdown-img-alt-input"
                             value={altDraft}
-                            placeholder="Image description"
+                            placeholder={t("element:markdown.imageDescription")}
                             onChange={(e) => setAltDraft(e.target.value)}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") {
@@ -1643,8 +1653,8 @@ const MarkdownImg = ({
                         />
                     </div>
                 )}
-                {copied && <span className="markdown-img-copied">Path copied</span>}
-                {copiedFull && <span className="markdown-img-copied">Full path copied</span>}
+                {copied && <span className="markdown-img-copied">{t("element:markdown.pathCopied")}</span>}
+                {copiedFull && <span className="markdown-img-copied">{t("element:markdown.fullPathCopied")}</span>}
                 {lightboxOpen && (
                     <ImageLightbox src={resolvedSrc} alt={props.alt} onClose={() => setLightboxOpen(false)} />
                 )}
@@ -1657,7 +1667,7 @@ const MarkdownImg = ({
                                 autoFocus
                                 value={newPath}
                                 spellCheck={false}
-                                placeholder="Image path"
+                                placeholder={t("element:markdown.imagePath")}
                                 onChange={(e) => setNewPath(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (e.key === "Enter") {
@@ -1674,7 +1684,7 @@ const MarkdownImg = ({
             </>
         );
     }
-    return <span>[img]</span>;
+    return <span>{t("element:markdown.imgPlaceholder")}</span>;
 };
 
 // === Markdown component + inline-edit logic (render helpers are above) =================
@@ -1819,6 +1829,7 @@ const Markdown = ({
     waveBlockRenderers,
     presentationMode = false,
 }: MarkdownProps) => {
+    const { t } = useTranslation("element");
     // `fileContentAtom` is an async atom (Atom<Promise<string>>). On invalidation `useAtomValue`
     // throws the pending Promise → without a Suspense boundary above, ReactMarkdown's subtree
     // unmounts for one frame and the user sees "loading flash" then re-mount + scroll jump. Wrap
@@ -3408,7 +3419,7 @@ const Markdown = ({
                       ...(continuation != null
                           ? [
                                 {
-                                    label: `Continue from previous (${continuation})`,
+                                    label: i18n.t("element:markdown.continueFromPrevious", { number: continuation }),
                                     type: "checkbox" as const,
                                     checked: currentGroupStart === continuation,
                                     click: () => setGroupNumber(continuation),
@@ -3416,13 +3427,13 @@ const Markdown = ({
                             ]
                           : []),
                       {
-                          label: `Keep ${currentGroupStart}`,
+                          label: i18n.t("element:markdown.keepNumber", { number: currentGroupStart }),
                           type: "checkbox" as const,
                           checked: true,
                           click: () => {},
                       },
                       {
-                          label: "Restart from 1",
+                          label: i18n.t("element:markdown.restartFromOne"),
                           type: "checkbox" as const,
                           checked: currentGroupStart === 1,
                           click: () => setGroupNumber(1),
@@ -3468,7 +3479,7 @@ const Markdown = ({
                 });
                 if (items.length > 0) {
                     turnIntoMenuItem = {
-                        label: "Turn into",
+                        label: i18n.t("element:markdown.turnInto"),
                         type: "submenu",
                         submenu: items,
                         enabled: anchorBlockKind !== "code",
@@ -3493,18 +3504,22 @@ const Markdown = ({
             };
 
             const menu: ContextMenuItem[] = [
-                { label: "复制", click: () => void copyBlock() },
-                { label: "Copy Context", click: () => void copyContext() },
-                { label: "复制为副本", click: duplicateBlock },
+                { label: i18n.t("element:markdown.copyBlock"), click: () => void copyBlock() },
+                { label: i18n.t("element:markdown.copyContext"), click: () => void copyContext() },
+                { label: i18n.t("element:markdown.duplicateBlock"), click: duplicateBlock },
                 ...(turnIntoMenuItem != null ? ([{ type: "separator" }, turnIntoMenuItem] as ContextMenuItem[]) : []),
                 ...(numberingSubmenu != null
                     ? ([
                           { type: "separator" },
-                          { label: "List numbering", type: "submenu", submenu: numberingSubmenu },
+                          {
+                              label: i18n.t("element:markdown.listNumbering"),
+                              type: "submenu",
+                              submenu: numberingSubmenu,
+                          },
                       ] as ContextMenuItem[])
                     : []),
                 { type: "separator" },
-                { label: "删除", click: deleteBlock },
+                { label: i18n.t("element:markdown.deleteBlock"), click: deleteBlock },
             ];
             ContextMenuModel.getInstance().showContextMenu(menu, e, {
                 onClose: () => {
@@ -6138,8 +6153,8 @@ const Markdown = ({
                                         onDragStart={handleBlockDragStart}
                                         onDragEnd={handleBlockDragEnd}
                                         role="button"
-                                        aria-label="Block actions — drag to reorder"
-                                        title="Block actions — drag to reorder"
+                                        aria-label={t("element:markdown.blockActions")}
+                                        title={t("element:markdown.blockActions")}
                                     >
                                         <i className="markdown-block-grip-dot" aria-hidden="true" />
                                         <i className="markdown-block-grip-dot" aria-hidden="true" />
@@ -6152,8 +6167,8 @@ const Markdown = ({
                                             "markdown-block-grip-action" +
                                             (gripOpen ? "" : " markdown-block-grip-action-hidden")
                                         }
-                                        title="Insert block above"
-                                        aria-label="Insert block above"
+                                        title={t("element:markdown.insertBlockAbove")}
+                                        aria-label={t("element:markdown.insertBlockAbove")}
                                         style={{ top: insertPos.top - 33, left: insertPos.left }}
                                         onMouseEnter={handleGripEnter}
                                         onMouseLeave={handleGripLeave}
@@ -6167,8 +6182,8 @@ const Markdown = ({
                                             "markdown-block-grip-action" +
                                             (gripOpen ? "" : " markdown-block-grip-action-hidden")
                                         }
-                                        title="Insert block below"
-                                        aria-label="Insert block below"
+                                        title={t("element:markdown.insertBlockBelow")}
+                                        aria-label={t("element:markdown.insertBlockBelow")}
                                         style={{ top: insertPos.top + 15, left: insertPos.left }}
                                         onMouseEnter={handleGripEnter}
                                         onMouseLeave={handleGripLeave}
