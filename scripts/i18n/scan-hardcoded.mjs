@@ -101,6 +101,35 @@ function scanFile(rel, file) {
             const init = node.initializer;
             if (init && ts.isStringLiteral(init) && LATIN_RE.test(init.text)) {
                 add(init, "attr", init.text, node.name.getText(sf));
+            } else if (init && ts.isJsxExpression(init) && init.expression) {
+                // title={cond ? "A" : "B"} / title={`x ${y}`}：只读字面量片段。
+                // 2026-11-14 B6 发现的盲区（此前只看常量字符串字面量）。
+                // t("ns:section.key") 的 key 字面量不是文案，跳过（形态过滤，无需 AST 父子追踪）
+                const isTranslationKey = (text) => /^[a-z0-9-]+:[A-Za-z0-9._-]+$/.test(text);
+                // JS 类型名比较（typeof x === "string"）与 className 片段不是文案
+                const JS_TYPE_NAMES = new Set(["string", "number", "boolean", "object", "undefined", "function", "symbol", "bigint"]);
+                const isClassList = (text) =>
+                    /\s/.test(text) && text.split(/\s+/).every((tok) => /^[a-z0-9:._\[\]()/\-#%!]+$/i.test(tok));
+                const walkAttrExpr = (n) => {
+                    const parent = n.parent;
+                    // 跳过三类非文案：内嵌 JSX 的属性值（description={<>...className="x"</>}）、
+                    // 比较运算操作数（kind === "heading"）、以及对象属性键。
+                    if (
+                        parent &&
+                        (ts.isJsxAttribute(parent) ||
+                            (ts.isBinaryExpression(parent) &&
+                                [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken].includes(parent.operatorToken.kind)))
+                    ) {
+                        return;
+                    }
+                    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n)) {
+                        if (!isTranslationKey(n.text) && !JS_TYPE_NAMES.has(n.text) && !isClassList(n.text) && (LATIN_RE.test(n.text) || CJK_RE.test(n.text))) {
+                            add(n, "attr-expr", n.text, node.name.getText(sf));
+                        }
+                    }
+                    ts.forEachChild(n, walkAttrExpr);
+                };
+                walkAttrExpr(init.expression);
             }
         } else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
             if (CJK_RE.test(node.text)) add(node, "cjk", node.text);

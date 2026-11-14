@@ -18,6 +18,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { useAtomValue } from "jotai";
 import { useCallback, useMemo } from "react";
 import { registerPreviewPlugin, type PreviewPlugin } from "@/app/view/preview/preview-plugin-registry";
+import { i18n } from "@/i18n/config";
 import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
 import { parseFrontmatterBlock } from "../md-properties/frontmatter-block";
@@ -31,7 +32,10 @@ const pluginId = "markdown-banner";
 
 export const bannerPlugin: PreviewPlugin = {
     id: pluginId,
-    displayName: "Banner 视图",
+    // 惰性求值：模块级常量在 import 期求值，直接 i18n.t 会把标题锁死在启动时的 locale。
+    get displayName() {
+        return i18n.t("preview:plugin.banner");
+    },
     priority: -1, // 优先级低于 md-properties (0)
     match: (context) => {
         // 只匹配 .md/.mdx 文件

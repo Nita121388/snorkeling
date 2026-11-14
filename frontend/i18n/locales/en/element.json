@@ -63,10 +63,13 @@
     "remove": "Remove",
     "removeLabel": "Remove {{value}}",
     "create": "Create",
-    "empty": "No matching options"
+    "empty": "No matching options",
+    "countAria_one": "{{count}} session",
+    "countAria_other": "{{count}} sessions"
   },
   "editableTitle": {
-    "saveFailed": "Save failed, please try again"
+    "saveFailed": "Save failed, please try again",
+    "sessionTitleAria": "Session title: {{title}}"
   },
   "sessionNote": {
     "saveFailed": "Save failed: {{error}}",

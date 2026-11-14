@@ -38,6 +38,8 @@ import clsx from "clsx";
 import debug from "debug";
 import * as jotai from "jotai";
 import * as React from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import {
     isTermSelectionDrag,
     shouldRoutePlainTermGesture,
@@ -248,7 +250,7 @@ const TermFailureCopyBar = React.memo(
         return (
             <div className="absolute right-3 top-2 z-30" data-term-failure-copy="">
                 <CopyForAgent
-                    title={`Copy this failed command (exit ${exitCode}) for an AI to diagnose`}
+                    title={i18n.t("term:failureCopy.title", { exitCode })}
                     text={() =>
                         Promise.resolve(
                             buildTermFailurePayload({
@@ -276,6 +278,7 @@ export function shouldShowClaudeFullscreenHint(
 
 const TermClaudeFullscreenHint = React.memo(
     ({ model, termWrap }: { model: TermViewModel; termWrap: TermWrap | null }) => {
+        const { t } = useTranslation("term");
         const claudeActive = useAtomValueSafe<boolean>(termWrap?.claudeCodeActiveAtom);
         const [dismissed, setDismissed] = React.useState(false);
         const [mouseEnabled, setMouseEnabled] = React.useState(false);
@@ -299,13 +302,16 @@ const TermClaudeFullscreenHint = React.memo(
         return (
             <div className="absolute top-1.5 right-1.5 z-30 flex items-center gap-2 max-w-[70%] px-2.5 py-1 rounded-md bg-surface-strong border border-border text-[11px] leading-tight text-primary shadow-sm">
                 <span className="truncate">
-                    Claude Code fullscreen adds mouse editing (click anywhere in the prompt to move
-                    the cursor): type{" "}
-                    <span className="font-mono text-accent">/tui fullscreen</span>
+                    <Trans
+                        ns={"term" as const}
+                        i18nKey={"term:claudeHint" as never}
+                        t={t}
+                        components={{ code: <span className="font-mono text-accent" /> }}
+                    />{" "}
                 </span>
                 <button
                     onClick={() => setDismissed(true)}
-                    aria-label="Dismiss"
+                    aria-label={t("term:dismiss")}
                     className="text-secondary hover:text-primary cursor-pointer shrink-0"
                 >
                     <i className="fa fa-xmark" />

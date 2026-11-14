@@ -1,0 +1,188 @@
+{
+  "imagePager": {
+    "prev": "Previous image (←) · {{pos}}/{{size}}",
+    "prevStation": "Previous folder: {{dir}} ({{num}} images) · Shift+←",
+    "prevAtStart": "Already at the first image of this folder; no earlier image folder under anchor {{anchor}}",
+    "prevDisabled": "Previous image (←)",
+    "next": "Next image (→) · {{pos}}/{{size}}",
+    "nextStation": "Next folder: {{dir}} ({{num}} images) · press → or Shift+→",
+    "nextAtEnd": "Already at the last image of this folder; no more image folders under anchor {{anchor}}",
+    "nextDisabled": "Next image (→)",
+    "position": "{{pos}} / {{size}}",
+    "indexing": "Indexing…",
+    "counter": "{{position}} · {{path}} · anchor: {{anchor}}",
+    "refresh": "Rebuild index (Shift+R) · cache 60s",
+    "indexRebuilding": "Index expired — rebuilding",
+    "prevStationLabel": "Previous folder",
+    "prevLabel": "Previous image",
+    "nextStationLabel": "Next folder",
+    "nextLabel": "Next image",
+    "rebuildIndexLabel": "Rebuild index",
+    "layerEndBanner": "End of this folder · Next folder: {{dir}} ({{num}} images)",
+    "truncated": "Too many images — index truncated (limit 5000)",
+    "navigateFailed": "Page flip failed: {{error}}",
+    "enteredFolder": "Entered {{dir}} · 1/{{num}}",
+    "returnedToFolder": "Back to {{dir}} · {{num}}/{{num}}"
+  },
+  "imagePagerIndex": {
+    "listDirFailed": "Cannot list directory: {{error}}"
+  },
+  "entryManager": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "newFile": "New File",
+    "newFolder": "New Folder",
+    "rename": "Rename",
+    "moveTo": "Move to..."
+  },
+  "plugin": {
+    "banner": "Banner view",
+    "baseView": "Base view",
+    "mdProperties": "Properties view"
+  },
+  "banner": {
+    "imageAlt": "Banner",
+    "imageLoadFailed": "Unable to load image"
+  },
+  "emojiBadge": {
+    "changeDocumentEmoji": "Change document emoji",
+    "documentEmojiLabel": "Document emoji"
+  },
+  "baseConfig": {
+    "yamlParseFailed": "YAML parse failed: {{error}}",
+    "emptyConfig": "Empty configuration",
+    "filtersParseFailed": "Unable to parse the \"filters\" section",
+    "defaultViewName": "View"
+  },
+  "baseView": {
+    "loadFailed": "Failed to load: {{error}}",
+    "loading": "Loading…",
+    "emptyNoNotes": "Empty: no matching notes",
+    "formulaUnsupported": "Formulas are not supported yet"
+  },
+  "exportOptions": {
+    "okLabel": "Export",
+    "cancelLabel": "Cancel",
+    "title": "Export Markdown",
+    "showFrontmatter": "Show properties (frontmatter)",
+    "showFrontmatterTitle": "Keep the document's leading properties (YAML frontmatter) in the export",
+    "showToc": "Show table of contents",
+    "showTocTitle": "Insert a table of contents at the top of the exported document",
+    "darkTheme": "Dark theme",
+    "darkThemeTitle": "Use dark colors for the exported HTML / PDF",
+    "fileNameLabel": "File name",
+    "willExportAs": "Will export as: ",
+    "tocHeading": "Table of Contents"
+  },
+  "mdProperties": {
+    "title": "Properties",
+    "expandProperties": "Expand properties",
+    "collapseProperties": "Collapse properties",
+    "dragToReorder": "Drag to reorder",
+    "keyPlaceholder": "key",
+    "valuePlaceholder": "value",
+    "addProperty": "Add property"
+  },
+  "listPropertyEditor": {
+    "delete": "Delete",
+    "tagPlaceholder": "Type a tag..."
+  },
+  "previewEdit": {
+    "fileReadFailed": "File Read Failed: {{error}}",
+    "loadingFile": "Loading file…"
+  },
+  "errorOverlay": {
+    "copy": "Copy"
+  },
+  "explorer": {
+    "explorer": "Explorer",
+    "search": "Search",
+    "newFile": "New File",
+    "newFolder": "New Folder",
+    "collapseAll": "Collapse All",
+    "expandAll": "Expand All",
+    "searching": "Searching...",
+    "searchingShortly": "Searching shortly",
+    "matchesCount": "{{num}} matches",
+    "searchOnEnter": "Search on Enter",
+    "searchSummary": "{{names}} names, {{contents}} content matches",
+    "typeAtLeast": "Type at least {{num}} characters to search file names and contents.",
+    "searchShortlyHint": "Searching file names and contents shortly.",
+    "noMatches": "No matches found.",
+    "nameSearchFailed": "File name search failed: {{error}}",
+    "nameMatches": "Name matches",
+    "contentSearchFailed": "File content search failed: {{error}}",
+    "contentMatches": "Content matches",
+    "showingFirst": "Showing first {{num}}",
+    "matchSingular": "{{num}} match",
+    "matchPlural": "{{num}} matches",
+    "searchInPlaceholder": "Search names and contents in {{root}}"
+  },
+  "markdown": {
+    "sourceEditorClosed": "Source editor closed"
+  },
+  "exportStatus": {
+    "markdownOnly": "Only Markdown files can be exported",
+    "noContent": "Nothing to export",
+    "noProvider": "No export provider available",
+    "exporting": "Exporting {{format}}…",
+    "failed": "Export failed",
+    "exported": "Exported {{name}}"
+  },
+  "newFiles": {
+    "files": "Files",
+    "searchPaths": "Search paths",
+    "copyPath": "Copy path",
+    "unpin": "Unpin",
+    "remove": "Remove",
+    "openHome": "Open home directory",
+    "home": "Home",
+    "pin": "Pin",
+    "unpinRow": "Unpin"
+  },
+  "streaming": {
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "resetZoom": "Reset Zoom",
+    "notSupported": "Preview Not Supported",
+    "htmlPreviewTitle": "HTML Preview (sandboxed)"
+  },
+  "invalidSpecializedView": "Invalid Specialized View Component ({{view}})",
+  "vcsMark": {
+    "modified": "Modified",
+    "untracked": "Untracked",
+    "deleted": "Deleted",
+    "changedFile": "VCS changes: {{mark}}",
+    "changedDir": "VCS changes: {{num}} files changed in this folder"
+  },
+  "directory": {
+    "name": "Name",
+    "perm": "Perm",
+    "lastModified": "Last Modified",
+    "size": "Size",
+    "type": "Type"
+  },
+  "editToolbar": {
+    "dragHeading": "Drag heading section",
+    "dragList": "Drag list item",
+    "cutHeading": "Cut heading section",
+    "cutList": "Cut list item",
+    "insertAboveHeading": "Insert heading above",
+    "insertAboveList": "Insert list item above",
+    "insertBelowHeading": "Insert heading below",
+    "insertBelowList": "Insert list item below",
+    "moveUpHeading": "Move heading section up",
+    "moveUpList": "Move list item up",
+    "moveDownHeading": "Move heading section down",
+    "moveDownList": "Move list item down"
+  },
+  "editorAction": {
+    "copyContext": "🪧 Copy Context",
+    "searchInFiles": "Search In Files",
+    "noFileReference": "No file reference found in the selected text.",
+    "moveBlockUp": "Move Markdown Block Up",
+    "moveBlockDown": "Move Markdown Block Down",
+    "renumberList": "Renumber Ordered List",
+    "copyContextShort": "Copy Context"
+  }
+}

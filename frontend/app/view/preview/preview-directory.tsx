@@ -30,6 +30,8 @@ import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useDrag, useDrop } from "react-dnd";
 import { debounce } from "throttle-debounce";
 import { InlineRenameInput } from "@/app/element/inline-rename-input";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 import "./directorypreview.scss";
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
 import {
@@ -53,7 +55,7 @@ import { openPreviewEntry } from "./preview-open";
 import { isWindowsDrivesPath } from "./preview-windows-drives";
 import type { PreviewEnv } from "./previewenv";
 import { normalizeVcsPath, type VcsTreeStatus } from "./vcs-tree-status";
-import { VcsFileMarkTitle, useDirectoryVcsTreeStatus } from "./vcs-tree-status-hook";
+import { VcsFileMarkTitleKey, useDirectoryVcsTreeStatus } from "./vcs-tree-status-hook";
 
 const PageJumpSize = 20;
 
@@ -76,7 +78,7 @@ function DirectoryNameCell({ name, finfo, vcsStatus }: DirectoryNameCellProps) {
         if (count <= 0) {
             return plainName;
         }
-        const title = `VCS 变更：该目录下 ${count} 个文件有变动`;
+        const title = i18n.t("preview:vcsMark.changedDir", { num: count });
         return (
             <span className="dir-vcs-name-wrap">
                 <span className="dir-table-name ellipsis" title={title}>
@@ -93,7 +95,7 @@ function DirectoryNameCell({ name, finfo, vcsStatus }: DirectoryNameCellProps) {
         return plainName;
     }
     const markClass = `is-vcs-${mark.toLowerCase()}`;
-    const title = `VCS 变更：${VcsFileMarkTitle[mark]}`;
+    const title = i18n.t("preview:vcsMark.changedFile", { mark: i18n.t(VcsFileMarkTitleKey[mark]) });
     return (
         <span className="dir-vcs-name-wrap">
             <span className={`dir-table-name ellipsis ${markClass}`} title={title}>
@@ -177,6 +179,7 @@ function DirectoryTable({
     newDirectory,
     vcsStatus,
 }: DirectoryTableProps) {
+    const { t } = useTranslation("preview");
     const env = useWaveEnv<PreviewEnv>();
     const fullConfig = useAtomValue(env.atoms.fullConfigAtom);
     const defaultSort = useAtomValue(env.getSettingsKeyAtom("preview:defaultsort")) ?? "name";
@@ -216,42 +219,42 @@ function DirectoryTable({
                 cell: (info) => (
                     <DirectoryNameCell name={info.getValue()} finfo={info.row.original} vcsStatus={vcsStatus} />
                 ),
-                header: () => <span className="dir-table-head-name">Name</span>,
+                header: () => <span className="dir-table-head-name">{t("preview:directory.name")}</span>,
                 sortingFn: "alphanumeric",
                 size: 200,
                 minSize: 90,
             }),
             columnHelper.accessor("modestr", {
                 cell: (info) => <span className="dir-table-modestr">{info.getValue()}</span>,
-                header: () => <span>Perm</span>,
+                header: () => <span>{t("preview:directory.perm")}</span>,
                 size: 91,
                 minSize: 90,
                 sortingFn: "alphanumeric",
             }),
             columnHelper.accessor("modtime", {
                 cell: (info) => <span className="dir-table-lastmod">{getLastModifiedTime(info.getValue())}</span>,
-                header: () => <span>Last Modified</span>,
+                header: () => <span>{t("preview:directory.lastModified")}</span>,
                 size: 91,
                 minSize: 65,
                 sortingFn: "datetime",
             }),
             columnHelper.accessor("size", {
                 cell: (info) => <span className="dir-table-size">{getBestUnit(info.getValue())}</span>,
-                header: () => <span className="dir-table-head-size">Size</span>,
+                header: () => <span className="dir-table-head-size">{t("preview:directory.size")}</span>,
                 size: 55,
                 minSize: 50,
                 sortingFn: "auto",
             }),
             columnHelper.accessor("mimetype", {
                 cell: (info) => <span className="dir-table-type ellipsis">{cleanMimetype(info.getValue() ?? "")}</span>,
-                header: () => <span className="dir-table-head-type">Type</span>,
+                header: () => <span className="dir-table-head-type">{t("preview:directory.type")}</span>,
                 size: 97,
                 minSize: 97,
                 sortingFn: "alphanumeric",
             }),
             columnHelper.accessor("path", {}),
         ],
-        [fullConfig, vcsStatus]
+        [fullConfig, vcsStatus, t]
     );
 
     const setEntryManagerProps = useSetAtom(entryManagerOverlayPropsAtom);

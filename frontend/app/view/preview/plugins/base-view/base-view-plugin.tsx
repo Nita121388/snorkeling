@@ -6,13 +6,17 @@
 // 与 Obsidian 解耦：只读 .base 纯文本 + 扫描 markdown frontmatter，不依赖 Obsidian 应用。
 
 import { registerPreviewPlugin, PreviewPlugin } from "@/app/view/preview/preview-plugin-registry";
+import { i18n } from "@/i18n/config";
 import { BaseViewTable } from "./base-view-table";
 
 const pluginId = "base-view";
 
 export const baseViewPlugin: PreviewPlugin = {
     id: pluginId,
-    displayName: "Base 视图",
+    // 惰性求值：避免 import 期把标题锁死到启动时的 locale。
+    get displayName() {
+        return i18n.t("preview:plugin.baseView");
+    },
     priority: 0,
     match: (ctx) => ctx.fileName.endsWith(".base"),
     render: ({ model }) => <BaseViewTable model={model} />,

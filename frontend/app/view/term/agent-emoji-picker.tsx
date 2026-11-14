@@ -25,8 +25,10 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { makeORef } from "@/app/store/wos";
 import { AgentEmojiMetaKey, normalizeAgentEmoji } from "./agent-logo";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 export type { AgentEmojiScope };
 
@@ -89,6 +91,7 @@ export function AgentEmojiPicker({
     hasCurrentEmoji,
     onClose,
 }: AgentEmojiPickerProps) {
+    const { t } = useTranslation("term");
     const [catalog, setCatalog] = React.useState<EmojiCatalog | null>(() => getLoadedEmojiCatalog());
     const [query, setQuery] = React.useState("");
     const [activeIndex, setActiveIndex] = React.useState(0);
@@ -183,36 +186,37 @@ export function AgentEmojiPicker({
         setEmojiOnlyState(getTabDisplayMode(sessionKey) === "emoji-only");
     }, [sessionKey]);
 
-    const providerLabel = provider === "" || provider === "agent" ? "此 Agent" : formatAgentProvider(provider);
+    const providerLabel =
+        provider === "" || provider === "agent" ? t("term:agentEmoji.thisAgent") : formatAgentProvider(provider);
     const footer = (
         <div className="agent-emoji-picker-footer">
-            <div className="agent-emoji-scope" role="radiogroup" aria-label="Emoji persona scope">
+            <div className="agent-emoji-scope" role="radiogroup" aria-label={t("term:agentEmoji.scopeGroupLabel")}>
                 {sessionKey !== "" ? (
                     <ScopeOption
                         checked={effectiveScope === "session"}
-                        label="仅此会话"
-                        hint="这一个会话在所有出现的位置都换成此 emoji（含历史列表，resume 后也保留）"
+                        label={t("term:agentEmoji.scopeSession")}
+                        hint={t("term:agentEmoji.scopeSessionHint")}
                         onChange={() => setScope("session")}
                     />
                 ) : blockKey !== "" ? (
                     <ScopeOption
                         checked={effectiveScope === "block"}
-                        label="仅此标签页"
-                        hint="只改当前这个标签页的图标；其它会话不受影响"
+                        label={t("term:agentEmoji.scopeBlock")}
+                        hint={t("term:agentEmoji.scopeBlockHint")}
                         onChange={() => setScope("block")}
                     />
                 ) : null}
                 {sessionKey === "" ? (
                     <div className="agent-emoji-scope-note">
                         {blockKey !== ""
-                            ? "未识别到当前会话 ID，默认只改当前标签页"
-                            : "未识别到当前会话 ID"}
+                            ? t("term:agentEmoji.unknownSessionFallback")
+                            : t("term:agentEmoji.unknownSession")}
                     </div>
                 ) : null}
                 <ScopeOption
                     checked={effectiveScope === "provider"}
-                    label={`所有 ${providerLabel} 会话`}
-                    hint={`覆盖所有 ${providerLabel} 会话（仅限该 provider，不影响其它 agent），含历史会话`}
+                    label={i18n.t("term:agentEmoji.scopeProvider", { provider: providerLabel })}
+                    hint={i18n.t("term:agentEmoji.scopeProviderHint", { provider: providerLabel })}
                     onChange={() => setScope("provider")}
                 />
             </div>
@@ -228,9 +232,9 @@ export function AgentEmojiPicker({
                                 setTabDisplayMode(sessionKey, next ? "emoji-only" : "full");
                             }}
                         />
-                        <span>仅显示 Emoji</span>
+                        <span>{t("term:agentEmoji.emojiOnly")}</span>
                     </label>
-                    <span className="agent-emoji-display-hint">隐藏 Tab 标题，仅保留图标与状态</span>
+                    <span className="agent-emoji-display-hint">{t("term:agentEmoji.emojiOnlyHint")}</span>
                 </div>
             ) : null}
             <button
@@ -238,9 +242,9 @@ export function AgentEmojiPicker({
                 className="agent-emoji-reset"
                 onClick={() => applyEmoji(null)}
                 disabled={!currentHasEmoji}
-                title="恢复默认品牌 Logo"
+                title={t("term:agentEmoji.resetTitle")}
             >
-                恢复默认 Logo
+                {t("term:agentEmoji.reset")}
             </button>
         </div>
     );
@@ -256,7 +260,7 @@ export function AgentEmojiPicker({
                     width: Math.min(320, Math.max(220, window.innerWidth - 24)),
                 }}
                 role="dialog"
-                aria-label="Emoji picker loading"
+                aria-label={t("term:agentEmoji.loadingLabel")}
             >
                 <div className="markdown-emoji-searchrow">
                     <div className="agent-emoji-loading-search" />

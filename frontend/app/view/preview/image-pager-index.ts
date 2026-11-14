@@ -12,6 +12,7 @@
 //     （stale-while-revalidate），避免翻页时计数器闪回"索引中…"。
 //   - 无框架依赖：useSyncExternalStore 兼容的 subscribe / getSnapshot。
 
+import { i18n } from "@/i18n/config";
 import {
     PAGER_LIMITS,
     buildLayer,
@@ -188,7 +189,10 @@ async function buildIndex(entry: CacheEntry, params: EnsureParams): Promise<void
         rootEntries = await listDir(anchor);
     } catch (err) {
         if (!alive()) return;
-        publish(entry, { building: false, error: `无法列目录: ${String(err?.message ?? err)}` });
+        publish(entry, {
+            building: false,
+            error: i18n.t("preview:imagePagerIndex.listDirFailed", { error: String(err?.message ?? err) }),
+        });
         return;
     }
     if (!alive()) return;

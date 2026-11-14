@@ -36,8 +36,10 @@ import enBlockEditor from "../frontend/i18n/locales/en/block-editor.json";
 import enCommon from "../frontend/i18n/locales/en/common.json";
 import enCommontext from "../frontend/i18n/locales/en/commontext.json";
 import enElement from "../frontend/i18n/locales/en/element.json";
+import enPreview from "../frontend/i18n/locales/en/preview.json";
 import enSessionOverview from "../frontend/i18n/locales/en/session-overview.json";
 import enTab from "../frontend/i18n/locales/en/tab.json";
+import enTerm from "../frontend/i18n/locales/en/term.json";
 import enWaveconfig from "../frontend/i18n/locales/en/waveconfig.json";
 import zhAipanel from "../frontend/i18n/locales/zh/aipanel.json";
 import zhBlock from "../frontend/i18n/locales/zh/block.json";
@@ -45,15 +47,17 @@ import zhBlockEditor from "../frontend/i18n/locales/zh/block-editor.json";
 import zhCommon from "../frontend/i18n/locales/zh/common.json";
 import zhCommontext from "../frontend/i18n/locales/zh/commontext.json";
 import zhElement from "../frontend/i18n/locales/zh/element.json";
+import zhPreview from "../frontend/i18n/locales/zh/preview.json";
 import zhSessionOverview from "../frontend/i18n/locales/zh/session-overview.json";
 import zhTab from "../frontend/i18n/locales/zh/tab.json";
+import zhTerm from "../frontend/i18n/locales/zh/term.json";
 import zhWaveconfig from "../frontend/i18n/locales/zh/waveconfig.json";
 
 export const MAIN_SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type MainLocale = (typeof MAIN_SUPPORTED_LOCALES)[number];
 export const MAIN_DEFAULT_LOCALE: MainLocale = "en";
 export const MAIN_FALLBACK_LOCALE: MainLocale = "en";
-export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext", "block", "element", "block-editor", "waveconfig"] as const;
+export const MAIN_NS = ["common", "tab", "aipanel", "session-overview", "commontext", "block", "element", "block-editor", "waveconfig", "term", "preview"] as const;
 
 /** Normalize a raw `ui:locale` value into a supported locale ("en" fallback). */
 export function coerceLocale(value: unknown): MainLocale {
@@ -93,6 +97,8 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         element: enElement,
         "block-editor": enBlockEditor,
         waveconfig: enWaveconfig,
+        term: enTerm,
+        preview: enPreview,
     },
     zh: {
         common: zhCommon,
@@ -104,6 +110,8 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         element: zhElement,
         "block-editor": zhBlockEditor,
         waveconfig: zhWaveconfig,
+        term: zhTerm,
+        preview: zhPreview,
     },
 };
 

@@ -232,7 +232,7 @@ export function PropertyTagEditor({
                             {optionCounts?.[option] != null ? (
                                 <span
                                     className="ptag-option-count"
-                                    aria-label={`${optionCounts[option]} sessions`}
+                                    aria-label={i18n.t("element:tagEditor.countAria", { count: optionCounts[option] })}
                                 >
                                     {optionCounts[option]}
                                 </span>

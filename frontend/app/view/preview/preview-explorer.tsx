@@ -7,6 +7,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { TreeNodeData, TreeView, TreeViewRef, TreeViewRowInfo } from "@/app/treeview/treeview";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
 import { fileInfoRequest } from "@/util/fileinfo";
 import { checkKeyPressed, isCharacterKeyEvent } from "@/util/keyutil";
 import { fireAndForget, makeConnRoute } from "@/util/util";
@@ -14,6 +15,7 @@ import { offset, useDismiss, useFloating, useInteractions } from "@floating-ui/r
 import clsx from "clsx";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { EntryManagerOverlay, EntryManagerOverlayProps, EntryManagerType } from "./entry-manager";
 import { openPathInPreview } from "./file-link-navigation";
 import {
@@ -41,7 +43,7 @@ import {
 import { getPreviewDisplayPath, isWindowsDrivesPath } from "./preview-windows-drives";
 import type { PreviewEnv } from "./previewenv";
 import { FILES_VCS_TREE_STATUS_ENABLED, normalizeVcsPath } from "./vcs-tree-status";
-import { VcsFileMarkTitle, useDirectoryVcsTreeStatus } from "./vcs-tree-status-hook";
+import { VcsFileMarkTitleKey, useDirectoryVcsTreeStatus } from "./vcs-tree-status-hook";
 
 const TreeFetchLimit = 1024;
 const TreeMaxEntries = 500;
@@ -146,6 +148,7 @@ interface PreviewExplorerProps {
 }
 
 function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
+    const { t } = useTranslation("preview");
     const env = useWaveEnv<PreviewEnv>();
     const fullConfig = useAtomValue(env.atoms.fullConfigAtom);
     const showHiddenFiles = useAtomValue(model.showHiddenFiles);
@@ -212,7 +215,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                 if (count <= 0) {
                     return null;
                 }
-                const title = `VCS 变更：该目录下 ${count} 个文件有变动`;
+                const title = i18n.t("preview:vcsMark.changedDir", { num: count });
                 return (
                     <span className="dir-vcs-mark dir-vcs-count" title={title} aria-hidden="true">
                         {count}
@@ -223,7 +226,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             if (mark == null) {
                 return null;
             }
-            const title = `VCS 变更：${VcsFileMarkTitle[mark]}`;
+            const title = i18n.t("preview:vcsMark.changedFile", { mark: i18n.t(VcsFileMarkTitleKey[mark]) });
             return (
                 <span className={`dir-vcs-mark is-vcs-${mark.toLowerCase()}`} title={title} aria-hidden="true">
                     {mark}
@@ -241,10 +244,12 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
             const path = normalizeVcsPath(row.node.path ?? row.id);
             if (row.isDirectory) {
                 const count = vcsStatus.dirCount.get(path) ?? 0;
-                return count > 0 ? `VCS 变更：该目录下 ${count} 个文件有变动` : undefined;
+                return count > 0 ? i18n.t("preview:vcsMark.changedDir", { num: count }) : undefined;
             }
             const mark = vcsStatus.fileMark.get(path);
-            return mark == null ? undefined : `VCS 变更：${VcsFileMarkTitle[mark]}`;
+            return mark == null
+                ? undefined
+                : i18n.t("preview:vcsMark.changedFile", { mark: i18n.t(VcsFileMarkTitleKey[mark]) });
         },
         [vcsStatus]
     );
@@ -1087,7 +1092,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     )}
                     onClick={() => setSearchActive(false)}
                 >
-                    Explorer
+                    {t("preview:explorer.explorer")}
                 </button>
                 <button
                     className={clsx(
@@ -1098,7 +1103,7 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                     )}
                     onClick={() => setSearchActive(true)}
                 >
-                    Search
+                    {t("preview:explorer.search")}
                 </button>
                 {!searchActive && (
                     <div className="ml-auto flex items-center gap-1">
@@ -1106,8 +1111,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                             <>
                                 <button
                                     className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary"
-                                    title="New File"
-                                    aria-label="New File"
+                                    title={t("preview:explorer.newFile")}
+                                    aria-label={t("preview:explorer.newFile")}
                                     onClick={(event) => {
                                         event.stopPropagation();
                                         createFileInSelectedDirectory();
@@ -1117,8 +1122,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                 </button>
                                 <button
                                     className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary"
-                                    title="New Folder"
-                                    aria-label="New Folder"
+                                    title={t("preview:explorer.newFolder")}
+                                    aria-label={t("preview:explorer.newFolder")}
                                     onClick={(event) => {
                                         event.stopPropagation();
                                         createDirectoryInSelectedDirectory();
@@ -1130,8 +1135,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         )}
                         <button
                             className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-50"
-                            title="Collapse All"
-                            aria-label="Collapse All"
+                            title={t("preview:explorer.collapseAll")}
+                            aria-label={t("preview:explorer.collapseAll")}
                             disabled={treeExpandingAll}
                             onClick={collapseTree}
                         >
@@ -1139,8 +1144,8 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                         </button>
                         <button
                             className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-50"
-                            title="Expand All"
-                            aria-label="Expand All"
+                            title={t("preview:explorer.expandAll")}
+                            aria-label={t("preview:explorer.expandAll")}
                             disabled={treeExpandingAll}
                             onClick={expandTree}
                         >
@@ -1238,52 +1243,59 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                         closeSearch();
                                     }
                                 }}
-                                placeholder={`Search names and contents in ${normalizeRootLabel(rootPath)}`}
+                                placeholder={i18n.t("preview:explorer.searchInPlaceholder", { root: normalizeRootLabel(rootPath) })}
                                 className="min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 py-1.5 text-[12px] outline-none transition-colors focus:border-[var(--accent-color)]"
                             />
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted">
                             <span>
                                 {searching
-                                    ? "Searching..."
+                                    ? t("preview:explorer.searching")
                                     : draftSearchQuery.length >= SearchMinLength && searchInputPending
-                                      ? "Searching shortly"
+                                      ? t("preview:explorer.searchingShortly")
                                       : submittedSearchQuery.length >= SearchMinLength
-                                        ? `${totalSearchMatches} matches`
-                                        : "Search on Enter"}
+                                        ? i18n.t("preview:explorer.matchesCount", { num: totalSearchMatches })
+                                        : t("preview:explorer.searchOnEnter")}
                             </span>
                             <span>
-                                {sortedNameResults.length} names, {contentSearchResults.length} content matches
+                                {i18n.t("preview:explorer.searchSummary", {
+                                    names: sortedNameResults.length,
+                                    contents: contentSearchResults.length,
+                                })}
                             </span>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto px-2 py-2">
                         {draftSearchQuery.length < SearchMinLength ? (
                             <div className="px-1 py-3 text-[12px] text-muted">
-                                Type at least {SearchMinLength} characters to search file names and contents.
+                                {i18n.t("preview:explorer.typeAtLeast", { num: SearchMinLength })}
                             </div>
                         ) : searchInputPending ? (
                             <div className="px-1 py-3 text-[12px] text-muted">
-                                Searching file names and contents shortly.
+                                {t("preview:explorer.searchShortlyHint")}
                             </div>
                         ) : !searching &&
                           sortedNameResults.length === 0 &&
                           groupedContentResults.length === 0 &&
                           !nameSearchError &&
                           !contentSearchError ? (
-                            <div className="px-1 py-3 text-[12px] text-muted">No matches found.</div>
+                            <div className="px-1 py-3 text-[12px] text-muted">{t("preview:explorer.noMatches")}</div>
                         ) : (
                             <>
                                 {nameSearchError && (
                                     <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/5 px-2 py-2 text-[12px] text-red-200">
-                                        File name search failed: {nameSearchError}
+                                        {i18n.t("preview:explorer.nameSearchFailed", { error: nameSearchError })}
                                     </div>
                                 )}
                                 {sortedNameResults.length > 0 && (
                                     <div className="mb-4">
                                         <div className="mb-2 flex items-center justify-between gap-2 px-1 text-[11px] font-[600] uppercase tracking-[0.08em] text-muted">
-                                            <span>Name matches</span>
-                                            {nameSearchTruncated && <span>Showing first {SearchLimit}</span>}
+                                            <span>{t("preview:explorer.nameMatches")}</span>
+                                            {nameSearchTruncated && (
+                                                <span>
+                                                    {i18n.t("preview:explorer.showingFirst", { num: SearchLimit })}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="space-y-1">
                                             {sortedNameResults.map((match) => {
@@ -1332,14 +1344,18 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                 )}
                                 {contentSearchError && (
                                     <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/5 px-2 py-2 text-[12px] text-red-200">
-                                        File content search failed: {contentSearchError}
+                                        {i18n.t("preview:explorer.contentSearchFailed", { error: contentSearchError })}
                                     </div>
                                 )}
                                 {groupedContentResults.length > 0 && (
                                     <div>
                                         <div className="mb-2 flex items-center justify-between gap-2 px-1 text-[11px] font-[600] uppercase tracking-[0.08em] text-muted">
-                                            <span>Content matches</span>
-                                            {contentSearchTruncated && <span>Showing first {SearchLimit}</span>}
+                                            <span>{t("preview:explorer.contentMatches")}</span>
+                                            {contentSearchTruncated && (
+                                                <span>
+                                                    {i18n.t("preview:explorer.showingFirst", { num: SearchLimit })}
+                                                </span>
+                                            )}
                                         </div>
                                         {groupedContentResults.map((group) => (
                                             <div key={group.path} className="mb-3 last:mb-0">
@@ -1377,8 +1393,12 @@ function PreviewExplorer({ model, rootPath }: PreviewExplorerProps) {
                                                         {group.relPath}
                                                     </span>
                                                     <span className="shrink-0 text-[10px] text-muted">
-                                                        {group.matches.length} match
-                                                        {group.matches.length === 1 ? "" : "es"}
+                                                        {i18n.t(
+                                                            group.matches.length === 1
+                                                                ? "preview:explorer.matchSingular"
+                                                                : "preview:explorer.matchPlural",
+                                                            { num: group.matches.length }
+                                                        )}
                                                     </span>
                                                 </button>
                                                 {!collapsedSearchPaths.has(group.path) && (

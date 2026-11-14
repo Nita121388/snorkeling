@@ -1801,7 +1801,7 @@ const CommonTextComposeModal = memo(() => {
                                                             "inline-flex items-center gap-1 " +
                                                             ((item.usagecount ?? 0) === 0 ? "text-muted" : "")
                                                         }
-                                                        title={`Used ${item.usagecount ?? 0} time(s)`}
+                                                        title={i18n.t("commontext:compose.usedTimes", { count: item.usagecount ?? 0 })}
                                                     >
                                                         {/* 计数不再配图标：那个循环箭头读起来是「重来/重跑」，
                                                             与「这条被用过多少次」不是一回事。同一右槽第二行已改成
@@ -1820,8 +1820,8 @@ const CommonTextComposeModal = memo(() => {
                                                             先把 `ago` 去掉：同一列里所有值都是「多久以前」。 */}
                                                         <CommonTextFreshnessSquare
                                                             tier={commonTextFreshnessTier(item)}
-                                                            title={`Updated ${compactCommonTextTime(item.updatedat, true)}`}
-                                                            ariaLabel={`Updated ${formatSessionRelativeTime(item.updatedat)}`}
+                                                            title={i18n.t("commontext:compose.updatedTitle", { time: compactCommonTextTime(item.updatedat, true) })}
+                                                            ariaLabel={i18n.t("commontext:compose.updatedAria", { time: formatSessionRelativeTime(item.updatedat) })}
                                                         />
                                                         <span data-commontext-updated-rel="" aria-hidden="true">
                                                             {formatCommonTextFreshnessCompact(item.updatedat)}

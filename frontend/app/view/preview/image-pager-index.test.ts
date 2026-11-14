@@ -6,7 +6,8 @@
 // 为什么必须有这层测试：截断死锁（审核 B1，10 目录 × 600 张时 buildIndex 的
 // Promise 永不 resolve）用 20 行 mock 就能当场抓住，纯逻辑单测覆盖不到。
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
     _resetPagerCacheForTest,
     getPagerIndex,
@@ -57,6 +58,11 @@ function onceSettled(get: () => PagerIndexState, timeoutMs = 5000): Promise<Page
 function paramsFor(key: string, anchor: string, listDir: EnsureParams["listDir"]): EnsureParams {
     return { key, anchor, sort: "name", listDir };
 }
+
+beforeAll(async () => {
+    // 错误文案走 i18n.t，必须先装好资源，否则 t() 只回 key、拿不到插值的 error 原文。
+    await initI18n("en");
+});
 
 afterEach(() => {
     _resetPagerCacheForTest();

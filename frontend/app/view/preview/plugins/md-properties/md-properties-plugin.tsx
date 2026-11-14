@@ -23,6 +23,7 @@ import { MarkdownPreview } from "@/app/view/preview/preview-markdown";
 import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { registerPreviewPlugin, type PreviewPlugin } from "@/app/view/preview/preview-plugin-registry";
 import { extractFirstH1, resolveNoteTitle } from "@/app/view/preview/title-util";
+import { i18n } from "@/i18n/config";
 import { useAtomValue } from "jotai";
 import { loadable } from "jotai/utils";
 import { useCallback, useMemo } from "react";
@@ -48,7 +49,10 @@ const FrontmatterBlockKey = "obsidian-props[fm]";
 
 export const mdPropertiesPlugin: PreviewPlugin = {
     id: pluginId,
-    displayName: "属性视图",
+    // 惰性求值：避免 import 期把标题锁死到启动时的 locale。
+    get displayName() {
+        return i18n.t("preview:plugin.mdProperties");
+    },
     priority: 0,
     match: isMdPropertiesMatch,
     render: ({ model, parentRef }) => <MdPropertiesView model={model} parentRef={parentRef} />,

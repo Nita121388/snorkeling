@@ -6,6 +6,7 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { BlockHeaderSuggestionControl } from "@/app/suggestion/suggestion";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
 import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { memo, useEffect } from "react";
@@ -92,7 +93,11 @@ const SpecializedView = memo(({ parentRef, model }: SpecializedViewProps) => {
     }
     const SpecializedViewComponent = resolveSpecializedViewComponent(specializedView.specializedView);
     if (!SpecializedViewComponent) {
-        return <CenteredDiv>Invalid Specialized View Component ({specializedView.specializedView})</CenteredDiv>;
+        return (
+            <CenteredDiv>
+                {i18n.t("preview:invalidSpecializedView", { view: specializedView.specializedView })}
+            </CenteredDiv>
+        );
     }
     return <SpecializedViewComponent key={path} model={model} parentRef={parentRef} />;
 });

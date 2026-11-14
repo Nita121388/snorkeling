@@ -12,8 +12,10 @@ import enCommon from "./locales/en/common.json";
 import enCommontext from "./locales/en/commontext.json";
 import enElement from "./locales/en/element.json";
 import enOnboarding from "./locales/en/onboarding.json";
+import enPreview from "./locales/en/preview.json";
 import enSessionOverview from "./locales/en/session-overview.json";
 import enTab from "./locales/en/tab.json";
+import enTerm from "./locales/en/term.json";
 import enWaveconfig from "./locales/en/waveconfig.json";
 import zhAipanel from "./locales/zh/aipanel.json";
 import zhBlock from "./locales/zh/block.json";
@@ -22,8 +24,10 @@ import zhCommon from "./locales/zh/common.json";
 import zhCommontext from "./locales/zh/commontext.json";
 import zhElement from "./locales/zh/element.json";
 import zhOnboarding from "./locales/zh/onboarding.json";
+import zhPreview from "./locales/zh/preview.json";
 import zhSessionOverview from "./locales/zh/session-overview.json";
 import zhTab from "./locales/zh/tab.json";
+import zhTerm from "./locales/zh/term.json";
 import zhWaveconfig from "./locales/zh/waveconfig.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
@@ -43,6 +47,8 @@ export const NS = [
     "element",
     "block-editor",
     "waveconfig",
+    "term",
+    "preview",
 ] as const;
 
 /**
@@ -103,6 +109,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 element: enElement,
                 "block-editor": enBlockEditor,
                 waveconfig: enWaveconfig,
+                term: enTerm,
+                preview: enPreview,
             },
             zh: {
                 common: zhCommon,
@@ -115,6 +123,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 element: zhElement,
                 "block-editor": zhBlockEditor,
                 waveconfig: zhWaveconfig,
+                term: zhTerm,
+                preview: zhPreview,
             },
         },
         interpolation: {

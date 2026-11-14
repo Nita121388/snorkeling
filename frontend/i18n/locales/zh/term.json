@@ -1,0 +1,81 @@
+{
+  "agentEmoji": {
+    "thisAgent": "此 Agent",
+    "scopeGroupLabel": "Emoji 人格作用范围",
+    "scopeSession": "仅此会话",
+    "scopeSessionHint": "这一个会话在所有出现的位置都换成此 emoji（含历史列表，resume 后也保留）",
+    "scopeBlock": "仅此标签页",
+    "scopeBlockHint": "只改当前这个标签页的图标；其它会话不受影响",
+    "unknownSessionFallback": "未识别到当前会话 ID，默认只改当前标签页",
+    "unknownSession": "未识别到当前会话 ID",
+    "scopeProvider": "所有 {{provider}} 会话",
+    "scopeProviderHint": "覆盖所有 {{provider}} 会话（仅限该 provider，不影响其它 agent），含历史会话",
+    "emojiOnly": "仅显示 Emoji",
+    "emojiOnlyHint": "隐藏 Tab 标题，仅保留图标与状态",
+    "resetTitle": "恢复默认品牌 Logo",
+    "reset": "恢复默认 Logo",
+    "loadingLabel": "Emoji 选择器加载中"
+  },
+  "hoverCard": {
+    "modelLoading": "获取中…",
+    "modelUnspecified": "未指定",
+    "setPersonaEmoji": "设置 emoji 人格",
+    "clickSetPersonaEmoji": "点击设置 emoji 人格",
+    "starAdd": "收藏",
+    "starRemove": "取消收藏",
+    "openInDialog": "在弹窗中打开卡片",
+    "titleSource": "标题来源：{{source}}"
+  },
+  "env": {
+    "title": "终端环境变量",
+    "remoteTag": "远程",
+    "launchSubtitle": "仅应用到本次新建的 terminal / agent",
+    "launchReference": " · {{mode}} {{num}} 个变量（参考）",
+    "referenceDefault": "默认",
+    "referenceExisting": "现有",
+    "loading": "加载中…",
+    "error": "出错了",
+    "configuredVarsRemote": "{{num}} 个已配置变量 · 远程目标不显示系统环境基线",
+    "variables": "{{num}} 个变量",
+    "masked": " · {{num}} 项已掩码",
+    "customSection": "本次启动自定义变量",
+    "customSectionCount": "（{{num}} 项）",
+    "keyPlaceholder": "KEY",
+    "valuePlaceholder": "VALUE",
+    "sensitiveTitle": "已作为敏感值掩码",
+    "sensitiveTag": "SENS",
+    "deleteRow": "删除这一行",
+    "overridesExisting": "将覆盖现有值 <code>{{from}}</code> → <code>{{to}}</code>",
+    "addVariable": "添加变量",
+    "hint": "空 KEY 行忽略；VALUE 支持 <code>$ENV:NAME</code> 引用；敏感 key（JWT/TOKEN/KEY/SECRET/PASSWORD…）自动掩码。",
+    "existingSection": "现有环境变量（参考）",
+    "filterPlaceholder": "过滤 key / value…",
+    "copyAllTitle": "复制全部环境变量为 KEY=VALUE 行",
+    "copyAll": "复制全部",
+    "showAll": "全部显示",
+    "hideAll": "全部隐藏",
+    "close": "关闭",
+    "loadingTable": "加载中…",
+    "keyColumn": "Key",
+    "valueColumn": "Value",
+    "noEnvironmentVariables": "没有环境变量。",
+    "noMatches": "没有匹配项。",
+    "hideValue": "隐藏值",
+    "showValue": "显示值",
+    "cancel": "取消",
+    "save": "保存"
+  },
+  "ijson": {
+    "unknownTag": "未知标签：{{tag}}"
+  },
+  "fontNotInstalled": "未安装",
+  "claudeHint": "Claude Code 全屏模式会启用鼠标编辑（点击提示行任意位置即可移动光标）：输入 <code>/tui fullscreen</code>",
+  "dismiss": "关闭",
+  "agentCard": {
+    "copySessionId": "复制会话 id",
+    "copySessionIdFailed": "复制会话 id（失败）"
+  },
+  "failureCopy": {
+    "title": "复制这条失败的命令（exit {{exitCode}}）交给 AI 诊断"
+  }
+}

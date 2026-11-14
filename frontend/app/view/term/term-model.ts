@@ -52,6 +52,7 @@ import {
     WOS,
 } from "@/store/global";
 import * as services from "@/store/services";
+import { i18n } from "@/i18n/config";
 import { copyText } from "@/util/clipboard";
 import * as keyutil from "@/util/keyutil";
 import { isMacOS, isWindows } from "@/util/platformutil";
@@ -275,7 +276,7 @@ export class TermViewModel implements ViewModel {
                                 elemtype: "iconbutton",
                                 icon: React.createElement("span", { className: "agent-emoji-icon" }, iconSpec.emoji),
                                 className: "agent-brand-icon",
-                                title: "点击设置 emoji 人格",
+                                title: i18n.t("term:hoverCard.clickSetPersonaEmoji"),
                                 click: openPicker,
                             } as IconButtonDecl;
                         }
@@ -284,7 +285,7 @@ export class TermViewModel implements ViewModel {
                             icon: iconSpec.icon,
                             iconColor: iconSpec.iconColor,
                             className: "agent-brand-icon",
-                            title: "点击设置 emoji 人格",
+                            title: i18n.t("term:hoverCard.clickSetPersonaEmoji"),
                             click: openPicker,
                         } as IconButtonDecl;
                     }
@@ -1660,7 +1661,7 @@ export class TermViewModel implements ViewModel {
                 type: "checkbox",
                 checked: overrideFontFamily == fontFamily,
                 enabled: available,
-                sublabel: available ? undefined : "未安装",
+                sublabel: available ? undefined : i18n.t("term:fontNotInstalled"),
                 click: () => {
                     RpcApi.SetMetaCommand(TabRpcClient, {
                         oref: WOS.makeORef("block", this.blockId),

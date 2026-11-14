@@ -9,8 +9,10 @@ import type common from "./locales/en/common.json";
 import type commontext from "./locales/en/commontext.json";
 import type element from "./locales/en/element.json";
 import type onboarding from "./locales/en/onboarding.json";
+import type preview from "./locales/en/preview.json";
 import type sessionOverview from "./locales/en/session-overview.json";
 import type tab from "./locales/en/tab.json";
+import type term from "./locales/en/term.json";
 import type waveconfig from "./locales/en/waveconfig.json";
 
 /**
@@ -37,6 +39,8 @@ declare module "i18next" {
             element: typeof element;
             "block-editor": typeof blockEditor;
             waveconfig: typeof waveconfig;
+            term: typeof term;
+            preview: typeof preview;
         };
     }
 }

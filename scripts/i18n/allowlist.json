@@ -168,6 +168,27 @@
         "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
     },
     {
+        "id": "frontend/app/view/preview/csvview.tsx::jsx-text::611ff54ef4d8",
+        "file": "frontend/app/view/preview/csvview.tsx",
+        "kind": "jsx-text",
+        "text": "dummy data",
+        "reason": "隐藏的测量探针文本（table.probe 为 visibility:hidden，用来量列宽/行高；不是用户可见文案，翻译会改变测量基线）"
+    },
+    {
+        "id": "frontend/app/view/preview/preview-directory.tsx::jsx-text::b3ff6be8dd1b",
+        "file": "frontend/app/view/preview/preview-directory.tsx",
+        "kind": "jsx-text",
+        "text": "dummy-data",
+        "reason": "隐藏的测量探针文本（.dummy 行 visibility:hidden，用来量行高/滚动尺寸；不是用户可见文案，翻译会改变测量基线）"
+    },
+    {
+        "id": "frontend/app/view/term/term-model.ts::cjk::efbfbc5391c1",
+        "file": "frontend/app/view/term/term-model.ts",
+        "kind": "cjk",
+        "text": "mmMMilliW中文字体0O1",
+        "reason": "字体可用性探测用的哨兵字符串（canvas.measureText 的中英混排样本，用来判断自定义字体是否真的生效；不是 UI 文案，改动会让字体检测失真）"
+    },
+    {
         "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::174865fed087",
         "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
         "kind": "jsx-text",

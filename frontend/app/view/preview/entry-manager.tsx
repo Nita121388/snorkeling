@@ -4,6 +4,7 @@
 import { Button } from "@/app/element/button";
 import { Input } from "@/app/element/input";
 import React, { memo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export enum EntryManagerType {
     NewFile = "New File",
@@ -11,6 +12,14 @@ export enum EntryManagerType {
     EditName = "Rename",
     MoveTo = "Move to...",
 }
+
+/** 入口类型 → 标题 i18n key（枚举值本身是英文，展示层按 key 取本地化标题） */
+const EntryTypeTitleKey = {
+    [EntryManagerType.NewFile]: "preview:entryManager.newFile",
+    [EntryManagerType.NewDirectory]: "preview:entryManager.newFolder",
+    [EntryManagerType.EditName]: "preview:entryManager.rename",
+    [EntryManagerType.MoveTo]: "preview:entryManager.moveTo",
+} as const;
 
 export type EntryManagerOverlayProps = {
     forwardRef?: React.Ref<HTMLDivElement>;
@@ -34,10 +43,11 @@ export const EntryManagerOverlay = memo(
         style,
         getReferenceProps,
     }: EntryManagerOverlayProps) => {
+        const { t } = useTranslation("preview");
         const [value, setValue] = useState(startingValue);
         return (
             <div className="entry-manager-overlay" ref={forwardRef} style={style} {...(getReferenceProps?.() ?? {})}>
-                <div className="entry-manager-type">{entryManagerType}</div>
+                <div className="entry-manager-type">{t(EntryTypeTitleKey[entryManagerType])}</div>
                 {hint != null && hint !== "" && <div className="mb-1 text-[11px] leading-4 text-muted">{hint}</div>}
                 <div className="entry-manager-input">
                     <Input
@@ -55,10 +65,10 @@ export const EntryManagerOverlay = memo(
                 </div>
                 <div className="entry-manager-buttons">
                     <Button className="py-[4px]" onClick={() => onSave(value)}>
-                        Save
+                        {t("preview:entryManager.save")}
                     </Button>
                     <Button className="py-[4px] red outlined" onClick={onCancel}>
-                        Cancel
+                        {t("preview:entryManager.cancel")}
                     </Button>
                 </div>
             </div>

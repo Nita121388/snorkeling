@@ -8,6 +8,8 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import * as WOS from "@/app/store/wos";
 import { copyText } from "@/util/clipboard";
 import { useEffect, useMemo, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 
 import "./envmodal.scss";
 
@@ -51,6 +53,7 @@ export function EnvModalView({
     existingBlockId,
     existingConnection,
 }: EnvModalViewProps) {
+    const { t } = useTranslation("term");
     const launchMode = onSaveCustomEnv != null;
     // 现有变量解析目标：block 模式 = 自身 block；launch 模式 = 选中 target 的现有 block（参考）
     const resolveBlockId = launchMode ? existingBlockId : blockId;
@@ -233,32 +236,38 @@ export function EnvModalView({
             <div className="env-modal-view">
             <div className="env-modal-header">
                 <div className="env-modal-title">
-                    Terminal Environment
-                    {!launchMode && isRemote ? <span className="env-modal-tag-remote">remote</span> : null}
+                    {t("term:env.title")}
+                    {!launchMode && isRemote ? <span className="env-modal-tag-remote">{t("term:env.remoteTag")}</span> : null}
                 </div>
                 <div className="env-modal-subtitle">
                     {launchMode
-                        ? `仅应用到本次新建的 terminal / agent${
-                              showEnvTable && env
-                                  ? ` · ${isBlankValue(existingBlockId) ? "默认" : "现有"} ${sortedEntries.length} 变量（参考）`
-                                  : ""
-                          }`
+                        ? t("term:env.launchSubtitle") +
+                          (showEnvTable && env
+                              ? i18n.t("term:env.launchReference", {
+                                    mode: isBlankValue(existingBlockId)
+                                        ? t("term:env.referenceDefault")
+                                        : t("term:env.referenceExisting"),
+                                    num: sortedEntries.length,
+                                })
+                              : "")
                         : loading
-                          ? "loading…"
+                          ? t("term:env.loading")
                           : error
-                            ? "error"
+                            ? t("term:env.error")
                             : isRemote
-                              ? `${sortedEntries.length} configured vars · OS baseline not shown for remote`
-                              : `${sortedEntries.length} variables`}
-                    {sensitiveCount > 0 ? ` · ${sensitiveCount} masked` : ""}
+                              ? i18n.t("term:env.configuredVarsRemote", { num: sortedEntries.length })
+                              : i18n.t("term:env.variables", { num: sortedEntries.length })}
+                    {sensitiveCount > 0 ? i18n.t("term:env.masked", { num: sensitiveCount }) : ""}
                 </div>
             </div>
             {/* 滚动收敛到中间内容区：header/footer 固定，滚动条不与右上角关闭按钮重叠 */}
             <div className="env-modal-scroll">
             {/* 本次启动自定义变量（新增可编辑区，launch 与 block 模式共用） */}
             <div className="env-modal-section-label">
-                本次启动自定义变量
-                <span className="env-modal-section-count">（{customCount} 项）</span>
+                {t("term:env.customSection")}
+                <span className="env-modal-section-count">
+                    {i18n.t("term:env.customSectionCount", { num: customCount })}
+                </span>
             </div>
             <div className="env-modal-custom">
                 {customRows.map((row, idx) => {
@@ -272,7 +281,7 @@ export function EnvModalView({
                                 <input
                                     className="env-modal-custom-input env-modal-custom-key"
                                     type="text"
-                                    placeholder="KEY"
+                                    placeholder={t("term:env.keyPlaceholder")}
                                     spellCheck={false}
                                     value={row.key}
                                     onFocus={() => setSuggestFor(idx)}
@@ -310,28 +319,34 @@ export function EnvModalView({
                                 <input
                                     className="env-modal-custom-input env-modal-custom-value"
                                     type={sensitive ? "password" : "text"}
-                                    placeholder="VALUE"
+                                    placeholder={t("term:env.valuePlaceholder")}
                                     spellCheck={false}
                                     value={row.value}
                                     onChange={(e) => setRow(idx, { value: e.target.value })}
                                 />
                                 {sensitive ? (
-                                    <span className="env-modal-custom-sens" title="masked as sensitive">
-                                        SENS
+                                    <span className="env-modal-custom-sens" title={t("term:env.sensitiveTitle")}>
+                                        {t("term:env.sensitiveTag")}
                                     </span>
                                 ) : null}
                             </div>
                             <button
                                 className="env-modal-custom-del"
                                 onClick={() => removeRow(idx)}
-                                title="Delete row"
+                                title={t("term:env.deleteRow")}
                             >
                                 <i className="fa-sharp fa-solid fa-trash-can" />
                             </button>
                         </div>
                         {overridesExisting ? (
                             <div className="env-modal-override-hint">
-                                将覆盖现有值 <code>{env?.[trimmedKey]}</code> → <code>{row.value}</code>
+                                <Trans
+                                    ns={"term" as const}
+                                    i18nKey={"term:env.overridesExisting" as never}
+                                    t={t}
+                                    values={{ from: env?.[trimmedKey], to: row.value }}
+                                    components={{ code: <code /> }}
+                                />
                             </div>
                         ) : null}
                         </div>
@@ -339,54 +354,66 @@ export function EnvModalView({
                 })}
             </div>
             <button className="env-modal-btn env-modal-add" onClick={addRow}>
-                <i className="fa-sharp fa-solid fa-plus" /> Add Variable
+                <i className="fa-sharp fa-solid fa-plus" /> {t("term:env.addVariable")}
             </button>
             <div className="env-modal-hint">
-                空 KEY 行忽略；VALUE 支持 <code>$ENV:NAME</code> 引用；敏感 key（JWT/TOKEN/KEY/SECRET/PASSWORD…）自动掩码。
+                <Trans
+                    ns={"term" as const}
+                    i18nKey={"term:env.hint" as never}
+                    t={t}
+                    components={{ code: <code /> }}
+                />
             </div>
             {showEnvTable && !referenceFailed ? (
                 <>
-                    <div className="env-modal-sub-label">现有环境变量（参考）</div>
+                    <div className="env-modal-sub-label">{t("term:env.existingSection")}</div>
                     <div className="env-modal-toolbar">
                         <input
                             className="env-modal-search"
                             type="text"
-                            placeholder="filter keys/values…"
+                            placeholder={t("term:env.filterPlaceholder")}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
-                        <button className="env-modal-btn" onClick={copyAll} disabled={loading || !env} title="Copy all env as KEY=VALUE lines">
-                            <i className="fa-sharp fa-solid fa-copy" /> Copy All
+                        <button
+                            className="env-modal-btn"
+                            onClick={copyAll}
+                            disabled={loading || !env}
+                            title={t("term:env.copyAllTitle")}
+                        >
+                            <i className="fa-sharp fa-solid fa-copy" /> {t("term:env.copyAll")}
                         </button>
                         {sensitiveCount > 0 ? (
                             <>
                                 <button className="env-modal-btn" onClick={revealAll}>
-                                    Show All
+                                    {t("term:env.showAll")}
                                 </button>
                                 <button className="env-modal-btn" onClick={hideAll}>
-                                    Hide All
+                                    {t("term:env.hideAll")}
                                 </button>
                             </>
                         ) : null}
                         {launchMode ? null : (
                             <button className="env-modal-btn" onClick={close}>
-                                Close
+                                {t("term:env.close")}
                             </button>
                         )}
                     </div>
                     {error ? (
                         <div className="env-modal-error">{error}</div>
                     ) : loading ? (
-                        <div className="env-modal-loading">Loading…</div>
+                        <div className="env-modal-loading">{t("term:env.loadingTable")}</div>
                     ) : filteredEntries.length === 0 ? (
                         <div className="env-modal-empty">
-                            {sortedEntries.length === 0 ? "No environment variables." : "No matches."}
+                            {sortedEntries.length === 0
+                                ? t("term:env.noEnvironmentVariables")
+                                : t("term:env.noMatches")}
                         </div>
                     ) : (
                         <div className="env-modal-table">
                             <div className="env-modal-row env-modal-row-header">
-                                <div className="env-modal-key">Key</div>
-                                <div className="env-modal-value">Value</div>
+                                <div className="env-modal-key">{t("term:env.keyColumn")}</div>
+                                <div className="env-modal-value">{t("term:env.valueColumn")}</div>
                             </div>
                             {filteredEntries.map(({ key, value }) => {
                                 const sensitive = isSensitiveKey(key);
@@ -397,8 +424,8 @@ export function EnvModalView({
                                         <div className="env-modal-key" title={key}>
                                             {key}
                                             {sensitive ? (
-                                                <span className="env-modal-tag" title="masked as sensitive">
-                                                    SENS
+                                                <span className="env-modal-tag" title={t("term:env.sensitiveTitle")}>
+                                                    {t("term:env.sensitiveTag")}
                                                 </span>
                                             ) : null}
                                         </div>
@@ -408,7 +435,7 @@ export function EnvModalView({
                                                 <button
                                                     className="env-modal-reveal"
                                                     onClick={() => toggleReveal(key)}
-                                                    title={revealed ? "Hide value" : "Show value"}
+                                                    title={revealed ? t("term:env.hideValue") : t("term:env.showValue")}
                                                 >
                                                     <i className={`fa-sharp fa-solid ${revealed ? "fa-eye-slash" : "fa-eye"}`} />
                                                 </button>
@@ -427,10 +454,10 @@ export function EnvModalView({
                     {error ? <span className="env-modal-error-inline">{error}</span> : null}
                 </div>
                 <button className="env-modal-btn ghost" onClick={close}>
-                    Cancel
+                    {t("term:env.cancel")}
                 </button>
                 <button className="env-modal-btn primary" onClick={save}>
-                    Save
+                    {t("term:env.save")}
                 </button>
             </div>
             </div>

@@ -11,8 +11,10 @@ import type { PreviewEnv } from "@/app/view/preview/previewenv";
 import type { PreviewModel } from "@/app/view/preview/preview-model";
 import { fireAndForget, base64ToString } from "@/util/util";
 import { formatRemoteUri } from "@/util/waveutil";
+import { i18n } from "@/i18n/config";
 import { useAtomValue } from "jotai";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { parseBaseConfig, BaseConfig } from "./base-config";
 import { collectScanFolders, evalFilter, NoteMeta, parseFrontmatter } from "./base-filter";
 import "./base-view-table.scss";
@@ -25,6 +27,7 @@ const MAX_ROWS = 1000;
 const MAX_SCAN_FILES = 5000;
 
 export function BaseViewTable({ model }: { model: PreviewModel }) {
+    const { t } = useTranslation("preview");
     const env = useWaveEnv<PreviewEnv>();
     const filePath = useAtomValue(model.metaFilePath);
     const connection = useAtomValue(model.connection);
@@ -46,7 +49,7 @@ export function BaseViewTable({ model }: { model: PreviewModel }) {
                 setColumns(c);
                 setError(e);
             } catch (e) {
-                setError(`加载失败: ${e}`);
+                setError(i18n.t("preview:baseView.loadFailed", { error: String(e) }));
             } finally {
                 setLoading(false);
             }
@@ -55,13 +58,13 @@ export function BaseViewTable({ model }: { model: PreviewModel }) {
     }, [filePath, connection]);
 
     if (loading) {
-        return <div className="base-view-status">加载中…</div>;
+        return <div className="base-view-status">{t("preview:baseView.loading")}</div>;
     }
     if (error != null) {
         return <div className="base-view-status">{error}</div>;
     }
     if (rows == null || rows.length === 0) {
-        return <div className="base-view-status">（空：没有匹配的笔记）</div>;
+        return <div className="base-view-status">{t("preview:baseView.emptyNoNotes")}</div>;
     }
 
     return (
@@ -79,7 +82,9 @@ export function BaseViewTable({ model }: { model: PreviewModel }) {
                         <tr key={i}>
                             {columns.map((col) => (
                                 <td key={col.property} className={isFormulaColumn(col.property) ? "base-view-formula" : undefined}>
-                                    {isFormulaColumn(col.property) ? "公式暂不支持" : row[col.property] ?? ""}
+                                    {isFormulaColumn(col.property)
+                                        ? t("preview:baseView.formulaUnsupported")
+                                        : row[col.property] ?? ""}
                                 </td>
                             ))}
                         </tr>

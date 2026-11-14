@@ -10,6 +10,7 @@
 import type { MarkdownContentBlockType } from "@/app/element/markdown-util";
 import clsx from "clsx";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { buildPropertyEntries, parseFrontmatterYamlText, type PropertyEntry } from "./frontmatter-block";
 import { PropertyTagEditor } from "./property-tag-editor";
 import { PropertyValuePopover } from "./property-value-popover";
@@ -150,6 +151,7 @@ export function setObsidianPropsCollapsed(key: string, next: boolean): void {
 }
 
 export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collapsedSeed, onCollapsedChange }: ObsidianPropertiesCardProps) {
+    const { t } = useTranslation("preview");
     const data = useMemo(() => parseFrontmatterYamlText(block.content), [block.content]);
     const entries = useMemo(() => buildPropertyEntries(data), [data]);
     const [collapsed, setCollapsed] = useState<boolean>(() => collapsedSeed ?? false);
@@ -295,9 +297,13 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                 aria-expanded={!collapsed}
                 data-state={collapsed ? "closed" : "open"}
                 onClick={toggleCollapsed}
-                title={collapsed ? "Expand properties" : "Collapse properties"}
+                title={
+                    collapsed
+                        ? t("preview:mdProperties.expandProperties")
+                        : t("preview:mdProperties.collapseProperties")
+                }
             >
-                <span className="obsidian-props-title">Properties</span>
+                <span className="obsidian-props-title">{t("preview:mdProperties.title")}</span>
                 <span className="obsidian-props-chevron" aria-hidden="true">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -340,7 +346,7 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                             {dragable && !isEditing && (
                                 <span
                                     className="obsidian-props-drag-handle"
-                                    title="Drag to reorder"
+                                    title={t("preview:mdProperties.dragToReorder")}
                                     onMouseDown={(e) => e.stopPropagation()}
                                 >
                                     <i className="fa-solid fa-grip-vertical" aria-hidden="true" />
@@ -388,7 +394,7 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                         <input
                             ref={newKeyRef}
                             className="obsidian-props-add-key-input"
-                            placeholder="key"
+                            placeholder={t("preview:mdProperties.keyPlaceholder")}
                             value={newKey}
                             onChange={(e) => setNewKey(e.target.value)}
                             onKeyDown={(e) => {
@@ -406,7 +412,7 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                         <input
                             ref={newValueRef}
                             className="obsidian-props-add-value-input"
-                            placeholder="value"
+                            placeholder={t("preview:mdProperties.valuePlaceholder")}
                             value={newValue}
                             onChange={(e) => setNewValue(e.target.value)}
                             onKeyDown={(e) => {
@@ -426,10 +432,10 @@ export function ObsidianPropertiesCard({ block, onDataChange, onReorder, collaps
                     <div
                         className="obsidian-props-add-row"
                         onClick={() => startAdd()}
-                        title="Add property"
+                        title={t("preview:mdProperties.addProperty")}
                     >
                         <i className="obsidian-props-icon fa-solid fa-plus" aria-hidden="true" />
-                        <span className="obsidian-props-add-text">Add property</span>
+                        <span className="obsidian-props-add-text">{t("preview:mdProperties.addProperty")}</span>
                     </div>
                 )
             )}

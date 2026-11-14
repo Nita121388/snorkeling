@@ -219,7 +219,7 @@ export function EditableTitle({
                 title={title}
                 {...(editable ? gestureProps : {})}
                 role={editable ? "textbox" : undefined}
-                aria-label={editable ? `Session title: ${title}` : undefined}
+                aria-label={editable ? i18n.t("element:editableTitle.sessionTitleAria", { title }) : undefined}
             >
                 {isCard ? (
                     <>

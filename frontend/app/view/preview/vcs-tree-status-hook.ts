@@ -24,16 +24,16 @@ import {
     buildVcsTreeStatus,
     getCachedVcsTreeStatus,
     setCachedVcsTreeStatus,
-    type VcsTreeMark,
     type VcsTreeStatus,
 } from "./vcs-tree-status";
 
-/** VCS 标记的行尾/悬停文案（D 方案：文件名着色 + 行尾字母） */
-export const VcsFileMarkTitle: Record<VcsTreeMark, string> = {
-    M: "已修改（modified）",
-    U: "未跟踪（untracked）",
-    D: "已删除（deleted）",
-};
+/** VCS 标记的行尾/悬停文案 key（D 方案：文件名着色 + 行尾字母）。
+ *  存的是 i18n key 而非字面量：模块级常量在 import 期求值，走 i18n.t 会锁死当时的 locale。 */
+export const VcsFileMarkTitleKey = {
+    M: "preview:vcsMark.modified",
+    U: "preview:vcsMark.untracked",
+    D: "preview:vcsMark.deleted",
+} as const;
 
 /**
  * 目录树 VCS 状态：一次 RPC + 两套索引（fileMark / dirCount），渲染期 O(1) 查表。

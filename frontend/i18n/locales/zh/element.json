@@ -63,10 +63,13 @@
     "remove": "移除",
     "removeLabel": "移除 {{value}}",
     "create": "创建",
-    "empty": "无匹配选项"
+    "empty": "无匹配选项",
+    "countAria_one": "{{count}} 个会话",
+    "countAria_other": "{{count}} 个会话"
   },
   "editableTitle": {
-    "saveFailed": "保存失败，请重试"
+    "saveFailed": "保存失败，请重试",
+    "sessionTitleAria": "会话标题：{{title}}"
   },
   "sessionNote": {
     "saveFailed": "保存失败：{{error}}",

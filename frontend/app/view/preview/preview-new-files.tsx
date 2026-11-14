@@ -20,6 +20,7 @@ import {
 } from "@floating-ui/react";
 import clsx from "clsx";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export type PinnedDirectory = PinnedDirectoryType;
 
@@ -54,6 +55,7 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
     onTogglePin,
     onRemoveUsage,
 }: NewFilesFloatingWindowProps) {
+    const { t } = useTranslation("preview");
     const { refs, floatingStyles, context } = useFloating({
         open: isOpen,
         placement: "left-start",
@@ -158,7 +160,7 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                 {/* header */}
                 <div className="flex items-center px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
                     <i className="fa-solid fa-location-crosshairs text-accent text-xs mr-2" />
-                    <span>Files</span>
+                    <span>{t("preview:newFiles.files")}</span>
                 </div>
 
                 {/* search */}
@@ -170,7 +172,7 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Search paths"
+                            placeholder={t("preview:newFiles.searchPaths")}
                             className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-foreground placeholder:text-muted"
                             spellCheck={false}
                         />
@@ -218,7 +220,7 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                                                 <button
                                                     type="button"
                                                     className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-surface-soft hover:text-foreground transition-all cursor-pointer border-none bg-transparent"
-                                                    title={row.pinned ? "Unpin" : "Pin"}
+                                                    title={row.pinned ? t("preview:newFiles.unpinRow") : t("preview:newFiles.pin")}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         onTogglePin({ path: row.path, connection: row.connection }, row.label);
@@ -235,7 +237,7 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                                             <button
                                                 type="button"
                                                 className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-surface-soft hover:text-foreground transition-all cursor-pointer border-none bg-transparent"
-                                                title="Copy path"
+                                                title={t("preview:newFiles.copyPath")}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     copyPath(row.path);
@@ -248,7 +250,11 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                                             <button
                                                 type="button"
                                                 className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded-sm text-muted hover:bg-error/12 hover:text-error transition-all cursor-pointer border-none bg-transparent"
-                                                title={section.id === "pinned" ? "Unpin" : "Remove"}
+                                                title={
+                                                    section.id === "pinned"
+                                                        ? t("preview:newFiles.unpin")
+                                                        : t("preview:newFiles.remove")
+                                                }
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     if (section.id === "pinned") {
@@ -280,10 +286,10 @@ const NewFilesFloatingWindow = memo(function NewFilesFloatingWindow({
                             onSelect({ path: "~" });
                             onClose();
                         }}
-                        title="Open home directory"
+                        title={t("preview:newFiles.openHome")}
                     >
                         <i className="fa-solid fa-home text-[9px]" />
-                        Home
+                        {t("preview:newFiles.home")}
                     </button>
                 </div>
             </div>

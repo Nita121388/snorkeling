@@ -5,6 +5,7 @@
 // 支持 banner 图片显示、垂直位置调节、锁定位置等功能。
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import "./banner.scss";
 
 type BannerRendererProps = {
@@ -28,6 +29,7 @@ export const BannerRenderer = memo(function BannerRenderer({
     onClick,
 }: BannerRendererProps) {
     const [imageLoaded, setImageLoaded] = useState(false);
+    const { t } = useTranslation("preview");
     const [imageError, setImageError] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const [isCollapsed, setIsCollapsed] = useState(false);
@@ -98,7 +100,7 @@ export const BannerRenderer = memo(function BannerRenderer({
                     <img
                         className={`snorkeling-banner-image ${imageLoaded ? "loaded" : "loading"}`}
                         src={fullUrl}
-                        alt="Banner"
+                        alt={t("preview:banner.imageAlt")}
                         onLoad={handleImageLoad}
                         onError={handleImageError}
                         draggable={false}
@@ -107,7 +109,7 @@ export const BannerRenderer = memo(function BannerRenderer({
                 {imageError && (
                     <div className="snorkeling-banner-placeholder">
                         <i className="fa fa-image" />
-                        <span>无法加载图片</span>
+                        <span>{t("preview:banner.imageLoadFailed")}</span>
                     </div>
                 )}
             </div>

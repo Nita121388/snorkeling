@@ -24,8 +24,10 @@ import { normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { humanizeKey } from "@/app/view/aisessions/property/property-model";
 import { modalsModel } from "@/app/store/modalmodel";
 import { copyText } from "@/util/clipboard";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import {
     getAgentProviderKey,
     resolveAgentModel,
@@ -66,6 +68,7 @@ export type AgentHoverCardProps = {
 };
 
 const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false, frameless = false }: AgentHoverCardProps) => {
+    const { t } = useTranslation("term");
     const sessionId = React.useMemo(
         () => resolveBlockSessionId((blockData?.meta ?? {}) as Record<string, unknown>),
         [blockData]
@@ -179,7 +182,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
     // 星标与标题来源从属性区上移：星标进右上角，titleSource 并入副标题。
     const starred = noteState.summary?.marked === true;
     const titleSource = noteState.summary?.titleSource ?? "";
-    const modelText = model || (modelLoading ? "获取中…" : "未指定");
+    const modelText = model || (modelLoading ? t("term:hoverCard.modelLoading") : t("term:hoverCard.modelUnspecified"));
     const subline = titleSource !== "" ? `${modelText} · ${humanizeKey(titleSource)}` : modelText;
     // session id 只留头尾，全文进 title：340px 宽的 hover 卡放不下完整 uuid。
     const shortSessionId =
@@ -207,8 +210,8 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                             <button
                                 type="button"
                                 className={cn("agent-card-avatar", agentIcon.kind === "emoji" && "is-emoji")}
-                                title="设置 emoji 人格"
-                                aria-label="设置 emoji 人格"
+                                title={t("term:hoverCard.setPersonaEmoji")}
+                                aria-label={t("term:hoverCard.setPersonaEmoji")}
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -243,7 +246,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                             </span>
                             <span
                                 className="agent-card-sub"
-                                title={titleSource !== "" ? `Title source: ${titleSource}` : modelText}
+                                title={titleSource !== "" ? i18n.t("term:hoverCard.titleSource", { source: titleSource }) : modelText}
                             >
                                 {subline}
                             </span>
@@ -269,8 +272,8 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                                     className={cn("agent-card-icon-btn", "is-star", starred && "is-on")}
                                     aria-pressed={starred}
                                     aria-busy={noteState.starPending}
-                                    aria-label={starred ? "取消收藏" : "收藏"}
-                                    title={starred ? "取消收藏" : "收藏"}
+                                    aria-label={starred ? t("term:hoverCard.starRemove") : t("term:hoverCard.starAdd")}
+                                    title={starred ? t("term:hoverCard.starRemove") : t("term:hoverCard.starAdd")}
                                     disabled={noteState.starPending}
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -284,8 +287,8 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                                 <button
                                     type="button"
                                     className="agent-card-icon-btn agent-card-expand-btn"
-                                    title="Open card in dialog"
-                                    aria-label="Open card in dialog"
+                                    title={t("term:hoverCard.openInDialog")}
+                                    aria-label={t("term:hoverCard.openInDialog")}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         openCardDialog();
@@ -321,7 +324,7 @@ const AgentHoverCard = React.memo(({ blockId, blockData, mode, embedded = false,
                             </span>
                             <CopyButton
                                 className="agent-card-copy-btn"
-                                title={`Copy session id${copyFailed ? " (failed)" : ""}`}
+                                title={copyFailed ? i18n.t("term:agentCard.copySessionIdFailed") : i18n.t("term:agentCard.copySessionId")}
                                 onClick={handleCopySessionId}
                                 onError={() => setCopyFailed(true)}
                             />
