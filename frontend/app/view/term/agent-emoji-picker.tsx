@@ -218,7 +218,7 @@ export function AgentEmojiPicker({
             </div>
             {sessionKey !== "" ? (
                 <div className="agent-emoji-display-row">
-                    <label className="agent-emoji-display-toggle">
+                    <label className={cn("agent-emoji-scope-option", "agent-emoji-display-toggle")}>
                         <input
                             type="checkbox"
                             checked={emojiOnly}

@@ -164,4 +164,53 @@ describe("CommonTextComposeModal hook order", () => {
         // 每次打开弹窗重置折叠态：默认折叠
         expect(source).toContain("setPropertiesExpanded(false);");
     });
+
+    it("auto-saves the editor draft to localStorage without clicking +", () => {
+        // 文本自动保存：800ms 防抖落 localStorage 持久草稿，关弹窗/重启不丢；
+        // 「+」不再是保住文本的必要动作，只保留「草稿升格为条目」的语义。
+        expect(source).toContain(
+            'import { clearEditorDraft, loadEditorDraft, saveEditorDraft } from "./commontext-editor-draft";'
+        );
+        expect(source).toContain("const EDITOR_DRAFT_DEBOUNCE_MS = 800;");
+        // 还原：无 query 打开走 localStorage（同进程与跨重启统一路径，内存 composeDraft 已删）
+        expect(source).toContain("const draft = loadEditorDraft();");
+        expect(source).toContain("editor: draft.text,");
+        // 关闭前强制 flush；基线相同（本次只是还原/查阅）跳过，避免误清持久草稿
+        expect(source).toContain("flushEditorDraft();");
+        expect(source).toContain("if (state.editor === lastDraftTextRef.current) return;");
+        // 橡皮与「+」立即清持久键，不等防抖
+        expect(source).toContain(
+            "// 显式清空 = 用户主动丢弃草稿：立即清持久键，不等 800ms 防抖（否则关得快一点草稿又回来了）。"
+        );
+        expect(source).toContain("// 已升格为列表条目：editor 里的草稿使命结束，立即清持久键。");
+        // 可感知：footer 指示「Draft saved」
+        expect(source).toContain("data-commontext-draft-status={draftStatus}");
+        expect(source).toContain("Draft saved");
+    });
+
+    it("moves tags into the properties grid and drops the bottom All tags panel", () => {
+        // 标签成为属性网格第一行，值区点击唤起共享 Wolai 式编辑器（md 预览/AISessions 同源）。
+        expect(source).toContain(
+            'import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";'
+        );
+        expect(source).toContain('data-commontext-property="Tags"');
+        expect(source).toContain('data-commontext-tags-value=""');
+        expect(source).toContain("data-commontext-properties-summary={s.key}");
+        // 折叠摘要首项是 tags 数量
+        expect(source).toContain('key: "tags",');
+        // 底部 All tags 面板整块移除（header 副标与面板标题都不再渲染）
+        expect(source).not.toContain("click to toggle in Text");
+        expect(source).not.toContain(">All tags<");
+        expect(source).not.toContain("handleDetailToggleTag");
+        // 折叠摘要展示标签（不能省略），且用与展开态同一个 chip 组件——两态样式统一
+        expect(source).toContain('text: detailTags.length === 0 ? "0" : "",');
+        expect(source).toContain('s.key === "tags" && detailTags.length > 0 ? (');
+        expect(source).toContain('className="min-w-0 flex-wrap"');
+        // 内容与标签分离：Tags 浮层直接写结构化 item.tags（不再改正文），写前先 flush 正文草稿
+        expect(source).toContain("const applyDetailTags = async (nextTags: string[]) => {");
+        expect(source).toContain("const tags = normalizeCommonTextTags(nextTags);");
+        expect(source).toContain("await flushDetailSave({ keepDirty: true });");
+        // 正文自动保存不再从正文抽 tags（tags 是结构化权威）
+        expect(source).not.toContain("tags: extractSessionTagsFromNote(text).tags");
+    });
 });

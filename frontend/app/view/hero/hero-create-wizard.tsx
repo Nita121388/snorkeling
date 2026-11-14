@@ -76,8 +76,6 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
             name: current.name.trim(),
             emoji: current.emoji.trim() || undefined,
             role: current.role.trim() || undefined,
-            provider: current.provider.trim() || undefined,
-            model: current.model.trim() || undefined,
         })
             .then((resp) => {
                 setFiles(resp?.files ?? []);
@@ -177,22 +175,10 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                     <div className="grid grid-cols-2 gap-3">
                         <Field label="Emoji" value={draft.emoji} onChange={setField("emoji")} placeholder="🦸" />
                         <Field
-                            label="Provider"
-                            value={draft.provider}
-                            onChange={setField("provider")}
-                            placeholder="pi"
-                        />
-                        <Field
                             label="Role (one line)"
                             value={draft.role}
                             onChange={setField("role")}
                             placeholder="backup & archive"
-                        />
-                        <Field
-                            label="Model"
-                            value={draft.model}
-                            onChange={setField("model")}
-                            placeholder="(optional)"
                         />
                     </div>
                     <p className="text-[11px] text-muted/80">

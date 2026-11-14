@@ -6,8 +6,8 @@ import {
     DefaultCommonTextSortKey,
     filterCommonTextItemsByTags,
     findDuplicateCommonText,
-    getCommonTextTagSummaries,
     getCommonTextDeviceSummaries,
+    getCommonTextTagSummaries,
     getLiveCommonTextItems,
     isCommonTextTombstone,
     markCommonTextUsed,
@@ -45,6 +45,20 @@ describe("commontext-model", () => {
         expect(normalizeCommonTextTags("email, support, Email,  ,ops")).toEqual(["email", "support", "ops"]);
     });
 
+    it("strips # from tag values so legacy data renders without a hash prefix", () => {
+        // 历史数据里 tags 可能存成 `#tag` / `tag#`（甚至带前导空白）；读/写两侧都在这里收口，
+        // chip 只展示标签名——正文里的 #tag 字面语义不受影响。
+        expect(normalizeCommonTextTags(["#urgent", "work#", " #legacy ", "##deep"])).toEqual([
+            "urgent",
+            "work",
+            "legacy",
+            "deep",
+        ]);
+        expect(normalizeCommonTextTags("#a,#b, #A ")).toEqual(["a", "b"]);
+        // 仅由 # 组成的值剥完为空：丢弃而不是留一个空 chip
+        expect(normalizeCommonTextTags(["#", "ok"])).toEqual(["ok"]);
+    });
+
     it("ignores non-string tags defensively", () => {
         expect(normalizeCommonTextTags(["email", 5, null, "support"] as unknown as string[])).toEqual([
             "email",
@@ -67,6 +81,44 @@ describe("commontext-model", () => {
             tags: ["one", "two"],
             pinned: true,
         });
+    });
+
+    it("lazily migrates legacy #tag literals out of the body into structured tags", () => {
+        // 历史数据：tag 以 `#tag` 字面住在正文，item.tags 只是派生快照。读路径一次性迁移：
+        // 字面并入 tags、正文只留内容——内容与标签分离。
+        const item = normalizeCommonTextItem({ id: "legacy-1", text: "run deploy #urgent #ops", tags: [] });
+        expect(item).not.toBeNull();
+        expect(item!.text).toBe("run deploy");
+        expect(item!.tags).toEqual(["urgent", "ops"]);
+
+        // tags 里带 # 的存量与正文字面合并去重
+        const merged = normalizeCommonTextItem({ id: "legacy-2", text: "keep #legacy", tags: ["#legacy", "Work#"] });
+        expect(merged!.text).toBe("keep");
+        // 大小写保留首个出现的写法（去重仍大小写不敏感），不强制小写化
+        expect(merged!.tags).toEqual(["legacy", "Work"]);
+
+        // 空白后才有 # 的形态剥掉后不留双空格
+        expect(normalizeCommonTextItem({ text: "a  #t1  b", tags: [] })!.text).toBe("a b");
+    });
+
+    it("keeps code-looking hashes intact during migration", () => {
+        // `#!/bin/bash` 与行内注释 `# comment`（# 后接非词字符）不算 tag，原样保留
+        expect(normalizeCommonTextItem({ text: "#!/bin/bash\necho hi", tags: [] })!.text).toBe("#!/bin/bash\necho hi");
+        expect(normalizeCommonTextItem({ text: "make build # comment", tags: [] })!.text).toBe("make build # comment");
+        // 正文只有标签：剥完为空时保留原 text，商品不能因此被当空文本丢掉
+        const onlyTags = normalizeCommonTextItem({ text: "#a #b", tags: [] });
+        expect(onlyTags).not.toBeNull();
+        expect(onlyTags!.text).toBe("#a #b");
+        expect(onlyTags!.tags).toEqual(["a", "b"]);
+    });
+
+    it("is idempotent when a migrated item is normalized again", () => {
+        const once = normalizeCommonTextItem({ id: "item-2", text: "deploy #urgent", tags: ["#ops"] })!;
+        const twice = normalizeCommonTextItem(once)!;
+        expect(twice.text).toBe(once.text);
+        expect(twice.tags).toEqual(once.tags);
+        expect(twice.text).toBe("deploy");
+        expect(twice.tags).toEqual(["ops", "urgent"]);
     });
 
     it("searches title, text, shortcut, and tags", () => {
@@ -560,7 +612,12 @@ describe("commontext-model", () => {
         it("filters by creator kind", () => {
             expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "human" }))).toEqual(["a", "c"]);
             expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "agent" }))).toEqual(["b", "d"]);
-            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "all" }))).toEqual(["a", "b", "c", "d"]);
+            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "all" }))).toEqual([
+                "a",
+                "b",
+                "c",
+                "d",
+            ]);
         });
 
         it("filters by originating device", () => {
@@ -570,12 +627,12 @@ describe("commontext-model", () => {
         });
 
         it("combines creator and device as AND", () => {
-            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "human", device: "dev-work" }))).toEqual([
-                "c",
-            ]);
-            expect(ids(searchCommonTextComposeItems(dataset, "", "", { creator: "agent", device: "dev-home" }))).toEqual([
-                "b",
-            ]);
+            expect(
+                ids(searchCommonTextComposeItems(dataset, "", "", { creator: "human", device: "dev-work" }))
+            ).toEqual(["c"]);
+            expect(
+                ids(searchCommonTextComposeItems(dataset, "", "", { creator: "agent", device: "dev-home" }))
+            ).toEqual(["b"]);
         });
 
         it("applies the source filter before the result limit", () => {

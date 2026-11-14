@@ -43,7 +43,52 @@ vi.mock("./emain-util", () => ({
 vi.mock("./emain-wsh", () => ({ ElectronWshClient: {} }));
 vi.mock("./updater", () => ({ updater: { status: "idle" } }));
 
-import { WaveBrowserWindow } from "./emain-window";
+import { getOpenedThisLaunchTabIds, markRestoredWorkspaceTabsOpened, WaveBrowserWindow } from "./emain-window";
+
+describe("markRestoredWorkspaceTabsOpened (startup restore)", () => {
+    it("marks every restored workspace tab id as opened this launch", () => {
+        markRestoredWorkspaceTabsOpened(["restore-t1", "restore-t2", "restore-t3"]);
+        const opened = getOpenedThisLaunchTabIds();
+        expect(opened).toContain("restore-t1");
+        expect(opened).toContain("restore-t2");
+        expect(opened).toContain("restore-t3");
+    });
+
+    it("is idempotent and tolerates empty / null tab ids", () => {
+        markRestoredWorkspaceTabsOpened(["restore-t1"]);
+        const countBefore = getOpenedThisLaunchTabIds().filter((id) => id.startsWith("restore-")).length;
+        markRestoredWorkspaceTabsOpened([]);
+        markRestoredWorkspaceTabsOpened(null);
+        markRestoredWorkspaceTabsOpened(undefined);
+        const countAfter = getOpenedThisLaunchTabIds().filter((id) => id.startsWith("restore-")).length;
+        expect(countAfter).toBe(countBefore);
+    });
+});
+
+describe("WaveBrowserWindow.isTabSwitchInFlight (R9.2 broadcast dedupe)", () => {
+    const isTabSwitchInFlight = (
+        WaveBrowserWindow.prototype as unknown as {
+            isTabSwitchInFlight: (this: { actionQueue: unknown[] }, tabId: string) => boolean;
+        }
+    ).isTabSwitchInFlight;
+
+    it("detects the in-flight switchtab including the executing entry", () => {
+        const win = {
+            actionQueue: [
+                { op: "switchtab", tabId: "t1", setInBackend: true },
+                { op: "switchtab", tabId: "t2", setInBackend: false },
+            ],
+        };
+        expect(isTabSwitchInFlight.call(win, "t1")).toBe(true);
+        expect(isTabSwitchInFlight.call(win, "t2")).toBe(true);
+        expect(isTabSwitchInFlight.call(win, "t3")).toBe(false);
+    });
+
+    it("ignores non-switchtab entries even when they carry the same tab id", () => {
+        const win = { actionQueue: [{ op: "createtab" }, { op: "closetab", tabId: "t9" }] };
+        expect(isTabSwitchInFlight.call(win, "t9")).toBe(false);
+    });
+});
 
 describe("WaveBrowserWindow dev initialization timeout", () => {
     afterEach(() => {

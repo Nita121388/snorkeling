@@ -12,7 +12,6 @@ import { getAgentIcon } from "@/app/view/term/agent-logo";
 import type { AgentProfileOption } from "@/app/workspace/agent-launch";
 import {
     buildHeroLaunchBlockDef,
-    heroRosterLabel,
     resolveHeroProfileName,
     type HeroRoster,
 } from "@/app/workspace/hero-launch";
@@ -389,7 +388,9 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                                         <span className="w-5 text-center">
                                             {isBlank(hero.emoji) ? "🦸" : hero.emoji}
                                         </span>
-                                        <span className="min-w-0 flex-1 truncate text-sm">{heroRosterLabel(hero)}</span>
+                                        <span className="min-w-0 flex-1 truncate text-sm">
+                                            {isBlank(hero.name) ? hero.id : hero.name}
+                                        </span>
                                         <span className="min-w-0 max-w-[40%] truncate text-xs text-muted/80">
                                             {hero.role ?? hero.id}
                                         </span>

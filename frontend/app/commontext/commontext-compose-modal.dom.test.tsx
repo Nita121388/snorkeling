@@ -30,9 +30,48 @@ vi.mock("./commontext-send-button", () => ({
     CommontextSendButton: () => null,
 }));
 
+// 「+」升格条目的链路要能跑完（否则无后端时 upsert 对 RpcApi 报错、editor 不会被清空）。
+// 只替换写路径两个函数，读取/排序等真实现保持不动。
+vi.mock("./commontext-model", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./commontext-model")>();
+    return {
+        ...actual,
+        // upsert mock 与真实路径同构：写回 settings atom，让 tags 结构化写入在 UI 上可观察
+        // （动态 import 规避 vi.mock 提升作用域拿不到 jotai store 的问题）。
+        upsertCommonTextItem: vi.fn(async (draft: any, existingId?: string) => {
+            const { globalStore } = await import("@/app/store/jotaiStore");
+            const { atoms } = await import("@/app/store/global-atoms");
+            const config: any = globalStore.get(atoms.fullConfigAtom) ?? {};
+            const items: any[] = config.settings?.["commontext:items"] ?? [];
+            const idx = existingId != null ? items.findIndex((i) => i.id === existingId) : -1;
+            const base =
+                idx >= 0
+                    ? items[idx]
+                    : { id: existingId ?? "ct-mock-new", createdat: Date.now(), usagecount: 0, tags: [] };
+            const item = {
+                ...base,
+                title: draft.title || base.title || "Mock",
+                text: draft.text,
+                tags: draft.tags ?? [],
+                pinned: draft.pinned ?? base.pinned ?? false,
+                updatedat: Date.now(),
+                emoji: draft.emoji ?? base.emoji,
+            };
+            const next = idx >= 0 ? items.map((i, k) => (k === idx ? item : i)) : [item, ...items];
+            globalStore.set(atoms.fullConfigAtom, {
+                ...config,
+                settings: { ...config.settings, "commontext:items": next },
+            });
+            return item;
+        }),
+        recordCommonTextUse: vi.fn(async () => undefined),
+    };
+});
+
 import { atoms, initGlobalAtoms } from "@/app/store/global-atoms";
 import { globalStore } from "@/app/store/jotaiStore";
 import { CommonTextComposeModal } from "./commontext-compose-modal";
+import { EditorDraftKey } from "./commontext-editor-draft";
 import { OpenCommonTextSearchEvent } from "./commontext-events";
 
 // jsdom 没有 ResizeObserver / matchMedia：initGlobalAtoms 会直接调 matchMedia（非可选链）。
@@ -124,6 +163,8 @@ afterEach(async () => {
     modalHost.remove();
     document.body.innerHTML = "";
     globalStore.set(atoms.fullConfigAtom, null as any);
+    // 持久草稿落在 jsdom localStorage（同文件跨测试共享），每个用例后清空避免串。
+    localStorage.clear();
 });
 
 async function openModal(detail: Record<string, unknown> = {}): Promise<void> {
@@ -220,6 +261,87 @@ describe("CommonTextComposeModal — editor collapse", () => {
     });
 });
 
+function draftStatusEl(): Element | null {
+    return document.querySelector("[data-commontext-draft-status]");
+}
+
+function readPersistedDraft(): { text: string; caret: number } | null {
+    const raw = localStorage.getItem(EditorDraftKey);
+    return raw == null ? null : JSON.parse(raw);
+}
+
+describe("CommonTextComposeModal — editor draft autosave", () => {
+    beforeEach(() => {
+        // 只假 setTimeout/clearTimeout：草稿防抖是这条通道；rAF 等保留真实现（focus/合成路径靠它）。
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    async function advance(ms: number): Promise<void> {
+        await act(async () => {
+            vi.advanceTimersByTime(ms);
+        });
+    }
+
+    it("persists the draft after the debounce and restores it on the next open", async () => {
+        await openModal();
+        await typeIntoComposer("draft line one\ndraft line two");
+        // 防抖未到点不落盘
+        expect(readPersistedDraft()).toBeNull();
+        await advance(900);
+        expect(readPersistedDraft()?.text).toBe("draft line one\ndraft line two");
+        expect(draftStatusEl()?.getAttribute("data-commontext-draft-status")).toBe("saved");
+        expect(draftStatusEl()?.textContent).toBe("Draft saved");
+
+        // 模拟重启：整个组件卸载后重新挂载，无 query 打开 → 文本还原
+        await act(async () => root.unmount());
+        container.remove();
+        container = document.createElement("div");
+        document.body.appendChild(container);
+        root = createRoot(container);
+        await openModal();
+        expect(composer().value).toBe("draft line one\ndraft line two");
+        // 还原不冒「Draft saved」提示（本次没有改动）
+        expect(draftStatusEl()?.getAttribute("data-commontext-draft-status")).toBe("idle");
+    });
+
+    it("clears the persisted draft when the eraser empties the editor", async () => {
+        await openModal();
+        await typeIntoComposer("erase me");
+        await advance(900);
+        expect(readPersistedDraft()?.text).toBe("erase me");
+        await click(document.querySelector('button[title="Clear editor"]'));
+        expect(composer().value).toBe("");
+        expect(localStorage.getItem(EditorDraftKey)).toBeNull();
+    });
+
+    it("clears the persisted draft after + turns it into a list item", async () => {
+        await openModal();
+        await typeIntoComposer("promote me");
+        await advance(900);
+        expect(readPersistedDraft()?.text).toBe("promote me");
+        await click(document.querySelector('button[title="Add new common text item (edit on the right)"]'));
+        // fireAndForget 里的 upsert mock → setEditor("", 0) 需要几拍微任务
+        await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        expect(composer().value).toBe("");
+        expect(localStorage.getItem(EditorDraftKey)).toBeNull();
+    });
+
+    it("ignores and drops a corrupt draft payload on open", async () => {
+        localStorage.setItem(EditorDraftKey, "{definitely not json");
+        await openModal();
+        expect(composer().value).toBe("");
+        expect(localStorage.getItem(EditorDraftKey)).toBeNull();
+    });
+});
+
 describe("CommonTextComposeModal — detail properties fold", () => {
     it("shows a one-line icon summary by default and expands the full grid on demand", async () => {
         await openModal({ query: "Bravo" });
@@ -229,6 +351,7 @@ describe("CommonTextComposeModal — detail properties fold", () => {
 
         const summary = [...document.querySelectorAll("[data-commontext-properties-summary]")];
         expect(summary.map((s) => s.getAttribute("data-commontext-properties-summary"))).toEqual([
+            "tags",
             "creator",
             "computer",
             "updated",
@@ -241,13 +364,14 @@ describe("CommonTextComposeModal — detail properties fold", () => {
         // 折叠态不渲染网格行
         expect(document.querySelectorAll("[data-commontext-property]").length).toBe(0);
 
-        // 展开 → 完整 5 行网格
+        // 展开 → 完整 6 行网格（Tags 首行 + 原 5 行）
         await click(document.querySelector("[data-commontext-properties-toggle]"));
         expect(document.querySelector("[data-commontext-properties]")!.getAttribute("data-commontext-properties")).toBe(
             "expanded"
         );
         const rows = [...document.querySelectorAll("[data-commontext-property]")];
         expect(rows.map((r) => r.getAttribute("data-commontext-property"))).toEqual([
+            "Tags",
             "Created by",
             "Computer",
             "Created",
@@ -261,5 +385,95 @@ describe("CommonTextComposeModal — detail properties fold", () => {
             "collapsed"
         );
         expect(document.querySelectorAll("[data-commontext-property]").length).toBe(0);
+        // 底部 All tags 面板已移除：不再出现面板标题
+        expect([...document.querySelectorAll("div")].some((d) => d.textContent === "All tags")).toBe(false);
+    });
+
+    it("edits tags through the property row popover (add via create, remove via chip ×)", async () => {
+        await openModal({ query: "Bravo" });
+        await click(document.querySelector("[data-commontext-properties-toggle]"));
+
+        const detailTextarea = () =>
+            document.querySelector(
+                ".commontext-compose-modal textarea:not([data-commontext-composer])"
+            ) as HTMLTextAreaElement;
+        // 空 tags 显示 Empty 占位，值区可点开浮层
+        expect(document.querySelector("[data-commontext-tags-value]")!.textContent).toContain("Empty");
+        await click(document.querySelector("[data-commontext-tags-value]"));
+        expect(document.querySelector('[data-testid="property-tag-editor"]')).not.toBeNull();
+
+        // 输入新 tag + Enter（无候选 → 走「创建」分支）→ 正文追加 #urgent、chip 出现
+        const input = document.querySelector(".ptag-input") as HTMLInputElement;
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+            setter.call(input, "urgent");
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        await act(async () => {
+            input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        });
+        // 内容与标签分离：tag 进结构化字段，正文不出现 #urgent 字面
+        expect(detailTextarea().value).not.toContain("#urgent");
+        expect(document.querySelector("[data-commontext-tags-value]")!.textContent).toContain("urgent");
+        // 折叠摘要行同步展示标签名（不是只有数量），且不带 # 前缀
+        const tagsSummary = document.querySelector('[data-commontext-properties-summary="tags"]');
+        expect(tagsSummary!.textContent).toContain("urgent");
+        expect(tagsSummary!.textContent).not.toContain("#");
+        // 样式与展开态统一：摘要里是同一个 SessionTagChips chip（button），不是 join 纯文本
+        expect(tagsSummary!.querySelector("button")).not.toBeNull();
+
+        // chip × 删除 → 结构化 tags 里被移除（正文全程不变）
+        const removeBtn = document.querySelector(".ptag-chip-remove") as HTMLButtonElement;
+        const textBeforeRemove = detailTextarea().value;
+        await act(async () => {
+            removeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+        expect(document.querySelector("[data-commontext-tags-value]")!.textContent).not.toContain("urgent");
+        expect(detailTextarea().value).toBe(textBeforeRemove);
+
+        // Esc 关闭浮层
+        await act(async () => {
+            (document.querySelector(".ptag-input") as HTMLInputElement).dispatchEvent(
+                new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+            );
+        });
+        expect(document.querySelector('[data-testid="property-tag-editor"]')).toBeNull();
+    });
+
+    it("renders legacy #tag storage without the hash prefix in chips and picker options", async () => {
+        // 历史脏数据：tags 带 # 前缀/后缀 + 正文里残留 #tag 字面——读路径惰性迁移必须：
+        // tags 剥净、正文字面剥掉进 tags（内容与标签分离）。
+        globalStore.set(atoms.fullConfigAtom, {
+            settings: {
+                "commontext:items": [
+                    seedItems[0],
+                    {
+                        ...seedItems[1],
+                        text: "Bravo refund policy #legacy #work",
+                        tags: ["#legacy", "work#"],
+                    },
+                ],
+            },
+        } as any);
+        await openModal({ query: "Bravo" });
+        // 列表行 chip：历史 `#legacy` / `work#` 存量读出来即净，不显示 #
+        const row = document.querySelector("[data-common-text-index]")?.parentElement;
+        const rowChips = [...(row?.querySelectorAll("button") ?? [])]
+            .filter((b) => b.textContent === "legacy" || b.textContent === "work")
+            .map((b) => b.textContent);
+        expect(rowChips.sort()).toEqual(["legacy", "work"]);
+        // 左侧标签筛选 chips 同源：也不带 #
+        const allChips = [...document.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim());
+        expect(allChips.some((t) => t.startsWith("#"))).toBe(false);
+        // Tags 浮层候选（PropertyTagEditor 直接渲染原文，不经过 SessionTagChips 的归一）：
+        // 历史 #tag 存量必须已在读路径剥净，否则候选 chip 会显示 #legacy
+        await click(document.querySelector("[data-commontext-properties-toggle]"));
+        await click(document.querySelector("[data-commontext-tags-value]"));
+        const optionChips = [...document.querySelectorAll(".ptag-option-chip")].map((el) =>
+            (el.textContent ?? "").trim()
+        );
+        expect(optionChips).toContain("legacy");
+        expect(optionChips).toContain("work");
+        expect(optionChips.some((t) => t.startsWith("#"))).toBe(false);
     });
 });

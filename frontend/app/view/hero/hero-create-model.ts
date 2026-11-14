@@ -11,8 +11,6 @@ export type HeroCreateDraft = {
     name: string;
     emoji: string;
     role: string;
-    provider: string;
-    model: string;
 };
 
 export type HeroCreatePrefill = {
@@ -28,8 +26,6 @@ const emptyDraft: HeroCreateDraft = {
     name: "",
     emoji: "",
     role: "",
-    provider: "",
-    model: "",
 };
 
 /**
@@ -75,14 +71,6 @@ export function buildCreateCommand(draft: HeroCreateDraft | null | undefined): s
     const role = (d.role ?? "").trim();
     if (role !== "") {
         parts.push(`--role ${shellQuote(role)}`);
-    }
-    const provider = (d.provider ?? "").trim();
-    if (provider !== "") {
-        parts.push(`--provider ${shellQuote(provider)}`);
-    }
-    const model = (d.model ?? "").trim();
-    if (model !== "") {
-        parts.push(`--model ${shellQuote(model)}`);
     }
     parts.push("--yes");
     return parts.join(" ");

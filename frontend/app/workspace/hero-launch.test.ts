@@ -85,6 +85,7 @@ describe("buildHeroLaunchBlockDef", () => {
         const meta = blockDef.meta as Record<string, unknown>;
         expect(meta["cmd:cwd"]).toBe("C:/heroes/backup-guard");
         expect(meta[AgentHeroIdMetaKey]).toBe("backup-guard");
+        expect(meta["agent:emoji"]).toBe("🎭");
         expect(meta["cmd"]).toBe("pi");
     });
 

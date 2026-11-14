@@ -30,32 +30,26 @@ describe("slugPreview", () => {
 
 describe("buildCreateCommand", () => {
     it("emits name + --yes for a minimal draft", () => {
-        expect(buildCreateCommand({ name: "X", emoji: "", role: "", provider: "", model: "" })).toBe(
-            'wsh hero create --name "X" --yes'
-        );
+        expect(buildCreateCommand({ name: "X", emoji: "", role: "" })).toBe('wsh hero create --name "X" --yes');
     });
     it("appends only the non-empty identity flags in a fixed order", () => {
+        // Hero creation is decoupled from provider/model (2026-11-13):
+        // those are launch-time overrides, not part of the identity card.
         expect(
             buildCreateCommand({
                 name: "Backup Guard",
-                emoji: "🎭",
-                role: "备份归档",
-                provider: "pi",
-                model: "deepseek",
+                emoji: "🦸",
+                role: "backup & archive",
             })
-        ).toBe(
-            'wsh hero create --name "Backup Guard" --emoji "🎭" --role "备份归档" --provider "pi" --model "deepseek" --yes'
-        );
+        ).toBe('wsh hero create --name "Backup Guard" --emoji "🦸" --role "backup & archive" --yes');
     });
     it("quotes embedded quotes and backslashes", () => {
-        expect(buildCreateCommand({ name: 'a"b\\c', emoji: "", role: "", provider: "", model: "" })).toBe(
+        expect(buildCreateCommand({ name: 'a"b\\c', emoji: "", role: "" })).toBe(
             'wsh hero create --name "a\\"b\\\\c" --yes'
         );
     });
     it("trims whitespace around fields", () => {
-        expect(buildCreateCommand({ name: "  X  ", emoji: " ", role: "", provider: " pi ", model: "" })).toBe(
-            'wsh hero create --name "X" --provider "pi" --yes'
-        );
+        expect(buildCreateCommand({ name: "  X  ", emoji: " ", role: "" })).toBe('wsh hero create --name "X" --yes');
     });
     it("is safe on null", () => {
         expect(buildCreateCommand(null)).toBe('wsh hero create --name "" --yes');
@@ -64,12 +58,10 @@ describe("buildCreateCommand", () => {
 
 describe("mergePrefill / validateCreateDraft", () => {
     it("seeds the name from the session title", () => {
-        expect(mergePrefill({ source: "aisessions", sessionTitle: " Fix the bug " })).toEqual({
+        expect(mergePrefill({ source: "hero-picker", sessionTitle: " Fix the bug " })).toEqual({
             name: "Fix the bug",
             emoji: "",
             role: "",
-            provider: "",
-            model: "",
         });
     });
     it("returns an empty draft without a prefill", () => {
@@ -77,13 +69,11 @@ describe("mergePrefill / validateCreateDraft", () => {
             name: "",
             emoji: "",
             role: "",
-            provider: "",
-            model: "",
         });
     });
     it("rejects a blank name and accepts a filled one", () => {
-        expect(validateCreateDraft({ name: "   ", emoji: "", role: "", provider: "", model: "" })).not.toBe("");
-        expect(validateCreateDraft({ name: "X", emoji: "", role: "", provider: "", model: "" })).toBe("");
+        expect(validateCreateDraft({ name: "   ", emoji: "", role: "" })).not.toBe("");
+        expect(validateCreateDraft({ name: "X", emoji: "", role: "" })).toBe("");
         expect(validateCreateDraft(null)).not.toBe("");
     });
 });

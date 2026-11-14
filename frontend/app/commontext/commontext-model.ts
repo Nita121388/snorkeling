@@ -5,6 +5,11 @@ import { atoms, getApi, globalStore } from "@/app/store/global";
 import { CommonTextService } from "@/app/store/services";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+// 读路径惰性迁移依赖的正文抽取/标签剥离：历史数据里 tag 以 `#tag` 字面住在正文中
+// （item.tags 只是每次保存时从正文抽出的派生快照）。迁移单点收口在 normalizeCommonTextItem
+// ——所有读面（弹窗/插入/发送/搜索/同步）都从这里拿数据；任何一次 upsert 全量写 settings，
+// 迁移随下一次编辑落盘。迁移后 tags 是结构化唯一权威，正文只存内容。
+import { extractSessionTagsFromNote, stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
 
 export const CommonTextConfigKey = "commontext:items";
 const CommonTextAllowEmptySaveKey = "commontext:allow-empty-save";
@@ -122,7 +127,9 @@ export function normalizeCommonTextTags(tags: unknown): string[] {
         if (typeof rawTag !== "string") {
             continue;
         }
-        const normalized = rawTag.trim();
+        // 剥 # 前缀/后缀：历史数据里有 `#tag`（甚至 `tag#`）形态的 tags，读/写两侧都在这里收口，
+        // chip 只展示标签名；正文里的 `#tag` 字面语义不变（抽取时本就不带 #）。
+        const normalized = rawTag.trim().replace(/^#+/, "").replace(/#+$/, "");
         if (normalized === "") {
             continue;
         }
@@ -141,15 +148,24 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
         return null;
     }
     const raw = value as Record<string, unknown>;
-    const text = typeof raw.text === "string" ? raw.text : "";
-    if (text.trim() === "") {
+    const rawText = typeof raw.text === "string" ? raw.text : "";
+    if (rawText.trim() === "") {
         return null;
     }
+    // 惰性迁移（历史兼容）：旧数据把 tag 以 `#tag` 字面写在正文里，item.tags 只是派生快照。
+    // 这里把两路合并进 tags，并把正文字面剥掉——内容与标签从此分离。
+    // 剥完为空（正文只有标签）时回退原文，避免条目被当成空文本丢掉。
+    const textTags = extractSessionTagsFromNote(rawText).tags;
+    const strippedText = stripSessionTagHashes(rawText);
+    const text = strippedText.trim() === "" ? rawText : strippedText;
     const now = Date.now();
     const id = typeof raw.id === "string" && raw.id !== "" ? raw.id : crypto.randomUUID();
     const title = normalizeCommonTextTitle(typeof raw.title === "string" ? raw.title : "", text);
     const shortcut = typeof raw.shortcut === "string" && raw.shortcut.trim() !== "" ? raw.shortcut.trim() : undefined;
-    const tags = normalizeCommonTextTags(raw.tags as string[] | string | undefined);
+    const tags = normalizeCommonTextTags([
+        ...normalizeCommonTextTags(raw.tags as string[] | string | undefined),
+        ...textTags,
+    ]);
     const createdat = typeof raw.createdat === "number" && Number.isFinite(raw.createdat) ? raw.createdat : now;
     const updatedat = typeof raw.updatedat === "number" && Number.isFinite(raw.updatedat) ? raw.updatedat : createdat;
     const lastusedat =
@@ -164,8 +180,7 @@ export function normalizeCommonTextItem(value: unknown): CommonTextItem | null {
     // 同步状态只认后端给出的两个值；其它（含缺失）一律按 pending —— 宁可多推一次，
     // 也不能把没上传的条目谎报成已同步。
     const syncstate: CommonTextSyncState = raw.syncstate === "synced" ? "synced" : "pending";
-    const syncedrev =
-        typeof raw.syncedrev === "number" && Number.isFinite(raw.syncedrev) ? raw.syncedrev : undefined;
+    const syncedrev = typeof raw.syncedrev === "number" && Number.isFinite(raw.syncedrev) ? raw.syncedrev : undefined;
     return {
         id,
         title,
@@ -202,7 +217,8 @@ function normalizeCommonTextOrigin(value: unknown): CommonTextOrigin {
         return { ...LegacyOrigin };
     }
     const raw = value as Record<string, unknown>;
-    const deviceid = typeof raw.deviceid === "string" && raw.deviceid.trim() !== "" ? raw.deviceid : LegacyOrigin.deviceid;
+    const deviceid =
+        typeof raw.deviceid === "string" && raw.deviceid.trim() !== "" ? raw.deviceid : LegacyOrigin.deviceid;
     const devicename =
         typeof raw.devicename === "string" && raw.devicename.trim() !== "" ? raw.devicename : LegacyOrigin.devicename;
     const platform = typeof raw.platform === "string" ? raw.platform : "";
@@ -436,7 +452,10 @@ export function getCommonTextCreatorKind(item: CommonTextItem): "human" | "agent
     return item.createdby?.kind === "agent" ? "agent" : "human";
 }
 
-export function commonTextItemMatchesCreator(item: CommonTextItem, filter: CommonTextCreatorFilter | undefined): boolean {
+export function commonTextItemMatchesCreator(
+    item: CommonTextItem,
+    filter: CommonTextCreatorFilter | undefined
+): boolean {
     if (filter == null || filter === "all") return true;
     return getCommonTextCreatorKind(item) === filter;
 }
@@ -458,7 +477,9 @@ export function getCommonTextOriginDeviceName(item: CommonTextItem): string {
 }
 
 /** 去重后的设备清单（按出现顺序），供筛选下拉与计数使用。 */
-export function getCommonTextDeviceSummaries(items: CommonTextItem[]): { deviceid: string; devicename: string; count: number }[] {
+export function getCommonTextDeviceSummaries(
+    items: CommonTextItem[]
+): { deviceid: string; devicename: string; count: number }[] {
     const byId = new Map<string, { deviceid: string; devicename: string; count: number }>();
     for (const item of items) {
         const id = getCommonTextOriginDeviceId(item);
@@ -575,7 +596,10 @@ export function searchCommonTextComposeItems(
     const sourceFiltered = items.filter(
         (item) => commonTextItemMatchesCreator(item, creator) && commonTextItemMatchesDevice(item, device)
     );
-    const baseItems = sortCommonTextItemsBy(filterCommonTextItemsByTags(sourceFiltered, selectedTags, { untagged }), sortKey);
+    const baseItems = sortCommonTextItemsBy(
+        filterCommonTextItemsByTags(sourceFiltered, selectedTags, { untagged }),
+        sortKey
+    );
     if (tokenWeights.size === 0) {
         return baseItems.slice(0, limit);
     }

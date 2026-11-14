@@ -112,3 +112,4 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `vcs-conflict-copy`   | `verify.mjs` | VCS 冲突/失败复制：真实 git 仓库（amend 非快进 → push 被拒；双分支改同一行 → merge 冲突）驱动——失败卡复制含 stderr 被拒原因、冲突条复制含三标记 + `=== path ===` 分段、干净仓库无冲突条 | ✅       |
 | `waveconfig-json-error` | `verify.mjs` | 设置 JSON 校验失败复制：Monaco 真实键入坏 JSON（char 事件驱动 EditContext）→ Save → 失败条 + payload（行列/±5 行片段/键名/三段式契约）；初始合法态无按钮；修复后失败条消失 | ✅       |
 | `newtab-empty`       | `verify.mjs` | 新建 Tab 不自动建 Terminal：点 Add Tab → 空 Tab「暂无 Block」引导 + 全页 0 个 block；点「新建 Terminal」→ 出块可出门 | ✅       |
+| `tab-startup-restore` | `verify.mjs` | 重启恢复：同 profile 杀掉再起后，主栏应恢复上次打开的全部 Tab（数量/顺序/激活一致 + 无 `unopened-this-launch` 灰化），而不是只显示激活那一个（独立 profile + 端口 9236/51830） | ✅       |

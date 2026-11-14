@@ -206,3 +206,19 @@
 | 2026-11-13 15:09 | newtab-empty | ❌ fatal（未跑） | launch+reset | `20261113T15064-newtab-empty` | unknown |
 | 2026-11-13 23:56 | commontext-editor-collapse（与 commontext-source-notion 同源断言） | ✅ 2/2（jsdom DOM 台；红证：旧源 2 failed → 新源 2 passed） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` | working-tree |
 | 2026-11-13 23:56 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：Electron 启动器故障（连 newtab-empty 同故障：electron:dev exit 4/255、initPromise 120s 超时、CDP ECONNREFUSED），本机 5 次尝试全 fatal；行为断言由上一行 jsdom 台兜住 | skipped | `20261113T14364…14564` | 3671f090 |
+| 2026-11-14 06:12 | tab-startup-restore | ✅ 1/1 | launch+reset+restart | `20261114T06120-tab-startup-restore` | 7a73cbd2a |
+| 2026-11-14 06:17 | tab-startup-restore | ❌ fatal（未跑） | launch+reset+restart | `20261114T06103-tab-startup-restore` | 7a73cbd2a |
+| 2026-11-14 06:34 | tab-startup-restore | ❌ 1/3（fatal） | launch+reset+restart | `20261114T06185-tab-startup-restore` | 7a73cbd2a |
+| 2026-11-14 06:47 | tab-startup-restore（emain 恢复标记单测） | ✅ 4/4（红证：修复前 2 failed → 修复后 4 passed） | vitest | `emain/emain-window.test.ts` | working-tree |
+| 2026-11-14 06:47 | tab-startup-restore（真机重启台） | ⛔ 环境阻塞待补跑：dev 实例 tabview init 实测 3~4 分钟（14:29→14:31），两次超启动器 420s 窗口后 fatal（06:17 / 06:34 行）；行为断言由上行单测兜住，重启真机验证待 G7 人工确认 | skipped | `20261114T0610*` | working-tree |
+| 2026-11-14 07:05 | tab-drag-switch-fix（拖拽判定 / 乐观高亮 / 广播去重） | ✅ 21/21（红证：修复前 2 文件 ERR_MODULE_NOT_FOUND → 修复后 21 passed；tab 全套 102 passed） | vitest | `frontend/app/tab/tab-drag-model.test.ts` 等 | working-tree |
+| 2026-11-14 07:02 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261114T07004-commontext-source-notion` | 874b5ec9f |
+| 2026-11-14 07:05 | commontext-editor-draft（与 commontext-source-notion 同源断言） | ✅ 9/9（jsdom DOM 台 + 草稿模块单测 5 例；红证：旧源 5 failed → 新源 190 passed） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` + `commontext-editor-draft.test.ts` | 874b5ec9f |
+| 2026-11-14 07:05 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：Electron 启动器故障依旧（launcher exit=201，与 2026-11-13 5 连 fatal 同病）；真机台已补 editor-draft-persisted/cleared 断言，启动器修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | 874b5ec9f |
+| 2026-11-14 08:20 | commontext-tags-property（与 commontext-source-notion 同源断言） | ✅ 12/12（jsdom DOM 台 8 例 + 源码断言；红证：旧源 3 failed → 新源 192 passed） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` | d7d5cb93e |
+| 2026-11-14 08:20 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：同 07:02 launcher exit=201（Electron 启动器故障依旧），本次未重复尝试；真机台已把 property-grid-five-rows 改六行并补 tags 浮层 9 条断言，修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | d7d5cb93e |
+| 2026-11-14 09:35 | commontext-tags-no-hash（与 commontext-source-notion 同源断言） | ✅ 15/15（model 单测 + dom 台 8 例 + 源码断言；红证：旧 model ['#legacy','work#'] 2 failed → 新 194 passed） | vitest jsdom | `frontend/app/commontext/commontext-model.test.ts` + dom 台 | 308b11b81 |
+| 2026-11-14 09:35 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：同日 07:02 launcher exit=201（故障依旧），未重复尝试；真机台已补 tags-summary-shows-names 断言，修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | 308b11b81 |
+| 2026-11-14 10:15 | commontext-tags-summary-chips | ✅ 194/194（dom 台摘要 chip 断言；红证：旧源 join 文本 2 failed → 新源 0） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` | d8dd97abc |
+| 2026-11-14 11:40 | commontext-tags-structured（与 commontext-source-notion 同源断言） | ✅ 197/197（model 迁移单测 3 例 + dom 分离断言；红证：旧源["run deploy #urgent #ops"未剥/正文含 #urgent] 5 failed → 新源 0） | vitest jsdom | `commontext-model.test.ts` + `commontext-compose-modal.dom.test.tsx` | 2687ff10c |
+| 2026-11-14 11:40 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：同日 launcher exit=201（故障依旧），未重复尝试；真机台断言已改为分离语义（tags-create-separate-from-text / tags-remove-drops-tag），修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | 2687ff10c |

@@ -6,13 +6,21 @@ import { Input, InputGroup, InputRightElement } from "@/app/element/input";
 import { Modal } from "@/app/modals/modal";
 import { atoms } from "@/app/store/global";
 import { SessionTagChips } from "@/app/view/aisessions/session-tag-chips";
-import { extractSessionTagsFromNote, removeSessionTagFromNote } from "@/app/view/aisessions/session-tags";
+import {
+    extractSessionTagsFromNote,
+    removeSessionTagFromNote,
+    stripSessionTagHashes,
+} from "@/app/view/aisessions/session-tags";
 import { formatSessionDateCompact, formatSessionRelativeTime } from "@/app/view/aisessions/utils";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { clearEditorDraft, loadEditorDraft, saveEditorDraft } from "./commontext-editor-draft";
 import { computeEditorMaxHeight } from "./commontext-editor-size";
 import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
+// 标签属性浮层：与 md 预览属性卡 / AISessions 属性面板共用的 Wolai 风格编辑器，
+// 避免同一个标签交互在三个面各自漂移。
+import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";
 import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
 import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
 import { copyCommonText, insertOrCopyCommonText } from "./commontext-insert";
@@ -28,6 +36,7 @@ import {
     getCommonTextOriginDeviceName,
     getCommonTextTagSummaries,
     getLiveCommonTextItems,
+    normalizeCommonTextTags,
     recordCommonTextUse,
     searchCommonTextComposeItems,
     upsertCommonTextItem,
@@ -154,10 +163,9 @@ type ComposeState = {
     statusKind: "info" | "ok" | "err";
 };
 
-// 进程内草稿暂存：弹窗关闭后保留 editor 内容，下次无 query 打开时还原；重启进程即丢。
-// 带 detail.query 的外部触发（如选区 overlay 复制场景）不取草稿，避免与外部文本冲突。
-type ComposeDraft = Pick<ComposeState, "editor" | "editorCaret" | "insertedIds">;
-let composeDraft: ComposeDraft | null = null;
+// 进程内草稿已不再需要：editor 文本落 localStorage 持久草稿（跨重启不丢），见
+// commontext-editor-draft.ts。带 detail.query 的外部触发（如选区 overlay 复制场景）不读草稿，
+// 避免与外部文本冲突。
 
 // 弹窗尺寸偏好持久化：用户拖动右下角 resize 手柄后无感记入 localStorage，下次打开沿用。
 // 无设置 UI、无 schema 文件；存储失败（隐私模式等）静默 fallback 到默认尺寸。
@@ -169,6 +177,8 @@ const ComposeModalMinH = 350;
 // 收起态单行高度（= h-9 = leading-5 20px + p-2×2 16px）：拖高过（resize-y 会在元素上留下浏览器
 // 写入的 inline height）的 editor 收起时必须显式盖掉，否则 inline 高度压过 h-9、收不回一行。
 const EDITOR_COLLAPSED_HEIGHT_PX = 36;
+// Editor 持久草稿防抖窗口：与详情区自动保存（800ms）同节奏。
+const EDITOR_DRAFT_DEBOUNCE_MS = 800;
 
 type ComposeModalSize = { w: string; h: string };
 
@@ -216,15 +226,23 @@ const initialOpenState = (manualQuery = ""): ComposeState => ({
 });
 
 const restoreOpenState = (): ComposeState => {
-    if (composeDraft == null) return initialOpenState();
+    // 持久草稿（localStorage）：同进程重开与跨重启统一走这一条路径。
+    const draft = loadEditorDraft();
+    if (draft == null) return initialOpenState();
     return {
         ...initialOpenState(),
-        ...composeDraft,
+        editor: draft.text,
+        // caret 落盘时可能因外部编辑器变更越界，clamp 回文本长度。
+        editorCaret: Math.min(draft.caret, draft.text.length),
+        insertedIds: draft.insertedIds,
     };
 };
 
 const CommonTextComposeModal = memo(() => {
     const [state, setState] = useState<ComposeState>(() => ({ ...initialOpenState(), open: false }));
+    // 最新 state 镜像：卸载清理闭包里拿不到最新 state，草稿兜底落盘用它。
+    const stateRef = useRef(state);
+    stateRef.current = state;
     // editor 默认收缩为单行高度（与 Title/Action 控件视觉对齐），聚焦时再撑开到多行，
     // 避免每次打开弹窗都被一个 120px 的 textarea 撑高、抢走主视觉。
     // "草稿含换行"会作为初始展开判定，防止多行草稿被压缩成单行截断。
@@ -234,6 +252,9 @@ const CommonTextComposeModal = memo(() => {
     const [editorManuallyCollapsed, setEditorManuallyCollapsed] = useState(false);
     // 详情属性网格默认折叠成一行 icon 摘要，chevron 展开完整网格；每次打开弹窗重置。
     const [propertiesExpanded, setPropertiesExpanded] = useState(false);
+    // Tags 属性行的浮层编辑态：锚定值单元格，PropertyValuePopover portal 到 body。
+    const [tagsEditing, setTagsEditing] = useState(false);
+    const tagsValueRef = useRef<HTMLDivElement>(null);
     const settings = useAtomValue(atoms.settingsAtom);
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -268,6 +289,13 @@ const CommonTextComposeModal = memo(() => {
     // 自动保存状态：与 state.status（Send/Copy/Delete 瞬时反馈）分开，贴在 footer 右下角。
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "err">("idle");
     const saveStatusMsgRef = useRef<string>("");
+    // 持久草稿（localStorage）：落盘指示与防抖计时。
+    const [draftStatus, setDraftStatus] = useState<"idle" | "saved">("idle");
+    const editorDraftTimerRef = useRef<number>(null);
+    const draftStatusFadeRef = useRef<number>(null);
+    // 已落盘的草稿文本基线：打开/还原时对齐它，只有「本次会话里用户改过文本」才写回，
+    // 避免外部 query 打开（editor 空、不动）时误清持久草稿。
+    const lastDraftTextRef = useRef<string>("");
     // unmount/closing guard——组件关闭或同步 flush 中途被卸载时置 true，
     // 之后所有 await 之 setState 都跳过，避免"setState on unmounted component"触发 React 19 卸载期 throw 白屏。
     const unmountedRef = useRef(false);
@@ -283,10 +311,6 @@ const CommonTextComposeModal = memo(() => {
     // editor 当前正文里嵌入的 #tag：在 Send 右侧渲染成可删 chip，点 × 把字面从 editor 抹掉，
     // 这样剩余正文 send/copy 出去时不带走 #tag。
     const editorTags = useMemo(() => extractSessionTagsFromNote(state.editor).tags, [state.editor]);
-
-    // 详情区 tag 完全由 detailText 派生——与编辑器上方的 editorTags 同语义。手写 #tag 落在 Text
-    // 正文里，All Tags 面板据此决定 chip 亮灭；该 memo 也是 Save 时写回 item.tags 的真源。
-    const detailTags = useMemo(() => extractSessionTagsFromNote(state.detailText).tags, [state.detailText]);
 
     // 计数与设备清单按「当前 tag/查询过滤后的集合」统计，与列表实际可见范围一致：
     // 若按全量统计，chip 上的数字会与点下去后的行数不符。
@@ -364,6 +388,10 @@ const CommonTextComposeModal = memo(() => {
         return filteredItems[idx] ?? null;
     }, [filteredItems, state.detailId, state.selectedIndex, state.open]);
 
+    // 详情区 tags 是结构化唯一权威（item.tags，读路径已含历史字面迁移合并）；不再从正文抽取。
+    // 正文编辑不动 tags，tags 增删也不改正文——内容与标签分离。
+    const detailTags = useMemo(() => detailItem?.tags ?? [], [detailItem]);
+
     // Notion 式属性网格：来源信息是只读的（由写入侧决定），所以这里全部是派生值。
     // 值里的次要文本用独立 span，不嵌套 grid 项——嵌套会继承行样式把行高压乱。
     const detailProperties = useMemo(() => {
@@ -437,6 +465,14 @@ const CommonTextComposeModal = memo(() => {
         const deviceId = getCommonTextOriginDeviceId(item);
         return [
             {
+                key: "tags",
+                icon: "fa-hashtag",
+                iconClass: "text-muted",
+                // 折叠态有标签时渲染层接管（与展开态同一个 chip 组件），空态给 0 占位。
+                text: detailTags.length === 0 ? "0" : "",
+                title: detailTags.length === 0 ? "No tags" : `Tags: ${detailTags.map((t) => "#" + t).join(" ")}`,
+            },
+            {
                 key: "creator",
                 icon: kind === "agent" ? "fa-robot" : "fa-user",
                 iconClass: kind === "agent" ? "text-sky-300" : "text-orange-300",
@@ -465,7 +501,7 @@ const CommonTextComposeModal = memo(() => {
                 title: `Used ${item.usagecount ?? 0} time(s)`,
             },
         ];
-    }, [detailItem]);
+    }, [detailItem, detailTags]);
 
     // 详情区一旦选中某 item 即永远编辑态（点选即编辑），不存在只读中间态。
     // detailDirty 仅用来提示"有未保存改动"，控制 footer 上 Save 行为是否禁言。
@@ -486,7 +522,7 @@ const CommonTextComposeModal = memo(() => {
             // 排序偏好不在草稿里（草稿只存 editor 文本）：每次打开都从 localStorage 读。
             next.sortKey = loadCommonTextSortKey();
             // 当传入 editItemId 时（灯泡保存后的 Tag 入口）：定位到该条目并打开详情面板，
-            // 用户可直接在详情区（含 All tags 面板）补标签；清空 query 保证条目在列表可见。
+            // 用户可直接在详情区 Tags 属性行补标签；清空 query 保证条目在列表可见。
             if (detail.editItemId != null && detail.editItemId !== "") {
                 const targetItem = getCommonTextItems().find((i) => i.id === detail.editItemId);
                 if (targetItem) {
@@ -497,12 +533,20 @@ const CommonTextComposeModal = memo(() => {
                 }
             }
             setState(next);
+            // 草稿基线对齐本次打开后的 editor 内容：之后只有真正被用户改过才写回 localStorage。
+            if (editorDraftTimerRef.current != null) {
+                window.clearTimeout(editorDraftTimerRef.current);
+                editorDraftTimerRef.current = null;
+            }
+            lastDraftTextRef.current = next.editor;
+            setDraftStatus("idle");
             // 不主动聚焦 editor：避免一打开就把弹窗撑成编辑多行态。多行草稿按文本本身初始展开，
             // 让用户视觉上立刻知道草稿还在；单行草稿保持紧凑单行高，等用户点进去再撑开。
             setEditorExpanded(next.editor.includes("\n"));
             // 每次打开都从「自动展开 + 属性折叠」的默认态开始，不继承上次的手动收起。
             setEditorManuallyCollapsed(false);
             setPropertiesExpanded(false);
+            setTagsEditing(false);
         };
         window.addEventListener(OpenCommonTextSearchEvent, handleOpen);
         return () => window.removeEventListener(OpenCommonTextSearchEvent, handleOpen);
@@ -634,11 +678,69 @@ const CommonTextComposeModal = memo(() => {
                 window.clearTimeout(detailSaveFadeRef.current);
                 detailSaveFadeRef.current = null;
             }
+            // 卸载前若草稿防抖还挂着：直接同步落盘（组件即将消失，setState 不再可用，只写不报状态）。
+            if (editorDraftTimerRef.current != null) {
+                window.clearTimeout(editorDraftTimerRef.current);
+                editorDraftTimerRef.current = null;
+                saveEditorDraft({
+                    text: stateRef.current.editor,
+                    caret: stateRef.current.editorCaret,
+                    insertedIds: stateRef.current.insertedIds,
+                });
+            }
+            if (draftStatusFadeRef.current != null) {
+                window.clearTimeout(draftStatusFadeRef.current);
+                draftStatusFadeRef.current = null;
+            }
             // 关闭弹窗已在 close() 里执行强制 flush，此处 React 卸载流不再重复 fire——
             // 避免组件已卸载却仍调用 setState（saveStatus / detailDirty）触发 React 卸载期 throw 白屏。
             unmountedRef.current = true;
         };
     }, []);
+
+    // 草稿落盘指示：saved 显示 1.5s 后淡回 idle，让自动保存可感知又不长期占位。
+    const markDraftSaved = () => {
+        setDraftStatus("saved");
+        if (draftStatusFadeRef.current != null) {
+            window.clearTimeout(draftStatusFadeRef.current);
+        }
+        draftStatusFadeRef.current = window.setTimeout(() => {
+            draftStatusFadeRef.current = null;
+            if (!unmountedRef.current) {
+                setDraftStatus((cur) => (cur === "saved" ? "idle" : cur));
+            }
+        }, 1500);
+    };
+
+    // 强制落盘：close / 卸载前的兑底。文本与基线相同（本次只是还原或查阅）则跳过，
+    // 避免外部 query 打开后直接关闭误清持久草稿。
+    const flushEditorDraft = () => {
+        if (editorDraftTimerRef.current != null) {
+            window.clearTimeout(editorDraftTimerRef.current);
+            editorDraftTimerRef.current = null;
+        }
+        if (state.editor === lastDraftTextRef.current) return;
+        saveEditorDraft({ text: state.editor, caret: state.editorCaret, insertedIds: state.insertedIds });
+        lastDraftTextRef.current = state.editor;
+    };
+
+    // 防抖自动保存：文本与已落盘值不同才排 800ms 写；pending 中即使文本未变（仅 caret/insertedIds
+    // 变动）也重排，避免后一次状态更新把前一次还没落盘的文本改动吞掉。
+    useEffect(() => {
+        if (!state.open) return;
+        const textChanged = state.editor !== lastDraftTextRef.current;
+        if (!textChanged && editorDraftTimerRef.current == null) return;
+        if (editorDraftTimerRef.current != null) {
+            window.clearTimeout(editorDraftTimerRef.current);
+        }
+        editorDraftTimerRef.current = window.setTimeout(() => {
+            editorDraftTimerRef.current = null;
+            saveEditorDraft({ text: state.editor, caret: state.editorCaret, insertedIds: state.insertedIds });
+            lastDraftTextRef.current = state.editor;
+            if (!unmountedRef.current) markDraftSaved();
+        }, EDITOR_DRAFT_DEBOUNCE_MS);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- markDraftSaved 是稳定的本地闭包
+    }, [state.open, state.editor, state.editorCaret, state.insertedIds]);
 
     const close = () => {
         if (compositionEndTimerRef.current != null) {
@@ -663,14 +765,9 @@ const CommonTextComposeModal = memo(() => {
         }
         fireAndForget(() => flushDetailSave({ keepDirty: true }));
         isComposingRef.current = false;
-        setState((cur) => {
-            composeDraft = {
-                editor: cur.editor,
-                editorCaret: cur.editorCaret,
-                insertedIds: cur.insertedIds,
-            };
-            return { ...cur, open: false };
-        });
+        // 关闭前强制落草稿：防抖窗口内的最后一刻改动也要保住（同进程重开与跨重启都能还原）。
+        flushEditorDraft();
+        setState((cur) => ({ ...cur, open: false }));
     };
 
     const update = (patch: Partial<ComposeState>) => setState((cur) => ({ ...cur, ...patch }));
@@ -865,7 +962,8 @@ const CommonTextComposeModal = memo(() => {
                 {
                     title,
                     text,
-                    tags: extractSessionTagsFromNote(text).tags,
+                    // 正文改动不动 tags（tags 是结构化权威，读路径迁移已合并历史字面）
+                    tags: detailItem?.tags ?? [],
                     pinned: detailItem?.pinned ?? false,
                     emoji: state.detailEmoji,
                 },
@@ -923,29 +1021,37 @@ const CommonTextComposeModal = memo(() => {
 
     if (!state.open) return null;
 
-    // All tags 面板里点 chip：在 detailText 正文里加/抹对应 #tag 字面（草稿态，Save 才落盘）。
-    // tag 与 text 完全同源——点亮/熄灭由 detailTags（从 text 抽）决定，不在 item.tags 结构化字段
-    // 上点点即生效。加 tag 时同行末尾追加 ` #tag`，单空格分隔；抹 tag 用 removeSessionTagFromNote。
-    const handleDetailToggleTag = (tag: string) => {
-        const normalized = tag.trim().toLowerCase().replace(/^#+/, "").replace(/#+$/, "");
-        if (normalized === "") return;
-        setState((cur) => {
-            const currentTags = extractSessionTagsFromNote(cur.detailText).tags;
-            const hasTag = currentTags.some((t) => t.toLowerCase() === normalized);
-            let nextText: string;
-            if (hasTag) {
-                nextText = removeSessionTagFromNote(cur.detailText, normalized);
-            } else {
-                // 同行末尾追加，单空格分隔；若 text 为空或已以空白结尾则不再加第二空格。
-                const sep = cur.detailText === "" || /\s$/.test(cur.detailText) ? "" : " ";
-                nextText = cur.detailText + sep + "#" + normalized;
-            }
-            return { ...cur, detailText: nextText, detailDirty: true };
-        });
+    // Tags 属性浮层提交（PropertyTagEditor 给最终 items）：直接写结构化权威字段 item.tags，
+    // 不再改正文（内容与标签分离）。写前先 flush 正文草稿——两条"读全表→改→写全表"路径不能交错，
+    // 否则刚 flush 的正文会被这次写回的旧副本覆盖。
+    const applyDetailTags = async (nextTags: string[]) => {
+        const item = detailItem;
+        if (item == null) return;
+        if (detailSaveTimerRef.current != null) {
+            window.clearTimeout(detailSaveTimerRef.current);
+            detailSaveTimerRef.current = null;
+        }
+        await flushDetailSave({ keepDirty: true });
+        const tags = normalizeCommonTextTags(nextTags);
+        try {
+            await upsertCommonTextItem(
+                {
+                    title: state.detailTitle.trim(),
+                    // 正文草稿为空说明用户正在清空正文（删除走显式 Delete）：保留后端正文，别误写空。
+                    text: state.detailText.trim() === "" ? item.text : state.detailText,
+                    tags,
+                    pinned: item.pinned,
+                    emoji: state.detailEmoji,
+                },
+                item.id
+            );
+        } catch (err) {
+            setStatus(`Tag update failed: ${(err as Error).message ?? "unknown"}`, "err");
+        }
     };
 
-    // 详情区 Pin toggle 按钮：立即把 pinned 翻转写回 settings，与 tag toggle 同属"点点即生效"。
-    // 用后端当前 item 的 title/text 副本，tags 从 text 抽（与渲染真源一致），避免误回写未 Save 的草稿。
+    // 详情区 Pin toggle 按钮：立即把 pinned 翻转写回 settings，与 tag 写入同属"点点即生效"。
+    // 用后端当前 item 的 title/text 副本（不回写未 Save 的正文草稿）；tags 用结构化权威字段。
     const handleDetailTogglePin = async () => {
         if (detailItem == null) return;
         try {
@@ -953,7 +1059,7 @@ const CommonTextComposeModal = memo(() => {
                 {
                     title: detailItem.title,
                     text: detailItem.text,
-                    tags: extractSessionTagsFromNote(detailItem.text).tags,
+                    tags: detailItem.tags,
                     pinned: !detailItem.pinned,
                 },
                 detailItem.id
@@ -967,15 +1073,24 @@ const CommonTextComposeModal = memo(() => {
     const handleClearEditor = () => {
         if (state.editor.trim() === "") return;
         setEditor("", 0);
+        // 显式清空 = 用户主动丢弃草稿：立即清持久键，不等 800ms 防抖（否则关得快一点草稿又回来了）。
+        clearEditorDraft();
+        lastDraftTextRef.current = "";
+        setDraftStatus("idle");
         requestAnimationFrame(() => editorRef.current?.focus());
     };
 
+    // 「+」创建：草稿里的 #tag 字面在落条目那一刻拆分——tags 入结构化字段，
+    // 正文剥掉字面只存内容（剥完为空则回退原文，避免空条目）。
     const handleSaveDialog = () => {
-        const text = state.editor;
-        if (text.trim() === "") {
+        const rawDraft = state.editor;
+        if (rawDraft.trim() === "") {
             setStatus("Nothing to save", "err");
             return;
         }
+        const draftTags = extractSessionTagsFromNote(rawDraft).tags;
+        const strippedDraft = stripSessionTagHashes(rawDraft);
+        const text = strippedDraft.trim() === "" ? rawDraft : strippedDraft;
         // 不再弹独立的 SaveDialog：直接新建一条带 editor 正文的 item，让详情区接管就地编辑。
         // upsertCommonTextItem 收口 title 派生（normalizeCommonTextTitle）；新建后刷新 lastusedat
         // （让它排在默认「最近使用」排序的前排），但**不计 usagecount** —— 新建不是一次使用，
@@ -984,7 +1099,7 @@ const CommonTextComposeModal = memo(() => {
             const item = await upsertCommonTextItem({
                 title: "",
                 text,
-                tags: extractSessionTagsFromNote(text).tags,
+                tags: draftTags,
                 pinned: false,
             });
             await recordCommonTextUse(item.id, { countUsage: false });
@@ -994,6 +1109,10 @@ const CommonTextComposeModal = memo(() => {
             // 3. 下一帧把光标聚焦到详情 textarea，让用户直接继续 refine
             setEditor("", 0);
             setEditorExpanded(false);
+            // 已升格为列表条目：editor 里的草稿使命结束，立即清持久键。
+            clearEditorDraft();
+            lastDraftTextRef.current = "";
+            setDraftStatus("idle");
             setState((cur) => ({
                 ...cur,
                 detailId: item.id,
@@ -1326,6 +1445,12 @@ const CommonTextComposeModal = memo(() => {
                             className="min-w-0 flex-1"
                         />
                     )}
+                    <span
+                        data-commontext-draft-status={draftStatus}
+                        className={"shrink-0 text-[11px] text-muted " + (draftStatus === "idle" ? "hidden" : "")}
+                    >
+                        {draftStatus === "saved" ? "Draft saved" : ""}
+                    </span>
                     {state.status && (
                         <span
                             className={
@@ -1709,7 +1834,7 @@ const CommonTextComposeModal = memo(() => {
                             </div>
                         ) : (
                             <div className="flex-1 min-h-0 p-4 flex flex-col gap-2.5 overflow-y-auto">
-                                {/* 详情区外层 padding+gap；All tags 只用分隔线组织，不形成嵌套卡片。 */}
+                                {/* 详情区外层 padding+gap；属性行只用分隔线组织，不形成嵌套卡片。 */}
                                 {/* 详情 head：Notion 式页面 —— page icon（emoji 槽）+ 大标题 + 右侧 Pin。
                                     icon 槽与标题同一行：icon 是条目的「脸」，单独一行会把它变成装饰。 */}
                                 <div className="shrink-0 flex items-start gap-2">
@@ -1775,10 +1900,24 @@ const CommonTextComposeModal = memo(() => {
                                                 key={s.key}
                                                 data-commontext-properties-summary={s.key}
                                                 title={s.title}
-                                                className="inline-flex min-w-0 shrink-0 items-center gap-1"
+                                                // 标签可能很多：tags 项允许收缩并换行（flex-wrap），
+                                                // 不把 creator/computer/updated 等项挤出视口。
+                                                className={
+                                                    "inline-flex min-w-0 items-center gap-1 " +
+                                                    (s.key === "tags" ? "" : "shrink-0")
+                                                }
                                             >
                                                 <i className={"fa fa-solid text-[9px] " + s.iconClass + " " + s.icon} />
-                                                <span className="truncate tabular-nums">{s.text}</span>
+                                                {s.key === "tags" && detailTags.length > 0 ? (
+                                                    // 与展开态同一个 chip 组件：两态样式/尺寸一致
+                                                    <SessionTagChips
+                                                        tags={detailTags}
+                                                        selectedTags={detailTags}
+                                                        className="min-w-0 flex-wrap"
+                                                    />
+                                                ) : (
+                                                    <span className="truncate tabular-nums">{s.text}</span>
+                                                )}
                                             </span>
                                         ))}
                                         <i
@@ -1789,7 +1928,32 @@ const CommonTextComposeModal = memo(() => {
                                         />
                                     </button>
                                     {/* 展开态：label 定宽 + 值，行间只用细分隔线（不套卡片）。
-                                        值与 label 各自独立类名——嵌套会继承 grid 项样式把行高压乱。 */}
+                                        值与 label 各自独立类名——嵌套会继承 grid 项样式把行高压乱。
+                                        Tags 行排在第一：Notion/Obsidian 式属性选择——值区可点，
+                                        唤起共享 PropertyTagEditor 浮层（输入过滤/全库候选带计数/创建）。 */}
+                                    {propertiesExpanded && (
+                                        <div
+                                            data-commontext-property="Tags"
+                                            className="flex items-start gap-2 border-b border-border/40 py-1"
+                                        >
+                                            <div className="w-[104px] shrink-0 text-[10.5px] leading-5 text-muted">
+                                                Tags
+                                            </div>
+                                            <div
+                                                ref={tagsValueRef}
+                                                data-commontext-tags-value=""
+                                                onClick={() => setTagsEditing(true)}
+                                                title="Edit tags"
+                                                className="-mx-1 min-w-0 flex-1 flex flex-wrap items-center gap-1 rounded px-1 py-0.5 text-[11px] leading-5 hover:bg-surface-soft transition-colors cursor-pointer"
+                                            >
+                                                {detailTags.length === 0 ? (
+                                                    <span className="text-muted/70">Empty</span>
+                                                ) : (
+                                                    <SessionTagChips tags={detailTags} selectedTags={detailTags} />
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                     {propertiesExpanded &&
                                         detailProperties.map((prop) => (
                                             <div
@@ -1810,7 +1974,7 @@ const CommonTextComposeModal = memo(() => {
                                 {/* 详情 body：永远 textarea 形态（点选即编辑），卡片样式对齐原型尺寸。
                                     最小高度挂在**包裹层**上（flex 项），不能挂 textarea 自己：
                                     后者拿到 `h-full` 后会用 min-height 硬撞出 flex 槽位，
-                                    在窗口变矮时把下面 All tags / 按钮直接盖住（内容不会被自身裁掉）。
+                                    在窗口变矮时把下面属性行 / 按钮直接盖住（内容不会被自身裁掉）。
                                     包裹层长到 200px 后，超出部分由详情列的 `overflow-y-auto` 接管滚动。 */}
                                 <div className="flex-1 min-h-[200px]">
                                     <textarea
@@ -1823,44 +1987,35 @@ const CommonTextComposeModal = memo(() => {
                                                 detailDirty: true,
                                             }))
                                         }
-                                        placeholder="Text to insert — type #tag inline to tag this item"
+                                        placeholder="Text to insert"
                                         className="w-full h-full min-h-0 resize-none rounded-lg border border-border bg-[var(--form-element-bg-color)] text-[var(--form-element-text-color)] text-[13.5px] font-mono p-[14px_16px] leading-[1.7] focus:outline-none focus:border-accent"
                                         spellCheck={false}
                                     />
                                 </div>
 
-                                {/* All tags 面板：恒渲染（只要详情有选中项）。chip 选中态来自 detailTags——
-                                    即从 Text 正文抽出的 #tag 集合，点 chip 在 Text 里加/抹对应字面（草稿态，Save 落盘）。 */}
-                                <div className="shrink-0 border-t border-border pt-2.5 flex flex-col gap-2">
-                                    <div className="flex items-center justify-between">
-                                        <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-secondary">
-                                            All tags
-                                        </div>
-                                        <div className="text-[10.5px] text-muted">
-                                            {tagSummaries.length} tags · click to toggle in Text
-                                        </div>
-                                    </div>
-                                    {tagSummaries.length === 0 ? (
-                                        <div className="text-[11px] text-muted py-1">
-                                            No tags yet — type{" "}
-                                            <code className="px-1 rounded bg-surface-soft">#tag</code> in Text to create
-                                            one
-                                        </div>
-                                    ) : (
-                                        <div className="max-h-24 overflow-y-auto pr-1 -mr-1">
-                                            <SessionTagChips
-                                                tags={tagSummaries.map((s) => s.tag)}
-                                                selectedTags={detailTags}
-                                                countMap={(() => {
-                                                    const m = new Map<string, number>();
-                                                    for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
-                                                    return m;
-                                                })()}
-                                                onClick={(tag) => handleDetailToggleTag(tag)}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Tags 属性浮层：共享 Wolai 式编辑器（md 预览/AISessions 同源）。
+                                    portal 到 body + 视口钳位，不会被详情列窄宽挤压。 */}
+                                {tagsEditing && (
+                                    <PropertyValuePopover
+                                        open
+                                        anchor={tagsValueRef.current}
+                                        onClose={() => setTagsEditing(false)}
+                                    >
+                                        <PropertyTagEditor
+                                            items={detailTags}
+                                            options={tagSummaries.map((s) => s.tag)}
+                                            optionCounts={(() => {
+                                                const counts: Record<string, number> = {};
+                                                for (const s of tagSummaries) counts[s.tag.toLowerCase()] = s.count;
+                                                return counts;
+                                            })()}
+                                            multiple
+                                            placeholder="搜索或新建标签"
+                                            onChange={(items) => applyDetailTags(items)}
+                                            onClose={() => setTagsEditing(false)}
+                                        />
+                                    </PropertyValuePopover>
+                                )}
 
                                 {/* 详情 footer：自动保存模式——无 Save/Cancel，仅行为条 + 右侧自动保存状态。
                                     不带 border-t，靠外层 gap 与上面分隔。 */}

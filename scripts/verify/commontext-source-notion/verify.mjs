@@ -123,6 +123,19 @@ const SNAPSHOT_FN = `(() => {
         propsSummaryKeys: propsSummary.map((s) => s.getAttribute("data-commontext-properties-summary")),
         propsSummaryText: propsSummary.map((s) => text(s)),
         composerHeight: composer == null ? 0 : h(composer),
+        tagsValueText: text(modal.querySelector("[data-commontext-tags-value]")),
+        detailTextValue: (modal.querySelector("textarea:not([data-commontext-composer])")?.value ?? ""),
+        allTagsPanelPresent: [...modal.querySelectorAll("div")].some((d) => (d.textContent ?? "").trim() === "All tags"),
+        tagsPopoverOpen: document.querySelector('[data-testid="property-tag-editor"]') != null,
+        draftStatus:
+            modal.querySelector("[data-commontext-draft-status]")?.getAttribute("data-commontext-draft-status") ?? null,
+        draftText: (() => {
+            try {
+                return JSON.parse(localStorage.getItem("commontext:editorDraft") ?? "null")?.text ?? null;
+            } catch {
+                return null;
+            }
+        })(),
     };
 })()`;
 
@@ -371,10 +384,85 @@ try {
     detail?.titleFontSize
   );
   reporter.check(
-    "property-grid-five-rows",
-    sameOrder(detail?.propertyLabels, ["Created by", "Computer", "Created", "Updated", "Used"]),
+    "property-grid-six-rows",
+    sameOrder(detail?.propertyLabels, ["Tags", "Created by", "Computer", "Created", "Updated", "Used"]),
     detail?.propertyLabels
   );
+  // ── 6.5 Tags 属性行：底部 All tags 面板已移除，标签走属性浮层（Wolai 式共享编辑器）──
+  reporter.check("all-tags-panel-removed", detail?.allTagsPanelPresent === false, detail?.allTagsPanelPresent);
+  reporter.check("tags-value-cell-present", (detail?.tagsValueText ?? "") === "Empty", detail?.tagsValueText);
+  const tagsCellClicked = await clickSelector(client, `${MODAL} [data-commontext-tags-value]`);
+  reporter.check("tags-popover-opens", tagsCellClicked === true, tagsCellClicked);
+  await waitForProbe(client, probeSnapshot(), (s) => s?.tagsPopoverOpen === true, { timeoutMs: 15000 });
+  const tagPopover = await waitForProbe(client, probeSnapshot(), (s) => s?.tagsPopoverOpen === true, {
+    timeoutMs: 15000,
+  });
+  reporter.check("tags-popover-editor-present", tagPopover?.tagsPopoverOpen === true, tagPopover?.tagsPopoverOpen);
+  const tagInputSet = await client.evaluate(`(() => {
+    const input = document.querySelector(".ptag-input");
+    if (input == null) return false;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    setter.call(input, "verifytag");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  reporter.check("tags-input-filled", tagInputSet === true, tagInputSet);
+  await sleep(120);
+  const tagEnter = await client.evaluate(`(() => {
+    const input = document.querySelector(".ptag-input");
+    if (input == null) return false;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  reporter.check("tags-enter-created", tagEnter === true, tagEnter);
+  const tagAdded = await waitForProbe(
+    client,
+    probeSnapshot(),
+    (s) => (s?.detailTextValue ?? "").includes("#verifytag"),
+    {
+      timeoutMs: 15000,
+    }
+  );
+  // 内容与标签分离：新建 tag 进结构化 tags，正文**不出现** #tag 字面（旧语义是追加进正文）
+  reporter.check(
+    "tags-create-separate-from-text",
+    !(tagAdded?.detailTextValue ?? "").includes("#verifytag") && (tagAdded?.tagsValueText ?? "").includes("verifytag"),
+    { detailTextTail: (tagAdded?.detailTextValue ?? "").slice(-40), tagsValueText: tagAdded?.tagsValueText }
+  );
+  reporter.check(
+    "tags-value-shows-chip",
+    (tagAdded?.tagsValueText ?? "").includes("verifytag"),
+    tagAdded?.tagsValueText
+  );
+  // 折叠摘要行（首个 summary 项 = tags）必须展示标签名、且不带 # 前缀
+  const tagsSummaryText = tagAdded?.propsSummaryText?.[0] ?? "";
+  reporter.check("tags-summary-shows-names", tagsSummaryText.includes("verifytag") && !tagsSummaryText.includes("#"), {
+    tagsSummaryText,
+  });
+  // 清场：Backspace 删尾 chip（草稿为空时）+ Esc 关浮层，正文里的字面回退
+  await client.evaluate(`(() => {
+    const input = document.querySelector(".ptag-input");
+    if (input == null) return false;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  await sleep(200);
+  await client.evaluate(`(() => {
+    const input = document.querySelector(".ptag-input");
+    if (input == null) return false;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  const tagsCleaned = await waitForProbe(
+    client,
+    probeSnapshot(),
+    (s) => !(s?.tagsValueText ?? "").includes("verifytag"),
+    { timeoutMs: 15000 }
+  );
+  reporter.check("tags-remove-drops-tag", !(tagsCleaned?.tagsValueText ?? "").includes("verifytag"), {
+    tagsValueText: tagsCleaned?.tagsValueText,
+  });
+  reporter.check("tags-popover-closed", tagsCleaned?.tagsPopoverOpen === false, tagsCleaned?.tagsPopoverOpen);
   // Computer 值必须是 `设备名 platform · deviceId` 三段，缺一段就说明 origin 快照没接上。
   // 分隔符用的是 &nbsp;(U+00A0)，所以切分要同时吃普通空白与 nbsp。
   const computerRaw = detail?.properties?.["Computer"] ?? "";
@@ -439,6 +527,26 @@ try {
   // 清掉 editor，避免影响后续步骤
   await client.evaluate(setReactValueExpression(COMPOSER, ""));
   await sleep(200);
+
+  // ── 6.6 Editor 持久草稿：停手 800ms 自动落 localStorage，橡皮清空 ───────
+  // 「Draft saved」指示 1.5s 就淡回，探针轮询撞不上会假红，这里只锁持久化语义；
+  // 指示显示由 dom 台（commontext-compose-modal.dom.test.tsx）锁定。
+  const draftTyped = await client.evaluate(setReactValueExpression(COMPOSER, "draft autosave probe"));
+  reporter.check("editor-draft-typed", draftTyped === true, draftTyped);
+  const draftPersisted = await waitForProbe(client, probeSnapshot(), (s) => s?.draftText === "draft autosave probe", {
+    timeoutMs: 15000,
+  });
+  reporter.check("editor-draft-persisted-to-localstorage", draftPersisted?.draftText === "draft autosave probe", {
+    draftText: draftPersisted?.draftText,
+  });
+  const eraserClicked = await clickSelector(client, `${MODAL} [title="Clear editor"]`);
+  reporter.check("editor-draft-eraser-clicked", eraserClicked === true, eraserClicked);
+  const draftCleared = await waitForProbe(client, probeSnapshot(), (s) => s?.draftText == null, {
+    timeoutMs: 15000,
+  });
+  reporter.check("editor-draft-cleared-on-eraser", draftCleared?.draftText == null, {
+    draftText: draftCleared?.draftText,
+  });
 
   // ── 7. 切回列表确认筛选与详情互不干扰 ───────────────────────────────────
   // 先确保没有浮层（page icon 的 emoji picker）盖住筛选行：点同一个 page icon 收起它。

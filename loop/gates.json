@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-13T16:04:00Z",
+  "updatedAt": "2026-11-14T11:19:27Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -241,6 +241,35 @@
         "at": "2026-11-08T06:05:39Z"
       }
     },
+    "N-1114-commontext-tags-structured": {
+      "g2": {
+        "redProof": "旧源（HEAD model+modal）跑新断言 → 5 failed：'run deploy #urgent #ops'未剥字面、tags 未合并、只有标签条目 tags=[]、幂等失败、dom 正文含 '#urgent'；新源 197 passed（15 files）",
+        "at": "2026-11-14T11:16:39Z"
+      },
+      "g1": {
+        "at": "2026-11-14T11:16:39Z",
+        "by": "nita",
+        "verdict": "confirmed",
+        "prdHash": "2d33df8197b9"
+      },
+      "g5": {
+        "ok": true,
+        "executedAt": "2026-11-14T11:19:27Z",
+        "by": "pi"
+      }
+    },
+    "N-1114-tab-drag-switch-fix": {
+      "g2": {
+        "redProof": "npx vitest run tab-drag-model.test.ts tab-optimistic-active.test.ts → 2 failed：Cannot find module ./tab-drag-model / ./tab-optimistic-active（修复后 21 passed，含 emain 去重用例）",
+        "at": "2026-11-14T07:05:22Z"
+      }
+    },
+    "N-1114-tab-restore-all-r3": {
+      "g2": {
+        "redProof": "npx vitest run emain/emain-window.test.ts（修复前）→ 2 failed：markRestoredWorkspaceTabsOpened is not a function；修复后同命令 4 passed（红→绿）",
+        "at": "2026-11-14T06:54:08Z"
+      }
+    },
     "F-1113-persona-sync-r1": {
       "g1": {
         "at": "2026-11-13T03:36:00Z",
@@ -371,6 +400,30 @@
         "redProof": "pre-fix 2 failed / post-fix 2 passed (npx vitest run frontend/app/commontext/commontext-compose-modal.dom.test.tsx; 真机台 commontext-source-notion 本机启动器故障，改 jsdom DOM 台兜底，断言集同源)",
         "at": "2026-11-13T16:04:00Z"
       }
+    },
+    "N-1114-commontext-draft-autosave": {
+      "g2": {
+        "redProof": "旧源 git show HEAD:frontend/app/commontext/commontext-compose-modal.tsx 换回后跑 commontext-compose-modal.dom.test.tsx + 源码断言 → 5 failed（draft 落盘/还原/橡皮/「+」/坏 JSON）；新源 → Test Files 15 passed / Tests 190 passed",
+        "at": "2026-11-14T07:05:01Z"
+      }
+    },
+    "N-1114-commontext-tags-no-hash": {
+      "g2": {
+        "redProof": "旧源 git show HEAD:commontext-model.ts 换回 → ['#urgent','work#','#legacy','deep'] 不剥 #（2 failed：model normalize + 浮层候选 '#legacy'）；旧 compose-modal → 摘要只显数量 + 源码断言失败。新源 194 passed（15 files）",
+        "at": "2026-11-14T08:11:16Z"
+      }
+    },
+    "N-1114-commontext-tags-property": {
+      "g2": {
+        "redProof": "旧源 git show HEAD:frontend/app/commontext/commontext-compose-modal.tsx 换回后跑 dom 台+源码断言 → 3 failed（摘要 keys 缺 tags / 无 PropertyTagEditor import / Tags 浮层交互整体）；新源 → 192 passed（15 files）",
+        "at": "2026-11-14T07:31:26Z"
+      }
+    },
+    "N-1114-commontext-tags-summary-chips": {
+      "g2": {
+        "redProof": "旧源（join 纯文本渲染）跑新断言 → 2 failed（摘要内无 chip button：expected null not to be null + 源码断言）；新源 194 passed（15 files）",
+        "at": "2026-11-14T08:35:06Z"
+      }
     }
   },
   "dropped": [
@@ -408,6 +461,16 @@
       "id": "F-1113-persona-create-ui-r1",
       "reason": "判据 6 写成 grep persona-create-wizard frontend/app/view/aisessions/（目录没加 -r），cmd.exe/bash 下都报 Is a directory 判红——是判据命令自身的 bug（L-0006 同类），不是实现缺失。重建为 r2：判据改 grep -rn。",
       "at": "2026-11-13T07:57:54Z"
+    },
+    {
+      "id": "N-1114-tab-restore-all",
+      "reason": "验收判据含真机台，但本机 Electron 启动器当前环境故障（dev 实例 tabview init 实测 3-4 分钟，同 N-1113 记录）；改以单测+tsc 基线重建包，真机台保留待环境恢复后补跑",
+      "at": "2026-11-14T06:47:33Z"
+    },
+    {
+      "id": "N-1114-tab-restore-all-r2",
+      "reason": "expect 字符串与 prove 输出不匹配（引擎按子串比对），修正判据重建",
+      "at": "2026-11-14T06:54:07Z"
     }
   ]
 }
