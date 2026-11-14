@@ -187,4 +187,23 @@ describe("CommonTextComposeModal hook order", () => {
         expect(source).toContain("data-commontext-draft-status={draftStatus}");
         expect(source).toContain("Draft saved");
     });
+
+    it("moves tags into the properties grid and drops the bottom All tags panel", () => {
+        // 标签成为属性网格第一行，值区点击唤起共享 Wolai 式编辑器（md 预览/AISessions 同源）。
+        expect(source).toContain(
+            'import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";'
+        );
+        expect(source).toContain('data-commontext-property="Tags"');
+        expect(source).toContain('data-commontext-tags-value=""');
+        expect(source).toContain("data-commontext-properties-summary={s.key}");
+        // 折叠摘要首项是 tags 数量
+        expect(source).toContain('key: "tags",');
+        // 底部 All tags 面板整块移除（header 副标与面板标题都不再渲染）
+        expect(source).not.toContain("click to toggle in Text");
+        expect(source).not.toContain(">All tags<");
+        expect(source).not.toContain("handleDetailToggleTag");
+        // 写回仍走正文 #tag 最小 diff（不引入第二套 tag 存储），走既有自动保存
+        expect(source).toContain("const applyDetailTags = (nextTags: string[]) => {");
+        expect(source).toContain("removeSessionTagFromNote(nextText, tag)");
+    });
 });

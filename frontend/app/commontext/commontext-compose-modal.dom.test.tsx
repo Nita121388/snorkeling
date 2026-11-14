@@ -333,6 +333,7 @@ describe("CommonTextComposeModal — detail properties fold", () => {
 
         const summary = [...document.querySelectorAll("[data-commontext-properties-summary]")];
         expect(summary.map((s) => s.getAttribute("data-commontext-properties-summary"))).toEqual([
+            "tags",
             "creator",
             "computer",
             "updated",
@@ -345,13 +346,14 @@ describe("CommonTextComposeModal — detail properties fold", () => {
         // 折叠态不渲染网格行
         expect(document.querySelectorAll("[data-commontext-property]").length).toBe(0);
 
-        // 展开 → 完整 5 行网格
+        // 展开 → 完整 6 行网格（Tags 首行 + 原 5 行）
         await click(document.querySelector("[data-commontext-properties-toggle]"));
         expect(document.querySelector("[data-commontext-properties]")!.getAttribute("data-commontext-properties")).toBe(
             "expanded"
         );
         const rows = [...document.querySelectorAll("[data-commontext-property]")];
         expect(rows.map((r) => r.getAttribute("data-commontext-property"))).toEqual([
+            "Tags",
             "Created by",
             "Computer",
             "Created",
@@ -365,5 +367,49 @@ describe("CommonTextComposeModal — detail properties fold", () => {
             "collapsed"
         );
         expect(document.querySelectorAll("[data-commontext-property]").length).toBe(0);
+        // 底部 All tags 面板已移除：不再出现面板标题
+        expect([...document.querySelectorAll("div")].some((d) => d.textContent === "All tags")).toBe(false);
+    });
+
+    it("edits tags through the property row popover (add via create, remove via chip ×)", async () => {
+        await openModal({ query: "Bravo" });
+        await click(document.querySelector("[data-commontext-properties-toggle]"));
+
+        const detailTextarea = () =>
+            document.querySelector(
+                ".commontext-compose-modal textarea:not([data-commontext-composer])"
+            ) as HTMLTextAreaElement;
+        // 空 tags 显示 Empty 占位，值区可点开浮层
+        expect(document.querySelector("[data-commontext-tags-value]")!.textContent).toContain("Empty");
+        await click(document.querySelector("[data-commontext-tags-value]"));
+        expect(document.querySelector('[data-testid="property-tag-editor"]')).not.toBeNull();
+
+        // 输入新 tag + Enter（无候选 → 走「创建」分支）→ 正文追加 #urgent、chip 出现
+        const input = document.querySelector(".ptag-input") as HTMLInputElement;
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+            setter.call(input, "urgent");
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        await act(async () => {
+            input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        });
+        expect(detailTextarea().value).toContain("#urgent");
+        expect(document.querySelector("[data-commontext-tags-value]")!.textContent).toContain("urgent");
+
+        // chip × 删除 → 正文字面被抹掉
+        const removeBtn = document.querySelector(".ptag-chip-remove") as HTMLButtonElement;
+        await act(async () => {
+            removeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+        expect(detailTextarea().value.includes("#urgent")).toBe(false);
+
+        // Esc 关闭浮层
+        await act(async () => {
+            (document.querySelector(".ptag-input") as HTMLInputElement).dispatchEvent(
+                new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })
+            );
+        });
+        expect(document.querySelector('[data-testid="property-tag-editor"]')).toBeNull();
     });
 });

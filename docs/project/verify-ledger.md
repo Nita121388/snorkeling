@@ -215,3 +215,5 @@
 | 2026-11-14 07:02 | commontext-source-notion | ❌ fatal（未跑） | launch+reset | `20261114T07004-commontext-source-notion` | 874b5ec9f |
 | 2026-11-14 07:05 | commontext-editor-draft（与 commontext-source-notion 同源断言） | ✅ 9/9（jsdom DOM 台 + 草稿模块单测 5 例；红证：旧源 5 failed → 新源 190 passed） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` + `commontext-editor-draft.test.ts` | 874b5ec9f |
 | 2026-11-14 07:05 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：Electron 启动器故障依旧（launcher exit=201，与 2026-11-13 5 连 fatal 同病）；真机台已补 editor-draft-persisted/cleared 断言，启动器修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | 874b5ec9f |
+| 2026-11-14 08:20 | commontext-tags-property（与 commontext-source-notion 同源断言） | ✅ 12/12（jsdom DOM 台 8 例 + 源码断言；红证：旧源 3 failed → 新源 192 passed） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` | d7d5cb93e |
+| 2026-11-14 08:20 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：同 07:02 launcher exit=201（Electron 启动器故障依旧），本次未重复尝试；真机台已把 property-grid-five-rows 改六行并补 tags 浮层 9 条断言，修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | d7d5cb93e |

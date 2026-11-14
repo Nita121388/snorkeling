@@ -14,6 +14,9 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { clearEditorDraft, loadEditorDraft, saveEditorDraft } from "./commontext-editor-draft";
 import { computeEditorMaxHeight } from "./commontext-editor-size";
 import { OpenCommonTextSearchEvent, type CommonTextSearchDetail } from "./commontext-events";
+// 标签属性浮层：与 md 预览属性卡 / AISessions 属性面板共用的 Wolai 风格编辑器，
+// 避免同一个标签交互在三个面各自漂移。
+import { PropertyTagEditor, PropertyValuePopover } from "@/app/element/property-editor";
 import { commonTextFreshnessTier, formatCommonTextFreshnessCompact } from "./commontext-freshness";
 import { CommonTextFreshnessSquare } from "./commontext-freshness-square";
 import { copyCommonText, insertOrCopyCommonText } from "./commontext-insert";
@@ -244,6 +247,9 @@ const CommonTextComposeModal = memo(() => {
     const [editorManuallyCollapsed, setEditorManuallyCollapsed] = useState(false);
     // 详情属性网格默认折叠成一行 icon 摘要，chevron 展开完整网格；每次打开弹窗重置。
     const [propertiesExpanded, setPropertiesExpanded] = useState(false);
+    // Tags 属性行的浮层编辑态：锚定值单元格，PropertyValuePopover portal 到 body。
+    const [tagsEditing, setTagsEditing] = useState(false);
+    const tagsValueRef = useRef<HTMLDivElement>(null);
     const settings = useAtomValue(atoms.settingsAtom);
     const editorRef = useRef<HTMLTextAreaElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -454,6 +460,13 @@ const CommonTextComposeModal = memo(() => {
         const deviceId = getCommonTextOriginDeviceId(item);
         return [
             {
+                key: "tags",
+                icon: "fa-hashtag",
+                iconClass: "text-muted",
+                text: String(detailTags.length),
+                title: detailTags.length === 0 ? "No tags" : `Tags: ${detailTags.map((t) => "#" + t).join(" ")}`,
+            },
+            {
                 key: "creator",
                 icon: kind === "agent" ? "fa-robot" : "fa-user",
                 iconClass: kind === "agent" ? "text-sky-300" : "text-orange-300",
@@ -482,7 +495,7 @@ const CommonTextComposeModal = memo(() => {
                 title: `Used ${item.usagecount ?? 0} time(s)`,
             },
         ];
-    }, [detailItem]);
+    }, [detailItem, detailTags]);
 
     // 详情区一旦选中某 item 即永远编辑态（点选即编辑），不存在只读中间态。
     // detailDirty 仅用来提示"有未保存改动"，控制 footer 上 Save 行为是否禁言。
@@ -503,7 +516,7 @@ const CommonTextComposeModal = memo(() => {
             // 排序偏好不在草稿里（草稿只存 editor 文本）：每次打开都从 localStorage 读。
             next.sortKey = loadCommonTextSortKey();
             // 当传入 editItemId 时（灯泡保存后的 Tag 入口）：定位到该条目并打开详情面板，
-            // 用户可直接在详情区（含 All tags 面板）补标签；清空 query 保证条目在列表可见。
+            // 用户可直接在详情区 Tags 属性行补标签；清空 query 保证条目在列表可见。
             if (detail.editItemId != null && detail.editItemId !== "") {
                 const targetItem = getCommonTextItems().find((i) => i.id === detail.editItemId);
                 if (targetItem) {
@@ -527,6 +540,7 @@ const CommonTextComposeModal = memo(() => {
             // 每次打开都从「自动展开 + 属性折叠」的默认态开始，不继承上次的手动收起。
             setEditorManuallyCollapsed(false);
             setPropertiesExpanded(false);
+            setTagsEditing(false);
         };
         window.addEventListener(OpenCommonTextSearchEvent, handleOpen);
         return () => window.removeEventListener(OpenCommonTextSearchEvent, handleOpen);
@@ -1000,22 +1014,27 @@ const CommonTextComposeModal = memo(() => {
 
     if (!state.open) return null;
 
-    // All tags 面板里点 chip：在 detailText 正文里加/抹对应 #tag 字面（草稿态，Save 才落盘）。
-    // tag 与 text 完全同源——点亮/熄灭由 detailTags（从 text 抽）决定，不在 item.tags 结构化字段
-    // 上点点即生效。加 tag 时同行末尾追加 ` #tag`，单空格分隔；抹 tag 用 removeSessionTagFromNote。
-    const handleDetailToggleTag = (tag: string) => {
-        const normalized = tag.trim().toLowerCase().replace(/^#+/, "").replace(/#+$/, "");
-        if (normalized === "") return;
+    // Tags 属性浮层提交（PropertyTagEditor 给最终 items）：按最小 diff 写回正文 #tag 字面。
+    // tag 与 text 完全同源——不建结构化字段；新增在末尾追加 ` #tag`，移除用 removeSessionTagFromNote；
+    // 置 detailDirty 走既有 800ms 自动保存，与正文手编同一条落盘路径。
+    const applyDetailTags = (nextTags: string[]) => {
         setState((cur) => {
-            const currentTags = extractSessionTagsFromNote(cur.detailText).tags;
-            const hasTag = currentTags.some((t) => t.toLowerCase() === normalized);
-            let nextText: string;
-            if (hasTag) {
-                nextText = removeSessionTagFromNote(cur.detailText, normalized);
-            } else {
+            const normalize = (tag: string) => tag.trim().toLowerCase().replace(/^#+/, "").replace(/#+$/, "");
+            const current = extractSessionTagsFromNote(cur.detailText).tags;
+            const currentSet = new Set(current.map((t) => t.toLowerCase()));
+            const next = [...new Set(nextTags.map(normalize).filter((t) => t !== ""))];
+            const nextSet = new Set(next);
+            const toRemove = current.filter((t) => !nextSet.has(t.toLowerCase()));
+            const toAdd = next.filter((t) => !currentSet.has(t));
+            if (toRemove.length === 0 && toAdd.length === 0) return cur;
+            let nextText = cur.detailText;
+            for (const tag of toRemove) {
+                nextText = removeSessionTagFromNote(nextText, tag);
+            }
+            for (const tag of toAdd) {
                 // 同行末尾追加，单空格分隔；若 text 为空或已以空白结尾则不再加第二空格。
-                const sep = cur.detailText === "" || /\s$/.test(cur.detailText) ? "" : " ";
-                nextText = cur.detailText + sep + "#" + normalized;
+                const sep = nextText === "" || /\s$/.test(nextText) ? "" : " ";
+                nextText = nextText + sep + "#" + tag;
             }
             return { ...cur, detailText: nextText, detailDirty: true };
         });
@@ -1800,7 +1819,7 @@ const CommonTextComposeModal = memo(() => {
                             </div>
                         ) : (
                             <div className="flex-1 min-h-0 p-4 flex flex-col gap-2.5 overflow-y-auto">
-                                {/* 详情区外层 padding+gap；All tags 只用分隔线组织，不形成嵌套卡片。 */}
+                                {/* 详情区外层 padding+gap；属性行只用分隔线组织，不形成嵌套卡片。 */}
                                 {/* 详情 head：Notion 式页面 —— page icon（emoji 槽）+ 大标题 + 右侧 Pin。
                                     icon 槽与标题同一行：icon 是条目的「脸」，单独一行会把它变成装饰。 */}
                                 <div className="shrink-0 flex items-start gap-2">
@@ -1880,7 +1899,32 @@ const CommonTextComposeModal = memo(() => {
                                         />
                                     </button>
                                     {/* 展开态：label 定宽 + 值，行间只用细分隔线（不套卡片）。
-                                        值与 label 各自独立类名——嵌套会继承 grid 项样式把行高压乱。 */}
+                                        值与 label 各自独立类名——嵌套会继承 grid 项样式把行高压乱。
+                                        Tags 行排在第一：Notion/Obsidian 式属性选择——值区可点，
+                                        唤起共享 PropertyTagEditor 浮层（输入过滤/全库候选带计数/创建）。 */}
+                                    {propertiesExpanded && (
+                                        <div
+                                            data-commontext-property="Tags"
+                                            className="flex items-start gap-2 border-b border-border/40 py-1"
+                                        >
+                                            <div className="w-[104px] shrink-0 text-[10.5px] leading-5 text-muted">
+                                                Tags
+                                            </div>
+                                            <div
+                                                ref={tagsValueRef}
+                                                data-commontext-tags-value=""
+                                                onClick={() => setTagsEditing(true)}
+                                                title="Edit tags"
+                                                className="-mx-1 min-w-0 flex-1 flex flex-wrap items-center gap-1 rounded px-1 py-0.5 text-[11px] leading-5 hover:bg-surface-soft transition-colors cursor-pointer"
+                                            >
+                                                {detailTags.length === 0 ? (
+                                                    <span className="text-muted/70">Empty</span>
+                                                ) : (
+                                                    <SessionTagChips tags={detailTags} selectedTags={detailTags} />
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                     {propertiesExpanded &&
                                         detailProperties.map((prop) => (
                                             <div
@@ -1901,7 +1945,7 @@ const CommonTextComposeModal = memo(() => {
                                 {/* 详情 body：永远 textarea 形态（点选即编辑），卡片样式对齐原型尺寸。
                                     最小高度挂在**包裹层**上（flex 项），不能挂 textarea 自己：
                                     后者拿到 `h-full` 后会用 min-height 硬撞出 flex 槽位，
-                                    在窗口变矮时把下面 All tags / 按钮直接盖住（内容不会被自身裁掉）。
+                                    在窗口变矮时把下面属性行 / 按钮直接盖住（内容不会被自身裁掉）。
                                     包裹层长到 200px 后，超出部分由详情列的 `overflow-y-auto` 接管滚动。 */}
                                 <div className="flex-1 min-h-[200px]">
                                     <textarea
@@ -1920,38 +1964,29 @@ const CommonTextComposeModal = memo(() => {
                                     />
                                 </div>
 
-                                {/* All tags 面板：恒渲染（只要详情有选中项）。chip 选中态来自 detailTags——
-                                    即从 Text 正文抽出的 #tag 集合，点 chip 在 Text 里加/抹对应字面（草稿态，Save 落盘）。 */}
-                                <div className="shrink-0 border-t border-border pt-2.5 flex flex-col gap-2">
-                                    <div className="flex items-center justify-between">
-                                        <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-secondary">
-                                            All tags
-                                        </div>
-                                        <div className="text-[10.5px] text-muted">
-                                            {tagSummaries.length} tags · click to toggle in Text
-                                        </div>
-                                    </div>
-                                    {tagSummaries.length === 0 ? (
-                                        <div className="text-[11px] text-muted py-1">
-                                            No tags yet — type{" "}
-                                            <code className="px-1 rounded bg-surface-soft">#tag</code> in Text to create
-                                            one
-                                        </div>
-                                    ) : (
-                                        <div className="max-h-24 overflow-y-auto pr-1 -mr-1">
-                                            <SessionTagChips
-                                                tags={tagSummaries.map((s) => s.tag)}
-                                                selectedTags={detailTags}
-                                                countMap={(() => {
-                                                    const m = new Map<string, number>();
-                                                    for (const s of tagSummaries) m.set(s.tag.toLowerCase(), s.count);
-                                                    return m;
-                                                })()}
-                                                onClick={(tag) => handleDetailToggleTag(tag)}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Tags 属性浮层：共享 Wolai 式编辑器（md 预览/AISessions 同源）。
+                                    portal 到 body + 视口钳位，不会被详情列窄宽挤压。 */}
+                                {tagsEditing && (
+                                    <PropertyValuePopover
+                                        open
+                                        anchor={tagsValueRef.current}
+                                        onClose={() => setTagsEditing(false)}
+                                    >
+                                        <PropertyTagEditor
+                                            items={detailTags}
+                                            options={tagSummaries.map((s) => s.tag)}
+                                            optionCounts={(() => {
+                                                const counts: Record<string, number> = {};
+                                                for (const s of tagSummaries) counts[s.tag.toLowerCase()] = s.count;
+                                                return counts;
+                                            })()}
+                                            multiple
+                                            placeholder="搜索或新建标签"
+                                            onChange={(items) => applyDetailTags(items)}
+                                            onClose={() => setTagsEditing(false)}
+                                        />
+                                    </PropertyValuePopover>
+                                )}
 
                                 {/* 详情 footer：自动保存模式——无 Save/Cancel，仅行为条 + 右侧自动保存状态。
                                     不带 border-t，靠外层 gap 与上面分隔。 */}

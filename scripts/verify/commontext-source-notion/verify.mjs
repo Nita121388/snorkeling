@@ -123,6 +123,10 @@ const SNAPSHOT_FN = `(() => {
         propsSummaryKeys: propsSummary.map((s) => s.getAttribute("data-commontext-properties-summary")),
         propsSummaryText: propsSummary.map((s) => text(s)),
         composerHeight: composer == null ? 0 : h(composer),
+        tagsValueText: text(modal.querySelector("[data-commontext-tags-value]")),
+        detailTextValue: (modal.querySelector("textarea:not([data-commontext-composer])")?.value ?? ""),
+        allTagsPanelPresent: [...modal.querySelectorAll("div")].some((d) => (d.textContent ?? "").trim() === "All tags"),
+        tagsPopoverOpen: document.querySelector('[data-testid="property-tag-editor"]') != null,
         draftStatus:
             modal.querySelector("[data-commontext-draft-status]")?.getAttribute("data-commontext-draft-status") ?? null,
         draftText: (() => {
@@ -380,10 +384,77 @@ try {
     detail?.titleFontSize
   );
   reporter.check(
-    "property-grid-five-rows",
-    sameOrder(detail?.propertyLabels, ["Created by", "Computer", "Created", "Updated", "Used"]),
+    "property-grid-six-rows",
+    sameOrder(detail?.propertyLabels, ["Tags", "Created by", "Computer", "Created", "Updated", "Used"]),
     detail?.propertyLabels
   );
+  // ── 6.5 Tags 属性行：底部 All tags 面板已移除，标签走属性浮层（Wolai 式共享编辑器）──
+  reporter.check("all-tags-panel-removed", detail?.allTagsPanelPresent === false, detail?.allTagsPanelPresent);
+  reporter.check("tags-value-cell-present", (detail?.tagsValueText ?? "") === "Empty", detail?.tagsValueText);
+  const tagsCellClicked = await clickSelector(client, `${MODAL} [data-commontext-tags-value]`);
+  reporter.check("tags-popover-opens", tagsCellClicked === true, tagsCellClicked);
+  await waitForProbe(client, probeSnapshot(), (s) => s?.tagsPopoverOpen === true, { timeoutMs: 15000 });
+  const tagPopover = await waitForProbe(client, probeSnapshot(), (s) => s?.tagsPopoverOpen === true, {
+    timeoutMs: 15000,
+  });
+  reporter.check("tags-popover-editor-present", tagPopover?.tagsPopoverOpen === true, tagPopover?.tagsPopoverOpen);
+  const tagInputSet = await client.evaluate(`(() => {
+    const input = document.querySelector(".ptag-input");
+    if (input == null) return false;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    setter.call(input, "verifytag");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  reporter.check("tags-input-filled", tagInputSet === true, tagInputSet);
+  await sleep(120);
+  const tagEnter = await client.evaluate(`(() => {
+    const input = document.querySelector(".ptag-input");
+    if (input == null) return false;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  reporter.check("tags-enter-created", tagEnter === true, tagEnter);
+  const tagAdded = await waitForProbe(
+    client,
+    probeSnapshot(),
+    (s) => (s?.detailTextValue ?? "").includes("#verifytag"),
+    {
+      timeoutMs: 15000,
+    }
+  );
+  reporter.check("tags-create-appends-to-text", (tagAdded?.detailTextValue ?? "").includes("#verifytag"), {
+    detailTextTail: (tagAdded?.detailTextValue ?? "").slice(-40),
+  });
+  reporter.check(
+    "tags-value-shows-chip",
+    (tagAdded?.tagsValueText ?? "").includes("verifytag"),
+    tagAdded?.tagsValueText
+  );
+  // 清场：Backspace 删尾 chip（草稿为空时）+ Esc 关浮层，正文里的字面回退
+  await client.evaluate(`(() => {
+    const input = document.querySelector(".ptag-input");
+    if (input == null) return false;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  await sleep(200);
+  await client.evaluate(`(() => {
+    const input = document.querySelector(".ptag-input");
+    if (input == null) return false;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  const tagsCleaned = await waitForProbe(
+    client,
+    probeSnapshot(),
+    (s) => !(s?.detailTextValue ?? "").includes("#verifytag"),
+    { timeoutMs: 15000 }
+  );
+  reporter.check("tags-remove-strips-text", !(tagsCleaned?.detailTextValue ?? "").includes("#verifytag"), {
+    detailTextTail: (tagsCleaned?.detailTextValue ?? "").slice(-40),
+  });
+  reporter.check("tags-popover-closed", tagsCleaned?.tagsPopoverOpen === false, tagsCleaned?.tagsPopoverOpen);
   // Computer 值必须是 `设备名 platform · deviceId` 三段，缺一段就说明 origin 快照没接上。
   // 分隔符用的是 &nbsp;(U+00A0)，所以切分要同时吃普通空白与 nbsp。
   const computerRaw = detail?.properties?.["Computer"] ?? "";
