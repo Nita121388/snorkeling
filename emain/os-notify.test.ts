@@ -36,6 +36,7 @@ vi.mock("./emain-window", () => ({
     getAllWaveWindows: () => h.windows,
 }));
 
+import { initI18nMain, resetI18nMainForTest, tmew } from "./emain-i18n";
 import {
     AgentOsNotifyGate,
     AgentOsNotifyState,
@@ -43,6 +44,16 @@ import {
     makeDefaultFocusApp,
     sendAgentOsNotification,
 } from "./os-notify";
+
+// os-notify builds its notification copy through the main-process i18n instance —
+// pin it to English (the source locale) for every test in this file.
+beforeEach(() => {
+    resetI18nMainForTest();
+    initI18nMain("en");
+});
+afterEach(() => {
+    resetI18nMainForTest();
+});
 
 const baseSettings = {
     masterEnabled: true,
@@ -133,7 +144,11 @@ describe("sendAgentOsNotification", () => {
 
         expect(outcome).toEqual({ fired: true });
         expect(showNotification).toHaveBeenCalledWith(
-            expect.objectContaining({ silent: true, title: "Agent done — pi", body: expect.any(String) })
+            expect.objectContaining({
+                silent: true,
+                title: tmew("common:osNotify.doneTitle", { provider: "pi" }),
+                body: expect.any(String),
+            })
         );
         // Clicking the OS notification must actually run the focus-app path.
         capturedOnClick?.();
@@ -148,7 +163,9 @@ describe("sendAgentOsNotification", () => {
             emptyState()
         );
         expect(outcome).toEqual({ fired: true });
-        expect(showNotification).toHaveBeenCalledWith(expect.objectContaining({ title: "Agent blocked — codex" }));
+        expect(showNotification).toHaveBeenCalledWith(
+            expect.objectContaining({ title: tmew("common:osNotify.blockedTitle", { provider: "codex" }) })
+        );
     });
 
     it("suppresses when the master switch is off", () => {
@@ -277,8 +294,8 @@ describe("AgentOsNotifyGate", () => {
         vi.advanceTimersByTime(60_000);
         expect(ctx.showNotification).toHaveBeenCalledTimes(2);
         const summary = ctx.showNotification.mock.calls[1][0];
-        expect(summary.title).toBe("Agents done");
-        expect(summary.body).toContain("9 agents finished");
+        expect(summary.title).toBe(tmew("common:osNotify.summaryDoneTitle"));
+        expect(summary.body).toBe(tmew("common:osNotify.summaryDoneBody", { count: 9 }));
     });
 
     it("drops a duplicate report of the same event without inflating the summary", () => {

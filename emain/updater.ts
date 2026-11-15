@@ -18,6 +18,7 @@ import { RpcApi } from "../frontend/app/store/wshclientapi";
 import { isDev } from "../frontend/util/isdev";
 import { fireAndForget } from "../frontend/util/util";
 import { setGlobalIsQuitting, setUserConfirmedQuit } from "./emain-activity";
+import { tmew } from "./emain-i18n";
 import { delay } from "./emain-util";
 import { focusedWaveWindow, getAllWaveWindows } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
@@ -286,8 +287,9 @@ export class Updater {
                 this.status = "manual-update";
 
                 const updateNotification = new Notification({
+                    // Brand name stays untranslated in both locales.
                     title: "Snorkeling",
-                    body: "A new version of Snorkeling is available for manual installation.",
+                    body: tmew("common:updater.notification.manualAvailable"),
                 });
                 updateNotification.on("click", () => {
                     fireAndForget(this.promptToInstallUpdate.bind(this));
@@ -315,8 +317,9 @@ export class Updater {
             // Display the update banner and create a system notification
             this.status = "ready";
             const updateNotification = new Notification({
+                // Brand name stays untranslated in both locales.
                 title: "Snorkeling",
-                body: "A new version of Snorkeling is ready to install.",
+                body: tmew("common:updater.notification.ready"),
             });
             updateNotification.on("click", () => {
                 fireAndForget(this.promptToInstallUpdate.bind(this));
@@ -388,13 +391,11 @@ export class Updater {
             if (userInput) {
                 const dialogOpts: Electron.MessageBoxOptions = {
                     type: "info",
-                    buttons: ["OK", "Open Latest Release"],
+                    buttons: [tmew("common:common.ok"), tmew("common:updater.openLatestRelease")],
                     defaultId: 0,
                     cancelId: 0,
-                    message: "Automatic updates are unavailable for this copy.",
-                    detail:
-                        this.updateSupport.reason ??
-                        "This copy does not support automatic in-place updates. Please install the Windows setup package (.exe) to receive automatic updates.",
+                    message: tmew("common:updater.unsupported.message"),
+                    detail: this.updateSupport.reason ?? tmew("common:updater.unsupported.detail"),
                 };
                 const dialogResult = focusedWaveWindow
                     ? await dialog.showMessageBox(focusedWaveWindow, dialogOpts)
@@ -420,7 +421,7 @@ export class Updater {
                 if (userInput && !result.downloadPromise && this.status !== "manual-update") {
                     const dialogOpts: Electron.MessageBoxOptions = {
                         type: "info",
-                        message: "There are currently no updates available.",
+                        message: tmew("common:updater.noUpdates.message"),
                     };
                     if (focusedWaveWindow) {
                         await dialog.showMessageBox(focusedWaveWindow, dialogOpts);
@@ -443,13 +444,13 @@ export class Updater {
                     const code = (err as any)?.code ?? "";
                     const detail =
                         code === "ERR_UPDATER_NO_PUBLISHED_VERSIONS"
-                            ? "No published update versions were found. Please ensure releases are tagged with a valid semantic version (for example: v0.14.5-beta.4.snorkeling.0.0.6)."
+                            ? tmew("common:updater.checkFailed.noVersionsDetail")
                             : err instanceof Error
                               ? err.message
                               : String(err);
                     const dialogOpts: Electron.MessageBoxOptions = {
                         type: "error",
-                        message: "Failed to check for updates.",
+                        message: tmew("common:updater.checkFailed.message"),
                         detail,
                     };
                     if (focusedWaveWindow) {
@@ -494,10 +495,10 @@ export class Updater {
 
         const dialogOpts: Electron.MessageBoxOptions = {
             type: "info",
-            buttons: ["Restart", "Later"],
-            title: "Application Update",
+            buttons: [tmew("common:updater.restart"), tmew("common:updater.later")],
+            title: tmew("common:updater.ready.title"),
             message: process.platform === "win32" ? this.availableUpdateReleaseNotes : this.availableUpdateReleaseName,
-            detail: "A new version has been downloaded. Restart the application to apply the updates.",
+            detail: tmew("common:updater.ready.detail"),
         };
 
         const allWindows = getAllWaveWindows();
@@ -542,14 +543,14 @@ export class Updater {
 
     private async showInstallUnavailableDialog() {
         const detail = this.lastUpdateErrorMessage
-            ? `The downloaded update could not be prepared for installation.\n\n${this.lastUpdateErrorMessage}\n\nPlease install the latest release manually.`
-            : "The downloaded update is no longer ready to install. Please check for updates again or install the latest release manually.";
+            ? tmew("common:updater.installUnavailable.detailWithError", { error: this.lastUpdateErrorMessage })
+            : tmew("common:updater.installUnavailable.detail");
         const dialogOpts: Electron.MessageBoxOptions = {
             type: "error",
-            buttons: ["OK", "Open Latest Release"],
+            buttons: [tmew("common:common.ok"), tmew("common:updater.openLatestRelease")],
             defaultId: 0,
             cancelId: 0,
-            message: "Automatic update failed.",
+            message: tmew("common:updater.installUnavailable.message"),
             detail,
         };
         const allWindows = getAllWaveWindows();
@@ -665,11 +666,11 @@ export class Updater {
 
                 const restart = await dialog.showMessageBox({
                     type: "info",
-                    buttons: ["Restart & Install", "Later"],
+                    buttons: [tmew("common:updater.restartInstall"), tmew("common:updater.later")],
                     defaultId: 0,
                     cancelId: 1,
-                    message: `Snorkeling ${release.version} is ready.`,
-                    detail: "The update has been downloaded and unpacked. Restart now to swap it in.",
+                    message: tmew("common:updater.manualReady.message", { version: release.version }),
+                    detail: tmew("common:updater.manualReady.detail"),
                 });
                 if (restart.response === 0) {
                     await this.finishManualInstall();
@@ -789,16 +790,22 @@ export class Updater {
 
     private async showManualInstallDialog() {
         const releaseText = this.availableUpdateReleaseName
-            ? `A new Snorkeling release is available: ${this.availableUpdateReleaseName}.`
-            : "A new Snorkeling release is available.";
-        const detail = this.updateSupport.reason ?? "Automatic installation is unavailable for this copy.";
+            ? tmew("common:updater.manual.releaseWithName", { name: this.availableUpdateReleaseName })
+            : tmew("common:updater.manual.releaseAvailable");
+        const detail = this.updateSupport.reason ?? tmew("common:updater.manual.detail");
         const offerDownload = process.platform === "darwin" && Boolean(this.updateSupport.manualInstallOnly);
         const dialogOpts: Electron.MessageBoxOptions = {
             type: "info",
-            buttons: offerDownload ? ["Download & Install", "Open Release Page", "Later"] : ["Open Latest Release", "Later"],
+            buttons: offerDownload
+                ? [
+                      tmew("common:updater.downloadInstall"),
+                      tmew("common:updater.openReleasePage"),
+                      tmew("common:updater.later"),
+                  ]
+                : [tmew("common:updater.openLatestRelease"), tmew("common:updater.later")],
             defaultId: 0,
             cancelId: offerDownload ? 2 : 1,
-            message: "Manual update required.",
+            message: tmew("common:updater.manual.message"),
             detail: `${releaseText}\n\n${detail}`,
         };
         const allWindows = getAllWaveWindows();

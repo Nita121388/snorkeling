@@ -38,5 +38,137 @@
     "suggestion": {
         "iconAlt": "网站图标",
         "noSuggestions": "无建议"
+    },
+    "menu": {
+        "app": {
+            "about": "关于 Snorkeling",
+            "checkForUpdates": "检查更新",
+            "launchAtLogin": "登录时启动"
+        },
+        "file": {
+            "newWindow": "新建窗口",
+            "newBuilderWindow": "新建 WaveApp Builder 窗口"
+        },
+        "view": {
+            "reloadWindow": "重新加载窗口",
+            "reloadTab": "重新加载标签页",
+            "relaunchAllWindows": "重新启动所有窗口",
+            "clearTabCache": "清除标签页缓存",
+            "toggleDevTools": "切换开发者工具",
+            "resetZoom": "重置缩放",
+            "zoomIn": "放大",
+            "zoomOut": "缩小",
+            "launchOnFullScreen": "启动时进入全屏",
+            "on": "打开",
+            "off": "关闭",
+            "toggleWidgetsBar": "切换小组件栏"
+        },
+        "window": {
+            "moveToNextDisplay": "移到下一个显示器",
+            "moveToPreviousDisplay": "移到上一个显示器"
+        },
+        "workspace": {
+            "label": "工作区",
+            "createWorkspace": "新建工作区"
+        }
+    },
+    "contextMenu": {
+        "saveImage": "将图片另存为…"
+    },
+    "dialog": {
+        "confirm": "确认",
+        "confirmQuit": {
+            "title": "确认退出",
+            "message": "确定要退出 Snorkeling 吗？",
+            "quit": "退出"
+        },
+        "confirmCloseWindow": {
+            "message": "窗口中有未保存的标签页，关闭窗口会删除这些标签页。\n\n继续？",
+            "closeWindow": "关闭窗口"
+        },
+        "confirmCloseTab": {
+            "message": "确定要关闭此标签页吗？",
+            "closeTab": "关闭标签页"
+        },
+        "confirmDeleteWorkspace": {
+            "message": "删除工作区会同时删除其中的内容。\n\n继续？",
+            "deleteWorkspace": "删除工作区"
+        },
+        "arm64Warning": {
+            "title": "Snorkeling 检测到性能问题",
+            "message": "Snorkeling 正在 ARM64 转换模式下运行，可能影响性能。\n\n建议：从项目仓库下载原生 ARM64 版本以获得最佳性能。",
+            "dismiss": "忽略",
+            "learnMore": "了解更多"
+        },
+        "saveScrollback": {
+            "title": "保存回滚内容",
+            "filter": "文本文件"
+        },
+        "exportHtml": {
+            "title": "导出 HTML",
+            "filter": "HTML"
+        },
+        "exportPdf": {
+            "title": "导出 PDF",
+            "filter": "PDF"
+        },
+        "saveImage": {
+            "title": "存储图像",
+            "filter": "图像"
+        }
+    },
+    "updater": {
+        "later": "稍后",
+        "openLatestRelease": "打开最新版本",
+        "openReleasePage": "打开发布页面",
+        "downloadInstall": "下载并安装",
+        "restart": "重启",
+        "restartInstall": "重启并安装",
+        "notification": {
+            "manualAvailable": "Snorkeling 有新版本可供手动安装。",
+            "ready": "Snorkeling 新版本已就绪，可以安装。"
+        },
+        "unsupported": {
+            "message": "此副本不支持自动更新。",
+            "detail": "此副本不支持自动原地更新。请安装 Windows 安装包（.exe）以接收自动更新。"
+        },
+        "noUpdates": {
+            "message": "当前没有可用更新。"
+        },
+        "checkFailed": {
+            "message": "检查更新失败。",
+            "noVersionsDetail": "未找到已发布的更新版本。请确认发布版本带有有效的语义化版本标签（例如 v0.14.5-beta.4.snorkeling.0.0.6）。"
+        },
+        "ready": {
+            "title": "应用更新",
+            "detail": "新版本已下载。重启应用以完成更新。"
+        },
+        "installUnavailable": {
+            "message": "自动更新失败。",
+            "detailWithError": "已下载的更新无法准备安装。\n\n{{error}}\n\n请手动安装最新版本。",
+            "detail": "已下载的更新已不再就绪。请重新检查更新，或手动安装最新版本。"
+        },
+        "manualReady": {
+            "message": "Snorkeling {{version}} 已就绪。",
+            "detail": "更新已下载并解压。现在重启即可替换为新版本。"
+        },
+        "manual": {
+            "message": "需要手动更新。",
+            "releaseWithName": "Snorkeling 有新版本可用：{{name}}。",
+            "releaseAvailable": "Snorkeling 有新版本可用。",
+            "detail": "此副本不支持自动安装。"
+        }
+    },
+    "osNotify": {
+        "doneTitle": "Agent 已完成 — {{provider}}",
+        "blockedTitle": "Agent 等待输入 — {{provider}}",
+        "doneBody": "Agent 已完成。点击返回应用。",
+        "blockedBody": "Agent 正在等待输入。点击切换到应用。",
+        "summaryDoneTitle": "多个 Agent 已完成",
+        "summaryBlockedTitle": "多个 Agent 等待输入",
+        "summaryDoneBody_one": "{{count}} 个 Agent 已完成。点击返回应用。",
+        "summaryDoneBody_other": "{{count}} 个 Agent 已完成。点击返回应用。",
+        "summaryBlockedBody_one": "{{count}} 个 Agent 正在等待输入。点击切换到应用。",
+        "summaryBlockedBody_other": "{{count}} 个 Agent 正在等待输入。点击切换到应用。"
     }
 }

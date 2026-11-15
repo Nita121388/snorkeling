@@ -1,6 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, test } from "vitest";
 
 import {
@@ -64,5 +67,40 @@ describe("initI18nMain", () => {
 
     test("getI18nMain before init throws (wiring bug, not a race)", () => {
         expect(() => getI18nMain()).toThrow(/initI18nMain/);
+    });
+});
+
+describe("main-process copy registered in common", () => {
+    test("menu / dialog / updater keys translate in both locales", async () => {
+        initI18nMain("en");
+        expect(tmew("common:menu.view.reloadTab")).toBe("Reload Tab");
+        expect(tmew("common:menu.workspace.label")).toBe("Workspace");
+        await setMainLocale("zh");
+        expect(tmew("common:menu.view.reloadTab")).toBe("重新加载标签页");
+        expect(tmew("common:dialog.confirmQuit.quit")).toBe("退出");
+        expect(tmew("common:updater.manualReady.message", { version: "1.2.3" })).toBe("Snorkeling 1.2.3 已就绪。");
+        expect(tmew("common:osNotify.summaryDoneBody", { count: 9 })).toBe("9 个 Agent 已完成。点击返回应用。");
+    });
+
+    test("every common key referenced from emain/*.ts resolves in en and zh", async () => {
+        // Typos in tmew("common:...") literals would silently render the raw key at runtime.
+        // Guard them here: any key used by main-process code must exist in both locales.
+        const here = fileURLToPath(new URL(".", import.meta.url));
+        const keyRe = /tmew\(\s*"common:([A-Za-z0-9_.]+)"/g;
+        const keys = new Set<string>();
+        for (const name of readdirSync(here)) {
+            if (!name.endsWith(".ts") || name.endsWith(".test.ts")) continue;
+            const text = readFileSync(join(here, name), "utf8");
+            for (const m of text.matchAll(keyRe)) keys.add(m[1]);
+        }
+        expect(keys.size).toBeGreaterThan(20);
+        for (const locale of MAIN_SUPPORTED_LOCALES) {
+            initI18nMain(locale);
+            for (const key of keys) {
+                // Base key of a plural family has no direct value; check the plural forms.
+                const exists = getI18nMain().exists(`common:${key}`) || getI18nMain().exists(`common:${key}_other`);
+                expect({ locale, key, exists }).toEqual({ locale, key, exists: true });
+            }
+        }
     });
 });

@@ -9,6 +9,7 @@ import os from "os";
 import path from "path";
 import { WaveDevVarName, WaveDevViteVarName } from "../frontend/util/isdev";
 import * as keyutil from "../frontend/util/keyutil";
+import { tmew } from "./emain-i18n";
 
 // This is a little trick to ensure that Electron puts all its runtime data into a subdirectory to avoid conflicts with our own data.
 // On macOS, it will store to ~/Library/Application \Support/snorkeling/electron
@@ -69,9 +70,9 @@ export function checkIfRunningUnderARM64Translation(fullConfig: FullConfigType) 
         console.log("Running under ARM64 translation, alerting user");
         const dialogOpts: Electron.MessageBoxOptions = {
             type: "warning",
-            buttons: ["Dismiss", "Learn More"],
-            title: "Snorkeling has detected a performance issue",
-            message: `Snorkeling is running in ARM64 translation mode which may impact performance.\n\nRecommendation: Download the native ARM64 version from the project repository for optimal performance.`,
+            buttons: [tmew("common:dialog.arm64Warning.dismiss"), tmew("common:dialog.arm64Warning.learnMore")],
+            title: tmew("common:dialog.arm64Warning.title"),
+            message: tmew("common:dialog.arm64Warning.message"),
         };
 
         const choice = dialog.showMessageBoxSync(null, dialogOpts);

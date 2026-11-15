@@ -6,6 +6,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import * as electron from "electron";
 import { fireAndForget } from "../frontend/util/util";
 import { focusedBuilderWindow, getBuilderWindowById } from "./emain-builder";
+import { tmew } from "./emain-i18n";
 import { openBuilderWindow } from "./emain-ipc";
 import { isDev, unamePlatform } from "./emain-platform";
 import { clearTabCache } from "./emain-tabview";
@@ -50,7 +51,7 @@ async function getWorkspaceMenu(ww?: WaveBrowserWindow): Promise<Electron.MenuIt
     const workspaceList = await RpcApi.WorkspaceListCommand(ElectronWshClient);
     const workspaceMenu: Electron.MenuItemConstructorOptions[] = [
         {
-            label: "Create Workspace",
+            label: tmew("common:menu.workspace.createWorkspace"),
             click: (_, window) => fireAndForget(() => createWorkspace((window as WaveBrowserWindow) ?? ww)),
         },
     ];
@@ -133,7 +134,7 @@ function makeFileMenu(
 ): Electron.MenuItemConstructorOptions[] {
     const fileMenu: Electron.MenuItemConstructorOptions[] = [
         {
-            label: "New Window",
+            label: tmew("common:menu.file.newWindow"),
             accelerator: "CommandOrControl+Shift+N",
             click: () => fireAndForget(callbacks.createNewWaveWindow),
         },
@@ -148,21 +149,23 @@ function makeFileMenu(
     const featureWaveAppBuilder = fullConfig?.settings?.["feature:waveappbuilder"];
     if (isDev || featureWaveAppBuilder) {
         fileMenu.splice(1, 0, {
-            label: "New WaveApp Builder Window",
+            label: tmew("common:menu.file.newBuilderWindow"),
             accelerator: unamePlatform === "darwin" ? "Command+Shift+B" : "Alt+Shift+B",
             click: () => openBuilderWindow(""),
         });
     }
     if (numWaveWindows == 0) {
         fileMenu.push({
-            label: "New Window (hidden-1)",
+            // Hidden accelerator-only item: reuses the visible "New Window" label.
+            label: tmew("common:menu.file.newWindow"),
             accelerator: unamePlatform === "darwin" ? "Command+N" : "Alt+N",
             acceleratorWorksWhenHidden: true,
             visible: false,
             click: () => fireAndForget(callbacks.createNewWaveWindow),
         });
         fileMenu.push({
-            label: "New Window (hidden-2)",
+            // Hidden accelerator-only item: reuses the visible "New Window" label.
+            label: tmew("common:menu.file.newWindow"),
             accelerator: unamePlatform === "darwin" ? "Command+T" : "Alt+T",
             acceleratorWorksWhenHidden: true,
             visible: false,
@@ -200,19 +203,19 @@ function makeAppMenuItems(webContents: electron.WebContents): Electron.MenuItemC
     const launchAtLogin = getLoginItemSettings().openAtLogin;
     const appMenuItems: Electron.MenuItemConstructorOptions[] = [
         {
-            label: "About Snorkeling",
+            label: tmew("common:menu.app.about"),
             click: (_, window) => {
                 (getWindowWebContents(window) ?? webContents)?.send("menu-item-about");
             },
         },
         {
-            label: "Check for Updates",
+            label: tmew("common:menu.app.checkForUpdates"),
             click: () => {
                 fireAndForget(() => updater?.checkForUpdates(true));
             },
         },
         {
-            label: "Launch at Login",
+            label: tmew("common:menu.app.launchAtLogin"),
             type: "checkbox",
             checked: launchAtLogin,
             click: (menuItem) => {
@@ -244,22 +247,22 @@ function makeViewMenu(
     const devToolsAccel = unamePlatform === "darwin" ? "Option+Command+I" : "Alt+Shift+I";
     return [
         {
-            label: isBuilderWindowFocused ? "Reload Window" : "Reload Tab",
+            label: isBuilderWindowFocused ? tmew("common:menu.view.reloadWindow") : tmew("common:menu.view.reloadTab"),
             accelerator: "Shift+CommandOrControl+R",
             click: (_, window) => {
                 (getWindowWebContents(window) ?? webContents)?.reloadIgnoringCache();
             },
         },
         {
-            label: "Relaunch All Windows",
+            label: tmew("common:menu.view.relaunchAllWindows"),
             click: () => callbacks.relaunchBrowserWindows(),
         },
         {
-            label: "Clear Tab Cache",
+            label: tmew("common:menu.view.clearTabCache"),
             click: () => clearTabCache(),
         },
         {
-            label: "Toggle DevTools",
+            label: tmew("common:menu.view.toggleDevTools"),
             accelerator: devToolsAccel,
             click: (_, window) => {
                 const wc = getWindowWebContents(window) ?? webContents;
@@ -268,7 +271,7 @@ function makeViewMenu(
         },
         { type: "separator" },
         {
-            label: "Reset Zoom",
+            label: tmew("common:menu.view.resetZoom"),
             accelerator: "CommandOrControl+0",
             click: (_, window) => {
                 const wc = getWindowWebContents(window) ?? webContents;
@@ -278,7 +281,7 @@ function makeViewMenu(
             },
         },
         {
-            label: "Zoom In",
+            label: tmew("common:menu.view.zoomIn"),
             accelerator: "CommandOrControl+=",
             click: (_, window) => {
                 const wc = getWindowWebContents(window) ?? webContents;
@@ -288,7 +291,8 @@ function makeViewMenu(
             },
         },
         {
-            label: "Zoom In (hidden)",
+            // Hidden accelerator-only item (Shift+= is not reachable from a menu bar).
+            label: tmew("common:menu.view.zoomIn"),
             accelerator: "CommandOrControl+Shift+=",
             click: (_, window) => {
                 const wc = getWindowWebContents(window) ?? webContents;
@@ -300,7 +304,7 @@ function makeViewMenu(
             acceleratorWorksWhenHidden: true,
         },
         {
-            label: "Zoom Out",
+            label: tmew("common:menu.view.zoomOut"),
             accelerator: "CommandOrControl+-",
             click: (_, window) => {
                 const wc = getWindowWebContents(window) ?? webContents;
@@ -310,7 +314,8 @@ function makeViewMenu(
             },
         },
         {
-            label: "Zoom Out (hidden)",
+            // Hidden accelerator-only item (Shift+- is not reachable from a menu bar).
+            label: tmew("common:menu.view.zoomOut"),
             accelerator: "CommandOrControl+Shift+-",
             click: (_, window) => {
                 const wc = getWindowWebContents(window) ?? webContents;
@@ -322,10 +327,10 @@ function makeViewMenu(
             acceleratorWorksWhenHidden: true,
         },
         {
-            label: "Launch On Full Screen",
+            label: tmew("common:menu.view.launchOnFullScreen"),
             submenu: [
                 {
-                    label: "On",
+                    label: tmew("common:menu.view.on"),
                     type: "radio",
                     checked: fullscreenOnLaunch,
                     click: () => {
@@ -333,7 +338,7 @@ function makeViewMenu(
                     },
                 },
                 {
-                    label: "Off",
+                    label: tmew("common:menu.view.off"),
                     type: "radio",
                     checked: !fullscreenOnLaunch,
                     click: () => {
@@ -348,7 +353,7 @@ function makeViewMenu(
         },
         { type: "separator" },
         {
-            label: "Toggle Widgets Bar",
+            label: tmew("common:menu.view.toggleWidgetsBar"),
             click: () => {
                 fireAndForget(async () => {
                     const workspaceId = focusedWaveWindow?.workspaceId;
@@ -391,7 +396,7 @@ async function makeFullAppMenu(callbacks: AppMenuCallbacks, workspaceOrBuilderId
         { role: "zoom" },
         { type: "separator" },
         {
-            label: "Move to Next Display",
+            label: tmew("common:menu.window.moveToNextDisplay"),
             accelerator: "CmdOrControl+Alt+Right",
             click: () => {
                 const ww = focusedWaveWindow ?? getAllWaveWindows()[0];
@@ -399,7 +404,7 @@ async function makeFullAppMenu(callbacks: AppMenuCallbacks, workspaceOrBuilderId
             },
         },
         {
-            label: "Move to Previous Display",
+            label: tmew("common:menu.window.moveToPreviousDisplay"),
             accelerator: "CmdOrControl+Alt+Left",
             click: () => {
                 const ww = focusedWaveWindow ?? getAllWaveWindows()[0];
@@ -417,7 +422,7 @@ async function makeFullAppMenu(callbacks: AppMenuCallbacks, workspaceOrBuilderId
     ];
     if (workspaceMenu != null && !isBuilderWindowFocused) {
         menuTemplate.push({
-            label: "Workspace",
+            label: tmew("common:menu.workspace.label"),
             id: "workspace-menu",
             submenu: workspaceMenu,
         });
@@ -553,18 +558,23 @@ electron.ipcMain.on("builder-appmenu-show", (event, builderId: string) => {
     event.returnValue = true;
 });
 
-const dockMenu = electron.Menu.buildFromTemplate([
-    {
-        label: "New Window",
-        click() {
-            fireAndForget(createNewWaveWindow);
+// Built lazily on every call: the dock label must use the *current* locale, and a
+// module-level template would evaluate tmew() before initI18nMain() has run (throw)
+// and then stay frozen after a locale switch.
+function makeDockMenu(): electron.Menu {
+    return electron.Menu.buildFromTemplate([
+        {
+            label: tmew("common:menu.file.newWindow"),
+            click() {
+                fireAndForget(createNewWaveWindow);
+            },
         },
-    },
-]);
+    ]);
+}
 
 function makeDockTaskbar() {
     if (unamePlatform == "darwin") {
-        electron.app.dock.setMenu(dockMenu);
+        electron.app.dock.setMenu(makeDockMenu());
     }
 }
 
