@@ -34,6 +34,7 @@ import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { resolveAgentSessionIdFromMeta } from "@/app/view/term/agent-session";
 import { i18n } from "@/i18n/config";
+import { localeTextAtom, useActiveLocale } from "@/i18n/i18nmodel";
 import { getHiddenBlockIdsFromTab, getLayoutModelForTabById } from "@/layout/index";
 import { basename, cn, fireAndForget, formatCompactDuration, makeIconClass } from "@/util/util";
 import debug from "debug";
@@ -60,7 +61,6 @@ import {
     type OverviewViewModeImplemented,
 } from "./overview-board-model";
 import { OverviewTimeline } from "./overview-timeline";
-import { SessionMetrics } from "./session-metrics";
 import {
     buildTimelineRows,
     buildTimelineSegments,
@@ -72,6 +72,7 @@ import {
     type OverviewTimelineRange,
     type OverviewTimelineSegment,
 } from "./overview-timeline-model";
+import { SessionMetrics } from "./session-metrics";
 import {
     agentStatusHookProvidersForInstall,
     agentStatusHookStatusesNeedingInstall,
@@ -306,6 +307,9 @@ function resolveBoardAvatar(
 }
 
 function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
+    // Locale dep: `blockTitle()` falls back to the localized view name, so the
+    // derived atom must be rebuilt when `ui:locale` changes.
+    const activeLocale = useActiveLocale();
     const tabIds = workspace?.tabids ?? [];
     const tabIdsKey = tabIds.join("\n");
     const overviewAtom = useMemo(
@@ -338,7 +342,8 @@ function useOverviewBlocks(workspace: Workspace | null): OverviewBlock[] {
                 }
                 return result;
             }),
-        [workspace?.oid, tabIdsKey]
+        // locale in deps: blockTitle() falls back to the localized view name.
+        [workspace?.oid, tabIdsKey, activeLocale]
     );
     return jotai.useAtomValue(overviewAtom);
 }
@@ -1077,12 +1082,7 @@ function SessionOverviewButtonBase({ vertical = false }: { vertical?: boolean })
         );
     }
     return (
-        <Tooltip
-            content={t("session-overview:dialog.openOverview")}
-            placement="bottom"
-            hideOnClick
-            divClassName="flex"
-        >
+        <Tooltip content={t("session-overview:dialog.openOverview")} placement="bottom" hideOnClick divClassName="flex">
             <button
                 type="button"
                 className={cn("session-overview-tabbutton", focused && "is-open")}
@@ -1149,7 +1149,12 @@ function MessageDialog({
                             <i className={makeIconClass("tag", false)} />
                         </button>
                     ) : null}
-                    <Tooltip content={t("session-overview:dialog.deleteBlock")} placement="top" hideOnClick divClassName="inline-flex">
+                    <Tooltip
+                        content={t("session-overview:dialog.deleteBlock")}
+                        placement="top"
+                        hideOnClick
+                        divClassName="inline-flex"
+                    >
                         <button
                             type="button"
                             className="session-overview-block-x-button"
@@ -1211,11 +1216,7 @@ function MessageSquares({
     const messages = readableMessages(detailState?.detail);
     const visibleMessages = messages.slice(-limit);
     if (messages.length === 0 && !detailState?.loading) {
-        return (
-            <div className="session-overview-muted">
-                {unreadText || t("session-overview:dialog.noPreview")}
-            </div>
-        );
+        return <div className="session-overview-muted">{unreadText || t("session-overview:dialog.noPreview")}</div>;
     }
     return (
         <div className="session-overview-message-strip">
@@ -1623,7 +1624,12 @@ function CompactBlockIcon({
                             </button>
                         </Tooltip>
                     ) : null}
-                    <Tooltip content={t("session-overview:dialog.deleteBlock")} placement="top" hideOnClick divClassName="inline-flex">
+                    <Tooltip
+                        content={t("session-overview:dialog.deleteBlock")}
+                        placement="top"
+                        hideOnClick
+                        divClassName="inline-flex"
+                    >
                         <button
                             type="button"
                             className="session-overview-block-x-button"
@@ -1795,7 +1801,12 @@ function BlockRow({
                 ) : null}
             </div>
             <div className="session-overview-block-main-x">
-                <Tooltip content={t("session-overview:dialog.deleteBlock")} placement="top" hideOnClick divClassName="inline-flex">
+                <Tooltip
+                    content={t("session-overview:dialog.deleteBlock")}
+                    placement="top"
+                    hideOnClick
+                    divClassName="inline-flex"
+                >
                     <button
                         type="button"
                         className="session-overview-block-x-button"
@@ -2117,6 +2128,8 @@ const OverviewViewModeMeta = {
 
 function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOverviewViewModel>) {
     const { t } = useTranslation("session-overview");
+    // 视图显示名回退（blockViewToName）随 locale 变，memo 依赖里需要它。
+    const activeLocale = useActiveLocale();
     const overviewModel = SessionOverviewModel.getInstance();
     const workspace = jotai.useAtomValue(atoms.workspace);
     const activeTabId = jotai.useAtomValue(atoms.staticTabId);
@@ -2547,7 +2560,8 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     live: summary?.live === true,
                 } satisfies OverviewBoardCard;
             }),
-        [boardBlocks, details, personas, sessionEmojis, summaries]
+        // `kindLabel` / `title` fall back to localized view names (blockViewToName).
+        [boardBlocks, details, personas, sessionEmojis, summaries, activeLocale]
     );
     // 时间线行：身份复用看板卡片，时间字段来自 SessionSummary，状态色来自 AgentStatusStore。
     const timelineRows = useMemo(
@@ -2733,10 +2747,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                                 </select>
                             </label>
                         ) : null}
-                        <div
-                            className="session-overview-filter-group"
-                            aria-label={t("session-overview:panel.filters")}
-                        >
+                        <div className="session-overview-filter-group" aria-label={t("session-overview:panel.filters")}>
                             <button
                                 type="button"
                                 className={cn("session-overview-filter-button", hideUnopenedTabs && "is-active")}
@@ -2787,9 +2798,7 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     ) : OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
                         displayedTabGroups.length === 0 ? (
                             <div className="session-overview-empty">
-                                {tabGroups.length === 0
-                                    ? t("session-overview:panel.noTabs")
-                                    : emptyMessage}
+                                {tabGroups.length === 0 ? t("session-overview:panel.noTabs") : emptyMessage}
                             </div>
                         ) : (
                             <OverviewBoard
@@ -2974,7 +2983,7 @@ function setActiveTabAndCloseMenus(tabId: string): void {
 export class SessionOverviewViewModel implements ViewModel {
     viewType = "sessionoverview";
     viewIcon = jotai.atom("list-tree");
-    viewName = jotai.atom("Overview");
+    viewName = localeTextAtom(() => i18n.t("block:viewName.sessionoverview"));
     noPadding = jotai.atom(true);
     refreshSeqAtom = jotai.atom(0) as jotai.PrimitiveAtom<number>;
     lastRefreshAtAtom = jotai.atom(0) as jotai.PrimitiveAtom<number>;

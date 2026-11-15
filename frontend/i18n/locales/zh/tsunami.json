@@ -1,0 +1,10 @@
+{
+    "viewName": "WaveApp",
+    "title": "Tsunami",
+    "start": "启动",
+    "starting": "启动中...",
+    "error": {
+        "noAppPath": "必须设置应用路径或应用 ID（tsunami:apppath 或 tsunami:appid）",
+        "invalidController": "无效的 controller（必须是 'tsunami'）"
+    }
+}

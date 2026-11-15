@@ -1,0 +1,67 @@
+{
+    "viewName": "Heroes",
+    "empty": {
+        "role": "(no role)",
+        "journal": "(no journal yet)",
+        "charter": "(CHARTER.md is empty)",
+        "heroes": "No heroes yet",
+        "state": "No heroes yet. Create one in a terminal: {{command}}",
+        "hint": "A hero keeps a home base and memory, and can be called to work from the right bar."
+    },
+    "unknownProviderModel": "unknown",
+    "roster": {
+        "total": "{{count}} total",
+        "refresh": "Refresh",
+        "refreshing": "Refreshing…",
+        "loadFailed": "Failed to load heroes: {{message}}",
+        "selectHint": "Select a hero to see details"
+    },
+    "copy": {
+        "copy": "copy",
+        "copied": "copied"
+    },
+    "detail": {
+        "openInFiles": "Open home base in Files",
+        "open": "Open",
+        "confirm": "Confirm",
+        "capacity": "Capacity",
+        "files": "{{count}} files",
+        "bucketArchive": "archive",
+        "bucketHistory": "history",
+        "bucketWork": "work",
+        "bucketSyncable": "syncable",
+        "totalSync": "total {{total}} · sync ships archive/history only ({{syncable}})",
+        "pendingProposals": "Pending proposals",
+        "noPendingProposals": "No pending memory proposals.",
+        "readOnly": "Read-only in v1: copy a stamp from the proposals list and approve it via the CLI (writes stay in the CLI).",
+        "charter": "CHARTER",
+        "openCharter": "Open .hero/CHARTER.md"
+    },
+    "wizard": {
+        "title": "🦸 Set as New Hero",
+        "stepIdentity": "Step 1 of 2 · Identity",
+        "stepPreview": "Step 2 of 2 · Preview",
+        "stepPreviewWithDir": "Step 2 of 2 · Preview · {{dir}}",
+        "back": "Back",
+        "next": "Next",
+        "done": "Done",
+        "nameLabel": "Name (required)",
+        "namePlaceholder": "Backup Guard",
+        "nameRequired": "Name is required",
+        "idPreview": "id preview: {{id}}",
+        "emojiLabel": "Emoji",
+        "roleLabel": "Role (one line)",
+        "rolePlaceholder": "backup & archive",
+        "source": "Source: {{source}}",
+        "mainWorkdir": " · main working dir {{path}}",
+        "sourceTrailer": ". Memory draft (session Note/Tags) comes from the ",
+        "sourceTrailerAfter": " flag; this wizard never writes MEMORY.",
+        "buildingTree": "Building file tree…",
+        "retry": "Retry",
+        "directoryName": "Directory name",
+        "cliAuthoritative": "(CLI is authoritative)",
+        "copyCommand": "Copy command",
+        "noWriteBefore": "This wizard never writes to disk: run the command yourself so the propose gate stays on the CLI side. Add ",
+        "noWriteAfter": " to turn session Note/Tags into a MEMORY draft proposal."
+    }
+}

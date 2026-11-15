@@ -38,44 +38,76 @@ export const NumActiveConnColors = 8;
  * Views whose icon/name is dynamic at runtime (e.g. tsunami reads app meta,
  * sysinfo reads the selected plot type) use a sensible static default here;
  * when the view model is instantiated, `viewModel.viewIcon/viewName` wins.
+ *
+ * The display name is stored as an **i18n key** (`block:viewName.*`), never as
+ * literal text: this table is built once at module load, so a literal would
+ * freeze whichever locale happened to be active then. Consumers resolve the
+ * key at render time (`blockViewToName`, or a locale-reactive atom — see
+ * `localeTextAtom` in `@/i18n/i18nmodel`).
  */
-const ViewMetaMap: Record<string, { name: string; icon: string }> = {
+const ViewMetaMap = {
     // original whitelist (values unchanged)
-    term: { name: "Terminal", icon: "terminal" },
-    preview: { name: "Preview", icon: "file" },
-    web: { name: "Web", icon: "globe" },
-    waveai: { name: "WaveAI", icon: "sparkles" },
-    help: { name: "Help", icon: "circle-question" },
-    tips: { name: "Tips", icon: "lightbulb" },
-    processviewer: { name: "Processes", icon: "microchip" },
-    sessionoverview: { name: "Overview", icon: "list-tree" },
-    vcs: { name: "Version Control", icon: "code-branch" },
-    vcscommits: { name: "Repo Commits", icon: "clock-rotate-left" },
-    vcsdiff: { name: "File Diff", icon: "file-code" },
-    vcshistory: { name: "File History", icon: "clock-rotate-left" },
+    term: { titleKey: "block:viewName.term", icon: "terminal" },
+    preview: { titleKey: "block:viewName.preview", icon: "file" },
+    web: { titleKey: "block:viewName.web", icon: "globe" },
+    waveai: { titleKey: "block:viewName.waveai", icon: "sparkles" },
+    help: { titleKey: "block:viewName.help", icon: "circle-question" },
+    tips: { titleKey: "block:viewName.tips", icon: "lightbulb" },
+    processviewer: { titleKey: "block:viewName.processviewer", icon: "microchip" },
+    sessionoverview: { titleKey: "block:viewName.sessionoverview", icon: "list-tree" },
+    vcs: { titleKey: "block:viewName.vcs", icon: "code-branch" },
+    vcscommits: { titleKey: "block:viewName.vcscommits", icon: "clock-rotate-left" },
+    vcsdiff: { titleKey: "block:viewName.vcsdiff", icon: "file-code" },
+    vcshistory: { titleKey: "block:viewName.vcshistory", icon: "clock-rotate-left" },
     // built-in views added after the original list (keep in sync with builtinviews.ts)
-    cpuplot: { name: "CPU", icon: "chart-line" },
-    sysinfo: { name: "SysInfo", icon: "chart-line" },
-    vdom: { name: "VDOM", icon: "bolt" },
-    launcher: { name: "Launcher", icon: "shapes" },
-    tsunami: { name: "WaveApp", icon: "cube" },
-    aifilediff: { name: "AI File Diff", icon: "file-lines" },
-    waveconfig: { name: "WaveConfig", icon: "gear" },
-    scheduledtasks: { name: "Scheduled Tasks", icon: "clock" },
-    aisessions: { name: "AI Sessions", icon: "comments" },
-    agent: { name: "Agent", icon: "robot" },
-    hero: { name: "Heroes", icon: "user-shield" },
-};
+    cpuplot: { titleKey: "block:viewName.cpuplot", icon: "chart-line" },
+    sysinfo: { titleKey: "block:viewName.sysinfo", icon: "chart-line" },
+    vdom: { titleKey: "block:viewName.vdom", icon: "bolt" },
+    launcher: { titleKey: "block:viewName.launcher", icon: "shapes" },
+    tsunami: { titleKey: "block:viewName.tsunami", icon: "cube" },
+    aifilediff: { titleKey: "block:viewName.aifilediff", icon: "file-lines" },
+    waveconfig: { titleKey: "block:viewName.waveconfig", icon: "gear" },
+    scheduledtasks: { titleKey: "block:viewName.scheduledtasks", icon: "clock" },
+    aisessions: { titleKey: "block:viewName.aisessions", icon: "comments" },
+    agent: { titleKey: "block:viewName.agent", icon: "robot" },
+    hero: { titleKey: "block:viewName.hero", icon: "user-shield" },
+} as const satisfies Record<string, { titleKey: string; icon: string }>;
+
+type ViewMeta = { titleKey: string; icon: string };
+
+/** String-keyed view of the registry (the const map above has no index signature). */
+const ViewMetaLookup: Record<string, ViewMeta | undefined> = ViewMetaMap;
 
 export function blockViewToIcon(view: string): string {
-    return ViewMetaMap[view]?.icon ?? "square";
+    return ViewMetaLookup[view]?.icon ?? "square";
 }
 
+/**
+ * The i18n key for a view's display name, or `null` for views with no entry
+ * (and for a blank view type). Callers that need to hold onto the *key* rather
+ * than a resolved string (e.g. a locale-reactive atom) should use this.
+ */
+export function blockViewToNameKey(view: string): string | null {
+    if (util.isBlank(view)) {
+        return null;
+    }
+    return ViewMetaLookup[view]?.titleKey ?? null;
+}
+
+/**
+ * Resolve a view type to its localized display name **at call time**, so a
+ * `ui:locale` switch is picked up by the next render. Never cache the result:
+ * the value depends on the active locale.
+ */
 export function blockViewToName(view: string): string {
     if (util.isBlank(view)) {
-        return "(No View)";
+        return i18n.t("block:viewName.noView");
     }
-    return ViewMetaMap[view]?.name ?? view;
+    const titleKey = blockViewToNameKey(view);
+    if (titleKey == null) {
+        return view;
+    }
+    return i18n.t(titleKey as never) as string;
 }
 
 export function processTitleString(titleString: string): React.ReactNode[] {

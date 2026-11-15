@@ -3,12 +3,13 @@
 
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { buildCommitRemoteUrl } from "@/app/view/vcs/vcs-remote";
 import { CommitGroup, CommitRow } from "@/app/view/vcs/vcs-commit-row";
+import { buildCommitRemoteUrl } from "@/app/view/vcs/vcs-remote";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { createBlock } from "@/store/global";
 import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
+import { createBlock } from "@/store/global";
 import { isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
@@ -43,7 +44,7 @@ export class VcsHistoryViewModel implements ViewModel {
     blockAtom: Atom<Block>;
 
     viewIcon = atom("clock-rotate-left");
-    viewName = atom(i18n.t("vcs:pathHistory.viewName"));
+    viewName = localeTextAtom(() => i18n.t("vcs:pathHistory.viewName"));
     manageConnection = atom(true);
     filterOutNowsh = atom(true);
     noPadding = atom(true);
@@ -310,12 +311,16 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                         expandable={expandable}
                                         expanded={expanded}
                                         onToggle={() => toggleCommit(commit)}
-                                        remoteOpenUrl={repoType === "git" ? buildCommitRemoteUrl(browseUrl, revision) : undefined}
+                                        remoteOpenUrl={
+                                            repoType === "git" ? buildCommitRemoteUrl(browseUrl, revision) : undefined
+                                        }
                                     />
                                     {expandable && expanded && (
                                         <div className="mb-1 ml-4 mt-1.5 rounded border border-border bg-surface-strong">
                                             {filesLoading && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">{t("vcs:common.loadingFiles")}</div>
+                                                <div className="px-2 py-1 text-[11px] text-muted">
+                                                    {t("vcs:common.loadingFiles")}
+                                                </div>
                                             )}
                                             {!filesLoading && !isBlank(filesError) && (
                                                 <div className="px-2 py-1 text-[11px] text-error whitespace-pre-wrap">
@@ -350,7 +355,9 @@ function VcsHistoryView({ model }: ViewComponentProps<VcsHistoryViewModel>) {
                                                                         });
                                                                     }}
                                                                 >
-                                                                    {isOpening ? t("vcs:pathHistory.opening") : t("vcs:common.diff")}
+                                                                    {isOpening
+                                                                        ? t("vcs:pathHistory.opening")
+                                                                        : t("vcs:common.diff")}
                                                                 </button>
                                                             </div>
                                                         );

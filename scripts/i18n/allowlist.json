@@ -313,5 +313,19 @@
         "kind": "jsx-text",
         "text": "cc-switch",
         "reason": "产品名（cc-switch = 第三方供应商配置工具，品牌名不翻译）"
+    },
+    {
+        "id": "frontend/app/view/hero/hero-create-wizard.tsx::jsx-text::57ccd51c3d08",
+        "file": "frontend/app/view/hero/hero-create-wizard.tsx",
+        "kind": "jsx-text",
+        "text": "--memory-from-session",
+        "reason": "CLI 参数名（<code> 内的命令语法，不可翻译；与 quicktips 命令示例同类）"
+    },
+    {
+        "id": "frontend/app/view/webview/webview.tsx::jsx-text::c92e18106265",
+        "file": "frontend/app/view/webview/webview.tsx",
+        "kind": "jsx-text",
+        "text": "bookmarks.json",
+        "reason": "配置文件名（<code> 内的真实文件名，不可翻译；路径由 config dir 决定）"
     }
 ]

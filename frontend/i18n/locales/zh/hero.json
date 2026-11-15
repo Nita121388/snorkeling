@@ -1,0 +1,67 @@
+{
+    "viewName": "Heroes",
+    "empty": {
+        "role": "（未设职责）",
+        "journal": "（暂无工作日志）",
+        "charter": "（CHARTER.md 为空）",
+        "heroes": "还没有 Hero",
+        "state": "还没有 Hero。在终端里创建：{{command}}",
+        "hint": "Hero 拥有自己的据点目录与记忆，可以从右侧栏叫出来干活。"
+    },
+    "unknownProviderModel": "未知",
+    "roster": {
+        "total": "共 {{count}} 个",
+        "refresh": "刷新",
+        "refreshing": "刷新中…",
+        "loadFailed": "加载 Hero 失败：{{message}}",
+        "selectHint": "选择一个 Hero 查看详情"
+    },
+    "copy": {
+        "copy": "复制",
+        "copied": "已复制"
+    },
+    "detail": {
+        "openInFiles": "在文件面板打开据点目录",
+        "open": "打开",
+        "confirm": "确定",
+        "capacity": "容量",
+        "files": "{{count}} 个文件",
+        "bucketArchive": "归档",
+        "bucketHistory": "历史",
+        "bucketWork": "工作区",
+        "bucketSyncable": "可同步",
+        "totalSync": "合计 {{total}} · 同步只带归档/历史（{{syncable}}）",
+        "pendingProposals": "待批提案",
+        "noPendingProposals": "没有待批的记忆提案。",
+        "readOnly": "v1 只读：从提案列表复制 stamp，再用 CLI 审批（写入始终留在 CLI 侧）。",
+        "charter": "CHARTER",
+        "openCharter": "打开 .hero/CHARTER.md"
+    },
+    "wizard": {
+        "title": "🦸 设为新 Hero",
+        "stepIdentity": "第 1 / 2 步 · 身份",
+        "stepPreview": "第 2 / 2 步 · 预览",
+        "stepPreviewWithDir": "第 2 / 2 步 · 预览 · {{dir}}",
+        "back": "上一步",
+        "next": "下一步",
+        "done": "完成",
+        "nameLabel": "名称（必填）",
+        "namePlaceholder": "备份卫",
+        "nameRequired": "名称不能为空",
+        "idPreview": "id 预览：{{id}}",
+        "emojiLabel": "Emoji",
+        "roleLabel": "职责（一行）",
+        "rolePlaceholder": "备份与归档",
+        "source": "来源：{{source}}",
+        "mainWorkdir": " · 主工作目录 {{path}}",
+        "sourceTrailer": "。记忆草稿（会话 Note/Tags）来自 ",
+        "sourceTrailerAfter": " 参数；此向导从不写入 MEMORY。",
+        "buildingTree": "正在生成文件树…",
+        "retry": "重试",
+        "directoryName": "目录名",
+        "cliAuthoritative": "（以 CLI 为准）",
+        "copyCommand": "复制命令",
+        "noWriteBefore": "此向导不写磁盘：请自己运行命令，让 propose 门留在 CLI 侧。加上 ",
+        "noWriteAfter": " 即可把会话 Note/Tags 变成 MEMORY 草稿提案。"
+    }
+}

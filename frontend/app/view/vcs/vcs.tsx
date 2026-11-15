@@ -1,31 +1,32 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { globalStore } from "@/app/store/jotaiStore";
-import { clearVcsTreeStatusCache } from "@/app/view/preview/vcs-tree-status";
-import type { WaveEnv } from "@/app/waveenv/waveenv";
-import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { createBlock } from "@/store/global";
 import { CopyForAgent } from "@/app/element/copy-for-agent";
+import { globalStore } from "@/app/store/jotaiStore";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import {
     buildMergeConflictsPayload,
     buildVcsOperationFailurePayload,
     isUnmergedCode,
 } from "@/app/view/preview/conflict-copy";
-import { base64ToString, isBlank, makeConnRoute, basename } from "@/util/util";
+import { clearVcsTreeStatusCache } from "@/app/view/preview/vcs-tree-status";
+import type { WaveEnv } from "@/app/waveenv/waveenv";
+import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { i18n } from "@/i18n/config";
+import { createBlock } from "@/store/global";
+import { base64ToString, basename, isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
-import { VcsChangesTab, type RepoFileFilterState } from "./vcs-changes-tab";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { VcsBranchesTab } from "./vcs-branches-tab";
-import { VcsPipelinesTab } from "./vcs-pipelines-tab";
-import { VcsTabBar, VcsRepoHeader, type View } from "./vcs-tabs";
-import { VcsRepoSwitcher } from "./vcs-repo-switcher";
+import { VcsChangesTab, type RepoFileFilterState } from "./vcs-changes-tab";
 import { VcsHistoryTab } from "./vcs-history-tab";
 import { VcsIconButton } from "./vcs-icon-button";
+import { VcsPipelinesTab } from "./vcs-pipelines-tab";
+import { VcsRepoSwitcher } from "./vcs-repo-switcher";
+import { VcsRepoHeader, VcsTabBar, type View } from "./vcs-tabs";
 
 const DefaultCommitMessage = "chore: update selected files";
 const VcsRepositoryRpcTimeoutMs = 60000;
@@ -179,13 +180,7 @@ function VcsProgressCard({
     const summary = isBlank(message) ? "" : firstMeaningfulLine(message);
     const hasDetails = details !== "" && details !== summary;
     const dismissBtn = (
-        <VcsIconButton
-            icon="xmark"
-            title={i18n.t("vcs:panel.dismiss")}
-            size="sm"
-            reveal="always"
-            onClick={onDismiss}
-        />
+        <VcsIconButton icon="xmark" title={i18n.t("vcs:panel.dismiss")} size="sm" reveal="always" onClick={onDismiss} />
     );
 
     let body: React.ReactNode;
@@ -314,7 +309,7 @@ export class VcsViewModel implements ViewModel {
     env: VcsUiEnv;
     blockAtom: Atom<Block>;
     viewIcon = atom("code-branch");
-    viewName = atom(i18n.t("vcs:panel.viewName"));
+    viewName = localeTextAtom(() => i18n.t("vcs:panel.viewName"));
     hideViewName = atom(true);
     manageConnection = atom(true);
     filterOutNowsh = atom(true);
@@ -683,11 +678,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     />
 
                     {/* Tab bar */}
-                    <VcsTabBar
-                        repo={activeRepo}
-                        currentView={currentView}
-                        onViewChange={setCurrentView}
-                    />
+                    <VcsTabBar repo={activeRepo} currentView={currentView} onViewChange={setCurrentView} />
 
                     {/* Shared operation progress card, visible across all tabs */}
                     <VcsProgressCard
@@ -703,9 +694,13 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                             <VcsChangesTab
                                 repo={activeRepo}
                                 selectedFiles={selectedFilesByRepo[activeRepo.repoid] ?? []}
-                                setSelectedFiles={(next) => setSelectedFilesByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))}
+                                setSelectedFiles={(next) =>
+                                    setSelectedFilesByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))
+                                }
                                 commitMessage={commitMessageByRepo[activeRepo.repoid] ?? DefaultCommitMessage}
-                                setCommitMessage={(next) => setCommitMessageByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))}
+                                setCommitMessage={(next) =>
+                                    setCommitMessageByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))
+                                }
                                 onCommit={() => handleCommit(activeRepo)}
                                 commitRunning={busyCommit}
                                 syncAction={runningSyncAction}
@@ -736,9 +731,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                 onBranchChanged={() => refreshRepo(activeRepo.repoid)}
                             />
                         )}
-                        {currentView === "pipelines" && (
-                            <VcsPipelinesTab repo={activeRepo} connection={connection} />
-                        )}
+                        {currentView === "pipelines" && <VcsPipelinesTab repo={activeRepo} connection={connection} />}
                         {currentView === "history" && (
                             <VcsHistoryTab
                                 repo={activeRepo}

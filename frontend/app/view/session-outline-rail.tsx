@@ -9,9 +9,11 @@
 // - hover-intent：150ms 延迟激活；横向掠过重置计时
 // - 动效：140ms ease-out CSS transition（Paseo web 同款，不用 rAF 弹簧）
 
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 
 const RAIL_WIDTH = 36;
 const SLOT_HEIGHT = 8;
@@ -180,6 +182,9 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
      */
     onJump?: (seq: number) => void;
 }) {
+    // 自身订阅：memo 组件不会跟着父级重渲染（药丸几何依赖 props，未变即跳过），
+    // 复制按钮的 aria-label / title 需要跟随 ui:locale 变化。
+    useTranslation("common");
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const [pinnedSeq, setPinnedSeq] = useState<number | null>(null);
     const [previewState, setPreviewState] = useState<{
@@ -378,8 +383,12 @@ export const SessionOutlineRail = memo(function SessionOutlineRail({
                                 <button
                                     type="button"
                                     className="shrink-0 rounded px-1 text-secondary hover:bg-hover hover:text-primary"
-                                    aria-label={copied ? "Copied" : "Copy message"}
-                                    title={copied ? "Copied" : "Copy message"}
+                                    aria-label={
+                                        copied ? i18n.t("common:common.copied") : i18n.t("common:common.copyMessage")
+                                    }
+                                    title={
+                                        copied ? i18n.t("common:common.copied") : i18n.t("common:common.copyMessage")
+                                    }
                                     onClick={() => {
                                         void (async () => {
                                             try {

@@ -1,6 +1,13 @@
+import { i18n, initI18n } from "@/i18n/config";
 import { isValidElement } from "react";
-import { describe, expect, it, vi } from "vitest";
-import { blockViewToIcon, blockViewToName, makeMagnifyButtonDecl } from "./blockutil";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { blockViewToIcon, blockViewToName, blockViewToNameKey, makeMagnifyButtonDecl } from "./blockutil";
+
+beforeAll(async () => {
+    // Pattern I: the map stores i18n keys, so expectations are recomputed with
+    // `i18n.t(...)` instead of hardcoding English literals.
+    await initI18n("en");
+});
 
 describe("blockViewToIcon / blockViewToName canonical map", () => {
     // Mirrors the built-in view types registered in builtinviews.ts. Importing that
@@ -45,7 +52,18 @@ describe("blockViewToIcon / blockViewToName canonical map", () => {
 
     it("resolves the previously-missing scheduledtasks block to its clock icon", () => {
         expect(blockViewToIcon("scheduledtasks")).toBe("clock");
-        expect(blockViewToName("scheduledtasks")).toBe("Scheduled Tasks");
+        expect(blockViewToName("scheduledtasks")).toBe(i18n.t("block:viewName.scheduledtasks"));
+    });
+
+    it("stores i18n keys instead of literal names so the locale is never frozen at load time", () => {
+        // A literal name here would be resolved once at module load and would
+        // stay in that language after a `ui:locale` switch.
+        expect(blockViewToNameKey("scheduledtasks")).toBe("block:viewName.scheduledtasks");
+        expect(blockViewToNameKey("not-a-view")).toBeNull();
+        expect(blockViewToNameKey("")).toBeNull();
+        expect(blockViewToName("")).toBe(i18n.t("block:viewName.noView"));
+        // Unknown views fall through to the raw view type, not a translated key.
+        expect(blockViewToName("not-a-view")).toBe("not-a-view");
     });
 });
 

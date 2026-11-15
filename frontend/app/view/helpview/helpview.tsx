@@ -5,6 +5,8 @@ import { globalStore, WOS } from "@/app/store/global";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { WebView, WebViewModel } from "@/app/view/webview/webview";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { atom } from "jotai";
 
 const docsiteUrl = "https://docs.waveterm.dev/?ref=app";
@@ -43,7 +45,7 @@ class HelpViewModel extends WebViewModel {
         this.homepageUrl = atom(docsiteUrl);
         this.viewType = "help";
         this.viewIcon = atom("circle-question");
-        this.viewName = atom("Help");
+        this.viewName = localeTextAtom(() => i18n.t("block:viewName.help"));
     }
 
     setZoomFactor(factor: number | null) {

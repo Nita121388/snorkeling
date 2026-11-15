@@ -6,35 +6,51 @@ import { initReactI18next } from "react-i18next";
 export { i18n };
 
 import enAiaudit from "./locales/en/aiaudit.json";
+import enAifilediff from "./locales/en/aifilediff.json";
 import enAipanel from "./locales/en/aipanel.json";
 import enAisessions from "./locales/en/aisessions.json";
-import enBlock from "./locales/en/block.json";
 import enBlockEditor from "./locales/en/block-editor.json";
+import enBlock from "./locales/en/block.json";
 import enCommon from "./locales/en/common.json";
 import enCommontext from "./locales/en/commontext.json";
 import enElement from "./locales/en/element.json";
+import enHero from "./locales/en/hero.json";
+import enLauncher from "./locales/en/launcher.json";
 import enOnboarding from "./locales/en/onboarding.json";
 import enPreview from "./locales/en/preview.json";
+import enProcessviewer from "./locales/en/processviewer.json";
+import enScheduledtasks from "./locales/en/scheduledtasks.json";
 import enSessionOverview from "./locales/en/session-overview.json";
 import enTab from "./locales/en/tab.json";
 import enTerm from "./locales/en/term.json";
+import enTsunami from "./locales/en/tsunami.json";
 import enVcs from "./locales/en/vcs.json";
+import enWaveai from "./locales/en/waveai.json";
 import enWaveconfig from "./locales/en/waveconfig.json";
+import enWebview from "./locales/en/webview.json";
 import zhAiaudit from "./locales/zh/aiaudit.json";
+import zhAifilediff from "./locales/zh/aifilediff.json";
 import zhAipanel from "./locales/zh/aipanel.json";
 import zhAisessions from "./locales/zh/aisessions.json";
-import zhBlock from "./locales/zh/block.json";
 import zhBlockEditor from "./locales/zh/block-editor.json";
+import zhBlock from "./locales/zh/block.json";
 import zhCommon from "./locales/zh/common.json";
 import zhCommontext from "./locales/zh/commontext.json";
 import zhElement from "./locales/zh/element.json";
+import zhHero from "./locales/zh/hero.json";
+import zhLauncher from "./locales/zh/launcher.json";
 import zhOnboarding from "./locales/zh/onboarding.json";
 import zhPreview from "./locales/zh/preview.json";
+import zhProcessviewer from "./locales/zh/processviewer.json";
+import zhScheduledtasks from "./locales/zh/scheduledtasks.json";
 import zhSessionOverview from "./locales/zh/session-overview.json";
 import zhTab from "./locales/zh/tab.json";
 import zhTerm from "./locales/zh/term.json";
+import zhTsunami from "./locales/zh/tsunami.json";
 import zhVcs from "./locales/zh/vcs.json";
+import zhWaveai from "./locales/zh/waveai.json";
 import zhWaveconfig from "./locales/zh/waveconfig.json";
+import zhWebview from "./locales/zh/webview.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -58,6 +74,14 @@ export const NS = [
     "aisessions",
     "vcs",
     "aiaudit",
+    "hero",
+    "scheduledtasks",
+    "processviewer",
+    "webview",
+    "launcher",
+    "tsunami",
+    "waveai",
+    "aifilediff",
 ] as const;
 
 /**
@@ -123,6 +147,14 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 aisessions: enAisessions,
                 vcs: enVcs,
                 aiaudit: enAiaudit,
+                hero: enHero,
+                scheduledtasks: enScheduledtasks,
+                processviewer: enProcessviewer,
+                webview: enWebview,
+                launcher: enLauncher,
+                tsunami: enTsunami,
+                waveai: enWaveai,
+                aifilediff: enAifilediff,
             },
             zh: {
                 common: zhCommon,
@@ -140,6 +172,14 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 aisessions: zhAisessions,
                 vcs: zhVcs,
                 aiaudit: zhAiaudit,
+                hero: zhHero,
+                scheduledtasks: zhScheduledtasks,
+                processviewer: zhProcessviewer,
+                webview: zhWebview,
+                launcher: zhLauncher,
+                tsunami: zhTsunami,
+                waveai: zhWaveai,
+                aifilediff: zhAifilediff,
             },
         },
         interpolation: {

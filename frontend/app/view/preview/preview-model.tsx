@@ -13,6 +13,7 @@ import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
 import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
 import type { LayoutNode } from "@/layout/lib/types";
@@ -670,7 +671,7 @@ export class PreviewModel implements ViewModel {
         this.htmlOpenMode = atom<HtmlOpenMode>((get) => {
             return resolveHtmlOpenModeFromMap(get(htmlOpenModePrefsAtom), get(this.metaFilePath));
         });
-        this.viewName = atom("Preview");
+        this.viewName = localeTextAtom(() => i18n.t("block:viewName.preview"));
         this.hideViewName = atom(true);
         this.viewText = atom((get) => {
             let headerPath = get(this.metaFilePath);

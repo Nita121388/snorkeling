@@ -5,8 +5,9 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { createBlock } from "@/store/global";
 import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
+import { createBlock } from "@/store/global";
 import { isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
@@ -44,7 +45,7 @@ export class VcsCommitsViewModel implements ViewModel {
     blockAtom: Atom<Block>;
 
     viewIcon = atom("clock-rotate-left");
-    viewName = atom(i18n.t("vcs:commits.viewName"));
+    viewName = localeTextAtom(() => i18n.t("vcs:commits.viewName"));
     manageConnection = atom(true);
     filterOutNowsh = atom(true);
     noPadding = atom(true);
@@ -275,7 +276,10 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                 "vcsdiff:filepath": filePath,
                 "vcsdiff:revision": revision,
                 "vcsdiff:mode": "side-by-side",
-                "vcsdiff:title": i18n.t("vcs:common.diffTitleRevision", { path: filePath, revision: shortHash(revision) }),
+                "vcsdiff:title": i18n.t("vcs:common.diffTitleRevision", {
+                    path: filePath,
+                    revision: shortHash(revision),
+                }),
             } as any,
         };
         await createBlock(blockDef);
@@ -387,17 +391,23 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                                     >
                                         <span className="text-muted w-[12px] shrink-0">{expanded ? "▾" : "▸"}</span>
                                         <span className="font-mono text-secondary shrink-0">{shortHash(revision)}</span>
-                                        <span className="truncate flex-1">{commit.subject || t("vcs:common.noMessage")}</span>
+                                        <span className="truncate flex-1">
+                                            {commit.subject || t("vcs:common.noMessage")}
+                                        </span>
                                     </div>
                                     <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
-                                        <span className="truncate">{commit.author || t("vcs:common.unknownAuthor")}</span>
+                                        <span className="truncate">
+                                            {commit.author || t("vcs:common.unknownAuthor")}
+                                        </span>
                                         <span className="truncate">{commit.date || ""}</span>
                                     </div>
 
                                     {expanded && (
                                         <div className="mt-1.5 rounded border border-border bg-surface-strong">
                                             {filesLoading && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">{t("vcs:common.loadingFiles")}</div>
+                                                <div className="px-2 py-1 text-[11px] text-muted">
+                                                    {t("vcs:common.loadingFiles")}
+                                                </div>
                                             )}
                                             {!filesLoading && !isBlank(filesError) && (
                                                 <div className="px-2 py-1 text-[11px] text-error whitespace-pre-wrap">

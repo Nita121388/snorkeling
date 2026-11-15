@@ -182,5 +182,32 @@
         "chooseLaunchTarget": "Choose launch target",
         "allTabs": "All tabs",
         "closeTabTitle": "Close {{title}}"
+    },
+    "viewName": {
+        "term": "Terminal",
+        "preview": "Preview",
+        "web": "Web",
+        "waveai": "WaveAI",
+        "help": "Help",
+        "tips": "Tips",
+        "processviewer": "Processes",
+        "sessionoverview": "Overview",
+        "vcs": "Version Control",
+        "vcscommits": "Repo Commits",
+        "vcsdiff": "File Diff",
+        "vcshistory": "File History",
+        "cpuplot": "CPU",
+        "sysinfo": "SysInfo",
+        "vdom": "VDOM",
+        "launcher": "Launcher",
+        "tsunami": "WaveApp",
+        "aifilediff": "AI File Diff",
+        "waveconfig": "WaveConfig",
+        "scheduledtasks": "Scheduled Tasks",
+        "aisessions": "AI Sessions",
+        "agent": "Agent",
+        "hero": "Heroes",
+        "noView": "(No View)",
+        "waveApp": "Wave App"
     }
 }

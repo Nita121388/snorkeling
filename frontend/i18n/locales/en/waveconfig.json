@@ -570,5 +570,8 @@
         "validateIntEmpty": "Enter a whole number.",
         "validateIntDigits": "Enter a whole number (digits only).",
         "validateIntPositive": "Enter a number greater than 0."
+    },
+    "header": {
+        "viewName": "Wave Config"
     }
 }

@@ -15,8 +15,10 @@
 import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { AISessionsService } from "@/app/store/services";
+import { i18n } from "@/i18n/config";
 import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
     buildCreateCommand,
     mergePrefill,
@@ -36,6 +38,9 @@ const StepIdentity = 1;
 const StepPreview = 2;
 
 function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCreateWizardProps) {
+    // Subscription only — the markup below reads `i18n.t(...)` so the whole
+    // wizard re-renders when `ui:locale` changes.
+    useTranslation("hero");
     const [step, setStep] = useState(StepIdentity);
     const [draft, setDraft] = useState<HeroCreateDraft>(() => mergePrefill({ source, sessionTitle, projectPath }));
     const [loading, setLoading] = useState(false);
@@ -110,11 +115,13 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
     return (
         <Modal
             className="hero-create-wizard w-[min(94vw,720px)]"
-            title="🦸 Set as New Hero"
+            title={i18n.t("hero:wizard.title")}
             subtitle={
                 step === StepIdentity
-                    ? "Step 1 of 2 · Identity"
-                    : `Step 2 of 2 · Preview${scaffoldDir ? ` · ${scaffoldDir}` : ""}`
+                    ? i18n.t("hero:wizard.stepIdentity")
+                    : scaffoldDir
+                      ? i18n.t("hero:wizard.stepPreviewWithDir", { dir: scaffoldDir })
+                      : i18n.t("hero:wizard.stepPreview")
             }
             onClose={close}
             footer={
@@ -125,7 +132,7 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                             className="cursor-pointer rounded border border-border bg-surface px-3 py-1 text-xs text-secondary transition-colors hover:text-foreground"
                             onClick={() => setStep(StepIdentity)}
                         >
-                            Back
+                            {i18n.t("hero:wizard.back")}
                         </button>
                     ) : null}
                     {step === StepIdentity ? (
@@ -140,7 +147,7 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                             )}
                             onClick={goPreview}
                         >
-                            Next
+                            {i18n.t("hero:wizard.next")}
                         </button>
                     ) : (
                         <button
@@ -148,7 +155,7 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                             className="cursor-pointer rounded bg-accent px-3 py-1 text-xs text-white hover:opacity-90"
                             onClick={close}
                         >
-                            Done
+                            {i18n.t("hero:wizard.done")}
                         </button>
                     )}
                 </div>
@@ -158,35 +165,42 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                 <div className="flex flex-col gap-3 px-1 pb-1">
                     <label className="flex flex-col gap-1">
                         <span className="text-[10px] font-medium uppercase tracking-wide text-muted/80">
-                            Name (required)
+                            {i18n.t("hero:wizard.nameLabel")}
                         </span>
                         <input
                             type="text"
                             value={draft.name}
                             onChange={setField("name")}
-                            placeholder={sessionTitle || "Backup Guard"}
+                            placeholder={sessionTitle || i18n.t("hero:wizard.namePlaceholder")}
                             className="rounded border border-border bg-surface px-2 py-1 text-sm outline-none focus:border-accent"
                             autoFocus
                         />
                         <span className={clsy(nameError)}>
-                            {nameError !== "" ? nameError : `id preview: ${idPreview || "—"}`}
+                            {nameError !== ""
+                                ? i18n.t(nameError as never)
+                                : i18n.t("hero:wizard.idPreview", { id: idPreview || "—" })}
                         </span>
                     </label>
                     <div className="grid grid-cols-2 gap-3">
-                        <Field label="Emoji" value={draft.emoji} onChange={setField("emoji")} placeholder="🦸" />
                         <Field
-                            label="Role (one line)"
+                            label={i18n.t("hero:wizard.emojiLabel")}
+                            value={draft.emoji}
+                            onChange={setField("emoji")}
+                            placeholder="🦸"
+                        />
+                        <Field
+                            label={i18n.t("hero:wizard.roleLabel")}
                             value={draft.role}
                             onChange={setField("role")}
-                            placeholder="backup & archive"
+                            placeholder={i18n.t("hero:wizard.rolePlaceholder")}
                         />
                     </div>
                     <p className="text-[11px] text-muted/80">
-                        Source: {source || "—"}
-                        {projectPath ? ` · main working dir ${projectPath}` : ""}. Memory draft (session Note/Tags)
-                        comes from the
+                        {i18n.t("hero:wizard.source", { source: source || "—" })}
+                        {projectPath ? i18n.t("hero:wizard.mainWorkdir", { path: projectPath }) : ""}
+                        {i18n.t("hero:wizard.sourceTrailer")}
                         <code className="mx-1 rounded bg-surface-soft px-1">--memory-from-session</code>
-                        flag; this wizard never writes MEMORY.
+                        {i18n.t("hero:wizard.sourceTrailerAfter")}
                     </p>
                 </div>
             ) : (
@@ -195,7 +209,7 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                         {loading ? (
                             <div className="flex items-center justify-center py-8 text-muted">
                                 <i className="fa fa-solid fa-spinner fa-spin mr-2"></i>
-                                <span className="text-xs">Building file tree…</span>
+                                <span className="text-xs">{i18n.t("hero:wizard.buildingTree")}</span>
                             </div>
                         ) : error !== "" ? (
                             <div className="px-3 py-6 text-center text-xs text-error">
@@ -206,7 +220,7 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                                         className="cursor-pointer rounded border border-border px-2 py-0.5 text-xs hover:border-accent"
                                         onClick={() => fetchPreview(draft)}
                                     >
-                                        Retry
+                                        {i18n.t("hero:wizard.retry")}
                                     </button>
                                 </div>
                             </div>
@@ -235,8 +249,9 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                     </div>
                     <div className="flex min-h-0 flex-col gap-2">
                         <div className="text-[11px] text-muted/80">
-                            Directory name <code className="rounded bg-surface-soft px-1">{idPreview || "—"}</code>
-                            (CLI is authoritative)
+                            {i18n.t("hero:wizard.directoryName")}{" "}
+                            <code className="rounded bg-surface-soft px-1">{idPreview || "—"}</code>{" "}
+                            {i18n.t("hero:wizard.cliAuthoritative")}
                         </div>
                         <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded border border-border bg-surface p-2 font-mono text-[11px] text-secondary">
                             {command}
@@ -247,14 +262,13 @@ function HeroCreateWizard({ source, sessionTitle, projectPath, onClose }: HeroCr
                                 className="cursor-pointer rounded border border-border bg-surface px-3 py-1 text-xs text-secondary hover:text-foreground"
                                 onClick={copyCommand}
                             >
-                                Copy command
+                                {i18n.t("hero:wizard.copyCommand")}
                             </button>
                         </div>
                         <p className="text-[11px] text-muted/70">
-                            This wizard never writes to disk: run the command yourself so the propose gate stays on the
-                            CLI side. Add
+                            {i18n.t("hero:wizard.noWriteBefore")}
                             <code className="mx-1 rounded bg-surface-soft px-1">--memory-from-session</code>
-                            to turn session Note/Tags into a MEMORY draft proposal.
+                            {i18n.t("hero:wizard.noWriteAfter")}
                         </p>
                     </div>
                 </div>

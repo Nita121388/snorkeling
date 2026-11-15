@@ -1,0 +1,6 @@
+{
+    "viewName": "AI Diff Viewer",
+    "loading": "Loading diff...",
+    "noData": "No diff data available",
+    "loadError": "Error loading diff data: {{message}}"
+}

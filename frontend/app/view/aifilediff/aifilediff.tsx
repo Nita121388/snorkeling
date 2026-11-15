@@ -7,10 +7,13 @@ import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { DiffViewer } from "@/app/view/codeeditor/diffviewer";
 import { getFileLanguage } from "@/app/view/preview/preview-edit";
 import type { WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { globalStore } from "@/store/jotaiStore";
 import { base64ToString } from "@/util/util";
 import * as jotai from "jotai";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 type DiffData = {
     original: string;
@@ -49,7 +52,7 @@ export class AiFileDiffViewModel implements ViewModel {
         this.errorAtom = jotai.atom(null) as jotai.PrimitiveAtom<string | null>;
         this.loadingAtom = jotai.atom<boolean>(true);
         this.viewIcon = jotai.atom("file-lines");
-        this.viewName = jotai.atom("AI Diff Viewer");
+        this.viewName = localeTextAtom(() => i18n.t("aifilediff:viewName"));
         this.viewText = jotai.atom((get) => {
             const diffData = get(this.diffDataAtom);
             return diffData?.fileName ?? "";
@@ -62,6 +65,8 @@ export class AiFileDiffViewModel implements ViewModel {
 }
 
 function AiFileDiffView({ blockId, model }: ViewComponentProps<AiFileDiffViewModel>) {
+    // Subscription only — the markup below reads `i18n.t(...)`.
+    useTranslation("aifilediff");
     const blockData = jotai.useAtomValue(model.blockAtom);
     const diffData = jotai.useAtomValue(model.diffDataAtom);
     const error = jotai.useAtomValue(model.errorAtom);
@@ -108,7 +113,7 @@ function AiFileDiffView({ blockId, model }: ViewComponentProps<AiFileDiffViewMod
                 globalStore.set(model.loadingAtom, false);
             } catch (e) {
                 console.error("Error loading diff data:", e);
-                globalStore.set(model.errorAtom, `Error loading diff data: ${e.message}`);
+                globalStore.set(model.errorAtom, i18n.t("aifilediff:loadError", { message: e.message }));
                 globalStore.set(model.loadingAtom, false);
             }
         }
@@ -119,7 +124,7 @@ function AiFileDiffView({ blockId, model }: ViewComponentProps<AiFileDiffViewMod
     if (loading) {
         return (
             <div className="flex items-center justify-center w-full h-full">
-                <div className="text-secondary">Loading diff...</div>
+                <div className="text-secondary">{i18n.t("aifilediff:loading")}</div>
             </div>
         );
     }
@@ -135,7 +140,7 @@ function AiFileDiffView({ blockId, model }: ViewComponentProps<AiFileDiffViewMod
     if (!diffData) {
         return (
             <div className="flex items-center justify-center w-full h-full">
-                <div className="text-secondary">No diff data available</div>
+                <div className="text-secondary">{i18n.t("aifilediff:noData")}</div>
             </div>
         );
     }

@@ -1,12 +1,11 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { PrimitiveAtom } from "jotai";
+import type { Atom, PrimitiveAtom } from "jotai";
 import { atom, useAtomValue } from "jotai";
 
 import { globalStore } from "@/app/store/jotaiStore";
-import { i18n } from "./config";
-import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from "./config";
+import { DEFAULT_LOCALE, i18n, type Locale, SUPPORTED_LOCALES } from "./config";
 
 /**
  * Jotai-friendly singleton model around i18next.
@@ -50,7 +49,9 @@ export class I18nModel {
         });
         // Push the change to the Electron main process so its i18n instance and
         // native (application/dock) menus follow. Best-effort: the preload `api`
-        // is only present in the real Electron environment, not in vite preview.
+        // is only present in the real Electron environment (not in vite preview
+        // or a node test environment, where `window` itself is undefined).
+        if (typeof window === "undefined") return;
         try {
             (window as any).api?.setLocale?.(locale);
         } catch (err) {
@@ -62,4 +63,29 @@ export class I18nModel {
 /** Convenience hook for components. */
 export function useActiveLocale(): Locale {
     return useAtomValue(I18nModel.getInstance().activeLocaleAtom);
+}
+
+/**
+ * Locale-reactive atom for one fixed UI string.
+ *
+ * View models expose `viewName: Atom<string>`, and a model is constructed once
+ * per block — so `atom(i18n.t(key))` would **freeze** whatever locale was
+ * active at construction time (switching `ui:locale` afterwards would leave the
+ * old language in every already-open block header). Reading
+ * `activeLocaleAtom` inside the atom makes it recompute — and notify its
+ * subscribers — whenever the locale changes.
+ *
+ * Only for strings whose value depends on nothing but the locale; dynamic
+ * names (session titles, app meta) belong in their own derived atom.
+ *
+ * `compute` is a thunk (`() => i18n.t("ns:key")`) rather than a raw key so the
+ * literal still goes through i18next's typed `t()` overloads — i18next's
+ * `ParseKeys` helper resolves to `never` under this project's
+ * `CustomTypeOptions`, so a `key: ParseKeys` parameter would lose checking.
+ */
+export function localeTextAtom(compute: () => string): Atom<string> {
+    return atom((get) => {
+        get(I18nModel.getInstance().activeLocaleAtom);
+        return compute();
+    });
 }

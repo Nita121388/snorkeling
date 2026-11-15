@@ -182,5 +182,32 @@
         "chooseLaunchTarget": "选择启动目标",
         "allTabs": "全部标签",
         "closeTabTitle": "关闭 {{title}}"
+    },
+    "viewName": {
+        "term": "终端",
+        "preview": "预览",
+        "web": "网页",
+        "waveai": "WaveAI",
+        "help": "帮助",
+        "tips": "小技巧",
+        "processviewer": "进程",
+        "sessionoverview": "总览",
+        "vcs": "版本控制",
+        "vcscommits": "仓库提交",
+        "vcsdiff": "文件对比",
+        "vcshistory": "文件历史",
+        "cpuplot": "CPU",
+        "sysinfo": "系统信息",
+        "vdom": "VDOM",
+        "launcher": "启动器",
+        "tsunami": "WaveApp",
+        "aifilediff": "AI 文件对比",
+        "waveconfig": "WaveConfig",
+        "scheduledtasks": "定时任务",
+        "aisessions": "AI 会话",
+        "agent": "Agent",
+        "hero": "Heroes",
+        "noView": "（无视图）",
+        "waveApp": "Wave App"
     }
 }

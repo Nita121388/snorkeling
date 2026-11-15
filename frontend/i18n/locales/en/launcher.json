@@ -1,0 +1,12 @@
+{
+    "viewName": "Widget Launcher",
+    "searchWidgets": "Search widgets",
+    "logoAlt": "Logo",
+    "hint": {
+        "noWidgets": "No widgets found. Press Escape to clear search.",
+        "typeToFilter": "Type to Filter",
+        "searching": "Searching \"{{term}}\"",
+        "enterToLaunch": ", Enter to Launch, ",
+        "arrowKeys": "Arrow Keys to Navigate"
+    }
+}

@@ -7,6 +7,7 @@
 import { globalStore } from "@/app/store/jotaiStore";
 import { AISessionsServiceType } from "@/app/store/services";
 import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import * as jotai from "jotai";
 import { AiAuditView } from "./aiaudit-view";
 
@@ -26,7 +27,7 @@ export class AiAuditViewModel implements ViewModel {
     service: AISessionsServiceType;
 
     viewIcon = jotai.atom<string>("clipboard-list");
-    viewName = jotai.atom<string>(i18n.t("aiaudit:header.viewName"));
+    viewName = localeTextAtom(() => i18n.t("aiaudit:header.viewName"));
     manageConnection = jotai.atom<boolean>(false);
 
     entriesAtom: jotai.PrimitiveAtom<AuditView[]>;

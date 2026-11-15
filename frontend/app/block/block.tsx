@@ -35,6 +35,7 @@ import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { ErrorBoundary } from "@/element/errorboundary";
 import { CenteredDiv } from "@/element/quickelems";
 import { i18n } from "@/i18n/config";
+import { I18nModel, useActiveLocale } from "@/i18n/i18nmodel";
 import type { LayoutNode } from "@/layout/index";
 import { getLayoutModelForTabById, TileItemType, useDebouncedNodeInnerRect } from "@/layout/index";
 import {
@@ -192,6 +193,8 @@ const InlineTabLabel = memo(
         sourceStripRef,
     }: InlineTabLabelProps) => {
         const { t } = useTranslation("block");
+        // `viewName` 回退用了 blockViewToName()（本地化视图名），memo 依赖里要带 locale。
+        const activeLocale = useActiveLocale();
         const waveEnv = useWaveEnv<BlockEnv>();
         const blockData = useAtomValue(waveEnv.wos.getWaveObjectAtom<Block>(makeORef("block", blockId)));
         const blockView = useAtomValue(waveEnv.getBlockMetaKeyAtom(blockId, "view")) ?? "";
@@ -324,7 +327,17 @@ const InlineTabLabel = memo(
                 return isBlank(vcsPath) ? "" : basename(vcsPath);
             }
             return blockViewToName(blockView) || blockId.slice(0, 8);
-        }, [blockId, blockView, connection, filePath, frameTitle, blockData?.meta, isSessionBlock, summaryTitle]);
+        }, [
+            blockId,
+            blockView,
+            connection,
+            filePath,
+            frameTitle,
+            blockData?.meta,
+            isSessionBlock,
+            summaryTitle,
+            activeLocale,
+        ]);
         // 完整路径(供 hover tooltip 用): 仅 preview 读 meta.file, agent/term 读 cmd:cwd, 远端附 connection
         const fullPath = useMemo(() => {
             // 会话类 Block: hover tooltip 显示完整 projectPath(+ connection)。
@@ -816,6 +829,9 @@ const InlineTabBlock = memo(({ nodeModel, preview, layoutData }: BlockProps & { 
         const statusStore = AgentStatusStore.getInstance();
         const overviewModel = SessionOverviewModel.getInstance();
         return atom((get) => {
+            // 标题回退用了 blockViewToName()（本地化视图名），读一次 locale 建立依赖，
+            // 否则切语言后下拉菜单里的视图名会停在旧语言。
+            get(I18nModel.getInstance().activeLocaleAtom);
             const ackedFpMap = get(overviewModel.agentStatusAckedFpAtom);
             const doneAckedAtMap = get(agentStatusDoneAckStore.doneAckedAtAtom);
             return blockIds.map((blockId) => {

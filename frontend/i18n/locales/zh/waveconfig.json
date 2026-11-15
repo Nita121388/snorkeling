@@ -570,5 +570,8 @@
         "validateIntEmpty": "请输入整数。",
         "validateIntDigits": "请输入整数（只能是数字）。",
         "validateIntPositive": "请输入大于 0 的数。"
+    },
+    "header": {
+        "viewName": "Wave 配置"
     }
 }

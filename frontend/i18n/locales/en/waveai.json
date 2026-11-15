@@ -1,0 +1,8 @@
+{
+    "viewName": "Wave AI",
+    "deprecated": {
+        "title": "This legacy Wave AI block is no longer supported",
+        "body": "This older AI widget has been retired. Please use the modern Wave AI panel for AI chats, terminal context, tools, and uploads going forward.",
+        "openPanel": "Open Wave AI panel"
+    }
+}

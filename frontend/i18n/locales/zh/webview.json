@@ -1,0 +1,33 @@
+{
+    "viewName": "网页",
+    "bookmarks": {
+        "typeaheadPlaceholder": "打开书签...",
+        "noneConfigured": "尚未配置书签",
+        "editHintBefore": "编辑 ",
+        "editHintAfter": " 文件即可配置书签。",
+        "openBookmarks": "打开 bookmarks.json",
+        "noMatch": "没有匹配的书签",
+        "editBookmarks": "编辑 bookmarks.json"
+    },
+    "previewFallback": {
+        "mockNote": "预览 mock · electron webview 不可用",
+        "placeholder": "网页挂件占位"
+    },
+    "menu": {
+        "reset": "重置",
+        "userAgentType": "User Agent 类型",
+        "userAgentDefault": "默认",
+        "userAgentIphone": "移动端：iPhone",
+        "userAgentAndroid": "移动端：Android",
+        "copyUrl": "复制 URL 到剪贴板",
+        "setBlockHomepage": "设为该 Block 主页",
+        "setDefaultHomepage": "设为默认主页",
+        "hideNavigation": "隐藏导航栏",
+        "unhideNavigation": "显示导航栏",
+        "setZoomFactor": "设置缩放比例",
+        "openDevTools": "打开 DevTools",
+        "closeDevTools": "关闭 DevTools",
+        "clearHistory": "清除历史",
+        "clearCookiesAndStorage": "清除 Cookie 与存储（全部网页挂件）"
+    }
+}

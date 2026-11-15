@@ -18,16 +18,19 @@
 import { globalStore } from "@/app/store/jotaiStore";
 import type { WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { buildHeroLaunchBlockDef } from "@/app/workspace/hero-launch";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { copyText } from "@/util/clipboard";
 import { fireAndForget, isBlank } from "@/util/util";
 import clsx from "clsx";
 import * as jotai from "jotai";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import {
-    EmptyCharterText,
-    EmptyJournalText,
     HeroCreateCommand,
     deriveRosterRows,
+    emptyCharterText,
+    emptyJournalText,
     emptyStateText,
     formatBytes,
     heroApproveCommand,
@@ -55,7 +58,7 @@ export class HeroViewModel implements ViewModel {
     env: HeroEnv;
 
     viewIcon = jotai.atom<string>("user-shield");
-    viewName = jotai.atom<string>("Heroes");
+    viewName = localeTextAtom(() => i18n.t("hero:viewName"));
     manageConnection = jotai.atom<boolean>(false);
 
     overviewAtom: jotai.PrimitiveAtom<AISessionsHeroOverviewResponse>;
@@ -148,7 +151,9 @@ function CapacityCell({ label, bytes, files }: { label: string; bytes: number; f
         <div className="rounded border border-border bg-surface px-2.5 py-1.5">
             <div className="text-[10px] uppercase tracking-wide text-secondary">{label}</div>
             <div className="mt-0.5 text-[13px] text-primary">{formatBytes(bytes)}</div>
-            {files != null && <div className="text-[10px] text-secondary">{files} files</div>}
+            {files != null && (
+                <div className="text-[10px] text-secondary">{i18n.t("hero:detail.files", { count: files })}</div>
+            )}
         </div>
     );
 }
@@ -172,7 +177,7 @@ function CopyLine({ text }: { text: string }) {
                 onClick={onCopy}
                 className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-secondary hover:bg-hover hover:text-primary"
             >
-                {copied ? "copied" : "copy"}
+                {copied ? i18n.t("hero:copy.copied") : i18n.t("hero:copy.copy")}
             </button>
         </div>
     );
@@ -213,7 +218,7 @@ function RosterRowView({
             <div className="mt-0.5 truncate text-[11px] text-secondary">{roleLine(row)}</div>
             <div className="mt-0.5 truncate text-[10px] text-secondary">{row.providerModel}</div>
             <div className="mt-0.5 truncate text-[10px] text-secondary" title={row.lastJournalLine || undefined}>
-                {row.lastJournalLine === "" ? EmptyJournalText : row.lastJournalLine}
+                {row.lastJournalLine === "" ? emptyJournalText() : row.lastJournalLine}
             </div>
         </button>
     );
@@ -251,10 +256,10 @@ function HeroDetail({
                             <button
                                 type="button"
                                 className="shrink-0 cursor-pointer rounded border border-border/70 px-1.5 py-0 text-[10px] text-secondary transition-colors hover:border-accent hover:text-accent"
-                                title="Open home base in Files"
+                                title={i18n.t("hero:detail.openInFiles")}
                                 onClick={() => onOpenFile(homeBase)}
                             >
-                                Open
+                                {i18n.t("hero:detail.open")}
                             </button>
                         </div>
                     )}
@@ -264,48 +269,56 @@ function HeroDetail({
                     onClick={() => onLaunch(row)}
                     className="shrink-0 rounded border border-accent/40 bg-accentbg px-2.5 py-1 text-[11px] text-accent hover:bg-hover"
                 >
-                    Confirm
+                    {i18n.t("hero:detail.confirm")}
                 </button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                 <section className="mb-4">
-                    <div className="mb-1.5 text-[10px] uppercase tracking-wide text-secondary">Capacity</div>
+                    <div className="mb-1.5 text-[10px] uppercase tracking-wide text-secondary">
+                        {i18n.t("hero:detail.capacity")}
+                    </div>
                     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                         <CapacityCell
-                            label="archive"
+                            label={i18n.t("hero:detail.bucketArchive")}
                             bytes={storage?.archiveBytes ?? 0}
                             files={storage?.archiveFiles ?? 0}
                         />
                         <CapacityCell
-                            label="history"
+                            label={i18n.t("hero:detail.bucketHistory")}
                             bytes={storage?.historyBytes ?? 0}
                             files={storage?.historyFiles ?? 0}
                         />
-                        <CapacityCell label="work" bytes={storage?.workBytes ?? 0} files={storage?.workFiles ?? 0} />
-                        <CapacityCell label="syncable" bytes={storage?.syncableBytes ?? 0} />
+                        <CapacityCell
+                            label={i18n.t("hero:detail.bucketWork")}
+                            bytes={storage?.workBytes ?? 0}
+                            files={storage?.workFiles ?? 0}
+                        />
+                        <CapacityCell
+                            label={i18n.t("hero:detail.bucketSyncable")}
+                            bytes={storage?.syncableBytes ?? 0}
+                        />
                     </div>
                     <div className="mt-1 text-[10px] text-secondary">
-                        total {formatBytes(storage?.totalBytes ?? 0)} · sync ships archive/history only (
-                        {formatBytes(storage?.syncableBytes ?? 0)})
+                        {i18n.t("hero:detail.totalSync", {
+                            total: formatBytes(storage?.totalBytes ?? 0),
+                            syncable: formatBytes(storage?.syncableBytes ?? 0),
+                        })}
                     </div>
                 </section>
 
                 <section className="mb-4">
                     <div className="mb-1.5 flex items-center gap-2 text-[10px] uppercase tracking-wide text-secondary">
-                        <span>Pending proposals</span>
+                        <span>{i18n.t("hero:detail.pendingProposals")}</span>
                         <span className="rounded-full bg-warning/15 px-1.5 py-[1px] text-[10px] normal-case text-warning">
                             ⚡{row.pendingProposals}
                         </span>
                     </div>
                     {row.pendingProposals === 0 ? (
-                        <div className="text-[11px] text-secondary">No pending memory proposals.</div>
+                        <div className="text-[11px] text-secondary">{i18n.t("hero:detail.noPendingProposals")}</div>
                     ) : (
                         <div className="flex flex-col gap-1.5">
-                            <div className="text-[11px] text-secondary">
-                                Read-only in v1: copy a stamp from the proposals list and approve it via the CLI (writes
-                                stay in the CLI).
-                            </div>
+                            <div className="text-[11px] text-secondary">{i18n.t("hero:detail.readOnly")}</div>
                             <CopyLine text={heroInboxCommand(row.id)} />
                             <CopyLine text={heroApproveCommand(row.id)} />
                         </div>
@@ -314,18 +327,20 @@ function HeroDetail({
 
                 <section>
                     <div className="mb-1.5 flex items-center gap-2">
-                        <span className="text-[10px] uppercase tracking-wide text-secondary">CHARTER</span>
+                        <span className="text-[10px] uppercase tracking-wide text-secondary">
+                            {i18n.t("hero:detail.charter")}
+                        </span>
                         <button
                             type="button"
                             className="cursor-pointer rounded border border-border/70 px-1.5 py-0 text-[10px] text-secondary transition-colors hover:border-accent hover:text-accent"
-                            title="Open .hero/CHARTER.md"
+                            title={i18n.t("hero:detail.openCharter")}
                             onClick={() => onOpenFile(`${homeBase}/.hero/CHARTER.md`)}
                         >
-                            Open
+                            {i18n.t("hero:detail.open")}
                         </button>
                     </div>
                     {charter === "" ? (
-                        <div className="text-[11px] text-secondary">{EmptyCharterText}</div>
+                        <div className="text-[11px] text-secondary">{emptyCharterText()}</div>
                     ) : (
                         <pre className="whitespace-pre-wrap break-words rounded border border-border bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed text-primary">
                             {charter}
@@ -338,6 +353,9 @@ function HeroDetail({
 }
 
 function HeroView({ model }: HeroViewProps) {
+    // Subscription only: every child below re-renders with this component, which is
+    // what makes the `i18n.t(...)` calls in the subtree pick up a locale switch.
+    useTranslation("hero");
     const overview = jotai.useAtomValue(model.overviewAtom);
     const rows = jotai.useAtomValue(model.rowsAtom);
     const selectedRow = jotai.useAtomValue(model.selectedRowAtom);
@@ -380,24 +398,26 @@ function HeroView({ model }: HeroViewProps) {
     return (
         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-block">
             <div className="flex items-center gap-2 border-b border-border/60 px-3 py-1.5">
-                <span className="text-[11px] font-medium text-primary">Heroes</span>
+                <span className="text-[11px] font-medium text-primary">{i18n.t("hero:viewName")}</span>
                 <span className="truncate font-mono text-[10px] text-secondary" title={overview?.root ?? ""}>
                     {overview?.root ?? ""}
                 </span>
-                <span className="ml-auto shrink-0 text-[10px] text-secondary">{rows.length} total</span>
+                <span className="ml-auto shrink-0 text-[10px] text-secondary">
+                    {i18n.t("hero:roster.total", { count: rows.length })}
+                </span>
                 <button
                     type="button"
                     onClick={onRefresh}
                     disabled={loading}
                     className="shrink-0 rounded border border-border/70 px-1.5 py-0.5 text-[10px] text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
                 >
-                    {loading ? "Refreshing…" : "Refresh"}
+                    {loading ? i18n.t("hero:roster.refreshing") : i18n.t("hero:roster.refresh")}
                 </button>
             </div>
 
             {error !== "" && (
                 <div className="border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-[11px] text-secondary">
-                    Failed to load heroes: {error}
+                    {i18n.t("hero:roster.loadFailed", { message: error })}
                 </div>
             )}
 
@@ -406,12 +426,10 @@ function HeroView({ model }: HeroViewProps) {
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-soft text-2xl text-muted/70">
                         🦸
                     </div>
-                    <div className="text-sm font-medium text-secondary">No heroes yet</div>
+                    <div className="text-sm font-medium text-secondary">{i18n.t("hero:empty.heroes")}</div>
                     <div className="max-w-[320px] text-[11px] leading-relaxed text-muted">{emptyStateText()}</div>
                     <CopyLine text={HeroCreateCommand} />
-                    <div className="text-[10px] text-muted/70">
-                        A hero keeps a home base and memory, and can be called to work from the right bar.
-                    </div>
+                    <div className="text-[10px] text-muted/70">{i18n.t("hero:empty.hint")}</div>
                 </div>
             ) : (
                 <div className="flex min-h-0 flex-1">
@@ -434,7 +452,7 @@ function HeroView({ model }: HeroViewProps) {
                         />
                     ) : (
                         <div className="flex flex-1 items-center justify-center text-[11px] text-muted">
-                            Select a hero to see details
+                            {i18n.t("hero:roster.selectHint")}
                         </div>
                     )}
                 </div>
