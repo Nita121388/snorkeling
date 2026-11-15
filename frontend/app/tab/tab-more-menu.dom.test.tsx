@@ -15,7 +15,8 @@ import { installPreviewElectronApi } from "@/preview/mock/preview-electron-api";
 import { atom, Provider } from "jotai";
 import { act } from "react";
 import { createRoot, Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
 import { collapsedTabIdsAtom } from "./tab-collapse-state";
 import { TabMoreMenu } from "./tab-more-menu";
 import { openedThisLaunchTabIdsAtom } from "./tab-open-state";
@@ -81,6 +82,11 @@ function rows(): HTMLElement[] {
     return Array.from(document.querySelectorAll<HTMLElement>("[role='menuitem']"));
 }
 
+// 组件文案走 i18n.t：先把实例初始化到 en（Pattern I）。
+beforeAll(async () => {
+    await initI18n("en");
+});
+
 beforeEach(() => {
     Element.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 200, 30);
     installPreviewElectronApi();
@@ -103,7 +109,7 @@ describe("TabMoreMenu trigger", () => {
         // active tab (t1) 不计入隐藏; t2/t3 本次未打开 → 隐藏.
         render(["t1", "t2", "t3"]);
         expect(trigger().getAttribute("aria-label")).toBe("More tabs (2 hidden)");
-        expect(trigger().textContent).toContain("更多");
+        expect(trigger().textContent).toContain("More");
         expect(trigger().textContent).toContain("2");
     });
 
@@ -112,7 +118,7 @@ describe("TabMoreMenu trigger", () => {
         render(["t1", "t2", "t3"]);
         expect(trigger().getAttribute("aria-label")).toBe("More tabs");
         // 垂直栏始终保留「更多」文字, 只是计数徽章消失.
-        expect(trigger().textContent).toBe("更多");
+        expect(trigger().textContent).toBe("More");
     });
 
     it("toggles the panel open and closed", () => {
@@ -248,7 +254,7 @@ describe("TabMoreMenu search", () => {
         act(() => {
             trigger().click();
         });
-        expect(document.querySelector("input[placeholder='搜索 Tab…']")).toBeNull();
+        expect(document.querySelector("input[placeholder='Search tabs…']")).toBeNull();
     });
 
     it("appears above the threshold and filters rows", () => {
@@ -258,7 +264,7 @@ describe("TabMoreMenu search", () => {
         act(() => {
             trigger().click();
         });
-        const input = document.querySelector<HTMLInputElement>("input[placeholder='搜索 Tab…']")!;
+        const input = document.querySelector<HTMLInputElement>("input[placeholder='Search tabs…']")!;
         expect(input).not.toBeNull();
         act(() => {
             typeInto(input, "Tab t13");
@@ -275,12 +281,12 @@ describe("TabMoreMenu search", () => {
         act(() => {
             trigger().click();
         });
-        const input = document.querySelector<HTMLInputElement>("input[placeholder='搜索 Tab…']")!;
+        const input = document.querySelector<HTMLInputElement>("input[placeholder='Search tabs…']")!;
         act(() => {
             typeInto(input, "zzz");
         });
         expect(rows()).toHaveLength(0);
-        expect(document.body.textContent).toContain("没有匹配的 Tab");
+        expect(document.body.textContent).toContain("No matching tabs");
     });
 });
 
@@ -292,7 +298,7 @@ describe("TabMoreMenu footer actions", () => {
             trigger().click();
         });
         const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
-        const newTabBtn = buttons.find((btn) => btn.textContent?.includes("新建 Tab"))!;
+        const newTabBtn = buttons.find((btn) => btn.textContent?.includes("New tab"))!;
         act(() => {
             newTabBtn.click();
         });
@@ -308,7 +314,7 @@ describe("TabMoreMenu footer actions", () => {
             trigger().click();
         });
         const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
-        const collapseBtn = buttons.find((btn) => btn.textContent?.includes("收起未使用的 Tab"));
+        const collapseBtn = buttons.find((btn) => btn.textContent?.includes("Collapse unused tabs"));
         // active=t1, t2 本次已打开且非激活 → 有收起目标, 按钮应存在.
         expect(collapseBtn).not.toBeUndefined();
         act(() => {

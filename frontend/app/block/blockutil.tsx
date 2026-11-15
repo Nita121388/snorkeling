@@ -7,12 +7,14 @@ import { MetaKeyAtomFnType, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv
 import { IconButton, ToggleIconButton } from "@/element/iconbutton";
 import { MagnifyIcon } from "@/element/magnify";
 import { MenuButton } from "@/element/menubutton";
+import { i18n } from "@/i18n/config";
 import { copyText } from "@/util/clipboard";
 import * as util from "@/util/util";
 import { cn } from "@/util/util";
 import clsx from "clsx";
 import * as jotai from "jotai";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 export type TabBackgroundEnv = WaveEnvSubset<{
     getTabMetaKeyAtom: MetaKeyAtomFnType<"bg:activebordercolor" | "bg:bordercolor" | "tab:background">;
@@ -36,44 +38,76 @@ export const NumActiveConnColors = 8;
  * Views whose icon/name is dynamic at runtime (e.g. tsunami reads app meta,
  * sysinfo reads the selected plot type) use a sensible static default here;
  * when the view model is instantiated, `viewModel.viewIcon/viewName` wins.
+ *
+ * The display name is stored as an **i18n key** (`block:viewName.*`), never as
+ * literal text: this table is built once at module load, so a literal would
+ * freeze whichever locale happened to be active then. Consumers resolve the
+ * key at render time (`blockViewToName`, or a locale-reactive atom — see
+ * `localeTextAtom` in `@/i18n/i18nmodel`).
  */
-const ViewMetaMap: Record<string, { name: string; icon: string }> = {
+const ViewMetaMap = {
     // original whitelist (values unchanged)
-    term: { name: "Terminal", icon: "terminal" },
-    preview: { name: "Preview", icon: "file" },
-    web: { name: "Web", icon: "globe" },
-    waveai: { name: "WaveAI", icon: "sparkles" },
-    help: { name: "Help", icon: "circle-question" },
-    tips: { name: "Tips", icon: "lightbulb" },
-    processviewer: { name: "Processes", icon: "microchip" },
-    sessionoverview: { name: "Overview", icon: "list-tree" },
-    vcs: { name: "Version Control", icon: "code-branch" },
-    vcscommits: { name: "Repo Commits", icon: "clock-rotate-left" },
-    vcsdiff: { name: "File Diff", icon: "file-code" },
-    vcshistory: { name: "File History", icon: "clock-rotate-left" },
+    term: { titleKey: "block:viewName.term", icon: "terminal" },
+    preview: { titleKey: "block:viewName.preview", icon: "file" },
+    web: { titleKey: "block:viewName.web", icon: "globe" },
+    waveai: { titleKey: "block:viewName.waveai", icon: "sparkles" },
+    help: { titleKey: "block:viewName.help", icon: "circle-question" },
+    tips: { titleKey: "block:viewName.tips", icon: "lightbulb" },
+    processviewer: { titleKey: "block:viewName.processviewer", icon: "microchip" },
+    sessionoverview: { titleKey: "block:viewName.sessionoverview", icon: "list-tree" },
+    vcs: { titleKey: "block:viewName.vcs", icon: "code-branch" },
+    vcscommits: { titleKey: "block:viewName.vcscommits", icon: "clock-rotate-left" },
+    vcsdiff: { titleKey: "block:viewName.vcsdiff", icon: "file-code" },
+    vcshistory: { titleKey: "block:viewName.vcshistory", icon: "clock-rotate-left" },
     // built-in views added after the original list (keep in sync with builtinviews.ts)
-    cpuplot: { name: "CPU", icon: "chart-line" },
-    sysinfo: { name: "SysInfo", icon: "chart-line" },
-    vdom: { name: "VDOM", icon: "bolt" },
-    launcher: { name: "Launcher", icon: "shapes" },
-    tsunami: { name: "WaveApp", icon: "cube" },
-    aifilediff: { name: "AI File Diff", icon: "file-lines" },
-    waveconfig: { name: "WaveConfig", icon: "gear" },
-    scheduledtasks: { name: "Scheduled Tasks", icon: "clock" },
-    aisessions: { name: "AI Sessions", icon: "comments" },
-    agent: { name: "Agent", icon: "robot" },
-    hero: { name: "Heroes", icon: "user-shield" },
-};
+    cpuplot: { titleKey: "block:viewName.cpuplot", icon: "chart-line" },
+    sysinfo: { titleKey: "block:viewName.sysinfo", icon: "chart-line" },
+    vdom: { titleKey: "block:viewName.vdom", icon: "bolt" },
+    launcher: { titleKey: "block:viewName.launcher", icon: "shapes" },
+    tsunami: { titleKey: "block:viewName.tsunami", icon: "cube" },
+    aifilediff: { titleKey: "block:viewName.aifilediff", icon: "file-lines" },
+    waveconfig: { titleKey: "block:viewName.waveconfig", icon: "gear" },
+    scheduledtasks: { titleKey: "block:viewName.scheduledtasks", icon: "clock" },
+    aisessions: { titleKey: "block:viewName.aisessions", icon: "comments" },
+    agent: { titleKey: "block:viewName.agent", icon: "robot" },
+    hero: { titleKey: "block:viewName.hero", icon: "user-shield" },
+} as const satisfies Record<string, { titleKey: string; icon: string }>;
+
+type ViewMeta = { titleKey: string; icon: string };
+
+/** String-keyed view of the registry (the const map above has no index signature). */
+const ViewMetaLookup: Record<string, ViewMeta | undefined> = ViewMetaMap;
 
 export function blockViewToIcon(view: string): string {
-    return ViewMetaMap[view]?.icon ?? "square";
+    return ViewMetaLookup[view]?.icon ?? "square";
 }
 
+/**
+ * The i18n key for a view's display name, or `null` for views with no entry
+ * (and for a blank view type). Callers that need to hold onto the *key* rather
+ * than a resolved string (e.g. a locale-reactive atom) should use this.
+ */
+export function blockViewToNameKey(view: string): string | null {
+    if (util.isBlank(view)) {
+        return null;
+    }
+    return ViewMetaLookup[view]?.titleKey ?? null;
+}
+
+/**
+ * Resolve a view type to its localized display name **at call time**, so a
+ * `ui:locale` switch is picked up by the next render. Never cache the result:
+ * the value depends on the active locale.
+ */
 export function blockViewToName(view: string): string {
     if (util.isBlank(view)) {
-        return "(No View)";
+        return i18n.t("block:viewName.noView");
     }
-    return ViewMetaMap[view]?.name ?? view;
+    const titleKey = blockViewToNameKey(view);
+    if (titleKey == null) {
+        return view;
+    }
+    return i18n.t(titleKey as never) as string;
 }
 
 export function processTitleString(titleString: string): React.ReactNode[] {
@@ -226,7 +260,7 @@ export function makeMagnifyButtonDecl({
     return {
         elemtype: "iconbutton",
         icon: <MagnifyIcon enabled={magnified} />,
-        title: title ?? (magnified ? "Minimize" : "Magnify"),
+        title: title ?? (magnified ? i18n.t("block:blockActions.minimize") : i18n.t("block:blockActions.magnify")),
         click: toggleMagnify,
         disabled,
     };
@@ -234,15 +268,25 @@ export function makeMagnifyButtonDecl({
 
 export const OptMagnifyButton = React.memo(
     ({ magnified, toggleMagnify, disabled, title, className }: MagnifyButtonDeclOptions & { className?: string }) => {
+        // 订阅语言变化：默认 title（Minimize/Magnify）在渲染期由 i18n.t 求值，切语言要能刷新。
+        useTranslation("block");
         const magnifyDecl = makeMagnifyButtonDecl({ magnified, toggleMagnify, disabled, title });
         return <IconButton key="magnify" decl={magnifyDecl} className={cn("block-frame-magnify", className)} />;
     }
 );
 
 export const HeaderCopyTextElem = React.memo(({ elem, preview }: { elem: HeaderCopyText; preview: boolean }) => {
+    // 订阅语言变化：actionText 在渲染期由 i18n.t 求值，切语言要能刷新。
+    useTranslation("block");
     const [status, setStatus] = React.useState<"idle" | "copied" | "failed">("idle");
     const displayText = elem.displayText || util.basename(elem.text);
     const tooltipText = elem.tooltipText || elem.text;
+    const actionText =
+        status === "copied"
+            ? i18n.t("block:blockActions.copied")
+            : status === "failed"
+              ? i18n.t("block:blockActions.copyFailed")
+              : i18n.t("block:blockActions.clickToCopy");
 
     console.log("[HeaderCopyTextElem] rendering", { elemtype: elem.elemtype, text: elem.text, displayText, preview });
 
@@ -265,8 +309,6 @@ export const HeaderCopyTextElem = React.memo(({ elem, preview }: { elem: HeaderC
                 setStatus("failed");
             });
     };
-
-    const actionText = status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : "Click to copy";
 
     return (
         <Tooltip

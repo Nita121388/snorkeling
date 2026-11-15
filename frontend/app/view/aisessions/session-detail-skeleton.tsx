@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { cn } from "@/util/util";
+import { useTranslation } from "react-i18next";
 
 /**
  * 会话详情加载骨架。
@@ -24,12 +25,13 @@ const SkeletonRowWidths = [
 ];
 
 export function SessionDetailSkeleton({ rows = SkeletonRowWidths.length }: { rows?: number }) {
+    const { t } = useTranslation("aisessions");
     return (
         <div
             className="flex h-full w-full min-h-0 flex-col gap-4 overflow-hidden p-3"
             role="status"
             aria-busy="true"
-            aria-label="Loading conversation"
+            aria-label={t("aisessions:skeleton.loadingConversation")}
         >
             {SkeletonRowWidths.slice(0, Math.max(1, rows)).map((widths, rowIdx) => (
                 <div key={rowIdx} className="flex items-start gap-2.5">

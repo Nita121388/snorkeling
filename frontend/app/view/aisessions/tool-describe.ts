@@ -4,27 +4,30 @@
 // 自然语言工具摘要生成器（Ref: Lyra ToolGroup.tsx describeRun）
 // 将连续的工具调用合并为一句自然语言描述。
 
+import { i18n } from "@/i18n/config";
+
 const KIND: Record<string, string> = {
-    write: "Create file",
-    edit: "Edit file",
-    read: "Read file",
-    bash: "Run command",
-    bash_output: "View output",
-    glob: "Find files",
-    grep: "Search content",
-    ls: "List directory",
-    todo_write: "Update list",
-    web_fetch: "Fetch page",
-    web_search: "Search web",
-    task: "Spawn subagent",
-    subagent: "Spawn subagent",
-    preview: "Generate preview",
-    symbol: "Find symbol",
-    skill: "Invoke skill",
+    write: "aisessions:toolDescribe.kind.write",
+    edit: "aisessions:toolDescribe.kind.edit",
+    read: "aisessions:toolDescribe.kind.read",
+    bash: "aisessions:toolDescribe.kind.bash",
+    bash_output: "aisessions:toolDescribe.kind.bash_output",
+    glob: "aisessions:toolDescribe.kind.glob",
+    grep: "aisessions:toolDescribe.kind.grep",
+    ls: "aisessions:toolDescribe.kind.ls",
+    todo_write: "aisessions:toolDescribe.kind.todo_write",
+    web_fetch: "aisessions:toolDescribe.kind.web_fetch",
+    web_search: "aisessions:toolDescribe.kind.web_search",
+    task: "aisessions:toolDescribe.kind.task",
+    subagent: "aisessions:toolDescribe.kind.subagent",
+    preview: "aisessions:toolDescribe.kind.preview",
+    symbol: "aisessions:toolDescribe.kind.symbol",
+    skill: "aisessions:toolDescribe.kind.skill",
 };
 
 function kindOf(toolName: string): string {
-    return KIND[toolName] ?? "Use tool";
+    const key = KIND[toolName];
+    return key != null ? i18n.t(key as never) : i18n.t("aisessions:toolDescribe.useTool");
 }
 
 function subjectOf(args?: Record<string, unknown>): string | undefined {
@@ -72,11 +75,11 @@ export function describeRun(calls: ToolCallInfo[]): string {
     for (const [kind, count] of counts) {
         const subjects = buckets.get(kind) ?? [];
         if (count === 1 && subjects.length === 1) {
-            parts.push(`${kind} ${subjects[0]}`);
+            parts.push(i18n.t("aisessions:toolDescribe.withSubject", { kind, subject: subjects[0] }));
         } else if (count === 1) {
             parts.push(kind);
         } else {
-            parts.push(`${kind} ×${count}`);
+            parts.push(i18n.t("aisessions:toolDescribe.count", { kind, count }));
         }
     }
     return parts.join(", ");
@@ -93,9 +96,9 @@ export function describeToolGroupCompact(toolNames: string[]): string {
     const kinds = new Set(toolNames.map((name) => kindOf(name)));
     const count = toolNames.length;
     if (kinds.size === 1) {
-        return `${[...kinds][0]} ×${count}`;
+        return i18n.t("aisessions:toolDescribe.count", { kind: [...kinds][0], count });
     }
-    return `Tool ×${count}`;
+    return i18n.t("aisessions:toolDescribe.toolCount", { count });
 }
 
 /**
@@ -106,5 +109,5 @@ export function describeToolGroupCompact(toolNames: string[]): string {
 export function describeToolGroupKind(toolNames: string[]): string {
     if (toolNames.length === 0) return "";
     const kinds = new Set(toolNames.map((name) => kindOf(name)));
-    return kinds.size === 1 ? [...kinds][0] : "Tool";
+    return kinds.size === 1 ? [...kinds][0] : i18n.t("aisessions:toolDescribe.tool");
 }

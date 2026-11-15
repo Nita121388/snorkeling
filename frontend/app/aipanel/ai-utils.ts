@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { sortByDisplayOrder } from "@/util/util";
+import { i18n } from "@/i18n/config";
 
 const TextFileLimit = 200 * 1024; // 200KB
 const PdfLimit = 5 * 1024 * 1024; // 5MB
@@ -372,8 +373,18 @@ export const validateFileSizeFromInfo = (
 };
 
 export const formatFileSizeError = (error: FileSizeError): string => {
-    const typeLabel = error.fileType === "image" ? "Image" : error.fileType === "pdf" ? "PDF" : "Text file";
-    return `${typeLabel} "${error.fileName}" is too large (${formatFileSize(error.fileSize)}). Maximum size is ${formatFileSize(error.maxSize)}.`;
+    const typeLabel =
+        error.fileType === "image"
+            ? i18n.t("aipanel:fileSize.image")
+            : error.fileType === "pdf"
+              ? i18n.t("aipanel:fileSize.pdf")
+              : i18n.t("aipanel:fileSize.text");
+    return i18n.t("aipanel:fileSize.tooLarge", {
+        type: typeLabel,
+        fileName: error.fileName,
+        fileSize: formatFileSize(error.fileSize),
+        maxSize: formatFileSize(error.maxSize),
+    });
 };
 
 /**
@@ -591,8 +602,11 @@ export function getModeDisplayName(config: AIModeConfigType): string {
     const azureResourceName = config["ai:azureresourcename"];
 
     if (provider === "azure-legacy") {
-        return `${azureResourceName || "unknown"} (azure)`;
+        return i18n.t("aipanel:mode.azureLabel", { name: azureResourceName || i18n.t("aipanel:mode.unknown") });
     }
 
-    return `${model || "unknown"} (${provider || "custom"})`;
+    return i18n.t("aipanel:mode.modeLabel", {
+        model: model || i18n.t("aipanel:mode.unknown"),
+        provider: provider || i18n.t("aipanel:mode.customProvider"),
+    });
 }

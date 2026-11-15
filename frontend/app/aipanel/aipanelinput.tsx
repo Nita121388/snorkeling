@@ -8,6 +8,7 @@ import { Tooltip } from "@/element/tooltip";
 import { cn } from "@/util/util";
 import { useAtom, useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 interface AIPanelInputProps {
     onSubmit: (e: React.FormEvent) => void;
@@ -22,6 +23,7 @@ export interface AIPanelInputRef {
 }
 
 export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps) => {
+    const { t } = useTranslation("aipanel");
     const [input, setInput] = useAtom(model.inputAtom);
     const isFocused = useAtomValue(model.isWaveAIFocusedAtom);
     const isChatEmpty = useAtomValue(model.isChatEmptyAtom);
@@ -33,11 +35,11 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
 
     let placeholder: string;
     if (!isChatEmpty) {
-        placeholder = "Continue...";
+        placeholder = t("aipanel:input.placeholderContinue");
     } else if (model.inBuilder) {
-        placeholder = "What would you like to build...";
+        placeholder = t("aipanel:input.placeholderBuilder");
     } else {
-        placeholder = "Ask Wave AI anything...";
+        placeholder = t("aipanel:input.placeholderAsk");
     }
 
     const resizeTextarea = useCallback(() => {
@@ -189,20 +191,20 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                         style={{ fontSize: "13px" }}
                         rows={2}
                     />
-                    <Tooltip content="Attach files" placement="top" divClassName="absolute bottom-6.5 right-1">
+                    <Tooltip content={t("aipanel:input.attachFiles")} placement="top" divClassName="absolute bottom-6.5 right-1">
                         <button
                             type="button"
                             onClick={handleUploadClick}
                             className={cn(
                                 "w-5 h-5 transition-colors flex items-center justify-center text-secondary hover:text-accent cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                             )}
-                            aria-label="Attach files"
+                            aria-label={t("aipanel:input.attachFiles")}
                         >
                             <i className="fa fa-paperclip text-sm"></i>
                         </button>
                     </Tooltip>
                     {status === "streaming" ? (
-                        <Tooltip content="Stop Response" placement="top" divClassName="absolute bottom-1.5 right-1">
+                        <Tooltip content={t("aipanel:input.stopResponseTitle")} placement="top" divClassName="absolute bottom-1.5 right-1">
                             <button
                                 type="button"
                                 onClick={() => model.stopResponse()}
@@ -210,14 +212,14 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                                     "w-5 h-5 transition-colors flex items-center justify-center",
                                     "text-secondary hover:text-secondary cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/50"
                                 )}
-                                aria-label="Stop response"
+                                aria-label={t("aipanel:input.stopResponse")}
                             >
                                 <i className="fa fa-square text-sm"></i>
                             </button>
                         </Tooltip>
                     ) : (
                         <Tooltip
-                            content="Send message (Enter)"
+                            content={t("aipanel:input.sendMessageTitle")}
                             placement="top"
                             divClassName="absolute bottom-1.5 right-1"
                         >
@@ -230,7 +232,7 @@ export const AIPanelInput = memo(({ onSubmit, status, model }: AIPanelInputProps
                                         ? "text-muted cursor-default"
                                         : "text-accent/80 hover:text-accent cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                                 )}
-                                aria-label="Send message"
+                                aria-label={t("aipanel:input.sendMessage")}
                             >
                                 <i className="fa fa-paper-plane text-sm"></i>
                             </button>

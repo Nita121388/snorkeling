@@ -228,3 +228,4 @@
 | 2026-11-15 10:41 | vcs-history-graph | ❌ 15/16 | launch+reset | `20261115T10375-vcs-history-graph` | 209159837 |
 | 2026-11-15 10:52 | vcs-history-graph | ✅ 16/16 | launch+reset | `20261115T10485-vcs-history-graph` | 209159837 |
 | 2026-11-15 11:03 | vcs-history-graph | ✅ 16/16 | launch+reset | `20261115T10593-vcs-history-graph` | 209159837 |
+| 2026-11-15 10:52 | i18n-rollout（P0/P1/P3 抽查） | ✅ 单测判定 + CDP 实机 | vitest + dev-isolated | `i18n-p0` / `i18n-p1` / `i18n-p3`（worktree 本地） | 未合入 |

@@ -11,7 +11,9 @@
 // 视觉沿用 controls.tsx 的按钮尺寸（h-7）与 token，不引入新设计系统；
 // 窄窗口用 flex-wrap 换行，不横向溢出。
 
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
+import { useTranslation } from "react-i18next";
 import { useBatchGenCounts } from "./aisession-gen-store";
 import type { BatchCopyKind } from "./utils";
 
@@ -19,34 +21,34 @@ type BatchAction = {
     kind: BatchCopyKind;
     icon: string;
     /** 宽度够时显示的短标签 */
-    label: string;
-    title: string;
+    labelKey: string;
+    titleKey: string;
 };
 
 const CopyActions: BatchAction[] = [
     {
         kind: "ids",
         icon: "fa-fingerprint",
-        label: "IDs",
-        title: "Copy session IDs",
+        labelKey: "aisessions:batchBar.ids",
+        titleKey: "aisessions:batchBar.copyIds",
     },
     {
         kind: "filePaths",
         icon: "fa-file-lines",
-        label: "Files",
-        title: "Copy session file paths",
+        labelKey: "aisessions:batchBar.files",
+        titleKey: "aisessions:batchBar.copyFiles",
     },
     {
         kind: "projectPaths",
         icon: "fa-folder",
-        label: "Dirs",
-        title: "Copy working directories",
+        labelKey: "aisessions:batchBar.dirs",
+        titleKey: "aisessions:batchBar.copyDirs",
     },
     {
         kind: "resumeCommands",
         icon: "fa-terminal",
-        label: "Resume",
-        title: "Copy resume commands",
+        labelKey: "aisessions:batchBar.resume",
+        titleKey: "aisessions:batchBar.copyResume",
     },
 ];
 
@@ -76,6 +78,7 @@ export function SessionBatchBar({
     onClear: () => void;
     onAutoGenerate?: (kind: "title" | "metadata") => void;
 }) {
+    const { t } = useTranslation("aisessions");
     const titleGenCounts = useBatchGenCounts(connection, selectedKeys ?? [], "title");
     if (selectedCount <= 0) {
         return null;
@@ -83,16 +86,17 @@ export function SessionBatchBar({
     const overLimit = selectedCount > 50;
     const genSummary =
         titleGenCounts.total > 0
-            ? `${titleGenCounts.done}/${titleGenCounts.total} done${titleGenCounts.failed > 0 ? ` · ${titleGenCounts.failed} failed` : ""}`
+            ? i18n.t("aisessions:batchBar.done", { done: titleGenCounts.done, total: titleGenCounts.total }) +
+              (titleGenCounts.failed > 0 ? i18n.t("aisessions:batchBar.failedSuffix", { failed: titleGenCounts.failed }) : "")
             : "";
     return (
         <div
             role="toolbar"
-            aria-label="Batch actions for selected sessions"
+            aria-label={t("aisessions:batchBar.toolbarAria")}
             className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/70 bg-accent/5 px-3 py-2"
         >
             <span className="mr-1 shrink-0 text-[11px] font-medium text-accent tabular-nums">
-                {selectedCount} selected
+                {i18n.t("aisessions:batchBar.selected", { count: selectedCount })}
             </span>
             {CopyActions.map((action) => {
                 const copied = copiedKind === action.kind;
@@ -100,8 +104,8 @@ export function SessionBatchBar({
                     <button
                         key={action.kind}
                         type="button"
-                        title={copied ? "Copied" : action.title}
-                        aria-label={action.title}
+                        title={copied ? t("aisessions:batchBar.copied") : t(action.titleKey as never)}
+                        aria-label={t(action.titleKey as never)}
                         onClick={() => onCopy(action.kind)}
                         className={cn(
                             "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors",
@@ -111,15 +115,15 @@ export function SessionBatchBar({
                         )}
                     >
                         <i className={cn("fa-sharp fa-solid text-[10px]", copied ? "fa-check" : action.icon)} />
-                        <span>{copied ? "Copied" : action.label}</span>
+                        <span>{copied ? t("aisessions:batchBar.copied") : t(action.labelKey as never)}</span>
                     </button>
                 );
             })}
             <span className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
             <button
                 type="button"
-                title={starred ? "Unstar selected sessions" : "Star selected sessions"}
-                aria-label={starred ? "Unstar selected sessions" : "Star selected sessions"}
+                title={starred ? t("aisessions:batchBar.unstarSelected") : t("aisessions:batchBar.starSelected")}
+                aria-label={starred ? t("aisessions:batchBar.unstarSelected") : t("aisessions:batchBar.starSelected")}
                 aria-pressed={starred}
                 onClick={starred ? onUnstar : onStar}
                 className={cn(
@@ -130,14 +134,14 @@ export function SessionBatchBar({
                 )}
             >
                 <i className={cn("fa-sharp text-[10px]", starred ? "fa-solid fa-star" : "fa-regular fa-star")} />
-                <span>{starred ? "Unstar" : "Star"}</span>
+                <span>{starred ? t("aisessions:batchBar.unstar") : t("aisessions:batchBar.star")}</span>
             </button>
             {onAutoGenerate != null ? (
                 <>
                     <button
                         type="button"
-                        title={overLimit ? "Select at most 50 sessions" : "Generate titles with AI"}
-                        aria-label="Generate titles with AI"
+                        title={overLimit ? t("aisessions:batchBar.overLimit") : t("aisessions:batchBar.generateTitles")}
+                        aria-label={t("aisessions:batchBar.generateTitles")}
                         disabled={overLimit}
                         onClick={() => onAutoGenerate("title")}
                         className={cn(
@@ -146,12 +150,12 @@ export function SessionBatchBar({
                         )}
                     >
                         <i className="fa-sharp fa-solid fa-wand-magic-sparkles text-[10px]" />
-                        <span>AI title</span>
+                        <span>{t("aisessions:batchBar.aiTitle")}</span>
                     </button>
                     <button
                         type="button"
-                        title={overLimit ? "Select at most 50 sessions" : "Generate note and tags with AI"}
-                        aria-label="Generate note and tags with AI"
+                        title={overLimit ? t("aisessions:batchBar.overLimit") : t("aisessions:batchBar.generateNote")}
+                        aria-label={t("aisessions:batchBar.generateNote")}
                         disabled={overLimit}
                         onClick={() => onAutoGenerate("metadata")}
                         className={cn(
@@ -160,7 +164,7 @@ export function SessionBatchBar({
                         )}
                     >
                         <i className="fa-sharp fa-solid fa-wand-magic-sparkles text-[10px]" />
-                        <span>AI note</span>
+                        <span>{t("aisessions:batchBar.aiNote")}</span>
                     </button>
                     {genSummary !== "" ? (
                         <span className="shrink-0 text-[10px] text-secondary tabular-nums">{genSummary}</span>
@@ -170,13 +174,13 @@ export function SessionBatchBar({
             <div className="flex-1" />
             <button
                 type="button"
-                title="Clear selection"
-                aria-label="Clear selection"
+                title={t("aisessions:batchBar.clearSelection")}
+                aria-label={t("aisessions:batchBar.clearSelection")}
                 onClick={onClear}
                 className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[11px] text-secondary transition-colors hover:bg-hover hover:text-primary"
             >
                 <i className="fa-sharp fa-solid fa-xmark text-[10px]" />
-                <span>Clear</span>
+                <span>{t("aisessions:batchBar.clear")}</span>
             </button>
         </div>
     );

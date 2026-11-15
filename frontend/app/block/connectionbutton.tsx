@@ -5,6 +5,7 @@ import { computeConnColorNum } from "@/app/block/blockutil";
 import { recordTEvent } from "@/app/store/global";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { IconButton } from "@/element/iconbutton";
+import { i18n } from "@/i18n/config";
 import * as util from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
@@ -40,12 +41,12 @@ export const ConnectionButton = React.memo(
             if (isLocal) {
                 color = "var(--color-secondary)";
                 if (connection === "local:gitbash") {
-                    titleText = "Connected to Git Bash";
-                    connDisplayName = "Git Bash";
+                    titleText = i18n.t("block:connection.connectedToGitBash");
+                    connDisplayName = i18n.t("block:connection.gitBash");
                 } else {
-                    titleText = "Connected to Local Machine";
+                    titleText = i18n.t("block:connection.connectedToLocal");
                     if (localName) {
-                        titleText += ` (${localName})`;
+                        titleText = i18n.t("block:connection.connectedToLocalHost", { host: localName });
                     }
                     if (isTerminalBlock) {
                         connDisplayName = localName;
@@ -59,12 +60,12 @@ export const ConnectionButton = React.memo(
                     />
                 );
             } else {
-                titleText = "Connected to " + connection;
+                titleText = i18n.t("block:connection.connectedTo", { connection });
                 let iconName = "arrow-right-arrow-left";
                 let iconSvg = null;
                 if (connStatus?.status == "connecting") {
                     color = "var(--warning-color)";
-                    titleText = "Connecting to " + connection;
+                    titleText = i18n.t("block:connection.connectingTo", { connection });
                     shouldSpin = false;
                     iconSvg = (
                         <div className="relative top-[5px] left-[9px] [&_svg]:fill-warning">
@@ -73,22 +74,25 @@ export const ConnectionButton = React.memo(
                     );
                 } else if (connStatus?.status == "error") {
                     color = "var(--error-color)";
-                    titleText = "Error connecting to " + connection;
+                    titleText = i18n.t("block:connection.errorConnecting", { connection });
                     if (connStatus?.error != null) {
-                        titleText += " (" + connStatus.error + ")";
+                        titleText = i18n.t("block:connection.errorConnectingDetail", {
+                            connection,
+                            error: connStatus.error,
+                        });
                     }
                     showDisconnectedSlash = true;
                 } else if (!connStatus?.connected) {
                     color = "var(--grey-text-color)";
-                    titleText = "Disconnected from " + connection;
+                    titleText = i18n.t("block:connection.disconnectedFrom", { connection });
                     showDisconnectedSlash = true;
                 } else if (connStatus?.connhealthstatus === "degraded" || connStatus?.connhealthstatus === "stalled") {
                     color = "var(--warning-color)";
                     iconName = "signal-bars-slash";
                     if (connStatus.connhealthstatus === "degraded") {
-                        titleText = "Connection degraded: " + connection;
+                        titleText = i18n.t("block:connection.degraded", { connection });
                     } else {
-                        titleText = "Connection stalled: " + connection;
+                        titleText = i18n.t("block:connection.stalled", { connection });
                     }
                 }
                 if (iconSvg != null) {
@@ -147,7 +151,7 @@ export const ConnectionButton = React.memo(
                             decl={{
                                 elemtype: "iconbutton",
                                 icon: "link-slash",
-                                title: "wsh is not installed for this connection",
+                                title: i18n.t("block:connection.wshNotInstalled"),
                             }}
                         />
                     )}

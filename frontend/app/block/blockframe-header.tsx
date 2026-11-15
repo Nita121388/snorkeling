@@ -44,12 +44,14 @@ import {
     SnorkelingBlockKindNote,
 } from "@/app/workspace/toggle-block";
 import { IconButton } from "@/element/iconbutton";
+import { i18n } from "@/i18n/config";
 import { getLayoutModelForTabById, NodeModel } from "@/layout/index";
 import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
 import * as util from "@/util/util";
 import { cn, makeIconClass } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { minimizeBlockToFloat, restoreMinimizedBlockToLayout } from "./block-minimize";
 import { BlockEnv } from "./blockenv";
 import { BlockFrameProps } from "./blocktypes";
@@ -103,18 +105,20 @@ export function showBlockContextMenu(
     const menu: ContextMenuItem[] = [
         minimizedPreview
             ? {
-                  label: isNoteBlock ? "Collapse to Tab" : "Show in Tab",
+                  label: isNoteBlock ? i18n.t("block:headerMenu.collapseToTab") : i18n.t("block:headerMenu.showInTab"),
                   click: showMinimizedPreviewInTab,
               }
             : {
-                  label: magnified ? "Un-Magnify Block" : "Magnify Block",
+                  label: magnified
+                      ? i18n.t("block:headerMenu.unMagnifyBlock")
+                      : i18n.t("block:headerMenu.magnifyBlock"),
                   click: () => {
                       nodeModel.toggleMagnify();
                   },
               },
         { type: "separator" },
         {
-            label: "Copy BlockId",
+            label: i18n.t("block:headerMenu.copyBlockId"),
             click: () => {
                 navigator.clipboard.writeText(blockId);
             },
@@ -122,7 +126,7 @@ export function showBlockContextMenu(
     ];
     if (hasAgentMeta && canOpenAgentFolder(blockData ?? null, agentSessionId)) {
         menu.push({
-            label: "Open Agent Folder",
+            label: i18n.t("block:headerMenu.openAgentFolder"),
             click: () => {
                 util.fireAndForget(() =>
                     openAgentFolderInCurrentTab({
@@ -136,14 +140,14 @@ export function showBlockContextMenu(
     }
     if (moveContext && !ephemeral) {
         menu.push({
-            label: "Minimize to BlockBar",
+            label: i18n.t("block:headerMenu.minimizeToBlockBar"),
             enabled: !minimizedPreview,
             click: () => minimizeBlockToFloat(moveContext.currentTabId, blockId),
         });
         menu.push({ type: "separator" }, ...makeBlockMoveMenuItems(blockId, blockEnv, moveContext));
     }
     menu.push({
-        label: "Set as New Hero…",
+        label: i18n.t("block:headerMenu.setAsNewHero"),
         click: () => openHeroCreateWizard({ source: "block" }),
     });
     const extraItems = viewModel?.getSettingsMenuItems?.();
@@ -151,7 +155,7 @@ export function showBlockContextMenu(
     menu.push(
         { type: "separator" },
         {
-            label: minimizedPreview ? "Close Preview" : "Close Block",
+            label: minimizedPreview ? i18n.t("block:headerMenu.closePreview") : i18n.t("block:headerMenu.closeBlock"),
             click: () => (minimizedPreview ? nodeModel.onClose() : util.fireAndForget(() => uxCloseBlock(blockId))),
         }
     );
@@ -172,7 +176,7 @@ export function makeBlockMoveMenuItems(
     // blockEnv 保留在签名里是为了不动所有调用点（覆盖各 view 右键 / header ⋯ / 框右键）。
     void blockId;
     void blockEnv;
-    return [{ label: "Move to Tab…", click: () => moveContext.onOpenMoveModal() }];
+    return [{ label: i18n.t("block:headerMenu.moveToTab"), click: () => moveContext.onOpenMoveModal() }];
 }
 
 type HeaderTextElemsProps = {
@@ -184,6 +188,7 @@ type HeaderTextElemsProps = {
 };
 
 const HeaderTextElems = React.memo(({ viewModel, blockId, preview, error, isHovered }: HeaderTextElemsProps) => {
+    const { t } = useTranslation("block");
     const waveEnv = useWaveEnv<BlockEnv>();
     const frameTextAtom = waveEnv.getBlockMetaKeyAtom(blockId, "frame:text");
     const frameText = jotai.useAtomValue(frameTextAtom);
@@ -210,7 +215,7 @@ const HeaderTextElems = React.memo(({ viewModel, blockId, preview, error, isHove
             <div className="iconbutton disabled" key="controller-status" onClick={copyHeaderErr}>
                 <i
                     className="fa-sharp fa-solid fa-triangle-exclamation"
-                    title={"Error Rendering View Header: " + error.message}
+                    title={i18n.t("block:header.errorRenderingHeader", { message: error.message })}
                 />
             </div>
         );
@@ -265,6 +270,7 @@ type HeaderEndIconsProps = {
 
 const HeaderEndIcons = React.memo(
     ({ viewModel, nodeModel, blockId, moveContext, isHovered, latchedZone, headerWidth = 0 }: HeaderEndIconsProps) => {
+        const { t } = useTranslation("block");
         const blockEnv = useWaveEnv<BlockEnv>();
         const tabModel = useTabModel();
         const layoutModel = getLayoutModelForTabById(tabModel.tabId);
@@ -386,7 +392,7 @@ const HeaderEndIcons = React.memo(
                     <OptMagnifyButton
                         key="collapse-note-preview"
                         magnified={true}
-                        title="Collapse to Tab"
+                        title={t("block:headerMenu.collapseToTab")}
                         disabled={false}
                         className="end-icon-reveal"
                         toggleMagnify={() => {
@@ -626,6 +632,7 @@ type MoveBlockToTabModalProps = {
  */
 const MoveBlockToTabModal = React.memo(
     ({ blockId, currentTabId, workspace, sourceTabName, onClose, onMoved, onCopied }: MoveBlockToTabModalProps) => {
+        const { t } = useTranslation("block");
         const waveEnv = useWaveEnv<BlockEnv>();
 
         const runMove = React.useCallback(
@@ -658,14 +665,14 @@ const MoveBlockToTabModal = React.memo(
             () => [
                 {
                     key: "move",
-                    label: `Move block to «${sourceTabName}» target tab`,
+                    label: i18n.t("block:moveModal.moveRow", { tab: sourceTabName }),
                     icon: <i className={makeIconClass("arrow-right", true)} />,
                     primary: true,
                     run: ({ targetTabId }) => runMove(targetTabId),
                 },
                 {
                     key: "copy",
-                    label: `Copy block to «${sourceTabName}» target tab`,
+                    label: i18n.t("block:moveModal.copyRow", { tab: sourceTabName }),
                     icon: <i className={makeIconClass("clone", true)} />,
                     run: ({ targetTabId }) => runCopy(targetTabId),
                 },
@@ -677,16 +684,16 @@ const MoveBlockToTabModal = React.memo(
             <TabTargetModal
                 workspace={workspace}
                 currentTabId={currentTabId}
-                title="Move Block"
-                subtitle={`↳ from «${sourceTabName}»`}
-                actionLabel="Move"
-                workingLabel="Moving..."
+                title={t("block:moveModal.title")}
+                subtitle={i18n.t("block:moveModal.subtitle", { tab: sourceTabName })}
+                actionLabel={t("block:moveModal.actionLabel")}
+                workingLabel={t("block:moveModal.workingLabel")}
                 onClose={onClose}
                 onSelect={async () => {}}
                 onCreate={async () => {
                     await runMove(NewTabRowKey);
                 }}
-                createHint={`Named after «${sourceTabName}»`}
+                createHint={i18n.t("block:moveModal.createHint", { tab: sourceTabName })}
                 rowActions={rowActions}
             />
         );
@@ -760,6 +767,7 @@ const BlockFrame_Header = ({
     error?: Error;
     moveContext?: MoveBlockMenuContext;
 }) => {
+    const { t } = useTranslation("block");
     const waveEnv = useWaveEnv<BlockEnv>();
     const tabModel = useTabModel();
     const metaView = jotai.useAtomValue(waveEnv.getBlockMetaKeyAtom(nodeModel.blockId, "view"));

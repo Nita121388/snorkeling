@@ -1,0 +1,8 @@
+{
+    "viewName": "Wave AI",
+    "deprecated": {
+        "title": "此旧版 Wave AI 区块已不再支持",
+        "body": "这个较老的 AI 挂件已下线。请改用新的 Wave AI 面板进行 AI 对话、终端上下文、工具与文件上传。",
+        "openPanel": "打开 Wave AI 面板"
+    }
+}

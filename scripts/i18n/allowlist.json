@@ -1,0 +1,387 @@
+[
+    {
+        "id": "frontend/app/aipanel/telemetryrequired.tsx::jsx-text::6757bb5f336c",
+        "file": "frontend/app/aipanel/telemetryrequired.tsx",
+        "kind": "jsx-text",
+        "text": "https://docs.waveterm.dev/waveai-modes",
+        "reason": "文档 URL（链接目标与锚文本本身是 URL，不是可翻译文案）"
+    },
+    {
+        "id": "frontend/app/app.tsx::jsx-text::6b8b5babb68e",
+        "file": "frontend/app/app.tsx",
+        "kind": "jsx-text",
+        "text": "invalid configuration, client or window was not loaded",
+        "reason": "i18n 初始化前的启动失败兜底提示（AppInner 在 I18nProvider 之外渲染，此时 i18next 尚未 init，t() 只会返回 key；保留字面量避免闪出原始 key）"
+    },
+    {
+        "id": "frontend/app/commontext/commontext-compose-modal.tsx::jsx-text::00ef13a15be8",
+        "file": "frontend/app/commontext/commontext-compose-modal.tsx",
+        "kind": "jsx-text",
+        "text": "&nbsp;·",
+        "reason": "HTML 实体空格 + 间隔点（设备名与设备 id 之间的标点分隔符，非可翻译文案）"
+    },
+    {
+        "id": "frontend/app/commontext/commontext-compose-modal.tsx::jsx-text::2b9eceb7a86a",
+        "file": "frontend/app/commontext/commontext-compose-modal.tsx",
+        "kind": "jsx-text",
+        "text": "Enter",
+        "reason": "键盘键名（kbd 元素内的物理按键名，各语言通用，不翻译）"
+    },
+    {
+        "id": "frontend/app/element/block-editor/commands/slash.ts::cjk::4b5c94ac59de",
+        "file": "frontend/app/element/block-editor/commands/slash.ts",
+        "kind": "cjk",
+        "text": "img 图片",
+        "reason": "斜杠命令的中文搜索别名（搜索关键词数据，与 biaoqing/biaoti 等拼音关键词同类；不是 UI 展示文案，展示文案已走 block-editor:slashCommand.*）"
+    },
+    {
+        "id": "frontend/app/element/markdown.tsx::cjk::08ef584a03e7",
+        "file": "frontend/app/element/markdown.tsx",
+        "kind": "cjk",
+        "text": "![图片](",
+        "reason": "写入用户 markdown 源文件的图片语法模板（alt 文本属于用户文档内容，不随 UI locale 变化）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::02bee0473b7c",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "^ Ctrl",
+        "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::18e2fd8513e0",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "wsh view",
+        "reason": "CLI 命令名示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::1b1e5bdfc668",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "[filename]",
+        "reason": "CLI 参数占位语法（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::218bdd589cd7",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "[filename|url]",
+        "reason": "CLI 参数占位语法（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::497af06b9572",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "wsh edit",
+        "reason": "CLI 命令名示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::5937270a8b63",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "wsh commands",
+        "reason": "CLI 命令族标题（wsh = 本仓库命令行工具名，不可翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::e30eff925100",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "Alt",
+        "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::e34a263e71ac",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "⇧ Shift",
+        "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
+    },
+    {
+        "id": "frontend/app/element/quicktips.tsx::jsx-text::ea4e943e1ee8",
+        "file": "frontend/app/element/quicktips.tsx",
+        "kind": "jsx-text",
+        "text": "⌘ Cmd",
+        "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
+    },
+    {
+        "id": "frontend/app/modals/about.tsx::jsx-text::a39ce163abfe",
+        "file": "frontend/app/modals/about.tsx",
+        "kind": "jsx-text",
+        "text": "Command Line Inc.",
+        "reason": "版权主体公司名（Command Line Inc.，法律主体不翻译）"
+    },
+    {
+        "id": "frontend/app/modals/about.tsx::jsx-text::e01cccc9419d",
+        "file": "frontend/app/modals/about.tsx",
+        "kind": "jsx-text",
+        "text": "Snorkeling",
+        "reason": "品牌名（产品名 Snorkeling，各语言一律不翻译）"
+    },
+    {
+        "id": "frontend/app/modals/notedirectorymodal.tsx::attr::7c675b84afbe",
+        "file": "frontend/app/modals/notedirectorymodal.tsx",
+        "kind": "attr",
+        "text": "~/notes",
+        "reason": "占位符示例值（示例目录路径，非文案）"
+    },
+    {
+        "id": "frontend/app/modals/scheduledtaskeditormodal.tsx::attr::b485a3cf8082",
+        "file": "frontend/app/modals/scheduledtaskeditormodal.tsx",
+        "kind": "attr",
+        "text": "Asia/Shanghai",
+        "reason": "占位符示例值（IANA 时区名示例，非文案）"
+    },
+    {
+        "id": "frontend/app/modals/scheduledtaskeditormodal.tsx::attr::d281bc1e7b73",
+        "file": "frontend/app/modals/scheduledtaskeditormodal.tsx",
+        "kind": "attr",
+        "text": "~/myproject",
+        "reason": "占位符示例值（示例目录路径，非文案）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx::jsx-text::e389cfd7b822",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx",
+        "kind": "jsx-text",
+        "text": "`wsh ai`",
+        "reason": "CLI 命令名（非 UI 文案，命令本身不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0123.tsx::jsx-text::39a64ed345b2",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0123.tsx",
+        "kind": "jsx-text",
+        "text": "wsh secret list/get/set",
+        "reason": "CLI 命令名 + 子命令（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0141.tsx::jsx-text::ca8b0a60d3bc",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0141.tsx",
+        "kind": "jsx-text",
+        "text": "wsh",
+        "reason": "CLI 命令名（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0141.tsx::jsx-text::e1de5fc1f178",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0141.tsx",
+        "kind": "jsx-text",
+        "text": "app:focusfollowscursor",
+        "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0142.tsx::jsx-text::427bc0eabb89",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0142.tsx",
+        "kind": "jsx-text",
+        "text": "term:bellindicator",
+        "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0142.tsx::jsx-text::499b6944b581",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0142.tsx",
+        "kind": "jsx-text",
+        "text": "wsh badge",
+        "reason": "CLI 命令名（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0144.tsx::jsx-text::d9046979e8f7",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0144.tsx",
+        "kind": "jsx-text",
+        "text": "backgrounds.json",
+        "reason": "配置文件名（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0144.tsx::jsx-text::e7a28434c5b9",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0144.tsx",
+        "kind": "jsx-text",
+        "text": "presets/bg.json",
+        "reason": "配置文件路径（非 UI 文案，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0145.tsx::jsx-text::782f1b4fc6f2",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0145.tsx",
+        "kind": "jsx-text",
+        "text": "app:showsplitbuttons",
+        "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/onboarding/onboarding-upgrade-v0145.tsx::jsx-text::db84e5781d1a",
+        "file": "frontend/app/onboarding/onboarding-upgrade-v0145.tsx",
+        "kind": "jsx-text",
+        "text": "app:globalhotkey",
+        "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/hero/hero-create-wizard.tsx::jsx-text::57ccd51c3d08",
+        "file": "frontend/app/view/hero/hero-create-wizard.tsx",
+        "kind": "jsx-text",
+        "text": "--memory-from-session",
+        "reason": "CLI 参数名（<code> 内的命令语法，不可翻译；与 quicktips 命令示例同类）"
+    },
+    {
+        "id": "frontend/app/view/preview/csvview.tsx::jsx-text::611ff54ef4d8",
+        "file": "frontend/app/view/preview/csvview.tsx",
+        "kind": "jsx-text",
+        "text": "dummy data",
+        "reason": "隐藏的测量探针文本（table.probe 为 visibility:hidden，用来量列宽/行高；不是用户可见文案，翻译会改变测量基线）"
+    },
+    {
+        "id": "frontend/app/view/preview/preview-directory.tsx::jsx-text::b3ff6be8dd1b",
+        "file": "frontend/app/view/preview/preview-directory.tsx",
+        "kind": "jsx-text",
+        "text": "dummy-data",
+        "reason": "隐藏的测量探针文本（.dummy 行 visibility:hidden，用来量行高/滚动尺寸；不是用户可见文案，翻译会改变测量基线）"
+    },
+    {
+        "id": "frontend/app/view/term/term-model.ts::cjk::efbfbc5391c1",
+        "file": "frontend/app/view/term/term-model.ts",
+        "kind": "cjk",
+        "text": "mmMMilliW中文字体0O1",
+        "reason": "字体可用性探测用的哨兵字符串（canvas.measureText 的中英混排样本，用来判断自定义字体是否真的生效；不是 UI 文案，改动会让字体检测失真）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::174865fed087",
+        "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
+        "kind": "jsx-text",
+        "text": "agent-data/audit/control-audit.jsonl",
+        "reason": "审计日志的相对文件路径（路径本身是数据，font-mono 展示，不翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::2c5d5b88672d",
+        "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
+        "kind": "jsx-text",
+        "text": "Codex",
+        "reason": "agent 宿主产品名（品牌名，不翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::37a5689f69ed",
+        "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
+        "kind": "jsx-text",
+        "text": "Claude Code / Cursor",
+        "reason": "agent 宿主产品名（品牌名，不翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/agentaccesssettings.tsx::jsx-text::75739c05c2da",
+        "file": "frontend/app/view/waveconfig/agentaccesssettings.tsx",
+        "kind": "jsx-text",
+        "text": "jti",
+        "reason": "JWT ID 的标准缩写（技术术语，列头指向 token 的 jti prefix，各语言通用不翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/herosettings.tsx::jsx-text::34ad9ac7226d",
+        "file": "frontend/app/view/waveconfig/herosettings.tsx",
+        "kind": "jsx-text",
+        "text": "--yes",
+        "reason": "CLI 旗标名（`wsh hero relocate` 的 `--yes`，代码片段内不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/herosettings.tsx::jsx-text::caae9a48ce60",
+        "file": "frontend/app/view/waveconfig/herosettings.tsx",
+        "kind": "jsx-text",
+        "text": "--copy-not-move",
+        "reason": "CLI 旗标名（`wsh hero relocate` 的 `--copy-not-move`，代码片段内不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/herosettings.tsx::jsx-text::e7be193a3a4b",
+        "file": "frontend/app/view/waveconfig/herosettings.tsx",
+        "kind": "jsx-text",
+        "text": "HERO_ROOT",
+        "reason": "环境变量名（`HERO_ROOT` 覆盖 hero 根目录，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/secretscontent.tsx::attr::020b66c8d392",
+        "file": "frontend/app/view/waveconfig/secretscontent.tsx",
+        "kind": "attr",
+        "text": "MY_SECRET_NAME",
+        "reason": "占位符示例值（环境变量风格标识符，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/secretscontent.tsx::jsx-text::5f7a9aa8265f",
+        "file": "frontend/app/view/waveconfig/secretscontent.tsx",
+        "kind": "jsx-text",
+        "text": "wsh secret set [name]=[value]",
+        "reason": "CLI 命令示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/secretscontent.tsx::jsx-text::7e62f1a14418",
+        "file": "frontend/app/view/waveconfig/secretscontent.tsx",
+        "kind": "jsx-text",
+        "text": "wsh secret get [name]",
+        "reason": "CLI 命令示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/secretscontent.tsx::jsx-text::96e17769cf64",
+        "file": "frontend/app/view/waveconfig/secretscontent.tsx",
+        "kind": "jsx-text",
+        "text": "wsh secret list",
+        "reason": "CLI 命令示例（代码块内的命令语法，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/syncsettings.tsx::attr::3f46c5e61210",
+        "file": "frontend/app/view/waveconfig/syncsettings.tsx",
+        "kind": "attr",
+        "text": "git@github.com:you/snorkeling-sync.git",
+        "reason": "占位符示例值（示例 git remote URL，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/syncsettings.tsx::attr::7e1d324158aa",
+        "file": "frontend/app/view/waveconfig/syncsettings.tsx",
+        "kind": "attr",
+        "text": "https://sync.example.com",
+        "reason": "占位符示例值（示例服务器 URL，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/syncsettings.tsx::attr::7ed005e55ee3",
+        "file": "frontend/app/view/waveconfig/syncsettings.tsx",
+        "kind": "attr",
+        "text": "~/OneDrive/Snorkeling/commontext.json",
+        "reason": "占位符示例值（示例文件路径，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/waveaivisual.tsx::attr::79dde6140408",
+        "file": "frontend/app/view/waveconfig/waveaivisual.tsx",
+        "kind": "attr",
+        "text": "gpt-5-mini",
+        "reason": "占位符示例值（示例模型 id，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/waveaivisual.tsx::attr::e7a2ce195de2",
+        "file": "frontend/app/view/waveconfig/waveaivisual.tsx",
+        "kind": "attr",
+        "text": "https://api.example.com/v1",
+        "reason": "占位符示例值（示例 API 端点 URL，非文案）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/waveaivisual.tsx::jsx-text::86ee9ce38626",
+        "file": "frontend/app/view/waveconfig/waveaivisual.tsx",
+        "kind": "jsx-text",
+        "text": "waveai.json",
+        "reason": "配置文件名（实际落盘文件，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/waveconfig/waveaivisual.tsx::jsx-text::f7d55d7cf1d2",
+        "file": "frontend/app/view/waveconfig/waveaivisual.tsx",
+        "kind": "jsx-text",
+        "text": "cc-switch",
+        "reason": "产品名（cc-switch = 第三方供应商配置工具，品牌名不翻译）"
+    },
+    {
+        "id": "frontend/app/view/webview/webview.tsx::jsx-text::c92e18106265",
+        "file": "frontend/app/view/webview/webview.tsx",
+        "kind": "jsx-text",
+        "text": "bookmarks.json",
+        "reason": "配置文件名（<code> 内的真实文件名，不可翻译；路径由 config dir 决定）"
+    },
+    {
+        "id": "frontend/app/workspace/hero-launch-window.tsx::jsx-text::05482def6613",
+        "file": "frontend/app/workspace/hero-launch-window.tsx",
+        "kind": "jsx-text",
+        "text": "wsh hero create --name &lt;name&gt; --yes",
+        "reason": "CLI 命令示例（<code> 内的 wsh hero create 语法，不可翻译；命令名与参数是真实语法）"
+    },
+    {
+        "id": "frontend/app/workspace/widget-quick-launch.tsx::jsx-text::abb761d9af1c",
+        "file": "frontend/app/workspace/widget-quick-launch.tsx",
+        "kind": "jsx-text",
+        "text": "esc",
+        "reason": "键盘键名（<kbd> 内的物理按键 esc，各语言通用，不翻译）"
+    }
+]

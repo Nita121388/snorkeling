@@ -92,6 +92,7 @@ declare global {
     };
 
     type ElectronApi = {
+        setLocale: (locale: string) => void; // set-locale — push ui:locale change to main so its i18n + native menu follow
         getAuthKey(): string; // get-auth-key
         getIsDev(): boolean; // get-is-dev
         getCursorPoint: () => Electron.Point; // get-cursor-point

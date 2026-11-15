@@ -1,8 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { i18n, initI18n } from "@/i18n/config";
 import { sortingFns } from "@tanstack/react-table";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
     buildLayer,
     buildPagerHintTexts,
@@ -221,6 +222,10 @@ describe("resolvePagerAnchor", () => {
 });
 
 describe("buildPagerHintTexts", () => {
+    beforeAll(async () => {
+        await initI18n("en");
+    });
+
     it("层尾且有下一站：文案含目标文件夹与快捷键", () => {
         const res = {
             position: 2,
@@ -250,7 +255,8 @@ describe("buildPagerHintTexts", () => {
             layer: ["/a/only.png"],
         } as any;
         const h = buildPagerHintTexts(res, "/a/only.png", "/a");
-        expect(h.next).toMatch(/没有更多|锚点/);
-        expect(h.refresh).toMatch(/Shift/);
+        // Pattern I：不断言文案字面量，用 t() 复算同一 key（zh 是镜像，en 才是真源）。
+        expect(h.next).toBe(i18n.t("preview:imagePager.nextAtEnd", { anchor: "/a" }));
+        expect(h.refresh).toBe(i18n.t("preview:imagePager.refresh"));
     });
 });

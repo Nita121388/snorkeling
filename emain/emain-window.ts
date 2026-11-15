@@ -16,6 +16,7 @@ import {
     setWasActive,
     setWasInFg,
 } from "./emain-activity";
+import { tmew } from "./emain-i18n";
 import { log } from "./emain-log";
 import { getElectronAppBasePath, isDev, unamePlatform } from "./emain-platform";
 import { getOrCreateWebViewForTab, getWaveTabViewByWebContentsId, WaveTabView } from "./emain-tabview";
@@ -355,10 +356,12 @@ export class WaveBrowserWindow extends BaseWindow {
                         if (isNonEmptyUnsavedWorkspace(workspace)) {
                             const choice = dialog.showMessageBoxSync(this, {
                                 type: "question",
-                                buttons: ["Cancel", "Close Window"],
-                                title: "Confirm",
-                                message:
-                                    "Window has unsaved tabs, closing window will delete existing tabs.\n\nContinue?",
+                                buttons: [
+                                    tmew("common:common.cancel"),
+                                    tmew("common:dialog.confirmCloseWindow.closeWindow"),
+                                ],
+                                title: tmew("common:dialog.confirm"),
+                                message: tmew("common:dialog.confirmCloseWindow.message"),
                             });
                             if (choice === 0) {
                                 return;
@@ -1030,9 +1033,9 @@ ipcMain.handle("close-tab", async (event, workspaceId: string, tabId: string, co
             type: "question",
             defaultId: 1, // Enter activates "Close Tab"
             cancelId: 0, // Esc activates "Cancel"
-            buttons: ["Cancel", "Close Tab"],
-            title: "Confirm",
-            message: "Are you sure you want to close this tab?",
+            buttons: [tmew("common:common.cancel"), tmew("common:dialog.confirmCloseTab.closeTab")],
+            title: tmew("common:dialog.confirm"),
+            message: tmew("common:dialog.confirmCloseTab.message"),
         });
         if (choice === 0) {
             return false;
@@ -1162,9 +1165,9 @@ ipcMain.on("delete-workspace", (event, workspaceId) => {
 
         const choice = dialog.showMessageBoxSync(this, {
             type: "question",
-            buttons: ["Cancel", "Delete Workspace"],
-            title: "Confirm",
-            message: `Deleting workspace will also delete its contents.\n\nContinue?`,
+            buttons: [tmew("common:common.cancel"), tmew("common:dialog.confirmDeleteWorkspace.deleteWorkspace")],
+            title: tmew("common:dialog.confirm"),
+            message: tmew("common:dialog.confirmDeleteWorkspace.message"),
         });
         if (choice === 0) {
             console.log("user cancelled workspace delete", workspaceId, ww?.waveWindowId);

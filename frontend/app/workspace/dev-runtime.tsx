@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Tooltip } from "@/app/element/tooltip";
+import { i18n } from "@/i18n/config";
 import { copyText } from "@/util/clipboard";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type CopyStatus = "idle" | "copied" | "failed";
 
@@ -212,6 +214,7 @@ function EndpointValue({
     disabledLabel: string;
     onCopyUrl?: (url: string) => void;
 }) {
+    const { t } = useTranslation("workspace");
     if (endpoint == null) {
         return <span className="text-secondary">{disabledLabel}</span>;
     }
@@ -220,14 +223,16 @@ function EndpointValue({
             <div className="min-w-0 flex-1 font-mono text-[11px] leading-4">
                 <div className="break-all text-foreground">{endpoint.url}</div>
                 {endpoint.requestedPort !== endpoint.port && (
-                    <div className="text-secondary">requested {endpoint.requestedPort}</div>
+                    <div className="text-secondary">
+                        {i18n.t("workspace:devRuntime.requested", { port: endpoint.requestedPort })}
+                    </div>
                 )}
             </div>
             {onCopyUrl != null && (
                 <button
                     type="button"
-                    aria-label="Copy this URL only"
-                    title="Copy this URL only"
+                    aria-label={t("workspace:devRuntime.copyThisUrl")}
+                    title={t("workspace:devRuntime.copyThisUrl")}
                     className="border-0 bg-transparent p-0 text-[11px] text-secondary hover:text-foreground cursor-pointer"
                     onClick={() => onCopyUrl(endpoint.url)}
                 >
@@ -258,15 +263,21 @@ function DevRuntimeTooltipContent({
     onCopyFull: () => void;
     onCopyUrl: (url: string) => void;
 }) {
-    const feedback = copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed" : null;
+    const { t } = useTranslation("workspace");
+    const feedback =
+        copyStatus === "copied"
+            ? t("common:common.copied")
+            : copyStatus === "failed"
+              ? t("workspace:devRuntime.copyFailed")
+              : null;
     return (
         <div className="w-[280px] p-1.5">
             <div className="mb-2 flex h-5 items-center justify-between gap-3">
-                <span className="text-sm font-semibold text-foreground">Dev Runtime</span>
+                <span className="text-sm font-semibold text-foreground">{t("workspace:devRuntime.title")}</span>
                 <button
                     type="button"
-                    aria-label="Copy full debug info"
-                    title="Copy full debug info (app, runtime, paths, updater)"
+                    aria-label={t("workspace:devRuntime.copyFull")}
+                    title={t("workspace:devRuntime.copyFullTitle")}
                     aria-live="polite"
                     className={`border-0 bg-transparent p-0 text-sm ${copyStatus === "failed" ? "text-error" : "text-secondary"} hover:text-foreground`}
                     onClick={onCopyFull}
@@ -275,21 +286,29 @@ function DevRuntimeTooltipContent({
                 </button>
             </div>
             <div className="grid grid-cols-[68px_minmax(0,1fr)] gap-x-3 gap-y-2">
-                <span className="text-secondary">Profile</span>
+                <span className="text-secondary">{t("workspace:devRuntime.profile")}</span>
                 <span className="min-w-0 break-all font-mono text-[11px] text-foreground">{runtime.profile}</span>
-                <span className="text-secondary">Branch</span>
+                <span className="text-secondary">{t("workspace:devRuntime.branch")}</span>
                 <span className="min-w-0 break-all font-mono text-[11px] text-foreground">
                     {runtime.gitBranch ?? "n/a"}
                 </span>
-                <span className="text-secondary">Port mode</span>
+                <span className="text-secondary">{t("workspace:devRuntime.portMode")}</span>
                 <span className="font-mono text-[11px] text-foreground">{runtime.portMode}</span>
-                <span className="text-secondary">Vite</span>
-                <EndpointValue endpoint={runtime.vite} disabledLabel="Unavailable" onCopyUrl={onCopyUrl} />
-                <span className="text-secondary">CDP</span>
-                <EndpointValue endpoint={runtime.cdp} disabledLabel="Disabled" onCopyUrl={onCopyUrl} />
+                <span className="text-secondary">{t("workspace:devRuntime.vite")}</span>
+                <EndpointValue
+                    endpoint={runtime.vite}
+                    disabledLabel={t("workspace:devRuntime.unavailable")}
+                    onCopyUrl={onCopyUrl}
+                />
+                <span className="text-secondary">{t("workspace:devRuntime.cdp")}</span>
+                <EndpointValue
+                    endpoint={runtime.cdp}
+                    disabledLabel={t("workspace:devRuntime.disabled")}
+                    onCopyUrl={onCopyUrl}
+                />
                 {(runtime.appVersion != null || runtime.electronVersion != null || runtime.nodeVersion != null) && (
                     <>
-                        <span className="text-secondary">版本</span>
+                        <span className="text-secondary">{t("workspace:devRuntime.versions")}</span>
                         <span className="min-w-0 break-all font-mono text-[11px] text-foreground">
                             {[
                                 runtime.appVersion,
@@ -301,9 +320,9 @@ function DevRuntimeTooltipContent({
                         </span>
                     </>
                 )}
-                <PathValue label="数据" value={runtime.dirs?.data ?? null} />
-                <PathValue label="配置" value={runtime.dirs?.config ?? null} />
-                <PathValue label="日志" value={runtime.dirs?.logFile ?? null} />
+                <PathValue label={t("workspace:devRuntime.data")} value={runtime.dirs?.data ?? null} />
+                <PathValue label={t("workspace:devRuntime.config")} value={runtime.dirs?.config ?? null} />
+                <PathValue label={t("workspace:devRuntime.log")} value={runtime.dirs?.logFile ?? null} />
             </div>
         </div>
     );
@@ -316,6 +335,7 @@ export function DevRuntimeButton({
     runtime: DevRuntimeInfo;
     mode?: "normal" | "compact" | "supercompact";
 }) {
+    const { t } = useTranslation("workspace");
     const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
     const feedbackTimerRef = useRef<number | null>(null);
 
@@ -393,10 +413,10 @@ export function DevRuntimeButton({
 
     const ariaLabel =
         copyStatus === "copied"
-            ? "Debug info copied"
+            ? t("workspace:devRuntime.debugCopied")
             : copyStatus === "failed"
-              ? "Failed to copy debug info"
-              : "Copy debug info (Shift+click copies the CDP URL only)";
+              ? t("workspace:devRuntime.copyDebugFailed")
+              : t("workspace:devRuntime.copyDebugInfo");
     const iconClass =
         copyStatus === "copied"
             ? "fa fa-solid fa-check text-[22px]"
@@ -404,7 +424,12 @@ export function DevRuntimeButton({
               ? "fa fa-solid fa-triangle-exclamation text-error text-[20px]"
               : "fa fa-brands fa-dev fa-fw";
     const mainline = isMainlineBranch(runtime.gitBranch);
-    const label = copyStatus === "copied" ? "已复制" : copyStatus === "failed" ? "失败" : "复制调试信息";
+    const label =
+        copyStatus === "copied"
+            ? t("workspace:devRuntime.labelCopied")
+            : copyStatus === "failed"
+              ? t("workspace:devRuntime.labelFailed")
+              : t("workspace:devRuntime.labelCopy");
 
     return (
         <Tooltip

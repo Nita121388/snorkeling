@@ -16,6 +16,8 @@
 
 import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import { tagColorVars } from "./tag-palette";
 import "./tag-editor.scss";
 
@@ -57,10 +59,11 @@ export function PropertyTagEditor({
     options,
     optionCounts,
     multiple = true,
-    placeholder = "搜索或输入选项",
+    placeholder,
     onChange,
     onClose,
 }: PropertyTagEditorProps) {
+    const { t } = useTranslation("element");
     const [chips, setChips] = useState<string[]>(items);
     const [draft, setDraft] = useState("");
     const [activeIndex, setActiveIndex] = useState(0);
@@ -180,8 +183,8 @@ export function PropertyTagEditor({
                         <button
                             type="button"
                             className="ptag-chip-remove"
-                            title="移除"
-                            aria-label={`移除 ${chip}`}
+                            title={t("element:tagEditor.remove")}
+                            aria-label={i18n.t("element:tagEditor.removeLabel", { value: chip })}
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => removeValue(chip)}
                         >
@@ -198,7 +201,7 @@ export function PropertyTagEditor({
                     ref={inputRef}
                     className="ptag-input"
                     value={draft}
-                    placeholder={chips.length === 0 ? placeholder : ""}
+                    placeholder={chips.length === 0 ? (placeholder ?? t("element:tagEditor.placeholder")) : ""}
                     autoComplete="off"
                     autoCapitalize="off"
                     autoCorrect="off"
@@ -229,7 +232,7 @@ export function PropertyTagEditor({
                             {optionCounts?.[option] != null ? (
                                 <span
                                     className="ptag-option-count"
-                                    aria-label={`${optionCounts[option]} sessions`}
+                                    aria-label={i18n.t("element:tagEditor.countAria", { count: optionCounts[option] })}
                                 >
                                     {optionCounts[option]}
                                 </span>
@@ -255,11 +258,11 @@ export function PropertyTagEditor({
                         <span className="ptag-option-chip" style={tagColorVars(draft.trim())}>
                             {draft.trim()}
                         </span>
-                        <span className="ptag-create-label">创建</span>
+                        <span className="ptag-create-label">{t("element:tagEditor.create")}</span>
                     </div>
                 )}
                 {rows === 0 && filtered.length === 0 && !showCreate && (
-                    <div className="ptag-empty">无匹配选项</div>
+                    <div className="ptag-empty">{t("element:tagEditor.empty")}</div>
                 )}
             </div>
         </div>

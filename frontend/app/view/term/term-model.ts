@@ -5,9 +5,9 @@ import { openAgentEmojiPicker } from "@/app/agent-persona/picker-host";
 import { getTabDisplayMode, tabDisplayModeRevisionAtom } from "@/app/agent-persona/tab-display-store";
 import { agentPersonaAtom } from "@/app/agent-persona/use-agent-personas";
 import { sessionEmojiAtom } from "@/app/agent-persona/use-session-personas";
-import { formatAgentProvider } from "@/app/agent-status/agent-status-derive";
-import { buildAgentStatusChipView } from "@/app/agent-status/agent-status-chip-view";
 import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
+import { buildAgentStatusChipView } from "@/app/agent-status/agent-status-chip-view";
+import { formatAgentProvider } from "@/app/agent-status/agent-status-derive";
 import { agentStatusDoneAckStore } from "@/app/agent-status/agent-status-done-ack-store";
 import { nowMinuteTickAtom } from "@/app/agent-status/agent-status-done-tick";
 import { needsAgentChipRuntime } from "@/app/agent-status/agent-status-runtime";
@@ -32,6 +32,8 @@ import { TermClaudeIcon, TerminalView } from "@/app/view/term/term";
 import { TermWshClient } from "@/app/view/term/term-wsh";
 import { VDomModel } from "@/app/view/vdom/vdom-model";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
+import { i18n } from "@/i18n/config";
+import { I18nModel } from "@/i18n/i18nmodel";
 import {
     atoms,
     createBlock,
@@ -275,7 +277,7 @@ export class TermViewModel implements ViewModel {
                                 elemtype: "iconbutton",
                                 icon: React.createElement("span", { className: "agent-emoji-icon" }, iconSpec.emoji),
                                 className: "agent-brand-icon",
-                                title: "点击设置 emoji 人格",
+                                title: i18n.t("term:hoverCard.clickSetPersonaEmoji"),
                                 click: openPicker,
                             } as IconButtonDecl;
                         }
@@ -284,7 +286,7 @@ export class TermViewModel implements ViewModel {
                             icon: iconSpec.icon,
                             iconColor: iconSpec.iconColor,
                             className: "agent-brand-icon",
-                            title: "点击设置 emoji 人格",
+                            title: i18n.t("term:hoverCard.clickSetPersonaEmoji"),
                             click: openPicker,
                         } as IconButtonDecl;
                     }
@@ -293,10 +295,13 @@ export class TermViewModel implements ViewModel {
             return { elemtype: "iconbutton", icon: "terminal" };
         });
         this.viewName = jotai.atom((get) => {
+            // Locale dependency: without it the string would be frozen at the
+            // locale that was active when the block was first rendered.
+            get(I18nModel.getInstance().activeLocaleAtom);
             const blockData = get(this.blockAtom);
             const termMode = get(this.termMode);
             if (termMode == "vdom") {
-                return "Wave App";
+                return i18n.t("block:viewName.waveApp");
             }
             if (blockData?.meta?.controller == "cmd") {
                 return "";
@@ -1660,7 +1665,7 @@ export class TermViewModel implements ViewModel {
                 type: "checkbox",
                 checked: overrideFontFamily == fontFamily,
                 enabled: available,
-                sublabel: available ? undefined : "未安装",
+                sublabel: available ? undefined : i18n.t("term:fontNotInstalled"),
                 click: () => {
                     RpcApi.SetMetaCommand(TabRpcClient, {
                         oref: WOS.makeORef("block", this.blockId),

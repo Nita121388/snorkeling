@@ -1,0 +1,54 @@
+{
+    "viewName": "Processes",
+    "status": {
+        "paused": "Paused",
+        "clickToResume": "Click to resume",
+        "clickToPause": "Click to pause",
+        "error": "Error",
+        "stalled": "Stalled",
+        "updating": "Updating"
+    },
+    "row": {
+        "gone": "(gone)"
+    },
+    "columns": {
+        "pid": "PID",
+        "command": "Command",
+        "status": "Status",
+        "user": "User",
+        "threads": "NT",
+        "threadsTooltip": "Num Threads",
+        "cpu": "CPU%",
+        "memory": "Memory"
+    },
+    "statusBar": {
+        "load": "Load",
+        "mem": "Mem",
+        "cpu": "CPU",
+        "procs": "Procs",
+        "err": "Err",
+        "cpuTooltip_one": "100% per core · {{count}} core = {{max}}% max",
+        "cpuTooltip_other": "100% per core · {{count}} cores = {{max}}% max"
+    },
+    "search": {
+        "tooltipMac": "Search (Cmd-F)",
+        "tooltipDefault": "Search (Alt-F)",
+        "placeholder": "Filter processes…"
+    },
+    "menu": {
+        "copyPid": "Copy PID",
+        "signal": "Signal",
+        "killProcess": "Kill Process",
+        "refreshInterval": "Refresh Interval",
+        "everySecond": "1 second",
+        "every2Seconds": "2 seconds",
+        "every5Seconds": "5 seconds"
+    },
+    "action": {
+        "killed": "Killed",
+        "sent": "sent {{signal}}",
+        "processLine": "Process #{{pid}} {{label}}",
+        "errorLine": "Error: {{message}}"
+    },
+    "waitingForConnection": "Waiting for connection…"
+}

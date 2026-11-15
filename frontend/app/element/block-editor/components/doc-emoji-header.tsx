@@ -8,6 +8,8 @@
  * by markdown.tsx next to it; this component is just the badge button.
  */
 
+import { useTranslation } from "react-i18next";
+
 export interface DocEmojiHeaderProps {
     emoji: string | null;
     buttonRef: React.RefObject<HTMLButtonElement | null>;
@@ -16,6 +18,7 @@ export interface DocEmojiHeaderProps {
 }
 
 export function DocEmojiHeader({ emoji, buttonRef, open, onToggle }: DocEmojiHeaderProps) {
+    const { t } = useTranslation("block-editor");
     return (
         <button
             ref={buttonRef}
@@ -23,8 +26,12 @@ export function DocEmojiHeader({ emoji, buttonRef, open, onToggle }: DocEmojiHea
             className={
                 "markdown-doc-emoji-badge" + (emoji == null ? " is-empty" : "") + (open ? " is-open" : "")
             }
-            title={emoji == null ? "Add document emoji" : "Change document emoji"}
-            aria-label="Document emoji"
+            title={
+                emoji == null
+                    ? t("block-editor:docEmoji.add")
+                    : t("block-editor:docEmoji.change")
+            }
+            aria-label={t("block-editor:docEmoji.ariaLabel")}
             onClick={(e) => {
                 e.stopPropagation();
                 onToggle();

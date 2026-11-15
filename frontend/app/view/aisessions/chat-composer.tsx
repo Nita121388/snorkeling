@@ -7,9 +7,11 @@
 // + GUI-mapped built-ins), image attachments, steering while streaming. Pure
 // slash logic lives in chat-slash.ts (unit-tested).
 
+import { i18n } from "@/i18n/config";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { cn } from "@/util/util";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { filterSlashItems, mergeSlashItems, parseSlashQuery, slashSourceLabel, type SlashItem } from "./chat-slash";
 import { GitStatusBar } from "./git-status-bar";
 import { MessageQueuePill } from "./message-queue-pill";
@@ -138,6 +140,7 @@ function ChatComposerInner({
     contextUsagePercent,
     usage,
 }: ChatComposerProps) {
+    const { t } = useTranslation("aisessions");
     const [input, setInput] = useState("");
     const [images, setImages] = useState<PendingImage[]>([]);
     const [dynamicCommands, setDynamicCommands] = useState<SlashItem[]>([]);
@@ -626,7 +629,7 @@ function ChatComposerInner({
                         >
                             {effectiveMode === "commands" && slashQuery != null ? (
                                 <div className="shrink-0 border-b border-border/50 px-3 py-1 text-[10px] uppercase tracking-wide text-secondary">
-                                    Commands · Tab/Enter to complete · Esc to close
+                                    {t("aisessions:composer.commandsHint")}
                                 </div>
                             ) : null}
                             {effectiveMode != null && effectiveMode !== "commands" ? (
@@ -639,18 +642,18 @@ function ChatComposerInner({
                                         onKeyDown={handlePickerSearchKeyDown}
                                         placeholder={
                                             effectiveMode === "models"
-                                                ? "Search models…"
+                                                ? t("aisessions:composer.searchModels")
                                                 : effectiveMode === "levels"
-                                                  ? "Search thinking level…"
-                                                  : "Search agents…"
+                                                  ? t("aisessions:composer.searchLevels")
+                                                  : t("aisessions:composer.searchAgents")
                                         }
                                         className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-primary outline-none placeholder:text-secondary/70 focus:border-secondary/50"
                                         aria-label={
                                             effectiveMode === "models"
-                                                ? "Search models"
+                                                ? t("aisessions:composer.searchModelsAria")
                                                 : effectiveMode === "levels"
-                                                  ? "Search thinking levels"
-                                                  : "Search agents"
+                                                  ? t("aisessions:composer.searchLevelsAria")
+                                                  : t("aisessions:composer.searchAgentsAria")
                                         }
                                     />
                                 </div>
@@ -677,10 +680,12 @@ function ChatComposerInner({
                                                 <span className="flex-1">{row.agent.label}</span>
                                                 {!row.agent.available ? (
                                                     <span className="shrink-0 text-[9px] opacity-60">
-                                                        Not supported yet
+                                                        {t("aisessions:composer.notSupported")}
                                                     </span>
                                                 ) : source === row.agent.id ? (
-                                                    <span className="text-[9px] text-accent">Current</span>
+                                                    <span className="text-[9px] text-accent">
+                                                        {t("aisessions:composer.current")}
+                                                    </span>
                                                 ) : null}
                                             </button>
                                         );
@@ -723,7 +728,7 @@ function ChatComposerInner({
                                             <div key={`model-${row.item.provider}-${row.item.id}`}>
                                                 {showSection ? (
                                                     <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
-                                                        Model
+                                                        {t("aisessions:composer.model")}
                                                     </div>
                                                 ) : null}
                                                 <button
@@ -752,7 +757,7 @@ function ChatComposerInner({
                                         <div key={`level-${row.level}`}>
                                             {showSection ? (
                                                 <div className="border-b border-border/50 px-3 pb-1 pt-1.5 text-[10px] uppercase tracking-wide text-secondary">
-                                                    Thinking depth
+                                                    {t("aisessions:composer.thinkingDepth")}
                                                 </div>
                                             ) : null}
                                             <button
@@ -769,7 +774,9 @@ function ChatComposerInner({
                                                 <i className="fa-sharp fa-solid fa-brain shrink-0 text-[10px] text-accent" />
                                                 <span className="flex-1">{row.level}</span>
                                                 {currentThinking === row.level ? (
-                                                    <span className="text-[9px] text-accent">Current</span>
+                                                    <span className="text-[9px] text-accent">
+                                                        {t("aisessions:composer.current")}
+                                                    </span>
                                                 ) : null}
                                             </button>
                                         </div>
@@ -778,14 +785,14 @@ function ChatComposerInner({
                                 {panelRows.length === 0 ? (
                                     <div className="px-3 py-3 text-center text-xs text-secondary">
                                         {effectiveMode === "models" && modelsLoadedFor !== source
-                                            ? "Loading models…"
+                                            ? t("aisessions:composer.loadingModels")
                                             : effectiveMode === "levels" && levelsLoadedFor !== source
-                                              ? "Loading thinking levels…"
+                                              ? t("aisessions:composer.loadingLevels")
                                               : effectiveMode != null &&
                                                   effectiveMode !== "commands" &&
                                                   pickerQuery.trim()
-                                                ? `No match for "${pickerQuery.trim()}"`
-                                                : "No options"}
+                                                ? i18n.t("aisessions:composer.noMatch", { query: pickerQuery.trim() })
+                                                : t("aisessions:composer.noOptions")}
                                     </div>
                                 ) : null}
                             </div>
@@ -807,7 +814,7 @@ function ChatComposerInner({
                         {/* 顶部隐形拖拽区：覆盖卡片上边缘整条宽度 */}
                         <div
                             role="separator"
-                            aria-label="Resize input area"
+                            aria-label={t("aisessions:composer.resizeInput")}
                             aria-orientation="horizontal"
                             className="absolute inset-x-0 -top-1.5 z-10 h-3 cursor-row-resize"
                             onMouseDown={startResize}
@@ -823,7 +830,7 @@ function ChatComposerInner({
                                         <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
                                         <button
                                             type="button"
-                                            aria-label={`Remove ${img.name}`}
+                                            aria-label={i18n.t("aisessions:composer.remove", { name: img.name })}
                                             onClick={() => removeImage(img.id)}
                                             className="absolute right-0 top-0 hidden h-4 w-4 items-center justify-center rounded-bl bg-error/80 text-[8px] text-white group-hover:flex"
                                         >
@@ -848,10 +855,10 @@ function ChatComposerInner({
                             className="block w-full resize-none border-none bg-transparent px-2.5 pb-1 pt-2 text-sm leading-relaxed text-primary outline-none placeholder:text-secondary/70 overflow-y-auto"
                             placeholder={
                                 !sourceAvailable
-                                    ? "Current agent doesn't support GUI chat yet"
+                                    ? t("aisessions:composer.placeholderUnsupported")
                                     : isRunning
-                                      ? "Enter to queue · ⌘⇧Q to view queue"
-                                      : "Message the agent…"
+                                      ? t("aisessions:composer.placeholderQueue")
+                                      : t("aisessions:composer.placeholderIdle")
                             }
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
@@ -874,8 +881,8 @@ function ChatComposerInner({
                             <button
                                 type="button"
                                 className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-secondary hover:bg-hover hover:text-primary"
-                                title="Attach image"
-                                aria-label="Attach images"
+                                title={t("aisessions:composer.attachImage")}
+                                aria-label={t("aisessions:composer.attachImages")}
                                 onClick={() => fileInputRef.current?.click()}
                             >
                                 <i className="fa-sharp fa-solid fa-plus text-[13px]" />
@@ -883,7 +890,7 @@ function ChatComposerInner({
                             <button
                                 type="button"
                                 className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                title="Select agent"
+                                title={t("aisessions:composer.selectAgent")}
                                 onClick={() => setPanelMode(panelMode === "agents" ? null : "agents")}
                             >
                                 <i className="fa-sharp fa-solid fa-robot text-[11px]" />
@@ -898,7 +905,7 @@ function ChatComposerInner({
                             <button
                                 type="button"
                                 className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-secondary hover:bg-hover hover:text-primary"
-                                title="Switch model"
+                                title={t("aisessions:composer.switchModel")}
                                 onClick={() => {
                                     if (panelMode === "models") {
                                         setPanelMode(null);
@@ -907,7 +914,9 @@ function ChatComposerInner({
                                     }
                                 }}
                             >
-                                <span className="max-w-40 truncate">{currentModelLabel || "Select model"}</span>
+                                <span className="max-w-40 truncate">
+                                    {currentModelLabel || t("aisessions:composer.selectModel")}
+                                </span>
                                 <i
                                     className={cn(
                                         "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",
@@ -923,7 +932,7 @@ function ChatComposerInner({
                                         ? "text-accent"
                                         : "text-secondary hover:text-primary"
                                 )}
-                                title="Thinking level"
+                                title={t("aisessions:composer.thinkingLevel")}
                                 onClick={() => {
                                     if (panelMode === "levels") {
                                         setPanelMode(null);
@@ -933,7 +942,7 @@ function ChatComposerInner({
                                 }}
                             >
                                 <i className="fa-sharp fa-solid fa-brain text-[11px]" />
-                                <span>{currentThinking || "Thinking"}</span>
+                                <span>{currentThinking || t("aisessions:composer.thinking")}</span>
                                 <i
                                     className={cn(
                                         "fa-sharp fa-solid fa-chevron-down text-[9px] transition-transform",
@@ -946,8 +955,8 @@ function ChatComposerInner({
                                     <button
                                         type="button"
                                         className="ml-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-white hover:bg-accent/85"
-                                        title="Stop"
-                                        aria-label="Stop"
+                                        title={t("aisessions:composer.stop")}
+                                        aria-label={t("aisessions:composer.stop")}
                                         onClick={handleAbort}
                                     >
                                         <i className="fa-sharp fa-solid fa-square text-[10px]" />
@@ -962,8 +971,8 @@ function ChatComposerInner({
                                             ? "cursor-pointer bg-accent text-primary-contrast hover:brightness-110"
                                             : "cursor-default bg-surface-strong text-secondary"
                                     )}
-                                    title="Send (Enter)"
-                                    aria-label="Send message"
+                                    title={t("aisessions:composer.send")}
+                                    aria-label={t("aisessions:composer.sendMessage")}
                                     disabled={!canSubmit}
                                     onClick={handleSubmit}
                                 >

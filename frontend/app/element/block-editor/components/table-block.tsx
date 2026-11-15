@@ -11,6 +11,7 @@
 
 import { clsx } from "clsx";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 
 import {
@@ -89,6 +90,7 @@ export interface TableBlockProps {
 
 export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
     const ctx = useContext(TableEditContext);
+    const { t } = useTranslation("block-editor");
     const editable = ctx != null && isBlockEditorFeatureEnabled("tablecell");
     const tableLine = getSourceLine(props) ?? 0;
 
@@ -574,8 +576,8 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
                 <button
                     type="button"
                     className="table-collapse-button"
-                    title={collapsed ? "Expand table" : "Collapse table"}
-                    aria-label={collapsed ? "Expand table" : "Collapse table"}
+                    title={collapsed ? t("block-editor:tableBlock.expand") : t("block-editor:tableBlock.collapse")}
+                    aria-label={collapsed ? t("block-editor:tableBlock.expand") : t("block-editor:tableBlock.collapse")}
                     onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -715,16 +717,16 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
         for (let i = 0; i < selectedCol && i < cells.length; i++) x += cells[i].getBoundingClientRect().width;
         colActionsEl = createPortal(
             <div className="tb-actions" style={{ position: "fixed", left: x, top: th.top - 36, zIndex: 9999 }}>
-                <button className="tb-action-btn" title="Align left" onClick={() => handleAlign("left")}>
+                <button className="tb-action-btn" title={t("block-editor:tableBlock.alignLeft")} onClick={() => handleAlign("left")}>
                     <i className="fa-solid fa-align-left" />
                 </button>
-                <button className="tb-action-btn" title="Align center" onClick={() => handleAlign("center")}>
+                <button className="tb-action-btn" title={t("block-editor:tableBlock.alignCenter")} onClick={() => handleAlign("center")}>
                     <i className="fa-solid fa-align-center" />
                 </button>
-                <button className="tb-action-btn" title="Align right" onClick={() => handleAlign("right")}>
+                <button className="tb-action-btn" title={t("block-editor:tableBlock.alignRight")} onClick={() => handleAlign("right")}>
                     <i className="fa-solid fa-align-right" />
                 </button>
-                <button className="tb-action-btn tb-action-delete" title="Delete column" onClick={handleDeleteCol}>
+                <button className="tb-action-btn tb-action-delete" title={t("block-editor:tableBlock.deleteColumn")} onClick={handleDeleteCol}>
                     <i className="fa-solid fa-trash-can" />
                 </button>
             </div>,
@@ -742,7 +744,7 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
                 className="tb-actions"
                 style={{ position: "fixed", left: tr2.left - 80, top: y + rowH / 2 - 12, zIndex: 9999 }}
             >
-                <button className="tb-action-btn tb-action-delete" title="Delete row" onClick={handleDeleteRow}>
+                <button className="tb-action-btn tb-action-delete" title={t("block-editor:tableBlock.deleteRow")} onClick={handleDeleteRow}>
                     <i className="fa-solid fa-trash-can" />
                 </button>
             </div>,
@@ -767,8 +769,8 @@ export function TableBlock({ props, collapsed, onToggle }: TableBlockProps) {
                 <button
                     type="button"
                     className="table-collapse-button"
-                    title={collapsed ? "Expand table" : "Collapse table"}
-                    aria-label={collapsed ? "Expand table" : "Collapse table"}
+                    title={collapsed ? t("block-editor:tableBlock.expand") : t("block-editor:tableBlock.collapse")}
+                    aria-label={collapsed ? t("block-editor:tableBlock.expand") : t("block-editor:tableBlock.collapse")}
                     onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();

@@ -15,6 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { i18n, initI18n } from "@/i18n/config";
 import { EmojiPicker } from "./emoji-picker";
 import { __resetEmojiAliasesForTests, getEmojiAlias } from "../../markdown-transform/emoji-aliases";
 import { loadEmojiCatalog, type EmojiCatalog } from "../../markdown-transform/emoji";
@@ -125,6 +126,7 @@ function type(input: HTMLInputElement, value: string) {
 }
 
 beforeEach(async () => {
+    await initI18n("en");
     Object.defineProperty(window, "localStorage", {
         value: makeLocalStorageMock(),
         configurable: true,
@@ -186,7 +188,7 @@ describe("EmojiPicker alias editor", () => {
         const input = aliasInputs()[0];
         type(input, "已解决");
         key(input, { key: "Enter" });
-        click(buttonByText("保存"));
+        click(buttonByText(i18n.t("block-editor:emojiPicker.save")));
         expect(editor()).toBeNull();
         expect(getEmojiAlias("😄")?.aliases).toEqual(["已解决"]);
 
@@ -205,13 +207,13 @@ describe("EmojiPicker alias editor", () => {
         const input = aliasInputs()[0];
         type(input, "done");
         key(input, { key: "Enter" });
-        click(buttonByText("保存"));
+        click(buttonByText(i18n.t("block-editor:emojiPicker.save")));
         expect(getEmojiAlias("😄")?.aliases).toEqual(["done"]);
 
         act(() => root.unmount());
         mount("");
         rightClick(cellFor("😄") as HTMLButtonElement);
-        click(buttonByText("清除"));
+        click(buttonByText(i18n.t("block-editor:emojiPicker.clear")));
         expect(getEmojiAlias("😄")).toBeNull();
         expect(editor()).toBeNull();
     });
@@ -221,7 +223,7 @@ describe("EmojiPicker alias editor", () => {
         rightClick(cellFor("😄") as HTMLButtonElement);
         type(aliasInputs()[0], "done");
         key(aliasInputs()[0], { key: "Enter" });
-        click(buttonByText("保存"));
+        click(buttonByText(i18n.t("block-editor:emojiPicker.save")));
         act(() => root.unmount());
         mount("done");
         expect(cellFor("😄")).not.toBeNull();

@@ -22,6 +22,7 @@ import {
     setWasActive,
 } from "./emain-activity";
 import { createBuilderWindow, getAllBuilderWindows, getBuilderWindowByWebContentsId } from "./emain-builder";
+import { coerceLocale, setMainLocale, tmew } from "./emain-i18n";
 import {
     callWithOriginalXdgCurrentDesktopAsync,
     getWaveConfigDir,
@@ -394,9 +395,14 @@ function saveImageFileWithNativeDialog(
     defaultFileName = addExtensionIfNeeded(defaultFileName, mimeType);
     electron.dialog
         .showSaveDialog(ww, {
-            title: "Save Image",
+            title: tmew("common:dialog.saveImage.title"),
             defaultPath: defaultFileName,
-            filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "heic"] }],
+            filters: [
+                {
+                    name: tmew("common:dialog.saveImage.filter"),
+                    extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "heic"],
+                },
+            ],
         })
         .then((file) => {
             if (file.canceled) {
@@ -423,6 +429,26 @@ function saveImageFileWithNativeDialog(
 }
 
 export function initIpcHandlers() {
+    // Renderer pushes a `ui:locale` change (from I18nModel.setActiveLocale).
+    // Switches the main-process i18n instance, then rebuilds the application
+    // menu so native menu text follows the new locale. See `emain-i18n.ts`.
+    electron.ipcMain.on("set-locale", (_event, locale: string) => {
+        // Static import for i18n (no cycle); dynamic import for the menu module —
+        // `emain-menu.ts` imports `openBuilderWindow` from this file, so a static
+        // import here would create a cycle. Note: `require()` is NOT available in
+        // the ESM main bundle (it threw "Cannot find module" at boot).
+        const normalized = coerceLocale(locale);
+        fireAndForget(async () => {
+            await setMainLocale(normalized);
+            try {
+                const { makeAndSetAppMenu, makeDockTaskbar } = await import("./emain-menu");
+                makeAndSetAppMenu();
+                makeDockTaskbar();
+            } catch (err) {
+                console.error("[i18n:main] menu rebuild after locale change failed", err);
+            }
+        });
+    });
     electron.ipcMain.on("open-external", (event, url) => {
         if (url && typeof url === "string") {
             fireAndForget(() =>
@@ -445,7 +471,7 @@ export function initIpcHandlers() {
         }
         menu.append(
             new electron.MenuItem({
-                label: "Save Image",
+                label: tmew("common:contextMenu.saveImage"),
                 click: () => {
                     const resultP = getUrlInSession(event.sender.session, payload.src);
                     resultP
@@ -853,9 +879,9 @@ export function initIpcHandlers() {
             return false;
         }
         const result = await electron.dialog.showSaveDialog(ww, {
-            title: "Save Scrollback",
+            title: tmew("common:dialog.saveScrollback.title"),
             defaultPath: fileName || "session.log",
-            filters: [{ name: "Text Files", extensions: ["txt", "log"] }],
+            filters: [{ name: tmew("common:dialog.saveScrollback.filter"), extensions: ["txt", "log"] }],
         });
         if (result.canceled || !result.filePath) {
             return false;
@@ -878,9 +904,9 @@ export function initIpcHandlers() {
             return { ok: false, canceled: false, filePath: null, error: "export window unavailable" };
         }
         const result = await electron.dialog.showSaveDialog(ww, {
-            title: "Export HTML",
+            title: tmew("common:dialog.exportHtml.title"),
             defaultPath: fileName || "export.html",
-            filters: [{ name: "HTML", extensions: ["html"] }],
+            filters: [{ name: tmew("common:dialog.exportHtml.filter"), extensions: ["html"] }],
         });
         if (result.canceled || !result.filePath) {
             return { ok: false, canceled: true, filePath: null, error: null };
@@ -921,9 +947,9 @@ export function initIpcHandlers() {
                 return { ok: false, canceled: false, filePath: null, error: "printToPDF returned empty data" };
             }
             const result = await electron.dialog.showSaveDialog(ww, {
-                title: "Export PDF",
+                title: tmew("common:dialog.exportPdf.title"),
                 defaultPath: fileName || "export.pdf",
-                filters: [{ name: "PDF", extensions: ["pdf"] }],
+                filters: [{ name: tmew("common:dialog.exportPdf.filter"), extensions: ["pdf"] }],
             });
             if (result.canceled || !result.filePath) {
                 return { ok: false, canceled: true, filePath: null, error: null };

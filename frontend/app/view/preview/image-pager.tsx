@@ -12,9 +12,11 @@ import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { Tooltip } from "@/app/element/tooltip";
 
+import { i18n } from "@/i18n/config";
 import { focusedBlockId } from "@/util/focusutil";
 import { useAtomValue } from "jotai";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { formatRemoteUri } from "@/util/waveutil";
 import type { PreviewModel } from "./preview-model";
 import {
@@ -48,7 +50,9 @@ type ImagePagerProps = {
     connKey: string;
 };
 
-export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
+export function ImagePager({
+    model, filePath, connKey }: ImagePagerProps) {
+    const { t } = useTranslation("preview");
     const env = useWaveEnv();
     const blockMeta = useAtomValue(model.blockAtom)?.meta ?? {};
     const defaultSortSetting = useAtomValue(env.getSettingsKeyAtom("preview:defaultsort"));
@@ -135,7 +139,9 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
                 })
                 .catch((err) => {
                     console.error("[image-pager] navigate failed:", err);
-                    showPagerToast(`翻页失败: ${String(err?.message ?? err).slice(0, 80)}`);
+                    showPagerToast(
+                        i18n.t("preview:imagePager.navigateFailed", { error: String(err?.message ?? err).slice(0, 80) })
+                    );
                 });
         },
         [model, showToast, persistAnchor]
@@ -148,7 +154,12 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
         }
         if (res.nextStation != null) {
             const st = res.nextStation;
-            navigate(st.first, { announce: `已进入 ${displayStationDir(st.dir, anchor)} · 第 1/${st.count} 张` });
+            navigate(st.first, {
+                announce: i18n.t("preview:imagePager.enteredFolder", {
+                    dir: displayStationDir(st.dir, anchor),
+                    num: st.count,
+                }),
+            });
         }
     }, [res.next, res.nextStation, navigate, anchor]);
 
@@ -160,7 +171,10 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
         if (res.prevStation != null) {
             const st = res.prevStation;
             navigate(st.last, {
-                announce: `已回到 ${displayStationDir(st.dir, anchor)} · 第 ${st.count}/${st.count} 张`,
+                announce: i18n.t("preview:imagePager.returnedToFolder", {
+                    dir: displayStationDir(st.dir, anchor),
+                    num: st.count,
+                }),
             });
         }
     }, [res.prev, res.prevStation, navigate, anchor]);
@@ -168,13 +182,23 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
     const goNextStation = useCallback(() => {
         const st: StationInfo | null = res.nextStation;
         if (st == null) return;
-        navigate(st.first, { announce: `已进入 ${displayStationDir(st.dir, anchor)} · 1/${st.count}` });
+        navigate(st.first, {
+            announce: i18n.t("preview:imagePager.enteredFolder", {
+                dir: displayStationDir(st.dir, anchor),
+                num: st.count,
+            }),
+        });
     }, [res.nextStation, navigate, anchor]);
 
     const goPrevStation = useCallback(() => {
         const st: StationInfo | null = res.prevStation;
         if (st == null) return;
-        navigate(st.last, { announce: `已回到 ${displayStationDir(st.dir, anchor)} · ${st.count}/${st.count}` });
+        navigate(st.last, {
+            announce: i18n.t("preview:imagePager.returnedToFolder", {
+                dir: displayStationDir(st.dir, anchor),
+                num: st.count,
+            }),
+        });
     }, [res.prevStation, navigate, anchor]);
 
     // 键盘：仅在本块聚焦、缩放=1、无选区时消费
@@ -227,7 +251,7 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
                     if (e.shiftKey) {
                         e.preventDefault();
                         invalidatePagerIndex(key);
-                        showToast("索引已失效，正在重建");
+                        showToast(t("preview:imagePager.indexRebuilding"));
                     }
                     return;
                 default:
@@ -246,7 +270,11 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
     };
 
     const positionLabel =
-        res.position >= 0 ? `${res.position + 1} / ${res.layerSize}` : index.building ? "索引中…" : "— / —";
+        res.position >= 0
+            ? i18n.t("preview:imagePager.position", { pos: res.position + 1, size: res.layerSize })
+            : index.building
+              ? t("preview:imagePager.indexing")
+              : "— / —";
 
     const nextIsStation = res.next == null && res.nextStation != null;
     const prevIsStation = res.prev == null && res.prevStation != null;
@@ -265,12 +293,12 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
                 <Tooltip content={hints.prev} divClassName="flex">
                     <button
                         type="button"
-                        aria-label={prevIsStation ? "上一站" : "上一张"}
+                        aria-label={prevIsStation ? t("preview:imagePager.prevStationLabel") : t("preview:imagePager.prevLabel")}
                         className="rounded px-2 py-0.5 hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-not-allowed disabled:opacity-35"
                         disabled={prevDisabled}
                         onClick={() => goPrev()}
                     >
-                        {prevIsStation ? "上一站" : "‹"}
+                        {prevIsStation ? t("preview:imagePager.prevStationLabel") : "‹"}
                     </button>
                 </Tooltip>
                 <Tooltip content={hints.counter} divClassName="flex">
@@ -279,23 +307,23 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
                 <Tooltip content={hints.next} divClassName="flex">
                     <button
                         type="button"
-                        aria-label={nextIsStation ? "下一站" : "下一张"}
+                        aria-label={nextIsStation ? t("preview:imagePager.nextStationLabel") : t("preview:imagePager.nextLabel")}
                         className="rounded px-2 py-0.5 hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-not-allowed disabled:opacity-35"
                         disabled={nextDisabled}
                         onClick={() => goNext()}
                     >
-                        {nextIsStation ? "下一站" : "›"}
+                        {nextIsStation ? t("preview:imagePager.nextStationLabel") : "›"}
                     </button>
                 </Tooltip>
                 <span className="mx-1 h-3 w-px bg-[rgba(255,255,255,0.18)]" />
                 <Tooltip content={hints.refresh} divClassName="flex">
                     <button
                         type="button"
-                        aria-label="重建索引"
+                        aria-label={t("preview:imagePager.rebuildIndexLabel")}
                         className="rounded px-1.5 py-0.5 hover:bg-[rgba(255,255,255,0.12)]"
                         onClick={() => {
                             invalidatePagerIndex(key);
-                            showToast("索引已失效，正在重建");
+                            showToast(t("preview:imagePager.indexRebuilding"));
                         }}
                     >
                         ↻
@@ -306,12 +334,15 @@ export function ImagePager({ model, filePath, connKey }: ImagePagerProps) {
             {/* 边界/截断提示：本层到底且仍有下一站时，明确告诉用户去哪儿 */}
             {nextIsStation && !index.building && (
                 <div className="pointer-events-none absolute bottom-12 left-1/2 z-[3] -translate-x-1/2 rounded bg-[rgba(0,0,0,0.6)] px-2 py-1 text-[11px] opacity-80">
-                    本层已看完 · 下一站：{displayStationDir(res.nextStation.dir, anchor)}（{res.nextStation.count} 张）
+                    {i18n.t("preview:imagePager.layerEndBanner", {
+                        dir: displayStationDir(res.nextStation.dir, anchor),
+                        num: res.nextStation.count,
+                    })}
                 </div>
             )}
             {index.truncated && (
                 <div className="pointer-events-none absolute top-2 left-2 z-[3] rounded bg-[rgba(0,0,0,0.6)] px-2 py-1 text-[11px] opacity-80">
-                    图片过多，索引已截断（上限 5000 张）
+                    {t("preview:imagePager.truncated")}
                 </div>
             )}
             {index.error != null && (

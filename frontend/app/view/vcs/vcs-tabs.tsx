@@ -8,16 +8,22 @@ import { getRepoOpenUrl } from "./vcs-remote";
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { openLink } from "@/store/global";
 import { fireAndForget, isBlank } from "@/util/util";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 
 type View = "changes" | "branches" | "pipelines" | "history";
 type VcsSyncAction = "fetch" | "pull" | "push" | "update";
 
-const VIEWS: { id: View; label: string; icon: string }[] = [
-    { id: "changes", label: "Changes", icon: "fa-file-pen" },
-    { id: "branches", label: "Branches", icon: "fa-code-branch" },
-    { id: "pipelines", label: "Pipelines", icon: "fa-diagram-project" },
-    { id: "history", label: "History", icon: "fa-clock-rotate-left" },
-];
+/**
+ * Tab 定义只存 `labelKey`：`t()` 在渲染期求值，切语言即时生效（Pattern C）。
+ * `as const` 保住 key 的字面量类型，`i18n.t(entry.labelKey)` 才能过类型检查。
+ */
+const VIEWS = [
+    { id: "changes", labelKey: "vcs:tabs.views.changes", icon: "fa-file-pen" },
+    { id: "branches", labelKey: "vcs:tabs.views.branches", icon: "fa-code-branch" },
+    { id: "pipelines", labelKey: "vcs:tabs.views.pipelines", icon: "fa-diagram-project" },
+    { id: "history", labelKey: "vcs:tabs.views.history", icon: "fa-clock-rotate-left" },
+] as const satisfies readonly { id: View; labelKey: string; icon: string }[];
 
 function shortHash(hash: string): string {
     if (!hash || hash.length <= 10) return hash;
@@ -50,6 +56,7 @@ export function VcsTabBar({
     currentView: View;
     onViewChange: (view: View) => void;
 }) {
+    const { t } = useTranslation("vcs");
     const isGit = repo.repotype === "git";
     const changed = countChanged(repo);
     const untracked = countUntracked(repo);
@@ -73,7 +80,7 @@ export function VcsTabBar({
                         data-vcs-tab="1"
                         disabled={isDisabled}
                         onClick={() => !isDisabled && onViewChange(entry.id)}
-                        aria-label={entry.label}
+                        aria-label={t(entry.labelKey)}
                         className={`relative flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-xs transition-colors ${
                             isDisabled ? "opacity-40 cursor-default" : "cursor-pointer"
                         } ${
@@ -83,7 +90,7 @@ export function VcsTabBar({
                         }`}
                     >
                         <i className={`fa-sharp fa-solid ${entry.icon} text-[11px] shrink-0`} />
-                        <span className="truncate">{entry.label}</span>
+                        <span className="truncate">{t(entry.labelKey)}</span>
                         {badge != null && (
                             <span className="min-w-[18px] h-4 rounded-full bg-accent/12 text-accent text-[10px] tabular-nums inline-flex items-center justify-center px-1">
                                 {badge}
@@ -109,6 +116,7 @@ export function VcsRepoHeader({
     syncRunning: boolean;
     syncAction?: VcsSyncAction;
 }) {
+    const { t } = useTranslation("vcs");
     const isGit = repo.repotype === "git";
     const remote = repo.remote;
     const ahead = remote?.ahead ?? 0;
@@ -125,7 +133,7 @@ export function VcsRepoHeader({
         const copyUrl = !isBlank(repo?.remoteurl) ? repo.remoteurl : (repo?.browseurl ?? "");
         const menu: ContextMenuItem[] = [
             {
-                label: "Copy Repository Path",
+                label: t("vcs:tabs.copyRepoPath"),
                 enabled: !isBlank(repoPath),
                 click: () => {
                     fireAndForget(async () => {
@@ -134,7 +142,7 @@ export function VcsRepoHeader({
                 },
             },
             {
-                label: "Copy Repository URL",
+                label: t("vcs:tabs.copyRepoUrl"),
                 enabled: !isBlank(copyUrl),
                 click: () => {
                     fireAndForget(async () => {
@@ -143,7 +151,7 @@ export function VcsRepoHeader({
                 },
             },
             {
-                label: "Open Remote Repository",
+                label: t("vcs:tabs.openRemoteRepository"),
                 enabled: !isBlank(repoOpenUrl),
                 click: () => {
                     fireAndForget(async () => {
@@ -161,7 +169,7 @@ export function VcsRepoHeader({
             onContextMenu={handleHeaderContextMenu}
         >
             <span className="text-muted text-[12px] shrink-0">⑂</span>
-            <span className="text-[11px] text-muted truncate min-w-0">{repo.branch || "(no branch)"}</span>
+            <span className="text-[11px] text-muted truncate min-w-0">{repo.branch || t("vcs:common.noBranch")}</span>
             {repo.repotype === "git" && (ahead > 0 || behind > 0) && (
                 <span className="text-[11px] text-muted tabular-nums shrink-0">
                     {ahead > 0 && `↑${ahead}`}
@@ -173,7 +181,7 @@ export function VcsRepoHeader({
             {!isBlank(repoOpenUrl) && (
                 <VcsIconButton
                     icon="arrow-up-right-from-square"
-                    title="Open remote repository"
+                    title={t("vcs:tabs.openRemoteRepositoryTooltip")}
                     onClick={() => {
                         fireAndForget(async () => {
                             await openLink(repoOpenUrl);
@@ -182,7 +190,7 @@ export function VcsRepoHeader({
                 />
             )}
             <span className={`text-[10px] tabular-nums px-1.5 py-[1px] rounded border border-border ${totalChanged > 0 ? "text-warning" : "text-muted"}`}>
-                {totalChanged} changed
+                {i18n.t("vcs:tabs.changed", { count: totalChanged })}
             </span>
             {isGit && (
                 <>
@@ -196,7 +204,9 @@ export function VcsRepoHeader({
             )}
             <VcsIconButton
                 icon="arrow-down-to-line"
-                title={syncRunning && syncAction === "pull" ? "Pulling…" : "Pull"}
+                title={
+                    syncRunning && syncAction === "pull" ? t("vcs:operations.verb.pull") : t("vcs:operations.label.pull")
+                }
                 loading={syncRunning && syncAction === "pull"}
                 disabled={syncRunning || !isGit}
                 tone="accent"
@@ -204,7 +214,7 @@ export function VcsRepoHeader({
             />
             <VcsIconButton
                 icon="arrows-rotate"
-                title="Refresh"
+                title={t("vcs:common.refresh")}
                 disabled={syncRunning}
                 onClick={onRefresh}
             />

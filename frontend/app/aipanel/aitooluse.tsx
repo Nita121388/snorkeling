@@ -3,9 +3,11 @@
 
 import { BlockModel } from "@/app/block/block-model";
 import { recordTEvent } from "@/app/store/global";
+import { i18n } from "@/i18n/config";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { WaveUIMessagePart } from "./aitypes";
 import { RestoreBackupModal } from "./restorebackupmodal";
 import { WaveAIModel } from "./waveai-model";
@@ -87,8 +89,9 @@ interface AIToolApprovalButtonsProps {
 }
 
 const AIToolApprovalButtons = memo(({ count, onApprove, onDeny }: AIToolApprovalButtonsProps) => {
-    const approveText = count > 1 ? `Approve All (${count})` : "Approve";
-    const denyText = count > 1 ? "Deny All" : "Deny";
+    const { t } = useTranslation("aipanel");
+    const approveText = count > 1 ? i18n.t("aipanel:toolUse.approveAll", { count }) : t("aipanel:toolUse.approve");
+    const denyText = count > 1 ? t("aipanel:toolUse.denyAll") : t("aipanel:toolUse.deny");
 
     return (
         <div className="mt-2 flex gap-2">
@@ -116,10 +119,12 @@ interface AIToolUseBatchItemProps {
 }
 
 const AIToolUseBatchItem = memo(({ part, effectiveApproval }: AIToolUseBatchItemProps) => {
+    const { t } = useTranslation("aipanel");
     const statusIcon = part.data.status === "completed" ? "✓" : part.data.status === "error" ? "✗" : "•";
     const statusColor =
         part.data.status === "completed" ? "text-success" : part.data.status === "error" ? "text-error" : "text-muted";
-    const effectiveErrorMessage = part.data.errormessage || (effectiveApproval === "timeout" ? "Not approved" : null);
+    const effectiveErrorMessage =
+        part.data.errormessage || (effectiveApproval === "timeout" ? t("aipanel:toolUse.notApproved") : null);
 
     return (
         <div className="text-sm pl-2 flex items-start gap-1.5">
@@ -140,6 +145,7 @@ interface AIToolUseBatchProps {
 }
 
 const AIToolUseBatch = memo(({ parts, isStreaming }: AIToolUseBatchProps) => {
+    const { t } = useTranslation("aipanel");
     const [userApprovalOverride, setUserApprovalOverride] = useState<string | null>(null);
 
     const firstTool = parts[0].data;
@@ -163,7 +169,7 @@ const AIToolUseBatch = memo(({ parts, isStreaming }: AIToolUseBatchProps) => {
     return (
         <div className="flex items-start gap-2 p-2 rounded bg-surface-strong border border-border">
             <div className="flex-1">
-                <div className="font-semibold">Reading Files</div>
+                <div className="font-semibold">{t("aipanel:toolUse.readingFiles")}</div>
                 <div className="mt-1 space-y-0.5">
                     {parts.map((part, idx) => (
                         <AIToolUseBatchItem key={idx} part={part} effectiveApproval={effectiveApproval} />
@@ -185,6 +191,7 @@ interface AIToolUseProps {
 }
 
 const AIToolUse = memo(({ part, isStreaming }: AIToolUseProps) => {
+    const { t } = useTranslation("aipanel");
     const toolData = part.data;
     const [userApprovalOverride, setUserApprovalOverride] = useState<string | null>(null);
     const model = WaveAIModel.getInstance();
@@ -281,9 +288,9 @@ const AIToolUse = memo(({ part, isStreaming }: AIToolUseProps) => {
                                 model.openRestoreBackupModal(toolData.toolcallid);
                             }}
                             className="flex-shrink-0 px-1.5 py-0.5 border border-border hover:border-accent hover:bg-hover rounded cursor-pointer transition-colors flex items-center gap-1 text-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                            title="Restore backup file"
+                            title={t("aipanel:toolUse.restoreBackupFile")}
                         >
-                            <span className="text-xs">Revert File</span>
+                            <span className="text-xs">{t("aipanel:toolUse.revertFile")}</span>
                             <i className="fa fa-clock-rotate-left text-xs"></i>
                         </button>
                     )}
@@ -291,16 +298,16 @@ const AIToolUse = memo(({ part, isStreaming }: AIToolUseProps) => {
                     <button
                         onClick={handleOpenDiff}
                         className="flex-shrink-0 px-1.5 py-0.5 border border-border hover:border-accent hover:bg-hover rounded cursor-pointer transition-colors flex items-center gap-1 text-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                        title="Open in diff viewer"
+                        title={t("aipanel:toolUse.openInDiffViewer")}
                     >
-                        <span className="text-xs">Show Diff</span>
+                        <span className="text-xs">{t("aipanel:toolUse.showDiff")}</span>
                         <i className="fa fa-arrow-up-right-from-square text-xs"></i>
                     </button>
                 )}
             </div>
             {toolData.tooldesc && <ToolDesc text={toolData.tooldesc} className="text-sm text-secondary pl-6" />}
             {(toolData.errormessage || effectiveApproval === "timeout") && (
-                <div className="text-sm text-error pl-6">{toolData.errormessage || "Not approved"}</div>
+                <div className="text-sm text-error pl-6">{toolData.errormessage || i18n.t("aipanel:toolUse.notApproved")}</div>
             )}
             {effectiveApproval === "needs-approval" && (
                 <div className="pl-6">

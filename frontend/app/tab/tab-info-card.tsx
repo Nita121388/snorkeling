@@ -35,6 +35,8 @@ import { getAgentIcon } from "@/app/view/term/agent-logo";
 import { isAgentTerminalMeta, normalizeAgentProvider } from "@/app/view/term/agent-meta";
 import { cn, makeIconClass, useAtomValueSafe } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import {
     agentGroupHidesProvider,
     agentGroupLabel,
@@ -57,6 +59,7 @@ function readAgentProvider(block: Block | null): string {
 // ── Agent 状态行（每个 agent block 一个子组件，独立订阅状态） ──
 
 function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider: boolean }) {
+    const { t } = useTranslation("tab");
     const store = AgentStatusStore.getInstance();
     const [statusAtom, setStatusAtom] = React.useState<ReturnType<AgentStatusStore["acquire"]> | null>(null);
     React.useEffect(() => {
@@ -70,7 +73,7 @@ function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider:
     const block = React.useMemo(() => getObjectValue<Block>(makeORef("block", blockId)), [blockId]);
     const meta = (block?.meta ?? {}) as Record<string, unknown>;
     const rawProvider = normalizeAgentProvider(meta.provider ?? meta["agent:provider"]);
-    const provider = rawProvider === "" ? "Agent" : rawProvider;
+    const provider = rawProvider === "" ? t("tab:infoCard.agentFallback") : rawProvider;
     const personas = useAgentPersonas();
     const sessionEmojis = useSessionEmojis();
     const agentIcon = getAgentIcon(rawProvider === "" ? "agent" : rawProvider, {
@@ -134,6 +137,7 @@ function TabAgentRow({ blockId, hideProvider }: { blockId: string; hideProvider:
  * @param workspaceId 所属 workspace 的 id（用于取 workspace 图标/颜色/名称）。
  */
 export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId?: string }) {
+    const { t } = useTranslation("tab");
     const tab = React.useMemo(() => getObjectValue<Tab>(makeORef("tab", tabId)), [tabId]);
     const workspace = React.useMemo(
         () => (workspaceId != null ? getObjectValue<Workspace>(makeORef("workspace", workspaceId)) : null),
@@ -183,14 +187,18 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
                         <InfoCardIcon icon="fa-sharp fa-solid fa-table-columns" />
                     )}
                     <InfoCardTitle className="tab-card-title">
-                        {tabName !== "" ? tabName : "Untitled tab"}
+                        {tabName !== "" ? tabName : t("tab:infoCard.untitledTab")}
                     </InfoCardTitle>
                     {flagColor != null ? (
-                        <span className="tab-card-flag" style={{ background: flagColor }} title="Flag" />
+                        <span
+                            className="tab-card-flag"
+                            style={{ background: flagColor }}
+                            title={t("tab:infoCard.flag")}
+                        />
                     ) : null}
                     {agentCount > 0 ? (
                         <span className="tab-card-count">
-                            {agentCount} agent{agentCount > 1 ? "s" : ""}
+                            {i18n.t("tab:infoCard.agentCount", { count: agentCount })}
                         </span>
                     ) : null}
                 </InfoCardHead>
@@ -223,7 +231,7 @@ export function TabInfoCard({ tabId, workspaceId }: { tabId: string; workspaceId
 
             {agentCount === 0 && chips.length === 0 && (
                 <InfoCardSection>
-                    <InfoCardText>Empty tab</InfoCardText>
+                    <InfoCardText>{t("tab:infoCard.emptyTab")}</InfoCardText>
                 </InfoCardSection>
             )}
         </InfoCard>

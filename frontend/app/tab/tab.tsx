@@ -14,6 +14,7 @@ import { fireAndForget } from "@/util/util";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { makeORef } from "../store/wos";
 import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import { useInfoCardHover, InfoCardPortal } from "@/app/element/info-card/info-card-hover";
@@ -87,6 +88,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         renameRef,
         workspaceId,
     } = props;
+    const { t } = useTranslation("tab");
     const MaxTabNameLength = 14;
     const truncateTabName = (name: string) => [...(name ?? "")].slice(0, MaxTabNameLength).join("");
     const displayName = truncateTabName(tabName);
@@ -231,7 +233,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                     className="ghost grey close"
                     onClick={onClose}
                     onMouseDown={handleMouseDownOnClose}
-                    title="Close Tab"
+                    title={t("tab:tab.closeTab")}
                 >
                     <i className="fa fa-solid fa-xmark" />
                 </Button>

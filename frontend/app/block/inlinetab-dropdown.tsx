@@ -4,9 +4,11 @@
 import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { useSessionEmojis } from "@/app/agent-persona/use-session-personas";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { i18n } from "@/i18n/config";
 import { isBlank, makeIconClass } from "@/util/util";
 import { autoUpdate, flip, FloatingPortal, offset, shift, useFloating } from "@floating-ui/react";
 import { memo, useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type { InlineTabStatusDot } from "./inlinetab-agent-status";
 
 type TabInfo = {
@@ -62,6 +64,7 @@ export const InlineTabDropdownMenu = memo(
         onClose,
         onStatusAck,
     }: InlineTabDropdownMenuProps) => {
+        const { t } = useTranslation("block");
         const menuRef = useRef<HTMLDivElement>(null);
         const personas = useAgentPersonas();
         const sessionEmojis = useSessionEmojis();
@@ -223,7 +226,7 @@ export const InlineTabDropdownMenu = memo(
                     style={{ ...floatingStyles, zIndex: 1000 }}
                     className="inline-tab-block-dropdown-menu"
                     role="menu"
-                    aria-label="All tabs"
+                    aria-label={t("block:inlineTab.allTabs")}
                     tabIndex={-1}
                     onKeyDown={handleKeyDown}
                 >
@@ -259,7 +262,9 @@ export const InlineTabDropdownMenu = memo(
                                     ) : agentIcon?.kind === "logo" ? (
                                         <span
                                             className="agent-brand-icon flex items-center justify-center [&_svg]:h-3 [&_svg]:w-3"
-                                            style={agentIcon.iconColor != null ? { color: agentIcon.iconColor } : undefined}
+                                            style={
+                                                agentIcon.iconColor != null ? { color: agentIcon.iconColor } : undefined
+                                            }
                                             title={tab.agentProvider ?? undefined}
                                         >
                                             {agentIcon.icon}
@@ -270,8 +275,10 @@ export const InlineTabDropdownMenu = memo(
                                     {tab.isRemote && (
                                         <span
                                             className="inline-tab-block-dropdown-remote-dot"
-                                            title={`Remote: ${tab.connection ?? ""}`}
-                                            aria-label="Remote connection"
+                                            title={i18n.t("block:header.remoteConnectionWith", {
+                                                connection: tab.connection ?? "",
+                                            })}
+                                            aria-label={t("block:header.remoteConnection")}
                                         />
                                     )}
                                 </span>
@@ -304,8 +311,8 @@ export const InlineTabDropdownMenu = memo(
                                     <button
                                         type="button"
                                         className="dropdown-item-close"
-                                        title={`Close ${tab.title}`}
-                                        aria-label={`Close ${tab.title}`}
+                                        title={i18n.t("block:inlineTab.closeTabTitle", { title: tab.title })}
+                                        aria-label={i18n.t("block:inlineTab.closeTabTitle", { title: tab.title })}
                                         tabIndex={-1}
                                         onClick={(e) => {
                                             // 必须阻止冒泡: 否则会连带触发外层菜单项的「切换到该 tab」

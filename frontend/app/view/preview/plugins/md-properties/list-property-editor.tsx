@@ -4,6 +4,7 @@
 // 列表属性编辑器 - 支持标签/列表类型的可视化编辑
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import "./list-property-editor.scss";
 
 type ListPropertyEditorProps = {
@@ -18,6 +19,7 @@ type ListPropertyEditorProps = {
 };
 
 export function ListPropertyEditor({ items, placeholder, onChange, onClose }: ListPropertyEditorProps) {
+    const { t } = useTranslation("preview");
     const [chips, setChips] = useState(items);
     const [draft, setDraft] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
@@ -101,7 +103,7 @@ export function ListPropertyEditor({ items, placeholder, onChange, onClose }: Li
                         <button
                             type="button"
                             className="list-property-chip-remove"
-                            title="删除"
+                            title={t("preview:listPropertyEditor.delete")}
                             onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -120,7 +122,7 @@ export function ListPropertyEditor({ items, placeholder, onChange, onClose }: Li
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     onBlur={handleBlur}
-                    placeholder={chips.length === 0 ? (placeholder || "输入标签...") : ""}
+                    placeholder={chips.length === 0 ? placeholder || t("preview:listPropertyEditor.tagPlaceholder") : ""}
                 />
             </div>
         </div>

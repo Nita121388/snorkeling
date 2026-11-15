@@ -15,20 +15,30 @@
 
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { i18n } from "@/i18n/config";
 import { cn, fireAndForget } from "@/util/util";
 import { memo, useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const SCOPES = [
-    { id: "observe", label: "Observe", hint: "Read UI state, blocks, sessions, cards" },
-    { id: "navigate", label: "Navigate", hint: "Open blocks, create / switch tabs" },
-    { id: "data", label: "Data", hint: "Write session title / note / tags" },
+    {
+        id: "observe",
+        labelKey: "waveconfig:agentAccess.scopeObserve",
+        hintKey: "waveconfig:agentAccess.scopeHintObserve",
+    },
+    {
+        id: "navigate",
+        labelKey: "waveconfig:agentAccess.scopeNavigate",
+        hintKey: "waveconfig:agentAccess.scopeHintNavigate",
+    },
+    { id: "data", labelKey: "waveconfig:agentAccess.scopeData", hintKey: "waveconfig:agentAccess.scopeHintData" },
 ] as const;
 
 const TTLS = [
-    { seconds: 900, label: "15 minutes" },
-    { seconds: 1800, label: "30 minutes" },
-    { seconds: 3600, label: "1 hour" },
-    { seconds: 28800, label: "8 hours" },
+    { seconds: 900, labelKey: "waveconfig:agentAccess.ttl15m" },
+    { seconds: 1800, labelKey: "waveconfig:agentAccess.ttl30m" },
+    { seconds: 3600, labelKey: "waveconfig:agentAccess.ttl1h" },
+    { seconds: 28800, labelKey: "waveconfig:agentAccess.ttl8h" },
 ] as const;
 
 const DEFAULT_TOKEN_PATH = "~/.config/snorkeling/agent-token.json";
@@ -48,14 +58,14 @@ export function tokenState(token: { revoked: boolean; expired: boolean }): "revo
 }
 
 export function formatExpiry(expiresAt: number, now: number): string {
-    if (!expiresAt) return "no expiry";
+    if (!expiresAt) return i18n.t("waveconfig:agentAccess.expiryNone");
     const ms = expiresAt - now;
-    if (ms <= 0) return "expired";
+    if (ms <= 0) return i18n.t("waveconfig:agentAccess.expiryExpired");
     const mins = Math.round(ms / 60000);
-    if (mins < 60) return `in ${mins}m`;
+    if (mins < 60) return i18n.t("waveconfig:agentAccess.expiryMinutes", { count: mins });
     const hours = Math.round(mins / 60);
-    if (hours < 48) return `in ${hours}h`;
-    return `in ${Math.round(hours / 24)}d`;
+    if (hours < 48) return i18n.t("waveconfig:agentAccess.expiryHours", { count: hours });
+    return i18n.t("waveconfig:agentAccess.expiryDays", { count: Math.round(hours / 24) });
 }
 
 function Row({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
@@ -86,6 +96,7 @@ function Notice2({ notice }: { notice: Notice }) {
 }
 
 const AgentAccessSettingsContent = memo(() => {
+    const { t } = useTranslation("waveconfig");
     const [tokens, setTokens] = useState<AgentAuthTokenInfo[]>([]);
     const [registryPath, setRegistryPath] = useState("");
     const [loading, setLoading] = useState(true);
@@ -105,7 +116,10 @@ const AgentAccessSettingsContent = memo(() => {
             setTokens(res?.tokens ?? []);
             setRegistryPath(res?.path ?? "");
         } catch (e) {
-            setNotice({ kind: "err", text: `Could not list tokens: ${String(e)}` });
+            setNotice({
+                kind: "err",
+                text: i18n.t("waveconfig:agentAccess.noticeListFailed", { error: String(e) }),
+            });
         } finally {
             setLoading(false);
         }
@@ -122,11 +136,11 @@ const AgentAccessSettingsContent = memo(() => {
     const grant = useCallback(() => {
         setNotice(null);
         if (!name.trim()) {
-            setNotice({ kind: "err", text: "Give the agent a name so the audit log can attribute calls." });
+            setNotice({ kind: "err", text: i18n.t("waveconfig:agentAccess.noticeNameRequired") });
             return;
         }
         if (scopes.length === 0) {
-            setNotice({ kind: "err", text: "Pick at least one scope." });
+            setNotice({ kind: "err", text: i18n.t("waveconfig:agentAccess.noticeScopeRequired") });
             return;
         }
         setBusy(true);
@@ -143,9 +157,11 @@ const AgentAccessSettingsContent = memo(() => {
                 });
                 setNotice({
                     kind: "ok",
-                    text: `Token for "${res.name}" saved to ${res.outpath || outPath} (${scopeSummary(
-                        res.scopes
-                    )}). The token itself is never displayed.`,
+                    text: i18n.t("waveconfig:agentAccess.noticeTokenSaved", {
+                        name: res.name,
+                        path: res.outpath || outPath,
+                        scopes: scopeSummary(res.scopes),
+                    }),
                 });
                 await refresh();
             } catch (e) {
@@ -158,14 +174,16 @@ const AgentAccessSettingsContent = memo(() => {
 
     const revoke = useCallback(
         (selector: { name?: string; jti?: string; all?: boolean }, label: string) => {
-            if (!confirm(`Revoke ${label}? The agent's next call will be refused.`)) return;
+            if (!confirm(i18n.t("waveconfig:agentAccess.revokeConfirm", { label }))) return;
             setBusy(true);
             fireAndForget(async () => {
                 try {
                     const res = await RpcApi.AgentAuthRevokeCommand(TabRpcClient, selector);
                     setNotice({
                         kind: "ok",
-                        text: res?.revoked ? `Revoked ${res.revoked} token(s).` : "Nothing was live to revoke.",
+                        text: res?.revoked
+                            ? i18n.t("waveconfig:agentAccess.revokedCount", { count: res.revoked })
+                            : i18n.t("waveconfig:agentAccess.nothingToRevoke"),
                     });
                     await refresh();
                 } catch (e) {
@@ -189,14 +207,19 @@ const AgentAccessSettingsContent = memo(() => {
                 if (installed.length === 0) {
                     setNotice({
                         kind: "err",
-                        text: `No agent skill directory found. Install manually with: wsh agent install-skill --root <dir>`,
+                        text: i18n.t("waveconfig:agentAccess.noticeNoSkillDir"),
                     });
                 } else {
                     setNotice({
                         kind: "ok",
-                        text: `Skill installed to ${installed.length} place(s): ${installed.join(", ")}${
-                            skipped.length ? ` (skipped ${skipped.length} unused agent dirs)` : ""
-                        }`,
+                        text:
+                            i18n.t("waveconfig:agentAccess.noticeSkillInstalled", {
+                                count: installed.length,
+                                places: installed.join(", "),
+                            }) +
+                            (skipped.length
+                                ? i18n.t("waveconfig:agentAccess.noticeSkillSkipped", { count: skipped.length })
+                                : ""),
                     });
                 }
             } catch (e) {
@@ -223,7 +246,10 @@ const AgentAccessSettingsContent = memo(() => {
         if (!mcpConfig) return;
         fireAndForget(async () => {
             await navigator.clipboard.writeText(mcpConfig);
-            setNotice({ kind: "ok", text: "MCP config copied. Paste it into your agent host's config file." });
+            setNotice({
+                kind: "ok",
+                text: i18n.t("waveconfig:agentAccess.noticeMcpCopied"),
+            });
         });
     }, [mcpConfig]);
 
@@ -233,69 +259,81 @@ const AgentAccessSettingsContent = memo(() => {
     return (
         <div className="flex flex-col h-full overflow-y-auto px-4 pb-6">
             <div className="text-sm text-secondary mt-3 mb-1">
-                Let an agent <em>outside</em> Snorkeling (Claude Code, Codex, pi) read and navigate this app. External
-                processes never receive the app's own key: they get a short-lived scoped token that you can revoke here.
+                {t("waveconfig:agentAccess.introPrefix")} <em>{t("waveconfig:agentAccess.introEmphasis")}</em>{" "}
+                {t("waveconfig:agentAccess.introSuffix")}
             </div>
 
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-5">
-                Create a token
+                {t("waveconfig:agentAccess.createTokenTitle")}
             </div>
             <div className="divide-y divide-border">
-                <Row title="Agent name" description="Shown in the audit log, so make it recognisable.">
+                <Row
+                    title={t("waveconfig:agentAccess.nameTitle")}
+                    description={t("waveconfig:agentAccess.nameDescription")}
+                >
                     <input
                         className="bg-transparent border border-border rounded px-2 py-1 text-sm w-56"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        aria-label="Agent name"
+                        aria-label={t("waveconfig:agentAccess.nameAria")}
                     />
                 </Row>
-                <Row title="Scopes" description="Least privilege: observe is read-only. Destructive is never issued.">
+                <Row
+                    title={t("waveconfig:agentAccess.scopesTitle")}
+                    description={t("waveconfig:agentAccess.scopesDescription")}
+                >
                     <div className="flex items-center gap-3">
                         {SCOPES.map((s) => (
-                            <label key={s.id} className="flex items-center gap-1 text-xs" title={s.hint}>
+                            <label key={s.id} className="flex items-center gap-1 text-xs" title={t(s.hintKey)}>
                                 <input
                                     type="checkbox"
                                     checked={scopes.includes(s.id)}
                                     onChange={() => toggleScope(s.id)}
-                                    aria-label={`${s.label} scope`}
+                                    aria-label={i18n.t("waveconfig:agentAccess.scopeAria", { scope: t(s.labelKey) })}
                                 />
-                                {s.label}
+                                {t(s.labelKey)}
                             </label>
                         ))}
                     </div>
                 </Row>
-                <Row title="Lifetime" description="Short is better. Expiry is enforced by the signed token itself.">
+                <Row
+                    title={t("waveconfig:agentAccess.lifetimeTitle")}
+                    description={t("waveconfig:agentAccess.lifetimeDescription")}
+                >
                     <select
                         className="bg-transparent border border-border rounded px-2 py-1 text-sm"
                         value={ttl}
                         onChange={(e) => setTtl(Number(e.target.value))}
-                        aria-label="Token lifetime"
+                        aria-label={t("waveconfig:agentAccess.lifetimeAria")}
                     >
-                        {TTLS.map((t) => (
-                            <option key={t.seconds} value={t.seconds}>
-                                {t.label}
+                        {TTLS.map((ttlOpt) => (
+                            <option key={ttlOpt.seconds} value={ttlOpt.seconds}>
+                                {t(ttlOpt.labelKey)}
                             </option>
                         ))}
                     </select>
                 </Row>
-                <Row title="Save to" description="Written 0600, never displayed. Point your host's env var here.">
+                <Row
+                    title={t("waveconfig:agentAccess.saveToTitle")}
+                    description={t("waveconfig:agentAccess.saveToDescription")}
+                >
                     <input
                         className="bg-transparent border border-border rounded px-2 py-1 text-sm w-72 font-mono"
                         value={outPath}
                         onChange={(e) => setOutPath(e.target.value)}
-                        aria-label="Token file path"
+                        aria-label={t("waveconfig:agentAccess.saveToAria")}
                     />
                 </Row>
                 <Row
-                    title="Generate"
-                    description="Creates the token and writes the file. Nothing is printed to the terminal."
+                    title={t("waveconfig:agentAccess.generateTitle")}
+                    description={t("waveconfig:agentAccess.generateDescription")}
                 >
                     <button
                         className="border border-border rounded px-3 py-1 text-sm hover:bg-hoverbg disabled:opacity-50"
                         onClick={grant}
                         disabled={busy}
                     >
-                        Create token
+                        {t("waveconfig:agentAccess.generateButton")}
                     </button>
                 </Row>
             </div>
@@ -303,65 +341,82 @@ const AgentAccessSettingsContent = memo(() => {
 
             <div className="flex items-center justify-between mt-6">
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Active tokens {loading ? "" : `(${liveCount} live / ${tokens.length} total)`}
+                    {t("waveconfig:agentAccess.activeTokens")}{" "}
+                    {loading
+                        ? ""
+                        : i18n.t("waveconfig:agentAccess.activeTokensCount", {
+                              live: liveCount,
+                              total: tokens.length,
+                          })}
                 </div>
                 <div className="flex items-center gap-2">
                     <button
                         className="border border-border rounded px-2 py-1 text-xs hover:bg-hoverbg"
                         onClick={() => fireAndForget(refresh)}
                     >
-                        Refresh
+                        {t("waveconfig:agentAccess.refresh")}
                     </button>
                     <button
                         className="border border-border rounded px-2 py-1 text-xs text-error hover:bg-hoverbg disabled:opacity-50"
-                        onClick={() => revoke({ all: true }, "ALL tokens")}
+                        onClick={() => revoke({ all: true }, i18n.t("waveconfig:agentAccess.revokeAllLabel"))}
                         disabled={busy || liveCount === 0}
                     >
-                        Revoke all
+                        {t("waveconfig:agentAccess.revokeAll")}
                     </button>
                 </div>
             </div>
             <div className="mt-2 border border-border rounded">
                 {tokens.length === 0 ? (
                     <div className="text-xs text-muted-foreground px-3 py-3">
-                        {loading ? "Loading…" : "No token has been created yet."}
+                        {loading ? t("waveconfig:agentAccess.loadingTokens") : t("waveconfig:agentAccess.noTokens")}
                     </div>
                 ) : (
                     <table className="w-full text-xs">
                         <thead className="text-muted-foreground">
                             <tr className="text-left">
-                                <th className="px-3 py-1.5 font-normal">Name</th>
-                                <th className="px-3 py-1.5 font-normal">Scopes</th>
-                                <th className="px-3 py-1.5 font-normal">Expires</th>
-                                <th className="px-3 py-1.5 font-normal">State</th>
+                                <th className="px-3 py-1.5 font-normal">{t("waveconfig:agentAccess.thName")}</th>
+                                <th className="px-3 py-1.5 font-normal">{t("waveconfig:agentAccess.thScopes")}</th>
+                                <th className="px-3 py-1.5 font-normal">{t("waveconfig:agentAccess.thExpires")}</th>
+                                <th className="px-3 py-1.5 font-normal">{t("waveconfig:agentAccess.thState")}</th>
                                 <th className="px-3 py-1.5 font-normal">jti</th>
                                 <th className="px-3 py-1.5" />
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                            {tokens.map((t) => {
-                                const state = tokenState(t);
+                            {tokens.map((tk) => {
+                                const state = tokenState(tk);
                                 return (
-                                    <tr key={`${t.name}-${t.jtiprefix}`}>
-                                        <td className="px-3 py-1.5">{t.name}</td>
-                                        <td className="px-3 py-1.5 font-mono">{scopeSummary(t.scopes)}</td>
-                                        <td className="px-3 py-1.5">{formatExpiry(t.expiresat, now)}</td>
+                                    <tr key={`${tk.name}-${tk.jtiprefix}`}>
+                                        <td className="px-3 py-1.5">{tk.name}</td>
+                                        <td className="px-3 py-1.5 font-mono">{scopeSummary(tk.scopes)}</td>
+                                        <td className="px-3 py-1.5">{formatExpiry(tk.expiresat, now)}</td>
                                         <td
                                             className={cn(
                                                 "px-3 py-1.5",
                                                 state === "live" ? "text-primary" : "text-muted-foreground"
                                             )}
                                         >
-                                            {state}
+                                            {state === "live"
+                                                ? t("waveconfig:agentAccess.stateLive")
+                                                : state === "expired"
+                                                  ? t("waveconfig:agentAccess.stateExpired")
+                                                  : t("waveconfig:agentAccess.stateRevoked")}
                                         </td>
-                                        <td className="px-3 py-1.5 font-mono text-muted-foreground">{t.jtiprefix}</td>
+                                        <td className="px-3 py-1.5 font-mono text-muted-foreground">{tk.jtiprefix}</td>
                                         <td className="px-3 py-1.5 text-right">
                                             <button
                                                 className="border border-border rounded px-2 py-0.5 hover:bg-hoverbg disabled:opacity-30"
-                                                onClick={() => revoke({ jti: t.jtiprefix }, `token ${t.jtiprefix}`)}
+                                                onClick={() =>
+                                                    revoke(
+                                                        { jti: tk.jtiprefix },
+                                                        i18n.t("waveconfig:agentAccess.revokeOneLabel", {
+                                                            jti: tk.jtiprefix,
+                                                        })
+                                                    )
+                                                }
                                                 disabled={busy || state === "revoked"}
                                             >
-                                                Revoke
+                                                {t("waveconfig:agentAccess.revoke")}
                                             </button>
                                         </td>
                                     </tr>
@@ -373,38 +428,41 @@ const AgentAccessSettingsContent = memo(() => {
             </div>
             {registryPath && (
                 <div className="text-xs text-muted-foreground mt-1 font-mono truncate" title={registryPath}>
-                    registry: {registryPath} (stores no tokens)
+                    {t("waveconfig:agentAccess.registryPrefix")} {registryPath} {t("waveconfig:agentAccess.registryNote")}
                 </div>
             )}
 
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-6">
-                Give your agent the skill
+                {t("waveconfig:agentAccess.skillTitle")}
             </div>
             <div className="divide-y divide-border">
                 <Row
-                    title="Install skill"
-                    description="Copies the bundled skill into the agent directories that exist on this machine (~/.claude, ~/.codex, ~/.agents)."
+                    title={t("waveconfig:agentAccess.installSkillTitle")}
+                    description={t("waveconfig:agentAccess.installSkillDescription")}
                 >
                     <button
                         className="border border-border rounded px-3 py-1 text-sm hover:bg-hoverbg disabled:opacity-50"
                         onClick={installSkill}
                         disabled={busy}
                     >
-                        Install
+                        {t("waveconfig:agentAccess.install")}
                     </button>
                 </Row>
             </div>
 
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-6">
-                Register the MCP server
+                {t("waveconfig:agentAccess.mcpTitle")}
             </div>
             <div className="divide-y divide-border">
-                <Row title="Host" description="Pick the agent host you are configuring.">
+                <Row
+                    title={t("waveconfig:agentAccess.hostTitle")}
+                    description={t("waveconfig:agentAccess.hostDescription")}
+                >
                     <select
                         className="bg-transparent border border-border rounded px-2 py-1 text-sm"
                         value={mcpHost}
                         onChange={(e) => setMcpHost(e.target.value)}
-                        aria-label="MCP host"
+                        aria-label={t("waveconfig:agentAccess.hostAria")}
                     >
                         <option value="claude">Claude Code / Cursor</option>
                         <option value="codex">Codex</option>
@@ -413,7 +471,7 @@ const AgentAccessSettingsContent = memo(() => {
                         className="border border-border rounded px-2 py-1 text-sm hover:bg-hoverbg"
                         onClick={buildMCPConfig}
                     >
-                        Build
+                        {t("waveconfig:agentAccess.build")}
                     </button>
                 </Row>
             </div>
@@ -426,15 +484,15 @@ const AgentAccessSettingsContent = memo(() => {
                         className="mt-1 border border-border rounded px-2 py-1 text-xs hover:bg-hoverbg"
                         onClick={copyMCPConfig}
                     >
-                        Copy config
+                        {t("waveconfig:agentAccess.copyConfig")}
                     </button>
                 </div>
             )}
 
             <div className="mt-6 text-xs text-muted-foreground">
-                Every call is written to <span className="font-mono">agent-data/audit/control-audit.jsonl</span> (time,
-                command, agent name, jti prefix, allowed/denied). Tokens are rate limited to 60 calls per minute. The
-                MCP transport is stdio only — no port is opened.
+                {t("waveconfig:agentAccess.auditPrefix")}{" "}
+                <span className="font-mono">agent-data/audit/control-audit.jsonl</span>{" "}
+                {t("waveconfig:agentAccess.auditSuffix")}
             </div>
         </div>
     );

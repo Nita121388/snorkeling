@@ -14,6 +14,7 @@ import { agentStatusViewLabel, type AgentStatusView } from "@/app/agent-status/a
 import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import type { AgentDisplayState, AgentPhase } from "@/app/agent-status/agent-status-types";
+import { i18n } from "@/i18n/config";
 
 // ── block 类型分类 ──
 
@@ -57,16 +58,16 @@ export function countTabBlocks(blocks: readonly (Block | null)[]): TabBlockCount
 }
 
 const NonAgentChipOrder: readonly TabBlockKind[] = ["chat", "file", "note", "terminal", "other"];
-const NonAgentChipNoun: Record<TabBlockKind, string> = {
-    agent: "agent",
-    chat: "chat",
-    file: "file",
-    note: "note",
-    terminal: "term",
-    other: "other",
-};
+// as const: labelKey 是字面量联合，i18n.t 才能过严格重载（Pattern F）。
+const NonAgentChipKey = {
+    chat: "tab:infoCard.chipChat",
+    file: "tab:infoCard.chipFile",
+    note: "tab:infoCard.chipNote",
+    terminal: "tab:infoCard.chipTerm",
+    other: "tab:infoCard.chipOther",
+} as const;
 
-/** 非 agent 类型的内容构成 chips（`2 chat` / `12 file` …）；数量为 0 的类型不产出。 */
+/** 非 agent 类型的内容构成 chips（`2 chat` / `12 files` …）；数量为 0 的类型不产出。 */
 export function nonAgentChips(counts: TabBlockCounts): { kind: TabBlockKind; label: string }[] {
     const chips: { kind: TabBlockKind; label: string }[] = [];
     for (const kind of NonAgentChipOrder) {
@@ -74,8 +75,7 @@ export function nonAgentChips(counts: TabBlockCounts): { kind: TabBlockKind; lab
         if (n <= 0) {
             continue;
         }
-        const noun = NonAgentChipNoun[kind];
-        chips.push({ kind, label: `${n} ${noun}${n > 1 ? "s" : ""}` });
+        chips.push({ kind, label: i18n.t(NonAgentChipKey[kind], { count: n }) });
     }
     return chips;
 }
@@ -117,7 +117,7 @@ export interface AgentStatePresentationWithRead extends AgentStatePresentation {
  */
 export function presentAgentStateFromView(view: AgentStatusView | null): AgentStatePresentationWithRead {
     if (view == null) {
-        return { kind: "idle", label: "Idle", read: "seen" };
+        return { kind: "idle", label: i18n.t("tab:infoCard.statusIdle"), read: "seen" };
     }
     const kind: AgentStateKind =
         view.tone === "working" && view.phase === "thinking"
@@ -152,32 +152,35 @@ export function agentPillText(chipView: { label: string; runtime: string } | nul
  */
 export function presentAgentState(status: AgentStateInput | null | undefined): AgentStatePresentation {
     if (status == null) {
-        return { kind: "idle", label: "Idle" };
+        return { kind: "idle", label: i18n.t("tab:infoCard.statusIdle") };
     }
     const state = (status.state ?? "").trim();
     if (state === "working") {
         if (status.phase === "thinking") {
-            return { kind: "thinking", label: "Thinking" };
+            return { kind: "thinking", label: i18n.t("tab:infoCard.statusThinking") };
         }
         if (status.phase === "tool") {
             const toolName = (status.toolName ?? "").trim();
-            return { kind: "working", label: toolName !== "" ? `Tool · ${toolName}` : "Tools" };
+            return {
+                kind: "working",
+                label: toolName !== "" ? i18n.t("tab:infoCard.statusTool", { name: toolName }) : i18n.t("tab:infoCard.statusTools"),
+            };
         }
-        return { kind: "working", label: "Working" };
+        return { kind: "working", label: i18n.t("tab:infoCard.statusWorking") };
     }
     switch (state) {
         case "done":
-            return { kind: "done", label: "Done" };
+            return { kind: "done", label: i18n.t("tab:infoCard.statusDone") };
         case "blocked":
-            return { kind: "blocked", label: "Blocked" };
+            return { kind: "blocked", label: i18n.t("tab:infoCard.statusBlocked") };
         case "error":
-            return { kind: "error", label: "Error" };
+            return { kind: "error", label: i18n.t("tab:infoCard.statusError") };
         case "rate-limited":
-            return { kind: "rate-limited", label: "Rate limited" };
+            return { kind: "rate-limited", label: i18n.t("tab:infoCard.statusRateLimited") };
         case "stale":
-            return { kind: "stale", label: "Stale" };
+            return { kind: "stale", label: i18n.t("tab:infoCard.statusStale") };
         default:
-            return { kind: "idle", label: "Idle" };
+            return { kind: "idle", label: i18n.t("tab:infoCard.statusIdle") };
     }
 }
 
@@ -189,17 +192,22 @@ export function presentAgentState(status: AgentStateInput | null | undefined): A
  */
 export function agentGroupLabel(providers: readonly string[]): string {
     if (providers.length === 0) {
-        return "Agents";
+        return i18n.t("tab:infoCard.agentGroup");
     }
     const normalized = providers.map((p) => p.trim().toLowerCase());
     const first = normalized[0];
     if (first !== "" && normalized.every((p) => p === first)) {
-        return `Agents · ${providers[0].trim()} ×${providers.length}`;
+        return i18n.t("tab:infoCard.agentGroupWithProvider", { provider: providers[0].trim(), count: providers.length });
     }
-    return "Agents";
+    return i18n.t("tab:infoCard.agentGroup");
 }
 
-/** 分组标题里已经写了 provider 时，行内不再重复显示。 */
+/** 分组标题里已经写了 provider 时，行内不再重复显示。判定只看 provider 是否全部一致，不比对文案。 */
 export function agentGroupHidesProvider(providers: readonly string[]): boolean {
-    return agentGroupLabel(providers) !== "Agents";
+    if (providers.length === 0) {
+        return false;
+    }
+    const normalized = providers.map((p) => p.trim().toLowerCase());
+    const first = normalized[0];
+    return first !== "" && normalized.every((p) => p === first);
 }

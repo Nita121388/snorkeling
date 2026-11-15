@@ -19,6 +19,7 @@ import { fireAndForget } from "@/util/util";
 import { atom, PrimitiveAtom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { debounce } from "throttle-debounce";
 
 const SNORKELING_REPO_URL = "https://github.com/Nita121388/snorkeling";
@@ -40,6 +41,7 @@ const InitPage = ({
     isCompact: boolean;
     telemetryUpdateFn: (value: boolean) => Promise<void>;
 }) => {
+    const { t } = useTranslation("onboarding");
     const telemetrySetting = useSettingsKeyAtom("telemetry:enabled");
     const clientData = useAtomValue(ClientModel.getInstance().clientAtom);
     const [telemetryEnabled, setTelemetryEnabled] = useState<boolean>(!!telemetrySetting);
@@ -79,7 +81,7 @@ const InitPage = ({
         );
     };
 
-    const label = telemetryEnabled ? "Enabled" : "Disabled";
+    const label = telemetryEnabled ? t("onboarding:init.telemetryEnabled") : t("onboarding:init.telemetryDisabled");
 
     return (
         <div className="flex flex-col h-full">
@@ -89,7 +91,7 @@ const InitPage = ({
                 <div className={`${isCompact ? "" : "mb-2.5"} flex justify-center`}>
                     <Logo />
                 </div>
-                <div className="text-center text-[25px] font-normal text-foreground">Welcome to Snorkeling</div>
+                <div className="text-center text-[25px] font-normal text-foreground">{t("onboarding:init.welcomeTitle")}</div>
             </header>
             <OverlayScrollbarsComponent
                 className="flex-1 overflow-y-auto min-h-0"
@@ -109,11 +111,11 @@ const InitPage = ({
                             </a>
                         </div>
                         <div className="flex flex-col items-start gap-1 flex-1">
-                            <div className="text-foreground text-base leading-[18px]">Project source and repositories</div>
+                            <div className="text-foreground text-base leading-[18px]">{t("onboarding:init.repoTitle")}</div>
                             <div className="text-secondary leading-5">
-                                Snorkeling is a personalized customization project based on Wave Terminal upstream.
+                                {t("onboarding:init.repoIntro")}
                                 <br />
-                                Main project repository:{" "}
+                                {t("onboarding:init.mainRepoLabel")}{" "}
                                 <a
                                     target="_blank"
                                     href={`${SNORKELING_REPO_URL}?ref=install`}
@@ -121,12 +123,12 @@ const InitPage = ({
                                     className="text-accent"
                                     onClick={handleStarClick}
                                 >
-                                    GitHub&nbsp;(Nita121388/snorkeling)
+                                    {t("onboarding:init.mainRepoLink")}
                                 </a>
                                 <br />
-                                Upstream repository:{" "}
+                                {t("onboarding:init.upstreamRepoLabel")}{" "}
                                 <a target="_blank" href={`${WAVE_UPSTREAM_REPO_URL}?ref=install`} rel="noopener" className="text-accent">
-                                    GitHub&nbsp;(wavetermdev/waveterm)
+                                    {t("onboarding:init.upstreamRepoLink")}
                                 </a>
                             </div>
                         </div>
@@ -138,13 +140,12 @@ const InitPage = ({
                             </a>
                         </div>
                         <div className="flex flex-col items-start gap-1 flex-1">
-                            <div className="text-foreground text-base leading-[18px]">Join our Community</div>
+                            <div className="text-foreground text-base leading-[18px]">{t("onboarding:init.communityTitle")}</div>
                             <div className="text-secondary leading-5">
-                                Get help, submit feature requests, report bugs, or just chat with fellow terminal
-                                enthusiasts.
+                                {t("onboarding:init.communityIntro")}
                                 <br />
                                 <a target="_blank" href={WAVE_DISCORD_URL} rel="noopener" className="text-accent">
-                                    Join the Wave&nbsp;Discord&nbsp;Channel
+                                    {t("onboarding:init.communityLink")}
                                 </a>
                             </div>
                         </div>
@@ -155,7 +156,7 @@ const InitPage = ({
                         </div>
                         <div className="flex flex-col items-start gap-1 flex-1">
                             <div className="text-secondary leading-5">
-                                Anonymous usage data helps us improve features you use.
+                                {t("onboarding:init.telemetryIntro")}
                                 <br />
                                 <a
                                     className="text-secondary! hover:underline!"
@@ -163,7 +164,7 @@ const InitPage = ({
                                     href="https://waveterm.dev/privacy"
                                     rel="noopener"
                                 >
-                                    Privacy Policy
+                                    {t("onboarding:init.privacyLink")}
                                 </a>
                             </div>
                             <label className="flex items-center gap-2 cursor-pointer text-secondary">
@@ -182,7 +183,7 @@ const InitPage = ({
             <footer className={`unselectable flex-shrink-0 ${isCompact ? "mt-2" : "mt-5"}`}>
                 <div className="flex flex-row items-center justify-center [&>button]:!px-5 [&>button]:!py-2 [&>button]:text-sm [&>button:not(:first-child)]:ml-2.5">
                     <Button className="font-[600]" onClick={acceptTos}>
-                        Continue
+                        {t("onboarding:init.continueButton")}
                     </Button>
                 </div>
             </footer>
@@ -191,6 +192,7 @@ const InitPage = ({
 };
 
 const NoTelemetryStarPage = ({ isCompact }: { isCompact: boolean }) => {
+    const { t } = useTranslation("onboarding");
     const setPageName = useSetAtom(pageNameAtom);
 
     const handleStarClick = async () => {
@@ -234,7 +236,7 @@ const NoTelemetryStarPage = ({ isCompact }: { isCompact: boolean }) => {
                 <div className={`flex justify-center`}>
                     <Logo />
                 </div>
-                <div className="text-center text-[25px] font-normal text-foreground">Telemetry Disabled ✓</div>
+                <div className="text-center text-[25px] font-normal text-foreground">{t("onboarding:noTelemetryStar.title")}</div>
             </header>
             <OverlayScrollbarsComponent
                 className="flex-1 overflow-y-auto min-h-0"
@@ -242,21 +244,18 @@ const NoTelemetryStarPage = ({ isCompact }: { isCompact: boolean }) => {
             >
                 <div className="flex flex-col items-center gap-6 w-full mb-2 unselectable">
                     <div className="text-center text-secondary leading-relaxed max-w-md">
-                        <p className="mb-4">No problem, we respect your privacy.</p>
-                        <p className="mb-4">
-                            Snorkeling is a customized project based on Wave Terminal. If this customization is useful,
-                            starring the Snorkeling repository helps us keep maintaining it.
-                        </p>
+                        <p className="mb-4">{t("onboarding:noTelemetryStar.introLine1")}</p>
+                        <p className="mb-4">{t("onboarding:noTelemetryStar.introLine2")}</p>
                     </div>
                 </div>
             </OverlayScrollbarsComponent>
             <footer className={`unselectable flex-shrink-0 mt-2`}>
                 <div className="flex flex-row items-center justify-center gap-2.5 [&>button]:!px-5 [&>button]:!py-2 [&>button]:text-sm [&>button]:!h-[37px]">
                     <Button className="outlined green font-[600]" onClick={handleStarClick}>
-                        ⭐ Star Snorkeling
+                        {t("onboarding:noTelemetryStar.starButton")}
                     </Button>
                     <Button className="outlined grey font-[600]" onClick={handleMaybeLater}>
-                        Maybe Later
+                        {t("onboarding:noTelemetryStar.maybeLaterButton")}
                     </Button>
                 </div>
             </footer>

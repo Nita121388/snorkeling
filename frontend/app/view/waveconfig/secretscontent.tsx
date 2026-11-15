@@ -5,6 +5,7 @@ import { SecretNameRegex, type WaveConfigViewModel } from "@/app/view/waveconfig
 import { cn } from "@/util/util";
 import { useAtomValue, useSetAtom } from "jotai";
 import { memo, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ErrorDisplayProps {
     message: string;
@@ -37,17 +38,18 @@ const LoadingSpinner = memo(({ message }: { message: string }) => {
 LoadingSpinner.displayName = "LoadingSpinner";
 
 const EmptyState = memo(({ onAddSecret }: { onAddSecret: () => void }) => {
+    const { t } = useTranslation("waveconfig");
     return (
         <div className="flex flex-col items-center justify-center gap-4 py-12 h-full bg-panel rounded-lg">
             <i className="fa-sharp fa-solid fa-key text-4xl text-muted" />
-            <h3 className="text-lg font-semibold text-secondary">No Secrets</h3>
-            <p className="text-muted">Add a secret to get started</p>
+            <h3 className="text-lg font-semibold text-secondary">{t("waveconfig:secrets.emptyTitle")}</h3>
+            <p className="text-muted">{t("waveconfig:secrets.emptyHint")}</p>
             <button
                 className="flex items-center gap-2 px-4 py-2 bg-action text-actiontext hover:bg-actionhover rounded cursor-pointer transition-colors"
                 onClick={onAddSecret}
             >
                 <i className="fa-sharp fa-solid fa-plus" />
-                <span className="font-medium">Add New Secret</span>
+                <span className="font-medium">{t("waveconfig:secrets.addNewSecret")}</span>
             </button>
         </div>
     );
@@ -55,11 +57,12 @@ const EmptyState = memo(({ onAddSecret }: { onAddSecret: () => void }) => {
 EmptyState.displayName = "EmptyState";
 
 const CLIInfoBubble = memo(() => {
+    const { t } = useTranslation("waveconfig");
     return (
         <div className="flex flex-col gap-2 p-4 m-4 bg-panel rounded-lg">
             <div className="flex items-center gap-2">
                 <i className="fa-sharp fa-solid fa-terminal text-secondary" />
-                <div className="text-sm font-medium text-primary">CLI Access</div>
+                <div className="text-sm font-medium text-primary">{t("waveconfig:secrets.cliAccess")}</div>
             </div>
             <div className="font-mono text-xs bg-surface-strong px-3 py-2 rounded leading-relaxed text-secondary">
                 wsh secret list
@@ -80,6 +83,7 @@ interface SecretListViewProps {
 }
 
 const SecretListView = memo(({ secretNames, onSelectSecret, onAddSecret }: SecretListViewProps) => {
+    const { t } = useTranslation("waveconfig");
     return (
         <div className="flex flex-col h-full w-full rounded-lg">
             <div className="flex flex-col divide-y divide-border">
@@ -101,7 +105,7 @@ const SecretListView = memo(({ secretNames, onSelectSecret, onAddSecret }: Secre
                     onClick={onAddSecret}
                 >
                     <i className="fa-sharp fa-solid fa-plus text-accent" />
-                    <span className="font-medium text-accent">Add New Secret</span>
+                    <span className="font-medium text-accent">{t("waveconfig:secrets.addNewSecret")}</span>
                 </div>
             </div>
             <CLIInfoBubble />
@@ -130,13 +134,14 @@ const AddSecretForm = memo(
         onCancel,
         onSubmit,
     }: AddSecretFormProps) => {
+        const { t } = useTranslation("waveconfig");
         const isNameInvalid = newSecretName !== "" && !SecretNameRegex.test(newSecretName);
 
         return (
             <div className="flex flex-col gap-4 min-h-full p-6 bg-panel rounded-lg">
-                <h3 className="text-lg font-semibold">Add New Secret</h3>
+                <h3 className="text-lg font-semibold">{t("waveconfig:secrets.addNewSecret")}</h3>
                 <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Secret Name</label>
+                    <label className="text-sm font-medium">{t("waveconfig:secrets.secretName")}</label>
                     <input
                         type="text"
                         className={cn(
@@ -149,16 +154,16 @@ const AddSecretForm = memo(
                         disabled={isLoading}
                     />
                     <div className="text-xs text-secondary">
-                        Must start with a letter and contain only letters, numbers, and underscores
+                        {t("waveconfig:secrets.nameRule")}
                     </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Secret Value</label>
+                    <label className="text-sm font-medium">{t("waveconfig:secrets.secretValue")}</label>
                     <textarea
                         className="px-3 py-2 bg-surface border border-border rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent focus:border-accent font-mono text-sm"
                         value={newSecretValue}
                         onChange={(e) => onValueChange(e.target.value)}
-                        placeholder="Enter secret value..."
+                        placeholder={t("waveconfig:secrets.valuePlaceholder")}
                         disabled={isLoading}
                         rows={4}
                     />
@@ -169,7 +174,7 @@ const AddSecretForm = memo(
                         onClick={onCancel}
                         disabled={isLoading}
                     >
-                        Cancel
+                        {t("common:common.cancel")}
                     </button>
                     <button
                         className="px-4 py-2 bg-action text-actiontext hover:bg-actionhover rounded cursor-pointer disabled:opacity-50 disabled:cursor-default flex items-center gap-2"
@@ -179,10 +184,10 @@ const AddSecretForm = memo(
                         {isLoading ? (
                             <>
                                 <i className="fa-sharp fa-solid fa-spinner fa-spin" />
-                                Adding...
+                                {t("waveconfig:secrets.adding")}
                             </>
                         ) : (
-                            "Add Secret"
+                            t("waveconfig:secrets.addSecret")
                         )}
                     </button>
                 </div>
@@ -197,6 +202,7 @@ interface SecretDetailViewProps {
 }
 
 const SecretDetailView = memo(({ model }: SecretDetailViewProps) => {
+    const { t } = useTranslation("waveconfig");
     const secretName = useAtomValue(model.selectedSecretAtom);
     const secretValue = useAtomValue(model.secretValueAtom);
     const secretShown = useAtomValue(model.secretShownAtom);
@@ -214,7 +220,7 @@ const SecretDetailView = memo(({ model }: SecretDetailViewProps) => {
                 <h3 className="text-lg font-semibold">{secretName}</h3>
             </div>
             <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Secret Value</label>
+                <label className="text-sm font-medium">{t("waveconfig:secrets.secretValue")}</label>
                 <textarea
                     ref={(ref) => {
                         model.secretValueRef = ref;
@@ -232,14 +238,14 @@ const SecretDetailView = memo(({ model }: SecretDetailViewProps) => {
                     }}
                     disabled={isLoading}
                     rows={6}
-                    placeholder={!secretShown ? "Enter new secret value..." : ""}
+                    placeholder={!secretShown ? t("waveconfig:secrets.newValuePlaceholder") : ""}
                 />
                 {!secretShown && (
                     <div className="text-sm text-secondary">
-                        The current secret value is not shown by default for security purposes.{" "}
+                        {t("waveconfig:secrets.notShownNote")}{" "}
                         {isLoading ? (
                             <span className="text-muted">
-                                <i className="fa-sharp fa-solid fa-spinner fa-spin" /> Loading...
+                                <i className="fa-sharp fa-solid fa-spinner fa-spin" /> {t("common:common.loading")}
                             </span>
                         ) : (
                             <button
@@ -247,7 +253,7 @@ const SecretDetailView = memo(({ model }: SecretDetailViewProps) => {
                                 onClick={() => model.showSecret()}
                                 disabled={isLoading}
                             >
-                                Show Secret
+                                {t("waveconfig:secrets.showSecret")}
                             </button>
                         )}
                     </div>
@@ -258,17 +264,17 @@ const SecretDetailView = memo(({ model }: SecretDetailViewProps) => {
                     className="px-4 py-2 bg-error hover:bg-error/90 text-primary rounded cursor-pointer disabled:opacity-50 disabled:cursor-default flex items-center gap-2"
                     onClick={() => model.deleteSecret()}
                     disabled={isLoading}
-                    title="Delete this secret"
+                    title={t("waveconfig:secrets.deleteThisSecret")}
                 >
                     {isLoading ? (
                         <>
                             <i className="fa-sharp fa-solid fa-spinner fa-spin" />
-                            Deleting...
+                            {t("waveconfig:secrets.deleting")}
                         </>
                     ) : (
                         <>
                             <i className="fa-sharp fa-solid fa-trash" />
-                            Delete
+                            {t("common:common.delete")}
                         </>
                     )}
                 </button>
@@ -278,7 +284,7 @@ const SecretDetailView = memo(({ model }: SecretDetailViewProps) => {
                         onClick={() => model.closeSecretView()}
                         disabled={isLoading}
                     >
-                        Cancel
+                        {t("common:common.cancel")}
                     </button>
                     <button
                         className="px-4 py-2 bg-action text-actiontext hover:bg-actionhover rounded cursor-pointer disabled:opacity-50 disabled:cursor-default flex items-center gap-2"
@@ -288,10 +294,10 @@ const SecretDetailView = memo(({ model }: SecretDetailViewProps) => {
                         {isLoading ? (
                             <>
                                 <i className="fa-sharp fa-solid fa-spinner fa-spin" />
-                                Saving...
+                                {t("waveconfig:secrets.saving")}
                             </>
                         ) : (
-                            "Save"
+                            t("common:common.save")
                         )}
                     </button>
                 </div>
@@ -306,6 +312,7 @@ interface SecretsContentProps {
 }
 
 export const SecretsContent = memo(({ model }: SecretsContentProps) => {
+    const { t } = useTranslation("waveconfig");
     const secretNames = useAtomValue(model.secretNamesAtom);
     const selectedSecret = useAtomValue(model.selectedSecretAtom);
     const isLoading = useAtomValue(model.isLoadingAtom);
@@ -336,7 +343,7 @@ export const SecretsContent = memo(({ model }: SecretsContentProps) => {
         return (
             <div className="w-full h-full">
                 <div>
-                    <LoadingSpinner message="Loading secrets..." />
+                    <LoadingSpinner message={t("waveconfig:secrets.loadingSecrets")} />
                 </div>
             </div>
         );

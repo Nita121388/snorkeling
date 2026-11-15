@@ -123,11 +123,12 @@ const listButtonsProbe = `(() => {
         .filter((text) => text !== "");
 })()`;
 
-const findButtonProbe = (label) => `(() => {
+const findButtonProbe = (labels) => `(() => {
     const visible = ${VISIBLE.toString()};
-    const wanted = ${JSON.stringify(label)};
+    const wanted = ${JSON.stringify(Array.isArray(labels) ? labels : [labels])};
     for (const el of document.querySelectorAll("button, [role=button], [role=tab]")) {
-        if ((el.textContent || "").trim() !== wanted) continue;
+        const text = (el.textContent || "").trim();
+        if (!wanted.includes(text)) continue;
         if (!visible(el)) continue;
         const r = el.getBoundingClientRect();
         return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
@@ -297,7 +298,8 @@ async function main() {
   log(`picked agent provider: ${pickedLabel}`);
   await client.click(piBtn.x, piBtn.y);
   await sleep(700);
-  const tuiBtn = await client.evaluate(findButtonProbe("TUI 终端"));
+  // TUI 终端 / Current Tab 的文案随 ui:locale 走资源，两种语言都认（docs/docs/i18n.mdx Tooling notes）。
+  const tuiBtn = await client.evaluate(findButtonProbe(["TUI 终端", "TUI terminal"]));
   if (tuiBtn != null) {
     await client.click(tuiBtn.x, tuiBtn.y);
     await sleep(500);
@@ -307,7 +309,7 @@ async function main() {
     await client.click(pathRow.x, pathRow.y);
     await sleep(500);
   }
-  const currentTab = await client.evaluate(findButtonProbe("Current Tab"));
+  const currentTab = await client.evaluate(findButtonProbe(["Current Tab", "当前 Tab"]));
   if (currentTab == null) throw new Error("New Agent 面板里找不到 Current Tab 按钮");
   await client.click(currentTab.x, currentTab.y);
   log("requested new Pi agent block (Current Tab)");

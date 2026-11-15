@@ -9,6 +9,7 @@ import { globalStore } from "@/store/jotaiStore";
 import { useAtomValue } from "jotai";
 import { loadable } from "jotai/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { SpecializedViewProps } from "./preview";
 import {
     getLiveScrollSourceLineAtom,
@@ -63,6 +64,7 @@ function MarkdownPreview({
     frontmatterBlock,
     waveBlockRenderers,
 }: SpecializedViewProps & MarkdownPreviewOptions) {
+    const { t } = useTranslation("preview");
     const connName = useAtomValue(model.connection);
     const fileInfo = useAtomValue(model.statFile);
     const searchTargetLine = useAtomValue(model.searchTargetLine);
@@ -161,6 +163,7 @@ function MarkdownPreview({
 }
 
 function MarkdownLivePreview({ model }: SpecializedViewProps) {
+    const { t } = useTranslation("preview");
     const sourceBlockId = useAtomValue(model.liveSourceBlockId);
     const sourceBlock = useAtomValue(model.liveSourceBlock);
     const [sourceModel, setSourceModel] = useState<PreviewModel | null>(null);
@@ -325,7 +328,9 @@ function MarkdownLivePreview({ model }: SpecializedViewProps) {
 
     if (sourceBlock == null) {
         return (
-            <div className="flex h-full w-full items-center justify-center text-secondary">Source editor closed</div>
+            <div className="flex h-full w-full items-center justify-center text-secondary">
+                {t("preview:markdown.sourceEditorClosed")}
+            </div>
         );
     }
 

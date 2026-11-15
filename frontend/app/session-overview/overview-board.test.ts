@@ -1,7 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { i18n, initI18n } from "@/i18n/config";
 import {
     formatBoardAge,
     groupBlocksByStatus,
@@ -17,10 +18,11 @@ import {
     OverviewBoardGroupDefault,
     OverviewBoardGroups,
     OverviewBoardGroupStorageKey,
-    OverviewBoardProjectFallbackTitle,
-    OverviewBoardProviderFallbackTitle,
+    getOverviewBoardProjectFallbackTitle,
+    getOverviewBoardProviderFallbackTitle,
     OverviewBoardStatuses,
-    OverviewBoardTagFallbackTitle,
+    getOverviewBoardTagFallbackTitle,
+    getOverviewBoardColumnTitle,
     OverviewViewModeDefault,
     OverviewViewModeStorageKey,
     projectNameFromPath,
@@ -35,6 +37,11 @@ import {
     writeOverviewViewMode,
     type OverviewViewModeStorageLike,
 } from "./overview-board-model";
+
+// i18n 资源为 en 真源：迁移后列标题/兜底列名由 i18n.t 产出，先把实例初始化到 en（Pattern I）。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 function block(blockId: string) {
     return { blockId };
@@ -75,7 +82,11 @@ describe("groupBlocksByStatus", () => {
         });
 
         expect(columns.map((column) => column.status)).toEqual(["blocked", "working", "idle"]);
-        expect(columns.map((column) => column.title)).toEqual(["待我处理", "进行中", "空闲"]);
+        expect(columns.map((column) => column.title)).toEqual([
+            getOverviewBoardColumnTitle("blocked"),
+            getOverviewBoardColumnTitle("working"),
+            getOverviewBoardColumnTitle("idle"),
+        ]);
     });
 
     it("keeps input order inside a column", () => {
@@ -326,7 +337,7 @@ describe("resolveBoardCardTitle", () => {
             "snorkeling"
         );
         expect(resolveBoardCardTitle({ isAgentLike: false, tabName: "main" })).toBe("main");
-        expect(resolveBoardCardTitle({ isAgentLike: false })).toBe("Untitled");
+        expect(resolveBoardCardTitle({ isAgentLike: false })).toBe(i18n.t("session-overview:dialog.untitled"));
     });
 
     it("collapses whitespace and ignores blank strings", () => {
@@ -401,7 +412,7 @@ describe("groupOverviewCardsByTab", () => {
     it("never produces empty columns and tolerates blank tab names", () => {
         const columns = groupOverviewCardsByTab([card("a", { tabId: "t1", tabName: "  " })]);
         expect(columns).toHaveLength(1);
-        expect(columns[0].title).toBe("Untitled");
+        expect(columns[0].title).toBe(i18n.t("session-overview:dialog.untitled"));
     });
 });
 
@@ -413,7 +424,11 @@ describe("groupOverviewCardsByProvider", () => {
             card("c", { providerLabel: "Codex" }),
             card("d", { providerLabel: "Claude" }),
         ]);
-        expect(columns.map((column) => column.title)).toEqual(["Claude", "Codex", OverviewBoardProviderFallbackTitle]);
+        expect(columns.map((column) => column.title)).toEqual([
+            "Claude",
+            "Codex",
+            getOverviewBoardProviderFallbackTitle(),
+        ]);
         expect(columns[0].blocks.map((b) => b.blockId)).toEqual(["a", "d"]);
     });
 
@@ -423,7 +438,11 @@ describe("groupOverviewCardsByProvider", () => {
             card("b", { providerLabel: "Codex" }),
             card("c", { providerLabel: "Claude" }),
         ]);
-        expect(columns.map((column) => column.title)).toEqual(["Claude", "Codex", OverviewBoardProviderFallbackTitle]);
+        expect(columns.map((column) => column.title)).toEqual([
+            "Claude",
+            "Codex",
+            getOverviewBoardProviderFallbackTitle(),
+        ]);
     });
 });
 
@@ -472,7 +491,7 @@ describe("groupOverviewCardsByProject — 目录视图", () => {
             card("c", { projectName: "snorkeling" }),
         ]);
         expect(columns).toHaveLength(2);
-        expect(columns[columns.length - 1].title).toBe(OverviewBoardProjectFallbackTitle);
+        expect(columns[columns.length - 1].title).toBe(getOverviewBoardProjectFallbackTitle());
         expect(columns[columns.length - 1].blocks.map((c) => c.blockId)).toEqual(["a", "b"]);
     });
 
@@ -484,7 +503,7 @@ describe("groupOverviewCardsByProject — 目录视图", () => {
             card("d", { projectName: "solo" }),
         ]);
         // fallback 优先级高于卡片数：哪怕它有 3 张、solo 只有 1 张，仍排最后。
-        expect(columns.map((column) => column.title)).toEqual(["solo", OverviewBoardProjectFallbackTitle]);
+        expect(columns.map((column) => column.title)).toEqual(["solo", getOverviewBoardProjectFallbackTitle()]);
         expect(columns[1].blocks).toHaveLength(3);
     });
 
@@ -516,7 +535,11 @@ describe("groupOverviewCardsByTags — 标签视图", () => {
             card("b", { tags: ["zeta"] }),
             card("c", { tags: ["alpha"] }),
         ]);
-        expect(columns.map((column) => column.title)).toEqual(["alpha", "zeta", OverviewBoardTagFallbackTitle]);
+        expect(columns.map((column) => column.title)).toEqual([
+            "alpha",
+            "zeta",
+            getOverviewBoardTagFallbackTitle(),
+        ]);
         expect(columns[2].blocks.map((c) => c.blockId)).toEqual(["a"]);
     });
 });

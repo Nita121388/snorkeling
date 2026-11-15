@@ -20,6 +20,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
 import { SortMenu } from "./sort-menu";
 import type { SessionSortChain } from "./types";
 
@@ -45,7 +46,8 @@ function options(): HTMLElement[] {
     return Array.from(container.querySelectorAll<HTMLElement>("[data-sort-field], [data-add-field]"));
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+    await initI18n("en");
     // 本文件不读 localStorage（SortMenu 是纯受控组件），不要 stub window ——
     // 覆盖 window 会拿走 clearTimeout，floating-ui 的 effect cleanup 直接炸。
     Element.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 200, 30);

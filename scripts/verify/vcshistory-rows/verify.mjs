@@ -31,6 +31,10 @@ const keepOpen = argv.includes("--keep-open");
 const dry = argv.includes("--dry");
 
 const HISTORY_FILE = "frontend/app/view/vcs/vcs-changes-tab.tsx";
+// i18n 之后分组头/行内按钮文案随 ui:locale 变（en / zh）。探针只认「结构 + 命中其中之一」，
+// 不把英文文案写死 —— 否则 zh 系统上会假红（2026-11-14 B7b）。
+const DIFF_BUTTON_TEXTS = ["Diff", "差异"];
+const RELATIVE_TIME_RE = /^(just now|刚刚|\d+m ago|\d+h ago|\d+d ago|\d+ 分钟前|\d+ 小时前|\d+ 天前|\d{2}-\d{2}|—)$/;
 // POSIX 风格 repo 路径（git 报的 repopath 口径，Windows 下 Golang 侧也是正斜杠）
 const REPO_PATH = repoRoot
   .replace(/\\/g, "/")
@@ -49,7 +53,10 @@ let instance = null;
  */
 const SCAN = `(() => {
     const groups = [...document.querySelectorAll("div")].filter(
-        (d) => typeof d.className === "string" && d.className.startsWith("mt-3") && d.textContent.startsWith("History")
+        (d) =>
+            typeof d.className === "string" &&
+            d.className.startsWith("mt-3") &&
+            (d.textContent.startsWith("History") || d.textContent.startsWith("历史"))
     );
     const group = groups[0];
     if (group == null) return null;
@@ -138,7 +145,11 @@ try {
     throw err;
   }
 
-  reporter.check("history-group-header", state.headerText === "History", state.headerText);
+  reporter.check(
+    "history-group-header",
+    state.headerText === "History" || state.headerText === "历史",
+    state.headerText
+  );
   reporter.check(
     "group-count-chip",
     state.chipText === String(state.rows) && state.rows > 0,
@@ -164,7 +175,7 @@ try {
   reporter.check("rail-neutral-accent", railColorOk, JSON.stringify(state.meta[0]?.railClass));
 
   // 相对时间 + 绝对时间 title（yyyy-MM-dd HH:mm）
-  const timeOk = state.meta.every((m) => /^(just now|\d+m ago|\d+h ago|\d+d ago|\d{2}-\d{2}|—)$/.test(m.timeText));
+  const timeOk = state.meta.every((m) => RELATIVE_TIME_RE.test(m.timeText));
   const titleOk = state.meta.every((m) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(m.timeTitle));
   reporter.check(
     "relative-time-with-absolute-title",
@@ -180,7 +191,10 @@ try {
   // ── 展开第一行：files 面板出现（bg-surface-strong + Diff 按钮），再点收起 ──
   const firstRowCenter = await client.evaluate(`(() => {
         const group = [...document.querySelectorAll("div")].filter(
-            (d) => typeof d.className === "string" && d.className.startsWith("mt-3") && d.textContent.startsWith("History")
+            (d) =>
+            typeof d.className === "string" &&
+            d.className.startsWith("mt-3") &&
+            (d.textContent.startsWith("History") || d.textContent.startsWith("历史"))
         )[0];
         const frame = group?.closest("[data-blockid]") || group?.closest(".block") || document.body;
         const rows = [...frame.querySelectorAll("div")].filter(
@@ -200,7 +214,10 @@ try {
                 const panel = document.querySelector(".bg-surface-strong");
                 if (panel == null) return null;
                 const btns = [...panel.querySelectorAll("button")].map((b) => (b.textContent || "").trim());
-                return { text: panel.textContent.slice(0, 60), diffButtons: btns.filter((t) => t === "Diff").length };
+                return {
+                    text: panel.textContent.slice(0, 60),
+                    diffButtons: btns.filter((t) => DIFF_BUTTON_TEXTS.includes(t)).length,
+                };
             })()`,
       { timeoutMs: 30000, intervalMs: 500, label: "展开面板 + Diff 按钮" }
     ).catch(() => null);

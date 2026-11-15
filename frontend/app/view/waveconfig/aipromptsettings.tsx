@@ -30,6 +30,7 @@ import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model
 import { cn } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -40,6 +41,7 @@ function featureMeta(features: PromptFeatureMeta[], key: string): PromptFeatureM
 }
 
 export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ model }: { model: WaveConfigViewModel }) {
+    const { t } = useTranslation("waveconfig");
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
     const modeConfigs = useAtomValue(atoms.waveaiModeConfigAtom) ?? {};
     const [features, setFeatures] = useState<PromptFeatureMeta[]>([]);
@@ -226,21 +228,19 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
         <div className="@container flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-y-auto p-4 text-primary">
             <div className="flex shrink-0 items-baseline justify-between gap-2">
                 <div className="min-w-0">
-                    <h2 className="text-sm font-medium text-primary">AI Prompts</h2>
-                    <p className="mt-0.5 text-xs text-muted">
-                        Override the system prompt per feature. Empty fields keep the built-in default.
-                    </p>
+                    <h2 className="text-sm font-medium text-primary">{t("waveconfig:aiPrompts.title")}</h2>
+                    <p className="mt-0.5 text-xs text-muted">{t("waveconfig:aiPrompts.subtitle")}</p>
                 </div>
                 <span
                     className={cn("shrink-0 text-xxs", saveState === "error" ? "text-error" : "text-muted")}
                     role="status"
                 >
                     {saveState === "saving"
-                        ? "Saving…"
+                        ? t("waveconfig:aiPrompts.saving")
                         : saveState === "saved"
-                          ? "Saved"
+                          ? t("waveconfig:aiPrompts.saved")
                           : dirty
-                            ? "Unsaved changes"
+                            ? t("waveconfig:aiPrompts.unsavedChanges")
                             : ""}
                 </span>
             </div>
@@ -254,7 +254,7 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
                         className="shrink-0 cursor-pointer text-xs font-medium text-error hover:underline"
                         onClick={() => setError("")}
                     >
-                        Dismiss
+                        {t("waveconfig:aiPrompts.dismiss")}
                     </button>
                 </div>
             )}
@@ -263,7 +263,7 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
                 {/* Left pane: prompt features */}
                 <div className="flex shrink-0 flex-col overflow-hidden border-b border-border @xl:w-[240px] @xl:border-r @xl:border-b-0">
                     <div className="px-3 pt-2.5 pb-1 text-xxs font-medium tracking-wide text-muted uppercase">
-                        Features
+                        {t("waveconfig:aiPrompts.features")}
                     </div>
                     <div className="flex min-h-0 flex-col gap-0.5 overflow-y-auto p-1.5">
                         {featureList.map((item) => {
@@ -307,16 +307,16 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
                         <div className="flex shrink-0 items-center gap-1.5">
                             {isCustomized && (
                                 <span className="rounded bg-accent/10 px-1.5 py-0.5 text-xxs text-accent">
-                                    Customized
+                                    {t("waveconfig:aiPrompts.customized")}
                                 </span>
                             )}
                             <button
                                 type="button"
                                 className="h-7 cursor-pointer rounded border border-border px-2 text-xxs text-secondary hover:bg-hover hover:text-primary"
                                 onClick={resetToDefault}
-                                title="Clear overrides and use the built-in prompt"
+                                title={t("waveconfig:aiPrompts.resetTooltip")}
                             >
-                                Reset to default
+                                {t("waveconfig:aiPrompts.resetToDefault")}
                             </button>
                         </div>
                     </div>
@@ -325,17 +325,19 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
                         <section className="space-y-1.5">
                             <div className="flex items-baseline justify-between gap-2">
                                 <label className="text-xs font-medium text-primary" htmlFor="ai-prompt-system">
-                                    System prompt
+                                    {t("waveconfig:aiPrompts.systemPrompt")}
                                 </label>
-                                <span className="text-xxs text-muted">Empty = built-in default</span>
+                                <span className="text-xxs text-muted">
+                                    {t("waveconfig:aiPrompts.systemPromptHint")}
+                                </span>
                             </div>
                             <textarea
                                 id="ai-prompt-system"
                                 value={draft.systemPrompt}
                                 rows={12}
                                 spellCheck={false}
-                                placeholder={meta.defaultPrompt || "Leave empty to use the built-in prompt"}
-                                aria-label="System prompt"
+                                placeholder={meta.defaultPrompt || t("waveconfig:aiPrompts.systemPromptPlaceholder")}
+                                aria-label={t("waveconfig:aiPrompts.systemPromptAria")}
                                 onChange={(event) => patch({ systemPrompt: event.target.value })}
                                 className="w-full resize-y rounded border border-border bg-panel px-2.5 py-2 font-mono text-xs leading-5 text-primary outline-none placeholder:text-muted focus:border-accent"
                             />
@@ -343,15 +345,15 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
 
                         <section className="space-y-1.5">
                             <label className="text-xs font-medium text-primary" htmlFor="ai-prompt-extra">
-                                Extra instructions
+                                {t("waveconfig:aiPrompts.extraInstructions")}
                             </label>
                             <textarea
                                 id="ai-prompt-extra"
                                 value={draft.extraInstructions}
                                 rows={3}
                                 spellCheck={false}
-                                placeholder="Appended after the system prompt, e.g. reply in Chinese"
-                                aria-label="Extra instructions"
+                                placeholder={t("waveconfig:aiPrompts.extraPlaceholder")}
+                                aria-label={t("waveconfig:aiPrompts.extraInstructionsAria")}
                                 onChange={(event) => patch({ extraInstructions: event.target.value })}
                                 className="w-full resize-y rounded border border-border bg-panel px-2.5 py-2 font-mono text-xs leading-5 text-primary outline-none placeholder:text-muted focus:border-accent"
                             />
@@ -359,14 +361,14 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
 
                         <section className="flex flex-wrap items-center gap-x-4 gap-y-2">
                             <label className="flex items-center gap-2 text-xs text-secondary">
-                                <span className="w-28 shrink-0">Model</span>
+                                <span className="w-28 shrink-0">{t("waveconfig:aiPrompts.model")}</span>
                                 <select
                                     value={draft.aiMode}
-                                    aria-label="AI model"
+                                    aria-label={t("waveconfig:aiPrompts.modelAria")}
                                     onChange={(event) => patch({ aiMode: event.target.value })}
                                     className="h-7 max-w-[240px] cursor-pointer rounded border border-border bg-panel px-1.5 text-xs text-primary outline-none focus:border-accent"
                                 >
-                                    <option value="">Auto (default mode)</option>
+                                    <option value="">{t("waveconfig:aiPrompts.modelAuto")}</option>
                                     {modeOptions.map(([key, config]) => (
                                         <option key={key} value={key}>
                                             {config["display:name"] || key}
@@ -385,7 +387,9 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
                                     onChange={(value) => patch({ enabled: value })}
                                     label=""
                                 />
-                                <span title="When off, the card button reports a disabled error">Enabled</span>
+                                <span title={t("waveconfig:aiPrompts.enabledTooltip")}>
+                                    {t("waveconfig:aiPrompts.enabled")}
+                                </span>
                             </label>
                         </section>
 
@@ -397,20 +401,17 @@ export const AIPromptsVisualContent = memo(function AIPromptsVisualContent({ mod
                                         onChange={(value) => saveAutoTitle(value)}
                                         label=""
                                     />
-                                    <span>Auto-generate titles in the background</span>
+                                    <span>{t("waveconfig:aiPrompts.autoTitleToggle")}</span>
                                 </label>
                                 <p className="text-xxs leading-4 text-muted">
-                                    Runs a serial, throttled background worker that title-cases sessions which still
-                                    only have a raw first-message title. Each session is generated at most once; a
-                                    hand-renamed title is never overwritten. Off by default to avoid spending model
-                                    quota unexpectedly.
+                                    {t("waveconfig:aiPrompts.autoTitleDescription")}
                                 </p>
                             </section>
                         )}
 
                         <details className="rounded border border-border bg-panel">
                             <summary className="cursor-pointer px-3 py-2 text-xs text-secondary hover:text-primary">
-                                Preview resolved prompt
+                                {t("waveconfig:aiPrompts.previewSummary")}
                             </summary>
                             <pre className="max-h-64 overflow-auto border-t border-border px-3 py-2 font-mono text-xxs whitespace-pre-wrap text-muted">
                                 {preview}

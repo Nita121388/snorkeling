@@ -3,6 +3,7 @@
 import { copyText as writeTextToClipboard } from "@/util/clipboard";
 import { formatFileSize } from "@/util/fileformat";
 import { isWindows } from "@/util/platformutil";
+import { i18n } from "@/i18n/config";
 import { buildSessionTree, type SessionTreeNode } from "./session-tree";
 import type {
     AttachMode,
@@ -27,12 +28,12 @@ const ToolCallAnchorPattern = /\[Tool:\s*[^\]]+\]/;
 
 export function emptySessionsText(markedFilter: MarkedFilter, remoteFilterActive: boolean): string {
     if (markedFilter === "starred") {
-        return remoteFilterActive ? "No starred sessions match." : "No starred sessions.";
+        return i18n.t(remoteFilterActive ? "aisessions:empty.noStarredMatch" : "aisessions:empty.noStarred");
     }
     if (markedFilter === "unstarred") {
-        return remoteFilterActive ? "No unstarred sessions match." : "No unstarred sessions.";
+        return i18n.t(remoteFilterActive ? "aisessions:empty.noUnstarredMatch" : "aisessions:empty.noUnstarred");
     }
-    return remoteFilterActive ? "No matching sessions." : "No sessions found.";
+    return i18n.t(remoteFilterActive ? "aisessions:empty.noMatch" : "aisessions:empty.none");
 }
 
 export function shouldStartEmptyChat(
@@ -154,7 +155,7 @@ export function buildSessionDetailTimeline(
 
 export function outlinePreview(message: Message): string {
     const text = trimMessageText(message.text).replace(/\s+/g, " ").trim();
-    if (!text) return "(empty)";
+    if (!text) return i18n.t("aisessions:outline.empty");
     if (text.length <= 96) return text;
     return text.slice(0, 96) + "...";
 }
@@ -168,7 +169,7 @@ export function formatToolCallPreview(toolCall: ToolCall): string {
     if (output) {
         return output.length <= 120 ? output : `${output.slice(0, 120)}...`;
     }
-    return "No details";
+    return i18n.t("aisessions:toolCall.noDetails");
 }
 
 export function displayRole(role: string): string {
@@ -419,7 +420,12 @@ export function makeHeroPathMatcher(heroCtx: HeroContext): (projectPath: string)
     };
 }
 
-export const UnclassifiedGroupName = "未归类";
+export const UnclassifiedGroupKey = "aisessions:group.unclassified";
+
+/** Display name for the bucket that holds sessions with no usable project path. */
+export function unclassifiedGroupName(): string {
+    return i18n.t(UnclassifiedGroupKey);
+}
 
 /**
  * The trailing path segment of a disk path (or URL-ish string), across separators.
@@ -466,7 +472,7 @@ export function groupSessionsByProject(
             heroId !== ""
                 ? heroGroupLabel(heroCtx?.byId.get(heroId) ?? { id: heroId, name: heroId })
                 : key === ""
-                  ? UnclassifiedGroupName
+                  ? unclassifiedGroupName()
                   : key;
         const existing = buckets.get(key);
         if (existing) {
@@ -505,26 +511,57 @@ export function formatRelativeRefreshTime(timestamp: number, now = Date.now()): 
     const normalized = normalizeTimestamp(timestamp);
     if (!Number.isFinite(normalized)) return "";
     const elapsedSeconds = Math.floor(Math.max(0, now - normalized) / 1000);
-    if (elapsedSeconds < 10) return "Refreshed just now";
-    if (elapsedSeconds < 60) return `Refreshed ${elapsedSeconds}s ago`;
+    if (elapsedSeconds < 10) return i18n.t("aisessions:refresh.justNow");
+    if (elapsedSeconds < 60) return i18n.t("aisessions:refresh.seconds", { count: elapsedSeconds });
     const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-    if (elapsedMinutes < 60) return `Refreshed ${elapsedMinutes}m ago`;
+    if (elapsedMinutes < 60) return i18n.t("aisessions:refresh.minutes", { count: elapsedMinutes });
     const elapsedHours = Math.floor(elapsedMinutes / 60);
-    if (elapsedHours < 24) return `Refreshed ${elapsedHours}h ago`;
-    return `Refreshed ${Math.floor(elapsedHours / 24)}d ago`;
+    if (elapsedHours < 24) return i18n.t("aisessions:refresh.hours", { count: elapsedHours });
+    return i18n.t("aisessions:refresh.days", { count: Math.floor(elapsedHours / 24) });
+}
+
+export type RelativeTimeUnit = "never" | "justNow" | "seconds" | "minutes" | "hours" | "days";
+
+/**
+ * 相对时间的「桶 + 计数」，与语言无关。
+ *
+ * i18n 之后 `formatSessionRelativeTime()` 返回的是**已翻译**的句子（"45s ago" / "45秒前"），
+ * 下游不得再对它的输出做字符串比较（`=== "just now"` / `endsWith(" ago")`）：
+ * 换语言或 i18n 未初始化时这类判定全部失效。需要共享口径的模块
+ * （如 commontext-freshness 的紧凑标签）一律读本函数。
+ */
+export function relativeTimeParts(
+    timestamp: number,
+    now = Date.now()
+): { unit: RelativeTimeUnit; count: number } {
+    const normalized = normalizeTimestamp(timestamp);
+    if (!normalized) return { unit: "never", count: 0 };
+    const elapsedSeconds = Math.floor(Math.max(0, now - normalized) / 1000);
+    if (elapsedSeconds < 10) return { unit: "justNow", count: elapsedSeconds };
+    if (elapsedSeconds < 60) return { unit: "seconds", count: elapsedSeconds };
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+    if (elapsedMinutes < 60) return { unit: "minutes", count: elapsedMinutes };
+    const elapsedHours = Math.floor(elapsedMinutes / 60);
+    if (elapsedHours < 24) return { unit: "hours", count: elapsedHours };
+    return { unit: "days", count: Math.floor(elapsedHours / 24) };
 }
 
 export function formatSessionRelativeTime(timestamp: number, now = Date.now()): string {
-    const normalized = normalizeTimestamp(timestamp);
-    if (!normalized) return "never";
-    const elapsedSeconds = Math.floor(Math.max(0, now - normalized) / 1000);
-    if (elapsedSeconds < 10) return "just now";
-    if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`;
-    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-    if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
-    const elapsedHours = Math.floor(elapsedMinutes / 60);
-    if (elapsedHours < 24) return `${elapsedHours}h ago`;
-    return `${Math.floor(elapsedHours / 24)}d ago`;
+    const parts = relativeTimeParts(timestamp, now);
+    switch (parts.unit) {
+        case "never":
+            return i18n.t("aisessions:relative.never");
+        case "justNow":
+            return i18n.t("aisessions:relative.justNow");
+        case "seconds":
+            return i18n.t("aisessions:relative.seconds", { count: parts.count });
+        case "minutes":
+            return i18n.t("aisessions:relative.minutes", { count: parts.count });
+        case "hours":
+            return i18n.t("aisessions:relative.hours", { count: parts.count });
+        case "days":
+            return i18n.t("aisessions:relative.days", { count: parts.count });
+    }
 }
 
 /**
@@ -764,10 +801,10 @@ export function shortSessionId(id: string): string {
 }
 
 export function formatDateTimeToSecond(timestamp: number): string {
-    if (!timestamp) return "never";
+    if (!timestamp) return i18n.t("aisessions:relative.never");
     const normalized = normalizeTimestamp(timestamp);
     const date = new Date(normalized);
-    if (Number.isNaN(date.getTime())) return "invalid time";
+    if (Number.isNaN(date.getTime())) return i18n.t("aisessions:relative.invalidTime");
     const year = date.getFullYear();
     const month = pad2(date.getMonth() + 1);
     const day = pad2(date.getDate());
@@ -778,10 +815,10 @@ export function formatDateTimeToSecond(timestamp: number): string {
 }
 
 export function formatSessionDate(timestamp: number): string {
-    if (!timestamp) return "never";
+    if (!timestamp) return i18n.t("aisessions:relative.never");
     const normalized = normalizeTimestamp(timestamp);
     const date = new Date(normalized);
-    if (Number.isNaN(date.getTime())) return "invalid time";
+    if (Number.isNaN(date.getTime())) return i18n.t("aisessions:relative.invalidTime");
     const year = date.getFullYear();
     const month = pad2(date.getMonth() + 1);
     const day = pad2(date.getDate());
@@ -970,7 +1007,7 @@ export function extractPathRoots(dist: ProjectPathSummary[]): PathRootOption[] {
     if (otherCount > 0) {
         result.push({
             root: PathFilterOtherRoot,
-            label: "Other",
+            label: i18n.t("aisessions:pathFilter.other"),
             count: otherCount,
             color: RootColorPalette[hashStringToIndex("other", RootColorPalette.length)],
             isOther: true,
@@ -1105,7 +1142,7 @@ export function reconcilePathSets(
 
 /** Chip label for a selected path prefix (Other bucket uses its display name). */
 export function pathSelectionLabel(prefix: string): string {
-    if (prefix === PathFilterOtherRoot) return "Other";
+    if (prefix === PathFilterOtherRoot) return i18n.t("aisessions:pathFilter.other");
     return shortenPathForChip(prefix);
 }
 

@@ -10,6 +10,7 @@ import { AgentAccessSettingsContent } from "@/app/view/waveconfig/agentaccessset
 import { AgentNotifySettingsContent } from "@/app/view/waveconfig/agentnotifysettings";
 import { AIPromptsVisualContent } from "@/app/view/waveconfig/aipromptsettings";
 import { HeroSettingsContent } from "@/app/view/waveconfig/herosettings";
+import { LocalePickerContent } from "@/app/view/waveconfig/localepicker";
 import { SecretsContent } from "@/app/view/waveconfig/secretscontent";
 import { SyncSettingsContent } from "@/app/view/waveconfig/syncsettings";
 import { ThemePickerContent } from "@/app/view/waveconfig/themepicker";
@@ -18,6 +19,8 @@ import { WaveConfigView } from "@/app/view/waveconfig/waveconfig";
 import { describeJsonFailure, type WaveConfigSaveFailure } from "@/app/view/waveconfig/waveconfig-json-error";
 import { applyVisibleSettingsDefaults } from "@/app/view/waveconfig/waveconfig-settings";
 import type { WaveConfigEnv } from "@/app/view/waveconfig/waveconfigenv";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { fileInfoRequest } from "@/util/fileinfo";
 import { base64ToString, stringToBase64 } from "@/util/util";
 import { atom, type Atom, type PrimitiveAtom } from "jotai";
@@ -27,12 +30,58 @@ import * as React from "react";
 type ValidationResult = { success: true } | { error: string };
 type ConfigValidator = (parsed: any) => ValidationResult;
 
+/**
+ * Config-file ids — the i18n key namespace for their sidebar name / description.
+ *
+ * Pattern C: the registry holds structural keys only, the sidebar translates them at render
+ * time (`waveconfig.tsx`). Keeping display strings in the registry would freeze them to whatever
+ * locale was active when `makeConfigFiles()` ran.
+ */
+export const ConfigFileIds = [
+    "general",
+    "appTheme",
+    "language",
+    "agentNotifications",
+    "agentAccess",
+    "sync",
+    "hero",
+    "connections",
+    "sidebarWidgets",
+    "waveAiModes",
+    "aiPrompts",
+    "tabBackgrounds",
+    "secrets",
+    "presets",
+    "aiPresets",
+] as const;
+export type ConfigFileId = (typeof ConfigFileIds)[number];
+
+/** Ids that carry a description line in the sidebar (their keys must exist in en/zh). */
+export const ConfigFileDescribedIds = [
+    "appTheme",
+    "language",
+    "agentNotifications",
+    "agentAccess",
+    "sync",
+    "hero",
+    "connections",
+    "waveAiModes",
+    "aiPrompts",
+] as const;
+
+export type ConfigFileNameKey = `waveconfig:files.${ConfigFileId}.name`;
+export type ConfigFileDescriptionKey =
+    | `waveconfig:files.${(typeof ConfigFileDescribedIds)[number]}.description`
+    | "waveconfig:files.connections.descriptionWindows";
+
 export type ConfigFile = {
-    name: string;
+    /** i18n key for the sidebar name (translated at render time). */
+    nameKey: ConfigFileNameKey;
     path: string;
     language?: string;
     deprecated?: boolean;
-    description?: string;
+    /** i18n key for the sidebar description line (translated at render time). */
+    descKey?: ConfigFileDescriptionKey;
     docsUrl?: string;
     validator?: ConfigValidator;
     isSecrets?: boolean;
@@ -46,7 +95,7 @@ function validateAiJson(parsed: any): ValidationResult {
     const keys = Object.keys(parsed);
     for (const key of keys) {
         if (!key.startsWith("ai@")) {
-            return { error: `Invalid key "${key}": all top-level keys must start with "ai@"` };
+            return { error: i18n.t("waveconfig:model.invalidAiKeyPrefix", { key }) };
         }
     }
     return { success: true };
@@ -57,9 +106,7 @@ function validateWaveAiJson(parsed: any): ValidationResult {
     const keyPattern = /^[a-zA-Z0-9_@.-]+$/;
     for (const key of keys) {
         if (!keyPattern.test(key)) {
-            return {
-                error: `Invalid key "${key}": keys must only contain letters, numbers, underscores, @, dots, and hyphens`,
-            };
+            return { error: i18n.t("waveconfig:model.invalidKeyChars", { key }) };
         }
     }
     return { success: true };
@@ -68,39 +115,46 @@ function validateWaveAiJson(parsed: any): ValidationResult {
 function makeConfigFiles(isWindows: boolean): ConfigFile[] {
     return [
         {
-            name: "General",
+            nameKey: "waveconfig:files.general.name",
             path: "settings.json",
             language: "json",
             docsUrl: "https://docs.waveterm.dev/config",
             hasJsonView: true,
         },
         {
-            name: "App Theme",
+            nameKey: "waveconfig:files.appTheme.name",
             path: "apptheme",
-            description: "Light / Dark / Monochrome / System",
+            descKey: "waveconfig:files.appTheme.description",
             hasJsonView: false,
             visualComponent: ThemePickerContent,
         },
         {
-            name: "Agent Notifications",
+            nameKey: "waveconfig:files.language.name",
+            path: "uilocale",
+            descKey: "waveconfig:files.language.description",
+            hasJsonView: false,
+            visualComponent: LocalePickerContent,
+        },
+        {
+            nameKey: "waveconfig:files.agentNotifications.name",
             path: "agentnotifications",
-            description: "OS toasts for agent done / blocked",
+            descKey: "waveconfig:files.agentNotifications.description",
             hasJsonView: false,
             visualComponent: AgentNotifySettingsContent,
         },
         {
-            name: "Agent Access",
+            nameKey: "waveconfig:files.agentAccess.name",
             path: "agentaccess",
-            description: "Scoped tokens for agents outside the app",
+            descKey: "waveconfig:files.agentAccess.description",
             hasJsonView: false,
             visualComponent: AgentAccessSettingsContent,
         },
         {
             // Common Text cloud sync lives here rather than in its own modal: this is the app's
             // single settings surface, and a second shell would drift from it.
-            name: "Sync",
+            nameKey: "waveconfig:files.sync.name",
             path: "commontextsync",
-            description: "Common Text cloud sync",
+            descKey: "waveconfig:files.sync.description",
             hasJsonView: false,
             visualComponent: SyncSettingsContent,
         },
@@ -108,54 +162,56 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
             // A5.5: the hero home base lives on a configurable root, so the panel that moves it,
             // measures it and caps its growth belongs on this surface next to Sync — both answer
             // "what of this leaves the machine?".
-            name: "Hero",
+            nameKey: "waveconfig:files.hero.name",
             path: "herosettings",
-            description: "🎭 Home base, storage and governance",
+            descKey: "waveconfig:files.hero.description",
             hasJsonView: false,
             visualComponent: HeroSettingsContent,
         },
         {
-            name: "Connections",
+            nameKey: "waveconfig:files.connections.name",
             path: "connections.json",
             language: "json",
             docsUrl: "https://docs.waveterm.dev/connections",
-            description: isWindows ? "SSH hosts and WSL distros" : "SSH hosts",
+            descKey: isWindows
+                ? "waveconfig:files.connections.descriptionWindows"
+                : "waveconfig:files.connections.description",
             hasJsonView: true,
         },
         {
-            name: "Sidebar Widgets",
+            nameKey: "waveconfig:files.sidebarWidgets.name",
             path: "widgets.json",
             language: "json",
             docsUrl: "https://docs.waveterm.dev/customwidgets",
             hasJsonView: true,
         },
         {
-            name: "Wave AI Modes",
+            nameKey: "waveconfig:files.waveAiModes.name",
             path: "waveai.json",
             language: "json",
-            description: "Local models and BYOK",
+            descKey: "waveconfig:files.waveAiModes.description",
             docsUrl: "https://docs.waveterm.dev/waveai-modes",
             validator: validateWaveAiJson,
             hasJsonView: true,
             visualComponent: WaveAIVisualContent,
         },
         {
-            name: "AI Prompts",
+            nameKey: "waveconfig:files.aiPrompts.name",
             path: "aiprompts.json",
             language: "json",
-            description: "Prompts for AI-generated session title / note & tags",
+            descKey: "waveconfig:files.aiPrompts.description",
             hasJsonView: true,
             visualComponent: AIPromptsVisualContent,
         },
         {
-            name: "Tab Backgrounds",
+            nameKey: "waveconfig:files.tabBackgrounds.name",
             path: "backgrounds.json",
             language: "json",
             docsUrl: "https://docs.waveterm.dev/tab-backgrounds",
             hasJsonView: true,
         },
         {
-            name: "Secrets",
+            nameKey: "waveconfig:files.secrets.name",
             path: "secrets",
             isSecrets: true,
             hasJsonView: false,
@@ -166,14 +222,14 @@ function makeConfigFiles(isWindows: boolean): ConfigFile[] {
 
 const deprecatedConfigFiles: ConfigFile[] = [
     {
-        name: "Presets",
+        nameKey: "waveconfig:files.presets.name",
         path: "presets.json",
         language: "json",
         deprecated: true,
         hasJsonView: true,
     },
     {
-        name: "AI Presets",
+        nameKey: "waveconfig:files.aiPresets.name",
         path: "presets/ai.json",
         language: "json",
         deprecated: true,
@@ -187,7 +243,7 @@ export class WaveConfigViewModel implements ViewModel {
     blockId: string;
     viewType = "waveconfig";
     viewIcon = atom("gear");
-    viewName = atom("Wave Config");
+    viewName = localeTextAtom(() => i18n.t("waveconfig:header.viewName"));
     viewComponent = WaveConfigView;
     noPadding = atom(true);
     nodeModel: BlockNodeModel;
@@ -328,7 +384,7 @@ export class WaveConfigViewModel implements ViewModel {
         if (!this.hasChanges()) {
             return true;
         }
-        return window.confirm("You have unsaved changes. Discard and continue?");
+        return window.confirm(i18n.t("waveconfig:model.discardConfirm"));
     }
 
     discardChanges() {
@@ -392,7 +448,10 @@ export class WaveConfigViewModel implements ViewModel {
                 meta: { file: file.path },
             });
         } catch (err) {
-            globalStore.set(this.errorMessageAtom, `Failed to load ${file.name}: ${err.message || String(err)}`);
+            globalStore.set(
+                this.errorMessageAtom,
+                i18n.t("waveconfig:model.loadFailed", { name: i18n.t(file.nameKey), error: err.message || String(err) })
+            );
             globalStore.set(this.fileContentAtom, "");
             globalStore.set(this.originalContentAtom, "");
         } finally {
@@ -423,7 +482,10 @@ export class WaveConfigViewModel implements ViewModel {
             } catch (err) {
                 globalStore.set(
                     this.errorMessageAtom,
-                    `Failed to save ${selectedFile.name}: ${err.message || String(err)}`
+                    i18n.t("waveconfig:model.saveFailed", {
+                        name: i18n.t(selectedFile.nameKey),
+                        error: err.message || String(err),
+                    })
                 );
             } finally {
                 globalStore.set(this.isSavingAtom, false);
@@ -435,7 +497,7 @@ export class WaveConfigViewModel implements ViewModel {
             const parsed = JSON.parse(fileContent);
 
             if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) {
-                this.setValidationFailure("JSON must be an object, not an array, primitive, or null");
+                this.setValidationFailure(i18n.t("waveconfig:model.jsonMustBeObject"));
                 return;
             }
 
@@ -465,13 +527,16 @@ export class WaveConfigViewModel implements ViewModel {
             } catch (err) {
                 globalStore.set(
                     this.errorMessageAtom,
-                    `Failed to save ${selectedFile.name}: ${err.message || String(err)}`
+                    i18n.t("waveconfig:model.saveFailed", {
+                        name: i18n.t(selectedFile.nameKey),
+                        error: err.message || String(err),
+                    })
                 );
             } finally {
                 globalStore.set(this.isSavingAtom, false);
             }
         } catch (err) {
-            this.setValidationFailure(`Invalid JSON: ${err.message || String(err)}`);
+            this.setValidationFailure(i18n.t("waveconfig:model.invalidJson", { error: err.message || String(err) }));
         }
     }
 
@@ -499,15 +564,15 @@ export class WaveConfigViewModel implements ViewModel {
         try {
             const backend = await this.env.rpc.GetSecretsLinuxStorageBackendCommand(TabRpcClient);
             if (backend === "basic_text" || backend === "unknown") {
-                globalStore.set(
-                    this.storageBackendErrorAtom,
-                    "No appropriate secret manager found. Cannot manage secrets securely."
-                );
+                globalStore.set(this.storageBackendErrorAtom, i18n.t("waveconfig:model.storageBackendUnavailable"));
             } else {
                 globalStore.set(this.storageBackendErrorAtom, null);
             }
         } catch (error) {
-            globalStore.set(this.storageBackendErrorAtom, `Error checking storage backend: ${error.message}`);
+            globalStore.set(
+                this.storageBackendErrorAtom,
+                i18n.t("waveconfig:model.storageBackendError", { error: error.message })
+            );
         }
     }
 
@@ -519,7 +584,10 @@ export class WaveConfigViewModel implements ViewModel {
             const names = await this.env.rpc.GetSecretsNamesCommand(TabRpcClient);
             globalStore.set(this.secretNamesAtom, names || []);
         } catch (error) {
-            globalStore.set(this.errorMessageAtom, `Failed to load secrets: ${error.message}`);
+            globalStore.set(
+                this.errorMessageAtom,
+                i18n.t("waveconfig:model.secretsListFailed", { error: error.message })
+            );
         } finally {
             globalStore.set(this.isLoadingAtom, false);
         }
@@ -554,10 +622,16 @@ export class WaveConfigViewModel implements ViewModel {
                 globalStore.set(this.secretValueAtom, value);
                 globalStore.set(this.secretShownAtom, true);
             } else {
-                globalStore.set(this.errorMessageAtom, `Secret not found: ${selectedSecret}`);
+                globalStore.set(
+                    this.errorMessageAtom,
+                    i18n.t("waveconfig:model.secretNotFound", { name: selectedSecret })
+                );
             }
         } catch (error) {
-            globalStore.set(this.errorMessageAtom, `Failed to load secret: ${error.message}`);
+            globalStore.set(
+                this.errorMessageAtom,
+                i18n.t("waveconfig:model.secretLoadFailed", { error: error.message })
+            );
         } finally {
             globalStore.set(this.isLoadingAtom, false);
         }
@@ -588,7 +662,10 @@ export class WaveConfigViewModel implements ViewModel {
             );
             this.closeSecretView();
         } catch (error) {
-            globalStore.set(this.errorMessageAtom, `Failed to save secret: ${error.message}`);
+            globalStore.set(
+                this.errorMessageAtom,
+                i18n.t("waveconfig:model.secretSaveFailed", { error: error.message })
+            );
         } finally {
             globalStore.set(this.isLoadingAtom, false);
         }
@@ -609,7 +686,10 @@ export class WaveConfigViewModel implements ViewModel {
             this.closeSecretView();
             await this.refreshSecrets();
         } catch (error) {
-            globalStore.set(this.errorMessageAtom, `Failed to delete secret: ${error.message}`);
+            globalStore.set(
+                this.errorMessageAtom,
+                i18n.t("waveconfig:model.secretDeleteFailed", { error: error.message })
+            );
         } finally {
             globalStore.set(this.isLoadingAtom, false);
         }
@@ -634,21 +714,18 @@ export class WaveConfigViewModel implements ViewModel {
         const value = globalStore.get(this.newSecretValueAtom);
 
         if (!name) {
-            globalStore.set(this.errorMessageAtom, "Secret name cannot be empty");
+            globalStore.set(this.errorMessageAtom, i18n.t("waveconfig:model.secretNameEmpty"));
             return;
         }
 
         if (!SecretNameRegex.test(name)) {
-            globalStore.set(
-                this.errorMessageAtom,
-                "Invalid secret name: must start with a letter and contain only letters, numbers, and underscores"
-            );
+            globalStore.set(this.errorMessageAtom, i18n.t("waveconfig:model.secretNameInvalid"));
             return;
         }
 
         const existingNames = globalStore.get(this.secretNamesAtom);
         if (existingNames.includes(name)) {
-            globalStore.set(this.errorMessageAtom, `Secret "${name}" already exists`);
+            globalStore.set(this.errorMessageAtom, i18n.t("waveconfig:model.secretExists", { name }));
             return;
         }
 
@@ -672,7 +749,10 @@ export class WaveConfigViewModel implements ViewModel {
             globalStore.set(this.newSecretValueAtom, "");
             await this.refreshSecrets();
         } catch (error) {
-            globalStore.set(this.errorMessageAtom, `Failed to add secret: ${error.message}`);
+            globalStore.set(
+                this.errorMessageAtom,
+                i18n.t("waveconfig:model.secretAddFailed", { error: error.message })
+            );
         } finally {
             globalStore.set(this.isLoadingAtom, false);
         }

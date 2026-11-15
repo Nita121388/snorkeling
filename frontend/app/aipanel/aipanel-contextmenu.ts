@@ -7,6 +7,7 @@ import { isDev } from "@/app/store/global";
 import { globalStore } from "@/app/store/jotaiStore";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { i18n } from "@/i18n/config";
 import { WaveAIModel } from "./waveai-model";
 
 export async function handleWaveAIContextMenu(e: React.MouseEvent, showCopy: boolean): Promise<void> {
@@ -27,7 +28,7 @@ export async function handleWaveAIContextMenu(e: React.MouseEvent, showCopy: boo
     }
 
     menu.push({
-        label: "New Chat",
+        label: i18n.t("aipanel:mode.newChat"),
         click: () => {
             model.clearChat();
         },
@@ -121,14 +122,14 @@ export async function handleWaveAIContextMenu(e: React.MouseEvent, showCopy: boo
     }
 
     menu.push({
-        label: "Max Output Tokens",
+        label: i18n.t("aipanel:contextMenu.maxOutputTokens"),
         submenu: maxTokensSubmenu,
     });
 
     menu.push({ type: "separator" });
 
     menu.push({
-        label: "Configure Modes",
+        label: i18n.t("aipanel:mode.configureModes"),
         click: () => {
             RpcApi.RecordTEventCommand(
                 TabRpcClient,
@@ -148,7 +149,7 @@ export async function handleWaveAIContextMenu(e: React.MouseEvent, showCopy: boo
         menu.push({ type: "separator" });
 
         menu.push({
-            label: "Hide Wave AI",
+            label: i18n.t("aipanel:contextMenu.hideWaveAI"),
             click: () => {
                 model.closeWaveAIPanel();
             },

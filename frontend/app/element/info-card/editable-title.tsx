@@ -16,6 +16,7 @@ import { TitleSourceBadge } from "@/app/view/aisessions/title-source-badge";
 import { RenameTitleInputClass } from "@/app/view/aisessions/title-edit";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { i18n } from "@/i18n/config";
 
 export type EditableTitleProps = {
     title: string;
@@ -113,7 +114,7 @@ export function EditableTitle({
             const result = await onCommit(next);
             if (result == null) {
                 // 后端没写进去：留在编辑态，草稿不丢。
-                setError("保存失败，请重试");
+                setError(i18n.t("element:editableTitle.saveFailed"));
                 return;
             }
             setEditing(false);
@@ -218,7 +219,7 @@ export function EditableTitle({
                 title={title}
                 {...(editable ? gestureProps : {})}
                 role={editable ? "textbox" : undefined}
-                aria-label={editable ? `Session title: ${title}` : undefined}
+                aria-label={editable ? i18n.t("element:editableTitle.sessionTitleAria", { title }) : undefined}
             >
                 {isCard ? (
                     <>

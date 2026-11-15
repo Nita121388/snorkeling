@@ -1,0 +1,188 @@
+{
+  "imagePager": {
+    "prev": "上一张（←） · {{pos}}/{{size}}",
+    "prevStation": "上一站：{{dir}}（{{num}} 张） · Shift+←",
+    "prevAtStart": "本层已是第一张；锚点 {{anchor}} 下没有更早的含图片文件夹",
+    "prevDisabled": "上一张（←）",
+    "next": "下一张（→） · {{pos}}/{{size}}",
+    "nextStation": "进入下一站：{{dir}}（{{num}} 张） · 按 → 或 Shift+→",
+    "nextAtEnd": "本层已是最后一张；锚点 {{anchor}} 下没有更多含图片文件夹",
+    "nextDisabled": "下一张（→）",
+    "position": "{{pos}} / {{size}}",
+    "indexing": "索引中…",
+    "counter": "{{position}} · {{path}} · 锚点：{{anchor}}",
+    "refresh": "重建索引（Shift+R） · 缓存 60s",
+    "indexRebuilding": "索引已失效，正在重建",
+    "prevStationLabel": "上一站",
+    "prevLabel": "上一张",
+    "nextStationLabel": "下一站",
+    "nextLabel": "下一张",
+    "rebuildIndexLabel": "重建索引",
+    "layerEndBanner": "本层已看完 · 下一站：{{dir}}（{{num}} 张）",
+    "truncated": "图片过多，索引已截断（上限 5000 张）",
+    "navigateFailed": "翻页失败：{{error}}",
+    "enteredFolder": "已进入 {{dir}} · 1/{{num}}",
+    "returnedToFolder": "已回到 {{dir}} · {{num}}/{{num}}"
+  },
+  "imagePagerIndex": {
+    "listDirFailed": "无法列目录：{{error}}"
+  },
+  "entryManager": {
+    "save": "保存",
+    "cancel": "取消",
+    "newFile": "新建文件",
+    "newFolder": "新建文件夹",
+    "rename": "重命名",
+    "moveTo": "移动到…"
+  },
+  "plugin": {
+    "banner": "Banner 视图",
+    "baseView": "Base 视图",
+    "mdProperties": "属性视图"
+  },
+  "banner": {
+    "imageAlt": "Banner",
+    "imageLoadFailed": "无法加载图片"
+  },
+  "emojiBadge": {
+    "changeDocumentEmoji": "更换文档 emoji",
+    "documentEmojiLabel": "文档 emoji"
+  },
+  "baseConfig": {
+    "yamlParseFailed": "YAML 解析失败：{{error}}",
+    "emptyConfig": "空配置",
+    "filtersParseFailed": "filters 格式无法解析",
+    "defaultViewName": "视图"
+  },
+  "baseView": {
+    "loadFailed": "加载失败：{{error}}",
+    "loading": "加载中…",
+    "emptyNoNotes": "（空：没有匹配的笔记）",
+    "formulaUnsupported": "公式暂不支持"
+  },
+  "exportOptions": {
+    "okLabel": "导出",
+    "cancelLabel": "取消",
+    "title": "导出 Markdown",
+    "showFrontmatter": "显示属性（frontmatter）",
+    "showFrontmatterTitle": "导出时是否保留文档开头的属性（YAML frontmatter）",
+    "showToc": "显示目录",
+    "showTocTitle": "在导出文档顶部插入目录",
+    "darkTheme": "深色主题",
+    "darkThemeTitle": "导出的 HTML / PDF 使用深色配色",
+    "fileNameLabel": "文件名",
+    "willExportAs": "将导出为：",
+    "tocHeading": "目录"
+  },
+  "mdProperties": {
+    "title": "Properties",
+    "expandProperties": "展开属性",
+    "collapseProperties": "收起属性",
+    "dragToReorder": "拖动调整顺序",
+    "keyPlaceholder": "key",
+    "valuePlaceholder": "value",
+    "addProperty": "添加属性"
+  },
+  "listPropertyEditor": {
+    "delete": "删除",
+    "tagPlaceholder": "输入标签..."
+  },
+  "previewEdit": {
+    "fileReadFailed": "文件读取失败：{{error}}",
+    "loadingFile": "正在加载文件…"
+  },
+  "errorOverlay": {
+    "copy": "复制"
+  },
+  "explorer": {
+    "explorer": "浏览",
+    "search": "搜索",
+    "newFile": "新建文件",
+    "newFolder": "新建文件夹",
+    "collapseAll": "全部折叠",
+    "expandAll": "全部展开",
+    "searching": "搜索中…",
+    "searchingShortly": "即将开始搜索",
+    "matchesCount": "{{num}} 处匹配",
+    "searchOnEnter": "回车开始搜索",
+    "searchSummary": "{{names}} 个文件名匹配，{{contents}} 处内容匹配",
+    "typeAtLeast": "至少输入 {{num}} 个字符才能搜索文件名与内容。",
+    "searchShortlyHint": "稍后就会搜索文件名与内容。",
+    "noMatches": "没有找到匹配项。",
+    "nameSearchFailed": "文件名搜索失败：{{error}}",
+    "nameMatches": "文件名匹配",
+    "contentSearchFailed": "文件内容搜索失败：{{error}}",
+    "contentMatches": "内容匹配",
+    "showingFirst": "只显示前 {{num}} 条",
+    "matchSingular": "{{num}} 处匹配",
+    "matchPlural": "{{num}} 处匹配",
+    "searchInPlaceholder": "在 {{root}} 内搜索名称与内容"
+  },
+  "markdown": {
+    "sourceEditorClosed": "源码编辑器已关闭"
+  },
+  "exportStatus": {
+    "markdownOnly": "仅 Markdown 文件可导出",
+    "noContent": "无可导出的内容",
+    "noProvider": "没有可用的导出器",
+    "exporting": "{{format}} 导出中…",
+    "failed": "导出失败",
+    "exported": "已导出 {{name}}"
+  },
+  "newFiles": {
+    "files": "文件",
+    "searchPaths": "搜索路径",
+    "copyPath": "复制路径",
+    "unpin": "取消固定",
+    "remove": "移除",
+    "openHome": "打开主目录",
+    "home": "主目录",
+    "pin": "固定",
+    "unpinRow": "取消固定"
+  },
+  "streaming": {
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "resetZoom": "重置缩放",
+    "notSupported": "不支持预览此文件",
+    "htmlPreviewTitle": "HTML 预览（沙箱）"
+  },
+  "invalidSpecializedView": "专用视图组件无效（{{view}}）",
+  "vcsMark": {
+    "modified": "已修改（modified）",
+    "untracked": "未跟踪（untracked）",
+    "deleted": "已删除（deleted）",
+    "changedFile": "VCS 变更：{{mark}}",
+    "changedDir": "VCS 变更：该目录下 {{num}} 个文件有变动"
+  },
+  "directory": {
+    "name": "名称",
+    "perm": "权限",
+    "lastModified": "修改时间",
+    "size": "大小",
+    "type": "类型"
+  },
+  "editToolbar": {
+    "dragHeading": "拖动整个标题段",
+    "dragList": "拖动列表项",
+    "cutHeading": "剪切整个标题段",
+    "cutList": "剪切列表项",
+    "insertAboveHeading": "在上方插入标题",
+    "insertAboveList": "在上方插入列表项",
+    "insertBelowHeading": "在下方插入标题",
+    "insertBelowList": "在下方插入列表项",
+    "moveUpHeading": "整段上移",
+    "moveUpList": "列表项上移",
+    "moveDownHeading": "整段下移",
+    "moveDownList": "列表项下移"
+  },
+  "editorAction": {
+    "copyContext": "🪧 复制上下文",
+    "searchInFiles": "在文件中搜索",
+    "noFileReference": "选中的文本里没有找到文件引用。",
+    "moveBlockUp": "上移 Markdown 块",
+    "moveBlockDown": "下移 Markdown 块",
+    "renumberList": "重排有序列表编号",
+    "copyContextShort": "复制上下文"
+  }
+}

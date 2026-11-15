@@ -1,6 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { i18n } from "@/i18n/config";
 import { getLayoutModelForTabById } from "@/layout/index";
 import { ObjectService } from "@/store/services";
 import { makeIconClass } from "@/util/util";
@@ -16,6 +17,7 @@ import {
     useRef,
     useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import {
     deleteMinimizedGroup,
     getMinimizedBlockIds,
@@ -115,7 +117,7 @@ function getBlockTitle(block: Block | null | undefined): string {
         meta.cmd ||
         meta.view ||
         block?.oid ||
-        "Block"
+        i18n.t("block:blockList.fallbackTitle")
     );
 }
 
@@ -199,13 +201,14 @@ function MinimizedBlockRow({
     onDelete: (blockId: string) => void;
     deleting: boolean;
 }) {
+    const { t } = useTranslation("block");
     return (
         <div className="minimized-block-row">
             <button
                 type="button"
                 className="minimized-block-preview-button"
                 onClick={() => onPreview(item.blockId)}
-                title="Preview Block"
+                title={t("block:minimized.previewBlock")}
             >
                 <i className={makeIconClass(item.icon, false, { defaultIcon: "cube" })} />
                 <span>
@@ -220,8 +223,8 @@ function MinimizedBlockRow({
                     restoreMinimizedBlockToLayout(tabId, item.blockId);
                     onRestore(item.blockId);
                 }}
-                title="Show in Tab"
-                aria-label="Show in Tab"
+                title={t("block:minimized.showInTab")}
+                aria-label={t("block:minimized.showInTab")}
             >
                 <i className={makeIconClass("arrow-up-right-from-square", false)} />
             </button>
@@ -229,8 +232,8 @@ function MinimizedBlockRow({
                 type="button"
                 className="minimized-block-delete-button"
                 onClick={() => onDelete(item.blockId)}
-                title={deleting ? "Deleting Block" : "Delete Block"}
-                aria-label={`Delete Block ${item.title}`}
+                title={deleting ? t("block:minimized.deletingBlock") : t("block:minimized.deleteBlock")}
+                aria-label={i18n.t("block:minimized.deleteBlockTitle", { title: item.title })}
                 disabled={deleting}
             >
                 <i className={makeIconClass("trash", false)} />
@@ -256,6 +259,7 @@ function MinimizedGroupRow({
     onRestoreGroup: (groupId: string) => void;
     onDeleteGroup: (groupId: string) => void;
 }) {
+    const { t } = useTranslation("block");
     const [showActions, setShowActions] = useState(false);
     const actionsTimerRef = useRef<number | null>(null);
 
@@ -289,14 +293,18 @@ function MinimizedGroupRow({
                 onMouseEnter={handleHeaderEnter}
                 onMouseLeave={handleHeaderLeave}
             >
-                <button type="button" className="minimized-group-expand-btn" title={expanded ? "Collapse" : "Expand"}>
+                <button
+                    type="button"
+                    className="minimized-group-expand-btn"
+                    title={expanded ? t("block:blockList.collapse") : t("block:blockList.expand")}
+                >
                     <i
                         className={makeIconClass(expanded ? "folder-open" : "folder", false, {
                             defaultIcon: "layer-group",
                         })}
                     />
                 </button>
-                <span className="minimized-group-title">Group</span>
+                <span className="minimized-group-title">{t("block:blockList.group")}</span>
                 <span className="minimized-group-count">{group.members.length}</span>
                 {showActions && (
                     <div className="minimized-group-hover-actions">
@@ -307,7 +315,7 @@ function MinimizedGroupRow({
                                 e.stopPropagation();
                                 onRestoreGroup(group.groupId);
                             }}
-                            title="Restore Group"
+                            title={t("block:blockList.restoreGroup")}
                         >
                             <i className={makeIconClass("arrow-up-right-from-square", false)} />
                         </button>
@@ -318,7 +326,7 @@ function MinimizedGroupRow({
                                 e.stopPropagation();
                                 onDeleteGroup(group.groupId);
                             }}
-                            title="Delete Group"
+                            title={t("block:blockList.deleteGroup")}
                         >
                             <i className={makeIconClass("trash", false)} />
                         </button>
@@ -349,6 +357,7 @@ function MinimizedGroupRow({
 // ── Main component ──
 
 function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom<Tab> }) {
+    const { t } = useTranslation("block");
     const tab = useAtomValue(tabAtom);
     const minimizedBlockIds = getMinimizedBlockIds(tab);
     const minimizedGroups = getMinimizedGroups(tab);
@@ -612,7 +621,7 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
             {open && (
                 <div className="minimized-blocks-popover">
                     <div className="minimized-blocks-popover-header">
-                        <span>Minimized Blocks</span>
+                        <span>{t("block:minimized.title")}</span>
                         <strong>{totalItemCount}</strong>
                     </div>
                     <div className="minimized-blocks-list">
@@ -654,8 +663,8 @@ function MinimizedBlocksFloat({ tabId, tabAtom }: { tabId: string; tabAtom: Atom
                 onPointerMove={handlePointerMove}
                 onPointerUp={finishDrag}
                 onPointerCancel={finishDrag}
-                title="Minimized Blocks"
-                aria-label="Minimized Blocks"
+                title={t("block:minimized.title")}
+                aria-label={t("block:minimized.title")}
                 aria-pressed={open}
             >
                 <i className={makeIconClass(open ? "box-open" : "box", false)} />

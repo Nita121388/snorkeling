@@ -13,6 +13,7 @@
  *   - everything here is plain data + closures; no React, no DOM
  */
 
+import { i18n } from "@/i18n/config";
 import { transformBlockType, type BlockKind } from "../markdown-transform/block-type";
 
 /** Minimal context describing "what block is this" to registry items. */
@@ -33,6 +34,8 @@ export interface BlockCtx {
 export interface BlockActionSpec {
     id: string;
     label: string;
+    /** i18n key (block-editor ns) for the localized display label; `label` stays the English fallback. */
+    labelKey?: string;
     /** Optional right-aligned hint text in menus. */
     hint?: string;
     /**
@@ -150,6 +153,8 @@ export function normalizeSlashCommandResult(
 export interface SlashCommandSpec {
     id: string;
     label: string;
+    /** i18n key (block-editor ns) for the localized display label; `label` stays the English search term. */
+    labelKey?: string;
     /** Grey hint shown right-aligned (e.g. a shortcut or "#"). */
     hint?: string;
     /** Lucide-ish icon name resolved by the palette component. */
@@ -227,8 +232,41 @@ export function filterSlashCommands(cmds: SlashCommandSpec[], query: string): Sl
 export interface InlineStyleSpec {
     id: string;
     label: string;
+    /** i18n key (block-editor ns) for the localized display label; `label` stays the English fallback. */
+    labelKey?: string;
     /** Display hint, e.g. "⌘B". */
     hint?: string;
+}
+
+/**
+ * Localized display label for a registry item. Registries are plain data evaluated at
+ * module load (before i18n may be initialized), so specs carry a `labelKey` and the
+ * *render site* resolves it — never bake a translation into the spec itself.
+ *
+ * `labelKey` wins; the literal `label` is the fallback so custom (non-i18n)
+ * registrations keep working. `t(key as never)` is the escape hatch for
+ * runtime-dynamic keys (docs/docs/i18n.mdx Pattern F).
+ */
+function localizedLabel(labelKey: string | undefined, label: string): string {
+    if (labelKey != null) {
+        return i18n.t(labelKey as never) as string;
+    }
+    return label;
+}
+
+/** Localized display label for a slash command (slash palette). */
+export function slashCommandLabel(cmd: SlashCommandSpec): string {
+    return localizedLabel(cmd.labelKey, cmd.label);
+}
+
+/** Localized display label for a block action ("Turn into" menus / toolbar). */
+export function blockActionLabel(action: BlockActionSpec): string {
+    return localizedLabel(action.labelKey, action.label);
+}
+
+/** Localized display label for an inline style (floating toolbar). */
+export function inlineStyleLabel(style: InlineStyleSpec): string {
+    return localizedLabel(style.labelKey, style.label);
 }
 
 /** Legacy alias — use SlashCommandRunResult instead. */

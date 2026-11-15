@@ -8,6 +8,8 @@
 // 在右上角点一个小 accent 点，完整状态走 title / aria-label。
 
 import { cn } from "@/util/util";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 import {
     autoUpdate,
     flip,
@@ -30,23 +32,30 @@ export interface FoldMenuProps {
     onTagsFoldChange: (value: TagsFold) => void;
 }
 
-const SubSessionsLabels: { value: SubSessionsFold; label: string; title: string }[] = [
-    { value: "folded", label: "Folded", title: "Collapse sub-sessions by default" },
-    { value: "expanded", label: "Expanded", title: "Expand sub-sessions by default" },
-    { value: "smart", label: "Smart", title: "Expand when the filter matches" },
+const SubSessionsLabels: { value: SubSessionsFold; labelKey: string; titleKey: string }[] = [
+    { value: "folded", labelKey: "aisessions:fold.folded", titleKey: "aisessions:fold.subTitle.folded" },
+    { value: "expanded", labelKey: "aisessions:fold.expanded", titleKey: "aisessions:fold.subTitle.expanded" },
+    { value: "smart", labelKey: "aisessions:fold.smart", titleKey: "aisessions:fold.subTitle.smart" },
 ];
 
-const TagsLabels: { value: TagsFold; label: string; title: string }[] = [
-    { value: "folded", label: "Folded", title: "Show the first four tags in every row" },
-    { value: "expanded", label: "Expanded", title: "Show all tags in every row" },
+const TagsLabels: { value: TagsFold; labelKey: string; titleKey: string }[] = [
+    { value: "folded", labelKey: "aisessions:fold.folded", titleKey: "aisessions:fold.tagsTitle.folded" },
+    { value: "expanded", labelKey: "aisessions:fold.expanded", titleKey: "aisessions:fold.tagsTitle.expanded" },
 ];
 
 /** 按钮上的摘要：只显示子会话状态。 */
 export function foldSummary(value: SubSessionsFold): string {
-    return SubSessionsLabels.find((item) => item.value === value)?.label ?? "Folded";
+    const key =
+        value === "folded"
+            ? "aisessions:fold.folded"
+            : value === "expanded"
+              ? "aisessions:fold.expanded"
+              : "aisessions:fold.smart";
+    return i18n.t(key as never);
 }
 
 export function FoldMenu({ subSessionsFold, tagsFold, onSubSessionsFoldChange, onTagsFoldChange }: FoldMenuProps) {
+    const { t } = useTranslation("aisessions");
     const [open, setOpen] = useState(false);
     const [reference, setReference] = useState<HTMLButtonElement | null>(null);
     const { refs, floatingStyles, context } = useFloating({
@@ -62,9 +71,10 @@ export function FoldMenu({ subSessionsFold, tagsFold, onSubSessionsFoldChange, o
 
     // 默认组合：子会话 smart + 标签 folded。偏离默认才在按钮上留痕。
     const isDefaultFold = subSessionsFold === "smart" && tagsFold === "folded";
-    const foldTitle = `Sub-sessions: ${foldSummary(subSessionsFold)} · Tags: ${
-        tagsFold === "expanded" ? "Expanded" : "Folded"
-    }`;
+    const foldTitle = i18n.t("aisessions:fold.foldTitle", {
+        subSessions: foldSummary(subSessionsFold),
+        tags: tagsFold === "expanded" ? t("aisessions:fold.expanded") : t("aisessions:fold.folded"),
+    });
 
     return (
         <>
@@ -102,17 +112,13 @@ export function FoldMenu({ subSessionsFold, tagsFold, onSubSessionsFoldChange, o
                         className="z-50 flex w-56 flex-col overflow-hidden rounded-lg border border-border bg-modalbg"
                     >
                         <div className="border-b border-border/40 px-2.5 py-1.5 text-[12px] text-secondary">
-                            Sub-sessions
+                            {t("aisessions:fold.subSessions")}
                         </div>
                         <div className="p-1.5">
-                            <Segmented
-                                options={SubSessionsLabels}
-                                value={subSessionsFold}
-                                onChange={onSubSessionsFoldChange}
-                            />
+                            <Segmented options={SubSessionsLabels} value={subSessionsFold} onChange={onSubSessionsFoldChange} />
                         </div>
                         <div className="border-b border-t border-border/40 px-2.5 py-1.5 text-[12px] text-secondary">
-                            Tags
+                            {t("aisessions:fold.tags")}
                         </div>
                         <div className="p-1.5">
                             <Segmented options={TagsLabels} value={tagsFold} onChange={onTagsFoldChange} />
@@ -129,20 +135,22 @@ function Segmented<T extends string>({
     value,
     onChange,
 }: {
-    options: { value: T; label: string; title: string }[];
+    options: { value: T; labelKey: string; titleKey: string }[];
     value: T;
     onChange: (value: T) => void;
 }) {
+    const { t } = useTranslation("aisessions");
     return (
         <div className="flex rounded-md border border-border bg-surface p-0.5">
             {options.map((option) => {
                 const active = option.value === value;
+                const title = t(option.titleKey as never);
                 return (
                     <button
                         key={option.value}
                         type="button"
-                        title={option.title}
-                        aria-label={option.title}
+                        title={title}
+                        aria-label={title}
                         aria-pressed={active}
                         onClick={() => onChange(option.value)}
                         className={cn(
@@ -150,7 +158,7 @@ function Segmented<T extends string>({
                             active ? "bg-background text-primary" : "text-secondary hover:text-primary"
                         )}
                     >
-                        {option.label}
+                        {t(option.labelKey as never)}
                     </button>
                 );
             })}

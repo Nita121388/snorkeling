@@ -8,18 +8,20 @@
 // stopPropagation，Modal 自带 backdrop 关闭。
 
 import { Modal } from "@/app/modals/modal";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { cancelActiveAnnotationAssist, requestAnnotationDrafts, type AnnotationAssistScope } from "./annotation-assist";
 import { AIAssistButton, AssistFieldState, type AssistFieldStatus } from "./annotation-assist-ui";
 import { deleteAnnotation, saveAnnotation } from "./annotation-store";
 import { normalizeSessionTags } from "./session-tags";
 
 const KindOptions = [
-    { value: "note", label: "Note" },
-    { value: "milestone", label: "Milestone" },
-    { value: "decision", label: "Decision" },
-    { value: "question", label: "Question" },
+    { value: "note", labelKey: "aisessions:annotationCard.kind.note" },
+    { value: "milestone", labelKey: "aisessions:annotationCard.kind.milestone" },
+    { value: "decision", labelKey: "aisessions:annotationCard.kind.decision" },
+    { value: "question", labelKey: "aisessions:annotationCard.kind.question" },
 ] as const;
 
 export function AnnotationEditor({
@@ -42,6 +44,7 @@ export function AnnotationEditor({
     onClose: () => void;
     onSaved?: () => void;
 }) {
+    const { t } = useTranslation("aisessions");
     const [kind, setKind] = React.useState(annotation?.kind ?? "note");
     const [title, setTitle] = React.useState(annotation?.title ?? "");
     const [body, setBody] = React.useState(annotation?.body ?? "");
@@ -88,7 +91,7 @@ export function AnnotationEditor({
                 if (seq !== assistSeq.current) return;
                 const draft = drafts[0];
                 if (draft == null) {
-                    throw new Error("AI returned no suggestion");
+                    throw new Error(i18n.t("aisessions:assist.noSuggestion"));
                 }
                 if (field === "title") setTitle(draft.title);
                 else if (field === "body") setBody(draft.body);
@@ -114,7 +117,7 @@ export function AnnotationEditor({
                 .filter(Boolean)
         );
         if (title.trim() === "" && body.trim() === "" && tags.length === 0) {
-            setError("Add a title, body or tag first.");
+            setError(i18n.t("aisessions:annotationEditor.missingFields"));
             return;
         }
         setSaving(true);
@@ -163,7 +166,7 @@ export function AnnotationEditor({
             className="w-[min(560px,calc(100vw-32px))]"
             onClose={onClose}
             onClickBackdrop={onClose}
-            title={annotation ? "Edit annotation" : "Add annotation"}
+            title={annotation ? t("aisessions:annotationEditor.editTitle") : t("aisessions:annotationEditor.addTitle")}
             headerExtra={<span className="text-[10px] text-secondary">#{seq}</span>}
         >
             <div className="space-y-3 text-primary" data-row-action="true" onClick={(event) => event.stopPropagation()}>
@@ -180,33 +183,37 @@ export function AnnotationEditor({
                             )}
                             onClick={() => setKind(option.value)}
                         >
-                            {option.label}
+                            {t(option.labelKey)}
                         </button>
                     ))}
                 </div>
                 <div className="flex items-center justify-between gap-1.5">
                     <span className="text-[10px] uppercase tracking-wide text-secondary">
-                        Node{nodeText.trim() !== "" ? " · edited" : ""}
+                        {nodeText.trim() !== ""
+                            ? t("aisessions:annotationCard.nodeEdited")
+                            : t("aisessions:annotationCard.node")}
                     </span>
                     {nodeText !== "" ? (
                         <button
                             type="button"
                             className="h-6 cursor-pointer rounded px-1.5 text-[10px] text-secondary hover:bg-hover hover:text-primary"
-                            title="Drop the edited copy and show the live node text"
+                            title={t("aisessions:annotationCard.resetTitle")}
                             onClick={() => setNodeText("")}
                         >
-                            Reset
+                            {t("aisessions:annotationCard.reset")}
                         </button>
                     ) : null}
                 </div>
                 <textarea
                     className="min-h-[72px] w-full resize-y rounded border border-border bg-transparent px-3 py-2 text-xs leading-5 outline-none focus:border-accent"
-                    placeholder={nodePreview?.trim() || "Leave empty to use the live node text"}
+                    placeholder={nodePreview?.trim() || t("aisessions:annotationEditor.useLiveNodeText")}
                     value={nodeText}
                     onChange={(event) => setNodeText(event.target.value)}
                 />
                 <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase tracking-wide text-secondary">Title</span>
+                    <span className="text-[10px] uppercase tracking-wide text-secondary">
+                        {t("aisessions:annotationEditor.title")}
+                    </span>
                     <AIAssistButton status={assist.title.status} onRun={() => void runAssist("title")} />
                     <AssistFieldState
                         status={assist.title.status}
@@ -224,12 +231,14 @@ export function AnnotationEditor({
                 <input
                     autoFocus
                     className="h-8 w-full rounded border border-border bg-transparent px-2 text-sm outline-none focus:border-accent"
-                    placeholder="Title"
+                    placeholder={t("aisessions:annotationEditor.title")}
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
                 />
                 <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase tracking-wide text-secondary">Body</span>
+                    <span className="text-[10px] uppercase tracking-wide text-secondary">
+                        {t("aisessions:annotationEditor.body")}
+                    </span>
                     <AIAssistButton status={assist.body.status} onRun={() => void runAssist("body")} />
                     <AssistFieldState
                         status={assist.body.status}
@@ -246,12 +255,14 @@ export function AnnotationEditor({
                 </div>
                 <textarea
                     className="min-h-[140px] w-full resize-y rounded border border-border bg-transparent px-3 py-2 text-sm leading-5 outline-none focus:border-accent"
-                    placeholder="Annotation body"
+                    placeholder={t("aisessions:annotationEditor.bodyPlaceholder")}
                     value={body}
                     onChange={(event) => setBody(event.target.value)}
                 />
                 <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase tracking-wide text-secondary">Tags</span>
+                    <span className="text-[10px] uppercase tracking-wide text-secondary">
+                        {t("aisessions:annotationEditor.tags")}
+                    </span>
                     <AIAssistButton status={assist.tags.status} onRun={() => void runAssist("tags")} />
                     <AssistFieldState
                         status={assist.tags.status}
@@ -268,7 +279,7 @@ export function AnnotationEditor({
                 </div>
                 <input
                     className="h-8 w-full rounded border border-border bg-transparent px-2 text-xs outline-none focus:border-accent"
-                    placeholder="tags (space separated, # optional)"
+                    placeholder={t("aisessions:annotationEditor.tagsPlaceholder")}
                     value={tagsText}
                     onChange={(event) => setTagsText(event.target.value)}
                 />
@@ -285,7 +296,7 @@ export function AnnotationEditor({
                             disabled={deleting || saving}
                             onClick={() => void handleDelete()}
                         >
-                            {deleting ? "Deleting…" : "Delete"}
+                            {deleting ? t("aisessions:annotationEditor.deleting") : t("aisessions:annotationEditor.delete")}
                         </button>
                     ) : (
                         <span />
@@ -297,7 +308,7 @@ export function AnnotationEditor({
                             disabled={saving || deleting}
                             onClick={onClose}
                         >
-                            Cancel
+                            {t("aisessions:annotationEditor.cancel")}
                         </button>
                         <button
                             type="button"
@@ -305,7 +316,7 @@ export function AnnotationEditor({
                             disabled={saving || deleting}
                             onClick={() => void handleSave()}
                         >
-                            {saving ? "Saving…" : "Save"}
+                            {saving ? t("aisessions:annotationEditor.saving") : t("aisessions:annotationEditor.save")}
                         </button>
                     </div>
                 </div>

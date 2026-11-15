@@ -4,6 +4,7 @@
 // Emoji Badge 组件 - 从 banner 底部突出显示文档 emoji
 
 import { memo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 type EmojiBadgeProps = {
     /** Emoji 字符 */
@@ -13,6 +14,7 @@ type EmojiBadgeProps = {
 };
 
 export const EmojiBadge = memo(function EmojiBadge({ emoji, onClick }: EmojiBadgeProps) {
+    const { t } = useTranslation("preview");
     const handleClick = useCallback(
         (e: React.MouseEvent) => {
             e.stopPropagation(); // 阻止事件冒泡到 banner
@@ -25,8 +27,8 @@ export const EmojiBadge = memo(function EmojiBadge({ emoji, onClick }: EmojiBadg
         <button
             type="button"
             className="snorkeling-emoji-badge"
-            title="Change document emoji"
-            aria-label="Document emoji"
+            title={t("preview:emojiBadge.changeDocumentEmoji")}
+            aria-label={t("preview:emojiBadge.documentEmojiLabel")}
             onClick={handleClick}
         >
             <span className="snorkeling-emoji-char">{emoji}</span>

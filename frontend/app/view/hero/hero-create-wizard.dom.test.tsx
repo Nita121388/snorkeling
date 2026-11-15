@@ -8,15 +8,21 @@
 
 import { modalsModel } from "@/app/store/modalmodel";
 import { HeroCreateWizard } from "@/app/view/hero/hero-create-wizard";
+import { i18n, initI18n } from "@/i18n/config";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Regression for the modal-close bug (2026-11-13, user report): the modal
 // registry does NOT inject onClose (ModalsRenderer spreads only the pushed
 // props), so closing must fall back to modalsModel.popModal() instead of
 // calling an undefined onClose.
 describe("HeroCreateWizard close contract", () => {
+    beforeAll(async () => {
+        // Pattern I: 文案断言用 i18n 复算（en 是真源）。
+        await initI18n("en");
+    });
+
     let container: HTMLDivElement;
     let root: Root;
 
@@ -80,8 +86,10 @@ describe("HeroCreateWizard close contract", () => {
             root.render(<HeroCreateWizard source="hero-picker" sessionTitle="Backup Guard" />);
         });
         const text = document.body.textContent ?? "";
-        expect(text).toContain("Step 1 of 2 · Identity");
-        expect(text).toContain("id preview");
+        expect(text).toContain(i18n.t("hero:wizard.stepIdentity"));
+        // "id preview:" without the trailing value — the value itself is the slug.
+        const idPreviewLabel = i18n.t("hero:wizard.idPreview", { id: "" }).trim();
+        expect(text).toContain(idPreviewLabel);
         const nameInput = document.querySelector<HTMLInputElement>('input[type="text"]');
         expect(nameInput?.value).toBe("Backup Guard");
     });

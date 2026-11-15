@@ -14,6 +14,7 @@ import { atoms, getApi, getSettingsKeyAtom } from "@/store/global";
 import { isMacOS } from "@/util/platformutil";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
     ImperativePanelGroupHandle,
     ImperativePanelHandle,
@@ -40,6 +41,7 @@ const MacOSTabBarSpacer = memo(() => {
 MacOSTabBarSpacer.displayName = "MacOSTabBarSpacer";
 
 const WorkspaceElem = memo(() => {
+    const { t } = useTranslation("workspace");
     const workspaceLayoutModel = WorkspaceLayoutModel.getInstance();
     const tabId = useAtomValue(atoms.staticTabId);
     const ws = useAtomValue(atoms.workspace);
@@ -176,10 +178,7 @@ const WorkspaceElem = memo(() => {
                                         onMouseLeave={() => setIsHeaderHovered(false)}
                                     >
                                         {showLeftTabBar && (
-                                            <VTabBar
-                                                workspace={ws}
-                                                onHoveredTabChange={handleHoveredTabChange}
-                                            />
+                                            <VTabBar workspace={ws} onHoveredTabChange={handleHoveredTabChange} />
                                         )}
                                     </div>
                                 </Panel>
@@ -203,7 +202,7 @@ const WorkspaceElem = memo(() => {
                         <PanelResizeHandle className={outerHandleClass} />
                         <Panel order={1} defaultSize={100 - leftGroupInitialPct}>
                             {tabId === "" ? (
-                                <CenteredDiv>No Active Tab</CenteredDiv>
+                                <CenteredDiv>{t("workspace:workspace.noActiveTab")}</CenteredDiv>
                             ) : (
                                 <div className="flex flex-row h-full min-w-0 w-full overflow-hidden">
                                     <div className="relative flex-1 min-w-0 h-full min-h-0">

@@ -6,6 +6,8 @@
 
 import { globalStore } from "@/app/store/jotaiStore";
 import { AISessionsServiceType } from "@/app/store/services";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import * as jotai from "jotai";
 import { AiAuditView } from "./aiaudit-view";
 
@@ -25,7 +27,7 @@ export class AiAuditViewModel implements ViewModel {
     service: AISessionsServiceType;
 
     viewIcon = jotai.atom<string>("clipboard-list");
-    viewName = jotai.atom<string>("AI Audit");
+    viewName = localeTextAtom(() => i18n.t("aiaudit:header.viewName"));
     manageConnection = jotai.atom<boolean>(false);
 
     entriesAtom: jotai.PrimitiveAtom<AuditView[]>;
@@ -189,10 +191,7 @@ export class AiAuditViewModel implements ViewModel {
         globalStore.set(this.clearArmedAtom, false);
         try {
             const removed = await this.service.AuditClear({ beforeDays: days });
-            globalStore.set(
-                this.commentAtom,
-                `Cleared ${removed} entr${removed === 1 ? "y" : "ies"} older than ${days} days`
-            );
+            globalStore.set(this.commentAtom, i18n.t("aiaudit:model.cleared", { count: removed, days }));
             await this.load();
         } catch (e) {
             globalStore.set(this.errorAtom, e instanceof Error ? e.message : String(e));
@@ -202,7 +201,7 @@ export class AiAuditViewModel implements ViewModel {
     async retry(id: number): Promise<void> {
         try {
             await this.service.AuditRetry({ id });
-            globalStore.set(this.commentAtom, `Retry queued for entry #${id}`);
+            globalStore.set(this.commentAtom, i18n.t("aiaudit:model.retryQueued", { id }));
         } catch (e) {
             globalStore.set(this.errorAtom, e instanceof Error ? e.message : String(e));
         }

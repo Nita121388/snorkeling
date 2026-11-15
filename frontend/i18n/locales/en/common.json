@@ -1,0 +1,174 @@
+{
+    "app": {
+        "menuOpen": "Open Menu",
+        "title": "Config Files"
+    },
+    "common": {
+        "cancel": "Cancel",
+        "close": "Close",
+        "copy": "Copy",
+        "delete": "Delete",
+        "edit": "Edit",
+        "loading": "Loading...",
+        "ok": "OK",
+        "save": "Save",
+        "copied": "Copied",
+        "copyMessage": "Copy message",
+        "refresh": "Refresh"
+    },
+    "settings": {
+        "defaultFile": "Default Configuration",
+        "discarded": "Changes discarded",
+        "searchPlaceholder": "Search settings",
+        "unsavedWarn": "You have unsaved changes",
+        "userFile": "User Configuration",
+        "languageTitle": "Language",
+        "languageAuto": "Auto",
+        "languageAutoDesc": "Follow the operating system language",
+        "languageEn": "English",
+        "languageEnDesc": "Always English",
+        "languageZh": "中文",
+        "languageZhDesc": "Always Chinese"
+    },
+    "docs": {
+        "viewDocs": "View documentation",
+        "save": "Save",
+        "saving": "Saving..."
+    },
+    "suggestion": {
+        "iconAlt": "favicon",
+        "noSuggestions": "No Suggestions"
+    },
+    "menu": {
+        "app": {
+            "about": "About Snorkeling",
+            "checkForUpdates": "Check for Updates",
+            "launchAtLogin": "Launch at Login"
+        },
+        "file": {
+            "newWindow": "New Window",
+            "newBuilderWindow": "New WaveApp Builder Window"
+        },
+        "view": {
+            "reloadWindow": "Reload Window",
+            "reloadTab": "Reload Tab",
+            "relaunchAllWindows": "Relaunch All Windows",
+            "clearTabCache": "Clear Tab Cache",
+            "toggleDevTools": "Toggle DevTools",
+            "resetZoom": "Reset Zoom",
+            "zoomIn": "Zoom In",
+            "zoomOut": "Zoom Out",
+            "launchOnFullScreen": "Launch On Full Screen",
+            "on": "On",
+            "off": "Off",
+            "toggleWidgetsBar": "Toggle Widgets Bar"
+        },
+        "window": {
+            "moveToNextDisplay": "Move to Next Display",
+            "moveToPreviousDisplay": "Move to Previous Display"
+        },
+        "workspace": {
+            "label": "Workspace",
+            "createWorkspace": "Create Workspace"
+        }
+    },
+    "contextMenu": {
+        "saveImage": "Save Image"
+    },
+    "dialog": {
+        "confirm": "Confirm",
+        "confirmQuit": {
+            "title": "Confirm Quit",
+            "message": "Are you sure you want to quit Snorkeling?",
+            "quit": "Quit"
+        },
+        "confirmCloseWindow": {
+            "message": "Window has unsaved tabs, closing window will delete existing tabs.\n\nContinue?",
+            "closeWindow": "Close Window"
+        },
+        "confirmCloseTab": {
+            "message": "Are you sure you want to close this tab?",
+            "closeTab": "Close Tab"
+        },
+        "confirmDeleteWorkspace": {
+            "message": "Deleting workspace will also delete its contents.\n\nContinue?",
+            "deleteWorkspace": "Delete Workspace"
+        },
+        "arm64Warning": {
+            "title": "Snorkeling has detected a performance issue",
+            "message": "Snorkeling is running in ARM64 translation mode which may impact performance.\n\nRecommendation: Download the native ARM64 version from the project repository for optimal performance.",
+            "dismiss": "Dismiss",
+            "learnMore": "Learn More"
+        },
+        "saveScrollback": {
+            "title": "Save Scrollback",
+            "filter": "Text Files"
+        },
+        "exportHtml": {
+            "title": "Export HTML",
+            "filter": "HTML"
+        },
+        "exportPdf": {
+            "title": "Export PDF",
+            "filter": "PDF"
+        },
+        "saveImage": {
+            "title": "Save Image",
+            "filter": "Images"
+        }
+    },
+    "updater": {
+        "later": "Later",
+        "openLatestRelease": "Open Latest Release",
+        "openReleasePage": "Open Release Page",
+        "downloadInstall": "Download & Install",
+        "restart": "Restart",
+        "restartInstall": "Restart & Install",
+        "notification": {
+            "manualAvailable": "A new version of Snorkeling is available for manual installation.",
+            "ready": "A new version of Snorkeling is ready to install."
+        },
+        "unsupported": {
+            "message": "Automatic updates are unavailable for this copy.",
+            "detail": "This copy does not support automatic in-place updates. Please install the Windows setup package (.exe) to receive automatic updates."
+        },
+        "noUpdates": {
+            "message": "There are currently no updates available."
+        },
+        "checkFailed": {
+            "message": "Failed to check for updates.",
+            "noVersionsDetail": "No published update versions were found. Please ensure releases are tagged with a valid semantic version (for example: v0.14.5-beta.4.snorkeling.0.0.6)."
+        },
+        "ready": {
+            "title": "Application Update",
+            "detail": "A new version has been downloaded. Restart the application to apply the updates."
+        },
+        "installUnavailable": {
+            "message": "Automatic update failed.",
+            "detailWithError": "The downloaded update could not be prepared for installation.\n\n{{error}}\n\nPlease install the latest release manually.",
+            "detail": "The downloaded update is no longer ready to install. Please check for updates again or install the latest release manually."
+        },
+        "manualReady": {
+            "message": "Snorkeling {{version}} is ready.",
+            "detail": "The update has been downloaded and unpacked. Restart now to swap it in."
+        },
+        "manual": {
+            "message": "Manual update required.",
+            "releaseWithName": "A new Snorkeling release is available: {{name}}.",
+            "releaseAvailable": "A new Snorkeling release is available.",
+            "detail": "Automatic installation is unavailable for this copy."
+        }
+    },
+    "osNotify": {
+        "doneTitle": "Agent done — {{provider}}",
+        "blockedTitle": "Agent blocked — {{provider}}",
+        "doneBody": "Agent finished. Click to return to the app.",
+        "blockedBody": "Agent is waiting for input. Click to switch to the app.",
+        "summaryDoneTitle": "Agents done",
+        "summaryBlockedTitle": "Agents blocked",
+        "summaryDoneBody_one": "{{count}} agent finished. Click to return to the app.",
+        "summaryDoneBody_other": "{{count}} agents finished. Click to return to the app.",
+        "summaryBlockedBody_one": "{{count}} agent is waiting for input. Click to switch to the app.",
+        "summaryBlockedBody_other": "{{count}} agents are waiting for input. Click to switch to the app."
+    }
+}

@@ -11,6 +11,8 @@ import { loadCcSwitchVendors } from "@/app/workspace/ccswitch-vendors";
 import { copyText } from "@/util/clipboard";
 import { offset as offsetMiddleware, useClick, useDismiss, useFloating, useInteractions } from "@floating-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 import { agentHookActionLabel, agentHookStatusLabel, vendorIsolationStateLabel } from "./agentsettings-utils";
 
 const AgentHookProviderOrder = ["codex", "claude", "opencode", "pi"];
@@ -72,6 +74,7 @@ function VendorSelect({
     loading: boolean;
     onChange: (vendorId: string) => void;
 }) {
+    const { t } = useTranslation("modals");
     const [isOpen, setIsOpen] = useState(false);
     const { refs, floatingStyles, context } = useFloating({
         placement: "bottom-start",
@@ -85,7 +88,9 @@ function VendorSelect({
     const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss]);
 
     const selected = vendors.find((vendor) => vendor.id === value);
-    const triggerLabel = selected ? `${selected.name} ${selected.is_current ? "(current)" : ""}` : "No vendors";
+    const triggerLabel = selected
+        ? `${selected.name} ${selected.is_current ? t("modals:agentHookSettings.vendorCurrentSuffix") : ""}`
+        : t("modals:agentHookSettings.noVendors");
     const disabled = loading || vendors.length === 0;
 
     return (
@@ -108,7 +113,7 @@ function VendorSelect({
                     className="absolute z-[var(--zindex-typeahead-modal)] max-h-64 w-[min(280px,calc(100vw-32px))] overflow-y-auto rounded border border-border bg-modalbg shadow-lg"
                 >
                     {vendors.length === 0 ? (
-                        <div className="px-3 py-2 text-xs text-muted">No vendors</div>
+                        <div className="px-3 py-2 text-xs text-muted">{t("modals:agentHookSettings.noVendors")}</div>
                     ) : (
                         vendors.map((vendor) => (
                             <button
@@ -123,7 +128,11 @@ function VendorSelect({
                                 }}
                             >
                                 <span className="truncate">{vendor.name}</span>
-                                {vendor.is_current ? <span className="shrink-0 text-success">(current)</span> : null}
+                                {vendor.is_current ? (
+                                    <span className="shrink-0 text-success">
+                                        {t("modals:agentHookSettings.vendorCurrentSuffix")}
+                                    </span>
+                                ) : null}
                             </button>
                         ))
                     )}
@@ -134,6 +143,7 @@ function VendorSelect({
 }
 
 function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "" }: AgentHookSettingsModalProps) {
+    const { t } = useTranslation("modals");
     const service = useMemo(() => new BlockServiceType(), []);
     const [activeTab, setActiveTab] = useState<"hooks" | "details">("hooks");
     const [statuses, setStatuses] = useState<HookStatus[]>([]);
@@ -188,7 +198,7 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                 if (provider === "claude" || provider === "codex" || provider === "opencode" || provider === "pi") {
                     await loadCcSwitchVendors(provider as CcSwitchAppType, true);
                 }
-                setNotice(`${providerLabel(provider)} hook is current.`);
+                setNotice(i18n.t("modals:agentHookSettings.hookCurrent", { provider: providerLabel(provider) }));
             } catch (nextError) {
                 setError(nextError instanceof Error ? nextError.message : String(nextError));
             } finally {
@@ -266,13 +276,13 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
             className="h-[min(760px,calc(100vh-48px))] w-[680px] max-w-[calc(100vw-32px)]"
             onClose={closeModal}
             onClickBackdrop={closeModal}
-            title="Agent Settings"
+            title={t("modals:agentHookSettings.title")}
             // 内部已有自己的 overflow-y-auto 列表区 + 固定 footer。
             scrollBody={false}
         >
             <div className="flex min-h-0 flex-1 flex-col text-primary">
                 <div className="shrink-0">
-                    <div className="mt-4 flex border-b border-border" role="tablist" aria-label="Agent settings">
+                    <div className="mt-4 flex border-b border-border" role="tablist" aria-label={t("modals:agentHookSettings.tabsAriaLabel")}>
                         {(["hooks", "details"] as const).map((tab) => (
                             <button
                                 key={tab}
@@ -286,7 +296,9 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                 }`}
                                 onClick={() => setActiveTab(tab)}
                             >
-                                {tab === "hooks" ? "Agent Hooks" : "Details"}
+                                {tab === "hooks"
+                                    ? t("modals:agentHookSettings.tabHooks")
+                                    : t("modals:agentHookSettings.tabDetails")}
                             </button>
                         ))}
                     </div>
@@ -297,18 +309,20 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                         <div className="overflow-x-auto">
                             <div className="min-w-[520px]">
                                 <div className="grid grid-cols-[minmax(130px,1fr)_80px_80px_130px_76px] gap-3 border-b border-border px-2 pb-2 text-xxs font-medium text-muted">
-                                    <span>Agent</span>
-                                    <span>Installed</span>
-                                    <span>Required</span>
-                                    <span>Status</span>
+                                    <span>{t("modals:agentHookSettings.colAgent")}</span>
+                                    <span>{t("modals:agentHookSettings.colInstalled")}</span>
+                                    <span>{t("modals:agentHookSettings.colRequired")}</span>
+                                    <span>{t("modals:agentHookSettings.colStatus")}</span>
                                     <span />
                                 </div>
 
                                 {loading && statuses.length === 0 ? (
-                                    <div className="px-2 py-8 text-center text-xs text-muted">Loading...</div>
+                                    <div className="px-2 py-8 text-center text-xs text-muted">
+                                        {t("common:common.loading")}
+                                    </div>
                                 ) : statuses.length === 0 ? (
                                     <div className="px-2 py-8 text-center text-xs text-muted">
-                                        No hook integrations available.
+                                        {t("modals:agentHookSettings.noIntegrations")}
                                     </div>
                                 ) : (
                                     statuses.map((status) => {
@@ -370,7 +384,7 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                         className="shrink-0 text-xs font-medium text-error hover:text-foreground cursor-pointer"
                                         onClick={() => void refresh()}
                                     >
-                                        Retry
+                                        {t("modals:agentHookSettings.retry")}
                                     </button>
                                 </div>
                             ) : null}
@@ -380,7 +394,9 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                         <div className="space-y-4">
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[200px_minmax(0,1fr)_32px]">
                                 <div>
-                                    <div className="mb-1 text-xxs font-medium text-muted">App</div>
+                                    <div className="mb-1 text-xxs font-medium text-muted">
+                                        {t("modals:agentHookSettings.app")}
+                                    </div>
                                     <div className="flex h-8 rounded border border-border p-0.5">
                                         {(["claude", "codex", "opencode", "pi"] as const).map((value) => (
                                             <button
@@ -402,7 +418,7 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                     <label
                                         className="mb-1 flex text-xxs font-medium text-muted"
                                     >
-                                        Vendor
+                                        {t("modals:agentHookSettings.vendor")}
                                     </label>
                                     <VendorSelect
                                         vendors={vendors}
@@ -414,8 +430,8 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                 <button
                                     type="button"
                                     className="mt-5 flex h-8 w-8 items-center justify-center rounded text-secondary hover:bg-hover hover:text-primary cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                                    title="Refresh vendor diagnostics"
-                                    aria-label="Refresh vendor diagnostics"
+                                    title={t("modals:agentHookSettings.refreshVendorDiagnostics")}
+                                    aria-label={t("modals:agentHookSettings.refreshVendorDiagnostics")}
                                     onClick={() => void refreshVendors(true)}
                                 >
                                     <i className={`fa-sharp fa-solid fa-rotate ${vendorsLoading ? "fa-spin" : ""}`} />
@@ -428,27 +444,29 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                         <span className="font-medium text-primary">
                                             {vendors.find((vendor) => vendor.id === selectedVendorId)?.name}
                                         </span>
-                                        <span className="text-success">Current · system config</span>
+                                        <span className="text-success">{t("modals:agentHookSettings.currentSystemConfig")}</span>
                                     </div>
                                     <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-2 text-secondary">
-                                        <dt>Config source</dt>
+                                        <dt>{t("modals:agentHookSettings.configSource")}</dt>
                                         <dd className="font-mono text-primary">
                                             {appType === "claude" ? "~/.claude" : "~/.codex"}
                                         </dd>
-                                        <dt>Capabilities</dt>
+                                        <dt>{t("modals:agentHookSettings.capabilities")}</dt>
                                         <dd className="text-primary">
-                                            System settings, skills, plugins, and project preferences
+                                            {t("modals:agentHookSettings.capabilitiesValue")}
                                         </dd>
-                                        <dt>Vendor binding</dt>
-                                        <dd className="text-primary">None</dd>
+                                        <dt>{t("modals:agentHookSettings.vendorBinding")}</dt>
+                                        <dd className="text-primary">{t("modals:agentHookSettings.none")}</dd>
                                     </dl>
                                 </div>
                             ) : !vendorDetected && !vendorsLoading ? (
                                 <div className="border border-border px-3 py-3 text-xs text-secondary">
-                                    cc-switch vendor data is unavailable.
+                                    {t("modals:agentHookSettings.ccswitchUnavailable")}
                                 </div>
                             ) : detailsLoading ? (
-                                <div className="py-10 text-center text-xs text-muted">Loading diagnostics...</div>
+                                <div className="py-10 text-center text-xs text-muted">
+                                    {t("modals:agentHookSettings.loadingDiagnostics")}
+                                </div>
                             ) : detailsError ? (
                                 <div className="flex items-center justify-between gap-3 border border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
                                     <span className="min-w-0 break-words">{detailsError}</span>
@@ -457,7 +475,7 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                         className="shrink-0 cursor-pointer font-medium hover:text-primary"
                                         onClick={() => void refreshDetails()}
                                     >
-                                        Retry
+                                        {t("modals:agentHookSettings.retry")}
                                     </button>
                                 </div>
                             ) : details ? (
@@ -485,8 +503,8 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                                 type="button"
                                                 disabled={!details.configdir}
                                                 className="flex h-7 w-7 items-center justify-center rounded text-secondary hover:bg-hover hover:text-primary cursor-pointer disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                                                title="Open isolation directory"
-                                                aria-label="Open isolation directory"
+                                                title={t("modals:agentHookSettings.openIsolationDirectory")}
+                                                aria-label={t("modals:agentHookSettings.openIsolationDirectory")}
                                                 onClick={() => window.api.openNativePath(details.configdir)}
                                             >
                                                 <i className="fa-sharp fa-solid fa-folder-open" />
@@ -495,8 +513,8 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                                 type="button"
                                                 disabled={!details.redactedjson}
                                                 className="flex h-7 w-7 items-center justify-center rounded text-secondary hover:bg-hover hover:text-primary cursor-pointer disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                                                title="Copy redacted JSON"
-                                                aria-label="Copy redacted JSON"
+                                                title={t("modals:agentHookSettings.copyRedactedJson")}
+                                                aria-label={t("modals:agentHookSettings.copyRedactedJson")}
                                                 onClick={() => void copyText(details.redactedjson)}
                                             >
                                                 <i className="fa-sharp fa-solid fa-copy" />
@@ -505,17 +523,20 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                     </div>
 
                                     <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-4 gap-y-2 text-xs">
-                                        <dt className="text-muted">Isolation path</dt>
+                                        <dt className="text-muted">{t("modals:agentHookSettings.isolationPath")}</dt>
                                         <dd className="min-w-0 break-all font-mono text-xxs">
-                                            {details.configdir || "Global configuration"}
+                                            {details.configdir || t("modals:agentHookSettings.globalConfiguration")}
                                         </dd>
-                                        <dt className="text-muted">Inherited hooks</dt>
+                                        <dt className="text-muted">{t("modals:agentHookSettings.inheritedHooks")}</dt>
                                         <dd>{details.inheritancesource}</dd>
-                                        <dt className="text-muted">Top-level keys</dt>
+                                        <dt className="text-muted">{t("modals:agentHookSettings.topLevelKeys")}</dt>
                                         <dd className="break-words">{details.toplevelkeys?.join(", ") || "-"}</dd>
-                                        <dt className="text-muted">Counts</dt>
+                                        <dt className="text-muted">{t("modals:agentHookSettings.counts")}</dt>
                                         <dd>
-                                            {details.envcount ?? 0} env / {details.hookeventcount ?? 0} hook events
+                                            {i18n.t("modals:agentHookSettings.countsValue", {
+                                                env: details.envcount ?? 0,
+                                                hooks: details.hookeventcount ?? 0,
+                                            })}
                                         </dd>
                                     </dl>
 
@@ -526,7 +547,9 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                     ) : null}
 
                                     <section>
-                                        <div className="mb-2 text-xs font-medium">Materialized files</div>
+                                        <div className="mb-2 text-xs font-medium">
+                                            {t("modals:agentHookSettings.materializedFiles")}
+                                        </div>
                                         <div className="border-y border-border">
                                             {details.files.map((file) => (
                                                 <div
@@ -537,7 +560,9 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                                         {file.name}
                                                     </span>
                                                     <span className={file.exists ? "text-success" : "text-muted"}>
-                                                        {file.exists ? `${file.size} B` : "Missing"}
+                                                        {file.exists
+                                                            ? `${file.size} B`
+                                                            : t("modals:agentHookSettings.missing")}
                                                     </span>
                                                     <span className="text-right text-muted">
                                                         {formatDiagnosticTime(file.lastmodified)}
@@ -548,9 +573,11 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                                     </section>
 
                                     <section>
-                                        <div className="mb-2 text-xs font-medium">Redacted materialized JSON</div>
+                                        <div className="mb-2 text-xs font-medium">
+                                            {t("modals:agentHookSettings.redactedMaterializedJson")}
+                                        </div>
                                         <pre className="max-h-64 overflow-auto rounded border border-border bg-surface-soft p-3 font-mono text-xxs leading-5 text-primary whitespace-pre-wrap break-all">
-                                            {details.redactedjson || "No JSON preview available."}
+                                            {details.redactedjson || t("modals:agentHookSettings.noJsonPreview")}
                                         </pre>
                                     </section>
                                 </>
@@ -565,7 +592,7 @@ function AgentHookSettingsModal({ initialAppType = "claude", initialVendorId = "
                         className="h-8 rounded border border-border bg-surface px-4 text-xs font-medium text-primary hover:bg-hover cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         onClick={closeModal}
                     >
-                        Close
+                        {t("modals:modal.close")}
                     </button>
                 </div>
             </div>

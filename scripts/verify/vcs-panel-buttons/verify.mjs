@@ -234,7 +234,7 @@ try {
         if (anchor == null) return null;
         const frame = anchor.closest("[data-blockid]") || document.body;
         const jumpBtn = [...frame.querySelectorAll("[data-vcs-icon-button]")].find(
-            (b) => (b.getAttribute("title") || "") === "Open remote repository"
+            (b) => ["Open remote repository", "打开远程仓库"].includes(b.getAttribute("title") || "")
         );
         let iconResolved = null;
         if (jumpBtn != null) {
@@ -251,7 +251,9 @@ try {
     } else {
         reporter.check(
             "repo-header-remote-jump",
-            jumpScan.jumpBtn && jumpScan.iconResolved === true && jumpScan.aria === "Open remote repository",
+            jumpScan.jumpBtn &&
+                jumpScan.iconResolved === true &&
+                ["Open remote repository", "打开远程仓库"].includes(jumpScan.aria),
             JSON.stringify(jumpScan)
         );
         if (jumpScan.upstreamBlank) {

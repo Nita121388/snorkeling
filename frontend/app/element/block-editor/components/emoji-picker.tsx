@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
+import { i18n } from "@/i18n/config";
 import {
     getEmojiAlias,
     getEmojiAliasMap,
@@ -81,6 +83,7 @@ export function EmojiPicker({
     footer,
     searchInputRef,
 }: EmojiPickerProps) {
+    const { t } = useTranslation("block-editor");
     const recents = useMemo(() => getRecentEmojis(), []);
     // Alias writes must invalidate the derived item list (and the has-alias markers).
     const aliasVersion = useSyncExternalStore(subscribeEmojiAliases, getEmojiAliasVersion, getEmojiAliasVersion);
@@ -331,7 +334,7 @@ export function EmojiPicker({
             }}
             onMouseDown={handlePopoverMouseDown}
             role="dialog"
-            aria-label="Emoji picker"
+            aria-label={t("block-editor:emojiPicker.ariaLabel")}
         >
             {editingEntry != null ? (
                 <div
@@ -368,8 +371,8 @@ export function EmojiPicker({
                                 {alias}
                                 <button
                                     type="button"
-                                    aria-label={`Remove alias ${alias}`}
-                                    title="移除该别名"
+                                    aria-label={i18n.t("block-editor:emojiPicker.removeAliasAria", { alias })}
+                                    title={t("block-editor:emojiPicker.removeAliasTitle")}
                                     onClick={() => setDraftAliases((prev) => prev.filter((a) => a !== alias))}
                                 >
                                     <i className="fa-sharp fa-solid fa-xmark"></i>
@@ -380,7 +383,7 @@ export function EmojiPicker({
                     <input
                         ref={aliasInputRef}
                         className="markdown-emoji-alias-input"
-                        placeholder="输入含义，如「已解决」/ done，回车添加"
+                        placeholder={t("block-editor:emojiPicker.aliasInputPlaceholder")}
                         value={aliasInput}
                         onChange={(e) => setAliasInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -394,12 +397,12 @@ export function EmojiPicker({
                     />
                     <input
                         className="markdown-emoji-alias-input"
-                        placeholder="可选：一句话说明（不参与搜索）"
+                        placeholder={t("block-editor:emojiPicker.noteInputPlaceholder")}
                         value={draftNote}
                         onChange={(e) => setDraftNote(e.target.value)}
                     />
                     <div className="markdown-emoji-alias-hintrow">
-                        别名会优先参与搜索 · Ctrl/Cmd+Enter 保存 · Esc 返回
+                        {t("block-editor:emojiPicker.aliasHint")}
                     </div>
                     <div className="markdown-emoji-alias-actions">
                         <button
@@ -407,13 +410,13 @@ export function EmojiPicker({
                             className="is-danger"
                             onClick={clearAliasEntry}
                             disabled={!aliasesAvailable}
-                            title="删除该 emoji 的全部别名与说明"
+                            title={t("block-editor:emojiPicker.clearAllTitle")}
                         >
-                            清除
+                            {t("block-editor:emojiPicker.clear")}
                         </button>
                         <span className="is-spacer" />
                         <button type="button" onClick={closeAliasEditor}>
-                            取消
+                            {t("block-editor:emojiPicker.cancel")}
                         </button>
                         <button
                             type="button"
@@ -421,7 +424,7 @@ export function EmojiPicker({
                             onClick={commitAliasEditor}
                             disabled={!savingAliases}
                         >
-                            保存
+                            {t("block-editor:emojiPicker.save")}
                         </button>
                     </div>
                 </div>
@@ -433,7 +436,7 @@ export function EmojiPicker({
                                 ref={searchInputRef}
                                 autoFocus
                                 className="markdown-emoji-search"
-                                placeholder="Search emoji…"
+                                placeholder={t("block-editor:emojiPicker.searchPlaceholder")}
                                 value={query}
                                 onChange={(e) => onQueryChange?.(e.target.value)}
                                 onKeyDown={(e) => {
@@ -460,7 +463,7 @@ export function EmojiPicker({
                                 type="button"
                                 className="markdown-emoji-remove"
                                 onClick={onRemove}
-                                title="Remove emoji"
+                                title={t("block-editor:emojiPicker.removeEmojiTitle")}
                                 disabled={!allowRemove}
                             >
                                 <i className="fa-sharp fa-solid fa-trash-can"></i>
@@ -485,7 +488,7 @@ export function EmojiPicker({
                     )}
                     {matchedAliases.length > 0 && (
                         <div className="markdown-emoji-alias-strip" role="status">
-                            <span>别名命中</span>
+                            <span>{t("block-editor:emojiPicker.aliasMatched")}</span>
                             {matchedAliases.map((alias) => (
                                 <span key={alias} className="markdown-emoji-alias-chip">
                                     {alias}
@@ -494,7 +497,9 @@ export function EmojiPicker({
                         </div>
                     )}
                     <div className="markdown-emoji-list" ref={listRef}>
-                        {items.length === 0 && <div className="markdown-emoji-empty">No emoji found</div>}
+                        {items.length === 0 && (
+                            <div className="markdown-emoji-empty">{t("block-editor:emojiPicker.noResults")}</div>
+                        )}
                         {items.map((it) => {
                             if ("header" in it) {
                                 const groupNum = parseInt(it.key.slice(2), 10);

@@ -7,6 +7,7 @@ import { offset, useFloating } from "@floating-ui/react";
 import clsx from "clsx";
 import { Atom, useAtomValue } from "jotai";
 import React, { ReactNode, useEffect, useId, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface SuggestionControlProps {
     anchorRef: React.RefObject<HTMLElement>;
@@ -85,8 +86,9 @@ function getMimeTypeIconAndColor(fullConfig: FullConfigType, mimeType: string): 
 }
 
 function SuggestionIcon({ suggestion }: { suggestion: SuggestionType }) {
+    const { t } = useTranslation();
     if (suggestion.iconsrc) {
-        return <img src={suggestion.iconsrc} alt="favicon" className="w-4 h-4 object-contain" />;
+        return <img src={suggestion.iconsrc} alt={t("common:suggestion.iconAlt")} className="w-4 h-4 object-contain" />;
     }
     if (suggestion.icon) {
         const iconClass = makeIconClass(suggestion.icon, true);
@@ -152,17 +154,19 @@ function BlockHeaderSuggestionControl(props: BlockHeaderSuggestionControlProps) 
  * If no children are provided to SuggestionControl, this default empty state will be used.
  */
 function SuggestionControlNoResults({ children }: { children?: React.ReactNode }) {
+    const { t } = useTranslation();
     return (
         <div className="flex items-center justify-center min-h-[120px] p-4">
-            {children ?? <span className="text-muted">No Suggestions</span>}
+            {children ?? <span className="text-muted">{t("common:suggestion.noSuggestions")}</span>}
         </div>
     );
 }
 
 function SuggestionControlNoData({ children }: { children?: React.ReactNode }) {
+    const { t } = useTranslation();
     return (
         <div className="flex items-center justify-center min-h-[120px] p-4">
-            {children ?? <span className="text-muted">No Suggestions</span>}
+            {children ?? <span className="text-muted">{t("common:suggestion.noSuggestions")}</span>}
         </div>
     );
 }

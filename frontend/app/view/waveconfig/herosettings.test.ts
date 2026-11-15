@@ -14,7 +14,8 @@
 //      syncable (design §3.4). Adding them into one number is how a user ends up syncing a
 //      multi-GB `work/` folder.
 
-import { describe, expect, it } from "vitest";
+import { i18n, initI18n } from "@/i18n/config";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
     DefaultHeroRoot,
@@ -29,6 +30,11 @@ import {
     validatePositiveInt,
     type HeroSettingsDraft,
 } from "./herosettings";
+
+// i18n 资源为 en 真源：迁移后校验文案由 i18n.t 产出，先把实例初始化到 en（Pattern I）。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 const stat = (over: Partial<StorageStats> = {}): StorageStats => ({
     id: "backup-guard",
@@ -69,9 +75,12 @@ describe("validateHeroRootDir", () => {
     });
 
     it("rejects relative paths", () => {
-        expect(validateHeroRootDir("heroes")).toContain("absolute");
-        expect(validateHeroRootDir("./heroes")).toContain("absolute");
-        expect(validateHeroRootDir("../heroes")).toContain("absolute");
+        // 迁移后文案来自 en 真源（Pattern I）：用 i18n.t 复算，不写死任何一种语言的字面量。
+        const expected = i18n.t("waveconfig:hero.validateRootRelative");
+        expect(expected).toContain("absolute");
+        expect(validateHeroRootDir("heroes")).toBe(expected);
+        expect(validateHeroRootDir("./heroes")).toBe(expected);
+        expect(validateHeroRootDir("../heroes")).toBe(expected);
     });
 });
 

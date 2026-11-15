@@ -1,0 +1,33 @@
+{
+    "viewName": "Web",
+    "bookmarks": {
+        "typeaheadPlaceholder": "Open Bookmark...",
+        "noneConfigured": "No Bookmarks Configured",
+        "editHintBefore": "Edit your ",
+        "editHintAfter": " file to configure bookmarks.",
+        "openBookmarks": "Open bookmarks.json",
+        "noMatch": "No matching bookmarks",
+        "editBookmarks": "Edit bookmarks.json"
+    },
+    "previewFallback": {
+        "mockNote": "preview mock · electron webview unavailable",
+        "placeholder": "web widget placeholder"
+    },
+    "menu": {
+        "reset": "Reset",
+        "userAgentType": "User Agent Type",
+        "userAgentDefault": "Default",
+        "userAgentIphone": "Mobile: iPhone",
+        "userAgentAndroid": "Mobile: Android",
+        "copyUrl": "Copy URL to Clipboard",
+        "setBlockHomepage": "Set Block Homepage",
+        "setDefaultHomepage": "Set Default Homepage",
+        "hideNavigation": "Hide Navigation",
+        "unhideNavigation": "Un-Hide Navigation",
+        "setZoomFactor": "Set Zoom Factor",
+        "openDevTools": "Open DevTools",
+        "closeDevTools": "Close DevTools",
+        "clearHistory": "Clear History",
+        "clearCookiesAndStorage": "Clear Cookies and Storage (All Web Widgets)"
+    }
+}

@@ -1,0 +1,12 @@
+{
+    "viewName": "挂件启动器",
+    "searchWidgets": "搜索挂件",
+    "logoAlt": "Logo",
+    "hint": {
+        "noWidgets": "未找到挂件。按 Esc 清空搜索。",
+        "typeToFilter": "输入以筛选",
+        "searching": "正在搜索“{{term}}”",
+        "enterToLaunch": "，回车启动，",
+        "arrowKeys": "方向键切换"
+    }
+}

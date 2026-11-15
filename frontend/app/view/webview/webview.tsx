@@ -15,6 +15,8 @@ import {
 } from "@/app/suggestion/suggestion";
 import { MockBoundary } from "@/app/waveenv/mockboundary";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { openLink } from "@/store/global";
 import { adaptFromReactOrNativeKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { fireAndForget, useAtomValueSafe } from "@/util/util";
@@ -22,6 +24,7 @@ import clsx from "clsx";
 import { WebviewTag } from "electron";
 import { Atom, PrimitiveAtom, atom, useAtomValue, useSetAtom } from "jotai";
 import { Fragment, createRef, memo, useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import "./webview.scss";
 import type { WebViewEnv } from "./webviewenv";
 
@@ -96,7 +99,7 @@ export class WebViewModel implements ViewModel {
         this.isLoading = atom(false);
         this.refreshIcon = atom("rotate-right");
         this.viewIcon = atom("globe");
-        this.viewName = atom("Web");
+        this.viewName = localeTextAtom(() => i18n.t("webview:viewName"));
         this.hideViewName = atom(true);
         this.urlInputRef = createRef<HTMLInputElement>();
         this.webviewRef = createRef<WebviewTag>();
@@ -625,7 +628,7 @@ export class WebViewModel implements ViewModel {
             };
         };
         zoomSubMenu.push({
-            label: "Reset",
+            label: i18n.t("webview:menu.reset"),
             click: () => {
                 this.setZoomFactor(null);
             },
@@ -647,7 +650,7 @@ export class WebViewModel implements ViewModel {
         const curUserAgentType = globalStore.get(this.userAgentType) || "default";
         const userAgentSubMenu: ContextMenuItem[] = [
             {
-                label: "Default",
+                label: i18n.t("webview:menu.userAgentDefault"),
                 type: "checkbox",
                 click: () => {
                     fireAndForget(() => {
@@ -660,7 +663,7 @@ export class WebViewModel implements ViewModel {
                 checked: curUserAgentType === "default" || curUserAgentType === "",
             },
             {
-                label: "Mobile: iPhone",
+                label: i18n.t("webview:menu.userAgentIphone"),
                 type: "checkbox",
                 click: () => {
                     fireAndForget(() => {
@@ -673,7 +676,7 @@ export class WebViewModel implements ViewModel {
                 checked: curUserAgentType === "mobile:iphone",
             },
             {
-                label: "Mobile: Android",
+                label: i18n.t("webview:menu.userAgentAndroid"),
                 type: "checkbox",
                 click: () => {
                     fireAndForget(() => {
@@ -690,29 +693,29 @@ export class WebViewModel implements ViewModel {
         const isNavHidden = globalStore.get(this.hideNav);
         return [
             {
-                label: "Copy URL to Clipboard",
+                label: i18n.t("webview:menu.copyUrl"),
                 click: () => this.copyUrlToClipboard(),
             },
             {
-                label: "Set Block Homepage",
+                label: i18n.t("webview:menu.setBlockHomepage"),
                 click: () => fireAndForget(() => this.setHomepageUrl(this.getUrl(), "block")),
             },
             {
-                label: "Set Default Homepage",
+                label: i18n.t("webview:menu.setDefaultHomepage"),
                 click: () => fireAndForget(() => this.setHomepageUrl(this.getUrl(), "global")),
             },
             {
                 type: "separator",
             },
             {
-                label: "User Agent Type",
+                label: i18n.t("webview:menu.userAgentType"),
                 submenu: userAgentSubMenu,
             },
             {
                 type: "separator",
             },
             {
-                label: isNavHidden ? "Un-Hide Navigation" : "Hide Navigation",
+                label: isNavHidden ? i18n.t("webview:menu.unhideNavigation") : i18n.t("webview:menu.hideNavigation"),
                 click: () =>
                     fireAndForget(() => {
                         return this.env.rpc.SetMetaCommand(TabRpcClient, {
@@ -722,11 +725,13 @@ export class WebViewModel implements ViewModel {
                     }),
             },
             {
-                label: "Set Zoom Factor",
+                label: i18n.t("webview:menu.setZoomFactor"),
                 submenu: zoomSubMenu,
             },
             {
-                label: this.webviewRef.current?.isDevToolsOpened() ? "Close DevTools" : "Open DevTools",
+                label: this.webviewRef.current?.isDevToolsOpened()
+                    ? i18n.t("webview:menu.closeDevTools")
+                    : i18n.t("webview:menu.openDevTools"),
                 click: () => {
                     if (this.webviewRef.current) {
                         if (this.webviewRef.current.isDevToolsOpened()) {
@@ -741,11 +746,11 @@ export class WebViewModel implements ViewModel {
                 type: "separator",
             },
             {
-                label: "Clear History",
+                label: i18n.t("webview:menu.clearHistory"),
                 click: () => this.clearHistory(),
             },
             {
-                label: "Clear Cookies and Storage (All Web Widgets)",
+                label: i18n.t("webview:menu.clearCookiesAndStorage"),
                 click: () => fireAndForget(() => this.clearCookiesAndStorage()),
             },
         ];
@@ -754,6 +759,8 @@ export class WebViewModel implements ViewModel {
 
 const BookmarkTypeahead = memo(
     ({ model, blockRef }: { model: WebViewModel; blockRef: React.RefObject<HTMLDivElement> }) => {
+        // 自身订阅：memo 组件不会跟着父级重渲染，语言切换必须自己订阅。
+        useTranslation("webview");
         const env = useWaveEnv<WebViewEnv>();
         const openBookmarksJson = () => {
             fireAndForget(async () => {
@@ -781,31 +788,33 @@ const BookmarkTypeahead = memo(
                     return true;
                 }}
                 fetchSuggestions={model.fetchBookmarkSuggestions}
-                placeholderText="Open Bookmark..."
+                placeholderText={i18n.t("webview:bookmarks.typeaheadPlaceholder")}
             >
                 <SuggestionControlNoData>
                     <div className="text-center">
-                        <p className="text-lg font-bold text-primary">No Bookmarks Configured</p>
+                        <p className="text-lg font-bold text-primary">{i18n.t("webview:bookmarks.noneConfigured")}</p>
                         <p className="text-sm text-secondary mt-1">
-                            Edit your <code className="font-mono">bookmarks.json</code> file to configure bookmarks.
+                            {i18n.t("webview:bookmarks.editHintBefore")}
+                            <code className="font-mono">bookmarks.json</code>
+                            {i18n.t("webview:bookmarks.editHintAfter")}
                         </p>
                         <button
                             onClick={openBookmarksJson}
                             className="mt-3 px-4 py-2 text-sm font-medium text-actiontext bg-action hover:bg-actionhover rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         >
-                            Open bookmarks.json
+                            {i18n.t("webview:bookmarks.openBookmarks")}
                         </button>
                     </div>
                 </SuggestionControlNoData>
 
                 <SuggestionControlNoResults>
                     <div className="text-center">
-                        <p className="text-sm text-secondary">No matching bookmarks</p>
+                        <p className="text-sm text-secondary">{i18n.t("webview:bookmarks.noMatch")}</p>
                         <button
                             onClick={openBookmarksJson}
                             className="mt-3 px-4 py-2 text-sm font-medium text-actiontext bg-action hover:bg-actionhover rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         >
-                            Edit bookmarks.json
+                            {i18n.t("webview:bookmarks.editBookmarks")}
                         </button>
                     </div>
                 </SuggestionControlNoResults>
@@ -833,8 +842,8 @@ function WebViewPreviewFallback({ url }: { url?: string | null }) {
     return (
         <div className="flex h-full w-full items-center justify-center bg-panel">
             <div className="mx-6 flex max-w-[720px] flex-col gap-3 rounded-lg border border-dashed border-border bg-background px-6 py-5 shadow-sm">
-                <div className="text-xs font-mono text-muted">preview mock · electron webview unavailable</div>
-                <div className="text-sm text-foreground">web widget placeholder</div>
+                <div className="text-xs font-mono text-muted">{i18n.t("webview:previewFallback.mockNote")}</div>
+                <div className="text-sm text-foreground">{i18n.t("webview:previewFallback.placeholder")}</div>
                 <div className="rounded-md border border-border bg-panel px-3 py-2 font-mono text-xs text-foreground break-all">
                     {displayUrl}
                 </div>

@@ -442,6 +442,14 @@
             "left"
           ]
         },
+        "ui:locale": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "zh"
+          ]
+        },
         "app:theme": {
           "type": "string",
           "enum": [

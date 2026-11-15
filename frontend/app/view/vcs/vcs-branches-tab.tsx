@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { i18n } from "@/i18n/config";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
 import { cn, isBlank, makeConnRoute } from "@/util/util";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { VcsIconButton } from "./vcs-icon-button";
 
 type VcsUiEnv = WaveEnv;
@@ -33,6 +35,7 @@ export function VcsBranchesTab({
     onBranchChanged?: () => void;
 }) {
     const env = useWaveEnv<VcsUiEnv>();
+    const { t } = useTranslation("vcs");
 
     const route = React.useMemo(() => {
         if (isBlank(connection)) return null;
@@ -147,7 +150,7 @@ export function VcsBranchesTab({
                 setCreateError(response.error);
                 return;
             }
-            setCreateSuccess(`Created and switched to ${response.branch}`);
+            setCreateSuccess(i18n.t("vcs:branches.created", { branch: response.branch }));
             setNewBranchName("");
             await loadBranches();
             onBranchChanged?.();
@@ -187,7 +190,7 @@ export function VcsBranchesTab({
     if (loading) {
         return (
             <div className="flex-1 flex items-center justify-center text-xs text-muted p-4">
-                Loading branches...
+                {t("vcs:branches.loading")}
             </div>
         );
     }
@@ -204,8 +207,8 @@ export function VcsBranchesTab({
         return (
             <div className="flex-1 flex items-center justify-center text-xs text-muted p-4 text-center">
                 <div className="max-w-[240px]">
-                    <div className="text-secondary font-medium mb-1">No branch data</div>
-                    <div>{branches?.error || "Branch listing is only available for git repositories."}</div>
+                    <div className="text-secondary font-medium mb-1">{t("vcs:branches.noData")}</div>
+                    <div>{branches?.error || t("vcs:branches.noDataHint")}</div>
                 </div>
             </div>
         );
@@ -230,12 +233,12 @@ export function VcsBranchesTab({
                             type="text"
                             value={filterInput}
                             onChange={(e) => setFilterInput(e.target.value)}
-                            placeholder="Filter branches"
+                            placeholder={t("vcs:branches.filterPlaceholder")}
                         />
                         {filterInput !== "" && (
                             <VcsIconButton
                                 icon="xmark"
-                                title="Clear filter"
+                                title={t("vcs:branches.clearFilter")}
                                 size="sm"
                                 className="!absolute !right-1 !top-1/2 -translate-y-1/2"
                                 onClick={() => setFilterInput("")}
@@ -244,7 +247,7 @@ export function VcsBranchesTab({
                     </div>
                     <VcsIconButton
                         icon="arrows-rotate"
-                        title="Refresh branch list"
+                        title={t("vcs:branches.refreshList")}
                         size="lg"
                         className="border border-border"
                         onClick={() => loadBranches()}
@@ -259,12 +262,12 @@ export function VcsBranchesTab({
                         onKeyDown={(e) => {
                             if (e.key === "Enter" && newBranchName.trim()) handleCreateBranch();
                         }}
-                        placeholder="New branch name..."
+                        placeholder={t("vcs:branches.newPlaceholder")}
                         disabled={createRunning}
                     />
                     <VcsIconButton
                         icon="plus"
-                        title={createRunning ? "Creating…" : "Create and switch to new branch"}
+                        title={createRunning ? t("vcs:branches.creating") : t("vcs:branches.create")}
                         loading={createRunning}
                         solid
                         size="lg"
@@ -282,7 +285,7 @@ export function VcsBranchesTab({
             {/* Current branch */}
             {branches.current && (
                 <div className="mb-2 flex items-center gap-2 rounded border border-accent/25 bg-accent/8 px-2 py-1.5">
-                    <span className="text-[11px] text-muted">Current</span>
+                    <span className="text-[11px] text-muted">{t("vcs:branches.current")}</span>
                     <span className="text-xs font-semibold text-accent">
                         <i className="fa-sharp fa-solid fa-code-branch text-[10px] mr-1" />
                         {branches.current}
@@ -292,11 +295,11 @@ export function VcsBranchesTab({
 
             {/* Local branches */}
             <div className="mt-2 mb-1 px-1 text-[11px] font-medium text-muted uppercase tracking-wider">
-                Local ({localBranches.length})
+                {i18n.t("vcs:branches.localCount", { count: localBranches.length })}
             </div>
             <div className="space-y-0.5">
                 {localBranches.length === 0 && (
-                    <div className="px-2 py-1.5 text-[11px] text-muted">No local branches found.</div>
+                    <div className="px-2 py-1.5 text-[11px] text-muted">{t("vcs:branches.noneLocal")}</div>
                 )}
                 {localBranches.map((branch) => {
                     const isCurrent = branch.iscurrent;
@@ -328,26 +331,26 @@ export function VcsBranchesTab({
                                 {shortHash(branch.hash ?? "")}
                             </span>
                             {branch.ahead > 0 && (
-                                <span className="text-[11px] text-success shrink-0" title={`Ahead by ${branch.ahead}`}>
+                                <span className="text-[11px] text-success shrink-0" title={i18n.t("vcs:common.aheadBy", { count: branch.ahead })}>
                                     {"\u2191"}{branch.ahead}
                                 </span>
                             )}
                             {branch.behind > 0 && (
-                                <span className="text-[11px] text-error shrink-0" title={`Behind by ${branch.behind}`}>
+                                <span className="text-[11px] text-error shrink-0" title={i18n.t("vcs:common.behindBy", { count: branch.behind })}>
                                     {"\u2193"}{branch.behind}
                                 </span>
                             )}
                             {isSwitching && (
-                                <span className="text-[11px] text-accent shrink-0">Switching...</span>
+                                <span className="text-[11px] text-accent shrink-0">{t("vcs:branches.switching")}</span>
                             )}
                             {!isCurrent && !isSwitching && (
                                 <>
                                     {deletePending ? (
                                         <div className="flex items-center gap-1 shrink-0">
-                                            <span className="text-[11px] text-warning mr-0.5">Delete?</span>
+                                            <span className="text-[11px] text-warning mr-0.5">{t("vcs:branches.deleteConfirm")}</span>
                                             <VcsIconButton
                                                 icon="check"
-                                                title={`Confirm delete branch ${branch.name}`}
+                                                title={i18n.t("vcs:branches.confirmDelete", { branch: branch.name })}
                                                 size="sm"
                                                 tone="danger"
                                                 disabled={isDeleting}
@@ -358,7 +361,7 @@ export function VcsBranchesTab({
                                             />
                                             <VcsIconButton
                                                 icon="xmark"
-                                                title="Cancel delete"
+                                                title={t("vcs:branches.cancelDelete")}
                                                 size="sm"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -370,7 +373,7 @@ export function VcsBranchesTab({
                                         canDelete && (
                                             <VcsIconButton
                                                 icon="trash-can"
-                                                title={`Delete branch ${branch.name}`}
+                                                title={i18n.t("vcs:branches.deleteBranch", { branch: branch.name })}
                                                 size="sm"
                                                 tone="danger"
                                                 reveal="hover"
@@ -392,7 +395,7 @@ export function VcsBranchesTab({
             {remoteBranches.length > 0 && (
                 <>
                     <div className="mt-3 mb-1 px-1 text-[11px] font-medium text-muted uppercase tracking-wider">
-                        Remote ({remoteBranches.length})
+                        {i18n.t("vcs:branches.remoteCount", { count: remoteBranches.length })}
                     </div>
                     <div className="space-y-0.5">
                         {remoteBranches.map((branch) => {
@@ -402,7 +405,7 @@ export function VcsBranchesTab({
                                     key={branch.name}
                                     className="group flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-hoverbg cursor-pointer transition-colors"
                                     onClick={() => !isSwitching && handleCheckoutRemote(branch.name)}
-                                    title={`Checkout tracking branch ${branch.name}`}
+                                    title={i18n.t("vcs:branches.checkoutTracking", { branch: branch.name })}
                                 >
                                     <span className="h-2 w-2 shrink-0 rounded-full bg-transparent border border-muted" />
                                     <span className="min-w-0 flex-1 truncate text-secondary">{branch.name}</span>
@@ -410,10 +413,10 @@ export function VcsBranchesTab({
                                         {shortHash(branch.hash ?? "")}
                                     </span>
                                     {isSwitching ? (
-                                        <span className="text-[11px] text-accent shrink-0">Checking out...</span>
+                                        <span className="text-[11px] text-accent shrink-0">{t("vcs:branches.checkingOut")}</span>
                                     ) : (
                                         <span className="text-[10px] text-muted shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            Checkout
+                                            {t("vcs:branches.checkout")}
                                         </span>
                                     )}
                                 </div>
@@ -425,7 +428,10 @@ export function VcsBranchesTab({
 
             {/* Total count */}
             <div className="mt-3 px-1 text-[10px] text-muted">
-                {branches.local?.length ?? 0} local, {branches.remote?.length ?? 0} remote
+                {i18n.t("vcs:branches.total", {
+                    local: branches.local?.length ?? 0,
+                    remote: branches.remote?.length ?? 0,
+                })}
             </div>
         </div>
     );

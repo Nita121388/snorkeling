@@ -8,8 +8,9 @@
  * come from the slash registry (already filtered); this component never hardcodes a list.
  */
 
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
-import type { SlashCommandSpec } from "../registry";
+import { slashCommandLabel, type SlashCommandSpec } from "../registry";
 
 export type SlashPaletteProps = {
     /** Viewport (fixed) coordinates. */
@@ -22,6 +23,7 @@ export type SlashPaletteProps = {
 };
 
 export function SlashPalette({ anchor, placement, items, activeIndex, onHover, onPick }: SlashPaletteProps) {
+    const { t } = useTranslation("block-editor");
     // mouseDown.preventDefault keeps the textarea blur from committing/closing the edit
     // session before the click lands — selection still happens via onClick afterwards.
     const stopMouse = (e: React.MouseEvent) => e.preventDefault();
@@ -31,10 +33,10 @@ export function SlashPalette({ anchor, placement, items, activeIndex, onHover, o
             style={{ top: anchor.top, left: anchor.left }}
             onMouseDown={stopMouse}
             role="listbox"
-            aria-label="Slash commands"
+            aria-label={t("block-editor:slashPalette.ariaLabel")}
         >
             {items.length === 0 ? (
-                <div className="markdown-slash-empty">No matching commands</div>
+                <div className="markdown-slash-empty">{t("block-editor:slashPalette.empty")}</div>
             ) : (
                 items.map((cmd, i) => (
                     <button
@@ -46,7 +48,7 @@ export function SlashPalette({ anchor, placement, items, activeIndex, onHover, o
                         onMouseEnter={() => onHover(i)}
                         onClick={() => onPick(cmd)}
                     >
-                        <span className="markdown-slash-item-label">{cmd.label}</span>
+                        <span className="markdown-slash-item-label">{slashCommandLabel(cmd)}</span>
                         {cmd.hint != null && <span className="markdown-slash-item-hint">{cmd.hint}</span>}
                     </button>
                 ))

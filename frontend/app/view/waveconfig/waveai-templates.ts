@@ -13,10 +13,12 @@ export type WaveAITemplate = {
     model: string;
     secret: string;
     endpoint?: string;
-    note: string;
+    /** i18n key for the template tooltip (Pattern C: structural value, translated at render time). */
+    noteKey: string;
 };
 
-export const WaveAITemplates: WaveAITemplate[] = [
+/** `as const satisfies` keeps `noteKey` a literal union (i18next's typed `t()` rejects plain string). */
+export const WaveAITemplates = [
     {
         id: "openai-responses",
         label: "OpenAI Responses",
@@ -25,7 +27,7 @@ export const WaveAITemplates: WaveAITemplate[] = [
         model: "gpt-5-mini",
         secret: "OPENAI_KEY",
         endpoint: "https://api.openai.com/v1/responses",
-        note: "Newer OpenAI Responses API models. Replace the endpoint when using a proxy.",
+        noteKey: "waveconfig:waveAi.templates.openaiResponses",
     },
     {
         id: "openai-chat",
@@ -35,7 +37,7 @@ export const WaveAITemplates: WaveAITemplate[] = [
         model: "gpt-4o",
         secret: "OPENAI_KEY",
         endpoint: "https://api.openai.com/v1/chat/completions",
-        note: "OpenAI-compatible chat endpoints. Replace the endpoint when using a proxy.",
+        noteKey: "waveconfig:waveAi.templates.openaiChat",
     },
     {
         id: "anthropic",
@@ -45,7 +47,7 @@ export const WaveAITemplates: WaveAITemplate[] = [
         model: "claude-sonnet-4-5",
         secret: "ANTHROPIC_KEY",
         endpoint: "https://api.anthropic.com/v1/messages",
-        note: "Claude models through the Anthropic API. Replace the endpoint when using a compatible gateway.",
+        noteKey: "waveconfig:waveAi.templates.anthropic",
     },
     {
         id: "google-gemini",
@@ -55,7 +57,7 @@ export const WaveAITemplates: WaveAITemplate[] = [
         model: "gemini-2.0-flash",
         secret: "GOOGLE_AI_KEY",
         endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent",
-        note: "Gemini models through Google AI. The model name is part of this endpoint.",
+        noteKey: "waveconfig:waveAi.templates.googleGemini",
     },
     {
         id: "openrouter",
@@ -65,7 +67,7 @@ export const WaveAITemplates: WaveAITemplate[] = [
         model: "anthropic/claude-3.5-sonnet",
         secret: "OPENROUTER_KEY",
         endpoint: "https://openrouter.ai/api/v1/chat/completions",
-        note: "Many models through one OpenAI-compatible endpoint.",
+        noteKey: "waveconfig:waveAi.templates.openrouter",
     },
     {
         id: "groq",
@@ -75,7 +77,7 @@ export const WaveAITemplates: WaveAITemplate[] = [
         model: "llama-3.3-70b-versatile",
         secret: "GROQ_KEY",
         endpoint: "https://api.groq.com/openai/v1/chat/completions",
-        note: "Fast OpenAI-compatible inference.",
+        noteKey: "waveconfig:waveAi.templates.groq",
     },
     {
         id: "custom",
@@ -85,9 +87,9 @@ export const WaveAITemplates: WaveAITemplate[] = [
         model: "your-model",
         secret: "CUSTOM_AI_KEY",
         endpoint: "http://127.0.0.1:11434/v1/chat/completions",
-        note: "Ollama, LM Studio, vLLM, LiteLLM, or a private gateway",
+        noteKey: "waveconfig:waveAi.templates.custom",
     },
-];
+] as const satisfies readonly WaveAITemplate[];
 
 export function templateToAIMode(template: WaveAITemplate): AIModeConfigType {
     return {

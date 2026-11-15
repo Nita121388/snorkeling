@@ -1,8 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { BrowserWindow, Notification, powerMonitor } from "electron";
 import { AGENT_OS_NOTIFY_DEFAULTS } from "@/util/sharedconst";
+import { BrowserWindow, Notification, powerMonitor } from "electron";
+import { tmew } from "./emain-i18n";
 import { focusedWaveWindow, getAllWaveWindows } from "./emain-window";
 
 // Encapsulates the OS-level notification pipeline for agent-status state transitions.
@@ -179,13 +180,13 @@ function buildTitleAndBody(desc: AgentOsNotificationDescriptor): { title: string
     switch (desc.kind) {
         case "done":
             return {
-                title: `Agent done — ${providerLabel}`,
-                body: desc.body ?? "Agent finished. Click to return to the app.",
+                title: tmew("common:osNotify.doneTitle", { provider: providerLabel }),
+                body: desc.body ?? tmew("common:osNotify.doneBody"),
             };
         case "blocked":
             return {
-                title: `Agent blocked — ${providerLabel}`,
-                body: desc.body ?? "Agent is waiting for input. Click to switch to the app.",
+                title: tmew("common:osNotify.blockedTitle", { provider: providerLabel }),
+                body: desc.body ?? tmew("common:osNotify.blockedBody"),
             };
     }
 }
@@ -196,13 +197,13 @@ function buildSummaryTitleAndBody(kind: AgentOsNotifyKind, count: number): { tit
     switch (kind) {
         case "done":
             return {
-                title: "Agents done",
-                body: `${count} ${count === 1 ? "agent" : "agents"} finished. Click to return to the app.`,
+                title: tmew("common:osNotify.summaryDoneTitle"),
+                body: tmew("common:osNotify.summaryDoneBody", { count }),
             };
         case "blocked":
             return {
-                title: "Agents blocked",
-                body: `${count} ${count === 1 ? "agent is" : "agents are"} waiting for input. Click to switch to the app.`,
+                title: tmew("common:osNotify.summaryBlockedTitle"),
+                body: tmew("common:osNotify.summaryBlockedBody", { count }),
             };
     }
 }

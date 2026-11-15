@@ -6,9 +6,11 @@ import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { WebView, WebViewModel } from "@/app/view/webview/webview";
+import { i18n } from "@/i18n/config";
 import * as services from "@/store/services";
 import * as jotai from "jotai";
 import { memo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 class TsunamiViewModel extends WebViewModel {
     shellProcFullStatus: jotai.PrimitiveAtom<BlockControllerRuntimeStatus>;
@@ -56,7 +58,7 @@ class TsunamiViewModel extends WebViewModel {
         });
         this.viewName = jotai.atom((get) => {
             const meta = get(this.appMeta);
-            return meta?.title || "WaveApp";
+            return meta?.title || i18n.t("tsunami:viewName");
         });
         const initialRTInfo = RpcApi.GetRTInfoCommand(TabRpcClient, {
             oref: WOS.makeORef("block", this.blockId),
@@ -232,6 +234,8 @@ class TsunamiViewModel extends WebViewModel {
 }
 
 const TsunamiView = memo((props: ViewComponentProps<TsunamiViewModel>) => {
+    // 自身订阅：memo 组件不会跟着父级重渲染，语言切换必须自己订阅。
+    useTranslation("tsunami");
     const { model } = props;
     const shellProcFullStatus = jotai.useAtomValue(model.shellProcFullStatus);
     const blockData = jotai.useAtomValue(model.blockAtom);
@@ -249,17 +253,17 @@ const TsunamiView = memo((props: ViewComponentProps<TsunamiViewModel>) => {
     // Check for configuration errors
     const errors = [];
     if (!appPath && !appId) {
-        errors.push("App path or app ID must be set (tsunami:apppath or tsunami:appid)");
+        errors.push(i18n.t("tsunami:error.noAppPath"));
     }
     if (controller !== "tsunami") {
-        errors.push("Invalid controller (must be 'tsunami')");
+        errors.push(i18n.t("tsunami:error.invalidController"));
     }
 
     // Show errors if any exist
     if (errors.length > 0) {
         return (
             <div className="w-full h-full flex flex-col items-center justify-center gap-4">
-                <h1 className="text-4xl font-bold text-main-text-color">Tsunami</h1>
+                <h1 className="text-4xl font-bold text-main-text-color">{i18n.t("tsunami:title")}</h1>
                 <div className="flex flex-col gap-2">
                     {errors.map((error, index) => (
                         <div key={index} className="text-sm" style={{ color: "var(--color-error)" }}>
@@ -291,17 +295,17 @@ const TsunamiView = memo((props: ViewComponentProps<TsunamiViewModel>) => {
 
     return (
         <div className="w-full h-full flex flex-col items-center justify-center gap-4">
-            <h1 className="text-4xl font-bold text-main-text-color">Tsunami</h1>
+            <h1 className="text-4xl font-bold text-main-text-color">{i18n.t("tsunami:title")}</h1>
             {(appPath || appId) && <div className="text-sm text-main-text-color opacity-70">{appPath || appId}</div>}
             {isNotRunning && !isRestarting && (
                 <button
                     onClick={() => model.forceRestartController()}
                     className="px-4 py-2 bg-action text-actiontext rounded hover:bg-actionhover transition-colors cursor-pointer"
                 >
-                    Start
+                    {i18n.t("tsunami:start")}
                 </button>
             )}
-            {isRestarting && <div className="text-sm text-success-color">Starting...</div>}
+            {isRestarting && <div className="text-sm text-success-color">{i18n.t("tsunami:starting")}</div>}
         </div>
     );
 });

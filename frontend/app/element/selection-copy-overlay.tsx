@@ -13,6 +13,7 @@ import {
 import { ContextMenuModel } from "@/app/store/contextmenu";
 import { fireAndForget } from "@/util/util";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { parseFileReference } from "./selection-reference-parser";
 import { searchSelectionInFiles } from "./selection-search-in-files";
 
@@ -295,6 +296,7 @@ export function SelectionCopyOverlay({
     copyMenuItems,
     extraMenuItems,
 }: SelectionCopyOverlayProps) {
+    const { t } = useTranslation("element");
     const [copied, setCopied] = useState(false);
     const [commonTextFeedback, setCommonTextFeedback] = useState<{
         msg: string;
@@ -461,7 +463,7 @@ export function SelectionCopyOverlay({
                 data-selection-quick-action="true"
                 className={quickActionButtonClassName}
                 style={{ left: `${overlay.x}px`, top: `${overlay.y}px` }}
-                title={copied ? "Copied" : "Quick actions"}
+                title={copied ? t("element:markdown.copied") : t("element:selectionOverlay.quickActions")}
                 tabIndex={-1}
                 onMouseEnter={handleQuickActionsMouseEnter}
                 onMouseLeave={clearQuickActionsHoverTimer}
@@ -500,7 +502,7 @@ export function SelectionCopyOverlay({
                                 onHide?.();
                             }}
                         >
-                            Tag
+                            {t("element:selectionOverlay.tag")}
                         </button>
                     )}
                 </div>

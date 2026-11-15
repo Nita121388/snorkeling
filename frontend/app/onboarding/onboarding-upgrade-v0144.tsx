@@ -1,14 +1,14 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useTranslation } from "react-i18next";
+
 const UpgradeOnboardingModal_v0_14_4_Content = () => {
+    const { t } = useTranslation("onboarding");
     return (
         <div className="flex flex-col items-start gap-6 w-full mb-4 unselectable">
             <div className="text-secondary leading-relaxed">
-                <p className="mb-0">
-                    Wave v0.14.4 introduces vertical tabs, upgrades to xterm.js v6, and includes bug fixes and UI
-                    improvements.
-                </p>
+                <p className="mb-0">{t("onboarding:upgradeV0144.intro")}</p>
             </div>
 
             <div className="flex w-full items-start gap-4">
@@ -16,13 +16,14 @@ const UpgradeOnboardingModal_v0_14_4_Content = () => {
                     <i className="text-[24px] text-accent fa-solid fa-table-columns"></i>
                 </div>
                 <div className="flex flex-col items-start gap-2 flex-1">
-                    <div className="text-foreground text-base font-semibold leading-[18px]">Vertical Tab Bar</div>
+                    <div className="text-foreground text-base font-semibold leading-[18px]">
+                        {t("onboarding:upgradeV0144.verticalTabsTitle")}
+                    </div>
                     <div className="text-secondary leading-5">
                         <ul className="list-disc list-outside space-y-1 pl-5">
                             <li>
-                                <strong>New Vertical Tab Bar Option</strong> - Tabs can now be displayed vertically
-                                along the side of the window for more horizontal space. Toggle between horizontal and
-                                vertical layouts in settings.
+                                <strong>{t("onboarding:upgradeV0144.newVerticalTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0144.newVerticalDesc")}
                             </li>
                         </ul>
                     </div>
@@ -34,12 +35,14 @@ const UpgradeOnboardingModal_v0_14_4_Content = () => {
                     <i className="text-[24px] text-accent fa-solid fa-terminal"></i>
                 </div>
                 <div className="flex flex-col items-start gap-2 flex-1">
-                    <div className="text-foreground text-base font-semibold leading-[18px]">Terminal Improvements</div>
+                    <div className="text-foreground text-base font-semibold leading-[18px]">
+                        {t("onboarding:upgradeV0144.terminalTitle")}
+                    </div>
                     <div className="text-secondary leading-5">
                         <ul className="list-disc list-outside space-y-1 pl-5">
                             <li>
-                                <strong>xterm.js v6.0.0 Upgrade</strong> - Improved terminal compatibility and
-                                rendering, resolving quirks with tools like Claude Code
+                                <strong>{t("onboarding:upgradeV0144.xtermTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0144.xtermDesc")}
                             </li>
                         </ul>
                     </div>
@@ -51,26 +54,30 @@ const UpgradeOnboardingModal_v0_14_4_Content = () => {
                     <i className="text-[24px] text-accent fa-solid fa-wrench"></i>
                 </div>
                 <div className="flex flex-col items-start gap-2 flex-1">
-                    <div className="text-foreground text-base font-semibold leading-[18px]">Other Changes</div>
+                    <div className="text-foreground text-base font-semibold leading-[18px]">
+                        {t("onboarding:upgradeV0144.otherTitle")}
+                    </div>
                     <div className="text-secondary leading-5">
                         <ul className="list-disc list-outside space-y-1 pl-5">
                             <li>
-                                <strong>macOS First Click</strong> - First click now focuses the clicked widget
+                                <strong>{t("onboarding:upgradeV0144.macosTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0144.macosDesc")}
                             </li>
                             <li>
                                 <strong>
                                     <code>backgrounds.json</code>
                                 </strong>{" "}
-                                - Renamed <code>presets/bg.json</code> to <code>backgrounds.json</code>
+                                {t("onboarding:upgradeV0144.backgroundsDesc")} <code>presets/bg.json</code>{" "}
+                                {t("onboarding:upgradeV0144.backgroundsTo")} <code>backgrounds.json</code>
                             </li>
                             <li>
-                                <strong>Config Errors Moved</strong> - Config errors to the WaveConfig view for less
-                                clutter
+                                <strong>{t("onboarding:upgradeV0144.configErrorsTitle")}</strong>{" "}
+                                {t("onboarding:upgradeV0144.configErrorsDesc")}
                             </li>
-                            <li>WaveConfig now warns on Unsaved Changes</li>
-                            <li>Preview streaming fixes for images/videos</li>
-                            <li>Deprecated legacy AI widget has been removed</li>
-                            <li>[bugfix] Fixed focus bug for newly created blocks</li>
+                            <li>{t("onboarding:upgradeV0144.unsavedItem")}</li>
+                            <li>{t("onboarding:upgradeV0144.streamingItem")}</li>
+                            <li>{t("onboarding:upgradeV0144.legacyAiItem")}</li>
+                            <li>{t("onboarding:upgradeV0144.focusFix")}</li>
                         </ul>
                     </div>
                 </div>

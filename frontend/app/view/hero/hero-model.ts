@@ -7,22 +7,31 @@
 // renderer and every fallback (missing emoji / role / provider / model /
 // journal) is unit-testable without mounting a component.
 
+import { i18n } from "@/i18n/config";
 import { isBlank } from "@/util/util";
 
 /** Fallback avatar when a hero.json carries no emoji. */
 export const DefaultHeroEmoji = "🦸";
 
 /** Shown when neither provider nor model is declared. */
-export const UnknownProviderModel = "unknown";
+export function unknownProviderModel(): string {
+    return i18n.t("hero:unknownProviderModel");
+}
 
 /** Shown when the hero has no `role` and its CHARTER has no usable first line. */
-export const EmptyRoleText = "(no role)";
+export function emptyRoleText(): string {
+    return i18n.t("hero:empty.role");
+}
 
 /** Shown when the hero has no journal entries yet. */
-export const EmptyJournalText = "(no journal yet)";
+export function emptyJournalText(): string {
+    return i18n.t("hero:empty.journal");
+}
 
 /** Shown in the detail pane when CHARTER.md is empty. */
-export const EmptyCharterText = "(CHARTER.md is empty)";
+export function emptyCharterText(): string {
+    return i18n.t("hero:empty.charter");
+}
 
 /** Default number of CHARTER lines rendered as an excerpt. */
 export const DefaultCharterLines = 6;
@@ -83,7 +92,7 @@ export function formatProviderModel(provider: string | null | undefined, model: 
     if (m !== "") {
         return m;
     }
-    return UnknownProviderModel;
+    return unknownProviderModel();
 }
 
 /**
@@ -117,13 +126,13 @@ export function charterExcerpt(charter: string | null | undefined, maxLines: num
 /** The single line a list row shows as "what this hero is for". */
 export function roleLine(row: HeroRosterRow | null | undefined): string {
     if (row == null) {
-        return EmptyRoleText;
+        return emptyRoleText();
     }
     if (!isBlank(row.role)) {
         return row.role.trim();
     }
     const excerpt = charterExcerpt(row.charter, 1);
-    return excerpt === "" ? EmptyRoleText : excerpt;
+    return excerpt === "" ? emptyRoleText() : excerpt;
 }
 
 /**
@@ -161,7 +170,7 @@ export function deriveRosterRows(overview: AISessionsHeroOverviewResponse | null
 
 /** Empty-roster guidance text (the CLI create line is the actionable part). */
 export function emptyStateText(): string {
-    return `No heroes yet. Create one in a terminal: ${HeroCreateCommand}`;
+    return i18n.t("hero:empty.state", { command: HeroCreateCommand });
 }
 
 /** Copyable human-approval command for one pending memory proposal. */

@@ -10,6 +10,7 @@ import { PreviewDirectoryDisplayMetaKey, PreviewExplorerRootMetaKey } from "@/ap
 import * as WOS from "@/store/wos";
 import { isBlank } from "@/util/util";
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export const NoteDirectorySettingKey = "note:dir";
 export const DefaultNoteDirectory = "~";
@@ -25,6 +26,7 @@ type NoteDirectoryModalProps = {
 };
 
 function NoteDirectoryModal({ blockId, initialDir }: NoteDirectoryModalProps) {
+    const { t } = useTranslation("modals");
     const [noteDir, setNoteDir] = useState(normalizeNoteDirectory(initialDir));
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -70,8 +72,8 @@ function NoteDirectoryModal({ blockId, initialDir }: NoteDirectoryModalProps) {
     return (
         <Modal
             className="w-[440px] max-w-[calc(100vw-32px)]"
-            okLabel={saving ? "Saving..." : "Save"}
-            cancelLabel="Cancel"
+            okLabel={saving ? t("common:docs.saving") : t("common:common.save")}
+            cancelLabel={t("modals:modal.cancel")}
             okDisabled={saving}
             cancelDisabled={saving}
             onOk={saveDirectory}
@@ -81,9 +83,11 @@ function NoteDirectoryModal({ blockId, initialDir }: NoteDirectoryModalProps) {
         >
             <div className="space-y-3 pr-7 text-primary">
                 <div className="space-y-1">
-                    <div className="text-base font-semibold">Note Directory</div>
+                    <div className="text-base font-semibold">{t("modals:noteDirectory.title")}</div>
                     <div className="text-xs text-secondary">
-                        {blockId ? "Set the folder opened by this Note block." : "Set the default Note folder."}
+                        {blockId
+                            ? t("modals:noteDirectory.descBlock")
+                            : t("modals:noteDirectory.descDefault")}
                     </div>
                 </div>
                 <Input

@@ -7,6 +7,7 @@ import { inlineEditingActiveAtom } from "@/app/view/preview/preview-shared-draft
 import { globalStore } from "@/store/jotaiStore";
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import type { CodeEditorHandle } from "./content-editable-code-editor";
 import ContentEditableCodeEditor from "./content-editable-code-editor";
@@ -1460,13 +1461,14 @@ function CodeBlockEditHeader({
     language?: string | null;
     onApplyLanguage?: (lang: string | null) => void;
 }) {
+    const { t } = useTranslation("element");
     if (onApplyLanguage == null) return null;
     return (
         <div className="codeblock-header codeblock-edit-header" onMouseDown={(e) => e.stopPropagation()}>
             <select
                 className="codeblock-lang-select"
                 value={language ?? "text"}
-                aria-label="Code language"
+                aria-label={t("element:inlineEdit.codeLanguage")}
                 onChange={(e) => onApplyLanguage(e.target.value === "text" ? null : e.target.value)}
             >
                 {CodeLanguages.map((item) => (

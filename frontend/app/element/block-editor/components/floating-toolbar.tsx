@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import type { InlineStyleId } from "../../markdown-transform/inline-style";
 
@@ -47,6 +48,7 @@ const STYLE_GLYPHS: Record<InlineStyleId, React.ReactNode> = {
 
 export function FloatingToolbar({ anchor, blockLabel, blockItems, styles, onBlockType, onStyle }: FloatingToolbarProps) {
     const [typeOpen, setTypeOpen] = useState(false);
+    const { t } = useTranslation("block-editor");
     // preventDefault on mousedown: keep the textarea selection + focus while the user
     // clicks a toolbar button (blur would commit the session and swallow the gesture).
     const stopMouse = (e: React.MouseEvent) => e.preventDefault();
@@ -57,7 +59,7 @@ export function FloatingToolbar({ anchor, blockLabel, blockItems, styles, onBloc
                     type="button"
                     className={"markdown-toolbar-btn markdown-toolbar-blocktype-btn" + (typeOpen ? " is-open" : "")}
                     onClick={() => setTypeOpen((v) => !v)}
-                    title="Turn into"
+                    title={t("block-editor:toolbar.turnInto")}
                 >
                     {blockLabel} ▾
                 </button>

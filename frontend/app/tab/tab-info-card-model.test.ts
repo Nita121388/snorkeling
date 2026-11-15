@@ -3,7 +3,8 @@
 
 // Tab 悬浮卡纯逻辑层单测（node 环境，无 jsdom）。
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { initI18n } from "@/i18n/config";
 import {
     agentGroupHidesProvider,
     agentGroupLabel,
@@ -13,6 +14,12 @@ import {
     nonAgentChips,
     presentAgentState,
 } from "./tab-info-card-model";
+
+// i18n 资源为 en 真源：迁移后 label 由 i18n.t 产出，必须先把实例初始化到 en，
+// 断言值才与资源文件一致（Pattern I）。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 function makeBlock(meta: Record<string, unknown>): Block {
     return { otype: "block", oid: "b", version: 1, meta } as unknown as Block;

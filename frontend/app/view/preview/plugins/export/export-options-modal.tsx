@@ -7,6 +7,7 @@
 
 import { Toggle } from "@/element/toggle";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal } from "@/app/modals/modal";
 import { defaultExportOptions, type ExportFormat, type ExportOptions } from "./export-provider";
 import "./export-options-modal.scss";
@@ -52,23 +53,27 @@ const formatOptions: Array<{ value: ExportFormat; label: string; ext: string }> 
     { value: "pdf", label: "PDF", ext: ".pdf" },
 ];
 
-const optionItems: Array<{ key: keyof ExportOptions; label: string; title: string }> = [
+type OptionKey = keyof ExportOptions;
+
+/** 选项 → i18n key（label/title 延迟到渲染期取词，避免 import 期锁死 locale）。
+ *  不加 `Array<...>` 注解：注解会把 labelKey 拓宽成 string，i18next 的严格 key 类型会拒收。 */
+const optionItemKeys = [
     {
         key: "includeFrontmatter",
-        label: "显示属性（frontmatter）",
-        title: "导出时是否保留文档开头的属性（YAML frontmatter）",
+        labelKey: "preview:exportOptions.showFrontmatter",
+        titleKey: "preview:exportOptions.showFrontmatterTitle",
     },
     {
         key: "includeToc",
-        label: "显示目录",
-        title: "在导出文档顶部插入目录",
+        labelKey: "preview:exportOptions.showToc",
+        titleKey: "preview:exportOptions.showTocTitle",
     },
     {
         key: "darkTheme",
-        label: "深色主题",
-        title: "导出的 HTML / PDF 使用深色配色",
+        labelKey: "preview:exportOptions.darkTheme",
+        titleKey: "preview:exportOptions.darkThemeTitle",
     },
-];
+] as const;
 
 export function ExportOptionsModal({
     defaultFormat = "html",
@@ -76,6 +81,7 @@ export function ExportOptionsModal({
     onSubmit,
     onCancel,
 }: ExportOptionsModalProps) {
+    const { t } = useTranslation("preview");
     const [format, setFormat] = useState<ExportFormat>(defaultFormat);
     const [options, setOptions] = useState<ExportOptions>(() => ({
         ...loadStoredExportOptions(),
@@ -84,7 +90,15 @@ export function ExportOptionsModal({
     const toggleOption = (key: keyof ExportOptions) => (value: boolean) => {
         setOptions((prev) => ({ ...prev, [key]: value }));
     };
-    const toggleList = useMemo(() => optionItems, []);
+    const toggleList = useMemo(
+        () =>
+            optionItemKeys.map((item) => ({
+                key: item.key as OptionKey,
+                label: t(item.labelKey),
+                title: t(item.titleKey),
+            })),
+        [t]
+    );
     const handleSubmit = () => {
         saveExportOptions(options);
         onSubmit(format, { ...options, fileName: options.fileName || defaultFileName });
@@ -96,14 +110,14 @@ export function ExportOptionsModal({
     return (
         <Modal
             className="export-options-modal"
-            okLabel="导出"
-            cancelLabel="取消"
+            okLabel={t("preview:exportOptions.okLabel")}
+            cancelLabel={t("preview:exportOptions.cancelLabel")}
             onOk={handleSubmit}
             onCancel={onCancel}
             onClickBackdrop={onCancel}
             onClose={onCancel}
         >
-            <div className="export-options-title">导出 Markdown</div>
+            <div className="export-options-title">{t("preview:exportOptions.title")}</div>
 
             {/* 格式选择 */}
             <div className="export-options-format-row">
@@ -122,7 +136,7 @@ export function ExportOptionsModal({
             {/* 文件名输入 */}
             <div className="export-options-filename-row">
                 <label className="export-options-filename-label" htmlFor="export-file-name">
-                    文件名
+                    {t("preview:exportOptions.fileNameLabel")}
                 </label>
                 <div className="export-options-filename-input-wrapper">
                     <input
@@ -140,7 +154,7 @@ export function ExportOptionsModal({
 
             {/* 预览 */}
             <div className="export-options-preview">
-                将导出为: <strong>{displayName}{selectedExt}</strong>
+                {t("preview:exportOptions.willExportAs")} <strong>{displayName}{selectedExt}</strong>
             </div>
 
             {/* 导出选项 */}

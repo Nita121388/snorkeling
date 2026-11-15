@@ -3,6 +3,7 @@
 
 import { cn, makeIconClass } from "@/util/util";
 import { memo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { WaveAIModel } from "./waveai-model";
 
 interface AIFeedbackButtonsProps {
@@ -10,6 +11,7 @@ interface AIFeedbackButtonsProps {
 }
 
 export const AIFeedbackButtons = memo(({ messageText }: AIFeedbackButtonsProps) => {
+    const { t } = useTranslation("aipanel");
     const [thumbsUpClicked, setThumbsUpClicked] = useState(false);
     const [thumbsDownClicked, setThumbsDownClicked] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -51,7 +53,7 @@ export const AIFeedbackButtons = memo(({ messageText }: AIFeedbackButtonsProps) 
                         : "text-secondary hover:bg-hoverbg hover:text-primary",
                     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 )}
-                title="Good Response"
+                title={t("aipanel:feedback.goodResponse")}
             >
                 <i className={makeIconClass(thumbsUpClicked ? "solid@thumbs-up" : "regular@thumbs-up", false)} />
             </button>
@@ -64,7 +66,7 @@ export const AIFeedbackButtons = memo(({ messageText }: AIFeedbackButtonsProps) 
                         : "text-secondary hover:bg-hoverbg hover:text-primary",
                     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 )}
-                title="Bad Response"
+                title={t("aipanel:feedback.badResponse")}
             >
                 <i className={makeIconClass(thumbsDownClicked ? "solid@thumbs-down" : "regular@thumbs-down", false)} />
             </button>
@@ -76,7 +78,7 @@ export const AIFeedbackButtons = memo(({ messageText }: AIFeedbackButtonsProps) 
                         copied ? "bg-surface-soft text-success" : "text-secondary hover:bg-hoverbg hover:text-primary",
                         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                     )}
-                    title="Copy Message"
+                    title={t("aipanel:feedback.copyMessage")}
                 >
                     <i className={makeIconClass(copied ? "solid@check" : "regular@copy", false)} />
                 </button>

@@ -10,9 +10,10 @@
 //
 // @vitest-environment jsdom
 
+import { i18n, initI18n } from "@/i18n/config";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const popModalMock = vi.fn();
 vi.mock("@/app/store/modalmodel", () => ({
@@ -73,6 +74,11 @@ function byData<T extends Element = HTMLElement>(attr: string): T | undefined {
     return document.querySelector<T>(`[${attr}]`) ?? undefined;
 }
 
+beforeAll(async () => {
+    // Pattern I: modal copy comes from `t()`, so expectations are recomputed.
+    await initI18n("en");
+});
+
 describe("SyncConflictModal", () => {
     beforeEach(() => {
         popModalMock.mockClear();
@@ -101,7 +107,7 @@ describe("SyncConflictModal", () => {
         await flush();
 
         expect(byData("data-sync-conflict-row=ct1")).toBeUndefined();
-        expect(document.body.textContent).toContain("Nothing to resolve");
+        expect(document.body.textContent).toContain(i18n.t("modals:syncConflict.empty"));
         unmount();
     });
 

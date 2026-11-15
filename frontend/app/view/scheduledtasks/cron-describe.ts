@@ -4,21 +4,53 @@
 // Human-readable description for the 5-field POSIX cron syntax that the
 // scheduler supports (see pkg/scheduler/cronexpr.go). Used to help users who
 // are not familiar with cron understand when a task actually runs.
+//
+// All phrasing lives in the `scheduledtasks:cron.*` resources (en is the
+// source of truth); this module only computes the numbers/labels to
+// interpolate, so a `ui:locale` switch is picked up on the next call.
 
-const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MON = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-];
+import { i18n } from "@/i18n/config";
+
+const DOW_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+const MON_KEYS = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+] as const;
+
+// Resolved per call (not cached at module load): caching here would freeze the
+// locale that was active when the module was first imported.
+function dowName(index: number): string {
+    return i18n.t(`scheduledtasks:weekday.${DOW_KEYS[index]}`);
+}
+function monName(index: number): string {
+    return i18n.t(`scheduledtasks:month.${MON_KEYS[index]}`);
+}
 
 const DOW_NAME: Record<string, number> = {
-    sun: 0, sunday: 0,
-    mon: 1, monday: 1,
-    tue: 2, tuesday: 2,
-    wed: 3, wednesday: 3,
-    thu: 4, thursday: 4,
-    fri: 5, friday: 5,
-    sat: 6, saturday: 6,
+    sun: 0,
+    sunday: 0,
+    mon: 1,
+    monday: 1,
+    tue: 2,
+    tuesday: 2,
+    wed: 3,
+    wednesday: 3,
+    thu: 4,
+    thursday: 4,
+    fri: 5,
+    friday: 5,
+    sat: 6,
+    saturday: 6,
 };
 
 function pad(n: number): string {
@@ -55,22 +87,34 @@ function parseField(field: string, lo: number, hi: number, names: boolean): numb
                 start = startNum;
             }
             for (let v = start; v <= hi; v += step) {
-                if (!seen.has(v)) { seen.add(v); out.push(v); }
+                if (!seen.has(v)) {
+                    seen.add(v);
+                    out.push(v);
+                }
             }
         } else if (part.includes("-")) {
             const [a, b] = part.split("-");
             const av = numOf(a);
             const bv = numOf(b);
             if (av === null || bv === null) return null;
-            let x = av, y = bv;
-            if (x > y) { [x, y] = [y, x]; }
+            let x = av,
+                y = bv;
+            if (x > y) {
+                [x, y] = [y, x];
+            }
             for (let v = x; v <= y; v++) {
-                if (v >= lo && v <= hi && !seen.has(v)) { seen.add(v); out.push(v); }
+                if (v >= lo && v <= hi && !seen.has(v)) {
+                    seen.add(v);
+                    out.push(v);
+                }
             }
         } else {
             const v = numOf(part);
             if (v === null || v < lo || v > hi) return null;
-            if (!seen.has(v)) { seen.add(v); out.push(v); }
+            if (!seen.has(v)) {
+                seen.add(v);
+                out.push(v);
+            }
         }
     }
     if (out.length === 0) return null;
@@ -94,25 +138,43 @@ function isConsecutive(sorted: number[]): boolean {
 function describeDow(dows: number[]): string | null {
     if (dows.length === 7) return null;
     const key = dows.join(",");
-    if (key === "1,2,3,4,5") return "every weekday (Mon–Fri)";
-    if (key === "6,0" || key === "0,6") return "every weekend";
-    if (dows.length === 1) return `every ${DOW[dows[0]]}`;
-    if (isConsecutive(dows)) return `${DOW[dows[0]]} through ${DOW[dows[dows.length - 1]]}`;
-    return `on ${dows.map((d) => DOW[d].slice(0, 3)).join(", ")}`;
+    if (key === "1,2,3,4,5") return i18n.t("scheduledtasks:cron.dowEveryWeekday");
+    if (key === "6,0" || key === "0,6") return i18n.t("scheduledtasks:cron.dowEveryWeekend");
+    if (dows.length === 1) return i18n.t("scheduledtasks:cron.dowEvery", { day: dowName(dows[0]) });
+    if (isConsecutive(dows))
+        return i18n.t("scheduledtasks:cron.dowFromThrough", {
+            from: dowName(dows[0]),
+            to: dowName(dows[dows.length - 1]),
+        });
+    return i18n.t("scheduledtasks:cron.dowOn", {
+        days: dows.map((d) => dowName(d).slice(0, 3)).join(", "),
+    });
 }
 
 function describeDom(doms: number[]): string | null {
     if (doms.length === 31) return null;
-    if (doms.length === 1) return `on the ${ordinal(doms[0])} of the month`;
-    if (isConsecutive(doms) && doms.length > 1) return `on days ${doms[0]}–${doms[doms.length - 1]} of the month`;
-    return `on day-of-month ${doms.join(", ")}`;
+    if (doms.length === 1)
+        // `day` is the raw number (zh), `ordinal` the English ordinal form (en).
+        return i18n.t("scheduledtasks:cron.domOnThe", {
+            day: String(doms[0]),
+            ordinal: ordinal(doms[0]),
+        });
+    if (isConsecutive(doms) && doms.length > 1)
+        return i18n.t("scheduledtasks:cron.domRange", { from: doms[0], to: doms[doms.length - 1] });
+    return i18n.t("scheduledtasks:cron.domList", { days: doms.join(", ") });
 }
 
 function describeMon(mons: number[]): string | null {
     if (mons.length === 12) return null;
-    if (mons.length === 1) return `in ${MON[mons[0] - 1]}`;
-    if (isConsecutive(mons)) return `from ${MON[mons[0] - 1]} through ${MON[mons[mons.length - 1] - 1]}`;
-    return `in ${mons.map((m) => MON[m - 1].slice(0, 3)).join(", ")}`;
+    if (mons.length === 1) return i18n.t("scheduledtasks:cron.monIn", { month: monName(mons[0] - 1) });
+    if (isConsecutive(mons))
+        return i18n.t("scheduledtasks:cron.monFrom", {
+            from: monName(mons[0] - 1),
+            to: monName(mons[mons.length - 1] - 1),
+        });
+    return i18n.t("scheduledtasks:cron.monList", {
+        months: mons.map((m) => monName(m - 1).slice(0, 3)).join(", "),
+    });
 }
 
 function build(
@@ -130,20 +192,25 @@ function build(
     // "*/N" hour step → "Every N hours"
     if (/^\*\//.test(hourF)) {
         const m0 = minutes.length === 1 && minutes[0] === 0;
-        const minTxt = allM || m0 ? "" : ` at minute${minutes.length > 1 ? "s" : ""} ${minutes.map(pad).join(", ")}`;
-        return `Every ${hourF.slice(2)} hours${minTxt}`;
+        const minTxt =
+            allM || m0 ? "" : ` ${i18n.t("scheduledtasks:cron.atMinutes", { minutes: minutes.map(pad).join(", ") })}`;
+        // `count` must be numeric: i18next's plural resolution treats a string
+        // count as a missing plural key and returns the raw key.
+        return i18n.t("scheduledtasks:cron.everyNHours", { count: parseInt(hourF.slice(2), 10) }) + minTxt;
     }
     // "*/N" minute step across all hours → "Every N minutes"
-    if (allH && /^\*\//.test(minF)) return `Every ${minF.slice(2)} minutes`;
+    if (allH && /^\*\//.test(minF)) {
+        return i18n.t("scheduledtasks:cron.everyNMinutes", { count: parseInt(minF.slice(2), 10) });
+    }
 
     // Time text.
     let timeTxt: string;
     if (allH) {
-        timeTxt = allM ? "" : `at minute${minutes.length > 1 ? "s" : ""} ${minutes.map(pad).join(", ")}`;
+        timeTxt = allM ? "" : i18n.t("scheduledtasks:cron.atMinutes", { minutes: minutes.map(pad).join(", ") });
     } else {
         const times: string[] = [];
         for (const h of hours) for (const m of minutes) times.push(`${pad(h)}:${pad(m)}`);
-        timeTxt = `at ${times.join(", ")}`;
+        timeTxt = i18n.t("scheduledtasks:cron.atTime", { times: times.join(", ") });
     }
 
     // Date parts.
@@ -156,8 +223,8 @@ function build(
     if (dowTxt) parts.push(dowTxt);
 
     if (parts.length === 0) {
-        if (!timeTxt) return "Every minute";
-        return `Daily ${timeTxt}`;
+        if (!timeTxt) return i18n.t("scheduledtasks:cron.everyMinute");
+        return i18n.t("scheduledtasks:cron.daily", { time: timeTxt });
     }
     const lead = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
     const rest = parts.slice(1).join(", ");
@@ -174,7 +241,7 @@ export function describeCron(expr: string | null | undefined): string {
     const s = (expr || "").trim();
     if (!s) return "";
     const fields = s.split(/\s+/);
-    if (fields.length !== 5) return "Needs 5 fields: minute hour day-of-month month weekday";
+    if (fields.length !== 5) return i18n.t("scheduledtasks:cron.needsFields");
     const [minF, hourF, domF, monF, dowF] = fields;
     const minutes = parseField(minF, 0, 59, false);
     const hours = parseField(hourF, 0, 23, false);
@@ -182,7 +249,7 @@ export function describeCron(expr: string | null | undefined): string {
     const mons = parseField(monF, 1, 12, false);
     const dows = parseField(dowF, 0, 6, true);
     if (!minutes || !hours || !doms || !mons || !dows) {
-        return "Can't parse this expression — check the 5 fields";
+        return i18n.t("scheduledtasks:cron.unparsable");
     }
     return build(minutes, hours, doms, mons, dows, minF, hourF);
 }

@@ -1,0 +1,10 @@
+{
+    "viewName": "WaveApp",
+    "title": "Tsunami",
+    "start": "Start",
+    "starting": "Starting...",
+    "error": {
+        "noAppPath": "App path or app ID must be set (tsunami:apppath or tsunami:appid)",
+        "invalidController": "Invalid controller (must be 'tsunami')"
+    }
+}

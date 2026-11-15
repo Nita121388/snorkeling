@@ -26,6 +26,7 @@ import {
     setWasActive,
     setWasInFg,
 } from "./emain-activity";
+import { initI18nMain, resolveMainLocale, tmew } from "./emain-i18n";
 import { initIpcHandlers } from "./emain-ipc";
 import { log } from "./emain-log";
 import { initMenuEventSubscriptions, makeAndSetAppMenu, makeDockTaskbar } from "./emain-menu";
@@ -299,9 +300,9 @@ electronApp.on("before-quit", (e) => {
         e.preventDefault();
         const choice = electron.dialog.showMessageBoxSync(null, {
             type: "question",
-            buttons: ["Cancel", "Quit"],
-            title: "Confirm Quit",
-            message: "Are you sure you want to quit Snorkeling?",
+            buttons: [tmew("common:common.cancel"), tmew("common:dialog.confirmQuit.quit")],
+            title: tmew("common:dialog.confirmQuit.title"),
+            message: tmew("common:dialog.confirmQuit.message"),
             defaultId: 0,
             cancelId: 0,
         });
@@ -396,6 +397,9 @@ globalEvents.on("windows-updated", () => {
 async function appMain() {
     // Set disableHardwareAcceleration as early as possible, if required.
     const launchSettings = getLaunchSettings();
+    // Initialize main-process i18n before any menu construction — `makeAndSetAppMenu()`
+    // reads translated strings via `getI18nMain()/tmew()`. See `emain/emain-i18n.ts`.
+    initI18nMain(resolveMainLocale(launchSettings?.["ui:locale"], electronApp.getLocale()));
     if (launchSettings?.["window:disablehardwareacceleration"]) {
         console.log("disabling hardware acceleration, per launch settings");
         electronApp.disableHardwareAcceleration();

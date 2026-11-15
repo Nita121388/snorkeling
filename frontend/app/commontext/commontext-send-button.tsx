@@ -17,6 +17,7 @@ import { ObjectService } from "@/app/store/services";
 import * as WOS from "@/app/store/wos";
 import { stripSessionTagHashes } from "@/app/view/aisessions/session-tags";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
+import { i18n } from "@/i18n/config";
 import {
     createAgentBlockDefForProfile,
     getCurrentWorkspaceContextMeta,
@@ -30,6 +31,7 @@ import { FloatingPortal, offset, useDismiss, useFloating, useInteractions } from
 import clsx from "clsx";
 import { atom, useAtomValue } from "jotai";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { sendTextToFocusedTerm } from "./commontext-insert";
 import {
     collectFolderCandidates,
@@ -149,7 +151,7 @@ export function previewSendTarget(input: {
     if (profileName == null) {
         return {
             kind: "create",
-            label: "无可用 agent",
+            label: i18n.t("commontext:send.noAgent"),
             profileName: null,
             profileLabel: "Agent",
             folder,
@@ -203,21 +205,21 @@ export async function executeCommonTextSend(input: {
     const { text, config, focusedAgent, profiles, onStatus } = input;
     const cleanText = stripSessionTagHashes(text);
     if (cleanText.trim() === "") {
-        onStatus?.("Nothing to send", "err");
+        onStatus?.(i18n.t("commontext:send.nothingToSend"), "err");
         return false;
     }
     const preview = previewSendTarget({ config, focusedAgent, profiles });
     if (preview.profileName == null) {
-        onStatus?.("No agent profile available", "err");
+        onStatus?.(i18n.t("commontext:send.noProfile"), "err");
         return false;
     }
     if (preview.kind === "existing") {
         const target = sendTextToFocusedTerm(cleanText, [focusedAgent!.blockId]);
         if (target == null) {
-            onStatus?.("Agent block not ready — focus it and retry, or create a new block", "err");
+            onStatus?.(i18n.t("commontext:send.notReady"), "err");
             return false;
         }
-        onStatus?.("Sent", "ok");
+        onStatus?.(i18n.t("commontext:send.sent"), "ok");
         return true;
     }
     // create：folder 为空时继承当前工作区 context
@@ -251,10 +253,15 @@ export async function executeCommonTextSend(input: {
             getApi().setActiveTab(result.tabid);
         }
         registerPendingInput(blockId, cleanText);
-        onStatus?.(`Sent — will inject when ${preview.profileLabel} is ready`, "ok");
+        onStatus?.(i18n.t("commontext:send.sentPending", { agent: preview.profileLabel }), "ok");
         return true;
     } catch (error) {
-        onStatus?.(`Send failed: ${(error as Error)?.message ?? "unknown error"}`, "err");
+        onStatus?.(
+            i18n.t("commontext:send.sendFailed", {
+                error: (error as Error)?.message ?? i18n.t("commontext:send.unknownError"),
+            }),
+            "err"
+        );
         return false;
     }
 }
@@ -350,6 +357,7 @@ function AnchoredMenu(props: {
 // ─── Send 目标面板（挂在 SplitButton 弹层内） ───
 
 function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: SendStatusHandler; close: () => void }) {
+    const { t } = useTranslation("commontext");
     const [config, setConfig] = useAtomConfig();
     const personaMap = useAgentPersonas();
     const focusedAgent = useAtomValue(focusedAgentBlockInfoAtom);
@@ -393,10 +401,11 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
     const currentTabName = tabCandidates.find((t) => t.isCurrent)?.name;
     const selectedTabName =
         config.tab.kind === "current"
-            ? (currentTabName ?? "当前 Tab")
+            ? (currentTabName ?? i18n.t("commontext:send.tabCurrentTab"))
             : config.tab.kind === "new"
-              ? "新 Tab"
-              : (tabCandidates.find((t) => t.tabId === (config.tab as { tabId: string }).tabId)?.name ?? "Tab");
+              ? i18n.t("commontext:send.tabNewTab")
+              : (tabCandidates.find((tc) => tc.tabId === (config.tab as { tabId: string }).tabId)?.name ??
+                i18n.t("commontext:send.tabFallback"));
 
     return (
         <div className="flex flex-col gap-0.5" data-commontext-send-popover>
@@ -406,8 +415,8 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
             <div className="px-2.5 pt-2 pb-1">
                 <div className={sectionHeadClass}>
                     <i className="fa-solid fa-crosshairs text-[9px]" />
-                    选择目标
-                    <span className="ml-auto font-mono normal-case tracking-normal">二选一</span>
+                    {t("commontext:send.chooseTarget")}
+                    <span className="ml-auto font-mono normal-case tracking-normal">{t("commontext:send.either")}</span>
                 </div>
                 <div className="flex items-center gap-1 px-0.5" data-commontext-send-modes>
                     {focusedAgent != null ? (
@@ -415,8 +424,8 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                             mode="focused"
                             selected={preview.kind === "existing"}
                             icon={<i className="fa-solid fa-bullseye text-[10px]" />}
-                            label="聚焦块"
-                            title="发送到聚焦的 Agent Block（Agent / Type / Folder 三项跟随）"
+                            label={t("commontext:send.focusedBlock")}
+                            title={t("commontext:send.focusedBlockTitle")}
                             onClick={() =>
                                 setConfig({ mode: "focused", profile: null, tab: { kind: "current" }, folder: null })
                             }
@@ -426,18 +435,22 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                         mode="create"
                         selected={preview.kind === "create"}
                         icon={<i className="fa-solid fa-plus text-[10px]" />}
-                        label="新建"
-                        title="新建一个 Agent Block（保留当前 Agent / Type / Folder 选择）"
+                        label={t("commontext:send.createNew")}
+                        title={t("commontext:send.createNewTitle")}
                         onClick={() => setConfig({ ...config, mode: "create" })}
                     />
                     {focusedAgent == null ? (
-                        <span className="text-[10.5px] text-muted truncate">当前聚焦块不是 Agent Block</span>
+                        <span className="text-[10.5px] text-muted truncate">{t("commontext:send.notAgentBlock")}</span>
                     ) : null}
                 </div>
                 <div className="mt-1 px-0.5 text-[10.5px] text-muted truncate" data-commontext-send-summary>
                     {preview.kind === "existing"
-                        ? `聚焦块 · ${focusedAgent?.title ?? preview.profileLabel}${preview.cwd ? ` · ${preview.cwd}` : ""}`
-                        : `新建 · ${preview.profileLabel}${preview.cwd ? ` · ${preview.cwd}` : ""}`}
+                        ? `${i18n.t("commontext:send.summaryExisting", {
+                              target: focusedAgent?.title ?? preview.profileLabel,
+                          })}${preview.cwd ? ` · ${preview.cwd}` : ""}`
+                        : `${i18n.t("commontext:send.summaryCreate", { target: preview.profileLabel })}${
+                              preview.cwd ? ` · ${preview.cwd}` : ""
+                          }}`}
                 </div>
             </div>
 
@@ -445,7 +458,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
             <div className="px-2.5 pt-2 pb-1.5 border-t border-border/60">
                 <div className={sectionHeadClass}>
                     <i className="fa-solid fa-robot text-[9px]" />
-                    选择 Agent
+                    {t("commontext:send.chooseAgent")}
                     <span
                         className="ml-auto font-mono normal-case tracking-normal text-secondary"
                         data-commontext-agent-name
@@ -472,7 +485,11 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                                         : "bg-transparent text-muted hover:bg-surface-soft hover:text-secondary"
                                 )}
                                 onClick={() => setConfig({ ...config, profile: profile.name })}
-                                title={profile.isDefault ? `${profile.label}（默认）` : profile.label}
+                                title={
+                                    profile.isDefault
+                                        ? i18n.t("commontext:send.defaultProfile", { label: profile.label })
+                                        : profile.label
+                                }
                                 aria-label={profile.label}
                                 aria-pressed={isSelected}
                             >
@@ -487,14 +504,14 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                                 {profile.isDefault ? (
                                     <span
                                         className="absolute right-1 top-1 w-1 h-1 rounded-full bg-accent"
-                                        title="默认 agent"
+                                        title={t("commontext:send.defaultAgent")}
                                     />
                                 ) : null}
                             </button>
                         );
                     })}
                     {profiles.length === 0 ? (
-                        <span className="text-[11.5px] text-muted py-1">未探测到可用 agent</span>
+                        <span className="text-[11.5px] text-muted py-1">{t("commontext:send.noAgents")}</span>
                     ) : null}
                 </div>
             </div>
@@ -503,8 +520,10 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
             <div className="px-2.5 pt-2 pb-1.5 border-t border-border/60">
                 <div className={sectionHeadClass}>
                     <i className="fa-solid fa-table-columns text-[9px]" />
-                    选择 Type
-                    <span className="ml-auto font-mono normal-case tracking-normal">默认 = 当前 Tab</span>
+                    {t("commontext:send.chooseType")}
+                    <span className="ml-auto font-mono normal-case tracking-normal">
+                        {t("commontext:send.typeDefaultHint")}
+                    </span>
                 </div>
                 <div className="flex items-center gap-1.5 px-0.5">
                     <button
@@ -518,7 +537,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                                 closeMenu();
                             }
                         }}
-                        title="选择目标 Tab"
+                        title={t("commontext:send.chooseTab")}
                         aria-haspopup="menu"
                         aria-expanded={menuOpen === "tab"}
                     >
@@ -532,7 +551,11 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                                     : "bg-surface-soft text-muted")
                             }
                         >
-                            {config.tab.kind === "current" ? "当前" : config.tab.kind === "new" ? "新建" : "已存在"}
+                            {config.tab.kind === "current"
+                                ? t("commontext:send.tabCurrent")
+                                : config.tab.kind === "new"
+                                  ? t("commontext:send.tabNew")
+                                  : t("commontext:send.tabExisting")}
                         </span>
                         <i className="fa-solid fa-chevron-down text-[9px] text-muted ml-auto" />
                     </button>
@@ -540,7 +563,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                         type="button"
                         className="h-[32px] w-[32px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer"
                         onClick={() => setConfig({ ...config, tab: { kind: "new" } })}
-                        title="新建 Tab"
+                        title={t("commontext:send.newTab")}
                     >
                         <i className="fa-solid fa-plus" />
                     </button>
@@ -551,8 +574,10 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
             <div className="px-2.5 pt-2 pb-1.5 border-t border-border/60">
                 <div className={sectionHeadClass}>
                     <i className="fa-solid fa-folder-open text-[9px]" />
-                    选择 Folder
-                    <span className="ml-auto font-mono normal-case tracking-normal">默认 = 聚焦块目录</span>
+                    {t("commontext:send.chooseFolder")}
+                    <span className="ml-auto font-mono normal-case tracking-normal">
+                        {t("commontext:send.folderDefaultHint")}
+                    </span>
                 </div>
                 <div className="flex items-center gap-1.5 px-0.5">
                     <button
@@ -566,19 +591,21 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                                 closeMenu();
                             }
                         }}
-                        title="选择项目目录（cwd）"
+                        title={t("commontext:send.chooseFolderTitle")}
                         aria-haspopup="menu"
                         aria-expanded={menuOpen === "folder"}
                     >
                         <i className="fa-solid fa-folder text-[10px] text-secondary" />
-                        <span className="truncate font-mono text-[11px]">{preview.folder || "继承工作区目录"}</span>
+                        <span className="truncate font-mono text-[11px]">
+                            {preview.folder || t("commontext:send.inheritWorkspace")}
+                        </span>
                         <span
                             className={
                                 "text-[9.5px] px-1.5 py-px rounded-full " +
                                 (config.folder == null ? "bg-actionsoft text-accent" : "bg-surface-soft text-muted")
                             }
                         >
-                            {config.folder == null ? "跟随" : "已选"}
+                            {config.folder == null ? t("commontext:send.follow") : t("commontext:send.chosen")}
                         </span>
                         <i className="fa-solid fa-chevron-down text-[9px] text-muted ml-auto" />
                     </button>
@@ -586,7 +613,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                         type="button"
                         className="h-[32px] w-[32px] shrink-0 rounded-md border border-dashed border-border grid place-items-center text-[12px] text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--accent-color)_45%,transparent)] hover:bg-actionsoft cursor-pointer"
                         onClick={() => browseFolder(setConfig, config, props.onStatus)}
-                        title="浏览其他目录…"
+                        title={t("commontext:send.browseOther")}
                     >
                         <i className="fa-solid fa-ellipsis" />
                     </button>
@@ -596,18 +623,18 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
             {/* 5. 确认行 */}
             <div className="flex items-center gap-2 px-2.5 py-2 border-t border-border/60">
                 <span className="min-w-0 flex-1 text-[10.5px] text-muted truncate">
-                    目标 ={" "}
+                    {t("commontext:send.targetEquals")}{" "}
                     <b className="font-medium text-secondary">
-                        {preview.kind === "existing" ? "聚焦块（已存在）" : "新建"}
+                        {preview.kind === "existing" ? t("commontext:send.targetExisting") : t("commontext:send.targetNew")}
                         {preview.kind === "create" && preview.cwd ? ` · ${preview.cwd}` : ""}
                     </b>
                 </span>
                 <Button className="grey" onClick={props.close}>
-                    取消
+                    {t("commontext:send.cancel")}
                 </Button>
                 <Button className="green" onClick={doSend} disabled={preview.profileName == null} title={preview.label}>
                     <i className="fa-solid fa-paper-plane mr-1" />
-                    发送
+                    {t("commontext:send.send")}
                 </Button>
             </div>
 
@@ -615,7 +642,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
             <AnchoredMenu
                 open={menuOpen === "tab"}
                 anchor={menuOpen === "tab" ? menuAnchor : null}
-                label="选择目标 Tab"
+                label={t("commontext:send.chooseTab")}
                 onClose={closeMenu}
             >
                 {tabCandidates.map((tab) => (
@@ -635,7 +662,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                         <i className="fa-regular fa-square text-[10px] text-secondary" />
                         <span className="truncate">{tab.name}</span>
                         <span className="ml-auto text-[10px] text-muted font-mono">
-                            {tab.isCurrent ? "当前" : "已存在"}
+                            {tab.isCurrent ? t("commontext:send.tabCurrent") : t("commontext:send.tabExisting")}
                         </span>
                     </button>
                 ))}
@@ -648,13 +675,13 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                     }}
                 >
                     <i className="fa-solid fa-plus text-[10px] text-secondary" />
-                    <span>新建 Tab</span>
+                    <span>{t("commontext:send.newTab")}</span>
                 </button>
             </AnchoredMenu>
             <AnchoredMenu
                 open={menuOpen === "folder"}
                 anchor={menuOpen === "folder" ? menuAnchor : null}
-                label="选择项目目录"
+                label={t("commontext:send.chooseFolderTitle")}
                 onClose={closeMenu}
             >
                 {folderCandidates.map((candidate) => (
@@ -673,7 +700,7 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                     </button>
                 ))}
                 {folderCandidates.length === 0 ? (
-                    <span className="px-2 py-1.5 text-[11px] text-muted">无可用目录</span>
+                    <span className="px-2 py-1.5 text-[11px] text-muted">{t("commontext:send.noFolders")}</span>
                 ) : null}
             </AnchoredMenu>
         </div>
@@ -691,7 +718,12 @@ async function browseFolder(
             setConfig({ ...config, folder: dir });
         }
     } catch (error) {
-        onStatus(`Pick directory failed: ${(error as Error)?.message ?? "unknown"}`, "err");
+        onStatus(
+            i18n.t("commontext:send.pickFailed", {
+                error: (error as Error)?.message ?? i18n.t("commontext:send.unknown"),
+            }),
+            "err"
+        );
     }
 }
 
@@ -735,6 +767,7 @@ export const CommontextSendButton = ({
     onSent: () => void;
     onStatus: SendStatusHandler;
 }) => {
+    const { t } = useTranslation("commontext");
     const [popoverOpen, setPopoverOpen] = React.useState(false);
     const config = useAtomValue(commontextSendConfigAtom);
     const focusedAgent = useAtomValue(focusedAgentBlockInfoAtom);
@@ -756,15 +789,15 @@ export const CommontextSendButton = ({
         <div className="inline-flex" data-commontext-send-button>
             <SplitButton
                 icon={<i className="fa-solid fa-paper-plane" />}
-                label="Send"
+                label={t("commontext:send.label")}
                 onPrimaryClick={quickSend}
-                primaryTitle={`Send（${preview.label}）— 点右侧箭头选择目标`}
+                primaryTitle={i18n.t("commontext:send.primaryTitle", { target: preview.label })}
                 primaryDisabled={preview.profileName == null && preview.kind === "create"}
-                caretTitle="选择 Agent / Type / Folder"
-                caretAriaLabel="选择发送目标"
+                caretTitle={t("commontext:send.caretTitle")}
+                caretAriaLabel={t("commontext:send.caretAria")}
                 open={popoverOpen}
                 onOpenChange={setPopoverOpen}
-                menuLabel="发送目标"
+                menuLabel={t("commontext:send.menuLabel")}
                 menuWidth={380}
                 menuClassName="commontext-send-target-panel"
                 render={({ close }) => (

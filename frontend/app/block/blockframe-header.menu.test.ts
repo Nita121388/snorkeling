@@ -9,7 +9,7 @@
 //
 // Run: npx vitest run frontend/app/block/blockframe-header.menu.test.ts
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 // blockframe-header.tsx 顶层 import 会拉起整个 block 运行时（React 组件 + jotai + WOS），
 // 这里只测纯函数，故用 vi.mock 把它需要的重量级模块置空。
@@ -31,7 +31,10 @@ vi.mock("@/app/store/jotaiStore", () => ({ globalStore: { get: () => undefined, 
 vi.mock("@/app/store/keymodel", () => ({ uxCloseBlock: async () => {} }));
 vi.mock("@/app/store/tab-model", () => ({ useTabModel: () => ({ tabId: "t1" }) }));
 vi.mock("@/app/store/wshrpcutil", () => ({ TabRpcClient: {} }));
-vi.mock("@/app/store/wos", () => ({ makeORef: (otype: string, oid: string) => `${otype}:${oid}`, getWaveObjectAtom: () => null }));
+vi.mock("@/app/store/wos", () => ({
+    makeORef: (otype: string, oid: string) => `${otype}:${oid}`,
+    getWaveObjectAtom: () => null,
+}));
 vi.mock("@/app/waveenv/waveenv", () => ({
     useWaveEnv: () => ({}) as never,
 }));
@@ -39,7 +42,10 @@ vi.mock("@/app/element/iconbutton", () => ({ IconButton: () => null }));
 vi.mock("@/app/layout/index", () => ({ getLayoutModelForTabById: () => null }));
 vi.mock("@/app/layout/lib/inlineTabs", () => ({ getLayoutDataBlockIds: () => [] }));
 vi.mock("@/app/tab/tab-target-modal", () => ({ TabTargetModal: () => null }));
-vi.mock("@/app/view/term/agent-folder", () => ({ canOpenAgentFolder: () => false, openAgentFolderInCurrentTab: () => {} }));
+vi.mock("@/app/view/term/agent-folder", () => ({
+    canOpenAgentFolder: () => false,
+    openAgentFolderInCurrentTab: () => {},
+}));
 vi.mock("@/app/view/term/agent-session", () => ({ resolveAgentSessionIdFromMeta: () => "" }));
 vi.mock("@/app/workspace/toggle-block", () => ({
     SnorkelingBlockKindMetaKey: "snorkeling:blockkind",
@@ -50,6 +56,7 @@ vi.mock("@/app/block/block-minimize", () => ({
     restoreMinimizedBlockToLayout: () => null,
 }));
 
+import { initI18n } from "@/i18n/config";
 import { makeBlockMoveMenuItems, type MoveBlockMenuContext } from "./blockframe-header";
 
 const blockEnv = { services: { object: {} } } as never;
@@ -70,6 +77,11 @@ const labels = (items: ReturnType<typeof makeBlockMoveMenuItems>) =>
     items.map((item) => (item as { label?: string }).label).filter((l): l is string => typeof l === "string");
 
 describe("makeBlockMoveMenuItems — 入口收敛守卫", () => {
+    beforeAll(async () => {
+        // 菜单文案走 i18n（en 为真源），先初始化再断言（Pattern I）。
+        await initI18n("en");
+    });
+
     it("emits exactly one item, labelled Move to Tab…", () => {
         const items = makeBlockMoveMenuItems("block-1", blockEnv, makeContext());
         expect(items).toHaveLength(1);

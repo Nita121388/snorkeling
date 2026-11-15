@@ -1,8 +1,10 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import type { ListGroupMode } from "./controls";
 import type { OpenLevel } from "./open-sessions";
 import { SessionRow } from "./session-row";
@@ -73,12 +75,16 @@ export function SessionGroup({
     onToggleCollapsed: () => void;
     children: ReactNode;
 }) {
+    const { t } = useTranslation("aisessions");
     return (
         <div className="mb-2 flex flex-col">
             <button
                 type="button"
                 aria-expanded={!collapsed}
-                title={`${group.name} · ${group.sessions.length} sessions`}
+                title={i18n.t("aisessions:sessionGroup.groupTitle", {
+                    name: group.name,
+                    count: group.sessions.length,
+                })}
                 onClick={onToggleCollapsed}
                 className={cn(
                     "group/head sticky top-0 z-10 flex w-full cursor-pointer items-center gap-2 rounded-md border-b border-border bg-block-solid px-2 py-1.5 text-left text-xs transition-colors hover:bg-hoverbg",
@@ -180,6 +186,7 @@ export function GroupedSessionList({
     matchedKeys,
     heroById,
 }: GroupedSessionListProps) {
+    const { t } = useTranslation("aisessions");
     const newSession = sessions.find((session) => session.key === NewSessionKey);
 
     // 树在上层（aisessions.tsx）按筛选结果算好后随 grouped / sessions 一起传下来：
@@ -259,7 +266,7 @@ export function GroupedSessionList({
                         className="w-full cursor-pointer border-b border-border/70 bg-surface/25 py-1 pl-8 pr-3 text-left text-[11px] text-secondary transition-colors hover:bg-hoverbg hover:text-accent"
                         onClick={() => onToggleExpandParent(key, true)}
                     >
-                        Show all {node.childCount} sub-sessions ({hidden} more)
+                        {i18n.t("aisessions:sessionGroup.showAll", { count: node.childCount, hidden })}
                     </button>
                 ) : null}
             </div>
@@ -281,8 +288,12 @@ export function GroupedSessionList({
                     )}
                 >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                    <span className="min-w-0 truncate font-medium text-primary">New Chat</span>
-                    <span className="ml-auto shrink-0 text-[10px] text-secondary">unsent</span>
+                    <span className="min-w-0 truncate font-medium text-primary">
+                        {t("aisessions:sessionGroup.newChat")}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[10px] text-secondary">
+                        {t("aisessions:sessionGroup.unsent")}
+                    </span>
                 </button>
             ) : null}
             {groupMode === "project"

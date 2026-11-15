@@ -14,6 +14,7 @@ import { AISessionsServiceType } from "@/app/store/services";
 import { resolveMetadataAIMode } from "@/app/view/term/agent-ai-config";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 export type NoteAIStatus = "idle" | "loading" | "ready" | "error";
 export type NoteAISuggestion = { note: string; tags: string[] };
@@ -89,13 +90,14 @@ export function NoteAIButton({
     onGenerate: () => void;
     disabled?: boolean;
 }) {
+    const { t } = useTranslation("aisessions");
     const loading = status === "loading";
     return (
         <button
             type="button"
             className="shrink-0 rounded text-secondary transition-colors hover:bg-hover hover:text-primary"
-            title={loading ? "Generating with AI…" : "Generate note & tags with AI"}
-            aria-label={loading ? "Generating with AI" : "Generate note & tags with AI"}
+            title={loading ? t("aisessions:noteAi.generatingTitle") : t("aisessions:noteAi.generateTitle")}
+            aria-label={loading ? t("aisessions:noteAi.generatingAria") : t("aisessions:noteAi.generateTitle")}
             disabled={disabled || loading}
             onClick={(event) => {
                 event.stopPropagation();
@@ -133,6 +135,7 @@ export function NoteAISuggestionBar({
     onDismiss: () => void;
     onOpenSettings: () => void;
 }) {
+    const { t } = useTranslation("aisessions");
     if (status !== "ready" && status !== "error") {
         return null;
     }
@@ -149,7 +152,7 @@ export function NoteAISuggestionBar({
                             onOpenSettings();
                         }}
                     >
-                        Open AI settings
+                        {t("aisessions:noteAi.openSettings")}
                     </button>
                 ) : (
                     <button
@@ -160,14 +163,14 @@ export function NoteAISuggestionBar({
                             onRegenerate();
                         }}
                     >
-                        Retry
+                        {t("aisessions:noteAi.retry")}
                     </button>
                 )}
                 <button
                     type="button"
                     className="shrink-0 cursor-pointer text-error/80 hover:text-error"
-                    title="Dismiss"
-                    aria-label="Dismiss"
+                    title={t("aisessions:noteAi.dismiss")}
+                    aria-label={t("aisessions:noteAi.dismiss")}
                     onClick={(event) => {
                         event.stopPropagation();
                         onDismiss();
@@ -183,7 +186,9 @@ export function NoteAISuggestionBar({
     }
     return (
         <div className="mt-1 space-y-1 rounded border border-border bg-surface-soft p-2" data-row-action="true">
-            <div className="line-clamp-2 text-[11px] leading-4 text-primary">{suggestion.note || "(empty note)"}</div>
+            <div className="line-clamp-2 text-[11px] leading-4 text-primary">
+                {suggestion.note || t("aisessions:noteAi.emptyNote")}
+            </div>
             {suggestion.tags.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
                     {suggestion.tags.map((tag) => (
@@ -205,7 +210,7 @@ export function NoteAISuggestionBar({
                         onDismiss();
                     }}
                 >
-                    Dismiss
+                    {t("aisessions:noteAi.dismiss")}
                 </button>
                 <button
                     type="button"
@@ -215,7 +220,7 @@ export function NoteAISuggestionBar({
                         onRegenerate();
                     }}
                 >
-                    Regenerate
+                    {t("aisessions:noteAi.regenerate")}
                 </button>
                 <button
                     type="button"
@@ -225,7 +230,7 @@ export function NoteAISuggestionBar({
                         onApply(suggestion);
                     }}
                 >
-                    Apply
+                    {t("aisessions:noteAi.apply")}
                 </button>
             </div>
         </div>

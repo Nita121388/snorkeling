@@ -3,7 +3,8 @@
 
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RunningDot, SessionRow, hiddenTagCount, visibleTagsFor } from "./session-row";
 
 type ElementProps = {
@@ -29,6 +30,10 @@ function childSpanClasses(node: ReactElement<ElementProps>): string[] {
         .filter((c): c is ReactElement<{ className?: string }> => isValidElement<{ className?: string }>(c))
         .map((c) => c.props.className ?? "");
 }
+
+beforeEach(async () => {
+    await initI18n("en");
+});
 
 describe("RunningDot", () => {
     it("renders a single breathing dot (no loading spinner) when the session is running", () => {

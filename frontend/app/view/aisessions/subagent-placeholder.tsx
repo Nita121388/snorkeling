@@ -1,6 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useTranslation } from "react-i18next";
+
 /**
  * 子代理未匹配到子会话（或缺失子会话文件）时的占位卡。
  *
@@ -8,6 +10,7 @@
  * 不可展开，但至少让用户知道"这里派发了一个子代理"，而不是静默退化成普通工具行。
  */
 export function SubagentPlaceholderCard({ match }: { match: SubagentMatch }) {
+    const { t } = useTranslation("aisessions");
     const agentName = (match.call.agent ?? "").trim() || "subagent";
     const taskText = (match.call.task ?? "").replace(/\s+/g, " ").trim();
     return (
@@ -22,10 +25,10 @@ export function SubagentPlaceholderCard({ match }: { match: SubagentMatch }) {
                 )}
                 <span
                     className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary"
-                    title="Subagent dispatched; child session not loaded"
+                    title={t("aisessions:subagent.notLoadedTitle")}
                 />
             </div>
-            <div className="px-2 pb-1.5 text-[10px] text-secondary">Subagent dispatched · child session not loaded</div>
+            <div className="px-2 pb-1.5 text-[10px] text-secondary">{t("aisessions:subagent.notLoaded")}</div>
         </div>
     );
 }

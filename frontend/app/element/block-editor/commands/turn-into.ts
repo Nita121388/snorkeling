@@ -31,26 +31,27 @@ function turnIntoWhen(target: BlockKind | undefined) {
     };
 }
 
-export const TURN_INTO_DEFS: ReadonlyArray<{ kind: BlockKind; label: string }> = [
-    { kind: "text", label: "Text" },
-    { kind: "heading1", label: "Heading 1" },
-    { kind: "heading2", label: "Heading 2" },
-    { kind: "heading3", label: "Heading 3" },
-    { kind: "heading4", label: "Heading 4" },
-    { kind: "heading5", label: "Heading 5" },
-    { kind: "heading6", label: "Heading 6" },
-    { kind: "bulleted", label: "Bulleted List" },
-    { kind: "numbered", label: "Numbered List" },
-    { kind: "todo", label: "To-do List" },
-    { kind: "quote", label: "Quote" },
-    { kind: "code", label: "Code Block" },
-    { kind: "table", label: "Table" },
+export const TURN_INTO_DEFS: ReadonlyArray<{ kind: BlockKind; label: string; labelKey: string }> = [
+    { kind: "text", label: "Text", labelKey: "block-editor:turnInto.text" },
+    { kind: "heading1", label: "Heading 1", labelKey: "block-editor:turnInto.heading1" },
+    { kind: "heading2", label: "Heading 2", labelKey: "block-editor:turnInto.heading2" },
+    { kind: "heading3", label: "Heading 3", labelKey: "block-editor:turnInto.heading3" },
+    { kind: "heading4", label: "Heading 4", labelKey: "block-editor:turnInto.heading4" },
+    { kind: "heading5", label: "Heading 5", labelKey: "block-editor:turnInto.heading5" },
+    { kind: "heading6", label: "Heading 6", labelKey: "block-editor:turnInto.heading6" },
+    { kind: "bulleted", label: "Bulleted List", labelKey: "block-editor:turnInto.bulleted" },
+    { kind: "numbered", label: "Numbered List", labelKey: "block-editor:turnInto.numbered" },
+    { kind: "todo", label: "To-do List", labelKey: "block-editor:turnInto.todo" },
+    { kind: "quote", label: "Quote", labelKey: "block-editor:turnInto.quote" },
+    { kind: "code", label: "Code Block", labelKey: "block-editor:turnInto.code" },
+    { kind: "table", label: "Table", labelKey: "block-editor:turnInto.table" },
 ];
 
 export function builtinTurnIntoActions(): BlockActionSpec[] {
     return TURN_INTO_DEFS.map((d) => ({
         id: `turn-into-${d.kind}`,
         label: d.label,
+        labelKey: d.labelKey,
         targetKind: d.kind,
         when: turnIntoWhen(d.kind),
     }));

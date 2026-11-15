@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { formatSessionRelativeTime, freshnessLevel } from "@/app/view/aisessions/utils";
+import { relativeTimeParts, freshnessLevel } from "@/app/view/aisessions/utils";
 import type { CommonTextItem } from "./commontext-model";
 
 /**
@@ -62,15 +62,22 @@ export function commonTextFreshnessFillClass(tier: number): string {
  * `45d` 多两个字符；而 `ago` 在一列同构的行里是纯背景噪声——所有行都表示「过去」，
  * 没有对比价值。去掉词根后一个 3 字符标签就够，扫视时读的是数字不是句子。
  *
- * 阈值不在这里重写：直接从 `formatSessionRelativeTime()` 的输出改写，两个列表
+ * 阈值不在这里重写：直接从 `relativeTimeParts()` 的桶换算，两个列表
  * （aisessions / commontext）「多久算旧」的口径必须一致。
+ *
+ * 注意：不能对 `formatSessionRelativeTime()` 的**翻译结果**做字符串比较（曾经写的是
+ * `=== "just now"` / `endsWith(" ago")`）——换语言或 i18n 未初始化时全部失效。
+ * 紧凑标签是纯字形编码（`now / 45s / 12m / 3h / 45d`），与语言无关。
  *
  * 空字符串代表「没有可读时间」（`updatedat` 缺失），调用方直接不渲染文字。
  */
+const CompactUnitSuffix = { seconds: "s", minutes: "m", hours: "h", days: "d" } as const;
+
 export function formatCommonTextFreshnessCompact(timestamp: number | undefined, now = Date.now()): string {
     if (timestamp == null) return "";
-    const relative = formatSessionRelativeTime(timestamp, now);
-    if (relative === "never") return "";
-    if (relative === "just now") return "now";
-    return relative.endsWith(" ago") ? relative.slice(0, -4) : relative;
+    const { unit, count } = relativeTimeParts(timestamp, now);
+    if (unit === "never") return "";
+    if (unit === "justNow") return "now";
+    const suffix = CompactUnitSuffix[unit];
+    return `${count}${suffix}`;
 }

@@ -16,6 +16,7 @@ vi.mock("@/app/store/wps", () => ({
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+import { initI18n, i18n } from "@/i18n/config";
 import type { AiAuditViewModel } from "./aiaudit-model";
 import { AiAuditView } from "./aiaudit-view";
 
@@ -83,7 +84,9 @@ describe("AiAuditView", () => {
     let container: HTMLDivElement;
     let root: ReturnType<typeof createRoot>;
 
-    beforeEach(() => {
+    beforeEach(async () => {
+        // Pattern I：断言用 `i18n.t(...)` 复算，不冻结文案字面量。
+        await initI18n("en");
         const main = document.createElement("div");
         main.id = "main";
         document.body.appendChild(main);
@@ -123,8 +126,8 @@ describe("AiAuditView", () => {
         });
         expect(container.querySelector("tr.is-failed")).not.toBeNull();
         expect(container.querySelector("tr.is-stalled")).not.toBeNull();
-        expect(container.textContent).toContain("stalled");
-        expect(container.textContent).toContain("Untitled session");
+        expect(container.textContent).toContain(i18n.t("aiaudit:state.stalled"));
+        expect(container.textContent).toContain(i18n.t("aiaudit:format.untitledSession"));
     });
 
     it("opens the detail drawer with Enter", async () => {
@@ -146,7 +149,7 @@ describe("AiAuditView", () => {
             root.render(<AiAuditView model={model} />);
         });
         expect(document.querySelector('[role="dialog"]')).not.toBeNull();
-        expect(document.body.textContent).toContain("Copy summary");
+        expect(document.body.textContent).toContain(i18n.t("aiaudit:summary.copy"));
         await act(async () => {
             window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
         });
@@ -157,11 +160,11 @@ describe("AiAuditView", () => {
         act(() => {
             root.render(<AiAuditView model={makeModel([makeEntry()], 1)} />);
         });
-        expect(container.textContent).not.toContain("Load 100 more");
+        expect(container.textContent).not.toContain(i18n.t("aiaudit:footer.loadMore", { count: 100 }));
 
         act(() => {
             root.render(<AiAuditView model={makeModel([makeEntry()], 250)} />);
         });
-        expect(container.textContent).toContain("Load 100 more");
+        expect(container.textContent).toContain(i18n.t("aiaudit:footer.loadMore", { count: 100 }));
     });
 });

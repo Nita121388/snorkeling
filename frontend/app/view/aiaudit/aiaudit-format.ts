@@ -4,6 +4,8 @@
 // Pure formatting/derivation helpers for the AI Audit view. Kept React-free so
 // the presentation rules are unit-testable without a DOM.
 
+import { i18n } from "@/i18n/config";
+
 export const AuditStalledMs = 2 * 60 * 1000;
 
 export type AuditStateMeta = {
@@ -13,47 +15,32 @@ export type AuditStateMeta = {
     pillClass: string;
 };
 
-const StateMetaMap: Record<string, { label: string; dot: string; text: string; pill: string }> = {
-    done: {
-        label: "done",
-        dot: "bg-success",
-        text: "text-success",
-        pill: "border-success/30 bg-success/10",
-    },
-    failed: {
-        label: "failed",
-        dot: "bg-error",
-        text: "text-error",
-        pill: "border-error/40 bg-error/10",
-    },
-    cancelled: {
-        label: "cancelled",
-        dot: "bg-secondary",
-        text: "text-secondary",
-        pill: "border-border bg-hover",
-    },
-    running: {
-        label: "running",
-        dot: "bg-accent",
-        text: "text-accent",
-        pill: "border-accent/40 bg-accent/10",
-    },
-    queued: {
-        label: "queued",
-        dot: "bg-warning",
-        text: "text-warning",
-        pill: "border-warning/40 bg-warning/10",
-    },
-};
+const StateMetaMap = {
+    done: { dot: "bg-success", text: "text-success", pill: "border-success/30 bg-success/10" },
+    failed: { dot: "bg-error", text: "text-error", pill: "border-error/40 bg-error/10" },
+    cancelled: { dot: "bg-secondary", text: "text-secondary", pill: "border-border bg-hover" },
+    running: { dot: "bg-accent", text: "text-accent", pill: "border-accent/40 bg-accent/10" },
+    queued: { dot: "bg-warning", text: "text-warning", pill: "border-warning/40 bg-warning/10" },
+} as const satisfies Record<string, { dot: string; text: string; pill: string }>;
+
+/** 状态展示词的 key：渲染期 `i18n.t` 求值，切语言即时生效。 */
+const StateLabelKey = {
+    done: "aiaudit:state.done",
+    failed: "aiaudit:state.failed",
+    cancelled: "aiaudit:state.cancelled",
+    running: "aiaudit:state.running",
+    queued: "aiaudit:state.queued",
+} as const satisfies Record<keyof typeof StateMetaMap, string>;
 
 export function stateMeta(state: string): AuditStateMeta {
-    const meta = StateMetaMap[state] ?? {
-        label: state || "unknown",
-        dot: "bg-secondary",
-        text: "text-secondary",
-        pill: "border-border bg-hover",
+    const known = (Object.prototype.hasOwnProperty.call(StateMetaMap, state) ? state : null) as keyof typeof StateMetaMap | null;
+    const meta = known == null ? null : StateMetaMap[known];
+    return {
+        label: known == null ? state || i18n.t("aiaudit:state.unknown") : i18n.t(StateLabelKey[known]),
+        dotClass: meta?.dot ?? "bg-secondary",
+        textClass: meta?.text ?? "text-secondary",
+        pillClass: meta?.pill ?? "border-border bg-hover",
     };
-    return { label: meta.label, dotClass: meta.dot, textClass: meta.text, pillClass: meta.pill };
 }
 
 /** queued rows never transition to running (AuditBegin runs at execution start),
@@ -64,7 +51,7 @@ export function isStalled(entry: { state: string; createdAt: number }, now: numb
 }
 
 export function stateLabel(entry: { state: string; createdAt: number }, now: number): string {
-    if (isStalled(entry, now)) return "stalled";
+    if (isStalled(entry, now)) return i18n.t("aiaudit:state.stalled");
     return stateMeta(entry.state).label;
 }
 
@@ -103,12 +90,13 @@ export function dayKey(ms: number): string {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+// 月份缩写属于「日期格式模式」，由 11-02-datetime-format-config 统一接管（i18n 只管 locale）。
 const MonthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function dayLabel(ms: number, now: number = Date.now()): string {
     const key = dayKey(ms);
-    if (key === dayKey(now)) return "Today";
-    if (key === dayKey(now - 24 * 60 * 60 * 1000)) return "Yesterday";
+    if (key === dayKey(now)) return i18n.t("aiaudit:day.today");
+    if (key === dayKey(now - 24 * 60 * 60 * 1000)) return i18n.t("aiaudit:day.yesterday");
     const date = new Date(ms);
     const yearSuffix = date.getFullYear() === new Date(now).getFullYear() ? "" : ` ${date.getFullYear()}`;
     return `${MonthNames[date.getMonth()]} ${date.getDate()}${yearSuffix}`;
@@ -150,7 +138,7 @@ export function shortSessionKey(key: string): string {
 export function sessionTitle(entry: { sessionTitle?: string; sessionKey: string }): string {
     const title = (entry.sessionTitle ?? "").trim();
     if (title) return title;
-    return entry.sessionKey ? "Untitled session" : "No session";
+    return entry.sessionKey ? i18n.t("aiaudit:format.untitledSession") : i18n.t("aiaudit:format.noSession");
 }
 
 export function resultLabel(entry: { resultCount: number; anchorTotal: number; anchorKept: number }): {
@@ -159,12 +147,14 @@ export function resultLabel(entry: { resultCount: number; anchorTotal: number; a
     title: string;
 } {
     if (entry.resultCount <= 0 && entry.anchorTotal <= 0) {
-        return { primary: "—", secondary: "", title: "No results recorded" };
+        return { primary: "—", secondary: "", title: i18n.t("aiaudit:format.noResults") };
     }
     const parts: string[] = [];
-    if (entry.resultCount > 0) parts.push(`${entry.resultCount} result${entry.resultCount === 1 ? "" : "s"}`);
+    if (entry.resultCount > 0) parts.push(i18n.t("aiaudit:format.results", { count: entry.resultCount }));
     const secondary = entry.anchorTotal > 0 ? `${entry.anchorKept}/${entry.anchorTotal}` : "";
-    if (entry.anchorTotal > 0) parts.push(`anchors kept ${entry.anchorKept}/${entry.anchorTotal}`);
+    if (entry.anchorTotal > 0) {
+        parts.push(i18n.t("aiaudit:format.anchorsKept", { kept: entry.anchorKept, total: entry.anchorTotal }));
+    }
     return {
         primary: entry.resultCount > 0 ? String(entry.resultCount) : "—",
         secondary,

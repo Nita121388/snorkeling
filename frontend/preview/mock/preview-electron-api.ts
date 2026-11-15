@@ -57,6 +57,7 @@ const previewElectronApi: ElectronApi = {
             },
         }),
     getZoomFactor: () => 1.0,
+    setLocale: (_locale: string) => {},
     showWorkspaceAppMenu: (_workspaceId: string) => {},
     showBuilderAppMenu: (_builderId: string) => {},
     showContextMenu: (_workspaceId: string, _menu: ElectronContextMenuItem[]) => {},

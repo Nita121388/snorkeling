@@ -25,6 +25,8 @@ import clsx from "clsx";
 import { atom, useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "@/i18n/config";
 import { debounce } from "throttle-debounce";
 import { Tab as TabComponent } from "./tab";
 import { collapseTabIds, collapsedTabIdsAtom } from "./tab-collapse-state";
@@ -89,6 +91,7 @@ interface TabBarProps {
 }
 
 const WaveAIButton = memo(({ divRef }: { divRef?: React.RefObject<HTMLDivElement> }) => {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<TabBarEnv>();
     const aiPanelOpen = useAtomValue(WorkspaceLayoutModel.getInstance().panelVisibleAtom);
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
@@ -104,7 +107,7 @@ const WaveAIButton = memo(({ divRef }: { divRef?: React.RefObject<HTMLDivElement
 
     return (
         <Tooltip
-            content="Toggle Wave AI Panel"
+            content={t("tab:tabbar.toggleWaveAIPanel")}
             placement="bottom"
             hideOnClick
             divClassName={`flex h-[22px] px-3.5 justify-end mb-1 items-center rounded-md mr-1 box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] ${aiPanelOpen ? "text-accent" : "text-secondary"}`}
@@ -138,6 +141,7 @@ function strArrayIsEqual(a: string[], b: string[]) {
 }
 
 const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) => {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<TabBarEnv>();
     const [tabIds, setTabIds] = useState<string[]>([]);
     const [draggingTab, setDraggingTab] = useState<string>();
@@ -934,10 +938,12 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
                 }}
                 title={
                     sidebarExpanded
-                        ? "Collapse sidebar"
-                        : `Expand sidebar${activeMinimizedCount > 0 ? ` (${activeMinimizedCount} minimized)` : ""}`
+                        ? t("tab:tabbar.collapseSidebar")
+                        : activeMinimizedCount > 0
+                          ? i18n.t("tab:tabbar.expandSidebarWithCount", { count: activeMinimizedCount })
+                          : t("tab:tabbar.expandSidebar")
                 }
-                aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+                aria-label={sidebarExpanded ? t("tab:tabbar.collapseSidebar") : t("tab:tabbar.expandSidebar")}
             >
                 <i className={clsx("fa fa-solid", sidebarExpanded ? "fa-chevron-left" : "fa-chevron-right")} />
                 {activeMinimizedCount > 0 && <span className="block-sidebar-count-badge">{activeMinimizedCount}</span>}
@@ -945,7 +951,7 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
             <WaveAIButton divRef={waveAIButtonRef} />
             {!noTabs && <SessionOverviewButton />}
             <Tooltip
-                content="Workspace Switcher"
+                content={t("tab:tabbar.workspaceSwitcher")}
                 placement="bottom"
                 hideOnClick
                 divRef={workspaceSwitcherRef}
@@ -1012,7 +1018,7 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
             </div>
             <button
                 ref={addBtnRef}
-                title="Add Tab"
+                title={t("tab:tab.addTab")}
                 className={`flex h-[22px] px-2 mb-1 mx-1 items-center rounded-md box-border cursor-pointer hover:bg-hoverbg transition-colors text-[12px] text-secondary hover:text-primary${noTabs ? " invisible" : ""}`}
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 onClick={handleAddTab}
@@ -1037,8 +1043,12 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
                         setWidgetBarExpanded(next);
                         window.dispatchEvent(new Event(next ? "widget-bar:expand" : "widget-bar:collapse"));
                     }}
-                    title={widgetBarExpanded ? "Collapse widgets bar" : "Expand widgets bar"}
-                    aria-label={widgetBarExpanded ? "Collapse widgets bar" : "Expand widgets bar"}
+                    title={
+                        widgetBarExpanded ? t("tab:tabbar.collapseWidgetsBar") : t("tab:tabbar.expandWidgetsBar")
+                    }
+                    aria-label={
+                        widgetBarExpanded ? t("tab:tabbar.collapseWidgetsBar") : t("tab:tabbar.expandWidgetsBar")
+                    }
                 >
                     <i className={clsx("fa fa-solid", widgetBarExpanded ? "fa-chevron-right" : "fa-chevron-left")} />
                 </button>

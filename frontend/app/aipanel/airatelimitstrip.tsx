@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { atoms } from "@/app/store/global";
+import { i18n } from "@/i18n/config";
 import * as jotai from "jotai";
 import { memo, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const GetMoreButton = memo(({ variant, showClose = true }: { variant: "yellow" | "red"; showClose?: boolean }) => {
+    const { t } = useTranslation("aipanel");
     const isYellow = variant === "yellow";
     const bgColor = isYellow ? "bg-warning/10" : "bg-error/10";
     const hoverBg = isYellow ? "hover:bg-warning/20" : "hover:bg-error/20";
@@ -31,7 +34,7 @@ const GetMoreButton = memo(({ variant, showClose = true }: { variant: "yellow" |
                 className={`flex items-center gap-1.5 ${showClose ? "pl-1" : "pl-2"} pr-2 py-1 ${bgColor} ${iconHoverBg} ${hoverBg} rounded-b border border-t-0 ${borderColor} text-[11px] ${textColor} cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent`}
             >
                 {showClose && <i className={`close fa fa-xmark ${iconMutedClass} transition-colors`}></i>}
-                <span>Get More</span>
+                <span>{t("aipanel:rateLimit.getMore")}</span>
                 <i className={`fa fa-arrow-right ${iconColor}`}></i>
             </button>
         </div>
@@ -45,7 +48,7 @@ function formatTimeRemaining(expirationEpoch: number): string {
     const secondsRemaining = expirationEpoch - now;
 
     if (secondsRemaining <= 0) {
-        return "soon";
+        return i18n.t("aipanel:rateLimit.soon");
     }
 
     const hours = Math.floor(secondsRemaining / 3600);
@@ -58,6 +61,7 @@ function formatTimeRemaining(expirationEpoch: number): string {
 }
 
 const AIRateLimitStripComponent = memo(() => {
+    const { t } = useTranslation("aipanel");
     let rateLimitInfo = jotai.useAtomValue(atoms.waveAIRateLimitInfoAtom);
     // rateLimitInfo = { req: 0, reqlimit: 200, preq: 0, preqlimit: 50, resetepoch: 1759374575 + 45 * 60 }; // testing
     const [, forceUpdate] = useState({});
@@ -90,10 +94,10 @@ const AIRateLimitStripComponent = memo(() => {
                 <div className="bg-warning/10 border-b border-warning/40 px-2 py-1.5 flex items-center gap-1 text-[11px] text-warning">
                     <i className="fa fa-sparkles text-warning"></i>
                     <span>
-                        {preqlimit - preq}/{preqlimit} Premium Used
+                        {i18n.t("aipanel:rateLimit.premiumUsed", { used: preqlimit - preq, limit: preqlimit })}
                     </span>
                     <div className="flex-1"></div>
-                    <span className="text-warning/80">Resets in {timeRemaining}</span>
+                    <span className="text-warning/80">{i18n.t("aipanel:rateLimit.resetsIn", { time: timeRemaining })}</span>
                 </div>
                 <GetMoreButton variant="yellow" />
             </div>
@@ -106,12 +110,12 @@ const AIRateLimitStripComponent = memo(() => {
                 <div className="bg-warning/10 border-b border-warning/40 px-2 pr-1 py-1.5 flex items-center gap-1 text-[11px] text-warning">
                     <i className="fa fa-check text-warning"></i>
                     <span>
-                        {preqlimit}/{preqlimit} Premium
+                        {i18n.t("aipanel:rateLimit.premium", { total: preqlimit })}
                     </span>
                     <span className="text-warning">•</span>
-                    <span className="font-medium">Now on Basic</span>
+                    <span className="font-medium">{t("aipanel:rateLimit.nowOnBasic")}</span>
                     <div className="flex-1"></div>
-                    <span className="text-warning/80">Resets in {timeRemaining}</span>
+                    <span className="text-warning/80">{i18n.t("aipanel:rateLimit.resetsIn", { time: timeRemaining })}</span>
                 </div>
                 <GetMoreButton variant="yellow" />
             </div>
@@ -124,12 +128,12 @@ const AIRateLimitStripComponent = memo(() => {
                 <div className="bg-error/10 border-b border-error/40 px-2 py-1.5 flex items-center gap-2 text-[11px] text-error">
                     <i className="fa fa-check text-error"></i>
                     <span>
-                        {totalLimit}/{totalLimit} Reqs
+                        {i18n.t("aipanel:rateLimit.reqs", { total: totalLimit })}
                     </span>
                     <span className="text-error">•</span>
-                    <span className="font-medium">Limit Reached</span>
+                    <span className="font-medium">{t("aipanel:rateLimit.limitReached")}</span>
                     <div className="flex-1"></div>
-                    <span className="text-error/80">Resets in {timeRemaining}</span>
+                    <span className="text-error/80">{i18n.t("aipanel:rateLimit.resetsIn", { time: timeRemaining })}</span>
                 </div>
                 <GetMoreButton variant="red" showClose={false} />
             </div>

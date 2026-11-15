@@ -2,17 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { globalStore } from "@/app/store/jotaiStore";
+import { i18n, initI18n } from "@/i18n/config";
 import { makeMockWaveEnv } from "@/preview/mock/mockwaveenv";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
 import { atom } from "jotai";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeAll, describe, expect, it } from "vitest";
 import { getWebPreviewDisplayUrl, WebViewModel, WebViewPreviewFallback } from "./webview";
+
+beforeAll(async () => {
+    // Pattern I: 不写死 UI 文案，期望值用 i18n 复算（en 是真源）。
+    await initI18n("en");
+});
 
 describe("webview preview fallback", () => {
     it("shows the requested URL", () => {
         const markup = renderToStaticMarkup(<WebViewPreviewFallback url="https://waveterm.dev/docs" />);
 
-        expect(markup).toContain("electron webview unavailable");
+        expect(markup).toContain(i18n.t("webview:previewFallback.mockNote"));
         expect(markup).toContain("https://waveterm.dev/docs");
     });
 

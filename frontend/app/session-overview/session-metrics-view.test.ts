@@ -7,7 +7,8 @@
 // 但会稳定地把"100 条消息"和"500 条消息"画成同样高度；缺数据规则错则会出现
 // "空占位格"或"卡片高度跳动"。这些都属于肉眼难发现、回归后又真实伤人的类型。
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { i18n, initI18n } from "@/i18n/config";
 import {
     buildSessionMetrics,
     formatCompactSpan,
@@ -15,6 +16,11 @@ import {
     formatSpanDetail,
     SpanHeatThresholds,
 } from "./session-metrics-view";
+
+// i18n 资源为 en 真源：迁移后 title 文案由 i18n.t 产出，先把实例初始化到 en（Pattern I）。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 const Now = new Date(2026, 10, 9, 12, 0, 0).getTime(); // 2026-11-09 12:00 本地时间
 const Minute = 60_000;
@@ -133,7 +139,7 @@ describe("buildSessionMetrics — 活跃跨度", () => {
 
     it("live 时 tooltip 的终点写「现在」", () => {
         const view = buildSessionMetrics({ nowMs: Now, createdAt: Now - Hour, updatedAt: Now - Hour, live: true });
-        expect(view?.span?.title).toContain("→ 现在");
+        expect(view?.span?.title).toContain(`→ ${i18n.t("session-overview:metrics.spanEndNow")}`);
     });
 
     it("updatedAt 早于 createdAt（脏数据）钳到 0，不画负跨度", () => {
@@ -172,7 +178,9 @@ describe("buildSessionMetrics — 创建日期", () => {
     it("tooltip 精确到秒", () => {
         const createdAt = new Date(2026, 9, 28, 9, 12, 33).getTime();
         const view = buildSessionMetrics({ nowMs: Now, createdAt });
-        expect(view?.created?.title).toBe("创建：2026-10-28 09:12:33");
+        expect(view?.created?.title).toBe(
+            i18n.t("session-overview:metrics.createdTitle", { datetime: "2026-10-28 09:12:33" })
+        );
     });
 });
 

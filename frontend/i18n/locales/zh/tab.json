@@ -1,0 +1,129 @@
+{
+    "tab": {
+        "closeTab": "关闭 Tab",
+        "closeTabShort": "关闭 Tab",
+        "addTab": "新建 Tab",
+        "newTab": "新建 Tab"
+    },
+    "content": {
+        "tabLoading": "Tab 加载中",
+        "tabNotFound": "未找到 Tab",
+        "noBlocks": "暂无 Block",
+        "newTerminal": "新建 Terminal",
+        "newBlockHint": "或按 {{key}} 新建 Block"
+    },
+    "infoCard": {
+        "flag": "标记",
+        "untitledTab": "未命名 Tab",
+        "agentCount_one": "{{count}} 个 agent",
+        "agentCount_other": "{{count}} 个 agent",
+        "emptyTab": "空 Tab",
+        "agentFallback": "Agent",
+        "agentGroup": "Agents",
+        "agentGroupWithProvider": "Agents · {{provider}} ×{{count}}",
+        "chipChat_one": "{{count}} 个 chat",
+        "chipChat_other": "{{count}} 个 chat",
+        "chipFile_one": "{{count}} 个文件",
+        "chipFile_other": "{{count}} 个文件",
+        "chipNote_one": "{{count}} 条笔记",
+        "chipNote_other": "{{count}} 条笔记",
+        "chipTerm_one": "{{count}} 个终端",
+        "chipTerm_other": "{{count}} 个终端",
+        "chipOther_one": "{{count}} 个其它",
+        "chipOther_other": "{{count}} 个其它",
+        "statusIdle": "空闲",
+        "statusThinking": "思考中",
+        "statusWorking": "工作中",
+        "statusDone": "完成",
+        "statusBlocked": "阻塞",
+        "statusError": "错误",
+        "statusRateLimited": "触发限流",
+        "statusStale": "已过期",
+        "statusTool": "工具 · {{name}}",
+        "statusTools": "工具"
+    },
+    "moreMenu": {
+        "closeTab": "关闭 Tab",
+        "moreTabs": "更多 Tab",
+        "moreTabsHidden": "更多 Tab（{{count}} 个已隐藏）",
+        "tabsCollapsed": "{{count}} 个 Tab 已折叠",
+        "allTabsShown": "所有 Tab 都已显示",
+        "more": "更多",
+        "searchPlaceholder": "搜索 Tab…",
+        "noTabs": "没有 Tab",
+        "noMatchingTabs": "没有匹配的 Tab",
+        "newTab": "新建 Tab",
+        "collapseUnusedTabs": "收起未使用的 Tab"
+    },
+    "moreAgentCard": {
+        "unspecified": "未指定",
+        "copySessionId": "复制会话 id",
+        "agentsInTab_one": "此 Tab 中有 {{count}} 个 agent",
+        "agentsInTab_other": "此 Tab 中有 {{count}} 个 agent",
+        "agentFallback": "Agent"
+    },
+    "targetModal": {
+        "cancel": "取消",
+        "noOtherTabs": "没有其他 Tab",
+        "newTab": "新建 Tab",
+        "untitledTab": "未命名 Tab",
+        "create": "创建"
+    },
+    "updateBanner": {
+        "cancelDownload": "取消下载",
+        "update": "更新",
+        "installing": "安装中",
+        "downloading": "下载中",
+        "downloadingProgress": "正在下载 {{received}} / {{total}}（{{percent}}%）",
+        "updateError": "更新出错",
+        "clickToInstall": "点击安装更新",
+        "clickToDownloadInstall": "点击下载并安装此更新",
+        "downloadFailedRetry": "更新下载失败，点击重试。"
+    },
+    "vtab": {
+        "tabName": "Tab 名",
+        "closeTab": "关闭 Tab"
+    },
+    "tabbar": {
+        "toggleWaveAIPanel": "切换 Wave AI 面板",
+        "collapseSidebar": "收起侧栏",
+        "expandSidebar": "展开侧栏",
+        "expandSidebarWithCount": "展开侧栏（{{count}} 个已最小化）",
+        "workspaceSwitcher": "工作区切换器",
+        "collapseWidgetsBar": "收起小组件栏",
+        "expandWidgetsBar": "展开小组件栏"
+    },
+    "workspace": {
+        "deleteWorkspace": "删除工作区",
+        "createNewWorkspace": "新建工作区",
+        "saveWorkspace": "保存工作区",
+        "switchWorkspace": "切换工作区",
+        "openWorkspace": "打开工作区",
+        "editWorkspace": "编辑工作区",
+        "currentWorkspace": "这是当前所在的工作区",
+        "workspaceOpen": "此工作区已打开"
+    },
+    "contextMenu": {
+        "renameTab": "重命名 Tab",
+        "copyTabId": "复制 TabId",
+        "flagTab": "标记 Tab",
+        "none": "无",
+        "backgrounds": "背景",
+        "default": "默认",
+        "tabBarPosition": "Tab 栏位置",
+        "top": "顶部",
+        "left": "左侧",
+        "moveTabToNewWindow": "将 Tab 移到新窗口",
+        "moveTabBack": "将 Tab 移回",
+        "closeTab": "关闭 Tab",
+        "flagColor": {
+            "green": "绿色",
+            "teal": "青色",
+            "blue": "蓝色",
+            "purple": "紫色",
+            "red": "红色",
+            "orange": "橙色",
+            "yellow": "黄色"
+        }
+    }
+}

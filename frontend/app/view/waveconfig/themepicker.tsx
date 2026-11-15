@@ -9,43 +9,70 @@ import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ThemeCardDef {
     mode: AppThemeMode;
-    label: string;
+    /** i18n keys, not display strings: translated at render time so a locale switch is picked up. */
+    labelKey: string;
     icon: string;
-    description: string;
+    descKey: string;
 }
 
-const CARDS: ThemeCardDef[] = [
-    { mode: "system", label: "System", icon: "fa-solid fa-circle-half-stroke", description: "Follow OS appearance" },
-    { mode: "light", label: "Light", icon: "fa-solid fa-sun", description: "Always light" },
-    { mode: "dark", label: "Dark", icon: "fa-solid fa-moon", description: "Always dark" },
-    { mode: "monochrome", label: "Monochrome", icon: "fa-solid fa-circle", description: "Black & white" },
-];
+/** `as const satisfies` keeps the key literals (i18next's typed `t()` rejects a plain `string`). */
+const CARDS = [
+    {
+        mode: "system",
+        labelKey: "waveconfig:themePicker.system",
+        icon: "fa-solid fa-circle-half-stroke",
+        descKey: "waveconfig:themePicker.systemDescription",
+    },
+    {
+        mode: "light",
+        labelKey: "waveconfig:themePicker.light",
+        icon: "fa-solid fa-sun",
+        descKey: "waveconfig:themePicker.lightDescription",
+    },
+    {
+        mode: "dark",
+        labelKey: "waveconfig:themePicker.dark",
+        icon: "fa-solid fa-moon",
+        descKey: "waveconfig:themePicker.darkDescription",
+    },
+    {
+        mode: "monochrome",
+        labelKey: "waveconfig:themePicker.monochrome",
+        icon: "fa-solid fa-circle",
+        descKey: "waveconfig:themePicker.monochromeDescription",
+    },
+] as const satisfies readonly ThemeCardDef[];
 
 function MiniTermPreview() {
     // Mini terminal mock that reads CSS vars from the closest [data-theme] scope.
     // Deliberately cross-platform: no macOS traffic-light chrome, just a prompt.
+    const { t } = useTranslation("waveconfig");
     return (
         <div className="rounded-md overflow-hidden border border-border/60 shadow-sm">
             <div className="flex items-center gap-1.5 px-2 py-1 bg-[var(--panel-bg-color)]">
                 <div className="px-1.5 py-0.5 text-[8px] rounded-sm border border-actionsoftborder bg-actionsoft text-actionsofttext font-medium min-w-[24px] text-center">
-                    tab
+                    {t("waveconfig:themePicker.preview.tab")}
                 </div>
-                <div className="px-1.5 py-0.5 text-[8px] text-muted-foreground">tab</div>
+                <div className="px-1.5 py-0.5 text-[8px] text-muted-foreground">
+                    {t("waveconfig:themePicker.preview.tab")}
+                </div>
             </div>
             <div className="px-2 py-1.5 font-mono text-[8px] leading-tight space-y-0.5">
                 <div>
-                    <span className="text-accent">❯</span> <span className="text-primary">run build</span>
+                    <span className="text-accent">❯</span>{" "}
+                    <span className="text-primary">{t("waveconfig:themePicker.preview.command")}</span>
                 </div>
-                <div className="text-secondary">✓ done in 1.4s</div>
+                <div className="text-secondary">{t("waveconfig:themePicker.preview.done")}</div>
                 <div className="flex gap-1 pt-0.5">
                     <span className="px-1 py-0.5 rounded-sm bg-action text-actiontext text-[7px] font-semibold">
-                        Run
+                        {t("waveconfig:themePicker.preview.run")}
                     </span>
                     <span className="px-1 py-0.5 rounded-sm border border-border text-muted-foreground text-[7px]">
-                        Cancel
+                        {t("waveconfig:themePicker.preview.cancel")}
                     </span>
                 </div>
             </div>
@@ -55,6 +82,7 @@ function MiniTermPreview() {
 
 const ThemePickerContent = memo(({ model: _model }: { model: WaveConfigViewModel }) => {
     void _model;
+    const { t } = useTranslation("waveconfig");
     const persistedTheme = useSettingsKeyAtom("app:theme") as AppThemeMode | null;
     // resolvedAppThemeAtom already folds in previewThemeOverrideAtom, so this single value
     // drives both the outer app (via AppSettingsUpdater in app.tsx) and the card mini-previews.
@@ -125,15 +153,15 @@ const ThemePickerContent = memo(({ model: _model }: { model: WaveConfigViewModel
                             )}
                             <div className="flex items-center gap-2 mb-2">
                                 <i className={cn(card.icon, "text-base")} />
-                                <span className="font-medium">{card.label}</span>
+                                <span className="font-medium">{t(card.labelKey)}</span>
                                 {card.mode === "system" && (
                                     <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-secondary/30">
-                                        OS: {systemTheme}
+                                        {t("waveconfig:themePicker.osPrefix")} {systemTheme}
                                     </span>
                                 )}
                             </div>
                             <MiniTermPreview />
-                            <div className="text-xs text-muted-foreground mt-2">{card.description}</div>
+                            <div className="text-xs text-muted-foreground mt-2">{t(card.descKey)}</div>
                         </div>
                     );
                 })}

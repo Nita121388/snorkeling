@@ -20,7 +20,8 @@
 import { Provider } from "jotai";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "@/i18n/config";
 
 vi.mock("./commontext-page-icon", () => ({
     PageIconSlot: () => null,
@@ -104,6 +105,11 @@ if (typeof Element.prototype.scrollIntoView !== "function") {
 
 // React 19 + jsdom：act() 需要显式声明 act 环境，否则每次 act 都报 stderr 警告。
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+// 组件文案走 i18n.t：先把实例初始化到 en（Pattern I），断言的 title/文本与 en 真源一致。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 const now = Date.now();
 const seedItems = [

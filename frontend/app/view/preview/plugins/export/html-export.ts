@@ -5,6 +5,7 @@ import { findFrontmatterSpan } from "@/app/element/markdown-transform/doc-meta";
 import { transformBlocks } from "@/app/element/markdown-util";
 import { makeRemarkPlugins } from "@/app/element/remark";
 import type { PreviewMatchContext } from "@/app/view/preview/preview-plugin-registry";
+import { i18n } from "@/i18n/config";
 import GithubSlugger from "github-slugger";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
@@ -152,7 +153,7 @@ export function buildTocHtml(source: string): string {
     const items = entries
         .map((e) => `<li class="toc-l${e.level}"><a href="#${e.id}">${escapeHtml(e.text)}</a></li>`)
         .join("\n");
-    return `<nav class="markdown-toc"><h1>目录</h1><ul>${items}</ul></nav>`;
+    return `<nav class="markdown-toc"><h1>${i18n.t("preview:exportOptions.tocHeading")}</h1><ul>${items}</ul></nav>`;
 }
 
 function escapeHtml(s: string): string {

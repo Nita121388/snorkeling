@@ -21,6 +21,7 @@ import * as keyutil from "@/util/keyutil";
 import * as util from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 // newConnList -> connList => filteredList -> remoteItems -> sortedRemoteItems => remoteSuggestion
 // filteredList -> createNew
@@ -305,6 +306,7 @@ const ChangeConnectionBlockModal = React.memo(
         changeConnModalAtom: jotai.PrimitiveAtom<boolean>;
         nodeModel: NodeModel;
     }) => {
+        const { t } = useTranslation("modals");
         const [connSelected, setConnSelected] = React.useState("");
         const changeConnModalOpen = jotai.useAtomValue(changeConnModalAtom);
         const [blockData] = WOS.useWaveObjectValue<Block>(WOS.makeORef("block", blockId));
@@ -508,7 +510,7 @@ const ChangeConnectionBlockModal = React.memo(
                 onKeyDown={(e) => keyutil.keydownWrapper(handleTypeAheadKeyDown)(e)}
                 onChange={(current: string) => setConnSelected(current)}
                 value={connSelected}
-                label="Connect to (username@host)..."
+                label={t("modals:connTypeahead.connectPlaceholder")}
                 onClickBackdrop={() => globalStore.set(changeConnModalAtom, false)}
             />
         );

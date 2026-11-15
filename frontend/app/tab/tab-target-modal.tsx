@@ -8,6 +8,7 @@ import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 type TabTargetModalEnv = WaveEnvSubset<{
     atoms: {
@@ -223,14 +224,17 @@ export const TabTargetModal = React.memo(
         subtitle,
         actionLabel,
         workingLabel,
-        emptyLabel = "No other tabs",
+        emptyLabel: emptyLabelProp,
         onClose,
         onSelect,
         onCreate,
         createHint,
-        createLabel = "New tab",
+        createLabel: createLabelProp,
         rowActions,
     }: TabTargetModalProps) => {
+        const { t } = useTranslation("tab");
+        const emptyLabel = emptyLabelProp ?? t("tab:targetModal.noOtherTabs");
+        const createLabel = createLabelProp ?? t("tab:targetModal.newTab");
         const waveEnv = useWaveEnv<TabTargetModalEnv>();
         const setModalOpen = jotai.useSetAtom(waveEnv.atoms.modalOpen);
         /** 正在执行：行 key + 动作 key。只知道「哪一行在跑」不够 —— 同一行现在有两个动作。 */
@@ -334,7 +338,7 @@ export const TabTargetModal = React.memo(
                                 leading={<span className="plus-box">＋</span>}
                                 isNew
                                 actions={rowActions ?? []}
-                                actionLabel="Create"
+                                actionLabel={t("tab:targetModal.create")}
                                 workingLabel={workingLabel}
                                 workingActionKey={
                                     working?.rowKey === NewTabRowKey ? working.actionKey : null
@@ -378,7 +382,7 @@ export const TabTargetModal = React.memo(
                 {error && <div className="mt-3 text-xs text-error" data-error="">{error}</div>}
                 <div className="mt-4 flex w-full justify-end">
                     <Button className="grey ghost" onClick={onClose} disabled={busy}>
-                        Cancel
+                        {t("tab:targetModal.cancel")}
                     </Button>
                 </div>
             </Modal>
@@ -411,9 +415,10 @@ const TabTargetRowWithName = React.memo(
         onRunLegacy,
     }: TabTargetRowWithNameProps) => {
         const waveEnv = useWaveEnv<TabTargetModalEnv>();
+        const { t } = useTranslation("tab");
         const tabAtom = waveEnv.wos.getWaveObjectAtom<Tab>(WOS.makeORef("tab", tabId));
         const tab = jotai.useAtomValue(tabAtom);
-        const tabName = tab?.name || "Untitled Tab";
+        const tabName = tab?.name || t("tab:targetModal.untitledTab");
 
         return (
             <TabRow

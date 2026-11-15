@@ -11,9 +11,11 @@
 // the realtime chat flow renders everything (pagination lives upstream).
 
 import { WaveStreamdown } from "@/app/element/streamdown";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import type { CSSProperties, ReactNode } from "react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { messageAnchorKey } from "./annotation-model";
 import { CopyIconButton } from "./controls";
 import { useDomTextHighlight } from "./use-dom-highlight";
@@ -163,6 +165,7 @@ export function ToolCallRow({
     animateStatus?: boolean;
     children?: ReactNode;
 }) {
+    const { t } = useTranslation("aisessions");
     const hasError = status === "failed" || Boolean(exitCode);
     const running = status === "running";
     const [elapsed, setElapsed] = useState(0);
@@ -206,7 +209,7 @@ export function ToolCallRow({
                 <span className="shrink-0 font-mono text-[11px] text-primary">{name || "tool"}</span>
                 {exitCode != null && exitCode !== 0 ? (
                     <span className="shrink-0 rounded bg-error/15 px-1 py-px text-[9px] font-medium text-error">
-                        exit {exitCode}
+                        {i18n.t("aisessions:message.exit", { code: exitCode })}
                     </span>
                 ) : null}
                 <span className="min-w-0 flex-1 truncate text-[11px] text-secondary">{preview}</span>
@@ -221,6 +224,7 @@ export function ToolCallRow({
 }
 
 export function ThinkingDisclosure({ text, streaming = false }: { text: string; streaming?: boolean }) {
+    const { t } = useTranslation("aisessions");
     const trimmed = text.trim();
     // 用户点击优先于默认状态；未操作时跟随 streaming（流式展开 / 完结折叠）。
     const [userToggled, setUserToggled] = useState<boolean | null>(null);
@@ -252,7 +256,7 @@ export function ThinkingDisclosure({ text, streaming = false }: { text: string; 
                         streaming ? "animate-pulse text-primary" : "text-primary"
                     )}
                 >
-                    Thinking
+                    {t("aisessions:message.thinking")}
                 </span>
                 {!open ? (
                     <span className="min-w-0 flex-1 overflow-hidden">
@@ -354,6 +358,7 @@ export const MessageCard = memo(
          * 内部内联闭包会让整行 memo 失效。 */
         onOpenAnnotations?: (seq: number, anchorKey: string) => void;
     }) {
+        const { t } = useTranslation("aisessions");
         const isUser = message.role === "user";
         // 内联箭头只在本行内部创建，不影响父级传入 prop 的引用稳定性。
         // 缓存消息没有 ItemKey 时用合成锚点（seq:<n>），否则按钮整块消失，
@@ -401,7 +406,7 @@ export const MessageCard = memo(
                             {searchMatched && !searchActive ? (
                                 <span className="mr-1.5 inline-flex items-center gap-1 rounded border border-actionsoftborder bg-actionsoft px-1.5 py-0.5 align-middle text-[10px] text-actionsofttext">
                                     <i className="fa-sharp fa-solid fa-magnifying-glass" />
-                                    Search match
+                                    {t("aisessions:message.searchMatch")}
                                 </span>
                             ) : null}
                             <HighlightedMessageText text={shownText} searchQuery={searchQuery} active={searchActive} />
@@ -422,11 +427,11 @@ export const MessageCard = memo(
                                 {formatDateTimeToSecond(message.timestamp)}
                             </span>
                         ) : null}
-                        <CopyIconButton text={message.text} label="Copy message" size="xs" />
+                        <CopyIconButton text={message.text} label={t("aisessions:message.copyMessage")} size="xs" />
                         {contextText ? (
                             <CopyIconButton
                                 text={contextText}
-                                label="Copy as context"
+                                label={t("aisessions:message.copyAsContext")}
                                 className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                                 size="xs"
                             />
@@ -435,8 +440,12 @@ export const MessageCard = memo(
                             <button
                                 type="button"
                                 className="flex items-center gap-0.5 rounded px-1 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100"
-                                title={annotationCount > 0 ? `${annotationCount} annotation(s)` : "Add annotation"}
-                                aria-label="Annotations"
+                                title={
+                                    annotationCount > 0
+                                        ? i18n.t("aisessions:message.annotations", { count: annotationCount })
+                                        : t("aisessions:message.addAnnotation")
+                                }
+                                aria-label={t("aisessions:message.annotations")}
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     handleOpenAnnotations();
@@ -460,14 +469,14 @@ export const MessageCard = memo(
                         </span>
                         <CopyIconButton
                             text={message.text}
-                            label="Copy message"
+                            label={t("aisessions:message.copyMessage")}
                             className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                             size="xs"
                         />
                         {contextText ? (
                             <CopyIconButton
                                 text={contextText}
-                                label="Copy as context"
+                                label={t("aisessions:message.copyAsContext")}
                                 className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                                 size="xs"
                             />
@@ -476,8 +485,12 @@ export const MessageCard = memo(
                             <button
                                 type="button"
                                 className="flex items-center gap-0.5 rounded px-1 text-[10px] text-secondary opacity-0 transition-opacity hover:bg-hover hover:text-accent group-hover:opacity-100 group-focus-within:opacity-100"
-                                title={annotationCount > 0 ? `${annotationCount} annotation(s)` : "Add annotation"}
-                                aria-label="Annotations"
+                                title={
+                                    annotationCount > 0
+                                        ? i18n.t("aisessions:message.annotations", { count: annotationCount })
+                                        : t("aisessions:message.addAnnotation")
+                                }
+                                aria-label={t("aisessions:message.annotations")}
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     handleOpenAnnotations();

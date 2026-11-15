@@ -1,5 +1,6 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
+import { i18n } from "@/i18n/config";
 
 // property-model — Notion 式属性系统的类型与纯函数核心。
 //
@@ -395,21 +396,21 @@ export const ALL_PROPERTY_TYPES: PropertyType[] = [
 
 export function typeLabel(type: PropertyType): string {
     const map: Record<PropertyType, string> = {
-        text: "Text",
-        number: "Number",
-        select: "Select",
-        multi_select: "Multi-select",
-        status: "Status",
-        date: "Date",
-        person: "Person",
-        checkbox: "Checkbox",
-        url: "URL",
-        formula: "Formula",
-        relation: "Relation",
-        created_time: "Created time",
-        updated_time: "Updated time",
+        text: "aisessions:propertyType.text",
+        number: "aisessions:propertyType.number",
+        select: "aisessions:propertyType.select",
+        multi_select: "aisessions:propertyType.multi_select",
+        status: "aisessions:propertyType.status",
+        date: "aisessions:propertyType.date",
+        person: "aisessions:propertyType.person",
+        checkbox: "aisessions:propertyType.checkbox",
+        url: "aisessions:propertyType.url",
+        formula: "aisessions:propertyType.formula",
+        relation: "aisessions:propertyType.relation",
+        created_time: "aisessions:propertyType.created_time",
+        updated_time: "aisessions:propertyType.updated_time",
     };
-    return map[type];
+    return i18n.t(map[type] as never);
 }
 
 /** 把用户输入的属性名转成稳定 key（小写、非字母数字转下划线）。 */

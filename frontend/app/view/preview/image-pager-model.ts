@@ -8,6 +8,8 @@
 //   modtime → 修改时间降序。比较器按 TanStack compareAlphanumeric 逐位复刻。
 //   默认只翻本层；"下一站" = 目录树先序（目录名序）中下一个含图片的文件夹。
 
+import { i18n } from "@/i18n/config";
+
 export type ImagePagerSort = "name" | "modtime";
 
 /** 图片扩展名白名单（小写、无点）。 */
@@ -274,28 +276,41 @@ export function buildPagerHintTexts(res: PagerResolution, filePath: string, anch
     const atEnd = res.next == null && res.nextStation == null;
 
     const prev = res.prev != null
-        ? `上一张（←） · ${pos}/${size}`
+        ? i18n.t("preview:imagePager.prev", { pos, size })
         : res.prevStation != null
-          ? `上一站：${displayStationDir(res.prevStation.dir, anchor)}（${res.prevStation.count} 张） · Shift+←`
+          ? i18n.t("preview:imagePager.prevStation", {
+                dir: displayStationDir(res.prevStation.dir, anchor),
+                num: res.prevStation.count,
+            })
           : atStart
-            ? `本层已是第一张；锚点 ${anchor} 下没有更早的含图片文件夹`
-            : `上一张（←）`;
+            ? i18n.t("preview:imagePager.prevAtStart", { anchor })
+            : i18n.t("preview:imagePager.prevDisabled");
 
     const next = res.next != null
-        ? `下一张（→） · ${pos + 2}/${size}`
+        ? i18n.t("preview:imagePager.next", { pos: pos + 2, size })
         : res.nextStation != null
-          ? `进入下一站：${displayStationDir(res.nextStation.dir, anchor)}（${res.nextStation.count} 张） · 按 → 或 Shift+→`
+          ? i18n.t("preview:imagePager.nextStation", {
+                dir: displayStationDir(res.nextStation.dir, anchor),
+                num: res.nextStation.count,
+            })
           : atEnd
-            ? `本层已是最后一张；锚点 ${anchor} 下没有更多含图片文件夹`
-            : `下一张（→）`;
+            ? i18n.t("preview:imagePager.nextAtEnd", { anchor })
+            : i18n.t("preview:imagePager.nextDisabled");
 
-    const positionText = pos >= 0 ? `第 ${pos + 1}/${size} 张` : "索引中…";
+    const positionText =
+        pos >= 0
+            ? i18n.t("preview:imagePager.position", { pos: pos + 1, size })
+            : i18n.t("preview:imagePager.indexing");
 
     return {
         prev,
         next,
-        refresh: "重建索引（Shift+R） · 缓存 60s",
-        counter: `${positionText} · ${filePath} · 锚点：${shortDirName(anchor)}`,
+        refresh: i18n.t("preview:imagePager.refresh"),
+        counter: i18n.t("preview:imagePager.counter", {
+            position: positionText,
+            path: filePath,
+            anchor: shortDirName(anchor),
+        }),
     };
 }
 

@@ -18,6 +18,7 @@
 
 import { cn } from "@/util/util";
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 type DataAttrs = Record<string, string | undefined>;
 
@@ -366,6 +367,7 @@ export function SaveBar({
     className?: string;
     attrs?: DataAttrs;
 }) {
+    const { t } = useTranslation("element");
     const disabled = !dirty || saving === true;
     return (
         <div
@@ -383,7 +385,7 @@ export function SaveBar({
                     disabled={saving === true}
                     className="h-[30px] cursor-pointer rounded-[7px] border border-border px-4 text-[13px] font-medium text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-default disabled:opacity-45"
                 >
-                    Discard
+                    {t("element:settings.discard")}
                 </button>
             )}
             <button
@@ -397,7 +399,7 @@ export function SaveBar({
                         : "cursor-pointer border border-action bg-action text-actiontext hover:brightness-110"
                 )}
             >
-                {saving === true ? "Saving…" : (saveLabel ?? "Save")}
+                {saving === true ? t("element:settings.saving") : (saveLabel ?? t("common:common.save"))}
             </button>
         </div>
     );

@@ -1,7 +1,8 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { i18n, initI18n } from "@/i18n/config";
 import {
     collectFolderCandidates,
     cwdEqual,
@@ -11,6 +12,11 @@ import {
     resolveSendTarget,
     type AgentBlockInfo,
 } from "./commontext-send-target";
+
+// i18n 资源为 en 真源：迁移后 label / note 由 i18n.t 产出，先把实例初始化到 en（Pattern I）。
+beforeAll(async () => {
+    await initI18n("en");
+});
 
 function makeBlock(meta: Record<string, unknown>, oid = "b1"): { oid: string; meta: Record<string, unknown> } {
     return { oid, meta };
@@ -110,7 +116,9 @@ describe("resolveSendTarget", () => {
         });
         expect(r.kind).toBe("create");
         expect(r.kind === "create" && r.cwd).toBe(focusedClaude.cwd);
-        expect(r.kind === "create" && r.label).toContain("新建 Claude Code");
+        expect(r.kind === "create" && r.label).toContain(
+            i18n.t("commontext:send.createLabel", { label: "Claude Code", tab: "" }).trim()
+        );
     });
 
     it("forceCreate=false keeps the existing judgement", () => {
@@ -158,7 +166,12 @@ describe("resolveSendTarget", () => {
             { profileLabel: "Pi" }
         );
         expect(r.kind).toBe("create");
-        expect(r.kind === "create" && r.label).toBe("新建 Pi · 新 Tab · /Users/nita/x");
+        expect(r.kind === "create" && r.label).toBe(
+            `${i18n.t("commontext:send.createLabel", {
+                label: "Pi",
+                tab: i18n.t("commontext:send.tabNewTab"),
+            })} · /Users/nita/x`
+        );
     });
 
     it("uses provider override when provided (anthropic≈claude alias)", () => {
@@ -184,7 +197,11 @@ describe("collectFolderCandidates / defaultSendFolder", () => {
             workspaceCwd: "/Users/nita/Primary/projects/snorkeling",
             homeDir: "/Users/nita",
         });
-        expect(out.map((c) => c.note)).toEqual(["聚焦块目录", "项目", "主目录"]);
+        expect(out.map((c) => c.note)).toEqual([
+            i18n.t("commontext:send.noteFocusedBlock"),
+            i18n.t("commontext:send.noteProject"),
+            i18n.t("commontext:send.noteHome"),
+        ]);
         expect(out[0].path).toBe("/Users/nita/Primary/projects/snorkeling");
     });
 

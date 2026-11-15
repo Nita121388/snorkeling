@@ -16,7 +16,9 @@
 // Upgrade path: multiplex both connections through one event reducer.
 
 import { WaveStreamdown } from "@/app/element/streamdown";
+import { i18n } from "@/i18n/config";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { ThinkingDisclosure, ToolCallRow } from "./session-message";
 import { ToolGroup } from "./tool-group";
 import type { ChatEvent } from "./use-chat-stream";
@@ -381,6 +383,7 @@ export function LiveTurnBlock({
 }) {
     // live 工具行展开状态（key = items 数组下标；items 只追加，顺序稳定）
     const [openLiveTools, setOpenLiveTools] = useState<Record<number, boolean>>({});
+    const { t } = useTranslation("aisessions");
     const items = turn.items;
     return (
         <div className="mt-2 flex flex-col gap-2">
@@ -403,8 +406,8 @@ export function LiveTurnBlock({
                         const tool = item.tool;
                         const running = tool.status == null || tool.status === "running";
                         const detailParts = [
-                            tool.args ? `Input:\n${tool.args}` : "",
-                            tool.result ? `Output:\n${tool.result}` : "",
+                            tool.args ? `${i18n.t("aisessions:liveTurn.input")}\n${tool.args}` : "",
+                            tool.result ? `${i18n.t("aisessions:liveTurn.output")}\n${tool.result}` : "",
                         ].filter(Boolean);
                         groups.push(
                             <ToolCallRow
@@ -421,7 +424,7 @@ export function LiveTurnBlock({
                                         {detailParts.join("\n\n")}
                                     </pre>
                                 ) : (
-                                    <div className="text-secondary">No tool detail.</div>
+                                    <div className="text-secondary">{t("aisessions:liveTurn.noToolDetail")}</div>
                                 )}
                             </ToolCallRow>
                         );
@@ -449,8 +452,8 @@ export function LiveTurnBlock({
                                     const tool = item.tool;
                                     const running = tool.status == null || tool.status === "running";
                                     const detailParts = [
-                                        tool.args ? `Input:\n${tool.args}` : "",
-                                        tool.result ? `Output:\n${tool.result}` : "",
+                                        tool.args ? `${i18n.t("aisessions:liveTurn.input")}\n${tool.args}` : "",
+                                        tool.result ? `${i18n.t("aisessions:liveTurn.output")}\n${tool.result}` : "",
                                     ].filter(Boolean);
                                     return (
                                         <ToolCallRow
@@ -471,7 +474,7 @@ export function LiveTurnBlock({
                                                     {detailParts.join("\n\n")}
                                                 </pre>
                                             ) : (
-                                                <div className="text-secondary">No tool detail.</div>
+                                                <div className="text-secondary">{t("aisessions:liveTurn.noToolDetail")}</div>
                                             )}
                                         </ToolCallRow>
                                     );
@@ -515,7 +518,7 @@ export function LiveTurnBlock({
                 <div className="mt-1 flex flex-col gap-1.5 rounded-xl border border-error/25 bg-error/10 px-3.5 py-2.5">
                     <div className="flex items-center gap-1.5 text-xs font-medium text-error">
                         <i className="fa-sharp fa-solid fa-triangle-exclamation text-[11px]" />
-                        <span>出错了</span>
+                        <span>{t("aisessions:liveTurn.errorTitle")}</span>
                     </div>
                     <div className="whitespace-pre-wrap break-words text-xs leading-5 text-primary">
                         {turn.error.message}
@@ -527,7 +530,7 @@ export function LiveTurnBlock({
                             onClick={onContinue}
                         >
                             <i className="fa-sharp fa-solid fa-forward text-[10px]" />
-                            <span>继续</span>
+                            <span>{t("aisessions:liveTurn.continue")}</span>
                         </button>
                         <button
                             type="button"
@@ -535,7 +538,7 @@ export function LiveTurnBlock({
                             onClick={onRetry}
                         >
                             <i className="fa-sharp fa-solid fa-rotate-right text-[10px]" />
-                            <span>重试</span>
+                            <span>{t("aisessions:liveTurn.retry")}</span>
                         </button>
                     </div>
                 </div>

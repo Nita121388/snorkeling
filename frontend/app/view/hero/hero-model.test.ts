@@ -7,12 +7,11 @@
 // derivation (including the ⚡ pending count), CHARTER excerpt truncation, the
 // empty-roster guidance text and the honest provider/model fallback.
 
-import { describe, expect, it } from "vitest";
+import { i18n, initI18n } from "@/i18n/config";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
     DefaultHeroEmoji,
-    EmptyRoleText,
     HeroCreateCommand,
-    UnknownProviderModel,
     charterExcerpt,
     deriveRosterRows,
     emptyStateText,
@@ -22,6 +21,12 @@ import {
     heroInboxCommand,
     roleLine,
 } from "./hero-model";
+
+beforeAll(async () => {
+    // Pattern I: expectations are recomputed through i18n (en is the source of
+    // truth) instead of asserting English literals.
+    await initI18n("en");
+});
 
 function makeEntry(overrides: Partial<HeroOverviewEntry> = {}): HeroOverviewEntry {
     return {
@@ -71,7 +76,7 @@ describe("formatProviderModel", () => {
         expect(formatProviderModel("pi", "deepseek-v3")).toBe("pi / deepseek-v3");
         expect(formatProviderModel("pi", "  ")).toBe("pi");
         expect(formatProviderModel(undefined, "deepseek-v3")).toBe("deepseek-v3");
-        expect(formatProviderModel(null, null)).toBe(UnknownProviderModel);
+        expect(formatProviderModel(null, null)).toBe(i18n.t("hero:unknownProviderModel"));
     });
 });
 
@@ -120,10 +125,10 @@ describe("deriveRosterRows", () => {
         expect(row.emoji).toBe(DefaultHeroEmoji);
         expect(row.name).toBe("ghost");
         expect(row.role).toBe("");
-        expect(row.providerModel).toBe(UnknownProviderModel);
+        expect(row.providerModel).toBe(i18n.t("hero:unknownProviderModel"));
         expect(row.pendingProposals).toBe(0);
         expect(row.lastJournalLine).toBe("");
-        expect(roleLine(row)).toBe(EmptyRoleText);
+        expect(roleLine(row)).toBe(i18n.t("hero:empty.role"));
     });
 
     it("returns an empty array for a missing overview", () => {
@@ -144,7 +149,7 @@ describe("charterExcerpt", () => {
 
 describe("empty state + commands", () => {
     it("guides the user to the CLI create line", () => {
-        expect(emptyStateText()).toContain(HeroCreateCommand);
+        expect(emptyStateText()).toBe(i18n.t("hero:empty.state", { command: HeroCreateCommand }));
         expect(HeroCreateCommand).toBe("wsh hero create --name <name> --yes");
     });
 

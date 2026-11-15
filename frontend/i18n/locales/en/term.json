@@ -1,0 +1,81 @@
+{
+  "agentEmoji": {
+    "thisAgent": "This Agent",
+    "scopeGroupLabel": "Emoji persona scope",
+    "scopeSession": "This session only",
+    "scopeSessionHint": "Replaces this emoji everywhere this session appears (including history; it is kept after resume)",
+    "scopeBlock": "This tab only",
+    "scopeBlockHint": "Changes only the current tab icon; other sessions are unaffected",
+    "unknownSessionFallback": "No current session ID detected — only the current tab will change",
+    "unknownSession": "No current session ID detected",
+    "scopeProvider": "All {{provider}} sessions",
+    "scopeProviderHint": "Overrides every {{provider}} session (this provider only; other agents are unaffected), including past sessions",
+    "emojiOnly": "Emoji only",
+    "emojiOnlyHint": "Hides the tab title, keeping only the icon and status",
+    "resetTitle": "Restore the default brand logo",
+    "reset": "Restore default logo",
+    "loadingLabel": "Emoji picker loading"
+  },
+  "hoverCard": {
+    "modelLoading": "Fetching…",
+    "modelUnspecified": "Not specified",
+    "setPersonaEmoji": "Set emoji persona",
+    "clickSetPersonaEmoji": "Click to set emoji persona",
+    "starAdd": "Add to favorites",
+    "starRemove": "Remove from favorites",
+    "openInDialog": "Open card in dialog",
+    "titleSource": "Title source: {{source}}"
+  },
+  "env": {
+    "title": "Terminal Environment",
+    "remoteTag": "remote",
+    "launchSubtitle": "Applies only to terminals / agents launched from now on",
+    "launchReference": " · {{mode}} {{num}} variables (reference)",
+    "referenceDefault": "Default",
+    "referenceExisting": "Existing",
+    "loading": "loading…",
+    "error": "error",
+    "configuredVarsRemote": "{{num}} configured variables · OS baseline not shown for remote",
+    "variables": "{{num}} variables",
+    "masked": " · {{num}} masked",
+    "customSection": "Custom variables for this launch",
+    "customSectionCount": " ({{num}})",
+    "keyPlaceholder": "KEY",
+    "valuePlaceholder": "VALUE",
+    "sensitiveTitle": "masked as sensitive",
+    "sensitiveTag": "SENS",
+    "deleteRow": "Delete row",
+    "overridesExisting": "Overrides the existing value <code>{{from}}</code> → <code>{{to}}</code>",
+    "addVariable": "Add Variable",
+    "hint": "Blank KEY rows are ignored; VALUE supports <code>$ENV:NAME</code> references; sensitive keys (JWT/TOKEN/KEY/SECRET/PASSWORD…) are masked automatically.",
+    "existingSection": "Existing environment variables (reference)",
+    "filterPlaceholder": "filter keys/values…",
+    "copyAllTitle": "Copy all env as KEY=VALUE lines",
+    "copyAll": "Copy All",
+    "showAll": "Show All",
+    "hideAll": "Hide All",
+    "close": "Close",
+    "loadingTable": "Loading…",
+    "keyColumn": "Key",
+    "valueColumn": "Value",
+    "noEnvironmentVariables": "No environment variables.",
+    "noMatches": "No matches.",
+    "hideValue": "Hide value",
+    "showValue": "Show value",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "ijson": {
+    "unknownTag": "Unknown tag: {{tag}}"
+  },
+  "fontNotInstalled": "Not installed",
+  "claudeHint": "Claude Code fullscreen adds mouse editing (click anywhere in the prompt to move the cursor): type <code>/tui fullscreen</code>",
+  "dismiss": "Dismiss",
+  "agentCard": {
+    "copySessionId": "Copy session id",
+    "copySessionIdFailed": "Copy session id (failed)"
+  },
+  "failureCopy": {
+    "title": "Copy this failed command (exit {{exitCode}}) for an AI to diagnose"
+  }
+}

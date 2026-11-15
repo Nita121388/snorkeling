@@ -1,8 +1,13 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { initI18n } from "@/i18n/config";
+import { beforeEach, describe, expect, it } from "vitest";
 import { MaxSubagentDepth, canExpandSubagent, subagentRowStatus, subagentSummary } from "./subagent-card";
+
+beforeEach(async () => {
+    await initI18n("en");
+});
 
 function matched(): SubagentMatch {
     return {
@@ -73,8 +78,11 @@ describe("progressive loading contract", () => {
     it("never shows a bare loading label: the skeleton owns the loading state", async () => {
         // 结构契约：展开加载时必须渲染带 role=status 的骨架，而不是一行静态文字。
         const { SessionDetailSkeleton } = await import("./session-detail-skeleton");
+        const { createElement } = await import("react");
         const { renderToStaticMarkup } = await import("react-dom/server");
-        const html = renderToStaticMarkup(SessionDetailSkeleton({ rows: 3 }));
+        // 用 createElement 渲染而不是直接调函数：组件内部用 useTranslation()，
+        // 脱离 React 渲染上下文调用会抛 useContext(null)。
+        const html = renderToStaticMarkup(createElement(SessionDetailSkeleton, { rows: 3 }));
         expect(html).toContain('role="status"');
         expect(html).toContain('aria-busy="true"');
         expect(html).not.toContain("加载中…");

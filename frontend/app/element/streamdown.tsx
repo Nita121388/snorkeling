@@ -9,6 +9,7 @@ import { atoms, openLink } from "@/store/global";
 import { cn, useAtomValueSafe } from "@/util/util";
 import { type Atom, useAtomValue } from "jotai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { bundledLanguages, codeToHtml } from "shiki/bundle/web";
 import { Streamdown } from "streamdown";
 import { throttle } from "throttle-debounce";
@@ -143,6 +144,7 @@ type CodeBlockProps = {
 };
 
 const CodeBlock = ({ children, onClickExecute, codeBlockMaxWidthAtom }: CodeBlockProps) => {
+    const { t } = useTranslation("element");
     const codeBlockMaxWidth = useAtomValueSafe(codeBlockMaxWidthAtom);
     const getLanguage = (children: any): string => {
         if (children?.props?.className) {
@@ -179,7 +181,7 @@ const CodeBlock = ({ children, onClickExecute, codeBlockMaxWidthAtom }: CodeBloc
             <div className="flex items-center justify-between pl-3 pr-2 pt-2 pb-1.5">
                 <span className="text-[11px] text-secondary">{language}</span>
                 <div className="flex items-center gap-2">
-                    <CopyButton onClick={handleCopy} title="Copy" />
+                    <CopyButton onClick={handleCopy} title={t("common:common.copy")} />
                     {onClickExecute && (
                         <IconButton
                             decl={{

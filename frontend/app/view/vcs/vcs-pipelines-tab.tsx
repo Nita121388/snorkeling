@@ -6,6 +6,7 @@ import { useWaveEnv } from "@/app/waveenv/waveenv";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { isBlank, makeConnRoute } from "@/util/util";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { VcsIconButton } from "./vcs-icon-button";
 
 type VcsUiEnv = WaveEnv;
@@ -55,6 +56,7 @@ export function VcsPipelinesTab({
     connection: string;
 }) {
     const env = useWaveEnv<VcsUiEnv>();
+    const { t } = useTranslation("vcs");
     const [pipelines, setPipelines] = React.useState<RemoteVcsPipelineListRtnData | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -89,7 +91,7 @@ export function VcsPipelinesTab({
     if (loading) {
         return (
             <div className="flex-1 flex items-center justify-center text-xs text-muted p-4">
-                Loading pipelines...
+                {t("vcs:pipelines.loading")}
             </div>
         );
     }
@@ -106,8 +108,8 @@ export function VcsPipelinesTab({
         return (
             <div className="flex-1 flex items-center justify-center text-xs text-muted p-4 text-center">
                 <div className="max-w-[240px]">
-                    <div className="text-secondary font-medium mb-1">No pipelines available</div>
-                    <div>{pipelines?.error || "Pipeline listing is only supported for git repositories."}</div>
+                    <div className="text-secondary font-medium mb-1">{t("vcs:pipelines.noData")}</div>
+                    <div>{pipelines?.error || t("vcs:pipelines.noDataHint")}</div>
                 </div>
             </div>
         );
@@ -119,8 +121,8 @@ export function VcsPipelinesTab({
         return (
             <div className="flex-1 flex items-center justify-center text-xs text-muted p-4 text-center">
                 <div className="max-w-[240px]">
-                    <div className="text-secondary font-medium mb-1">No pipeline runs</div>
-                    <div>No CI/CD runs were found in this repository.</div>
+                    <div className="text-secondary font-medium mb-1">{t("vcs:pipelines.noRuns")}</div>
+                    <div>{t("vcs:pipelines.noRunsHint")}</div>
                 </div>
             </div>
         );
@@ -130,10 +132,10 @@ export function VcsPipelinesTab({
         <div className="flex-1 overflow-auto p-2 space-y-1">
             {/* Header */}
             <div className="flex items-center justify-between px-1 py-1">
-                <span className="text-xs font-medium text-secondary">CI / CD Pipelines</span>
+                <span className="text-xs font-medium text-secondary">{t("vcs:pipelines.title")}</span>
                 <VcsIconButton
                     icon="arrows-rotate"
-                    title="Refresh pipelines"
+                    title={t("vcs:pipelines.refresh")}
                     onClick={() => loadPipelines()}
                 />
             </div>
@@ -151,7 +153,7 @@ export function VcsPipelinesTab({
                             <div className="flex items-center justify-between gap-2 mb-1">
                                 <div className="flex items-center gap-2 min-w-0">
                                     <StatusDot status={run.status} conclusion={run.conclusion} />
-                                    <span className="text-xs font-medium text-foreground truncate">{run.name || "Workflow"}</span>
+                                    <span className="text-xs font-medium text-foreground truncate">{run.name || t("vcs:pipelines.workflowFallback")}</span>
                                 </div>
                                 <span className="text-[11px] text-muted shrink-0 whitespace-nowrap">{formatTime(run.startedat)}</span>
                             </div>
@@ -169,23 +171,23 @@ export function VcsPipelinesTab({
                         {isExpanded && (
                             <div className="px-2.5 pb-2.5 pt-0.5 space-y-1 border-t border-border">
                                 <div className="flex items-center justify-between py-1 text-[11px]">
-                                    <span className="text-muted">Status</span>
+                                    <span className="text-muted">{t("vcs:pipelines.status")}</span>
                                     <span className="text-secondary">{run.conclusion || run.status}</span>
                                 </div>
                                 {run.commit && (
                                     <div className="flex items-center justify-between py-1 text-[11px]">
-                                        <span className="text-muted">Commit</span>
+                                        <span className="text-muted">{t("vcs:pipelines.commit")}</span>
                                         <span className="text-secondary font-mono">{run.commit}</span>
                                     </div>
                                 )}
                                 {run.author && (
                                     <div className="flex items-center justify-between py-1 text-[11px]">
-                                        <span className="text-muted">Author</span>
+                                        <span className="text-muted">{t("vcs:pipelines.author")}</span>
                                         <span className="text-secondary">{run.author}</span>
                                     </div>
                                 )}
                                 <div className="flex items-center justify-between py-1 text-[11px]">
-                                    <span className="text-muted">Duration</span>
+                                    <span className="text-muted">{t("vcs:pipelines.duration")}</span>
                                     <span className="text-secondary">{formatDuration(run.startedat, run.endedat)}</span>
                                 </div>
                                 {run.url && (
@@ -195,7 +197,7 @@ export function VcsPipelinesTab({
                                         rel="noreferrer"
                                         className="inline-block mt-1 text-[11px] text-accent hover:underline"
                                     >
-                                        View in browser {"\u2192"}
+                                        {t("vcs:pipelines.viewInBrowser")} {"\u2192"}
                                     </a>
                                 )}
                             </div>

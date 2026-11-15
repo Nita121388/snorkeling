@@ -7,6 +7,8 @@
 // - 展开/折叠：ResizeObserver 实测高度 + transition-[height]
 
 import { cn } from "@/util/util";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { memo, useEffect, useRef, useState } from "react";
 import { DurationBar } from "./duration-bar";
@@ -43,6 +45,7 @@ export const ToolGroup = memo(function ToolGroup({
     durationMs,
     children,
 }: ToolGroupProps) {
+    const { t } = useTranslation("aisessions");
     const [open, setOpen] = useState(false);
     const bodyRef = useRef<HTMLDivElement>(null);
     const [height, setHeight] = useState(0);
@@ -87,7 +90,7 @@ export const ToolGroup = memo(function ToolGroup({
                         durationMs={durationMs}
                         maxDurationMs={maxDurationMs}
                         showText
-                        label={`Total ${formatDuration(durationMs)} · ${toolNames.length} tool${toolNames.length === 1 ? "" : "s"}`}
+                        label={i18n.t("aisessions:toolGroup.total", { duration: formatDuration(durationMs), count: toolNames.length })}
                     />
                 ) : null}
                 <span className="shrink-0 rounded bg-accent/15 px-1.5 py-px font-mono text-[10px] font-semibold text-accent-300">

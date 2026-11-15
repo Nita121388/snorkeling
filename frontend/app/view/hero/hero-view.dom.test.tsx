@@ -9,10 +9,11 @@
 
 // @vitest-environment jsdom
 
+import { i18n, initI18n } from "@/i18n/config";
 import { Provider, atom, createStore } from "jotai";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { HeroView, type HeroViewModel } from "./hero";
 import { HeroCreateCommand, deriveRosterRows } from "./hero-model";
 
@@ -45,6 +46,11 @@ function makeEntry(overrides: Partial<HeroOverviewEntry> = {}): HeroOverviewEntr
         ...overrides,
     };
 }
+
+beforeAll(async () => {
+    // Pattern I: 断言用 i18n 复算，不写死英文/中文文案。
+    await initI18n("en");
+});
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -105,7 +111,7 @@ describe("HeroView", () => {
         const { model, store } = makeModel({ root: "/home/me/.snorkeling/heroes", heroes: [] });
         render(model, store);
         expect(container.textContent).toContain(HeroCreateCommand);
-        expect(container.textContent).toContain("0 total");
+        expect(container.textContent).toContain(i18n.t("hero:roster.total", { count: 0 }));
     });
 
     it("renders one list row per hero with role, provider/model, journal line and ⚡ count", () => {
@@ -122,7 +128,7 @@ describe("HeroView", () => {
         expect(text).toContain("pi / deepseek-v3");
         expect(text).toContain("归档了一批备份");
         expect(text).toContain("⚡2");
-        expect(container.textContent).toContain("1 total");
+        expect(container.textContent).toContain(i18n.t("hero:roster.total", { count: 1 }));
     });
 
     it("shows the CHARTER body and the copyable approval commands in the detail pane", () => {
@@ -131,11 +137,11 @@ describe("HeroView", () => {
             heroes: [makeEntry()],
         });
         render(model, store);
-        expect(container.textContent).toContain("CHARTER");
+        expect(container.textContent).toContain(i18n.t("hero:detail.charter"));
         expect(container.textContent).toContain("管备份");
         expect(container.textContent).toContain("wsh hero memory inbox backup-guard");
         expect(container.textContent).toContain("wsh hero memory approve backup-guard <stamp> --yes");
-        expect(container.textContent).toContain("Confirm");
+        expect(container.textContent).toContain(i18n.t("hero:detail.confirm"));
     });
 
     it("switches the detail pane when another row is selected", () => {
@@ -166,6 +172,6 @@ describe("HeroView", () => {
             target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
         expect(container.textContent).toContain("night-watch");
-        expect(container.textContent).toContain("No pending memory proposals");
+        expect(container.textContent).toContain(i18n.t("hero:detail.noPendingProposals"));
     });
 });

@@ -1,0 +1,97 @@
+{
+    "docEmoji": {
+        "add": "添加文档 emoji",
+        "change": "更改文档 emoji",
+        "ariaLabel": "文档 emoji"
+    },
+    "emojiPicker": {
+        "ariaLabel": "Emoji 选择器",
+        "removeAliasAria": "移除别名 {{alias}}",
+        "removeAliasTitle": "移除该别名",
+        "aliasInputPlaceholder": "输入含义，如「已解决」/ done，回车添加",
+        "noteInputPlaceholder": "可选：一句话说明（不参与搜索）",
+        "aliasHint": "别名会优先参与搜索 · Ctrl/Cmd+Enter 保存 · Esc 返回",
+        "clearAllTitle": "删除该 emoji 的全部别名与说明",
+        "clear": "清除",
+        "cancel": "取消",
+        "save": "保存",
+        "searchPlaceholder": "搜索 emoji…",
+        "removeEmojiTitle": "移除 emoji",
+        "aliasMatched": "别名命中",
+        "noResults": "未找到 emoji"
+    },
+    "slashPalette": {
+        "ariaLabel": "斜杠命令",
+        "empty": "没有匹配的命令"
+    },
+    "slashCommand": {
+        "text": "文本",
+        "heading-1": "标题 1",
+        "heading-2": "标题 2",
+        "heading-3": "标题 3",
+        "heading-4": "标题 4",
+        "heading-5": "标题 5",
+        "heading-6": "标题 6",
+        "bulleted-list": "无序列表",
+        "numbered-list": "有序列表",
+        "todo-list": "待办列表",
+        "quote": "引用",
+        "callout-note": "标注：注意",
+        "callout-warning": "标注：警告",
+        "callout-tip": "标注：提示",
+        "code-block": "代码块",
+        "table": "表格",
+        "divider": "分隔线",
+        "image": "图片",
+        "wiki-link": "双链",
+        "emoji": "表情"
+    },
+    "turnInto": {
+        "text": "文本",
+        "heading1": "标题 1",
+        "heading2": "标题 2",
+        "heading3": "标题 3",
+        "heading4": "标题 4",
+        "heading5": "标题 5",
+        "heading6": "标题 6",
+        "bulleted": "无序列表",
+        "numbered": "有序列表",
+        "todo": "待办列表",
+        "quote": "引用",
+        "code": "代码块",
+        "table": "表格"
+    },
+    "inlineStyle": {
+        "bold": "加粗",
+        "italic": "斜体",
+        "strike": "删除线",
+        "code": "行内代码",
+        "link": "链接",
+        "kbd": "按键"
+    },
+    "toolbar": {
+        "turnInto": "转换为"
+    },
+    "tableToolbar": {
+        "insertRow": "+ 行",
+        "insertRowTitle": "在下方插入行",
+        "deleteRow": "− 行",
+        "deleteRowTitle": "删除行",
+        "insertCol": "+ 列",
+        "insertColTitle": "在右侧插入列",
+        "deleteCol": "− 列",
+        "deleteColTitle": "删除列",
+        "alignLeft": "左对齐",
+        "alignCenter": "居中对齐",
+        "alignRight": "右对齐"
+    },
+    "tableBlock": {
+        "expand": "展开表格",
+        "collapse": "折叠表格",
+        "alignLeft": "左对齐",
+        "alignCenter": "居中对齐",
+        "alignRight": "右对齐",
+        "deleteColumn": "删除列",
+        "deleteRow": "删除行"
+    }
+}

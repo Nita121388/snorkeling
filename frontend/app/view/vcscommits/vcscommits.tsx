@@ -5,10 +5,13 @@ import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { createBlock } from "@/store/global";
 import { isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 const VcsCommitsRpcTimeoutMs = 30000;
 
@@ -42,7 +45,7 @@ export class VcsCommitsViewModel implements ViewModel {
     blockAtom: Atom<Block>;
 
     viewIcon = atom("clock-rotate-left");
-    viewName = atom("Repo Commits");
+    viewName = localeTextAtom(() => i18n.t("vcs:commits.viewName"));
     manageConnection = atom(true);
     filterOutNowsh = atom(true);
     noPadding = atom(true);
@@ -70,11 +73,11 @@ export class VcsCommitsViewModel implements ViewModel {
             }
             const repoPath = get(this.repoPathAtom);
             if (isBlank(repoPath)) {
-                return "Repo Commits";
+                return i18n.t("vcs:commits.viewName");
             }
             const trimmed = repoPath.replace(/\\/g, "/").replace(/\/+$/, "");
             const seg = trimmed.split("/").filter(Boolean).pop() ?? trimmed;
-            return `${seg} Commits`;
+            return i18n.t("vcs:commits.title", { name: seg });
         });
         this.connection = atom((get) => {
             const connValue = get(this.blockAtom)?.meta?.connection;
@@ -102,7 +105,7 @@ export class VcsCommitsViewModel implements ViewModel {
                 {
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
-                    title: "Refresh",
+                    title: i18n.t("vcs:common.refresh"),
                     zone: "pinned",
                     click: () => {
                         globalStore.set(this.refreshNonce, (prev) => prev + 1);
@@ -119,6 +122,7 @@ export class VcsCommitsViewModel implements ViewModel {
 
 function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
     const env = useWaveEnv<VcsCommitsEnv>();
+    const { t } = useTranslation("vcs");
     const connection = useAtomValue(model.connection);
     const connStatus = useAtomValue(model.connStatus);
     const repoType = useAtomValue(model.repoTypeAtom);
@@ -166,7 +170,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
             }
             if (isBlank(repoType) || isBlank(repoPath)) {
                 setLoading(false);
-                setError("Missing vcscommits metadata (repotype/repopath).");
+                setError(t("vcs:commits.missingMetadata"));
                 return;
             }
             setLoading(true);
@@ -272,7 +276,10 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                 "vcsdiff:filepath": filePath,
                 "vcsdiff:revision": revision,
                 "vcsdiff:mode": "side-by-side",
-                "vcsdiff:title": `${filePath} @ ${shortHash(revision)}`,
+                "vcsdiff:title": i18n.t("vcs:common.diffTitleRevision", {
+                    path: filePath,
+                    revision: shortHash(revision),
+                }),
             } as any,
         };
         await createBlock(blockDef);
@@ -298,7 +305,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
     if (connStatus?.status !== "connected") {
         return (
             <div className="h-full w-full flex items-center justify-center text-sm text-muted">
-                Connection unavailable.
+                {t("vcs:common.connectionUnavailable")}
             </div>
         );
     }
@@ -309,7 +316,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                 <div className="mb-2 grid grid-cols-1 gap-1.5 md:grid-cols-[1.2fr_auto_auto_auto_auto_auto] md:items-center">
                     <input
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
-                        placeholder="Keyword (hash/author/subject)"
+                        placeholder={t("vcs:common.keywordPlaceholder")}
                         value={keywordInput}
                         onChange={(e) => setKeywordInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -323,14 +330,14 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
                         value={sinceInput}
                         onChange={(e) => setSinceInput(e.target.value)}
-                        title="Since"
+                        title={t("vcs:common.since")}
                     />
                     <input
                         type="date"
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
                         value={untilInput}
                         onChange={(e) => setUntilInput(e.target.value)}
-                        title="Until"
+                        title={t("vcs:common.until")}
                     />
                     <select
                         className="rounded border border-border bg-panel/80 px-2 py-1 text-xs outline-none focus:border-accent"
@@ -341,28 +348,28 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                             setPage(1);
                         }}
                     >
-                        <option value="20">20 / page</option>
-                        <option value="50">50 / page</option>
-                        <option value="100">100 / page</option>
+                        <option value="20">{i18n.t("vcs:common.perPage", { count: 20 })}</option>
+                        <option value="50">{i18n.t("vcs:common.perPage", { count: 50 })}</option>
+                        <option value="100">{i18n.t("vcs:common.perPage", { count: 100 })}</option>
                     </select>
                     <button
                         className="rounded border border-accent px-2 py-1 text-xs text-accent hover:bg-accent/10 cursor-pointer"
                         onClick={applyFilters}
                     >
-                        Apply
+                        {t("vcs:commits.apply")}
                     </button>
                     <button
                         className="rounded border border-border px-2 py-1 text-xs text-secondary hover:bg-hoverbg cursor-pointer"
                         onClick={resetFilters}
                     >
-                        Reset
+                        {t("vcs:commits.reset")}
                     </button>
                 </div>
 
-                {loading && <div className="text-sm text-muted">Loading commits...</div>}
+                {loading && <div className="text-sm text-muted">{t("vcs:common.loadingCommits")}</div>}
                 {!loading && error && <div className="text-sm text-error whitespace-pre-wrap">{error}</div>}
                 {!loading && !error && commits.length === 0 && (
-                    <div className="text-sm text-muted">No commits found.</div>
+                    <div className="text-sm text-muted">{t("vcs:common.noCommits")}</div>
                 )}
 
                 {!loading && !error && commits.length > 0 && (
@@ -384,17 +391,23 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                                     >
                                         <span className="text-muted w-[12px] shrink-0">{expanded ? "▾" : "▸"}</span>
                                         <span className="font-mono text-secondary shrink-0">{shortHash(revision)}</span>
-                                        <span className="truncate flex-1">{commit.subject || "(no message)"}</span>
+                                        <span className="truncate flex-1">
+                                            {commit.subject || t("vcs:common.noMessage")}
+                                        </span>
                                     </div>
                                     <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
-                                        <span className="truncate">{commit.author || "unknown"}</span>
+                                        <span className="truncate">
+                                            {commit.author || t("vcs:common.unknownAuthor")}
+                                        </span>
                                         <span className="truncate">{commit.date || ""}</span>
                                     </div>
 
                                     {expanded && (
                                         <div className="mt-1.5 rounded border border-border bg-surface-strong">
                                             {filesLoading && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>
+                                                <div className="px-2 py-1 text-[11px] text-muted">
+                                                    {t("vcs:common.loadingFiles")}
+                                                </div>
                                             )}
                                             {!filesLoading && !isBlank(filesError) && (
                                                 <div className="px-2 py-1 text-[11px] text-error whitespace-pre-wrap">
@@ -403,7 +416,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                                             )}
                                             {!filesLoading && isBlank(filesError) && files.length === 0 && (
                                                 <div className="px-2 py-1 text-[11px] text-muted">
-                                                    No changed files in this commit.
+                                                    {t("vcs:common.noChangedFiles")}
                                                 </div>
                                             )}
                                             {!filesLoading && isBlank(filesError) && files.length > 0 && (
@@ -425,7 +438,7 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                                                                     });
                                                                 }}
                                                             >
-                                                                Diff
+                                                                {t("vcs:common.diff")}
                                                             </button>
                                                         </div>
                                                     ))}
@@ -446,15 +459,15 @@ function VcsCommitsView({ model }: ViewComponentProps<VcsCommitsViewModel>) {
                             disabled={page <= 1}
                             onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                         >
-                            Prev
+                            {t("vcs:commits.prev")}
                         </button>
-                        <span className="text-muted">Page {page}</span>
+                        <span className="text-muted">{i18n.t("vcs:common.page", { page })}</span>
                         <button
                             className="rounded border border-border px-2 py-1 text-secondary hover:bg-hoverbg disabled:opacity-50 disabled:cursor-default cursor-pointer"
                             disabled={!hasMore}
                             onClick={() => setPage((prev) => prev + 1)}
                         >
-                            Next
+                            {t("vcs:commits.next")}
                         </button>
                     </div>
                 )}

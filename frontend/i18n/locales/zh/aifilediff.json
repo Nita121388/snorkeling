@@ -1,0 +1,6 @@
+{
+    "viewName": "AI 对比查看器",
+    "loading": "正在加载对比...",
+    "noData": "没有可用的对比数据",
+    "loadError": "加载对比数据出错：{{message}}"
+}

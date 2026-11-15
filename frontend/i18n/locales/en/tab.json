@@ -1,0 +1,129 @@
+{
+    "tab": {
+        "closeTab": "Close Tab",
+        "closeTabShort": "Close tab",
+        "addTab": "Add Tab",
+        "newTab": "New Tab"
+    },
+    "content": {
+        "tabLoading": "Tab Loading",
+        "tabNotFound": "Tab Not Found",
+        "noBlocks": "No blocks yet",
+        "newTerminal": "New Terminal",
+        "newBlockHint": "or press {{key}} to create a block"
+    },
+    "infoCard": {
+        "flag": "Flag",
+        "untitledTab": "Untitled tab",
+        "agentCount_one": "{{count}} agent",
+        "agentCount_other": "{{count}} agents",
+        "emptyTab": "Empty tab",
+        "agentFallback": "Agent",
+        "agentGroup": "Agents",
+        "agentGroupWithProvider": "Agents · {{provider}} ×{{count}}",
+        "chipChat_one": "{{count}} chat",
+        "chipChat_other": "{{count}} chats",
+        "chipFile_one": "{{count}} file",
+        "chipFile_other": "{{count}} files",
+        "chipNote_one": "{{count}} note",
+        "chipNote_other": "{{count}} notes",
+        "chipTerm_one": "{{count}} term",
+        "chipTerm_other": "{{count}} terms",
+        "chipOther_one": "{{count}} other",
+        "chipOther_other": "{{count}} others",
+        "statusIdle": "Idle",
+        "statusThinking": "Thinking",
+        "statusWorking": "Working",
+        "statusDone": "Done",
+        "statusBlocked": "Blocked",
+        "statusError": "Error",
+        "statusRateLimited": "Rate limited",
+        "statusStale": "Stale",
+        "statusTool": "Tool · {{name}}",
+        "statusTools": "Tools"
+    },
+    "moreMenu": {
+        "closeTab": "Close tab",
+        "moreTabs": "More tabs",
+        "moreTabsHidden": "More tabs ({{count}} hidden)",
+        "tabsCollapsed": "{{count}} tabs collapsed",
+        "allTabsShown": "All tabs shown",
+        "more": "More",
+        "searchPlaceholder": "Search tabs…",
+        "noTabs": "No tabs",
+        "noMatchingTabs": "No matching tabs",
+        "newTab": "New tab",
+        "collapseUnusedTabs": "Collapse unused tabs"
+    },
+    "moreAgentCard": {
+        "unspecified": "Unspecified",
+        "copySessionId": "Copy session id",
+        "agentsInTab_one": "{{count}} agent in this tab",
+        "agentsInTab_other": "{{count}} agents in this tab",
+        "agentFallback": "Agent"
+    },
+    "targetModal": {
+        "cancel": "Cancel",
+        "noOtherTabs": "No other tabs",
+        "newTab": "New tab",
+        "untitledTab": "Untitled Tab",
+        "create": "Create"
+    },
+    "updateBanner": {
+        "cancelDownload": "Cancel download",
+        "update": "Update",
+        "installing": "Installing",
+        "downloading": "Downloading",
+        "downloadingProgress": "Downloading {{received}} / {{total}} ({{percent}}%)",
+        "updateError": "Update Error",
+        "clickToInstall": "Click to Install Update",
+        "clickToDownloadInstall": "Click to download and install this update",
+        "downloadFailedRetry": "Update download failed. Click to retry."
+    },
+    "vtab": {
+        "tabName": "Tab name",
+        "closeTab": "Close tab"
+    },
+    "tabbar": {
+        "toggleWaveAIPanel": "Toggle Wave AI Panel",
+        "collapseSidebar": "Collapse sidebar",
+        "expandSidebar": "Expand sidebar",
+        "expandSidebarWithCount": "Expand sidebar ({{count}} minimized)",
+        "workspaceSwitcher": "Workspace Switcher",
+        "collapseWidgetsBar": "Collapse widgets bar",
+        "expandWidgetsBar": "Expand widgets bar"
+    },
+    "workspace": {
+        "deleteWorkspace": "Delete workspace",
+        "createNewWorkspace": "Create new workspace",
+        "saveWorkspace": "Save workspace",
+        "switchWorkspace": "Switch workspace",
+        "openWorkspace": "Open workspace",
+        "editWorkspace": "Edit workspace",
+        "currentWorkspace": "This is your current workspace",
+        "workspaceOpen": "This workspace is open"
+    },
+    "contextMenu": {
+        "renameTab": "Rename Tab",
+        "copyTabId": "Copy TabId",
+        "flagTab": "Flag Tab",
+        "none": "None",
+        "backgrounds": "Backgrounds",
+        "default": "Default",
+        "tabBarPosition": "Tab Bar Position",
+        "top": "Top",
+        "left": "Left",
+        "moveTabToNewWindow": "Move Tab to New Window",
+        "moveTabBack": "Move Tab Back",
+        "closeTab": "Close Tab",
+        "flagColor": {
+            "green": "Green",
+            "teal": "Teal",
+            "blue": "Blue",
+            "purple": "Purple",
+            "red": "Red",
+            "orange": "Orange",
+            "yellow": "Yellow"
+        }
+    }
+}

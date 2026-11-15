@@ -43,6 +43,7 @@ import {
     type SignalLevel,
 } from "@/app/element/setting-card";
 import { Toggle } from "@/app/element/toggle";
+import { i18n } from "@/i18n/config";
 import { atoms } from "@/app/store/global-atoms";
 import { modalsModel } from "@/app/store/modalmodel";
 import { CommonTextService } from "@/app/store/services";
@@ -52,6 +53,7 @@ import type { WaveConfigViewModel } from "@/app/view/waveconfig/waveconfig-model
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export type SyncTransportId = "none" | "folder" | "git" | "server";
 export type SyncConflictPolicy = "row-merge" | "newest" | "manual";
@@ -74,12 +76,12 @@ export type SyncSettingsDraft = {
 
 export type SyncTransportSpec = {
     id: SyncTransportId;
-    name: string;
-    description: string;
+    nameKey: (typeof TransportMeta)[SyncTransportId]["nameKey"];
+    descriptionKey: (typeof TransportMeta)[SyncTransportId]["descriptionKey"];
     /** Recommended badge in the picker. */
     recommended?: boolean;
-    /** Why this transport cannot be selected right now; null means selectable. */
-    blockedReason?: string | null;
+    /** Why this transport cannot be selected right now (i18n key); null means selectable. */
+    blockedReason?: SyncBlockedReasonKey | null;
 };
 
 export const SyncSettingKeys = {
@@ -117,46 +119,59 @@ export const SyncSettingDefaults: SyncSettingsDraft = {
 
 const TransportOrder: SyncTransportId[] = ["folder", "git", "server", "none"];
 
-const TransportMeta: Record<SyncTransportId, { name: string; description: string; recommended?: boolean }> = {
+const TransportMeta = {
     folder: {
-        name: "Local folder",
-        description: "commontext.json in a cloud-drive folder; picks up external changes.",
+        nameKey: "waveconfig:sync.transports.folder.name",
+        descriptionKey: "waveconfig:sync.transports.folder.description",
         recommended: true,
     },
     git: {
-        name: "Git repository",
-        description: "Private repo, periodic commits — real history, visible conflicts.",
+        nameKey: "waveconfig:sync.transports.git.name",
+        descriptionKey: "waveconfig:sync.transports.git.description",
     },
     server: {
-        name: "Self-hosted service",
-        description: "Your own sync server over HTTP/WebSocket, token auth.",
+        nameKey: "waveconfig:sync.transports.server.name",
+        descriptionKey: "waveconfig:sync.transports.server.description",
     },
     none: {
-        name: "Off · local only",
-        description: "No transport. Items stay on this machine.",
+        nameKey: "waveconfig:sync.transports.none.name",
+        descriptionKey: "waveconfig:sync.transports.none.description",
     },
-};
+} as const;
+
+/** Blocked-reason i18n keys — structural values, translated at the render site (Pattern C). */
+export const SyncBlockedReasonKeys = {
+    folderPath: "waveconfig:sync.blocked.folderPath",
+    gitToken: "waveconfig:sync.blocked.gitToken",
+    serverUrl: "waveconfig:sync.blocked.serverUrl",
+    serverToken: "waveconfig:sync.blocked.serverToken",
+    unknown: "waveconfig:sync.blocked.unknown",
+} as const;
+export type SyncBlockedReasonKey = (typeof SyncBlockedReasonKeys)[keyof typeof SyncBlockedReasonKeys];
 
 /**
  * Why a transport cannot be picked right now, or null when it can.
  *
  * Deliberately accepts the draft rather than reading settings: while editing, the user must see
  * the row unlock the moment they fill in the missing field, without having to Save first.
+ *
+ * Returns an i18n key (not a display string) so the caller can translate at render time — a memo
+ * on the draft must not freeze the language of an already-translated string.
  */
-export function blockedReasonFor(transport: SyncTransportId, draft: SyncSettingsDraft): string | null {
+export function blockedReasonFor(transport: SyncTransportId, draft: SyncSettingsDraft): SyncBlockedReasonKey | null {
     switch (transport) {
         case "folder":
-            return draft.folderPath.trim() === "" ? "Set a file path first." : null;
+            return draft.folderPath.trim() === "" ? SyncBlockedReasonKeys.folderPath : null;
         case "git":
-            return draft.gitHasToken ? null : "Configure an access token first (stored in the OS keyring).";
+            return draft.gitHasToken ? null : SyncBlockedReasonKeys.gitToken;
         case "server":
-            if (draft.serverUrl.trim() === "") return "Enter the server URL first (include the scheme).";
-            if (!draft.serverHasToken) return "Configure a server token first (stored in the OS keyring).";
+            if (draft.serverUrl.trim() === "") return SyncBlockedReasonKeys.serverUrl;
+            if (!draft.serverHasToken) return SyncBlockedReasonKeys.serverToken;
             return null;
         case "none":
             return null;
         default:
-            return "Unknown transport.";
+            return SyncBlockedReasonKeys.unknown;
     }
 }
 
@@ -328,34 +343,40 @@ function saveAdvancedOpen(open: boolean): void {
     }
 }
 
-/** 展开态文案与 tone 都由 pendingCount 决定 —— 0 与未读数不共用一个视觉。 */
+/** 展开态文案与 tone 都由 pendingCount 决定 —— 0 与未读数不共用一个视觉。文案在渲染层由 i18n key 复原（Pattern C）。 */
 const ConflictPolicies = [
     {
         id: "row-merge" as const,
-        title: "Merge per row, mark only real conflicts",
-        description: "Auto-merge when possible; only a same-field double edit becomes a conflict.",
+        titleKey: "waveconfig:sync.advanced.policy.rowMerge.title",
+        descriptionKey: "waveconfig:sync.advanced.policy.rowMerge.description",
         recommended: true,
     },
     {
         id: "newest" as const,
-        title: "Newest wins",
-        description: "Take the newer updatedat and silently overwrite the older side.",
+        titleKey: "waveconfig:sync.advanced.policy.newest.title",
+        descriptionKey: "waveconfig:sync.advanced.policy.newest.description",
+        recommended: false,
     },
     {
         id: "manual" as const,
-        title: "Always ask",
-        description: "Stop and ask on every conflict; syncing stays paused until resolved.",
+        titleKey: "waveconfig:sync.advanced.policy.manual.title",
+        descriptionKey: "waveconfig:sync.advanced.policy.manual.description",
+        recommended: false,
     },
-];
+] as const;
 
 export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigViewModel }) => {
     void _model;
 
+    const { t } = useTranslation("waveconfig");
     const settings = useAtomValue(atoms.settingsAtom);
     const stored = useMemo(() => readSyncDraft(settings), [settings]);
     const [draft, setDraft] = useState<SyncSettingsDraft>(stored);
     const [dirty, setDirty] = useState(false);
     const [status, setStatus] = useState("");
+    // Tone of the status line. The text is translated, so "ok" can no longer be derived by
+    // prefix-matching the string (the old check was `status.startsWith("Saved.")`).
+    const [statusOk, setStatusOk] = useState(false);
     // Live status from the sync manager (transport, last run, unresolved conflicts).
     const [syncStatus, setSyncStatus] = useState<Status | null>(null);
     const [syncingNow, setSyncingNow] = useState(false);
@@ -374,10 +395,15 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
         setDraft(stored);
     }, [stored, dirty]);
 
+    const setStatusMsg = useCallback((text: string, ok = false) => {
+        setStatus(text);
+        setStatusOk(ok);
+    }, []);
+
     const patch = useCallback((next: Partial<SyncSettingsDraft>) => {
         setDraft((cur) => ({ ...cur, ...next }));
         setDirty(true);
-        setStatus("");
+        setStatusMsg("");
     }, []);
 
     const toggleAdvanced = useCallback(() => {
@@ -424,20 +450,25 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
         if (needsBaseline) {
             // Show the chooser first; nothing is written until a side is picked.
             setBaselinePending(true);
-            setStatus("");
+            setStatusMsg("");
             return;
         }
         fireAndForget(async () => {
             try {
                 await RpcApi.SetConfigCommand(TabRpcClient, draftToSettingsPatch(draft) as SettingsType);
                 setDirty(false);
-                setStatus(blocked == null ? "Saved." : `Saved, but sync will not start: ${blocked}`);
+                setStatusMsg(
+                    blocked == null
+                        ? i18n.t("waveconfig:sync.statusMsg.saved")
+                        : i18n.t("waveconfig:sync.statusMsg.savedBlocked", { reason: i18n.t(blocked) }),
+                    true
+                );
                 refreshSyncStatus();
             } catch (err) {
-                setStatus(err instanceof Error ? err.message : String(err));
+                setStatusMsg(err instanceof Error ? err.message : String(err));
             }
         });
-    }, [draft, needsBaseline, refreshSyncStatus]);
+    }, [draft, needsBaseline, refreshSyncStatus, setStatusMsg]);
 
     // applyBaseline runs the explicit switch: the backend re-syncs against the new transport with
     // the chosen winner, and only persists the settings if that succeeds.
@@ -454,23 +485,25 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                     setBaselinePending(false);
                     setDirty(false);
                     const s = resp?.status;
-                    setStatus(
+                    setStatusMsg(
                         s?.lastError != null && s.lastError !== ""
-                            ? `Switched, but the first sync reported: ${s.lastError}`
-                            : `Switched to ${draft.transport} (${baseline} wins).`
+                            ? i18n.t("waveconfig:sync.statusMsg.switchedWithError", { error: s.lastError })
+                            : i18n.t("waveconfig:sync.statusMsg.switchedTo", { transport: draft.transport, winner: baseline })
                     );
                 } catch (err) {
                     // The backend keeps the previous transport when the baseline sync fails, so the
                     // message must say that explicitly rather than looking like a plain failure.
-                    setStatus(
-                        `Switch aborted, previous transport kept: ${err instanceof Error ? err.message : String(err)}`
+                    setStatusMsg(
+                        i18n.t("waveconfig:sync.statusMsg.switchAborted", {
+                            error: err instanceof Error ? err.message : String(err),
+                        })
                     );
                 } finally {
                     setSwitching(false);
                 }
             });
         },
-        [draft]
+        [draft, setStatusMsg]
     );
 
     const runSyncNow = useCallback(() => {
@@ -481,15 +514,19 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                 const resp = await CommonTextService.SyncNow({ trigger: "manual" });
                 setSyncStatus(resp?.status ?? null);
                 const s = resp?.status;
-                setStatus(
+                setStatusMsg(
                     s == null
-                        ? "Sync finished."
+                        ? i18n.t("waveconfig:sync.statusMsg.syncFinished")
                         : s.lastError != null && s.lastError !== ""
-                          ? `Sync failed: ${s.lastError}`
-                          : `Synced — pulled ${s.lastPulled ?? 0}, applied ${s.lastApplied ?? 0}, pushed ${s.lastPushed ?? 0}.`
+                          ? i18n.t("waveconfig:sync.statusMsg.syncFailed", { error: s.lastError })
+                          : i18n.t("waveconfig:sync.statusMsg.synced", {
+                                pulled: s.lastPulled ?? 0,
+                                applied: s.lastApplied ?? 0,
+                                pushed: s.lastPushed ?? 0,
+                            })
                 );
             } catch (err) {
-                setStatus(err instanceof Error ? err.message : String(err));
+                setStatusMsg(err instanceof Error ? err.message : String(err));
                 // 失败时 RPC 会 reject，面板拿不到返回体里的 lastError —— 必须重新拉一次
                 // 状态，否则复制给 agent 的入口永远不出现（真机验证台 2026-11-10 实踩）。
                 refreshSyncStatus();
@@ -497,7 +534,7 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                 setSyncingNow(false);
             }
         });
-    }, [syncingNow, refreshSyncStatus]);
+    }, [syncingNow, refreshSyncStatus, setStatusMsg]);
 
     // Probe the configured sync server (same checks as `wsh commontext-sync doctor`). The probe
     // result is the evidence the Copy-for-agent payload is built from — a failed reachability or
@@ -521,12 +558,12 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
     const deviceId = (settings as Record<string, unknown> | undefined)?.[SyncSettingKeys.deviceId];
     const backendTitle =
         draft.transport === "folder"
-            ? "Local folder"
+            ? t("waveconfig:sync.transports.folder.name")
             : draft.transport === "git"
-              ? "Git repository"
+              ? t("waveconfig:sync.transports.git.name")
               : draft.transport === "server"
-                ? "Self-hosted service"
-                : "Backend";
+                ? t("waveconfig:sync.transports.server.name")
+                : t("waveconfig:sync.backend.fallback");
 
     // Server status 派生：信号格 + 四行健康数据全部来自一次 probe。
     const signalLevel = useMemo(() => signalLevelForProbe(probe), [probe]);
@@ -534,12 +571,12 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
     const serverRealtime = serverHealth?.capabilities?.includes("realtime") === true;
     const signalLabel =
         probe == null
-            ? "not checked"
+            ? t("waveconfig:sync.serverStatus.signal.notChecked")
             : probe.probe?.ready !== true
-              ? "unreachable"
+              ? t("waveconfig:sync.serverStatus.signal.unreachable")
               : isProtocolCompatible(probe)
-                ? "reachable"
-                : "protocol mismatch";
+                ? t("waveconfig:sync.serverStatus.signal.reachable")
+                : t("waveconfig:sync.serverStatus.signal.protocolMismatch");
     const conflictsCount = syncStatus?.conflicts ?? 0;
     const pendingCount = syncStatus?.pending ?? 0;
 
@@ -547,32 +584,38 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
         <div className="h-full overflow-auto p-6" data-sync-settings="">
             <div className="max-w-[880px]">
                 <p className="m-0 mb-7 max-w-[640px] text-[13.5px] leading-[1.55] text-muted-foreground">
-                    Common Text can sync across your machines — one transport, one copy of the data.
+                    {t("waveconfig:sync.intro")}
                 </p>
 
                 {/* ── Transport：RadioCard 2×2，卡永远可点 ───────────────── */}
                 <SettingGroup
-                    title="Transport"
-                    extra={<span className="text-[11px] font-normal text-muted">single active</span>}
+                    title={t("waveconfig:sync.transport.title")}
+                    extra={
+                        <span className="text-[11px] font-normal text-muted">
+                            {t("waveconfig:sync.transport.singleActive")}
+                        </span>
+                    }
                 >
                     <div className="py-2.5">
                         <RadioCardGroup name="commontext-sync-transport">
-                            {transports.map((t) => {
-                                const blocked = t.blockedReason != null;
-                                const active = draft.transport === t.id;
+                            {transports.map((spec) => {
+                                const blocked = spec.blockedReason != null;
+                                const active = draft.transport === spec.id;
                                 return (
                                     <RadioCard
-                                        key={t.id}
+                                        key={spec.id}
                                         name="commontext-sync-transport"
-                                        value={t.id}
+                                        value={spec.id}
                                         selected={active}
                                         onSelect={(v) => patch({ transport: v as SyncTransportId })}
-                                        title={t.name}
-                                        description={t.description}
-                                        flag={t.recommended ? "recommended" : undefined}
-                                        warn={blocked ? t.blockedReason : undefined}
+                                        title={t(spec.nameKey)}
+                                        description={t(spec.descriptionKey)}
+                                        flag={
+                                            spec.recommended ? t("waveconfig:sync.transport.recommended") : undefined
+                                        }
+                                        warn={blocked ? t(spec.blockedReason) : undefined}
                                         attrs={{
-                                            "data-sync-transport": t.id,
+                                            "data-sync-transport": spec.id,
                                             "data-sync-transport-state": blocked
                                                 ? "blocked"
                                                 : active
@@ -593,12 +636,13 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                         className="mb-8 rounded-[10px] border border-accent/40 bg-actionsoft/40 p-4"
                     >
                         <div className="text-[13px] font-medium text-primary">
-                            Switching from {stored.transport} to {draft.transport}
+                            {i18n.t("waveconfig:sync.baseline.switching", {
+                                from: stored.transport,
+                                to: draft.transport,
+                            })}
                         </div>
                         <div className="mt-1 max-w-[560px] text-[12.5px] leading-[1.5] text-muted-foreground">
-                            Both sides already hold data, and their revision numbers come from different transports so
-                            they cannot be compared. Pick which side to trust for items that differ. Nothing is deleted
-                            either way.
+                            {t("waveconfig:sync.baseline.description")}
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                             <SettingButton
@@ -606,14 +650,14 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 disabled={switching}
                                 onClick={() => applyBaseline("local")}
                             >
-                                This device wins
+                                {t("waveconfig:sync.baseline.localWins")}
                             </SettingButton>
                             <SettingButton
                                 attrs={{ "data-sync-baseline-choice": "remote" }}
                                 disabled={switching}
                                 onClick={() => applyBaseline("remote")}
                             >
-                                Remote wins
+                                {t("waveconfig:sync.baseline.remoteWins")}
                             </SettingButton>
                             <button
                                 type="button"
@@ -624,19 +668,20 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                     // so Save cannot later slip past the chooser.
                                     setDraft((cur) => ({ ...cur, transport: stored.transport }));
                                     setBaselinePending(false);
-                                    setStatus("");
+                                    setStatusMsg("");
                                 }}
                                 className="h-7 cursor-pointer rounded px-2 text-xs font-medium text-actionsofttext hover:underline"
                             >
-                                Cancel
+                                {t("common:common.cancel")}
                             </button>
                             <span className="text-[11px] text-muted">
-                                {switching ? "Re-syncing…" : "Runs one full re-sync before saving"}
+                                {switching
+                                    ? t("waveconfig:sync.baseline.resyncing")
+                                    : t("waveconfig:sync.baseline.runsNote")}
                             </span>
                         </div>
                         <div className="mt-2 text-[11px] leading-[1.5] text-muted">
-                            This device wins — local items overwrite the remote; remote-only items are pulled in. Remote
-                            wins — remote items overwrite local; local-only items are pushed as new.
+                            {t("waveconfig:sync.baseline.explain")}
                         </div>
                     </div>
                 )}
@@ -646,12 +691,12 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                     {draft.transport === "folder" && (
                         <>
                             <SettingRow
-                                title="File path"
-                                description="A commontext.json inside a synced folder. Writes go through a temp file + atomic rename, so a reader never sees half a file."
+                                title={t("waveconfig:sync.backend.folder.filePathTitle")}
+                                description={t("waveconfig:sync.backend.folder.filePathDescription")}
                                 attrs={{ "data-sync-row": "folder-path" }}
                             >
                                 <SettingInput
-                                    ariaLabel="Sync file path"
+                                    ariaLabel={t("waveconfig:sync.backend.folder.filePathAria")}
                                     value={draft.folderPath}
                                     placeholder="~/OneDrive/Snorkeling/commontext.json"
                                     mono
@@ -661,13 +706,13 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 />
                             </SettingRow>
                             <SettingRow
-                                title="Watch for external changes"
-                                description="Refresh the list when another device (or the cloud client) changes the file."
+                                title={t("waveconfig:sync.backend.folder.watchTitle")}
+                                description={t("waveconfig:sync.backend.folder.watchDescription")}
                                 attrs={{ "data-sync-row": "folder-watch" }}
                             >
                                 <Toggle
                                     checked={draft.folderWatch}
-                                    aria-label="Watch for external changes"
+                                    aria-label={t("waveconfig:sync.backend.folder.watchAria")}
                                     onChange={(v) => patch({ folderWatch: v })}
                                 />
                             </SettingRow>
@@ -676,12 +721,12 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                     {draft.transport === "git" && (
                         <>
                             <SettingRow
-                                title="Remote"
-                                description="Private repository. A failed push never blocks local use; the reason shows in the sync panel."
+                                title={t("waveconfig:sync.backend.git.remoteTitle")}
+                                description={t("waveconfig:sync.backend.git.remoteDescription")}
                                 attrs={{ "data-sync-row": "git-remote" }}
                             >
                                 <SettingInput
-                                    ariaLabel="Git remote"
+                                    ariaLabel={t("waveconfig:sync.backend.git.remoteAria")}
                                     value={draft.gitRemote}
                                     placeholder="git@github.com:you/snorkeling-sync.git"
                                     mono
@@ -691,11 +736,11 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 />
                             </SettingRow>
                             <SettingRow
-                                title="Access token"
+                                title={t("waveconfig:sync.backend.git.tokenTitle")}
                                 description={
                                     draft.gitHasToken
-                                        ? "Configured. The token lives in the OS keyring; settings.json only stores hastoken: true."
-                                        : "Stored in the OS keyring, never in settings.json."
+                                        ? t("waveconfig:sync.backend.git.tokenConfigured")
+                                        : t("waveconfig:sync.backend.git.tokenNotConfigured")
                                 }
                                 attrs={{ "data-sync-row": "git-token" }}
                             >
@@ -703,16 +748,18 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                     attrs={{ "data-sync-action": "git-token" }}
                                     onClick={() => patch({ gitHasToken: true })}
                                 >
-                                    {draft.gitHasToken ? "Replace token…" : "Configure token…"}
+                                    {draft.gitHasToken
+                                        ? t("waveconfig:sync.backend.git.replaceToken")
+                                        : t("waveconfig:sync.backend.git.configureToken")}
                                 </SettingButton>
                             </SettingRow>
                             <SettingRow
-                                title="Commit interval"
-                                description="Periodic commit + pull. Sync now in the status panel runs one immediately."
+                                title={t("waveconfig:sync.backend.git.intervalTitle")}
+                                description={t("waveconfig:sync.backend.git.intervalDescription")}
                                 attrs={{ "data-sync-row": "git-interval" }}
                             >
                                 <SettingInput
-                                    ariaLabel="Git sync interval"
+                                    ariaLabel={t("waveconfig:sync.backend.git.intervalAria")}
                                     value={draft.gitInterval}
                                     placeholder="15m"
                                     mono
@@ -726,12 +773,12 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                     {draft.transport === "server" && (
                         <>
                             <SettingRow
-                                title="Server URL"
-                                description="Include the scheme. For a LAN server use http://192.168.1.10:8787 and enable Allow insecure below."
+                                title={t("waveconfig:sync.backend.server.urlTitle")}
+                                description={t("waveconfig:sync.backend.server.urlDescription")}
                                 attrs={{ "data-sync-row": "server-url" }}
                             >
                                 <SettingInput
-                                    ariaLabel="Server URL"
+                                    ariaLabel={t("waveconfig:sync.backend.server.urlAria")}
                                     value={draft.serverUrl}
                                     placeholder="https://sync.example.com"
                                     mono
@@ -741,11 +788,11 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 />
                             </SettingRow>
                             <SettingRow
-                                title="Token"
+                                title={t("waveconfig:sync.backend.server.tokenTitle")}
                                 description={
                                     draft.serverHasToken
-                                        ? "Configured. The token lives in the OS keyring; settings.json only stores hastoken: true."
-                                        : "Server auth token, stored in the OS keyring."
+                                        ? t("waveconfig:sync.backend.server.tokenConfigured")
+                                        : t("waveconfig:sync.backend.server.tokenNotConfigured")
                                 }
                                 attrs={{ "data-sync-row": "server-token" }}
                             >
@@ -753,32 +800,34 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                     attrs={{ "data-sync-action": "server-token" }}
                                     onClick={() => patch({ serverHasToken: true })}
                                 >
-                                    {draft.serverHasToken ? "Replace token…" : "Configure token…"}
+                                    {draft.serverHasToken
+                                        ? t("waveconfig:sync.backend.server.replaceToken")
+                                        : t("waveconfig:sync.backend.server.configureToken")}
                                 </SettingButton>
                             </SettingRow>
                             <SettingRow
-                                title="Push mode"
-                                description="Realtime uses WebSocket when available and falls back to polling."
+                                title={t("waveconfig:sync.backend.server.pushModeTitle")}
+                                description={t("waveconfig:sync.backend.server.pushModeDescription")}
                                 attrs={{ "data-sync-row": "server-pushmode" }}
                             >
                                 <SettingSegmented
-                                    ariaLabel="Push mode"
+                                    ariaLabel={t("waveconfig:sync.backend.server.pushModeAria")}
                                     value={draft.serverPushMode === "onsave" ? "onsave" : "realtime"}
                                     options={[
-                                        { id: "realtime" as const, label: "Realtime" },
-                                        { id: "onsave" as const, label: "On save" },
+                                        { id: "realtime" as const, label: t("waveconfig:sync.backend.server.pushModeRealtime") },
+                                        { id: "onsave" as const, label: t("waveconfig:sync.backend.server.pushModeOnSave") },
                                     ]}
                                     onChange={(next) => patch({ serverPushMode: next })}
                                 />
                             </SettingRow>
                             <SettingRow
-                                title="Allow insecure http://"
-                                description="Permits plaintext connections (LAN or self-signed). Keep this off on the public internet."
+                                title={t("waveconfig:sync.backend.server.insecureTitle")}
+                                description={t("waveconfig:sync.backend.server.insecureDescription")}
                                 attrs={{ "data-sync-row": "server-insecure" }}
                             >
                                 <Toggle
                                     checked={draft.serverInsecure}
-                                    aria-label="Allow insecure http"
+                                    aria-label={t("waveconfig:sync.backend.server.insecureAria")}
                                     onChange={(v) => patch({ serverInsecure: v })}
                                 />
                             </SettingRow>
@@ -786,8 +835,8 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                     )}
                     {draft.transport === "none" && (
                         <SettingRow
-                            title="Local only"
-                            description="No transport is configured. Items live in the local database and nothing is uploaded."
+                            title={t("waveconfig:sync.backend.none.title")}
+                            description={t("waveconfig:sync.backend.none.description")}
                             attrs={{ "data-sync-row": "none-note" }}
                         />
                     )}
@@ -798,7 +847,7 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                     <SettingGroup
                         title={
                             <span className="flex items-center gap-2">
-                                Server status
+                                {t("waveconfig:sync.serverStatus.title")}
                                 <SignalBars level={signalLevel} label={signalLabel} />
                             </span>
                         }
@@ -806,67 +855,82 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                         {serverHealth != null && (
                             <>
                                 <SettingRow
-                                    title="Version"
-                                    description="Protocol version is the hard compatibility gate; app version is informational only."
+                                    title={t("waveconfig:sync.serverStatus.versionTitle")}
+                                    description={t("waveconfig:sync.serverStatus.versionDescription")}
                                 >
                                     <SettingValue mono>
-                                        app {serverHealth.appVersion} · protocol v{serverHealth.protocolVersion}
+                                        {i18n.t("waveconfig:sync.serverStatus.versionValue", {
+                                            app: serverHealth.appVersion,
+                                            protocol: serverHealth.protocolVersion,
+                                        })}
                                     </SettingValue>
                                 </SettingRow>
                                 <SettingRow
-                                    title="Server data"
-                                    description="Counted at the last check. Your local cursor sits behind until the next sync runs."
+                                    title={t("waveconfig:sync.serverStatus.dataTitle")}
+                                    description={t("waveconfig:sync.serverStatus.dataDescription")}
                                 >
                                     <SettingValue>
-                                        {serverHealth.items} items · rev {serverHealth.rev}
+                                        {i18n.t("waveconfig:sync.serverStatus.dataValue", {
+                                            items: serverHealth.items,
+                                            rev: serverHealth.rev,
+                                        })}
                                     </SettingValue>
                                 </SettingRow>
                                 <SettingRow
-                                    title="Auth"
-                                    description={`Capabilities: ${(serverHealth.capabilities ?? []).join(" · ") || "none reported"}.`}
+                                    title={t("waveconfig:sync.serverStatus.authTitle")}
+                                    description={i18n.t("waveconfig:sync.serverStatus.authDescription", {
+                                        capabilities:
+                                            (serverHealth.capabilities ?? []).join(" · ") ||
+                                            t("waveconfig:sync.serverStatus.authNoneReported"),
+                                    })}
                                 >
                                     <SettingValue tone={probe?.probe?.ready === true ? "ok" : "warn"}>
-                                        {probe?.probe?.ready === true ? "accepted" : "not verified"}
+                                        {probe?.probe?.ready === true
+                                            ? t("waveconfig:sync.serverStatus.authAccepted")
+                                            : t("waveconfig:sync.serverStatus.authNotVerified")}
                                     </SettingValue>
                                 </SettingRow>
                                 <SettingRow
-                                    title="Realtime push"
+                                    title={t("waveconfig:sync.serverStatus.realtimeTitle")}
                                     description={
                                         serverRealtime
-                                            ? "The server accepts WebSocket push; edits go out without waiting for a sync tick."
-                                            : "Not implemented on the server transport yet — edits go out on save, or on the next tick."
+                                            ? t("waveconfig:sync.serverStatus.realtimeSupportedDesc")
+                                            : t("waveconfig:sync.serverStatus.realtimeUnsupportedDesc")
                                     }
                                 >
                                     <SettingValue tone={serverRealtime ? "ok" : "warn"}>
-                                        {serverRealtime ? "supported" : "not supported"}
+                                        {serverRealtime
+                                            ? t("waveconfig:sync.serverStatus.realtimeSupported")
+                                            : t("waveconfig:sync.serverStatus.realtimeUnsupported")}
                                     </SettingValue>
                                 </SettingRow>
                             </>
                         )}
                         {probe != null && probe.probe?.ready !== true && (
                             <SettingRow
-                                title="Unreachable"
+                                title={t("waveconfig:sync.serverStatus.unreachableTitle")}
                                 description={
                                     <>
-                                        Could not connect to <span className="font-mono">{draft.serverUrl}</span>.
-                                        Retries on the normal interval; local edits keep working.
+                                        {t("waveconfig:sync.serverStatus.unreachablePrefix")}{" "}
+                                        <span className="font-mono">{draft.serverUrl}</span>
+                                        {t("waveconfig:sync.serverStatus.unreachableSuffix")}
                                     </>
                                 }
                             >
-                                <SettingValue tone="warn">offline</SettingValue>
+                                <SettingValue tone="warn">{t("waveconfig:sync.serverStatus.offline")}</SettingValue>
                             </SettingRow>
                         )}
                         <SettingRow
-                            title="Check"
-                            description="Same checks the CLI runs — every failure carries an executable fix command (wsh commontext-sync doctor)."
+                            title={t("waveconfig:sync.serverStatus.checkTitle")}
+                            description={t("waveconfig:sync.serverStatus.checkDescription")}
                             attrs={{ "data-sync-row": "status-server" }}
                         >
                             {probe != null && (probe.probe?.ready !== true || !isProtocolCompatible(probe)) && (
                                 <CopyForAgent
                                     title={
                                         probe.probe?.health != null && !isProtocolCompatible(probe)
-                                            ? "Copy the protocol mismatch for an AI to resolve"
-                                            : "Copy the server diagnostics for an AI to diagnose"
+                                            ? t("waveconfig:sync.serverStatus.copyProtocolMismatch")
+                                            : t("waveconfig:sync.serverStatus.copyDiagnostics")
                                     }
                                     text={() =>
                                         Promise.resolve(
@@ -882,31 +946,33 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 disabled={probing}
                                 onClick={runProbe}
                             >
-                                {probing ? "Checking…" : "Check"}
+                                {probing
+                                    ? t("waveconfig:sync.serverStatus.checking")
+                                    : t("waveconfig:sync.serverStatus.check")}
                             </SettingButton>
                         </SettingRow>
                     </SettingGroup>
                 )}
 
                 {/* ── This device ───────────────────────────────────────── */}
-                <SettingGroup title="This device">
+                <SettingGroup title={t("waveconfig:sync.device.title")}>
                     <SettingRow
-                        title="Device name"
-                        description="Shown as the Computer of new items. Renaming does not rewrite history: old items keep the name they were created with."
+                        title={t("waveconfig:sync.device.nameTitle")}
+                        description={t("waveconfig:sync.device.nameDescription")}
                         attrs={{ "data-sync-row": "device-name" }}
                     >
                         <SettingInput
-                            ariaLabel="Device name"
+                            ariaLabel={t("waveconfig:sync.device.nameAria")}
                             value={draft.deviceName}
-                            placeholder="Defaults to the hostname"
+                            placeholder={t("waveconfig:sync.device.namePlaceholder")}
                             width="w-72"
                             attrs={{ "data-sync-field": "device-name" }}
                             onChange={(v) => patch({ deviceName: v })}
                         />
                     </SettingRow>
                     <SettingRow
-                        title="Device ID"
-                        description="Generated once and never changes, so a renamed machine is still recognized as the same device."
+                        title={t("waveconfig:sync.device.idTitle")}
+                        description={t("waveconfig:sync.device.idDescription")}
                         attrs={{ "data-sync-row": "device-id" }}
                     >
                         <SettingValue
@@ -921,31 +987,37 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
 
                 {/* ── Status (live) ────────────────────────────────────── */}
                 <SettingGroup
-                    title="Status"
+                    title={t("waveconfig:sync.live.title")}
                     extra={
                         <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-actionsofttext">
                             <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                            live
+                            {t("waveconfig:sync.live.badge")}
                         </span>
                     }
                 >
                     <div data-sync-live-status="">
                         <SettingRow
-                            title="Last sync"
+                            title={t("waveconfig:sync.live.lastSyncTitle")}
                             description={
                                 syncStatus == null
-                                    ? "Reading status…"
+                                    ? t("waveconfig:sync.live.readingStatus")
                                     : syncStatus.lastError != null && syncStatus.lastError !== ""
                                       ? syncStatus.lastError
                                       : syncStatus.lastRunAt == null || syncStatus.lastRunAt === ""
-                                        ? `No run yet — syncs every ${Math.round(syncStatus.intervalSeconds / 60)} min once configured.`
-                                        : `pulled ${syncStatus.lastPulled ?? 0} · applied ${syncStatus.lastApplied ?? 0} · pushed ${syncStatus.lastPushed ?? 0}`
+                                        ? i18n.t("waveconfig:sync.live.noRunYet", {
+                                              minutes: Math.round(syncStatus.intervalSeconds / 60),
+                                          })
+                                        : i18n.t("waveconfig:sync.live.summary", {
+                                              pulled: syncStatus.lastPulled ?? 0,
+                                              applied: syncStatus.lastApplied ?? 0,
+                                              pushed: syncStatus.lastPushed ?? 0,
+                                          })
                             }
                             attrs={{ "data-sync-row": "status-last" }}
                         >
                             {syncStatus != null && syncStatus.lastError != null && syncStatus.lastError !== "" && (
                                 <CopyForAgent
-                                    title="Copy the last sync failure for an AI to diagnose"
+                                    title={t("waveconfig:sync.live.copyFailureTitle")}
                                     text={async () => {
                                         const journal = await CommonTextService.SyncJournalTail({ n: 20 });
                                         return buildSyncFailurePayload(
@@ -961,8 +1033,8 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                             </SettingValue>
                         </SettingRow>
                         <SettingRow
-                            title="Waiting to upload"
-                            description="Items the remote has not confirmed yet; the next sync sends them. 0 means everything is uploaded."
+                            title={t("waveconfig:sync.live.pendingTitle")}
+                            description={t("waveconfig:sync.live.pendingDescription")}
                             attrs={{ "data-sync-row": "status-pending" }}
                         >
                             <SettingValue
@@ -973,18 +1045,20 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                             </SettingValue>
                         </SettingRow>
                         <SettingRow
-                            title="Unresolved conflicts"
+                            title={t("waveconfig:sync.live.conflictsTitle")}
                             description={
                                 conflictsCount > 0
-                                    ? "Conflict details can be copied to an AI; nothing is overwritten. (CLI equivalent: `wsh commontext-sync conflicts --copy`.)"
-                                    : "Nothing to resolve."
+                                    ? t("waveconfig:sync.live.conflictsDescriptionSome")
+                                    : t("waveconfig:sync.live.conflictsDescriptionNone")
                             }
                             attrs={{ "data-sync-row": "status-conflicts" }}
                         >
                             {conflictsCount > 0 && (
                                 <>
                                     <CopyForAgent
-                                        title={`Copy all ${conflictsCount} conflicts for an AI to merge`}
+                                        title={i18n.t("waveconfig:sync.live.copyConflictsTitle", {
+                                            count: conflictsCount,
+                                        })}
                                         text={async () => {
                                             const resp = await CommonTextService.SyncConflictsCopy();
                                             return resp?.text ?? "";
@@ -998,7 +1072,7 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                             })
                                         }
                                     >
-                                        Review
+                                        {t("waveconfig:sync.live.review")}
                                     </SettingButton>
                                 </>
                             )}
@@ -1010,8 +1084,8 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                             </SettingValue>
                         </SettingRow>
                         <SettingRow
-                            title="Sync now"
-                            description="Run one sync immediately instead of waiting for the timer."
+                            title={t("waveconfig:sync.live.nowTitle")}
+                            description={t("waveconfig:sync.live.nowDescription")}
                             attrs={{ "data-sync-row": "status-now" }}
                         >
                             <SettingButton
@@ -1019,7 +1093,9 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                 disabled={syncingNow}
                                 onClick={() => void runSyncNow()}
                             >
-                                {syncingNow ? "Syncing…" : "Sync now"}
+                                {syncingNow
+                                    ? t("waveconfig:sync.live.syncing")
+                                    : t("waveconfig:sync.live.syncNow")}
                             </SettingButton>
                         </SettingRow>
                     </div>
@@ -1027,13 +1103,13 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
 
                 {/* ── Advanced：低频组收起，核心路径更短 ────────────────── */}
                 <AdvancedSection
-                    title="Advanced"
-                    subtitle="conflicts · scope · maintenance"
+                    title={t("waveconfig:sync.advanced.title")}
+                    subtitle={t("waveconfig:sync.advanced.subtitle")}
                     open={advancedOpen}
                     onToggle={toggleAdvanced}
                     attrs={{ "data-sync-advanced": String(advancedOpen) }}
                 >
-                    <SettingGroup title="Conflicts" className="mb-6">
+                    <SettingGroup title={t("waveconfig:sync.advanced.conflictsTitle")} className="mb-6">
                         <RadioRowGroup name="commontext-sync-policy" className="py-1">
                             {ConflictPolicies.map((p) => (
                                 <RadioRow
@@ -1042,12 +1118,12 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                                     value={p.id}
                                     selected={draft.conflictPolicy === p.id}
                                     onSelect={(v) => patch({ conflictPolicy: v as SyncConflictPolicy })}
-                                    title={p.title}
-                                    description={p.description}
+                                    title={t(p.titleKey)}
+                                    description={t(p.descriptionKey)}
                                     badge={
                                         p.recommended ? (
                                             <span className="rounded-full bg-actionsoft px-2 py-px text-[11px] font-medium text-actionsofttext">
-                                                recommended
+                                                {t("waveconfig:sync.advanced.recommended")}
                                             </span>
                                         ) : undefined
                                     }
@@ -1056,47 +1132,54 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                             ))}
                         </RadioRowGroup>
                     </SettingGroup>
-                    <SettingGroup title="Scope" className="mb-6">
+                    <SettingGroup title={t("waveconfig:sync.advanced.scopeTitle")} className="mb-6">
                         <SettingRow
-                            title="Common Text"
-                            description="This release syncs Common Text only. Other domains (settings, notes, sessions) are out of scope."
+                            title={t("waveconfig:sync.advanced.scopeCommonTextTitle")}
+                            description={t("waveconfig:sync.advanced.scopeCommonTextDescription")}
                             disabled
                         >
-                            <Toggle checked={true} disabled={true} aria-label="Common Text" onChange={() => {}} />
+                            <Toggle
+                                checked={true}
+                                disabled={true}
+                                aria-label={t("waveconfig:sync.advanced.scopeCommonTextAria")}
+                                onChange={() => {}}
+                            />
                         </SettingRow>
                         <SettingRow
-                            title="Sync deletions (tombstones)"
-                            description="When off, a delete stays local and the other machine pushes the item back."
+                            title={t("waveconfig:sync.advanced.tombstonesTitle")}
+                            description={t("waveconfig:sync.advanced.tombstonesDescription")}
                         >
                             <Toggle
                                 checked={draft.syncTombstones}
-                                aria-label="Sync deletions"
+                                aria-label={t("waveconfig:sync.advanced.tombstonesAria")}
                                 onChange={(v) => patch({ syncTombstones: v })}
                             />
                         </SettingRow>
                     </SettingGroup>
-                    <SettingGroup title="Maintenance" className="mb-0">
+                    <SettingGroup title={t("waveconfig:sync.advanced.maintenanceTitle")} className="mb-0">
                         <SettingRow
-                            title="Full re-sync"
-                            description="Ignore the local cursor and reconcile the whole remote snapshot once."
+                            title={t("waveconfig:sync.advanced.resyncTitle")}
+                            description={t("waveconfig:sync.advanced.resyncDescription")}
                         >
                             <SettingButton
                                 attrs={{ "data-sync-action": "resync" }}
-                                onClick={() => setStatus("Full re-sync queued. Progress shows in the sync panel.")}
+                                onClick={() =>
+                                    setStatusMsg(i18n.t("waveconfig:sync.statusMsg.resyncQueued"))
+                                }
                             >
-                                Re-sync
+                                {t("waveconfig:sync.advanced.resyncButton")}
                             </SettingButton>
                         </SettingRow>
                         <SettingRow
-                            title="Reset sync state"
-                            description="Clears the local cursor and rev cache only. Items and the remote file are untouched."
+                            title={t("waveconfig:sync.advanced.resetTitle")}
+                            description={t("waveconfig:sync.advanced.resetDescription")}
                         >
                             <SettingButton
                                 tone="danger"
                                 attrs={{ "data-sync-action": "reset" }}
-                                onClick={() => setStatus("Reset clears the local cursor and rev cache only.")}
+                                onClick={() => setStatusMsg(i18n.t("waveconfig:sync.statusMsg.resetNote"))}
                             >
-                                Reset
+                                {t("waveconfig:sync.advanced.resetButton")}
                             </SettingButton>
                         </SettingRow>
                     </SettingGroup>
@@ -1105,7 +1188,7 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
                 {status !== "" && (
                     <div
                         data-sync-status=""
-                        className={cn("mb-2 text-xs", status.startsWith("Saved.") ? "text-success" : "text-warning")}
+                        className={cn("mb-2 text-xs", statusOk ? "text-success" : "text-warning")}
                     >
                         {status}
                     </div>
@@ -1113,13 +1196,17 @@ export const SyncSettingsContent = memo(({ model: _model }: { model: WaveConfigV
 
                 {/* ── 草稿面板唯一保存位置 ─────────────────────────────── */}
                 <SaveBar
-                    hint={dirty ? "Unsaved changes" : "Draft — nothing is written until Save."}
+                    hint={
+                        dirty
+                            ? t("waveconfig:sync.savebar.unsaved")
+                            : t("waveconfig:sync.savebar.draft")
+                    }
                     dirty={dirty}
                     onSave={save}
                     onDiscard={() => {
                         setDraft(stored);
                         setDirty(false);
-                        setStatus("");
+                        setStatusMsg("");
                     }}
                     attrs={{ "data-sync-save": "" }}
                 />

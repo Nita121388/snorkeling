@@ -12,6 +12,8 @@ import { ObjectService } from "@/app/store/services";
 import type { TabModel } from "@/app/store/tab-model";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
 import { getLayoutDataBlockIds } from "@/layout/lib/inlineTabs";
 import type { LayoutNode } from "@/layout/lib/types";
@@ -669,7 +671,7 @@ export class PreviewModel implements ViewModel {
         this.htmlOpenMode = atom<HtmlOpenMode>((get) => {
             return resolveHtmlOpenModeFromMap(get(htmlOpenModePrefsAtom), get(this.metaFilePath));
         });
-        this.viewName = atom("Preview");
+        this.viewName = localeTextAtom(() => i18n.t("block:viewName.preview"));
         this.hideViewName = atom(true);
         this.viewText = atom((get) => {
             let headerPath = get(this.metaFilePath);
@@ -1392,13 +1394,13 @@ export class PreviewModel implements ViewModel {
         const filePath = globalStore.get(this.metaFilePath);
         const mimeType = jotaiLoadableValue(globalStore.get(this.fileMimeTypeLoadable), "");
         if (!isMarkdownFile({ fileInfo: null, mimeType, fileName: filePath, filePath, editMode: false })) {
-            this.showExportStatus("err", "仅 Markdown 文件可导出");
+            this.showExportStatus("err", i18n.t("preview:exportStatus.markdownOnly"));
             return;
         }
         const draft = globalStore.get(this.newFileContent);
         const source = draft != null ? draft : await globalStore.get(this.fileContent).catch(() => "");
         if (source == null || source.length === 0) {
-            this.showExportStatus("err", "无可导出的内容");
+            this.showExportStatus("err", i18n.t("preview:exportStatus.noContent"));
             return;
         }
         const baseName = filePath?.split(/[\\/]/).pop() ?? "export";
@@ -1409,21 +1411,21 @@ export class PreviewModel implements ViewModel {
         const providers = availableExportProviders(ctx);
         const provider = providers.find((p) => p.formats.includes(format));
         if (provider == null) {
-            this.showExportStatus("err", "没有可用的导出器");
+            this.showExportStatus("err", i18n.t("preview:exportStatus.noProvider"));
             return;
         }
-        this.showExportStatus("ok", `${format.toUpperCase()} 导出中…`);
+        this.showExportStatus("ok", i18n.t("preview:exportStatus.exporting", { format: format.toUpperCase() }));
         const result = await runMarkdownExport(provider.id, format, source, ctx, options, fileName);
         if (result.canceled) {
             globalStore.set(this.markdownExportStatus, null);
             return;
         }
         if (!result.ok) {
-            this.showExportStatus("err", result.error ?? "导出失败");
+            this.showExportStatus("err", result.error ?? i18n.t("preview:exportStatus.failed"));
             return;
         }
         const outName = result.filePath?.split(/[\\/]/).pop() ?? fileName;
-        this.showExportStatus("ok", `已导出 ${outName}`);
+        this.showExportStatus("ok", i18n.t("preview:exportStatus.exported", { name: outName }));
         // 在操作系统文件管理器中定位导出的文件，作为最直观的导出成功反馈。
         if (result.filePath != null) {
             (window as any).api?.revealNativePath?.(result.filePath);

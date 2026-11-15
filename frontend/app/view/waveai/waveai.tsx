@@ -3,13 +3,16 @@
 
 import { Button } from "@/app/element/button";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { atom } from "jotai";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 export class WaveAiModel implements ViewModel {
     viewType = "waveai";
     viewIcon = atom("sparkles");
-    viewName = atom("Wave AI");
+    viewName = localeTextAtom(() => i18n.t("waveai:viewName"));
     noPadding = atom(true);
     viewComponent = WaveAiDeprecatedView;
 
@@ -17,6 +20,8 @@ export class WaveAiModel implements ViewModel {
 }
 
 function WaveAiDeprecatedView() {
+    // Subscription only — the markup below reads `i18n.t(...)`.
+    useTranslation("waveai");
     const handleOpenAIPanel = useCallback(() => {
         WorkspaceLayoutModel.getInstance().setAIPanelVisible(true);
     }, []);
@@ -25,13 +30,10 @@ function WaveAiDeprecatedView() {
         <div className="flex h-full w-full flex-col px-6 text-center">
             <div className="flex-[4]" />
             <div className="mx-auto flex w-full max-w-[760px] flex-col items-center">
-                <h2 className="text-xl font-semibold text-primary">This legacy Wave AI block is no longer supported</h2>
-                <p className="mt-3 text-sm leading-6 text-secondary">
-                    This older AI widget has been retired. Please use the modern Wave AI panel for AI chats, terminal
-                    context, tools, and uploads going forward.
-                </p>
+                <h2 className="text-xl font-semibold text-primary">{i18n.t("waveai:deprecated.title")}</h2>
+                <p className="mt-3 text-sm leading-6 text-secondary">{i18n.t("waveai:deprecated.body")}</p>
                 <Button className="mt-6 cursor-pointer" onClick={handleOpenAIPanel}>
-                    Open Wave AI panel
+                    {i18n.t("waveai:deprecated.openPanel")}
                 </Button>
             </div>
             <div className="flex-[6]" />

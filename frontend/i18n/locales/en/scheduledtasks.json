@@ -1,0 +1,107 @@
+{
+    "viewName": "Scheduled Tasks",
+    "toolbar": {
+        "title": "Scheduled Tasks",
+        "newTask": "+ New Task"
+    },
+    "loading": "Loading…",
+    "empty": {
+        "title": "No scheduled tasks",
+        "description": "Schedule an agent to run on a cron, interval, or daily schedule.",
+        "action": "New Task"
+    },
+    "columns": {
+        "name": "Name",
+        "agent": "Agent",
+        "model": "Model",
+        "schedule": "Schedule",
+        "status": "Status",
+        "actions": "Actions"
+    },
+    "badge": {
+        "off": "off"
+    },
+    "status": {
+        "pending": "pending"
+    },
+    "model": {
+        "default": "default"
+    },
+    "actions": {
+        "edit": "Edit",
+        "enable": "Enable",
+        "disable": "Disable",
+        "runNow": "Run now",
+        "history": "History",
+        "delete": "Delete"
+    },
+    "deleteConfirm": "Delete scheduled task “{{name}}”?",
+    "queued": "Queued “{{name}}”",
+    "history": {
+        "title": "History — {{name}}",
+        "empty": "No runs recorded yet.",
+        "status": "Status",
+        "duration": "Duration",
+        "error": "Error"
+    },
+    "schedule": {
+        "unknownInterval": "every ?s",
+        "everySeconds_one": "Every {{count}}s",
+        "everySeconds_other": "Every {{count}}s",
+        "everyHours_one": "Every {{count}} hour",
+        "everyHours_other": "Every {{count}} hours",
+        "everyMinutes_one": "Every {{count}} minute",
+        "everyMinutes_other": "Every {{count}} minutes",
+        "dailyAt": "Daily at {{time}}",
+        "weeklyOn": "Weekly on {{day}} at {{time}}",
+        "onceAt": "Once at {{time}}",
+        "once": "Once"
+    },
+    "weekday": {
+        "sunday": "Sunday",
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday",
+        "friday": "Friday",
+        "saturday": "Saturday"
+    },
+    "month": {
+        "january": "January",
+        "february": "February",
+        "march": "March",
+        "april": "April",
+        "may": "May",
+        "june": "June",
+        "july": "July",
+        "august": "August",
+        "september": "September",
+        "october": "October",
+        "november": "November",
+        "december": "December"
+    },
+    "cron": {
+        "needsFields": "Needs 5 fields: minute hour day-of-month month weekday",
+        "unparsable": "Can't parse this expression — check the 5 fields",
+        "everyNMinutes_one": "Every {{count}} minute",
+        "everyNMinutes_other": "Every {{count}} minutes",
+        "everyNHours_one": "Every {{count}} hour",
+        "everyNHours_other": "Every {{count}} hours",
+        "atMinute": "at minute {{minutes}}",
+        "atMinutes": "at minutes {{minutes}}",
+        "atTime": "at {{times}}",
+        "everyMinute": "Every minute",
+        "daily": "Daily {{time}}",
+        "domOnThe": "on the {{ordinal}} of the month",
+        "domRange": "on days {{from}}–{{to}} of the month",
+        "domList": "on day-of-month {{days}}",
+        "monIn": "in {{month}}",
+        "monFrom": "from {{from}} through {{to}}",
+        "monList": "in {{months}}",
+        "dowEveryWeekday": "every weekday (Mon–Fri)",
+        "dowEveryWeekend": "every weekend",
+        "dowEvery": "every {{day}}",
+        "dowFromThrough": "{{from}} through {{to}}",
+        "dowOn": "on {{days}}"
+    }
+}

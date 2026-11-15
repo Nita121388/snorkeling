@@ -1,0 +1,343 @@
+---
+sidebar_position: 99
+id: "i18n"
+title: "Internationalization (i18n)"
+---
+
+# Internationalization (i18n)
+
+Snorkeling uses [`i18next`](https://www.i18next.com/) + [`react-i18next`](https://react.i18next.com/)
+for UI string translation. This document is the **single source of truth for the i18n rollout** —
+it records the established migration patterns, the architecture coordinates, the gate tooling,
+and the per-module progress.
+
+> **Status (2026-11):** P0 infrastructure landed on `feat/i18n-rollout` (i18next 27 /
+> react-i18next 18, `ui:locale` = auto/en/zh, dual renderer+main-process instances).
+> P1 onboarding module migrated. P2 batch migration in progress — see the
+> [Progress](#progress) table. The 2026-07 attempt lives on branch
+> `worktree-i18n-snorkeling` as a read-only reference.
+
+---
+
+## Architecture
+
+| Path                                 | Purpose                                                                                                                                                                                                                                         |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontend/i18n/config.ts`            | Renderer i18next instance + init. **All resources are statically imported** (no HttpBackend, no language detector — in Electron everything ships with the app). Exposes `i18n` singleton, `initI18n()`, `resolveLocale()`, `SUPPORTED_LOCALES`. |
+| `frontend/i18n/i18nmodel.ts`         | Jotai singleton `I18nModel`: `activeLocaleAtom` + `setActiveLocale()` (applies to i18next **and** pushes to the main process via `api.setLocale`).                                                                                              |
+| `frontend/i18n/I18nProvider.tsx`     | Mounted in `app.tsx` around `<Workspace>`. Inits i18next once, then pushes runtime `ui:locale` changes through `I18nModel`.                                                                                                                     |
+| `frontend/i18n/i18next.d.ts`         | `CustomTypeOptions` resource registration — **every namespace must be registered here** so `t("ns:key")` is type-checked against the bundled English JSON.                                                                                      |
+| `frontend/i18n/locales/en/<ns>.json` | English resources. **Single source of truth** for keys + types.                                                                                                                                                                                 |
+| `frontend/i18n/locales/zh/<ns>.json` | Chinese resources. Key-for-key mirror of `en/` (enforced by `check-parity.mjs`).                                                                                                                                                                |
+| `emain/emain-i18n.ts`                | **Separate** main-process i18next instance (`createInstance()`), synchronous init, idempotent. Electron-free so it is unit-testable.                                                                                                            |
+| Wave config `ui:locale`              | `"auto"` (default — follows the system locale), `"en"`, `"zh"`. Changing it from Settings > Language switches the renderer immediately and pushes to the main process, which rebuilds the native menus.                                         |
+
+Key behaviors:
+
+- `defaultNS: "common"` — but always write **fully-qualified keys**: `t("common:settings.x")`,
+  `t("onboarding:features.next")`. Short ns-relative keys are rejected by the type checker
+  (react-i18next 18 behavior — verified).
+- Locale sync is **push, not pull**: the renderer owns the persisted `ui:locale`; the main
+  process boots from launch settings and receives changes via the `set-locale` IPC channel.
+- `auto` resolution: renderer uses `navigator.language`, main uses `app.getLocale()`;
+  both normalize to `en|zh` with `en` as the final fallback. Tests must **pin the
+  navigator language** — jsdom follows the host machine, so an unpinned test only passes
+  on the developer's machine.
+
+---
+
+## Migration Patterns
+
+### Pattern A — Plain literal string
+
+```tsx
+import { useTranslation } from "react-i18next";
+
+const { t } = useTranslation("onboarding");
+// ...
+{
+  t("onboarding:features.footer.next");
+}
+```
+
+**Always use the fully-qualified key** (`ns:section.key`). Config tuples that carry
+keys must be `as const` so the key stays a literal union (see Pattern F).
+
+### Pattern B — Interpolation inside JSX: `<Trans>`
+
+For text that mixes static sentences with inline JSX (bold segments, `<code>`, `<kbd>`)
+or interpolation values, split the sentence into keys and compose with `<Trans>`:
+
+```tsx
+import { Trans, useTranslation } from "react-i18next";
+
+<Trans
+    ns={"onboarding" as const}
+    i18nKey={"onboarding:upgradeV0145.quakeBefore" as never}
+    t={t}
+/>
+<strong>{t("onboarding:upgradeV0145.quakeTitle")}</strong>
+<Trans ns={"onboarding" as const} i18nKey={"onboarding:upgradeV0145.quakeAfter" as never} t={t} />
+```
+
+Notes:
+
+- `ns={"onboarding" as const}` narrows the namespace literal for TS.
+- `i18nKey={"ns:key" as never}` remains the documented escape hatch when `values` are
+  passed (react-i18next's `Trans` typing). In plain **expression positions** `t()`
+  with a single fully-qualified key needs no escape hatch.
+- Version numbers and other dynamic fragments may be inlined into the key value
+  (avoiding interpolation) when the value is effectively static — the version patch
+  panels do this.
+- **Interpolated keys in expression position cannot use the hook `t` directly**
+  (i18next 27 / react-i18next 18): `t("ns:key", { name })` fails to type-check because
+  the hook's `TFunction` overload only accepts options that carry `defaultValue`, and the
+  optional-options overload is unreachable. Two working exits, pick by context:
+  1. non-JSX `.ts` files → `i18n.t("ns:key", { name })` from `@/i18n/config` (Pattern F);
+  2. JSX components → also `i18n.t(...)` (keep the `useTranslation` hook call in the
+     component so the subtree re-renders on language change), or pass `defaultValue: ""`.
+     Plain keys still go through the hook `t` (full key typing). See `tab-info-card.tsx`
+     (`agentCount`), `aipanelheader.tsx` (`widgetAccessTitle`), `tabbar.tsx` (`expandSidebarWithCount`).
+
+### Pattern C — Configuration arrays with embedded display strings
+
+Don't bury translated substrings inside data structures. Refactor the data to hold
+**structural** values only, and translate at the render site (Pattern A/B). See
+`onboarding-upgrade-patch.tsx` (old branch phase 1) for the canonical before/after.
+
+### Pattern D — JSX angle brackets must remain HTML entities
+
+When `<` / `>` appear as literal text in JSX (e.g. a "Prev" button prefixed with `&lt;`),
+they must stay as HTML **entities**. Bare angle brackets make the JSX parser treat them
+as tag delimiters — `error TS1003`. When rewriting strings programmatically, build the
+entity as `chr(0x26) + "lt;"` — shells and Perl mangle the literal `&`/`;`.
+
+### Pattern E — `aria-label` / string attributes
+
+`<Trans>` returns JSX, not a string, so string attributes use template literals of
+bare `t()` calls:
+
+```tsx
+aria-label={`${collapsed ? t("tab:expand") : t("tab:collapse")} ${group.tabName}`}
+```
+
+Single-key string attributes can use `t("ns:key")` directly.
+
+### Pattern F — Plain `.ts` files (no React): the `i18n` singleton
+
+```ts
+import { i18n } from "@/i18n/config";
+
+menu.push({
+  label: i18n.t("tab:tab.rename"),
+  click: () => {
+    /* ... */
+  },
+});
+
+const FlagColors = [{ labelKey: "tab:flagColor.green", value: "#58C142" }] as const; // `as const` keeps labelKey a literal union for typed i18n.t()
+```
+
+### Pattern G — Main process: separate instance, **ESM rules**
+
+The main-process bundle is **ESM**. `require()` throws `Cannot find module` at boot →
+Uncaught Exception → the app exits. Never use `require()` in `emain/*`; use static
+imports, and **dynamic `import()` for cycles** (e.g. `emain-menu` ↔ `emain-ipc`):
+
+```ts
+import { coerceLocale, setMainLocale } from "./emain-i18n"; // static — no cycle
+fireAndForget(async () => {
+  await setMainLocale(normalized);
+  const { makeAndSetAppMenu } = await import("./emain-menu"); // dynamic — cycle
+  makeAndSetAppMenu();
+});
+```
+
+Translate with `getI18nMain().t("common:menu.file")` or the `tmew()` wrapper. Init is
+synchronous and idempotent (`initI18nMain` switches via `changeLanguage`, never re-inits).
+
+### Pattern H — Hardcoded Chinese is treated exactly like English
+
+Any CJK literal in a user-visible string is a finding of the scan gate. Migrate it to
+en/zh resources: the zh value is the original text, the en value is a translation.
+Do **not** assert Chinese strings in tests — `en` is the source of truth.
+
+### Pattern I — Tests must not assert literal copy
+
+Tests that assert UI copy should recompute it (`i18n.t(...)`) or assert on
+`data-testid` instead. Never freeze zh copy into a test.
+
+### Pattern J — Module-load tables and view models: keys + locale-reactive atoms
+
+Two places freeze the locale if you translate them naively, because they are
+evaluated **once** (module import, or model construction per block):
+
+1. **Module-level lookup tables** (`Columns`, filter option tuples, `ViewMetaMap`)
+   must store a **key** (`labelKey` / `titleKey` / `nameKey`) — never a resolved
+   string. `as const satisfies Record<..., { ...; titleKey: string }>` keeps the
+   key literal so `i18n.t(entry.titleKey)` still type-checks.
+2. **`viewName`-style atoms** live on a view model that is built once per block,
+   so `atom(i18n.t("ns:key"))` keeps the language that was active when the block
+   was opened. Use `localeTextAtom(() => i18n.t("ns:key"))`
+   (`frontend/i18n/i18nmodel.ts`): it reads `I18nModel.activeLocaleAtom` inside
+   the atom, so it recomputes (and notifies `useAtomValue` subscribers) on every
+   `ui:locale` change. The thunk argument (instead of a raw key) exists because
+   i18next's `ParseKeys` helper resolves to `never` under this project's
+   `CustomTypeOptions` — passing a thunk keeps the literal inside `t()`'s typed
+   overloads.
+
+The view-display-name registry is the canonical example:
+`frontend/app/block/blockutil.tsx`'s `ViewMetaMap` stores `titleKey`
+(`block:viewName.*`) + `icon`; `blockViewToName(view)` resolves through the
+`i18n` singleton **at call time**, `blockViewToNameKey(view)` hands the key to
+locale-reactive atoms (`blockregistry.ts`'s default `ViewModel.viewName`).
+Consumers (`blockframe-header`, `BlockBar` minimized cards, session-overview
+fallbacks, tab cards) call `blockViewToName` during render, so a locale switch
+follows on the next render — no consumer changes required.
+Regression guard: `frontend/i18n/i18nmodel.test.ts` (atom follows `zh`) +
+`frontend/app/block/blockutil.test.tsx` (registry stores keys, not literals).
+
+---
+
+## Gate tooling (R7 防回潮)
+
+| Command                                             | Judges                                                     | Exit code                                              |
+| --------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------ |
+| `npm run i18n:check`                                | full-repo hardcoded scan + en/zh key parity                | any finding outside the allowlist, or any key diff → 1 |
+| `node scripts/i18n/scan-hardcoded.mjs --dir <path>` | incremental scan for one module dir (per-batch acceptance) | same                                                   |
+| `node scripts/i18n/check-parity.mjs`                | en/zh key-set diff per namespace                           | diff → 1                                               |
+
+- `scan-hardcoded.mjs` parses with the TypeScript AST (no regex hacks): findings are
+  `jsx-text` (static JSX text with ≥3 letters), `attr` (constant `title`/`label`/`aria-label`/`placeholder`/… values), and `cjk` (CJK in any string literal — the mixed-language governance).
+- **Allowlist**: `scripts/i18n/allowlist.json`, matched by `file::kind::hash(text)`.
+  Every entry **must carry a reason** (CLI command names, config key names, brand names…).
+  `--update-baseline` adds current findings with an `UNREVIEWED` reason that a human must
+  replace before merge.
+- Type-debt gate is separate and unchanged: `node scripts/check-tsc-baseline.mjs`
+  (baseline `docs/project/tsc-baseline.json`, currently 47 — migration may not raise it).
+
+---
+
+## Standard steps for migrating a module
+
+1. **Register the namespace** in `frontend/i18n/i18next.d.ts` (+ `NS` and resources in
+   `config.ts`, + imports in `emain/emain-i18n.ts`).
+2. **Create** `frontend/i18n/locales/en/<ns>.json` and `zh/<ns>.json`, keyed by
+   screen/section (`{"upgradePatch": {"prevButton": "Previous ({{version}})"}}`).
+3. **Replace strings** using Patterns A–J above. Keep JSX structure, classes, and
+   behavior byte-identical apart from the copy source.
+4. **Update siblings**: tests asserting the old literals (Pattern I), `*.preview.tsx`
+   fixtures, mock data.
+5. **Run the gates** and make them produce numbers:
+   ```bash
+   node scripts/i18n/scan-hardcoded.mjs --dir frontend/app/<module>   # 0 new findings
+   node scripts/i18n/check-parity.mjs                                  # 0 diff
+   npx vitest run <module>                                             # green
+   node scripts/check-tsc-baseline.mjs                                 # ≤ baseline
+   ```
+6. Commit the batch as one revertable commit; update the [Progress](#progress) table.
+
+---
+
+## Progress
+
+A module is **done** when its only scan findings are allowlisted (with reasons), en/zh
+are key-parity-clean, and no new tsc errors appear in its files.
+
+| Module / Namespace                                               | Status                                             | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `common`                                                         | ✓ P0                                               | Settings > Language panel is the dogfood consumer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `onboarding`                                                     | ✓ P1                                               | All `frontend/app/onboarding/**` + `onboarding.preview.tsx`. 12 allowlist entries (CLI/config-key names).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `emain`                                                          | ✓ P3 (main-process copy)                           | All user-visible main-process copy goes through `tmew("common:…")` — native app menu (27 labels: app / file / view / window / workspace + dock), save-image context menu, confirm-quit / close-window / close-tab / delete-workspace / ARM64-warning dialogs, save-scrollback + export-HTML/PDF native dialogs, every auto-updater & manual-install dialog + notification body, and the agent OS notification titles/bodies (`osNotify.*`, plural-aware via `_one`/`_other`). **Freeze traps fixed**: `dockMenu` was a module-level `Menu.buildFromTemplate` (evaluated at import → `tmew()` throws before `initI18nMain`, and the label would stay frozen after a switch) → now `makeDockMenu()` rebuilt by `makeDockTaskbar()`, and the `set-locale` IPC handler rebuilds the dock menu together with `makeAndSetAppMenu()`. Menu builders re-evaluate on every call, so `tmew(...)` is render-time. Conditional copy is two keys chosen at runtime (`isBuilderWindowFocused ? reloadWindow : reloadTab`); the four `visible: false` accelerator-only items reuse their visible sibling's key; `role`/`accelerator`/`id`/`type` untouched (Electron localizes roles from the OS locale). Brand name `Snorkeling` in notification titles stays literal. Guard test (`emain/emain-i18n.test.ts`) extracts every `tmew("common:…")` literal from `emain/*.ts` and asserts it resolves in **both** locales (a typo would otherwise render the raw key). `emain/os-notify.test.ts` now inits English and recomputes assertions through `tmew(...)` (Pattern I). The `scan-hardcoded` AST only walks JSX, so `label:`-in-object copy is invisible to it — the main-process sweep is a manual `grep -n 'label: "' emain/*.ts` (0 left).                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `tab` / `aipanel`                                                | ✓ P2 B1                                            | All `frontend/app/tab/**` (incl. `tabcontextmenu.ts`, `tab-info-card-model.ts`, update banner, workspace switcher) + `frontend/app/aipanel/**` (incl. context menu, model `setError` strings, `ai-utils`). 1 allowlist entry (docs URL). Interpolated strings in components call `i18n.t(...)` (hook `t` rejects options without `defaultValue`); three test files init `initI18n("en")` (Pattern I).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `session-overview` / `commontext`                                | ✓ P2 B2                                            | All `frontend/app/session-overview/**` (board model/timeline/metrics are pure `.ts` — Pattern F via the `i18n` singleton) + `frontend/app/commontext/**` (compose modal, send button, send target, page icon). Chinese-first surfaces kept their original copy as the zh values (Pattern H); en is the translation. Column titles / fallback column names became functions (`getOverviewBoardColumnTitle()` etc.) so a runtime locale switch is picked up; tests recompute expectations via `i18n.t(...)` + `initI18n("en")` (Pattern I). 2 allowlist entries (`&nbsp;·` separator, `Enter` kbd key name).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `block`                                                          | ✓ P2 B3 (part 1)                                   | `frontend/app/block/**` — 79 scan findings + adjacent expression-position copy on the same surfaces (connstatusoverlay status/repair strings, connectionbutton tooltips, blockutil magnify/copy defaults, TabTargetModal cluster, info-card fallbacks). All hard-coded Chinese kept verbatim as the zh values (锁定标签 / 关闭其他（锁定除外） / 未保存的修改 / 已锁定 / 设置 emoji 人格 — Pattern H). `inlinetab-contextmenu.ts`, sidebar/float title helpers and `blockViewToName`'s view registry stay keyed; `ViewMetaMap` display names (`blockViewToName`) are **deliberately not migrated** here — it's a cross-module registry consumed by already-migrated modules (session-overview fallbacks); migrate it with the view-name batch (B7) together. 4 test files switch to `initI18n("en")` + en-source-of-truth literals (Pattern I).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `element`                                                        | ✓ P2 B3 (part 2) — `block-editor/**` excluded (B5) | `frontend/app/element/**` minus `block-editor/` — 132 scan findings cleared (jsx-text 68 / attr 52 / cjk 12) across `quicktips`, `markdown`, `search`, `session-note-section`, `markdown-outline`, `image-lightbox`, `clipboard-float-actions`, `errorboundary`, `tag-editor`, `emojipalette` + zero-finding siblings. Load-time constant tables became render-time `t()` calls (`quicktips` keybind sections, `KeyBinding` digit key), Chinese-original strings kept verbatim as zh (界面渲染出错 / 保存失败：{{error}} / 复制为副本 / 移除 — Pattern H). 10 allowlist entries: 4 KeyCap modifier key names (`⌘ Cmd` / `Alt` / `^ Ctrl` / `⇧ Shift`), 4 CLI syntax samples (`wsh commands` / `wsh view` / `wsh edit` / `[filename…]`), 1 markdown image-syntax template (`![图片](`) that is written into the **user's document source**, not UI. `common` gained `copy` / `loading`. 3 test files init `initI18n("en")` (Pattern I). Cross-module components (`markdown` / `search` / `tag-editor`) kept props / className / `data-*` byte-identical — only the copy source changed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `view/waveconfig`                                                | ✓ P2 B4                                            | B4a — `syncsettings` / `agentaccesssettings` / `secretscontent` / `agentnotifysettings` (264 keys, option tables keep `as const` key maps, +11 allowlist). **B4b** — the rest of the directory: `herosettings` / `waveaivisual` / `aipromptsettings` / `themepicker` / `waveconfig.tsx` / `waveconfig-model.ts` / `waveai-templates.ts`. The `ConfigFile` registry now carries `nameKey` / `descKey` template-literal key unions instead of display strings (Pattern C: `makeConfigFiles()` runs once, so a captured string would freeze the locale), model-side `setError` / `confirm()` copy goes through the `i18n` singleton (Pattern F), theme-card and AI-template tables use `as const satisfies` so `t()` keeps the literal key type. 18 allowlist entries in this directory (7 new: CLI flags `--yes` / `--copy-not-move`, env var `HERO_ROOT`, product name `cc-switch`, config file `waveai.json`, example endpoint URL + model id). Hero terminology: Hero stays untranslated, 据点 = home base, 名册 = roster, 登场 = launch.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `element/block-editor`                                           | ✓ P2 B5                                            | 32 scan findings + expression-position copy on the same surfaces. Registry tables (`commands/slash.ts` / `turn-into.ts` / `styles.ts`) are evaluated at module load, before i18n init — they now carry `labelKey` (and keep `label` as the English search term / fallback); render sites resolve via `slashCommandLabel()` / `blockActionLabel()` / `inlineStyleLabel()` (`registry.ts`). `slash-command` keys are hyphenated by command id (`block-editor:slashCommand.heading-1`); `turnInto`/`inlineStyle` are keyed by kind/id. emoji-picker's mixed zh copy became en-source + zh mirror (Pattern H); `清除`/`取消`/`保存`/`别名命中` were pure-CJK JSX text the scanner cannot see (see Tooling notes). 1 allowlist entry (`img 图片` slash search alias = search data). Table DOM structure / className / `data-*` untouched; emoji-picker props + interactions untouched. `i18n-labels.test.ts` pins every builtin labelKey to the bundled resources.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `view/term` / `view/preview`                                     | ✓ P2 B6                                            | `frontend/app/view/term/**` (70 findings) + `frontend/app/view/preview/**` (140 findings). New namespaces `term` / `preview` (`term.json` / `preview.json`), also registered in `emain/emain-i18n.ts` so both instances keep the same resource set. **Load-time module constants became lazy getters**: `PreviewPlugin.displayName` on `banner` / `base-view` / `md-properties` is now `get displayName() { return i18n.t("preview:plugin.*") }` (a captured string would freeze the boot locale), and `VcsFileMarkTitle` → `VcsFileMarkTitleKey` (`{M,U,D}` → literal key map) resolved at the call site in both the directory table and the explorer tree. `buildPagerHintTexts()` / `image-pager-index` error text / `parseBaseConfig()` / `runExport()` statuses are pure `.ts` → `i18n.t` singleton (Pattern F); `envmodal` uses `<Trans components={{ code }}>` so the `$ENV:NAME` / override-value `<code>` styling is byte-identical (Pattern B). The two hidden measurement probes (`csvview` `table.probe` cell, `preview-directory` `.dummy` row — both `visibility:hidden`) plus the canvas font-availability sentinel are allowlisted with reasons (translating them would change the measured baseline). `entry-manager`'s `EntryManagerType` enum values are display strings, so a `EntryTypeTitleKey` map translates at render. 2 test files gained `initI18n("en")` and assert through `i18n.t(...)` (Pattern I). Beyond the scan findings, the same surfaces' expression-position copy was migrated too (markdown move-toolbar titles, Monaco `addAction` labels, the `No file reference found` alert, new-files `Unpin`/`Remove`, search-panel counters). All verify-probe anchors (`.info-card`, `data-info-card-attached`, `inline-edit-active`, `.dir-vcs-*` classes) untouched.                                                                                                                                                                                                                                                                                                                                                      |
+| `view/vcs` + `vcscommits` / `vcshistory` / `vcsdiff` / `aiaudit` | ✓ P2 B7b                                           | `frontend/app/view/{vcs,vcscommits,vcshistory,vcsdiff,aiaudit}/**` — 105 + 17 + 6 + 5 + 52 scan findings cleared with **two** new namespaces: `vcs` (the four VCS surfaces share it, keyed by section `common` / `relative` / `fileType` / `operations` / `changes` / `branches` / `tabs` / `history` / `pipelines` / `panel` / `commits` / `pathHistory` / `diff` / `repoSwitcher`) and `aiaudit`. Load-time tables became key maps resolved at render (`VcsFileTypeFilterOptions.labelKey`, `VIEWS[].labelKey`, `StateFilterOptions[].labelKey`, `VcsOperationVerbKey` / `VcsOperationLabelKey` / `SyncCompletedKey` / `SyncFailedKey`, `FeatureLabelKey` / `SourceLabelKey`, `aiaudit-format`'s `StateLabelKey`) — the old `VcsOperationVerb` / `FeatureLabels` objects froze the boot locale. Pure `.ts` helpers (`vcs-time.formatRelativeTime`, `aiaudit-format` state/day/session/result labels, `aiaudit-model`'s `viewName` + comment atoms) go through the `i18n` singleton (Pattern F). **Deliberately not translated** (documented, not silently skipped): `DefaultCommitMessage = "chore: update selected files"` (written into a real git commit), git output / hashes / branch names (data), duration units `ms/s/m` in `formatDuration` and `MM-DD` / `Mon D` date patterns (format patterns belong to `11-02-datetime-format-config` — R6). No allowlist entries needed: the dirs' remaining Latin literals are git data. **VcsIconButton contract intact**: every `title` passed is now `t()`/`i18n.t()` but stays non-empty, `title` still doubles as `aria-label`, `reveal="hover"`'s `group` class was not touched; `vcs-panel-buttons.test.ts` (源码级守卫) stays green unmodified. `className` / `data-vcs-*` verified byte-identical by diffing class literals before/after (0 differences). 3 test files switched to `initI18n("en")` + `i18n.t(...)` recomputation (Pattern I); the two copy-dependent verify probes (`vcs-panel-buttons` remote-jump label, `vcshistory-rows` group header / `Diff` button / relative-time regex) became locale-tolerant (en **or** zh) so they don't false-red on a zh machine.                  |
+| `view/*` small modules + **view-name registry**                  | ✓ P2 B7c                                           | `frontend/app/view/{hero,scheduledtasks,processviewer,webview,launcher,tsunami,waveai,aifilediff}` + `view/session-outline-rail.tsx` — 76 scan findings cleared with 8 new namespaces (`hero` / `scheduledtasks` / `processviewer` / `webview` / `launcher` / `tsunami` / `waveai` / `aifilediff`, all registered in `config.ts`, `i18next.d.ts` **and** `emain/emain-i18n.ts`). Beyond the scan findings the same files' expression-position copy was migrated too (`Tooltip content=` in scheduledtasks/processviewer, webview's whole context menu, `describeSchedule`, `processviewer` column table + status labels + context menu, `hero`'s capacity buckets/commands, wizard placeholders). Load-time constants became keys (`scheduledtasks/cron-describe.ts` resolves weekday/month names per call, `processviewer` `Columns[].labelKey`/`tooltipKey`, wizard `validateCreateDraft()` returns a key). **`ViewMetaMap` is now a key registry** (`titleKey: "block:viewName.*"`, `as const satisfies`), `blockViewToName()` resolves at call time via the `i18n` singleton, and every frozen `viewName` atom (`hero/launcher/waveai/aifilediff/webview/scheduledtasks/processviewer/vcs*/aiaudit/help/vdom/preview/waveconfig/session-overview` + `blockregistry` defaults) switched to `localeTextAtom(() => i18n.t(...))` so a locale switch is followed (Pattern J). `term-model`'s `"Wave App"` / `tsunami`'s `"WaveApp"` fallbacks reuse `block:viewName.*`. 3 allowlist entries: 2× `--memory-from-session` CLI flag (`<code>`), 1× `bookmarks.json` file name. zh 取舍 as elsewhere: brand/product names (`Wave` / `WaveAI` / `WaveApp` / `Tsunami` / `Hero` / `CHARTER` / `PID` / `CPU` / `Agent` / `PID`) stay untranslated, cron phrasing is fully localized (weekday/month tables are resources, not code), `formatProviderModel`/`roleLine`/`emptyStateText`/`cron` helpers resolve through `i18n` (Pattern F). 5 test files switched to `initI18n("en")` + `i18n.t(...)` recomputation (Pattern I: `blockutil.test`, `hero-model.test`, `hero-view.dom.test`, `hero-create-wizard.dom.test`, `webview.test`).                            |
+| `modals` / `workspace` + `suggestion` + `app.tsx`                | ✓ P2 B7d                                           | The last app-side surfaces — 231 scan findings cleared with **two** new namespaces: `modals` (about, agent card, agent hook settings incl. `agentsettings-utils.ts` Pattern F status/action/state labels, AI session note, close tab, conn typeahead, edit origins, file conflict, the `Modal` shell's close/Cancel/Ok defaults, note directory, restart confirm, scheduled-task editor, sync conflict, unsaved file) and `workspace` (widgets bar + settings menu + apps grid, the New Agent / New Terminal launch windows incl. cc-switch vendor chips and the 启动方式 TUI/GUI segmented control, hero launch window, dev runtime tooltip, quick launch, workspace empty state; `suggestion.tsx` + `app.tsx` went into `common`). `common` gained `common.refresh`, `app.invalidConfig`, `suggestion.*`. **DialogShell/Modal contract untouched**: `title`/`aria-label`/`data-*`/button order/className byte-identical — only the copy source changed (C2). `SettingsFloatingWindow`'s `menuItems` became `labelKey` entries (`as const`, Pattern J) resolved at render; error banners (`showLaunchError` / `showSettingsError` / `showNoDetectedAgentError`) interpolate through the `i18n` singleton (Pattern F). Chinese-first copy stayed verbatim as zh values with en translations (Pattern H: 定位到块 / 该块没有会话 id / 启动方式 / TUI 终端 / GUI 对话 / 已复制 / 失败 / 复制调试信息 / 版本 / 数据 / 配置 / 日志). 7 new allowlist entries: `Snorkeling` + `Command Line Inc.` (brand/copyright), `~/notes` / `~/myproject` / `Asia/Shanghai` (path & timezone placeholders), `wsh hero create --name <name> --yes` (CLI sample in `<code>`), `esc` (kbd). dev-runtime's **clipboard diagnostic dumps** (`formatDevRuntimeCopy` / `formatAppDebugCopy`) deliberately stay English — developer-facing diagnostics asserted by `dev-runtime.test.ts`. 3 test files switched to `initI18n("en")` + `i18n.t(...)` recomputation (Pattern I: `restartconfirmmodal.test`, `agenthooksettingsmodal.test`, `syncconflictmodal.test`); the `agent-card-seen` verify probe's `findButtonProbe` now accepts both locales for `TUI 终端` / `Current Tab`. |
+
+---
+
+## Tooling notes (gotchas encountered)
+
+- **Full keys only**: `t()` rejects ns-relative short keys — `t("onboarding:init.x")`
+  works, `t("init.x")` does not (even with `useTranslation("onboarding")` bound).
+- **jsdom follows the host locale** — pin `navigator.language` in any test that
+  exercises `resolveLocale("auto")` (see `frontend/i18n/i18n-config.test.ts`).
+- **`require()` is not available in the ESM main bundle** (see Pattern G) — this
+  crashed the whole app at boot until fixed.
+- **i18next 27 dropped `initImmediate`** from `InitOptions` (TS error if you pass it).
+- **`as const satisfies` when a table holds keys, not text**: `t(someString)` re-types as
+  `string` and is rejected. `[{ nameKey: "ns:a.b" }, …] as const satisfies readonly T[]`
+  keeps the literal union while still checking the object shape (theme cards, Hero soft-limit
+  options, `ConfigFile` registry, `WaveAITemplates`).
+- **Template-literal key unions for registries**: when the key set is derived from an id list,
+  `type NameKey = \`waveconfig:files.${ConfigFileId}.name\``type-checks against the JSON and
+still allows`i18n.t(file.nameKey)`. Only list ids whose key really exists in en/zh — a
+  union member without a resource entry fails the same check.
+- **CLI flags / env vars / file names inside `<code>` become their own JSX text nodes** once the
+  surrounding prose is translated, so they surface as new scan findings. Allowlist them with
+  reasons instead of inventing keys for them.
+- **Text-based verify probes break under a translated UI**: `scripts/verify/waveconfig-json-error`
+  finds the Save button by `textContent === "Save"`. Locale-tolerant probes should match a
+  `data-*` anchor or an `aria-label` key recomputed through `i18n.t()` (tracked for P3).
+  B7b showed the cheap mitigation for probes that must keep matching copy: accept **both**
+  locales (`["Diff", "差异"].includes(text)` / `title === "History" || title === "历史"`) instead
+  of pinning English — a zh host (the `ui:locale: "auto"` default on a zh system) otherwise
+  false-reds a working feature. Do not "fix" such a red by deleting the assertion.
+- **The scan gate cannot see pure-CJK JSX text**: the `jsx-text` rule requires ≥3 Latin
+  letters, so `<button>保存</button>` is _not_ a finding (`attr` only reads constant string
+  literals too). Grep the batch dir for CJK (`rg '\p{Han}'`) and treat every user-visible hit
+  as copy — B5 found 清除 / 取消 / 保存 / 别名命中 this way. Multilingual JSX text with any
+  Latin word does get flagged; only all-CJK nodes slip through.
+- **`labelKey` on load-time registry data**: a registry item is plain data created before
+  i18n init, so resolving `t()` at module scope would freeze the first locale. Keep the
+  key in the spec and resolve at the render site. When the key is a runtime `string`
+  (`SlashCommandSpec.labelKey`), the typed `t()` rejects it — the helpers cast
+  `i18n.t(key as never)`, and a unit test asserts every key resolves (i18next echoes the
+  raw key when a key is missing, so "label === key" is the failure signature).
+- **Hook `t` with interpolation needs `defaultValue`**; `i18n.t(key, { vars })` does not.
+  Use the singleton in components for interpolated string attributes
+  (`aria-label={i18n.t("ns:key", { alias })}`), as already done in `tab`/`aipanel`.
+- **New worktrees need a complete Electron dist**: `node_modules/electron` may install
+  half-extracted (missing `Electron Framework` / `path.txt`) — copy `dist/` + `path.txt`
+  from the main checkout of the same version, or every test reports unhandled
+  "Electron failed to install correctly" errors.
+- **The scan gate cannot see conditional / template-literal attributes** either: the `attr`
+  rule only reads `ts.isStringLiteral(initializer)`, so `title={cond ? "Move up" : "Move down"}`,
+  `placeholder={`Search in ${root}`}` and `label: "Search In Files"` (non-JSX object fields) are
+  **not** findings. `view/preview`'s markdown toolbar titles / Monaco action labels fell in this
+  gap and were migrated by grepping the batch dir. When closing a batch, grep
+  `title=|aria-label=|placeholder=` for `?`-ternaries and backticks, and treat every
+  user-visible hit as copy. Closing this gap in the scanner is a P3 change (it would go red on
+  already-migrated modules the moment it lands).
+- **Enums / registries that are displayed verbatim are copy too**: `EntryManagerType.NewFile`
+  is `"New File"` and is rendered as `<div>{entryManagerType}</div>`. Keep the enum value (it is
+  also a key) and add a `Record<Enum, key>` display map resolved with `t()` at render.
+- **Monaco `addAction` labels freeze at editor mount**: `onMount` runs once, so the context-menu
+  action labels capture the boot locale; a runtime `ui:locale` switch only picks them up after
+  the editor remounts (block re-open). Acceptable for now — re-registering actions on locale
+  change would mean tearing down Monaco listeners mid-session.
+
+- **Main process only loads `common`** (C4-compatible by design): every Pattern G
+  call site (app menu, dock, updater dialogs, OS notifications, quit confirms)
+  lives in `common:*`, so `emain/emain-i18n.ts` imports **only** the common
+  resources. Loading all 25 namespaces into the main bundle is not just
+  unnecessary — it trips a real bundler bug: with the large multilingual JSON
+  inlined, `@rollup/plugin-commonjs`'s shim block gets inserted **mid-line**
+  into the main chunk, splitting a string literal in two (esbuild:
+  "Unterminated string literal" — reproduced and bisected 2026-11-15; the
+  chunk dumped before esbuild is valid, the commonjs-rewritten one is broken).
+  If a future main-process surface needs another namespace, add that one
+  namespace deliberately and re-run `npx electron-vite build` plus the
+  `emain-menu-i18n.test.ts` guard.
+- **Native-menu zh evidence**: `emain/emain-menu-i18n.test.ts` is the
+  machine-judged proof (initI18nMain("zh") → tmew resolves 关于 Snorkeling /
+  检查更新 / 确认退出 / 工作区…, plus the every-tmew-literal-resolves guard in
+  `emain-i18n.test.ts`). A menubar *screenshot* could not be captured
+  headlessly (osascript accessibility not granted on this machine) — the
+  visual check is left as a one-shot human confirmation.

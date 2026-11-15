@@ -1,0 +1,577 @@
+{
+    "sync": {
+        "intro": "常用文本可以在你的多台设备间同步 —— 一种传输方式，一份数据副本。",
+        "transport": {
+            "title": "传输方式",
+            "singleActive": "仅一个生效",
+            "recommended": "推荐"
+        },
+        "transports": {
+            "folder": {
+                "name": "本地文件夹",
+                "description": "云盘文件夹里的 commontext.json；自动感知外部修改。"
+            },
+            "git": {
+                "name": "Git 仓库",
+                "description": "私有仓库，定期提交 —— 真实历史，冲突可见。"
+            },
+            "server": {
+                "name": "自托管服务",
+                "description": "你自己的同步服务器，HTTP/WebSocket + 令牌认证。"
+            },
+            "none": {
+                "name": "关闭 · 仅本地",
+                "description": "不使用任何传输方式，条目只保留在本机。"
+            }
+        },
+        "blocked": {
+            "folderPath": "请先设置文件路径。",
+            "gitToken": "请先配置访问令牌（保存在系统钥匙串中）。",
+            "serverUrl": "请先输入服务器 URL（包含协议前缀）。",
+            "serverToken": "请先配置服务器令牌（保存在系统钥匙串中）。",
+            "unknown": "未知的传输方式。"
+        },
+        "baseline": {
+            "switching": "正在从 {{from}} 切换到 {{to}}",
+            "description": "两侧都已有数据，且它们的修订号来自不同的传输方式，无法直接比较。请选择对有差异的条目信任哪一侧。无论选哪个都不会删除数据。",
+            "localWins": "本机获胜",
+            "remoteWins": "远端获胜",
+            "resyncing": "正在重新同步…",
+            "runsNote": "保存前先执行一次完整重新同步",
+            "explain": "本机获胜 —— 本机条目覆盖远端；远端独有的条目会被拉取进来。远端获胜 —— 远端条目覆盖本机；本机独有的条目会作为新条目推送出去。"
+        },
+        "backend": {
+            "fallback": "后端",
+            "folder": {
+                "filePathTitle": "文件路径",
+                "filePathDescription": "已同步文件夹里的 commontext.json。写入经临时文件 + 原子重命名完成，读取方永远不会看到半截文件。",
+                "filePathAria": "同步文件路径",
+                "watchTitle": "监视外部修改",
+                "watchDescription": "其他设备（或云盘客户端）修改该文件时刷新列表。",
+                "watchAria": "监视外部修改"
+            },
+            "git": {
+                "remoteTitle": "远端仓库",
+                "remoteDescription": "私有仓库。推送失败不会阻塞本地使用；原因会显示在同步面板里。",
+                "remoteAria": "Git 远端仓库",
+                "tokenTitle": "访问令牌",
+                "tokenConfigured": "已配置。令牌保存在系统钥匙串中；settings.json 只保存 hastoken: true。",
+                "tokenNotConfigured": "保存在系统钥匙串中，绝不写入 settings.json。",
+                "replaceToken": "替换令牌…",
+                "configureToken": "配置令牌…",
+                "intervalTitle": "提交间隔",
+                "intervalDescription": "定期提交 + 拉取。状态面板里的「立即同步」会立即执行一次。",
+                "intervalAria": "Git 同步间隔"
+            },
+            "server": {
+                "urlTitle": "服务器 URL",
+                "urlDescription": "需包含协议前缀。局域网服务器可用 http://192.168.1.10:8787，并在下方开启「允许不安全的 http」。",
+                "urlAria": "服务器 URL",
+                "tokenTitle": "令牌",
+                "tokenConfigured": "已配置。令牌保存在系统钥匙串中；settings.json 只保存 hastoken: true。",
+                "tokenNotConfigured": "服务器认证令牌，保存在系统钥匙串中。",
+                "pushModeTitle": "推送模式",
+                "pushModeDescription": "实时模式优先使用 WebSocket，不可用时回退为轮询。",
+                "pushModeAria": "推送模式",
+                "pushModeRealtime": "实时",
+                "pushModeOnSave": "保存时",
+                "insecureTitle": "允许不安全的 http://",
+                "insecureDescription": "允许明文连接（局域网或自签名证书）。在公网上请保持关闭。",
+                "insecureAria": "允许不安全的 http",
+                "replaceToken": "替换令牌…",
+                "configureToken": "配置令牌…"
+            },
+            "none": {
+                "title": "仅本地",
+                "description": "尚未配置任何传输方式。条目保存在本地数据库中，不会上传任何内容。"
+            }
+        },
+        "serverStatus": {
+            "title": "服务器状态",
+            "signal": {
+                "notChecked": "未检测",
+                "unreachable": "不可达",
+                "reachable": "可达",
+                "protocolMismatch": "协议不匹配"
+            },
+            "versionTitle": "版本",
+            "versionDescription": "协议版本是硬性兼容门槛；应用版本仅作参考。",
+            "versionValue": "应用 {{app}} · 协议 v{{protocol}}",
+            "dataTitle": "服务器数据",
+            "dataDescription": "上次检测时统计。你的本地游标要到下次同步后才会追上。",
+            "dataValue": "{{items}} 条 · 修订 {{rev}}",
+            "authTitle": "认证",
+            "authDescription": "能力：{{capabilities}}。",
+            "authNoneReported": "未报告",
+            "authAccepted": "已通过",
+            "authNotVerified": "未验证",
+            "realtimeTitle": "实时推送",
+            "realtimeSupportedDesc": "服务器支持 WebSocket 推送；修改无需等待同步周期即可发出。",
+            "realtimeUnsupportedDesc": "服务器传输尚未实现 —— 修改在保存时或下个周期发出。",
+            "realtimeSupported": "支持",
+            "realtimeUnsupported": "不支持",
+            "unreachableTitle": "不可达",
+            "unreachablePrefix": "无法连接到",
+            "unreachableSuffix": "。将按正常间隔重试；本地修改不受影响。",
+            "offline": "离线",
+            "checkTitle": "检测",
+            "checkDescription": "与 CLI 相同的检查 —— 每个失败项都附带可执行的修复命令（wsh commontext-sync doctor）。",
+            "checking": "检测中…",
+            "check": "检测",
+            "copyProtocolMismatch": "复制协议不匹配信息给 AI 处理",
+            "copyDiagnostics": "复制服务器诊断信息给 AI 分析"
+        },
+        "device": {
+            "title": "本机",
+            "nameTitle": "设备名称",
+            "nameDescription": "显示为新条目的「电脑」字段。改名不会改写历史：旧条目保留创建时的名称。",
+            "nameAria": "设备名称",
+            "namePlaceholder": "默认使用主机名",
+            "idTitle": "设备 ID",
+            "idDescription": "生成一次且永不变更，因此改过名的机器仍会被识别为同一台设备。"
+        },
+        "live": {
+            "title": "状态",
+            "badge": "实时",
+            "lastSyncTitle": "上次同步",
+            "readingStatus": "正在读取状态…",
+            "noRunYet": "尚未运行 —— 配置完成后每 {{minutes}} 分钟同步一次。",
+            "summary": "拉取 {{pulled}} · 应用 {{applied}} · 推送 {{pushed}}",
+            "copyFailureTitle": "复制上次同步失败信息给 AI 诊断",
+            "pendingTitle": "待上传",
+            "pendingDescription": "远端尚未确认的条目；下次同步会发送它们。0 表示全部已上传。",
+            "conflictsTitle": "未解决的冲突",
+            "conflictsDescriptionSome": "冲突详情可以复制给 AI；不会被覆盖。（CLI 等价命令：`wsh commontext-sync conflicts --copy`。）",
+            "conflictsDescriptionNone": "没有需要解决的内容。",
+            "copyConflictsTitle": "复制全部 {{count}} 个冲突给 AI 合并",
+            "review": "查看",
+            "nowTitle": "立即同步",
+            "nowDescription": "不等待定时器，立即执行一次同步。",
+            "syncing": "同步中…",
+            "syncNow": "立即同步"
+        },
+        "advanced": {
+            "title": "高级",
+            "subtitle": "冲突 · 范围 · 维护",
+            "recommended": "推荐",
+            "conflictsTitle": "冲突",
+            "policy": {
+                "rowMerge": {
+                    "title": "按行合并，仅标记真实冲突",
+                    "description": "能自动合并就自动合并；只有同一字段的双方修改才成为冲突。"
+                },
+                "newest": {
+                    "title": "较新者获胜",
+                    "description": "取 updatedat 较新的一侧，静默覆盖较旧的一侧。"
+                },
+                "manual": {
+                    "title": "总是询问",
+                    "description": "每个冲突都停下来询问；解决之前同步保持暂停。"
+                }
+            },
+            "scopeTitle": "范围",
+            "scopeCommonTextTitle": "常用文本",
+            "scopeCommonTextDescription": "本版本仅同步常用文本。其他数据域（设置、笔记、会话）不在范围内。",
+            "scopeCommonTextAria": "常用文本",
+            "tombstonesTitle": "同步删除（墓碑记录）",
+            "tombstonesDescription": "关闭时，删除只保留在本地，另一台机器会把该条目推回来。",
+            "tombstonesAria": "同步删除",
+            "maintenanceTitle": "维护",
+            "resyncTitle": "完整重新同步",
+            "resyncDescription": "忽略本地游标，对整个远端快照做一次对账。",
+            "resyncButton": "重新同步",
+            "resetTitle": "重置同步状态",
+            "resetDescription": "仅清除本地游标和修订缓存。条目与远端文件不受影响。",
+            "resetButton": "重置"
+        },
+        "statusMsg": {
+            "saved": "已保存。",
+            "savedBlocked": "已保存，但同步不会启动：{{reason}}",
+            "switchedWithError": "已切换，但首次同步报告：{{error}}",
+            "switchedTo": "已切换到 {{transport}}（{{winner}} 获胜）。",
+            "switchAborted": "切换中止，保留原传输方式：{{error}}",
+            "syncFinished": "同步完成。",
+            "syncFailed": "同步失败：{{error}}",
+            "synced": "已同步 —— 拉取 {{pulled}}，应用 {{applied}}，推送 {{pushed}}。",
+            "resyncQueued": "完整重新同步已排队。进度显示在同步面板中。",
+            "resetNote": "重置仅清除本地游标和修订缓存。"
+        },
+        "savebar": {
+            "unsaved": "有未保存的修改",
+            "draft": "草稿 —— 点「保存」前不会写入任何内容。"
+        }
+    },
+    "agentAccess": {
+        "introPrefix": "让 Snorkeling ",
+        "introEmphasis": "之外",
+        "introSuffix": "的 agent（Claude Code、Codex、pi）读取并操作本应用。外部进程永远不会拿到应用自身的密钥：它们获得一个短期的受限令牌，可随时在此吊销。",
+        "createTokenTitle": "创建令牌",
+        "nameTitle": "Agent 名称",
+        "nameDescription": "会显示在审计日志里，请起一个可辨识的名字。",
+        "nameAria": "Agent 名称",
+        "scopesTitle": "权限范围",
+        "scopesDescription": "最小权限：observe 只读。绝不签发破坏性权限。",
+        "scopeObserve": "观察（observe）",
+        "scopeNavigate": "导航（navigate）",
+        "scopeData": "数据（data）",
+        "scopeHintObserve": "读取 UI 状态、块、会话、卡片",
+        "scopeHintNavigate": "打开块，创建 / 切换标签页",
+        "scopeHintData": "写入会话标题 / 笔记 / 标签",
+        "scopeAria": "{{scope}} 权限",
+        "lifetimeTitle": "有效期",
+        "lifetimeDescription": "越短越好。过期由签名令牌本身强制执行。",
+        "lifetimeAria": "令牌有效期",
+        "ttl15m": "15 分钟",
+        "ttl30m": "30 分钟",
+        "ttl1h": "1 小时",
+        "ttl8h": "8 小时",
+        "saveToTitle": "保存到",
+        "saveToDescription": "以 0600 权限写入，绝不显示。把宿主的 env 变量指向这里。",
+        "saveToAria": "令牌文件路径",
+        "generateTitle": "生成",
+        "generateDescription": "创建令牌并写入文件。不会向终端输出任何内容。",
+        "generateButton": "创建令牌",
+        "activeTokens": "生效中的令牌",
+        "activeTokensCount": "（{{live}} 个生效 / 共 {{total}} 个）",
+        "refresh": "刷新",
+        "revokeAll": "全部吊销",
+        "revokeConfirm": "吊销 {{label}}？该 agent 的下一次调用将被拒绝。",
+        "revokeAllLabel": "全部令牌",
+        "revokeOneLabel": "令牌 {{jti}}",
+        "loadingTokens": "加载中…",
+        "noTokens": "尚未创建任何令牌。",
+        "thName": "名称",
+        "thScopes": "权限范围",
+        "thExpires": "过期时间",
+        "thState": "状态",
+        "stateLive": "生效中",
+        "stateExpired": "已过期",
+        "stateRevoked": "已吊销",
+        "expiryNone": "永不过期",
+        "expiryExpired": "已过期",
+        "expiryMinutes": "{{count}} 分钟后",
+        "expiryHours": "{{count}} 小时后",
+        "expiryDays": "{{count}} 天后",
+        "revoke": "吊销",
+        "revokedCount": "已吊销 {{count}} 个令牌。",
+        "nothingToRevoke": "没有生效中的令牌可吊销。",
+        "registryPrefix": "注册表：",
+        "registryNote": "（不保存令牌）",
+        "skillTitle": "把技能交给你的 agent",
+        "installSkillTitle": "安装技能",
+        "installSkillDescription": "把内置技能复制到本机存在的 agent 目录（~/.claude、~/.codex、~/.agents）。",
+        "install": "安装",
+        "mcpTitle": "注册 MCP 服务器",
+        "hostTitle": "宿主",
+        "hostDescription": "选择你要配置的 agent 宿主。",
+        "hostAria": "MCP 宿主",
+        "build": "生成",
+        "copyConfig": "复制配置",
+        "auditPrefix": "每次调用都会写入",
+        "auditSuffix": "（时间、命令、agent 名称、jti 前缀、允许/拒绝）。令牌限流为每分钟 60 次调用。MCP 传输仅使用 stdio —— 不开放任何端口。",
+        "noticeListFailed": "无法列出令牌：{{error}}",
+        "noticeNameRequired": "请给 agent 起个名字，审计日志才能归属调用。",
+        "noticeScopeRequired": "至少选择一个权限范围。",
+        "noticeTokenSaved": "「{{name}}」的令牌已保存到 {{path}}（{{scopes}}）。令牌本身绝不会显示。",
+        "noticeNoSkillDir": "未找到 agent 技能目录。请手动安装：wsh agent install-skill --root <dir>",
+        "noticeSkillInstalled": "技能已安装到 {{count}} 个位置：{{places}}",
+        "noticeSkillSkipped": "（跳过 {{count}} 个未使用的 agent 目录）",
+        "noticeMcpCopied": "MCP 配置已复制。粘贴到你的 agent 宿主配置文件里。"
+    },
+    "secrets": {
+        "emptyTitle": "暂无密钥",
+        "emptyHint": "添加一个密钥开始使用",
+        "addNewSecret": "新增密钥",
+        "cliAccess": "CLI 访问",
+        "secretName": "密钥名称",
+        "secretValue": "密钥值",
+        "nameRule": "必须以字母开头，且只能包含字母、数字和下划线",
+        "valuePlaceholder": "输入密钥值...",
+        "newValuePlaceholder": "输入新的密钥值...",
+        "addSecret": "添加密钥",
+        "adding": "添加中...",
+        "deleting": "删除中...",
+        "saving": "保存中...",
+        "notShownNote": "出于安全考虑，默认不显示当前密钥值。",
+        "showSecret": "显示密钥",
+        "deleteThisSecret": "删除此密钥",
+        "loadingSecrets": "正在加载密钥..."
+    },
+    "agentNotify": {
+        "intro": "当 agent 完成任务或需要输入时，Snorkeling 会弹出系统通知。这些开关控制触发频率。",
+        "secUnit": "秒",
+        "masterTitle": "Agent 通知",
+        "masterDescription": "所有 agent 通知的总开关。",
+        "masterAria": "Agent 通知",
+        "doneTitle": "agent 完成任务时通知",
+        "doneDescription": "一个工作中的 agent 转入空闲 —— 回合已结束。",
+        "doneAria": "agent 完成任务时通知",
+        "blockedTitle": "agent 需要输入时通知",
+        "blockedDescription": "agent 被阻塞了，例如在等待批准。",
+        "blockedAria": "agent 需要输入时通知",
+        "focusedTitle": "Snorkeling 处于焦点时也通知",
+        "focusedDescription": "默认情况下，Snorkeling 窗口拥有焦点时会跳过通知。",
+        "focusedAria": "Snorkeling 处于焦点时也通知",
+        "idleTitle": "空闲阈值",
+        "idleDescription": "键盘和鼠标空闲超过该时长后才通知。0 表示立即通知。",
+        "idleAria": "空闲阈值（秒）",
+        "cooldownTitle": "冷却窗口",
+        "cooldownDescription": "同一类通知在窗口内重复出现时合并为一条摘要。0 表示禁用冷却。",
+        "cooldownAria": "冷却窗口（秒）"
+    },
+    "files": {
+        "general": {
+            "name": "常规"
+        },
+        "appTheme": {
+            "name": "应用主题",
+            "description": "浅色 / 深色 / 黑白 / 系统"
+        },
+        "language": {
+            "name": "语言",
+            "description": "界面语言（自动 / English / 中文）"
+        },
+        "agentNotifications": {
+            "name": "Agent 通知",
+            "description": "agent 完成 / 需要输入时的系统弹窗"
+        },
+        "agentAccess": {
+            "name": "Agent 访问",
+            "description": "给应用外的 agent 的受限令牌"
+        },
+        "sync": {
+            "name": "同步",
+            "description": "Common Text 云同步"
+        },
+        "hero": {
+            "name": "Hero",
+            "description": "🎭 据点、存储与治理"
+        },
+        "connections": {
+            "name": "连接",
+            "description": "SSH 主机",
+            "descriptionWindows": "SSH 主机与 WSL 发行版"
+        },
+        "sidebarWidgets": {
+            "name": "侧栏小部件"
+        },
+        "waveAiModes": {
+            "name": "Wave AI 模式",
+            "description": "本地模型与 BYOK"
+        },
+        "aiPrompts": {
+            "name": "AI 提示词",
+            "description": "AI 生成会话标题 / 备注和标签的提示词"
+        },
+        "tabBackgrounds": {
+            "name": "标签页背景"
+        },
+        "secrets": {
+            "name": "密钥"
+        },
+        "presets": {
+            "name": "预设"
+        },
+        "aiPresets": {
+            "name": "AI 预设"
+        }
+    },
+    "view": {
+        "deprecated": "已弃用",
+        "unsavedChanges": "有未保存的更改",
+        "saveTooltip": "保存（{{shortcut}}）",
+        "visual": "可视化",
+        "rawJson": "原始 JSON",
+        "copyJsonError": "复制此 JSON 错误，交给 AI 修复",
+        "configError": "配置错误："
+    },
+    "model": {
+        "discardConfirm": "有未保存的更改。放弃并继续？",
+        "loadFailed": "加载 {{name}} 失败：{{error}}",
+        "saveFailed": "保存 {{name}} 失败：{{error}}",
+        "invalidJson": "无效 JSON：{{error}}",
+        "jsonMustBeObject": "JSON 必须是对象，不能是数组、基本类型或 null",
+        "invalidAiKeyPrefix": "无效键 \"{{key}}\"：所有顶层键必须以 \"ai@\" 开头",
+        "invalidKeyChars": "无效键 \"{{key}}\"：键只能包含字母、数字、下划线、@、点和中划线",
+        "storageBackendUnavailable": "未找到合适的密钥管理器，无法安全管理密钥。",
+        "storageBackendError": "检查存储后端出错：{{error}}",
+        "secretsListFailed": "加载密钥列表失败：{{error}}",
+        "secretNotFound": "找不到密钥：{{name}}",
+        "secretLoadFailed": "加载密钥失败：{{error}}",
+        "secretSaveFailed": "保存密钥失败：{{error}}",
+        "secretDeleteFailed": "删除密钥失败：{{error}}",
+        "secretNameEmpty": "密钥名称不能为空",
+        "secretNameInvalid": "无效的密钥名称：必须以字母开头，只包含字母、数字和下划线",
+        "secretExists": "密钥 \"{{name}}\" 已存在",
+        "secretAddFailed": "添加密钥失败：{{error}}"
+    },
+    "themePicker": {
+        "system": "系统",
+        "systemDescription": "跟随操作系统外观",
+        "light": "浅色",
+        "lightDescription": "始终浅色",
+        "dark": "深色",
+        "darkDescription": "始终深色",
+        "monochrome": "黑白",
+        "monochromeDescription": "纯黑白",
+        "osPrefix": "系统:",
+        "preview": {
+            "tab": "标签页",
+            "command": "运行构建",
+            "done": "✓ 1.4s 完成",
+            "run": "运行",
+            "cancel": "取消"
+        }
+    },
+    "aiPrompts": {
+        "title": "AI 提示词",
+        "subtitle": "按功能覆盖系统提示词。留空则保持内置默认值。",
+        "saving": "保存中…",
+        "saved": "已保存",
+        "unsavedChanges": "有未保存的更改",
+        "dismiss": "忽略",
+        "features": "功能",
+        "customized": "已自定义",
+        "resetTooltip": "清除覆盖值并恢复内置提示词",
+        "resetToDefault": "恢复默认",
+        "systemPrompt": "系统提示词",
+        "systemPromptHint": "留空 = 内置默认",
+        "systemPromptPlaceholder": "留空则使用内置提示词",
+        "systemPromptAria": "系统提示词",
+        "extraInstructions": "附加指令",
+        "extraPlaceholder": "追加在系统提示词之后，例如：用中文回答",
+        "extraInstructionsAria": "附加指令",
+        "model": "模型",
+        "modelAria": "AI 模型",
+        "modelAuto": "自动（默认模式）",
+        "enabled": "启用",
+        "enabledTooltip": "关闭后，卡片按钮会返回一个“已禁用”错误",
+        "autoTitleToggle": "后台自动生成标题",
+        "autoTitleDescription": "会运行一个串行、限速的后台任务，为仍只有原始首条消息标题的会话生成规范标题。每个会话最多生成一次；手动改过的标题不会被覆盖。默认关闭，避免意外消耗模型额度。",
+        "previewSummary": "预览最终提示词"
+    },
+    "waveAi": {
+        "filterPlaceholder": "筛选模型…",
+        "filterAria": "筛选模型",
+        "clearFilter": "清除筛选",
+        "addProvider": "添加提供方",
+        "addFromTemplate": "从模板添加",
+        "hideCcSwitch": "收起 cc-switch 提供方",
+        "importCcSwitch": "从 cc-switch 导入",
+        "noCcSwitchVendors": "没有可导入的 cc-switch 提供方。",
+        "ccSwitchProviders": "cc-switch 提供方",
+        "selectModels": "选择要导入的模型",
+        "clearAll": "全不选",
+        "selectAll": "全选",
+        "importNone": "请至少选择一个模型",
+        "importCount": "导入 {{count}} 个",
+        "dismiss": "忽略",
+        "noModes": "尚未配置任何 AI 模式。",
+        "noModesHintPrefix": "在上方从模板添加一个提供方，或在 JSON 标签页中编辑",
+        "noModesHintSuffix": "。",
+        "myModels": "我的模型",
+        "defaultBadge": "默认",
+        "setDefault": "设为默认",
+        "noMatch": "没有匹配“{{filter}}”的模型。",
+        "selectModeToEdit": "选择一个模式进行编辑。",
+        "rename": "重命名",
+        "delete": "删除",
+        "apiType": "API 类型",
+        "endpoint": "端点",
+        "endpointHint": "填基础 URL 或完整请求 URL 均可。形如 https://host/v1 的基础 URL 会自动展开为正确的路径。",
+        "model": "模型",
+        "fetching": "获取中…",
+        "fetchModels": "获取模型",
+        "apiKeySecret": "API 密钥",
+        "apiKeySecretPlaceholder": "密钥名称，例如 OPENAI_KEY",
+        "testing": "测试中…",
+        "testFailed": "测试失败",
+        "testConnection": "测试连接",
+        "copyMessage": "复制消息",
+        "secretHint": "密钥本身请保存到 设置 → 密钥，名称与此处一致。",
+        "deleteProviderTitle": "删除 AI 提供方",
+        "deleteProviderMessage": "删除“{{name}}”？该条目会从 waveai.json 中移除。已在使用它的现有会话在切换模式前仍可继续工作。",
+        "deleteFailed": "删除 AI 提供方失败：{{error}}",
+        "ccSwitchReadFailed": "读取 cc-switch 提供方失败：{{error}}",
+        "importFailed": "导入 {{name}} 失败：{{error}}",
+        "templates": {
+            "openaiResponses": "较新的 OpenAI Responses API 模型。使用代理时请替换端点。",
+            "openaiChat": "OpenAI 兼容的 chat 端点。使用代理时请替换端点。",
+            "anthropic": "通过 Anthropic API 使用 Claude 模型。使用兼容网关时请替换端点。",
+            "googleGemini": "通过 Google AI 使用 Gemini 模型。模型名是这个端点的一部分。",
+            "openrouter": "一个 OpenAI 兼容端点接入大量模型。",
+            "groq": "快速的 OpenAI 兼容推理。",
+            "custom": "Ollama、LM Studio、vLLM、LiteLLM 或私有网关"
+        }
+    },
+    "hero": {
+        "intro": "所有 Hero 都存放在一个根目录里：每个 Hero 一个由 git 追踪的据点。把这个根指到更大的磁盘，随时查看哪些内容会同步，并限制单个 Hero 最多能长多大。",
+        "homeBase": "据点",
+        "rootDirTitle": "Hero 根目录",
+        "rootDirDescription": "留空表示使用默认值（{{defaultRoot}}）。必须是绝对路径 —— 相对路径会解析到应用的工作目录。",
+        "rootDirAria": "Hero 根目录",
+        "resolvedTitle": "当前解析到",
+        "resolvedDescription": "应用现在实际读取 Hero 据点的位置（已保存值，不是上面的草稿）。",
+        "storage": "存储",
+        "noHeroes": "暂无 Hero",
+        "heroCount_one": "{{count}} 个 Hero",
+        "heroCount_other": "{{count}} 个 Hero",
+        "measuring": "测量中…",
+        "refresh": "刷新",
+        "measureFailedTitle": "无法测量存储",
+        "unavailable": "不可用",
+        "noHeroesTitle": "还没有 Hero",
+        "noHeroesDescription": "用 `wsh hero create --name <name> --yes` 创建一个，或让 agent 提议一个。",
+        "totalTitle": "总计",
+        "totalDescription": "只有 archive + history 这两类会跨机器同步；work 只留在本机磁盘。",
+        "bucketValue": {
+            "archive": "{{size}} 归档",
+            "history": "{{size}} 历史",
+            "work": "{{size}} 工作区",
+            "syncable": "{{size}} 可同步"
+        },
+        "filesOnDisk": "{{files}} 个文件 · 占用 {{size}}",
+        "governanceTitle": "存储治理",
+        "journalRotateTitle": "按月轮转日志",
+        "journalRotateDescription": "把更早月份的日志行移入 MEMORY/archive/YYYY-MM.md；活动文件只保留当前月。",
+        "journalRotateLabel": "按月轮转",
+        "dormantTitle": "休眠判定",
+        "dormantDescription": "连续多少天没有登场，名册就把该 Hero 标记为休眠。",
+        "dormantAria": "休眠天数",
+        "daysUnit": "天",
+        "softLimitTitle": "单个 Hero 软上限",
+        "softLimitDescription": "这只是告警阈值，不是硬限制 —— Hero 超限也不会删除任何东西。",
+        "softLimitAria": "软上限（MB）",
+        "softLimitActionTitle": "超过软上限时",
+        "softLimitAction": {
+            "warnTitle": "仅警告",
+            "warnDescription": "在名册里显示大小；Hero 继续工作。",
+            "distillTitle": "警告并蒸馏",
+            "distillDescription": "先警告，然后把旧的 memory 条目折叠进蒸馏摘要。",
+            "readonlyTitle": "只读",
+            "readonlyDescription": "阻止新的 memory 写入，直到 Hero 回到上限以内。"
+        },
+        "relocateTitle": "迁移到新位置",
+        "relocateRowTitle": "改指向不会移动文件",
+        "relocateRowDescription": "上面改根目录只是告诉应用去哪里找；现有 Hero 据点仍留在旧磁盘。先跑预演 —— 它会列出每个目录和大小，不写入任何东西。",
+        "copyDryRun": "复制预演命令",
+        "copyApply": "复制执行命令",
+        "relocateNote": {
+            "prefix": "预演只展示计划；加",
+            "apply": "才真正执行（逐目录移动、文件数与字节数校验，失败时回滚已移动的部分）。",
+            "keepCopy": "会在旧根目录保留一份副本。若设置了",
+            "envSuffix": "，则不会重写设置 —— 环境变量优先。"
+        },
+        "saved": "已保存。",
+        "applyCommandCopied": "已复制执行命令。",
+        "dryRunCommandCopied": "已复制预演命令。",
+        "clipboardUnavailable": "当前环境无法访问剪贴板。",
+        "validateRootRelative": "根目录必须是绝对路径（或留空使用默认值）。",
+        "validateIntEmpty": "请输入整数。",
+        "validateIntDigits": "请输入整数（只能是数字）。",
+        "validateIntPositive": "请输入大于 0 的数。"
+    },
+    "header": {
+        "viewName": "Wave 配置"
+    }
+}

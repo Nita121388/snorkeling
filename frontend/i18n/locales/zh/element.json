@@ -1,0 +1,178 @@
+{
+  "clipboard": {
+    "paste": "粘贴",
+    "pasteHintDisable": "不再显示此粘贴提示"
+  },
+  "copyForAgent": {
+    "label": "复制给助手"
+  },
+  "emojiPalette": {
+    "searchPlaceholder": "搜索表情符号...",
+    "noResults": "没有找到表情符号"
+  },
+  "errorBoundary": {
+    "title": "界面渲染出错",
+    "body": "窗口本身没坏，是某个面板在渲染时抛错。点「{{reloadButton}}」重新加载即可恢复（终端与 AI 会话数据不受影响）。",
+    "reload": "重新加载"
+  },
+  "imageLightbox": {
+    "closeTitle": "关闭（ESC）",
+    "closeLabel": "关闭图片",
+    "rotateTitle": "旋转（R）",
+    "rotateLabel": "旋转图片"
+  },
+  "outline": {
+    "title": "大纲",
+    "show": "显示 Markdown 大纲",
+    "hide": "隐藏 Markdown 大纲",
+    "pin": "固定 Markdown 大纲",
+    "unpin": "取消固定 Markdown 大纲",
+    "resizeWidth": "调整大纲宽度",
+    "resizeHeight": "调整大纲高度",
+    "resize": "调整大纲大小"
+  },
+  "scrollToBottom": {
+    "label": "滚动到底部"
+  },
+  "search": {
+    "placeholder": "搜索",
+    "resultsLabel": "搜索结果",
+    "resultsPosition": "第 {{position}} 个，共 {{count}} 个结果",
+    "replacePlaceholder": "替换",
+    "prevResult": "上一个结果（Shift+Enter）",
+    "nextResult": "下一个结果（Enter）",
+    "close": "关闭（Esc）",
+    "hideReplace": "隐藏替换框",
+    "showReplace": "显示替换框",
+    "replaceTitle": "替换（Enter）",
+    "replaceAllTitle": "全部替换（Shift+Enter）",
+    "regex": "正则表达式",
+    "wholeWord": "全字匹配",
+    "caseSensitive": "区分大小写"
+  },
+  "selectionOverlay": {
+    "quickActions": "快捷操作",
+    "tag": "标签"
+  },
+  "settings": {
+    "discard": "放弃更改",
+    "saving": "保存中…"
+  },
+  "tagEditor": {
+    "placeholder": "搜索或输入选项",
+    "remove": "移除",
+    "removeLabel": "移除 {{value}}",
+    "create": "创建",
+    "empty": "无匹配选项",
+    "countAria_one": "{{count}} 个会话",
+    "countAria_other": "{{count}} 个会话"
+  },
+  "editableTitle": {
+    "saveFailed": "保存失败，请重试",
+    "sessionTitleAria": "会话标题：{{title}}"
+  },
+  "sessionNote": {
+    "saveFailed": "保存失败：{{error}}",
+    "openInDialog": "在弹窗中打开卡片",
+    "openAiSettings": "打开 AI 设置",
+    "dismiss": "关闭提示",
+    "dismissSaveError": "关闭保存失败提示",
+    "notePlaceholder": "备注",
+    "sessionNoteLabel": "会话备注"
+  },
+  "inlineEdit": {
+    "codeLanguage": "代码语言"
+  },
+  "markdown": {
+    "linkActions": "链接操作",
+    "openLink": "打开链接",
+    "editLink": "编辑链接",
+    "close": "关闭",
+    "target": "目标",
+    "textLabel": "文本",
+    "urlLabel": "网址",
+    "save": "保存",
+    "cancel": "取消",
+    "copied": "已复制",
+    "copyLink": "复制链接",
+    "linkCopied": "链接已复制",
+    "toggleTask": "切换任务状态",
+    "languagePlaceholder": "语言",
+    "setLanguage": "设置语言",
+    "collapse": "收起",
+    "expandAll": "展开全部（共 {{count}} 行）",
+    "imageUnavailable": "图片不可用",
+    "imageLoadFailed": "无法加载图片",
+    "imageResolveFailed": "无法解析图片路径",
+    "dragToResize": "拖动调整大小",
+    "resetNaturalSize": "恢复原始尺寸",
+    "editAltText": "点击编辑替代文本",
+    "imageDescription": "图片描述",
+    "pathCopied": "路径已复制",
+    "fullPathCopied": "完整路径已复制",
+    "imagePath": "图片路径",
+    "imgPlaceholder": "[图片]",
+    "addDescription": "+ 添加描述",
+    "zoomIn": "放大查看",
+    "copyImagePath": "复制图片路径",
+    "copyFullImagePath": "复制完整图片路径",
+    "resetImageSize": "重置图片尺寸",
+    "editPath": "编辑路径",
+    "deleteImage": "删除图片",
+    "blockActions": "块操作 — 拖动可重新排序",
+    "insertBlockAbove": "在上方插入块",
+    "insertBlockBelow": "在下方插入块",
+    "turnInto": "转换为",
+    "listNumbering": "列表编号",
+    "copyBlock": "复制",
+    "copyContext": "复制上下文",
+    "duplicateBlock": "复制为副本",
+    "deleteBlock": "删除",
+    "restartFromOne": "从 1 重新开始",
+    "keepNumber": "保持 {{number}}",
+    "continueFromPrevious": "从上一段继续（{{number}}）"
+  },
+  "quicktips": {
+    "headerIcons": "头部图标",
+    "magnifyBlock": "放大某个块",
+    "connectRemote": "连接远程服务器",
+    "browseSessions": "浏览本地 AI 会话",
+    "browseSessionsHint": "用「会话」查看 Codex 与 Claude Code 的历史记录",
+    "blockSettings": "块设置",
+    "closeBlock": "关闭块",
+    "importantKeybindings": "常用快捷键",
+    "mainKeybindings": "主要快捷键",
+    "newTab": "新建标签页",
+    "newTerminalBlock": "新建终端块",
+    "openWaveAiPanel": "打开 Wave AI 面板",
+    "tabSwitching": "标签页切换（{{modifier}}）",
+    "switchToNthTab": "切到第 N 个标签页",
+    "previousTab": "上一个标签页",
+    "nextTab": "下一个标签页",
+    "blockNavigation": "块间导航（Ctrl-Shift）",
+    "navigateBetweenBlocks": "在块之间移动",
+    "focusNthBlock": "聚焦第 N 个块",
+    "focusWaveAi": "聚焦 Wave AI",
+    "splitBlocks": "分屏",
+    "splitRight": "向右分屏",
+    "splitBelow": "向下分屏",
+    "splitInDirection": "按方向分屏",
+    "digitKey": "数字键 (1-9)",
+    "previewHint": "预览文件、目录或网页 URL",
+    "editHint": "编辑配置文件与代码文件",
+    "moreTips": "更多提示",
+    "tips": {
+      "tabsTitle": "标签页",
+      "tabsBody": "右键任意标签页即可更换背景或重命名。",
+      "webViewTitle": "网页视图",
+      "webViewBody": "点网页视图里的齿轮即可设置主页",
+      "terminalTitle": "终端",
+      "terminalBody": "点终端里的齿轮即可设置终端主题与字号"
+    },
+    "needHelp": "还需要帮助？",
+    "joinDiscord": "加入我们的 Discord",
+    "configurationOptions": "配置项",
+    "allKeybindings": "全部快捷键",
+    "fullDocumentation": "完整文档"
+  }
+}

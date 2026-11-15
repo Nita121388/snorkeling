@@ -3328,6 +3328,7 @@ declare global {
         "app:disablectrlshiftdisplay"?: boolean;
         "app:focusfollowscursor"?: string;
         "app:tabbar"?: string;
+        "ui:locale"?: string;
         "app:theme"?: string;
         "feature:waveappbuilder"?: boolean;
         "commontext:items"?: CommonTextItemType[];

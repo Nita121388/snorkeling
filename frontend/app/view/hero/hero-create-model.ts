@@ -82,10 +82,10 @@ export function mergePrefill(prefill: HeroCreatePrefill | null | undefined): Her
     return { ...emptyDraft, name: title };
 }
 
-/** Returns an error message, or "" when the identity step is submittable. */
+/** Returns an i18n key for the validation error, or "" when the identity step is submittable. */
 export function validateCreateDraft(draft: HeroCreateDraft | null | undefined): string {
     if ((draft?.name ?? "").trim() === "") {
-        return "Name is required";
+        return "hero:wizard.nameRequired";
     }
     return "";
 }

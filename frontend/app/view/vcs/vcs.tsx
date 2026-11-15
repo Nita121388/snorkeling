@@ -1,29 +1,32 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { globalStore } from "@/app/store/jotaiStore";
-import { clearVcsTreeStatusCache } from "@/app/view/preview/vcs-tree-status";
-import type { WaveEnv } from "@/app/waveenv/waveenv";
-import { useWaveEnv } from "@/app/waveenv/waveenv";
-import { createBlock } from "@/store/global";
 import { CopyForAgent } from "@/app/element/copy-for-agent";
+import { globalStore } from "@/app/store/jotaiStore";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
 import {
     buildMergeConflictsPayload,
     buildVcsOperationFailurePayload,
     isUnmergedCode,
 } from "@/app/view/preview/conflict-copy";
-import { base64ToString, isBlank, makeConnRoute, basename } from "@/util/util";
+import { clearVcsTreeStatusCache } from "@/app/view/preview/vcs-tree-status";
+import type { WaveEnv } from "@/app/waveenv/waveenv";
+import { useWaveEnv } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
+import { createBlock } from "@/store/global";
+import { base64ToString, basename, isBlank, makeConnRoute } from "@/util/util";
 import { Atom, atom, useAtomValue } from "jotai";
 import React from "react";
+import { useTranslation } from "react-i18next";
 
-import { VcsChangesTab, type RepoFileFilterState } from "./vcs-changes-tab";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import { VcsBranchesTab } from "./vcs-branches-tab";
-import { VcsPipelinesTab } from "./vcs-pipelines-tab";
-import { VcsTabBar, VcsRepoHeader, type View } from "./vcs-tabs";
-import { VcsRepoSwitcher } from "./vcs-repo-switcher";
+import { VcsChangesTab, type RepoFileFilterState } from "./vcs-changes-tab";
 import { VcsHistoryTab } from "./vcs-history-tab";
 import { VcsIconButton } from "./vcs-icon-button";
+import { VcsPipelinesTab } from "./vcs-pipelines-tab";
+import { VcsRepoSwitcher } from "./vcs-repo-switcher";
+import { VcsRepoHeader, VcsTabBar, type View } from "./vcs-tabs";
 
 const DefaultCommitMessage = "chore: update selected files";
 const VcsRepositoryRpcTimeoutMs = 60000;
@@ -75,43 +78,54 @@ function getDefaultSyncAction(repo: VcsRepositoryInfo): VcsSyncAction {
     return repo.repotype === "svn" ? "update" : "pull";
 }
 
+// 同步动作的完成/失败提示：渲染期求值（加载期冻结文案会锁死语言，Pattern C）。
+const SyncCompletedKey = {
+    fetch: "vcs:operations.syncCompleted.fetch",
+    push: "vcs:operations.syncCompleted.push",
+    update: "vcs:operations.syncCompleted.update",
+    pull: "vcs:operations.syncCompleted.pull",
+} as const satisfies Record<VcsSyncAction, string>;
+
+const SyncFailedKey = {
+    fetch: "vcs:operations.syncFailed.fetch",
+    push: "vcs:operations.syncFailed.push",
+    update: "vcs:operations.syncFailed.update",
+    pull: "vcs:operations.syncFailed.pull",
+} as const satisfies Record<VcsSyncAction, string>;
+
 function getSyncCompletionLabel(action: VcsSyncAction): string {
-    switch (action) {
-        case "fetch": return "Fetch completed.";
-        case "push": return "Push completed.";
-        case "update": return "Update completed.";
-        case "pull":
-        default: return "Pull completed.";
-    }
+    return i18n.t(SyncCompletedKey[action]);
 }
 
 function getSyncFailureLabel(action: VcsSyncAction): string {
-    switch (action) {
-        case "fetch": return "Fetch failed.";
-        case "push": return "Push failed.";
-        case "update": return "Update failed.";
-        case "pull":
-        default: return "Pull failed.";
-    }
+    return i18n.t(SyncFailedKey[action]);
 }
 
 // Present tense verb shown while an operation is running.
-const VcsOperationVerb: Record<VcsOperationAction, string> = {
-    pull: "Pulling…",
-    push: "Pushing…",
-    fetch: "Fetching…",
-    update: "Updating…",
-    commit: "Committing…",
-};
+const VcsOperationVerbKey = {
+    pull: "vcs:operations.verb.pull",
+    push: "vcs:operations.verb.push",
+    fetch: "vcs:operations.verb.fetch",
+    update: "vcs:operations.verb.update",
+    commit: "vcs:operations.verb.commit",
+} as const satisfies Record<VcsOperationAction, string>;
 
 // Short noun label used in success/failure summaries.
-const VcsOperationLabel: Record<VcsOperationAction, string> = {
-    pull: "Pull",
-    push: "Push",
-    fetch: "Fetch",
-    update: "Update",
-    commit: "Commit",
-};
+const VcsOperationLabelKey = {
+    pull: "vcs:operations.label.pull",
+    push: "vcs:operations.label.push",
+    fetch: "vcs:operations.label.fetch",
+    update: "vcs:operations.label.update",
+    commit: "vcs:operations.label.commit",
+} as const satisfies Record<VcsOperationAction, string>;
+
+function operationVerb(action: VcsOperationAction): string {
+    return i18n.t(VcsOperationVerbKey[action]);
+}
+
+function operationLabel(action: VcsOperationAction): string {
+    return i18n.t(VcsOperationLabelKey[action]);
+}
 
 function firstMeaningfulLine(text: string): string {
     const firstLine = text.split(/\r?\n/).find((line) => !isBlank(line)) ?? text;
@@ -121,7 +135,7 @@ function firstMeaningfulLine(text: string): string {
 function OperationDetails({ details }: { details: string }) {
     return (
         <details className="mt-1">
-            <summary className="cursor-pointer text-[11px] text-muted">Details</summary>
+            <summary className="cursor-pointer text-[11px] text-muted">{i18n.t("vcs:panel.details")}</summary>
             <pre className="mt-1 max-h-[180px] overflow-auto whitespace-pre-wrap rounded bg-surface p-2 text-[11px]">
                 {details}
             </pre>
@@ -143,6 +157,8 @@ function VcsProgressCard({
     repoPath?: string;
     onDismiss: () => void;
 }) {
+    // 让卡片订阅语言变化（动词 / 完成提示随语言刷新）。
+    useTranslation("vcs");
     // Keep the latest dismiss callback without resetting the auto-dismiss timer.
     const dismissRef = React.useRef(onDismiss);
     React.useEffect(() => {
@@ -164,7 +180,7 @@ function VcsProgressCard({
     const summary = isBlank(message) ? "" : firstMeaningfulLine(message);
     const hasDetails = details !== "" && details !== summary;
     const dismissBtn = (
-        <VcsIconButton icon="xmark" title="Dismiss" size="sm" reveal="always" onClick={onDismiss} />
+        <VcsIconButton icon="xmark" title={i18n.t("vcs:panel.dismiss")} size="sm" reveal="always" onClick={onDismiss} />
     );
 
     let body: React.ReactNode;
@@ -174,7 +190,7 @@ function VcsProgressCard({
         body = (
             <div className="flex items-center gap-2">
                 <i className="fa-sharp fa-solid fa-spinner animate-spin text-[11px] text-accent shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{VcsOperationVerb[action]}</span>
+                <span className="min-w-0 flex-1 truncate">{operationVerb(action)}</span>
                 {dismissBtn}
             </div>
         );
@@ -184,7 +200,9 @@ function VcsProgressCard({
             <div className="flex items-start gap-2">
                 <i className="fa-sharp fa-solid fa-circle-check text-[11px] text-emerald-400 shrink-0 mt-[1px]" />
                 <div className="min-w-0 flex-1">
-                    <div className="whitespace-pre-wrap">{summary || `${VcsOperationLabel[action]} completed.`}</div>
+                    <div className="whitespace-pre-wrap">
+                        {summary || i18n.t("vcs:panel.completed", { action: operationLabel(action) })}
+                    </div>
                     {hasDetails && <OperationDetails details={details} />}
                 </div>
                 {dismissBtn}
@@ -196,11 +214,13 @@ function VcsProgressCard({
             <div className="flex items-start gap-2">
                 <i className="fa-sharp fa-solid fa-triangle-exclamation text-[11px] shrink-0 mt-[1px]" />
                 <div className="min-w-0 flex-1">
-                    <div className="whitespace-pre-wrap">{summary || `${VcsOperationLabel[action]} failed.`}</div>
+                    <div className="whitespace-pre-wrap">
+                        {summary || i18n.t("vcs:panel.failed", { action: operationLabel(action) })}
+                    </div>
                     {hasDetails && <OperationDetails details={details} />}
                 </div>
                 <CopyForAgent
-                    title={`Copy the failed ${action} for an AI to diagnose`}
+                    title={i18n.t("vcs:panel.copyFailureForAi", { action: operationLabel(action) })}
                     text={() =>
                         Promise.resolve(
                             buildVcsOperationFailurePayload({
@@ -233,6 +253,7 @@ function VcsConflictBar({
     connection: string;
     rpc: VcsUiEnv["rpc"];
 }) {
+    useTranslation("vcs");
     const unmerged = React.useMemo(
         () => (repo.status ?? []).filter((status) => isUnmergedCode(status.code)),
         [repo.status]
@@ -263,10 +284,10 @@ function VcsConflictBar({
             <div className="flex items-center gap-2">
                 <i className="fa-sharp fa-solid fa-code-merge text-[11px] shrink-0" />
                 <span className="min-w-0 flex-1 truncate">
-                    {unmerged.length} file{unmerged.length > 1 ? "s" : ""} with merge conflicts.
+                    {i18n.t("vcs:panel.mergeConflicts", { count: unmerged.length })}
                 </span>
                 <CopyForAgent
-                    title={`Copy all ${unmerged.length} merge conflict${unmerged.length > 1 ? "s" : ""} for an AI to resolve`}
+                    title={i18n.t("vcs:panel.copyAllConflicts", { count: unmerged.length })}
                     text={async () => {
                         const files = await Promise.all(
                             unmerged.map(async (status) => ({
@@ -288,7 +309,7 @@ export class VcsViewModel implements ViewModel {
     env: VcsUiEnv;
     blockAtom: Atom<Block>;
     viewIcon = atom("code-branch");
-    viewName = atom("Version Control");
+    viewName = localeTextAtom(() => i18n.t("vcs:panel.viewName"));
     hideViewName = atom(true);
     manageConnection = atom(true);
     filterOutNowsh = atom(true);
@@ -340,7 +361,7 @@ export class VcsViewModel implements ViewModel {
                 {
                     elemtype: "iconbutton",
                     icon: "arrows-rotate",
-                    title: "Refresh",
+                    title: i18n.t("vcs:common.refresh"),
                     zone: "pinned",
                     click: () => {
                         globalStore.set(this.refreshNonce, (prev) => prev + 1);
@@ -499,7 +520,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     id: Date.now() + Math.random(),
                     action: "commit",
                     state: "error",
-                    message: "Please select at least one file.",
+                    message: i18n.t("vcs:panel.selectFileFirst"),
                 },
             }));
             return;
@@ -511,7 +532,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     id: Date.now() + Math.random(),
                     action: "commit",
                     state: "error",
-                    message: "Please enter a commit message.",
+                    message: i18n.t("vcs:panel.enterCommitMessage"),
                 },
             }));
             return;
@@ -529,14 +550,14 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 { route, timeout: VcsMutationRpcTimeoutMs }
             );
             if (response.success) {
-                const output = response.output || "Commit completed.";
+                const output = response.output || i18n.t("vcs:panel.commitCompleted");
                 completeOperation(repo.repoid, opId, "success", output, output);
                 setSelectedFilesByRepo((prev) => ({ ...prev, [repo.repoid]: [] }));
                 // 提交会清掉工作区变动：目录树的 VCS 标记缓存立即失效，不等 10s TTL
                 clearVcsTreeStatusCache(connection);
                 await loadRepositories();
             } else {
-                const resultMsg = response.error || response.output || "Commit failed.";
+                const resultMsg = response.error || response.output || i18n.t("vcs:panel.commitFailed");
                 completeOperation(repo.repoid, opId, "error", resultMsg, resultMsg);
             }
         } catch (e) {
@@ -587,7 +608,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                 "vcshistory:repopath": repo.rootpath,
                 "vcshistory:filepath": filePath,
                 "vcshistory:browseurl": repo.browseurl ?? "",
-                "vcshistory:title": `History: ${filePath}`,
+                "vcshistory:title": i18n.t("vcs:common.historyTitle", { path: filePath }),
             } as any,
         };
         await createBlock(blockDef);
@@ -596,7 +617,9 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     const openDiffBlock = async (repo: VcsRepositoryInfo, filePath: string, revision: string = "") => {
         if (!repo || isBlankStr(filePath)) return;
         const trimmedRevision = revision?.trim() ?? "";
-        const title = isBlankStr(trimmedRevision) ? `${filePath} (working tree)` : `${filePath} @ ${trimmedRevision.slice(0, 10)}`;
+        const title = isBlankStr(trimmedRevision)
+            ? i18n.t("vcs:common.diffTitleWorkingTree", { path: filePath })
+            : i18n.t("vcs:common.diffTitleRevision", { path: filePath, revision: trimmedRevision.slice(0, 10) });
         const blockDef: BlockDef = {
             meta: {
                 view: "vcsdiff",
@@ -615,7 +638,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
     if (connStatus?.status !== "connected") {
         return (
             <div className="h-full w-full flex items-center justify-center text-sm text-muted">
-                Connection unavailable.
+                {i18n.t("vcs:common.connectionUnavailable")}
             </div>
         );
     }
@@ -628,10 +651,10 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
 
     return (
         <div className="h-full w-full overflow-hidden flex flex-col">
-            {loading && <div className="p-2 text-sm text-muted">Loading repositories...</div>}
+            {loading && <div className="p-2 text-sm text-muted">{i18n.t("vcs:panel.loadingRepositories")}</div>}
             {!loading && error && <div className="p-2 text-sm text-error whitespace-pre-wrap">{error}</div>}
             {!loading && !error && repos.length === 0 && (
-                <div className="p-2 text-sm text-muted">No Git/SVN repository found in this path.</div>
+                <div className="p-2 text-sm text-muted">{i18n.t("vcs:panel.noRepository")}</div>
             )}
             {!loading && !error && repos.length > 0 && activeRepo && (
                 <>
@@ -655,11 +678,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                     />
 
                     {/* Tab bar */}
-                    <VcsTabBar
-                        repo={activeRepo}
-                        currentView={currentView}
-                        onViewChange={setCurrentView}
-                    />
+                    <VcsTabBar repo={activeRepo} currentView={currentView} onViewChange={setCurrentView} />
 
                     {/* Shared operation progress card, visible across all tabs */}
                     <VcsProgressCard
@@ -675,9 +694,13 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                             <VcsChangesTab
                                 repo={activeRepo}
                                 selectedFiles={selectedFilesByRepo[activeRepo.repoid] ?? []}
-                                setSelectedFiles={(next) => setSelectedFilesByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))}
+                                setSelectedFiles={(next) =>
+                                    setSelectedFilesByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))
+                                }
                                 commitMessage={commitMessageByRepo[activeRepo.repoid] ?? DefaultCommitMessage}
-                                setCommitMessage={(next) => setCommitMessageByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))}
+                                setCommitMessage={(next) =>
+                                    setCommitMessageByRepo((prev) => ({ ...prev, [activeRepo.repoid]: next }))
+                                }
                                 onCommit={() => handleCommit(activeRepo)}
                                 commitRunning={busyCommit}
                                 syncAction={runningSyncAction}
@@ -708,9 +731,7 @@ function VcsView({ model }: ViewComponentProps<VcsViewModel>) {
                                 onBranchChanged={() => refreshRepo(activeRepo.repoid)}
                             />
                         )}
-                        {currentView === "pipelines" && (
-                            <VcsPipelinesTab repo={activeRepo} connection={connection} />
-                        )}
+                        {currentView === "pipelines" && <VcsPipelinesTab repo={activeRepo} connection={connection} />}
                         {currentView === "history" && (
                             <VcsHistoryTab
                                 repo={activeRepo}

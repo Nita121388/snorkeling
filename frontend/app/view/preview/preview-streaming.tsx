@@ -6,22 +6,24 @@ import { CenteredDiv } from "@/app/element/quickelems";
 import { getWebServerEndpoint } from "@/util/endpoints";
 import { formatRemoteUri } from "@/util/waveutil";
 import { useAtomValue, useSetAtom } from "jotai";
+import { useTranslation } from "react-i18next";
 import { TransformComponent, TransformWrapper, useControls } from "react-zoom-pan-pinch";
 import type { SpecializedViewProps } from "./preview";
 import { ImagePager, IMAGE_PAGER_ENABLED } from "./image-pager";
 
 function ImageZoomControls() {
     const { zoomIn, zoomOut, resetTransform } = useControls();
+    const { t } = useTranslation("preview");
 
     return (
         <div className="absolute flex flex-row z-[2] top-0 right-0 p-[5px] gap-1">
-            <Button onClick={() => zoomIn()} title="Zoom In" className="py-1 px-[5px]">
+            <Button onClick={() => zoomIn()} title={t("preview:streaming.zoomIn")} className="py-1 px-[5px]">
                 <i className="fa-sharp fa-plus" />
             </Button>
-            <Button onClick={() => zoomOut()} title="Zoom Out" className="py-1 px-[5px]">
+            <Button onClick={() => zoomOut()} title={t("preview:streaming.zoomOut")} className="py-1 px-[5px]">
                 <i className="fa-sharp fa-minus" />
             </Button>
-            <Button onClick={() => resetTransform()} title="Reset Zoom" className="py-1 px-[5px]">
+            <Button onClick={() => resetTransform()} title={t("preview:streaming.resetZoom")} className="py-1 px-[5px]">
                 <i className="fa-sharp fa-rotate-left" />
             </Button>
         </div>
@@ -57,6 +59,7 @@ function StreamingImagePreview({ url, model }: { url: string; model: Specialized
 }
 
 function StreamingPreview({ model }: SpecializedViewProps) {
+    const { t } = useTranslation("preview");
     const conn = useAtomValue(model.connection);
     const fileInfo = useAtomValue(model.statFile);
     const filePath = fileInfo.path;
@@ -88,7 +91,7 @@ function StreamingPreview({ model }: SpecializedViewProps) {
     if (fileInfo.mimetype.startsWith("image/")) {
         return <StreamingImagePreview url={streamingUrl} model={model} />;
     }
-    return <CenteredDiv>Preview Not Supported</CenteredDiv>;
+    return <CenteredDiv>{t("preview:streaming.notSupported")}</CenteredDiv>;
 }
 
 /**
@@ -103,6 +106,7 @@ function StreamingPreview({ model }: SpecializedViewProps) {
  * (`allow-same-origin` must never be combined with `allow-scripts`).
  */
 function HtmlPreviewView({ model }: SpecializedViewProps) {
+    const { t } = useTranslation("preview");
     const conn = useAtomValue(model.connection);
     const fileInfo = useAtomValue(model.statFile);
     const remotePath = formatRemoteUri(fileInfo.path, conn);
@@ -113,7 +117,7 @@ function HtmlPreviewView({ model }: SpecializedViewProps) {
         <div className="flex flex-row h-full w-full overflow-hidden">
             <iframe
                 className="w-full h-full border-0 bg-white"
-                title="HTML Preview (sandboxed)"
+                title={t("preview:streaming.htmlPreviewTitle")}
                 sandbox=""
                 referrerPolicy="no-referrer"
                 src={streamingUrl}

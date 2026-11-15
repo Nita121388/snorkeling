@@ -11,6 +11,8 @@ import {
     loadAgentCatalog,
     pickDefaultModel,
 } from "@/app/workspace/agent-catalog";
+import { i18n } from "@/i18n/config";
+import { localeTextAtom } from "@/i18n/i18nmodel";
 import * as jotai from "jotai";
 import { ScheduledTasksView } from "./scheduledtasks-view";
 
@@ -72,7 +74,7 @@ export class ScheduledTasksViewModel implements ViewModel {
     env: ScheduledTasksEnv;
 
     viewIcon = jotai.atom<string>("clock");
-    viewName = jotai.atom<string>("Scheduled Tasks");
+    viewName = localeTextAtom(() => i18n.t("scheduledtasks:viewName"));
     manageConnection = jotai.atom<boolean>(false);
 
     tasksAtom: jotai.PrimitiveAtom<ScheduledTaskType[]>;
@@ -212,7 +214,7 @@ export class ScheduledTasksViewModel implements ViewModel {
         if (this.disposed) return;
         try {
             await this.env.rpc.ScheduledTaskRunNowCommand(TabRpcClient, task.id);
-            globalStore.set(this.statusAtom, `Queued “${task.name}”`);
+            globalStore.set(this.statusAtom, i18n.t("scheduledtasks:queued", { name: task.name }));
             setTimeout(() => {
                 if (!this.disposed) globalStore.set(this.statusAtom, "");
             }, 3000);

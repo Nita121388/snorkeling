@@ -23,6 +23,7 @@ import {
     type AgentPayloadOpts,
 } from "./agent-payload";
 import { CopyButton } from "./copybutton";
+import { useTranslation } from "react-i18next";
 
 type CopyForAgentProps = {
     /** hover 提示，必填：说明复制内容的概要，如 "Copy all 3 conflicts for an AI to merge"。 */
@@ -41,6 +42,7 @@ async function resolvePayload(text: CopyForAgentProps["text"]): Promise<string> 
 }
 
 const CopyForAgent = ({ title, text, className }: CopyForAgentProps) => {
+    const { t } = useTranslation("element");
     const onClick = async () => {
         const payload = await resolvePayload(text);
         if (typeof navigator === "undefined" || navigator.clipboard == null) {
@@ -51,7 +53,7 @@ const CopyForAgent = ({ title, text, className }: CopyForAgentProps) => {
     return (
         <CopyButton
             title={title}
-            label="Copy for agent"
+            label={t("element:copyForAgent.label")}
             icon="copy"
             onClick={onClick}
             className={className}

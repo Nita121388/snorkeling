@@ -4,10 +4,12 @@
 import { globalStore } from "@/app/store/jotaiStore";
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { copyText } from "@/app/view/aisessions/utils";
+import { i18n } from "@/i18n/config";
 import { cn } from "@/util/util";
 import * as jotai from "jotai";
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import {
     auditFeatureHoursLabel,
     bucketHeights,
@@ -24,38 +26,50 @@ import {
 import type { AiAuditViewModel } from "./aiaudit-model";
 import { AuditPageSize } from "./aiaudit-model";
 
-const FeatureLabels: Record<string, string> = {
-    title: "Title",
-    metadata: "Note & Tags",
-    "annotation-timeline": "Timeline",
-    "annotation-field": "Field",
-};
+/**
+ * 展示词表只存 key：`i18n.t` 在渲染期求值，切语言即时生效（Pattern C）。
+ * `as const` 让 key 保持字面量类型，`i18n.t(...)` 才能过类型检查。
+ */
+const FeatureLabelKey = {
+    title: "aiaudit:feature.title",
+    metadata: "aiaudit:feature.metadata",
+    "annotation-timeline": "aiaudit:feature.annotationTimeline",
+    "annotation-field": "aiaudit:feature.annotationField",
+} as const;
 
-const SourceLabels: Record<string, string> = {
-    "agent-card": "agent card",
-    "session-row": "list row",
-    detail: "detail header",
-    batch: "batch bar",
-    "auto-scan": "auto scan",
-    "audit-retry": "audit retry",
-};
+const SourceLabelKey = {
+    "agent-card": "aiaudit:scope.agentCard",
+    "session-row": "aiaudit:scope.sessionRow",
+    detail: "aiaudit:scope.detail",
+    batch: "aiaudit:scope.batch",
+    "auto-scan": "aiaudit:scope.autoScan",
+    "audit-retry": "aiaudit:scope.auditRetry",
+} as const;
 
-const StateFilterOptions: { value: string; label: string }[] = [
-    { value: "", label: "All states" },
-    { value: "queued", label: "Queued / stalled" },
-    { value: "running", label: "Running" },
-    { value: "done", label: "Done" },
-    { value: "failed", label: "Failed" },
-    { value: "cancelled", label: "Cancelled" },
-];
+const StateFilterOptions = [
+    { value: "", labelKey: "aiaudit:stateFilter.all" },
+    { value: "queued", labelKey: "aiaudit:stateFilter.queued" },
+    { value: "running", labelKey: "aiaudit:stateFilter.running" },
+    { value: "done", labelKey: "aiaudit:stateFilter.done" },
+    { value: "failed", labelKey: "aiaudit:stateFilter.failed" },
+    { value: "cancelled", labelKey: "aiaudit:stateFilter.cancelled" },
+] as const satisfies readonly { value: string; labelKey: string }[];
 
 function featureLabel(feature: string): string {
-    return FeatureLabels[feature] ?? feature ?? "unknown";
+    const known = (Object.prototype.hasOwnProperty.call(FeatureLabelKey, feature) ? feature : null) as
+        | keyof typeof FeatureLabelKey
+        | null;
+    if (known == null) return feature || i18n.t("aiaudit:feature.unknown");
+    return i18n.t(FeatureLabelKey[known]);
 }
 
 function sourceLabel(scope: string): string {
     if (!scope) return "";
-    return SourceLabels[scope] ?? scope;
+    const known = (Object.prototype.hasOwnProperty.call(SourceLabelKey, scope) ? scope : null) as
+        | keyof typeof SourceLabelKey
+        | null;
+    if (known == null) return scope;
+    return i18n.t(SourceLabelKey[known]);
 }
 
 const columnWidths = ["112px", "180px", "auto", "96px", "84px", "78px", "56px"];
@@ -75,6 +89,7 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
     const comment = jotai.useAtomValue(model.commentAtom);
     const clearArmed = jotai.useAtomValue(model.clearArmedAtom);
     const pendingRefresh = jotai.useAtomValue(model.pendingRefreshAtom);
+    const { t } = useTranslation("aiaudit");
     const [now, setNow] = React.useState(() => Date.now());
     const searchTimer = React.useRef<number | undefined>(undefined);
 
@@ -119,28 +134,28 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
     return (
         <div className="aiaudit-root flex h-full w-full min-h-0 flex-col bg-block-solid p-3 text-primary">
             <div className="flex shrink-0 flex-wrap items-center gap-2 pb-2">
-                <h2 className="mr-1 text-sm font-semibold text-primary">AI Audit</h2>
+                <h2 className="mr-1 text-sm font-semibold text-primary">{t("aiaudit:header.title")}</h2>
                 <select
                     className="h-7 rounded border border-border bg-panel px-2 text-xs text-primary outline-none focus:border-accent"
                     value={featureFilter}
                     onChange={(event) => model.setFilter(model.featureFilterAtom, event.target.value)}
-                    aria-label="Filter by feature"
+                    aria-label={t("aiaudit:filter.featureAria")}
                 >
-                    <option value="">All features</option>
-                    <option value="title">Title</option>
-                    <option value="metadata">Note & Tags</option>
-                    <option value="annotation-timeline">Timeline</option>
-                    <option value="annotation-field">Field</option>
+                    <option value="">{t("aiaudit:filter.allFeatures")}</option>
+                    <option value="title">{t("aiaudit:feature.title")}</option>
+                    <option value="metadata">{t("aiaudit:feature.metadata")}</option>
+                    <option value="annotation-timeline">{t("aiaudit:feature.annotationTimeline")}</option>
+                    <option value="annotation-field">{t("aiaudit:feature.annotationField")}</option>
                 </select>
                 <select
                     className="h-7 rounded border border-border bg-panel px-2 text-xs text-primary outline-none focus:border-accent"
                     value={stateFilter}
                     onChange={(event) => model.setFilter(model.stateFilterAtom, event.target.value)}
-                    aria-label="Filter by state"
+                    aria-label={t("aiaudit:filter.stateAria")}
                 >
                     {StateFilterOptions.map((option) => (
                         <option key={option.value} value={option.value}>
-                            {option.label}
+                            {t(option.labelKey)}
                         </option>
                     ))}
                 </select>
@@ -148,9 +163,9 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                     <i className="fa-sharp fa-solid fa-magnifying-glass pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-secondary" />
                     <input
                         className="h-7 w-full rounded border border-border bg-panel pl-6 pr-2 text-xs text-primary outline-none placeholder:text-secondary focus:border-accent"
-                        placeholder="Search session / model / error / key"
+                        placeholder={t("aiaudit:search.placeholder")}
                         value={query}
-                        aria-label="Search audit entries"
+                        aria-label={t("aiaudit:search.aria")}
                         onChange={(event) => onSearchChange(event.target.value)}
                         onKeyDown={(event) => {
                             if (event.key === "Enter") {
@@ -165,8 +180,8 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                     type="button"
                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
                     disabled={loading}
-                    title={loading ? "Refreshing…" : "Refresh"}
-                    aria-label="Refresh"
+                    title={loading ? t("aiaudit:refresh.refreshing") : t("aiaudit:refresh.refresh")}
+                    aria-label={t("aiaudit:refresh.aria")}
                     onClick={() => void model.load()}
                 >
                     <i className={cn("fa-sharp fa-solid fa-rotate", loading && "animate-spin")} />
@@ -179,10 +194,10 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                             ? "border-error bg-error/15 text-error"
                             : "border-border text-secondary hover:bg-hover hover:text-primary"
                     )}
-                    title="Delete audit entries older than 30 days (asks to confirm)"
+                    title={t("aiaudit:clear.title")}
                     onClick={() => void model.clear(30)}
                 >
-                    {clearArmed ? "Confirm clear 30d" : "Clear 30d"}
+                    {clearArmed ? t("aiaudit:clear.confirm") : t("aiaudit:clear.clear")}
                 </button>
             </div>
 
@@ -208,13 +223,13 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
 
             {pendingRefresh ? (
                 <div className="mb-1 flex shrink-0 items-center justify-between gap-2 rounded border border-accent/40 bg-accent/10 px-2 py-1 text-[11px] text-accent">
-                    <span>New entries may have arrived while paging.</span>
+                    <span>{t("aiaudit:pending.message")}</span>
                     <button
                         type="button"
                         className="cursor-pointer rounded px-1.5 py-0.5 hover:bg-hover hover:text-primary"
                         onClick={() => void model.load()}
                     >
-                        Refresh
+                        {t("aiaudit:pending.refresh")}
                     </button>
                 </div>
             ) : null}
@@ -225,10 +240,8 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                 ) : entries.length === 0 ? (
                     <div className="flex h-40 flex-col items-center justify-center gap-1 text-xs text-secondary">
                         <i className="fa-sharp fa-solid fa-clipboard-list text-lg opacity-40" />
-                        <span>No AI activity recorded yet.</span>
-                        <span className="text-[10px]">
-                            Audit entries appear here whenever title, note, or annotation generation runs.
-                        </span>
+                        <span>{t("aiaudit:empty.title")}</span>
+                        <span className="text-[10px]">{t("aiaudit:empty.hint")}</span>
                     </div>
                 ) : (
                     <table className="w-full min-w-[560px] table-fixed border-collapse text-left text-[11px]">
@@ -239,14 +252,14 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                         </colgroup>
                         <thead className="sticky top-0 z-10 bg-block-solid text-secondary">
                             <tr className="border-b border-border">
-                                <th className="py-1 pl-2 pr-2 font-normal">Time</th>
-                                <th className="py-1 pr-2 font-normal">Feature</th>
-                                <th className="py-1 pr-2 font-normal">Session</th>
-                                <th className="py-1 pr-2 font-normal">State</th>
-                                <th className="py-1 pr-2 text-right font-normal">Result</th>
-                                <th className="py-1 pr-2 text-right font-normal">Duration</th>
+                                <th className="py-1 pl-2 pr-2 font-normal">{t("aiaudit:table.time")}</th>
+                                <th className="py-1 pr-2 font-normal">{t("aiaudit:table.feature")}</th>
+                                <th className="py-1 pr-2 font-normal">{t("aiaudit:table.session")}</th>
+                                <th className="py-1 pr-2 font-normal">{t("aiaudit:table.state")}</th>
+                                <th className="py-1 pr-2 text-right font-normal">{t("aiaudit:table.result")}</th>
+                                <th className="py-1 pr-2 text-right font-normal">{t("aiaudit:table.duration")}</th>
                                 <th className="py-1 pr-1 text-right font-normal">
-                                    <span className="sr-only">Actions</span>
+                                    <span className="sr-only">{t("aiaudit:table.actions")}</span>
                                 </th>
                             </tr>
                         </thead>
@@ -273,8 +286,10 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
 
             <div className="flex shrink-0 items-center justify-between gap-2 pt-1.5 text-[10px] text-secondary">
                 <span>
-                    {entries.length} of {total} entr{total === 1 ? "y" : "ies"}
-                    {entries.length > 0 && total > entries.length ? ` · showing first ${entries.length}` : ""}
+                    {i18n.t("aiaudit:footer.summary", { count: total, shown: entries.length, total })}
+                    {entries.length > 0 && total > entries.length
+                        ? i18n.t("aiaudit:footer.showingFirst", { shown: entries.length })
+                        : ""}
                 </span>
                 <span className="flex items-center gap-2">
                     {hasMore ? (
@@ -284,10 +299,14 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                             disabled={loadingMore}
                             onClick={() => void model.loadMore()}
                         >
-                            {loadingMore ? "Loading…" : `Load ${Math.min(AuditPageSize, total - entries.length)} more`}
+                            {loadingMore
+                                ? t("aiaudit:footer.loading")
+                                : i18n.t("aiaudit:footer.loadMore", {
+                                      count: Math.min(AuditPageSize, total - entries.length),
+                                  })}
                         </button>
                     ) : null}
-                    <span className="text-secondary/70">auto-refresh 4s</span>
+                    <span className="text-secondary/70">{t("aiaudit:footer.autoRefresh")}</span>
                 </span>
             </div>
 
@@ -296,7 +315,7 @@ export function AiAuditView({ model }: { model: AiAuditViewModel }) {
                 <PortalLayer>
                     <div className="pointer-events-none fixed bottom-4 right-4 rounded border border-border bg-modalbg px-2 py-1 text-[11px] text-secondary shadow">
                         <i className="fa-sharp fa-solid fa-spinner mr-1 animate-spin" />
-                        Loading entry…
+                        {i18n.t("aiaudit:detail.loading")}
                     </div>
                 </PortalLayer>
             ) : null}
@@ -321,8 +340,9 @@ function AuditStatsStrip({
     onPickFailed: () => void;
     onResetState: () => void;
 }) {
+    const { t } = useTranslation("aiaudit");
     if (stats == null) {
-        return <div className="shrink-0 pb-2 text-[11px] text-secondary">Loading 24h summary…</div>;
+        return <div className="shrink-0 pb-2 text-[11px] text-secondary">{t("aiaudit:stats.loading")}</div>;
     }
     const heights = bucketHeights(stats.hourly, 18);
     const buckets = stats.hourly ?? [];
@@ -330,7 +350,7 @@ function AuditStatsStrip({
     const failedActive = stateFilter === "failed";
     return (
         <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border/60 pb-2 text-[11px] text-secondary">
-            <Metric label="24h calls" value={String(stats.total24h)} />
+            <Metric label={t("aiaudit:stats.calls24h")} value={String(stats.total24h)} />
             <button
                 type="button"
                 className={cn(
@@ -345,9 +365,9 @@ function AuditStatsStrip({
                 title={
                     stats.failed24h > 0
                         ? failedActive
-                            ? "Clear failed filter"
-                            : "Show only failed entries"
-                        : "No failures in the last 24h"
+                            ? t("aiaudit:stats.failedFilterClear")
+                            : t("aiaudit:stats.failedFilterShow")
+                        : t("aiaudit:stats.noFailures")
                 }
                 onClick={() => {
                     if (stats.failed24h <= 0) return;
@@ -356,13 +376,13 @@ function AuditStatsStrip({
                 }}
             >
                 <MetricValue value={String(stats.failed24h)} />
-                <span className="text-[10px] uppercase tracking-wide">failed</span>
+                <span className="text-[10px] uppercase tracking-wide">{t("aiaudit:stats.failed")}</span>
             </button>
-            <Metric label="avg" value={formatDuration(stats.avgDurationMs)} />
+            <Metric label={t("aiaudit:stats.avg")} value={formatDuration(stats.avgDurationMs)} />
             <div
                 className="flex h-[20px] items-end gap-[2px]"
                 role="img"
-                aria-label="Calls per hour over the last 24 hours"
+                aria-label={t("aiaudit:stats.hourlyAria")}
             >
                 {heights.map((height, index) => {
                     const bucket = buckets[index];
@@ -375,9 +395,15 @@ function AuditStatsStrip({
                             title={
                                 bucket == null
                                     ? ""
-                                    : `${auditFeatureHoursLabel(bucket.hour)} · ${bucket.count} call${bucket.count === 1 ? "" : "s"}${
-                                          bucket.failed > 0 ? ` · ${bucket.failed} failed` : ""
-                                      }`
+                                    : [
+                                          auditFeatureHoursLabel(bucket.hour),
+                                          i18n.t("aiaudit:stats.bucketCalls", { count: bucket.count }),
+                                          bucket.failed > 0
+                                              ? i18n.t("aiaudit:stats.bucketFailed", { count: bucket.failed })
+                                              : "",
+                                      ]
+                                          .filter((part) => part !== "")
+                                          .join(" · ")
                             }
                         />
                     );
@@ -393,9 +419,9 @@ function AuditStatsStrip({
                 </span>
             ) : null}
             {stats.sweptStale > 0 ? (
-                <span className="text-[10px] text-warning" title="Orphaned queued rows reclaimed as failed">
+                <span className="text-[10px] text-warning" title={t("aiaudit:stats.reclaimedTitle")}>
                     <i className="fa-sharp fa-solid fa-broom mr-1" />
-                    {stats.sweptStale} stalled reclaimed
+                    {i18n.t("aiaudit:stats.stalledReclaimed", { count: stats.sweptStale })}
                 </span>
             ) : null}
         </div>
@@ -416,6 +442,7 @@ function MetricValue({ value }: { value: string }) {
 }
 
 function AuditRow({ entry, now, model }: { entry: AuditView; now: number; model: AiAuditViewModel }) {
+    const { t } = useTranslation("aiaudit");
     const stalled = isStalled(entry, now);
     const meta = stateMeta(entry.state);
     const label = stalled ? "stalled" : meta.label;
@@ -432,7 +459,11 @@ function AuditRow({ entry, now, model }: { entry: AuditView; now: number; model:
                 !failed && !stalled && "even:bg-white/[0.015]"
             )}
             tabIndex={0}
-            aria-label={`Audit entry ${entry.id}: ${featureLabel(entry.feature)} ${label}`}
+            aria-label={i18n.t("aiaudit:row.aria", {
+                id: entry.id,
+                feature: featureLabel(entry.feature),
+                label,
+            })}
             onClick={() => void model.openDetail(entry.id)}
             onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
@@ -493,7 +524,7 @@ function AuditRow({ entry, now, model }: { entry: AuditView; now: number; model:
                     )}
                     title={
                         stalled
-                            ? `Queued for ${formatDuration(now - entry.createdAt)} with no completion callback`
+                            ? i18n.t("aiaudit:row.stalledTitle", { duration: formatDuration(now - entry.createdAt) })
                             : entry.error || label
                     }
                 >
@@ -512,7 +543,7 @@ function AuditRow({ entry, now, model }: { entry: AuditView; now: number; model:
                         <button
                             type="button"
                             className="rounded border border-warning/50 px-1 py-0.5 text-[10px] text-warning opacity-0 transition-opacity hover:bg-warning/10 focus-visible:opacity-100 group-hover:opacity-100"
-                            title="Re-run this generation"
+                            title={t("aiaudit:row.retry")}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 void model.retry(entry.id);
@@ -530,7 +561,7 @@ function AuditRow({ entry, now, model }: { entry: AuditView; now: number; model:
 
 function AuditSkeleton() {
     return (
-        <div className="space-y-1 p-2" aria-label="Loading audit entries">
+        <div className="space-y-1 p-2" aria-label={i18n.t("aiaudit:skeleton.aria")}>
             {Array.from({ length: 8 }).map((_, index) => (
                 <div key={index} className="flex items-center gap-2">
                     <div className="h-2.5 w-[80px] rounded bg-hover" />
@@ -546,6 +577,7 @@ function AuditSkeleton() {
 type DetailTab = "summary" | "request" | "response";
 
 function AuditDetailDrawer({ detail, model }: { detail: AuditView; model: AiAuditViewModel }) {
+    const { t } = useTranslation("aiaudit");
     const [tab, setTab] = React.useState<DetailTab>("summary");
     const meta = stateMeta(detail.state);
 
@@ -564,11 +596,11 @@ function AuditDetailDrawer({ detail, model }: { detail: AuditView; model: AiAudi
         setTab("summary");
     }, [detail.id]);
 
-    const tabs: { id: DetailTab; label: string }[] = [
-        { id: "summary", label: "Summary" },
-        { id: "request", label: "Request" },
-        { id: "response", label: "Response" },
-    ];
+    const tabs = [
+        { id: "summary", labelKey: "aiaudit:tabs.summary" },
+        { id: "request", labelKey: "aiaudit:tabs.request" },
+        { id: "response", labelKey: "aiaudit:tabs.response" },
+    ] as const satisfies readonly { id: DetailTab; labelKey: string }[];
 
     return (
         <PortalLayer>
@@ -576,7 +608,7 @@ function AuditDetailDrawer({ detail, model }: { detail: AuditView; model: AiAudi
                 className="fixed inset-0 z-50 flex justify-end bg-black/40"
                 role="dialog"
                 aria-modal="true"
-                aria-label="AI audit detail"
+                aria-label={t("aiaudit:detail.aria")}
                 onMouseDown={(event) => {
                     event.stopPropagation();
                     model.closeDetail();
@@ -616,13 +648,13 @@ function AuditDetailDrawer({ detail, model }: { detail: AuditView; model: AiAudi
                                         className="h-7 rounded border border-warning/50 px-2 text-xs text-warning hover:bg-warning/10"
                                         onClick={() => void model.retry(detail.id)}
                                     >
-                                        Retry
+                                        {t("aiaudit:detail.retry")}
                                     </button>
                                 ) : null}
                                 <button
                                     type="button"
                                     className="h-7 w-7 rounded border border-border text-xs text-secondary hover:bg-hover hover:text-primary"
-                                    aria-label="Close detail"
+                                    aria-label={t("aiaudit:detail.close")}
                                     onClick={() => model.closeDetail()}
                                 >
                                     <i className="fa-sharp fa-solid fa-xmark" />
@@ -642,7 +674,7 @@ function AuditDetailDrawer({ detail, model }: { detail: AuditView; model: AiAudi
                                     )}
                                     onClick={() => setTab(item.id)}
                                 >
-                                    {item.label}
+                                    {t(item.labelKey)}
                                 </button>
                             ))}
                         </div>
@@ -655,23 +687,23 @@ function AuditDetailDrawer({ detail, model }: { detail: AuditView; model: AiAudi
                     {detail.rawTruncated ? (
                         <div className="shrink-0 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-[11px] text-warning">
                             <i className="fa-sharp fa-solid fa-scissors mr-1" />
-                            Payload truncated — only the first 200k characters are stored.
+                            {t("aiaudit:detail.truncated")}
                         </div>
                     ) : null}
                     <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
                         {tab === "summary" ? <AuditSummary detail={detail} /> : null}
                         {tab === "request" ? (
                             detail.rawRequest ? (
-                                <AuditRawBlock label="Request" text={detail.rawRequest} defaultExpanded />
+                                <AuditRawBlock label={t("aiaudit:tabs.request")} text={detail.rawRequest} defaultExpanded />
                             ) : (
-                                <EmptyPane label="No request payload stored." />
+                                <EmptyPane label={t("aiaudit:detail.noRequest")} />
                             )
                         ) : null}
                         {tab === "response" ? (
                             detail.rawResponse ? (
-                                <AuditRawBlock label="Response" text={detail.rawResponse} defaultExpanded />
+                                <AuditRawBlock label={t("aiaudit:tabs.response")} text={detail.rawResponse} defaultExpanded />
                             ) : (
-                                <EmptyPane label="No response payload stored." />
+                                <EmptyPane label={t("aiaudit:detail.noResponse")} />
                             )
                         ) : null}
                     </div>
@@ -686,26 +718,33 @@ function EmptyPane({ label }: { label: string }) {
 }
 
 function AuditSummary({ detail }: { detail: AuditView }) {
+    const { t } = useTranslation("aiaudit");
     const rows: { label: string; value: React.ReactNode }[] = [
-        { label: "Feature", value: featureLabel(detail.feature) },
-        { label: "Scope", value: sourceLabel(detail.scope) || "—" },
-        { label: "Trigger", value: detail.trigger || "—" },
-        { label: "Model", value: detail.aiModel || "—" },
-        { label: "Connection", value: detail.connection || "local" },
-        { label: "State", value: stateMeta(detail.state).label },
-        { label: "Results", value: detail.resultCount > 0 ? String(detail.resultCount) : "—" },
+        { label: t("aiaudit:summary.feature"), value: featureLabel(detail.feature) },
+        { label: t("aiaudit:summary.scope"), value: sourceLabel(detail.scope) || "—" },
+        { label: t("aiaudit:summary.trigger"), value: detail.trigger || "—" },
+        { label: t("aiaudit:summary.model"), value: detail.aiModel || "—" },
+        { label: t("aiaudit:summary.connection"), value: detail.connection || t("aiaudit:summary.local") },
+        { label: t("aiaudit:summary.state"), value: stateMeta(detail.state).label },
+        { label: t("aiaudit:summary.results"), value: detail.resultCount > 0 ? String(detail.resultCount) : "—" },
         {
-            label: "Anchors",
-            value: detail.anchorTotal > 0 ? `${detail.anchorKept} / ${detail.anchorTotal} kept` : "—",
+            label: t("aiaudit:summary.anchors"),
+            value:
+                detail.anchorTotal > 0
+                    ? i18n.t("aiaudit:summary.anchorsKept", { kept: detail.anchorKept, total: detail.anchorTotal })
+                    : "—",
         },
-        { label: "Duration", value: formatDuration(detail.durationMs) },
-        { label: "Created", value: formatTimestamp(detail.createdAt) },
-        { label: "Updated", value: formatTimestamp(detail.updatedAt) },
+        { label: t("aiaudit:summary.duration"), value: formatDuration(detail.durationMs) },
+        { label: t("aiaudit:summary.created"), value: formatTimestamp(detail.createdAt) },
+        { label: t("aiaudit:summary.updated"), value: formatTimestamp(detail.updatedAt) },
         {
-            label: "Session",
+            label: t("aiaudit:summary.session"),
             value: <span className="break-all font-mono text-[10px]">{detail.sessionKey || "—"}</span>,
         },
-        { label: "Job", value: <span className="break-all font-mono text-[10px]">{detail.jobId || "—"}</span> },
+        {
+            label: t("aiaudit:summary.job"),
+            value: <span className="break-all font-mono text-[10px]">{detail.jobId || "—"}</span>,
+        },
     ];
     return (
         <div className="space-y-2">
@@ -750,7 +789,7 @@ function AuditSummary({ detail }: { detail: AuditView }) {
                     }
                 >
                     <i className="fa-sharp fa-solid fa-copy mr-1" />
-                    Copy summary
+                    {t("aiaudit:summary.copy")}
                 </button>
             </div>
         </div>
@@ -766,6 +805,7 @@ function AuditRawBlock({
     text: string;
     defaultExpanded?: boolean;
 }) {
+    const { t } = useTranslation("aiaudit");
     const [expanded, setExpanded] = React.useState(defaultExpanded);
     const [copied, setCopied] = React.useState(false);
     if (!text) return null;
@@ -775,7 +815,7 @@ function AuditRawBlock({
                 <span className="text-[11px] font-medium text-primary">
                     {label}
                     <span className="ml-1.5 text-[10px] font-normal text-secondary">
-                        {text.length.toLocaleString()} chars
+                        {i18n.t("aiaudit:raw.chars", { value: text.length.toLocaleString() })}
                     </span>
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -788,14 +828,14 @@ function AuditRawBlock({
                             window.setTimeout(() => setCopied(false), 1200);
                         }}
                     >
-                        {copied ? "Copied" : "Copy"}
+                        {copied ? t("aiaudit:raw.copied") : t("aiaudit:raw.copy")}
                     </button>
                     <button
                         type="button"
                         className="cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-secondary hover:bg-hover hover:text-primary"
                         onClick={() => setExpanded((value) => !value)}
                     >
-                        {expanded ? "Collapse" : "Expand"}
+                        {expanded ? t("aiaudit:raw.collapse") : t("aiaudit:raw.expand")}
                     </button>
                 </div>
             </div>

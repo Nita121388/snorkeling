@@ -6,6 +6,7 @@
     "app:defaultnewblock": "term",
     "app:tabbar": "top",
     "app:theme": "system",
+    "ui:locale": "auto",
     "app:confirmquit": true,
     "app:hideaibutton": false,
     "term:showsplitbuttons": false,

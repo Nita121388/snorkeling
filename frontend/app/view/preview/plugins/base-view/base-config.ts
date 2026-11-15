@@ -5,6 +5,7 @@
 // 设计原则：纯函数、与 Obsidian 解耦 —— 只把 .base 当作纯文本 YAML 解析，
 // 不依赖 Obsidian 应用/API。Phase 1 支持 filters/properties/views 的子集。
 
+import { i18n } from "@/i18n/config";
 import YAML from "yaml";
 
 export type BaseFilter =
@@ -67,10 +68,10 @@ export function parseBaseConfig(content: string): ParseResult {
     try {
         doc = YAML.parse(content);
     } catch (e) {
-        return { ok: false, error: `YAML 解析失败: ${e}` };
+        return { ok: false, error: i18n.t("preview:baseConfig.yamlParseFailed", { error: String(e) }) };
     }
     if (doc == null || typeof doc !== "object") {
-        return { ok: false, error: "空配置" };
+        return { ok: false, error: i18n.t("preview:baseConfig.emptyConfig") };
     }
     const raw = doc as Record<string, unknown>;
 
@@ -78,7 +79,7 @@ export function parseBaseConfig(content: string): ParseResult {
     if (raw.filters != null) {
         const parsed = parseFilterNode(raw.filters);
         if (parsed == null) {
-            return { ok: false, error: "filters 格式无法解析" };
+            return { ok: false, error: i18n.t("preview:baseConfig.filtersParseFailed") };
         }
         filters = parsed;
     }
@@ -105,7 +106,7 @@ export function parseBaseConfig(content: string): ParseResult {
             }
             const v = view as Record<string, unknown>;
             views.push({
-                name: typeof v.name === "string" ? v.name : "视图",
+                name: typeof v.name === "string" ? v.name : i18n.t("preview:baseConfig.defaultViewName"),
                 order: Array.isArray(v.order) ? v.order.filter((x): x is string => typeof x === "string") : [],
                 groupBy: typeof v.groupBy === "string" ? v.groupBy : undefined,
                 hasFormulaColumn: Array.isArray(v.order)

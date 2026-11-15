@@ -24,6 +24,7 @@ import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { collapsedTabIdsAtom, collapseTabIds } from "./tab-collapse-state";
 import { selectBarVisibleTabIds } from "./tab-more-model";
 import { TabMoreMenu } from "./tab-more-menu";
@@ -43,6 +44,7 @@ import { WorkspaceSwitcher } from "./workspaceswitcher";
 export type { VTabItem } from "./vtab";
 
 const VTabBarAIButton = memo(() => {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<VTabBarEnv>();
     const aiPanelOpen = useAtomValue(WorkspaceLayoutModel.getInstance().panelVisibleAtom);
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
@@ -58,7 +60,7 @@ const VTabBarAIButton = memo(() => {
 
     return (
         <Tooltip
-            content="Toggle Wave AI Panel"
+            content={t("tab:tabbar.toggleWaveAIPanel")}
             placement="bottom"
             hideOnClick
             divClassName={`flex h-[22px] px-3.5 justify-end mb-1 items-center rounded-md mr-1 box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] ${aiPanelOpen ? "text-accent" : "text-secondary"}`}
@@ -72,6 +74,7 @@ const VTabBarAIButton = memo(() => {
 VTabBarAIButton.displayName = "VTabBarAIButton";
 
 const MacOSHeader = memo(() => {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<VTabBarEnv>();
     const isFullScreen = useAtomValue(env.atoms.isFullScreen);
     return (
@@ -92,7 +95,12 @@ const MacOSHeader = memo(() => {
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
                 <VTabBarAIButton />
-                <Tooltip content="Workspace Switcher" placement="bottom" hideOnClick divClassName="flex items-center">
+                <Tooltip
+                    content={t("tab:tabbar.workspaceSwitcher")}
+                    placement="bottom"
+                    hideOnClick
+                    divClassName="flex items-center"
+                >
                     <WorkspaceSwitcher />
                 </Tooltip>
                 <UpdateStatusBanner />
@@ -215,6 +223,7 @@ function VTabWrapper({
 }
 
 export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarProps) {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<VTabBarEnv>();
     const activeTabId = useAtomValue(env.atoms.staticTabId);
     // R9.1: 乐观高亮（仅视觉；非视觉逻辑继续用 activeTabId）
@@ -625,8 +634,8 @@ export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarPro
                     onClick={() => env.electron.createTab()}
                     onMouseEnter={() => setIsNewTabHovered(true)}
                     onMouseLeave={() => setIsNewTabHovered(false)}
-                    aria-label="New Tab"
-                    title="New Tab"
+                    aria-label={t("tab:tab.newTab")}
+                    title={t("tab:tab.newTab")}
                     style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 >
                     <div className="pointer-events-none absolute inset-x-1 inset-y-[4px] rounded-sm bg-transparent transition-colors group-hover:bg-hover" />

@@ -5,6 +5,7 @@ import { Button } from "@/app/element/button";
 import { Modal } from "@/app/modals/modal";
 import { modalsModel } from "@/app/store/modalmodel";
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 type RestartConfirmModalProps = {
     blockId: string;
@@ -18,6 +19,7 @@ type RestartConfirmModalProps = {
  * explicitly confirm; cancelling leaves the controller untouched.
  */
 function RestartConfirmModal({ isAgent, onResolve }: RestartConfirmModalProps) {
+    const { t } = useTranslation("modals");
     const resolvedRef = useRef(false);
     const resolveAndClose = (restart: boolean) => {
         if (resolvedRef.current) return;
@@ -26,10 +28,10 @@ function RestartConfirmModal({ isAgent, onResolve }: RestartConfirmModalProps) {
         onResolve(restart);
     };
 
-    const title = isAgent ? "Restart Agent Session" : "Restart Shell";
+    const title = isAgent ? t("modals:restartConfirm.titleAgent") : t("modals:restartConfirm.titleShell");
     const description = isAgent
-        ? "Restarting the agent session will interrupt the currently running agent process. If auto-resume is enabled, the original conversation may be recovered after restart."
-        : "Restarting the shell will terminate the currently running command and start a new one.";
+        ? t("modals:restartConfirm.descAgent")
+        : t("modals:restartConfirm.descShell");
 
     return (
         <Modal className="w-[420px] max-w-[calc(100vw-32px)]" onClickBackdrop={() => resolveAndClose(false)}>
@@ -41,9 +43,9 @@ function RestartConfirmModal({ isAgent, onResolve }: RestartConfirmModalProps) {
             </div>
             <div className="flex justify-end gap-2 pt-4">
                 <Button className="grey ghost" onClick={() => resolveAndClose(false)}>
-                    Cancel
+                    {t("modals:modal.cancel")}
                 </Button>
-                <Button onClick={() => resolveAndClose(true)}>Restart</Button>
+                <Button onClick={() => resolveAndClose(true)}>{t("modals:restartConfirm.restart")}</Button>
             </div>
         </Modal>
     );

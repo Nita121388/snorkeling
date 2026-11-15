@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/util/util";
 
 type ScrollToBottomButtonProps = {
@@ -11,6 +12,7 @@ type ScrollToBottomButtonProps = {
 };
 
 export const ScrollToBottomButton = memo(({ isAtBottom, onClick, bottomOffset = "1rem" }: ScrollToBottomButtonProps) => {
+    const { t } = useTranslation("element");
     return (
         <button
             type="button"
@@ -24,8 +26,8 @@ export const ScrollToBottomButton = memo(({ isAtBottom, onClick, bottomOffset = 
             )}
             style={{ bottom: bottomOffset }}
             onClick={onClick}
-            aria-label="Scroll to bottom"
-            title="Scroll to bottom"
+            aria-label={t("element:scrollToBottom.label")}
+            title={t("element:scrollToBottom.label")}
         >
             <i className="fa-sharp fa-solid fa-arrow-down text-sm" />
         </button>

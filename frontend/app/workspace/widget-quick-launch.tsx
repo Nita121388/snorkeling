@@ -14,6 +14,7 @@ import { fireAndForget, makeIconClass } from "@/util/util";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { PlacementTarget } from "./block-placement-store";
 
 import "./widget-quick-launch.scss";
@@ -42,6 +43,7 @@ function gridCols(count: number): number {
 }
 
 const WidgetQuickLaunchModal = memo(({ placement }: WidgetQuickLaunchModalProps) => {
+    const { t } = useTranslation("workspace");
     const fullConfig = useAtomValue(atoms.fullConfigAtom);
     const workspaceId = useAtomValue(atoms.workspaceId);
     const [highlightIdx, setHighlightIdx] = useState(0);
@@ -213,7 +215,7 @@ const WidgetQuickLaunchModal = memo(({ placement }: WidgetQuickLaunchModalProps)
             {/* header：仅左侧标题；关闭走 Modal 基类右上角的 X（Bloom 同款），不再自放 esc 键帽撞车 */}
             <div className="flex items-center gap-2 border-b border-border px-4 py-3">
                 <i className="fa-sharp fa-regular fa-bolt text-accent text-sm" />
-                <span className="text-sm font-medium text-muted">Quick Launch</span>
+                <span className="text-sm font-medium text-muted">{t("workspace:quickLaunch.title")}</span>
             </div>
 
             {/* bloom-menu 风格网格：发丝线边框、图标在上标签在下、cell 悬浮仅换色 */}
@@ -224,7 +226,7 @@ const WidgetQuickLaunchModal = memo(({ placement }: WidgetQuickLaunchModalProps)
                 onKeyDown={onKeyDown}
             >
                 {widgets.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-xs text-muted">No widgets available</div>
+                    <div className="px-4 py-8 text-center text-xs text-muted">{t("workspace:quickLaunch.empty")}</div>
                 ) : (
                     <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                         {widgets.map((w, i) => {
@@ -264,7 +266,7 @@ const WidgetQuickLaunchModal = memo(({ placement }: WidgetQuickLaunchModalProps)
                                                 launch(w, "new");
                                             }}
                                         >
-                                            block
+                                            {t("workspace:quickLaunch.placementBlock")}
                                         </button>
                                         <button
                                             type="button"
@@ -274,7 +276,7 @@ const WidgetQuickLaunchModal = memo(({ placement }: WidgetQuickLaunchModalProps)
                                                 launch(w, "group");
                                             }}
                                         >
-                                            group
+                                            {t("workspace:quickLaunch.placementGroup")}
                                         </button>
                                     </div>
                                 </div>
@@ -287,16 +289,20 @@ const WidgetQuickLaunchModal = memo(({ placement }: WidgetQuickLaunchModalProps)
             {/* footer：键位提示统一收这里（esc 挪下来，与右上角 X 彻底解联） */}
             <div className="flex items-center justify-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted">
                 <span>
-                    <kbd className="rounded border border-border bg-surface-soft px-1">←↑→↓</kbd> select
+                    <kbd className="rounded border border-border bg-surface-soft px-1">←↑→↓</kbd>{" "}
+                    {t("workspace:quickLaunch.hintSelect")}
                 </span>
                 <span>
-                    <kbd className="rounded border border-border bg-surface-soft px-1">↵</kbd> new block
+                    <kbd className="rounded border border-border bg-surface-soft px-1">↵</kbd>{" "}
+                    {t("workspace:quickLaunch.hintNewBlock")}
                 </span>
                 <span>
-                    <kbd className="rounded border border-border bg-surface-soft px-1">⇥</kbd> into group
+                    <kbd className="rounded border border-border bg-surface-soft px-1">⇥</kbd>{" "}
+                    {t("workspace:quickLaunch.hintIntoGroup")}
                 </span>
                 <span>
-                    <kbd className="rounded border border-border bg-surface-soft px-1">esc</kbd> close
+                    <kbd className="rounded border border-border bg-surface-soft px-1">esc</kbd>{" "}
+                    {t("workspace:quickLaunch.hintClose")}
                 </span>
             </div>
         </Modal>

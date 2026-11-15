@@ -17,6 +17,9 @@
 //  - Agent Block       ～ AgentHoverCard（完整：provider / model / status / note）
 //  - 其它 Block        ～ null（由调用方 fallback 到原生 title tooltip）
 
+import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
+import { RepoLine } from "@/app/block/repo-line";
+import { SessionDetailInfoCard } from "@/app/block/session-detail-info-card";
 import {
     InfoCard,
     InfoCardHead,
@@ -26,14 +29,12 @@ import {
     InfoCardText,
     InfoCardTitle,
 } from "@/app/element/info-card";
-import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
-import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
-import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
-import { RepoLine } from "@/app/block/repo-line";
-import { SessionDetailInfoCard } from "@/app/block/session-detail-info-card";
 import { PreviewPathIsDirMetaKey } from "@/app/view/preview/preview-navigation";
+import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
+import { isAgentTerminalMeta } from "@/app/view/term/agent-meta";
 import { SnorkelingBlockKindMetaKey, SnorkelingBlockKindNote } from "@/app/workspace/toggle-block";
 import type * as React from "react";
+import { useTranslation } from "react-i18next";
 
 export type BlockInfoCardMode = "gui" | "tui";
 
@@ -46,6 +47,7 @@ export type BlockInfoCardMode = "gui" | "tui";
  * `onOpen` 可选：有则渲染成可点击按钮（激活 tab / 恢复布局等）；无则只展示文本。
  */
 export function NoteInfoCard({ blockData, onOpen }: { blockData: Block | null; onOpen?: () => void }) {
+    const { t } = useTranslation("block");
     const meta = blockData?.meta as Record<string, unknown> | undefined;
     const path = (meta?.file as string) || blockData?.oid || "";
 
@@ -54,10 +56,10 @@ export function NoteInfoCard({ blockData, onOpen }: { blockData: Block | null; o
             <InfoCardSection>
                 <InfoCardHead>
                     <InfoCardIcon icon="fa-solid fa-note-sticky" />
-                    <InfoCardTitle>Note</InfoCardTitle>
+                    <InfoCardTitle>{t("block:infoCard.note")}</InfoCardTitle>
                 </InfoCardHead>
                 {onOpen ? (
-                    <InfoCardPreview onClick={onOpen} title="Open">
+                    <InfoCardPreview onClick={onOpen} title={t("block:infoCard.open")}>
                         <InfoCardText>{path}</InfoCardText>
                     </InfoCardPreview>
                 ) : (
@@ -79,6 +81,7 @@ export function NoteInfoCard({ blockData, onOpen }: { blockData: Block | null; o
  * 卡片与加 Git 分区之前完全一致。
  */
 export function PreviewInfoCard({ blockData, onOpen }: { blockData: Block | null; onOpen?: () => void }) {
+    const { t } = useTranslation("block");
     const meta = blockData?.meta as Record<string, unknown> | undefined;
     const isDir = meta?.[PreviewPathIsDirMetaKey] === true;
     const path = (meta?.file as string) || (meta?.url as string) || blockData?.oid || "";
@@ -89,10 +92,10 @@ export function PreviewInfoCard({ blockData, onOpen }: { blockData: Block | null
             <InfoCardSection>
                 <InfoCardHead>
                     <InfoCardIcon icon={isDir ? "fa-solid fa-folder" : "fa-solid fa-file-lines"} />
-                    <InfoCardTitle>{isDir ? "Folder" : "File"}</InfoCardTitle>
+                    <InfoCardTitle>{isDir ? t("block:infoCard.folder") : t("block:infoCard.file")}</InfoCardTitle>
                 </InfoCardHead>
                 {onOpen ? (
-                    <InfoCardPreview onClick={onOpen} title="Open">
+                    <InfoCardPreview onClick={onOpen} title={t("block:infoCard.open")}>
                         <InfoCardText>{path}</InfoCardText>
                     </InfoCardPreview>
                 ) : (

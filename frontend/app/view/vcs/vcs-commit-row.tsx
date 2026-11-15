@@ -3,8 +3,10 @@
 
 import { formatAbsoluteTime, formatRelativeTime } from "@/app/view/vcs/vcs-time";
 import { openLink } from "@/store/global";
+import { i18n } from "@/i18n/config";
 import { fireAndForget } from "@/util/util";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { VcsIconButton } from "./vcs-icon-button";
 
 /**
@@ -29,8 +31,10 @@ export function CommitRow({
     /** 该提交在远程的网页地址；非空时主行 hover 浮现 ↗ 点击跳转 */
     remoteOpenUrl?: string;
 }) {
+    // 让行订阅语言变化（相对时间 / 空标题占位文案随语言刷新）。
+    useTranslation("vcs");
     const shortHash = (hash: string) => (hash?.length > 10 ? hash.slice(0, 10) : hash);
-    const subject = commit.subject || "(no subject)";
+    const subject = commit.subject || i18n.t("vcs:common.noSubject");
     const relativeTime = formatRelativeTime(commit.date);
     const clickable = expandable && onToggle != null;
     const subjectLine = expandable ? (
@@ -70,7 +74,7 @@ export function CommitRow({
                 <span className="flex shrink-0 self-center">
                     <VcsIconButton
                         icon="arrow-up-right-from-square"
-                        title="Open commit on remote"
+                        title={i18n.t("vcs:common.openCommitRemote")}
                         size="sm"
                         reveal="hover"
                         onClick={(e) => {

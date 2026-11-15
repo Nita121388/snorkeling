@@ -29,6 +29,8 @@ import {
     type OrderedListMoveState,
 } from "@/app/element/markdown-ordered-list";
 import { CenteredDiv } from "@/app/element/quickelems";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 import { Search, useSearch } from "@/app/element/search";
 import {
     clampSelectionCopyOverlayPosition,
@@ -376,6 +378,7 @@ function restoreEditorMarkdownFoldSnapshot(
 }
 
 function CodeEditPreview({ model }: SpecializedViewProps) {
+    const { t } = useTranslation("preview");
     const fileContentLoadable = useAtomValue(model.fileContentLoadable);
     const setNewFileContent = useSetAtom(model.newFileContent);
     const newFileContent = useAtomValue(model.newFileContent);
@@ -1287,7 +1290,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         });
         const copyContextDisposer = editor.addAction({
             id: "snorkeling.copy-context",
-            label: "🪧 Copy Context",
+            label: t("preview:editorAction.copyContext"),
             contextMenuGroupId: "navigation",
             contextMenuOrder: 0.5,
             run: async () => {
@@ -1309,7 +1312,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         });
         const searchInFilesDisposer = editor.addAction({
             id: "snorkeling.search-in-files",
-            label: "Search In Files",
+            label: t("preview:editorAction.searchInFiles"),
             contextMenuGroupId: "navigation",
             contextMenuOrder: 0.6,
             run: async () => {
@@ -1326,7 +1329,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                 }
                 const reference = parseFileReference(text);
                 if (reference == null) {
-                    window.alert("No file reference found in the selected text.");
+                    window.alert(t("preview:editorAction.noFileReference"));
                     return;
                 }
                 await searchSelectionInFiles(reference);
@@ -1334,7 +1337,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         });
         const moveUpDisposer = editor.addAction({
             id: "snorkeling.markdown-block-move-up",
-            label: "Move Markdown Block Up",
+            label: t("preview:editorAction.moveBlockUp"),
             contextMenuGroupId: "navigation",
             contextMenuOrder: 0.7,
             precondition: `${MarkdownListEnabledContextKey} && ${MarkdownListCanMoveUpContextKey}`,
@@ -1342,7 +1345,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         });
         const moveDownDisposer = editor.addAction({
             id: "snorkeling.markdown-block-move-down",
-            label: "Move Markdown Block Down",
+            label: t("preview:editorAction.moveBlockDown"),
             contextMenuGroupId: "navigation",
             contextMenuOrder: 0.71,
             precondition: `${MarkdownListEnabledContextKey} && ${MarkdownListCanMoveDownContextKey}`,
@@ -1350,7 +1353,7 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
         });
         const renumberDisposer = editor.addAction({
             id: "snorkeling.markdown-list-renumber",
-            label: "Renumber Ordered List",
+            label: t("preview:editorAction.renumberList"),
             contextMenuGroupId: "navigation",
             contextMenuOrder: 0.72,
             precondition: `${MarkdownListEnabledContextKey} && ${MarkdownListHasSelectionContextKey}`,
@@ -1425,12 +1428,16 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
     }, []);
 
     if (fileContentLoadable.state === "hasError") {
-        return <CenteredDiv>File Read Failed: {`${fileContentLoadable.error}`}</CenteredDiv>;
+        return (
+            <CenteredDiv>
+                {i18n.t("preview:previewEdit.fileReadFailed", { error: `${fileContentLoadable.error}` })}
+            </CenteredDiv>
+        );
     }
     // 只有从没拿到过任何内容（首次加载磁盘文件）时才整屏显示 Loading。
     // 编辑期间的瞬时 loading 用 previousFileContentRef 顶住，编辑器不卸载，光标不跳。
     if (fileContentLoadable.state === "loading" && previousFileContentRef.current === "") {
-        return <CenteredDiv>Loading file...</CenteredDiv>;
+        return <CenteredDiv>{t("preview:previewEdit.loadingFile")}</CenteredDiv>;
     }
 
     return (
@@ -1462,13 +1469,13 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                               ...(markdownListActionsEnabled
                                   ? [
                                         {
-                                            label: "Renumber Ordered List",
+                                            label: t("preview:editorAction.renumberList"),
                                             click: () => renumberSelectedOrderedList(),
                                         },
                                     ]
                                   : []),
                               {
-                                  label: "Copy Context",
+                                  label: t("preview:editorAction.copyContextShort"),
                                   click: () =>
                                       fireAndForget(() =>
                                           navigator.clipboard.writeText(selectionCopyOverlay.contextText)
@@ -1489,8 +1496,8 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                         className="preview-editor-list-drag-handle"
                         title={
                             markdownMoveControls.controlState.kind === "heading"
-                                ? "Drag heading section"
-                                : "Drag list item"
+                                ? t("preview:editToolbar.dragHeading")
+                                : t("preview:editToolbar.dragList")
                         }
                         onPointerDown={(event) => startMarkdownNodeDrag(event, markdownMoveControls.controlState)}
                     >
@@ -1500,8 +1507,8 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                         type="button"
                         title={
                             markdownMoveControls.controlState.kind === "heading"
-                                ? "Cut heading section"
-                                : "Cut list item"
+                                ? t("preview:editToolbar.cutHeading")
+                                : t("preview:editToolbar.cutList")
                         }
                         onClick={() => cutCurrentMarkdownNode()}
                     >
@@ -1511,8 +1518,8 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                         type="button"
                         title={
                             markdownMoveControls.controlState.kind === "heading"
-                                ? "Insert heading above"
-                                : "Insert list item above"
+                                ? t("preview:editToolbar.insertAboveHeading")
+                                : t("preview:editToolbar.insertAboveList")
                         }
                         onMouseEnter={() => showMarkdownInsertPreview(markdownMoveControls.controlState, "above")}
                         onMouseLeave={() => clearMarkdownMovePreview()}
@@ -1525,8 +1532,8 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                         type="button"
                         title={
                             markdownMoveControls.controlState.kind === "heading"
-                                ? "Insert heading below"
-                                : "Insert list item below"
+                                ? t("preview:editToolbar.insertBelowHeading")
+                                : t("preview:editToolbar.insertBelowList")
                         }
                         onMouseEnter={() => showMarkdownInsertPreview(markdownMoveControls.controlState, "below")}
                         onMouseLeave={() => clearMarkdownMovePreview()}
@@ -1539,8 +1546,8 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                         type="button"
                         title={
                             markdownMoveControls.controlState.kind === "heading"
-                                ? "Move heading section up"
-                                : "Move list item up"
+                                ? t("preview:editToolbar.moveUpHeading")
+                                : t("preview:editToolbar.moveUpList")
                         }
                         disabled={!markdownMoveControls.controlState.state.canMoveUp}
                         onMouseEnter={() =>
@@ -1558,8 +1565,8 @@ function CodeEditPreview({ model }: SpecializedViewProps) {
                         type="button"
                         title={
                             markdownMoveControls.controlState.kind === "heading"
-                                ? "Move heading section down"
-                                : "Move list item down"
+                                ? t("preview:editToolbar.moveDownHeading")
+                                : t("preview:editToolbar.moveDownList")
                         }
                         disabled={!markdownMoveControls.controlState.state.canMoveDown}
                         onMouseEnter={() =>

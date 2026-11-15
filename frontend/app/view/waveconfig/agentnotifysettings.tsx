@@ -12,6 +12,7 @@
 // so the displayed values can never drift from the effective behavior.
 
 import { Toggle } from "@/app/element/toggle";
+import { i18n } from "@/i18n/config";
 import { atoms } from "@/app/store/global-atoms";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -20,6 +21,7 @@ import { AGENT_OS_NOTIFY_DEFAULTS, AGENT_OS_NOTIFY_SETTING_KEYS } from "@/util/s
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type NotifyBoolKey = "masterEnabled" | "doneEnabled" | "blockedEnabled" | "notifyWhenFocused";
 type NotifyNumberKey = "idleMinMs" | "cooldownMs";
@@ -127,7 +129,7 @@ function NumberField({
                 }}
                 className="h-8 w-20 rounded border border-border bg-panel px-2 text-xs text-primary outline-none focus:border-accent disabled:opacity-50"
             />
-            <span className="text-xs text-muted-foreground">sec</span>
+            <span className="text-xs text-muted-foreground">{i18n.t("waveconfig:agentNotify.secUnit")}</span>
         </div>
     );
 }
@@ -152,69 +154,72 @@ const AgentNotifySettingsContent = memo(({ model: _model }: { model: WaveConfigV
         setNotifySetting(AGENT_OS_NOTIFY_SETTING_KEYS[key], Math.round(seconds * 1000));
     }, []);
 
+    const { t } = useTranslation("waveconfig");
     return (
         <div className="p-6 h-full overflow-auto">
             <div className="max-w-2xl">
                 <div className="text-sm text-muted-foreground mb-2">
-                    Snorkeling raises a native toast when an agent finishes or asks for input. These switches control
-                    how often that happens.
+                    {t("waveconfig:agentNotify.intro")}
                 </div>
 
                 <div className="divide-y divide-border">
-                    <SectionRow title="Agent notifications" description="Master switch for every agent toast.">
+                    <SectionRow
+                        title={t("waveconfig:agentNotify.masterTitle")}
+                        description={t("waveconfig:agentNotify.masterDescription")}
+                    >
                         <Toggle
                             checked={masterEnabled}
                             onChange={(v) => setBool("masterEnabled", v)}
-                            aria-label="Agent notifications"
+                            aria-label={t("waveconfig:agentNotify.masterAria")}
                         />
                     </SectionRow>
 
                     <SectionRow
-                        title="Notify when an agent finishes"
-                        description="A working agent became idle — the turn completed."
+                        title={t("waveconfig:agentNotify.doneTitle")}
+                        description={t("waveconfig:agentNotify.doneDescription")}
                         disabled={!masterEnabled}
                     >
                         <Toggle
                             checked={doneEnabled}
                             disabled={!masterEnabled}
                             onChange={(v) => setBool("doneEnabled", v)}
-                            aria-label="Notify when an agent finishes"
+                            aria-label={t("waveconfig:agentNotify.doneAria")}
                         />
                     </SectionRow>
 
                     <SectionRow
-                        title="Notify when an agent needs input"
-                        description="The agent is blocked, for example on an approval prompt."
+                        title={t("waveconfig:agentNotify.blockedTitle")}
+                        description={t("waveconfig:agentNotify.blockedDescription")}
                         disabled={!masterEnabled}
                     >
                         <Toggle
                             checked={blockedEnabled}
                             disabled={!masterEnabled}
                             onChange={(v) => setBool("blockedEnabled", v)}
-                            aria-label="Notify when an agent needs input"
+                            aria-label={t("waveconfig:agentNotify.blockedAria")}
                         />
                     </SectionRow>
 
                     <SectionRow
-                        title="Notify even while Snorkeling is focused"
-                        description="By default a toast is skipped when a Snorkeling window has focus."
+                        title={t("waveconfig:agentNotify.focusedTitle")}
+                        description={t("waveconfig:agentNotify.focusedDescription")}
                         disabled={!masterEnabled}
                     >
                         <Toggle
                             checked={notifyWhenFocused}
                             disabled={!masterEnabled}
                             onChange={(v) => setBool("notifyWhenFocused", v)}
-                            aria-label="Notify even while Snorkeling is focused"
+                            aria-label={t("waveconfig:agentNotify.focusedAria")}
                         />
                     </SectionRow>
 
                     <SectionRow
-                        title="Idle threshold"
-                        description="Wait until the keyboard and mouse have been idle this long before notifying. 0 notifies right away."
+                        title={t("waveconfig:agentNotify.idleTitle")}
+                        description={t("waveconfig:agentNotify.idleDescription")}
                         disabled={!masterEnabled}
                     >
                         <NumberField
-                            ariaLabel="Idle threshold in seconds"
+                            ariaLabel={t("waveconfig:agentNotify.idleAria")}
                             valueSeconds={Math.round(idleMinMs / 1000)}
                             onCommit={(s) => setNumber("idleMinMs", s)}
                             disabled={!masterEnabled}
@@ -222,12 +227,12 @@ const AgentNotifySettingsContent = memo(({ model: _model }: { model: WaveConfigV
                     </SectionRow>
 
                     <SectionRow
-                        title="Cooldown"
-                        description="Repeat toasts of the same kind inside this window are merged into one summary. 0 disables the cooldown."
+                        title={t("waveconfig:agentNotify.cooldownTitle")}
+                        description={t("waveconfig:agentNotify.cooldownDescription")}
                         disabled={!masterEnabled}
                     >
                         <NumberField
-                            ariaLabel="Cooldown in seconds"
+                            ariaLabel={t("waveconfig:agentNotify.cooldownAria")}
                             valueSeconds={Math.round(cooldownMs / 1000)}
                             onCommit={(s) => setNumber("cooldownMs", s)}
                             disabled={!masterEnabled}

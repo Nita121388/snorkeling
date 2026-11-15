@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { ReactNode } from "react";
+import { i18n } from "@/i18n/config";
 
 export class ErrorBoundary extends React.Component<
     { children: ReactNode; fallback?: React.ReactElement & { error?: Error } },
@@ -113,9 +114,11 @@ export class RootErrorBoundary extends React.Component<
                     fontFamily: "var(--term-font-family, monospace)",
                 }}
             >
-                <div style={{ fontSize: 16, fontWeight: 600 }}>界面渲染出错 / UI crashed</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{i18n.t("element:errorBoundary.title")}</div>
                 <div style={{ fontSize: 13, opacity: 0.75 }}>
-                    窗口本身没坏，是某个面板在渲染时抛错。点 Reload 重新加载即可恢复（终端与 AI 会话数据不受影响）。
+                    {i18n.t("element:errorBoundary.body", {
+                        reloadButton: i18n.t("element:errorBoundary.reload"),
+                    })}
                 </div>
                 <button
                     type="button"
@@ -130,7 +133,7 @@ export class RootErrorBoundary extends React.Component<
                         cursor: "pointer",
                     }}
                 >
-                    Reload
+                    {i18n.t("element:errorBoundary.reload")}
                 </button>
                 <pre style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap", opacity: 0.85 }}>{detail}</pre>
             </div>

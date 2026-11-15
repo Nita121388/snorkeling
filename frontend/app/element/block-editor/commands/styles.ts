@@ -8,11 +8,11 @@ import type { InlineStyleSpec } from "../registry";
  *  display descriptors, so the toolbar can stay a dumb renderer. */
 export function builtinInlineStyles(): InlineStyleSpec[] {
     return [
-        { id: "bold", label: "Bold", hint: "⌘B" },
-        { id: "italic", label: "Italic", hint: "⌘I" },
-        { id: "strike", label: "Strikethrough", hint: "⌘⇧X" },
-        { id: "code", label: "Inline Code", hint: "⌘`" },
-        { id: "link", label: "Link", hint: "⌘K" },
-        { id: "kbd", label: "Kbd" },
+        { id: "bold", label: "Bold", labelKey: "block-editor:inlineStyle.bold", hint: "⌘B" },
+        { id: "italic", label: "Italic", labelKey: "block-editor:inlineStyle.italic", hint: "⌘I" },
+        { id: "strike", label: "Strikethrough", labelKey: "block-editor:inlineStyle.strike", hint: "⌘⇧X" },
+        { id: "code", label: "Inline Code", labelKey: "block-editor:inlineStyle.code", hint: "⌘`" },
+        { id: "link", label: "Link", labelKey: "block-editor:inlineStyle.link", hint: "⌘K" },
+        { id: "kbd", label: "Kbd", labelKey: "block-editor:inlineStyle.kbd" },
     ];
 }

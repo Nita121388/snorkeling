@@ -13,6 +13,7 @@
 import { useRepoInfo, type RepoInfo } from "@/app/block/use-repo-info";
 import { cn } from "@/util/util";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 /** 变更统计的展示文本：`+42 −7 · 5f`。 */
 export function formatRepoChanges(info: RepoInfo): string {
@@ -44,18 +45,19 @@ export type RepoLineProps = {
  * 快速划过 Tab 栏不会产生任何 RPC。
  */
 export const RepoLine = React.memo(function RepoLine({ path, connection = "", className }: RepoLineProps) {
+    const { t } = useTranslation("block");
     const info = useRepoInfo(path, connection);
     if (info == null) {
         return null;
     }
     return (
         <div className={cn("mt-1 flex flex-col gap-1 border-t border-border/60 pt-1.5", className)}>
-            <RepoRow label="Branch">
+            <RepoRow label={t("block:repo.branch")}>
                 <span className="font-mono" title={info.branch}>
                     {info.branch}
                 </span>
             </RepoRow>
-            <RepoRow label="Changes">
+            <RepoRow label={t("block:repo.changes")}>
                 <span className="tabular-nums">
                     <span className="text-success">+{info.added}</span>{" "}
                     <span className="text-error">{"\u2212" + info.removed}</span>

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { PreviewMatchContext } from "@/app/view/preview/preview-plugin-registry";
-import { describe, expect, it } from "vitest";
+import { i18n, initI18n } from "@/i18n/config";
+import { beforeAll, describe, expect, it } from "vitest";
 import { defaultExportOptions } from "./export-provider";
 import {
     buildTocHtml,
@@ -43,9 +44,14 @@ describe("findFrontmatterRange / stripFrontmatter", () => {
 });
 
 describe("buildTocHtml", () => {
+    beforeAll(async () => {
+        // 目录标题走 i18n.t，测试需先装配资源（否则 t() 只回 key）。
+        await initI18n("en");
+    });
+
     it("builds a TOC from headings", () => {
         const html = buildTocHtml("# One\n## Two\nSome text\n### Three");
-        expect(html).toContain("目录");
+        expect(html).toContain(i18n.t("preview:exportOptions.tocHeading"));
         expect(html).toContain('href="#one"');
         expect(html).toContain('href="#two"');
         expect(html).toContain("toc-l1");

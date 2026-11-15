@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { WaveEnv, WaveEnvSubset, useWaveEnv } from "@/app/waveenv/waveenv";
+import { i18n } from "@/i18n/config";
 import { Tooltip } from "@/element/tooltip";
 import { useAtomValue } from "jotai";
 import { memo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 type UpdateBannerEnv = WaveEnvSubset<{
     electron: {
@@ -31,23 +33,28 @@ function getUpdateStatusMessage(
     status: UpdaterStatus,
     progress: UpdaterManualProgress | null
 ): string | null {
-    if (status === "ready" || status === "manual-update") return "Update";
-    if (status === "installing") return "Installing";
+    if (status === "ready" || status === "manual-update") return i18n.t("tab:updateBanner.update");
+    if (status === "installing") return i18n.t("tab:updateBanner.installing");
     if (status === "downloading") {
         if (progress?.phase === "downloading" && (progress.received ?? 0) > 0 && (progress.total ?? 0) > 0) {
             const pct = Math.min(99, Math.floor(((progress.received ?? 0) / progress.total) * 100));
-            return `Downloading ${formatBytes(progress.received)} / ${formatBytes(progress.total)} (${pct}%)`;
+            return i18n.t("tab:updateBanner.downloadingProgress", {
+                received: formatBytes(progress.received),
+                total: formatBytes(progress.total),
+                percent: pct,
+            });
         }
-        return "Downloading";
+        return i18n.t("tab:updateBanner.downloading");
     }
     if (status === "error") {
         if (progress?.phase === "failed" && progress.error === "cancelled") return null;
-        return "Update Error";
+        return i18n.t("tab:updateBanner.updateError");
     }
     return null;
 }
 
 const UpdateStatusBannerComponent = () => {
+    const { t } = useTranslation("tab");
     const env = useWaveEnv<UpdateBannerEnv>();
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
     const manualProgress = useAtomValue(env.atoms.updaterManualProgressAtom);
@@ -85,11 +92,11 @@ const UpdateStatusBannerComponent = () => {
     const isClickable = isReady || isManualUpdate || (isFailedManual && !isCancelled);
 
     const tooltipContent = isReady
-        ? "Click to Install Update"
+        ? t("tab:updateBanner.clickToInstall")
         : isManualUpdate
-          ? "Click to download and install this update"
+          ? t("tab:updateBanner.clickToDownloadInstall")
           : isFailedManual && !isCancelled
-            ? "Update download failed. Click to retry."
+            ? t("tab:updateBanner.downloadFailedRetry")
             : isCancelled
               ? null
               : updateStatusMessage;
@@ -125,7 +132,7 @@ const UpdateStatusBannerComponent = () => {
                     type="button"
                     className="ml-1 opacity-70 hover:opacity-100"
                     onClick={onCancel}
-                    title="Cancel download"
+                    title={t("tab:updateBanner.cancelDownload")}
                 >
                     <i className="fa fa-xmark" />
                 </button>
