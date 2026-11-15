@@ -1,0 +1,518 @@
+/* VCS History Graph prototype — tokens mirror frontend/app/theme.scss */
+
+:root,
+[data-theme="dark"] {
+    --row-h: 46px;
+    --graph-gap: 6px;
+
+    --bg: #1b1b1b;
+    --panel: rgba(31, 33, 31, 0.72);
+    --surface: rgba(255, 255, 255, 0.04);
+    --surface-strong: rgba(255, 255, 255, 0.08);
+    --hover: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.16);
+    --border-soft: rgba(255, 255, 255, 0.1);
+    --text: #f7f7f7;
+    --secondary: rgb(195, 200, 194);
+    --muted: #8d938c;
+    --accent: rgb(88, 193, 66);
+    --accent-soft: rgba(88, 193, 66, 0.14);
+    --success: #4e9a06;
+    --error: #e54d2e;
+    --warning: rgb(224, 185, 86);
+    --add: #3fb950;
+    --del: #e5534b;
+    --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="light"] {
+    --bg: #ebe5d9;
+    --panel: rgba(255, 253, 248, 0.9);
+    --surface: rgba(0, 0, 0, 0.035);
+    --surface-strong: rgba(0, 0, 0, 0.06);
+    --hover: rgba(0, 0, 0, 0.05);
+    --border: #ded8ca;
+    --border-soft: #e8e3d6;
+    --text: #3a3227;
+    --secondary: #675033;
+    --muted: #777167;
+    --accent: #7c49a1;
+    --accent-soft: rgba(167, 111, 202, 0.14);
+    --success: #2e7d32;
+    --error: #d32f2f;
+    --warning: #e65100;
+    --add: #1a7f37;
+    --del: #cf222e;
+    --shadow: 0 8px 24px rgba(90, 74, 50, 0.14);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+.mono,
+code {
+    font-family: Hack, "JetBrains Mono", Consolas, ui-monospace, monospace;
+}
+
+.tabular-nums { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+
+.page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+}
+
+.page-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+h1 {
+    font-size: 18px;
+    font-weight: 650;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+}
+
+.intro {
+    margin: 0;
+    max-width: 720px;
+    color: var(--secondary);
+    font-size: 12.5px;
+    line-height: 1.6;
+}
+
+.intro b { color: var(--text); font-weight: 600; }
+
+.theme-toggle {
+    flex-shrink: 0;
+    background: var(--surface);
+    color: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.theme-toggle:hover { background: var(--hover); color: var(--text); }
+
+/* ── Block shell（真实：vcs.tsx） ── */
+.block {
+    display: flex;
+    flex-direction: column;
+    height: 820px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.block-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border-soft);
+    flex-shrink: 0;
+}
+
+.block-path {
+    font-size: 11px;
+    color: var(--muted);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+.icon-btn:hover { background: var(--hover); color: var(--text); }
+
+/* ── Repo header（真实：VcsRepoHeader） ── */
+.repo-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 11.5px;
+    flex-shrink: 0;
+}
+
+.repo-branch {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--surface-strong);
+    color: var(--secondary);
+    font-size: 11.5px;
+}
+
+.repo-origin {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.sync-state { color: var(--muted); font-size: 11px; }
+
+.repo-actions { display: flex; gap: 5px; }
+
+.btn {
+    background: var(--surface);
+    color: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 3px 9px;
+    font-size: 11.5px;
+    cursor: pointer;
+    line-height: 1.5;
+}
+.btn:hover { background: var(--hover); color: var(--text); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-primary {
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    color: color-mix(in srgb, var(--accent) 80%, var(--text));
+}
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+
+/* ── Tab bar（真实：VcsTabBar） ── */
+.tab-bar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border-soft);
+    flex-shrink: 0;
+}
+
+.tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11.5px;
+    cursor: pointer;
+}
+.tab:hover { color: var(--secondary); background: var(--hover); border-radius: 4px; }
+.tab.active { color: var(--text); }
+.tab.active::after {
+    content: "";
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--accent);
+}
+
+/* ── Filter bar（真实：vcs-history-tab.tsx 顶部过滤区） ── */
+.filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    flex-shrink: 0;
+}
+
+.input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-size: 11.5px;
+    padding: 3px 8px;
+    outline: none;
+    min-width: 0;
+}
+.input::placeholder { color: var(--muted); }
+.input:focus { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+#f-keyword { flex: 1; min-width: 180px; }
+.input-date { width: 122px; }
+
+.legend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--muted);
+}
+.legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.legend-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+/* ── History list ── */
+.history {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 2px 0;
+    scrollbar-width: thin;
+}
+
+.commit-item {
+    border-bottom: 1px solid transparent;
+}
+
+.commit-row {
+    display: grid;
+    grid-template-columns: var(--graph-w, 60px) minmax(0, 1fr) auto auto auto auto;
+    align-items: center;
+    gap: 10px;
+    height: var(--row-h);
+    padding-right: 10px;
+    cursor: pointer;
+    position: relative;
+}
+.commit-row:hover { background: var(--hover); }
+.commit-item.open .commit-row { background: color-mix(in srgb, var(--surface-strong) 70%, transparent); }
+
+.graph-cell {
+    grid-column: 1;
+    height: var(--row-h);
+    display: block;
+    overflow: visible;
+}
+.graph-cell svg { display: block; overflow: visible; }
+
+.commit-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.subject {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12.5px;
+    color: var(--text);
+}
+
+.refs { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.ref {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    max-width: 190px;
+    padding: 0 6px;
+    height: 16px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    font-family: Hack, "JetBrains Mono", Consolas, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid transparent;
+}
+
+.ref-branch,
+.ref-head {
+    background: var(--surface-strong);
+    border-color: var(--border-soft);
+}
+.ref-head i,
+.ref-branch i { opacity: 0.9; }
+.ref-tag {
+    background: color-mix(in srgb, var(--warning) 14%, transparent);
+    border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+    color: var(--warning);
+}
+.ref-remote {
+    background: transparent;
+    border-color: var(--border-soft);
+    color: var(--muted);
+}
+
+.commit-hash {
+    font-family: Hack, "JetBrains Mono", Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--muted);
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--surface);
+    flex-shrink: 0;
+}
+
+.commit-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--secondary);
+    flex-shrink: 0;
+    max-width: 150px;
+}
+.commit-author span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.avatar {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8.5px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.commit-time {
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    min-width: 34px;
+    flex-shrink: 0;
+}
+
+.commit-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.12s;
+    flex-shrink: 0;
+}
+.commit-row:hover .commit-actions { opacity: 1; }
+.commit-actions .icon-btn { width: 18px; height: 18px; }
+
+body.force-actions .commit-actions { opacity: 1; }
+
+/* ── Expanded files panel ── */
+.commit-files {
+    display: grid;
+    grid-template-columns: var(--graph-w, 60px) minmax(0, 1fr);
+    padding-right: 10px;
+}
+.commit-files .gutter { display: block; }
+.commit-files .gutter svg { display: block; }
+
+.files-body {
+    margin: 0 0 8px;
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    background: var(--surface);
+    overflow: hidden;
+}
+
+.file-row {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    font-size: 11.5px;
+    border-bottom: 1px solid var(--border-soft);
+}
+.file-row:last-child { border-bottom: 0; }
+.file-row:hover { background: var(--hover); }
+
+.file-code {
+    font-family: Hack, "JetBrains Mono", Consolas, monospace;
+    font-size: 10.5px;
+    font-weight: 650;
+    text-align: center;
+}
+.file-code.M { color: var(--warning); }
+.file-code.A { color: var(--add); }
+.file-code.D { color: var(--del); }
+.file-code.R { color: #58a6ff; }
+
+.file-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: Hack, "JetBrains Mono", Consolas, monospace;
+    font-size: 11px;
+    color: var(--secondary);
+}
+.file-path .dir { color: var(--muted); }
+
+.file-stat { font-size: 10.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.file-stat .add { color: var(--add); }
+.file-stat .del { color: var(--del); margin-left: 4px; }
+
+.file-row .icon-btn { opacity: 0; }
+.file-row:hover .icon-btn { opacity: 1; }
+
+/* ── Footer ── */
+.history-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+.pager { display: flex; gap: 4px; }
+
+/* ── Notes ── */
+.notes { margin-top: 32px; }
+.notes h2 { font-size: 14px; margin: 0 0 10px; }
+.notes table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.notes th {
+    text-align: left;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+}
+.notes td { padding: 7px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: top; color: var(--secondary); }
+.notes td:first-child { color: var(--text); white-space: nowrap; }

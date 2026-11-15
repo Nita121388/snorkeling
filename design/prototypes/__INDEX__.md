@@ -94,6 +94,7 @@
 - `vcs/vcs-repo-switcher-v2/` — 同步状态：◐ 部分落地
 - `vcs/vcs-status-settings/` — 状态：**设计中（待确认）**，未改动真实代码
 - `vcs/vcs-remote-sync-widget/` — 同步状态：◐ 部分落地（代码已实现，真机截图验证待做），Remote 区上游行 + Incoming/Outgoing 列表美化
+- `vcs/vcs-history-graph/` — 同步状态：▲ 设计活跃（未实现），History tab 泳道提交图（节点连线 + ref 徽章 + 头像 + 展开文件），graph.js 纯函数布局算法可直接移植
 
 ## updater
 - `updater/updater-flow/` — 同步状态：▲ 设计活跃（未实现）｜镜像源：frontend/app/tab/updatebanner.tsx, frontend/app/modals/about.tsx, emain/updater.ts
