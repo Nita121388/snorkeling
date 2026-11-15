@@ -9,12 +9,25 @@ import { useWaveEnv } from "@/app/waveenv/waveenv";
 import type { WaveEnv } from "@/app/waveenv/waveenv";
 import { fireAndForget, isBlank, makeConnRoute } from "@/util/util";
 import React from "react";
+import { CommitGraphCell, CommitGraphGutter } from "./vcs-history-graph";
+import { GRAPH_GEO, computeLayout, type GraphCommit } from "./graph-layout";
+import {
+    avatarColor,
+    colorForCommitRefs,
+    colorForRefName,
+    initials,
+    parseGitRefs,
+    type CommitRef,
+} from "./vcs-commit-meta";
+import { formatAbsoluteTime, formatRelativeTime } from "./vcs-time";
 import { VcsIconButton } from "./vcs-icon-button";
 
 type VcsUiEnv = WaveEnv;
 
 const VcsHistoryRpcTimeoutMs = 30000;
 const DefaultPageSize = 50;
+/** Extra px added to the computed lane width for breathing room on both sides. */
+const GraphGutterPadding = 10;
 
 type CommitFilesMap = Record<string, VcsCommitFileInfo[]>;
 type CommitBoolMap = Record<string, boolean>;
@@ -29,6 +42,167 @@ function shortHash(hash: string): string {
 function statusCodeLabel(code: string): string {
     if (isBlank(code)) return "·";
     return code;
+}
+
+function statusCodeClass(code: string): string {
+    switch (code) {
+        case "A":
+            return "text-success";
+        case "D":
+            return "text-error";
+        case "R":
+            return "text-accent";
+        default:
+            return "text-warning";
+    }
+}
+
+function hexToAlpha(hex: string, alpha: number): string {
+    if (!hex.startsWith("#") || hex.length !== 7) return `rgba(120, 120, 120, ${alpha})`;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * Ref badges above/beside the commit subject. Branch colours match the lane
+ * colour the commit is drawn on, so a branch and its lane always agree.
+ */
+function RefBadges({ refs, colorByBranch }: { refs: CommitRef[]; colorByBranch: Map<string, string> }) {
+    if (refs.length === 0) return null;
+    return (
+        <span
+            className="flex min-w-0 max-w-[45%] shrink-0 items-center gap-1 overflow-hidden"
+            data-vcs-commit-refs="1"
+        >
+            {refs.map((ref, index) => {
+                const color = colorByBranch.get(ref.name) ?? colorForRefName(ref.name);
+                if (ref.type === "tag") {
+                    return (
+                        <span
+                            key={`${ref.type}-${ref.name}-${index}`}
+                            title={`tag ${ref.name}`}
+                            className="inline-flex h-4 max-w-[190px] items-center gap-1 truncate rounded border border-warning/40 bg-warning/12 px-1.5 text-[10px] font-mono text-warning"
+                        >
+                            <i className="fa-sharp fa-solid fa-tag text-[8px] shrink-0" />
+                            <span className="truncate">{ref.name}</span>
+                        </span>
+                    );
+                }
+                if (ref.type === "remote") {
+                    return (
+                        <span
+                            key={`${ref.type}-${ref.name}-${index}`}
+                            title={`remote branch ${ref.name}`}
+                            className="inline-flex h-4 max-w-[190px] items-center gap-1 truncate rounded border border-border/70 px-1.5 text-[10px] font-mono text-muted"
+                        >
+                            <i className="fa-sharp fa-solid fa-cloud text-[8px] shrink-0" />
+                            <span className="truncate">{ref.name}</span>
+                        </span>
+                    );
+                }
+                const isHead = ref.type === "head";
+                return (
+                    <span
+                        key={`${ref.type}-${ref.name}-${index}`}
+                        title={isHead ? `HEAD at ${ref.name}` : `branch ${ref.name}`}
+                        className="inline-flex h-4 max-w-[190px] items-center gap-1 truncate rounded border px-1.5 text-[10px] font-mono"
+                        style={{
+                            color,
+                            borderColor: hexToAlpha(color, 0.45),
+                            backgroundColor: hexToAlpha(color, 0.14),
+                        }}
+                    >
+                        {isHead && <span className="shrink-0 opacity-80">HEAD →</span>}
+                        <span className="truncate">{ref.name}</span>
+                    </span>
+                );
+            })}
+        </span>
+    );
+}
+
+function CommitFilesPanel({
+    files,
+    loading,
+    error,
+    gutterLanes,
+    gutterWidth,
+    onShowFileDiff,
+}: {
+    files: VcsCommitFileInfo[];
+    loading: boolean;
+    error: string;
+    gutterLanes: Parameters<typeof CommitGraphGutter>[0]["lanes"];
+    gutterWidth: number;
+    onShowFileDiff?: (filePath: string) => void;
+}) {
+    if (loading) {
+        return <div className="ml-2 border-l border-border/60 px-2 py-1 text-[11px] text-muted">Loading files...</div>;
+    }
+    if (!isBlank(error)) {
+        return (
+            <div className="ml-2 border-l border-border/60 px-2 py-1 text-[11px] text-error whitespace-pre-wrap">
+                {error}
+            </div>
+        );
+    }
+    if (files.length === 0) {
+        return (
+            <div className="ml-2 border-l border-border/60 px-2 py-1 text-[11px] text-muted">
+                No changed files in this commit.
+            </div>
+        );
+    }
+    const bodyHeight = files.length * 26 + 8;
+    return (
+        <div
+            className="grid items-start pr-2.5"
+            style={{ gridTemplateColumns: `${gutterWidth}px minmax(0, 1fr)`, height: bodyHeight }}
+            data-vcs-commit-files="1"
+        >
+            <CommitGraphGutter lanes={gutterLanes} width={gutterWidth} height={bodyHeight} />
+            <div className="overflow-hidden rounded border border-border/70 bg-surface-strong/40">
+                {files.map((file, index) => {
+                    const hasStats = (file.added ?? 0) > 0 || (file.deleted ?? 0) > 0;
+                    return (
+                        <div
+                            key={`${file.path}-${index}`}
+                            className="group flex h-[26px] items-center gap-2 border-b border-border/50 px-2 text-[11px] last:border-b-0 hover:bg-hoverbg/50"
+                        >
+                            <span
+                                className={`w-[12px] shrink-0 text-center font-mono font-semibold ${statusCodeClass(file.code)}`}
+                            >
+                                {statusCodeLabel(file.code)}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-secondary">
+                                {file.path}
+                            </span>
+                            {hasStats && (
+                                <span className="shrink-0 font-mono text-[10px] tabular-nums">
+                                    {(file.added ?? 0) > 0 && <span className="text-success">+{file.added}</span>}
+                                    {(file.deleted ?? 0) > 0 && (
+                                        <span className="text-error ml-1">−{file.deleted}</span>
+                                    )}
+                                </span>
+                            )}
+                            {onShowFileDiff != null && (
+                                <VcsIconButton
+                                    icon="code-compare"
+                                    title={`View diff of ${file.path}`}
+                                    size="sm"
+                                    tone="accent"
+                                    reveal="hover"
+                                    onClick={() => onShowFileDiff(file.path)}
+                                />
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
 }
 
 export function VcsHistoryTab({
@@ -154,6 +328,32 @@ export function VcsHistoryTab({
         setPage(1);
     };
 
+    // Lane layout is computed per page slice: parents outside the slice are
+    // unknown and simply do not draw an edge (documented trade-off).
+    const layout = React.useMemo(
+        () =>
+            computeLayout(commits as (VcsCommitInfo & GraphCommit)[], {
+                colorForCommit: (commit) => colorForCommitRefs(commit.refs),
+            }),
+        [commits]
+    );
+
+    // Branch colour lookup so a badge and its lane never disagree.
+    const colorByBranch = React.useMemo(() => {
+        const map = new Map<string, string>();
+        for (const row of layout.rows) {
+            for (const ref of parseGitRefs(row.commit.refs)) {
+                if (!map.has(ref.name)) map.set(ref.name, row.nodeColor);
+            }
+        }
+        return map;
+    }, [layout]);
+
+    const graphWidth = Math.max(layout.width + GraphGutterPadding, GRAPH_GEO.laneWidth + GraphGutterPadding);
+    const pageStart = (Math.max(1, page) - 1) * Math.max(1, pageSize) + 1;
+    const pageEnd = (Math.max(1, page) - 1) * Math.max(1, pageSize) + commits.length;
+    const showGraphColumn = layout.maxLanes > 1 || commits.some((commit) => (commit.parents?.length ?? 0) > 0);
+
     return (
         <div className="h-full w-full overflow-hidden p-2">
             <div className="h-full w-full overflow-auto p-2">
@@ -215,13 +415,15 @@ export function VcsHistoryTab({
                 )}
 
                 {!loading && !error && commits.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                        {commits.map((commit, idx) => {
+                    <div className="flex flex-col @container" data-vcs-commit-list="1">
+                        {layout.rows.map((row) => {
+                            const commit = row.commit;
                             const revision = commit.hash ?? "";
                             const isExpanded = !!expanded[revision];
                             const fileLoading = !!filesLoading[revision];
                             const fileErr = filesError[revision] ?? "";
                             const files = filesByHash[revision] ?? [];
+                            const refs = parseGitRefs(commit.refs);
                             const commitRemoteUrl =
                                 repo.repotype === "git" ? buildCommitRemoteUrl(repo.browseurl, revision) : "";
                             const handleCommitContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -257,72 +459,108 @@ export function VcsHistoryTab({
                                 ];
                                 ContextMenuModel.getInstance().showContextMenu(menu, e);
                             };
+                            const relativeTime = formatRelativeTime(commit.date);
                             return (
-                                <div key={`${revision}-${idx}`} className="group px-2 py-1.5" onContextMenu={handleCommitContextMenu}>
+                                <div
+                                    key={`${revision}-${row.nodeLane}`}
+                                    className="group border-b border-border/30"
+                                    onContextMenu={handleCommitContextMenu}
+                                    data-vcs-commit-row={revision}
+                                >
                                     <div
-                                        className={`flex items-center gap-2 text-xs ${!isBlank(revision) ? "cursor-pointer" : ""}`}
+                                        className="flex cursor-pointer items-center gap-2 pr-2.5 hover:bg-hoverbg/50"
+                                        style={{ height: GRAPH_GEO.rowHeight }}
                                         onClick={() => toggleCommit(commit)}
                                     >
-                                        <span className="text-muted w-[12px] shrink-0">{isExpanded ? "▾" : "▸"}</span>
-                                        <span className="font-mono text-secondary shrink-0">{shortHash(revision)}</span>
-                                        <span className="truncate flex-1">{commit.subject || "(no message)"}</span>
-                                        {!isBlank(commitRemoteUrl) && (
+                                        <span
+                                            className="flex h-full shrink-0 items-center"
+                                            style={{ width: graphWidth }}
+                                        >
+                                            {showGraphColumn && (
+                                                <CommitGraphCell row={row} width={layout.width} />
+                                            )}
+                                        </span>
+                                        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                            <span className="w-[10px] shrink-0 text-[10px] text-muted">
+                                                {isExpanded ? "▾" : "▸"}
+                                            </span>
+                                            <RefBadges refs={refs} colorByBranch={colorByBranch} />
+                                            <span
+                                                className="min-w-0 flex-1 truncate text-xs text-foreground"
+                                                title={commit.subject || "(no message)"}
+                                            >
+                                                {commit.subject || "(no message)"}
+                                            </span>
+                                        </span>
+                                        <span
+                                            className="hidden shrink-0 rounded bg-surface-strong/60 px-1.5 py-0.5 font-mono text-[10px] text-muted @[420px]:inline-block"
+                                            title={revision}
+                                        >
+                                            {shortHash(revision)}
+                                        </span>
+                                        <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-secondary">
+                                            <span
+                                                className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[8px] font-semibold text-white"
+                                                style={{
+                                                    backgroundColor: avatarColor(commit.author),
+                                                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.14)",
+                                                }}
+                                                aria-hidden="true"
+                                            >
+                                                {initials(commit.author)}
+                                            </span>
+                                            <span className="hidden max-w-[150px] truncate @[520px]:inline">
+                                                {commit.author || "unknown"}
+                                            </span>
+                                        </span>
+                                        <span
+                                            className="shrink-0 text-right text-[11px] tabular-nums text-muted"
+                                            title={formatAbsoluteTime(commit.date)}
+                                        >
+                                            {relativeTime}
+                                        </span>
+                                        <span className="hidden shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 @[440px]:flex">
                                             <VcsIconButton
-                                                icon="arrow-up-right-from-square"
-                                                title="Open commit on remote"
+                                                icon="copy"
+                                                title="Copy hash"
                                                 size="sm"
-                                                reveal="hover"
+                                                reveal="always"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     fireAndForget(async () => {
-                                                        await openLink(commitRemoteUrl);
+                                                        await navigator.clipboard.writeText(revision);
                                                     });
                                                 }}
                                             />
-                                        )}
+                                            {!isBlank(commitRemoteUrl) && (
+                                                <VcsIconButton
+                                                    icon="arrow-up-right-from-square"
+                                                    title="Open commit on remote"
+                                                    size="sm"
+                                                    reveal="always"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        fireAndForget(async () => {
+                                                            await openLink(commitRemoteUrl);
+                                                        });
+                                                    }}
+                                                />
+                                            )}
+                                        </span>
                                     </div>
-                                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
-                                        <span className="truncate">{commit.author || "unknown"}</span>
-                                        <span className="truncate">{commit.date || ""}</span>
-                                    </div>
-
                                     {isExpanded && (
-                                        <div className="mt-1.5 rounded border border-border bg-surface-strong">
-                                            {fileLoading && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">Loading files...</div>
-                                            )}
-                                            {!fileLoading && !isBlank(fileErr) && (
-                                                <div className="px-2 py-1 text-[11px] text-error whitespace-pre-wrap">{fileErr}</div>
-                                            )}
-                                            {!fileLoading && isBlank(fileErr) && files.length === 0 && (
-                                                <div className="px-2 py-1 text-[11px] text-muted">No changed files in this commit.</div>
-                                            )}
-                                            {!fileLoading && isBlank(fileErr) && files.length > 0 && (
-                                                <div className="max-h-[240px] overflow-auto">
-                                                    {files.map((file, fileIdx) => (
-                                                        <div
-                                                            key={`${revision}-${file.path}-${fileIdx}`}
-                                                            className="group flex items-center gap-2 border-b border-border px-2 py-1 text-[11px] last:border-b-0"
-                                                        >
-                                                            <span className="font-mono text-secondary min-w-[20px]">
-                                                                {statusCodeLabel(file.code)}
-                                                            </span>
-                                                            <span className="truncate flex-1">{file.path}</span>
-                                                            {onShowFileDiff != null && (
-                                                                <VcsIconButton
-                                                                    icon="code-compare"
-                                                                    title={`View diff of ${file.path}`}
-                                                                    size="sm"
-                                                                    tone="accent"
-                                                                    reveal="hover"
-                                                                    onClick={() => onShowFileDiff(file.path, revision)}
-                                                                />
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
+                                        <CommitFilesPanel
+                                            files={files}
+                                            loading={fileLoading}
+                                            error={fileErr}
+                                            gutterLanes={row.bottomLanes}
+                                            gutterWidth={graphWidth}
+                                            onShowFileDiff={
+                                                onShowFileDiff != null
+                                                    ? (filePath) => onShowFileDiff(filePath, revision)
+                                                    : undefined
+                                            }
+                                        />
                                     )}
                                 </div>
                             );
@@ -331,22 +569,28 @@ export function VcsHistoryTab({
                 )}
 
                 {!loading && !error && (
-                    <div className="mt-2 flex items-center justify-end gap-2 text-xs">
-                        <VcsIconButton
-                            icon="chevron-left"
-                            title="Previous page"
-                            className="border border-border"
-                            disabled={page <= 1}
-                            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                        />
-                        <span className="text-muted">Page {page}</span>
-                        <VcsIconButton
-                            icon="chevron-right"
-                            title="Next page"
-                            className="border border-border"
-                            disabled={!hasMore}
-                            onClick={() => setPage((prev) => prev + 1)}
-                        />
+                    <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
+                        <span className="text-muted tabular-nums">
+                            {commits.length === 0
+                                ? "0 commits"
+                                : `${pageStart}–${pageEnd} of ${commits.length} commits · page ${page}`}
+                        </span>
+                        <div className="flex items-center gap-1">
+                            <VcsIconButton
+                                icon="chevron-left"
+                                title="Previous page"
+                                className="border border-border"
+                                disabled={page <= 1}
+                                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                            />
+                            <VcsIconButton
+                                icon="chevron-right"
+                                title="Next page"
+                                className="border border-border"
+                                disabled={!hasMore}
+                                onClick={() => setPage((prev) => prev + 1)}
+                            />
+                        </div>
                     </div>
                 )}
             </div>

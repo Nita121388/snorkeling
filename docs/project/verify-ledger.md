@@ -222,3 +222,9 @@
 | 2026-11-14 10:15 | commontext-tags-summary-chips | ✅ 194/194（dom 台摘要 chip 断言；红证：旧源 join 文本 2 failed → 新源 0） | vitest jsdom | `frontend/app/commontext/commontext-compose-modal.dom.test.tsx` | d8dd97abc |
 | 2026-11-14 11:40 | commontext-tags-structured（与 commontext-source-notion 同源断言） | ✅ 197/197（model 迁移单测 3 例 + dom 分离断言；红证：旧源["run deploy #urgent #ops"未剥/正文含 #urgent] 5 failed → 新源 0） | vitest jsdom | `commontext-model.test.ts` + `commontext-compose-modal.dom.test.tsx` | 2687ff10c |
 | 2026-11-14 11:40 | commontext-source-notion（真机） | ⛔ 环境阻塞待补跑：同日 launcher exit=201（故障依旧），未重复尝试；真机台断言已改为分离语义（tags-create-separate-from-text / tags-remove-drops-tag），修复后补跑 | skipped | `20261114T07004-commontext-source-notion` | 2687ff10c |
+| 2026-11-15 10:15 | vcs-history-graph | ❌ fatal（未跑） | launch+reset | `20261115T10152-vcs-history-graph` | 209159837 |
+| 2026-11-15 10:23 | vcs-history-graph | ❌ 0/14 | launch+reset | `20261115T10183-vcs-history-graph` | 209159837 |
+| 2026-11-15 10:33 | vcs-history-graph | ❌ 1/15 | launch+reset | `20261115T10284-vcs-history-graph` | 209159837 |
+| 2026-11-15 10:41 | vcs-history-graph | ❌ 15/16 | launch+reset | `20261115T10375-vcs-history-graph` | 209159837 |
+| 2026-11-15 10:52 | vcs-history-graph | ✅ 16/16 | launch+reset | `20261115T10485-vcs-history-graph` | 209159837 |
+| 2026-11-15 11:03 | vcs-history-graph | ✅ 16/16 | launch+reset | `20261115T10593-vcs-history-graph` | 209159837 |

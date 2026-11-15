@@ -830,7 +830,7 @@ func loadGitRemoteCommits(ctx context.Context, repoPath string, rangeSpec string
 	args := []string{
 		"log",
 		"--max-count=" + strconv.Itoa(limit),
-		"--pretty=format:%H%x1f%an%x1f%aI%x1f%s%x1e",
+		"--pretty=format:%H%x1f%an%x1f%aI%x1f%s%x1f%ae%x1f%P%x1f%D%x1e",
 		rangeSpec,
 	}
 	out, err := runVcsCommand(ctx, repoPath, "git", args...)
@@ -1166,14 +1166,45 @@ func parseGitCommits(logOut string) []wshrpc.VcsCommitInfo {
 		if len(fields) < 4 {
 			continue
 		}
-		commits = append(commits, wshrpc.VcsCommitInfo{
+		commit := wshrpc.VcsCommitInfo{
 			Hash:    fields[0],
 			Author:  fields[1],
 			Date:    fields[2],
 			Subject: fields[3],
-		})
+		}
+		// optional trailing fields (authoremail / parents / refs) keep the
+		// four legacy fields stable so mixed old/new callers still parse
+		if len(fields) > 4 {
+			commit.AuthorEmail = fields[4]
+		}
+		if len(fields) > 5 {
+			commit.Parents = splitNonEmpty(fields[5], " ")
+		}
+		if len(fields) > 6 {
+			commit.Refs = splitNonEmpty(fields[6], ",")
+		}
+		commits = append(commits, commit)
 	}
 	return commits
+}
+
+// splitNonEmpty splits raw on sep and drops empty/whitespace-only tokens.
+func splitNonEmpty(raw string, sep string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, sep)
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	return values
 }
 
 func toRepoRelativePath(repoPath string, filePath string) string {
@@ -1210,7 +1241,7 @@ func loadGitCommitsWithOffset(ctx context.Context, repoPath string, filePath str
 	args := []string{
 		"log",
 		"--date=iso-strict",
-		"--pretty=format:%H%x1f%an%x1f%ad%x1f%s%x1e",
+		"--pretty=format:%H%x1f%an%x1f%ad%x1f%s%x1f%ae%x1f%P%x1f%D%x1e",
 		"-n",
 		strconv.Itoa(limit),
 	}
@@ -1506,6 +1537,49 @@ func parseGitCommitFiles(nameStatusOut string) []wshrpc.VcsCommitFileInfo {
 	return files
 }
 
+// parseGitNumstat parses `git show --numstat --pretty=format:` output
+// ("added\tdeleted\tpath" lines, "-" for binary files) into a path -> counts map.
+// Renames ("{a => b}" brace or "old => new" full-rename forms) are skipped:
+// only exact paths get counts so we never attach numbers to the wrong file.
+func parseGitNumstat(numstatOut string) map[string][2]int {
+	counts := make(map[string][2]int)
+	for _, rawLine := range strings.Split(numstatOut, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 {
+			continue
+		}
+		filedPath := strings.TrimSpace(fields[2])
+		if filedPath == "" || strings.Contains(filedPath, "=>") || strings.ContainsAny(filedPath, "{}") {
+			continue
+		}
+		filedPath = decodeGitPathToken(filedPath)
+		filedPath = filepath.ToSlash(filedPath)
+		if filedPath == "" {
+			continue
+		}
+		added, deleted := 0, 0
+		if fields[0] != "-" {
+			if value, err := strconv.Atoi(fields[0]); err == nil {
+				added = value
+			}
+		}
+		if fields[1] != "-" {
+			if value, err := strconv.Atoi(fields[1]); err == nil {
+				deleted = value
+			}
+		}
+		counts[filedPath] = [2]int{added, deleted}
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
+}
+
 func loadGitCommitFiles(ctx context.Context, repoPath string, revision string, filePath string) ([]wshrpc.VcsCommitFileInfo, error) {
 	trimmedRevision := strings.TrimSpace(revision)
 	if trimmedRevision == "" {
@@ -1520,7 +1594,30 @@ func loadGitCommitFiles(ctx context.Context, repoPath string, revision string, f
 	if err != nil {
 		return nil, err
 	}
-	return parseGitCommitFiles(out), nil
+	files := parseGitCommitFiles(out)
+	if len(files) == 0 {
+		return files, nil
+	}
+	// Second call: `--numstat` and `--name-status` are mutually exclusive diff
+	// output formats, so line counts need their own invocation. Failure here is
+	// non-fatal — the file list still works, stats just stay empty.
+	numstatArgs := []string{"show", "--numstat", "--pretty=format:", trimmedRevision}
+	if relPath != "" {
+		numstatArgs = append(numstatArgs, "--", relPath)
+	}
+	if numstatOut, numstatErr := runVcsCommandRaw(ctx, repoPath, "git", numstatArgs...); numstatErr == nil {
+		counts := parseGitNumstat(numstatOut)
+		for index := range files {
+			if counts == nil {
+				break
+			}
+			if addedDeleted, ok := counts[files[index].Path]; ok {
+				files[index].Added = addedDeleted[0]
+				files[index].Deleted = addedDeleted[1]
+			}
+		}
+	}
+	return files, nil
 }
 
 func parseSvnCommitFiles(repoPath string, summarizeOut string) []wshrpc.VcsCommitFileInfo {

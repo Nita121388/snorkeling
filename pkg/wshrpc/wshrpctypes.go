@@ -1720,10 +1720,13 @@ type CommandRemoteVcsCommitsData struct {
 }
 
 type VcsCommitInfo struct {
-	Hash    string `json:"hash,omitempty"`
-	Author  string `json:"author,omitempty"`
-	Date    string `json:"date,omitempty"`
-	Subject string `json:"subject,omitempty"`
+	Hash        string   `json:"hash,omitempty"`
+	Author      string   `json:"author,omitempty"`
+	AuthorEmail string   `json:"authoremail,omitempty"`
+	Date        string   `json:"date,omitempty"`
+	Subject     string   `json:"subject,omitempty"`
+	Parents     []string `json:"parents,omitempty"`
+	Refs        []string `json:"refs,omitempty"`
 }
 
 type RemoteVcsCommitsRtnData struct {
@@ -1744,8 +1747,10 @@ type CommandRemoteVcsCommitFilesData struct {
 }
 
 type VcsCommitFileInfo struct {
-	Path string `json:"path"`
-	Code string `json:"code,omitempty"`
+	Path    string `json:"path"`
+	Code    string `json:"code,omitempty"`
+	Added   int    `json:"added,omitempty"`
+	Deleted int    `json:"deleted,omitempty"`
 }
 
 type RemoteVcsCommitFilesRtnData struct {

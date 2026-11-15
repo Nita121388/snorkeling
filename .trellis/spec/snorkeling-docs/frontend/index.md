@@ -21,6 +21,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
 | [Preview Edit Harness](./preview-edit-harness.md) | Machine-verifiable inline-edit pixel harness: screenshot pipeline invariants, rule semantics, calibration records | Filled |
+| [VCS History Graph Contract](./vcs-history-graph-contract.md) | Swim-lane commit graph: data contract (parents/refs/numstat), layout invariants, rendering + verify gate | Filled |
 
 ---
 

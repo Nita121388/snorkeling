@@ -4228,14 +4228,19 @@ declare global {
     type VcsCommitFileInfo = {
         path: string;
         code?: string;
+        added?: number;
+        deleted?: number;
     };
 
     // wshrpc.VcsCommitInfo
     type VcsCommitInfo = {
         hash?: string;
         author?: string;
+        authoremail?: string;
         date?: string;
         subject?: string;
+        parents?: string[];
+        refs?: string[];
     };
 
     // wshrpc.VcsFileStatus

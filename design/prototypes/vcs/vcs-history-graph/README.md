@@ -1,8 +1,8 @@
 # VCS History Graph — 泳道提交图原型
 
-> 同步状态：▲ 设计活跃（未实现）
-> 镜像源：frontend/app/view/vcs/vcs-history-tab.tsx, frontend/app/view/vcs/vcs-tabs.tsx, pkg/wshrpc/wshremote/vcs.go
-> 最后同步：2026-11-14
+> 同步状态：◐ 部分落地（2026-11-15：数据层 + graph-layout.ts + vcs-history-tab.tsx 已写入真实组件并过真机验证 17/17；头像升级为远端图片等增强未做）
+> 镜像源：frontend/app/view/vcs/vcs-history-tab.tsx, frontend/app/view/vcs/graph-layout.ts, frontend/app/view/vcs/vcs-commit-meta.ts, pkg/wshrpc/wshremote/vcs.go
+> 最后同步：2026-11-15
 
 ## 概述
 

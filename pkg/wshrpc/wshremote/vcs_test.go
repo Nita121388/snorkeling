@@ -777,3 +777,114 @@ func TestRemoteVcsDeleteBranchDeletesNonCurrentBranch(t *testing.T) {
 		t.Fatalf("expected current-branch error, got %+v", current)
 	}
 }
+
+func TestParseGitCommitsReadsExtendedFields(t *testing.T) {
+	// %H%x1f%an%x1f%ad%x1f%s%x1f%ae%x1f%P%x1f%D — trailing fields are optional
+	out := "aaa111\x1fMaya Chen\x1f2026-11-14T10:00:00+08:00\x1fReleased v2.4\x1fmaya@example.com\x1fbbb222 ccc333\x1fHEAD -> main, tag: v2.4, origin/main\x1e\n" +
+		"bbb222\x1fJonas Weber\x1f2026-11-13T09:00:00+08:00\x1fRoot commit\x1fjonas@example.com\x1f\x1f\x1e"
+	commits := parseGitCommits(out)
+	if len(commits) != 2 {
+		t.Fatalf("expected 2 commits, got %d", len(commits))
+	}
+	first := commits[0]
+	if first.AuthorEmail != "maya@example.com" {
+		t.Fatalf("unexpected email %q", first.AuthorEmail)
+	}
+	if len(first.Parents) != 2 || first.Parents[0] != "bbb222" || first.Parents[1] != "ccc333" {
+		t.Fatalf("unexpected parents %#v", first.Parents)
+	}
+	if len(first.Refs) != 3 || first.Refs[0] != "HEAD -> main" || first.Refs[1] != "tag: v2.4" || first.Refs[2] != "origin/main" {
+		t.Fatalf("unexpected refs %#v", first.Refs)
+	}
+	second := commits[1]
+	if second.Parents != nil {
+		t.Fatalf("expected nil parents for root commit, got %#v", second.Parents)
+	}
+	if second.Refs != nil {
+		t.Fatalf("expected nil refs, got %#v", second.Refs)
+	}
+	if second.Subject != "Root commit" || second.Date != "2026-11-13T09:00:00+08:00" {
+		t.Fatalf("legacy fields shifted: %+v", second)
+	}
+}
+
+func TestParseGitCommitsKeepsLegacyFourFieldRecords(t *testing.T) {
+	out := "aaa111\x1fMaya Chen\x1f2026-11-14T10:00:00+08:00\x1fReleased v2.4\x1e"
+	commits := parseGitCommits(out)
+	if len(commits) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(commits))
+	}
+	if commits[0].Subject != "Released v2.4" || commits[0].AuthorEmail != "" || commits[0].Parents != nil {
+		t.Fatalf("unexpected legacy parse %+v", commits[0])
+	}
+}
+
+func TestParseGitNumstatSkipsRenamesAndBinary(t *testing.T) {
+	out := "12\t4\tpkg/wshrpc/vcs.go\n" +
+		"-\t-\tassets/logo.png\n" +
+		"3\t1\told.txt => new.txt\n" +
+		"2\t0\tdir/{a.ts => b.ts}\n" +
+		"7\t0\tdocs/readme.md\n"
+	counts := parseGitNumstat(out)
+	if counts == nil {
+		t.Fatal("expected counts")
+	}
+	if got := counts["pkg/wshrpc/vcs.go"]; got != [2]int{12, 4} {
+		t.Fatalf("unexpected stat %#v", got)
+	}
+	if got := counts["docs/readme.md"]; got != [2]int{7, 0} {
+		t.Fatalf("unexpected stat %#v", got)
+	}
+	if _, ok := counts["new.txt"]; ok {
+		t.Fatal("rename target must not be matched by guess")
+	}
+	if len(counts) != 3 {
+		t.Fatalf("expected 3 counted files, got %d (%#v)", len(counts), counts)
+	}
+}
+
+func TestLoadGitCommitFilesAttachesNumstat(t *testing.T) {
+	root := t.TempDir()
+	runGitForTest(t, root, "init")
+	runGitForTest(t, root, "config", "user.name", "Test User")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(root, "kept.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitForTest(t, root, "add", ".")
+	runGitForTest(t, root, "commit", "-qm", "initial")
+	if err := os.WriteFile(filepath.Join(root, "kept.txt"), []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "added.txt"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitForTest(t, root, "add", ".")
+	runGitForTest(t, root, "commit", "-qm", "second")
+
+	files, err := loadGitCommitFiles(context.Background(), root, "HEAD", "")
+	if err != nil {
+		t.Fatalf("loadGitCommitFiles failed: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d (%#v)", len(files), files)
+	}
+	byPath := map[string]wshrpc.VcsCommitFileInfo{}
+	for _, file := range files {
+		byPath[file.Path] = file
+	}
+	modified, ok := byPath["kept.txt"]
+	if !ok {
+		t.Fatalf("missing kept.txt: %#v", files)
+	}
+	if modified.Code != "M" || modified.Added != 2 || modified.Deleted != 0 {
+		t.Fatalf("unexpected modified stats %+v", modified)
+	}
+	added, ok := byPath["added.txt"]
+	if !ok {
+		t.Fatalf("missing added.txt: %#v", files)
+	}
+	if added.Code != "A" || added.Added != 1 {
+		t.Fatalf("unexpected added stats %+v", added)
+	}
+}
