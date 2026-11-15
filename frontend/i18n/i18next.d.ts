@@ -13,6 +13,7 @@ import type commontext from "./locales/en/commontext.json";
 import type element from "./locales/en/element.json";
 import type hero from "./locales/en/hero.json";
 import type launcher from "./locales/en/launcher.json";
+import type modals from "./locales/en/modals.json";
 import type onboarding from "./locales/en/onboarding.json";
 import type preview from "./locales/en/preview.json";
 import type processviewer from "./locales/en/processviewer.json";
@@ -25,6 +26,7 @@ import type vcs from "./locales/en/vcs.json";
 import type waveai from "./locales/en/waveai.json";
 import type waveconfig from "./locales/en/waveconfig.json";
 import type webview from "./locales/en/webview.json";
+import type workspace from "./locales/en/workspace.json";
 
 /**
  * Type-safe i18next keys. Keys are derived from the bundled English resources
@@ -60,6 +62,8 @@ declare module "i18next" {
             processviewer: typeof processviewer;
             webview: typeof webview;
             launcher: typeof launcher;
+            modals: typeof modals;
+            workspace: typeof workspace;
             tsunami: typeof tsunami;
             waveai: typeof waveai;
             aifilediff: typeof aifilediff;

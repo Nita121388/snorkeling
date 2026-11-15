@@ -41,6 +41,7 @@ import enCommontext from "../frontend/i18n/locales/en/commontext.json";
 import enElement from "../frontend/i18n/locales/en/element.json";
 import enHero from "../frontend/i18n/locales/en/hero.json";
 import enLauncher from "../frontend/i18n/locales/en/launcher.json";
+import enModals from "../frontend/i18n/locales/en/modals.json";
 import enPreview from "../frontend/i18n/locales/en/preview.json";
 import enProcessviewer from "../frontend/i18n/locales/en/processviewer.json";
 import enScheduledtasks from "../frontend/i18n/locales/en/scheduledtasks.json";
@@ -52,6 +53,7 @@ import enVcs from "../frontend/i18n/locales/en/vcs.json";
 import enWaveai from "../frontend/i18n/locales/en/waveai.json";
 import enWaveconfig from "../frontend/i18n/locales/en/waveconfig.json";
 import enWebview from "../frontend/i18n/locales/en/webview.json";
+import enWorkspace from "../frontend/i18n/locales/en/workspace.json";
 import zhAiaudit from "../frontend/i18n/locales/zh/aiaudit.json";
 import zhAifilediff from "../frontend/i18n/locales/zh/aifilediff.json";
 import zhAipanel from "../frontend/i18n/locales/zh/aipanel.json";
@@ -63,6 +65,7 @@ import zhCommontext from "../frontend/i18n/locales/zh/commontext.json";
 import zhElement from "../frontend/i18n/locales/zh/element.json";
 import zhHero from "../frontend/i18n/locales/zh/hero.json";
 import zhLauncher from "../frontend/i18n/locales/zh/launcher.json";
+import zhModals from "../frontend/i18n/locales/zh/modals.json";
 import zhPreview from "../frontend/i18n/locales/zh/preview.json";
 import zhProcessviewer from "../frontend/i18n/locales/zh/processviewer.json";
 import zhScheduledtasks from "../frontend/i18n/locales/zh/scheduledtasks.json";
@@ -74,6 +77,7 @@ import zhVcs from "../frontend/i18n/locales/zh/vcs.json";
 import zhWaveai from "../frontend/i18n/locales/zh/waveai.json";
 import zhWaveconfig from "../frontend/i18n/locales/zh/waveconfig.json";
 import zhWebview from "../frontend/i18n/locales/zh/webview.json";
+import zhWorkspace from "../frontend/i18n/locales/zh/workspace.json";
 
 export const MAIN_SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type MainLocale = (typeof MAIN_SUPPORTED_LOCALES)[number];
@@ -99,6 +103,8 @@ export const MAIN_NS = [
     "processviewer",
     "webview",
     "launcher",
+    "modals",
+    "workspace",
     "tsunami",
     "waveai",
     "aifilediff",
@@ -152,6 +158,8 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         processviewer: enProcessviewer,
         webview: enWebview,
         launcher: enLauncher,
+        modals: enModals,
+        workspace: enWorkspace,
         tsunami: enTsunami,
         waveai: enWaveai,
         aifilediff: enAifilediff,
@@ -176,6 +184,8 @@ const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
         processviewer: zhProcessviewer,
         webview: zhWebview,
         launcher: zhLauncher,
+        modals: zhModals,
+        workspace: zhWorkspace,
         tsunami: zhTsunami,
         waveai: zhWaveai,
         aifilediff: zhAifilediff,

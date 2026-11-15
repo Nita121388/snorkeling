@@ -7,11 +7,13 @@ import { atoms, getApi } from "@/app/store/global";
 import { modalsModel } from "@/app/store/modalmodel";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { i18n } from "@/i18n/config";
 import { copyText } from "@/util/clipboard";
 import { isDev } from "@/util/isdev";
 import { fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal } from "./modal";
 
 const SNORKELING_REPO_URL = "https://github.com/Nita121388/snorkeling";
@@ -25,6 +27,7 @@ interface AboutModalVProps {
 }
 
 const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProps) => {
+    const { t } = useTranslation("modals");
     const currentDate = new Date();
     const [debugVisible, setDebugVisible] = useState(false);
     const [debugText, setDebugText] = useState("");
@@ -65,7 +68,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                 setDebugText(textToCopy);
             }
             await copyText(textToCopy);
-            setCopyStatus("Copied");
+            setCopyStatus(t("common:common.copied"));
             window.setTimeout(() => setCopyStatus(""), 1500);
         });
     }, [debugText]);
@@ -83,20 +86,20 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                     <Logo />
                     <div className="text-[25px]">Snorkeling</div>
                     <div className="leading-5">
-                        Customized from Wave Terminal upstream
+                        {t("modals:about.subtitleLine1")}
                         <br />
-                        Open-Source AI-Integrated Terminal
+                        {t("modals:about.subtitleLine2")}
                     </div>
                 </div>
                 <div className="items-center gap-4 self-stretch w-full text-center">
-                    Client Version {versionString}
+                    {i18n.t("modals:about.clientVersion", { version: versionString })}
                     <br />
-                    Update Channel: {updaterChannel}
+                    {i18n.t("modals:about.updateChannel", { channel: updaterChannel })}
                 </div>
                 <div className="items-center self-stretch w-full text-center text-secondary text-sm leading-5">
-                    Snorkeling is a personal customization project based on Wave Terminal.
+                    {t("modals:about.descriptionLine1")}
                     <br />
-                    Use the links below to access both the Snorkeling repository and the Wave upstream repository.
+                    {t("modals:about.descriptionLine2")}
                 </div>
                 <div className="grid grid-cols-2 gap-[10px] self-stretch w-full">
                     <a
@@ -105,7 +108,8 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-brands fa-github mr-2"></i>Snorkeling Repo
+                        <i className="fa-brands fa-github mr-2"></i>
+                        {t("modals:about.snorkelingRepo")}
                     </a>
                     <a
                         href={WAVE_UPSTREAM_REPO_URL}
@@ -113,7 +117,8 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-brands fa-github mr-2"></i>Wave Upstream
+                        <i className="fa-brands fa-github mr-2"></i>
+                        {t("modals:about.waveUpstream")}
                     </a>
                     <a
                         href={`${SNORKELING_REPO_URL}/blob/main/ACKNOWLEDGEMENTS.md`}
@@ -121,7 +126,8 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-sharp fa-light fa-book mr-2"></i>Open Source
+                        <i className="fa-sharp fa-light fa-book mr-2"></i>
+                        {t("modals:about.openSource")}
                     </a>
                     <a
                         href={WAVE_WEBSITE_URL}
@@ -129,7 +135,8 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         rel="noopener"
                         className="inline-flex items-center justify-center px-4 py-2 rounded border border-border hover:bg-hoverbg transition-colors duration-200"
                     >
-                        <i className="fa-sharp fa-light fa-globe mr-2"></i>Wave Website
+                        <i className="fa-sharp fa-light fa-globe mr-2"></i>
+                        {t("modals:about.waveWebsite")}
                     </a>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2 self-stretch w-full">
@@ -139,7 +146,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg transition-colors duration-200"
                     >
                         <i className="fa-sharp fa-light fa-bug mr-2" />
-                        {debugVisible ? "Hide Debug Info" : "Show Debug Info"}
+                        {debugVisible ? t("modals:about.hideDebugInfo") : t("modals:about.showDebugInfo")}
                     </button>
                     <button
                         type="button"
@@ -147,7 +154,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg transition-colors duration-200"
                     >
                         <i className="fa-sharp fa-light fa-copy mr-2" />
-                        {copyStatus || "Copy Debug Info"}
+                        {copyStatus || t("modals:about.copyDebugInfo")}
                     </button>
                     {debugVisible && (
                         <button
@@ -157,7 +164,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                             className="inline-flex h-[34px] items-center justify-center rounded border border-border px-3 text-sm hover:bg-hoverbg disabled:opacity-50 transition-colors duration-200"
                         >
                             <i className="fa-sharp fa-light fa-rotate mr-2" />
-                            Refresh
+                            {t("common:common.refresh")}
                         </button>
                     )}
                 </div>
@@ -170,7 +177,7 @@ const AboutModalV = ({ versionString, updaterChannel, onClose }: AboutModalVProp
                         ) : (
                             <textarea
                                 readOnly
-                                value={debugLoading && debugText === "" ? "Loading..." : debugText}
+                                value={debugLoading && debugText === "" ? t("common:common.loading") : debugText}
                                 className="h-[220px] w-full resize-none rounded border border-border bg-surface p-2 font-mono text-[11px] leading-4 outline-none"
                             />
                         )}

@@ -20,13 +20,14 @@
 
 import { ackAgentStatus } from "@/app/agent-status/agent-status-ack";
 import { resolveBlockSessionId } from "@/app/block/block-info-card-meta";
-import { jumpToOverviewBlock } from "@/app/session-overview/session-overview-model";
 import { EditableTitle } from "@/app/element/info-card/editable-title";
 import { Modal } from "@/app/modals/modal";
+import { jumpToOverviewBlock } from "@/app/session-overview/session-overview-model";
 import { modalsModel } from "@/app/store/modalmodel";
 import { useAgentStatusForCard, useSessionNoteState } from "@/app/store/session-note-hook";
 import { AgentHoverCard } from "@/app/view/term/agent-hover-card";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 type AgentCardModalProps = {
     blockId: string;
@@ -37,6 +38,7 @@ type AgentCardModalProps = {
 };
 
 function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
+    const { t } = useTranslation("modals");
     const connection = React.useMemo(() => {
         const value = blockData?.meta?.connection;
         return typeof value === "string" ? value.trim() : "";
@@ -98,15 +100,15 @@ function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
                             type="button"
                             className="cursor-pointer rounded px-2 py-1 text-[11px] text-secondary transition-colors hover:bg-hover hover:text-primary"
                             data-agent-card-jump
-                            title="定位到该会话所在的块"
-                            aria-label="定位到该会话所在的块"
+                            title={t("modals:agentCard.jumpToBlockTitle")}
+                            aria-label={t("modals:agentCard.jumpToBlockTitle")}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 handleJumpToBlock();
                             }}
                         >
                             <i className="fa-sharp fa-solid fa-location-crosshairs mr-1" />
-                            定位到块
+                            {t("modals:agentCard.jumpToBlock")}
                         </button>
                     ) : null}
                     <button
@@ -114,8 +116,12 @@ function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
                         className="cursor-pointer rounded px-2 py-1 text-[11px] text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
                         data-agent-card-detail
                         disabled={sessionId === ""}
-                        title={sessionId === "" ? "该块没有会话 id" : "打开会话详情"}
-                        aria-label="打开会话详情"
+                        title={
+                            sessionId === ""
+                                ? t("modals:agentCard.noSessionId")
+                                : t("modals:agentCard.openSessionDetail")
+                        }
+                        aria-label={t("modals:agentCard.openSessionDetail")}
                         onClick={(event) => {
                             event.stopPropagation();
                             if (sessionId === "") return;
@@ -124,7 +130,7 @@ function AgentCardModal({ blockId, blockData, tabId }: AgentCardModalProps) {
                         }}
                     >
                         <i className="fa-sharp fa-solid fa-arrow-up-right-from-square mr-1" />
-                        打开会话详情
+                        {t("modals:agentCard.openSessionDetail")}
                     </button>
                     <span className="flex-1" />
                 </div>

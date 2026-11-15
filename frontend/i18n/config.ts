@@ -16,6 +16,7 @@ import enCommontext from "./locales/en/commontext.json";
 import enElement from "./locales/en/element.json";
 import enHero from "./locales/en/hero.json";
 import enLauncher from "./locales/en/launcher.json";
+import enModals from "./locales/en/modals.json";
 import enOnboarding from "./locales/en/onboarding.json";
 import enPreview from "./locales/en/preview.json";
 import enProcessviewer from "./locales/en/processviewer.json";
@@ -28,6 +29,7 @@ import enVcs from "./locales/en/vcs.json";
 import enWaveai from "./locales/en/waveai.json";
 import enWaveconfig from "./locales/en/waveconfig.json";
 import enWebview from "./locales/en/webview.json";
+import enWorkspace from "./locales/en/workspace.json";
 import zhAiaudit from "./locales/zh/aiaudit.json";
 import zhAifilediff from "./locales/zh/aifilediff.json";
 import zhAipanel from "./locales/zh/aipanel.json";
@@ -39,6 +41,7 @@ import zhCommontext from "./locales/zh/commontext.json";
 import zhElement from "./locales/zh/element.json";
 import zhHero from "./locales/zh/hero.json";
 import zhLauncher from "./locales/zh/launcher.json";
+import zhModals from "./locales/zh/modals.json";
 import zhOnboarding from "./locales/zh/onboarding.json";
 import zhPreview from "./locales/zh/preview.json";
 import zhProcessviewer from "./locales/zh/processviewer.json";
@@ -51,6 +54,7 @@ import zhVcs from "./locales/zh/vcs.json";
 import zhWaveai from "./locales/zh/waveai.json";
 import zhWaveconfig from "./locales/zh/waveconfig.json";
 import zhWebview from "./locales/zh/webview.json";
+import zhWorkspace from "./locales/zh/workspace.json";
 
 export const SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -79,6 +83,8 @@ export const NS = [
     "processviewer",
     "webview",
     "launcher",
+    "modals",
+    "workspace",
     "tsunami",
     "waveai",
     "aifilediff",
@@ -152,6 +158,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 processviewer: enProcessviewer,
                 webview: enWebview,
                 launcher: enLauncher,
+                modals: enModals,
+                workspace: enWorkspace,
                 tsunami: enTsunami,
                 waveai: enWaveai,
                 aifilediff: enAifilediff,
@@ -177,6 +185,8 @@ export async function initI18n(initialLocale?: Locale): Promise<typeof i18n> {
                 processviewer: zhProcessviewer,
                 webview: zhWebview,
                 launcher: zhLauncher,
+                modals: zhModals,
+                workspace: zhWorkspace,
                 tsunami: zhTsunami,
                 waveai: zhWaveai,
                 aifilediff: zhAifilediff,

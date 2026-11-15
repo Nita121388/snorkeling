@@ -10,11 +10,8 @@ import { useAgentPersonas } from "@/app/agent-persona/use-agent-personas";
 import { openHeroCreateWizard } from "@/app/view/hero/hero-create-wizard";
 import { getAgentIcon } from "@/app/view/term/agent-logo";
 import type { AgentProfileOption } from "@/app/workspace/agent-launch";
-import {
-    buildHeroLaunchBlockDef,
-    resolveHeroProfileName,
-    type HeroRoster,
-} from "@/app/workspace/hero-launch";
+import { buildHeroLaunchBlockDef, resolveHeroProfileName, type HeroRoster } from "@/app/workspace/hero-launch";
+import { i18n } from "@/i18n/config";
 import { isBlank } from "@/util/util";
 import {
     autoUpdate,
@@ -29,6 +26,7 @@ import {
 } from "@floating-ui/react";
 import clsx from "clsx";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const ProfileLabels: Record<string, string> = {
     codex: "Codex",
@@ -95,6 +93,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
     getMainWorkdir,
     onLaunch,
 }: HeroLaunchFloatingWindowProps) {
+    const { t } = useTranslation("workspace");
     const agentPersonas = useAgentPersonas();
     const [roster, setRoster] = useState<HeroRoster>({ root: "", heroes: [] });
     const [loading, setLoading] = useState(false);
@@ -248,12 +247,12 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
             >
                 {/* header：与 New Agent 弹窗同一套 chrome（标题 + 右侧关闭 ×） */}
                 <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-3 py-2 text-sm font-medium text-foreground">
-                    <span>Select Hero</span>
+                    <span>{t("workspace:heroLaunch.title")}</span>
                     <button
                         type="button"
                         className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted transition-colors hover:bg-hoverbg hover:text-foreground"
-                        aria-label="Close"
-                        title="Close (esc)"
+                        aria-label={t("modals:modal.close")}
+                        title={t("workspace:heroLaunch.closeEsc")}
                         onClick={onClose}
                     >
                         <i className="fa fa-solid fa-xmark" />
@@ -262,9 +261,11 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
 
                 {/* ① 选 Agent（与 New Agent 弹窗同款 chip 行：左侧 accent 条 + 图标 + 名字） */}
                 <div className="shrink-0 border-b border-border/60 px-3 pb-1.5 pt-2">
-                    <div className="mb-1.5 text-xxs text-muted">Select an agent type</div>
+                    <div className="mb-1.5 text-xxs text-muted">{t("workspace:agentLaunch.selectAgentType")}</div>
                     {profileOptions.length === 0 ? (
-                        <div className="px-2 py-1.5 text-xs text-muted">No detected agents</div>
+                        <div className="px-2 py-1.5 text-xs text-muted">
+                            {t("workspace:agentLaunch.noDetectedAgents")}
+                        </div>
                     ) : (
                         <div className="flex flex-wrap gap-0.5">
                             {profileOptions.map((profile) => {
@@ -310,7 +311,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                         onChange={(e) => setModelInput(e.target.value)}
                         placeholder={
                             isBlank(selectedHero?.model)
-                                ? "model (optional, defaults to the hero card)"
+                                ? t("workspace:heroLaunch.modelPlaceholder")
                                 : selectedHero.model
                         }
                         className="mt-2 h-[28px] w-full rounded border border-border/70 bg-surface px-2 text-xs outline-none focus:border-accent"
@@ -320,7 +321,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                 {/* ② 选 hero（谁登场） */}
                 <div className="shrink-0 px-3 pb-1.5 pt-2">
                     <div className="mb-1.5 flex items-center gap-2 text-xxs text-muted">
-                        <span>Select a hero</span>
+                        <span>{t("workspace:heroLaunch.selectHero")}</span>
                         {roster.root && heroes.length > 0 ? (
                             <span className="text-muted/60">({heroes.length})</span>
                         ) : null}
@@ -334,21 +335,22 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                         {loading ? (
                             <div className="flex items-center justify-center py-6 text-muted">
                                 <i className="fa fa-solid fa-spinner fa-spin mr-2"></i>
-                                <span className="text-xs">Loading heroes…</span>
+                                <span className="text-xs">{t("workspace:heroLaunch.loading")}</span>
                             </div>
                         ) : loadError != null ? (
                             <div className="px-3 py-6 text-center text-xs text-error">
-                                Failed to load heroes: {loadError}
+                                {i18n.t("workspace:heroLaunch.loadFailed", { error: loadError })}
                             </div>
                         ) : heroes.length === 0 ? (
                             <div className="flex flex-col items-center gap-2 px-6 py-8 text-center">
                                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-soft text-lg text-muted/80">
                                     🦸
                                 </div>
-                                <div className="text-xs font-medium text-secondary">No heroes yet</div>
+                                <div className="text-xs font-medium text-secondary">
+                                    {t("workspace:heroLaunch.emptyTitle")}
+                                </div>
                                 <div className="max-w-[280px] text-[11px] leading-relaxed text-muted">
-                                    A hero is a persistent role with a home base and memory. Create the first one in a
-                                    terminal:
+                                    {t("workspace:heroLaunch.emptyBody")}
                                 </div>
                                 <code
                                     className="cursor-pointer select-all rounded border border-border/70 bg-surface px-2 py-1 font-mono text-[11px] text-accent transition-colors hover:border-accent"
@@ -357,7 +359,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                                             .writeText("wsh hero create --name <name> --yes")
                                             .catch(() => undefined)
                                     }
-                                    title="Click to copy"
+                                    title={t("workspace:heroLaunch.clickToCopy")}
                                 >
                                     wsh hero create --name &lt;name&gt; --yes
                                 </code>
@@ -366,7 +368,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                                     className="cursor-pointer rounded border border-border/70 bg-surface px-3 py-1 text-xs text-secondary transition-colors hover:border-accent hover:text-accent"
                                     onClick={() => openHeroCreateWizard({ source: "hero-picker" })}
                                 >
-                                    ＋ Or open the create wizard
+                                    {t("workspace:heroLaunch.createWizard")}
                                 </button>
                             </div>
                         ) : (
@@ -403,7 +405,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                             className="w-full cursor-pointer border-t border-border/40 px-3 py-2 text-left text-xs text-secondary transition-colors hover:bg-hoverbg hover:text-foreground"
                             onClick={() => openHeroCreateWizard({ source: "hero-picker" })}
                         >
-                            ＋ New hero…
+                            {t("workspace:heroLaunch.newHero")}
                         </button>
                     </div>
                 </div>
@@ -417,8 +419,8 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                         )}
                         title={
                             mainWorkdir == null
-                                ? "No main working directory detected"
-                                : "Prepend the main working directory to the first prompt; unchecked = pure hero task"
+                                ? t("workspace:heroLaunch.injectWorkdirDisabledTitle")
+                                : t("workspace:heroLaunch.injectWorkdirTitle")
                         }
                     >
                         <input
@@ -429,8 +431,10 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                             className="mt-0.5"
                         />
                         <span className="min-w-0 flex-1 text-xs">
-                            Inject main working directory
-                            <span className="ml-1 break-all text-muted/80">{mainWorkdir ?? "(none detected)"}</span>
+                            {t("workspace:heroLaunch.injectWorkdir")}
+                            <span className="ml-1 break-all text-muted/80">
+                                {mainWorkdir ?? t("workspace:heroLaunch.noneDetected")}
+                            </span>
                         </span>
                     </label>
                     <div className="mt-3 flex justify-end gap-2">
@@ -439,7 +443,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                             className="cursor-pointer rounded border border-border/70 bg-surface px-3 py-1 text-xs text-secondary transition-colors hover:border-accent hover:text-accent"
                             onClick={onClose}
                         >
-                            Cancel
+                            {t("workspace:heroLaunch.cancel")}
                         </button>
                         <button
                             type="button"
@@ -452,7 +456,7 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                             )}
                             onClick={launch}
                         >
-                            Confirm
+                            {t("workspace:heroLaunch.confirm")}
                         </button>
                     </div>
                 </div>

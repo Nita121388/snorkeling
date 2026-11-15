@@ -7,8 +7,18 @@ import { describeCron } from "@/app/view/scheduledtasks/cron-describe";
 import type { AgentProfileInfo } from "@/app/workspace/agent-catalog";
 import { findAgentProfile, loadAgentCatalog, modelOptionsFor, pickDefaultModel } from "@/app/workspace/agent-catalog";
 import * as React from "react";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 
-const ScheduleTypes = ["cron", "interval", "daily", "weekly", "once"];
+const ScheduleTypes = ["cron", "interval", "daily", "weekly", "once"] as const;
+
+const ScheduleTypeLabelKeys = {
+    cron: "modals:scheduledTask.scheduleTypeCron",
+    interval: "modals:scheduledTask.scheduleTypeInterval",
+    daily: "modals:scheduledTask.scheduleTypeDaily",
+    weekly: "modals:scheduledTask.scheduleTypeWeekly",
+    once: "modals:scheduledTask.scheduleTypeOnce",
+} as const satisfies Record<(typeof ScheduleTypes)[number], string>;
 
 /** Props passed through modalsModel.pushModal("ScheduledTaskEditorModal", ...). */
 export type ScheduledTaskEditorModalProps = {
@@ -24,6 +34,7 @@ export type ScheduledTaskEditorModalProps = {
  * as the other app dialogs and lets ESC/backdrop close it via modalsModel.
  */
 function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorModalProps) {
+    const { t } = useTranslation("modals");
     const [form, setForm] = React.useState<ScheduledTaskType>(() => ({
         ...task,
         schedule: { ...task.schedule },
@@ -85,26 +96,30 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
             <div className="flex h-full min-h-0 w-full flex-col bg-modalbg text-primary">
                 <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
                     <span className="text-sm font-semibold">
-                        {isNew ? "New Scheduled Task" : "Edit Scheduled Task"}
+                        {isNew ? t("modals:scheduledTask.newTitle") : t("modals:scheduledTask.editTitle")}
                     </span>
-                    <button className="hover:bg-hoverbg rounded p-1 cursor-pointer" onClick={close} title="Close (ESC)">
+                    <button
+                        className="hover:bg-hoverbg rounded p-1 cursor-pointer"
+                        onClick={close}
+                        title={t("modals:modal.closeEsc")}
+                    >
                         ✕
                     </button>
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 wide-scrollbar">
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        <Field label="Name" className="md:col-span-2">
+                        <Field label={t("modals:scheduledTask.fieldName")} className="md:col-span-2">
                             <input
                                 className={inputCls}
                                 value={form.name}
                                 onChange={(e) => set("name", e.target.value)}
-                                placeholder="Daily Code Review"
+                                placeholder={t("modals:scheduledTask.namePlaceholder")}
                                 autoFocus
                             />
                         </Field>
 
-                        <Field label="Agent Profile">
+                        <Field label={t("modals:scheduledTask.fieldAgentProfile")}>
                             {agentCatalog.length === 0 ? (
                                 // Catalog unavailable (RPC failed): keep the editor usable with free text.
                                 <input
@@ -126,21 +141,29 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                     ))}
                                 </select>
                             )}
-                            {catalogLoading && <span className="text-xs text-muted mt-0.5">Loading agents…</span>}
+                            {catalogLoading && (
+                                <span className="text-xs text-muted mt-0.5">{t("modals:scheduledTask.loadingAgents")}</span>
+                            )}
                             {!catalogLoading && agentCatalog.length === 0 && (
                                 <span className="text-xs text-muted mt-0.5">
-                                    Agent catalog unavailable — type the agent command name.
+                                    {t("modals:scheduledTask.catalogUnavailable")}
                                 </span>
                             )}
                         </Field>
 
-                        <Field label={profile != null ? `Model — ${profile.label}` : "Model"}>
+                        <Field
+                            label={
+                                profile != null
+                                    ? i18n.t("modals:scheduledTask.fieldModelWithProfile", { profile: profile.label })
+                                    : t("modals:scheduledTask.fieldModel")
+                            }
+                        >
                             {modelOptions.length === 0 ? (
                                 <input
                                     className={inputCls}
                                     value={form.model ?? ""}
                                     onChange={(e) => set("model", e.target.value)}
-                                    placeholder="Default (agent chooses)"
+                                    placeholder={t("modals:scheduledTask.modelPlaceholder")}
                                 />
                             ) : (
                                 <select
@@ -159,22 +182,23 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                             )}
                             {profile != null && profile.models.length === 0 && (
                                 <span className="text-xs text-muted mt-0.5">
-                                    No models configured for this agent — add agent:profiles.{profile.name}.models in
-                                    settings, or type a model id.
+                                    {t("modals:scheduledTask.noModelsPrefix")}
+                                    {profile.name}
+                                    {t("modals:scheduledTask.noModelsSuffix")}
                                 </span>
                             )}
                         </Field>
 
-                        <Field label="Prompt" className="md:col-span-2">
+                        <Field label={t("modals:scheduledTask.fieldPrompt")} className="md:col-span-2">
                             <textarea
                                 className={`${inputCls} min-h-[96px] resize-y`}
                                 value={form.prompt}
                                 onChange={(e) => set("prompt", e.target.value)}
-                                placeholder="Review the latest commit and suggest improvements"
+                                placeholder={t("modals:scheduledTask.promptPlaceholder")}
                             />
                         </Field>
 
-                        <Field label="Working Directory" className="md:col-span-2">
+                        <Field label={t("modals:scheduledTask.fieldWorkdir")} className="md:col-span-2">
                             <input
                                 className={inputCls}
                                 value={form.workdir ?? ""}
@@ -183,22 +207,22 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                             />
                         </Field>
 
-                        <Field label="Schedule Type">
+                        <Field label={t("modals:scheduledTask.fieldScheduleType")}>
                             <select
                                 className={inputCls}
                                 value={form.schedule?.type ?? "cron"}
                                 onChange={(e) => setSched("type", e.target.value)}
                             >
-                                {ScheduleTypes.map((t) => (
-                                    <option key={t} value={t}>
-                                        {t}
+                                {ScheduleTypes.map((typeValue) => (
+                                    <option key={typeValue} value={typeValue}>
+                                        {t(ScheduleTypeLabelKeys[typeValue])}
                                     </option>
                                 ))}
                             </select>
                         </Field>
 
                         {(form.schedule?.type ?? "cron") === "cron" && (
-                            <Field label="Cron Expression">
+                            <Field label={t("modals:scheduledTask.fieldCron")}>
                                 <input
                                     className={`${inputCls} font-mono`}
                                     value={form.schedule?.cronExpr ?? ""}
@@ -211,7 +235,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                             </Field>
                         )}
                         {(form.schedule?.type ?? "cron") === "interval" && (
-                            <Field label="Interval (ms)">
+                            <Field label={t("modals:scheduledTask.fieldInterval")}>
                                 <input
                                     className={inputCls}
                                     type="number"
@@ -221,7 +245,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                             </Field>
                         )}
                         {(form.schedule?.type ?? "cron") === "daily" && (
-                            <Field label="Time (HH:MM)">
+                            <Field label={t("modals:scheduledTask.fieldTime")}>
                                 <input
                                     className={inputCls}
                                     value={form.schedule?.timeOfDay ?? ""}
@@ -232,7 +256,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                         )}
                         {(form.schedule?.type ?? "cron") === "weekly" && (
                             <>
-                                <Field label="Time (HH:MM)">
+                                <Field label={t("modals:scheduledTask.fieldTime")}>
                                     <input
                                         className={inputCls}
                                         value={form.schedule?.timeOfDay ?? ""}
@@ -240,7 +264,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                         placeholder="09:00"
                                     />
                                 </Field>
-                                <Field label="Day of Week (0=Sun)">
+                                <Field label={t("modals:scheduledTask.fieldDayOfWeek")}>
                                     <input
                                         className={inputCls}
                                         type="number"
@@ -253,7 +277,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                             </>
                         )}
                         {(form.schedule?.type ?? "cron") === "once" && (
-                            <Field label="Run At (ISO)">
+                            <Field label={t("modals:scheduledTask.fieldRunAt")}>
                                 <input
                                     className={`${inputCls} font-mono`}
                                     value={form.schedule?.runAt ?? ""}
@@ -263,7 +287,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                             </Field>
                         )}
 
-                        <Field label="Timezone">
+                        <Field label={t("modals:scheduledTask.fieldTimezone")}>
                             <input
                                 className={`${inputCls} font-mono`}
                                 value={form.schedule?.timezone ?? ""}
@@ -273,16 +297,16 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                         </Field>
 
                         {notify && (
-                            <Field label="Notification Mode">
+                            <Field label={t("modals:scheduledTask.fieldNotificationMode")}>
                                 <select
                                     className={inputCls}
                                     value={form.notificationMode ?? "os"}
                                     onChange={(e) => set("notificationMode", e.target.value)}
                                 >
-                                    <option value="os">OS</option>
-                                    <option value="bell">Bell</option>
-                                    <option value="both">Both</option>
-                                    <option value="none">None</option>
+                                    <option value="os">{t("modals:scheduledTask.notificationOs")}</option>
+                                    <option value="bell">{t("modals:scheduledTask.notificationBell")}</option>
+                                    <option value="both">{t("modals:scheduledTask.notificationBoth")}</option>
+                                    <option value="none">{t("modals:scheduledTask.notificationNone")}</option>
                                 </select>
                             </Field>
                         )}
@@ -295,7 +319,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                 checked={form.enabled}
                                 onChange={(e) => set("enabled", e.target.checked)}
                             />
-                            Enabled
+                            {t("modals:scheduledTask.enabled")}
                         </label>
                         <label className="flex items-center gap-2 text-xs cursor-pointer">
                             <input
@@ -303,7 +327,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                 checked={form.notifyOnComplete}
                                 onChange={(e) => set("notifyOnComplete", e.target.checked)}
                             />
-                            Notify on complete
+                            {t("modals:scheduledTask.notifyComplete")}
                         </label>
                         <label className="flex items-center gap-2 text-xs cursor-pointer">
                             <input
@@ -311,7 +335,7 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
                                 checked={form.notifyOnError}
                                 onChange={(e) => set("notifyOnError", e.target.checked)}
                             />
-                            Notify on error
+                            {t("modals:scheduledTask.notifyError")}
                         </label>
                     </div>
 
@@ -320,14 +344,14 @@ function ScheduledTaskEditorModal({ task, isNew, onSave }: ScheduledTaskEditorMo
 
                 <div className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-2">
                     <button className={btnCls} onClick={close}>
-                        Cancel
+                        {t("modals:modal.cancel")}
                     </button>
                     <button
                         className={`${btnCls} bg-accent text-[var(--accent-foreground)]`}
                         disabled={saving || !form.name}
                         onClick={save}
                     >
-                        {saving ? "Saving…" : "Save"}
+                        {saving ? t("common:docs.saving") : t("common:common.save")}
                     </button>
                 </div>
             </div>

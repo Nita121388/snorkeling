@@ -13,7 +13,8 @@
         "ok": "OK",
         "save": "Save",
         "copied": "Copied",
-        "copyMessage": "Copy message"
+        "copyMessage": "Copy message",
+        "refresh": "Refresh"
     },
     "settings": {
         "defaultFile": "Default Configuration",
@@ -33,5 +34,9 @@
         "viewDocs": "View documentation",
         "save": "Save",
         "saving": "Saving..."
+    },
+    "suggestion": {
+        "iconAlt": "favicon",
+        "noSuggestions": "No Suggestions"
     }
 }

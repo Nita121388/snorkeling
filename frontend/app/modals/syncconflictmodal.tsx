@@ -13,6 +13,8 @@ import { modalsModel } from "@/app/store/modalmodel";
 import { CommonTextService } from "@/app/store/services";
 import { cn, fireAndForget } from "@/util/util";
 import { useCallback, useEffect, useState } from "react";
+import { i18n } from "@/i18n/config";
+import { useTranslation } from "react-i18next";
 
 /** RFC3339 → readable local time; unparseable input falls back to the raw string. */
 function formatDetected(rfc3339: string): string {
@@ -37,11 +39,12 @@ function ConflictRow({
     const [mergedText, setMergedText] = useState("");
     const [resolving, setResolving] = useState(false);
     const [error, setError] = useState("");
+    const { t } = useTranslation("modals");
 
     const resolve = useCallback(() => {
         if (resolving) return;
         if (mergedText.trim() === "") {
-            setError("Paste the merged text first — empty resolves go through the UI.");
+            setError(t("modals:syncConflict.errorEmpty"));
             return;
         }
         setResolving(true);
@@ -56,13 +59,15 @@ function ConflictRow({
                 setResolving(false);
             }
         });
-    }, [conflict.id, mergedText, onResolved, resolving]);
+    }, [conflict.id, mergedText, onResolved, resolving, t]);
 
-    const title = conflict.title || "(untitled)";
+    const title = conflict.title || t("modals:syncConflict.untitled");
     const meta = [
-        conflict.deviceName ? `from ${conflict.deviceName}` : null,
-        `detected ${formatDetected(conflict.detectedAt)}`,
-        conflict.fields?.length > 0 ? `fields: ${conflict.fields.join(", ")}` : null,
+        conflict.deviceName ? i18n.t("modals:syncConflict.metaFrom", { device: conflict.deviceName }) : null,
+        i18n.t("modals:syncConflict.metaDetected", { time: formatDetected(conflict.detectedAt) }),
+        conflict.fields?.length > 0
+            ? i18n.t("modals:syncConflict.metaFields", { fields: conflict.fields.join(", ") })
+            : null,
     ]
         .filter(Boolean)
         .join(" · ");
@@ -79,7 +84,7 @@ function ConflictRow({
                     <div className="mt-0.5 text-xs text-muted-foreground">{meta}</div>
                 </div>
                 <CopyForAgent
-                    title={`Copy this conflict for an AI to merge`}
+                    title={t("modals:syncConflict.copyTitle")}
                     text={async () => {
                         const resp = await CommonTextService.SyncConflictCopy({ id: conflict.id });
                         return resp?.text ?? "";
@@ -93,8 +98,8 @@ function ConflictRow({
                         setMergedText(e.target.value);
                         setError("");
                     }}
-                    placeholder="Paste the merged text from the AI here…"
-                    aria-label={`Merged text for ${title}`}
+                    placeholder={t("modals:syncConflict.pastePlaceholder")}
+                    aria-label={i18n.t("modals:syncConflict.mergedAria", { title })}
                     data-sync-merged-input={conflict.id}
                     spellCheck={false}
                     className="h-24 w-full resize-y rounded border border-border bg-panel px-2 py-1.5 font-mono text-xs text-primary outline-none transition-colors focus:border-accent"
@@ -106,7 +111,7 @@ function ConflictRow({
                         </span>
                     ) : (
                         <span className="text-xs text-muted-foreground">
-                            Resolving writes the merged text and marks this conflict resolved.
+                            {t("modals:syncConflict.resolveHint")}
                         </span>
                     )}
                     <button
@@ -121,7 +126,7 @@ function ConflictRow({
                                 : "cursor-pointer bg-action text-actiontext hover:bg-actionhover"
                         )}
                     >
-                        {resolving ? "Resolving…" : "Resolve"}
+                        {resolving ? t("modals:syncConflict.resolving") : t("modals:syncConflict.resolve")}
                     </button>
                 </div>
             </div>
@@ -130,6 +135,7 @@ function ConflictRow({
 }
 
 export const SyncConflictModal = ({ onResolved }: { onResolved?: () => void }) => {
+    const { t } = useTranslation("modals");
     const [conflicts, setConflicts] = useState<Entry[] | null>(null);
     const [loadError, setLoadError] = useState("");
 
@@ -158,8 +164,8 @@ export const SyncConflictModal = ({ onResolved }: { onResolved?: () => void }) =
     return (
         <Modal
             className="w-[560px] max-w-[calc(100vw-32px)]"
-            title="Unresolved sync conflicts"
-            subtitle="Copy a conflict to an AI, then paste the merged text back and resolve."
+            title={t("modals:syncConflict.title")}
+            subtitle={t("modals:syncConflict.subtitle")}
             onClose={() => modalsModel.popModal()}
             onClickBackdrop={() => modalsModel.popModal()}
             padding={false}
@@ -169,11 +175,13 @@ export const SyncConflictModal = ({ onResolved }: { onResolved?: () => void }) =
                     <div className="px-4 py-6 text-center text-xs text-error">{loadError}</div>
                 )}
                 {loadError == "" && conflicts == null && (
-                    <div className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</div>
+                    <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                        {t("modals:syncConflict.loading")}
+                    </div>
                 )}
                 {loadError == "" && conflicts != null && conflicts.length === 0 && (
                     <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-                        Nothing to resolve — all conflicts are cleared.
+                        {t("modals:syncConflict.empty")}
                     </div>
                 )}
                 {loadError == "" &&

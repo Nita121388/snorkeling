@@ -65,9 +65,11 @@ import {
     useInteractions,
 } from "@floating-ui/react";
 import clsx from "clsx";
+import { i18n } from "@/i18n/config";
 import { useAtomValue } from "jotai";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export type WidgetsEnv = WaveEnvSubset<{
     isDev: WaveEnv["isDev"];
@@ -204,15 +206,16 @@ function calculateGridSize(appCount: number): number {
 }
 
 function SettingsTooltipContent({ hasConfigErrors }: { hasConfigErrors: boolean }) {
+    const { t } = useTranslation("workspace");
     if (!hasConfigErrors) {
-        return "Settings & Help";
+        return t("workspace:widgetsBar.settingsHelp");
     }
     return (
         <div className="flex flex-col p-1">
-            <div className="mb-1">Settings &amp; Help</div>
+            <div className="mb-1">{t("workspace:widgetsBar.settingsHelp")}</div>
             <div className="flex items-center gap-1 mt-0.5 text-error">
                 <i className="fa fa-solid fa-circle-exclamation"></i>
-                <span>Config Errors</span>
+                <span>{t("workspace:widgetsBar.configErrors")}</span>
             </div>
         </div>
     );
@@ -226,6 +229,7 @@ type FloatingWindowPropsType = {
 };
 
 const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: FloatingWindowPropsType) => {
+    const { t } = useTranslation("workspace");
     const [apps, setApps] = useState<AppInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const env = useWaveEnv<WidgetsEnv>();
@@ -292,7 +296,7 @@ const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: Floating
                             <i className="fa fa-solid fa-spinner fa-spin text-2xl text-muted"></i>
                         </div>
                     ) : apps.length === 0 ? (
-                        <div className="text-muted text-sm p-4 text-center">No local apps found</div>
+                        <div className="text-muted text-sm p-4 text-center">{t("workspace:apps.noApps")}</div>
                     ) : (
                         <div
                             className="grid gap-3"
@@ -341,7 +345,7 @@ const AppsFloatingWindow = memo(({ isOpen, onClose, referenceElement }: Floating
                     onClick={handleOpenBuilder}
                 >
                     <i className="fa fa-solid fa-hammer"></i>
-                    Build/Edit Apps
+                    {t("workspace:apps.buildEdit")}
                 </button>
             </div>
         </FloatingPortal>
@@ -557,20 +561,20 @@ function getErrorMessage(error: unknown): string {
 function showLaunchError(label: string, error: unknown) {
     console.error(`Failed to launch ${label.toLowerCase()}:`, error);
     modalsModel.pushModal("MessageModal", {
-        children: `Failed to launch ${label}: ${getErrorMessage(error)}`,
+        children: i18n.t("workspace:errors.launchFailed", { label, message: getErrorMessage(error) }),
     });
 }
 
 function showSettingsError(label: string, error: unknown) {
     console.error(`Failed to save ${label.toLowerCase()}:`, error);
     modalsModel.pushModal("MessageModal", {
-        children: `Failed to save ${label}: ${getErrorMessage(error)}`,
+        children: i18n.t("workspace:errors.saveFailed", { label, message: getErrorMessage(error) }),
     });
 }
 
 function showNoDetectedAgentError() {
     modalsModel.pushModal("MessageModal", {
-        children: "No detected agent command is available.",
+        children: i18n.t("workspace:errors.noDetectedAgent"),
     });
 }
 
@@ -638,6 +642,7 @@ const AgentTargetFloatingWindow = memo(
         currentTabLabel,
         centered,
     }: AgentTargetFloatingWindowProps) => {
+        const { t } = useTranslation("workspace");
         const personaMap = useAgentPersonas();
         const profileIcon = (name: string): ReactNode => {
             const spec = getAgentIcon(name, { personas: personaMap });
@@ -870,12 +875,12 @@ const AgentTargetFloatingWindow = memo(
                         </span>
                         {vendor.is_current && (
                             <span className="text-[10px] px-1 py-0.5 rounded bg-accent/15 text-accent leading-none">
-                                ·current
+                                {t("workspace:agentLaunch.vendorCurrentChip")}
                             </span>
                         )}
                         {(vendor.category === "official" || vendor.provider_type === "official") && (
                             <span className="text-[10px] px-1 py-0.5 rounded bg-surface-soft text-muted leading-none">
-                                official
+                                {t("workspace:agentLaunch.vendorOfficialChip")}
                             </span>
                         )}
                     </button>
@@ -906,12 +911,12 @@ const AgentTargetFloatingWindow = memo(
                 >
                     {/* header */}
                     <div className="shrink-0 flex items-center justify-between px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
-                        <span>New Agent</span>
+                        <span>{t("workspace:agentLaunch.newAgent")}</span>
                         <button
                             type="button"
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-hoverbg hover:text-foreground transition-colors cursor-pointer"
-                            aria-label="Agent hook settings"
-                            title="Agent hook settings"
+                            aria-label={t("workspace:agentLaunch.hookSettings")}
+                            title={t("workspace:agentLaunch.hookSettings")}
                             onClick={(event) => {
                                 event.stopPropagation();
                                 onClose();
@@ -928,9 +933,11 @@ const AgentTargetFloatingWindow = memo(
                     </div>
 
                     <div className="shrink-0 px-3 pt-2 pb-1.5 border-b border-border/60">
-                        <div className="text-xxs text-muted mb-1.5">Select an agent type</div>
+                        <div className="text-xxs text-muted mb-1.5">{t("workspace:agentLaunch.selectAgentType")}</div>
                         {profileOptions.length === 0 ? (
-                            <div className="px-2 py-1.5 text-xs text-muted">No detected agents</div>
+                            <div className="px-2 py-1.5 text-xs text-muted">
+                                {t("workspace:agentLaunch.noDetectedAgents")}
+                            </div>
                         ) : (
                             <div className="flex flex-wrap gap-0.5">
                                 {profileOptions.map((profile) => {
@@ -994,8 +1001,10 @@ const AgentTargetFloatingWindow = memo(
                                             </button>
                                             <DefaultCheckButton
                                                 checked={isDefault}
-                                                ariaLabel={`Set ${profile.label} as default agent`}
-                                                title="Set default agent"
+                                                ariaLabel={i18n.t("workspace:agentLaunch.setDefaultAgentAria", {
+                                                    profile: profile.label,
+                                                })}
+                                                title={t("workspace:agentLaunch.setDefaultAgent")}
                                                 onClick={(event) => {
                                                     event.stopPropagation();
                                                     onSetDefaultProfile(profile.name);
@@ -1014,12 +1023,12 @@ const AgentTargetFloatingWindow = memo(
                         Array.isArray(effectiveVendorOptions) && (
                             <div className="shrink-0 px-3 pt-2 pb-1.5 border-b border-border/60">
                                 <div className="flex items-center justify-between mb-1.5">
-                                    <span className="text-xxs text-muted">Vendor · from cc-switch</span>
+                                    <span className="text-xxs text-muted">{t("workspace:agentLaunch.vendorFromCcswitch")}</span>
                                     <button
                                         type="button"
                                         className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted hover:bg-hoverbg hover:text-foreground transition-colors cursor-pointer"
-                                        aria-label="Refresh cc-switch vendors"
-                                        title="Refresh"
+                                        aria-label={t("workspace:agentLaunch.refreshVendors")}
+                                        title={t("common:common.refresh")}
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             effectiveOnRefreshVendors?.();
@@ -1029,7 +1038,7 @@ const AgentTargetFloatingWindow = memo(
                                     </button>
                                 </div>
                                 {effectiveVendorOptions.length === 0 ? (
-                                    <div className="px-2 py-1.5 text-xs text-muted">No vendors</div>
+                                    <div className="px-2 py-1.5 text-xs text-muted">{t("workspace:agentLaunch.noVendors")}</div>
                                 ) : currentVendor == null ? (
                                     // No "current" chip found (cc-switch DB edge case). Lay the chips out fully
                                     // flat, identical to the pre-collapse behavior — degrade safely.
@@ -1054,7 +1063,9 @@ const AgentTargetFloatingWindow = memo(
                                                     setVendorRestExpanded((prev) => !prev);
                                                 }}
                                                 title={
-                                                    vendorRestExpanded ? "Collapse" : "Expand the rest of the vendors"
+                                                    vendorRestExpanded
+                                                        ? t("workspace:agentLaunch.collapse")
+                                                        : t("workspace:agentLaunch.expandVendors")
                                                 }
                                                 aria-expanded={vendorRestExpanded}
                                                 className="inline-flex items-center gap-1.5 h-[30px] px-2.5 rounded-md text-xs font-medium text-secondary hover:bg-surface-soft hover:text-foreground transition-colors cursor-pointer"
@@ -1079,20 +1090,22 @@ const AgentTargetFloatingWindow = memo(
                                 {VendorModelPinningEnabled && effectiveSelectedVendor ? (
                                     <div className="mt-2 grid grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
                                         <label htmlFor="agent-vendor-model" className="text-xxs font-medium text-muted">
-                                            Model
+                                            {t("workspace:agentLaunch.modelLabel")}
                                         </label>
                                         <input
                                             id="agent-vendor-model"
                                             value={effectiveVendorModel}
                                             onChange={(event) => setEffectiveVendorModel(event.target.value)}
-                                            placeholder="Auto (project preference may apply)"
+                                            placeholder={t("workspace:agentLaunch.modelPlaceholder")}
                                             spellCheck={false}
                                             className="h-7 min-w-0 rounded border border-border bg-surface px-2 font-mono text-xs text-primary outline-none focus:border-accent"
                                         />
                                         <span className="col-start-2 text-[10px] text-secondary">
                                             {effectiveVendorModel
-                                                ? `Pinned for ${effectiveSelectedVendor.name}`
-                                                : "Not pinned; Claude may choose a different model for each project."}
+                                                ? i18n.t("workspace:agentLaunch.pinnedFor", {
+                                                      vendor: effectiveSelectedVendor.name,
+                                                  })
+                                                : t("workspace:agentLaunch.notPinned")}
                                         </span>
                                     </div>
                                 ) : null}
@@ -1101,7 +1114,9 @@ const AgentTargetFloatingWindow = memo(
 
                     {isPiProfileActive ? (
                         <div className="shrink-0 px-1 pb-1">
-                            <div className="px-2 pt-2 pb-1 text-xxs text-muted">启动方式</div>
+                            <div className="px-2 pt-2 pb-1 text-xxs text-muted">
+                                {t("workspace:agentLaunch.launchMode")}
+                            </div>
                             <div className="mx-2 mb-1 inline-flex rounded-lg border border-border bg-surface p-0.5">
                                 <button
                                     type="button"
@@ -1113,7 +1128,7 @@ const AgentTargetFloatingWindow = memo(
                                             : "text-secondary hover:text-foreground"
                                     )}
                                 >
-                                    TUI 终端
+                                    {t("workspace:agentLaunch.launchModeTui")}
                                 </button>
                                 <button
                                     type="button"
@@ -1125,7 +1140,7 @@ const AgentTargetFloatingWindow = memo(
                                             : "text-secondary hover:text-foreground"
                                     )}
                                 >
-                                    GUI 对话
+                                    {t("workspace:agentLaunch.launchModeGui")}
                                 </button>
                             </div>
                         </div>
@@ -1133,10 +1148,14 @@ const AgentTargetFloatingWindow = memo(
 
                     {/* path list */}
                     <div className="px-1 pb-1 flex flex-col min-h-0">
-                        <div className="shrink-0 px-2 pt-2 pb-1 text-xxs text-muted">Select a path.</div>
+                        <div className="shrink-0 px-2 pt-2 pb-1 text-xxs text-muted">
+                            {t("workspace:agentLaunch.selectPath")}
+                        </div>
                         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain max-h-[min(320px,40vh)]">
                             {targets.length === 0 ? (
-                                <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
+                                <div className="px-3 py-4 text-xs text-muted text-center">
+                                    {t("workspace:agentLaunch.noPaths")}
+                                </div>
                             ) : (
                                 targets.map((target, idx) => {
                                     const isSelected = idx === clampedSelectedIdx;
@@ -1195,8 +1214,8 @@ const AgentTargetFloatingWindow = memo(
                                                 {canSetDefault ? (
                                                     <DefaultCheckButton
                                                         checked={isDefault}
-                                                        ariaLabel="Set default launch target"
-                                                        title="Set default launch target"
+                                                        ariaLabel={t("workspace:agentLaunch.setDefaultLaunchTarget")}
+                                                        title={t("workspace:agentLaunch.setDefaultLaunchTarget")}
                                                         onClick={(event) => {
                                                             event.stopPropagation();
                                                             onSetDefaultTarget(target);
@@ -1216,7 +1235,7 @@ const AgentTargetFloatingWindow = memo(
                             <button
                                 type="button"
                                 className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-muted hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
-                                title={"Set environment variables for this launch (applies to the new block only)"}
+                                title={t("workspace:agentLaunch.envTitle")}
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     setLaunchEnvLocked(true);
@@ -1274,13 +1293,13 @@ const AgentTargetFloatingWindow = memo(
                                             await createToCurrentTab(resolvedBlockDef, Boolean(magnified));
                                             onClose();
                                         } catch (error) {
-                                            showLaunchError("Agent", error);
+                                            showLaunchError(t("workspace:errors.labelAgent"), error);
                                         }
                                     });
                                 }}
                             >
                                 <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                {currentTabLabel ?? "Current Tab"}
+                                {currentTabLabel ?? t("workspace:agentLaunch.currentTab")}
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -1313,13 +1332,13 @@ const AgentTargetFloatingWindow = memo(
                                             await onCreateToNewTab(resolvedBlockDef, Boolean(magnified));
                                             onClose();
                                         } catch (error) {
-                                            showLaunchError("Agent", error);
+                                            showLaunchError(t("workspace:errors.labelAgent"), error);
                                         }
                                     });
                                 }}
                             >
                                 <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
-                                New
+                                {t("workspace:agentLaunch.newAction")}
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -1346,19 +1365,19 @@ const AgentTargetFloatingWindow = memo(
                                         try {
                                             const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
                                             onCreateToExistingTab({
-                                                title: "Create Agent",
+                                                title: t("workspace:agentLaunch.createTitle"),
                                                 subtitle: selectedTarget.detail || selectedTarget.label,
                                                 blockDef: resolvedBlockDef,
                                                 magnified: Boolean(magnified),
                                             });
                                             onClose();
                                         } catch (error) {
-                                            showLaunchError("Agent", error);
+                                            showLaunchError(t("workspace:errors.labelAgent"), error);
                                         }
                                     });
                                 }}
                             >
-                                Existing…
+                                {t("workspace:agentLaunch.existingAction")}
                             </button>
                         </div>
                     ) : null}
@@ -1415,6 +1434,7 @@ const TerminalTargetFloatingWindow = memo(
                 reference: referenceElement as Element,
             },
         });
+        const { t } = useTranslation("workspace");
         const dismiss = useDismiss(context);
         const { getFloatingProps } = useInteractions([dismiss]);
 
@@ -1465,14 +1485,16 @@ const TerminalTargetFloatingWindow = memo(
                 >
                     {/* header */}
                     <div className="shrink-0 px-3 py-2 text-sm font-medium text-foreground border-b border-border/60">
-                        New Terminal
+                        {t("workspace:agentLaunch.newTerminal")}
                     </div>
 
                     {/* path list */}
                     <div className="px-1 pb-1 flex flex-col min-h-0">
                         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain max-h-[min(320px,40vh)]">
                             {targets.length === 0 ? (
-                                <div className="px-3 py-4 text-xs text-muted text-center">No paths found</div>
+                                <div className="px-3 py-4 text-xs text-muted text-center">
+                                    {t("workspace:agentLaunch.noPaths")}
+                                </div>
                             ) : (
                                 targets.map((target, idx) => {
                                     const isSelected = idx === clampedSelectedIdx;
@@ -1531,8 +1553,8 @@ const TerminalTargetFloatingWindow = memo(
                                                 {canSetDefault ? (
                                                     <DefaultCheckButton
                                                         checked={isDefault}
-                                                        ariaLabel="Set default launch target"
-                                                        title="Set default launch target"
+                                                        ariaLabel={t("workspace:agentLaunch.setDefaultLaunchTarget")}
+                                                        title={t("workspace:agentLaunch.setDefaultLaunchTarget")}
                                                         onClick={(event) => {
                                                             event.stopPropagation();
                                                             onSetDefaultTarget(target);
@@ -1552,7 +1574,7 @@ const TerminalTargetFloatingWindow = memo(
                             <button
                                 type="button"
                                 className="inline-flex items-center gap-1 text-xs font-medium h-[24px] px-2 rounded-md bg-transparent text-muted hover:bg-surface-soft hover:text-foreground active:scale-[0.97] transition-all cursor-pointer border-none p-0"
-                                title={"Set environment variables for this launch (applies to the new block only)"}
+                                title={t("workspace:agentLaunch.envTitle")}
                                 onClick={(event) => {
                                     event.stopPropagation();
                                     setLaunchEnvLocked(true);
@@ -1593,13 +1615,13 @@ const TerminalTargetFloatingWindow = memo(
                                             await createToCurrentTab(blockDef, Boolean(magnified));
                                             onClose();
                                         } catch (error) {
-                                            showLaunchError("Terminal", error);
+                                            showLaunchError(t("workspace:errors.labelTerminal"), error);
                                         }
                                     });
                                 }}
                             >
                                 <i className="fa-sharp fa-regular fa-plus text-[9px]" />
-                                {currentTabLabel ?? "Current Tab"}
+                                {currentTabLabel ?? t("workspace:agentLaunch.currentTab")}
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -1615,13 +1637,13 @@ const TerminalTargetFloatingWindow = memo(
                                             await onCreateToNewTab(blockDef, Boolean(magnified));
                                             onClose();
                                         } catch (error) {
-                                            showLaunchError("Terminal", error);
+                                            showLaunchError(t("workspace:errors.labelTerminal"), error);
                                         }
                                     });
                                 }}
                             >
                                 <i className="fa-sharp fa-regular fa-arrow-right text-[9px]" />
-                                New
+                                {t("workspace:agentLaunch.newAction")}
                             </button>
                             <span className="w-[2px] h-[2px] rounded-full bg-border shrink-0" />
                             <button
@@ -1634,7 +1656,7 @@ const TerminalTargetFloatingWindow = memo(
                                         launchEnv
                                     );
                                     onCreateToExistingTab({
-                                        title: "Create Terminal",
+                                        title: t("workspace:agentLaunch.createTerminalTitle"),
                                         subtitle: selectedTarget.detail || selectedTarget.label,
                                         blockDef,
                                         magnified: Boolean(magnified),
@@ -1642,7 +1664,7 @@ const TerminalTargetFloatingWindow = memo(
                                     onClose();
                                 }}
                             >
-                                Existing…
+                                {t("workspace:agentLaunch.existingAction")}
                             </button>
                         </div>
                     ) : null}
@@ -1654,6 +1676,7 @@ const TerminalTargetFloatingWindow = memo(
 
 const SettingsFloatingWindow = memo(
     ({ isOpen, onClose, referenceElement, hasConfigErrors }: FloatingWindowPropsType) => {
+        const { t } = useTranslation("workspace");
         const env = useWaveEnv<WidgetsEnv>();
         const { refs, floatingStyles, context } = useFloating({
             open: isOpen,
@@ -1674,7 +1697,7 @@ const SettingsFloatingWindow = memo(
         const menuItems = [
             {
                 icon: "gear",
-                label: "Settings",
+                labelKey: "workspace:settingsMenu.settings",
                 hasError: hasConfigErrors,
                 onClick: () => {
                     const blockDef: BlockDef = {
@@ -1688,7 +1711,7 @@ const SettingsFloatingWindow = memo(
             },
             {
                 icon: "lightbulb",
-                label: "Tips",
+                labelKey: "workspace:settingsMenu.tips",
                 onClick: () => {
                     const blockDef: BlockDef = {
                         meta: {
@@ -1701,7 +1724,7 @@ const SettingsFloatingWindow = memo(
             },
             {
                 icon: "lock",
-                label: "Secrets",
+                labelKey: "workspace:settingsMenu.secrets",
                 onClick: () => {
                     const blockDef: BlockDef = {
                         meta: {
@@ -1715,7 +1738,7 @@ const SettingsFloatingWindow = memo(
             },
             {
                 icon: "book-open",
-                label: "Release Notes",
+                labelKey: "workspace:settingsMenu.releaseNotes",
                 onClick: () => {
                     modalsModel.pushModal("UpgradeOnboardingPatch", { isReleaseNotes: true });
                     onClose();
@@ -1723,7 +1746,7 @@ const SettingsFloatingWindow = memo(
             },
             {
                 icon: "circle-question",
-                label: "Help",
+                labelKey: "workspace:settingsMenu.help",
                 onClick: () => {
                     const blockDef: BlockDef = {
                         meta: {
@@ -1734,7 +1757,7 @@ const SettingsFloatingWindow = memo(
                     onClose();
                 },
             },
-        ];
+        ] as const;
 
         return (
             <FloatingPortal>
@@ -1753,8 +1776,8 @@ const SettingsFloatingWindow = memo(
                             <div className="text-lg w-5 flex justify-center">
                                 <i className={makeIconClass(item.icon, false)}></i>
                             </div>
-                            <div className="text-sm whitespace-nowrap">{item.label}</div>
-                            {item.hasError && (
+                            <div className="text-sm whitespace-nowrap">{t(item.labelKey)}</div>
+                            {"hasError" in item && item.hasError && (
                                 <i className="fa fa-solid fa-circle-exclamation text-error text-[14px] ml-auto"></i>
                             )}
                         </div>
@@ -1768,6 +1791,7 @@ const SettingsFloatingWindow = memo(
 SettingsFloatingWindow.displayName = "SettingsFloatingWindow";
 
 const Widgets = memo(() => {
+    const { t } = useTranslation("workspace");
     const env = useWaveEnv<WidgetsEnv>();
     const fullConfig = useAtomValue(env.atoms.fullConfigAtom);
     const settings = fullConfig?.settings;
@@ -2155,7 +2179,7 @@ const Widgets = memo(() => {
                 try {
                     await createBlockInCurrentTab(blockDef, magnified);
                 } catch (error) {
-                    showLaunchError("Terminal", error);
+                    showLaunchError(t("workspace:errors.labelTerminal"), error);
                 }
             });
         },
@@ -2178,7 +2202,7 @@ const Widgets = memo(() => {
                     const resolvedBlockDef = await prepareAgentBlockDef(blockDef);
                     await createBlockInCurrentTab(resolvedBlockDef, magnified);
                 } catch (error) {
-                    showLaunchError("Agent", error);
+                    showLaunchError(t("workspace:errors.labelAgent"), error);
                 }
             });
         },
@@ -2198,7 +2222,7 @@ const Widgets = memo(() => {
                         [AgentDefaultLaunchTargetMetaKey]: isCurrentlyDefault ? (null as unknown as string) : targetKey,
                     } as MetaType);
                 } catch (error) {
-                    showSettingsError("Agent default target", error);
+                    showSettingsError(t("workspace:errors.labelAgentDefaultTarget"), error);
                 }
             });
         },
@@ -2220,7 +2244,7 @@ const Widgets = memo(() => {
                             : targetKey,
                     } as MetaType);
                 } catch (error) {
-                    showSettingsError("Terminal default target", error);
+                    showSettingsError(t("workspace:errors.labelTerminalDefaultTarget"), error);
                 }
             });
         },
@@ -2235,7 +2259,7 @@ const Widgets = memo(() => {
                         "agent:defaultprofile": profileName,
                     } as SettingsType);
                 } catch (error) {
-                    showSettingsError("Agent default profile", error);
+                    showSettingsError(t("workspace:errors.labelAgentDefaultProfile"), error);
                 }
             });
         },
@@ -2591,7 +2615,7 @@ const Widgets = memo(() => {
         e.preventDefault();
         const menu: ContextMenuItem[] = [
             {
-                label: "Edit widgets.json",
+                label: i18n.t("workspace:contextMenu.editWidgets"),
                 click: () => {
                     fireAndForget(async () => {
                         const blockDef: BlockDef = {
@@ -2605,7 +2629,7 @@ const Widgets = memo(() => {
                 },
             },
             {
-                label: "Quick Launch Widgets",
+                label: i18n.t("workspace:contextMenu.quickLaunchWidgets"),
                 click: () => {
                     openWidgetQuickLaunch();
                 },
@@ -2672,7 +2696,11 @@ const Widgets = memo(() => {
                                             className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-sm overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer"
                                             onClick={() => setIsAppsOpen(!isAppsOpen)}
                                         >
-                                            <Tooltip content="Local WaveApps" placement="left" disable={isAppsOpen}>
+                                            <Tooltip
+                                                content={t("workspace:apps.localWaveApps")}
+                                                placement="left"
+                                                disable={isAppsOpen}
+                                            >
                                                 <div>
                                                     <i className={makeIconClass("cube", true)}></i>
                                                 </div>
@@ -2720,14 +2748,18 @@ const Widgets = memo(() => {
                                         className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-secondary text-lg overflow-hidden rounded-sm hover:bg-hoverbg hover:text-white cursor-pointer"
                                         onClick={() => setIsAppsOpen(!isAppsOpen)}
                                     >
-                                        <Tooltip content="Local WaveApps" placement="left" disable={isAppsOpen}>
+                                        <Tooltip
+                                            content={t("workspace:apps.localWaveApps")}
+                                            placement="left"
+                                            disable={isAppsOpen}
+                                        >
                                             <div className="flex flex-col items-center w-full">
                                                 <div>
                                                     <i className={makeIconClass("cube", true)}></i>
                                                 </div>
                                                 {mode === "normal" && (
                                                     <div className="text-xxs mt-0.5 w-full px-0.5 text-center whitespace-nowrap overflow-hidden text-ellipsis">
-                                                        apps
+                                                        {t("workspace:widgetsBar.appsLabel")}
                                                     </div>
                                                 )}
                                             </div>
@@ -2755,7 +2787,7 @@ const Widgets = memo(() => {
                                             </div>
                                             {mode === "normal" && (
                                                 <div className="text-xxs mt-0.5 w-full px-0.5 text-center whitespace-nowrap overflow-hidden text-ellipsis">
-                                                    settings
+                                                    {t("workspace:widgetsBar.settingsLabel")}
                                                 </div>
                                             )}
                                         </div>
@@ -2929,8 +2961,8 @@ const Widgets = memo(() => {
                     currentTabId={currentTabId}
                     title={createToExistingTabRequest.title}
                     subtitle={createToExistingTabRequest.subtitle || sourceTabName}
-                    actionLabel="Create"
-                    workingLabel="Creating..."
+                    actionLabel={t("workspace:agentLaunch.create")}
+                    workingLabel={t("workspace:agentLaunch.creating")}
                     onClose={closeCreateToExistingTabModal}
                     onSelect={(targetTabId) => createBlockInExistingTab(targetTabId, createToExistingTabRequest)}
                 />
@@ -2956,14 +2988,18 @@ const Widgets = memo(() => {
                     <div>
                         <i className={makeIconClass("gear", true)}></i>
                     </div>
-                    <div className="text-xxs mt-0.5 w-full px-0.5 text-center">settings</div>
+                    <div className="text-xxs mt-0.5 w-full px-0.5 text-center">
+                        {t("workspace:widgetsBar.settingsLabel")}
+                    </div>
                 </div>
                 {env.isDev() ? (
                     <div className="flex flex-col justify-center items-center w-full py-1.5 pr-0.5 text-lg">
                         <div>
                             <i className={makeIconClass("cube", true)}></i>
                         </div>
-                        <div className="text-xxs mt-0.5 w-full px-0.5 text-center">apps</div>
+                        <div className="text-xxs mt-0.5 w-full px-0.5 text-center">
+                            {t("workspace:widgetsBar.appsLabel")}
+                        </div>
                     </div>
                 ) : null}
             </div>

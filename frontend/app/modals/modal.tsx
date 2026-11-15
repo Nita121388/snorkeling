@@ -23,6 +23,7 @@
 import { Button } from "@/app/element/button";
 import { cn } from "@/util/util";
 import { forwardRef, useId } from "react";
+import { useTranslation } from "react-i18next";
 import ReactDOM from "react-dom";
 
 import "./modal.scss";
@@ -84,6 +85,7 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
         }: ModalProps,
         ref
     ) => {
+        const { t } = useTranslation("modals");
         const reactId = useId();
         const titleId = `modal-title-${reactId}`;
         const hasStructuredHeader = title != null || subtitle != null || headerExtra != null;
@@ -101,8 +103,8 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
                 type="button"
                 className={cn("modal-close", extraClassName)}
                 onClick={onClose}
-                title="Close (ESC)"
-                aria-label="Close"
+                title={t("modals:modal.closeEsc")}
+                aria-label={t("modals:modal.close")}
             >
                 <i className="fa-sharp fa-solid fa-xmark" />
             </button>
@@ -149,7 +151,7 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
                     ) : onClose != null ? (
                         // 老形状：✕ 绝对定位在右上角。仅为 20+ 个既有弹窗保留原版式，
                         // 新弹窗请用 title/subtitle 走结构化 header。
-                        <Button className="grey ghost modal-close-btn" onClick={onClose} title="Close (ESC)">
+                        <Button className="grey ghost modal-close-btn" onClick={onClose} title={t("modals:modal.closeEsc")}>
                             <i className="fa-sharp fa-solid fa-xmark"></i>
                         </Button>
                     ) : null}
@@ -161,12 +163,12 @@ const Modal = forwardRef<HTMLDivElement, ModalProps>(
                             {footer}
                             {onCancel != null && (
                                 <Button className="grey ghost" onClick={onCancel} disabled={cancelDisabled}>
-                                    {cancelLabel ?? "Cancel"}
+                                    {cancelLabel ?? t("modals:modal.cancel")}
                                 </Button>
                             )}
                             {onOk != null && (
                                 <Button onClick={onOk} disabled={okDisabled}>
-                                    {okLabel ?? "Ok"}
+                                    {okLabel ?? t("modals:modal.ok")}
                                 </Button>
                             )}
                         </footer>

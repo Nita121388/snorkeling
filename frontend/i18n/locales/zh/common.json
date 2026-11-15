@@ -13,7 +13,8 @@
         "ok": "确定",
         "save": "保存",
         "copied": "已复制",
-        "copyMessage": "复制消息"
+        "copyMessage": "复制消息",
+        "refresh": "刷新"
     },
     "settings": {
         "defaultFile": "默认配置",
@@ -33,5 +34,9 @@
         "viewDocs": "查看文档",
         "save": "保存",
         "saving": "保存中..."
+    },
+    "suggestion": {
+        "iconAlt": "网站图标",
+        "noSuggestions": "无建议"
     }
 }

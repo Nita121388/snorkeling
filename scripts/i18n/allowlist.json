@@ -7,6 +7,13 @@
         "reason": "文档 URL（链接目标与锚文本本身是 URL，不是可翻译文案）"
     },
     {
+        "id": "frontend/app/app.tsx::jsx-text::6b8b5babb68e",
+        "file": "frontend/app/app.tsx",
+        "kind": "jsx-text",
+        "text": "invalid configuration, client or window was not loaded",
+        "reason": "i18n 初始化前的启动失败兜底提示（AppInner 在 I18nProvider 之外渲染，此时 i18next 尚未 init，t() 只会返回 key；保留字面量避免闪出原始 key）"
+    },
+    {
         "id": "frontend/app/commontext/commontext-compose-modal.tsx::jsx-text::00ef13a15be8",
         "file": "frontend/app/commontext/commontext-compose-modal.tsx",
         "kind": "jsx-text",
@@ -98,6 +105,41 @@
         "reason": "键盘修饰键名（KeyCap 内的物理按键符号，各语言通用，不翻译）"
     },
     {
+        "id": "frontend/app/modals/about.tsx::jsx-text::a39ce163abfe",
+        "file": "frontend/app/modals/about.tsx",
+        "kind": "jsx-text",
+        "text": "Command Line Inc.",
+        "reason": "版权主体公司名（Command Line Inc.，法律主体不翻译）"
+    },
+    {
+        "id": "frontend/app/modals/about.tsx::jsx-text::e01cccc9419d",
+        "file": "frontend/app/modals/about.tsx",
+        "kind": "jsx-text",
+        "text": "Snorkeling",
+        "reason": "品牌名（产品名 Snorkeling，各语言一律不翻译）"
+    },
+    {
+        "id": "frontend/app/modals/notedirectorymodal.tsx::attr::7c675b84afbe",
+        "file": "frontend/app/modals/notedirectorymodal.tsx",
+        "kind": "attr",
+        "text": "~/notes",
+        "reason": "占位符示例值（示例目录路径，非文案）"
+    },
+    {
+        "id": "frontend/app/modals/scheduledtaskeditormodal.tsx::attr::b485a3cf8082",
+        "file": "frontend/app/modals/scheduledtaskeditormodal.tsx",
+        "kind": "attr",
+        "text": "Asia/Shanghai",
+        "reason": "占位符示例值（IANA 时区名示例，非文案）"
+    },
+    {
+        "id": "frontend/app/modals/scheduledtaskeditormodal.tsx::attr::d281bc1e7b73",
+        "file": "frontend/app/modals/scheduledtaskeditormodal.tsx",
+        "kind": "attr",
+        "text": "~/myproject",
+        "reason": "占位符示例值（示例目录路径，非文案）"
+    },
+    {
         "id": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx::jsx-text::e389cfd7b822",
         "file": "frontend/app/onboarding/onboarding-upgrade-v0122.tsx",
         "kind": "jsx-text",
@@ -166,6 +208,13 @@
         "kind": "jsx-text",
         "text": "app:globalhotkey",
         "reason": "配置键名（必须与 settings.json json tag 完全一致，不可翻译）"
+    },
+    {
+        "id": "frontend/app/view/hero/hero-create-wizard.tsx::jsx-text::57ccd51c3d08",
+        "file": "frontend/app/view/hero/hero-create-wizard.tsx",
+        "kind": "jsx-text",
+        "text": "--memory-from-session",
+        "reason": "CLI 参数名（<code> 内的命令语法，不可翻译；与 quicktips 命令示例同类）"
     },
     {
         "id": "frontend/app/view/preview/csvview.tsx::jsx-text::611ff54ef4d8",
@@ -315,17 +364,24 @@
         "reason": "产品名（cc-switch = 第三方供应商配置工具，品牌名不翻译）"
     },
     {
-        "id": "frontend/app/view/hero/hero-create-wizard.tsx::jsx-text::57ccd51c3d08",
-        "file": "frontend/app/view/hero/hero-create-wizard.tsx",
-        "kind": "jsx-text",
-        "text": "--memory-from-session",
-        "reason": "CLI 参数名（<code> 内的命令语法，不可翻译；与 quicktips 命令示例同类）"
-    },
-    {
         "id": "frontend/app/view/webview/webview.tsx::jsx-text::c92e18106265",
         "file": "frontend/app/view/webview/webview.tsx",
         "kind": "jsx-text",
         "text": "bookmarks.json",
         "reason": "配置文件名（<code> 内的真实文件名，不可翻译；路径由 config dir 决定）"
+    },
+    {
+        "id": "frontend/app/workspace/hero-launch-window.tsx::jsx-text::05482def6613",
+        "file": "frontend/app/workspace/hero-launch-window.tsx",
+        "kind": "jsx-text",
+        "text": "wsh hero create --name &lt;name&gt; --yes",
+        "reason": "CLI 命令示例（<code> 内的 wsh hero create 语法，不可翻译；命令名与参数是真实语法）"
+    },
+    {
+        "id": "frontend/app/workspace/widget-quick-launch.tsx::jsx-text::abb761d9af1c",
+        "file": "frontend/app/workspace/widget-quick-launch.tsx",
+        "kind": "jsx-text",
+        "text": "esc",
+        "reason": "键盘键名（<kbd> 内的物理按键 esc，各语言通用，不翻译）"
     }
 ]

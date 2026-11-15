@@ -12,6 +12,7 @@ import { extractSessionTagsFromNote, mergeSessionTags, sessionTagsEqual } from "
 import { shortSessionId } from "@/app/view/aisessions/utils";
 import { cn } from "@/util/util";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -22,6 +23,7 @@ type AISessionNoteModalProps = {
 };
 
 function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) {
+    const { t } = useTranslation("modals");
     const service = useMemo(() => new AISessionsServiceType(), []);
     const [summary, setSummary] = useState<SessionSummary | null>(null);
     const [noteDraft, setNoteDraft] = useState("");
@@ -132,13 +134,13 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
 
     const statusText =
         saveStatus === "saving"
-            ? "Saving..."
+            ? t("modals:aiSessionNote.saving")
             : saveStatus === "saved"
-              ? "Saved"
+              ? t("modals:aiSessionNote.saved")
               : saveStatus === "error"
-                ? "Save failed"
+                ? t("modals:aiSessionNote.saveFailed")
                 : !noteUnchanged
-                  ? "Unsaved changes"
+                  ? t("modals:aiSessionNote.unsavedChanges")
                   : "";
 
     return (
@@ -146,7 +148,7 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
             className="w-[min(680px,calc(100vw-32px))]"
             onClose={closeModal}
             onClickBackdrop={closeModal}
-            title="Session Note"
+            title={t("modals:aiSessionNote.title")}
             subtitle={
                 summary == null ? null : (
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -165,17 +167,17 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
                 {loading ? (
                     <div className="flex h-28 items-center justify-center gap-2 text-sm text-secondary">
                         <i className="fa-sharp fa-solid fa-spinner animate-spin text-accent" />
-                        <span>Loading note...</span>
+                        <span>{t("modals:aiSessionNote.loading")}</span>
                     </div>
                 ) : summary == null ? (
                     <div className="rounded border border-error/40 bg-error/10 p-3 text-sm text-error">
-                        {error || "Session not found."}
+                        {error || t("modals:aiSessionNote.sessionNotFound")}
                     </div>
                 ) : (
                     <>
                         <div className="flex items-center gap-2">
                             <div className="min-w-0 flex-1 truncate text-xs font-medium text-secondary">
-                                Note
+                                {t("modals:aiSessionNote.noteLabel")}
                             </div>
                             <NoteAIButton status={noteAI.status} onGenerate={() => void noteAI.generate()} />
                         </div>
@@ -204,7 +206,7 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
                         <textarea
                             autoFocus
                             className="min-h-[240px] w-full resize-y rounded border border-border bg-transparent px-3 py-2 text-sm leading-6 outline-none focus:border-accent"
-                            placeholder="Add a note, use #tag to add tags"
+                            placeholder={t("modals:aiSessionNote.placeholder")}
                             value={noteDraft}
                             onChange={(e) => {
                                 latestDraftRef.current = e.target.value;
@@ -241,14 +243,14 @@ function AISessionNoteModal({ sessionId, connection }: AISessionNoteModalProps) 
                                         void saveNote("");
                                     }}
                                 >
-                                    Clear
+                                    {t("modals:aiSessionNote.clear")}
                                 </button>
                                 <button
                                     className="h-8 rounded border border-border px-3 text-xs text-secondary hover:bg-hover hover:text-primary disabled:opacity-60"
                                     disabled={saving}
                                     onClick={closeModal}
                                 >
-                                    Close
+                                    {t("modals:modal.close")}
                                 </button>
                             </div>
                         </div>
