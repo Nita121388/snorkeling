@@ -701,3 +701,13 @@ CommonText「新建 agent block 并发送」靠 pending-input 队列把文本在
 - 单测锁结构事实（`commontext-insert.test.ts`）：走 ControllerInputCommand 且载荷是 `stringToBase64("\r")`。
 - **共享文件不要顺手跑全文件 prettier --write**：term.tsx 当时带着另一路未提交改动，全文件格式化会把
   别人的在建工作卷进自己的 diff（45+/50-）。对共享文件只做最小编辑，格式化留给文件的主人。
+
+---
+
+## 新 UI 文案必须走 t()，禁新增硬编码（2026-11-15, task 11-14-i18n-rollout）
+
+**硬约束**：前端与主进程的**用户可见文案**（JSX 文本、`title`/`label`/`aria-label`/`placeholder` 等属性、对象属性里的 label）必须来自 i18n 资源（`frontend/i18n/locales/{en,zh}/<ns>.json`，en 唯一真源、zh 镜像），代码里用 `t("ns:key")`（全限定 key）或主进程 `tmew(key)`。**硬编码中文与硬编码英文同等禁止**（中英混杂治理）。CLI 命令名/配置键名/品牌名等不可翻译项进 `scripts/i18n/allowlist.json` 并带 reason，不得静默省略。
+
+- 闸门：`npm run i18n:check`（全仓扫描 + en/zh 键 parity，已接入 CI `snorkeling-ci.yml`），本地增量 `--dir <module>`。扫描器用 TS AST，三类发现：`jsx-text` / `attr(+attr-expr)` / `cjk(+cjk-jsx)`。
+- 陷阱（已真机踩过）：① `require()` 在 ESM 主进程 bundle 直接崩——用静态/动态 `import()`；② 模块加载期就求值的常量表会**冻结 locale**——存 key（`labelKey`/`as const`）渲染期 `t()`，视图模型显示名用 `localeTextAtom`；③ hook 的 `t()` 不接受 `{values}`——插值走 `i18n.t("ns:key", values)`；④ jsdom 的 `navigator.language` 跟宿主——"auto" 相关测试必须 pin；⑤ 主进程只加载 `common` 命名空间（大 JSON 内联全量会触发 commonjs shim 把主 chunk 字符串劈断的 bundler bug）。
+- 手册（唯一真源，Pattern A–J + 全部坑）：`docs/docs/i18n.mdx`。

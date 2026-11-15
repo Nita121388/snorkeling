@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VCS History Graph · 泳道提交图原型</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page">
+    <div class="page-head">
+      <div>
+        <h1>VCS History Graph — 泳道提交图</h1>
+        <p class="intro">
+          Version Control Block 的 <b>History tab</b> 重设计：<b>左侧泳道提交图</b>（节点 + 贝塞尔连线，分支各占一色一泳道）、
+          ref 徽章（HEAD / tag / branch / origin）、作者头像、相对时间、hash chip、hover 行高亮、点击展开变更文件。
+          保留现有 keyword/日期过滤与分页。深/浅主题可切换（右上角）。
+        </p>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" type="button" title="切换深/浅主题">◐ Dark</button>
+    </div>
+
+    <!-- ═══ 模拟 Block 外框（真实：frontend/app/view/vcs/vcs.tsx） ═══ -->
+    <div class="block" id="vcs-block">
+      <!-- Block header：path copytext + refresh（真实 vcs.tsx viewText/endIconButtons） -->
+      <div class="block-header">
+        <span class="block-path mono" title="E:/code/snorkeling">snorkeling</span>
+        <button class="icon-btn" type="button" title="Refresh">
+          <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+        </button>
+      </div>
+
+      <!-- Repo header：分支 + ahead/behind + Fetch/Pull/Push（真实 vcs-tabs.tsx VcsRepoHeader） -->
+      <div class="repo-header">
+        <div class="repo-branch mono">
+          <svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25zM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zM3.5 3.25a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0z"/></svg>
+          main
+        </div>
+        <span class="repo-origin mono" title="git@github.com:snorkeling/snorkeling.git">github.com:snorkeling/snorkeling</span>
+        <span class="sync-state tabular-nums" title="与 origin/main 同步">↑0 ↓0</span>
+        <div class="repo-actions">
+          <button class="btn" type="button">Fetch</button>
+          <button class="btn" type="button">Pull</button>
+          <button class="btn btn-primary" type="button">Push</button>
+        </div>
+      </div>
+
+      <!-- Tab bar（真实 vcs-tabs.tsx VcsTabBar：4 tab，History 高亮） -->
+      <div class="tab-bar">
+        <button class="tab" type="button"><svg viewBox="0 0 24 24" width="11" height="11"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Changes</button>
+        <button class="tab" type="button"><svg viewBox="0 0 16 16" width="11" height="11"><path fill="currentColor" d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25zM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zM3.5 3.25a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0z"/></svg>Branches</button>
+        <button class="tab" type="button"><svg viewBox="0 0 24 24" width="11" height="11"><path fill="currentColor" d="M10.5 4.5A2.75 2.75 0 1 1 13.25 7.25h-1.5v4.5H19V9.75a2.75 2.75 0 1 1 2.75 2.75H19v6.75a.75.75 0 0 1-1.5 0V13.5h-9.5A2.75 2.75 0 0 1 5 15.75v1.5a.75.75 0 0 1-1.5 0v-9a.75.75 0 0 1 1.5 0v1.5A2.75 2.75 0 0 1 8.75 12.25v-5h-1.5z"/></svg>Pipelines</button>
+        <button class="tab active" type="button"><svg viewBox="0 0 24 24" width="11" height="11"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm4.78 14.28a.75.75 0 0 1-1.06.07A6.5 6.5 0 0 1 12 18.25a6.5 6.5 0 0 1-3.72-1.9.75.75 0 1 1 1.06-1.06A5 5 0 0 0 12 16.75a5 5 0 0 0 2.71-1.53.75.75 0 0 1 1.07 1.06zM9 9.5A1.25 1.25 0 1 1 7.75 8.25 1.25 1.25 0 0 1 9 9.5zm7.25 0A1.25 1.25 0 1 1 15 8.25 1.25 1.25 0 0 1 16.25 9.5z"/></svg>History</button>
+      </div>
+
+      <!-- Filter bar（真实 vcs-history-tab.tsx：keyword + since/until + page size + apply/reset） -->
+      <div class="filter-bar">
+        <input id="f-keyword" class="input" type="text" placeholder="Keyword (hash/author/subject)" />
+        <input id="f-since" class="input input-date" type="date" title="Since" />
+        <input id="f-until" class="input input-date" type="date" title="Until" />
+        <select id="f-pagesize" class="input" title="Page size">
+          <option value="10">10 / page</option>
+          <option value="20" selected>20 / page</option>
+          <option value="50">50 / page</option>
+        </select>
+        <button id="f-apply" class="btn btn-primary" type="button" title="Apply filters">✓</button>
+        <button id="f-reset" class="btn" type="button" title="Reset filters">↺</button>
+        <div class="legend" id="legend"></div>
+      </div>
+
+      <!-- Commit list：左侧泳道图 + 提交行 -->
+      <div class="history" id="history"></div>
+
+      <!-- Footer pagination（真实 vcs-history-tab.tsx 底部分页） -->
+      <div class="history-footer">
+        <span id="page-info" class="muted tabular-nums"></span>
+        <div class="pager">
+          <button id="page-prev" class="btn" type="button" title="Previous page">‹</button>
+          <button id="page-next" class="btn" type="button" title="Next page">›</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h2>设计说明</h2>
+      <table>
+        <thead><tr><th>维度</th><th>当前（vcs-history-tab.tsx）</th><th>本原型</th></tr></thead>
+        <tbody>
+          <tr><td>提交图</td><td>无（纯文本单列列表）</td><td>泳道图：节点 + 贝塞尔连线，分支各一色一泳道，HEAD 节点带光环</td></tr>
+          <tr><td>ref 徽章</td><td>无</td><td>HEAD → main / origin/main / tag / branch 彩色徽章，颜色与泳道一致</td></tr>
+          <tr><td>作者</td><td>纯文本</td><td>首字母头像（生产：email → GitHub/GitLab 头像）+ 名字</td></tr>
+          <tr><td>hash</td><td>纯等宽文本</td><td>mono chip，hover 行时出现复制按钮</td></tr>
+          <tr><td>展开</td><td>▸/▾ + 文件列表</td><td>保留展开变更文件（M/A/D 状态色 + ±行数），展开块左缘泳道连线延续</td></tr>
+          <tr><td>过滤/分页</td><td>keyword + 日期 + 分页</td><td>保留；泳道按当前页计算（翻页处断线为已知取舍）</td></tr>
+          <tr><td>主题</td><td>跟随 app token</td><td>深/浅双主题，全部走 token（右上角切换）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="graph.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
