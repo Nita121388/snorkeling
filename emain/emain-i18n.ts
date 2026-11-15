@@ -30,85 +30,14 @@
 import { createInstance, type i18n as I18nInstance } from "i18next";
 
 // Reuse the renderer's locale files verbatim — same JSON, same keys, same types.
-import enAiaudit from "../frontend/i18n/locales/en/aiaudit.json";
-import enAifilediff from "../frontend/i18n/locales/en/aifilediff.json";
-import enAipanel from "../frontend/i18n/locales/en/aipanel.json";
-import enAisessions from "../frontend/i18n/locales/en/aisessions.json";
-import enBlockEditor from "../frontend/i18n/locales/en/block-editor.json";
-import enBlock from "../frontend/i18n/locales/en/block.json";
 import enCommon from "../frontend/i18n/locales/en/common.json";
-import enCommontext from "../frontend/i18n/locales/en/commontext.json";
-import enElement from "../frontend/i18n/locales/en/element.json";
-import enHero from "../frontend/i18n/locales/en/hero.json";
-import enLauncher from "../frontend/i18n/locales/en/launcher.json";
-import enModals from "../frontend/i18n/locales/en/modals.json";
-import enPreview from "../frontend/i18n/locales/en/preview.json";
-import enProcessviewer from "../frontend/i18n/locales/en/processviewer.json";
-import enScheduledtasks from "../frontend/i18n/locales/en/scheduledtasks.json";
-import enSessionOverview from "../frontend/i18n/locales/en/session-overview.json";
-import enTab from "../frontend/i18n/locales/en/tab.json";
-import enTerm from "../frontend/i18n/locales/en/term.json";
-import enTsunami from "../frontend/i18n/locales/en/tsunami.json";
-import enVcs from "../frontend/i18n/locales/en/vcs.json";
-import enWaveai from "../frontend/i18n/locales/en/waveai.json";
-import enWaveconfig from "../frontend/i18n/locales/en/waveconfig.json";
-import enWebview from "../frontend/i18n/locales/en/webview.json";
-import enWorkspace from "../frontend/i18n/locales/en/workspace.json";
-import zhAiaudit from "../frontend/i18n/locales/zh/aiaudit.json";
-import zhAifilediff from "../frontend/i18n/locales/zh/aifilediff.json";
-import zhAipanel from "../frontend/i18n/locales/zh/aipanel.json";
-import zhAisessions from "../frontend/i18n/locales/zh/aisessions.json";
-import zhBlockEditor from "../frontend/i18n/locales/zh/block-editor.json";
-import zhBlock from "../frontend/i18n/locales/zh/block.json";
 import zhCommon from "../frontend/i18n/locales/zh/common.json";
-import zhCommontext from "../frontend/i18n/locales/zh/commontext.json";
-import zhElement from "../frontend/i18n/locales/zh/element.json";
-import zhHero from "../frontend/i18n/locales/zh/hero.json";
-import zhLauncher from "../frontend/i18n/locales/zh/launcher.json";
-import zhModals from "../frontend/i18n/locales/zh/modals.json";
-import zhPreview from "../frontend/i18n/locales/zh/preview.json";
-import zhProcessviewer from "../frontend/i18n/locales/zh/processviewer.json";
-import zhScheduledtasks from "../frontend/i18n/locales/zh/scheduledtasks.json";
-import zhSessionOverview from "../frontend/i18n/locales/zh/session-overview.json";
-import zhTab from "../frontend/i18n/locales/zh/tab.json";
-import zhTerm from "../frontend/i18n/locales/zh/term.json";
-import zhTsunami from "../frontend/i18n/locales/zh/tsunami.json";
-import zhVcs from "../frontend/i18n/locales/zh/vcs.json";
-import zhWaveai from "../frontend/i18n/locales/zh/waveai.json";
-import zhWaveconfig from "../frontend/i18n/locales/zh/waveconfig.json";
-import zhWebview from "../frontend/i18n/locales/zh/webview.json";
-import zhWorkspace from "../frontend/i18n/locales/zh/workspace.json";
 
 export const MAIN_SUPPORTED_LOCALES = ["en", "zh"] as const;
 export type MainLocale = (typeof MAIN_SUPPORTED_LOCALES)[number];
 export const MAIN_DEFAULT_LOCALE: MainLocale = "en";
 export const MAIN_FALLBACK_LOCALE: MainLocale = "en";
-export const MAIN_NS = [
-    "common",
-    "tab",
-    "aipanel",
-    "session-overview",
-    "commontext",
-    "block",
-    "element",
-    "block-editor",
-    "waveconfig",
-    "term",
-    "preview",
-    "aisessions",
-    "vcs",
-    "aiaudit",
-    "hero",
-    "scheduledtasks",
-    "processviewer",
-    "webview",
-    "launcher",
-    "modals",
-    "workspace",
-    "tsunami",
-    "waveai",
-    "aifilediff",
-] as const;
+export const MAIN_NS = ["common"] as const;
 
 /** Normalize a raw `ui:locale` value into a supported locale ("en" fallback). */
 export function coerceLocale(value: unknown): MainLocale {
@@ -138,58 +67,8 @@ export function resolveMainLocale(setting: unknown, systemLocale?: string | null
 let i18nMain: I18nInstance | null = null;
 
 const RESOURCES: Record<MainLocale, Record<string, unknown>> = {
-    en: {
-        common: enCommon,
-        tab: enTab,
-        aipanel: enAipanel,
-        "session-overview": enSessionOverview,
-        commontext: enCommontext,
-        block: enBlock,
-        element: enElement,
-        "block-editor": enBlockEditor,
-        waveconfig: enWaveconfig,
-        term: enTerm,
-        preview: enPreview,
-        aisessions: enAisessions,
-        vcs: enVcs,
-        aiaudit: enAiaudit,
-        hero: enHero,
-        scheduledtasks: enScheduledtasks,
-        processviewer: enProcessviewer,
-        webview: enWebview,
-        launcher: enLauncher,
-        modals: enModals,
-        workspace: enWorkspace,
-        tsunami: enTsunami,
-        waveai: enWaveai,
-        aifilediff: enAifilediff,
-    },
-    zh: {
-        common: zhCommon,
-        tab: zhTab,
-        aipanel: zhAipanel,
-        "session-overview": zhSessionOverview,
-        commontext: zhCommontext,
-        block: zhBlock,
-        element: zhElement,
-        "block-editor": zhBlockEditor,
-        waveconfig: zhWaveconfig,
-        term: zhTerm,
-        preview: zhPreview,
-        aisessions: zhAisessions,
-        vcs: zhVcs,
-        aiaudit: zhAiaudit,
-        hero: zhHero,
-        scheduledtasks: zhScheduledtasks,
-        processviewer: zhProcessviewer,
-        webview: zhWebview,
-        launcher: zhLauncher,
-        modals: zhModals,
-        workspace: zhWorkspace,
-        tsunami: zhTsunami,
-        waveai: zhWaveai,
-        aifilediff: zhAifilediff,
-    },
+    en: { common: enCommon },
+    zh: { common: zhCommon },
 };
 
 /**

@@ -45,6 +45,9 @@ jobs:
             - name: Frontend lint
               run: npm exec -- eslint frontend
 
+            - name: i18n gate (hardcoded copy scan + en/zh key parity)
+              run: npm run i18n:check
+
             - name: Focused frontend tests
               run: npm exec vitest run frontend/app/workspace/agent-launch.test.ts frontend/app/block/connstatusoverlay.test.ts
 

@@ -322,3 +322,22 @@ still allows`i18n.t(file.nameKey)`. Only list ids whose key really exists in en/
   action labels capture the boot locale; a runtime `ui:locale` switch only picks them up after
   the editor remounts (block re-open). Acceptable for now — re-registering actions on locale
   change would mean tearing down Monaco listeners mid-session.
+
+- **Main process only loads `common`** (C4-compatible by design): every Pattern G
+  call site (app menu, dock, updater dialogs, OS notifications, quit confirms)
+  lives in `common:*`, so `emain/emain-i18n.ts` imports **only** the common
+  resources. Loading all 25 namespaces into the main bundle is not just
+  unnecessary — it trips a real bundler bug: with the large multilingual JSON
+  inlined, `@rollup/plugin-commonjs`'s shim block gets inserted **mid-line**
+  into the main chunk, splitting a string literal in two (esbuild:
+  "Unterminated string literal" — reproduced and bisected 2026-11-15; the
+  chunk dumped before esbuild is valid, the commonjs-rewritten one is broken).
+  If a future main-process surface needs another namespace, add that one
+  namespace deliberately and re-run `npx electron-vite build` plus the
+  `emain-menu-i18n.test.ts` guard.
+- **Native-menu zh evidence**: `emain/emain-menu-i18n.test.ts` is the
+  machine-judged proof (initI18nMain("zh") → tmew resolves 关于 Snorkeling /
+  检查更新 / 确认退出 / 工作区…, plus the every-tmew-literal-resolves guard in
+  `emain-i18n.test.ts`). A menubar *screenshot* could not be captured
+  headlessly (osascript accessibility not granted on this machine) — the
+  visual check is left as a one-shot human confirmation.
