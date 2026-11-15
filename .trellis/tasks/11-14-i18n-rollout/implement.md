@@ -129,3 +129,31 @@ npm test && node scripts/check-tsc-baseline.mjs
   - 真机：向导首屏中文（「欢迎使用 Snorkeling」+「继续」），截图 `verify-runs/20261114T13594-i18n-p1/onboarding-zh.png`；向导内 AI 面板 demo 文案英文属 `aipanel.tsx`（P2 B1 范围）
   - **新坑（vite）**：改 JSON 资源后 `location.reload()` 不会让静态 import 的 locale 模块刷新（网络层新、模块图旧）——dev 实例必须重启才吃到新资源
   - **下一步 P2 B1**：`app/tab` + `app/aipanel`（attr 21 / CJK 42）
+
+---
+
+## P2/P3 完成记录（2026-11-15）
+
+**P2 批量迁移全部完成**（每批一个可独立 revert 的 commit，全部 push 到 `origin/feat/i18n-rollout`）：
+B1 tab+aipanel `d6e01872b` · B2 session-overview+commontext `7bfb1ce61` · B3p1 block `d41d80cbd` ·
+B3p2 element `279aa1642` · B4a waveconfig 四面板 `0c9ff1879` · B4b waveconfig 其余 `c1f162406` ·
+B5 block-editor `172cb9205` · B6 term+preview `35979b5a0` · B7a aisessions `21fdaf547` ·
+B7b vcs+aiaudit `faed79fe9` · B7c 剩余 view + 视图名注册表 `0ab320125` · B7d modals+workspace `cb219d58d`。
+
+**里程碑**：`npm run i18n:check` 全仓 exit 0（58 条 allowlist 全部带 reason）；25 个命名空间 en/zh parity 0。
+
+**P3**：主进程文案（菜单/dock/updater/通知/确认框）`b4d384a3b`；收尾（CI 闸门接入 + 日期契约 + 主进程 bundle 修复）`219ad2108`。
+
+### 本任务新增的踩坑（全部已入手册）
+1. ESM 主进程禁 `require()`（P0 时整应用启动即崩）。
+2. vitest 依赖宿主 `navigator.language`（jsdom）→ auto 相关测试必须 pin。
+3. 新 worktree 的 electron dist 可能半装（缺 Framework / path.txt）。
+4. vite dev 改 locale JSON 后 reload 不吃新资源（模块图缓存）——须重启实例。
+5. 扫描器两处盲区已修：纯 CJK JSX 文本（新增 `cjk-jsx`）、条件/模板字面量属性（新增 `attr-expr`）。
+6. 模块加载期常量表 / `viewName` atom 会冻结 locale → `labelKey` + `localeTextAtom`（Pattern J）。
+7. hook `t()` 不接受 `{values}` → 插值走 `i18n.t`。
+8. **主进程 bundle 只加载 `common`**：全量命名空间内联会触发 commonjs shim 把主 chunk 的字符串字面量劈断（esbuild "Unterminated string literal"，已二分定位并修复）。
+
+### 待人工（G7）
+- 合并 `feat/i18n-rollout` → main 由人签。
+- 原生菜单 zh 的**视觉**确认（机器判定已有：`emain/emain-menu-i18n.test.ts`；无辅助访问权限，截不到 menubar）。
