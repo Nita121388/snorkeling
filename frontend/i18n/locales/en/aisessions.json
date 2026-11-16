@@ -148,7 +148,8 @@
             "note": "Note",
             "milestone": "Milestone",
             "decision": "Decision",
-            "question": "Question"
+            "question": "Question",
+            "node": "Node"
         },
         "cluster": "Cluster · {{count}} nodes",
         "node": "Node",
@@ -199,7 +200,10 @@
         "drafts_other": "{{count}} draft annotations",
         "discardAll": "Discard all drafts",
         "acceptAll": "Accept all drafts",
-        "jumpTo": "Jump to annotation at #{{seq}}"
+        "jumpTo": "Jump to annotation at #{{seq}}",
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "unknownTime": "Unknown time"
     },
     "origin": {
         "readOnly": "read-only (imported dump)",

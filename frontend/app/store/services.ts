@@ -63,8 +63,8 @@ export class AISessionsServiceType {
         return callBackendService(this?.waveEnv, "aisessions", "AnnotationSessions", Array.from(arguments))
     }
 
-    // list node annotations for one AI session, re-anchoring drifted nodes
-    // @returns annotation views with orphaned flags
+    // list node annotations for one AI session (cursor/limit paged), re-anchoring drifted nodes
+    // @returns one page of annotation views (ascending seq) with hasMore/nextCursor for older entries, orphaned flags included
     Annotations(request: AISessionsAnnotationsRequest): Promise<AISessionsAnnotationsResponse> {
         return callBackendService(this?.waveEnv, "aisessions", "Annotations", Array.from(arguments))
     }

@@ -1,0 +1,28 @@
+{
+  "id": "v2-gutter",
+  "name": "v2-gutter",
+  "title": "会话详情分页 v2 落地：时间桶/轮次/时间段/数量 + 批注时间线 gutter",
+  "description": "把 design/plans/aisessions-annotation-timeline-v2.md 的 B1 前端分页与视觉落地：buildTimeBuckets + annotation-store window/cursor/evict/invalidate + Annotations RPC 游标分页 + rail 行对齐 gutter + 分页模式（all/day/turn/interval/count）+ 翻页条与视图 chip + 前插 scrollTop 锚定。原型 design/prototypes/aisessions/aisessions-timeline-v2/ 已审阅通过，当前为未实现状态。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "snorkeling-docs",
+  "priority": "P2",
+  "creator": "nita",
+  "assignee": "nita",
+  "createdAt": "2026-11-16",
+  "completedAt": null,
+  "branch": "main",
+  "base_branch": "snorkeling",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "10-25-aisessions-annotation-timeline",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "notes": "2026-11-16 进度：Step 1（Annotations RPC 游标）+ Step 2（annotation-model 时间桶）已完成并本地验证。Step 1 落点：pkg/aisessions/{types.go 加 AnnotationCursor+limit 常量, annotation_store.go 加 ListAnnotationsPaged/PageAnnotationViews, annotation_store_test.go +145}, pkg/service/aisessionsservice/{aisessionsservice.go 加 Cursor/Limit/HasMore/NextCursor, annotation_paging_test.go 新增}, 生成产物 frontend/types/gotypes.d.ts + frontend/app/store/services.ts。取舍：分页在重锚定之后做（先分页会在过期 seq 空间算页边界且漏标窗口外 orphan），旧调用不带 cursor/limit 保持 v1 全量等价。Step 2 落点：annotation-model.ts 加 buildTimeBuckets/bucketOf/kind 元数据（含 node 菱形）/labelFor 注入点（11-02 对接），annotation-model.test.ts 35 例（DST 3月/11月、缺 ts、gap、同 seq），i18n en/zh 各 +5 键。验证：vitest annotation-model 35/35 通过；Go 测试因 proxy.golang.org 不可达一度失败，改用 GOPROXY=goproxy.cn 后 go mod download 成功，go test ./pkg/aisessions -run Annotation 尚未跑完（下班提交，待补跑）。下一步：Step 3 store 窗口化、Step 4 computePages/scopeSeqs、Step 5-7 rail gutter/卡片/集成、Step 8 真机验证。"
+  }
+}

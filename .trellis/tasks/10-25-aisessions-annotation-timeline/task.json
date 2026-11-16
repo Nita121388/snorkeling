@@ -25,7 +25,8 @@
     "10-25-aisessions-annotation-export",
     "10-28-aisessions-timeline-scroll-position",
     "10-28-aisessions-timeline-time-distribution",
-    "10-28-aisessions-timeline-perf"
+    "10-28-aisessions-timeline-perf",
+    "11-16-v2-gutter"
   ],
   "parent": "10-19-aisessions-ux-perf-overhaul",
   "relatedFiles": [],

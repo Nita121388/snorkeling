@@ -150,11 +150,15 @@ declare global {
         connection?: string;
         origin?: string;
         anchors?: AnnotationAnchor[];
+        cursor?: AnnotationCursor;
+        limit?: number;
     };
 
     // aisessionsservice.AISessionsAnnotationsResponse
     type AISessionsAnnotationsResponse = {
         annotations: AnnotationView[];
+        hasMore: boolean;
+        nextCursor?: AnnotationCursor;
     };
 
     // aisessionsservice.AISessionsApplyPropertiesRequest
@@ -861,6 +865,12 @@ declare global {
         aiModel?: string;
         error?: string;
         updatedAt: number;
+    };
+
+    // aisessions.AnnotationCursor
+    type AnnotationCursor = {
+        beforeSeq: number;
+        beforeId: number;
     };
 
     // aisessions.AnnotationDraft

@@ -148,7 +148,8 @@
             "note": "笔记",
             "milestone": "里程碑",
             "decision": "决策",
-            "question": "疑问"
+            "question": "疑问",
+            "node": "节点"
         },
         "cluster": "批注组 · {{count}} 个节点",
         "node": "节点",
@@ -199,7 +200,10 @@
         "drafts_other": "{{count}} 条草稿批注",
         "discardAll": "丢弃全部草稿",
         "acceptAll": "采纳全部草稿",
-        "jumpTo": "跳转到 #{{seq}} 的批注"
+        "jumpTo": "跳转到 #{{seq}} 的批注",
+        "today": "今天",
+        "yesterday": "昨天",
+        "unknownTime": "未知时间"
     },
     "origin": {
         "readOnly": "只读（导入的 dump）",

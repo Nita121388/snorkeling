@@ -430,3 +430,19 @@ type AnnotationAnchor struct {
 	Role      string `json:"role"`
 	Hash      string `json:"hash"`
 }
+
+// AnnotationCursor is the composite pagination cursor for annotation
+// listing. Annotations sort by (seq ASC, id ASC); a cursor returns the
+// entries strictly earlier than (BeforeSeq, BeforeID) in that order. A
+// nil/zero-value cursor means "latest page" (from the newest end).
+type AnnotationCursor struct {
+	BeforeSeq int   `json:"beforeSeq"`
+	BeforeID  int64 `json:"beforeId"`
+}
+
+// Annotation page-size limits (design doc aisessions-annotation-timeline-v2 §3.3).
+const (
+	AnnotationPageDefaultLimit = 100
+	AnnotationPageMinLimit     = 20
+	AnnotationPageMaxLimit     = 500
+)

@@ -398,16 +398,25 @@ type AISessionsApplyPropertiesResponse struct {
 // AISessionsAnnotationsRequest lists the annotations of one session. anchors is
 // the live message/tool list (anchorKey + seq + role + hash) the frontend has;
 // when supplied, unresolved annotations are marked orphaned and drifted anchors
-// are re-anchored server-side.
+// are re-anchored server-side. cursor/limit page the result by the composite
+// sort key (seq, id): a cursor returns the entries strictly older than
+// (beforeSeq, beforeId); omitting both keeps the v1 full-list behavior.
 type AISessionsAnnotationsRequest struct {
-	SessionKey string                        `json:"sessionKey"`
-	Connection string                        `json:"connection,omitempty"`
-	Origin     string                        `json:"origin,omitempty"`
-	Anchors    []aisessions.AnnotationAnchor `json:"anchors,omitempty"`
+	SessionKey string                            `json:"sessionKey"`
+	Connection string                            `json:"connection,omitempty"`
+	Origin     string                            `json:"origin,omitempty"`
+	Anchors    []aisessions.AnnotationAnchor     `json:"anchors,omitempty"`
+	Cursor     *aisessions.AnnotationCursor      `json:"cursor,omitempty"`
+	Limit      int                               `json:"limit,omitempty"`
 }
 
 type AISessionsAnnotationsResponse struct {
-	Annotations []aisessions.AnnotationView `json:"annotations"`
+	Annotations []aisessions.AnnotationView   `json:"annotations"`
+	// HasMore reports whether older entries exist beyond the returned page.
+	HasMore bool `json:"hasMore"`
+	// NextCursor is the (seq, id) of the earliest returned entry; request it to
+	// page further back. Only set when HasMore is true.
+	NextCursor *aisessions.AnnotationCursor `json:"nextCursor,omitempty"`
 }
 
 // AISessionsAnnotationSaveRequest creates or updates one annotation. Saving a
@@ -1878,9 +1887,9 @@ func (svc *AISessionsService) AutoGenerate(ctx context.Context, request *AISessi
 
 func (svc *AISessionsService) Annotations_Meta() tsgenmeta.MethodMeta {
 	return tsgenmeta.MethodMeta{
-		Desc:       "list node annotations for one AI session, re-anchoring drifted nodes",
+		Desc:       "list node annotations for one AI session (cursor/limit paged), re-anchoring drifted nodes",
 		ArgNames:   []string{"ctx", "request"},
-		ReturnDesc: "annotation views with orphaned flags",
+		ReturnDesc: "one page of annotation views (ascending seq) with hasMore/nextCursor for older entries, orphaned flags included",
 	}
 }
 
@@ -1899,7 +1908,13 @@ func (svc *AISessionsService) Annotations(ctx context.Context, request *AISessio
 	if views == nil {
 		views = []aisessions.AnnotationView{}
 	}
-	return &AISessionsAnnotationsResponse{Annotations: views}, nil
+	// 分页在重锚定之后做（取舍见 PageAnnotationViews 注释）：先分页会在过期 seq
+	// 空间上算页边界，也会漏标窗口外的 orphan。
+	page, hasMore, nextCursor := aisessions.PageAnnotationViews(views, request.Cursor, request.Limit)
+	if page == nil {
+		page = []aisessions.AnnotationView{}
+	}
+	return &AISessionsAnnotationsResponse{Annotations: page, HasMore: hasMore, NextCursor: nextCursor}, nil
 }
 
 func (svc *AISessionsService) AnnotationSave_Meta() tsgenmeta.MethodMeta {

@@ -7,7 +7,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -292,5 +294,148 @@ func TestResolveAnnotationAnchorsReanchorsAndOrphans(t *testing.T) {
 		if view.Orphaned {
 			t.Fatalf("empty anchor list must not orphan: %#v", view)
 		}
+	}
+}
+
+
+func pagingTestViews(count int) []AnnotationView {
+	views := make([]AnnotationView, 0, count)
+	for seq := 1; seq <= count; seq++ {
+		views = append(views, AnnotationView{
+			ID:        int64(seq),
+			Seq:       seq,
+			AnchorKey: fmt.Sprintf("e1:m%d", seq),
+			Title:     fmt.Sprintf("note %d", seq),
+		})
+	}
+	return views
+}
+
+func pagingTitles(views []AnnotationView) []string {
+	titles := make([]string, 0, len(views))
+	for _, view := range views {
+		titles = append(titles, view.Title)
+	}
+	return titles
+}
+
+func pagingTitleRange(views []AnnotationView) string {
+	if len(views) == 0 {
+		return "[]"
+	}
+	return fmt.Sprintf("[note %d..note %d]", views[0].Seq, views[len(views)-1].Seq)
+}
+
+// TestPageAnnotationViews 覆盖游标边界：首页 / 翻页 / 耗尽 / 零值 cursor /
+// v1 全量兼容 / limit 夹取 / resolve 后乱序输入。注意 limit 下界 20，
+// 所以用 30 条以上才能逼出真实翻页。
+func TestPageAnnotationViews(t *testing.T) {
+	views := pagingTestViews(30)
+
+	// 首页：nil cursor = 最新页（最新端 20 条），升序。
+	page, hasMore, next := PageAnnotationViews(views, nil, 20)
+	if len(page) != 20 || !hasMore || next == nil {
+		t.Fatalf("latest page mismatch: len=%d hasMore=%v next=%#v", len(page), hasMore, next)
+	}
+	if page[0].Seq != 11 || page[0].ID != 11 {
+		t.Fatalf("latest page must start at note 11, got %#v", page[0])
+	}
+	if next.BeforeSeq != 11 || next.BeforeID != 11 {
+		t.Fatalf("latest page cursor mismatch: %#v", next)
+	}
+
+	// 零值 cursor ≡ nil cursor（最新页）。
+	zeroPage, zeroMore, zeroNext := PageAnnotationViews(views, &AnnotationCursor{}, 20)
+	if !reflect.DeepEqual(zeroPage, page) || zeroMore != hasMore || !reflect.DeepEqual(zeroNext, next) {
+		t.Fatalf("zero cursor must equal nil cursor")
+	}
+
+	// 翻页：cursor = 上一页最早条目，返回严格更早的一页。
+	page2, hasMore2, next2 := PageAnnotationViews(views, next, 20)
+	if len(page2) != 10 || hasMore2 || next2 != nil {
+		t.Fatalf("second page mismatch: len=%d hasMore=%v next=%#v", len(page2), hasMore2, next2)
+	}
+	if page2[0].Seq != 1 || page2[9].Seq != 10 {
+		t.Fatalf("second page content mismatch: %s", pagingTitleRange(page2))
+	}
+
+	// 耗尽：cursor 早于所有条目 → 空页。
+	page3, hasMore3, next3 := PageAnnotationViews(views, &AnnotationCursor{BeforeSeq: 1, BeforeID: 1}, 20)
+	if len(page3) != 0 || hasMore3 || next3 != nil {
+		t.Fatalf("exhausted page mismatch: len=%d hasMore=%v next=%#v", len(page3), hasMore3, next3)
+	}
+
+	// v1 兼容：nil cursor + limit 0 → 全量返回，hasMore=false，nextCursor=nil。
+	full, fullMore, fullNext := PageAnnotationViews(views, nil, 0)
+	if len(full) != 30 || fullMore || fullNext != nil {
+		t.Fatalf("v1 full-list mismatch: len=%d hasMore=%v next=%#v", len(full), fullMore, fullNext)
+	}
+
+	// limit 夹取下界：limit 5 → 20。
+	minPage, minMore, _ := PageAnnotationViews(views, nil, 5)
+	if len(minPage) != 20 || !minMore || minPage[0].Seq != 11 {
+		t.Fatalf("limit must clamp up to min 20: len=%d hasMore=%v first=%d", len(minPage), minMore, minPage[0].Seq)
+	}
+
+	// limit 夹取上界：limit 1000 → 500。
+	maxViews := pagingTestViews(600)
+	maxPage, maxMore, _ := PageAnnotationViews(maxViews, nil, 1000)
+	if len(maxPage) != 500 || !maxMore {
+		t.Fatalf("limit must clamp to max 500: len=%d hasMore=%v", len(maxPage), maxMore)
+	}
+
+	// cursor 有、limit 缺省 → 默认 100：早于 (400,400) 的有 399 条，取最新 100。
+	defPage, defMore, defNext := PageAnnotationViews(maxViews, &AnnotationCursor{BeforeSeq: 400, BeforeID: 400}, 0)
+	if len(defPage) != 100 || !defMore || defNext == nil || defPage[0].Seq != 300 {
+		t.Fatalf("default limit must be 100: len=%d hasMore=%v first=%d", len(defPage), defMore, defPage[0].Seq)
+	}
+
+	// resolve 之后的乱序输入（重锚定改写 seq）→ 按新 seq 升序重排。
+	shuffled := []AnnotationView{{ID: 3, Seq: 7, Title: "note 7"}, {ID: 1, Seq: 1, Title: "note 1"}, {ID: 2, Seq: 3, Title: "note 3"}}
+	sortedPage, _, _ := PageAnnotationViews(shuffled, nil, 20)
+	if fmt.Sprint(pagingTitles(sortedPage)) != "[note 1 note 3 note 7]" {
+		t.Fatalf("post-resolve ordering mismatch: %v", pagingTitles(sortedPage))
+	}
+}
+
+// TestPageAnnotationViewsSameSeq：同一 seq 多条按 id 二级排序，翻页不漏不重。
+func TestPageAnnotationViewsSameSeq(t *testing.T) {
+	views := pagingTestViews(20)
+	// seq 15 上再叠 5 条（id 21..25），共 25 条，页边界会把同 seq 簇拆开。
+	for extra := 21; extra <= 25; extra++ {
+		views = append(views, AnnotationView{ID: int64(extra), Seq: 15, AnchorKey: "e1:m15", Title: fmt.Sprintf("note 15-%d", extra)})
+	}
+
+	seen := map[string]bool{}
+	var cursor *AnnotationCursor
+	pages := 0
+	for {
+		page, hasMore, errNext := PageAnnotationViews(views, cursor, 20)
+		pages++
+		for _, view := range page {
+			if seen[view.Title] {
+				t.Fatalf("duplicate entry across pages: %s", view.Title)
+			}
+			seen[view.Title] = true
+		}
+		if !hasMore {
+			if errNext != nil {
+				t.Fatalf("final page must not carry a cursor: %#v", errNext)
+			}
+			break
+		}
+		cursor = errNext
+		if pages > 10 {
+			t.Fatalf("paging did not converge")
+		}
+	}
+	if len(seen) != 25 || pages != 2 {
+		t.Fatalf("same-seq paging leaked entries: seen=%d pages=%d", len(seen), pages)
+	}
+
+	// 游标落在同 seq 簇中间：严格早于 (15, 22) 的 = seq 1..14 + (15,15) + (15,21) = 16 条。
+	midPage, _, _ := PageAnnotationViews(views, &AnnotationCursor{BeforeSeq: 15, BeforeID: 22}, 20)
+	if len(midPage) != 16 || midPage[14].Title != "note 15" || midPage[15].Title != "note 15-21" {
+		t.Fatalf("mid-seq cursor mismatch: len=%d last two=%v,%v", len(midPage), midPage[14].Title, midPage[15].Title)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -607,6 +608,69 @@ func (idx *SQLiteIndex) SetAnnotationAIState(ctx context.Context, sessionKey str
 			updated_at=excluded.updated_at`,
 		sessionKey, messageCount, maxSeq, requestHash, model, status, time.Now().UnixMilli())
 	return err
+}
+
+// annotationSortKey is the composite sort key of one annotation view.
+type annotationSortKey struct {
+	seq int
+	id  int64
+}
+
+func (k annotationSortKey) less(other annotationSortKey) bool {
+	if k.seq != other.seq {
+		return k.seq < other.seq
+	}
+	return k.id < other.id
+}
+
+// PageAnnotationViews pages resolved annotation views by the composite sort
+// key (seq, id). A nil/zero cursor returns the latest page (newest end);
+// a cursor returns the `limit` entries immediately older than it.
+//
+// 取舍（v2 设计 §3.3 vs 重锚定）：分页在 ResolveAnnotationAnchors 之后、对已解析的
+// 视图做，而不是在 SQL 层 LIMIT。原因有二：重锚定会改写 seq（AI 生成的行落库时
+// seq=0，resolve 后才是真实位置），先分页会在过期的 seq 空间上计算页边界；
+// orphan 标记也必须对全会话行计算，先分页会漏标窗口外的 orphan。代价是后端
+// 仍全量读行（本地 SQLite、毫秒级），RPC 载荷（S1 预算的对象）仍是一页。
+func PageAnnotationViews(views []AnnotationView, cursor *AnnotationCursor, limit int) ([]AnnotationView, bool, *AnnotationCursor) {
+	if cursor != nil && cursor.BeforeSeq == 0 && cursor.BeforeID == 0 {
+		// Zero-value cursor == nil cursor (latest page).
+		cursor = nil
+	}
+	// v1 兼容：不带 cursor 也不带 limit 的旧调用 = 全量返回（hasMore=false），
+	// 这是旧前端的等价语义，也是 B1 的回滚出口。
+	unpaged := cursor == nil && limit <= 0
+	if limit > 0 {
+		if limit < AnnotationPageMinLimit {
+			limit = AnnotationPageMinLimit
+		}
+		if limit > AnnotationPageMaxLimit {
+			limit = AnnotationPageMaxLimit
+		}
+	} else if cursor != nil {
+		// cursor 明确给了但 limit 缺省 → 默认页大小。
+		limit = AnnotationPageDefaultLimit
+	}
+	filtered := make([]AnnotationView, 0, len(views))
+	for _, view := range views {
+		if cursor == nil {
+			filtered = append(filtered, view)
+			continue
+		}
+		if (annotationSortKey{seq: view.Seq, id: view.ID}).less(annotationSortKey{seq: cursor.BeforeSeq, id: cursor.BeforeID}) {
+			filtered = append(filtered, view)
+		}
+	}
+	// resolve 之后顺序不再保证（重锚定改写 seq），必须按新键重排。
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return (annotationSortKey{seq: filtered[i].Seq, id: filtered[i].ID}).
+			less(annotationSortKey{seq: filtered[j].Seq, id: filtered[j].ID})
+	})
+	if unpaged || len(filtered) <= limit {
+		return filtered, false, nil
+	}
+	page := filtered[len(filtered)-limit:]
+	return page, true, &AnnotationCursor{BeforeSeq: page[0].Seq, BeforeID: page[0].ID}
 }
 
 // ── Manager wrappers ──
