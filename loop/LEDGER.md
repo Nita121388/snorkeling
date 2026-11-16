@@ -2,25 +2,45 @@
 
 # LEDGER 视图
 
-> 生成于 2026-11-09T02:28:16Z · 源：LEDGER-2026-11.jsonl
+> 生成于 2026-11-16T05:17:16Z · 源：LEDGER-2026-11.jsonl
 
 ## 进行中
 
 | 包 | 状态 | 原因 | commit | 最近 |
 |---|---|---|---|---|
-| N-1105-loop-ledger | accepted | - | 37db7b96 | 2026-11-08T13:14:35Z |
 | N-1105-queue-failopen | accepted | - | - | 2026-11-05T04:39:51Z |
-| N-1105-tab-hover-clip | committed | - | ec327a59 | 2026-11-06T00:29:31Z |
+| N-1105-tab-hover-clip | parked | gate-reopen | ec327a59 | 2026-11-11T08:11:04Z |
 | N-1105-cmd-window-flash | committed | - | 6109567 | 2026-11-06T00:55:08Z |
-| N-1106-overview-board-motion | queued | - | - | 2026-11-06T01:54:19Z |
 | F-1106-agent-card-chip-title | queued | - | - | 2026-11-06T07:10:28Z |
-| N-1106-agent-tag-catalog | green | - | - | 2026-11-06T15:07:30Z |
-| F-1106-move-block-tab-menu | accepted | - | - | 2026-11-08T13:10:58Z |
 | N-1108-agent-chip-phase-duration | queued | - | - | 2026-11-08T06:03:15Z |
-| N-1106-overview-card-actions | accepted | - | - | 2026-11-08T13:17:04Z |
 | N-1109-agent-chip-conditional-hook | queued | - | - | 2026-11-09T01:57:00Z |
-| F-1109-commontext-sync-watermark | queued | - | - | 2026-11-09T02:03:42Z |
+| F-1109-commontext-sync-watermark | committed | - | 7d3d09c7 | 2026-11-09T02:38:32Z |
+| N-1109-overview-board-chip-polish | queued | - | - | 2026-11-09T04:03:12Z |
+| F-1113-persona-widget-launch-r2 | accepted | - | - | 2026-11-13T03:20:26Z |
+| F-1113-persona-sync-r1 | accepted | - | - | 2026-11-13T03:46:45Z |
+| F-1113-persona-journal-r1 | accepted | - | - | 2026-11-13T04:01:24Z |
+| F-1113-persona-relocate-r1 | accepted | - | - | 2026-11-13T04:48:37Z |
+| F-1113-persona-roster-r1 | accepted | - | - | 2026-11-13T05:13:45Z |
+| F-1113-persona-create-ui-r2 | accepted | - | - | 2026-11-13T08:07:59Z |
+| N-1113-commontext-editor-collapse | queued | - | - | 2026-11-13T16:07:28Z |
+| N-1114-commontext-draft-autosave | queued | - | - | 2026-11-14T06:43:11Z |
+| N-1114-tab-restore-all-r3 | running | - | - | 2026-11-14T06:54:09Z |
+| N-1114-tab-drag-switch-fix | running | - | - | 2026-11-14T07:05:22Z |
+| N-1114-commontext-tags-property | queued | - | - | 2026-11-14T07:14:08Z |
+| N-1114-commontext-tags-no-hash | queued | - | - | 2026-11-14T07:52:51Z |
+| N-1114-commontext-tags-summary-chips | queued | - | - | 2026-11-14T08:28:51Z |
+| N-1114-commontext-tags-structured | queued | - | - | 2026-11-14T10:48:32Z |
+| F-1116-hero-identity-inject | accepted | - | - | 2026-11-16T05:09:59Z |
 
 ## 近 14 天已发布
 
-_（空）_
+| 包 | commit | 时间 |
+|---|---|---|
+| N-1106-agent-tag-catalog | - | 2026-11-14T13:18:31Z |
+| F-1112-persona-core-r2 | ee2ae660 | 2026-11-13T01:18:16Z |
+| F-1112-persona-aisessions-r1 | - | 2026-11-13T01:18:16Z |
+| F-1112-persona-agent-create | - | 2026-11-13T01:18:16Z |
+| F-1106-move-block-tab-menu | - | 2026-11-11T07:46:09Z |
+| N-1106-overview-board-motion | - | 2026-11-11T06:56:19Z |
+| N-1106-overview-card-actions | - | 2026-11-11T06:46:58Z |
+| N-1105-loop-ledger | 37db7b96 | 2026-11-11T06:46:48Z |

@@ -2,23 +2,44 @@
 
 # QUEUE
 
-> 生成于 2026-11-09T02:38:38Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
+> 生成于 2026-11-16T05:17:16Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
 
 | 包 | 优先级 | 类型 | 门 | 门状态 | 运行 | 说明 |
 |---|---|---|---|---|---|---|
-| `N-1105-loop-ledger` | P0 | arch | 3/4 | blocked:g6 | accepted | 方案：expired |
+| `N-1105-loop-ledger` | P0 | arch | 3/4 | blocked:g6 | released | 方案（G6）：expired |
 | `N-1109-agent-chip-conditional-hook` | P0 | bug | 1/1 | clear | queued | Agent 状态 chip 条件调用 hook 导致整窗白屏（React #310） |
-| `N-1105-harness-redproof` | P1 | chore | 0/1 | blocked:g5 | idle | 合规：not-run |
-| `N-1106-overview-card-actions` | P1 | feature | 3/3 | clear | accepted | Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删 |
-| `N-1106-overview-board-motion` | P1 | feature | 2/3 | blocked:g1 ⚠drift | queued | 需求：drift |
+| `N-1105-harness-redproof` | P1 | chore | 0/1 | blocked:g5 | idle | 合规（G5）：not-run |
+| `N-1106-overview-card-actions` | P1 | feature | 3/3 | clear | released | Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删 |
+| `N-1106-overview-board-motion` | P1 | feature | 2/3 | blocked:g1 ⚠drift | released | 需求（G1）：drift |
 | `F-1106-agent-card-chip-title` | P1 | feature | 3/3 | clear | queued | Agent 卡片统一：状态 chip 收口 + 运行时长 + 标题编辑 |
-| `N-1105-cleanup-46to22` | P1 | arch | 1/4 | blocked:g2 | idle | 器具：no-red-proof |
-| `F-1106-move-block-tab-menu` | P1 | feature | 2/3 | blocked:g5 | accepted | 合规：not-run |
-| `F-1107-commontext-sync-meta` | P1 | feature | 0/3 | blocked:g1 | idle | 需求：unsigned |
-| `F-1109-commontext-sync-watermark` | P1 | arch | 4/4 | clear | committed | Common Text 条目级同步水位：区分已同步/待上传 + 增量推送 + 墓碑 |
+| `N-1105-cleanup-46to22` | P1 | arch | 1/4 | blocked:g2 | idle | 器具（G2）：no-red-proof |
+| `F-1106-move-block-tab-menu` | P1 | feature | 2/3 | blocked:g5 | released | 合规（G5）：not-run |
+| `F-1107-commontext-sync-meta` | P1 | feature | 0/3 | blocked:g1 | idle | 需求（G1）：unsigned |
+| `F-1109-commontext-sync-watermark` | P1 | arch | 3/4 | blocked:g6 | committed | 方案（G6）：expired |
+| `F-1111-agent-property-scope` | P1 | feature | 3/3 | clear | idle | Agent 卡片属性：范围三选一 + 表单美化 + 外部操作支持 |
+| `F-1112-persona-agent-create` | P1 | feature | 3/3 | clear | released | A2.5 Agent 自创建：CLI + propose 闸门 + 配额 + memory 纪律 |
+| `F-1112-persona-aisessions-r1` | P1 | feature | 3/3 | clear | released | A1.5 AISessions 集成：persona 属性 + 🎭 分组折叠 + 登场史 |
+| `F-1112-persona-core-r2` | P1 | feature | 3/3 | clear | released | A1 persona 核心：目录布局 + scaffold + wsh persona CLI |
+| `F-1113-persona-widget-launch-r2` | P1 | feature | 3/3 | clear | accepted | A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带 |
+| `F-1116-hero-identity-inject` | P1 | arch | 4/4 | clear | accepted | Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要 |
 | `N-1105-cmd-window-flash` | P1 | bug | 1/1 | clear | committed | 打开看板闪黑窗：子进程漏 windowsHide |
-| `N-1105-night-runner` | P1 | arch | 0/4 | blocked:g1 | idle | 需求：unsigned |
-| `N-1105-tab-hover-clip` | P1 | bug | 1/1 | clear | committed | Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位） |
+| `N-1105-night-runner` | P1 | arch | 0/4 | blocked:g1 | idle | 需求（G1）：unsigned |
+| `N-1105-tab-hover-clip` | P1 | bug | 1/1 | clear | parked | Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位） |
 | `N-1108-agent-chip-phase-duration` | P1 | bug | 1/1 | clear | queued | 状态徽章时长按当前阶段段计算（phaseSince），而非 working 总时长 |
+| `N-1114-commontext-tags-structured` | P1 | feature | 3/3 | clear | queued | CommonText 内容与标签分离（tags 结构化权威 + 读路径惰性迁移） |
+| `N-1114-tab-drag-switch-fix` | P1 | bug | 1/1 | clear | running | Tab 栏交互修复：点击误判拖拽换位 + 切换高亮迟滞 + 广播重复入队 |
+| `N-1114-tab-restore-all-r3` | P1 | bug | 1/1 | clear | running | 重启后 Tab 栏只恢复激活一个 Tab，其余全被藏进「更多」 |
+| `F-1113-persona-sync-r1` | P1 | feature | 3/3 | clear | accepted | A5 跨机同步 v1：rootdir 单仓 + gitignore + rebuild + journal 冲突合并 |
+| `F-1113-persona-journal-r1` | P1 | feature | 3/3 | clear | accepted | A6 journal 写入器 + 提议制记忆 + 蒸馏（含回滚） |
+| `F-1113-persona-relocate-r1` | P1 | feature | 3/3 | clear | accepted | A5.5 rootdir 设置 + relocate + journal 轮转 + 容量三项 |
+| `F-1113-persona-roster-r1` | P1 | feature | 3/3 | clear | accepted | A4 人设名册 Block persona://（列表/详情 + 登场复用） |
+| `F-1113-persona-create-ui-r2` | P1 | feature | 3/3 | clear | accepted | A2 创建向导：两步向导 + 三入口 + 同源文件树预览 |
 | `N-1105-queue-failopen` | P2 | bug | 1/1 | clear | accepted | queue.json 解析失败不再静默清空（回退 last-good 快照） |
-| `N-1106-agent-tag-catalog` | P2 | feature | 3/3 | clear | green | Agent 卡片标签候选：全局清单 + 计数 |
+| `N-1106-agent-tag-catalog` | P2 | feature | 3/3 | clear | released | Agent 卡片标签候选：全局清单 + 计数 |
+| `N-1109-overview-board-chip-polish` | P2 | redesign | 2/5 | blocked:g1 | queued | 需求（G1）：unsigned |
+| `N-1109-overview-board-empty-status-label` | P2 | bug | 1/1 | clear | idle | Overview 看板：无状态 agent 卡渲染空状态标签 |
+| `N-1113-commontext-editor-collapse` | P2 | bug | 1/1 | clear | queued | CommonText 弹窗：Editor 快捷收起 + 属性列表默认折叠 |
+| `N-1114-commontext-draft-autosave` | P2 | fix-small | 1/1 | clear | queued | CommonText Editor 文本持久草稿自动保存 |
+| `N-1114-commontext-tags-no-hash` | P2 | fix-small | 1/1 | clear | queued | CommonText 标签 chip 去 # 前缀（兼容历史数据）+ 折叠摘要展示标签名 |
+| `N-1114-commontext-tags-property` | P2 | fix-small | 1/1 | clear | queued | CommonText 详情标签移入属性区（Notion/Obsidian 式选择） |
+| `N-1114-commontext-tags-summary-chips` | P2 | fix-small | 1/1 | clear | queued | CommonText 折叠摘要标签样式与展开态统一（chip） |
