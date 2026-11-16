@@ -19,6 +19,7 @@
 | [Agent Control Surface 契约](./agent-control-surface-contract.md) | ACS 分层职责；遍历只允许一份 `ListBlocksScoped`；读取有界+白名单脱敏；前端路由调用必须可注入；`--wait` 判据为「队列排空 + leaforder 含该块」；错误码冻结 | 有效 |
 | [Agent 状态时间戳契约](./agentstatus-timestamps-contract.md) | activeSince（state 段）vs phaseSince（阶段段）的粒度与消费方；两戳都不参与 sameStatus/指纹；前端读取优先级 | 有效 |
 | [Persona 存储契约](./hero-store-contract.md) | 目录名=id 写死；CHARTER+MEMORY 单一真源、agents/AGENTS 是生成物；记忆纯 Markdown 不进 DB；写命令默认 dry-run + 幂等；名册是注入面；scope 门在 A2.5 | 有效 |
+| [CommonText 同步实时推送契约](./commontext-sync-realtime-contract.md) | WS 只发 rev 信号不带数据；协议不因新端点 bump；timer 永远在、watcher 只是加速器；`ErrAlreadyRunning` 一律良性；`Realtime` 只在握手成功后置真 | 有效 |
 
 ---
 

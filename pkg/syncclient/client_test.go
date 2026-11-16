@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/wavetermdev/waveterm/pkg/syncproto"
 )
 
@@ -207,5 +210,120 @@ func TestPushReportsStaleBaseRevWithCurrentSnapshot(t *testing.T) {
 	}
 	if res.Current == nil || res.Current.Rev != 7 {
 		t.Fatalf("the current snapshot must come back for reconciliation: %+v", res.Current)
+	}
+}
+
+// ── Watch (WebSocket) tests ───────────────────────────────────────────────────────────────────
+
+// fakeWSServer spins up an httptest server that upgrades to WebSocket and sends a fixed set of
+// events, then blocks until the client disconnects. Returns the server URL (http://). The token
+// is checked if non-empty.
+func fakeWSServer(t *testing.T, token string, events []syncproto.WSEvent) *httptest.Server {
+	t.Helper()
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	mux := http.NewServeMux()
+	mux.HandleFunc(syncproto.WSPath, func(w http.ResponseWriter, r *http.Request) {
+		if token != "" && r.Header.Get("Authorization") != "Bearer "+token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		for _, ev := range events {
+			data, _ := json.Marshal(ev)
+			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				return
+			}
+		}
+		// Block until the client closes.
+		for {
+			if _, _, err := conn.NextReader(); err != nil {
+				return
+			}
+		}
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// TestWatchReceivesEventsAndReturnsOnCancel is the primary client-side Watch contract:
+// events arrive via callback, and cancelling the context makes Watch return.
+func TestWatchReceivesEventsAndReturnsOnCancel(t *testing.T) {
+	ts := fakeWSServer(t, "tok", []syncproto.WSEvent{
+		{Type: "rev", Rev: 10},
+		{Type: "rev", Rev: 11},
+	})
+
+	client := &Client{BaseURL: ts.URL, Token: "tok", AllowInsecure: true}
+
+	var mu sync.Mutex
+	var received []syncproto.WSEvent
+	onEvent := func(ev syncproto.WSEvent) {
+		mu.Lock()
+		received = append(received, ev)
+		mu.Unlock()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watchDone := make(chan error, 1)
+	go func() { watchDone <- client.Watch(ctx, onEvent, nil) }()
+
+	// Wait for both events.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		n := len(received)
+		mu.Unlock()
+		if n >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for events, got %d", n)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	if received[0].Type != "rev" || received[0].Rev != 10 {
+		t.Fatalf("event[0] wrong: %+v", received[0])
+	}
+	if received[1].Rev != 11 {
+		t.Fatalf("event[1] wrong: %+v", received[1])
+	}
+	mu.Unlock()
+
+	// Cancel → Watch must return.
+	cancel()
+	select {
+	case <-watchDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Watch did not return after context cancel")
+	}
+}
+
+// TestWatchDialFailureReturnsError ensures that a non-101 response (404) is surfaced as an
+// error rather than blocking forever.
+func TestWatchDialFailureReturnsError(t *testing.T) {
+	// A server with no WS endpoint: the dial will get a 404.
+	mux := http.NewServeMux()
+	mux.HandleFunc(syncproto.WSPath, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	client := &Client{BaseURL: ts.URL, Token: "tok", AllowInsecure: true}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := client.Watch(ctx, func(syncproto.WSEvent) {}, nil)
+	if err == nil {
+		t.Fatal("Watch must return an error when the server has no WS endpoint")
 	}
 }

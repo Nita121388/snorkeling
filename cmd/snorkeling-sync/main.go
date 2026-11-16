@@ -31,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/wavetermdev/waveterm/pkg/syncproto"
 )
 
@@ -108,10 +109,11 @@ func runServe(args []string) error {
 		fmt.Printf("  Add it to a device with:\n    wsh commontext-sync set-server http://%s:%d --token %s\n\n", *host, *port, tok)
 	}
 
-	srv := &Server{store: store, tokens: tokens}
+	srv := &Server{store: store, tokens: tokens, hub: NewHub()}
 	mux := http.NewServeMux()
 	mux.HandleFunc(syncproto.HealthPath, srv.handleHealth)
 	mux.HandleFunc(syncproto.SnapshotPath, srv.requireAuth(srv.handleSnapshot))
+	mux.HandleFunc(syncproto.WSPath, srv.requireAuth(srv.handleWS))
 
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf("%s:%d", *host, *port),
@@ -182,6 +184,9 @@ func runToken(args []string) error {
 type Server struct {
 	store  *Store
 	tokens *Tokens
+	// hub is the WebSocket broadcast hub. Always non-nil in production (runServe) and in tests
+	// that call newTestServerWithWS. handlePush uses a nil check as a safety net.
+	hub *Hub
 }
 
 // handleHealth is unauthenticated by design: the client must be able to report "reachable but
@@ -203,7 +208,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		Items:           float64(items),
 		Rev:             rev,
 		RequiresAuth:    true,
-		Capabilities:    []string{syncproto.CapSnapshot, syncproto.CapIncremental},
+		Capabilities:    []string{syncproto.CapSnapshot, syncproto.CapIncremental, syncproto.CapWebSocket},
 	})
 }
 
@@ -238,6 +243,10 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("invalid body: %v", err), http.StatusBadRequest)
 		return
 	}
+	// Capture head before Apply: broadcast only if the revision actually advances.
+	// If headRev() fails (store error), prevHead stays 0, so any positive resp.Rev triggers a
+	// broadcast — better to over-notify than silently miss a real change.
+	prevHead, _ := s.store.headRev()
 	resp, err := s.store.Apply(req)
 	if errors.Is(err, ErrBaseRevMismatch) {
 		// 409 carries the current snapshot so the client can reconcile without a round trip.
@@ -256,7 +265,51 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Notify WebSocket clients only when the head revision actually moved forward.
+	if s.hub != nil && resp.Rev > prevHead {
+		s.hub.Broadcast(syncproto.WSEvent{Type: "rev", Rev: resp.Rev})
+	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// wsUpgrader is the WebSocket protocol upgrader used by handleWS. CheckOrigin is permissive
+// because the endpoint is token-authenticated (via requireAuth) — origin checking adds nothing
+// when a bearer token is required for the handshake.
+var wsUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin:     func(r *http.Request) bool { return true },
+}
+
+// handleWS upgrades an authenticated HTTP request to a WebSocket connection and keeps it alive
+// until the client disconnects. The server never sends unsolicited data except via hub.Broadcast;
+// the read loop simply discards any client messages (ping/pong is handled at the protocol level).
+func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	if s.hub == nil {
+		http.Error(w, "WebSocket not available", http.StatusServiceUnavailable)
+		return
+	}
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("commontext-sync ws: upgrade: %v", err)
+		return
+	}
+	unregister := s.hub.Register(conn)
+	defer unregister()
+	defer conn.Close()
+
+	// Respond to pings from the client so it knows the connection is alive.
+	conn.SetPingHandler(func(appData string) error {
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return conn.WriteMessage(websocket.PongMessage, []byte(appData))
+	})
+
+	// Read loop: discard all messages; the connection stays open until the client goes away.
+	for {
+		if _, _, err := conn.NextReader(); err != nil {
+			return
+		}
+	}
 }
 
 // requireAuth enforces the bearer token. It compares constant-time-ish by exact string match on

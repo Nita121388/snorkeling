@@ -1,0 +1,13 @@
+FAIL	github.com/wavetermdev/waveterm/pkg/syncproto [build failed]
+FAIL	github.com/wavetermdev/waveterm/cmd/snorkeling-sync [build failed]
+FAIL	github.com/wavetermdev/waveterm/pkg/syncclient [build failed]
+ok  	github.com/wavetermdev/waveterm/pkg/sync	15.849s
+FAIL	github.com/wavetermdev/waveterm/pkg/syncmanager [build failed]
+FAIL
+go : # github.com/wavetermdev/waveterm/pkg/syncproto [github.com/wavetermdev/waveterm/pkg/syncproto.test]
+所在位置 行:1 字符: 39
++ ... ps1 -Quiet; go test ./pkg/syncproto/... ./cmd/snorkeling-sync/... ./p ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (# github.com/wa...syncproto.test]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

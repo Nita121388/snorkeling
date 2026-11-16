@@ -153,6 +153,8 @@ func (svc *CommonTextService) Update(ctx context.Context, request *CommonTextUpd
 	if err != nil {
 		return nil, err
 	}
+	// Trigger a debounced push so other devices see this change quickly.
+	syncmanager.Nudge()
 	return &item, nil
 }
 
@@ -172,6 +174,8 @@ func (svc *CommonTextService) RenameTag(ctx context.Context, request *CommonText
 	if err != nil {
 		return nil, err
 	}
+	// Tag renames modify multiple items; nudge a debounced push to propagate them.
+	syncmanager.Nudge()
 	return &CommonTextRenameTagResponse{Count: count}, nil
 }
 
@@ -392,6 +396,8 @@ func (svc *CommonTextService) SyncResolve(ctx context.Context, request *CommonTe
 	if err := syncconflict.MarkResolved(id); err != nil {
 		return nil, err
 	}
+	// The resolved text is a local write that should propagate to the remote.
+	syncmanager.Nudge()
 	return &CommonTextSyncStatusResponse{Status: syncmanager.GetStatus()}, nil
 }
 

@@ -2,14 +2,14 @@
 
 # 工作项索引
 
-> 生成于 2026-11-16T05:17:16Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
+> 生成于 2026-11-16T08:41:20Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
 
 ## P0（2）
 
 - [x] `N-1105-loop-ledger` — loop 台账骨架 + 门引擎 · arch · internal · 方案（G6）待办
 - [ ] `N-1109-agent-chip-conditional-hook` — Agent 状态 chip 条件调用 hook 导致整窗白屏（React #310） · bug · self · 门已清
 
-## P1（26）
+## P1（27）
 
 - [ ] `N-1105-harness-redproof` — 既有 4 个 harness 登记 red_proof · chore · internal · 合规（G5）待办
 - [x] `N-1106-overview-card-actions` — Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删 · feature · self · 门已清
@@ -24,6 +24,7 @@
 - [x] `F-1112-persona-aisessions-r1` — A1.5 AISessions 集成：persona 属性 + 🎭 分组折叠 + 登场史 · feature · self · 门已清
 - [x] `F-1112-persona-core-r2` — A1 persona 核心：目录布局 + scaffold + wsh persona CLI · feature · self · 门已清
 - [ ] `F-1113-persona-widget-launch-r2` — A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带 · feature · self · 门已清
+- [ ] `F-1116-commontext-sync-ws-push` — CommonText 同步实时推送：WebSocket rev 通知 + 保存即触发 + timer 兜底 · arch · self · 方案（G6）待办
 - [ ] `F-1116-hero-identity-inject` — Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要 · arch · self · 门已清
 - [ ] `N-1105-cmd-window-flash` — 打开看板闪黑窗：子进程漏 windowsHide · bug · self · 门已清
 - [ ] `N-1105-night-runner` — 夜班真派发：headless agent 注入契约并限一包 · arch · self · 需求（G1）待办

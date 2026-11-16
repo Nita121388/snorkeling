@@ -40,8 +40,11 @@ func (t *ServerTransport) Caps() Caps {
 		AtomicWrite: true,
 		// /v1/snapshot?sinceRev=N is a real incremental read.
 		Incremental: true,
-		// Realtime (WebSocket) is not implemented yet — the engine must not promise it.
-		Realtime: false,
+		// The server broadcasts rev-advance events over WebSocket (/v1/ws); the watcher goroutine
+		// that consumes these events is owned by syncmanager (which holds ServerTransport.Client).
+		// The engine itself does not use Realtime — it just reports the capability so syncmanager
+		// knows to start a watcher.
+		Realtime: true,
 	}
 }
 

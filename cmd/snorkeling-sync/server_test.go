@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/wavetermdev/waveterm/pkg/syncproto"
 )
 
@@ -353,4 +356,173 @@ func (s *Store) mustHeadRev(t *testing.T) float64 {
 		t.Fatalf("head rev: %v", err)
 	}
 	return rev
+}
+
+// ── WebSocket broadcast tests ──────────────────────────────────────────────────────────────────
+
+// newTestServerWithWS returns an httptest.Server whose mux includes the WS endpoint, the
+// Server (with hub initialised), and the generated token.
+func newTestServerWithWS(t *testing.T) (*httptest.Server, *Server, string) {
+	t.Helper()
+	srv, _, tok := newTestServer(t)
+	srv.hub = NewHub()
+	mux := http.NewServeMux()
+	mux.HandleFunc(syncproto.HealthPath, srv.handleHealth)
+	mux.HandleFunc(syncproto.SnapshotPath, srv.requireAuth(srv.handleSnapshot))
+	mux.HandleFunc(syncproto.WSPath, srv.requireAuth(srv.handleWS))
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	return ts, srv, tok
+}
+
+// dialWS connects a gorilla websocket client to the test server's WS endpoint.
+func dialWS(t *testing.T, ts *httptest.Server, token string) *websocket.Conn {
+	t.Helper()
+	wsURL := "ws" + ts.URL[len("http"):] + syncproto.WSPath
+	header := http.Header{}
+	if token != "" {
+		header.Set("Authorization", "Bearer "+token)
+	}
+	dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second}
+	conn, resp, err := dialer.Dial(wsURL, header)
+	if err != nil {
+		t.Fatalf("ws dial: %v (resp status: %d)", err, respStatusCode(resp))
+	}
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
+func respStatusCode(resp *http.Response) int {
+	if resp == nil {
+		return 0
+	}
+	return resp.StatusCode
+}
+
+// TestWSHealthAdvertisesWebSocketCapability pins that the health endpoint lists "websocket"
+// so the client's status panel can show "实时推送: 支持".
+func TestWSHealthAdvertisesWebSocketCapability(t *testing.T) {
+	ts, _, _ := newTestServerWithWS(t)
+
+	resp, err := http.Get(ts.URL + syncproto.HealthPath)
+	if err != nil {
+		t.Fatalf("health request: %v", err)
+	}
+	defer resp.Body.Close()
+	var h syncproto.Health
+	if err := json.NewDecoder(resp.Body).Decode(&h); err != nil {
+		t.Fatalf("decode health: %v", err)
+	}
+	found := false
+	for _, cap := range h.Capabilities {
+		if cap == syncproto.CapWebSocket {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("health capabilities must include %q, got %v", syncproto.CapWebSocket, h.Capabilities)
+	}
+}
+
+// TestWSHandshakeWithoutTokenIsRejected verifies the auth gate fires before the upgrade.
+func TestWSHandshakeWithoutTokenIsRejected(t *testing.T) {
+	ts, _, _ := newTestServerWithWS(t)
+	wsURL := "ws" + ts.URL[len("http"):] + syncproto.WSPath
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	_, resp, err := dialer.Dial(wsURL, nil) // no Authorization header
+	if err == nil {
+		t.Fatal("WS dial without token must fail")
+	}
+	if respStatusCode(resp) != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", respStatusCode(resp))
+	}
+}
+
+// TestWSBroadcastOnRevAdvance is the core acceptance test: a connected WS client must receive
+// a rev notification within 2 seconds of a push that advances the head revision.
+func TestWSBroadcastOnRevAdvance(t *testing.T) {
+	ts, _, tok := newTestServerWithWS(t)
+
+	conn := dialWS(t, ts, tok)
+	// Give the server a moment to register the connection in the hub.
+	time.Sleep(100 * time.Millisecond)
+
+	// Push an item that must advance the head rev (prev=0, applied=1).
+	rec := push(t, ts.Config.Handler, tok, syncproto.PushRequest{
+		BaseRev: 0,
+		Items:   []syncproto.SnapshotItem{{Id: "a", Title: "A", Text: "a", UpdatedAt: 1000, Rev: 1}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("push failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Read the broadcast — must arrive within 2 seconds.
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, data, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("reading WS message: %v", err)
+	}
+	var ev syncproto.WSEvent
+	if err := json.Unmarshal(data, &ev); err != nil {
+		t.Fatalf("decoding WSEvent: %v (raw: %s)", err, data)
+	}
+	if ev.Type != "rev" {
+		t.Fatalf("expected type=rev, got %q", ev.Type)
+	}
+	if ev.Rev < 1 {
+		t.Fatalf("notification rev must be ≥1 after first push, got %v", ev.Rev)
+	}
+}
+
+// TestWSNoBroadcastOnUnchangedPush confirms that a push which does not advance the head rev
+// does not generate a notification — otherwise every no-op sync would wake every client.
+func TestWSNoBroadcastOnUnchangedPush(t *testing.T) {
+	ts, _, tok := newTestServerWithWS(t)
+
+	// First push advances rev to 1.
+	push(t, ts.Config.Handler, tok, syncproto.PushRequest{
+		BaseRev: 0,
+		Items:   []syncproto.SnapshotItem{{Id: "a", Title: "A", Text: "a", UpdatedAt: 1000, Rev: 1}},
+	})
+
+	conn := dialWS(t, ts, tok)
+	time.Sleep(100 * time.Millisecond)
+
+	// Push the same item at the current head: nothing changes, no broadcast.
+	head := srv_headForTest(t, ts)
+	rec := push(t, ts.Config.Handler, tok, syncproto.PushRequest{
+		BaseRev: head,
+		Items:   []syncproto.SnapshotItem{{Id: "a", Title: "A", Text: "a", UpdatedAt: 1000, Rev: 1}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unchanged push must succeed: %d", rec.Code)
+	}
+
+	// No message should arrive within 500ms — a read deadline is the expected outcome.
+	conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	_, data, err := conn.ReadMessage()
+	if err == nil {
+		t.Fatalf("unchanged push must not produce a WS broadcast, got: %s", data)
+	}
+	if !strings.Contains(err.Error(), "timeout") && !strings.Contains(err.Error(), "deadline") {
+		t.Fatalf("expected read deadline, got: %v", err)
+	}
+}
+
+// srv_headForTest reads the store's head rev via the HTTP pull endpoint.
+func srv_headForTest(t *testing.T, ts *httptest.Server) float64 {
+	t.Helper()
+	// We need a token; reuse the first bearer from the test context.
+	// Simplification: query the health endpoint (unauthenticated) for the current rev.
+	resp, err := http.Get(ts.URL + syncproto.HealthPath)
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	defer resp.Body.Close()
+	var h syncproto.Health
+	if err := json.NewDecoder(resp.Body).Decode(&h); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return h.Rev
 }

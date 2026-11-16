@@ -4,6 +4,7 @@
 package syncproto
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -72,6 +73,29 @@ func TestCheckHealthNamesEveryProblem(t *testing.T) {
 
 	if err := CheckHealth(&Health{Service: ServiceName, ProtocolVersion: ProtocolVersion}); err != nil {
 		t.Fatalf("a matching health must pass: %v", err)
+	}
+}
+
+func TestWSEventJSONShape(t *testing.T) {
+	// The wire shape is a cross-layer contract: the server broadcasts, the client decodes.
+	// Pinning the exact JSON prevents an accidental field rename from silently breaking both.
+	ev := WSEvent{Type: "rev", Rev: 42}
+	data, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatalf("marshal WSEvent: %v", err)
+	}
+	if got := string(data); got != `{"type":"rev","rev":42}` {
+		t.Fatalf("WSEvent JSON shape changed: got %s", got)
+	}
+	var decoded WSEvent
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal WSEvent: %v", err)
+	}
+	if decoded.Type != "rev" || decoded.Rev != 42 {
+		t.Fatalf("WSEvent round-trip mismatch: %+v", decoded)
+	}
+	if WSPath != "/v1/ws" {
+		t.Fatalf("WSPath changed: %q", WSPath)
 	}
 }
 

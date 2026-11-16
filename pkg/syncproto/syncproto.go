@@ -35,6 +35,23 @@ const HealthPath = "/v1/health"
 // SnapshotPath is the pull/push endpoint.
 const SnapshotPath = "/v1/snapshot"
 
+// WSPath is the authenticated WebSocket notification endpoint. The server upgrades an HTTP
+// request (with a Bearer token) to a WebSocket connection and pushes WSEvent messages when
+// the head revision advances. Data is never sent over WS — it is only a signal to trigger an
+// incremental pull, so a dropped or missed event costs freshness (the next timer recovers),
+// never correctness.
+const WSPath = "/v1/ws"
+
+// WSEvent is a server-to-client push notification. It carries no item data — only enough for
+// the client to know that a new revision exists and a pull is worthwhile.
+type WSEvent struct {
+	// Type is the event kind. Currently only "rev" is emitted; new kinds may be added without
+	// bumping ProtocolVersion because unknown types are ignored by older clients.
+	Type string `json:"type"`
+	// Rev is the server's new head revision at the time of the event.
+	Rev float64 `json:"rev"`
+}
+
 // Capability names advertised by a server.
 const (
 	CapSnapshot    = "snapshot"    // full snapshot pull

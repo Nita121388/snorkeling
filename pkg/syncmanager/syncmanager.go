@@ -70,6 +70,9 @@ type Status struct {
 	Pending int `json:"pending"`
 	// IntervalSeconds is informational, so the UI can say "every 5 minutes".
 	IntervalSeconds int `json:"intervalSeconds"`
+	// Realtime reports whether the WebSocket watcher is currently connected to the server.
+	// False for non-server transports and when the watcher has not yet established a connection.
+	Realtime bool `json:"realtime"`
 }
 
 var mu sync.Mutex
@@ -77,9 +80,11 @@ var engine *engineHandle
 var timer *time.Timer
 var started bool
 var lastResult runSummary
+
 // lastError is a CONFIGURATION/BUILD error (reload could not construct the transport). reload()
 // owns it and clears it once the transport builds again.
 var lastError string
+
 // lastRunError is the most recent RUN failure. It must not share lastError: GetStatus calls
 // reload(), and clearing a run error on every reload would erase the failure the user needs to see
 // (and hand to an agent) the moment they open the panel. 2026-11-10 found by the sync-diagnostics
@@ -145,6 +150,10 @@ func loop() {
 
 // reload rebuilds the engine when the relevant settings changed. Called on start and each tick, so
 // a Settings-panel Save takes effect without restarting the app.
+//
+// It also manages the WebSocket watcher lifecycle: starts it for server transports (if not already
+// running or if the server URL changed), stops it for non-server transports. The actual stop is
+// done outside mu to avoid a deadlock with the watcher's own SyncNow→reload() call.
 func reload() {
 	settings, err := currentSettings()
 	if err != nil {
@@ -157,7 +166,13 @@ func reload() {
 	if transportId == "none" {
 		mu.Lock()
 		engine = nil
+		var old *watcher
+		if activeWatcher != nil {
+			old = activeWatcher
+			activeWatcher = nil
+		}
 		mu.Unlock()
+		stopWatcher(old)
 		return
 	}
 	tr, buildErr := buildTransport(settings, transportId)
@@ -165,10 +180,23 @@ func reload() {
 		mu.Lock()
 		engine = nil
 		lastError = buildErr.Error()
+		var old *watcher
+		if activeWatcher != nil {
+			old = activeWatcher
+			activeWatcher = nil
+		}
 		mu.Unlock()
+		stopWatcher(old)
 		return
 	}
 	devName := settingString(settings, keyDeviceName)
+
+	// Extract the syncclient for server transports so the watcher can use it.
+	var serverClient *syncclient.Client
+	if st, ok := tr.(*ctsync.ServerTransport); ok {
+		serverClient = st.Client
+	}
+
 	handle := &engineHandle{
 		transportId: ctsync.TransportId(transportId),
 		deviceName:  devName,
@@ -181,10 +209,31 @@ func reload() {
 			journalAppend,
 		),
 	}
+
 	mu.Lock()
 	engine = handle
 	lastError = ""
+
+	// Manage watcher lifecycle.
+	var oldWatcher *watcher
+	if serverClient != nil {
+		if activeWatcher == nil {
+			activeWatcher = startWatcher(serverClient)
+		} else if activeWatcher.clientURL != serverClient.BaseURL {
+			// Server URL changed — restart the watcher with the new client.
+			oldWatcher = activeWatcher
+			activeWatcher = startWatcher(serverClient)
+		}
+	} else {
+		if activeWatcher != nil {
+			oldWatcher = activeWatcher
+			activeWatcher = nil
+		}
+	}
 	mu.Unlock()
+
+	// Stop old watcher outside mu to avoid deadlock with SyncNow→reload().
+	stopWatcher(oldWatcher)
 }
 
 // SyncNow runs one sync immediately. trigger names the cause (manual | timer | startup).
@@ -201,15 +250,13 @@ func SyncNow(ctx context.Context, trigger string) (Status, error) {
 	mu.Unlock()
 
 	res, err := eng.engine.Run(ctx, trigger)
-	mu.Lock()
-	lastRunAt = time.Now()
-	if err != nil {
-		lastRunError = err.Error()
-	} else {
-		lastRunError = ""
-		lastResult = runSummary{Pulled: res.Pulled, Applied: res.Applied, Pushed: res.Pushed}
+	status, benign := recordRunOutcome(res, err)
+	if benign {
+		// A run was already in flight (timer/manual/notify/save collided). Every trigger source
+		// treats this as benign: drop this trigger silently, record nothing, let the next signal
+		// or the timer pick it up. Painting an error here would flash red on every save.
+		return status, nil
 	}
-	mu.Unlock()
 
 	if len(res.Conflicts) > 0 {
 		// Persist so the status panel and `conflicts --copy` see them.
@@ -222,6 +269,26 @@ func SyncNow(ctx context.Context, trigger string) (Status, error) {
 	// pending dots until it is reopened.
 	wconfig.BroadcastConfigUpdate()
 	return currentStatusLocked(), err
+}
+
+// recordRunOutcome stores a run's result and reports whether the run was a benign collision
+// (ErrAlreadyRunning), in which case nothing is recorded: no error, no result, no timestamp.
+func recordRunOutcome(res ctsync.RunResult, err error) (Status, bool) {
+	benign := errors.Is(err, ctsync.ErrAlreadyRunning)
+	mu.Lock()
+	switch {
+	case benign:
+		// Nothing was attempted — leave lastRunError/lastResult/lastRunAt untouched.
+	case err != nil:
+		lastRunAt = time.Now()
+		lastRunError = err.Error()
+	default:
+		lastRunAt = time.Now()
+		lastRunError = ""
+		lastResult = runSummary{Pulled: res.Pulled, Applied: res.Applied, Pushed: res.Pushed}
+	}
+	mu.Unlock()
+	return currentStatusLocked(), benign
 }
 
 // ErrNotConfigured means no transport is set up; the UI shows this as "local only", not as an error.
@@ -438,11 +505,15 @@ func currentStatusLocked() Status {
 	transportId := "none"
 	configured := false
 	problem := ""
+	realtime := false
 	if engine != nil {
 		transportId = string(engine.transportId)
 		configured = true
 	} else if lastError != "" {
 		problem = lastError
+	}
+	if activeWatcher != nil && activeWatcher.IsConnected() {
+		realtime = true
 	}
 	status := Status{
 		Transport:       transportId,
@@ -453,6 +524,7 @@ func currentStatusLocked() Status {
 		LastApplied:     lastResult.Applied,
 		LastPushed:      lastResult.Pushed,
 		IntervalSeconds: int(DefaultInterval / time.Second),
+		Realtime:        realtime,
 	}
 	if !lastRunAt.IsZero() {
 		status.LastRunAt = lastRunAt.UTC().Format(time.RFC3339)

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/wavetermdev/waveterm/pkg/syncproto"
 )
 
@@ -324,4 +325,99 @@ func describeNetworkError(err error) string {
 		return "TLS certificate rejected — use a valid certificate, or Allow insecure for a self-signed LAN server"
 	}
 	return msg
+}
+
+// WSHTTPError is returned by Watch when the WebSocket handshake fails due to an HTTP error
+// response (e.g. 404 from an old server with no WS endpoint, or 401 for a bad token).
+// Callers can use errors.As to distinguish this from a network-level failure and decide
+// whether to retry (network error) or give up until the next config reload (HTTP error).
+type WSHTTPError struct {
+	StatusCode int
+	err        error
+}
+
+func (e *WSHTTPError) Error() string {
+	return fmt.Sprintf("ws handshake failed (HTTP %d): %v", e.StatusCode, e.err)
+}
+
+func (e *WSHTTPError) Unwrap() error { return e.err }
+
+// wsURLFromHTTP converts an http(s):// base URL to a ws(s):// WebSocket URL.
+func wsURLFromHTTP(baseURL string) string {
+	u := strings.TrimRight(baseURL, "/")
+	u = strings.Replace(u, "https://", "wss://", 1)
+	u = strings.Replace(u, "http://", "ws://", 1)
+	return u + syncproto.WSPath
+}
+
+// Watch establishes a WebSocket connection to the server's WSPath endpoint and calls onEvent
+// for each WSEvent received. It blocks until the connection is closed, the context is cancelled,
+// or an error occurs.
+//
+// The caller (syncmanager) is responsible for reconnection with exponential backoff. Watch
+// handles ping/pong at the protocol level so the connection stays alive through idle periods.
+//
+// When the server returns an HTTP error during the handshake (no WS endpoint, bad token), the
+// returned error wraps *WSHTTPError so the caller can distinguish "old server" from transient
+// network failures.
+// onConnected may be nil. It is called once, after the handshake succeeds, so a caller can
+// report "connected" honestly instead of assuming the dial worked.
+func (c *Client) Watch(ctx context.Context, onEvent func(syncproto.WSEvent), onConnected func()) error {
+	wsURL := wsURLFromHTTP(c.BaseURL)
+	header := http.Header{}
+	if c.Token != "" {
+		header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	dialer := &websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+	conn, resp, err := dialer.DialContext(ctx, wsURL, header)
+	if err != nil {
+		if resp != nil {
+			return &WSHTTPError{StatusCode: resp.StatusCode, err: err}
+		}
+		return fmt.Errorf("ws dial: %w", err)
+	}
+	defer conn.Close()
+
+	if onConnected != nil {
+		onConnected()
+	}
+
+	// Close the connection when ctx is cancelled — this unblocks ReadMessage below.
+	// Without this, a silent server would block the read forever even after cancel.
+	go func() {
+		<-ctx.Done()
+		_ = conn.Close()
+	}()
+
+	// Auto-respond to pings so the server knows we're alive.
+	conn.SetPingHandler(func(appData string) error {
+		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		return conn.WriteMessage(websocket.PongMessage, []byte(appData))
+	})
+
+	for {
+		msgType, data, err := conn.ReadMessage()
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				return nil
+			}
+			return fmt.Errorf("ws read: %w", err)
+		}
+		if msgType != websocket.TextMessage {
+			continue
+		}
+		var ev syncproto.WSEvent
+		if err := json.Unmarshal(data, &ev); err != nil {
+			continue // ignore malformed messages
+		}
+		if onEvent != nil {
+			onEvent(ev)
+		}
+	}
 }

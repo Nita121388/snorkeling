@@ -2,7 +2,7 @@
 
 # QUEUE
 
-> 生成于 2026-11-16T05:17:16Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
+> 生成于 2026-11-16T08:41:20Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
 
 | 包 | 优先级 | 类型 | 门 | 门状态 | 运行 | 说明 |
 |---|---|---|---|---|---|---|
@@ -21,6 +21,7 @@
 | `F-1112-persona-aisessions-r1` | P1 | feature | 3/3 | clear | released | A1.5 AISessions 集成：persona 属性 + 🎭 分组折叠 + 登场史 |
 | `F-1112-persona-core-r2` | P1 | feature | 3/3 | clear | released | A1 persona 核心：目录布局 + scaffold + wsh persona CLI |
 | `F-1113-persona-widget-launch-r2` | P1 | feature | 3/3 | clear | accepted | A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带 |
+| `F-1116-commontext-sync-ws-push` | P1 | arch | 3/4 | blocked:g6 ⚠drift | idle | 方案（G6）：drift |
 | `F-1116-hero-identity-inject` | P1 | arch | 4/4 | clear | accepted | Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要 |
 | `N-1105-cmd-window-flash` | P1 | bug | 1/1 | clear | committed | 打开看板闪黑窗：子进程漏 windowsHide |
 | `N-1105-night-runner` | P1 | arch | 0/4 | blocked:g1 | idle | 需求（G1）：unsigned |

@@ -1,0 +1,36 @@
+# RED evidence — F-1116-commontext-sync-ws-push (G2)
+
+## Command
+```
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". .\scripts\use-local-env.ps1 -Quiet; go test ./pkg/syncproto/... ./cmd/snorkeling-sync/... ./pkg/syncclient/... ./pkg/syncmanager/..."
+```
+
+## Exit code: 1
+
+## Output (PowerShell stderr garbled by codepage; key lines preserved)
+```
+FAIL	github.com/wavetermdev/waveterm/pkg/syncproto    [build failed]
+FAIL	github.com/wavetermdev/waveterm/cmd/snorkeling-sync [build failed]
+FAIL	github.com/wavetermdev/waveterm/pkg/syncclient   [build failed]
+FAIL	github.com/wavetermdev/waveterm/pkg/syncmanager  [build failed]
+FAIL
+```
+
+## Explanation
+
+All four packages fail to **build** because the new tests reference symbols that do not yet exist:
+
+| Package | Missing symbols |
+|---------|----------------|
+| `pkg/syncproto` | `WSEvent`, `WSPath` (new const + struct) |
+| `cmd/snorkeling-sync` | `NewHub()`, `handleWS`, `Server.hub` field, `syncproto.WSPath` |
+| `pkg/syncclient` | `Client.Watch()` method |
+| `pkg/syncmanager` | `startWatcher()`, `stopWatcher()`, `syncTriggerFunc`, `notifyDebounce`, `nudgeDebounce`, `watchBackoffMin`, `watchBackoffMax`, `watchMaxNonNetErrors`, `watcher.done`, `watcher.IsConnected()`, `Status.Realtime` |
+
+`pkg/sync` (transport Realtime=true test not yet added — transport change is GREEN-only, no new test needed there because `Realtime` is an internal capability flag read by syncmanager, not asserted by a pkg/sync test).
+
+## Note
+`pkg/sync` passed in RED phase because no new test was added to that package; the `Realtime: true` change is an implementation-only change with no dedicated test (it's observable indirectly through syncmanager behavior).
+
+## GREEN criteria
+After implementation, all 4 packages must pass with `go test ./pkg/syncproto/... ./cmd/snorkeling-sync/... ./pkg/syncclient/... ./pkg/sync/... ./pkg/syncmanager/...` and `go test ./pkg/syncmanager/... -race`.

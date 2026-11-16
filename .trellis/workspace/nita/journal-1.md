@@ -143,3 +143,14 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
 - 单测 25 个 + commontext 回归 124 全绿；真机 verify 台 scripts/verify/commontext-send-agent-block 14/14 PASS。
 - 踩坑（已写 quality-guidelines）：TUI 首启提示（claude 目录信任 / codex 升级提示）会吞注入按键 → 验证按 snorkeling:pending-input-injected 事件断言，不读 TUI 文本；多 agent 并行跑 verify 必须用 VERIFY_PROFILE/端口错开（否则两台验证台互读对方的块）。
 - 提交混入：term.tsx 的 pending-input effect 先被并行 agent 的 f30e14c8（feat(cfa)）捎带提交，其余全部在本任务 2af9d894；task 已归档。
+
+## 2026-11-16 CommonText 同步实时推送（WebSocket rev 通知）
+
+- 起源：设置面板「应用 0.14.6-beta.0.snorkeling.0.0.123 · 协议 v1」+「实时推送：不支持」被误读成故障。实际：123 是**服务器二进制**版本（health.appVersion），协议 v1 匹配即兼容；「不支持」是真没实现（`CapWebSocket` 只有常量声明）。
+- 落地 `.trellis/tasks/11-16-commontext-sync-websocket-push`（loop 包 `F-1116-commontext-sync-ws-push`，arch，G1/G2/G5/G6 已清）：
+  - 服务端 `cmd/snorkeling-sync/hub.go` + `/v1/ws`（requireAuth 包裹），push 使 rev 前进才广播 `{"type":"rev","rev":N}`；health capabilities += `websocket`。
+  - 客户端 `syncclient.Watch(ctx, onEvent, onConnected)`：wss/ws 推导 + Bearer + ping/pong + 握手成功回调。
+  - `syncmanager/watcher.go`：常连接 + 指数退避 1s→30s + 容量 1 通道 500ms 防抖 → `SyncNow("notify")`；非网络错 3 次停到下次 reload（老服务器不刷日志）；`Nudge()` 2s 防抖 → `SyncNow("save")`，挂在 service Update/RenameTag/SyncResolve 之后。
+- 复核时自己补了两处（`trellis-check` 没抓到）：`ErrAlreadyRunning` 被写进 `lastRunError`（提取 `recordRunOutcome`）→ 良性；`Status.Realtime` 在 dial 前就置真 → 改成握手成功才置真。
+- 沉淀：`.trellis/spec/snorkeling-docs/backend/commontext-sync-realtime-contract.md`（7 条 + prove 判据）。
+- **挂起**：break.ccwu.cc 仍是 0.0.123 老二进制（无 `/v1/ws`），端到端「A 保存 → B ≤2s 看到 trigger=notify」要等人工重编译部署后验收（G7）。
