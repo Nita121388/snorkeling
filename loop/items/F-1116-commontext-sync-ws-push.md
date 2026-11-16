@@ -49,3 +49,4 @@ CommonText 同步现只有 5 分钟 timer + 手动两个触发源，跨设备可
 
 - 2026-11-16：G1/G6 依据 = 用户在会话中看过三件套并连说两次 go（"ok go" / "go on"）。
 - 2026-11-16：G1/G2/G5/G6 全清；实现 + 测试全绿（含 `-race`）；新增契约 `.trellis/spec/snorkeling-docs/backend/commontext-sync-realtime-contract.md`。G7 待部署新 server 二进制后人工验收。
+- 2026-11-16：提交 aeb919c3b（feat(sync): CommonText 实时推送）。G7 仍待新 server 二进制部署。
