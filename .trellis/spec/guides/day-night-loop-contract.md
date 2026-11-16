@@ -108,3 +108,22 @@ cmd 的引号剥离会让匹配悄悄变 0。
 教训 L-0006b（同日第二脚）：prove 下跑大 vitest 套件（64 文件 781 例）会 OOM
 （`ERR_IPC_CHANNEL_CLOSED` / heap out of memory）——`NODE_OPTIONS=--max-old-space-size=8192`
 必须带在 prove 的环境里；第一跑红了先按 flaky 重试一次再下结论（预算 retries 内重试合规）。
+
+### L-0005（goprove-env）loop 判据跑 go 必须先注入本地工具链环境（2026-11-16）
+
+> 引擎索引 loop/LESSONS.md 的 L-0005；与本文件上方 2026-11-08 的旧 L-0005（未知 flag 被静默忽略）不是同一条，那条未入引擎索引。
+
+prove 的判据命令在 queue.mjs 的子进程里跑，环境继承自启动 prove 的进程。仓库 Go 工具链在
+`.tools/go/`（自管），不注入就 `'go' 不是内部或外部命令`；只给 PATH 不够，GOCACHE/GOMODCACHE
+必须指到 `.cache/go-build` / `.cache/gomod`（GOPATH 不是模块缓存位置，GOMODCACHE 才是），
+否则 build 判据会现场拉模块超时。
+
+注入方式（bash）：
+
+```bash
+export PATH="/e/code/snorkeling/.tools/go/bin:$PATH"
+export GOCACHE='E:\code\snorkeling\.cache\go-build' GOMODCACHE='E:\code\snorkeling\.cache\gomod' GOPROXY='https://goproxy.cn,direct'
+node E:/primary/projects/loop/queue.mjs prove --id <id>
+```
+
+对应 `scripts/use-local-env.ps1` 的 bash 翻译；判据本身仍写裸 `go test/go build`。

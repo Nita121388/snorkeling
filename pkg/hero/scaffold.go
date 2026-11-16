@@ -313,13 +313,24 @@ func providerContractTemplate(p Hero) string {
 	return b.String()
 }
 
-// rootPointerTemplate is the ≤20-line root AGENTS.md: a pointer, not a copy.
+// rootPointerTemplate is the root AGENTS.md: identity summary + pointer.
+// The root AGENTS.md is the ONLY file a provider (pi/codex) auto-injects from
+// the hero home base, so it must carry the hero's identity (emoji + name +
+// role) and a hard rule to read CHARTER.md — design L245 "CHARTER 摘要 +
+// MEMORY 索引 + 同事规则". Regression guard: TestRootAGENTSIdentifiesHero.
 func rootPointerTemplate(p Hero) string {
 	var b strings.Builder
 	b.WriteString("<!-- " + GeneratedHeader + " -->\n\n")
-	b.WriteString("# " + displayName(p) + " 的据点\n\n")
-	b.WriteString("- 身份与职责书：`.hero/CHARTER.md`\n")
-	b.WriteString("- 记忆：`.hero/MEMORY/`（先读 `facts.md` 的 TL;DR）\n")
+	b.WriteString("# " + displayName(p) + "\n\n")
+	if p.Role != "" {
+		b.WriteString(p.Role + "\n\n")
+	}
+	b.WriteString("## 你是谁\n\n")
+	b.WriteString("你是该 Hero，本目录就是你的据点。答话或开工前**必读**：\n")
+	b.WriteString("- `.hero/CHARTER.md` — 职责书（使命、当班职责、红线）\n")
+	b.WriteString("- `.hero/MEMORY/facts.md` — 长期事实（头部的 ## TL;DR 先读）\n\n")
+	b.WriteString("## 指针\n\n")
+	b.WriteString("- 记忆：`.hero/MEMORY/`\n")
 	b.WriteString("- 名册（同事）: `../.index/HEROES.md`\n")
 	b.WriteString("- 工作产物进 `work/`\n")
 	b.WriteString("- 改动记忆走 `.hero/MEMORY/inbox.md` 提议；journal 可直接 append\n")

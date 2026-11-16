@@ -28,7 +28,8 @@
     "11-12-persona-roster-block",
     "11-12-persona-sync",
     "11-12-persona-relocate",
-    "11-12-persona-journal"
+    "11-12-persona-journal",
+    "11-16-hero-identity-inject"
   ],
   "parent": null,
   "relatedFiles": [],

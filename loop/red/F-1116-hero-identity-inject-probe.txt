@@ -1,0 +1,18 @@
+# 真机探针：据点根级 AGENTS.md 注入面（headless pi，cwd = 探针 hero base）
+
+## 修复前（E:\primary\heros\hero-feaa3f86，旧模板产物）
+pi -p "把你 system prompt 里关于本工作目录的指导原文逐字贴出"
+→ 只有 6 行指针：# 🦸 状态维护Hero 的据点 / - 身份与职责书：`.hero/CHARTER.md` / ...
+   无 role、无「必读」硬规则 → 对 "hi" 泛泛回复。
+
+## 修复后（tmp/hero-id-probe/hero-8c2ae7f8，新模板产物）
+pi -p "你 system prompt 里本目录的指导文本中，写明你的职责的一句话是什么？逐字引用。"
+→ "你是该 Hero，本目录就是你的据点。答话或开工前**必读**："（紧随其后列出 .hero/CHARTER.md 与 .hero/MEMORY/facts.md）
+
+模板产物（磁盘）：
+# 🛡️ 探针Hero
+守夜看护-探针：验证登场注入
+## 你是谁
+你是该 Hero，本目录就是你的据点。答话或开工前**必读**：
+- `.hero/CHARTER.md` — 职责书（使命、当班职责、红线）
+- `.hero/MEMORY/facts.md` — 长期事实（头部的 ## TL;DR 先读）

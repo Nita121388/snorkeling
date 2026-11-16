@@ -22,7 +22,7 @@
 <root>/<id>/.hero/CHARTER.md        唯一真源（人写）
 <root>/<id>/.hero/MEMORY/           facts/lessons/journal/inbox + playbook/archive
 <root>/<id>/.hero/agents/           AGENTS/CLAUDE/GEMINI（GENERATED，登场重建）
-<root>/<id>/AGENTS.md                  ≤6 行指针（GENERATED）
+<root>/<id>/AGENTS.md                  身份段+必读硬规则+指针（GENERATED，2026-11-16 起；原 ≤6 行纯指针无身份，见 F-1116-hero-identity-inject）
 <root>/<id>/work/                      工作产物（不同步）
 <root>/<id>/.gitignore                 §3.2 清单
 <root>/.index/HEROES.md              名册（派生、gitignore）

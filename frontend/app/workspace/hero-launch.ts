@@ -81,8 +81,9 @@ export function heroRosterLabel(hero: HeroRosterEntry | null | undefined): strin
 
 /**
  * The first-prompt prefix injected when "注入本次主工作目录" is checked. It is
- * deliberately short: the home base AGENTS.md already carries the charter, so
- * the shift context only has to say where today's work lives.
+ * deliberately short: the home base root AGENTS.md already carries the hero
+ * identity (emoji + name + role) and the read-CHARTER hard rule, so the shift
+ * context only has to say where today's work lives.
  */
 export function heroInjectionPrompt(hero: HeroRosterEntry, mainWorkdir: string, homeBase: string): string {
     const name = isBlank(hero?.name) ? (hero?.id ?? "") : hero.name;
