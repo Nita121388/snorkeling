@@ -8,8 +8,11 @@
 //
 // 交互对齐实测的 Wolai：
 // - 已选 chip 与输入框在同一行流内（不是先弹一个空输入框）
-// - 输入即过滤；无匹配时列表只剩一行「创建 xxx」（带 chip 预览）
+// - 输入即过滤（子串包含）；**精确值不存在**时列表尾部追加一行「创建 xxx」（带 chip 预览）
+//   —— 即使有子串命中（输入「设计中」命中「原型设计中」）创建行也要出现，否则精确值无法新增
 // - 多选：点击 toggle；单选：点击即替换并关闭
+// - 回车：默认 = 创建（精确值不存在时，延续「无匹配时回车即建」）或选中第一行；
+//   方向键/悬停主动挑选过则选中高亮行（含创建行）
 // - Backspace（空输入）删最后一个 chip；Esc / 点击外部关闭
 //
 // 数据语义仍守 markdown 优先：本组件只产出 string[]，写回由上层走最小 diff。
@@ -47,11 +50,21 @@ export function filterOptions(options: string[], draft: string): string[] {
     return options.filter((o) => o.toLowerCase().includes(q));
 }
 
-/** 是否显示「创建」行：输入非空且候选里没有同名项。 */
-export function canCreateOption(draft: string, options: string[]): boolean {
+/**
+ * 是否显示「创建」行：输入非空，且候选与已选值里都没有**精确同名项**（忽略大小写）。
+ *
+ * 与显示过滤（子串包含）是两套判据：只要精确值不存在，即使候选里有子串命中
+ * （输入「设计中」命中「原型设计中」），创建行也要出现 —— 否则精确值无法新增。
+ * `selected` 可选：调用方传的 `options` 未必包含已选值（如 CommonText 全局清单），
+ * 已选过的精确值不再出现在创建行里。
+ */
+export function canCreateOption(draft: string, options: string[], selected?: string[]): boolean {
     const value = draft.trim();
     if (value === "") return false;
-    return !options.some((o) => o.toLowerCase() === value.toLowerCase());
+    const lower = value.toLowerCase();
+    if (options.some((o) => o.toLowerCase() === lower)) return false;
+    if (selected?.some((c) => c.toLowerCase() === lower)) return false;
+    return true;
 }
 
 export function PropertyTagEditor({
@@ -67,6 +80,9 @@ export function PropertyTagEditor({
     const [chips, setChips] = useState<string[]>(items);
     const [draft, setDraft] = useState("");
     const [activeIndex, setActiveIndex] = useState(0);
+    // 有效高亮行是否被方向键/鼠标主动挑选过。未挑选时用默认高亮（见 active），
+    // 挑选过则尊重 activeIndex —— 回车语义据此分流（见顶部交互注释）。
+    const [activeTouched, setActiveTouched] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -77,7 +93,14 @@ export function PropertyTagEditor({
 
     const candidates = useMemo(() => options ?? items, [options, items]);
     const filtered = useMemo(() => filterOptions(candidates, draft), [candidates, draft]);
-    const showCreate = canCreateOption(draft, candidates);
+    const showCreate = canCreateOption(draft, candidates, chips);
+    const rows = filtered.length + (showCreate ? 1 : 0);
+    // 默认高亮：精确值不存在 → 创建行（延续「无匹配时创建行高亮、回车即建」的现状）；
+    // 否则第一行。主动挑选过（方向键/悬停）后以 activeIndex 为准。
+    const active = Math.min(
+        activeTouched ? activeIndex : showCreate ? filtered.length : 0,
+        Math.max(rows - 1, 0)
+    );
 
     const commit = useCallback(
         (next: string[]) => {
@@ -114,8 +137,8 @@ export function PropertyTagEditor({
             if (e.key === "Enter") {
                 e.preventDefault();
                 e.stopPropagation();
-                if (filtered.length > 0 && activeIndex < filtered.length) {
-                    const target = filtered[activeIndex];
+                if (active < filtered.length) {
+                    const target = filtered[active];
                     if (multiple && chips.includes(target)) {
                         removeValue(target);
                     } else {
@@ -126,6 +149,7 @@ export function PropertyTagEditor({
                 }
                 setDraft("");
                 setActiveIndex(0);
+                setActiveTouched(false);
                 return;
             }
             if (e.key === "Backspace" && draft === "" && chips.length > 0) {
@@ -135,12 +159,14 @@ export function PropertyTagEditor({
             }
             if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setActiveIndex((i) => Math.min(i + 1, Math.max(filtered.length - 1, 0)));
+                setActiveIndex(Math.min(active + 1, Math.max(rows - 1, 0)));
+                setActiveTouched(true);
                 return;
             }
             if (e.key === "ArrowUp") {
                 e.preventDefault();
-                setActiveIndex((i) => Math.max(i - 1, 0));
+                setActiveIndex(Math.max(active - 1, 0));
+                setActiveTouched(true);
                 return;
             }
             if (e.key === "Escape") {
@@ -149,7 +175,7 @@ export function PropertyTagEditor({
                 onClose();
             }
         },
-        [activeIndex, addValue, chips, draft, filtered, multiple, onClose, removeValue, showCreate]
+        [active, addValue, chips, draft, filtered, multiple, onClose, removeValue, rows, showCreate]
     );
 
     // 焦点移出整个浮层内容才关闭（点 chip 的 × 不算）
@@ -171,8 +197,6 @@ export function PropertyTagEditor({
         },
         [addValue, chips, multiple, removeValue]
     );
-
-    const rows = showCreate && filtered.length === 0 ? 1 : filtered.length;
 
     return (
         <div className="property-tag-editor" ref={containerRef} onBlur={handleBlur} data-testid="property-tag-editor">
@@ -208,6 +232,7 @@ export function PropertyTagEditor({
                     onChange={(e) => {
                         setDraft(e.target.value);
                         setActiveIndex(0);
+                        setActiveTouched(false);
                     }}
                     onKeyDown={handleKeyDown}
                 />
@@ -216,10 +241,14 @@ export function PropertyTagEditor({
                 {filtered.map((option, i) => (
                     <div
                         key={option}
-                        className={clsx("ptag-option", i === activeIndex && "is-active", chips.includes(option) && "is-selected")}
+                        className={clsx("ptag-option", i === active && "is-active", chips.includes(option) && "is-selected")}
                         role="button"
                         tabIndex={-1}
                         onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => {
+                            setActiveIndex(i);
+                            setActiveTouched(true);
+                        }}
                         onClick={() => toggleValue(option)}
                     >
                         <span className="ptag-option-chip" style={tagColorVars(option)}>
@@ -244,15 +273,21 @@ export function PropertyTagEditor({
                         </span>
                     </div>
                 ))}
-                {showCreate && filtered.length === 0 && (
+                {showCreate && (
                     <div
-                        className="ptag-option is-create is-active"
+                        className={clsx("ptag-option", "is-create", active === filtered.length && "is-active")}
                         role="button"
                         tabIndex={-1}
                         onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => {
+                            setActiveIndex(filtered.length);
+                            setActiveTouched(true);
+                        }}
                         onClick={() => {
                             addValue(draft);
                             setDraft("");
+                            setActiveIndex(0);
+                            setActiveTouched(false);
                         }}
                     >
                         <span className="ptag-option-chip" style={tagColorVars(draft.trim())}>
@@ -261,9 +296,7 @@ export function PropertyTagEditor({
                         <span className="ptag-create-label">{t("element:tagEditor.create")}</span>
                     </div>
                 )}
-                {rows === 0 && filtered.length === 0 && !showCreate && (
-                    <div className="ptag-empty">{t("element:tagEditor.empty")}</div>
-                )}
+                {rows === 0 && <div className="ptag-empty">{t("element:tagEditor.empty")}</div>}
             </div>
         </div>
     );

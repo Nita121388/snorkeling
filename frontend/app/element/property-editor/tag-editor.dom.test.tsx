@@ -106,3 +106,104 @@ describe("PropertyTagEditor — 候选计数", () => {
         expect(onChange.mock.calls[0][0]).toEqual(["fix"]);
     });
 });
+
+describe("PropertyTagEditor — 创建行不被子串命中挡住", () => {
+    const input = () => document.querySelector<HTMLInputElement>(".ptag-input")!;
+    const createRow = () => document.querySelector(".ptag-option.is-create");
+    const keydown = (key: string) => {
+        act(() => {
+            input().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+        });
+    };
+    const typeInto = (text: string) => {
+        act(() => {
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+            setter.call(input(), text);
+            input().dispatchEvent(new Event("input", { bubbles: true }));
+        });
+    };
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        container.remove();
+        vi.useRealTimers();
+    });
+
+    it("精确值不存在但子串命中时，创建行仍然出现（与过滤结果共存）", () => {
+        mount(
+            <PropertyTagEditor
+                items={[]}
+                options={["原型设计中"]}
+                onChange={vi.fn()}
+                onClose={vi.fn()}
+            />
+        );
+
+        typeInto("设计中");
+        // 过滤列表里有「原型设计中」（子串命中）……
+        const matched = optionRows().find((row) => row.textContent?.includes("原型设计中"));
+        expect(matched).toBeDefined();
+        // ……但创建行也在，不被子串命中挡住
+        expect(createRow()).toBeDefined();
+        expect(createRow()!.textContent).toContain("设计中");
+    });
+
+    it("点击创建行新增精确值（不是子串命中的项）", () => {
+        const onChange = vi.fn();
+        mount(
+            <PropertyTagEditor
+                items={[]}
+                options={["原型设计中"]}
+                onChange={onChange}
+                onClose={vi.fn()}
+            />
+        );
+
+        typeInto("设计中");
+        act(() => {
+            createRow()!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][0]).toEqual(["设计中"]);
+    });
+
+    it("输入完整新值后直接回车 → 创建精确值（不选子串命中的第一行）", () => {
+        const onChange = vi.fn();
+        mount(
+            <PropertyTagEditor
+                items={[]}
+                options={["原型设计中"]}
+                onChange={onChange}
+                onClose={vi.fn()}
+            />
+        );
+
+        typeInto("设计中");
+        keydown("Enter");
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][0]).toEqual(["设计中"]);
+        expect(onChange.mock.calls[0][0]).not.toContain("原型设计中");
+    });
+
+    it("方向键主动挑选子串命中的项后回车 → 选中该行（浏览流不误创）", () => {
+        const onChange = vi.fn();
+        mount(
+            <PropertyTagEditor
+                items={[]}
+                options={["原型设计中"]}
+                onChange={onChange}
+                onClose={vi.fn()}
+            />
+        );
+
+        typeInto("设计中");
+        // 默认高亮在创建行（index=filtered.length=1）；ArrowUp 一次到「原型设计中」(index=0)
+        keydown("ArrowUp");
+        keydown("Enter");
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][0]).toEqual(["原型设计中"]);
+    });
+});
