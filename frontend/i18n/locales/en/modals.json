@@ -91,7 +91,9 @@
         "blocksWarning_other": "{{count}} blocks will be closed."
     },
     "connTypeahead": {
-        "connectPlaceholder": "Connect to (username@host)..."
+        "connectPlaceholder": "Connect to (username@host)...",
+        "copyName": "Copy connection name",
+        "loading": "Loading connections"
     },
     "editOrigins": {
         "title": "External session origins",

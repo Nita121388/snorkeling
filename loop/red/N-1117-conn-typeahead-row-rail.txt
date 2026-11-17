@@ -1,0 +1,1296 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mE:/code/snorkeling[39m
+
+[1m[43m DEPRECATED [49m[22m [33m'basic' reporter is deprecated and will be removed in Vitest v3.
+Remove 'basic' from 'reporters' option. To match 'basic' reporter 100%, use configuration:
+{
+  "test": {
+    "reporters": [
+      [
+        "default",
+        {
+          "summary": false
+        }
+      ]
+    ]
+  }
+}[39m
+ [32m✓[39m .cache/tmp/wt-head/frontend/app/modals/agenthooksettingsmodal.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/agenthooksettingsmodal.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+[90mstderr[2m | frontend/app/modals/modal.dom.test.tsx[2m > [22m[2mModal shell contract[2m > [22m[2m不传 onClose 时不渲染任何关闭按钮
+[22m[39mreact-i18next:: useTranslation: You will need to pass in an i18next instance by using initReactI18next or by passing it via props or context. In monorepo setups, make sure there is only one instance of react-i18next. { code: [32m'NO_I18NEXT_INSTANCE'[39m }
+
+[90mstderr[2m | frontend/app/modals/confirmmodal.test.tsx[2m > [22m[2mConfirmModal[2m > [22m[2mrenders the title, message and both actions
+[22m[39mreact-i18next:: useTranslation: You will need to pass in an i18next instance by using initReactI18next or by passing it via props or context. In monorepo setups, make sure there is only one instance of react-i18next. { code: [32m'NO_I18NEXT_INSTANCE'[39m }
+
+ [32m✓[39m .cache/tmp/wt-head/frontend/app/modals/confirmmodal.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 236[2mms[22m[39m
+ [32m✓[39m .cache/tmp/wt-head/frontend/app/modals/restartconfirmmodal.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 251[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/confirmmodal.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 315[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/modal.dom.test.tsx [2m([22m[2m9 tests[22m[2m)[22m[33m 344[2mms[22m[39m
+Browserslist: browsers data (caniuse-lite) is 11 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ [31m❯[39m frontend/app/modals/typeaheadmodal.test.tsx [2m([22m[2m8 tests[22m[2m | [22m[31m7 failed[39m[2m)[22m[33m 319[2mms[22m[39m
+[31m   [31m×[31m Suggestions 行结构（右栏居右的结构前提）[2m > [22m右栏是行的直接子节点，来源徽标不再塞进名字盒[39m[32m 70[2mms[22m[39m
+[31m     → Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.[39m
+[31m   [31m×[31m Suggestions 行结构（右栏居右的结构前提）[2m > [22mlabel 是真实元素（省略号才有落点）[39m[32m 13[2mms[22m[39m
+[31m     → Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.[39m
+[31m   [31m×[31m Suggestions 行结构（右栏居右的结构前提）[2m > [22m上行/下行顺序与传入顺序一致（rail 不改变行序）[39m[32m 13[2mms[22m[39m
+[31m     → Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.[39m
+[31m   [31m×[31m hover 一键复制[2m > [22m只有带 copyText 的行渲染复制槽[39m[32m 6[2mms[22m[39m
+[31m     → Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.[39m
+[31m   [31m×[31m hover 一键复制[2m > [22m点复制 → 写剪贴板，且不触发行选择（不冒泡）[39m[32m 13[2mms[22m[39m
+[31m     → Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.[39m
+[31m   [31m×[31m hover 一键复制[2m > [22m复制成功后有 copied 反馈（check 图标），不是静默无反馈[39m[32m 4[2mms[22m[39m
+[31m     → Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.[39m
+[31m   [31m×[31m 加载骨架[2m > [22mloading 时渲染固定行数骨架并标 aria-busy，且没有可点击行[39m[32m 165[2mms[22m[39m
+[31m     → expected null not to be null[39m
+   [32m✓[39m 加载骨架[2m > [22m非 loading 时不出骨架[32m 19[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/restartconfirmmodal.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 265[2mms[22m[39m
+ [32m✓[39m frontend/app/modals/syncconflictmodal.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 467[2mms[22m[39m
+ [31m❯[39m frontend/app/modals/conntypeahead.test.tsx [2m([22m[2m9 tests[22m[2m | [22m[31m9 failed[39m[2m)[22m[32m 70[2mms[22m[39m
+[31m   [31m×[31m copyText：只在有连接名的行上[2m > [22m远程行复制的是连接名本身[39m[32m 23[2mms[22m[39m
+[31m     → (0 , createRemoteSuggestionItems) is not a function[39m
+[31m   [31m×[31m copyText：只在有连接名的行上[2m > [22mwsl 行复制的是带前缀的完整连接名[39m[32m 3[2mms[22m[39m
+[31m     → (0 , createWslSuggestionItems) is not a function[39m
+[31m   [31m×[31m copyText：只在有连接名的行上[2m > [22m本机行不给复制（value 是空串，复制无意义）[39m[32m 2[2mms[22m[39m
+[31m     → (0 , createFilteredLocalSuggestionItem) is not a function[39m
+[31m   [31m×[31m copyText：只在有连接名的行上[2m > [22mEdit Connections 这类动作行不给复制[39m[32m 2[2mms[22m[39m
+[31m     → (0 , getConnectionsEditItem) is not a function[39m
+[31m   [31m×[31m sortConnSuggestionItems：使用次数优先[2m > [22m常用连接排到前面（即便 display:order 更低）[39m[32m 3[2mms[22m[39m
+[31m     → (0 , sortConnSuggestionItems) is not a function[39m
+[31m   [31m×[31m sortConnSuggestionItems：使用次数优先[2m > [22m同次数时 display:order 仍然生效，再退回名字升序[39m[32m 2[2mms[22m[39m
+[31m     → (0 , sortConnSuggestionItems) is not a function[39m
+[31m   [31m×[31m sortConnSuggestionItems：使用次数优先[2m > [22m没有使用数据时行为与旧的 display:order 排序一致（不破坏既有偏好）[39m[32m 2[2mms[22m[39m
+[31m     → (0 , sortConnSuggestionItems) is not a function[39m
+[31m   [31m×[31m 计数写入点（源码断言）[2m > [22m连接成功后调 recordConnUse，且读侧用 loadConnUsage[39m[32m 18[2mms[22m[39m
+[31m     → expected '// Copyright 2025, Command Line Inc.\…' to contain 'recordConnUse('[39m
+[31m   [31m×[31m 计数写入点（源码断言）[2m > [22m排序调用把使用计数传进去（否则计数白记）[39m[32m 6[2mms[22m[39m
+[31m     → expected '// Copyright 2025, Command Line Inc.\…' to match /sortConnSuggestionItems\([^)]*connUsa…/[39m
+
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conn-usage.test.ts[2m [ frontend/app/modals/conn-usage.test.ts ][22m
+[31m[1mError[22m: Failed to resolve import "./conn-usage" from "frontend/app/modals/conn-usage.test.ts". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mE:/code/snorkeling/frontend/app/modals/conn-usage.test.ts[39m:13:88
+[33m  9  |  // @vitest-environment jsdom
+  10 |  import { beforeEach, describe, expect, it } from "vitest";
+  11 |  import { ConnUsageStorageKey, loadConnUsage, recordConnUse, sortConnItemsByUsage } from "./conn-usage";
+     |                                                                                           ^
+  12 |  function stored() {
+  13 |      return JSON.parse(localStorage.getItem(ConnUsageStorageKey) ?? "{}");[39m
+[90m [2m❯[22m TransformPluginContext._formatLog node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m42553:41[22m[39m
+[90m [2m❯[22m TransformPluginContext.error node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m42550:16[22m[39m
+[90m [2m❯[22m normalizeUrl node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m40529:23[22m[39m
+[90m [2m❯[22m node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m40648:37[22m[39m
+[90m [2m❯[22m TransformPluginContext.transform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m40575:7[22m[39m
+[90m [2m❯[22m EnvironmentPluginContainer.transform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m42348:18[22m[39m
+[90m [2m❯[22m loadAndTransform node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js:[2m35740:27[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/17]⎯[22m[39m
+
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 16 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22mcopyText：只在有连接名的行上[2m > [22m远程行复制的是连接名本身
+[31m[1mTypeError[22m: (0 , createRemoteSuggestionItems) is not a function[39m
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m30:23[22m[39m
+    [90m 28| [39m[34mdescribe[39m([32m"copyText：只在有连接名的行上"[39m[33m,[39m () [33m=>[39m {
+    [90m 29| [39m    [34mit[39m([32m"远程行复制的是连接名本身"[39m[33m,[39m () [33m=>[39m {
+    [90m 30| [39m        [35mconst[39m items [33m=[39m [34mcreateRemoteSuggestionItems[39m(
+    [90m   | [39m                      [31m^[39m
+    [90m 31| [39m            [[32m"nita@100.110.167.25"[39m[33m,[39m [32m"ubuntu@49.51.243.178"[39m][33m,[39m
+    [90m 32| [39m            [32m"nita@100.110.167.25"[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22mcopyText：只在有连接名的行上[2m > [22mwsl 行复制的是带前缀的完整连接名
+[31m[1mTypeError[22m: (0 , createWslSuggestionItems) is not a function[39m
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m40:23[22m[39m
+    [90m 38| [39m
+    [90m 39| [39m    [34mit[39m([32m"wsl 行复制的是带前缀的完整连接名"[39m[33m,[39m () [33m=>[39m {
+    [90m 40| [39m        const items = createWslSuggestionItems(["Ubuntu-22.04"], "", n…
+    [90m   | [39m                      [31m^[39m
+    [90m 41| [39m        [34mexpect[39m(items[[34m0[39m][33m.[39mcopyText)[33m.[39m[34mtoBe[39m([32m"wsl://Ubuntu-22.04"[39m)[33m;[39m
+    [90m 42| [39m    })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22mcopyText：只在有连接名的行上[2m > [22m本机行不给复制（value 是空串，复制无意义）
+[31m[1mTypeError[22m: (0 , createFilteredLocalSuggestionItem) is not a function[39m
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m45:23[22m[39m
+    [90m 43| [39m
+    [90m 44| [39m    [34mit[39m([32m"本机行不给复制（value 是空串，复制无意义）"[39m[33m,[39m () [33m=>[39m {
+    [90m 45| [39m        const items = createFilteredLocalSuggestionItem("chemclin@DESK…
+    [90m   | [39m                      [31m^[39m
+    [90m 46| [39m        [34mexpect[39m(items)[33m.[39m[34mtoHaveLength[39m([34m1[39m)[33m;[39m
+    [90m 47| [39m        [34mexpect[39m(items[[34m0[39m][33m.[39mcopyText)[33m.[39m[34mtoBeUndefined[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22mcopyText：只在有连接名的行上[2m > [22mEdit Connections 这类动作行不给复制
+[31m[1mTypeError[22m: (0 , getConnectionsEditItem) is not a function[39m
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m51:22[22m[39m
+    [90m 49| [39m
+    [90m 50| [39m    [34mit[39m([32m"Edit Connections 这类动作行不给复制"[39m[33m,[39m () [33m=>[39m {
+    [90m 51| [39m        [35mconst[39m item [33m=[39m [34mgetConnectionsEditItem[39m(jotai[33m.[39m[34matom[39m([35mfalse[39m)[33m,[39m [32m""[39m)[33m;[39m
+    [90m   | [39m                     [31m^[39m
+    [90m 52| [39m        [34mexpect[39m(item)[33m.[39mnot[33m.[39m[34mtoBeNull[39m()[33m;[39m
+    [90m 53| [39m        [34mexpect[39m(item[33m.[39mcopyText)[33m.[39m[34mtoBeUndefined[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22msortConnSuggestionItems：使用次数优先[2m > [22m常用连接排到前面（即便 display:order 更低）
+[31m[1mTypeError[22m: (0 , sortConnSuggestionItems) is not a function[39m
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m68:24[22m[39m
+    [90m 66| [39m
+    [90m 67| [39m    [34mit[39m([32m"常用连接排到前面（即便 display:order 更低）"[39m[33m,[39m () [33m=>[39m {
+    [90m 68| [39m        const sorted = sortConnSuggestionItems(items("rare", "frequent…
+    [90m   | [39m                       [31m^[39m
+    [90m 69| [39m            rare[33m:[39m [34m1[39m[33m,[39m
+    [90m 70| [39m            frequent[33m:[39m [34m9[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22msortConnSuggestionItems：使用次数优先[2m > [22m同次数时 display:order 仍然生效，再退回名字升序
+[31m[1mTypeError[22m: (0 , sortConnSuggestionItems) is not a function[39m
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m77:24[22m[39m
+    [90m 75| [39m
+    [90m 76| [39m    [34mit[39m([32m"同次数时 display:order 仍然生效，再退回名字升序"[39m[33m,[39m () [33m=>[39m {
+    [90m 77| [39m        const sorted = sortConnSuggestionItems(items("b", "a", "pinned…
+    [90m   | [39m                       [31m^[39m
+    [90m 78| [39m            a[33m:[39m [34m2[39m[33m,[39m
+    [90m 79| [39m            b[33m:[39m [34m2[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22msortConnSuggestionItems：使用次数优先[2m > [22m没有使用数据时行为与旧的 display:order 排序一致（不破坏既有偏好）
+[31m[1mTypeError[22m: (0 , sortConnSuggestionItems) is not a function[39m
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m86:24[22m[39m
+    [90m 84| [39m
+    [90m 85| [39m    [34mit[39m([32m"没有使用数据时行为与旧的 display:order 排序一致（不破坏既有偏好）"[39m[33m,[39m () [33m=>[39m {
+    [90m 86| [39m        const sorted = sortConnSuggestionItems(items("z", "first", "a"…
+    [90m   | [39m                       [31m^[39m
+    [90m 87| [39m        expect(sorted.map((i) => i.value)).toEqual(["first", "z", "a"]…
+    [90m 88| [39m    })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22m计数写入点（源码断言）[2m > [22m连接成功后调 recordConnUse，且读侧用 loadConnUsage
+[31m[1mAssertionError[22m: expected '// Copyright 2025, Command Line Inc.\…' to contain 'recordConnUse('[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- recordConnUse([39m
+[31m+ // Copyright 2025, Command Line Inc.[39m
+[31m+ // SPDX-License-Identifier: Apache-2.0[39m
+[31m+[39m
+[31m+ import { computeConnColorNum } from "@/app/block/blockutil";[39m
+[31m+ import { TypeAheadModal } from "@/app/modals/typeaheadmodal";[39m
+[31m+ import { ConnectionsModel } from "@/app/store/connections-model";[39m
+[31m+ import { ConnectionOperationTimeoutMs } from "@/app/store/connection-timeout";[39m
+[31m+ import {[39m
+[31m+     atoms,[39m
+[31m+     createBlock,[39m
+[31m+     getConnStatusAtom,[39m
+[31m+     getLocalHostDisplayNameAtom,[39m
+[31m+     globalStore,[39m
+[31m+     WOS,[39m
+[31m+ } from "@/app/store/global";[39m
+[31m+ import { globalRefocusWithTimeout } from "@/app/store/keymodel";[39m
+[31m+ import { RpcApi } from "@/app/store/wshclientapi";[39m
+[31m+ import { TabRpcClient } from "@/app/store/wshrpcutil";[39m
+[31m+ import { NodeModel } from "@/layout/index";[39m
+[31m+ import * as keyutil from "@/util/keyutil";[39m
+[31m+ import * as util from "@/util/util";[39m
+[31m+ import * as jotai from "jotai";[39m
+[31m+ import * as React from "react";[39m
+[31m+ import { useTranslation } from "react-i18next";[39m
+[31m+[39m
+[31m+ // newConnList -> connList => filteredList -> remoteItems -> sortedRemoteItems => remoteSuggestion[39m
+[31m+ // filteredList -> createNew[39m
+[31m+[39m
+[31m+ function filterConnections([39m
+[31m+     connList: Array<string>,[39m
+[31m+     connSelected: string,[39m
+[31m+     fullConfig: FullConfigType,[39m
+[31m+     filterOutNowsh: boolean[39m
+[31m+ ): Array<string> {[39m
+[31m+     const connectionsConfig = fullConfig.connections;[39m
+[31m+     return connList.filter((conn) => {[39m
+[31m+         const hidden = connectionsConfig?.[conn]?.["display:hidden"] ?? false;[39m
+[31m+         const wshEnabled = connectionsConfig?.[conn]?.["conn:wshenabled"] ?? true;[39m
+[31m+         return conn.includes(connSelected) && !hidden && (wshEnabled || !filterOutNowsh);[39m
+[31m+     });[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function sortConnSuggestionItems([39m
+[31m+     connSuggestions: Array<SuggestionConnectionItem>,[39m
+[31m+     fullConfig: FullConfigType[39m
+[31m+ ): Array<SuggestionConnectionItem> {[39m
+[31m+     const connectionsConfig = fullConfig.connections;[39m
+[31m+     return connSuggestions.sort((itemA: SuggestionConnectionItem, itemB: SuggestionConnectionItem) => {[39m
+[31m+         const connNameA = itemA.value;[39m
+[31m+         const connNameB = itemB.value;[39m
+[31m+         const valueA = connectionsConfig?.[connNameA]?.["display:order"] ?? 0;[39m
+[31m+         const valueB = connectionsConfig?.[connNameB]?.["display:order"] ?? 0;[39m
+[31m+         return valueA - valueB;[39m
+[31m+     });[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function createRemoteSuggestionItems([39m
+[31m+     filteredList: Array<string>,[39m
+[31m+     connection: string,[39m
+[31m+     connStatusMap: Map<string, ConnStatus>,[39m
+[31m+     sourcesMap: Map<string, string[]>[39m
+[31m+ ): Array<SuggestionConnectionItem> {[39m
+[31m+     return filteredList.map((connName) => {[39m
+[31m+         const connStatus = connStatusMap.get(connName);[39m
+[31m+         const connColorNum = computeConnColorNum(connStatus);[39m
+[31m+         const item: SuggestionConnectionItem = {[39m
+[31m+             status: "connected",[39m
+[31m+             icon: "arrow-right-arrow-left",[39m
+[31m+             iconColor:[39m
+[31m+                 connStatus?.status == "connected" ? `var(--conn-icon-color-${connColorNum})` : "var(--grey-text-color)",[39m
+[31m+             value: connName,[39m
+[31m+             label: connName,[39m
+[31m+             current: connName == connection,[39m
+[31m+             // 来源由后端 connlistdetail 提供；缺数据时不显示徽标（不造假信息）。[39m
+[31m+             sources: sourcesMap.get(connName),[39m
+[31m+         };[39m
+[31m+         return item;[39m
+[31m+     });[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function createWslSuggestionItems([39m
+[31m+     filteredList: Array<string>,[39m
+[31m+     connection: string,[39m
+[31m+     connStatusMap: Map<string, ConnStatus>[39m
+[31m+ ): Array<SuggestionConnectionItem> {[39m
+[31m+     return filteredList.map((connName) => {[39m
+[31m+         const connStatus = connStatusMap.get(`wsl://${connName}`);[39m
+[31m+         const connColorNum = computeConnColorNum(connStatus);[39m
+[31m+         const item: SuggestionConnectionItem = {[39m
+[31m+             status: "connected",[39m
+[31m+             icon: "arrow-right-arrow-left",[39m
+[31m+             iconColor:[39m
+[31m+                 connStatus?.status == "connected" ? `var(--conn-icon-color-${connColorNum})` : "var(--grey-text-color)",[39m
+[31m+             value: "wsl://" + connName,[39m
+[31m+             label: "wsl://" + connName,[39m
+[31m+             current: "wsl://" + connName == connection,[39m
+[31m+         };[39m
+[31m+         return item;[39m
+[31m+     });[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function createFilteredLocalSuggestionItem([39m
+[31m+     localName: string,[39m
+[31m+     connection: string,[39m
+[31m+     connSelected: string[39m
+[31m+ ): Array<SuggestionConnectionItem> {[39m
+[31m+     if (localName.includes(connSelected)) {[39m
+[31m+         const localSuggestion: SuggestionConnectionItem = {[39m
+[31m+             status: "connected",[39m
+[31m+             icon: "laptop",[39m
+[31m+             iconColor: "var(--grey-text-color)",[39m
+[31m+             value: "",[39m
+[31m+             label: localName,[39m
+[31m+             current: util.isBlank(connection),[39m
+[31m+         };[39m
+[31m+         return [localSuggestion];[39m
+[31m+     }[39m
+[31m+     return [];[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function getReconnectItem([39m
+[31m+     connStatus: ConnStatus,[39m
+[31m+     connSelected: string,[39m
+[31m+     blockId: string,[39m
+[31m+     changeConnModalAtom: jotai.PrimitiveAtom<boolean>[39m
+[31m+ ): SuggestionConnectionItem | null {[39m
+[31m+     if (connSelected != "" || (connStatus.status != "disconnected" && connStatus.status != "error")) {[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     const reconnectSuggestionItem: SuggestionConnectionItem = {[39m
+[31m+         status: "connected",[39m
+[31m+         icon: "arrow-right-arrow-left",[39m
+[31m+         iconColor: "var(--grey-text-color)",[39m
+[31m+         label: `Reconnect to ${connStatus.connection}`,[39m
+[31m+         value: "",[39m
+[31m+         onSelect: async (_: string) => {[39m
+[31m+             globalStore.set(changeConnModalAtom, false);[39m
+[31m+             const prtn = RpcApi.ConnConnectCommand([39m
+[31m+                 TabRpcClient,[39m
+[31m+                 { host: connStatus.connection, logblockid: blockId },[39m
+[31m+                 { timeout: ConnectionOperationTimeoutMs }[39m
+[31m+             );[39m
+[31m+             prtn.catch((e) => console.log("error reconnecting", connStatus.connection, e));[39m
+[31m+         },[39m
+[31m+     };[39m
+[31m+     return reconnectSuggestionItem;[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function getLocalSuggestions([39m
+[31m+     localName: string,[39m
+[31m+     connList: Array<string>,[39m
+[31m+     connection: string,[39m
+[31m+     connSelected: string,[39m
+[31m+     connStatusMap: Map<string, ConnStatus>,[39m
+[31m+     fullConfig: FullConfigType,[39m
+[31m+     filterOutNowsh: boolean,[39m
+[31m+     hasGitBash: boolean[39m
+[31m+ ): SuggestionConnectionScope | null {[39m
+[31m+     const wslFiltered = filterConnections(connList, connSelected, fullConfig, filterOutNowsh);[39m
+[31m+     const wslSuggestionItems = createWslSuggestionItems(wslFiltered, connection, connStatusMap);[39m
+[31m+     const localSuggestionItem = createFilteredLocalSuggestionItem(localName, connection, connSelected);[39m
+[31m+[39m
+[31m+     const gitBashItems: Array<SuggestionConnectionItem> = [];[39m
+[31m+     if (hasGitBash && "Git Bash".toLowerCase().includes(connSelected.toLowerCase())) {[39m
+[31m+         gitBashItems.push({[39m
+[31m+             status: "connected",[39m
+[31m+             icon: "laptop",[39m
+[31m+             iconColor: "var(--grey-text-color)",[39m
+[31m+             value: "local:gitbash",[39m
+[31m+             label: "Git Bash",[39m
+[31m+             current: connection === "local:gitbash",[39m
+[31m+         });[39m
+[31m+     }[39m
+[31m+[39m
+[31m+     const combinedSuggestionItems = [...localSuggestionItem, ...gitBashItems, ...wslSuggestionItems];[39m
+[31m+     const sortedSuggestionItems = sortConnSuggestionItems(combinedSuggestionItems, fullConfig);[39m
+[31m+     if (sortedSuggestionItems.length == 0) {[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     const localSuggestions: SuggestionConnectionScope = {[39m
+[31m+         headerText: "Local",[39m
+[31m+         items: sortedSuggestionItems,[39m
+[31m+     };[39m
+[31m+     return localSuggestions;[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function getRemoteSuggestions([39m
+[31m+     connList: Array<string>,[39m
+[31m+     connection: string,[39m
+[31m+     connSelected: string,[39m
+[31m+     connStatusMap: Map<string, ConnStatus>,[39m
+[31m+     fullConfig: FullConfigType,[39m
+[31m+     filterOutNowsh: boolean,[39m
+[31m+     sourcesMap: Map<string, string[]>[39m
+[31m+ ): SuggestionConnectionScope | null {[39m
+[31m+     const filtered = filterConnections(connList, connSelected, fullConfig, filterOutNowsh);[39m
+[31m+     const suggestionItems = createRemoteSuggestionItems(filtered, connection, connStatusMap, sourcesMap);[39m
+[31m+     const sortedSuggestionItems = sortConnSuggestionItems(suggestionItems, fullConfig);[39m
+[31m+     if (sortedSuggestionItems.length == 0) {[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     const remoteSuggestions: SuggestionConnectionScope = {[39m
+[31m+         headerText: "Remote",[39m
+[31m+         items: sortedSuggestionItems,[39m
+[31m+     };[39m
+[31m+     return remoteSuggestions;[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function getDisconnectItem([39m
+[31m+     connection: string,[39m
+[31m+     connStatusMap: Map<string, ConnStatus>,[39m
+[31m+     changeConnModalAtom: jotai.PrimitiveAtom<boolean>[39m
+[31m+ ): SuggestionConnectionItem | null {[39m
+[31m+     if (util.isLocalConnName(connection)) {[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     const connStatus = connStatusMap.get(connection);[39m
+[31m+     if (!connStatus || connStatus.status != "connected") {[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     const disconnectSuggestionItem: SuggestionConnectionItem = {[39m
+[31m+         status: "connected",[39m
+[31m+         icon: "xmark",[39m
+[31m+         iconColor: "var(--grey-text-color)",[39m
+[31m+         label: `Disconnect ${connStatus.connection}`,[39m
+[31m+         value: "",[39m
+[31m+         onSelect: async (_: string) => {[39m
+[31m+             globalStore.set(changeConnModalAtom, false);[39m
+[31m+             const prtn = RpcApi.ConnDisconnectCommand(TabRpcClient, connection, { timeout: 60000 });[39m
+[31m+             prtn.catch((e) => console.log("error disconnecting", connStatus.connection, e));[39m
+[31m+         },[39m
+[31m+     };[39m
+[31m+     return disconnectSuggestionItem;[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function getConnectionsEditItem([39m
+[31m+     changeConnModalAtom: jotai.PrimitiveAtom<boolean>,[39m
+[31m+     connSelected: string[39m
+[31m+ ): SuggestionConnectionItem | null {[39m
+[31m+     if (connSelected != "") {[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     const connectionsEditItem: SuggestionConnectionItem = {[39m
+[31m+         status: "disconnected",[39m
+[31m+         icon: "gear",[39m
+[31m+         iconColor: "var(--grey-text-color)",[39m
+[31m+         value: "Edit Connections",[39m
+[31m+         label: "Edit Connections",[39m
+[31m+         onSelect: () => {[39m
+[31m+             util.fireAndForget(async () => {[39m
+[31m+                 globalStore.set(changeConnModalAtom, false);[39m
+[31m+                 const blockDef: BlockDef = {[39m
+[31m+                     meta: {[39m
+[31m+                         view: "waveconfig",[39m
+[31m+                         file: "connections.json",[39m
+[31m+                     },[39m
+[31m+                 };[39m
+[31m+                 await createBlock(blockDef, false, true);[39m
+[31m+             });[39m
+[31m+         },[39m
+[31m+     };[39m
+[31m+     return connectionsEditItem;[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ function getNewConnectionSuggestionItem([39m
+[31m+     connSelected: string,[39m
+[31m+     localName: string,[39m
+[31m+     remoteConns: Array<string>,[39m
+[31m+     wslConns: Array<string>,[39m
+[31m+     changeConnection: (connName: string) => Promise<void>,[39m
+[31m+     changeConnModalAtom: jotai.PrimitiveAtom<boolean>[39m
+[31m+ ): SuggestionConnectionItem | null {[39m
+[31m+     const allCons = ["", localName, ...remoteConns, ...wslConns];[39m
+[31m+     if (allCons.includes(connSelected)) {[39m
+[31m+         // do not offer to create a new connection if one[39m
+[31m+         // with the exact name already exists[39m
+[31m+         return null;[39m
+[31m+     }[39m
+[31m+     const newConnectionSuggestion: SuggestionConnectionItem = {[39m
+[31m+         status: "connected",[39m
+[31m+         icon: "plus",[39m
+[31m+         iconColor: "var(--grey-text-color)",[39m
+[31m+         label: `${connSelected} (New Connection)`,[39m
+[31m+         value: "",[39m
+[31m+         onSelect: (_: string) => {[39m
+[31m+             changeConnection(connSelected);[39m
+[31m+             globalStore.set(changeConnModalAtom, false);[39m
+[31m+         },[39m
+[31m+     };[39m
+[31m+     return newConnectionSuggestion;[39m
+[31m+ }[39m
+[31m+[39m
+[31m+ const ChangeConnectionBlockModal = React.memo([39m
+[31m+     ({[39m
+[31m+         blockId,[39m
+[31m+         viewModel,[39m
+[31m+         blockRef,[39m
+[31m+         connBtnRef,[39m
+[31m+         changeConnModalAtom,[39m
+[31m+         nodeModel,[39m
+[31m+     }: {[39m
+[31m+         blockId: string;[39m
+[31m+         viewModel: ViewModel;[39m
+[31m+         blockRef: React.RefObject<HTMLDivElement>;[39m
+[31m+         connBtnRef: React.RefObject<HTMLDivElement>;[39m
+[31m+         changeConnModalAtom: jotai.PrimitiveAtom<boolean>;[39m
+[31m+         nodeModel: NodeModel;[39m
+[31m+     }) => {[39m
+[31m+         const { t } = useTranslation("modals");[39m
+[31m+         const [connSelected, setConnSelected] = React.useState("");[39m
+[31m+         const changeConnModalOpen = jotai.useAtomValue(changeConnModalAtom);[39m
+[31m+         const [blockData] = WOS.useWaveObjectValue<Block>(WOS.makeORef("block", blockId));[39m
+[31m+         const isNodeFocused = jotai.useAtomValue(nodeModel.isFocused);[39m
+[31m+         const connection = blockData?.meta?.connection;[39m
+[31m+         const connStatusAtom = getConnStatusAtom(connection);[39m
+[31m+         const connStatus = jotai.useAtomValue(connStatusAtom);[39m
+[31m+         const [connList, setConnList] = React.useState<Array<string>>([]);[39m
+[31m+         const [wslList, setWslList] = React.useState<Array<string>>([]);[39m
+[31m+         // connName -> sources, filled from connlistdetail. Kept as separate state (not folded into[39m
+[31m+         // connList) so a failure to load provenance degrades to "no badges" instead of an empty list.[39m
+[31m+         const [connSources, setConnSources] = React.useState<Map<string, string[]>>(() => new Map());[39m
+[31m+         const allConnStatus = jotai.useAtomValue(atoms.allConnStatus);[39m
+[31m+         const [rowIndex, setRowIndex] = React.useState(0);[39m
+[31m+         const connStatusMap = new Map<string, ConnStatus>();[39m
+[31m+         const fullConfig = jotai.useAtomValue(atoms.fullConfigAtom);[39m
+[31m+         let filterOutNowsh = util.useAtomValueSafe(viewModel.filterOutNowsh) ?? true;[39m
+[31m+         const hasGitBash = jotai.useAtomValue(ConnectionsModel.getInstance().hasGitBashAtom);[39m
+[31m+         const localName = jotai.useAtomValue(getLocalHostDisplayNameAtom());[39m
+[31m+[39m
+[31m+         let maxActiveConnNum = 1;[39m
+[31m+         for (const conn of allConnStatus) {[39m
+[31m+             if (conn.activeconnnum > maxActiveConnNum) {[39m
+[31m+                 maxActiveConnNum = conn.activeconnnum;[39m
+[31m+             }[39m
+[31m+             connStatusMap.set(conn.connection, conn);[39m
+[31m+         }[39m
+[31m+         React.useEffect(() => {[39m
+[31m+             if (!changeConnModalOpen) {[39m
+[31m+                 setConnList([]);[39m
+[31m+                 return;[39m
+[31m+             }[39m
+[31m+             const prtn = RpcApi.ConnListCommand(TabRpcClient, { timeout: 2000 });[39m
+[31m+             prtn.then((newConnList) => {[39m
+[31m+                 setConnList(newConnList ?? []);[39m
+[31m+             }).catch((e) => console.log("unable to load conn list from backend. using blank list: ", e));[39m
+[31m+             // Provenance is best-effort: the list still works without it, it just loses badges.[39m
+[31m+             const pdetail = RpcApi.ConnListDetailCommand(TabRpcClient, { timeout: 2000 });[39m
+[31m+             pdetail[39m
+[31m+                 .then((details) => {[39m
+[31m+                     const next = new Map<string, string[]>();[39m
+[31m+                     for (const detail of details ?? []) {[39m
+[31m+                         if (detail?.name != null && Array.isArray(detail.sources)) {[39m
+[31m+                             next.set(detail.name, detail.sources);[39m
+[31m+                         }[39m
+[31m+                     }[39m
+[31m+                     setConnSources(next);[39m
+[31m+                 })[39m
+[31m+                 .catch((e) => console.log("unable to load connection sources; badges will be omitted: ", e));[39m
+[31m+             const p2rtn = RpcApi.WslListCommand(TabRpcClient, { timeout: 2000 });[39m
+[31m+             p2rtn[39m
+[31m+                 .then((newWslList) => {[39m
+[31m+                     console.log(newWslList);[39m
+[31m+                     setWslList(newWslList ?? []);[39m
+[31m+                 })[39m
+[31m+                 .catch((e) => {[39m
+[31m+                     // removing this log and failing silentyly since it will happen[39m
+[31m+                     // if a system isn't using the wsl. and would happen every time the[39m
+[31m+                     // typeahead was opened. good candidate for verbose log level.[39m
+[31m+                     //console.log("unable to load wsl list from backend. using blank list: ", e)[39m
+[31m+                 });[39m
+[31m+         }, [changeConnModalOpen]);[39m
+[31m+[39m
+[31m+         const changeConnection = React.useCallback([39m
+[31m+             async (connName: string) => {[39m
+[31m+                 if (connName == "") {[39m
+[31m+                     connName = null;[39m
+[31m+                 }[39m
+[31m+                 if (connName == blockData?.meta?.connection) {[39m
+[31m+                     return;[39m
+[31m+                 }[39m
+[31m+                 const oldFile = blockData?.meta?.file ?? "";[39m
+[31m+                 const newFile = oldFile == "" ? "" : "~";[39m
+[31m+                 await RpcApi.SetMetaCommand(TabRpcClient, {[39m
+[31m+                     oref: WOS.makeORef("block", blockId),[39m
+[31m+                     meta: { connection: connName, file: newFile, "cmd:cwd": null },[39m
+[31m+                 });[39m
+[31m+[39m
+[31m+                 try {[39m
+[31m+                     await RpcApi.ConnEnsureCommand([39m
+[31m+                         TabRpcClient,[39m
+[31m+                         { connname: connName, logblockid: blockId },[39m
+[31m+                         { timeout: ConnectionOperationTimeoutMs }[39m
+[31m+                     );[39m
+[31m+                 } catch (e) {[39m
+[31m+                     console.log("error connecting", blockId, connName, e);[39m
+[31m+                 }[39m
+[31m+             },[39m
+[31m+             [blockId, blockData][39m
+[31m+         );[39m
+[31m+[39m
+[31m+         const reconnectSuggestionItem = getReconnectItem(connStatus, connSelected, blockId, changeConnModalAtom);[39m
+[31m+         const localSuggestions = getLocalSuggestions([39m
+[31m+             localName,[39m
+[31m+             wslList,[39m
+[31m+             connection,[39m
+[31m+             connSelected,[39m
+[31m+             connStatusMap,[39m
+[31m+             fullConfig,[39m
+[31m+             filterOutNowsh,[39m
+[31m+             hasGitBash[39m
+[31m+         );[39m
+[31m+         const remoteSuggestions = getRemoteSuggestions([39m
+[31m+             connList,[39m
+[31m+             connection,[39m
+[31m+             connSelected,[39m
+[31m+             connStatusMap,[39m
+[31m+             fullConfig,[39m
+[31m+             filterOutNowsh,[39m
+[31m+             connSources[39m
+[31m+         );[39m
+[31m+         const connectionsEditItem = getConnectionsEditItem(changeConnModalAtom, connSelected);[39m
+[31m+         const disconnectItem = getDisconnectItem(connection, connStatusMap, changeConnModalAtom);[39m
+[31m+         const newConnectionSuggestionItem = getNewConnectionSuggestionItem([39m
+[31m+             connSelected,[39m
+[31m+             localName,[39m
+[31m+             connList,[39m
+[31m+             wslList,[39m
+[31m+             changeConnection,[39m
+[31m+             changeConnModalAtom[39m
+[31m+         );[39m
+[31m+[39m
+[31m+         const suggestions: Array<SuggestionsType> = [[39m
+[31m+             ...(reconnectSuggestionItem ? [reconnectSuggestionItem] : []),[39m
+[31m+             ...(localSuggestions ? [localSuggestions] : []),[39m
+[31m+             ...(remoteSuggestions ? [remoteSuggestions] : []),[39m
+[31m+             ...(disconnectItem ? [disconnectItem] : []),[39m
+[31m+             ...(connectionsEditItem ? [connectionsEditItem] : []),[39m
+[31m+             ...(newConnectionSuggestionItem ? [newConnectionSuggestionItem] : []),[39m
+[31m+         ];[39m
+[31m+[39m
+[31m+         let selectionList: Array<SuggestionConnectionItem> = suggestions.flatMap((item) => {[39m
+[31m+             if ("items" in item) {[39m
+[31m+                 return item.items;[39m
+[31m+             }[39m
+[31m+             return item;[39m
+[31m+         });[39m
+[31m+[39m
+[31m+         // quick way to change icon color when highlighted[39m
+[31m+         selectionList = selectionList.map((item, index) => {[39m
+[31m+             if (index == rowIndex && item.iconColor == "var(--grey-text-color)") {[39m
+[31m+                 item.iconColor = "var(--main-text-color)";[39m
+[31m+             }[39m
+[31m+             return item;[39m
+[31m+         });[39m
+[31m+[39m
+[31m+         const handleTypeAheadKeyDown = React.useCallback([39m
+[31m+             (waveEvent: WaveKeyboardEvent): boolean => {[39m
+[31m+                 if (keyutil.checkKeyPressed(waveEvent, "Enter")) {[39m
+[31m+                     const rowItem = selectionList[rowIndex];[39m
+[31m+                     if ("onSelect" in rowItem && rowItem.onSelect) {[39m
+[31m+                         rowItem.onSelect(rowItem.value);[39m
+[31m+                     } else {[39m
+[31m+                         changeConnection(rowItem.value);[39m
+[31m+                         globalStore.set(changeConnModalAtom, false);[39m
+[31m+                         globalRefocusWithTimeout(10);[39m
+[31m+                     }[39m
+[31m+                     setRowIndex(0);[39m
+[31m+                     return true;[39m
+[31m+                 }[39m
+[31m+                 if (keyutil.checkKeyPressed(waveEvent, "Escape")) {[39m
+[31m+                     globalStore.set(changeConnModalAtom, false);[39m
+[31m+                     setConnSelected("");[39m
+[31m+                     globalRefocusWithTimeout(10);[39m
+[31m+                     return true;[39m
+[31m+                 }[39m
+[31m+                 if (keyutil.checkKeyPressed(waveEvent, "ArrowUp")) {[39m
+[31m+                     setRowIndex((idx) => Math.max(idx - 1, 0));[39m
+[31m+                     return true;[39m
+[31m+                 }[39m
+[31m+                 if (keyutil.checkKeyPressed(waveEvent, "ArrowDown")) {[39m
+[31m+                     setRowIndex((idx) => Math.min(idx + 1, selectionList.length - 1));[39m
+[31m+                     return true;[39m
+[31m+                 }[39m
+[31m+                 setRowIndex(0);[39m
+[31m+                 return false;[39m
+[31m+             },[39m
+[31m+             [changeConnModalAtom, viewModel, blockId, connSelected, selectionList][39m
+[31m+         );[39m
+[31m+         React.useEffect(() => {[39m
+[31m+             // this is specifically for the case when the list shrinks due[39m
+[31m+             // to a search filter[39m
+[31m+             setRowIndex((idx) => Math.min(idx, selectionList.flat().length - 1));[39m
+[31m+         }, [selectionList, setRowIndex]);[39m
+[31m+         // this check was also moved to BlockFrame to prevent all the above code from running unnecessarily[39m
+[31m+         if (!changeConnModalOpen) {[39m
+[31m+             return null;[39m
+[31m+         }[39m
+[31m+         return ([39m
+[31m+             <TypeAheadModal[39m
+[31m+                 blockRef={blockRef}[39m
+[31m+                 anchorRef={connBtnRef}[39m
+[31m+                 suggestions={suggestions}[39m
+[31m+                 onSelect={(selected: string) => {[39m
+[31m+                     changeConnection(selected);[39m
+[31m+                     globalStore.set(changeConnModalAtom, false);[39m
+[31m+                     globalRefocusWithTimeout(10);[39m
+[31m+                 }}[39m
+[31m+                 selectIndex={rowIndex}[39m
+[31m+                 autoFocus={isNodeFocused}[39m
+[31m+                 onKeyDown={(e) => keyutil.keydownWrapper(handleTypeAheadKeyDown)(e)}[39m
+[31m+                 onChange={(current: string) => setConnSelected(current)}[39m
+[31m+                 value={connSelected}[39m
+[31m+                 label={t("modals:connTypeahead.connectPlaceholder")}[39m
+[31m+                 onClickBackdrop={() => globalStore.set(changeConnModalAtom, false)}[39m
+[31m+             />[39m
+[31m+         );[39m
+[31m+     }[39m
+[31m+ );[39m
+[31m+[39m
+[31m+ export { ChangeConnectionBlockModal };[39m
+[31m+[39m
+
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m95:24[22m[39m
+    [90m 93| [39m
+    [90m 94| [39m    [34mit[39m([32m"连接成功后调 recordConnUse，且读侧用 loadConnUsage"[39m[33m,[39m () [33m=>[39m {
+    [90m 95| [39m        [34mexpect[39m(source)[33m.[39m[34mtoContain[39m([32m"recordConnUse("[39m)[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 96| [39m        [34mexpect[39m(source)[33m.[39m[34mtoContain[39m([32m"loadConnUsage("[39m)[33m;[39m
+    [90m 97| [39m    })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/conntypeahead.test.tsx[2m > [22m计数写入点（源码断言）[2m > [22m排序调用把使用计数传进去（否则计数白记）
+[31m[1mAssertionError[22m: expected '// Copyright 2025, Command Line Inc.\…' to match /sortConnSuggestionItems\([^)]*connUsa…/[39m
+
+[32m- Expected:[39m 
+/sortConnSuggestionItems\([^)]*connUsage/
+
+[31m+ Received:[39m 
+"// Copyright 2025, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+import { computeConnColorNum } from \"@/app/block/blockutil\";
+import { TypeAheadModal } from \"@/app/modals/typeaheadmodal\";
+import { ConnectionsModel } from \"@/app/store/connections-model\";
+import { ConnectionOperationTimeoutMs } from \"@/app/store/connection-timeout\";
+import {
+    atoms,
+    createBlock,
+    getConnStatusAtom,
+    getLocalHostDisplayNameAtom,
+    globalStore,
+    WOS,
+} from \"@/app/store/global\";
+import { globalRefocusWithTimeout } from \"@/app/store/keymodel\";
+import { RpcApi } from \"@/app/store/wshclientapi\";
+import { TabRpcClient } from \"@/app/store/wshrpcutil\";
+import { NodeModel } from \"@/layout/index\";
+import * as keyutil from \"@/util/keyutil\";
+import * as util from \"@/util/util\";
+import * as jotai from \"jotai\";
+import * as React from \"react\";
+import { useTranslation } from \"react-i18next\";
+
+// newConnList -> connList => filteredList -> remoteItems -> sortedRemoteItems => remoteSuggestion
+// filteredList -> createNew
+
+function filterConnections(
+    connList: Array<string>,
+    connSelected: string,
+    fullConfig: FullConfigType,
+    filterOutNowsh: boolean
+): Array<string> {
+    const connectionsConfig = fullConfig.connections;
+    return connList.filter((conn) => {
+        const hidden = connectionsConfig?.[conn]?.[\"display:hidden\"] ?? false;
+        const wshEnabled = connectionsConfig?.[conn]?.[\"conn:wshenabled\"] ?? true;
+        return conn.includes(connSelected) && !hidden && (wshEnabled || !filterOutNowsh);
+    });
+}
+
+function sortConnSuggestionItems(
+    connSuggestions: Array<SuggestionConnectionItem>,
+    fullConfig: FullConfigType
+): Array<SuggestionConnectionItem> {
+    const connectionsConfig = fullConfig.connections;
+    return connSuggestions.sort((itemA: SuggestionConnectionItem, itemB: SuggestionConnectionItem) => {
+        const connNameA = itemA.value;
+        const connNameB = itemB.value;
+        const valueA = connectionsConfig?.[connNameA]?.[\"display:order\"] ?? 0;
+        const valueB = connectionsConfig?.[connNameB]?.[\"display:order\"] ?? 0;
+        return valueA - valueB;
+    });
+}
+
+function createRemoteSuggestionItems(
+    filteredList: Array<string>,
+    connection: string,
+    connStatusMap: Map<string, ConnStatus>,
+    sourcesMap: Map<string, string[]>
+): Array<SuggestionConnectionItem> {
+    return filteredList.map((connName) => {
+        const connStatus = connStatusMap.get(connName);
+        const connColorNum = computeConnColorNum(connStatus);
+        const item: SuggestionConnectionItem = {
+            status: \"connected\",
+            icon: \"arrow-right-arrow-left\",
+            iconColor:
+                connStatus?.status == \"connected\" ? `var(--conn-icon-color-${connColorNum})` : \"var(--grey-text-color)\",
+            value: connName,
+            label: connName,
+            current: connName == connection,
+            // 来源由后端 connlistdetail 提供；缺数据时不显示徽标（不造假信息）。
+            sources: sourcesMap.get(connName),
+        };
+        return item;
+    });
+}
+
+function createWslSuggestionItems(
+    filteredList: Array<string>,
+    connection: string,
+    connStatusMap: Map<string, ConnStatus>
+): Array<SuggestionConnectionItem> {
+    return filteredList.map((connName) => {
+        const connStatus = connStatusMap.get(`wsl://${connName}`);
+        const connColorNum = computeConnColorNum(connStatus);
+        const item: SuggestionConnectionItem = {
+            status: \"connected\",
+            icon: \"arrow-right-arrow-left\",
+            iconColor:
+                connStatus?.status == \"connected\" ? `var(--conn-icon-color-${connColorNum})` : \"var(--grey-text-color)\",
+            value: \"wsl://\" + connName,
+            label: \"wsl://\" + connName,
+            current: \"wsl://\" + connName == connection,
+        };
+        return item;
+    });
+}
+
+function createFilteredLocalSuggestionItem(
+    localName: string,
+    connection: string,
+    connSelected: string
+): Array<SuggestionConnectionItem> {
+    if (localName.includes(connSelected)) {
+        const localSuggestion: SuggestionConnectionItem = {
+            status: \"connected\",
+            icon: \"laptop\",
+            iconColor: \"var(--grey-text-color)\",
+            value: \"\",
+            label: localName,
+            current: util.isBlank(connection),
+        };
+        return [localSuggestion];
+    }
+    return [];
+}
+
+function getReconnectItem(
+    connStatus: ConnStatus,
+    connSelected: string,
+    blockId: string,
+    changeConnModalAtom: jotai.PrimitiveAtom<boolean>
+): SuggestionConnectionItem | null {
+    if (connSelected != \"\" || (connStatus.status != \"disconnected\" && connStatus.status != \"error\")) {
+        return null;
+    }
+    const reconnectSuggestionItem: SuggestionConnectionItem = {
+        status: \"connected\",
+        icon: \"arrow-right-arrow-left\",
+        iconColor: \"var(--grey-text-color)\",
+        label: `Reconnect to ${connStatus.connection}`,
+        value: \"\",
+        onSelect: async (_: string) => {
+            globalStore.set(changeConnModalAtom, false);
+            const prtn = RpcApi.ConnConnectCommand(
+                TabRpcClient,
+                { host: connStatus.connection, logblockid: blockId },
+                { timeout: ConnectionOperationTimeoutMs }
+            );
+            prtn.catch((e) => console.log(\"error reconnecting\", connStatus.connection, e));
+        },
+    };
+    return reconnectSuggestionItem;
+}
+
+function getLocalSuggestions(
+    localName: string,
+    connList: Array<string>,
+    connection: string,
+    connSelected: string,
+    connStatusMap: Map<string, ConnStatus>,
+    fullConfig: FullConfigType,
+    filterOutNowsh: boolean,
+    hasGitBash: boolean
+): SuggestionConnectionScope | null {
+    const wslFiltered = filterConnections(connList, connSelected, fullConfig, filterOutNowsh);
+    const wslSuggestionItems = createWslSuggestionItems(wslFiltered, connection, connStatusMap);
+    const localSuggestionItem = createFilteredLocalSuggestionItem(localName, connection, connSelected);
+
+    const gitBashItems: Array<SuggestionConnectionItem> = [];
+    if (hasGitBash && \"Git Bash\".toLowerCase().includes(connSelected.toLowerCase())) {
+        gitBashItems.push({
+            status: \"connected\",
+            icon: \"laptop\",
+            iconColor: \"var(--grey-text-color)\",
+            value: \"local:gitbash\",
+            label: \"Git Bash\",
+            current: connection === \"local:gitbash\",
+        });
+    }
+
+    const combinedSuggestionItems = [...localSuggestionItem, ...gitBashItems, ...wslSuggestionItems];
+    const sortedSuggestionItems = sortConnSuggestionItems(combinedSuggestionItems, fullConfig);
+    if (sortedSuggestionItems.length == 0) {
+        return null;
+    }
+    const localSuggestions: SuggestionConnectionScope = {
+        headerText: \"Local\",
+        items: sortedSuggestionItems,
+    };
+    return localSuggestions;
+}
+
+function getRemoteSuggestions(
+    connList: Array<string>,
+    connection: string,
+    connSelected: string,
+    connStatusMap: Map<string, ConnStatus>,
+    fullConfig: FullConfigType,
+    filterOutNowsh: boolean,
+    sourcesMap: Map<string, string[]>
+): SuggestionConnectionScope | null {
+    const filtered = filterConnections(connList, connSelected, fullConfig, filterOutNowsh);
+    const suggestionItems = createRemoteSuggestionItems(filtered, connection, connStatusMap, sourcesMap);
+    const sortedSuggestionItems = sortConnSuggestionItems(suggestionItems, fullConfig);
+    if (sortedSuggestionItems.length == 0) {
+        return null;
+    }
+    const remoteSuggestions: SuggestionConnectionScope = {
+        headerText: \"Remote\",
+        items: sortedSuggestionItems,
+    };
+    return remoteSuggestions;
+}
+
+function getDisconnectItem(
+    connection: string,
+    connStatusMap: Map<string, ConnStatus>,
+    changeConnModalAtom: jotai.PrimitiveAtom<boolean>
+): SuggestionConnectionItem | null {
+    if (util.isLocalConnName(connection)) {
+        return null;
+    }
+    const connStatus = connStatusMap.get(connection);
+    if (!connStatus || connStatus.status != \"connected\") {
+        return null;
+    }
+    const disconnectSuggestionItem: SuggestionConnectionItem = {
+        status: \"connected\",
+        icon: \"xmark\",
+        iconColor: \"var(--grey-text-color)\",
+        label: `Disconnect ${connStatus.connection}`,
+        value: \"\",
+        onSelect: async (_: string) => {
+            globalStore.set(changeConnModalAtom, false);
+            const prtn = RpcApi.ConnDisconnectCommand(TabRpcClient, connection, { timeout: 60000 });
+            prtn.catch((e) => console.log(\"error disconnecting\", connStatus.connection, e));
+        },
+    };
+    return disconnectSuggestionItem;
+}
+
+function getConnectionsEditItem(
+    changeConnModalAtom: jotai.PrimitiveAtom<boolean>,
+    connSelected: string
+): SuggestionConnectionItem | null {
+    if (connSelected != \"\") {
+        return null;
+    }
+    const connectionsEditItem: SuggestionConnectionItem = {
+        status: \"disconnected\",
+        icon: \"gear\",
+        iconColor: \"var(--grey-text-color)\",
+        value: \"Edit Connections\",
+        label: \"Edit Connections\",
+        onSelect: () => {
+            util.fireAndForget(async () => {
+                globalStore.set(changeConnModalAtom, false);
+                const blockDef: BlockDef = {
+                    meta: {
+                        view: \"waveconfig\",
+                        file: \"connections.json\",
+                    },
+                };
+                await createBlock(blockDef, false, true);
+            });
+        },
+    };
+    return connectionsEditItem;
+}
+
+function getNewConnectionSuggestionItem(
+    connSelected: string,
+    localName: string,
+    remoteConns: Array<string>,
+    wslConns: Array<string>,
+    changeConnection: (connName: string) => Promise<void>,
+    changeConnModalAtom: jotai.PrimitiveAtom<boolean>
+): SuggestionConnectionItem | null {
+    const allCons = [\"\", localName, ...remoteConns, ...wslConns];
+    if (allCons.includes(connSelected)) {
+        // do not offer to create a new connection if one
+        // with the exact name already exists
+        return null;
+    }
+    const newConnectionSuggestion: SuggestionConnectionItem = {
+        status: \"connected\",
+        icon: \"plus\",
+        iconColor: \"var(--grey-text-color)\",
+        label: `${connSelected} (New Connection)`,
+        value: \"\",
+        onSelect: (_: string) => {
+            changeConnection(connSelected);
+            globalStore.set(changeConnModalAtom, false);
+        },
+    };
+    return newConnectionSuggestion;
+}
+
+const ChangeConnectionBlockModal = React.memo(
+    ({
+        blockId,
+        viewModel,
+        blockRef,
+        connBtnRef,
+        changeConnModalAtom,
+        nodeModel,
+    }: {
+        blockId: string;
+        viewModel: ViewModel;
+        blockRef: React.RefObject<HTMLDivElement>;
+        connBtnRef: React.RefObject<HTMLDivElement>;
+        changeConnModalAtom: jotai.PrimitiveAtom<boolean>;
+        nodeModel: NodeModel;
+    }) => {
+        const { t } = useTranslation(\"modals\");
+        const [connSelected, setConnSelected] = React.useState(\"\");
+        const changeConnModalOpen = jotai.useAtomValue(changeConnModalAtom);
+        const [blockData] = WOS.useWaveObjectValue<Block>(WOS.makeORef(\"block\", blockId));
+        const isNodeFocused = jotai.useAtomValue(nodeModel.isFocused);
+        const connection = blockData?.meta?.connection;
+        const connStatusAtom = getConnStatusAtom(connection);
+        const connStatus = jotai.useAtomValue(connStatusAtom);
+        const [connList, setConnList] = React.useState<Array<string>>([]);
+        const [wslList, setWslList] = React.useState<Array<string>>([]);
+        // connName -> sources, filled from connlistdetail. Kept as separate state (not folded into
+        // connList) so a failure to load provenance degrades to \"no badges\" instead of an empty list.
+        const [connSources, setConnSources] = React.useState<Map<string, string[]>>(() => new Map());
+        const allConnStatus = jotai.useAtomValue(atoms.allConnStatus);
+        const [rowIndex, setRowIndex] = React.useState(0);
+        const connStatusMap = new Map<string, ConnStatus>();
+        const fullConfig = jotai.useAtomValue(atoms.fullConfigAtom);
+        let filterOutNowsh = util.useAtomValueSafe(viewModel.filterOutNowsh) ?? true;
+        const hasGitBash = jotai.useAtomValue(ConnectionsModel.getInstance().hasGitBashAtom);
+        const localName = jotai.useAtomValue(getLocalHostDisplayNameAtom());
+
+        let maxActiveConnNum = 1;
+        for (const conn of allConnStatus) {
+            if (conn.activeconnnum > maxActiveConnNum) {
+                maxActiveConnNum = conn.activeconnnum;
+            }
+            connStatusMap.set(conn.connection, conn);
+        }
+        React.useEffect(() => {
+            if (!changeConnModalOpen) {
+                setConnList([]);
+                return;
+            }
+            const prtn = RpcApi.ConnListCommand(TabRpcClient, { timeout: 2000 });
+            prtn.then((newConnList) => {
+                setConnList(newConnList ?? []);
+            }).catch((e) => console.log(\"unable to load conn list from backend. using blank list: \", e));
+            // Provenance is best-effort: the list still works without it, it just loses badges.
+            const pdetail = RpcApi.ConnListDetailCommand(TabRpcClient, { timeout: 2000 });
+            pdetail
+                .then((details) => {
+                    const next = new Map<string, string[]>();
+                    for (const detail of details ?? []) {
+                        if (detail?.name != null && Array.isArray(detail.sources)) {
+                            next.set(detail.name, detail.sources);
+                        }
+                    }
+                    setConnSources(next);
+                })
+                .catch((e) => console.log(\"unable to load connection sources; badges will be omitted: \", e));
+            const p2rtn = RpcApi.WslListCommand(TabRpcClient, { timeout: 2000 });
+            p2rtn
+                .then((newWslList) => {
+                    console.log(newWslList);
+                    setWslList(newWslList ?? []);
+                })
+                .catch((e) => {
+                    // removing this log and failing silentyly since it will happen
+                    // if a system isn't using the wsl. and would happen every time the
+                    // typeahead was opened. good candidate for verbose log level.
+                    //console.log(\"unable to load wsl list from backend. using blank list: \", e)
+                });
+        }, [changeConnModalOpen]);
+
+        const changeConnection = React.useCallback(
+            async (connName: string) => {
+                if (connName == \"\") {
+                    connName = null;
+                }
+                if (connName == blockData?.meta?.connection) {
+                    return;
+                }
+                const oldFile = blockData?.meta?.file ?? \"\";
+                const newFile = oldFile == \"\" ? \"\" : \"~\";
+                await RpcApi.SetMetaCommand(TabRpcClient, {
+                    oref: WOS.makeORef(\"block\", blockId),
+                    meta: { connection: connName, file: newFile, \"cmd:cwd\": null },
+                });
+
+                try {
+                    await RpcApi.ConnEnsureCommand(
+                        TabRpcClient,
+                        { connname: connName, logblockid: blockId },
+                        { timeout: ConnectionOperationTimeoutMs }
+                    );
+                } catch (e) {
+                    console.log(\"error connecting\", blockId, connName, e);
+                }
+            },
+            [blockId, blockData]
+        );
+
+        const reconnectSuggestionItem = getReconnectItem(connStatus, connSelected, blockId, changeConnModalAtom);
+        const localSuggestions = getLocalSuggestions(
+            localName,
+            wslList,
+            connection,
+            connSelected,
+            connStatusMap,
+            fullConfig,
+            filterOutNowsh,
+            hasGitBash
+        );
+        const remoteSuggestions = getRemoteSuggestions(
+            connList,
+            connection,
+            connSelected,
+            connStatusMap,
+            fullConfig,
+            filterOutNowsh,
+            connSources
+        );
+        const connectionsEditItem = getConnectionsEditItem(changeConnModalAtom, connSelected);
+        const disconnectItem = getDisconnectItem(connection, connStatusMap, changeConnModalAtom);
+        const newConnectionSuggestionItem = getNewConnectionSuggestionItem(
+            connSelected,
+            localName,
+            connList,
+            wslList,
+            changeConnection,
+            changeConnModalAtom
+        );
+
+        const suggestions: Array<SuggestionsType> = [
+            ...(reconnectSuggestionItem ? [reconnectSuggestionItem] : []),
+            ...(localSuggestions ? [localSuggestions] : []),
+            ...(remoteSuggestions ? [remoteSuggestions] : []),
+            ...(disconnectItem ? [disconnectItem] : []),
+            ...(connectionsEditItem ? [connectionsEditItem] : []),
+            ...(newConnectionSuggestionItem ? [newConnectionSuggestionItem] : []),
+        ];
+
+        let selectionList: Array<SuggestionConnectionItem> = suggestions.flatMap((item) => {
+            if (\"items\" in item) {
+                return item.items;
+            }
+            return item;
+        });
+
+        // quick way to change icon color when highlighted
+        selectionList = selectionList.map((item, index) => {
+            if (index == rowIndex && item.iconColor == \"var(--grey-text-color)\") {
+                item.iconColor = \"var(--main-text-color)\";
+            }
+            return item;
+        });
+
+        const handleTypeAheadKeyDown = React.useCallback(
+            (waveEvent: WaveKeyboardEvent): boolean => {
+                if (keyutil.checkKeyPressed(waveEvent, \"Enter\")) {
+                    const rowItem = selectionList[rowIndex];
+                    if (\"onSelect\" in rowItem && rowItem.onSelect) {
+                        rowItem.onSelect(rowItem.value);
+                    } else {
+                        changeConnection(rowItem.value);
+                        globalStore.set(changeConnModalAtom, false);
+                        globalRefocusWithTimeout(10);
+                    }
+                    setRowIndex(0);
+                    return true;
+                }
+                if (keyutil.checkKeyPressed(waveEvent, \"Escape\")) {
+                    globalStore.set(changeConnModalAtom, false);
+                    setConnSelected(\"\");
+                    globalRefocusWithTimeout(10);
+                    return true;
+                }
+                if (keyutil.checkKeyPressed(waveEvent, \"ArrowUp\")) {
+                    setRowIndex((idx) => Math.max(idx - 1, 0));
+                    return true;
+                }
+                if (keyutil.checkKeyPressed(waveEvent, \"ArrowDown\")) {
+                    setRowIndex((idx) => Math.min(idx + 1, selectionList.length - 1));
+                    return true;
+                }
+                setRowIndex(0);
+                return false;
+            },
+            [changeConnModalAtom, viewModel, blockId, connSelected, selectionList]
+        );
+        React.useEffect(() => {
+            // this is specifically for the case when the list shrinks due
+            // to a search filter
+            setRowIndex((idx) => Math.min(idx, selectionList.flat().length - 1));
+        }, [selectionList, setRowIndex]);
+        // this check was also moved to BlockFrame to prevent all the above code from running unnecessarily
+        if (!changeConnModalOpen) {
+            return null;
+        }
+        return (
+            <TypeAheadModal
+                blockRef={blockRef}
+                anchorRef={connBtnRef}
+                suggestions={suggestions}
+                onSelect={(selected: string) => {
+                    changeConnection(selected);
+                    globalStore.set(changeConnModalAtom, false);
+                    globalRefocusWithTimeout(10);
+                }}
+                selectIndex={rowIndex}
+                autoFocus={isNodeFocused}
+                onKeyDown={(e) => keyutil.keydownWrapper(handleTypeAheadKeyDown)(e)}
+                onChange={(current: string) => setConnSelected(current)}
+                value={connSelected}
+                label={t(\"modals:connTypeahead.connectPlaceholder\")}
+                onClickBackdrop={() => globalStore.set(changeConnModalAtom, false)}
+            />
+        );
+    }
+);
+
+export { ChangeConnectionBlockModal };
+"
+
+[36m [2m❯[22m frontend/app/modals/conntypeahead.test.tsx:[2m100:24[22m[39m
+    [90m 98| [39m
+    [90m 99| [39m    [34mit[39m([32m"排序调用把使用计数传进去（否则计数白记）"[39m[33m,[39m () [33m=>[39m {
+    [90m100| [39m        expect(source).toMatch(/sortConnSuggestionItems\([^)]*connUsag…
+    [90m   | [39m                       [31m^[39m
+    [90m101| [39m    })[33m;[39m
+    [90m102| [39m})[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/typeaheadmodal.test.tsx[2m > [22mSuggestions 行结构（右栏居右的结构前提）[2m > [22m右栏是行的直接子节点，来源徽标不再塞进名字盒
+[41m[1m FAIL [22m[49m frontend/app/modals/typeaheadmodal.test.tsx[2m > [22mSuggestions 行结构（右栏居右的结构前提）[2m > [22mlabel 是真实元素（省略号才有落点）
+[41m[1m FAIL [22m[49m frontend/app/modals/typeaheadmodal.test.tsx[2m > [22mSuggestions 行结构（右栏居右的结构前提）[2m > [22m上行/下行顺序与传入顺序一致（rail 不改变行序）
+[41m[1m FAIL [22m[49m frontend/app/modals/typeaheadmodal.test.tsx[2m > [22mhover 一键复制[2m > [22m只有带 copyText 的行渲染复制槽
+[41m[1m FAIL [22m[49m frontend/app/modals/typeaheadmodal.test.tsx[2m > [22mhover 一键复制[2m > [22m点复制 → 写剪贴板，且不触发行选择（不冒泡）
+[41m[1m FAIL [22m[49m frontend/app/modals/typeaheadmodal.test.tsx[2m > [22mhover 一键复制[2m > [22m复制成功后有 copied 反馈（check 图标），不是静默无反馈
+[31m[1mError[22m: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.[39m
+[90m [2m❯[22m createFiberFromTypeAndProps node_modules/react-dom/cjs/react-dom-client.development.js:[2m5021:28[22m[39m
+[90m [2m❯[22m createFiberFromElement node_modules/react-dom/cjs/react-dom-client.development.js:[2m5035:14[22m[39m
+[90m [2m❯[22m reconcileChildFibersImpl node_modules/react-dom/cjs/react-dom-client.development.js:[2m6920:31[22m[39m
+[90m [2m❯[22m node_modules/react-dom/cjs/react-dom-client.development.js:[2m7098:33[22m[39m
+[90m [2m❯[22m reconcileChildren node_modules/react-dom/cjs/react-dom-client.development.js:[2m9702:13[22m[39m
+[90m [2m❯[22m beginWork node_modules/react-dom/cjs/react-dom-client.development.js:[2m11899:15[22m[39m
+[90m [2m❯[22m runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:[2m874:13[22m[39m
+[90m [2m❯[22m performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:[2m17641:22[22m[39m
+[90m [2m❯[22m workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:[2m17469:41[22m[39m
+[90m [2m❯[22m renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:[2m17450:11[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/17]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m frontend/app/modals/typeaheadmodal.test.tsx[2m > [22m加载骨架[2m > [22mloading 时渲染固定行数骨架并标 aria-busy，且没有可点击行
+[31m[1mAssertionError[22m: expected null not to be null[39m
+[36m [2m❯[22m frontend/app/modals/typeaheadmodal.test.tsx:[2m191:30[22m[39m
+    [90m189| [39m        [35mconst[39m host [33m=[39m [34mrenderModal[39m([35mtrue[39m)[33m;[39m
+    [90m190| [39m        const skeleton = host.querySelector(".typeahead-skeleton") as …
+    [90m191| [39m        [34mexpect[39m(skeleton)[33m.[39mnot[33m.[39m[34mtoBeNull[39m()[33m;[39m
+    [90m   | [39m                             [31m^[39m
+    [90m192| [39m        [34mexpect[39m(skeleton[33m.[39m[34mgetAttribute[39m([32m"aria-busy"[39m))[33m.[39m[34mtoBe[39m([32m"true"[39m)[33m;[39m
+    [90m193| [39m        [34mexpect[39m(skeleton[33m.[39m[34mgetAttribute[39m([32m"role"[39m))[33m.[39m[34mtoBe[39m([32m"status"[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/17]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m8 passed[39m[22m[90m (11)[39m
+[2m      Tests [22m [1m[31m16 failed[39m[22m[2m | [22m[1m[32m47 passed[39m[22m[90m (63)[39m
+[2m   Start at [22m 14:11:30
+[2m   Duration [22m 19.03s[2m (transform 6.81s, setup 436ms, collect 27.62s, tests 2.33s, environment 54.80s, prepare 7.16s)[22m
+

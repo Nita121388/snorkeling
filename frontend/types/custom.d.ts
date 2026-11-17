@@ -576,6 +576,12 @@ declare global {
          * by the next ssh-config read.
          */
         sources?: string[];
+        /**
+         * 一键复制的内容（连接名）。只有「有连接名语义」的行才给：
+         * 远程/wsl/git bash 行是连接名，本机行与 Disconnect / Edit Connections
+         * 这类动作行不给（复制出来是空串或命令名，等于骗人）。
+         */
+        copyText?: string;
     }
 
     interface SuggestionConnectionScope {

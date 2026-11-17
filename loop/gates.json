@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "snorkeling",
-  "updatedAt": "2026-11-16T08:25:21Z",
+  "updatedAt": "2026-11-17T06:12:00Z",
   "gates": {
     "N-1105-loop-ledger": {
       "g1": {
@@ -231,10 +231,10 @@
         "prdHash": "2f0b82f4f6c1"
       },
       "g6": {
-        "at": "2026-11-16T06:57:47Z",
+        "at": "2026-11-17T00:15:04Z",
         "by": "nita",
         "verdict": "confirmed",
-        "planHash": "39f421076561"
+        "planHash": "7ca33484903d"
       },
       "g2": {
         "redProof": "loop/red/F-1116-commontext-sync-ws-push-g2.txt",
@@ -404,6 +404,12 @@
         "ok": true,
         "executedAt": "2026-11-13T07:58:24Z",
         "by": "compliance"
+      }
+    },
+    "N-1117-conn-typeahead-row-rail": {
+      "g2": {
+        "redProof": "loop/red/N-1117-conn-typeahead-row-rail.txt",
+        "at": "2026-11-17T06:12:00Z"
       }
     },
     "N-1105-queue-failopen": {

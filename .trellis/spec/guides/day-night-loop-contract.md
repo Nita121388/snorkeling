@@ -109,6 +109,18 @@ cmd 的引号剥离会让匹配悄悄变 0。
 （`ERR_IPC_CHANNEL_CLOSED` / heap out of memory）——`NODE_OPTIONS=--max-old-space-size=8192`
 必须带在 prove 的环境里；第一跑红了先按 flaky 重试一次再下结论（预算 retries 内重试合规）。
 
+教训 L-0006c（2026-11-17，findstr 变体 + 真机台判据进不了 120s 阈）：两条判据自身缺陷的坑：
+1. **findstr 在 cmd.exe 下不认正斜杠路径**：`findstr /C:foo frontend/app/modals/x.scss` 直接
+   `FINDSTR: 无法打开 typeaheadmodal.scss`。Git Bash 单引号里反斜杠能穿到 cmd（`frontend\app\...` 可行），
+   但 JSON 载荷 / 双引号环境会被反转义吞掉。更稳的做法：**判据里完全不写文件路径检查**，
+   把锚点检查装进白名单内的 node 脚本（如 `scripts/verify/<area>/wiring-check.mjs`，纯 node、
+   双引号 + 正斜杠，双 shell 稳），判据只写 `node scripts/verify/<area>/wiring-check.mjs && echo MARK`。
+2. **真机台判据放不进 prove 120s/条**：本机 Electron dev 实例 tab init 实测 3-4 分钟（N-1113/
+   N-1114-tab-restore-all 同记录），真机台（launch / attach 都）跑不到断言就超时。处置：
+   drop + 重建新 id，判据改「单测（覆盖同一行为的 DOM 契约）+ 静态锚点」，真机台**保留在白名单里待
+   环境恢复后补跑**，台账记 fatal 原因与保留原因（不写假绿）。先例：N-1113、N-1114-tab-restore-all、
+   N-1117-conn-typeahead-row-rail（r1/r2 丢弃，r3 单测+锚点绿）。
+
 ### L-0005（goprove-env）loop 判据跑 go 必须先注入本地工具链环境（2026-11-16）
 
 > 引擎索引 loop/LESSONS.md 的 L-0005；与本文件上方 2026-11-08 的旧 L-0005（未知 flag 被静默忽略）不是同一条，那条未入引擎索引。

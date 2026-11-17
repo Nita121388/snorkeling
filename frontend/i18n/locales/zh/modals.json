@@ -91,7 +91,9 @@
         "blocksWarning_other": "将关闭 {{count}} 个块。"
     },
     "connTypeahead": {
-        "connectPlaceholder": "连接到（username@host）..."
+        "connectPlaceholder": "连接到（username@host）...",
+        "copyName": "复制连接名",
+        "loading": "正在加载连接"
     },
     "editOrigins": {
         "title": "外部会话源",

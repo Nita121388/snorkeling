@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { computeConnColorNum } from "@/app/block/blockutil";
+import { ConnUsageMap, loadConnUsage, recordConnUse, sortConnItemsByUsage } from "@/app/modals/conn-usage";
 import { TypeAheadModal } from "@/app/modals/typeaheadmodal";
 import { ConnectionsModel } from "@/app/store/connections-model";
 import { ConnectionOperationTimeoutMs } from "@/app/store/connection-timeout";
@@ -42,16 +43,15 @@ function filterConnections(
 
 function sortConnSuggestionItems(
     connSuggestions: Array<SuggestionConnectionItem>,
-    fullConfig: FullConfigType
+    fullConfig: FullConfigType,
+    connUsage: ConnUsageMap = {}
 ): Array<SuggestionConnectionItem> {
     const connectionsConfig = fullConfig.connections;
-    return connSuggestions.sort((itemA: SuggestionConnectionItem, itemB: SuggestionConnectionItem) => {
-        const connNameA = itemA.value;
-        const connNameB = itemB.value;
-        const valueA = connectionsConfig?.[connNameA]?.["display:order"] ?? 0;
-        const valueB = connectionsConfig?.[connNameB]?.["display:order"] ?? 0;
-        return valueA - valueB;
-    });
+    // 次数优先（常用机器上浮），display:order 退化为「同频次的显式优先级」。
+    // 没有计数数据时等价于旧行为：只按 display:order 排。
+    return sortConnItemsByUsage(connSuggestions, connUsage, (connName) =>
+        Number(connectionsConfig?.[connName]?.["display:order"] ?? 0)
+    );
 }
 
 function createRemoteSuggestionItems(
@@ -70,6 +70,8 @@ function createRemoteSuggestionItems(
                 connStatus?.status == "connected" ? `var(--conn-icon-color-${connColorNum})` : "var(--grey-text-color)",
             value: connName,
             label: connName,
+            // 一键复制的内容 = 可直接粘回连接框的连接名。
+            copyText: connName,
             current: connName == connection,
             // 来源由后端 connlistdetail 提供；缺数据时不显示徽标（不造假信息）。
             sources: sourcesMap.get(connName),
@@ -93,6 +95,7 @@ function createWslSuggestionItems(
                 connStatus?.status == "connected" ? `var(--conn-icon-color-${connColorNum})` : "var(--grey-text-color)",
             value: "wsl://" + connName,
             label: "wsl://" + connName,
+            copyText: "wsl://" + connName,
             current: "wsl://" + connName == connection,
         };
         return item;
@@ -154,7 +157,8 @@ function getLocalSuggestions(
     connStatusMap: Map<string, ConnStatus>,
     fullConfig: FullConfigType,
     filterOutNowsh: boolean,
-    hasGitBash: boolean
+    hasGitBash: boolean,
+    connUsage: ConnUsageMap = {}
 ): SuggestionConnectionScope | null {
     const wslFiltered = filterConnections(connList, connSelected, fullConfig, filterOutNowsh);
     const wslSuggestionItems = createWslSuggestionItems(wslFiltered, connection, connStatusMap);
@@ -168,12 +172,13 @@ function getLocalSuggestions(
             iconColor: "var(--grey-text-color)",
             value: "local:gitbash",
             label: "Git Bash",
+            copyText: "local:gitbash",
             current: connection === "local:gitbash",
         });
     }
 
     const combinedSuggestionItems = [...localSuggestionItem, ...gitBashItems, ...wslSuggestionItems];
-    const sortedSuggestionItems = sortConnSuggestionItems(combinedSuggestionItems, fullConfig);
+    const sortedSuggestionItems = sortConnSuggestionItems(combinedSuggestionItems, fullConfig, connUsage);
     if (sortedSuggestionItems.length == 0) {
         return null;
     }
@@ -191,11 +196,12 @@ function getRemoteSuggestions(
     connStatusMap: Map<string, ConnStatus>,
     fullConfig: FullConfigType,
     filterOutNowsh: boolean,
-    sourcesMap: Map<string, string[]>
+    sourcesMap: Map<string, string[]>,
+    connUsage: ConnUsageMap = {}
 ): SuggestionConnectionScope | null {
     const filtered = filterConnections(connList, connSelected, fullConfig, filterOutNowsh);
     const suggestionItems = createRemoteSuggestionItems(filtered, connection, connStatusMap, sourcesMap);
-    const sortedSuggestionItems = sortConnSuggestionItems(suggestionItems, fullConfig);
+    const sortedSuggestionItems = sortConnSuggestionItems(suggestionItems, fullConfig, connUsage);
     if (sortedSuggestionItems.length == 0) {
         return null;
     }
@@ -326,6 +332,9 @@ const ChangeConnectionBlockModal = React.memo(
         let filterOutNowsh = util.useAtomValueSafe(viewModel.filterOutNowsh) ?? true;
         const hasGitBash = jotai.useAtomValue(ConnectionsModel.getInstance().hasGitBashAtom);
         const localName = jotai.useAtomValue(getLocalHostDisplayNameAtom());
+        // 使用计数是纯前端偏好：开弹窗时重读一次（其他窗口/上次会话的计数要算进来）。
+        const [connUsage, setConnUsage] = React.useState<ConnUsageMap>({});
+        const [loading, setLoading] = React.useState(false);
 
         let maxActiveConnNum = 1;
         for (const conn of allConnStatus) {
@@ -337,8 +346,12 @@ const ChangeConnectionBlockModal = React.memo(
         React.useEffect(() => {
             if (!changeConnModalOpen) {
                 setConnList([]);
+                setLoading(false);
                 return;
             }
+            // 首帧 connList 是空的：先上骨架，避免面板「接成输入框」后再被数据撞开。
+            setConnUsage(loadConnUsage());
+            setLoading(true);
             const prtn = RpcApi.ConnListCommand(TabRpcClient, { timeout: 2000 });
             prtn.then((newConnList) => {
                 setConnList(newConnList ?? []);
@@ -368,6 +381,9 @@ const ChangeConnectionBlockModal = React.memo(
                     // typeahead was opened. good candidate for verbose log level.
                     //console.log("unable to load wsl list from backend. using blank list: ", e)
                 });
+            // 三个请求都 settle 才关骨架（失败也要关，否则骨架永驻）；
+            // 用 allSettled 而不是 all，是因为来源递交失败只应该丢徒标，不应该卡住列表。
+            Promise.allSettled([prtn, pdetail, p2rtn]).then(() => setLoading(false));
         }, [changeConnModalOpen]);
 
         const changeConnection = React.useCallback(
@@ -391,6 +407,10 @@ const ChangeConnectionBlockModal = React.memo(
                         { connname: connName, logblockid: blockId },
                         { timeout: ConnectionOperationTimeoutMs }
                     );
+                    // 只在真正连上之后计数：失败的重试不应该把连接顶上去排序。
+                    if (connName != null) {
+                        setConnUsage(recordConnUse(connName));
+                    }
                 } catch (e) {
                     console.log("error connecting", blockId, connName, e);
                 }
@@ -407,7 +427,8 @@ const ChangeConnectionBlockModal = React.memo(
             connStatusMap,
             fullConfig,
             filterOutNowsh,
-            hasGitBash
+            hasGitBash,
+            connUsage
         );
         const remoteSuggestions = getRemoteSuggestions(
             connList,
@@ -416,7 +437,8 @@ const ChangeConnectionBlockModal = React.memo(
             connStatusMap,
             fullConfig,
             filterOutNowsh,
-            connSources
+            connSources,
+            connUsage
         );
         const connectionsEditItem = getConnectionsEditItem(changeConnModalAtom, connSelected);
         const disconnectItem = getDisconnectItem(connection, connStatusMap, changeConnModalAtom);
@@ -457,6 +479,11 @@ const ChangeConnectionBlockModal = React.memo(
             (waveEvent: WaveKeyboardEvent): boolean => {
                 if (keyutil.checkKeyPressed(waveEvent, "Enter")) {
                     const rowItem = selectionList[rowIndex];
+                    // 列表可能为空（搜不到任何项 / 骷髅阶段）：以前这里会 `"onSelect" in
+                    // undefined` 抛错，整个弹窗炸掉。
+                    if (rowItem == null) {
+                        return true;
+                    }
                     if ("onSelect" in rowItem && rowItem.onSelect) {
                         rowItem.onSelect(rowItem.value);
                     } else {
@@ -511,10 +538,19 @@ const ChangeConnectionBlockModal = React.memo(
                 onChange={(current: string) => setConnSelected(current)}
                 value={connSelected}
                 label={t("modals:connTypeahead.connectPlaceholder")}
+                loading={loading}
                 onClickBackdrop={() => globalStore.set(changeConnModalAtom, false)}
             />
         );
     }
 );
 
-export { ChangeConnectionBlockModal };
+// 纯函数导出给单测（行数据 / 排序是契约，不依赖 React 与 RPC）。
+export {
+    ChangeConnectionBlockModal,
+    createFilteredLocalSuggestionItem,
+    createRemoteSuggestionItems,
+    createWslSuggestionItems,
+    getConnectionsEditItem,
+    sortConnSuggestionItems,
+};

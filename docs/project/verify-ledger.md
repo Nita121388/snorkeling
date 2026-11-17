@@ -229,3 +229,7 @@
 | 2026-11-15 10:52 | vcs-history-graph | ✅ 16/16 | launch+reset | `20261115T10485-vcs-history-graph` | 209159837 |
 | 2026-11-15 11:03 | vcs-history-graph | ✅ 16/16 | launch+reset | `20261115T10593-vcs-history-graph` | 209159837 |
 | 2026-11-15 10:52 | i18n-rollout（P0/P1/P3 抽查） | ✅ 单测判定 + CDP 实机 | vitest + dev-isolated | `i18n-p0` / `i18n-p1` / `i18n-p3`（worktree 本地） | 未合入 |
+| 2026-11-17 06:39 | conn-typeahead-rail | ✅ 1/1 | launch+reset | `20261117T06390-conn-typeahead-rail` | 6911856a9 |
+| 2026-11-17 06:50 | conn-typeahead-rail | ❌ fatal（未跑） | launch+reset | `20261117T06450-conn-typeahead-rail` | 6911856a9 |
+| 2026-11-17 07:08 | conn-typeahead-rail | ❌ fatal（未跑） | launch+reset | `20261117T07031-conn-typeahead-rail` | 6911856a9 |
+| 2026-11-17 07:17 | conn-typeahead-rail | ❌ fatal（未跑） | attach | `20261117T07161-conn-typeahead-rail` | 6911856a9 |
