@@ -42,3 +42,15 @@ npx vitest run frontend/app/modals --reporter=basic && echo MODALS_TESTS_PASS
 npm run i18n:check && echo I18N_PASS
 node scripts/verify/conn-typeahead-rail/verify.mjs && echo VERIFY_PASS
 ```
+
+## 实施记录（r3 判据变更，2026-11-17）
+
+- **真机台改无可执行判据**：本机 Electron dev 实例 tab init 实测 3-4 分钟（N-1113/
+  N-1114-tab-restore-all 同记录），`verify.mjs`（launch/attach）三次都在断言前 FATAL（env），
+  且 prove 单命令 120s 阈不够。经用户同意（2026-11-17「暂时不做真机测试 本机性能不够」），
+  按 N-1114 先例 drop 重建 r3：验收判据改为
+  `vitest modals 全绿`（71 例，覆盖 DOM 契约：rail 结构/copyText/skeleton/connUsage 排序）+
+  `i18n:check` + `wiring-check.mjs`（静态锚点，白名单内纯 node 脚本）。
+- `scripts/verify/conn-typeahead-rail/` 保留：真机台待环境恢复后补跑（回归用，含骨架必现/
+  右栏极差 ≤1px/hover 复制/计数排序），台账已记 3 次 fatal 原因，不写假绿。
+- r1/r2 丢弃原因见 drop 事件（r2：findstr 正斜杠路径 cmd 不认，L-0006c 已沉淀）。
