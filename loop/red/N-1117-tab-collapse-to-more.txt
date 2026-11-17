@@ -1,0 +1,13 @@
+ ❯ frontend/app/tab/tabcontextmenu.test.ts (5 tests | 5 failed) 10ms
+   × buildTabContextMenu — 收起到更多 > 普通 Tab: 菜单项存在且可点 5ms
+   × buildTabContextMenu — 收起到更多 > 点击后把单个 tabId 交给 collapseTabIds 并埋点 1ms
+   × buildTabContextMenu — 收起到更多 > 激活 Tab: 置灰, 带禁用说明 1ms
+   × buildTabContextMenu — 收起到更多 > 有未阅状态点: 置灰, 带禁用说明 0ms
+   × buildTabContextMenu — 收起到更多 > 未传 visibility 时保持可点 (向后兼容旧调用点) 0ms
+ FAIL  frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 普通 Tab: 菜单项存在且可点
+ FAIL  frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 点击后把单个 tabId 交给 collapseTabIds 并埋点
+ FAIL  frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 激活 Tab: 置灰, 带禁用说明
+ FAIL  frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 有未阅状态点: 置灰, 带禁用说明
+ FAIL  frontend/app/tab/tabcontextmenu.test.ts > buildTabContextMenu — 收起到更多 > 未传 visibility 时保持可点 (向后兼容旧调用点)
+ Test Files  1 failed (1)
+      Tests  5 failed (5)

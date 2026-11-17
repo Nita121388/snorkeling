@@ -154,3 +154,21 @@ merge 后 go build ./... 通过、四包测试全绿、`task generate` 无 diff�
 - 复核时自己补了两处（`trellis-check` 没抓到）：`ErrAlreadyRunning` 被写进 `lastRunError`（提取 `recordRunOutcome`）→ 良性；`Status.Realtime` 在 dial 前就置真 → 改成握手成功才置真。
 - 沉淀：`.trellis/spec/snorkeling-docs/backend/commontext-sync-realtime-contract.md`（7 条 + prove 判据）。
 - **挂起**：break.ccwu.cc 仍是 0.0.123 老二进制（无 `/v1/ws`），端到端「A 保存 → B ≤2s 看到 trigger=notify」要等人工重编译部署后验收（G7）。
+
+## 2026-11-17 · loop 台账收尾（F-1117 补记 + Tab「收起到更多」补包）
+
+- 起因：拉取最新代码（717f4c6d1→83b6e5c8d，7 提交）后盘点 11-17 交付，发现两处没进账。
+- **F-1117-overview-card-props**（83b6e5c8d）：代码与 G1/G2/G5 都在，但 item 文档「背景/记录」全待补、
+  绿证没跑、台账零事件。处理：跑 `overview-board-props.test.ts` 11/11 passed（红证 11 failed → 绿证成立），
+  按事实补 item 背景/来源/记录，G6/G7 与人门留给引擎侧与人。
+- **Tab「收起到更多」**（f44ec0942）：完全游离提交（无任务/无包/无台账）。处理：补建 Trellis 任务
+  `11-17-tab-collapse-to-more` + loop item `N-1117-tab-collapse-to-more`，并**补造红证**——
+  临时回退 `tabcontextmenu.ts`/`vtabbar.tsx`/`tab.tsx` 到 `f44ec0942^` 跑同套 5 例全 FAIL，
+  还原后 5/5 passed，红证存 `loop/red/N-1117-tab-collapse-to-more.txt`。
+- **关键约束**：LEDGER/gates/queue.json 只能由引擎写（单一写者契约，L-0005 明确禁止手改）；
+  本机 macOS 跑不了 queue.mjs（钩子与引擎路径写死 `E:/primary/projects/loop`，INBOX 11-05 已记）。
+  所以引擎侧欠账（F-1117 补事件、新包入库分诊、G1 签字）只能写 INBOX，**不伪造事件、不代签人门**。
+- 顺手发现：`package-lock.json` 版本字段 0.0.127 落后 package.json 的 0.0.128（npm install 会同步），
+  已还原并记 INBOX。
+- 复核未动：conn-typeahead（r3 绿 3/3，真机台按用户 11-17 指示挂起补跑）、v2-gutter（代码+单测全绿，
+  剩 5 项人工走查，真机按指示跳过）——两者都等 G7 人验收，不是我该代签的。
