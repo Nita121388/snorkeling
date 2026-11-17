@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "旧源（join 纯文本渲染）跑新断言 → 2 failed（摘要内无 chip button：expected null not to be null + 源码断言）；新源 194 passed（15 files）",
+    "at": "2026-11-14T08:35:06Z"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "旧源 git show HEAD:frontend/app/commontext/commontext-compose-modal.tsx 换回后跑 dom 台+源码断言 → 3 failed（摘要 keys 缺 tags / 无 PropertyTagEditor import / Tags 浮层交互整体）；新源 → 192 passed（15 files）",
+    "at": "2026-11-14T07:31:26Z"
+  }
+}

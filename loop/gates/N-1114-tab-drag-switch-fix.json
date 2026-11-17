@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "npx vitest run tab-drag-model.test.ts tab-optimistic-active.test.ts → 2 failed：Cannot find module ./tab-drag-model / ./tab-optimistic-active（修复后 21 passed，含 emain 去重用例）",
+    "at": "2026-11-14T07:05:22Z"
+  }
+}

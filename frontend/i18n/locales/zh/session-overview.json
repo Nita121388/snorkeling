@@ -8,6 +8,7 @@
         "deleteSessionFile": "删除会话文件",
         "closeBlock": "关闭块",
         "moreTags": "另有 {{count}} 个标签",
+        "moreProps": "另有 {{count}} 条属性",
         "openSession": "打开会话 {{title}}",
         "jumpToSession": "跳转到 {{title}}",
         "deleteSessionAria": "删除会话 {{title}}",

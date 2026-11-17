@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "旧源 git show HEAD:commontext-model.ts 换回 → ['#urgent','work#','#legacy','deep'] 不剥 #（2 failed：model normalize + 浮层候选 '#legacy'）；旧 compose-modal → 摘要只显数量 + 源码断言失败。新源 194 passed（15 files）",
+    "at": "2026-11-14T08:11:16Z"
+  }
+}

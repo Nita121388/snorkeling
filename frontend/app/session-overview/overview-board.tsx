@@ -30,6 +30,9 @@ import {
 import type { OverviewTimelineSegment } from "./overview-timeline-model";
 import { SessionMetrics } from "./session-metrics";
 import "./session-overview.scss";
+// 看板卡的属性胶囊复用 property-chip 的 Notion 9 色调色板（浅底深字）。
+// 显式 import：悬浮卡（真正引入者）不一定挂载，看板不能依赖它的存在。
+import "@/app/view/aisessions/property/property-list.scss";
 
 /** 卡片跨列动效的参数表（与任务 design.md 的参数表同源）。 */
 const MotionTiming: Record<BoardMotionKind, { duration: number; easing: string }> = {
@@ -307,6 +310,61 @@ function BoardCardImpl({
                     </span>
                 ) : null}
             </span>
+            {/* 自定义属性：只读展示（status/select 用 Notion 9 色胶囊；多值 chips；其余单行文本）。
+                最多 3 条 + 溢出计数，卡片高度不因属性多而跳动（与 tags 同策略）。 */}
+            {card.propRows.visible.length > 0 ? (
+                <span
+                    className="session-overview-board-card-props"
+                    data-board-props={card.propRows.visible.length}
+                >
+                    {card.propRows.visible.map((row) => {
+                        const rowValue =
+                            row.single?.value ??
+                            row.multi?.join(", ") ??
+                            (row.checked === true ? "✓" : "") ??
+                            row.text ??
+                            "";
+                        return (
+                        <span
+                            key={row.key}
+                            className="session-overview-board-card-prop"
+                            data-board-prop={row.key}
+                            data-board-prop-type={row.type}
+                            title={`${row.name}: ${rowValue}`}
+                        >
+                            <span className="session-overview-board-card-prop-name">{row.name}</span>
+                            {row.single ? (
+                                <span className={cn("property-chip", `property-chip--${row.single.color}`)}>
+                                    {row.single.value}
+                                </span>
+                            ) : null}
+                            {row.multi?.map((value) => (
+                                <span key={value} className="property-chip">
+                                    {value}
+                                </span>
+                            ))}
+                            {row.checked != null ? (
+                                <span className="property-chip property-chip--green">
+                                    <i className="fa-sharp fa-solid fa-check" aria-hidden="true" />
+                                </span>
+                            ) : null}
+                            {row.text ? <span className="session-overview-board-card-prop-text">{row.text}</span> : null}
+                        </span>
+                        );
+                    })}
+                    {card.propRows.hiddenCount > 0 ? (
+                        <span
+                            className="session-overview-board-card-prop-more"
+                            data-board-prop-overflow={card.propRows.hiddenCount}
+                            title={i18n.t("session-overview:board.moreProps", {
+                                count: card.propRows.hiddenCount,
+                            })}
+                        >
+                            +{card.propRows.hiddenCount}
+                        </span>
+                    ) : null}
+                </span>
+            ) : null}
             {card.preview ? <span className="session-overview-board-card-preview">{card.preview}</span> : null}
             {card.note ? (
                 <span className="session-overview-board-card-note">

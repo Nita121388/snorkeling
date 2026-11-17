@@ -78,7 +78,8 @@
     "dismiss": "关闭提示",
     "dismissSaveError": "关闭保存失败提示",
     "notePlaceholder": "备注",
-    "sessionNoteLabel": "会话备注"
+    "sessionNoteLabel": "会话备注",
+    "loading": "正在加载会话信息…"
   },
   "inlineEdit": {
     "codeLanguage": "代码语言"

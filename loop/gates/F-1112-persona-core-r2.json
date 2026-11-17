@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-12T11:35:10Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "6b66c6b84b3c"
+  },
+  "g2": {
+    "redProof": "loop/red/F-1112-persona-core.txt",
+    "at": "2026-11-12T11:35:10Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-12T11:35:11Z",
+    "by": "compliance"
+  }
+}

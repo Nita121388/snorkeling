@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-13T02:23:34Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "d5fbe3097d50"
+  },
+  "g2": {
+    "redProof": "loop/REPORTS/redproof-F-1113-persona-widget-launch.txt @ 60d281bb（实现前全红）；F-1113 / r1 两包实跑 7/8 绿，仅判据 8 期望与 shell 方言问题（drop 理由留痕）",
+    "at": "2026-11-13T02:23:34Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-13T02:23:35Z",
+    "by": "compliance"
+  }
+}

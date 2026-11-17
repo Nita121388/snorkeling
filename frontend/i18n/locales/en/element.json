@@ -78,7 +78,8 @@
     "dismiss": "Dismiss",
     "dismissSaveError": "Dismiss save error",
     "notePlaceholder": "Note",
-    "sessionNoteLabel": "Session note"
+    "sessionNoteLabel": "Session note",
+    "loading": "Loading session info…"
   },
   "inlineEdit": {
     "codeLanguage": "Code language"

@@ -1,0 +1,28 @@
+{
+  "g2": {
+    "redProof": "loop/red/F-1116-hero-identity-inject-g2.txt：旧源跑 TestRootAGENTSIdentifiesHero + TestScaffoldedRootAGENTSIdentifiesHero → 2 条 FAIL（身份段/必读硬规则缺失）",
+    "at": "2026-11-16T03:14:25Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-16T03:14:25Z",
+    "by": "compliance"
+  },
+  "g6": {
+    "at": "2026-11-16T03:14:26Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "planHash": "38d6ada760f1"
+  },
+  "g1": {
+    "at": "2026-11-16T03:14:25Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "bb392b07cdf3"
+  },
+  "g7": {
+    "at": "2026-11-16T05:09:59Z",
+    "by": "nita",
+    "verdict": "confirmed"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "旧源 git show HEAD:frontend/app/commontext/commontext-compose-modal.tsx 换回后跑 commontext-compose-modal.dom.test.tsx + 源码断言 → 5 failed（draft 落盘/还原/橡皮/「+」/坏 JSON）；新源 → Test Files 15 passed / Tests 190 passed",
+    "at": "2026-11-14T07:05:01Z"
+  }
+}

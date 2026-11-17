@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-13T07:58:23Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "6c69d61e862e"
+  },
+  "g2": {
+    "redProof": "loop/REPORTS/redproof-F-1113-persona-create-ui-r1.txt（向导组件/入口接线原不存在）；r1 仅判据 6 grep 缺 -r 判红（drop 理由留痕）",
+    "at": "2026-11-13T07:58:24Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-13T07:58:24Z",
+    "by": "compliance"
+  }
+}

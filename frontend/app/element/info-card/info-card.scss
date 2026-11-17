@@ -455,6 +455,14 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-word;
+
+    /* 悬浮卡空态占位：summary 未就绪时整段不消失。 */
+    &.is-loading {
+        color: var(--secondary-text-color);
+        font-size: 11px;
+        opacity: 0.65;
+    }
+
     // 展示态也是可点进编辑的入口（hover 卡用单击）：给一点“可交互”反馈，
     // 但不动排版，避免标题在卡片上“跳一下”。
     &.is-editable {

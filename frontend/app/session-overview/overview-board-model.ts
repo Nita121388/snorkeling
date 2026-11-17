@@ -352,6 +352,8 @@ export type OverviewBoardCard = {
     projectName: string;
     /** Session tags (no `#` prefix). Empty for non-agent blocks and untagged sessions. */
     tags: readonly string[];
+    /** 自定义属性（有值才显示）：归一后行 + 溢出计数（resolveBoardPropRows 产物）。 */
+    propRows: BoardPropRows;
     tabName: string;
     /** Non-agent blocks show their view name ("Terminal") as a muted chip; agents use "". */
     kindLabel: string;
@@ -633,3 +635,190 @@ export function writeOverviewBoardGroup(
 }
 
 export const overviewBoardGroupAtom = boardGroupStorage.atom;
+
+// ---------------------------------------------------------------------------
+// 看板卡自定义属性（props）归一 —— 纯函数，无反向依赖。
+//
+// PropertyCell 自描述（type/name/order 冗余在 cell 上，schema 只是可选补全），
+// 因此即使全局模板缺失，老数据也能正确渲染（零迁移）。
+// 不 import aisessions view 层：结构兼容 + 本地 humanize/hash 双拷贝，
+// 保持本文件可被任何渲染面独立引用。
+// ---------------------------------------------------------------------------
+
+/** 内置属性 key（note/tags/starred/title_source/created_at/updated_at 已由卡片既有行渲染）；含驼峰变体以兼容历史数据。 */
+const BoardBuiltinPropKeys: ReadonlySet<string> = new Set([
+    "note",
+    "tags",
+    "starred",
+    "title_source",
+    "titleSource",
+    "created_at",
+    "createdAt",
+    "updated_at",
+    "updatedAt",
+]);
+
+/** Notion 9 色调色板（与 aisessions property-model 同序）——哈希上色保证同值同色。 */
+const BoardPropTagColors = ["blue", "green", "yellow", "orange", "red", "purple", "pink", "brown", "gray"] as const;
+
+export type BoardPropColorToken = (typeof BoardPropTagColors)[number];
+
+/** `my_custom_field` → `My Custom Field`（与 property-model.humanizeKey 同口径的本地拷贝）。 */
+export function humanizeBoardPropKey(key: string): string {
+    return key
+        .replace(/[_-]+/g, " ")
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim();
+}
+
+/** 稳定字符串 → 调色板颜色（与 property-model.tagToOption 同哈希，跨面同值同色）。 */
+export function boardPropColorFor(value: string): BoardPropColorToken {
+    const clean = value.replace(/^#+/, "").trim().toLowerCase();
+    let hash = 0;
+    for (let i = 0; i < clean.length; i++) {
+        hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
+    }
+    return BoardPropTagColors[hash % BoardPropTagColors.length];
+}
+
+/** 自定义属性的一行展示形态（卡片渲染只读；编辑在整卡弹窗里）。 */
+export type BoardPropRow = {
+    key: string;
+    /** cell.name || humanizeKey(key)。 */
+    name: string;
+    /** 归一后的类型字符串（select/status/multi_select/person/checkbox/text/number/url/date）。 */
+    type: string;
+    /** select / status 单值：着色胶囊 + 哈希色。 */
+    single?: { value: string; color: BoardPropColorToken };
+    /** multi_select / person / relation 多值 chips。 */
+    multi?: readonly string[];
+    /** checkbox：仅 true（false 已在空值过滤中剔除）。 */
+    checked?: boolean;
+    /** text / number / url：单行文本（已 String 化）。 */
+    text?: string;
+};
+
+export type BoardPropRows = {
+    visible: BoardPropRow[];
+    hiddenCount: number;
+};
+
+/** 与 PropertyCell 结构兼容的本地形状（避免反向依赖）。 */
+type BoardPropCellLike = {
+    value: unknown;
+    name?: string;
+    type?: string;
+    order?: number;
+};
+
+type BoardPropSchemaLike = {
+    key?: string;
+    name?: string;
+    type?: string;
+    options?: readonly string[];
+};
+
+function isBoardPropEmpty(type: string, value: unknown): boolean {
+    if (type === "checkbox") return value !== true;
+    if (Array.isArray(value)) return value.length === 0;
+    if (value == null) return true;
+    return String(value).trim() === "";
+}
+
+function boardPropStrings(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value.map((v) => String(v)).filter((v) => v.trim() !== "");
+    }
+    if (value == null || String(value).trim() === "") return [];
+    return [String(value)];
+}
+
+function boardPropTypeOf(cellType: string | null | undefined, value: unknown): string {
+    const known: ReadonlySet<string> = new Set([
+        "text",
+        "number",
+        "select",
+        "multi_select",
+        "status",
+        "date",
+        "person",
+        "checkbox",
+        "url",
+        "formula",
+        "relation",
+    ]);
+    const t = (cellType ?? "").trim();
+    if (known.has(t)) return t;
+    if (Array.isArray(value)) return "multi_select";
+    if (typeof value === "boolean") return "checkbox";
+    if (typeof value === "number") return "number";
+    return "text";
+}
+
+function boardPropTypeName(type: string): string {
+    return type;
+}
+/**
+ * props → 卡片可渲染的属性行（有值才显示）。
+ *
+ * - 过滤内置 key（卡片已有 note/tags 等行）与空值（null/""/[]/checkbox false）
+ * - 排序：order > 0 按 order，否则保持插入序（Object.keys 稳定）
+ * - select/status 单值单色胶囊；multi 变 chips；checkbox 只留 true；其余单行文本
+ * - max 上限截断，溢出进 hiddenCount（卡片高度不因属性多而跳动，与 tags 同策略）
+ */
+export function resolveBoardPropRows(
+    props: { [key: string]: BoardPropCellLike } | null | undefined,
+    _schema?: readonly BoardPropSchemaLike[] | null | undefined,
+    max = 3
+): BoardPropRows {
+    const limit = Number.isFinite(max) ? Math.max(0, Math.floor(max)) : Number.MAX_SAFE_INTEGER;
+    if (props == null) return { visible: [], hiddenCount: 0 };
+
+    const rows: BoardPropRow[] = [];
+    const orderBy: Map<string, number> = new Map();
+    const insertionIndex: Map<string, number> = new Map();
+    let seq = 0;
+    for (const key of Object.keys(props)) {
+        if (BoardBuiltinPropKeys.has(key)) continue;
+        const cell = props[key];
+        if (cell == null) continue;
+        const type = boardPropTypeOf(cell.type, cell.value);
+        if (isBoardPropEmpty(type, cell.value)) continue;
+        const name = (cell.name ?? "").trim() || humanizeBoardPropKey(key);
+        const row: BoardPropRow = { key, name, type };
+        if (type === "multi_select" || type === "person" || type === "relation") {
+            row.multi = boardPropStrings(cell.value);
+        } else if (type === "checkbox") {
+            row.checked = cell.value === true;
+        } else if (type === "select" || type === "status") {
+            const single = boardPropStrings(cell.value)[0];
+            if (single != null) row.single = { value: single, color: boardPropColorFor(single) };
+        } else if (type === "formula" || type === "created_time" || type === "updated_time") {
+            continue; // 只读派生行，卡片上不占位置
+        } else {
+            const text = boardPropStrings(cell.value)[0] ?? "";
+            if (text !== "") row.text = text;
+        }
+        if (row.single == null && row.multi == null && row.checked == null && row.text == null) continue;
+        const rawOrder = typeof cell.order === "number" && cell.order > 0 ? cell.order : 0;
+        orderBy.set(key, rawOrder);
+        insertionIndex.set(key, seq++);
+        rows.push(row);
+    }
+
+    // 有 order（>0）的按 order 升序在前；无 order 的按插入序在后。
+    rows.sort((a, b) => {
+        const ao = orderBy.get(a.key) ?? 0;
+        const bo = orderBy.get(b.key) ?? 0;
+        const aHas = ao > 0 ? 0 : 1;
+        const bHas = bo > 0 ? 0 : 1;
+        if (aHas !== bHas) return aHas - bHas;
+        if (ao !== bo) return ao - bo;
+        return (insertionIndex.get(a.key) ?? 0) - (insertionIndex.get(b.key) ?? 0);
+    });
+
+    const visible = rows.length <= limit ? rows : rows.slice(0, limit);
+    const hiddenCount = rows.length > limit ? rows.length - limit : 0;
+    return { visible, hiddenCount };
+}

@@ -8,6 +8,7 @@
         "deleteSessionFile": "Delete session file",
         "closeBlock": "Close block",
         "moreTags": "{{count}} more tags",
+        "moreProps": "{{count}} more properties",
         "openSession": "Open session {{title}}",
         "jumpToSession": "Jump to {{title}}",
         "deleteSessionAria": "Delete session {{title}}",

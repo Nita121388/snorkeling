@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "npx vitest run emain/emain-window.test.ts（修复前）→ 2 failed：markRestoredWorkspaceTabsOpened is not a function；修复后同命令 4 passed（红→绿）",
+    "at": "2026-11-14T06:54:08Z"
+  }
+}

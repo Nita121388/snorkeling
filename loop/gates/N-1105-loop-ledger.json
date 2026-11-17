@@ -1,0 +1,23 @@
+{
+  "g1": {
+    "at": "2026-11-05T01:50:10Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "f2eb2206fbbf"
+  },
+  "g2": {
+    "redProof": "node loop/queue.mjs self-test --expect=broken → 12 failed (expected-red) @ 12eab5dc",
+    "at": "2026-11-05T01:52:10Z"
+  },
+  "g6": {
+    "at": "2026-11-05T01:54:47Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "planHash": "12d2d7cde95f"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-05T01:52:41Z",
+    "by": "self"
+  }
+}

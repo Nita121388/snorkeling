@@ -256,7 +256,18 @@ export function SessionNoteSection({
     );
 
     if (summary == null) {
-        return null;
+        // 悬浮卡空态：summary 还在路上时不能整段消失（否则卡只有头部、像缺了一块）。
+        // 渲染轻量占位；detail 变体保持原行为（详情卡有自己的 loading 态）。
+        if (variant !== "hover") return null;
+        return (
+            <InfoCardSection>
+                <div className="agent-card-title-wrap" data-session-note-loading="true">
+                    <div className="agent-card-title-block is-loading">
+                        {i18n.t("element:sessionNote.loading")}
+                    </div>
+                </div>
+            </InfoCardSection>
+        );
     }
 
     const titleSourceBadge = <TitleSourceBadge titleSource={summary.titleSource} className="mr-1 align-baseline" />;

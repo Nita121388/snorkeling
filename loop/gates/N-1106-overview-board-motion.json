@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-06T01:06:10Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "ce7c1b368431"
+  },
+  "g2": {
+    "redProof": "loop/REPORTS/redproof-N-1106-overview-board-motion.txt",
+    "at": "2026-11-06T01:09:11Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-06T01:49:54Z",
+    "by": "compliance"
+  }
+}

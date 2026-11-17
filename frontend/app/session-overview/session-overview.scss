@@ -1047,6 +1047,43 @@
     }
 }
 
+/* 列表行三件套（tags + 自定义属性）紧凑 chips 区。 */
+.session-overview-block-row-meta {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+
+    .session-overview-board-chip {
+        font-size: 9px;
+        padding: 0 7px;
+    }
+
+    .property-chip {
+        height: 16px;
+        padding: 0 5px;
+        font-size: 9px;
+        line-height: 16px;
+    }
+}
+
+.session-overview-row-prop-name {
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    opacity: 0.9;
+    margin-right: 2px;
+}
+
+.session-overview-row-prop-value {
+    color: var(--main-text-color);
+    font-size: 9px;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .session-overview-note-editor {
     grid-column: 1 / -1;
     display: flex;
@@ -1734,6 +1771,52 @@
     line-height: 1.4;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* 看板卡自定义属性行：单行不换（卡高不跳），超出 ellipsis。 */
+.session-overview-board-card-props {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.session-overview-board-card-prop {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--secondary-text-color);
+}
+
+.session-overview-board-card-prop-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 80px;
+}
+
+.session-overview-board-card-prop .property-chip {
+    height: 16px;
+    padding: 0 5px;
+    font-size: 9px;
+    line-height: 16px;
+}
+
+.session-overview-board-card-prop-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+
+.session-overview-board-card-prop-more {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    opacity: 0.85;
 }
 
 .session-overview-board-card-note-mark {

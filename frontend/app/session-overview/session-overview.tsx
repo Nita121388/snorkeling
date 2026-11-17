@@ -53,7 +53,10 @@ import {
     projectNameFromPath,
     providerDisplayLabel,
     resolveBoardCardTitle,
+    resolveBoardPropRows,
+    resolveBoardTagChips,
     truncateBoardPreview,
+    type BoardPropRow,
     type OverviewBoardAvatar,
     type OverviewBoardCard,
     type OverviewBoardGroup,
@@ -1648,6 +1651,65 @@ function CompactBlockIcon({
     );
 }
 
+/**
+ * 列表行三件套：tags chips + 自定义属性（与看板卡同解析函数同口径）。
+ *
+ * 紧凑展示：tags ≤3 + 属性 ≤2，超出计数。空行不渲染节点。纯展示（点击行为在行上）。
+ */
+function RowMetaChips({ summary }: { summary: SessionSummary | null }) {
+    const tagChips = useMemo(() => resolveBoardTagChips(normalizeBoardTags(summary?.tags), 3), [summary?.tags]);
+    const propRows = useMemo(() => resolveBoardPropRows(summary?.props ?? null, undefined, 2), [summary?.props]);
+    if (tagChips.visible.length === 0 && propRows.visible.length === 0) {
+        return null;
+    }
+    const propValue = (row: BoardPropRow): string =>
+        row.single?.value ?? row.multi?.join(", ") ?? (row.checked === true ? "✓" : "") ?? row.text ?? "";
+    return (
+        <div
+            className="session-overview-block-row-meta"
+            data-overview-row-meta={tagChips.visible.length + propRows.visible.length > 0 ? "true" : undefined}
+        >
+            {tagChips.visible.map((tag) => (
+                <span
+                    key={`tag-${tag}`}
+                    className="session-overview-board-chip is-tag"
+                    data-overview-row-tag={tag}
+                    title={`#${tag}`}
+                >
+                    #{tag}
+                </span>
+            ))}
+            {propRows.visible.map((row) => (
+                <span
+                    key={`prop-${row.key}`}
+                    className="session-overview-board-chip is-prop"
+                    data-overview-row-prop={row.key}
+                    title={`${row.name}: ${propValue(row)}`}
+                >
+                    <span className="session-overview-row-prop-name">{row.name}</span>
+                    {row.single ? (
+                        <span className={cn("property-chip", `property-chip--${row.single.color}`)}>
+                            {row.single.value}
+                        </span>
+                    ) : (
+                        <span className="session-overview-row-prop-value">{propValue(row)}</span>
+                    )}
+                </span>
+            ))}
+            {tagChips.hiddenCount + propRows.hiddenCount > 0 ? (
+                <span
+                    className="session-overview-board-chip is-more"
+                    title={i18n.t("session-overview:board.moreProps", {
+                        count: tagChips.hiddenCount + propRows.hiddenCount,
+                    })}
+                >
+                    +{tagChips.hiddenCount + propRows.hiddenCount}
+                </span>
+            ) : null}
+        </div>
+    );
+}
+
 function BlockRow({
     block,
     detailState,
@@ -1792,6 +1854,8 @@ function BlockRow({
                             live={summary?.live === true}
                             now={now}
                         />
+                        {/* 列表行三件套：tags chips + 自定义属性（与看板卡同解析函数同口径）。 */}
+                        <RowMetaChips summary={summary} />
                         {summary?.note ? (
                             <div className="session-overview-note-line">
                                 <span>{summary.note}</span>
@@ -2548,6 +2612,9 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                     projectName,
                     // tags 去 `#` 前缀并去重：卡片 chip / 标签分组 / 属性面板共用同一份口径。
                     tags: normalizeBoardTags(summary?.tags ?? detailSummary?.tags),
+                    // 自定义属性（有值才显示）：status/select 着色胶囊。归一纯函数在
+                    // overview-board-model，不反向依赖 aisessions view 层。
+                    propRows: resolveBoardPropRows(summary?.props ?? detailSummary?.props ?? null),
                     kindLabel: nextBlock.isAgentLike ? "" : blockViewToName(nextBlock.view),
                     preview,
                     note,

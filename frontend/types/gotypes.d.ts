@@ -3525,6 +3525,7 @@ declare global {
         conflicts: number;
         pending: number;
         intervalSeconds: number;
+        realtime: boolean;
     };
 
     // waveobj.StickerClickOptsType

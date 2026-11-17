@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "pre-fix 2 failed / post-fix 2 passed (npx vitest run frontend/app/commontext/commontext-compose-modal.dom.test.tsx; 真机台 commontext-source-notion 本机启动器故障，改 jsdom DOM 台兜底，断言集同源)",
+    "at": "2026-11-13T16:04:00Z"
+  }
+}

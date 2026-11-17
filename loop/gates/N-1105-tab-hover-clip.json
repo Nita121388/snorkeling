@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "node --test 等价：npx vitest run frontend/app/element/info-card/info-card-pos.test.ts → 10 passed；校准三例（靠右 Tab / 靠下目标 / placement=right 贴右墙）对旧公式 legacyCardPos 断言 isFullyInside=false，实测出界，判据看得见本 bug",
+    "at": "2026-11-06T00:26:40Z"
+  }
+}
