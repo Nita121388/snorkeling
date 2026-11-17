@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getTabBadgeAtom } from "@/app/store/badge";
-import { getTabAgentStatusDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
+import { getTabAgentStatusDotsAtom, getTabsWithUnreadDotsAtom } from "@/app/agent-status/agent-status-tab-aggregate";
 import type { TabAgentStatusDot } from "@/app/agent-status/agent-status-tab-aggregate";
 import { refocusNode } from "@/app/store/global";
 import { getTabModelByTabId } from "@/app/store/tab-model";
@@ -13,7 +13,7 @@ import { validateCssColor } from "@/util/color-validator";
 import { fireAndForget } from "@/util/util";
 import clsx from "clsx";
 import { useAtomValue } from "jotai";
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { makeORef } from "../store/wos";
 import { openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
@@ -271,6 +271,8 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     // C 层 agent-status 聚合点 (22 号方案决策 6B): D 走自有通道, 仅借 TabBadges 槽位渲染.
     const agentDots = useAtomValue(getTabAgentStatusDotsAtom(id));
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
+    const unreadTabsAtom = useMemo(() => getTabsWithUnreadDotsAtom([id]), [id]);
+    const unreadTabIds = useAtomValue(unreadTabsAtom);
 
     const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
     const unopenedThisLaunch = !wasTabOpenedThisLaunch(openedThisLaunchTabIds, id);
@@ -312,10 +314,13 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const handleContextMenu = useCallback(
         (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
             e.preventDefault();
-            const menu = buildTabContextMenu(id, renameRef, onClose, env);
+            const menu = buildTabContextMenu(id, renameRef, onClose, env, {
+                active,
+                hasUnreadDot: unreadTabIds.has(id),
+            });
             env.showContextMenu(menu, e);
         },
-        [id, onClose, env]
+        [id, onClose, env, active, unreadTabIds]
     );
 
     const handleRename = useCallback(

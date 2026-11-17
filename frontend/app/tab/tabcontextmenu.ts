@@ -7,6 +7,7 @@ import { i18n } from "@/i18n/config";
 import { fireAndForget } from "@/util/util";
 import { makeORef } from "../store/wos";
 import type { TabEnv } from "./tab";
+import { collapseTabIds } from "./tab-collapse-state";
 
 const TabReturnWorkspaceIdMetaKey = "tab:returnworkspaceid";
 
@@ -39,11 +40,20 @@ export function buildTabBarContextMenu(env: TabEnv): ContextMenuItem[] {
     return [{ label: i18n.t("tab:contextMenu.tabBarPosition"), type: "submenu", submenu: tabBarSubmenu }];
 }
 
+/** `buildTabContextMenu` 的可见性判定入参 (由调用方组件注入, 不读 atom). */
+export interface TabContextMenuVisibility {
+    /** 该 Tab 是否为当前激活 Tab. 激活 Tab 永远在主栏可见, 收起无效 → 菜单项置灰. */
+    active?: boolean;
+    /** 该 Tab 是否有未阅 agent 状态点. 未读优先于手动收起 (见 isTabHiddenFromBar) → 菜单项置灰. */
+    hasUnreadDot?: boolean;
+}
+
 export function buildTabContextMenu(
     id: string,
     renameRef: React.RefObject<(() => void) | null>,
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void,
-    env: TabEnv
+    env: TabEnv,
+    visibility?: TabContextMenuVisibility
 ): ContextMenuItem[] {
     const menu: ContextMenuItem[] = [];
     menu.push(
@@ -119,6 +129,25 @@ export function buildTabContextMenu(
         menu.push({ label: i18n.t("tab:contextMenu.backgrounds"), type: "submenu", submenu }, { type: "separator" });
     }
     menu.push(...buildTabBarContextMenu(env), { type: "separator" });
+    // 「收起到更多」: 与「更多」下拉共用 collapsedTabIdsAtom, 收起后该 Tab 只存在于下拉里且置灰
+    // (dimmed 语义见 tab-more-menu.tsx 的 TabMoreRowItem).
+    // 激活 Tab / 有未阅点的 Tab 收起会被 isTabHiddenFromBar 的优先级覆盖 (点了也不生效), 故置灰.
+    const collapseDisabledHint =
+        visibility?.active === true
+            ? i18n.t("tab:contextMenu.collapseToMoreActiveDisabled")
+            : visibility?.hasUnreadDot === true
+              ? i18n.t("tab:contextMenu.collapseToMoreUnreadDisabled")
+              : null;
+    menu.push({
+        label: i18n.t("tab:contextMenu.collapseToMore"),
+        enabled: collapseDisabledHint == null,
+        sublabel: collapseDisabledHint ?? undefined,
+        click: () => {
+            collapseTabIds([id]);
+            recordTEvent("action:collapsetab");
+        },
+    });
+    menu.push({ type: "separator" });
     menu.push({
         label: i18n.t("tab:contextMenu.moveTabToNewWindow"),
         click: () =>

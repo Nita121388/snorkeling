@@ -159,6 +159,8 @@ function VTabWrapper({
     const tabModel = getTabModelByTabId(tabId, env);
     const openedThisLaunchTabIds = useAtomValue(openedThisLaunchTabIdsAtom);
     const unopenedThisLaunch = !wasTabOpenedThisLaunch(openedThisLaunchTabIds, tabId);
+    const unreadTabsAtom = useMemo(() => getTabsWithUnreadDotsAtom([tabId]), [tabId]);
+    const unreadTabIds = useAtomValue(unreadTabsAtom);
 
     useEffect(() => {
         const cb = () => renameRef.current?.();
@@ -193,10 +195,13 @@ function VTabWrapper({
         (e: React.MouseEvent<HTMLDivElement>) => {
             e.preventDefault();
             e.stopPropagation();
-            const menu = buildTabContextMenu(tabId, renameRef, () => onClose(), env);
+            const menu = buildTabContextMenu(tabId, renameRef, () => onClose(), env, {
+                active,
+                hasUnreadDot: unreadTabIds.has(tabId),
+            });
             env.showContextMenu(menu, e);
         },
-        [tabId, onClose, env]
+        [tabId, onClose, env, active, unreadTabIds]
     );
 
     return (
