@@ -1,0 +1,36 @@
+# red proof: N-1117-sync-core（云同步纯函数层）
+# date: 2026-11-17T06:36:18Z
+# 做法：对 lib/sync.mjs 逐个注入一处「看起来合理」的错误，看测试能不能抓住。
+#       每条都是先改坏 → 跑 node --test lib/sync.test.mjs → 记录红 → 从备份恢复。
+
+=== 注入 A：去重失效（seen 检查永远不成立）===
+not ok 5 - 红样：同一条事件搬两次只留一条
+not ok 6 - 红样：键序不同但字段相同的事件也算同一条（按稳定序列化去重，不是按原始行）
+not ok 18 - 两仓对拷：清单相等、差量为零、台账并集不重复
+# tests 23
+# pass 20
+# fail 3
+
+=== 注入 B：pending 判定失效（永远不催）===
+not ok 10 - 六态：off / syncing / error / offline(连败) / offline(超时) / pending / idle
+not ok 11 - pending 的边界：刚同步过就不催（2 倍间隔内不出黄灯）
+not ok 12 - 事件也算待推量（不能只看文件数）
+not ok 17 - 整体状态：一次都没推过 → pending；把清单记进水位 → idle
+not ok 21 - CLI：folder 模式一次都没同步过 → pending（不许谎报空闲）
+# tests 23
+# pass 18
+# fail 5
+
+=== 注入 C：白名单放行一切（.backup 也会外发）===
+not ok 1 - 白名单：台账事实要同步，备份/缓存/生成物不同步
+not ok 2 - 白名单外的任意文件不会被顺手发出去（默认不外发，不是默认全发）
+not ok 3 - manifest：内容指纹 + 排序 + 总字节
+not ok 17 - 整体状态：一次都没推过 → pending；把清单记进水位 → idle
+# tests 23
+# pass 19
+# fail 4
+
+=== 恢复后 ===
+# tests 23
+# pass 23
+# fail 0

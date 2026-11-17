@@ -1,0 +1,11 @@
+{
+  "g2": {
+    "redProof": "loop/red/N-1117-sync-core.txt：注入 3 处错误各自变红（去重失效→3 红 / pending 不催→5 红 / 白名单放行→4 红），恢复后 23/23 绿",
+    "at": "2026-11-17T06:38:46Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-17T06:38:46Z",
+    "by": "compliance"
+  }
+}

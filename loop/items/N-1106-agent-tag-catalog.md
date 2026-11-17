@@ -3,7 +3,7 @@ id: N-1106-agent-tag-catalog
 title: "Agent 卡片标签候选：全局清单 + 计数"
 type: feature
 priority: P2
-status: open
+status: released
 origin: self
 source: "nita 2026-11-06：标签支持展示现有所有标签并选择 + 候选显示数量"
 task: 11-06-agent-card-tag-picker
@@ -12,6 +12,7 @@ touch: [frontend/app/store/available-session-tags.ts, frontend/app/store/availab
 rollback: "git revert 单提交；optionCounts/tagCatalog 均为可选参数，回滚后候选项回到 def.options+已选值，无数据迁移、无 RPC 变更"
 budget: {minutes: 150, retries: 2}
 releaseCandidate: false
+score: {value: 4, by: nita, at: "2026-11-14T07:17:27Z", note: null}
 createdAt: "2026-11-06T05:27:52Z"
 ---
 

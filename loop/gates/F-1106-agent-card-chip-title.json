@@ -1,0 +1,23 @@
+{
+  "g1": {
+    "at": "2026-11-06T16:13:16Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "cfe4f781d9dd"
+  },
+  "g2": {
+    "redProof": "npx vitest run 4 个新测试文件 → 4 failed / 54 failed（全部断言红或 not implemented 红，无 0/0 空跑）@ e82e9883",
+    "at": "2026-11-06T07:58:10Z"
+  },
+  "g6": {
+    "at": "2026-11-06T16:13:17Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "planHash": "deaca3a31ce2"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-06T16:12:59Z",
+    "by": "compliance"
+  }
+}

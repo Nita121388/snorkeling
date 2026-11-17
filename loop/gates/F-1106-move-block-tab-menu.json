@@ -1,0 +1,12 @@
+{
+  "g1": {
+    "at": "2026-11-06T12:48:46Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "3245ee0340f3"
+  },
+  "g2": {
+    "redProof": "loop/REPORTS/redproof-F-1106-move-block-tab-menu.txt",
+    "at": "2026-11-06T13:14:27Z"
+  }
+}

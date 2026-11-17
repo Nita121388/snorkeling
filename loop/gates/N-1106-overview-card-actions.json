@@ -1,0 +1,17 @@
+{
+  "g1": {
+    "at": "2026-11-08T08:27:19Z",
+    "by": "nita",
+    "verdict": "confirmed",
+    "prdHash": "01e46e770ef8"
+  },
+  "g2": {
+    "redProof": "loop/REPORTS/redproof-N-1106-overview-card-actions.txt",
+    "at": "2026-11-08T08:28:59Z"
+  },
+  "g5": {
+    "ok": true,
+    "executedAt": "2026-11-08T08:31:27Z",
+    "by": "self"
+  }
+}
