@@ -7,6 +7,14 @@ import { CenteredDiv } from "@/app/element/quickelems";
 import { ModalsRenderer } from "@/app/modals/modalsrenderer";
 import { TabBar } from "@/app/tab/tabbar";
 import { TabContent } from "@/app/tab/tabcontent";
+import { computeRenderPreloadTabIds, PreloadTabCap } from "./preload-tabs";
+import {
+    getPendingMountTabIds,
+    pendingInputTabCount,
+    pruneExpiredPendingInputTabs,
+    prunePendingInputTabs,
+    subscribePendingInput,
+} from "@/app/commontext/pending-input";
 import { VTabBar } from "@/app/tab/vtabbar";
 import { Widgets } from "@/app/workspace/widgets";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -69,8 +77,22 @@ const WorkspaceElem = memo(() => {
     // 内容区保活/预挂载: 提前挂载"当前激活 + 悬浮(即将点击) + 最近用过的"几个 tab 的
     // 内容 (非激活用 visibility:hidden 隐藏但保持真实尺寸, 便于 tile 布局正确测量),
     // 这样切到这些 tab 时直接显示已挂载内容, 消除"切到隐藏 tab 先黑屏再加载"的闪黑.
-    const PreloadTabCap = 3;
     const [preloadTabIds, setPreloadTabIds] = useState<string[]>([]);
+    // CommonText 后台发送的 pending Tab 并入隐藏挂载列表（不受 cap 截断）。
+    const [pendingMountTick, setPendingMountTick] = useState(0);
+    useEffect(() => {
+        return subscribePendingInput(() => setPendingMountTick((tick) => tick + 1));
+    }, []);
+    // 自愈：Tab 被关 / 从 workspace 消失 / pending entry 已被消费 → 移出隐藏挂载队列。
+    useEffect(() => {
+        prunePendingInputTabs(ws?.tabids ?? []);
+    }, [ws?.tabids, pendingMountTick]);
+    // 兜底：块在等待期间被删时注入链路不会跑，靠硬过期把隐藏挂载收掉（最多 ttl+5s）。
+    useEffect(() => {
+        if (pendingInputTabCount() === 0) return;
+        const timer = window.setInterval(() => pruneExpiredPendingInputTabs(), 2000);
+        return () => window.clearInterval(timer);
+    }, [pendingMountTick]);
     useEffect(() => {
         setPreloadTabIds((prev) => {
             const next = prev.filter((id) => id !== tabId);
@@ -88,8 +110,7 @@ const WorkspaceElem = memo(() => {
             return next.slice(0, PreloadTabCap);
         });
     }, []);
-    const renderPreloadTabIds =
-        tabId === "" ? [] : [tabId, ...preloadTabIds.filter((id) => id !== tabId)].slice(0, PreloadTabCap);
+    const renderPreloadTabIds = computeRenderPreloadTabIds(tabId, preloadTabIds, getPendingMountTabIds());
 
     // showLeftTabBar is passed as a seed value only; subsequent changes are handled by setShowLeftTabBar below.
     // Do NOT add showLeftTabBar as a dep here — re-registering refs on config changes would redundantly re-run commitLayouts.
@@ -211,6 +232,8 @@ const WorkspaceElem = memo(() => {
                                             return (
                                                 <div
                                                     key={preTabId}
+                                                    data-tab-id={preTabId}
+                                                    data-tab-active={isActive ? "true" : "false"}
                                                     className="absolute inset-0 flex flex-col"
                                                     style={{ visibility: isActive ? "visible" : "hidden" }}
                                                 >

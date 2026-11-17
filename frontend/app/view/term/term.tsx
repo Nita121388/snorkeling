@@ -3,7 +3,7 @@
 
 import ClaudeColorSvg from "@/app/asset/claude-color.svg";
 import { SubBlock } from "@/app/block/block";
-import { peekPendingInput, takePendingInput, computeInjectDecision } from "@/app/commontext/pending-input";
+import { peekPendingInput, takePendingInput, computeInjectDecision, subscribePendingInput, unmountPendingInputTabByBlock } from "@/app/commontext/pending-input";
 import { SubmitAfterPasteDelayMs, submitTermInput } from "@/app/commontext/commontext-insert";
 import { appendBlockMoveMenuItems, useBlockMoveMenuItems } from "@/app/block/block-move-menu";
 import type { BlockNodeModel } from "@/app/block/blocktypes";
@@ -353,6 +353,12 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     const termModeRef = React.useRef(termMode);
 
     const tabModel = useTabModel();
+    // 这个 blockId 是否属于「本 renderer 的 Tab」（预挂载的别的 Tab 的块 → false）。
+    // 用 tabModel.tabAtom 的 blockids：tab.blockids 是所有块（含 inline tab 组）的权威列表。
+    const isBlockInThisTab = React.useCallback(() => {
+        const tabData = globalStore.get(tabModel.tabAtom);
+        return (tabData?.blockids ?? []).includes(blockId);
+    }, [tabModel, blockId]);
     const termFontSize = jotai.useAtomValue(model.fontSizeAtom);
     const fullConfig = globalStore.get(atoms.fullConfigAtom);
     const connFontFamily = fullConfig.connections?.[blockData?.meta?.connection]?.["term:fontfamily"];
@@ -499,7 +505,14 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 nodeModel: model.nodeModel,
             }
         );
-        (window as any).term = termWrap;
+        // 后台发送（CommonText Send）的隐藏挂载块：非本 Tab 的块不应写这个调试全局，
+        // 否则会把激活 Tab 的 window.term 覆盖掉（verify 台 / 调试都依赖它）。
+        // 注意不能用 tabModel.tabId 判断：app.tsx 给整棵树只提供了一个「本 renderer 所属 Tab」的
+        // TabModel，预挂载进来的其他 Tab 的块拿到的 tabModel.tabId 也是 staticTabId。
+        // 正确判据：blockId 是否属于本 Tab 的 blockids。
+        if (isBlockInThisTab()) {
+            (window as any).term = termWrap;
+        }
         model.termRef.current = termWrap;
         termWrap.onSelectionTextChange = (selectionText) => {
             const container = viewRef.current;
@@ -546,7 +559,8 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             const atBottom = buf.viewportY >= buf.baseY;
             setIsTermAtBottom(atBottom);
         });
-        if (wasFocused) {
+        // 同理：只有本 Tab 的块才恢复焦点；隐藏挂载的块（属于别的 Tab）绝不抢焦点。
+        if (wasFocused && isBlockInThisTab()) {
             setTimeout(() => {
                 model.giveFocus();
             }, 10);
@@ -571,6 +585,12 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
     // 就绪判定走 computeInjectDecision（首输出 + 静默窗口，TTL 兜底）；注入经 terminal.paste
     // （与 insertTextIntoTerm 同一 PTY 路径，保留 bracketed paste 语义）。
     // 注意：不使用 meta 键 cmd:initialinput（全仓零消费点，见 docs/project/agent-session-plan.md）。
+    // 后台发送路径：块可能在 registry 登记之前就已被隐藏预挂载，effect 会因 peek==null 直接返回。
+    // 这里订阅 registry 变更（tick 进依赖）保证晚登记也能重新起轮询，不再静默漏接。
+    const [pendingInputTick, setPendingInputTick] = React.useState(0);
+    React.useEffect(() => {
+        return subscribePendingInput(() => setPendingInputTick((tick) => tick + 1));
+    }, []);
     React.useEffect(() => {
         if (termWrapInst == null) return;
         if (peekPendingInput(blockId) == null) return;
@@ -590,6 +610,8 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             });
             if (decision.action === "inject") {
                 const text = takePendingInput(blockId);
+                // 无论有没有文本，这个块的 pending 状态都已结束：把它的隐藏挂载移出（评审 P1-3）。
+                unmountPendingInputTabByBlock(blockId);
                 if (text != null && text !== "") {
                     termWrap.terminal.paste(text);
                     // 只 paste 不回车 = agent 收不到（用户实测：文字粘进输入框但没发送）。
@@ -606,6 +628,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
             }
             if (decision.action === "expire") {
                 const text = takePendingInput(blockId);
+                unmountPendingInputTabByBlock(blockId);
                 if (text != null && text !== "") {
                     fireAndForget(() => copyText(text));
                     console.warn("[pending-input] expired, fell back to clipboard", { blockId });
@@ -624,7 +647,7 @@ const TerminalView = ({ blockId, model }: ViewComponentProps<TermViewModel>) => 
                 window.clearTimeout(timer);
             }
         };
-    }, [termWrapInst, blockId]);
+    }, [termWrapInst, blockId, pendingInputTick]);
 
     // Live-update the xterm font family when it changes, without recreating the
     // terminal/PTY (which would drop the session). xterm applies fontFamily at runtime.

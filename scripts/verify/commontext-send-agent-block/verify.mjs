@@ -411,10 +411,11 @@ try {
   );
   reporter.check("close-on-outside-click", closedByOutside === true, String(closedByOutside));
 
-  const caretPoint2 = await client.evaluate(
-    `(() => { const el = document.querySelector("[data-commontext-send-button]"); if (!el) return null; const b = el.querySelectorAll("button")[1]; const r = b.getBoundingClientRect(); return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`
-  );
-  await realClick(client, caretPoint2);
+  const caretPointFn = () =>
+    client.evaluate(
+      `(() => { const el = document.querySelector("[data-commontext-send-button]"); if (!el) return null; const b = el.querySelectorAll("button")[1]; const r = b.getBoundingClientRect(); return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`
+    );
+  await realClick(client, await caretPointFn());
   await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, { timeoutMs: 8000 });
   await pressEscape(client);
   const closedByEsc = await waitForProbe(
@@ -426,8 +427,13 @@ try {
   reporter.check("close-on-escape", closedByEsc === true, String(closedByEsc));
 
   // 7. 写入发送文本并真实点击「发送」→ 弹窗关闭 + 新块出现
-  await realClick(client, caretPoint2);
-  await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, { timeoutMs: 8000 });
+  // 编辑器折叠（600ms）会移动工具栏，坐标必须重取
+  await realClick(client, await caretPointFn());
+  const readyForSend = await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, { timeoutMs: 8000 });
+  if (readyForSend == null) {
+    await realClick(client, await caretPointFn());
+    await waitForProbe(client, POPOVER_TEXT, (t) => typeof t === "string" && t.length > 0, { timeoutMs: 8000 });
+  }
   const editorValue = await client.evaluate(SET_EDITOR_TEXT(`请回复这一行：${MARKER}`));
   reporter.check(
     "editor-text-set",
@@ -446,7 +452,24 @@ try {
         const r = b.getBoundingClientRect();
         return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) };
     })()`);
-  reporter.check("send-button-point", sendPoint != null, JSON.stringify(sendPoint ?? null));
+  // 断言细节要带数字：失败时给出「popover 是否在 + 按钮清单 + caret 坐标」三件套，别只报 null。
+  const sendPointDebug = await client.evaluate(`(() => {
+        const p = document.querySelector(${JSON.stringify(POPOVER)});
+        const el = document.querySelector("[data-commontext-send-button]");
+        const caret = el?.querySelectorAll("button")[1];
+        const cr = caret?.getBoundingClientRect();
+        return {
+            popover: p != null,
+            popoverButtons: p ? [...p.querySelectorAll("button")].map((b) => (b.textContent || "").trim().slice(0, 16)) : [],
+            caretRect: cr ? [Math.round(cr.left), Math.round(cr.top), Math.round(cr.width), Math.round(cr.height)] : null,
+            editorFocused: document.activeElement?.getAttribute("data-commontext-composer") != null,
+        };
+    })()`);
+  reporter.check(
+    "send-button-point",
+    sendPoint != null,
+    `point=${JSON.stringify(sendPoint ?? null)} debug=${JSON.stringify(sendPointDebug)}`
+  );
   if (sendPoint != null) await realClick(client, sendPoint);
   const modalClosed = await waitForProbe(
     client,

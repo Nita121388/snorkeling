@@ -1,15 +1,23 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     clearPendingInput,
     computeInjectDecision,
+    getPendingMountTabIds,
     isPendingInputExpired,
+    mountPendingInputTab,
     pendingInputCount,
+    pendingInputTabCount,
     peekPendingInput,
+    pruneExpiredPendingInputTabs,
+    prunePendingInputTabs,
     registerPendingInput,
+    subscribePendingInput,
     takePendingInput,
+    unmountPendingInputTab,
+    unmountPendingInputTabByBlock,
 } from "./pending-input";
 
 beforeEach(() => {
@@ -82,5 +90,105 @@ describe("computeInjectDecision", () => {
         const out = t0 + 100;
         expect(computeInjectDecision({ entry, baselineLastUpdated: 0, lastUpdated: out, now: t0 + 2_000 }))
             .toEqual({ action: "expire" });
+    });
+});
+
+describe("pending Tab hidden-mount queue", () => {
+    it("mounts, dedupes and moves an existing tab to the tail (FIFO)", () => {
+        mountPendingInputTab("t1", "b1");
+        mountPendingInputTab("t2", "b2");
+        expect(getPendingMountTabIds()).toEqual(["t1", "t2"]);
+        mountPendingInputTab("t1", "b1");
+        expect(getPendingMountTabIds()).toEqual(["t2", "t1"]);
+    });
+
+    it("caps the exposed mount list but keeps the rest queued", () => {
+        for (const [tabId, blockId] of [["t1", "b1"], ["t2", "b2"], ["t3", "b3"]] as const) {
+            registerPendingInput(blockId, "x");
+            mountPendingInputTab(tabId, blockId);
+        }
+        expect(getPendingMountTabIds()).toEqual(["t1", "t2"]);
+        expect(pendingInputTabCount()).toBe(3);
+        unmountPendingInputTab("t1");
+        expect(getPendingMountTabIds()).toEqual(["t2", "t3"]);
+    });
+
+    it("unmounts by block (inject/expire path) and ignores unknown ids", () => {
+        registerPendingInput("b1", "x");
+        registerPendingInput("b2", "y");
+        mountPendingInputTab("t1", "b1");
+        mountPendingInputTab("t2", "b2");
+        unmountPendingInputTabByBlock("b1");
+        expect(getPendingMountTabIds()).toEqual(["t2"]);
+        unmountPendingInputTabByBlock("nope");
+        expect(pendingInputTabCount()).toBe(1);
+        unmountPendingInputTab("nope");
+        expect(pendingInputTabCount()).toBe(1);
+    });
+
+    it("prunes tabs that no longer exist in the workspace or lost their pending input", () => {
+        registerPendingInput("b1", "x");
+        registerPendingInput("b2", "y");
+        mountPendingInputTab("t1", "b1");
+        mountPendingInputTab("t2", "b2");
+        prunePendingInputTabs(["t1"]); // t2 已被关闭 / 从 workspace 消失
+        expect(getPendingMountTabIds()).toEqual(["t1"]);
+        takePendingInput("b1"); // 已注入但 unmountByBlock 还没跑：自愈移除
+        prunePendingInputTabs(["t1"]);
+        expect(getPendingMountTabIds()).toEqual([]);
+    });
+
+    it("hard-expires a pending tab even when the inject path never runs (block deleted)", () => {
+        const t0 = 1_000_000;
+        const entry = registerPendingInput("b1", "x", { now: () => t0, ttlMs: 1_000 });
+        mountPendingInputTab("t1", "b1");
+        expect(getPendingMountTabIds()).toEqual(["t1"]);
+        pruneExpiredPendingInputTabs(entry.registeredAt + entry.ttlMs + 4_999);
+        expect(getPendingMountTabIds()).toEqual(["t1"]);
+        pruneExpiredPendingInputTabs(entry.registeredAt + entry.ttlMs + 5_000);
+        expect(getPendingMountTabIds()).toEqual([]);
+    });
+
+    it("notifies subscribers on register/take/mount/unmount and stops after unsubscribe", () => {
+        let calls = 0;
+        const unsubscribe = subscribePendingInput(() => {
+            calls++;
+        });
+        registerPendingInput("b1", "x");
+        mountPendingInputTab("t1", "b1");
+        takePendingInput("b1");
+        unmountPendingInputTab("t1");
+        expect(calls).toBe(4);
+        unsubscribe();
+        registerPendingInput("b2", "y");
+        expect(calls).toBe(4);
+    });
+
+    it("keeps a throwing listener from breaking the others", () => {
+        let good = 0;
+        const offBad = subscribePendingInput(() => {
+            throw new Error("boom");
+        });
+        const offGood = subscribePendingInput(() => {
+            good++;
+        });
+        expect(() => registerPendingInput("b1", "x")).not.toThrow();
+        expect(good).toBe(1);
+        offBad();
+        offGood();
+    });
+
+    it("applies the verify-only runtime override when no explicit options are passed", () => {
+        vi.stubGlobal("window", {});
+        try {
+            (window as any).__snorkelingPendingInputOverride = { ttlMs: 1234, quietMs: 42 };
+            const entry = registerPendingInput("b1", "x");
+            expect(entry.ttlMs).toBe(1234);
+            expect(entry.quietMs).toBe(42);
+            const explicit = registerPendingInput("b2", "y", { ttlMs: 7 });
+            expect(explicit.ttlMs).toBe(7);
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 });

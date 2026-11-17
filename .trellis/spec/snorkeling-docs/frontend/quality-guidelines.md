@@ -769,3 +769,46 @@ rowTop(非虚拟化) = nodeRect.top - paddingBoxTop + scrollTop
 实测：把「状态 + UI + 接线 + 测试」一次性喂给一个子代理，会在读文件阶段就断（两次）；拆成
 `7a 分页状态/翻页条` → `7b-1 markers/窗口/锚定` → `7b-2 页内渲染/分段头` 三个 tight-scope 批次后全部一次通过。
 喂 prompt 时必须给**精确落点**（变量名/行号/已有 hooks 名/接口清单），并明确「只做这一块，别碰 X」。
+
+---
+
+## 后台链路依赖「隐藏挂载」时的三条硬约束 (2026-11-17, task 11-17-commontext-send-background)
+
+CommonText Send 改成后台异步（不跳 Tab、不抢焦点）时，注入必须发生在**未激活的 Tab** 里。
+实现是「pending Tab 临时并入 workspace 预挂载列表（visibility:hidden，真实尺寸）」。踩到的坑：
+
+### 1. 「块属于哪个 Tab」不能用 `tabModel.tabId`
+
+`app.tsx` 给整棵 renderer 树只提供一个 `TabModelContext.Provider`，value 是**本 renderer 所属 Tab**
+（`getTabModelByTabId(atoms.staticTabId)`）。workspace 预挂载别的 Tab 的 `TabContent` 时，
+里面的块拿到的 `tabModel.tabId` 仍然是 `staticTabId` → 用 `tabModel.tabId === staticTabId` 判断
+"是不是本 Tab 的块"对隐藏挂载的别的块**恒为真**，守卫失效（实测：hidden agent 块覆盖了
+`window.term`、还可能抢焦点）。
+
+正确判据：`globalStore.get(tabModel.tabAtom)?.blockids.includes(blockId)`（tab.blockids 是权威列表）。
+
+### 2. pending 隐藏挂载队列：不参与 cap 切片 + 硬过期兜底 + 绝不落盘
+
+- 预挂载列表本身有 `PreloadTabCap=3` 切片；pending Tab 若并进同一个 slice，连续几次发送就会被
+  挤出列表 → `TermContent` 卸载 → 注入 tick 停止 → **TTL 回退永不触发、entry 悬死**。
+  pending 必须"加在 slice 之后"（`frontend/app/workspace/preload-tabs.ts` 的
+  `computeRenderPreloadTabIds`），且自身有上限（当前 2）。
+- 块在等待期间被删 / 组件再也不会挂载时，注入链路跑不到，所以队列条目必须带
+  `expiresAt = registeredAt + ttl + 5s` 硬过期兜底（`pruneExpiredPendingInputTabs`），
+  由 workspace 的 2s 定时器兜住，否则会永久留一个隐藏 TabContent（xterm/WebGL 上下文）。
+- 队列与 registry 都是模块级内存：**禁止持久化**（历史 block-jump 黑屏死锁就是
+  localStorage 残留 + 模块求值期读取 → renderer 报废）。
+
+### 3. 注入 effect 必须订阅 registry 变更（晚注册重触发）
+
+后台路径下块可能在 `registerPendingInput` 之前就被预挂载（执行顺序：建块 await → 注册），
+effect 首次运行 `peek == null` 直接 return，之后**不会再有第二次机会** → 静默不注入。
+做法：registry 提供 `subscribePendingInput(cb)`（注册/消费/队列变化都广播），term 的注入 effect
+把订阅得到的 tick 放进依赖，晚注册时重新起轮询。
+
+### 4. 真机台点击坐标必须"点击前重取"，不能复用
+
+编辑器失焦 600ms 后会自动折叠，工具栏/按钮整体位移（实测 ~27px）。复用早前算好的坐标点击会
+落到别的元素上，`waitForProbe` 超时后脚本**不检查返回值**继续跑 → 后续断言全红且看不出根因。
+规则：`caretPoint` 这类坐标每次点击前 `evaluate` 重算；`waitForProbe` 的返回值必须断言，
+不要"调用即认为成功"。

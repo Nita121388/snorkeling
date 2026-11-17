@@ -228,3 +228,23 @@ export function defaultSendFolder(focusedAgent: AgentBlockInfo | null, workspace
     if (focusedAgent?.cwd != null && focusedAgent.cwd !== "") return focusedAgent.cwd;
     return (workspaceCwd ?? "").trim();
 }
+
+/**
+ * create 路径的「Tab 激活」计划（后台执行契约，见 11-17-commontext-send-background）：
+ *   background=true  → 后端 activateTargetTab=false、前端不调 setActiveTab（绝不跳转/不抢焦点）；
+ *   background=false → 保留旧行为（后端激活 + 前端 setActiveTab 双保险）。
+ * 抽成纯函数是为了单测能锁死「后台执行绝不触发任何 Tab 激活」这一条。
+ */
+export type SendActivationPlan = {
+    /** existing-tab 路径传给 CreateBlockInTab 的 activateTargetTab */
+    backendActivateExisting: boolean;
+    /** 建块后前端是否调 setActiveTab（把用户视线切过去） */
+    frontActivateTab: boolean;
+};
+
+export function planSendActivation(background: boolean): SendActivationPlan {
+    if (background) {
+        return { backendActivateExisting: false, frontActivateTab: false };
+    }
+    return { backendActivateExisting: true, frontActivateTab: true };
+}

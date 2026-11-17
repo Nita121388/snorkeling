@@ -16,3 +16,4 @@
 - [ ] 2026-11-17 F-1117-overview-card-props 缺台账事件：commit 83b6e5c8d 已落、G1/G2/G5 已清、绿证 11/11（item 记录有），但 pick/commit/verify 引擎事件没发（macOS 本机 queue.mjs 不可用）；需引擎侧补记 + G6/G7 待办 @loop-closeout
 - [ ] 2026-11-17 N-1117-tab-collapse-to-more 回填包待引擎入库：代码 f44ec0942 先落、红证/绿证已备（loop/red/N-1117-tab-collapse-to-more.txt），item 文件已在，需 queue add 分诊 + G1/G2/G5 门签 @loop-closeout
 - [ ] 2026-11-17 package-lock.json 版本字段与 package.json 脱节（lock 写 0.0.127、json 已 0.0.128，npm install 会同步）；建议 bump 版本时同步 lock 或加发布前检查 @loop-closeout
+- [ ] 2026-11-17 N-1117-commontext-send-background 待引擎入库/分诊：代码+单测+真机台（34/34 全绿，`verify-runs/20261117T15295`）、台账已写；本机 macOS 跑不了 queue.mjs，未伪造事件。另：tsc 基线记录 47 但 HEAD 实测 55（8 条为既有文件、与本包无关），需刷新基线 @pi-night-audit

@@ -102,6 +102,7 @@ node scripts/verify/vcs-panel-buttons/verify.mjs --port 9232
 | `agent-card-tags`      | `verify.mjs` | Agent 卡片 Tags 候选：全局清单并入（候选含本会话未选标签）+ 候选项数字计数 + hover 卡与 AgentCardModal 候选一致（独立 profile + 端口 9234） | ✅       |
 | `commontext-meta-sort` | `verify.mjs` | CommonText 列表元信息列 / 图标排序控件 / 搜索态禁用 / 次数写入（独立 profile + 端口 9251）                  | ✅       |
 | `commontext-send-agent-block` | `verify.mjs` | CommonText Send 目标选择器：split button + popover 四段（聚焦 agent 小卡 / Agents / Type / Folder）+ 确认发送 → 新建 agent 块 + pending input 注入（injected 事件断言，多 agent 并行用 VERIFY_PROFILE/端口错开） | ✅       |
+| `commontext-send-background` | `verify.mjs` | CommonText Send 后台异步发送：不换激活 Tab/不抢焦点/不新增 localStorage 键 + 隐藏挂载注入（injected 事件 + block 归属）+ 注入后移出挂载 + 「后台执行」开关三态 + 前台跳转回归 + TTL 回退/删 Tab/焦点不抢/4 连发挂载上限 + 杀进程重启安全（`--startup-only` 单跑重启冒烟） | ✅       |
 | `agent-property-scope` | `verify.mjs` | Agent 属性 scope：浮层面板（3 范围默认 session / 类型下拉 9 项 / Esc）+ UI 与外部写入（agent card set 同链）落 settings.json + codex 跨 Agent 过滤（ai-sessions 用临时目录隔离，独立 profile + 端口 9235） | —       |
 | `theme-monochrome`     | `verify.mjs` | 三主题矩阵：dark/light token 基线不变 + monochrome 目标值生效 + 终端 default-monochrome 16 色可读可辨（另有 check.py 纯静态判据，不启 GUI） | ✅       |
 | `aisessions-run-indicator` | `verify.mjs` | AI Sessions 行内运行指示：左列单点（非 animate-spin 四点）/ 右侧徽章在 row-meta 末尾且 ml-auto 贴右 / 徽章高 15px / 无第二个 GUI Chat spinner | ✅       |

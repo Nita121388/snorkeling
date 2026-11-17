@@ -9,6 +9,7 @@ import {
     defaultSendFolder,
     extractAgentBlockInfo,
     normalizeCwd,
+    planSendActivation,
     resolveSendTarget,
     type AgentBlockInfo,
 } from "./commontext-send-target";
@@ -215,5 +216,15 @@ describe("collectFolderCandidates / defaultSendFolder", () => {
         expect(out.map((c) => c.path)).toEqual(["/Users/nita/Primary", "/Users/nita"]);
         expect(defaultSendFolder(null, "/Users/nita/Primary")).toBe("/Users/nita/Primary");
         expect(defaultSendFolder(focusedClaude, "/ws")).toBe("~/Primary/projects/snorkeling");
+    });
+});
+
+describe("planSendActivation", () => {
+    it("background: never activates the target tab (backend or frontend)", () => {
+        expect(planSendActivation(true)).toEqual({ backendActivateExisting: false, frontActivateTab: false });
+    });
+
+    it("foreground: keeps the legacy double activation", () => {
+        expect(planSendActivation(false)).toEqual({ backendActivateExisting: true, frontActivateTab: true });
     });
 });

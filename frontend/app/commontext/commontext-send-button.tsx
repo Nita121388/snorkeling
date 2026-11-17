@@ -37,12 +37,13 @@ import {
     collectFolderCandidates,
     defaultSendFolder,
     extractAgentBlockInfo,
+    planSendActivation,
     resolveSendTarget,
     type AgentBlockInfo,
     type FolderCandidate,
     type SendTabSelection,
 } from "./commontext-send-target";
-import { registerPendingInput } from "./pending-input";
+import { registerPendingInput, mountPendingInputTab } from "./pending-input";
 
 // ───────────────────────── 共享配置（弹窗内多处 Send 共用） ─────────────────────────
 
@@ -56,6 +57,11 @@ export type CommontextSendConfig = {
      * 旧实现只靠「三项全等」推导 ✓，导致聚焦块与所选 agent 同款时无法切到新建。
      */
     mode: CommontextSendMode;
+    /**
+     * 后台执行（默认开）：建块时不跳转目标 Tab（后端 activateTargetTab=false、不调 setActiveTab），
+     * 目标 Tab 未激活时临时隐藏挂载等待 TUI 就绪注入。关掉则保留旧的「跳过去再发送」行为。
+     */
+    background: boolean;
     /** null = 跟随聚焦块的 agent（无聚焦时用 default profile） */
     profile: string | null;
     tab: SendTabSelection;
@@ -65,6 +71,7 @@ export type CommontextSendConfig = {
 
 export const commontextSendConfigAtom = atom<CommontextSendConfig>({
     mode: "focused",
+    background: true,
     profile: null,
     tab: { kind: "current" },
     folder: null,
@@ -229,14 +236,29 @@ export async function executeCommonTextSend(input: {
             ? { inheritWorkspaceContext: true }
             : { connection: null, cwd: preview.cwd, inheritWorkspaceContext: false };
     const blockDef = createAgentBlockDefForProfile(preview.profileName, settings, context);
+    // undefined 视为开（旧配置对象没有这个字段时默认后台执行）
+    const background = config.background !== false;
+    const activation = planSendActivation(background);
     try {
         let blockId: string;
+        /** create 路径要对齐的 Tab（用于隐藏挂载）；null = 当前 Tab 已激活，无需挂载 */
+        let targetTabId: string | null = null;
         if (config.tab.kind === "current") {
             blockId = await createBlock(blockDef, false);
+            const activeTabId = globalStore.get(atoms.staticTabId);
+            targetTabId = activeTabId === "" ? null : activeTabId;
         } else if (config.tab.kind === "existing") {
-            const targetTabId = config.tab.tabId;
-            blockId = await ObjectService.CreateBlockInTab(targetTabId, blockDef, DefaultRuntimeOpts, true, false);
-            getApi().setActiveTab(targetTabId);
+            const targetTabIdOfConfig = config.tab.tabId;
+            blockId = await ObjectService.CreateBlockInTab(
+                targetTabIdOfConfig,
+                blockDef,
+                DefaultRuntimeOpts,
+                activation.backendActivateExisting,
+                false
+            );
+            // 后台执行：绝不切 Tab。旧行为：建块后把用户视线切过去。
+            if (activation.frontActivateTab) getApi().setActiveTab(targetTabIdOfConfig);
+            targetTabId = targetTabIdOfConfig;
         } else {
             const workspace = globalStore.get(atoms.workspace);
             if (workspace?.oid == null) {
@@ -250,10 +272,20 @@ export async function executeCommonTextSend(input: {
                 false
             );
             blockId = result.blockid;
-            getApi().setActiveTab(result.tabid);
+            if (activation.frontActivateTab) getApi().setActiveTab(result.tabid);
+            targetTabId = result.tabid;
         }
+        // 先建块成功、再登记队列（评审：失败时不留空 entry），最后才把 Tab 加入隐藏挂载。
         registerPendingInput(blockId, cleanText);
-        onStatus?.(i18n.t("commontext:send.sentPending", { agent: preview.profileLabel }), "ok");
+        if (background && targetTabId != null && targetTabId !== globalStore.get(atoms.staticTabId)) {
+            mountPendingInputTab(targetTabId, blockId);
+        }
+        onStatus?.(
+            background
+                ? i18n.t("commontext:send.sentBackground", { agent: preview.profileLabel })
+                : i18n.t("commontext:send.sentPending", { agent: preview.profileLabel }),
+            "ok"
+        );
         return true;
     } catch (error) {
         onStatus?.(
@@ -427,7 +459,13 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                             label={t("commontext:send.focusedBlock")}
                             title={t("commontext:send.focusedBlockTitle")}
                             onClick={() =>
-                                setConfig({ mode: "focused", profile: null, tab: { kind: "current" }, folder: null })
+                                setConfig({
+                                    ...config,
+                                    mode: "focused",
+                                    profile: null,
+                                    tab: { kind: "current" },
+                                    folder: null,
+                                })
                             }
                         />
                     ) : null}
@@ -620,7 +658,38 @@ function SendTargetPanel(props: { text: string; onSent: () => void; onStatus: Se
                 </div>
             </div>
 
-            {/* 5. 确认行 */}
+            {/* 5. 后台执行开关（默认开） */}
+            <div className="px-2.5 py-1.5 border-t border-border/60 flex items-center gap-2" data-commontext-send-background>
+                <button
+                    type="button"
+                    role="switch"
+                    aria-checked={config.background !== false}
+                    aria-label={t("commontext:send.background")}
+                    title={t("commontext:send.backgroundHint")}
+                    className={clsx(
+                        "relative shrink-0 h-[16px] w-[28px] rounded-full transition-colors cursor-pointer border-0 p-0",
+                        config.background !== false ? "bg-accent" : "bg-surface-soft border border-border"
+                    )}
+                    onClick={() => setConfig({ ...config, background: config.background === false })}
+                >
+                    <span
+                        className={clsx(
+                            "absolute top-[2px] h-[12px] w-[12px] rounded-full bg-white transition-all",
+                            config.background !== false ? "left-[14px]" : "left-[2px]"
+                        )}
+                    />
+                </button>
+                <span className="text-[11.5px] text-secondary">
+                    {t("commontext:send.background")}
+                </span>
+                <span className="ml-auto text-[10px] text-muted truncate">
+                    {config.background !== false
+                        ? t("commontext:send.backgroundOn")
+                        : t("commontext:send.backgroundOff")}
+                </span>
+            </div>
+
+            {/* 6. 确认行 */}
             <div className="flex items-center gap-2 px-2.5 py-2 border-t border-border/60">
                 <span className="min-w-0 flex-1 text-[10.5px] text-muted truncate">
                     {t("commontext:send.targetEquals")}{" "}
