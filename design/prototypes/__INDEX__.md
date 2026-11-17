@@ -106,3 +106,8 @@
 
 ## settings
 - `settings-density/` — 同步状态：▲ 设计活跃（未实现）｜镜像源：frontend/app/view/waveconfig/*（waveconfig.tsx / agentnotifysettings.tsx / syncsettings.tsx 等）
+
+## ui-ux-audit-batch（跨域审计批次）
+- `ui-ux-audit-batch/` — 同步状态：▲ 设计活跃（未实现）｜10 项核心组件/页面 UI/UX 优化方案 + 可交互原型｜入口 `index.html`｜镜像源见批次 README
+  - 01 TabBar / 02 Block 头部 / 03 Overview 看板时间线 / 04 AI Sessions / 05 Agent chip
+  - 06 Files+目录树 VCS / 07 VCS diff+commits / 08 WidgetsBar / 09 CommonText / 10 Launcher+Settings

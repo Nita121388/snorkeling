@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>10 · Launcher 快速启动 + Settings 密度 — Snorkeling UI/UX Audit</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .tab-switch { display: inline-flex; padding: 2px; background: var(--surface-strong-color); border: 1px solid var(--border-color); border-radius: 7px; margin-bottom: 14px; }
+    .tab-switch button { height: 24px; padding: 0 12px; border-radius: 5px; font: 600 11px/1 "Inter", sans-serif; color: var(--secondary-text-color); }
+    .tab-switch button.on { background: var(--block-bg-solid-color); color: var(--main-text-color); box-shadow: 0 1px 2px var(--shadow-color); }
+
+    /* launcher */
+    .launcher {
+        width: 100%; border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden;
+        background: color-mix(in srgb, var(--overlay-bg-color) 96%, transparent);
+        box-shadow: 0 26px 70px -24px var(--shadow-color);
+    }
+    .l-search { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-bottom: 1px solid var(--border-color); }
+    .l-search input { flex: 1; background: none; border: none; outline: none; color: var(--main-text-color); font: 13px/1 "Inter", sans-serif; }
+    .l-search kbd { font-size: 9px; }
+    .l-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; min-height: 236px; }
+    @media (max-width: 720px) { .l-cols { grid-template-columns: 1fr; } }
+    .l-col { border-right: 1px solid var(--border-color); padding: 8px; }
+    .l-col:last-child { border-right: none; }
+    .l-col h4 { font: 700 9px/1 "Inter", sans-serif; color: var(--grey-text-color); text-transform: uppercase; letter-spacing: .09em; padding: 3px 6px 7px; }
+    .l-item {
+        display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 7px;
+        border-radius: 6px; cursor: pointer; font-size: 11.5px; color: var(--secondary-text-color);
+    }
+    .l-item:hover, .l-item.sel { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .l-item.sel { box-shadow: inset 2px 0 0 var(--accent-color); }
+    .l-item .ico { width: 16px; text-align: center; color: var(--accent-color); font-size: 11px; flex: none; }
+    .l-item .sub { margin-left: auto; font: 9px/1 var(--mono-font); color: var(--grey-text-color); }
+    .l-item .k { margin-left: auto; font: 9px/1 var(--mono-font); color: var(--grey-text-color); }
+    .l-foot { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-top: 1px solid var(--border-color); font: 9.5px/1 var(--mono-font); color: var(--grey-text-color); }
+    .l-foot .sp { flex: 1; }
+    .l-empty { padding: 26px 10px; text-align: center; font-size: 11px; color: var(--secondary-text-color); }
+
+    /* settings */
+    .settings { display: grid; grid-template-columns: 168px 1fr; border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; min-height: 330px; background: var(--block-bg-solid-color); }
+    .st-nav { border-right: 1px solid var(--border-color); background: var(--panel-bg-color); padding: 8px 6px; }
+    .st-nav .nv { display: flex; align-items: center; gap: 7px; height: 27px; padding: 0 8px; border-radius: 5px; font-size: 11.5px; color: var(--secondary-text-color); cursor: pointer; }
+    .st-nav .nv:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .st-nav .nv.on { background: var(--action-soft-bg-color); color: var(--accent-color); font-weight: 600; }
+    .st-nav .nh { font: 700 8.5px/1 "Inter", sans-serif; color: var(--grey-text-color); text-transform: uppercase; letter-spacing: .1em; padding: 10px 8px 5px; }
+    .st-main { padding: 12px 16px; }
+    .st-search { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border-radius: 6px; background: var(--surface-color); border: 1px solid var(--border-color); margin-bottom: 14px; }
+    .st-search input { flex: 1; background: none; border: none; outline: none; color: var(--main-text-color); font: 11.5px/1 "Inter", sans-serif; }
+    .st-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent); }
+    .st-row .sl { flex: 1; }
+    .st-row .sl b { display: block; font: 600 11.5px/1.4 "Inter", sans-serif; }
+    .st-row .sl span { display: block; font-size: 10.5px; color: var(--secondary-text-color); margin-top: 2px; }
+    .dens-seg { display: inline-flex; padding: 2px; background: var(--surface-strong-color); border: 1px solid var(--border-color); border-radius: 6px; }
+    .dens-seg button { height: 22px; padding: 0 9px; border-radius: 4px; font: 600 10.5px/1 "Inter", sans-serif; color: var(--secondary-text-color); }
+    .dens-seg button.on { background: var(--block-bg-solid-color); color: var(--main-text-color); }
+    .dirty-bar {
+        display: none; align-items: center; gap: 8px;
+        padding: 7px 10px; border-radius: 6px; margin-top: 12px;
+        background: var(--action-soft-bg-color); border: 1px solid var(--action-soft-border-color);
+        font: 600 10.5px/1 "Inter", sans-serif; color: var(--action-soft-text-color);
+    }
+    .dirty-bar.show { display: flex; }
+    .dirty-bar .sp { flex: 1; }
+    .st-demo-list { transition: all .2s; }
+    .st-demo-list.compact .st-row { padding: 5px 0; }
+    .st-demo-list.compact .st-row .sl span { display: none; }
+    .st-demo-list.loose .st-row { padding: 14px 0; }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb"><a href="index.html" style="color:inherit">ui-ux-audit-batch</a><span class="sep">/</span><b>10</b><span class="sep">/</span>launcher-settings</div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="proto-hero">
+        <h1>10 · Launcher 快速启动 + Settings</h1>
+        <p class="sub">镜像源 <code>frontend/app/view/launcher/</code> · <code>frontend/app/view/waveconfig/</code> — 三列启动面板、键盘可达、设置密度与未保存状态。</p>
+    </div>
+
+    <div class="sect-label">现状问题</div>
+    <div class="card-grid">
+        <div class="note-card problem"><span class="idx">P1</span><div><strong>启动入口按类型平铺。</strong> <span class="dim">「最近 / 快捷动作 / Agent 目标」混在一个列表，找 codex 要滚过 20 个终端配置。</span></div></div>
+        <div class="note-card problem"><span class="idx">P2</span><div><strong>键盘只有部分可达。</strong> <span class="dim">↑↓ 能选，但 ↵ 行为随上下文变化，没有可视化选中行 + 提示。</span></div></div>
+        <div class="note-card problem"><span class="idx">P3</span><div><strong>设置没有密度梯度。</strong> <span class="dim">13 寸屏与 27 寸屏同一套 44px 行高，前者一屏只看 5 行。</span></div></div>
+        <div class="note-card problem"><span class="idx">P4</span><div><strong>未保存改动无提示。</strong> <span class="dim">改完直接关窗即丢失，没有脏状态条 / 离开确认。</span></div></div>
+    </div>
+
+    <div class="sect-label">优化方案</div>
+    <div class="card-grid two">
+        <div class="note-card solution"><span class="idx">S1</span><div><strong>Launcher 三列定宽。</strong> <span class="dim">最近（≤5）· 快捷动作（分组）· Agent 目标（vendor 分组）。搜索框置顶，跨列统一过滤。</span></div></div>
+        <div class="note-card solution"><span class="idx">S2</span><div><strong>选中行 + 底部快捷键图例。</strong> <span class="dim">选中行左 2px accent 条；底部常显 <kbd>↵</kbd> 打开 <kbd>⌘↵</kbd> 新窗口 <kbd>Esc</kbd> 关闭。</span></div></div>
+        <div class="note-card solution"><span class="idx">S3</span><div><strong>密度三档。</strong> <span class="dim">紧凑 5px / 标准 9px / 宽松 14px 行内边距；按窗口高度自动建议，用户可覆盖。</span></div></div>
+        <div class="note-card solution"><span class="idx">S4</span><div><strong>脏状态条。</strong> <span class="dim">有任何未保存改动 → 底部出现「n 项未保存 · 保存 / 丢弃」；关窗二次确认。</span></div></div>
+    </div>
+
+    <div class="sect-label">交互演示</div>
+    <div class="tab-switch">
+        <button class="on" data-tab="launcher">Launcher</button>
+        <button data-tab="settings">Settings</button>
+    </div>
+
+    <div class="demo-frame" id="paneLauncher">
+        <span class="demo-tag">LIVE · ↑↓ / 输入过滤</span>
+        <div class="demo-inner" style="padding:14px">
+            <div class="launcher">
+                <div class="l-search"><span style="color:var(--accent-color)">⌘</span><input id="lq" placeholder="搜索动作、目录、Agent…" /><kbd>⌘K</kbd></div>
+                <div class="l-cols" id="lcols"></div>
+                <div class="l-foot"><span><kbd>↑↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span><span><kbd>⌘↵</kbd> 新窗口</span><span class="sp"></span><span><kbd>Esc</kbd> 关闭</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="demo-frame" id="paneSettings" style="display:none">
+        <span class="demo-tag">LIVE · 切密度看行高变化</span>
+        <div class="demo-inner" style="padding:14px">
+            <div class="settings">
+                <div class="st-nav">
+                    <div class="nh">外观</div>
+                    <div class="nv on">通用</div>
+                    <div class="nv">主题</div>
+                    <div class="nv">字体与密度</div>
+                    <div class="nh">连接</div>
+                    <div class="nv">SSH 配置</div>
+                    <div class="nv">Provider</div>
+                    <div class="nh">Agent</div>
+                    <div class="nv">Persona</div>
+                    <div class="nv">状态与通知</div>
+                </div>
+                <div class="st-main">
+                    <div class="st-search"><span>⌕</span><input placeholder="搜索设置项…" /><kbd>⌘K</kbd></div>
+                    <div class="st-demo-list" id="stList">
+                        <div class="st-row">
+                            <div class="sl"><b>界面密度</b><span>控制列表行高与间距；窄屏建议紧凑</span></div>
+                            <div class="dens-seg" data-seg>
+                                <button data-seg-value="compact">紧凑</button>
+                                <button data-seg-value="normal" class="seg-on on">标准</button>
+                                <button data-seg-value="loose">宽松</button>
+                            </div>
+                        </div>
+                        <div class="st-row">
+                            <div class="sl"><b>UI 字号缩放</b><span>100% – 150%，仅影响 UI 不影响终端</span></div>
+                            <select disabled style="height:24px;background:var(--surface-color);border:1px solid var(--border-color);border-radius:5px;color:var(--main-text-color);font-size:11px;padding:0 6px"><option>100%</option></select>
+                        </div>
+                        <div class="st-row">
+                            <div class="sl"><b>主色 accent</b><span>暗色默认绿、亮色默认紫；可自定义</span></div>
+                            <span style="width:18px;height:18px;border-radius:4px;background:var(--accent-color);border:1px solid var(--border-color)"></span>
+                        </div>
+                        <div class="st-row">
+                            <div class="sl"><b>骨架加载动画</b><span>水下主题骨架屏（20 种）</span></div>
+                            <span class="tg-switch" data-label="1"></span>
+                        </div>
+                        <div class="st-row">
+                            <div class="sl"><b>终端回底 FAB</b><span>滚动离开底部时显示浮动按钮</span></div>
+                            <span class="tg-switch on" data-label="1"></span>
+                        </div>
+                    </div>
+                    <div class="dirty-bar show" id="dirtyBar">
+                        <span id="dirtyCount">1 项未保存</span>
+                        <span class="sp"></span>
+                        <button class="mini-btn primary" style="height:22px;font-size:10.5px">保存</button>
+                        <button class="mini-btn" style="height:22px;font-size:10.5px">丢弃</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="spec-bar">
+        <div><b>Launcher</b> 三列等宽（1fr×3）· 列内 ≤ 5 条 + 「查看全部」· 列间 1px 分隔 · 搜索 100ms 防抖。</div>
+        <div><b>键盘</b> ↑↓ 移动（选中行左 2px accent）· ↵ 打开 · ⌘↵ 新窗口 · Esc 关闭。</div>
+        <div><b>密度</b> 紧凑 5px / 标准 9px / 宽松 14px；<code>settings.density</code> 持久化。</div>
+        <div><b>脏状态</b> 计数 = 改动项数；保存后归零；关闭窗口时若有未保存 → 二次确认。</div>
+    </div>
+
+    <div class="proto-footnav">
+        <a href="09-commontext.html">← 09 · CommonText</a>
+        <a href="index.html">Hub →</a>
+    </div>
+</main>
+
+<script src="assets/proto.js"></script>
+<script>
+(function () {
+    // ---- launcher ----
+    const cols = [
+        { h: "最近", items: [
+            { i: "◈", t: "codex · auth-refactor", s: "12s" },
+            { i: "▸", t: "term · build", s: "4min" },
+            { i: "▤", t: "files · src", s: "38min" },
+            { i: "⑂", t: "vcs · main", s: "1h" },
+        ]},
+        { h: "快捷动作", items: [
+            { i: "＋", t: "新建终端", k: "⌘T" },
+            { i: "◫", t: "新建预览", k: "⌘P" },
+            { i: "◈", t: "新建 Agent 会话", k: "⌘⇧A" },
+            { i: "⌘", t: "打开网页", k: "⌘⇧W" },
+            { i: "⚙", t: "设置", k: "⌘," },
+        ]},
+        { h: "Agent 目标", items: [
+            { i: "◐", t: "codex", s: "gpt-5.1" },
+            { i: "◑", t: "opencode", s: "sonnet" },
+            { i: "◉", t: "pi", s: "deepseek" },
+            { i: "◈", t: "claude-code", s: "opus" },
+        ]},
+    ];
+    const colsEl = document.getElementById("lcols");
+    let sel = 0, flat = [];
+    function renderLauncher(q) {
+        flat = [];
+        const ql = (q || "").toLowerCase();
+        colsEl.innerHTML = cols.map((c, ci) => {
+            const items = c.items.filter(it => !ql || it.t.toLowerCase().includes(ql));
+            items.forEach(it => flat.push(it));
+            return `<div class="l-col"><h4>${c.h}</h4>${items.length ? items.map(it => {
+                const idx = flat.length - items.length + items.indexOf(it);
+                return `<div class="l-item ${idx === sel ? "sel" : ""}" data-idx="${idx}"><span class="ico">${it.i}</span><span>${it.t}</span>${it.s ? `<span class="sub">${it.s}</span>` : ""}${it.k ? `<span class="k">${it.k}</span>` : ""}</div>`;
+            }).join("") : `<div class="l-empty">无匹配</div>`}</div>`;
+        }).join("");
+        colsEl.querySelectorAll(".l-item").forEach(el => {
+            el.addEventListener("mouseenter", () => { sel = +el.dataset.idx; paintSel(); });
+        });
+    }
+    function paintSel() {
+        colsEl.querySelectorAll(".l-item").forEach(el => el.classList.toggle("sel", +el.dataset.idx === sel));
+    }
+    renderLauncher("");
+    document.getElementById("lq").addEventListener("input", e => { sel = 0; renderLauncher(e.target.value); });
+    document.addEventListener("keydown", e => {
+        if (document.getElementById("paneLauncher").style.display === "none") return;
+        if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(sel + 1, flat.length - 1); paintSel(); }
+        if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(sel - 1, 0); paintSel(); }
+    });
+
+    // ---- tabs ----
+    document.querySelectorAll("[data-tab]").forEach(b => {
+        b.addEventListener("click", () => {
+            document.querySelectorAll("[data-tab]").forEach(x => x.classList.remove("on"));
+            b.classList.add("on");
+            document.getElementById("paneLauncher").style.display = b.dataset.tab === "launcher" ? "" : "none";
+            document.getElementById("paneSettings").style.display = b.dataset.tab === "settings" ? "" : "none";
+        });
+    });
+
+    // ---- density ----
+    const stList = document.getElementById("stList");
+    const dirty = document.getElementById("dirtyBar");
+    document.querySelectorAll(".dens-seg button").forEach(b => {
+        b.addEventListener("click", () => {
+            document.querySelectorAll(".dens-seg button").forEach(x => x.classList.remove("on", "seg-on"));
+            b.classList.add("on", "seg-on");
+            stList.classList.remove("compact", "loose");
+            if (b.dataset.segValue === "compact") stList.classList.add("compact");
+            if (b.dataset.segValue === "loose") stList.classList.add("loose");
+            dirty.classList.add("show");
+            document.getElementById("dirtyCount").textContent = "2 项未保存";
+        });
+    });
+    document.querySelectorAll(".st-main .tg-switch").forEach(t => {
+        t.addEventListener("click", () => {
+            dirty.classList.add("show");
+            document.getElementById("dirtyCount").textContent = "3 项未保存";
+        });
+    });
+})();
+</script>
+</body>
+</html>

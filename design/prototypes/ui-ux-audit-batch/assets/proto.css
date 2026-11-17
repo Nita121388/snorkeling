@@ -1,0 +1,305 @@
+/* ============================================================
+   Snorkeling UI/UX Audit Batch — shared prototype tokens
+   Mirrors frontend/app/theme.scss (do not drift)
+   ============================================================ */
+
+:root,
+[data-theme="dark"] {
+    --base-font: normal 14px/1.5 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", sans-serif;
+    --mono-font: "Hack", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --header-font: 700 11px/1 "Inter", sans-serif;
+
+    --main-text-color: #f7f7f7;
+    --secondary-text-color: rgb(195, 200, 194);
+    --grey-text-color: #666;
+    --main-bg-color: rgb(34, 34, 34);
+    --panel-bg-color: rgba(31, 33, 31, 0.5);
+    --block-bg-color: rgba(0, 0, 0, 0.5);
+    --block-bg-solid-color: rgb(0, 0, 0);
+    --surface-soft-color: rgba(255, 255, 255, 0.04);
+    --surface-color: rgba(255, 255, 255, 0.06);
+    --surface-strong-color: rgba(255, 255, 255, 0.08);
+    --border-color: rgba(255, 255, 255, 0.16);
+    --hover-bg-color: rgba(255, 255, 255, 0.1);
+    --hover-bg-color-strong: rgba(255, 255, 255, 0.2);
+    --overlay-bg-color: #1c1c1c;
+    --modal-backdrop-color: rgba(0, 0, 0, 0.5);
+
+    --accent-color: rgb(88, 193, 66);
+    --accent-hover-color: rgb(118, 223, 96);
+    --accent-color-300: rgb(110, 231, 133);
+    --accent-color-700: rgb(34, 104, 43);
+    --action-soft-bg-color: rgb(from var(--accent-color) r g b / 0.12);
+    --action-soft-text-color: var(--accent-color-300);
+    --action-soft-border-color: rgb(from var(--accent-color) r g b / 0.3);
+
+    --error-color: rgb(229, 77, 46);
+    --warning-color: rgb(224, 185, 86);
+    --success-color: rgb(78, 154, 6);
+    --agent-working-color: #3b82f6;
+    --agent-done-color: rgb(78, 154, 6);
+    --agent-stale-color: #a855f7;
+
+    --codeblock-bg-color: #1c1c1c;
+    --diff-add-bg: #173d2a;
+    --diff-add-text: #b7f7ca;
+    --diff-del-bg: #4a2428;
+    --diff-del-text: #ffc1c7;
+
+    --shadow-color: rgba(0, 0, 0, 0.5);
+    --keybinding-bg-color: #333;
+    --keybinding-color: #e0e0e0;
+    --keybinding-border-color: #444;
+}
+
+[data-theme="light"] {
+    --main-text-color: #221e19;
+    --secondary-text-color: #635c52;
+    --grey-text-color: #78726a;
+    --main-bg-color: #f2eee5;
+    --panel-bg-color: rgba(250, 247, 241, 0.72);
+    --block-bg-color: rgba(255, 253, 248, 0.72);
+    --block-bg-solid-color: #fffdf8;
+    --surface-soft-color: #fdfbf6;
+    --surface-color: #fffdf8;
+    --surface-strong-color: #f2eee5;
+    --border-color: #dcd6c9;
+    --hover-bg-color: rgba(158, 96, 197, 0.1);
+    --hover-bg-color-strong: rgba(58, 50, 39, 0.09);
+    --overlay-bg-color: #faf7f1;
+    --modal-backdrop-color: rgba(34, 30, 25, 0.28);
+
+    --accent-color: #9e60c5;
+    --accent-hover-color: #8c4cb1;
+    --accent-color-300: #cda4e3;
+    --accent-color-700: #583271;
+    --action-soft-bg-color: rgb(from var(--accent-color) r g b / 0.12);
+    --action-soft-text-color: var(--accent-color-700);
+    --action-soft-border-color: rgb(from var(--accent-color) r g b / 0.3);
+
+    --error-color: #d32f2f;
+    --warning-color: #e65100;
+    --success-color: #2e7d32;
+    --agent-working-color: #2563eb;
+    --agent-done-color: #2e7d32;
+    --agent-stale-color: #a855f7;
+
+    --codeblock-bg-color: #f7f4ee;
+    --diff-add-bg: #dcfce7;
+    --diff-add-text: #166534;
+    --diff-del-bg: #ffe4e6;
+    --diff-del-text: #9f1239;
+
+    --shadow-color: rgba(221, 213, 197, 0.6);
+    --keybinding-bg-color: #f5f1e9;
+    --keybinding-color: #3a3227;
+    --keybinding-border-color: #dcd6c9;
+}
+
+/* ---------- reset ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-font-smoothing: antialiased; }
+body {
+    font: var(--base-font);
+    color: var(--main-text-color);
+    background: var(--main-bg-color);
+    min-height: 100vh;
+    transition: background 0.25s ease, color 0.25s ease;
+}
+a { color: var(--accent-color); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+::selection { background: var(--accent-color); color: #000; }
+
+/* ---------- prototype shell ---------- */
+.proto-topbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+    height: 42px; padding: 0 16px;
+    background: color-mix(in srgb, var(--main-bg-color) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-color);
+}
+.proto-topbar .crumb {
+    font: 700 11px/1 "Inter", sans-serif;
+    color: var(--secondary-text-color);
+    letter-spacing: 0.02em;
+    display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+}
+.proto-topbar .crumb b { color: var(--accent-color); }
+.proto-topbar .crumb .sep { color: var(--grey-text-color); }
+.proto-topbar .spacer { flex: 1; }
+.proto-topbar .page-title { font: 600 13px/1 "Inter", sans-serif; }
+
+.theme-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 26px; padding: 0 10px;
+    font: 600 11px/1 "Inter", sans-serif;
+    color: var(--secondary-text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--surface-color);
+    transition: all 0.15s ease;
+}
+.theme-toggle:hover { color: var(--main-text-color); border-color: var(--accent-color); }
+
+.proto-body { max-width: 1080px; margin: 0 auto; padding: 24px 20px 80px; }
+
+.proto-hero { margin-bottom: 20px; }
+.proto-hero h1 { font: 700 22px/1.3 "Inter", sans-serif; letter-spacing: -0.01em; }
+.proto-hero .sub { color: var(--secondary-text-color); font-size: 13px; margin-top: 6px; }
+.proto-hero .sub code { font-family: var(--mono-font); font-size: 11.5px; color: var(--accent-color); background: var(--surface-color); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- section headers ---------- */
+.sect-label {
+    font: var(--header-font);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--secondary-text-color);
+    margin: 28px 0 10px;
+    display: flex; align-items: center; gap: 8px;
+}
+.sect-label::after { content: ""; flex: 1; height: 1px; background: var(--border-color); }
+
+/* ---------- problem / solution cards ---------- */
+.card-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .card-grid.two { grid-template-columns: 1fr 1fr; } }
+
+.note-card {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 12px 14px;
+    background: var(--block-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px; line-height: 1.55;
+}
+.note-card .idx {
+    flex: none; width: 20px; height: 20px; margin-top: 1px;
+    display: grid; place-items: center;
+    font: 700 10px/1 var(--mono-font);
+    border-radius: 5px;
+}
+.note-card.problem .idx { background: color-mix(in srgb, var(--error-color) 18%, transparent); color: var(--error-color); }
+.note-card.solution .idx { background: var(--action-soft-bg-color); color: var(--action-soft-text-color); }
+.note-card strong { font-weight: 600; }
+.note-card .dim { color: var(--secondary-text-color); font-size: 12px; }
+.note-card code { font-family: var(--mono-font); font-size: 11.5px; background: var(--surface-strong-color); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- demo frame ---------- */
+.demo-frame {
+    position: relative;
+    background: var(--block-bg-solid-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px -18px var(--shadow-color);
+    padding-top: 26px; /* caption strip keeps the LIVE tag clear of interactive controls */
+}
+.demo-frame .demo-tag {
+    position: absolute; top: 5px; right: 10px; z-index: 40;
+    font: 600 10px/1 "Inter", sans-serif;
+    color: var(--secondary-text-color);
+    background: var(--surface-strong-color);
+    border: 1px solid var(--border-color);
+    padding: 4px 8px; border-radius: 5px;
+    pointer-events: none;
+}
+.demo-frame .demo-inner { padding: 20px; }
+
+/* ---------- keybinding chip ---------- */
+kbd {
+    display: inline-block;
+    font: 600 10px/1 var(--mono-font);
+    color: var(--keybinding-color);
+    background: var(--keybinding-bg-color);
+    border: 1px solid var(--keybinding-border-color);
+    border-radius: 4px;
+    padding: 2px 5px;
+    margin: 0 1px;
+    vertical-align: 1px;
+}
+
+/* ---------- generic chips ---------- */
+.chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 20px; padding: 0 8px;
+    font: 600 10.5px/1 "Inter", sans-serif;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.working { color: var(--agent-working-color); background: color-mix(in srgb, var(--agent-working-color) 13%, transparent); }
+.chip.done { color: var(--agent-done-color); background: color-mix(in srgb, var(--agent-done-color) 13%, transparent); }
+.chip.stale { color: var(--agent-stale-color); background: color-mix(in srgb, var(--agent-stale-color) 13%, transparent); }
+.chip.idle { color: var(--secondary-text-color); background: var(--surface-strong-color); }
+
+/* working pulse dot */
+.pulse-dot { position: relative; }
+.pulse-dot::after {
+    content: ""; position: absolute; inset: -3px; border-radius: 50%;
+    border: 1.5px solid currentColor; opacity: 0.6;
+    animation: pulse-ring 1.6s ease-out infinite;
+}
+@keyframes pulse-ring {
+    0% { transform: scale(0.6); opacity: 0.7; }
+    80% { transform: scale(1.5); opacity: 0; }
+    100% { opacity: 0; }
+}
+
+/* stale striped dot (color-blind safe) */
+.stripe-dot {
+    width: 7px; height: 7px; border-radius: 2px; background: currentColor;
+    background-image: repeating-linear-gradient(45deg, transparent 0 1.5px, rgba(0,0,0,0.45) 1.5px 3px);
+}
+
+/* ---------- mini buttons ---------- */
+.mini-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 24px; padding: 0 10px;
+    font: 600 11px/1 "Inter", sans-serif;
+    color: var(--secondary-text-color);
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    transition: all 0.12s ease;
+    white-space: nowrap;
+}
+.mini-btn:hover { color: var(--main-text-color); background: var(--hover-bg-color); }
+.mini-btn.primary { color: #fff; background: var(--accent-color); border-color: var(--accent-color); }
+.mini-btn.primary:hover { background: var(--accent-hover-color); }
+.mini-btn.ghost-active { color: var(--accent-color); border-color: var(--accent-color); background: var(--action-soft-bg-color); }
+
+/* ---------- spec bar ---------- */
+.spec-bar {
+    margin-top: 14px; padding: 10px 14px;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    font: 11.5px/1.7 var(--mono-font);
+    color: var(--secondary-text-color);
+    display: grid; gap: 2px;
+}
+.spec-bar b { color: var(--main-text-color); font-weight: 600; }
+
+/* ---------- toggle switch ---------- */
+.tg-switch {
+    position: relative; width: 30px; height: 16px; border-radius: 8px;
+    background: var(--border-color); cursor: pointer; transition: background 0.15s;
+    flex: none;
+}
+.tg-switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--main-text-color); transition: transform 0.15s;
+}
+.tg-switch.on { background: var(--accent-color); }
+.tg-switch.on::after { transform: translateX(14px); background: #fff; }
+
+/* ---------- footer nav ---------- */
+.proto-footnav {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 36px; padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+    font-size: 12px;
+}
+.proto-footnav a { color: var(--secondary-text-color); font-weight: 600; }
+.proto-footnav a:hover { color: var(--accent-color); text-decoration: none; }

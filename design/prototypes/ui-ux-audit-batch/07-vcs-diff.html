@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>07 · VCS diff / commits — Snorkeling UI/UX Audit</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .vcs-frame { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--block-bg-solid-color); }
+    .vcs-bar {
+        position: sticky; top: 0; z-index: 10;
+        display: flex; align-items: center; gap: 8px;
+        height: 34px; padding: 0 10px;
+        background: color-mix(in srgb, var(--panel-bg-color) 92%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border-color);
+    }
+    .repo-pill {
+        display: inline-flex; align-items: center; gap: 6px;
+        height: 22px; padding: 0 9px; border-radius: 11px;
+        border: 1px solid var(--border-color); background: var(--surface-color);
+        font: 600 10.5px/1 "Inter", sans-serif; color: var(--main-text-color);
+    }
+    .repo-pill .bd { font: 600 9.5px/1 var(--mono-font); color: var(--accent-color); }
+    .bar-sep { width: 1px; height: 14px; background: var(--border-color); }
+    .bar-hint { margin-left: auto; font: 9.5px/1 var(--mono-font); color: var(--grey-text-color); }
+
+    /* diff */
+    .diff { font: 11px/1.7 var(--mono-font); }
+    .dl { display: grid; grid-template-columns: 34px 34px 1fr; }
+    .dl .ln { text-align: right; padding-right: 7px; color: var(--grey-text-color); user-select: none; font-size: 9.5px; line-height: 1.95; }
+    .dl .code { padding-left: 10px; white-space: pre; }
+    .dl.add { background: var(--diff-add-bg); }
+    .dl.add .code { color: var(--diff-add-text); }
+    .dl.del { background: var(--diff-del-bg); }
+    .dl.del .code { color: var(--diff-del-text); }
+    .dl.add .code::before { content: "+"; margin-right: 6px; opacity: .7; }
+    .dl.del .code::before { content: "−"; margin-right: 6px; opacity: .7; }
+    .dl.hunk { background: var(--surface-soft-color); color: var(--accent-color); }
+    .dl.hunk .code { color: var(--secondary-text-color); font-size: 10px; }
+    .fold {
+        grid-template-columns: 68px 1fr; cursor: pointer; user-select: none;
+        background: color-mix(in srgb, var(--surface-strong-color) 55%, transparent);
+    }
+    .fold:hover { background: var(--hover-bg-color); }
+    .fold .code { color: var(--grey-text-color); font-size: 10px; font-style: italic; }
+    .fold .code::marker { content: none; }
+    .fold .code::before { content: ""; margin: 0; }
+
+    /* commit graph */
+    .graph-wrap { display: grid; grid-template-columns: 56px 1fr; }
+    .graph { position: relative; border-right: 1px solid var(--border-color); }
+    .graph svg { display: block; }
+    .commits { font-family: var(--mono-font); font-size: 10.5px; }
+    .cm {
+        display: grid; grid-template-columns: 1fr 92px 44px; align-items: center;
+        height: 30px; padding: 0 10px; gap: 8px; cursor: pointer;
+        border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+    }
+    .cm:hover { background: var(--hover-bg-color); }
+    .cm.anc { background: var(--action-soft-bg-color); }
+    .cm .msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--main-text-color); }
+    .cm .who { color: var(--secondary-text-color); font-size: 9.5px; }
+    .cm .rel { color: var(--grey-text-color); font-size: 9.5px; text-align: right; }
+    .cm.head .msg::after { content: "HEAD"; margin-left: 7px; font: 800 8px/1 var(--mono-font); color: var(--accent-color); border: 1px solid var(--action-soft-border-color); padding: 1.5px 4px; border-radius: 3px; vertical-align: 1px; }
+
+    .stat-chips { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border-color); font-family: var(--mono-font); font-size: 10px; }
+    .stat-chips .sc { color: var(--secondary-text-color); }
+    .stat-chips .sc b.add { color: var(--diff-add-text); }
+    .stat-chips .sc b.del { color: var(--diff-del-text); }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb"><a href="index.html" style="color:inherit">ui-ux-audit-batch</a><span class="sep">/</span><b>07</b><span class="sep">/</span>vcs</div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="proto-hero">
+        <h1>07 · VCS diff / commits</h1>
+        <p class="sub">镜像源 <code>frontend/app/view/vcs/ · vcsdiff/ · vcshistory/</code> — 未变更区折叠、双列行号、提交图祖先链、sticky 工具栏。</p>
+    </div>
+
+    <div class="sect-label">现状问题</div>
+    <div class="card-grid">
+        <div class="note-card problem"><span class="idx">P1</span><div><strong>未变更区整段直出。</strong> <span class="dim">±3 行上下文之外的长段未变更代码也全部渲染，300 行文件要滚 12 屏。</span></div></div>
+        <div class="note-card problem"><span class="idx">P2</span><div><strong>滚动即丢锚点。</strong> <span class="dim">工具栏（repo / 分支 / fetch）不固定，下滚后要回到顶上才能切 repo。</span></div></div>
+        <div class="note-card problem"><span class="idx">P3</span><div><strong>提交图看不出父子。</strong> <span class="dim">泳道线有了，但 hover 不会高亮祖先链，「这个提交是哪条线上的」要自己数。</span></div></div>
+        <div class="note-card problem"><span class="idx">P4</span><div><strong>行号是单列。</strong> <span class="dim">删除行的旧行号被复用，评审时对不上旧文件行号。</span></div></div>
+    </div>
+
+    <div class="sect-label">优化方案</div>
+    <div class="card-grid two">
+        <div class="note-card solution"><span class="idx">S1</span><div><strong>未变更区折叠。</strong> <span class="dim">超过 6 行的未变更段折叠为一行 <code>⋯ 42 行未变更 · 点击展开</code>，点击或 <kbd>O</kbd> 展开。</span></div></div>
+        <div class="note-card solution"><span class="idx">S2</span><div><strong>sticky 分组工具栏。</strong> <span class="dim">repo 切换 · 分支 · fetch 分三组 <code>|</code> 分隔，滚动全程固定在顶部。</span></div></div>
+        <div class="note-card solution"><span class="idx">S3</span><div><strong>祖先链高亮。</strong> <span class="dim">hover 提交 → 该提交的全部祖先泳道提亮 + 相关行加底色，其余淡至 30%。</span></div></div>
+        <div class="note-card solution"><span class="idx">S4</span><div><strong>双列行号。</strong> <span class="dim">旧号（−）+ 新号（+）并列；删除行只占旧号列，新增行只占新号列。</span></div></div>
+    </div>
+
+    <div class="sect-label">交互演示 · diff 折叠 + 双列行号</div>
+    <div class="demo-frame">
+        <span class="demo-tag">LIVE · 点折叠行展开</span>
+        <div class="vcs-frame">
+            <div class="vcs-bar">
+                <span class="repo-pill"> ⑂ snorkeling <span class="bd">main</span></span>
+                <span class="bar-sep"></span>
+                <button class="mini-btn">⇣ fetch</button>
+                <button class="mini-btn">± stage</button>
+                <span class="bar-sep"></span>
+                <button class="mini-btn">file: blockframe.tsx</button>
+                <span class="bar-hint">sticky toolbar · ⌥F 全屏 diff</span>
+            </div>
+            <div class="stat-chips">
+                <span class="sc"><b class="add">+64</b> <b class="del">−21</b> · 3 files</span>
+                <span class="sc">blockframe.tsx +42 −7</span>
+                <span class="sc">block-info-card.tsx +18 −0</span>
+                <span class="sc">block.scss +4 −14</span>
+            </div>
+            <div class="diff" id="diff"></div>
+        </div>
+    </div>
+
+    <div class="sect-label">交互演示 · 提交图祖先链</div>
+    <div class="demo-frame">
+        <span class="demo-tag">LIVE · hover 提交行</span>
+        <div class="graph-wrap">
+            <div class="graph" id="graph"><svg width="56" height="240" id="gsvg"></svg></div>
+            <div class="commits" id="commits"></div>
+        </div>
+    </div>
+
+    <div class="spec-bar">
+        <div><b>折叠</b> 未变更段 &gt; 6 行折叠为一行（高 18px）；点击 / <kbd>O</kbd> 展开；展开状态记忆 30s。</div>
+        <div><b>行号</b> 双列各 34px · 9.5px mono · 旧号左新号右。</div>
+        <div><b>工具栏</b> 34px sticky top · 三组动作 · 分隔线 1px。</div>
+        <div><b>祖先链</b> hover 后 80ms 延迟高亮；无关泳道 opacity .3；离开 200ms 恢复。</div>
+    </div>
+
+    <div class="proto-footnav">
+        <a href="06-files-preview.html">← 06 · Files 预览</a>
+        <a href="08-widgets-bar.html">08 · WidgetsBar →</a>
+    </div>
+</main>
+
+<script src="assets/proto.js"></script>
+<script>
+(function () {
+    // ---- diff ----
+    const rows = [
+        { t: "hunk", old: "", new: "", code: "@@ -180,7 +180,9 @@ export function BlockFrame(props: BlockFrameProps) {" },
+        { t: "ctx", old: "180", new: "180", code: "    const headerRef = useRef<HTMLDivElement>(null)" },
+        { t: "del", old: "181", new: "", code: "    const [showInfo, setShowInfo] = useState(false)" },
+        { t: "add", old: "", new: "181", code: "    const [infoState, setInfoState] = useState<InfoState>(\"closed\")" },
+        { t: "add", old: "", new: "182", code: "    const latchTimer = useRef<ReturnType<typeof setTimeout>>()" },
+        { t: "ctx", old: "182", new: "183", code: "" },
+        { t: "ctx", old: "183", new: "184", code: "    // hover latch: keep header visible 300ms after pointer leaves" },
+        { t: "ctx", old: "184", new: "185", code: "    const onLeave = useCallback(() => {" },
+        { t: "fold", lines: 42 },
+        { t: "ctx", old: "227", new: "228", code: "    }, [headerRef])" },
+        { t: "del", old: "228", new: "", code: "    if (showInfo) return <InfoCard ... />" },
+        { t: "add", old: "", new: "229", code: "    if (infoState !== \"closed\") return (" },
+        { t: "add", old: "", new: "230", code: "      <InfoCard open={infoState} onHitTest={assertClickable} />" },
+        { t: "add", old: "", new: "231", code: "    )" },
+        { t: "fold", lines: 87 },
+        { t: "ctx", old: "316", new: "319", code: "    return <div ref={headerRef}>{children}</div>" },
+    ];
+    const diffEl = document.getElementById("diff");
+    function renderDiff() {
+        diffEl.innerHTML = rows.map((r, i) => {
+            if (r.t === "fold") {
+                const expanded = r.expanded;
+                if (expanded) {
+                    return Array.from({ length: Math.min(r.lines, 8) }).map((_, k) =>
+                        `<div class="dl"><span class="ln">${+r.first + k}</span><span class="ln">${+r.first + k}</span><span class="code">    …</span></div>`
+                    ).join("");
+                }
+                return `<div class="dl fold" data-i="${i}"><span class="ln"></span><span class="code">⋯ ${r.lines} 行未变更 · 点击展开</span></div>`;
+            }
+            if (r.t === "hunk") return `<div class="dl hunk"><span class="ln"></span><span class="ln"></span><span class="code">${r.code}</span></div>`;
+            const cls = r.t === "add" ? "add" : r.t === "del" ? "del" : "";
+            return `<div class="dl ${cls}"><span class="ln">${r.old}</span><span class="ln">${r.new}</span><span class="code">${r.code}</span></div>`;
+        }).join("");
+        diffEl.querySelectorAll(".fold").forEach(f => {
+            f.addEventListener("click", () => {
+                const r = rows[+f.dataset.i];
+                r.expanded = true;
+                r.first = r.first || 185;
+                renderDiff();
+            });
+        });
+    }
+    // give folds plausible first line numbers
+    let ln = 185;
+    rows.forEach(r => { if (r.t === "fold") { r.first = ln; ln += r.lines; } else if (r.t === "ctx") ln++; });
+    renderDiff();
+
+    // ---- commit graph ----
+    // lanes: 0 = main (accent), 1 = feat (working blue), 2 = fix (stale purple)
+    const commits = [
+        { msg: "feat: agent-status chip 收口为单实现", who: "nita · 2h ago", lane: 0, anc: [1, 3, 4, 5] },
+        { msg: "fix: 悬浮卡放大按钮命中层", who: "nita · 4h ago", lane: 0, anc: [3, 4, 5] },
+        { msg: "feat: persona roster block", who: "nita · 9h ago", lane: 1, anc: [3, 4, 5] },
+        { msg: "feat: overview timeline v2", who: "nita · 1d ago", lane: 0, anc: [4, 5] },
+        { msg: "chore: bump 0.0.121", who: "nita · 1d ago", lane: 0, anc: [5] },
+        { msg: "feat: vcs history graph 泳道", who: "nita · 2d ago", lane: 0, anc: [] },
+    ];
+    const colors = ["var(--accent-color)", "var(--agent-working-color)", "var(--agent-stale-color)"];
+    const gsvg = document.getElementById("gsvg");
+    const H = 30, top = 15;
+    function laneY(i) { return top + i * H; }
+    function laneX(l) { return 14 + l * 14; }
+    let svg = "";
+    // main lane: continuous through all main-lane commits (skips the branch row)
+    const mainSegs = [[0, 1], [1, 3], [3, 4], [4, 5]];
+    mainSegs.forEach(([a, b]) => {
+        svg += `<line x1="${laneX(0)}" y1="${laneY(a)}" x2="${laneX(0)}" y2="${laneY(b)}" stroke="${colors[0]}" stroke-width="2" data-lane="0"/>`;
+    });
+    // branch lane1 merges into main before commit 3
+    svg += `<line x1="${laneX(1)}" y1="${laneY(2)}" x2="${laneX(1)}" y2="${laneY(2.55)}" stroke="${colors[1]}" stroke-width="2" data-lane="1"/>`;
+    svg += `<path d="M ${laneX(1)} ${laneY(2.55)} C ${laneX(1)} ${laneY(2.8)}, ${laneX(0)} ${laneY(2.75)}, ${laneX(0)} ${laneY(3)}" fill="none" stroke="${colors[1]}" stroke-width="2" data-lane="1"/>`;
+    commits.forEach((c, i) => {
+        svg += `<circle cx="${laneX(c.lane)}" cy="${laneY(i)}" r="5" fill="${colors[c.lane]}" stroke="var(--block-bg-solid-color)" stroke-width="2" data-lane="${c.lane}"/>`;
+    });
+    gsvg.innerHTML = svg;
+    gsvg.setAttribute("height", commits.length * H);
+
+    const commitsEl = document.getElementById("commits");
+    commitsEl.innerHTML = commits.map((c, i) => `
+        <div class="cm ${i === 0 ? "head" : ""}" data-i="${i}">
+            <span class="msg">${c.msg}</span>
+            <span class="who">${c.who}</span>
+            <span class="rel">${i === 0 ? "" : "↓ " + i}</span>
+        </div>`).join("");
+
+    commitsEl.querySelectorAll(".cm").forEach(el => {
+        el.addEventListener("mouseenter", () => {
+            const i = +el.dataset.i;
+            const hl = [i].concat(commits[i].anc);
+            const lanes = new Set(hl.map(k => commits[k].lane));
+            commitsEl.querySelectorAll(".cm").forEach((row, k) => row.classList.toggle("anc", hl.includes(k)));
+            gsvg.querySelectorAll("[data-lane]").forEach(x => {
+                x.style.opacity = lanes.has(+x.dataset.lane) ? "1" : ".22";
+            });
+        });
+        el.addEventListener("mouseleave", () => {
+            commitsEl.querySelectorAll(".cm").forEach(row => row.classList.remove("anc"));
+            gsvg.querySelectorAll("[data-lane]").forEach(x => x.style.opacity = "1");
+        });
+    });
+})();
+</script>
+</body>
+</html>

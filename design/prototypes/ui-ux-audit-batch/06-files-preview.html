@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>06 · Files 预览 + 目录树 VCS 标记 — Snorkeling UI/UX Audit</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .files-frame { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--block-bg-solid-color); }
+    .files-head {
+        display: flex; align-items: center; gap: 8px;
+        height: 36px; padding: 0 10px;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--panel-bg-color);
+    }
+    .crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; }
+    .crumb {
+        padding: 3px 7px; border-radius: 5px; cursor: pointer;
+        font: 600 11px/1 "Inter", sans-serif; color: var(--secondary-text-color);
+        white-space: nowrap;
+    }
+    .crumb:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .crumb.here { color: var(--main-text-color); cursor: default; }
+    .crumb-sep { color: var(--grey-text-color); font-size: 10px; }
+    .files-actions { display: flex; gap: 3px; margin-left: 8px; }
+    .fa-btn {
+        width: 24px; height: 24px; border-radius: 5px; display: grid; place-items: center;
+        font-size: 11px; color: var(--secondary-text-color);
+    }
+    .fa-btn:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .fa-sep { width: 1px; height: 14px; background: var(--border-color); margin: 0 3px; }
+
+    .files-body { display: grid; grid-template-columns: 218px 1fr; min-height: 300px; }
+    .tree { border-right: 1px solid var(--border-color); padding: 6px; overflow-y: auto; max-height: 300px; font-family: var(--mono-font); }
+    .tree-row {
+        display: flex; align-items: center; gap: 6px;
+        height: 24px; padding: 0 6px; border-radius: 4px;
+        font-size: 11px; color: var(--secondary-text-color); cursor: pointer;
+        position: relative;
+    }
+    .tree-row:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .tree-row .tw { font-size: 8px; width: 9px; color: var(--grey-text-color); flex: none; }
+    .tree-row .fname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tree-row .vcs { width: 6px; height: 6px; border-radius: 1.5px; flex: none; }
+    .tree-row .vcs.M { background: var(--warning-color); }
+    .tree-row .vcs.A { background: var(--success-color); }
+    .tree-row .vcs.U { background: var(--error-color); }
+    .tree-row .vcs.Q { background: var(--accent-color); }
+    .tree-row.dimmed { opacity: .35; }
+    .tree-row.hidden { display: none; }
+    .tree-row.dir { color: var(--main-text-color); font-weight: 600; }
+    .tree-filterbar { display: flex; align-items: center; gap: 6px; padding: 5px 6px 1px; }
+
+    .preview { display: flex; flex-direction: column; }
+    .preview-main { flex: 1; padding: 12px 14px; }
+    .md-title { font: 700 15px/1.35 "Inter", sans-serif; margin-bottom: 6px; }
+    .md-line { font-size: 12px; line-height: 1.7; color: var(--secondary-text-color); }
+    .md-line b { color: var(--main-text-color); }
+    .fstat { display: flex; gap: 6px; margin-top: 14px; }
+    .fstat .fs { border: 1px solid var(--border-color); border-radius: 5px; padding: 5px 8px; font: 10px/1.5 var(--mono-font); color: var(--secondary-text-color); }
+    .fstat .fs b { color: var(--main-text-color); font-size: 10.5px; }
+
+    .empty-state { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 44px 20px; text-align: center; }
+    .empty-state.show { display: flex; }
+    .empty-state .ico { font-size: 30px; opacity: .35; }
+    .empty-state .t { font: 600 12.5px/1.4 "Inter", sans-serif; color: var(--main-text-color); }
+    .empty-state .d { font-size: 11px; color: var(--secondary-text-color); max-width: 320px; }
+    .empty-state .acts { display: flex; gap: 8px; margin-top: 6px; }
+
+    .tooltip { position: fixed; z-index: 300; pointer-events: none; display: none; background: var(--overlay-bg-color); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 8px; font: 10px/1.5 var(--mono-font); color: var(--secondary-text-color); box-shadow: 0 10px 30px -12px var(--shadow-color); }
+    .tooltip b { color: var(--main-text-color); }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb"><a href="index.html" style="color:inherit">ui-ux-audit-batch</a><span class="sep">/</span><b>06</b><span class="sep">/</span>files-preview</div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="proto-hero">
+        <h1>06 · Files 预览 + 目录树 VCS 标记</h1>
+        <p class="sub">镜像源 <code>frontend/app/view/preview/</code> · <code>frontend/app/treeview/</code> — 面包屑导航、VCS 标记、只看改动、空态。</p>
+    </div>
+
+    <div class="sect-label">现状问题</div>
+    <div class="card-grid">
+        <div class="note-card problem"><span class="idx">P1</span><div><strong>路径只能看不能用。</strong> <span class="dim">头部一长串路径是纯文本，不能点某一段跳转，也没有「复制路径 / 在终端打开」的常驻位。</span></div></div>
+        <div class="note-card problem"><span class="idx">P2</span><div><strong>VCS 标记不解释自己。</strong> <span class="dim">目录树里的颜色小点没有 tooltip / 图例，新用户不知道 M/A/U 意味着什么。</span></div></div>
+        <div class="note-card problem"><span class="idx">P3</span><div><strong>改动被淹没。</strong> <span class="dim">大目录里 3 个改动文件埋在 60 行里，没有「只看改动」入口。</span></div></div>
+        <div class="note-card problem"><span class="idx">P4</span><div><strong>空目录直出白板。</strong> <span class="dim">无引导、无动作，用户对着空区块不知道下一步。</span></div></div>
+    </div>
+
+    <div class="sect-label">优化方案</div>
+    <div class="card-grid two">
+        <div class="note-card solution"><span class="idx">S1</span><div><strong>breadcrumb 可点 + 动作分组。</strong> <span class="dim">每段路径可点击跳转；右侧动作分三组（固定 ⭐ / 常用 ⇗⧉ | 分隔 | 更多 ⋯）。</span></div></div>
+        <div class="note-card solution"><span class="idx">S2</span><div><strong>VCS 标记 6px 方点 + tooltip。</strong> <span class="dim">M 橙 / A 绿 / U 红 / Q accent；hover 出 <code>modified · +42 −7</code>；树底有图例。</span></div></div>
+        <div class="note-card solution"><span class="idx">S3</span><div><strong>「只看改动」开关。</strong> <span class="dim">开启后未改动行降为 35% 透明度，改动文件保持全亮 —— 不整树重排，保位稳定。</span></div></div>
+        <div class="note-card solution"><span class="idx">S4</span><div><strong>空态三件套。</strong> <span class="dim">图标 + 一句话说明 + 1–2 个动作（新建文件 / 在此处打开终端）。</span></div></div>
+    </div>
+
+    <div class="sect-label">交互演示 · 文件浏览器</div>
+    <div class="ctrl-row">
+        <button class="mini-btn ghost-active" id="btnTree">正常树</button>
+        <button class="mini-btn" id="btnChanges">只看改动</button>
+        <button class="mini-btn" id="btnEmpty">空目录</button>
+        <span style="flex:1"></span>
+        <span class="lbl">悬停 VCS 方点看 tooltip · 点击面包屑段</span>
+    </div>
+
+    <div class="demo-frame">
+        <span class="demo-tag">LIVE</span>
+        <div class="files-frame">
+            <div class="files-head">
+                <div class="crumbs" id="crumbs"></div>
+                <div class="files-actions">
+                    <button class="fa-btn" title="固定">★</button>
+                    <span class="fa-sep"></span>
+                    <button class="fa-btn" title="在终端打开">▸</button>
+                    <button class="fa-btn" title="复制路径">⧉</button>
+                    <button class="fa-btn" title="在 Finder 显示">⇗</button>
+                    <span class="fa-sep"></span>
+                    <button class="fa-btn" title="更多">⋯</button>
+                </div>
+            </div>
+            <div class="files-body">
+                <div>
+                    <div class="tree-filterbar">
+                        <span class="tg-switch on" id="onlyChanges" data-label="1"></span>
+                        <span style="font:600 10.5px/1 Inter;color:var(--secondary-text-color)">只看改动</span>
+                        <span style="flex:1"></span>
+                        <span style="font:9.5px/1 var(--mono-font);color:var(--grey-text-color)" id="changeCount">3 changed</span>
+                    </div>
+                    <div class="tree" id="tree"></div>
+                </div>
+                <div class="preview">
+                    <div class="preview-main" id="previewMain">
+                        <div class="md-title">README.md</div>
+                        <div class="md-line"><b>Snorkeling</b> — WaveTerm fork，带 Agent 工作流的终端。</div>
+                        <div class="md-line">双击标签可重命名；悬停 Block 头部显示信息卡。</div>
+                        <div class="fstat">
+                            <span class="fs">size <b>8.4 KB</b></span>
+                            <span class="fs">mtime <b>2h ago</b></span>
+                            <span class="fs">git <b style="color:var(--warning-color)">M</b></span>
+                        </div>
+                    </div>
+                    <div class="empty-state" id="emptyState">
+                        <div class="ico">◫</div>
+                        <div class="t">这个目录是空的</div>
+                        <div class="d">在 <code style="font-family:var(--mono-font)">frontend/app/hello</code> 下新建文件，或在此处打开终端。</div>
+                        <div class="acts">
+                            <button class="mini-btn primary">新建文件</button>
+                            <button class="mini-btn">在此处打开终端</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="spec-bar">
+        <div><b>breadcrumb</b> 每段 11px/600 · hover 底色 · 末段不可点；动作 24×24 分 3 组，中间 1px 分隔线。</div>
+        <div><b>VCS 方点</b> 6×6px · radius 1.5px · M/A/U/Q 四色 · tooltip 含增删行数。</div>
+        <div><b>只看改动</b> 未改动行 opacity .35（不 display:none，保位稳定）；计数显示于开关右侧。</div>
+        <div><b>空态</b> 图标 30px + 说明 ≤ 2 行 + 动作 ≤ 2 个。</div>
+    </div>
+
+    <div class="proto-footnav">
+        <a href="05-agent-card.html">← 05 · Agent 卡片</a>
+        <a href="07-vcs-diff.html">07 · VCS diff →</a>
+    </div>
+</main>
+
+<div class="tooltip" id="tip"></div>
+
+<script src="assets/proto.js"></script>
+<script>
+(function () {
+    const paths = [
+        { n: "frontend", d: true }, { n: "app", d: true }, { n: "block", d: true },
+    ];
+    const files = [
+        { n: "blockframe.tsx", m: "M", s: "+42 −7", t: false },
+        { n: "blockframe-header.tsx", m: "M", s: "+18 −3", t: false },
+        { n: "blockframe-header.menu.test.ts", m: null, t: false },
+        { n: "block-info-card.tsx", m: "A", s: "+210 −0", t: false },
+        { n: "block.scss", m: null, t: false },
+        { n: "block-sidebar.tsx", m: "A", s: "+96 −0", t: false },
+        { n: "builtinviews.ts", m: null, t: false },
+        { n: "blockutil.tsx", m: null, t: false },
+        { n: "connstatusoverlay.tsx", m: "U", s: "merge conflict", t: false },
+    ];
+
+    const crumbsEl = document.getElementById("crumbs");
+    crumbsEl.innerHTML = paths.map((p, i) => {
+        const last = i === paths.length - 1;
+        return `<span class="crumb ${last ? "here" : ""}" data-i="${i}">${p.n}</span>${last ? "" : '<span class="crumb-sep">›</span>'}`;
+    }).join("");
+    crumbsEl.querySelectorAll(".crumb:not(.here)").forEach(c => {
+        c.addEventListener("click", () => {
+            const i = +c.dataset.i;
+            crumbsEl.querySelectorAll(".crumb").forEach((el, k) => {
+                el.classList.toggle("here", k === i);
+                el.nextElementSibling && k === i && el.nextElementSibling.remove();
+            });
+            // simple visual feedback: rebuild crumbs up to i
+            rebuildCrumbs(i);
+        });
+    });
+    function rebuildCrumbs(upto) {
+        crumbsEl.innerHTML = paths.slice(0, upto + 1).map((p, i) => {
+            const last = i === upto;
+            return `<span class="crumb ${last ? "here" : ""}" data-i="${i}">${p.n}</span>${last ? "" : '<span class="crumb-sep">›</span>'}`;
+        }).join("");
+        bindCrumbs();
+    }
+    function bindCrumbs() {
+        crumbsEl.querySelectorAll(".crumb:not(.here)").forEach(c => {
+            c.addEventListener("click", () => rebuildCrumbs(+c.dataset.i));
+        });
+    }
+
+    const tree = document.getElementById("tree");
+    const tip = document.getElementById("tip");
+    function render(onlyChanges) {
+        tree.innerHTML = `<div class="tree-row dir" style="padding-left:2px"><span class="tw">▾</span><span class="fname">📁 block</span><span class="vcs M"></span></div>` +
+            files.map(f => `
+            <div class="tree-row ${onlyChanges && !f.m ? "dimmed" : ""}" data-f="${f.n}">
+                <span class="tw" style="visibility:hidden">▾</span>
+                <span class="fname">   ${f.n}</span>
+                ${f.m ? `<span class="vcs ${f.m}" data-tip="${f.m}" data-s="${f.s}"></span>` : `<span style="width:6px"></span>`}
+            </div>`).join("") +
+            `<div style="display:flex;gap:10px;padding:8px 6px 4px;font:9px/1 var(--mono-font);color:var(--grey-text-color)">
+                <span><span class="vcs M" style="display:inline-block;vertical-align:middle;margin-right:3px"></span>M</span>
+                <span><span class="vcs A" style="display:inline-block;vertical-align:middle;margin-right:3px"></span>A</span>
+                <span><span class="vcs U" style="display:inline-block;vertical-align:middle;margin-right:3px"></span>U</span>
+            </div>`;
+        bindTips();
+    }
+    function bindTips() {
+        tree.querySelectorAll(".vcs[data-tip]").forEach(el => {
+            el.addEventListener("mouseenter", () => {
+                const map = { M: "modified", A: "added", U: "unmerged / conflict", Q: "untracked" };
+                tip.innerHTML = `<b>${map[el.dataset.tip]}</b> · ${el.dataset.s}`;
+                tip.style.display = "block";
+                const r = el.getBoundingClientRect();
+                tip.style.left = r.left + 10 + "px";
+                tip.style.top = r.bottom + 6 + "px";
+            });
+            el.addEventListener("mouseleave", () => tip.style.display = "none");
+        });
+    }
+    render(true);
+
+    const sw = document.getElementById("onlyChanges");
+    sw.addEventListener("click", () => {
+        // proto.js's generic toggle listener is registered later (DOMContentLoaded),
+        // so compute the next state ourselves to stay in sync.
+        render(!sw.classList.contains("on"));
+    });
+
+    document.getElementById("btnTree").addEventListener("click", () => { sw.classList.remove("on"); render(false); setMode("tree"); });
+    document.getElementById("btnChanges").addEventListener("click", () => { sw.classList.add("on"); render(true); setMode("tree"); });
+    document.getElementById("btnEmpty").addEventListener("click", () => setMode("empty"));
+
+    function setMode(m) {
+        document.getElementById("emptyState").classList.toggle("show", m === "empty");
+        document.getElementById("previewMain").style.display = m === "empty" ? "none" : "";
+        document.getElementById("btnTree").classList.toggle("ghost-active", m === "tree");
+        document.getElementById("btnChanges").classList.remove("ghost-active");
+        if (m === "tree" && sw.classList.contains("on")) document.getElementById("btnChanges").classList.add("ghost-active");
+    }
+})();
+</script>
+</body>
+</html>

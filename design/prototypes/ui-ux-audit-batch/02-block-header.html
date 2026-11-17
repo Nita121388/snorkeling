@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>02 · Block 头部 + 信息卡 + 最小化列 — Snorkeling UI/UX Audit</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .block {
+        position: relative;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--block-bg-solid-color);
+        overflow: hidden;
+    }
+    .block-header {
+        height: 30px;
+        display: flex; align-items: center; gap: 6px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--panel-bg-color);
+        position: relative; z-index: 2;
+    }
+    .bh-icon { width: 16px; text-align: center; font-size: 11px; color: var(--secondary-text-color); flex: none; }
+    .bh-title {
+        font: 700 11px/1 "Inter", sans-serif;
+        color: var(--secondary-text-color);
+        letter-spacing: .01em;
+        max-width: 340px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        cursor: default;
+    }
+    .bh-title:hover { color: var(--main-text-color); }
+    .bh-spacer { flex: 1; }
+    .bh-btn {
+        width: 20px; height: 20px; border-radius: 4px;
+        display: grid; place-items: center;
+        font-size: 10.5px; color: var(--secondary-text-color);
+        opacity: 0; transition: opacity .14s, background .14s, color .14s;
+        flex: none;
+    }
+    .block-header:hover .bh-btn,
+    .block-header.latched .bh-btn { opacity: 1; }
+    .bh-btn:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .bh-more { opacity: 0; position: relative; }
+    .block-header:hover .bh-more, .block-header.latched .bh-more { opacity: 1; }
+
+    .more-menu {
+        position: absolute; top: 26px; right: 0; z-index: 220;
+        width: 188px; padding: 5px;
+        background: var(--overlay-bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 16px 44px -14px var(--shadow-color);
+        display: none;
+    }
+    .more-menu.open { display: block; }
+    .more-menu .mm-row {
+        display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 7px;
+        border-radius: 5px; font: 11.5px/1 "Inter", sans-serif; color: var(--secondary-text-color);
+    }
+    .more-menu .mm-row:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .more-menu .mm-row .k { margin-left: auto; font: 9.5px/1 var(--mono-font); opacity: .45; }
+    .more-menu .mm-sep { height: 1px; background: var(--border-color); margin: 4px 2px; }
+
+    /* terminal canvas that used to swallow clicks */
+    .term-canvas {
+        position: relative; height: 190px;
+        padding: 10px 12px;
+        font: 11.5px/1.65 var(--mono-font);
+        color: #cfd3cb;
+        background:
+            radial-gradient(90% 120% at 70% 0%, rgba(88,193,66,.06), transparent 60%),
+            var(--codeblock-bg-color);
+    }
+    [data-theme="light"] .term-canvas { color: #3a3227; }
+    .term-canvas .ln { white-space: pre; }
+    .term-canvas .ok { color: var(--accent-color); }
+    .term-canvas .dim { color: var(--grey-text-color); }
+    .term-canvas .lnk { color: var(--agent-working-color); text-decoration: underline; text-underline-offset: 2px; }
+    .term-canvas .cur { display: inline-block; width: 7px; height: 13px; background: var(--accent-color); vertical-align: -2px; animation: blink 1.1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* info card with hit-testing fix */
+    .info-card {
+        position: absolute; z-index: 210; top: 34px; left: 8px;
+        width: 288px;
+        background: var(--overlay-bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 18px 50px -16px var(--shadow-color);
+        padding: 11px 12px;
+        display: none;
+    }
+    .info-card.show { display: block; }
+    .info-card.flip { top: auto; bottom: 34px; }
+    .ic-head { display: flex; align-items: center; gap: 8px; }
+    .ic-avatar {
+        width: 26px; height: 26px; border-radius: 6px; flex: none;
+        display: grid; place-items: center;
+        background: var(--action-soft-bg-color); color: var(--accent-color);
+        font: 700 12px/1 var(--mono-font);
+    }
+    .ic-title { font: 700 12px/1.3 "Inter", sans-serif; flex: 1; }
+    .ic-sub { font: 10.5px/1.4 var(--mono-font); color: var(--secondary-text-color); margin-top: 6px; word-break: break-all; }
+    .ic-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin-top: 9px; font-size: 11px; color: var(--secondary-text-color); }
+    .ic-grid b { color: var(--main-text-color); font: 600 10.5px/1.4 var(--mono-font); }
+    .ic-actions {
+        display: flex; gap: 6px; margin-top: 10px;
+        pointer-events: auto; /* the actual fix */
+    }
+    .ic-actions .mini-btn { height: 22px; font-size: 10.5px; }
+
+    /* pointer-events layering explainer */
+    .layer-stack { display: grid; gap: 6px; margin-top: 12px; }
+    .layer-row {
+        display: grid; grid-template-columns: 92px 1fr 120px; gap: 10px; align-items: center;
+        padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 6px;
+        font-size: 11.5px; background: var(--surface-soft-color);
+    }
+    .layer-row .lname { font: 600 10.5px/1 var(--mono-font); color: var(--main-text-color); }
+    .layer-row .ldesc { color: var(--secondary-text-color); font-size: 11px; }
+    .layer-row .lz { font: 10.5px/1 var(--mono-font); color: var(--accent-color); }
+    .layer-row.bad { border-color: color-mix(in srgb, var(--error-color) 55%, transparent); }
+    .layer-row.bad .lz { color: var(--error-color); }
+    .layer-row.fix { border-color: var(--accent-color); }
+
+    /* minimized rail */
+    .workspace { display: grid; grid-template-columns: 38px 1fr; gap: 10px; }
+    .minrail {
+        border: 1px solid var(--border-color); border-radius: 8px;
+        background: var(--panel-bg-color);
+        padding: 5px; display: flex; flex-direction: column; gap: 5px;
+    }
+    .minrail .mr-btn {
+        position: relative; height: 28px; border-radius: 6px;
+        display: grid; place-items: center;
+        font-size: 12px; color: var(--secondary-text-color);
+        background: var(--surface-color);
+        cursor: pointer;
+    }
+    .minrail .mr-btn:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .minrail .mr-btn .badge {
+        position: absolute; top: -3px; right: -3px; min-width: 13px; height: 13px;
+        border-radius: 7px; background: var(--accent-color); color: #08150a;
+        font: 800 8.5px/13px var(--mono-font); text-align: center; padding: 0 3px;
+    }
+    .minrail .mr-sep { height: 1px; background: var(--border-color); margin: 2px 1px; }
+
+    /* flyout of minimized block */
+    .min-flyout {
+        position: absolute; left: 42px; top: 0; z-index: 205;
+        width: 214px; padding: 5px;
+        background: var(--overlay-bg-color); border: 1px solid var(--border-color);
+        border-radius: 8px; box-shadow: 0 16px 44px -14px var(--shadow-color);
+        display: none;
+    }
+    .min-flyout.open { display: block; }
+    .min-flyout .mf-row { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 5px; font-size: 11.5px; color: var(--secondary-text-color); }
+    .min-flyout .mf-row:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .min-flyout .mf-row .x { margin-left: auto; opacity: .4; }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb"><a href="index.html" style="color:inherit">ui-ux-audit-batch</a><span class="sep">/</span><b>02</b><span class="sep">/</span>block-header</div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="proto-hero">
+        <h1>02 · Block 头部 + 信息卡 + 最小化列</h1>
+        <p class="sub">镜像源 <code>frontend/app/block/</code> — 图标密度、hover latch、信息卡被 xterm link-layer 吞点击、最小化入口。</p>
+    </div>
+
+    <div class="sect-label">现状问题</div>
+    <div class="card-grid">
+        <div class="note-card problem"><span class="idx">P1</span><div><strong>信息卡按钮点不动。</strong> <span class="dim">HANDOFF 记录：悬浮卡「放大」按钮在真实指针下被 xterm 的 link-layer canvas 盖住，只有 JS <code>click()</code> 生效 —— 层级/命中问题。</span></div></div>
+        <div class="note-card problem"><span class="idx">P2</span><div><strong>头部图标平铺无优先级。</strong> <span class="dim">高频（关/分裂/溢出）与低频（复制/笔记/设置）同权重，30px 高度里挤 7–9 个图标。</span></div></div>
+        <div class="note-card problem"><span class="idx">P3</span><div><strong>hover latch 丢失。</strong> <span class="dim">指针从标题移到图标时通过 0px 间隙，图标瞬间消失，中途必失败一次。</span></div></div>
+        <div class="note-card problem"><span class="idx">P4</span><div><strong>最小化入口远离 Block。</strong> <span class="dim">最小化后只能靠右下浮动按钮找回，与「哪个块被最小化」无视觉关联。</span></div></div>
+    </div>
+
+    <div class="sect-label">优化方案</div>
+    <div class="card-grid two">
+        <div class="note-card solution"><span class="idx">S1</span><div><strong>命中层修复。</strong> <span class="dim">信息卡 portal 到 body，<code>z-index: 1000</code>；终端 canvas 的 link-layer 在卡片打开时设 <code>pointer-events:none</code>；卡片动作区显式 <code>pointer-events:auto</code>。</span></div></div>
+        <div class="note-card solution"><span class="idx">S2</span><div><strong>图标分组「3 + 更多」。</strong> <span class="dim">常显：关闭 / 分裂 / 溢出；其余收进 <code>⋯</code> 菜单，按使用频次排序。</span></div></div>
+        <div class="note-card solution"><span class="idx">S3</span><div><strong>hover latch 300ms。</strong> <span class="dim">头部留 4px 保持区；离开后 300ms 才淡出，指针跨越间隙不闪断。</span></div></div>
+        <div class="note-card solution"><span class="idx">S4</span><div><strong>左侧最小化 icon 列。</strong> <span class="dim">与 WidgetsBar 对称；每块一个图标 + 右上计数 badge，hover 显示 flyout 列表。</span></div></div>
+    </div>
+
+    <div class="sect-label">交互演示 · 头部 / 信息卡 / 命中层</div>
+    <div class="ctrl-row">
+        <button class="mini-btn ghost-active" id="btnHover">悬停头部</button>
+        <button class="mini-btn" id="btnMore">⋯ 更多菜单</button>
+        <button class="mini-btn" id="btnInfo">信息卡</button>
+        <span style="flex:1"></span>
+        <span class="lbl">点一下信息卡里的按钮 →</span>
+    </div>
+
+    <div class="demo-frame">
+        <span class="demo-tag">LIVE · hit-testing</span>
+        <div class="demo-inner" style="padding:12px">
+            <div class="workspace">
+                <div style="position:relative">
+                    <div class="minrail" id="minrail">
+                        <div class="mr-btn" data-mf="0" title="codex · auth-refactor">◈<span class="badge">3</span></div>
+                        <div class="mr-btn" data-mf="1" title="term · build">▸</div>
+                        <div class="mr-btn" data-mf="2" title="files · src">▤</div>
+                        <div class="mr-sep"></div>
+                        <div class="mr-btn" title="展开全部">⋯</div>
+                    </div>
+                </div>
+                <div class="block" id="blockEl">
+                    <div class="block-header" id="blockHeader">
+                        <span class="bh-icon">◈</span>
+                        <span class="bh-title" id="bhTitle">codex · auth-refactor</span>
+                        <span class="bh-spacer"></span>
+                        <button class="bh-btn" title="关闭">✕</button>
+                        <button class="bh-btn" title="向右分裂">⇥</button>
+                        <button class="bh-btn" title="溢出菜单">▾</button>
+                        <button class="bh-more" title="更多">⋯</button>
+                        <div class="more-menu" id="moreMenu">
+                            <div class="mm-row">复制路径<span class="k">⌘⇧C</span></div>
+                            <div class="mm-row">复制为 Agent 上下文<span class="k">⌘⇧A</span></div>
+                            <div class="mm-sep"></div>
+                            <div class="mm-row">笔记 / 备注<span class="k">⌘⇧N</span></div>
+                            <div class="mm-row">块设置<span class="k">⌘,</span></div>
+                            <div class="mm-sep"></div>
+                            <div class="mm-row">最小化到左栏<span class="k">⌘M</span></div>
+                        </div>
+                    </div>
+                    <div class="term-canvas" id="termCanvas">
+                        <div class="ln dim">$ npm run dev -- --port 5173</div>
+                        <div class="ln">&nbsp;</div>
+                        <div class="ln ok">  VITE v6.0.3  ready in 412 ms</div>
+                        <div class="ln">&nbsp;</div>
+                        <div class="ln">  ➜  Local:   <span class="lnk">http://localhost:5173/</span></div>
+                        <div class="ln">  ➜  Network: <span class="lnk">http://192.168.1.24:5173/</span></div>
+                        <div class="ln dim">  ➜  press h + enter to show help</div>
+                        <div class="ln">&nbsp;</div>
+                        <div class="ln dim">// 这层 canvas 过去会吞掉上方信息卡的点击</div>
+                        <div class="ln">$ <span class="cur"></span></div>
+                    </div>
+                    <div class="info-card" id="infoCard">
+                        <div class="ic-head">
+                            <span class="ic-avatar">◈</span>
+                            <span class="ic-title">codex · auth-refactor</span>
+                            <span class="chip working"><span class="dot pulse-dot"></span>Working</span>
+                        </div>
+                        <div class="ic-sub">~/projects/snorkeling · frontend/app/auth</div>
+                        <div class="ic-grid">
+                            <b>runtime</b><span>3min21s</span>
+                            <b>provider</b><span>codex · gpt-5.1-codex</span>
+                            <b>tokens</b><span>42.1k in / 3.8k out</span>
+                            <b>last</b><span>12s ago</span>
+                        </div>
+                        <div class="ic-actions">
+                            <button class="mini-btn primary" id="btnZoom">放大</button>
+                            <button class="mini-btn">重命名</button>
+                            <button class="mini-btn">复制上下文</button>
+                            <button class="mini-btn ghost" id="btnHitTest">点我验证</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="hitMsg" style="margin-top:10px;font:11px/1.5 var(--mono-font);color:var(--secondary-text-color);min-height:17px"></div>
+
+            <div class="layer-stack">
+                <div class="layer-row bad"><span class="lname">link-layer canvas</span><span class="ldesc">xterm 链接命中层，实际位于信息卡之上 → 吞点击</span><span class="lz">z-index 999 ✗</span></div>
+                <div class="layer-row"><span class="lname">info-card</span><span class="ldesc">原先 z-index 210，被 canvas 覆盖</span><span class="lz">z-index 210 ✗</span></div>
+                <div class="layer-row fix"><span class="lname">info-card (portal)</span><span class="ldesc">挂到 body + canvas 同时 pointer-events:none</span><span class="lz">z-index 1000 ✓</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sect-label">交互演示 · 最小化列 flyout</div>
+    <div class="demo-frame">
+        <span class="demo-tag">LIVE</span>
+        <div class="demo-inner" style="padding:12px">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+                <div style="position:relative">
+                    <div class="minrail" id="minrail2">
+                        <div class="mr-btn" data-fly="0">◈<span class="badge">3</span></div>
+                        <div class="mr-btn" data-fly="1">▸</div>
+                        <div class="mr-btn" data-fly="2">▤</div>
+                    </div>
+                    <div class="min-flyout" id="flyout">
+                        <div class="mf-row"><span style="color:var(--agent-working-color)">◈</span>codex · auth-refactor<span class="x">✕</span></div>
+                        <div class="mf-row"><span style="color:var(--agent-done-color)">▸</span>term · build<span class="x">✕</span></div>
+                        <div class="mf-row"><span style="color:var(--secondary-text-color)">▤</span>files · src<span class="x">✕</span></div>
+                    </div>
+                </div>
+                <div style="flex:1;font-size:12px;color:var(--secondary-text-color);line-height:1.7">
+                    最小化 → 进入左侧 icon 列（宽度 38px）。hover 图标 → flyout 列出同类块，可直接恢复或关闭；<br/>
+                    计数 badge 显示该 Block 类型被最小化的数量。与右侧 WidgetsBar 形成左右对称结构。
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="spec-bar">
+        <div><b>头部</b> 高度 30px；常显图标 ≤ 3；其余进 <code>⋯</code>；hover latch 300ms，间隙保持区 4px。</div>
+        <div><b>信息卡</b> 宽 288px · portal body · <code>z-index 1000</code> · 打开时终端 <code>pointer-events:none</code> · 动作区 <code>pointer-events:auto</code>。</div>
+        <div><b>最小化列</b> 宽 38px；图标 28×28；badge 13px 右上；flyout 214px。</div>
+        <div><b>可判定</b> 真机 CDP 断言：<code>document.elementFromPoint(cardBtnCenter) === cardBtn</code> 必须为真。</div>
+    </div>
+
+    <div class="proto-footnav">
+        <a href="01-tabbar.html">← 01 · TabBar</a>
+        <a href="03-overview-board.html">03 · Overview 看板 →</a>
+    </div>
+</main>
+
+<script src="assets/proto.js"></script>
+<script>
+(function () {
+    const header = document.getElementById("blockHeader");
+    const moreMenu = document.getElementById("moreMenu");
+    const infoCard = document.getElementById("infoCard");
+    const termCanvas = document.getElementById("termCanvas");
+    const hitMsg = document.getElementById("hitMsg");
+    let latchTimer = null;
+
+    function setInfo(open) {
+        infoCard.classList.toggle("show", open);
+        // the fix: disable the link layer while a portal card is open
+        termCanvas.style.pointerEvents = open ? "none" : "";
+        if (open) infoCard.style.zIndex = "1000";
+    }
+
+    document.getElementById("btnInfo").addEventListener("click", () => {
+        setInfo(!infoCard.classList.contains("show"));
+    });
+    document.getElementById("btnMore").addEventListener("click", (e) => {
+        e.stopPropagation();
+        moreMenu.classList.toggle("open");
+    });
+    document.addEventListener("click", (e) => {
+        if (!moreMenu.contains(e.target) && !e.target.closest("#btnMore")) moreMenu.classList.remove("open");
+    });
+
+    // hover latch: entering header keeps it latched, leaving delays 300ms
+    header.addEventListener("mouseenter", () => {
+        clearTimeout(latchTimer);
+        header.classList.add("latched");
+    });
+    header.addEventListener("mouseleave", () => {
+        latchTimer = setTimeout(() => header.classList.remove("latched"), 300);
+    });
+    document.getElementById("btnHover").addEventListener("click", () => {
+        header.classList.toggle("latched");
+    });
+
+    // hit test proof
+    document.getElementById("btnHitTest").addEventListener("click", (e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const top = document.elementFromPoint(cx, cy);
+        const ok = top === e.currentTarget;
+        hitMsg.innerHTML = `<span style="color:${ok ? "var(--accent-color)" : "var(--error-color)"}">${ok ? "✓" : "✗"}</span> elementFromPoint(${Math.round(cx)}, ${Math.round(cy)}) → <b>${top ? top.tagName.toLowerCase() + (top.id ? "#" + top.id : "") : "null"}</b> (${ok ? "命中按钮本体" : "被上层元素遮挡"})`;
+    });
+
+    // minimized rail flyouts
+    ["minrail", "minrail2"].forEach((id, idx) => {
+        const rail = document.getElementById(id);
+        if (!rail) return;
+        rail.querySelectorAll("[data-fly]").forEach(btn => {
+            btn.addEventListener("mouseenter", () => {
+                if (id === "minrail2") {
+                    const fly = document.getElementById("flyout");
+                    fly.classList.add("open");
+                    fly.style.top = btn.offsetTop + "px";
+                }
+            });
+        });
+        if (id === "minrail2") {
+            rail.addEventListener("mouseleave", () => setTimeout(() => {
+                if (!document.getElementById("flyout").matches(":hover")) document.getElementById("flyout").classList.remove("open");
+            }, 300));
+        }
+    });
+
+    // clicking a minimized icon opens the info card demo
+    document.getElementById("minrail").querySelectorAll("[data-mf]").forEach(btn => {
+        btn.addEventListener("click", () => setInfo(true));
+    });
+    document.getElementById("btnZoom").addEventListener("click", (e) => {
+        e.stopPropagation();
+        hitMsg.innerHTML = `<span style="color:var(--accent-color)">✓</span> 放大按钮已响应 —— 卡片动作为真实可点击（pointer-events:auto + portal）。`;
+    });
+    infoCard.addEventListener("click", (e) => e.stopPropagation());
+})();
+</script>
+</body>
+</html>

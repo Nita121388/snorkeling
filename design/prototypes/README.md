@@ -1,5 +1,7 @@
 ﻿# design/prototypes — 原型总入口
 
+> 最后同步：2026-11-17
+
 交互原型按**功能域**分目录存放；实现/落地状态以各原型目录内 `README.md` 顶部状态标记为准（遵循 `PROCESS.md`：▲ 设计活跃 / ◐ 部分落地 / ● 已落地 / ▼ 过时）。
 
 ## 功能域
@@ -17,6 +19,7 @@
 | [`connections-settings/`](connections-settings/) | SSH/连接配置编辑 |
 | [`design-foundations/`](design-foundations/) | 设计系统、浅色主题探索、边界评审稿、品牌/素材 |
 | [`collab/`](collab/) | 群组/成员/消息/主持人/注册（原 `ui-prototypes`） |
+| [`ui-ux-audit-batch/`](ui-ux-audit-batch/) | 跨域 UI/UX 审计批次：10 个核心组件/页面的问题→方案→交互原型（暗/亮双主题） |
 | [`_archive/`]( _archive/) | 归档：历史元文档、根部重复原型快照（不作为现行入口） |
 
 ## 约定

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>09 · 常用文本 CommonText — Snorkeling UI/UX Audit</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .ct-shell { display: grid; grid-template-columns: 1fr 340px; gap: 12px; }
+    @media (max-width: 780px) { .ct-shell { grid-template-columns: 1fr; } }
+
+    .ct-list { border: 1px solid var(--border-color); border-radius: 8px; background: var(--block-bg-solid-color); overflow: hidden; }
+    .ct-head { padding: 9px 10px; border-bottom: 1px solid var(--border-color); display: flex; gap: 8px; align-items: center; }
+    .ct-search {
+        flex: 1; display: flex; align-items: center; gap: 6px;
+        height: 28px; padding: 0 9px; border-radius: 6px;
+        background: var(--surface-color); border: 1px solid var(--border-color);
+    }
+    .ct-search input { flex: 1; background: none; border: none; outline: none; color: var(--main-text-color); font: 11.5px/1 "Inter", sans-serif; }
+    .ct-rows { max-height: 330px; overflow-y: auto; }
+    .ct-group-label { padding: 6px 10px 3px; font: 700 9px/1 "Inter", sans-serif; color: var(--grey-text-color); text-transform: uppercase; letter-spacing: .1em; }
+    .ct-row {
+        display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center;
+        padding: 8px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+        cursor: pointer;
+    }
+    .ct-row:hover { background: var(--hover-bg-color); }
+    .ct-row .t { font: 600 11.5px/1.4 "Inter", sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ct-row .m { grid-column: 1 / -1; display: flex; gap: 6px; font: 9.5px/1 var(--mono-font); color: var(--grey-text-color); }
+    .ct-row .m .tag {
+        color: var(--accent-color);
+        background: var(--action-soft-bg-color);
+        border: 1px solid var(--action-soft-border-color);
+        border-radius: 8px;
+        padding: 1px 5px;
+    }
+    .ct-row .pin { color: var(--warning-color); font-size: 10px; }
+    .ct-row .usage { font: 9.5px/1 var(--mono-font); color: var(--secondary-text-color); white-space: nowrap; }
+    .ct-empty { padding: 30px 16px; text-align: center; color: var(--secondary-text-color); font-size: 11.5px; display: none; }
+    .ct-empty.show { display: block; }
+
+    /* compose modal */
+    .modal-back { position: fixed; inset: 0; z-index: 400; background: var(--modal-backdrop-color); display: none; place-items: center; }
+    .modal-back.show { display: grid; }
+    .modal {
+        width: 420px; max-width: calc(100vw - 40px);
+        background: var(--overlay-bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        box-shadow: 0 30px 80px -20px var(--shadow-color);
+        padding: 14px 16px;
+    }
+    .modal h3 { font: 700 13px/1 "Inter", sans-serif; margin-bottom: 10px; display: flex; align-items: center; }
+    .modal h3 .x { margin-left: auto; color: var(--secondary-text-color); font-weight: 400; }
+    .f-grid { display: grid; grid-template-columns: 84px 1fr 84px 1fr; gap: 7px 8px; align-items: center; }
+    .f-grid label { font: 600 10px/1 "Inter", sans-serif; color: var(--secondary-text-color); text-align: right; }
+    .f-grid input {
+        height: 26px; padding: 0 8px; border-radius: 5px;
+        background: var(--surface-color); border: 1px solid var(--border-color);
+        color: var(--main-text-color); font: 11.5px/1 "Inter", sans-serif; outline: none;
+    }
+    .f-grid input:focus { border-color: var(--accent-color); }
+    .tag-input { grid-column: 2 / 5; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .tag-chip {
+        display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px;
+        border-radius: 10px; background: var(--action-soft-bg-color); color: var(--action-soft-text-color);
+        font: 600 9.5px/1 "Inter", sans-serif;
+    }
+    .tag-chip .x { opacity: .6; cursor: pointer; }
+    .tag-chip .x:hover { opacity: 1; }
+    .tag-chip.draft { background: var(--surface-strong-color); color: var(--secondary-text-color); border: 1px dashed var(--border-color); }
+    .ta {
+        grid-column: 1 / 5; height: 88px; padding: 8px 9px; border-radius: 6px; resize: none;
+        background: var(--surface-color); border: 1px solid var(--border-color);
+        color: var(--main-text-color); font: 11.5px/1.6 "Inter", sans-serif; outline: none;
+    }
+    .ta:focus { border-color: var(--accent-color); }
+    .modal-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+    .target-sel {
+        display: inline-flex; align-items: center; gap: 6px;
+        height: 26px; padding: 0 10px; border-radius: 6px;
+        border: 1px solid var(--border-color); background: var(--surface-color);
+        font: 600 10.5px/1 "Inter", sans-serif; color: var(--secondary-text-color);
+    }
+    .target-sel b { color: var(--accent-color); font-weight: 700; }
+
+    /* toast */
+    .toast {
+        position: fixed; right: 20px; bottom: 20px; z-index: 500;
+        display: none; align-items: center; gap: 8px;
+        padding: 9px 12px; border-radius: 8px;
+        background: var(--overlay-bg-color); border: 1px solid var(--border-color);
+        box-shadow: 0 16px 44px -14px var(--shadow-color);
+        font: 600 11px/1.4 "Inter", sans-serif; color: var(--main-text-color);
+    }
+    .toast.show { display: inline-flex; animation: toast-in .2s ease; }
+    @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } }
+    .toast .ok { color: var(--accent-color); }
+    .toast .undo { color: var(--accent-color); cursor: pointer; font-size: 10px; }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb"><a href="index.html" style="color:inherit">ui-ux-audit-batch</a><span class="sep">/</span><b>09</b><span class="sep">/</span>commontext</div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="proto-hero">
+        <h1>09 · 常用文本 CommonText</h1>
+        <p class="sub">镜像源 <code>frontend/app/commontext/</code> — 置顶与使用元信息、搜索即过滤、属性紧凑两列、标签分离语义、发送目标。</p>
+    </div>
+
+    <div class="sect-label">现状问题</div>
+    <div class="card-grid">
+        <div class="note-card problem"><span class="idx">P1</span><div><strong>高频条目与低频混排。</strong> <span class="dim">没有「置顶 + 使用次数/最后使用」元信息，最常用的那条永远靠运气找。</span></div></div>
+        <div class="note-card problem"><span class="idx">P2</span><div><strong>搜索是按钮不是过滤器。</strong> <span class="dim">输入后要点「搜索」才生效，没有 <code>⌘K</code> 全局唤起。</span></div></div>
+        <div class="note-card problem"><span class="idx">P3</span><div><strong>compose 属性单列六行。</strong> <span class="dim">常用文本 90% 只填标题+内容，属性占满首屏把正文挤走。</span></div></div>
+        <div class="note-card problem"><span class="idx">P4</span><div><strong>标签与正文语义混写。</strong> <span class="dim">历史版本 <code>run deploy #urgent #ops</code> 把 # 标签当正文存（已修，但输入侧仍需 chip 化提示）。</span></div></div>
+    </div>
+
+    <div class="sect-label">优化方案</div>
+    <div class="card-grid two">
+        <div class="note-card solution"><span class="idx">S1</span><div><strong>置顶组 + 使用元信息。</strong> <span class="dim">行尾显示「×42 · 3h ago」；置顶组永远置顶，右键可固定/取消。</span></div></div>
+        <div class="note-card solution"><span class="idx">S2</span><div><strong>搜索即过滤 + <kbd>⌘K</kbd>。</strong> <span class="dim">输入即时过滤标题/正文/标签；空态给「新建这条」快捷动作。</span></div></div>
+        <div class="note-card solution"><span class="idx">S3</span><div><strong>属性紧凑两列网格。</strong> <span class="dim">标题/快捷键/类型/来源两行放下；正文区域始终可见 ≥ 80px。</span></div></div>
+        <div class="note-card solution"><span class="idx">S4</span><div><strong>标签 chip 分离 + 发送目标内联。</strong> <span class="dim">标签独立输入（chip 化，回车成 chip 不进正文）；底部内联目标选择（当前 Tab / Agent），后台发送带 toast 回执。</span></div></div>
+    </div>
+
+    <div class="sect-label">交互演示 · 列表 + Compose</div>
+    <div class="ctrl-row">
+        <span class="lbl">输入即时过滤 · ⌘K 聚焦</span>
+        <span style="flex:1"></span>
+        <button class="mini-btn primary" id="btnNew">＋ 新建常用文本</button>
+    </div>
+
+    <div class="ct-shell">
+        <div class="ct-list">
+            <div class="ct-head">
+                <div class="ct-search"><span>⌕</span><input id="ctq" placeholder="搜索标题 / 正文 / 标签…" /><kbd>⌘K</kbd></div>
+            </div>
+            <div class="ct-rows" id="ctRows"></div>
+            <div class="ct-empty" id="ctEmpty">没有匹配的常用文本<br/><span style="font-size:10.5px;color:var(--grey-text-color)">回车可直接以当前关键词新建</span></div>
+        </div>
+        <div style="display:grid;gap:10px;align-content:start">
+            <div class="note-card solution" style="padding:10px 12px"><span class="idx">↩</span><div><strong>行尾 usage：</strong><span class="dim"> ×次数 + 最后使用时间；hover 出「发送到…」快捷菜单。</span></div></div>
+            <div class="note-card solution" style="padding:10px 12px"><span class="idx">⌘K</span><div><strong>全局快捷键</strong><span class="dim"> 任何界面唤起搜索；↑↓ 选择；↵ 插入到当前终端 / 发送到 Agent。</span></div></div>
+            <div class="note-card solution" style="padding:10px 12px"><span class="idx">↗</span><div><strong>后台发送</strong><span class="dim"> 选定目标后立即关闭浮层，toast 回执 + 可撤销。</span></div></div>
+        </div>
+    </div>
+
+    <div class="spec-bar">
+        <div><b>行</b> 高 40px（两行式）· 标题 11.5/600 · 元 9.5 mono · 置顶组 ≤ 3 条。</div>
+        <div><b>搜索</b> 100ms 防抖即时过滤；命中字段高亮；⌘K 全局。</div>
+        <div><b>compose</b> 属性两列（label 84px）· 正文 ≥ 80px 常显 · 标签 chip 不进正文。</div>
+        <div><b>发送</b> 目标内联在底部（非弹层）；发送后 toast 5s 可撤销。</div>
+    </div>
+
+    <div class="proto-footnav">
+        <a href="08-widgets-bar.html">← 08 · WidgetsBar</a>
+        <a href="10-launcher-settings.html">10 · Launcher/Settings →</a>
+    </div>
+</main>
+
+<!-- compose modal -->
+<div class="modal-back" id="modalBack">
+    <div class="modal" role="dialog">
+        <h3>新建常用文本 <button class="x" id="modalX">Esc</button></h3>
+        <div class="f-grid">
+            <label>标题</label><input id="fTitle" placeholder="例：部署预发" />
+            <label>快捷键</label><input placeholder="⌥D" />
+            <label>类型</label><input value="文本" />
+            <label>来源</label><input value="本机" />
+            <label>标签</label>
+            <div class="tag-input" id="tagInput">
+                <span class="tag-chip">#deploy<span class="x">✕</span></span>
+                <span class="tag-chip">#ops<span class="x">✕</span></span>
+                <span class="tag-chip draft">输入 # 回车成 chip</span>
+            </div>
+            <textarea class="ta" id="fBody" placeholder="正文 —— 标签在上方独立输入，不会混进正文"></textarea>
+        </div>
+        <div class="modal-foot">
+            <button class="target-sel" id="targetSel">发送到 <b>当前 Tab</b> ▾</button>
+            <span style="flex:1"></span>
+            <button class="mini-btn" id="modalCancel">取消</button>
+            <button class="mini-btn primary" id="modalSave">保存并后台发送</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"><span class="ok">✓</span><span id="toastMsg"></span><span class="undo" id="toastUndo">撤销</span></div>
+
+<script src="assets/proto.js"></script>
+<script>
+(function () {
+    const items = [
+        { pinned: true, t: "部署预发", body: "npm run build && sh scripts/deploy-staging.sh", used: 42, ago: "3h ago", tags: ["#deploy", "#ops"] },
+        { pinned: true, t: "跑全部单测", body: "node scripts/run-task.mjs test:unit", used: 21, ago: "1d ago", tags: ["#test"] },
+        { pinned: false, t: "进入项目目录", body: "cd ~/projects/snorkeling", used: 18, ago: "2h ago", tags: [] },
+        { pinned: false, t: "起 dev 实例", body: "npm run dev -- --remote-debugging-port=9222", used: 12, ago: "40m ago", tags: ["#dev"] },
+        { pinned: false, t: "git 状态速览", body: "git status --short && git log --oneline -5", used: 9, ago: "2d ago", tags: ["#vcs"] },
+        { pinned: false, t: "清验证台", body: "rm -rf verify-runs/*", used: 4, ago: "5d ago", tags: ["#verify"] },
+    ];
+    const rowsEl = document.getElementById("ctRows");
+    const emptyEl = document.getElementById("ctEmpty");
+    let q = "";
+    function render() {
+        const filtered = items.filter(i => !q || i.t.includes(q) || i.body.includes(q) || i.tags.some(t => t.includes(q)));
+        emptyEl.classList.toggle("show", filtered.length === 0);
+        const pinned = filtered.filter(i => i.pinned);
+        const rest = filtered.filter(i => !i.pinned);
+        const html = [];
+        if (pinned.length) html.push(`<div class="ct-group-label">置顶</div>`);
+        html.push(...pinned.map(row));
+        if (rest.length) html.push(`<div class="ct-group-label">全部 · 按使用频次</div>`);
+        html.push(...rest.map(row));
+        rowsEl.innerHTML = html.join("") || "";
+    }
+    function row(i) {
+        return `<div class="ct-row">
+            <span class="t">${i.pinned ? '<span class="pin">★</span> ' : ""}${i.t}</span>
+            <span class="usage">×${i.used} · ${i.ago}</span>
+            <span class="m">${i.tags.map(t => `<span class="tag">${t}</span>`).join("")}${i.tags.length ? "&nbsp;&nbsp;" : ""}<span style="opacity:.65">${i.body.slice(0, 38)}${i.body.length > 38 ? "…" : ""}</span></span>
+        </div>`;
+    }
+    render();
+    document.getElementById("ctq").addEventListener("input", e => { q = e.target.value.trim(); render(); });
+
+    // ⌘K focuses search
+    document.addEventListener("keydown", e => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+            e.preventDefault();
+            document.getElementById("ctq").focus();
+        }
+        if (e.key === "Escape") closeModal();
+    });
+
+    // modal
+    const back = document.getElementById("modalBack");
+    function openModal() { back.classList.add("show"); document.getElementById("fTitle").focus(); }
+    function closeModal() { back.classList.remove("show"); }
+    document.getElementById("btnNew").addEventListener("click", openModal);
+    document.getElementById("modalX").addEventListener("click", closeModal);
+    document.getElementById("modalCancel").addEventListener("click", closeModal);
+    back.addEventListener("click", e => { if (e.target === back) closeModal(); });
+
+    // tag chips removable
+    document.querySelectorAll(".tag-chip .x").forEach(x => {
+        x.addEventListener("click", () => x.parentElement.remove());
+    });
+
+    // target selector cycles
+    const targets = ["当前 Tab", "Agent · codex", "Agent · pi", "全部终端"];
+    let ti = 0;
+    document.getElementById("targetSel").addEventListener("click", e => {
+        ti = (ti + 1) % targets.length;
+        e.currentTarget.innerHTML = `发送到 <b>${targets[ti]}</b> ▾`;
+    });
+
+    // toast
+    const toast = document.getElementById("toast");
+    let toastTimer = null;
+    function showToast(msg) {
+        document.getElementById("toastMsg").textContent = msg;
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("show"), 4200);
+    }
+    document.getElementById("modalSave").addEventListener("click", () => {
+        closeModal();
+        showToast(`已后台发送到「${targets[ti]}」`);
+    });
+    document.getElementById("toastUndo").addEventListener("click", () => {
+        toast.classList.remove("show");
+        showToast("已撤销发送");
+    });
+    document.getElementById("modalX").textContent = "Esc";
+})();
+</script>
+</body>
+</html>

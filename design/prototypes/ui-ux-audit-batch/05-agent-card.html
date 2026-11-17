@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>05 · Agent 状态 chip / 悬浮卡 — Snorkeling UI/UX Audit</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .gallery { display: grid; gap: 14px; }
+    .gal-block { border: 1px solid var(--border-color); border-radius: 8px; background: var(--block-bg-color); padding: 10px 12px; }
+    .gal-label { font: 700 9.5px/1 "Inter", sans-serif; color: var(--grey-text-color); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+    .gal-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    /* density-1: dot only */
+    .chip.d1 { width: 10px; height: 10px; padding: 0; border-radius: 50%; position: relative; background: currentColor; }
+    .chip.d1 .dot { display: none; }
+    .chip.working.d1::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 1.5px solid currentColor; animation: pulse-ring 1.6s ease-out infinite; }
+    .chip.stale.d1 { border-radius: 3px; background-image: repeating-linear-gradient(45deg, transparent 0 1.5px, rgba(0,0,0,.45) 1.5px 3px); }
+
+    /* density-2: dot + label */
+    .chip.d2 { height: 20px; padding: 0 8px; }
+
+    /* density-3: dot + label + runtime */
+    .chip.d3 { height: 20px; padding: 0 8px 0 8px; font-family: var(--mono-font); }
+    .chip.d3 .rt { color: var(--secondary-text-color); font-weight: 500; }
+
+    /* hover card */
+    .hover-stage { position: relative; height: 260px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--block-bg-solid-color); overflow: hidden; display: grid; place-items: center; }
+    .hover-anchor {
+        display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px;
+        border-radius: 11px; background: var(--surface-strong-color); border: 1px solid var(--border-color);
+        font: 600 10.5px/1 "Inter", sans-serif; color: var(--secondary-text-color); cursor: pointer;
+    }
+    .hover-anchor:hover { color: var(--main-text-color); }
+    .agent-card {
+        position: absolute; z-index: 200; top: 26px; left: 50%; transform: translateX(-50%);
+        width: 258px; background: var(--overlay-bg-color);
+        border: 1px solid var(--border-color); border-radius: 8px;
+        box-shadow: 0 18px 50px -16px var(--shadow-color);
+        padding: 11px 12px; display: none;
+    }
+    .agent-card.show { display: block; }
+    .ac-head { display: flex; align-items: center; gap: 8px; }
+    .ac-avatar { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; background: var(--action-soft-bg-color); color: var(--accent-color); font: 700 12px/1 var(--mono-font); flex: none; }
+    .ac-title { font: 700 12px/1.3 "Inter", sans-serif; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ac-quad { display: flex; gap: 5px; margin-top: 9px; }
+    .ac-quad .q { flex: 1; border: 1px solid var(--border-color); border-radius: 5px; padding: 5px 6px; }
+    .ac-quad .q .ql { font: 700 8.5px/1 "Inter", sans-serif; color: var(--grey-text-color); text-transform: uppercase; letter-spacing: .06em; }
+    .ac-quad .q .qv { font: 600 10.5px/1.3 var(--mono-font); color: var(--main-text-color); margin-top: 3px; }
+    .ac-actions { display: flex; gap: 6px; margin-top: 10px; pointer-events: auto; }
+    .ac-actions .mini-btn { height: 22px; font-size: 10.5px; }
+    .ac-zoom { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 4px; display: grid; place-items: center; font-size: 10px; color: var(--secondary-text-color); background: var(--surface-strong-color); border: 1px solid var(--border-color); pointer-events: auto; }
+    .ac-zoom:hover { color: var(--accent-color); border-color: var(--accent-color); }
+
+    .encode-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px; }
+    .encode-table th, .encode-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border-color); }
+    .encode-table th { font: 700 9.5px/1 "Inter", sans-serif; color: var(--grey-text-color); text-transform: uppercase; letter-spacing: .06em; }
+    .encode-table td code { font: 10.5px/1 var(--mono-font); color: var(--accent-color); }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb"><a href="index.html" style="color:inherit">ui-ux-audit-batch</a><span class="sep">/</span><b>05</b><span class="sep">/</span>agent-status</div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="proto-hero">
+        <h1>05 · Agent 状态 chip / 悬浮卡</h1>
+        <p class="sub">镜像源 <code>frontend/app/agent-status/</code> — 三密度 chip、色盲可辨编码、悬浮卡按钮命中层、运行时长统一。</p>
+    </div>
+
+    <div class="sect-label">现状问题</div>
+    <div class="card-grid">
+        <div class="note-card problem"><span class="idx">P1</span><div><strong>仅靠颜色区分状态。</strong> <span class="dim">working 蓝 / done 绿 / stale 紫 —— 色觉障碍用户在列表密度下无法区分 idle 与 stale。</span></div></div>
+        <div class="note-card problem"><span class="idx">P2</span><div><strong>chip 尺寸跨面板不统一。</strong> <span class="dim">列表 16px、看板 18px、悬浮卡 20px，切换时视觉跳动。</span></div></div>
+        <div class="note-card problem"><span class="idx">P3</span><div><strong>悬浮卡放大按钮点不动。</strong> <span class="dim">与 Block 信息卡同源：被终端 canvas 的 link-layer 吞点击（HANDOFF 25/26 那个红灯）。</span></div></div>
+        <div class="note-card problem"><span class="idx">P4</span><div><strong>运行时长格式混乱。</strong> <span class="dim">出现过 <code>00:07</code> 这类计时器样式，与 <code>3min21s</code> 混用。</span></div></div>
+    </div>
+
+    <div class="sect-label">优化方案</div>
+    <div class="card-grid two">
+        <div class="note-card solution"><span class="idx">S1</span><div><strong>形状 + 动效双编码。</strong> <span class="dim">working 脉冲环、done 实心圆、stale 斜纹方块、idle 中空；颜色失效仍可辨。</span></div></div>
+        <div class="note-card solution"><span class="idx">S2</span><div><strong>三密度 variant。</strong> <span class="dim">d1 = 10px 点（列表密集）· d2 = dot+label（看板/卡片）· d3 = +runtime（悬浮卡/详情）。</span></div></div>
+        <div class="note-card solution"><span class="idx">S3</span><div><strong>悬浮卡命中层修复。</strong> <span class="dim">与 02 一致：portal + z-index 1000 + 终端 pointer-events:none；动作区 pointer-events:auto。</span></div></div>
+        <div class="note-card solution"><span class="idx">S4</span><div><strong>runtime 统一格式。</strong> <span class="dim">纯函数输出：<code>7s</code> / <code>3min21s</code> / <code>1h12min</code> / <code>2d3h</code>；绝不出现 <code>00:07</code>。</span></div></div>
+    </div>
+
+    <div class="sect-label">交互演示 · 三密度 chip 画廊</div>
+    <div class="gallery">
+        <div class="gal-block">
+            <div class="gal-label">d1 · 10px 点（密集列表 / tab 聚合）</div>
+            <div class="gal-row">
+                <span class="chip d1 working"></span>
+                <span class="chip d1 done"></span>
+                <span class="chip d1 stale"></span>
+                <span class="chip d1 idle" style="background:var(--secondary-text-color);opacity:.6"></span>
+                <span style="font:10.5px/1 var(--mono-font);color:var(--grey-text-color);margin-left:6px">脉冲 / 实心 / 斜纹 / 中空</span>
+            </div>
+        </div>
+        <div class="gal-block">
+            <div class="gal-label">d2 · dot + label（看板 / 卡片头）</div>
+            <div class="gal-row">
+                <span class="chip d2 working"><span class="dot pulse-dot"></span>Working</span>
+                <span class="chip d2 done"><span class="dot"></span>Done</span>
+                <span class="chip d2 stale"><span class="stripe-dot"></span>Stale</span>
+                <span class="chip d2 idle"><span class="dot"></span>Idle</span>
+            </div>
+        </div>
+        <div class="gal-block">
+            <div class="gal-label">d3 · dot + label + runtime（悬浮卡 / 详情）</div>
+            <div class="gal-row">
+                <span class="chip d3 working"><span class="dot pulse-dot"></span>Working <span class="rt">3min21s</span></span>
+                <span class="chip d3 done"><span class="dot"></span>Done <span class="rt">42s</span></span>
+                <span class="chip d3 stale"><span class="stripe-dot"></span>Stale <span class="rt">12min</span></span>
+                <span class="chip d3 done"><span class="dot"></span>Done <span class="rt">1h12min</span></span>
+                <span class="chip d3 done"><span class="dot"></span>Done <span class="rt">2d3h</span></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="sect-label">交互演示 · 悬浮卡（按钮可点）</div>
+    <div class="ctrl-row">
+        <span class="lbl">hover / 点击下方 chip 打开悬浮卡</span>
+    </div>
+    <div class="demo-frame">
+        <span class="demo-tag">LIVE · hit-testing</span>
+        <div class="hover-stage" id="stage">
+            <div class="hover-anchor" id="anchor"><span class="chip d2 working" style="background:none;border:none;padding:0;height:auto"><span class="dot pulse-dot"></span></span>codex · auth-refactor</div>
+            <div class="agent-card" id="agentCard">
+                <button class="ac-zoom" id="acZoom" title="放大">⛶</button>
+                <div class="ac-head">
+                    <span class="ac-avatar">◈</span>
+                    <span class="ac-title" id="acTitle">codex · auth-refactor</span>
+                    <span class="chip d2 working" style="margin-left:auto"><span class="dot pulse-dot"></span>Working</span>
+                </div>
+                <div class="ac-quad">
+                    <div class="q"><div class="ql">runtime</div><div class="qv">3min21s</div></div>
+                    <div class="q"><div class="ql">provider</div><div class="qv">gpt-5.1</div></div>
+                    <div class="q"><div class="ql">tokens</div><div class="qv">45.9k</div></div>
+                    <div class="q"><div class="ql">last</div><div class="qv">12s ago</div></div>
+                </div>
+                <div class="ac-actions">
+                    <button class="mini-btn primary" id="acZoomBtn">放大</button>
+                    <button class="mini-btn" id="acRename">重命名</button>
+                    <button class="mini-btn" id="acTest">点我验证</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="hitMsg" style="margin-top:10px;font:11px/1.5 var(--mono-font);color:var(--secondary-text-color);min-height:17px"></div>
+
+    <div class="sect-label">状态编码对照</div>
+    <div class="demo-frame">
+        <span class="demo-tag">SPEC</span>
+        <div class="demo-inner">
+            <table class="encode-table">
+                <tr><th>状态</th><th>形状</th><th>动效</th><th>token（暗）</th><th>token（亮）</th></tr>
+                <tr><td><b>Working</b></td><td>圆</td><td>脉冲环 1.6s</td><td><code>--agent-working-color #3b82f6</code></td><td><code>#2563eb</code></td></tr>
+                <tr><td><b>Done</b></td><td>圆</td><td>无</td><td><code>--agent-done-color rgb(78,154,6)</code></td><td><code>#2e7d32</code></td></tr>
+                <tr><td><b>Stale</b></td><td>斜纹方块</td><td>无</td><td><code>--agent-stale-color #a855f7</code></td><td><code>#a855f7</code></td></tr>
+                <tr><td><b>Idle</b></td><td>中空</td><td>无</td><td><code>--secondary-text-color</code></td><td><code>#635c52</code></td></tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="spec-bar">
+        <div><b>variant</b> d1 10px 圆 · d2 高 20px · d3 高 20px + runtime mono；同一组件 <code>AgentStatusChip variant</code> 只切几何。</div>
+        <div><b>runtime</b> 纯函数 <code>fmtRuntime(ms)</code>：<code>&lt;1min → Ns</code>；<code>&lt;1h → NminNs</code>；<code>&lt;1d → NhNmin</code>；其余 <code>NdNh</code>。</div>
+        <div><b>命中层</b> 与 02 同规格：<code>z-index 1000</code> + portal + 终端 <code>pointer-events:none</code>。</div>
+        <div><b>重命名</b> 悬浮卡单击标题 → 内联输入；回车提交；Esc 取消。</div>
+    </div>
+
+    <div class="proto-footnav">
+        <a href="04-aisessions.html">← 04 · AI Sessions</a>
+        <a href="06-files-preview.html">06 · Files 预览 →</a>
+    </div>
+</main>
+
+<script src="assets/proto.js"></script>
+<script>
+(function () {
+    const anchor = document.getElementById("anchor");
+    const card = document.getElementById("agentCard");
+    const msg = document.getElementById("hitMsg");
+
+    function show() { card.classList.add("show"); }
+    function hide() { card.classList.remove("show"); }
+
+    anchor.addEventListener("mouseenter", show);
+    anchor.addEventListener("mouseleave", () => {
+        setTimeout(() => { if (!card.matches(":hover")) hide(); }, 200);
+    });
+    anchor.addEventListener("click", show);
+    card.addEventListener("click", e => e.stopPropagation());
+    document.addEventListener("click", hide);
+
+    function report(e, label) {
+        const r = e.currentTarget.getBoundingClientRect();
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const top = document.elementFromPoint(cx, cy);
+        const ok = top === e.currentTarget;
+        msg.innerHTML = `<span style="color:${ok ? "var(--accent-color)" : "var(--error-color)"}">${ok ? "✓" : "✗"}</span> <b>${label}</b> elementFromPoint → ${top ? top.tagName.toLowerCase() + (top.id ? "#" + top.id : "") : "null"}（${ok ? "命中按钮本体" : "被遮挡"}）`;
+    }
+    document.getElementById("acTest").addEventListener("click", e => { e.stopPropagation(); report(e, "点我验证"); });
+    document.getElementById("acZoom").addEventListener("click", e => { e.stopPropagation(); report(e, "放大 ⛶"); });
+    document.getElementById("acZoomBtn").addEventListener("click", e => { e.stopPropagation(); report(e, "放大按钮"); });
+    document.getElementById("acRename").addEventListener("click", e => {
+        e.stopPropagation();
+        const t = document.getElementById("acTitle");
+        const cur = t.textContent;
+        t.innerHTML = `<input id="acInput" value="${cur}" style="width:100%;background:var(--surface-color);border:1px solid var(--border-color);border-radius:4px;padding:2px 6px;font:700 12px/1.3 Inter;color:var(--main-text-color);outline:none" />`;
+        const input = document.getElementById("acInput");
+        input.focus(); input.select();
+        input.addEventListener("keydown", ev => {
+            if (ev.key === "Enter") { t.textContent = input.value; }
+            if (ev.key === "Escape") { t.textContent = cur; }
+        });
+        input.addEventListener("blur", () => { if (t.querySelector("input")) t.textContent = t.querySelector("input").value; });
+    });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>UI/UX 审计批次 · Hub — Snorkeling</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .hub-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 30px 0 8px; }
+    .hub-head h1 { font: 800 26px/1.2 "Inter", sans-serif; letter-spacing: -0.02em; }
+    .hub-head .batch-tag { font: 600 11px/1 var(--mono-font); color: var(--action-soft-text-color); background: var(--action-soft-bg-color); border: 1px solid var(--action-soft-border-color); padding: 5px 9px; border-radius: 5px; }
+    .hub-sub { color: var(--secondary-text-color); font-size: 13px; max-width: 760px; line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 22px; }
+    @media (min-width: 700px) { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 1000px) { .grid { grid-template-columns: 1fr 1fr 1fr; } }
+    .nav-card {
+        display: block; text-decoration: none;
+        background: var(--block-bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 14px 14px 12px;
+        transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+        position: relative; overflow: hidden;
+    }
+    .nav-card:hover { text-decoration: none; border-color: var(--accent-color); transform: translateY(-2px); box-shadow: 0 10px 30px -12px var(--shadow-color); }
+    .nav-card .num {
+        position: absolute; top: 10px; right: 12px;
+        font: 800 24px/1 var(--mono-font); color: var(--surface-strong-color);
+        -webkit-text-stroke: 1px var(--border-color);
+    }
+    .nav-card h2 { font: 700 13.5px/1.3 "Inter", sans-serif; margin: 0 34px 4px 0; }
+    .nav-card .src { font: 11px/1.4 var(--mono-font); color: var(--accent-color); opacity: 0.9; margin-bottom: 8px; word-break: break-all; }
+    .nav-card .desc { font-size: 12px; color: var(--secondary-text-color); line-height: 1.55; min-height: 37px; }
+    .nav-card .meta { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .nav-card .meta .chip { font-size: 9.5px; height: 18px; padding: 0 7px; }
+    .legend { margin-top: 26px; padding: 12px 14px; border: 1px dashed var(--border-color); border-radius: 8px; font: 11.5px/1.8 var(--mono-font); color: var(--secondary-text-color); }
+    .legend b { color: var(--main-text-color); }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb">
+        <b>snorkeling</b><span class="sep">/</span>design/prototypes<span class="sep">/</span>ui-ux-audit-batch
+    </div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="hub-head">
+        <h1>核心组件 UI/UX 优化批次</h1>
+        <span class="batch-tag">2026-11-17 · 10 items · ▲ 设计活跃</span>
+    </div>
+    <p class="hub-sub">
+        覆盖 10 个核心功能组件/页面。每项包含：<b>现状问题</b>（对应真实代码与已知红灯）→
+        <b>优化方案</b>（可判定的行为规则）→ <b>可交互原型</b>（暗/亮双主题，token 取自
+        <code>frontend/app/theme.scss</code>）。本页为批次入口，逐项直达单页原型。
+    </p>
+
+    <div class="grid">
+        <a class="nav-card" href="01-tabbar.html">
+            <span class="num">01</span>
+            <h2>TabBar / Workspace Switcher</h2>
+            <div class="src">frontend/app/tab/</div>
+            <div class="desc">三段式固定布局、active tab 保护 + 溢出计数、hover 信息卡视口翻转（修 N-1105 截断）。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>overflow</span><span class="chip idle"><span class="dot"></span>hover clip</span><span class="chip idle"><span class="dot"></span>keyboard</span></div>
+        </a>
+        <a class="nav-card" href="02-block-header.html">
+            <span class="num">02</span>
+            <h2>Block 头部 + 信息卡 + 最小化列</h2>
+            <div class="src">frontend/app/block/</div>
+            <div class="desc">图标分组「高频 3 + 更多」、信息卡命中层修复（xterm link-layer 遮挡）、左侧最小化 icon 列。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>hit-testing</span><span class="chip idle"><span class="dot"></span>latch</span><span class="chip idle"><span class="dot"></span>sidebar</span></div>
+        </a>
+        <a class="nav-card" href="03-overview-board.html">
+            <span class="num">03</span>
+            <h2>Overview 看板 + 时间线</h2>
+            <div class="src">frontend/app/session-overview/</div>
+            <div class="desc">列头计数 + 「仅看未完成」、空列收窄 rail、卡片三级信息架构 + 4px 状态条、三视图记忆。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>scan</span><span class="chip idle"><span class="dot"></span>grouping</span><span class="chip idle"><span class="dot"></span>timeline</span></div>
+        </a>
+        <a class="nav-card" href="04-aisessions.html">
+            <span class="num">04</span>
+            <h2>AI Sessions 列表 + 详情</h2>
+            <div class="src">frontend/app/view/aisessions/</div>
+            <div class="desc">行三级信息层级、筛选 chip 化（范围 + 状态 + 标签）、骨架屏加载、详情 outline rail + 回底 FAB。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>hierarchy</span><span class="chip idle"><span class="dot"></span>filter</span><span class="chip idle"><span class="dot"></span>virtual list</span></div>
+        </a>
+        <a class="nav-card" href="05-agent-card.html">
+            <span class="num">05</span>
+            <h2>Agent 状态 chip / 悬浮卡</h2>
+            <div class="src">frontend/app/agent-status/</div>
+            <div class="desc">三密度 chip（dot / +label / +runtime）、色盲可辨编码（脉冲/实心/斜纹）、悬浮卡按钮命中层修复。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>a11y</span><span class="chip idle"><span class="dot"></span>density</span><span class="chip idle"><span class="dot"></span>hit-testing</span></div>
+        </a>
+        <a class="nav-card" href="06-files-preview.html">
+            <span class="num">06</span>
+            <h2>Files 预览 + 目录树 VCS 标记</h2>
+            <div class="src">frontend/app/view/preview/ · frontend/app/treeview/</div>
+            <div class="desc">路径 breadcrumb 可点 + 动作分组、VCS 标记 6px 方点 + tooltip、「只看改动」开关、空态引导。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>breadcrumb</span><span class="chip idle"><span class="dot"></span>vcs marks</span><span class="chip idle"><span class="dot"></span>empty state</span></div>
+        </a>
+        <a class="nav-card" href="07-vcs-diff.html">
+            <span class="num">07</span>
+            <h2>VCS diff / commits</h2>
+            <div class="src">frontend/app/view/vcs/ · vcsdiff/ · vcshistory/</div>
+            <div class="desc">未变更区折叠（「… 42 行」）、双列行号、提交图泳道 hover 高亮祖先链、sticky 分组工具栏。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>collapse</span><span class="chip idle"><span class="dot"></span>graph</span><span class="chip idle"><span class="dot"></span>sticky bar</span></div>
+        </a>
+        <a class="nav-card" href="08-widgets-bar.html">
+            <span class="num">08</span>
+            <h2>WidgetsBar 右侧工具条</h2>
+            <div class="src">frontend/app/workspace/widgets.tsx</div>
+            <div class="desc">28px 热区 + flyout 名称、active 左侧 3px 指示条、折叠态 2px 感温边、与 Block 最小化列对称。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>hit area</span><span class="chip idle"><span class="dot"></span>symmetry</span><span class="chip idle"><span class="dot"></span>collapse</span></div>
+        </a>
+        <a class="nav-card" href="09-commontext.html">
+            <span class="num">09</span>
+            <h2>常用文本 CommonText</h2>
+            <div class="src">frontend/app/commontext/</div>
+            <div class="desc">置顶 + 使用元信息（次数/最后使用）、⌘K 搜索即过滤、标签 chip 分离语义、发送目标选择 + 后台 toast。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>pinned</span><span class="chip idle"><span class="dot"></span>⌘K</span><span class="chip idle"><span class="dot"></span>send target</span></div>
+        </a>
+        <a class="nav-card" href="10-launcher-settings.html">
+            <span class="num">10</span>
+            <h2>Launcher 快速启动 + Settings</h2>
+            <div class="src">frontend/app/view/launcher/ · frontend/app/view/waveconfig/</div>
+            <div class="desc">Launcher 三列（最近/快捷/Agent 目标）键盘可达；Settings 二级导航 + 搜索、密度三档、未保存提示条。</div>
+            <div class="meta"><span class="chip idle"><span class="dot"></span>keyboard</span><span class="chip idle"><span class="dot"></span>density</span><span class="chip idle"><span class="dot"></span>dirty state</span></div>
+        </a>
+    </div>
+
+    <div class="legend">
+        <b>批次约定</b> — 每页右上角切换暗/亮主题（token 与生产 <b>theme.scss</b> 一一对应）；
+        「现状问题」编号 P1..Pn，「优化方案」编号 S1..Sn 一一对应；
+        规格条（虚线框）给出可判定的尺寸/行为规则，供实现阶段直接引用。
+    </div>
+</main>
+</body>
+</html>

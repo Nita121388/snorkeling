@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>03 · Overview 看板 + 时间线 — Snorkeling UI/UX Audit</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .board-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--border-color); background: var(--panel-bg-color); }
+    .seg { display: inline-flex; padding: 2px; background: var(--surface-strong-color); border: 1px solid var(--border-color); border-radius: 6px; }
+    .seg button { height: 22px; padding: 0 10px; border-radius: 4px; font: 600 11px/1 "Inter", sans-serif; color: var(--secondary-text-color); }
+    .seg button.seg-on { background: var(--block-bg-solid-color); color: var(--main-text-color); box-shadow: 0 1px 2px var(--shadow-color); }
+    .top-spacer { flex: 1; }
+    .filter-pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid var(--border-color); font: 600 10.5px/1 "Inter", sans-serif; color: var(--secondary-text-color); background: var(--surface-color); }
+    .filter-pill.on { color: var(--accent-color); border-color: var(--accent-color); background: var(--action-soft-bg-color); }
+
+    .board { display: flex; gap: 10px; padding: 12px; overflow-x: auto; align-items: flex-start; min-height: 300px; }
+    .col { flex: none; width: 196px; display: flex; flex-direction: column; gap: 7px; }
+    .col.rail { width: 40px; }
+    .col-head { display: flex; align-items: center; gap: 6px; padding: 0 2px 2px; }
+    .col-head .cd { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+    .col-head .cn { font: 700 10.5px/1 "Inter", sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--secondary-text-color); white-space: nowrap; }
+    .col-head .cc { font: 700 9.5px/1 var(--mono-font); color: var(--secondary-text-color); background: var(--surface-strong-color); padding: 2px 5px; border-radius: 4px; }
+    .col.rail .col-head { justify-content: center; }
+    .col.rail .cn, .col.rail .cc { display: none; }
+    .col.rail .rail-count { font: 700 9.5px/1 var(--mono-font); color: var(--grey-text-color); writing-mode: vertical-rl; margin-top: 4px; letter-spacing: .1em; }
+
+    .card {
+        position: relative;
+        background: var(--block-bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 8px 9px 7px 12px;
+        cursor: pointer;
+        transition: border-color .12s, transform .12s;
+    }
+    .card::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 0 2px 2px 0; background: var(--cd, var(--border-color)); }
+    .card:hover { border-color: var(--accent-color); transform: translateY(-1px); }
+    .card .c-title { font: 600 11.5px/1.35 "Inter", sans-serif; color: var(--main-text-color); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .card .c-meta { display: flex; align-items: center; gap: 5px; margin-top: 5px; font: 10px/1 var(--mono-font); color: var(--secondary-text-color); }
+    .card .c-meta .dotsep { opacity: .35; }
+    .card .c-foot { display: flex; align-items: center; gap: 5px; margin-top: 6px; }
+    .card .c-foot .chip { height: 16px; font-size: 9px; padding: 0 6px; }
+    .card .c-foot .time { margin-left: auto; font: 9.5px/1 var(--mono-font); color: var(--grey-text-color); }
+
+    /* timeline */
+    .timeline { position: relative; padding: 12px 14px 22px; }
+    .tl-axis { position: relative; height: 18px; margin-left: 168px; border-bottom: 1px solid var(--border-color); font: 9px/1 var(--mono-font); color: var(--grey-text-color); }
+    .tl-axis span { position: absolute; bottom: 3px; transform: translateX(-50%); white-space: nowrap; }
+    .tl-rows { position: relative; margin-top: 4px; }
+    .tl-row { display: flex; align-items: center; height: 26px; }
+    .tl-label { width: 168px; flex: none; padding-right: 10px; font: 600 10.5px/1 "Inter", sans-serif; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tl-track { position: relative; flex: 1; height: 14px; border-radius: 3px; background: var(--surface-soft-color); }
+    .tl-bar { position: absolute; top: 2px; height: 10px; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--bar) 70%, transparent), var(--bar)); }
+    .tl-bar:hover { outline: 1.5px solid var(--main-text-color); outline-offset: 1px; }
+    .tl-today { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--accent-color); opacity: .8; }
+    .tl-today::after { content: "TODAY"; position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font: 800 8px/1 var(--mono-font); color: var(--accent-color); letter-spacing: .08em; }
+    .tl-cross { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--main-text-color); opacity: .28; pointer-events: none; display: none; }
+    .tl-tooltip {
+        position: absolute; z-index: 60; pointer-events: none;
+        background: var(--overlay-bg-color); border: 1px solid var(--border-color);
+        border-radius: 6px; padding: 6px 8px; font: 10px/1.5 var(--mono-font);
+        color: var(--secondary-text-color); display: none; white-space: nowrap;
+        box-shadow: 0 10px 30px -12px var(--shadow-color);
+    }
+    .tl-tooltip b { color: var(--main-text-color); }
+
+    /* list view */
+    .listview { padding: 8px 12px 14px; display: none; }
+    .listview.show { display: block; }
+    .lv-row { display: grid; grid-template-columns: 1fr 90px 74px 62px; gap: 10px; align-items: center; padding: 7px 6px; border-bottom: 1px solid var(--border-color); font-size: 11.5px; }
+    .lv-row.head { font: 700 9.5px/1 "Inter", sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--grey-text-color); }
+    .lv-row .lv-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .board.hide, .timeline.hide { display: none; }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb"><a href="index.html" style="color:inherit">ui-ux-audit-batch</a><span class="sep">/</span><b>03</b><span class="sep">/</span>overview</div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="proto-hero">
+        <h1>03 · Overview 看板 + 时间线</h1>
+        <p class="sub">镜像源 <code>frontend/app/session-overview/</code> — 卡片信息架构、空列占位、筛选与三视图切换。</p>
+    </div>
+
+    <div class="sect-label">现状问题</div>
+    <div class="card-grid">
+        <div class="note-card problem"><span class="idx">P1</span><div><strong>空列吃掉横向空间。</strong> <span class="dim">5 列常显 + 横向 snap，空状态列仍占 208px，窄窗口一屏只看到 3 列。</span></div></div>
+        <div class="note-card problem"><span class="idx">P2</span><div><strong>卡片信息平权。</strong> <span class="dim">标题、repo、状态、时间同字号同色，扫视时无法在 0.3s 内抓到「卡在哪」。</span></div></div>
+        <div class="note-card problem"><span class="idx">P3</span><div><strong>缺少「只看未完成」。</strong> <span class="dim">done 列堆积后仍需横向滚动穿越，没有列内筛选。</span></div></div>
+        <div class="note-card problem"><span class="idx">P4</span><div><strong>视图切换无记忆。</strong> <span class="dim">board/list/timeline 每次回到默认 board；时间线缺少「今天」参考线。</span></div></div>
+    </div>
+
+    <div class="sect-label">优化方案</div>
+    <div class="card-grid two">
+        <div class="note-card solution"><span class="idx">S1</span><div><strong>空列收窄为 40px rail。</strong> <span class="dim">保留可发现性（竖排计数），把 168px 还给有内容的列。</span></div></div>
+        <div class="note-card solution"><span class="idx">S2</span><div><strong>卡片三级信息架构。</strong> <span class="dim">① 标题（2 行）② 状态 chip + repo/path ③ 时间。左侧 3px 状态条 + 左侧色仅作辅助。</span></div></div>
+        <div class="note-card solution"><span class="idx">S3</span><div><strong>筛选 pill + 列头计数。</strong> <span class="dim">「仅看未完成」可一键过滤，列头 <code>3/7</code> 直接给出分布。</span></div></div>
+        <div class="note-card solution"><span class="idx">S4</span><div><strong>视图记忆 + 今天参考线。</strong> <span class="dim">localStorage 记忆上次视图；时间线加 TODAY 竖线 + hover 十字准线/绝对时间。</span></div></div>
+    </div>
+
+    <div class="sect-label">交互演示 · 三视图</div>
+    <div class="demo-frame">
+        <span class="demo-tag">LIVE</span>
+        <div class="board-top">
+            <div class="seg" data-seg data-seg-target="#stage">
+                <button data-seg-value="board" class="seg-on">看板</button>
+                <button data-seg-value="list">列表</button>
+                <button data-seg-value="timeline">时间线</button>
+            </div>
+            <div class="top-spacer"></div>
+            <button class="filter-pill" id="onlyOpen">仅看未完成</button>
+            <button class="filter-pill on" id="hideEmpty">空列收窄</button>
+        </div>
+        <div id="stage" data-seg-state="board">
+            <div class="board" id="board"></div>
+            <div class="listview" id="listview">
+                <div class="lv-row head"><span>会话</span><span>状态</span><span>时长</span><span>更新</span></div>
+                <div class="lv-row"><span class="lv-title">auth-refactor · 重构 token 刷新</span><span class="chip working"><span class="dot pulse-dot"></span>Working</span><span style="font-family:var(--mono-font);font-size:10.5px">3min21s</span><span style="font-family:var(--mono-font);font-size:10.5px;color:var(--secondary-text-color)">12s ago</span></div>
+                <div class="lv-row"><span class="lv-title">build · 打包三平台产物</span><span class="chip done"><span class="dot"></span>Done</span><span style="font-family:var(--mono-font);font-size:10.5px">42s</span><span style="font-family:var(--mono-font);font-size:10.5px;color:var(--secondary-text-color)">4min</span></div>
+                <div class="lv-row"><span class="lv-title">ui-audit · 10 项原型</span><span class="chip stale"><span class="stripe-dot"></span>Stale</span><span style="font-family:var(--mono-font);font-size:10.5px">12min</span><span style="font-family:var(--mono-font);font-size:10.5px;color:var(--secondary-text-color)">9min</span></div>
+                <div class="lv-row"><span class="lv-title">deploy · 预发环境</span><span class="chip working"><span class="dot pulse-dot"></span>Working</span><span style="font-family:var(--mono-font);font-size:10.5px">7s</span><span style="font-family:var(--mono-font);font-size:10.5px;color:var(--secondary-text-color)">now</span></div>
+            </div>
+            <div class="timeline hide" id="timeline">
+                <div class="tl-axis" id="tlAxis"></div>
+                <div class="tl-rows" id="tlRows"></div>
+                <div class="tl-cross" id="tlCross"></div>
+                <div class="tl-tooltip" id="tlTip"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="spec-bar">
+        <div><b>列宽</b> 满列 196–208px（随窗口）· 空列 rail 40px · 列间距 10px · 列头高 18px。</div>
+        <div><b>卡片</b> 左 3px 状态条 · 标题 ≤ 2 行 · 元信息 10px mono · hover 边框 accent。</div>
+        <div><b>时间线</b> 轴标签 5 档（00/06/12/18/24）· TODAY 线 1px accent · hover 准线 opacity .28。</div>
+        <div><b>记忆键</b> <code>overview.view</code> = board|list|timeline；<code>overview.hideEmpty</code> 布尔。</div>
+    </div>
+
+    <div class="proto-footnav">
+        <a href="02-block-header.html">← 02 · Block 头部</a>
+        <a href="04-aisessions.html">04 · AI Sessions →</a>
+    </div>
+</main>
+
+<script src="assets/proto.js"></script>
+<script>
+(function () {
+    const columns = [
+        { key: "backlog", name: "Backlog", color: "var(--grey-text-color)", cards: [
+            { t: "补齐 i18n P2 词条", repo: "frontend/i18n", state: "idle", time: "2d" },
+            { t: "Scheduled tasks 设计稿评审", repo: "design/plans", state: "idle", time: "3d" },
+        ]},
+        { key: "active", name: "Active", color: "var(--agent-working-color)", cards: [
+            { t: "auth-refactor · 重构 token 刷新", repo: "~/projects/snorkeling", state: "working", time: "now" },
+            { t: "deploy · 预发环境", repo: "~/deploy", state: "working", time: "now" },
+        ]},
+        { key: "blocked", name: "Blocked", color: "var(--agent-stale-color)", cards: [
+            { t: "ui-audit · 10 项原型待评审", repo: "design/prototypes", state: "stale", time: "9min" },
+        ]},
+        { key: "review", name: "Review", color: "var(--warning-color)", cards: [
+            { t: "vcs-history-graph 真机 16/16", repo: "frontend/app/view/vcshistory", state: "idle", time: "1h" },
+        ]},
+        { key: "done", name: "Done", color: "var(--agent-done-color)", cards: [
+            { t: "commontext 后台发送", repo: "frontend/app/commontext", state: "done", time: "4min" },
+            { t: "build · 打包三平台产物", repo: "~/projects/snorkeling", state: "done", time: "42s" },
+        ]},
+    ];
+    let hideEmpty = true;
+    let onlyOpen = false;
+
+    const board = document.getElementById("board");
+    function chip(state) {
+        if (state === "working") return '<span class="chip working"><span class="dot pulse-dot"></span>Working</span>';
+        if (state === "done") return '<span class="chip done"><span class="dot"></span>Done</span>';
+        if (state === "stale") return '<span class="chip stale"><span class="stripe-dot"></span>Stale</span>';
+        return '<span class="chip idle"><span class="dot"></span>Idle</span>';
+    }
+    function render() {
+        board.innerHTML = columns.map(col => {
+            let cards = col.cards;
+            if (onlyOpen && (col.key === "done")) cards = [];
+            const empty = cards.length === 0;
+            const rail = hideEmpty && empty;
+            return `<div class="col ${rail ? "rail" : ""}" data-col="${col.key}" style="--cd:${col.color}">
+                <div class="col-head">
+                    <span class="cd" style="background:${col.color}"></span>
+                    <span class="cn">${col.name}</span>
+                    <span class="cc">${cards.length}</span>
+                </div>
+                ${rail ? `<span class="rail-count">${col.name.toUpperCase()} 0</span>` : cards.map(c => `
+                    <div class="card" style="--cd:${col.color}">
+                        <div class="c-title">${c.t}</div>
+                        <div class="c-meta"><span>${c.repo}</span></div>
+                        <div class="c-foot">${chip(c.state)}<span class="time">${c.time}</span></div>
+                    </div>`).join("")}
+            </div>`;
+        }).join("");
+    }
+    render();
+
+    document.getElementById("onlyOpen").addEventListener("click", e => {
+        onlyOpen = !onlyOpen;
+        e.currentTarget.classList.toggle("on", onlyOpen);
+        render();
+    });
+    document.getElementById("hideEmpty").addEventListener("click", e => {
+        hideEmpty = !hideEmpty;
+        e.currentTarget.classList.toggle("on", hideEmpty);
+        render();
+    });
+
+    // view switching
+    const stage = document.getElementById("stage");
+    const boardEl = document.getElementById("board");
+    const listEl = document.getElementById("listview");
+    const tlEl = document.getElementById("timeline");
+    const segBtns = document.querySelectorAll("[data-seg] [data-seg-value]");
+    segBtns.forEach(b => b.addEventListener("click", () => {
+        const v = b.dataset.segValue;
+        boardEl.classList.toggle("hide", v !== "board");
+        listEl.classList.toggle("show", v === "list");
+        tlEl.classList.toggle("hide", v !== "timeline");
+        localStorage.setItem("overview.view", v);
+    }));
+    const saved = localStorage.getItem("overview.view");
+    if (saved) {
+        const b = document.querySelector(`[data-seg-value="${saved}"]`);
+        if (b) b.click();
+    }
+
+    // timeline
+    const axis = document.getElementById("tlAxis");
+    axis.innerHTML = ["00", "06", "12", "18", "24"].map((t, i) => `<span style="left:${i * 25}%">${t}:00</span>`).join("");
+    const sessions = [
+        { n: "codex · auth-refactor", s: 8, w: 34, c: "var(--agent-working-color)" },
+        { n: "term · build", s: 14, w: 9, c: "var(--agent-done-color)" },
+        { n: "pi · ui-audit", s: 22, w: 46, c: "var(--agent-stale-color)" },
+        { n: "claude · review", s: 38, w: 26, c: "var(--agent-done-color)" },
+        { n: "files · src", s: 52, w: 12, c: "var(--grey-text-color)" },
+        { n: "deploy · staging", s: 64, w: 18, c: "var(--agent-working-color)" },
+        { n: "vcs · main", s: 70, w: 24, c: "var(--accent-color)" },
+    ];
+    const rows = document.getElementById("tlRows");
+    rows.innerHTML = sessions.map(s => `<div class="tl-row">
+        <div class="tl-label">${s.n}</div>
+        <div class="tl-track"><div class="tl-bar" style="left:${s.s}%;width:${s.w}%;--bar:${s.c}" title="${s.n}"></div></div>
+    </div>`).join("") + `<div class="tl-today" style="left:calc(168px + (100% - 168px) * 0.62)"></div>`;
+
+    const cross = document.getElementById("tlCross");
+    const tip = document.getElementById("tlTip");
+    tlEl.addEventListener("mousemove", e => {
+        const r = tlEl.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        if (x < 168) { cross.style.display = "none"; tip.style.display = "none"; return; }
+        cross.style.display = "block"; cross.style.left = x + "px";
+        const pct = (x - 168) / (r.width - 168 - 16);
+        const hour = Math.max(0, Math.min(24, pct * 24));
+        tip.style.display = "block";
+        tip.style.left = Math.min(x + 12, r.width - 130) + "px";
+        tip.style.top = (e.clientY - r.top + 8) + "px";
+        tip.innerHTML = `<b>${String(Math.floor(hour)).padStart(2, "0")}:${String(Math.round((hour % 1) * 60)).padStart(2, "0")}</b> · 4 sessions`;
+    });
+    tlEl.addEventListener("mouseleave", () => { cross.style.display = "none"; tip.style.display = "none"; });
+})();
+</script>
+</body>
+</html>

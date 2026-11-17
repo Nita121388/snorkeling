@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>08 · WidgetsBar 右侧工具条 — Snorkeling UI/UX Audit</title>
+<link rel="stylesheet" href="assets/proto.css" />
+<style>
+    .ws-stage { display: grid; grid-template-columns: 1fr auto; min-height: 320px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--block-bg-solid-color); }
+    .ws-canvas { padding: 16px; font: 11px/1.6 var(--mono-font); color: var(--grey-text-color); display: grid; place-items: center; }
+
+    /* expanded bar */
+    .wbar {
+        position: relative;
+        display: flex; flex-direction: column; align-items: center; gap: 4px;
+        width: 52px; padding: 6px 0;
+        border-left: 1px solid var(--border-color);
+        background: var(--panel-bg-color);
+    }
+    .wbtn {
+        position: relative;
+        width: 28px; height: 28px; border-radius: 6px;
+        display: grid; place-items: center;
+        font-size: 13px; color: var(--secondary-text-color);
+        cursor: pointer;
+        transition: background .12s, color .12s;
+    }
+    .wbtn:hover { background: var(--hover-bg-color); color: var(--main-text-color); }
+    .wbtn.on { color: var(--accent-color); background: var(--action-soft-bg-color); }
+    .wbtn.on::before {
+        content: ""; position: absolute; left: -9px; top: 5px; bottom: 5px;
+        width: 3px; border-radius: 2px; background: var(--accent-color);
+    }
+    .wbtn .badge {
+        position: absolute; top: -2px; right: -2px; min-width: 12px; height: 12px;
+        border-radius: 6px; background: var(--accent-color); color: #08150a;
+        font: 800 8px/12px var(--mono-font); text-align: center; padding: 0 2.5px;
+    }
+    .wsep { width: 26px; height: 1px; background: var(--border-color); margin: 3px 0; }
+    .wbar .collapse-knob {
+        position: absolute; left: -1px; top: 50%; transform: translate(-100%, -50%);
+        width: 14px; height: 44px; border-radius: 6px 0 0 6px;
+        background: var(--surface-strong-color); border: 1px solid var(--border-color); border-right: none;
+        display: grid; place-items: center; font-size: 9px; color: var(--grey-text-color);
+    }
+    .wbar .collapse-knob:hover { color: var(--main-text-color); }
+
+    /* collapsed strip */
+    .wstrip { width: 8px; border-left: 2px solid var(--border-color); position: relative; background: var(--panel-bg-color); cursor: pointer; }
+    .wstrip:hover { border-left-color: var(--accent-color); }
+    .wstrip .dots { position: absolute; top: 12px; left: 2px; display: flex; flex-direction: column; gap: 6px; }
+    .wstrip .dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--grey-text-color); opacity: .5; }
+    .wstrip:hover .dots i { background: var(--accent-color); opacity: 1; }
+
+    /* flyout label */
+    .wfly {
+        position: absolute; left: 40px; top: 6px; z-index: 100;
+        display: none; align-items: center; gap: 8px;
+        height: 28px; padding: 0 10px;
+        background: var(--overlay-bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        box-shadow: 0 12px 36px -14px var(--shadow-color);
+        font: 600 10.5px/1 "Inter", sans-serif;
+        color: var(--main-text-color);
+        white-space: nowrap;
+    }
+    .wfly.show { display: inline-flex; }
+    .wfly .sub { color: var(--secondary-text-color); font-size: 9.5px; font-weight: 500; }
+
+    /* symmetry diagram */
+    .sym { display: grid; grid-template-columns: 44px 1fr 52px; gap: 0; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; height: 150px; margin-top: 14px; }
+    .sym .s1 { border-right: 1px dashed var(--border-color); background: repeating-linear-gradient(90deg, transparent 0 6px, color-mix(in srgb, var(--accent-color) 25%, transparent) 6px 9px); display: grid; place-items: center; font: 600 8.5px/1.2 "Inter", sans-serif; color: var(--secondary-text-color); text-align: center; }
+    .sym .s2 { display: grid; place-items: center; font: 10.5px/1.6 var(--mono-font); color: var(--grey-text-color); }
+    .sym .s3 { border-left: 1px dashed var(--border-color); background: repeating-linear-gradient(90deg, transparent 0 6px, color-mix(in srgb, var(--accent-color) 25%, transparent) 6px 9px); display: grid; place-items: center; font: 600 8.5px/1.2 "Inter", sans-serif; color: var(--secondary-text-color); text-align: center; }
+</style>
+</head>
+<body>
+<header class="proto-topbar">
+    <div class="crumb"><a href="index.html" style="color:inherit">ui-ux-audit-batch</a><span class="sep">/</span><b>08</b><span class="sep">/</span>widgets-bar</div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" data-theme-toggle>☾ Dark</button>
+</header>
+
+<main class="proto-body">
+    <div class="proto-hero">
+        <h1>08 · WidgetsBar 右侧工具条</h1>
+        <p class="sub">镜像源 <code>frontend/app/workspace/widgets.tsx</code> — 命中热区、active 指示、折叠态与 Block 侧栏的对称性。</p>
+    </div>
+
+    <div class="sect-label">现状问题</div>
+    <div class="card-grid">
+        <div class="note-card problem"><span class="idx">P1</span><div><strong>命中热区太小。</strong> <span class="dim">实际图标 14px，视觉看着可点，实际命中只有 14×14，边缘 7px 都是死区。</span></div></div>
+        <div class="note-card problem"><span class="idx">P2</span><div><strong>图标不解释自己。</strong> <span class="dim">悬停无 flyout 名称，新用户面对 ◈ ▤ ▸ 一排符号只能逐个试。</span></div></div>
+        <div class="note-card problem"><span class="idx">P3</span><div><strong>active 态靠颜色对比弱。</strong> <span class="dim">选中 widget 只变色，54px 窄条里 13px 图标变色不显眼。</span></div></div>
+        <div class="note-card problem"><span class="idx">P4</span><div><strong>折叠后彻底隐身。</strong> <span class="dim">收起后 0px 宽，不知道右侧还有内容；与左侧最小化列结构不对称。</span></div></div>
+    </div>
+
+    <div class="sect-label">优化方案</div>
+    <div class="card-grid two">
+        <div class="note-card solution"><span class="idx">S1</span><div><strong>28px 命中热区。</strong> <span class="dim">图标 14px 视觉，但按钮热区 28×28；hover 背景 6px 圆角浮现。</span></div></div>
+        <div class="note-card solution"><span class="idx">S2</span><div><strong>flyout 名称 + 说明。</strong> <span class="dim">hover 200ms 后左侧浮出标签（名称 + 次要说明），点击可穿透。</span></div></div>
+        <div class="note-card solution"><span class="idx">S3</span><div><strong>active 左侧 3px 指示条。</strong> <span class="dim">几何指示 + accent 双通道；带计数 badge（如 agent 运行数）。</span></div></div>
+        <div class="note-card solution"><span class="idx">S4</span><div><strong>折叠留 8px 感温边。</strong> <span class="dim">折叠后保留 8px 条 + 状态点（有活动 widget 时 accent 高亮）；hover 展开。</span></div></div>
+    </div>
+
+    <div class="sect-label">交互演示 · 展开 / 折叠 / flyout</div>
+    <div class="ctrl-row">
+        <span class="lbl">悬停图标 → flyout · 点击选中</span>
+        <span style="flex:1"></span>
+        <button class="mini-btn" id="btnBar">展开 ⇥</button>
+        <button class="mini-btn" id="btnStrip">折叠 ⇤</button>
+    </div>
+
+    <div class="demo-frame">
+        <span class="demo-tag">LIVE</span>
+        <div class="ws-stage">
+            <div class="ws-canvas">… block canvas …</div>
+            <div class="wbar" id="wbar">
+                <button class="collapse-knob" id="knob" title="折叠工具条">›</button>
+                <button class="wbtn on" data-fly="Hero · 主页与启动" data-badge="0">⌂</button>
+                <button class="wbtn" data-fly="Files · 当前工作区目录" data-badge="0">▤</button>
+                <button class="wbtn" data-fly="Agent · 会话概览" data-badge="2">◈<span class="badge">2</span></button>
+                <div class="wsep"></div>
+                <button class="wbtn" data-fly="codex · 启动 AI 会话" data-badge="0">◐</button>
+                <button class="wbtn" data-fly="opencode · 启动 AI 会话" data-badge="0">◑</button>
+                <button class="wbtn" data-fly="pi · 启动 AI 会话" data-badge="0">◉</button>
+                <div class="wsep"></div>
+                <button class="wbtn" data-fly="Terminal · 新终端块" data-badge="0">▸</button>
+                <button class="wbtn" data-fly="Web · 打开网页块" data-badge="0">⌘</button>
+                <div class="wfly" id="wfly"></div>
+            </div>
+            <div class="wstrip" id="wstrip" style="display:none">
+                <div class="dots"><i></i><i></i><i style="background:var(--accent-color);opacity:1"></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sect-label">左右对称结构</div>
+    <div class="sym">
+        <div class="s1">左侧<br/>最小化列<br/>38px</div>
+        <div class="s2">block canvas<br/>（两个边缘列镜像：图标 28px 热区 · badge · hover flyout）</div>
+        <div class="s3">右侧<br/>WidgetsBar<br/>52px</div>
+    </div>
+
+    <div class="spec-bar">
+        <div><b>展开</b> 宽 52px · 按钮 28×28（图标 14px）· 间距 4px · 分组分隔线 26×1px。</div>
+        <div><b>折叠</b> 8px 条 · 2px 左缘 · 状态点 4px；有活动 widget 时点与缘均为 accent。</div>
+        <div><b>flyout</b> hover 200ms 延迟 · 距条 12px · 高 28px · 10.5px/600。</div>
+        <div><b>active</b> 左侧 3px 指示条（top/bottom 各留 5px）+ accent 前景。</div>
+        <div><b>排序</b> 拖拽重排；右键「固定到顶部」；顺序持久化 <code>widgets.order</code>。</div>
+    </div>
+
+    <div class="proto-footnav">
+        <a href="07-vcs-diff.html">← 07 · VCS diff</a>
+        <a href="09-commontext.html">09 · CommonText →</a>
+    </div>
+</main>
+
+<script src="assets/proto.js"></script>
+<script>
+(function () {
+    const fly = document.getElementById("wfly");
+    const bar = document.getElementById("wbar");
+    let timer = null;
+
+    bar.querySelectorAll(".wbtn").forEach(btn => {
+        btn.addEventListener("mouseenter", () => {
+            timer = setTimeout(() => {
+                fly.innerHTML = `<span>${btn.dataset.fly}</span>`;
+                fly.classList.add("show");
+                fly.style.top = Math.min(btn.offsetTop + 8, 240) + "px";
+            }, 200);
+        });
+        btn.addEventListener("mouseleave", () => {
+            clearTimeout(timer);
+            setTimeout(() => { if (!fly.matches(":hover")) fly.classList.remove("show"); }, 120);
+        });
+        btn.addEventListener("click", () => {
+            bar.querySelectorAll(".wbtn").forEach(b => b.classList.remove("on"));
+            btn.classList.add("on");
+            if (btn.dataset.badge === "2") {
+                fly.innerHTML = `<span>${btn.dataset.fly}</span><span class="sub">2 running</span>`;
+            }
+        });
+    });
+    fly.addEventListener("mouseleave", () => fly.classList.remove("show"));
+
+    function setMode(collapsed) {
+        document.getElementById("wbar").style.display = collapsed ? "none" : "";
+        document.getElementById("wstrip").style.display = collapsed ? "" : "none";
+        document.getElementById("btnBar").classList.toggle("ghost-active", !collapsed);
+        document.getElementById("btnStrip").classList.toggle("ghost-active", collapsed);
+    }
+    document.getElementById("btnBar").addEventListener("click", () => setMode(false));
+    document.getElementById("btnStrip").addEventListener("click", () => setMode(true));
+    document.getElementById("wstrip").addEventListener("click", () => setMode(false));
+    document.getElementById("knob").addEventListener("click", () => setMode(true));
+})();
+</script>
+</body>
+</html>
