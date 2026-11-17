@@ -151,6 +151,13 @@
             "question": "疑问",
             "node": "节点"
         },
+        "source": {
+            "you": "You",
+            "ai": "✨ AI",
+            "aiDraft": "草稿",
+            "aiTitle": "AI 生成",
+            "agentVia": "via wsh annotation add"
+        },
         "cluster": "批注组 · {{count}} 个节点",
         "node": "节点",
         "nodeEdited": "节点 · 已修改",
@@ -170,7 +177,16 @@
         "orphanTitle": "锚点已失效",
         "orphan": "失锚",
         "discard": "丢弃",
-        "accept": "采纳"
+        "accept": "采纳",
+        "dialogAria": "节点 #{{seq}} 的批注",
+        "editAnnotation": "编辑",
+        "editAnnotationAria": "编辑批注",
+        "editReadOnlyTitle": "外部 agent 写入，只读",
+        "navPrev": "上一条",
+        "navNext": "下一条",
+        "navPrevAria": "上一条批注",
+        "navNextAria": "下一条批注",
+        "navPositionAria": "第 {{index}} 条，共 {{total}} 条"
     },
     "annotationEditor": {
         "editTitle": "编辑批注",
@@ -203,7 +219,48 @@
         "jumpTo": "跳转到 #{{seq}} 的批注",
         "today": "今天",
         "yesterday": "昨天",
-        "unknownTime": "未知时间"
+        "unknownTime": "未知时间",
+        "railAria": "批注时间线",
+        "filterTitle": "过滤批注类型",
+        "filterHead": "类型",
+        "filterClear": "显示全部类型",
+        "loadOlderTitle_one": "还有 {{count}} 条更早批注",
+        "loadOlderTitle_other": "还有 {{count}} 条更早批注",
+        "loadingOlder": "正在加载更早批注…",
+        "loadOlderError": "加载更早批注失败，点击重试",
+        "newAnnotations_one": "{{count}} 条新批注",
+        "newAnnotations_other": "{{count}} 条新批注",
+        "newAnnotationsAria": "跳转到新批注"
+    },
+    "annotationPager": {
+        "chipAria": "分页方式：{{label}}，点击切换",
+        "modeEntryTitle": "切换分页方式",
+        "menuTitle": "分页",
+        "mode": {
+            "all": "全部",
+            "day": "按日",
+            "turn_one": "{{count}} 轮",
+            "turn_other": "{{count}} 轮",
+            "interval": "{{count}}小时",
+            "count": "{{count}} 条"
+        },
+        "intervalLabel": "窗口",
+        "countLabel": "条数",
+        "followDefault": "跟随默认",
+        "followDefaultTitle": "重置为默认分页方式",
+        "prev": "上一页",
+        "next": "下一页",
+        "olderHint": "先加载更早一页数据（可能需要连按）",
+        "position": "第 {{index}} / {{total}} 页",
+        "messageCount_one": "{{count}} 条消息",
+        "messageCount_other": "{{count}} 条消息",
+        "turnLabel": "第 {{seq}} 轮",
+        "unknownDate": "未知时间",
+        "barAria": "消息分页"
+    },
+    "annotationFlow": {
+        "gapDays_one": "… 跳过 {{count}} 天 …",
+        "gapDays_other": "… 跳过 {{count}} 天 …"
     },
     "origin": {
         "readOnly": "只读（导入的 dump）",

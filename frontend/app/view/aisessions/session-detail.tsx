@@ -1,6 +1,9 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { RpcApi } from "@/app/store/wshclientapi";
+import { TabRpcClient } from "@/app/store/wshrpcutil";
+import { globalStore, WOS } from "@/store/global";
 import { ScrollToBottomButton } from "@/app/element/scroll-to-bottom-button";
 import { Modal } from "@/app/modals/modal";
 import { AISessionsServiceType } from "@/app/store/services";
@@ -32,17 +35,43 @@ import { autoGenerate } from "./aisession-gen-store";
 import { replaceAnnotationDrafts, requestAnnotationDrafts } from "./annotation-assist";
 import { AnnotationEditor } from "./annotation-editor";
 import {
+    applyPrependAnchor,
+    computeGutterMarkers,
+    createSeqTimestampOf,
+    gutterMarkersEqual,
+    type PrependAnchorSnapshot,
+} from "./annotation-markers";
+import {
     AnnotationFlashMs,
     type AnnotationLike,
+    type MessagePage,
     annotationCountBySeq,
+    annotationKindMeta,
     buildAnnotationAnchors,
+    pageIndexOfSeq,
     seqFromSyntheticAnchorKey,
+    UnknownBucketKey,
 } from "./annotation-model";
-import { AnnotationRail } from "./annotation-rail";
+import {
+    bucketHeaderAbsoluteLabel,
+    dateKeyOfTimestamp,
+    filterTimelineItemsToPage,
+    insertBucketHeaders,
+    relativeOfDateKey,
+} from "./annotation-flow-rows";
+import { AnnotationRail, type AnnotationGutterMarker } from "./annotation-rail";
+import {
+    AnnotationPagerBar,
+    AnnotationViewChip,
+    type PageModeStorage,
+    usePageModeState,
+} from "./annotation-pager";
 import {
     bulkDraftAnnotations,
+    loadOlderAnnotations,
     reloadAnnotationsWithAnchors,
     saveAnnotationNodeText,
+    useAnnotationWindow,
     useSessionAnnotations,
 } from "./annotation-store";
 import { ChatComposer } from "./chat-composer";
@@ -54,6 +83,13 @@ import { MessageQueueStore, useMessageQueueStore } from "./message-queue-store";
 import { NoteAIButton, NoteAISuggestionBar, useNoteAIGenerate } from "./note-ai-controls";
 import { useSessionOpenEntry } from "./open-sessions-store";
 import { openAISessionDetailFromList } from "./session-detail-block";
+import {
+    PageModeMetaKey,
+    buildPageModeMeta,
+    parsePageModeMeta,
+    recallPageModeMap,
+    rememberPageModeMap,
+} from "./page-mode-persist";
 import { SessionDetailSkeleton } from "./session-detail-skeleton";
 import { SessionMoreMenu, buildSessionMarkdown } from "./session-menu";
 import { MessageCard, ToolCallRow } from "./session-message";
@@ -82,6 +118,8 @@ import {
     isNearBottom,
     shouldVirtualize,
     timelineItemKey,
+    type SessionDetailBucketHeader,
+    type SessionFlowRow,
 } from "./timeline-virtual";
 import { RenameTitleInputClass } from "./title-edit";
 import { TitleSourceBadge } from "./title-source-badge";
@@ -113,7 +151,7 @@ import {
     formatSessionContext,
     makeSessionContextResolver,
 } from "./copy-context";
-import type { SessionDetailRow, SessionDetailTimelineItem } from "./utils";
+import type { SessionDetailTimelineItem } from "./utils";
 import {
     buildSessionDetailTimeline,
     formatToolCallPreview,
@@ -126,6 +164,12 @@ import {
 type NoteSaveStatus = "idle" | "saving" | "saved" | "error";
 const ToolCallPreviewLength = 1200;
 const NewChatLiveTurnKey = "__new-chat-live-turn__";
+/**
+ * 实时 turn 合成行的 seq 起点（与 use-live-turn 的 LiveSeqBase 同值）。
+ * 页内过滤（§4.2c）不能把正在流式的行滤掉，所以 seq ≥ 该值的行无条件保留。
+ * 不在 use-live-turn 里导出是为了不扩那个模块的公开面（本包白名单外）。
+ */
+const PageFilterLiveSeqFloor = 10_000_000;
 
 function sourceDotClass(source: string): string {
     return getChatSource(source).dotClass ?? "bg-secondary";
@@ -237,13 +281,114 @@ const TimelineRow = memo(function TimelineRow({
     items,
     render,
 }: {
-    item: SessionDetailRow;
+    item: SessionFlowRow;
     index: number;
-    items: SessionDetailRow[];
-    render: (item: SessionDetailRow, index: number, items: SessionDetailRow[]) => ReactNode;
+    items: SessionFlowRow[];
+    render: (item: SessionFlowRow, index: number, items: SessionFlowRow[]) => ReactNode;
 }) {
     return <>{render(item, index, items)}</>;
 });
+
+/**
+ * 日分段头（§4.1 / §4.2）：相对日期 chip（今天/昨天 accent）+ 绝对日期 + 计数 + 密度微条。
+ *
+ * sticky 选型：非虚拟化路径（行在正常流里）用 `position: sticky; top: 0`；虚拟化路径
+ * 行是 `position: absolute` + translateY 的绝对定位盒，sticky 的包含块就是行自身高度、
+ * 没有任何可吸顶的滚动行程 → sticky 失效，所以那时传 `sticky=false`，由消息流顶部
+ * 那条常驻的「当前日」chip 承担始终可见的日期导航。
+ *
+ * 背景用不透明 `bg-block-solid`（不照搬 spec 的 84% 半透明）：分段头是**同一容器里的
+ * 兄弟节点**，没有按日子包的 section，所以多个头会同时吸在 top:0 且完全重叠；
+ * 半透明会让旧头的文字从新头背景里透出来（残影）。柔化改由底部渐隐条表达。
+ */
+function BucketHeaderRow({ row, sticky }: { row: SessionDetailBucketHeader; sticky: boolean }) {
+    const relativeLabel =
+        row.relative === "today"
+            ? i18n.t("aisessions:annotationRail.today")
+            : row.relative === "yesterday"
+              ? i18n.t("aisessions:annotationRail.yesterday")
+              : null;
+    const isUnknown = row.dateKey === UnknownBucketKey;
+    const absoluteLabel = isUnknown
+        ? i18n.t("aisessions:annotationRail.unknownTime")
+        : bucketHeaderAbsoluteLabel(row.dateKey);
+    return (
+        <div
+            className={cn(
+                "relative flex items-center gap-2 px-1.5 py-1",
+                sticky && "sticky top-0 z-[5] bg-block-solid"
+            )}
+            aria-hidden="true"
+            data-bucket-header={row.dateKey}
+        >
+            {/* sticky 态的底部渐隐（§4.2「实色 84% + 底部渐隐」）：盖在内容上方但永不挡指针 */}
+            {sticky ? (
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 h-2 bg-gradient-to-b from-border/50 to-transparent" />
+            ) : null}
+            {relativeLabel != null ? (
+                <span className="inline-flex shrink-0 items-center rounded-full bg-accent/15 px-1.5 text-[10px] font-medium leading-4 text-accent">
+                    {relativeLabel}
+                </span>
+            ) : null}
+            <span className="shrink-0 text-[11px] leading-4 text-secondary">{absoluteLabel}</span>
+            <span className="h-px min-w-4 flex-1 bg-border/60" />
+            <span className="flex shrink-0 items-center gap-1">
+                {/* 密度微条（§4.2：4×15px 圆角 2px，kind 色）：一眼看出这天批注的类型分布 */}
+                {row.kindCounts.map((entry) => {
+                    const meta = annotationKindMeta(entry.kind);
+                    return (
+                        <span
+                            key={entry.kind}
+                            className="inline-block w-[4px] rounded-[2px]"
+                            style={{
+                                height: 15,
+                                backgroundColor: meta == null ? "var(--secondary-text-color)" : `var(${meta.colorToken})`,
+                            }}
+                            title={meta == null ? entry.kind : i18n.t(meta.labelKey as never)}
+                        />
+                    );
+                })}
+                <span className="min-w-4 text-center text-[10px] leading-4 text-muted">{row.count}</span>
+            </span>
+        </div>
+    );
+}
+
+/** 跨天 GapRow（§3.2 gapDaysBefore）：`… 跳过 N 天 …` 居中淡字，纯视觉。 */
+function BucketGapRow({ gapDays }: { gapDays: number }) {
+    return (
+        <div className="flex items-center justify-center gap-2 py-1.5" aria-hidden="true" data-bucket-gap={gapDays}>
+            <span className="h-px w-6 bg-border/60" />
+            <span className="text-[10px] leading-4 text-muted">
+                {i18n.t("aisessions:annotationFlow.gapDays", { count: gapDays })}
+            </span>
+            <span className="h-px w-6 bg-border/60" />
+        </div>
+    );
+}
+
+/**
+ * 虚拟化路径的「当前日」悬浮 chip（sticky 降级，选型理由见 BucketHeaderRow 注释）。
+ * 只在当前视口命中的日子**本来就有分段头**时显示（有批注锚定的日子），不凭空报日期。
+ */
+function BucketDayChip({ dateKey }: { dateKey: string }) {
+    const relative = relativeOfDateKey(dateKey, Date.now());
+    const label =
+        relative === "today"
+            ? i18n.t("aisessions:annotationRail.today")
+            : relative === "yesterday"
+              ? i18n.t("aisessions:annotationRail.yesterday")
+              : bucketHeaderAbsoluteLabel(dateKey);
+    return (
+        <div
+            className="pointer-events-none absolute left-2 top-1.5 z-10 inline-flex max-w-[45%] items-center truncate rounded-full border border-border bg-surface/85 px-2 py-0.5 text-[10px] leading-4 text-secondary backdrop-blur-sm"
+            aria-hidden="true"
+            data-bucket-day-chip={dateKey}
+        >
+            {label}
+        </div>
+    );
+}
 
 export function SessionDetailPane({
     model,
@@ -342,6 +487,24 @@ export function SessionDetailPane({
     // 虚拟化下滚动高度来自 virtualizer，供 nearBottom 判定复用。
     const virtualTotalSizeRef = useRef(0);
     const detailScrollRef = useRef<HTMLDivElement | null>(null);
+    // 滚动时的 rail 标记同步 + 顶部预取（定义在分页/批注窗口之后，走 ref 避开 TDZ）。
+    const gutterSideEffectsRef = useRef<() => void>(() => {});
+    // ── 分页跳转（§4.2c「跳到不在当前页的消息 → 先切页再定位」）──
+    // jumpTo* 回调定义在 pageState 之前，经这个 ref 转发到后面基于 pageState 的实现
+    //（guidelines：需要 live 数据时用 ref 转发，不为拿最新值把依赖写进 useCallback）。
+    const requestJumpRef = useRef<
+        (seq: number, anchorKey?: string, opts?: { flash?: boolean; behavior?: ScrollBehavior }) => void
+    >(() => {});
+    // 切页请求：目标 seq 不在当前页时先记下，等页内行落地后的 layout effect 再定位。
+    const pendingJumpRef = useRef<{
+        seq: number;
+        anchorKey?: string;
+        flash?: boolean;
+        behavior?: ScrollBehavior;
+    } | null>(null);
+    // 当前视口所在消息 seq（翻页条切模式时的页脚锚点）：由渲染末尾回写，
+    // pageState 只经 ref 读它（currentSeq 只在「切模式」这一条冷路径上用）。
+    const scrollMessageSeqRef = useRef<number | null>(null);
     // 底部 composer 高度：rail（批注时间线）需要按它让位，避免竖轴压到输入框上。
     const [composerEl, setComposerEl] = useState<HTMLDivElement | null>(null);
     const [composerHeight, setComposerHeight] = useState(0);
@@ -651,14 +814,13 @@ export function SessionDetailPane({
         attemptScroll(0);
     }, []);
 
-    // rail 点击 → 跳到对应消息并高亮 1200ms。
-    const jumpToAnnotationSeq = useCallback(
-        (seq: number, anchorKey?: string) => {
-            const targetSeq = resolveAnnotationTargetSeq(seq, anchorKey);
-            if (targetSeq == null) return;
-            seq = targetSeq;
+    // 实际执行跳转：滚到目标行 + （flash=true 时）高亮 1200ms。
+    // 定义在 requestJump 之前（页切换逻辑经 requestJumpRef 转发到它）。
+    const performJump = useCallback(
+        (seq: number, _anchorKey?: string, opts?: { flash?: boolean; behavior?: ScrollBehavior }) => {
+            scrollToVisibleMessage(seq, opts?.behavior ?? "smooth");
+            if (opts?.flash !== true) return;
             setActiveAnnotationSeq(seq);
-            scrollToVisibleMessage(seq, "smooth");
             const flash = (attempt: number) => {
                 const node = messageRefs.current[seq];
                 if (node == null) {
@@ -679,7 +841,18 @@ export function SessionDetailPane({
                 setActiveAnnotationSeq((current) => (current === seq ? null : current));
             }, AnnotationFlashMs);
         },
-        [resolveAnnotationTargetSeq, scrollToVisibleMessage]
+        [scrollToVisibleMessage]
+    );
+
+    // rail 点击 → 跳到对应消息并高亮 1200ms。
+    // 非 all 模式的目标可能不在当前页：交给 requestJump 先切页再定位（§4.2c）。
+    const jumpToAnnotationSeq = useCallback(
+        (seq: number, anchorKey?: string) => {
+            const targetSeq = resolveAnnotationTargetSeq(seq, anchorKey);
+            if (targetSeq == null) return;
+            requestJumpRef.current(targetSeq, anchorKey, { flash: true });
+        },
+        [resolveAnnotationTargetSeq]
     );
 
     const generateAnnotationTimeline = useCallback(async () => {
@@ -1098,6 +1271,8 @@ export function SessionDetailPane({
     };
     const handleDetailScroll = useCallback(() => {
         scrollCoalescer.schedule();
+        // 标记跟内容一起动 + scrollTop 靠近顶部时预取更早一页（§4.2b / §3.8）。
+        gutterSideEffectsRef.current();
     }, [scrollCoalescer]);
 
     useEffect(() => {
@@ -1158,9 +1333,9 @@ export function SessionDetailPane({
 
     const jumpToMessage = useCallback(
         (seq: number) => {
-            scrollToVisibleMessage(seq);
+            requestJumpRef.current(seq);
         },
-        [scrollToVisibleMessage]
+        []
     );
 
     const jumpToSearchMatch = useCallback(
@@ -1346,34 +1521,38 @@ export function SessionDetailPane({
         }
         return map;
     }, [effectiveDetail?.messages]);
-    // 每行之后最近的一条消息 seq（工具组的真实结束时间点）；单趟倒序。
-    const nextMessageSeqByRow = useMemo(() => {
-        const next = new Array<number | null>(rows.length).fill(null);
+    // 折叠组时长：组锚点 seq → 组内末尾工具之后最近的一条消息 seq（时长终点）。
+    // 以前是「按渲染行下标」的数组（nextMessageSeqByRow）；页内过滤（§4.2c）后渲染
+    // 下标不再等于全量行下标，改成按 anchorSeq 索引（每个折叠组的 anchorSeq 唯一），
+    // 时长数据在全量行上算一次，页切换不重算。
+    const toolGroupEndSeqByAnchor = useMemo(() => {
+        const map = new Map<number, number>();
         let upcoming: number | null = null;
         for (let i = rows.length - 1; i >= 0; i--) {
-            next[i] = upcoming;
             const row = rows[i];
-            if (row.kind === "message") {
-                upcoming = row.message.seq;
+            if (row.kind === "toolGroup") {
+                map.set(row.anchorSeq, upcoming ?? row.endSeq);
+                continue;
             }
+            if (row.kind === "message") upcoming = row.message.seq;
         }
-        return next;
+        return map;
     }, [rows]);
     // 本会话最长工具组时长：归一化时长条宽度，避免每次 render 重算。
     const maxToolGroupDurationMs = useMemo(() => {
         let max = 0;
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
+        for (const row of rows) {
             if (row.kind !== "toolGroup") continue;
-            const duration = toolGroupDurationMs(seqTimestamps, row.startSeq, nextMessageSeqByRow[i] ?? row.endSeq);
+            const duration = toolGroupDurationMs(
+                seqTimestamps,
+                row.startSeq,
+                toolGroupEndSeqByAnchor.get(row.anchorSeq) ?? row.endSeq
+            );
             if (duration != null && duration > max) max = duration;
         }
         return max;
-    }, [rows, nextMessageSeqByRow, seqTimestamps]);
-    // 大会话走虚拟化：只渲染视口附近的几行，避免 5000+ 个 DOM 节点把滚动拖死。
-    // 小会话保持原有全量渲染（行为与改动前一致）。
-    const virtualEnabled = shouldVirtualize(rows.length);
-    const seqToIndex = useMemo(() => buildSeqToIndex(rows), [rows]);
+    }, [rows, toolGroupEndSeqByAnchor, seqTimestamps]);
+    // anchorKey → seq 用**全量行**建表（页内过滤后仍能跨页解析锚点；all 模式两者等价）。
     const anchorKeyToSeq = useMemo(() => buildAnchorKeyToSeq(rows), [rows]);
     // 会话详情里的 Message 来自 SQLite 缓存，ItemKey 为空（表里没有 item_key 列），
     // 所以上面那套基于 messages 的锚点其实是空的。renderItems 里的工具行带
@@ -1389,13 +1568,125 @@ export function SessionDetailPane({
         void reloadAnnotationsWithAnchors(summaryKey, connection, timelineAnnotationAnchors);
         // 用签名字符串做依赖，避免数组换引用导致的重复请求。
     }, [summaryKey, connection, timelineAnnotationAnchorSignature]);
+    // ── 分页模式（主文档 §4.2c / §4.2c-1） ────────────────────────────────
+    // 分页只发生在**渲染层**：页数组来自 computePages（纯函数），与数据加载（游标）无关。
+    // 状态机 / 持久化在 `annotation-pager` 的 usePageModeState 里，这里只做宿主的三件事：
+    //  block meta 读写通道、切页后的滚动定位（复用现有虚拟化滚动）、作用域收窄传给 rail。
+    const pageModeStorage = useMemo<PageModeStorage>(() => {
+        const blockId = model.blockId ?? "";
+        if (blockId === "") {
+            // 无 block 的宿主（modal / 独立详情）：纯内存态，功能完整但不跨重启。
+            return { load: () => ({}), save: () => {} };
+        }
+        return {
+            load: () => {
+                // 内存热缓存优先（SetMetaCommand 异步，块卸载后立刻切回可能读到旧 meta）。
+                const cached = recallPageModeMap(blockId);
+                if (cached != null) return cached;
+                const block = globalStore.get(WOS.getWaveObjectAtom<Block>(WOS.makeORef("block", blockId)));
+                const meta = block?.meta as Record<string, unknown> | undefined;
+                return parsePageModeMeta(meta?.[PageModeMetaKey]) ?? {};
+            },
+            save: (map) => {
+                rememberPageModeMap(blockId, map);
+                void RpcApi.SetMetaCommand(TabRpcClient, {
+                    oref: `block:${blockId}`,
+                    meta: { [PageModeMetaKey]: buildPageModeMeta(map) } as MetaType,
+                });
+            },
+        };
+    }, [model.blockId]);
+
+    // 切页 → 滚到该页首条消息。翻页条切页 = 换行集合，行要等下一次渲染才换成新页；
+    // 直接滚会拿旧页的 seqToIndex 静默失败，所以经 pendingJump 延迟到页内行落地后定位。
+    const handlePageActivate = useCallback((page: MessagePage) => {
+        pendingJumpRef.current = { seq: page.startSeq, behavior: "auto" };
+    }, []);
+
+    const pageState = usePageModeState({
+        rows: detailMessages,
+        timestamps: seqTimestamps,
+        sessionKey: summaryKey,
+        connection,
+        storage: pageModeStorage,
+        totalMessages: detailMessages.length,
+        // 只用于「切模式」时的页脚对齐（冷路径）：读渲染末尾回写的 ref，不把
+        // scrollMessageSeq 的派生链（虚拟化 → flowRows → pageState）绕成死循环。
+        currentSeq: scrollMessageSeqRef.current,
+        onPageActivate: handlePageActivate,
+        // 消息窗口当前是全量加载，没有更早的消息页可补，所以翻页条在首页禁用 ‹；
+        // 批注窗口的「加载更早」已由 rail 端帽（onLoadOlder → handleLoadOlder）承担。
+    });
+    const [pageMenuOpen, setPageMenuOpen] = useState(false);
+    // 非 all 模式：rail 标记 / 悬浮卡 / 类型过滤计数 / 草稿条 / 读数 / 消息流只反映当前页（§4.2c）。
+    // all 模式刻意不传（保持 v1 语义：孤儿 / 已重锚定到其他 seq 的条目也要看得见）。
+    const pageScopeSeqsArg = pageState.pageMode === "all" ? undefined : pageState.pageScopeSeqs;
+
+    // ── 页内渲染（§4.2c）：非 all 模式只保留当前页 seq 区间内的行 ──────────────
+    // 过滤发生在 groupConsecutiveTools **之前**（renderItems 层）：页边界把连续工具行
+    // 天然切开，不会出现「一个折叠组横跨两页」。all 模式 activePage 里 startSeq..endSeq
+    // 覆盖全部消息 → 过滤返回同一引用，行为与改造前逐字节等价。
+    // 实时 turn 的行 seq 从 10_000_000 起（use-live-turn 的 LiveSeqBase，永远在页区间
+    // 之外）→ 强制保留，否则分页模式下发完消息内容凭空消失。
+    const pageFilteredItems = useMemo(
+        () =>
+            filterTimelineItemsToPage(
+                renderItems,
+                // all 模式显式传 null：过滤函数原样返回**同一引用**，与改造前逐字节等价。
+                pageState.pageMode === "all" ? null : pageState.activePage,
+                { alwaysIncludeFromSeq: PageFilterLiveSeqFloor }
+            ),
+        [renderItems, pageState.pageMode, pageState.activePage]
+    );
+    const pageRows = useMemo(() => groupConsecutiveTools(pageFilteredItems), [pageFilteredItems]);
+    // 消息行批注角标读数（§4.2c「读数只反映当前页」）：非 all 模式只数当前页作用域内的条目。
+    const scopedAnnotationCounts = useMemo(() => {
+        const scope = pageScopeSeqsArg;
+        if (scope == null) return annotationCounts;
+        return annotationCountBySeq(annotations.filter((annotation) => scope.has(annotation.seq)));
+    }, [annotationCounts, annotations, pageScopeSeqsArg]);
+
+    // ── gutter 行对齐标记（§4.2b）+ 端帽游标加载 + 前插锚定（§3.8） ────────────
+    //
+    // 数据源 = 窗口内扁平批注（`annotations`，store 快照恒按 (seq,id) 升序）；位置来源两条路径：
+    //  - 虚拟化（>60 行）：`virtualizer.getVirtualItems()` 的 `item.start`，**不读 DOM rect**
+    //    （滚动时逐行 layout 抖动会把动画打成掉帧，与 10-27 virtual-row-stability 同源）；
+    //  - 非虚拟化（短会话，真机主路径）：`messageRefs` 的 DOM rect。
+    //
+    // 坐标常量（滚动容器 paddingTop / clientTop、rail 本体相对滚动容器顶部的偏移、rail 本体
+    // 高度）首帧实测一次并缓存，ResizeObserver / window resize 时失效重测；每帧只读一次
+    // scrollTop。标记计算走 rAF 合并 + diff：内容不变就不 setState（滚动路径性能契约）。
+    const seqTsOf = useMemo(() => createSeqTimestampOf(seqTimestamps), [seqTimestamps]);
+    // 窗口事实（§3.1 / §3.7）：hasMoreOlder / atEarliest / loadingOlder / olderError。
+    // 条目不从这里取 —— `annotations`（useSessionAnnotations）就是同一份窗口快照的扁平视图。
+    const annotationWindow = useAnnotationWindow(summaryKey, connection, seqTsOf);
+    // ── 日分段头 + GapRow（§3.2 / §4.1）─────────────────────────────────
+    // 数据源 = 批注窗口的时间桶：只在「有批注锚定的日子」生成（没有窗口数据时不插入，
+    // flow 与现状等价）；非 all 模式只保留与当前页有交集的桶，count / 密度微条同步收窄。
+    const flowRows = useMemo(
+        () => insertBucketHeaders(pageRows, annotationWindow.buckets, { scopeSeqs: pageScopeSeqsArg }),
+        [pageRows, annotationWindow.buckets, pageScopeSeqsArg]
+    );
+    const annotationWindowRef = useRef(annotationWindow);
+    annotationWindowRef.current = annotationWindow;
+    const pageScopeSeqsRef = useRef<Set<number> | undefined>(pageScopeSeqsArg);
+    pageScopeSeqsRef.current = pageScopeSeqsArg;
+    const pageModeRef = useRef(pageState.pageMode);
+    pageModeRef.current = pageState.pageMode;
+
+    // ── 虚拟化（行集合 = 页内过滤 + 日分段头之后的 flowRows）────────────────────
+    // 大会话只渲染视口附近的几行，避免 5000+ 个 DOM 节点把滚动拖死；
+    // 虚拟化判定与行数均取 flowRows（§4.2c：页内过滤生效后的行数）。
+    const virtualEnabled = shouldVirtualize(flowRows.length);
+    // seqToIndex 只映射当前渲染行（页内定位用）；跨页解析靠上面的全量 anchorKeyToSeq。
+    const seqToIndex = useMemo(() => buildSeqToIndex(flowRows), [flowRows]);
     const virtualizer = useVirtualizer({
-        count: rows.length,
+        count: flowRows.length,
         getScrollElement: () => detailScrollRef.current,
-        // 按行类型估算（user 气泡 / tool 行 / assistant 段落 / 折叠组），而不是全行共用 96px：
-        // 96px 对 assistant 段落误差高达 4 倍，快速滚动时未测行先按估计高度排、
-        // measureElement 下一帧才纠正，那一帧里相邻行内容会叠在一起（重影）。
-        estimateSize: (index) => estimateTimelineRowHeight(rows[index]),
+        // 按行类型估算（user 气泡 / tool 行 / assistant 段落 / 折叠组 / 分段头 / GapRow），
+        // 而不是全行共用 96px：96px 对 assistant 段落误差高达 4 倍，快速滚动时未测行先按
+        // 估计高度排、measureElement 下一帧才纠正，那一帧里相邻行内容会叠在一起（重影）。
+        estimateSize: (index) => estimateTimelineRowHeight(flowRows[index]),
         overscan: VirtualOverscan,
         enabled: virtualEnabled,
         // offsetHeight 等价于库的默认实现，但不走 transform/滚动相关的 rect 计算路径。
@@ -1412,8 +1703,8 @@ export function SessionDetailPane({
     };
     virtualTotalSizeRef.current = virtualEnabled ? virtualizer.getTotalSize() : 0;
     const timelineItemSeqs = useMemo(
-        () => rows.map((item) => (item.kind === "message" ? item.message.seq : null)),
-        [rows]
+        () => flowRows.map((item) => (item.kind === "message" ? item.message.seq : null)),
+        [flowRows]
     );
     // 大纲轨 active 刻度：虚拟化后改用可见项推导，不再遍历 DOM 节点。
     const [outlineProbeOffset, setOutlineProbeOffset] = useState(0);
@@ -1435,6 +1726,280 @@ export function SessionDetailPane({
     const readableMessageSeqs = useMemo(() => detailMessages.map((message) => message.seq), [detailMessages]);
     const fullRenderMessageSeq = useActiveMessageSeq(detailScrollRef, readableMessageSeqs, !virtualEnabled);
     const scrollMessageSeq = virtualEnabled ? activeOutlineSeq : fullRenderMessageSeq;
+    scrollMessageSeqRef.current = scrollMessageSeq;
+
+    // ── 跨页跳转（§4.2c「跳到不在当前页的消息 → 先切页再定位」）──────────────
+    // 目标 seq 在当前页作用域内 → 直接跳；否则先找页切过去，把定位记到 pendingJump，
+    // 等页内行落地后由下面的 layout effect 补一次（直接滚会拿旧页的 seqToIndex 静默失败）。
+    const requestJump = useCallback(
+        (seq: number, anchorKey?: string, opts?: { flash?: boolean; behavior?: ScrollBehavior }) => {
+            const scope = pageScopeSeqsArg;
+            if (scope == null || scope.has(seq)) {
+                performJump(seq, anchorKey, opts);
+                return;
+            }
+            const index = pageIndexOfSeq(pageState.pages, seq);
+            // 不在任何页（live turn / 页内 seq 非连续）：直接试，不把事情挂起来。
+            if (index < 0 || index === pageState.activePageIndex) {
+                performJump(seq, anchorKey, opts);
+                return;
+            }
+            pendingJumpRef.current = { seq, anchorKey, ...opts };
+            pageState.goToPage(index);
+        },
+        [pageScopeSeqsArg, pageState.pages, pageState.activePageIndex, pageState.goToPage, performJump]
+    );
+    requestJumpRef.current = requestJump;
+
+    // 每次渲染后检查一次 pendingJump（纯 ref 读，滚动路径零成本）：
+    // - 目标已落入当前页作用域 → 执行定位并清掉；
+    // - 目标页已不可达（切回 all / 页空间变化）→ 放弃，避免悬挂到下一次渲染。
+    useLayoutEffect(() => {
+        const pending = pendingJumpRef.current;
+        if (pending == null) return;
+        if (pageScopeSeqsArg != null && !pageScopeSeqsArg.has(pending.seq)) {
+            if (pageIndexOfSeq(pageState.pages, pending.seq) < 0) pendingJumpRef.current = null;
+            return;
+        }
+        pendingJumpRef.current = null;
+        performJump(pending.seq, pending.anchorKey, { flash: pending.flash, behavior: pending.behavior });
+    });
+
+    // 虚拟化路径的「当前日」：视口探针命中的消息所在的日子（只在它有分段头即有批注锚定时才有意义）。
+    const activeBucketDay = useMemo(() => {
+        if (!virtualEnabled || scrollMessageSeq == null) return null;
+        const ts = seqTsOf(scrollMessageSeq);
+        if (ts == null || !(ts > 0)) return null;
+        const dateKey = dateKeyOfTimestamp(ts);
+        if (!annotationWindow.buckets.some((bucket) => bucket.dateKey === dateKey)) return null;
+        return dateKey;
+    }, [virtualEnabled, scrollMessageSeq, seqTsOf, annotationWindow.buckets]);
+
+    const [gutterMarkers, setGutterMarkers] = useState<AnnotationGutterMarker[]>([]);
+    const gutterMetricsRef = useRef<{
+        railBodyTop: number;
+        paddingBoxTop: number;
+        padTop: number;
+        railBodyHeight: number;
+    } | null>(null);
+    // 前插锚定（§3.8）：加载更早之前的滚动几何；数据落地后同一帧补偿 scrollTop。
+    const pendingPrependRef = useRef<PrependAnchorSnapshot | null>(null);
+    // 顶部预取：进入顶部区域（<200px）时自动预取一页，失败静默重试 1 次（§3.8）。
+    // `armed` 是滞后阀：只有离开顶部（scrollTop ≥ 400px）后重新置位，
+    // 否则“停在顶部”会被每次 scroll 事件当成新的一次预取 → 一路把全会话加载完。
+    const olderPrefetchRef = useRef<{ armed: boolean; retried: boolean }>({ armed: true, retried: false });
+    // 视口外新批注 pill（§3.6）：只计数、不自动跳转。
+    const [pendingNewCount, setPendingNewCount] = useState(0);
+    const seenAnnotationIdsRef = useRef<Set<number> | null>(null);
+    const newestAnnotationSeqRef = useRef<number>(Number.NEGATIVE_INFINITY);
+
+    const measureGutterMetrics = useCallback(() => {
+        const scrollEl = detailScrollRef.current;
+        const root = containerRef.current;
+        if (scrollEl == null || root == null) return false;
+        const railBody = root.querySelector<HTMLElement>(".annotation-rail-body");
+        if (railBody == null) return false;
+        const scrollRect = scrollEl.getBoundingClientRect();
+        const railRect = railBody.getBoundingClientRect();
+        const paddingBoxTop = scrollRect.top + (scrollEl.clientTop || 0);
+        const padTop = Number.parseFloat(window.getComputedStyle(scrollEl).paddingTop) || 0;
+        gutterMetricsRef.current = {
+            // rail 本体顶边在滚动内容坐标系里的位置：布局常量（rail 与消息列同顶）。
+            railBodyTop: railRect.top - paddingBoxTop,
+            paddingBoxTop,
+            padTop,
+            railBodyHeight: railBody.clientHeight,
+        };
+        return true;
+    }, []);
+
+    const commitGutterMarkersRef = useRef<() => void>(() => {});
+    const gutterCoalescer = useMemo(() => createRafCoalescer(() => commitGutterMarkersRef.current()), []);
+    commitGutterMarkersRef.current = () => {
+        const scrollEl = detailScrollRef.current;
+        const root = containerRef.current;
+        if (scrollEl == null || root == null) return;
+        if (gutterMetricsRef.current == null && !measureGutterMetrics()) return;
+        const metrics = gutterMetricsRef.current;
+        if (metrics == null) return;
+        const virtual = virtualScrollRef.current;
+        const starts =
+            virtual != null && virtual.enabled
+                ? new Map(virtual.items().map((item) => [item.index, item.start] as const))
+                : null;
+        const scrollTop = scrollEl.scrollTop;
+        const next = computeGutterMarkers(
+            annotationsRef.current,
+            (seq) => {
+                if (virtual != null && virtual.enabled) {
+                    const index = virtual.seqToIndex.get(seq);
+                    if (index == null) return undefined;
+                    const start = starts?.get(index);
+                    return start == null ? undefined : metrics.padTop + start;
+                }
+                const node = messageRefs.current[seq];
+                if (node == null) return undefined;
+                return node.getBoundingClientRect().top - metrics.paddingBoxTop + scrollTop;
+            },
+            {
+                scrollTop,
+                railBodyTop: metrics.railBodyTop,
+                railBodyHeight: metrics.railBodyHeight,
+                scopeSeqs: pageScopeSeqsRef.current,
+            }
+        );
+        setGutterMarkers((current) => (gutterMarkersEqual(current, next) ? current : next));
+    };
+
+    // 每次渲染后重排一次：覆盖「行集合 / 行高 / 批注 / 作用域」的所有变化。滚动本身另由
+    // handleDetailScroll 直接 schedule（非虚拟化滚动不会引起 React 渲染）。diff 相等时不
+    // setState，所以「渲染 → schedule → commit」一定收敛，不会自激循环。
+    useEffect(() => {
+        gutterCoalescer.schedule();
+    });
+    // 滚动几何 / rail 本体尺寸变化 → 失效常量缓存（折叠 rail、窗口缩放、composer 高度变化）。
+    useLayoutEffect(() => {
+        measureGutterMetrics();
+        gutterCoalescer.schedule();
+        if (typeof ResizeObserver === "undefined") return;
+        const observer = new ResizeObserver(() => {
+            if (measureGutterMetrics()) gutterCoalescer.schedule();
+        });
+        const scrollEl = detailScrollRef.current;
+        const railBody = containerRef.current?.querySelector<HTMLElement>(".annotation-rail-body") ?? null;
+        if (scrollEl != null) observer.observe(scrollEl);
+        if (railBody != null) observer.observe(railBody);
+        return () => observer.disconnect();
+        // detailMessages 到达 / 虚拟化开关切换时容器首次真正挂载，这里需要重新挂观察器
+        //（骨架屏阶段 containerRef 还是 null，观察不到任何东西）。
+    }, [gutterCoalescer, measureGutterMetrics, summaryKey, virtualEnabled]);
+    useEffect(() => () => gutterCoalescer.cancel(), [gutterCoalescer]);
+
+    // 端帽「加载更早」（§3.3 游标 / §3.8 前插）：记录前插前的滚动几何，数据落地后同帧补偿。
+    const handleLoadOlder = useCallback(() => {
+        if (summaryKey === "") return;
+        const container = detailScrollRef.current;
+        if (container != null && pendingPrependRef.current == null) {
+            // 虚拟化后 scrollHeight 只是已渲染窗口的高度，真实内容高度取 virtualizer 总高。
+            const contentHeight = virtualTotalSizeRef.current > 0 ? virtualTotalSizeRef.current : container.scrollHeight;
+            pendingPrependRef.current = { scrollHeight: contentHeight, scrollTop: container.scrollTop };
+        }
+        void loadOlderAnnotations(summaryKey, connection, { tsOf: seqTsOf, refSeq: scrollMessageSeq ?? undefined });
+    }, [connection, scrollMessageSeq, seqTsOf, summaryKey]);
+
+    // 前插落地 → **同一帧**补偿 scrollTop（§3.8，判据 S2：视口像素不动，误差 ≤ 1px）。
+    useLayoutEffect(() => {
+        const pending = pendingPrependRef.current;
+        if (pending == null) return;
+        const container = detailScrollRef.current;
+        if (container == null) return;
+        const contentHeight = virtualTotalSizeRef.current > 0 ? virtualTotalSizeRef.current : container.scrollHeight;
+        const delta = contentHeight - pending.scrollHeight;
+        // 还没落地（内容高度没变且仍在加载）→ 保留基线，等真正的窗口更新。
+        if (delta === 0 && annotationWindow.loadingOlder) return;
+        pendingPrependRef.current = null;
+        // 内容高度没变（本批只有标记、没有插行）→ 绝不写 scrollTop：
+        // 快照里的 scrollTop 是几帧前的值，拿它回写会把用户这几帧的滚动抹掉。
+        if (delta === 0) return;
+        applyPrependAnchor(container, pending, contentHeight);
+    }, [annotations, annotationWindow.loadingOlder]);
+
+    // 顶部预取（§3.8）：scrollTop < 200px 自动预取一页；失败静默重试 1 次，绝不改滚动位置。
+    const prefetchOlderIfNeeded = useCallback(() => {
+        const container = detailScrollRef.current;
+        if (container == null) return;
+        const state = olderPrefetchRef.current;
+        // 滞后阀：离开顶部（≥ 400px）才重新武装，避免“停在顶部”连环预取。
+        if (container.scrollTop >= 400) {
+            state.armed = true;
+            state.retried = false;
+            return;
+        }
+        if (container.scrollTop >= 200) return;
+        const snapshot = annotationWindowRef.current;
+        if (snapshot == null || !snapshot.hasMoreOlder || snapshot.loadingOlder) return;
+        if (pageModeRef.current !== "all") return; // 分页模式的补数据由翻页条承担（§4.2c）
+        if (snapshot.olderError != null) {
+            if (state.retried) return; // 已重试过一次：等用户点端帽
+            state.retried = true;
+        } else {
+            if (!state.armed) return;
+            state.armed = false;
+            state.retried = false;
+        }
+        void loadOlderAnnotations(summaryKey, connection, { tsOf: seqTsOf, refSeq: scrollMessageSeq ?? undefined });
+    }, [connection, scrollMessageSeq, seqTsOf, summaryKey]);
+
+    // 滚动副作用总入口（handleDetailScroll 定义在前面，经 ref 调用这里的最新实现）。
+    gutterSideEffectsRef.current = () => {
+        gutterCoalescer.schedule();
+        prefetchOlderIfNeeded();
+        // 用户已回到底部：pill 里的新批注已经在眼前了。
+        if (nearBottomRef.current) setPendingNewCount((current) => (current === 0 ? current : 0));
+    };
+
+    // 切会话：pill / 预取 / 已见集合全部重置（避免把上一会话的条目算成「新批注」）。
+    useEffect(() => {
+        seenAnnotationIdsRef.current = null;
+        newestAnnotationSeqRef.current = Number.NEGATIVE_INFINITY;
+        olderPrefetchRef.current = { armed: true, retried: false };
+        setPendingNewCount(0);
+    }, [summaryKey]);
+    useEffect(() => {
+        const seen = seenAnnotationIdsRef.current;
+        const newestSeq = newestAnnotationSeqRef.current;
+        const ids = new Set<number>();
+        let fresh = 0;
+        for (const annotation of annotations) {
+            ids.add(annotation.id);
+            // 只把「最新端新增」算新批注：加载更早（前插）不算。
+            if (seen != null && !seen.has(annotation.id) && annotation.seq > newestSeq) fresh += 1;
+        }
+        seenAnnotationIdsRef.current = ids;
+        if (annotations.length > 0) {
+            // annotations 恒按 (seq,id) 升序，末项即最新端。
+            newestAnnotationSeqRef.current = Math.max(newestSeq, annotations[annotations.length - 1].seq);
+        }
+        if (fresh > 0 && !nearBottomRef.current) setPendingNewCount((current) => current + fresh);
+    }, [annotations]);
+
+    // 新批注 pill 点击：跳到最新一条（normalize seq 走 anchorKey 兜底），不清滚动位置。
+    // 非 all 模式下最新一条大概率不在当前页 → 走 requestJump 先切页再定位。
+    const handleJumpToNew = useCallback(() => {
+        setPendingNewCount(0);
+        const list = annotationsRef.current;
+        const latest = list[list.length - 1];
+        if (latest == null) return;
+        const target = resolveAnnotationTargetSeq(latest.seq, latest.anchorKey);
+        requestJumpRef.current(target ?? latest.seq, latest.anchorKey);
+    }, [resolveAnnotationTargetSeq]);
+
+    // ← / → 翻页（卡片未打开、且焦点不在输入控件里时；卡片内的 ←/→ 由卡片自己处理）。
+    useEffect(() => {
+        if (pageState.pageMode === "all") return;
+        // 注意：本文件从 react 导入了 `KeyboardEvent`（合成事件类型），会遮蔽全局 DOM 类型，
+        // 所以 window 级监听器的形参要显式取 WindowEventMap 里的 DOM KeyboardEvent。
+        const onPageKeyDown = (event: WindowEventMap["keydown"]) => {
+            if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+            const target = event.target as HTMLElement | null;
+            if (target != null) {
+                const tag = target.tagName;
+                if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return;
+            }
+            // 悬浮卡 / 编辑器 / 分页弹层打开时让位（§4.4：卡片内 ←/→ 是上下条导航）。
+            if (annotationEditor != null || pageMenuOpen) return;
+            if (document.querySelector("[data-annotation-card]") != null) return;
+            if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                pageState.goPrevPage();
+            } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                pageState.goNextPage();
+            }
+        };
+        window.addEventListener("keydown", onPageKeyDown);
+        return () => window.removeEventListener("keydown", onPageKeyDown);
+    }, [pageMenuOpen, pageState.pageMode, pageState.goPrevPage, pageState.goNextPage, annotationEditor]);
     // 只允许在「实时 turn 开始 / 结束」两个边界做全量重测。
     //
     // 禁止把 liveTurn 对象本身放进依赖：useLiveTurns 每 32ms flush 一次，每次都是新对象，
@@ -1647,7 +2212,17 @@ export function SessionDetailPane({
     }, [summary?.id, summary?.source, summary?.title, summary?.projectPath, toolCalls]);
     // 渲染单行的共享实现：全量分支与虚拟分支必须长得完全一样，避免两条路径漂移。
     const renderTimelineItem = useCallback(
-        (item: SessionDetailRow, itemIdx: number, items: SessionDetailRow[]) => {
+        (item: SessionFlowRow, itemIdx: number, items: SessionFlowRow[]) => {
+            // 日分段头 / GapRow（§4.1）：纯视觉分隔行，不参与消息渲染与搜索高亮。
+            // sticky 只在非虚拟化路径生效（虚拟行是 position:absolute + translateY，
+            // sticky 的包含块就是行自身高度、没有可吸顶的滚动行程）；虚拟化路径改由
+            // 顶部悬浮的小 chip 常驻当前日（见下方 activeBucketDay）。
+            if (item.kind === "bucketHeader") {
+                return <BucketHeaderRow row={item} sticky={!virtualEnabled} />;
+            }
+            if (item.kind === "gapRow") {
+                return <BucketGapRow gapDays={item.gapDays} />;
+            }
             const prevItem = itemIdx > 0 ? items[itemIdx - 1] : null;
             const isGroupStart =
                 item.kind !== "message" ||
@@ -1664,7 +2239,7 @@ export function SessionDetailPane({
                         groupStart={isGroupStart}
                         contextAttrs={contextAttrsBySeq.get(item.message.seq)}
                         contextText={contextTextBySeq.get(item.message.seq)}
-                        annotationCount={annotationCounts.get(item.message.seq) ?? 0}
+                        annotationCount={scopedAnnotationCounts.get(item.message.seq) ?? 0}
                         onOpenAnnotations={openAnnotationsFor}
                         registerRef={(node) => {
                             if (node) messageRefs.current[item.message.seq] = node;
@@ -1700,7 +2275,8 @@ export function SessionDetailPane({
             }
             if (item.kind === "toolGroup") {
                 const running = item.liveStatus === "running";
-                const groupEndSeq = nextMessageSeqByRow[itemIdx] ?? item.endSeq;
+                // 时长终点按 anchorSeq 查（不按渲染下标：页内过滤后下标不再对齐全量行）。
+                const groupEndSeq = toolGroupEndSeqByAnchor.get(item.anchorSeq) ?? item.endSeq;
                 const groupDurationMs = toolGroupDurationMs(seqTimestamps, item.startSeq, groupEndSeq);
                 return (
                     <ToolGroup
@@ -1772,14 +2348,16 @@ export function SessionDetailPane({
             maxToolGroupDurationMs,
             model.blockId,
             model.service,
-            nextMessageSeqByRow,
             openAnnotationsFor,
+            scopedAnnotationCounts,
             seqTimestamps,
             subagentMatchFor,
             subagentMatchesByAnchor,
             subagentTabCwd,
             toggleToolCallExpanded,
             toolContextAttrsBySeq,
+            toolGroupEndSeqByAnchor,
+            virtualEnabled,
         ]
     );
 
@@ -1920,6 +2498,16 @@ export function SessionDetailPane({
                                 )}
                                 onClick={() => void model.toggleMark(summary)}
                             />
+                            <AnnotationViewChip
+                                pageMode={pageState.pageMode}
+                                intervalHours={pageState.intervalHours}
+                                countSize={pageState.countSize}
+                                totalPages={pageState.pages.length}
+                                open={pageMenuOpen}
+                                onOpenChange={setPageMenuOpen}
+                                onSelect={pageState.selectMode}
+                                onFollowDefault={pageState.followDefault}
+                            />
                             <SessionMoreMenu
                                 projectDirectory={projectDirectory}
                                 sessionFilePath={sessionFilePath}
@@ -2023,6 +2611,20 @@ export function SessionDetailPane({
                         onDiscardAllDrafts={() => void bulkDrafts("discard")}
                         onNodeTextSave={handleNodeTextSave}
                         bottomInset={composerHeight}
+                        // 分页作用域（§4.2c）：非 all 模式下 rail 标记 / 悬浮卡 / 类型过滤计数 /
+                        // 草稿条 / 读数只反映当前页；all 模式不传（保持 v1 全量语义）。
+                        scopeSeqs={pageScopeSeqsArg}
+                        // 端帽 `↑N` 只在 all 模式出现；非 all 模式的加载语义由翻页条承担。
+                        showLoadOlder={pageState.pageMode === "all"}
+                        // ── gutter 行对齐标记（§4.2b）：传入即启用行对齐 gutter 渲染 ──
+                        markers={gutterMarkers}
+                        onLoadOlder={handleLoadOlder}
+                        loadingOlder={annotationWindow.loadingOlder}
+                        olderError={annotationWindow.olderError}
+                        // 精确计数 B2 接 author 列后补：现在只能区分「还有 / 没有」。
+                        olderCount={annotationWindow.hasMoreOlder ? 1 : 0}
+                        pendingNewCount={pendingNewCount}
+                        onJumpToNew={handleJumpToNew}
                     />
                     <div className="relative flex min-w-0 flex-1 flex-col">
                         {/* 搜索浮层：头栏下方居中弹出（对齐原型 srch-pop） */}
@@ -2083,6 +2685,27 @@ export function SessionDetailPane({
                             </div>
                         </div>
                         <div className="relative min-h-0 flex-1">
+                            {/* 虚拟化路径的「当前日」悬浮 chip（sticky 降级，见 BucketHeaderRow 注释）。
+                                只在有批注锚定的日子显示；与居中的翻页条 / 搜索浮层错开在左侧。 */}
+                            {activeBucketDay != null ? <BucketDayChip dateKey={activeBucketDay} /> : null}
+                            {/* 分页翻页条（§4.2c）：非 all 模式浮在消息流顶部，不占消息行；
+                                搜索浮层展开时下移一行避开它（搜索浮层 z-30）。 */}
+                            {pageState.pageMode !== "all" && pageState.activePage != null ? (
+                                <div
+                                    className={cn(
+                                        "pointer-events-none absolute left-1/2 z-20 -translate-x-1/2",
+                                        searchExpanded ? "top-[52px]" : "top-1.5"
+                                    )}
+                                >
+                                    <AnnotationPagerBar
+                                        pages={pageState.pages}
+                                        activePageIndex={pageState.activePageIndex}
+                                        onPrev={pageState.goPrevPage}
+                                        onNext={pageState.goNextPage}
+                                        onOpenModeMenu={() => setPageMenuOpen(true)}
+                                    />
+                                </div>
+                            ) : null}
                             <SessionOutlineRail
                                 prompts={outlinePrompts}
                                 activeSeq={activeOutlineSeq}
@@ -2125,7 +2748,7 @@ export function SessionDetailPane({
                                                 data-testid="aisessions-virtual-timeline"
                                             >
                                                 {virtualItems.map((virtualItem) => {
-                                                    const item = rows[virtualItem.index];
+                                                    const item = flowRows[virtualItem.index];
                                                     if (item == null) return null;
                                                     return (
                                                         <div
@@ -2152,7 +2775,7 @@ export function SessionDetailPane({
                                                             <TimelineRow
                                                                 item={item}
                                                                 index={virtualItem.index}
-                                                                items={rows}
+                                                                items={flowRows}
                                                                 render={renderTimelineItem}
                                                             />
                                                         </div>
@@ -2160,12 +2783,12 @@ export function SessionDetailPane({
                                                 })}
                                             </div>
                                         ) : (
-                                            rows.map((item, itemIdx) => (
+                                            flowRows.map((item, itemIdx) => (
                                                 <Fragment key={timelineItemKey(item, itemIdx)}>
                                                     <TimelineRow
                                                         item={item}
                                                         index={itemIdx}
-                                                        items={rows}
+                                                        items={flowRows}
                                                         render={renderTimelineItem}
                                                     />
                                                 </Fragment>

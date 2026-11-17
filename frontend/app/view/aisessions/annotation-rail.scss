@@ -1,0 +1,595 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// 批注时间线 rail（v2 B1 行对齐 gutter 版）的视觉规格。
+//
+// 规格来源：design/plans/aisessions-annotation-timeline-v2.md §4.2（尺寸/色彩 token）、
+// §4.2b（gutter 硬约束）；视觉对照 design/prototypes/aisessions/aisessions-timeline-v2/style.css。
+//
+// 硬约束（§4.2b）：
+//  - rail 本体永不滚动：`.annotation-rail-body { overflow: hidden }`（两轴都 hidden，
+//    只渲染可见行上的标记，溢出根本不会发生）。
+//  - 头部是**绝对定位浮动工具条**，不占轴线高度——否则标记会整体下移一个头高。
+//  - 色彩只用主题 token（--secondary-text-color / --accent-color / --warning-color /
+//    --error-color / --grey-text-color / --main-bg-color …）；禁近黑核与写死色值。
+//
+// 类型色经 CSS 变量注入：JSX 上写 `--ann-kind-color: var(--accent-color)`（值来自
+// annotation-model.ts 的 AnnotationKindMeta.colorToken），本文件只消费变量，不重复
+// 维护一份 kind → 色映射。
+
+.annotation-rail {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    background: linear-gradient(to bottom, var(--surface-color), transparent 72px);
+
+    // 高光 / 光晕的共用参数：pip 颜色由 --ann-kind-color 注入，这里只管形状。
+    --ann-pip-highlight: rgba(255, 255, 255, 0.55);
+    --ann-pip-ring: 3.5px;
+
+    // ── 折叠态：只有一条 16px 轴；未读新批注留 4px 亮点（§4.3 collapsed）。 ──
+    &.is-collapsed {
+        background: none;
+        cursor: pointer;
+
+        .annotation-rail-head,
+        .annotation-rail-tip,
+        .annotation-rail-marker,
+        .annotation-rail-filter {
+            display: none;
+        }
+    }
+}
+
+.annotation-rail-collapsed-dot {
+    position: absolute;
+    left: 50%;
+    top: 6px;
+    width: 4px;
+    height: 4px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: var(--accent-color);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--accent-color) 60%, transparent);
+    pointer-events: none;
+}
+
+// ── 浮动工具条：绝对定位不占轴线高度（§4.2b 硬约束）。 ──
+.annotation-rail-head {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 8;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 3px 3px 10px;
+    background: linear-gradient(to bottom, var(--main-bg-color) 58%, transparent);
+}
+
+.annotation-rail-head-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 1px;
+}
+
+.annotation-rail-title {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    user-select: none;
+
+    &:hover {
+        color: var(--main-text-color);
+    }
+}
+
+.annotation-rail-count {
+    font-size: 8px;
+    line-height: 12px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: var(--surface-strong-color);
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.annotation-rail-collapse {
+    margin-left: auto;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--grey-text-color);
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}
+
+// 工具行：✨ 生成 / ⌗ 类型过滤 / ↑N 端帽（三颗小方钮，§4.2b「加载更早」入口）。
+.annotation-rail-tools {
+    display: flex;
+    gap: 2px;
+    padding: 0 1px;
+}
+
+.annotation-rail-tool {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: var(--surface-color);
+    color: var(--secondary-text-color);
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+        background-color 0.12s ease,
+        color 0.12s ease,
+        border-color 0.12s ease;
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+        border-color: var(--secondary-text-color);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.6;
+    }
+
+    &.is-accent,
+    &[aria-expanded="true"] {
+        border-color: color-mix(in srgb, var(--accent-color) 55%, transparent);
+        background: var(--action-soft-bg-color);
+        color: var(--action-soft-text-color);
+    }
+}
+
+.annotation-rail-tool-icon {
+    font-size: 10px;
+    line-height: 1;
+}
+
+// 端帽三态：↑N（还有）/ …（加载中脉冲）/ !（失败可重试）。
+.annotation-rail-tool.is-more {
+    border-style: dashed;
+
+    &:hover,
+    &.is-loading {
+        color: var(--action-soft-text-color);
+        border-color: var(--accent-color);
+        border-style: solid;
+        background: var(--action-soft-bg-color);
+    }
+
+    &.is-loading {
+        animation: annotation-rail-more-pulse 1s ease-in-out infinite;
+    }
+
+    &.is-error {
+        color: var(--error-color);
+        border-color: var(--error-color);
+        border-style: solid;
+        background: var(--surface-color);
+    }
+}
+
+@keyframes annotation-rail-more-pulse {
+    0%,
+    100% {
+        opacity: 0.55;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+// 草稿条：✎ N + 丢弃全部 / 采纳全部（两个图标钮）。
+.annotation-rail-drafts {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    padding: 1px 3px;
+    border: 1px solid var(--action-soft-border-color);
+    border-radius: 5px;
+    background: var(--action-soft-bg-color);
+    color: var(--action-soft-text-color);
+    font-size: 9px;
+}
+
+.annotation-rail-drafts-count {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-variant-numeric: tabular-nums;
+}
+
+.annotation-rail-drafts-actions {
+    display: flex;
+    gap: 1px;
+
+    button {
+        width: 12px;
+        height: 12px;
+        padding: 0;
+        border: 0;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--action-soft-text-color);
+        font-size: 8px;
+        line-height: 1;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--surface-strong-color);
+        }
+    }
+}
+
+// 新批注 pill：视口外新到批注只播报一次，点击才跳转（§3.6）。
+.annotation-rail-newpill {
+    padding: 2px 1px;
+    border: 1px solid var(--agent-working-color);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--agent-working-color) 12%, transparent);
+    color: var(--agent-working-color);
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent-working-color) 12%, transparent);
+    cursor: pointer;
+}
+
+// ── rail 本体：永不滚动（overflow 两轴都 hidden，§4.2b 硬约束）。 ──
+.annotation-rail-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    scrollbar-width: none;
+    outline: none;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+
+    &:focus-visible {
+        box-shadow: inset 0 0 0 2px var(--accent-color);
+    }
+}
+
+// 轴：2px，两端渐隐（§4.2 轴 token：border-strong 7%~93%）。
+.annotation-rail-axis {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+    background: linear-gradient(
+        to bottom,
+        transparent,
+        color-mix(in srgb, var(--main-text-color) 22%, transparent) 7%,
+        color-mix(in srgb, var(--main-text-color) 22%, transparent) 93%,
+        transparent
+    );
+    pointer-events: none;
+}
+
+.annotation-rail-axis-strong {
+    background: linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--main-text-color) 22%, transparent) 7%,
+        color-mix(in srgb, var(--main-text-color) 22%, transparent) 93%,
+        transparent
+    );
+}
+
+// 空态：淡轴 + 生成入口 + 竖排「No annotations」（§4.3 empty）。
+.annotation-rail-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 20px 0;
+    pointer-events: none;
+
+    > * {
+        pointer-events: auto;
+    }
+}
+
+.annotation-rail-empty-text {
+    font-size: 9px;
+    line-height: 12px;
+    color: var(--grey-text-color);
+    writing-mode: vertical-rl;
+}
+
+.annotation-rail-generate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    width: 24px;
+    border: 1px solid color-mix(in srgb, var(--accent-color) 55%, transparent);
+    border-radius: 5px;
+    background: var(--surface-color);
+    color: var(--accent-color);
+    font-size: 10px;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--action-soft-bg-color);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.6;
+    }
+}
+
+// 加载骨架：3 个 8px 淡点（§4.3 loading；不闪，无动画）。
+.annotation-rail-skeleton {
+    position: absolute;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--grey-text-color);
+    opacity: 0.4;
+    transform: translate(-50%, -50%);
+}
+
+// ── 行对齐标记（§4.2b）：top 由 JS 写入（gutter y / v1 时间分布），CSS 只管形状。 ──
+.annotation-rail-marker {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(-50%);
+}
+
+.annotation-rail-marker-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+
+    // hover 光晕：24px 圆，先于 pip 绘制，scale 0 → 1（140ms，§4.2）。
+    &::before {
+        content: "";
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--surface-strong-color);
+        transform: scale(0);
+        transition: transform 0.14s ease;
+    }
+
+    &:hover::before,
+    &:focus-visible::before {
+        transform: scale(1);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+}
+
+// 圆点 = 8px 类型色实心核 + 核内左上高光 + kind 色 30% 柔光晕（§4.2「禁近黑核」）。
+.annotation-rail-pip {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 32% 28%, var(--ann-pip-highlight), transparent 56%),
+        var(--ann-kind-color, var(--secondary-text-color));
+    box-shadow:
+        0 0 0 2px var(--main-bg-color),
+        0 0 0 var(--ann-pip-ring) color-mix(in srgb, var(--ann-kind-color, var(--secondary-text-color)) 30%, transparent),
+        0 0 8px color-mix(in srgb, var(--ann-kind-color, var(--secondary-text-color)) 22%, transparent);
+    transition:
+        width 0.14s ease,
+        height 0.14s ease,
+        box-shadow 0.14s ease;
+}
+
+// node：菱形（rotate 45deg），与四种圆形批注区分（§4.2d）。
+.annotation-rail-marker[data-shape="diamond"] .annotation-rail-pip {
+    border-radius: 2px;
+    transform: rotate(45deg);
+}
+
+// 草稿：空心核（底色挖空 + kind 色内圈，外圈仍柔光晕）。
+.annotation-rail-marker[data-draft="true"] .annotation-rail-pip {
+    background: var(--main-bg-color);
+    box-shadow:
+        inset 0 0 0 1.5px var(--ann-kind-color, var(--secondary-text-color)),
+        0 0 0 2px var(--main-bg-color),
+        0 0 0 var(--ann-pip-ring) color-mix(in srgb, var(--ann-kind-color, var(--secondary-text-color)) 30%, transparent);
+}
+
+// 孤儿：核色换 warning（§4.2 覆盖 kind 色）。
+.annotation-rail-marker[data-orphan="true"] .annotation-rail-pip {
+    --ann-kind-color: var(--warning-color);
+    background:
+        radial-gradient(circle at 32% 28%, var(--ann-pip-highlight), transparent 56%),
+        var(--warning-color);
+}
+
+// 激活：12px + 强光晕（§4.2）。
+.annotation-rail-marker[data-active="true"] .annotation-rail-pip {
+    width: 12px;
+    height: 12px;
+    box-shadow:
+        0 0 0 2px var(--main-bg-color),
+        0 0 0 calc(var(--ann-pip-ring) + 1px)
+            color-mix(in srgb, var(--ann-kind-color, var(--secondary-text-color)) 42%, transparent),
+        0 0 14px color-mix(in srgb, var(--ann-kind-color, var(--secondary-text-color)) 38%, transparent);
+}
+
+// agent 写入角标：5px，agent 色，外圈 1.5px 主底色（§4.2）。
+.annotation-rail-marker[data-agent="true"] .annotation-rail-pip::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--agent-working-color);
+    box-shadow: 0 0 0 1.5px var(--main-bg-color);
+}
+
+// ── 轴 scrub tooltip（§4.2b：悬停时间 + 点轴跳最近批注）。 ──
+.annotation-rail-tip {
+    position: absolute;
+    right: 0;
+    transform: translate(100%, -50%);
+    margin-left: 6px;
+    padding: 2px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--modal-bg-color);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    font-size: 9px;
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 20;
+}
+
+// ── 类型过滤弹出层（§4.2b：过滤收进弹出层，不挤在 52px 工具条里换行）。 ──
+.annotation-rail-filter {
+    position: absolute;
+    left: 100%;
+    top: 40px;
+    z-index: 30;
+    width: 146px;
+    margin-left: 6px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--modal-bg-color);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.annotation-rail-filter-head {
+    padding: 3px 6px 2px;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--grey-text-color);
+}
+
+.annotation-rail-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    padding: 5px 6px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 11px;
+    text-align: left;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+
+    &[aria-pressed="true"] {
+        background: var(--surface-strong-color);
+        color: var(--main-text-color);
+    }
+}
+
+.annotation-rail-filter-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ann-kind-color, var(--secondary-text-color));
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.annotation-rail-filter-row[data-shape="diamond"] .annotation-rail-filter-dot {
+    border-radius: 1px;
+    transform: rotate(45deg);
+}
+
+.annotation-rail-filter-count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--grey-text-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.annotation-rail-filter-clear {
+    width: 100%;
+    margin-top: 3px;
+    padding: 5px 6px;
+    border: 0;
+    border-top: 1px solid var(--border-color);
+    background: transparent;
+    font-family: inherit;
+    font-size: 10px;
+    text-align: left;
+    color: var(--grey-text-color);
+    cursor: pointer;
+
+    &:hover {
+        background: var(--hover-bg-color);
+        color: var(--main-text-color);
+    }
+}

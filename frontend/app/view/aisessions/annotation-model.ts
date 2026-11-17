@@ -71,9 +71,10 @@ export type AnnotationRailCluster = {
     hasOrphan: boolean;
 };
 
-/** rail 折叠/展开宽度与圆点尺寸（2026-10-26 视觉重构：药丸 → 竖向圆点）。 */
+/** rail 折叠/展开宽度与圆点尺寸（2026-10-26 视觉重构：药丸 → 竖向圆点）。
+ * 展开宽 44 → 52：v2 §4.2 给「类型色实心核 + 日期微标 + 24px hover 光晕」腾出空间。 */
 export const AnnotationRailCollapsedWidth = 16;
-export const AnnotationRailExpandedWidth = 44;
+export const AnnotationRailExpandedWidth = 52;
 export const AnnotationRailSlotHeight = 8; // legacy：密集分支的单槽高度（保留兜底）
 export const AnnotationRailMaxSlots = 40;
 export const AnnotationFlashMs = 1200;
@@ -161,6 +162,104 @@ export function clusterRailItems(
         });
     }
     return clusters;
+}
+
+// ---------------------------------------------------------------------------
+// 行对齐 gutter（design/plans/aisessions-annotation-timeline-v2.md §4.2b）
+// ---------------------------------------------------------------------------
+//
+// 结论：不做「独立时间轴上按时间分布圆点」——圆点会浮在没有内容的位置（空白轴上的
+// 孤点），这是 v1 被评价为「丑」的根因。改为 gutter 模式（VS Code SCM gutter /
+// GitHub PR 行内批注）：标记 y = 它批注的那条消息行的屏幕 y，滚动时由父级 rAF 批量
+// 重算后传进来；本模块只做纯几何（最小错开 / 视口裁剪），不读 DOM。
+
+/** 同屏相邻标记最小错开（§4.2b MarkerMinGap：正常行距 ≥28px 不触发）。 */
+export const RailMarkerMinGap = 16;
+
+/** gutter 标记数上限：超过先聚簇（§4.2b「点名 > 120 时聚合为簇，不允许缩到看不见」）。 */
+export const RailGutterMaxMarkers = 120;
+
+/**
+ * gutter 合簇：同一内容行（同 seq）上的多条 rail item 合成一个标记（§4.2b：
+ * 「两个标记指向同一行（多批注）→ 合成一个 cluster 标记」）。
+ *
+ * 与 `clusterRailItems`（按槽位压缩时间轴）不同：gutter 只按**行**合并，不压缩顺序；
+ * 簇内 items 保持 buildRailItems 的 (seq, anchorKey) 升序，卡片仍能列出该行全部批注。
+ */
+export function mergeRailItemsBySeq(items: AnnotationRailItem[]): AnnotationRailCluster[] {
+    const bySeq = new Map<number, AnnotationRailCluster>();
+    for (const item of items) {
+        const existing = bySeq.get(item.seq);
+        if (existing == null) {
+            bySeq.set(item.seq, {
+                key: `row:${item.seq}`,
+                seq: item.seq,
+                items: [item],
+                hasAccepted: item.hasAccepted,
+                hasDraft: item.hasDraft,
+                hasOrphan: item.hasOrphan,
+            });
+            continue;
+        }
+        existing.items.push(item);
+        existing.hasAccepted = existing.hasAccepted || item.hasAccepted;
+        existing.hasDraft = existing.hasDraft || item.hasDraft;
+        existing.hasOrphan = existing.hasOrphan || item.hasOrphan;
+    }
+    // 行序 = seq 升序（buildRailItems 已排序，这里显式再排一次，纯函数不信任调用方）。
+    return [...bySeq.values()].sort((left, right) => left.seq - right.seq);
+}
+
+export type GutterMarkerLayout = {
+    seq: number;
+    /** 调整后的 y（px，rail body 坐标系）：已应用 MarkerMinGap 最小错开。 */
+    y: number;
+    /** 是否渲染：行不在视口内（或拿不到行位置）的标记不渲染（§4.2b）。 */
+    visible: boolean;
+};
+
+export type GutterLayoutOptions = {
+    /** rail body 的高度（px）。<= 0 视为「尚未测量」：此时不裁剪，只按位置渲染。 */
+    height: number;
+    /** 相邻标记最小错开，缺省 RailMarkerMinGap。 */
+    minGap?: number;
+    /** 视口上下各留的容差（px），缺省 8：边缘半露的标记仍渲染。 */
+    margin?: number;
+};
+
+/**
+ * 行对齐 gutter 定位（§4.2b 纯函数）。
+ *
+ * - `yOf` 取目标消息行的屏幕 y（父级从 `virtualizer.getOffsetForIndex` 批量算好）；
+ *   拿不到位置（行未加载 / 不在窗口内）→ `visible: false`，不渲染。
+ * - 相邻标记 `y - lastY < minGap` 时向下错开到 `lastY + minGap`（prototype v4 行为），
+ *   避免两行几乎重叠时圆点叠圆点；错开后被推出 body 的标记同样不渲染。
+ * - `height <= 0`（首帧 / 未挂载测量）不裁剪：宁可先画出来，也不要闪一帧空白。
+ */
+export function layoutGutterMarkers(
+    clusters: Array<{ seq: number }>,
+    yOf: (seq: number) => number | undefined,
+    opts: GutterLayoutOptions
+): GutterMarkerLayout[] {
+    const minGap = opts.minGap ?? RailMarkerMinGap;
+    const margin = opts.margin ?? 8;
+    const height = Number.isFinite(opts.height) ? opts.height : 0;
+    const measured = height > 0;
+    const out: GutterMarkerLayout[] = [];
+    let lastY = Number.NEGATIVE_INFINITY;
+    for (const cluster of clusters) {
+        const rawY = yOf(cluster.seq);
+        if (rawY == null || !Number.isFinite(rawY)) {
+            out.push({ seq: cluster.seq, y: 0, visible: false });
+            continue;
+        }
+        let y = rawY;
+        if (y - lastY < minGap) y = lastY + minGap;
+        lastY = y;
+        const visible = !measured || (y >= -margin && y <= height + margin);
+        out.push({ seq: cluster.seq, y, visible });
+    }
+    return out;
 }
 
 export function annotationsForSeq(annotations: AnnotationLike[], seq: number): AnnotationLike[] {
@@ -436,6 +535,301 @@ export function bucketOf(buckets: TimeBucket[], seq: number): TimeBucket | null 
         if (bucket.items.some((item) => item.seq === seq)) return bucket;
     }
     return null;
+}
+
+// ---------------------------------------------------------------------------
+// 分页模式（design/plans/aisessions-annotation-timeline-v2.md §4.2c / §4.2c-1）
+// ---------------------------------------------------------------------------
+//
+// 分页只发生在**渲染层**：它把「当前已加载窗口」里的消息切成页，与 §3.3 的游标
+// 数据加载是两件事（翻到最旧页时才按游标补一页数据）。输入是已加载消息行，输出
+// 是页数组（旧 → 新）；纯函数、无 React / RPC 依赖，可直接单测。
+//
+// 文案一律**不在这里拼**：pageLabel() 只产出结构化字段（相对日期 / 日历日 /
+// interval 窗口起点 / 页序号 / 条数），最终字符串由 UI 按 i18n key + 日期格式
+// 配置渲染（11-02-datetime-format-config；禁止硬编码 MM-DD）。
+
+export type PageMode = "all" | "day" | "turn" | "interval" | "count";
+
+/** interval 模式的窗口档位（§4.2c 表：1h / 6h / 12h / 24h）。 */
+export const IntervalHourChoices = [1, 6, 12, 24] as const;
+export type IntervalHours = (typeof IntervalHourChoices)[number];
+
+/** count 模式的页容量档位（§4.2c 表：20 / 50 / 100）。 */
+export const CountSizeChoices = [20, 50, 100] as const;
+export type CountSize = (typeof CountSizeChoices)[number];
+
+/** intervalHours 缺省值：24h 窗口（与 autoPageMode 的「按日」同粒度）。 */
+export const IntervalDefaultHours: IntervalHours = 24;
+/** countSize 缺省值：100 条（等于 Annotations RPC 单页默认上限）。 */
+export const CountDefaultSize: CountSize = 100;
+/** autoPageMode 阈值：≤ 该值显示全部，> 该值按日（§4.2c-1）。 */
+export const AutoPageModeThreshold = 500;
+
+export type PagingOptions = {
+    mode: PageMode;
+    /** interval 窗口小时数（缺省 IntervalDefaultHours）。UI 档位见 IntervalHourChoices；
+     * 非档位值只做 `floor` + 最少 1h 的夹取，不报错（持久化状态可能读到脏值）。 */
+    intervalHours?: number;
+    /** count 每页条数（缺省 CountDefaultSize）。UI 档位见 CountSizeChoices；非档位值同样夹取。 */
+    countSize?: number;
+};
+
+/** computePages 的输入行：只要 seq 与 role（turn 模式认 user 轮首）；时间经 tsOf 注入。 */
+export type PagingRow = {
+    seq: number;
+    role: string;
+};
+
+export type MessagePage = {
+    /** 页 id，同模式内稳定且唯一（§4.2c 表；prepend 更早内容不改变已有页 id）。 */
+    id: string;
+    mode: PageMode;
+    /** 页内首条 / 末条消息 seq（含）。 */
+    startSeq: number;
+    endSeq: number;
+    /** 页内消息条数（= seqs.length）。 */
+    messageCount: number;
+    /** 页内全部 seq，升序；scopeSeqs / 卡片导航 / 收窄计数的数据源。 */
+    seqs: number[];
+    /** day 页的本地日历日 "YYYY-MM-DD"（"unknown" = 缺锚点时间）；其余模式 null。 */
+    dateKey: string | null;
+    /** interval 页的窗口起点 ms（epoch 对齐的固定窗口）；其余模式 null。 */
+    windowStartTs: number | null;
+    /** turn 页的轮首 user seq（首条 user 之前的引导页 = 页首条 seq）；其余 null。 */
+    turnStartSeq: number | null;
+};
+
+function buildPage(
+    mode: PageMode,
+    id: string,
+    seqs: number[],
+    extra: { dateKey?: string | null; windowStartTs?: number | null; turnStartSeq?: number | null } = {}
+): MessagePage {
+    return {
+        id,
+        mode,
+        startSeq: seqs[0],
+        endSeq: seqs[seqs.length - 1],
+        messageCount: seqs.length,
+        seqs,
+        dateKey: extra.dateKey ?? null,
+        windowStartTs: extra.windowStartTs ?? null,
+        turnStartSeq: extra.turnStartSeq ?? null,
+    };
+}
+
+/** turn：一条 user 消息开启一轮，到下一条 user 前为止；页 id `t:<user seq>`。
+ * 首条 user 之前的行（system 前言等）自成引导页，id 取页首条 seq（保证唯一稳定）。 */
+function computeTurnPages(rows: PagingRow[]): MessagePage[] {
+    type Draft = { turnStartSeq: number; seqs: number[] };
+    const drafts: Draft[] = [];
+    let current: Draft | null = null;
+    for (const row of rows) {
+        if (row.role === "user" || current == null) {
+            current = { turnStartSeq: row.seq, seqs: [] };
+            drafts.push(current);
+        }
+        current.seqs.push(row.seq);
+    }
+    return drafts.map((draft) => buildPage("turn", `t:${draft.turnStartSeq}`, draft.seqs, { turnStartSeq: draft.turnStartSeq }));
+}
+
+/** day：页 = 本地日历日（对齐 §3.2 桶，日界线走本地日历构造）；缺锚点时间归 unknown 页（排最后）。 */
+function computeDayPages(rows: PagingRow[], tsOf: (seq: number) => number | undefined): MessagePage[] {
+    const byKey = new Map<string, { dayIndex: number; seqs: number[] }>();
+    const unknownSeqs: number[] = [];
+    for (const row of rows) {
+        const ts = normalizeTimestampMs(tsOf(row.seq) ?? 0);
+        const date = ts > 0 ? new Date(ts) : null;
+        if (date == null || Number.isNaN(date.getTime())) {
+            unknownSeqs.push(row.seq);
+            continue;
+        }
+        const key = localDateKeyOf(date);
+        const bucket = byKey.get(key);
+        if (bucket == null) {
+            byKey.set(key, { dayIndex: calendarDayIndexOf(date), seqs: [row.seq] });
+        } else {
+            bucket.seqs.push(row.seq);
+        }
+    }
+    // 页按本地日历日正序（旧 → 新）；同日历日的乱序时间戳并回同一页，不产重复 id。
+    const ordered = [...byKey.entries()].sort(
+        (left, right) => left[1].dayIndex - right[1].dayIndex || left[0].localeCompare(right[0])
+    );
+    const pages = ordered.map(([dateKey, entry]) =>
+        buildPage("day", `d:${dateKey}`, entry.seqs, { dateKey })
+    );
+    if (unknownSeqs.length > 0) {
+        pages.push(buildPage("day", `d:${UnknownBucketKey}`, unknownSeqs, { dateKey: UnknownBucketKey }));
+    }
+    return pages;
+}
+
+/** interval：页 = 固定小时窗口 floor(ts / win)；页 id `i:<windowStartTs>`；缺时间归 unknown 页。 */
+function computeIntervalPages(
+    rows: PagingRow[],
+    tsOf: (seq: number) => number | undefined,
+    intervalHours: number
+): MessagePage[] {
+    const windowMs = Math.max(1, Math.floor(intervalHours)) * 3_600_000;
+    const byStart = new Map<number, number[]>();
+    const unknownSeqs: number[] = [];
+    for (const row of rows) {
+        const ts = normalizeTimestampMs(tsOf(row.seq) ?? 0);
+        if (!(ts > 0)) {
+            unknownSeqs.push(row.seq);
+            continue;
+        }
+        const start = Math.floor(ts / windowMs) * windowMs;
+        const seqs = byStart.get(start);
+        if (seqs == null) {
+            byStart.set(start, [row.seq]);
+        } else {
+            seqs.push(row.seq);
+        }
+    }
+    const pages = [...byStart.keys()]
+        .sort((left, right) => left - right)
+        .map((start) => buildPage("interval", `i:${start}`, byStart.get(start), { windowStartTs: start }));
+    if (unknownSeqs.length > 0) {
+        pages.push(buildPage("interval", `i:${UnknownBucketKey}`, unknownSeqs));
+    }
+    return pages;
+}
+
+/** count：固定 N 条，**从最新端往前切块**（尾锚定）；页 id `c:<页首条 seq>`。
+ * 尾锚定 ⇒ prepend 更早内容只在前面新增页：从最新端数起的每整页成员与 id 不变
+ * （已知取舍：最旧端的半页会吸收新 prepend 的行，id 随页首条变化）。 */
+function computeCountPages(rows: PagingRow[], countSize: number): MessagePage[] {
+    const limit = Math.max(1, Math.floor(countSize));
+    const pages: MessagePage[] = [];
+    for (let end = rows.length; end > 0; end -= limit) {
+        const start = Math.max(0, end - limit);
+        const seqs = rows.slice(start, end).map((row) => row.seq);
+        pages.unshift(buildPage("count", `c:${seqs[0]}`, seqs));
+    }
+    return pages;
+}
+
+/**
+ * 把当前已加载窗口的消息切成页（旧 → 新，§4.2c）。
+ *
+ * - 输入乱序也会先按 seq 升序排（纯函数不信任调用方）。
+ * - `tsOf` 取锚点消息时间戳（ms 或秒，自动归一）；缺失 → day/interval 归 unknown 页（排最后，不丢弃）。
+ * - all：单页（id "all"），分页 UI 的「显示全部」分支；非 all 模式才出翻页条。
+ */
+export function computePages(
+    rows: PagingRow[],
+    tsOf: (seq: number) => number | undefined,
+    opts: PagingOptions
+): MessagePage[] {
+    if (rows.length === 0) return [];
+    const sorted = [...rows].sort((left, right) => left.seq - right.seq);
+    switch (opts.mode) {
+        case "all":
+            return [buildPage("all", "all", sorted.map((row) => row.seq))];
+        case "turn":
+            return computeTurnPages(sorted);
+        case "day":
+            return computeDayPages(sorted, tsOf);
+        case "interval":
+            return computeIntervalPages(sorted, tsOf, opts.intervalHours ?? IntervalDefaultHours);
+        case "count":
+            return computeCountPages(sorted, opts.countSize ?? CountDefaultSize);
+    }
+}
+
+/** 当前渲染作用域（当前页 seq 集合）：rail 标记 / 悬浮卡 / kind 过滤计数 / 草稿条 / 读数收窄到当前页。 */
+export function scopeSeqs(page: MessagePage | null | undefined): Set<number> {
+    return new Set(page?.seqs ?? []);
+}
+
+/** 找包含该 seq 的页下标；不在任何页返回 -1（跳转自动切页用：§4.2c「跳到不在当前页的消息 → 先切页」）。 */
+export function pageIndexOfSeq(pages: MessagePage[], seq: number): number {
+    for (let index = 0; index < pages.length; index++) {
+        const page = pages[index];
+        if (page.seqs.length === 0) continue;
+        if (seq < page.startSeq || seq > page.endSeq) continue;
+        if (page.seqs.includes(seq)) return index;
+    }
+    return -1;
+}
+
+/** 把页下标夹取进 [0, pageCount-1]；无页返回 -1（翻页条 prev/next 的边界防护）。 */
+export function clampPageIndex(index: number, pageCount: number): number {
+    if (pageCount <= 0) return -1;
+    const safe = Number.isFinite(index) ? Math.floor(index) : 0;
+    return Math.min(Math.max(safe, 0), pageCount - 1);
+}
+
+/**
+ * autoPageMode 默认规则（§4.2c-1）：≤500 条 → all，>500 → day。
+ * 用户手动选过（`pageModeUserSet`）后同一会话内不再被默认规则覆盖。
+ */
+export function autoPageMode(totalMessages: number, pageModeUserSet: boolean, currentMode: PageMode): PageMode {
+    if (pageModeUserSet) return currentMode;
+    const total = Number.isFinite(totalMessages) ? totalMessages : 0;
+    return total > AutoPageModeThreshold ? "day" : "all";
+}
+
+/** pageLabel 的相对日期档：UI 映射 i18n key（annotationRail.today / yesterday）。 */
+export type PageLabelRelative = "today" | "yesterday" | null;
+
+/**
+ * 翻页条文案的结构化字段（§4.2c：`今天 · 11-11 · 2/2 · 7 条消息` 的纯数据形态）。
+ * 本模块不拼最终字符串：相对日期 / 日历日 / 窗口起点由 UI 按 i18n key 与
+ * 日期格式配置渲染，`index/total` 对应「2/2」，`messageCount` 对应「7 条消息」。
+ */
+export type PageLabelData = {
+    mode: PageMode;
+    /** 相对日期（按 opts.now 算）；null = 非相对日或非 day 模式。 */
+    relative: PageLabelRelative;
+    /** day 页的本地日历日（"unknown" = 缺时间）；其余模式 null。 */
+    dateKey: string | null;
+    /** interval 页的窗口起点 ms；其余模式 null。 */
+    windowStartTs: number | null;
+    /** turn 页的轮首 user seq；其余模式 null。 */
+    turnStartSeq: number | null;
+    /** 页内消息条数。 */
+    messageCount: number;
+    /** 当前页序号（1-based，opts 传入）与总页数；all 模式恒 null（无翻页条）。 */
+    index: number | null;
+    total: number | null;
+};
+
+export type PageLabelOptions = {
+    /** 计算相对日期的基准时刻；缺省 Date.now()。 */
+    now?: number;
+    /** 当前页序号（1-based；由调用方按 pages 数组给出）。 */
+    index?: number;
+    /** 总页数。 */
+    total?: number;
+};
+
+/** 组出翻页条文案的结构化字段；见 PageLabelData。 */
+export function pageLabel(page: MessagePage, opts: PageLabelOptions = {}): PageLabelData {
+    let relative: PageLabelRelative = null;
+    if (page.mode === "day" && page.dateKey != null && page.dateKey !== UnknownBucketKey) {
+        const nowDate = new Date(opts.now ?? Date.now());
+        const todayKey = localDateKeyOf(nowDate);
+        const yesterdayKey = localDateKeyOf(
+            new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() - 1)
+        );
+        relative = page.dateKey === todayKey ? "today" : page.dateKey === yesterdayKey ? "yesterday" : null;
+    }
+    const isAll = page.mode === "all";
+    return {
+        mode: page.mode,
+        relative,
+        dateKey: page.mode === "day" ? page.dateKey : null,
+        windowStartTs: page.mode === "interval" ? page.windowStartTs : null,
+        turnStartSeq: page.mode === "turn" ? page.turnStartSeq : null,
+        messageCount: page.messageCount,
+        index: isAll ? null : (opts.index ?? null),
+        total: isAll ? null : (opts.total ?? null),
+    };
 }
 
 /** Build the RPC anchor list from the loaded messages / tool calls. */

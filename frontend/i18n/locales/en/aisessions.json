@@ -151,6 +151,13 @@
             "question": "Question",
             "node": "Node"
         },
+        "source": {
+            "you": "You",
+            "ai": "✨ AI",
+            "aiDraft": "draft",
+            "aiTitle": "AI generated",
+            "agentVia": "via wsh annotation add"
+        },
         "cluster": "Cluster · {{count}} nodes",
         "node": "Node",
         "nodeEdited": "Node · edited",
@@ -170,7 +177,16 @@
         "orphanTitle": "Anchor no longer resolves",
         "orphan": "orphan",
         "discard": "Discard",
-        "accept": "Accept"
+        "accept": "Accept",
+        "dialogAria": "Annotations for node #{{seq}}",
+        "editAnnotation": "Edit",
+        "editAnnotationAria": "Edit annotation",
+        "editReadOnlyTitle": "Written by an external agent — read only",
+        "navPrev": "Previous",
+        "navNext": "Next",
+        "navPrevAria": "Previous annotation",
+        "navNextAria": "Next annotation",
+        "navPositionAria": "Annotation {{index}} of {{total}}"
     },
     "annotationEditor": {
         "editTitle": "Edit annotation",
@@ -203,7 +219,48 @@
         "jumpTo": "Jump to annotation at #{{seq}}",
         "today": "Today",
         "yesterday": "Yesterday",
-        "unknownTime": "Unknown time"
+        "unknownTime": "Unknown time",
+        "railAria": "Annotation timeline",
+        "filterTitle": "Filter annotation types",
+        "filterHead": "Types",
+        "filterClear": "Show all types",
+        "loadOlderTitle_one": "{{count}} older annotation",
+        "loadOlderTitle_other": "{{count}} older annotations",
+        "loadingOlder": "Loading older annotations…",
+        "loadOlderError": "Failed to load older annotations. Click to retry",
+        "newAnnotations_one": "{{count}} new annotation",
+        "newAnnotations_other": "{{count}} new annotations",
+        "newAnnotationsAria": "Jump to new annotations"
+    },
+    "annotationPager": {
+        "chipAria": "Paging mode: {{label}}. Click to change",
+        "modeEntryTitle": "Change paging mode",
+        "menuTitle": "Paging",
+        "mode": {
+            "all": "All",
+            "day": "By day",
+            "turn_one": "{{count}} turn",
+            "turn_other": "{{count}} turns",
+            "interval": "{{count}}h",
+            "count": "{{count}} msgs"
+        },
+        "intervalLabel": "Window",
+        "countLabel": "Size",
+        "followDefault": "Follow default",
+        "followDefaultTitle": "Reset to the default paging mode",
+        "prev": "Previous page",
+        "next": "Next page",
+        "olderHint": "loads an earlier page first (may need a few clicks)",
+        "position": "Page {{index}} of {{total}}",
+        "messageCount_one": "{{count}} message",
+        "messageCount_other": "{{count}} messages",
+        "turnLabel": "Turn #{{seq}}",
+        "unknownDate": "Unknown time",
+        "barAria": "Message paging"
+    },
+    "annotationFlow": {
+        "gapDays_one": "… skipped {{count}} day …",
+        "gapDays_other": "… skipped {{count}} days …"
     },
     "origin": {
         "readOnly": "read-only (imported dump)",

@@ -18,6 +18,35 @@ import { anchorHash, messageAnchorKey, type AnnotationAnchorRequest } from "./an
 import { isSubagentToolName } from "./subagent-detect";
 import type { SessionDetailRow, SessionDetailTimelineItem } from "./utils";
 
+/**
+ * 日分段头行（v2 §4.1 / §3.2）：纯视觉分隔（aria-hidden），不参与 seq 映射 / 锚点 /
+ * 跳转。数据由 `annotation-flow-rows.ts` 的 insertBucketHeaders 按 annotationWindow
+ * 的时间桶生成：只在「有批注锚定的日子」出现；`count` / `kindCounts` 已按当前页作用域收窄。
+ */
+export type SessionDetailBucketHeader = {
+    kind: "bucketHeader";
+    /** 本地日历日 "YYYY-MM-DD"（"unknown" = 缺锚点时间，桶模型 §3.2）。 */
+    dateKey: string;
+    /** 相对日期档（今天/昨天，按插入时的 now 算）；其余 null（UI 只渲染绝对日期）。 */
+    relative: "today" | "yesterday" | null;
+    /** 该日（当前页作用域内）的批注节点数。 */
+    count: number;
+    /** 密度微条数据：该日各 kind 批注条数（按 AnnotationKindMetaTable.order 升序）。 */
+    kindCounts: Array<{ kind: string; count: number }>;
+};
+
+/** 跨天 GapRow（v2 §3.2 gapDaysBefore）：`… 跳过 N 天 …`，纯视觉，aria-hidden。 */
+export type SessionDetailGapRow = {
+    kind: "gapRow";
+    /** 关联桶的 dateKey（稳定 key 用；渲染本身不显示日期）。 */
+    dateKey: string;
+    /** 与上一个可见分段头之间被跳过的整天数。 */
+    gapDays: number;
+};
+
+/** 详情时间线的最终渲染行：消息 / 工具 / 工具折叠组 + 日分段头 + 跨天 GapRow。 */
+export type SessionFlowRow = SessionDetailRow | SessionDetailBucketHeader | SessionDetailGapRow;
+
 /** 超过这个行数才启用虚拟化；等于或小于时走原有全量渲染。 */
 export const VirtualizeThreshold = 60;
 
@@ -32,9 +61,11 @@ export const EstimatedRowHeight = 96;
  * 误差达 4 倍，快速滚动时未测行先按 96 排、下一帧才被 measureElement 纠正，
  * 补偿没在一帧内完成的瞬间相邻行内容会叠在一起（重影）。按类型估把误差压到 1.4x 内。
  */
-export function estimateTimelineRowHeight(item: SessionDetailRow): number {
+export function estimateTimelineRowHeight(item: SessionFlowRow): number {
     if (item.kind === "toolGroup") return ToolGroupRowHeight;
     if (item.kind === "tool") return ToolRowHeight;
+    if (item.kind === "bucketHeader") return BucketHeaderRowHeight;
+    if (item.kind === "gapRow") return GapRowHeight;
     const text = item.message.text ?? "";
     const lines = Math.ceil(text.length / CharsPerLine) || 1;
     if (item.message.role === "user") {
@@ -53,6 +84,9 @@ const AssistantRowBase = 40;
 const AssistantRowLine = 19;
 const AssistantRowMax = 900;
 const ToolGroupRowHeight = 32;
+// v2 §4.2 表：分段头 30px（sticky 84% 实色 + 相对日期 chip + 密度微条）；GapRow 26px（居中淡字）。
+const BucketHeaderRowHeight = 30;
+const GapRowHeight = 26;
 
 /**
  * 把时间线里连续的工具行折叠成一个分组行，其余行原样保留。
@@ -114,7 +148,7 @@ export function shouldVirtualize(itemCount: number): boolean {
  * 消息 seq → 时间线行号。只映射 kind === "message" 的行（搜索、批注、
  * 大纲跳转都以消息 seq 为目标）。同 seq 只保留第一次出现的行号。
  */
-export function buildSeqToIndex(items: SessionDetailRow[]): Map<number, number> {
+export function buildSeqToIndex(items: SessionFlowRow[]): Map<number, number> {
     const map = new Map<number, number>();
     items.forEach((item, index) => {
         if (item.kind === "message" && !map.has(item.message.seq)) {
@@ -132,7 +166,7 @@ export function buildSeqToIndex(items: SessionDetailRow[]): Map<number, number> 
  * 这里用当前的 renderItems 反推 anchorKey 对应的真实 seq，作为 seq 失效时的兜底。
  * 工具行本身没有独立 seq：它挂在 anchorSeq 指向的消息行上。
  */
-export function buildAnchorKeyToSeq(items: SessionDetailRow[]): Map<string, number> {
+export function buildAnchorKeyToSeq(items: SessionFlowRow[]): Map<string, number> {
     const map = new Map<string, number>();
     for (const item of items) {
         if (item.kind === "message") {
@@ -147,6 +181,8 @@ export function buildAnchorKeyToSeq(items: SessionDetailRow[]): Map<string, numb
             }
             continue;
         }
+        // 分段头 / GapRow 没有锚点语义，显式跳过（否则会掉进下面的工具行分支）。
+        if (item.kind === "bucketHeader" || item.kind === "gapRow") continue;
         const key = item.toolCall.itemKey?.trim();
         if (key && !map.has(key)) map.set(key, item.anchorSeq);
     }
@@ -302,12 +338,19 @@ export function timeRangeOf(items: ReadonlyArray<{ seq: number; ts?: number }>):
  * 渲染 key：消息行用 seq（稳定、可跳转），工具行用 anchorSeq+seq+行号
  * （同一锚点下可能挂多个工具行）。
  */
-export function timelineItemKey(item: SessionDetailRow, index: number): string {
+export function timelineItemKey(item: SessionFlowRow, index: number): string {
     if (item.kind === "message") {
         return `message-${item.message.seq}`;
     }
     if (item.kind === "toolGroup") {
         return `tool-group-${item.anchorSeq}-${item.tools.length}-${index}`;
+    }
+    // 分段头 / GapRow 用 dateKey 做稳定 key（同一天只出现一次；页切换时 key 不变）。
+    if (item.kind === "bucketHeader") {
+        return `bucket-${item.dateKey}`;
+    }
+    if (item.kind === "gapRow") {
+        return `gap-${item.dateKey}`;
     }
     return `tool-${item.anchorSeq}-${item.toolCall.seq}-${index}`;
 }

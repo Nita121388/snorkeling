@@ -711,3 +711,44 @@ CommonText「新建 agent block 并发送」靠 pending-input 队列把文本在
 - 闸门：`npm run i18n:check`（全仓扫描 + en/zh 键 parity，已接入 CI `snorkeling-ci.yml`），本地增量 `--dir <module>`。扫描器用 TS AST，三类发现：`jsx-text` / `attr(+attr-expr)` / `cjk(+cjk-jsx)`。
 - 陷阱（已真机踩过）：① `require()` 在 ESM 主进程 bundle 直接崩——用静态/动态 `import()`；② 模块加载期就求值的常量表会**冻结 locale**——存 key（`labelKey`/`as const`）渲染期 `t()`，视图模型显示名用 `localeTextAtom`；③ hook 的 `t()` 不接受 `{values}`——插值走 `i18n.t("ns:key", values)`；④ jsdom 的 `navigator.language` 跟宿主——"auto" 相关测试必须 pin；⑤ 主进程只加载 `common` 命名空间（大 JSON 内联全量会触发 commonjs shim 把主 chunk 字符串劈断的 bundler bug）。
 - 手册（唯一真源，Pattern A–J + 全部坑）：`docs/docs/i18n.mdx`。
+
+---
+
+## 批注时间线 v2：分页 / gutter / 前端分页渲染的三条硬契约（2026-11-17, task 11-16-v2-gutter）
+
+B1（`design/plans/aisessions-annotation-timeline-v2.md`）落地时确立的契约，改相关代码前先读：
+
+### 1. `Annotations` 的分页**必须发生在重锚定之后**（视图层），不要在 SQL 层加 LIMIT
+
+- `AISessionsService.Annotations` 的 anchors 流程会调 `ResolveAnnotationAnchors`，它**改写 seq**（AI 生成行落库时 seq=0，重锚定后填真实行号）。在改写前用 `seq < ?` 做 SQL 游标，等于在过期排序键空间上算页边界 → 会漏条、会把不该进这一页的条目算进来。
+- 所以游标裁剪在 Go 视图层（`aisessions.PageAnnotationViews`）：DB 仍全量读行，响应截断到 ≤limit 条并带 `hasMore/nextCursor`。这是**有意取舍**，不是漏做：真正 SQL 级游标（`ListAnnotationsPaged`）要等 B2 引入 `author/idempotency_key`、重锚定不再全量依赖时再接。
+- 旧调用（不带 cursor/limit）必须保持 v1 全量等价——那是回滚出口。
+- limit 夹取 `[20, 500]`、默认 100，常量在 `pkg/aisessions/types.go`，不要散写数字。
+
+### 2. 「分页只是渲染层」：all 模式必须**返回同一引用**，不是「过滤后内容相等」
+
+`annotation-flow-rows.ts` 的 `filterTimelineItemsToPage(items, page, mode)` 在 `mode === "all"` 时**直接 `return items`**（同一引用）。理由：
+
+- 引用相同 → 下游 `useMemo` 链全部短路，all 模式性能与分页前逐字节一致；
+- 内容相等但新数组 → 每次渲染都让 `rows`/`seqToIndex`/virtualizer 重建，短会话也会抖。
+
+任何新的「按页收窄」逻辑都照这个口径写，并在单测里断言 `toBe`（同一引用），不是 `toEqual`。
+
+### 3. gutter 标记坐标：只用行偏移，不读 DOM rect（虚拟化路径）
+
+```
+y = rowTop - scrollTop - railBodyTop + anchorOffset(14)
+rowTop(虚拟化) = virtualItems[].start + paddingTop        // getOffsetForIndex，不读 rect
+rowTop(非虚拟化) = nodeRect.top - paddingBoxTop + scrollTop
+```
+
+- rail 本体 `overflow: hidden`，**永不出滚动条**；视口外标记先裁（`y < -24 || y > height + 24`）；
+- 相邻标记 `MarkerMinGap = 16px` 向下推开，同行多条合簇；
+- 滚动路径必须 rAF 合并 + **内容 diff 后才 setState**（`gutterMarkersEqual`）——每帧 setState 会让 60fps 直接崩掉；
+- 前插锚定：`scrollTop += (scrollHeight_after - scrollHeight_before)` 必须**同帧**（`useLayoutEffect`），且 `delta === 0` 时**故意不回写** scrollTop（快照值是几帧前的，回写会抹掉用户滚动）。
+
+### 4. 大文件（`session-detail.tsx` 2400+ 行）分派子代理：拆成互不重叠的小步
+
+实测：把「状态 + UI + 接线 + 测试」一次性喂给一个子代理，会在读文件阶段就断（两次）；拆成
+`7a 分页状态/翻页条` → `7b-1 markers/窗口/锚定` → `7b-2 页内渲染/分段头` 三个 tight-scope 批次后全部一次通过。
+喂 prompt 时必须给**精确落点**（变量名/行号/已有 hooks 名/接口清单），并明确「只做这一块，别碰 X」。

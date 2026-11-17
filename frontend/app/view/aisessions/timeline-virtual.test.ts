@@ -23,6 +23,7 @@ import {
     timelineItemKey,
 } from "./timeline-virtual";
 import type { SessionDetailRow, SessionDetailTimelineItem } from "./utils";
+import type { SessionFlowRow } from "./timeline-virtual";
 
 function messageItem(seq: number): SessionDetailTimelineItem {
     return { kind: "message", message: { seq, role: "user", text: `m${seq}`, charCount: 1 } };
@@ -495,5 +496,41 @@ describe("timeRangeOf", () => {
                 { seq: 2, ts: 1000 },
             ])
         ).toBeNull();
+    });
+});
+
+describe("bucketHeader / gapRow kinds (v2 §4.2c 日分段头)", () => {
+    const headerRow: SessionFlowRow = {
+        kind: "bucketHeader",
+        dateKey: "2026-11-11",
+        relative: "today",
+        count: 3,
+        kindCounts: [
+            { kind: "note", count: 2 },
+            { kind: "milestone", count: 1 },
+        ],
+    };
+    const gapRow: SessionFlowRow = { kind: "gapRow", dateKey: "2026-11-11", gapDays: 2 };
+
+    it("estimates fixed heights for the two new kinds", () => {
+        expect(estimateTimelineRowHeight(headerRow)).toBe(30);
+        expect(estimateTimelineRowHeight(gapRow)).toBe(26);
+    });
+
+    it("keys both kinds by dateKey (stable across page switches)", () => {
+        expect(timelineItemKey(headerRow, 7)).toBe("bucket-2026-11-11");
+        expect(timelineItemKey(gapRow, 8)).toBe("gap-2026-11-11");
+    });
+
+    it("does not map bucket headers into seqToIndex", () => {
+        const map = buildSeqToIndex([headerRow, gapRow, messageItem(12)]);
+        expect(map.has(12)).toBe(true);
+        expect(map.size).toBe(1);
+    });
+
+    it("does not leak bucket rows into anchorKeyToSeq", () => {
+        const map = buildAnchorKeyToSeq([headerRow, gapRow, toolItem(5)]);
+        // 工具行 itemKey 为空不入表；分段头 / GapRow 不产生条目
+        expect(map.size).toBe(0);
     });
 });
