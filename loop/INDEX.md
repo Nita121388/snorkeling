@@ -2,14 +2,14 @@
 
 # 工作项索引
 
-> 生成于 2026-11-16T08:41:20Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
+> 生成于 2026-11-18T02:55:18Z · 真相源 `loop/items/*.md`（人写）+ `loop/gates.json`（机器写）
 
 ## P0（2）
 
 - [x] `N-1105-loop-ledger` — loop 台账骨架 + 门引擎 · arch · internal · 方案（G6）待办
 - [ ] `N-1109-agent-chip-conditional-hook` — Agent 状态 chip 条件调用 hook 导致整窗白屏（React #310） · bug · self · 门已清
 
-## P1（27）
+## P1（28）
 
 - [ ] `N-1105-harness-redproof` — 既有 4 个 harness 登记 red_proof · chore · internal · 合规（G5）待办
 - [x] `N-1106-overview-card-actions` — Overview 看板卡片动作：关闭 / 删除（含彻底删除）+ 内联 Tab 组不被误删 · feature · self · 门已清
@@ -25,7 +25,8 @@
 - [x] `F-1112-persona-core-r2` — A1 persona 核心：目录布局 + scaffold + wsh persona CLI · feature · self · 门已清
 - [ ] `F-1113-persona-widget-launch-r2` — A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带 · feature · self · 门已清
 - [ ] `F-1116-commontext-sync-ws-push` — CommonText 同步实时推送：WebSocket rev 通知 + 保存即触发 + timer 兜底 · arch · self · 方案（G6）待办
-- [ ] `F-1116-hero-identity-inject` — Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要 · arch · self · 门已清
+- [ ] `F-1116-hero-identity-inject` — Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要 · arch · self · 方案（G6）待办
+- [ ] `F-1117-overview-card-props` — Overview agent 卡面显示 Note/Tags/自定义属性（含状态） · feature · internal · 门已清
 - [ ] `N-1105-cmd-window-flash` — 打开看板闪黑窗：子进程漏 windowsHide · bug · self · 门已清
 - [ ] `N-1105-night-runner` — 夜班真派发：headless agent 注入契约并限一包 · arch · self · 需求（G1）待办
 - [ ] `N-1105-tab-hover-clip` — Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位） · bug · self · 门已清
@@ -39,10 +40,12 @@
 - [ ] `F-1113-persona-roster-r1` — A4 人设名册 Block persona://（列表/详情 + 登场复用） · feature · self · 门已清
 - [ ] `F-1113-persona-create-ui-r2` — A2 创建向导：两步向导 + 三入口 + 同源文件树预览 · feature · self · 门已清
 
-## P2（9）
+## P2（12）
 
 - [ ] `N-1105-queue-failopen` — queue.json 解析失败不再静默清空（回退 last-good 快照） · bug · internal · 门已清
 - [x] `N-1106-agent-tag-catalog` — Agent 卡片标签候选：全局清单 + 计数 · feature · self · 门已清
+- [ ] `N-1117-conn-typeahead-row-rail-r3` — 连接下拉：右栏图标居右对齐 + hover 一键复制 + 使用次数排序 + 打开时加载骨架 · fix-small · self · 门已清
+- [ ] `F-1118-tab-collapse-active` — Tab 收起激活 Tab：收起并切走 · feature · internal · 门已清
 - [ ] `N-1109-overview-board-chip-polish` — Overview 看板 chip 美化（A：去描边胶囊化） · redesign · self · 需求（G1）待办
 - [ ] `N-1109-overview-board-empty-status-label` — Overview 看板：无状态 agent 卡渲染空状态标签 · bug · self · 门已清
 - [ ] `N-1113-commontext-editor-collapse` — CommonText 弹窗：Editor 快捷收起 + 属性列表默认折叠 · bug · self · 门已清
@@ -50,3 +53,4 @@
 - [ ] `N-1114-commontext-tags-no-hash` — CommonText 标签 chip 去 # 前缀（兼容历史数据）+ 折叠摘要展示标签名 · fix-small · self · 门已清
 - [ ] `N-1114-commontext-tags-property` — CommonText 详情标签移入属性区（Notion/Obsidian 式选择） · fix-small · self · 门已清
 - [ ] `N-1114-commontext-tags-summary-chips` — CommonText 折叠摘要标签样式与展开态统一（chip） · fix-small · self · 门已清
+- [ ] `N-1117-tab-collapse-to-more` — Tab 右键菜单「收起到更多」+ 激活/未读 Tab 置灰 · feature · internal · 需求（G1）待办

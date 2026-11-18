@@ -2,7 +2,7 @@
 
 # QUEUE
 
-> 生成于 2026-11-16T08:41:20Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
+> 生成于 2026-11-18T02:55:18Z · 真相源 `loop/queue.json`（人/看板经 `queue.mjs` 写）
 
 | 包 | 优先级 | 类型 | 门 | 门状态 | 运行 | 说明 |
 |---|---|---|---|---|---|---|
@@ -21,8 +21,9 @@
 | `F-1112-persona-aisessions-r1` | P1 | feature | 3/3 | clear | released | A1.5 AISessions 集成：persona 属性 + 🎭 分组折叠 + 登场史 |
 | `F-1112-persona-core-r2` | P1 | feature | 3/3 | clear | released | A1 persona 核心：目录布局 + scaffold + wsh persona CLI |
 | `F-1113-persona-widget-launch-r2` | P1 | feature | 3/3 | clear | accepted | A3 widget 🎭 图标 + hover 登场弹窗 + 注入开关 + props.persona 派生补带 |
-| `F-1116-commontext-sync-ws-push` | P1 | arch | 3/4 | blocked:g6 ⚠drift | idle | 方案（G6）：drift |
-| `F-1116-hero-identity-inject` | P1 | arch | 4/4 | clear | accepted | Hero 登场身份注入：据点根级 AGENTS.md 带 CHARTER 摘要 |
+| `F-1116-commontext-sync-ws-push` | P1 | arch | 3/4 | blocked:g6 | idle | 方案（G6）：expired |
+| `F-1116-hero-identity-inject` | P1 | arch | 3/4 | blocked:g6 | accepted | 方案（G6）：expired |
+| `F-1117-overview-card-props` | P1 | feature | 3/3 | clear | idle | Overview agent 卡面显示 Note/Tags/自定义属性（含状态） |
 | `N-1105-cmd-window-flash` | P1 | bug | 1/1 | clear | committed | 打开看板闪黑窗：子进程漏 windowsHide |
 | `N-1105-night-runner` | P1 | arch | 0/4 | blocked:g1 | idle | 需求（G1）：unsigned |
 | `N-1105-tab-hover-clip` | P1 | bug | 1/1 | clear | parked | Tab 条悬停弹窗被截断（卡片贴视口边缘不做钳位） |
@@ -37,6 +38,8 @@
 | `F-1113-persona-create-ui-r2` | P1 | feature | 3/3 | clear | accepted | A2 创建向导：两步向导 + 三入口 + 同源文件树预览 |
 | `N-1105-queue-failopen` | P2 | bug | 1/1 | clear | accepted | queue.json 解析失败不再静默清空（回退 last-good 快照） |
 | `N-1106-agent-tag-catalog` | P2 | feature | 3/3 | clear | released | Agent 卡片标签候选：全局清单 + 计数 |
+| `N-1117-conn-typeahead-row-rail-r3` | P2 | fix-small | 1/1 | clear | green | 连接下拉：右栏图标居右对齐 + hover 一键复制 + 使用次数排序 + 打开时加载骨架 |
+| `F-1118-tab-collapse-active` | P2 | feature | 3/3 | clear | committed | Tab 收起激活 Tab：收起并切走 |
 | `N-1109-overview-board-chip-polish` | P2 | redesign | 2/5 | blocked:g1 | queued | 需求（G1）：unsigned |
 | `N-1109-overview-board-empty-status-label` | P2 | bug | 1/1 | clear | idle | Overview 看板：无状态 agent 卡渲染空状态标签 |
 | `N-1113-commontext-editor-collapse` | P2 | bug | 1/1 | clear | queued | CommonText 弹窗：Editor 快捷收起 + 属性列表默认折叠 |
@@ -44,3 +47,4 @@
 | `N-1114-commontext-tags-no-hash` | P2 | fix-small | 1/1 | clear | queued | CommonText 标签 chip 去 # 前缀（兼容历史数据）+ 折叠摘要展示标签名 |
 | `N-1114-commontext-tags-property` | P2 | fix-small | 1/1 | clear | queued | CommonText 详情标签移入属性区（Notion/Obsidian 式选择） |
 | `N-1114-commontext-tags-summary-chips` | P2 | fix-small | 1/1 | clear | queued | CommonText 折叠摘要标签样式与展开态统一（chip） |
+| `N-1117-tab-collapse-to-more` | P2 | feature | 0/3 | blocked:g1 | idle | 需求（G1）：unsigned |

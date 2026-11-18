@@ -2,7 +2,7 @@
 
 # LEDGER 视图
 
-> 生成于 2026-11-16T05:17:16Z · 源：LEDGER-2026-11.jsonl
+> 生成于 2026-11-18T02:55:17Z · 源：LEDGER-2026-11.jsonl
 
 ## 进行中
 
@@ -31,6 +31,8 @@
 | N-1114-commontext-tags-summary-chips | queued | - | - | 2026-11-14T08:28:51Z |
 | N-1114-commontext-tags-structured | queued | - | - | 2026-11-14T10:48:32Z |
 | F-1116-hero-identity-inject | accepted | - | - | 2026-11-16T05:09:59Z |
+| N-1117-conn-typeahead-row-rail-r3 | green | - | - | 2026-11-17T07:47:53Z |
+| F-1118-tab-collapse-active | committed | - | 22bd914db | 2026-11-18T02:54:41Z |
 
 ## 近 14 天已发布
 
