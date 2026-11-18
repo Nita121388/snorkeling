@@ -63,6 +63,12 @@
 10. `wsh launch defwidget@agent --json` → 产物 `profile` 等于 catalog 默认 profile（当前 `pi`），块 `cmd` 不再是 `codex`。
 11. `node scripts/verify/index.mjs --area agent-launch` → exit 0，且 `docs/project/verify-ledger.md` 新增一行结论。
 
+## 补充（2026-11-18，用户口头）
+
+- 程序化入口必须能选 **agent / Tab / 路径**（R2 已覆盖 `--profile` / `--tab` / `--cwd`），本轮实现按此验收。
+- 建出的块**正常展示**在目标 Tab；`--no-focus` / 非当前 Tab 只是「后台不抢焦点」，不是隐藏块。
+- 发送文本（`--send` / `wsh agent send`）拆到 `.trellis/tasks/11-18-agent-block-send/`，本包不实现注入。
+
 ## Notes
 
 - 术语澄清：本任务的 "agent block" 一律指 **term block + agent:\* meta**（TUI CLI agent）。`view=agent` 是 GUI 聊天块，不在此范围。

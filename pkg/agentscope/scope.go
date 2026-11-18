@@ -80,7 +80,11 @@ var commandScopes = map[string]string{
 	"tabcreate":   Navigate,
 	"tabactivate": Navigate,
 
-	"agentcardset": Data,
+	"agentcardset":    Data,
+	"sessionannotate": Data,
+
+	"agentlaunch": Launch,
+	"agentsend":   Launch,
 }
 
 // RequiredForCommand returns the minimum scope for an ACS command.

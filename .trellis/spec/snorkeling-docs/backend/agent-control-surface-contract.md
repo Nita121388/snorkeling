@@ -154,3 +154,34 @@ CLI 必须把 `Code` 映射成稳定退出码，`--json` 时输出结构化错�
   空值回来（2026-11-11 用户反馈「属性删不掉」）。UI 的 Delete 必须同时调
   `setSessionProperty(key, null)` 和 `removeSchemaDef`；纯模板行（本会话无值）只能靠删定义。
   两条删除都不可省。
+
+---
+
+## 11. Agent Block 建块 + 发送（P0.4，`agentlaunch` / `agentsend`）
+
+### 建块：目录是唯一事实来源，调用方只能「选」
+
+- `AgentLaunchCommand`（`pkg/wshrpc/wshserver/agentlaunch.go`）必须经 `agentcatalog.List()`
+  校验 profile 与 model；**未知 profile 必须拒绝**（`E_PROFILE_UNKNOWN`）——
+  `agentcatalog.Resolve` 对未知名字兜底成「跑同名二进制」，直接用等于开放任意进程执行。
+- 校验失败**不得创建任何块**（判据：`db_block` 行数前后相等）。
+- 建块只能走 `CreateBlockCommand`；meta 与 GUI `createAgentBlockDef`（frontend
+  `agent-launch.ts`）逐字段对齐，两处漂移 = 同一个块长得不一样。
+- **模型 provider 展开**：目录条目带 `provider` 时，裸 id 一律展开成 `provider/id`。
+  实测依据：pi 拒绝跨已认证 provider 的裸 id（`Model "deepseek-v4.1-flash" is ambiguous
+  across providers…`）；claude/codex 条目无 provider，裸名保持不变。
+- scope：`launch`（`data < launch < destructive`），`agentlaunch`/`agentsend` 同级——
+  能建块就能发话，不给更低门。
+
+### 发送：PTY 只有一个写入口，且要容忍启动竞态
+
+- 写 PTY **只允许** `blockcontroller.SendInput`；前后端两条链（前端 CommonText
+  pending-input / 后端 AgentSendCommand）互不触碰对方的 pending 状态。
+- **必须**：bracketed paste（`\x1b[200~` + text + `\x1b[201~`）一次写入，延时（默认
+  150ms）后单独 `\r` 提交。只 paste 不回车 = agent 收不到（实测）。
+- **`ShellController` 先报 `running`、后建 `ShellInputCh`**（`manageRunningShellProcess`
+  才建 chan）：见 `no shell input chan` 必须限时重试（3s），不许当成硬失败。
+- 就绪判定以**块 term 输出文件**（`filestore.WFS.Stat`）的 quiet 为准，不信前端挂载状态；
+  controller 未运行时 `ResyncController` 起 pty（后台 Tab 未挂载也能发）。
+- 文本清洗：剥 C0/ESC（保留 `\n`/`\t`）+ 64KB 上限（`E_USAGE`）——注入通道不得带进
+  终端转义序列。

@@ -17,3 +17,11 @@
 - [ ] 2026-11-17 N-1117-tab-collapse-to-more 回填包待引擎入库：代码 f44ec0942 先落、红证/绿证已备（loop/red/N-1117-tab-collapse-to-more.txt），item 文件已在，需 queue add 分诊 + G1/G2/G5 门签 @loop-closeout
 - [ ] 2026-11-17 package-lock.json 版本字段与 package.json 脱节（lock 写 0.0.127、json 已 0.0.128，npm install 会同步）；建议 bump 版本时同步 lock 或加发布前检查 @loop-closeout
 - [ ] 2026-11-17 N-1117-commontext-send-background 待引擎入库/分诊：代码+单测+真机台（34/34 全绿，`verify-runs/20261117T15295`）、台账已写；本机 macOS 跑不了 queue.mjs，未伪造事件。另：tsc 基线记录 47 但 HEAD 实测 55（8 条为既有文件、与本包无关），需刷新基线 @pi-night-audit
+
+## 2026-11-18 F-1109 / F-1118（agent launch + send）
+
+- 本机（macOS）`loop` 引擎仍不可用（路径写死 `E:/primary/projects/loop`），两包的 G1–G7 台账事件缺失；
+  已按既有惯例建 items 并在 verify-ledger 记结论行。
+- 真机判据阻塞原因：`cmd/wsh/cmd/wshcmd-session.go` 在 21:20 被并行会话改成半成品（`session annotate`
+  Long 字符串未闭合），`go build ./cmd/...` 失败 → wsh 二进制与 dev 实例都起不来。不是本包改动，
+  等该文件闭合后补跑 `agent-launch` / `agent-send` 真机台。

@@ -17,6 +17,10 @@ func TestAllows(t *testing.T) {
 		{[]string{Observe, Navigate}, Data, false},
 		{[]string{Data}, Navigate, true},        // higher grants lower
 		{[]string{Destructive}, Data, true},
+		{[]string{Data}, Launch, false},         // data cannot start a process
+		{[]string{Launch}, Data, true},          // launch grants the levels below it
+		{[]string{Destructive}, Launch, true},   // destructive still covers launch
+		{[]string{Launch}, Destructive, false},
 		{[]string{Observe}, "bogus", false},     // unknown requirement never passes
 		{[]string{"bogus"}, Observe, false},     // unknown grant grants nothing
 	}
@@ -43,6 +47,8 @@ func TestRequiredForCommand(t *testing.T) {
 		"tabcreate":      Navigate,
 		"tabactivate":    Navigate,
 		"agentcardset":   Data,
+		"agentlaunch":    Launch,
+		"agentsend":      Launch,
 	}
 	for cmd, want := range cases {
 		got, ok := RequiredForCommand(cmd)
@@ -59,5 +65,18 @@ func TestRequiredForCommand(t *testing.T) {
 	}
 	if _, ok := RequiredForCommand("createblock"); ok {
 		t.Fatal("createblock is not part of the external surface")
+	}
+	// launching an agent must be stronger than writing card data, and weaker
+	// than destructive: it creates a real process the user has to see.
+	if scope, _ := RequiredForCommand("agentlaunch"); scope != Launch {
+		t.Fatalf("agentlaunch scope = %q, want %q", scope, Launch)
+	}
+	launchScope, _ := RequiredForCommand("agentlaunch")
+	if !Allows([]string{Launch}, launchScope) || Allows([]string{Data}, launchScope) {
+		t.Fatal("agentlaunch must accept launch and reject data")
+	}
+	sendScope, _ := RequiredForCommand("agentsend")
+	if sendScope != Launch {
+		t.Fatalf("agentsend scope = %q, want %q (create and talk to an agent are the same level)", sendScope, Launch)
 	}
 }

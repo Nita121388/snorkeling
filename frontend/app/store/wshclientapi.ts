@@ -54,6 +54,12 @@ export class RpcApiType {
         return client.wshRpcCall("agentcardset", data, opts);
     }
 
+    // command "agentlaunch" [call]
+    AgentLaunchCommand(client: WshClient, data: AgentLaunchRequest, opts?: RpcOpts): Promise<AgentLaunchResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentlaunch", data, opts);
+        return client.wshRpcCall("agentlaunch", data, opts);
+    }
+
     // command "agentmcpconfig" [call]
     AgentMCPConfigCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<AgentMCPConfigResult> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentmcpconfig", data, opts);
@@ -64,6 +70,12 @@ export class RpcApiType {
     AgentProfileListCommand(client: WshClient, opts?: RpcOpts): Promise<ProfileInfo[]> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentprofilelist", null, opts);
         return client.wshRpcCall("agentprofilelist", null, opts);
+    }
+
+    // command "agentsend" [call]
+    AgentSendCommand(client: WshClient, data: AgentSendRequest, opts?: RpcOpts): Promise<AgentSendResult> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "agentsend", data, opts);
+        return client.wshRpcCall("agentsend", data, opts);
     }
 
     // command "agentskillinstall" [call]

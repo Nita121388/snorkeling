@@ -43,6 +43,11 @@ type ProfileInfo struct {
 	ModelFlag    string      `json:"modelflag,omitempty"`
 	DefaultModel string      `json:"defaultModel,omitempty"`
 	Models       []ModelInfo `json:"models"`
+	// Env is the profile's `agent:profiles.<name>.env` map. It is surfaced so a
+	// programmatic launch produces the same `cmd:env` the GUI produces; without
+	// it an agent block created by `wsh agent launch` would silently lose the
+	// profile's environment.
+	Env map[string]string `json:"env,omitempty"`
 	// Source is "builtin" for built-in profiles and "config" for user-defined ones.
 	Source string `json:"source"`
 	// Default marks the profile named by `agent:defaultprofile` (defaults to "pi").
@@ -167,6 +172,12 @@ func resolveWithConfig(name string, cfg wconfig.AgentProfileConfigType) ProfileI
 		info.ModelFlag = "--model"
 	}
 	info.Args = append([]string(nil), cfg.Args...)
+	if len(cfg.CmdEnv) > 0 {
+		info.Env = make(map[string]string, len(cfg.CmdEnv))
+		for k, v := range cfg.CmdEnv {
+			info.Env[k] = v
+		}
+	}
 
 	models := resolveModels(name, cfg)
 	info.DefaultModel = pickDefaultModel(models, cfg.Model)

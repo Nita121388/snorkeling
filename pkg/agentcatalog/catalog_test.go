@@ -240,3 +240,27 @@ func TestListDefaultsToPiWhenUnset(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveSurfacesProfileEnv(t *testing.T) {
+	withSettings(t, wconfig.SettingsType{AgentProfiles: map[string]wconfig.AgentProfileConfigType{
+		"pi": {Cmd: "pi", CmdEnv: map[string]string{"FOO": "bar"}},
+	}}, func(s wconfig.SettingsType) {
+		p := ResolveWithSettings("pi", s)
+		if p.Env["FOO"] != "bar" {
+			t.Fatalf("ProfileInfo.Env = %v, want FOO=bar (a programmatic launch would otherwise lose the profile env)", p.Env)
+		}
+	})
+}
+
+func TestResolveEnvIsCopiedNotShared(t *testing.T) {
+	cfgEnv := map[string]string{"FOO": "bar"}
+	withSettings(t, wconfig.SettingsType{AgentProfiles: map[string]wconfig.AgentProfileConfigType{
+		"pi": {Cmd: "pi", CmdEnv: cfgEnv},
+	}}, func(s wconfig.SettingsType) {
+		p := ResolveWithSettings("pi", s)
+		p.Env["FOO"] = "mutated"
+		if cfgEnv["FOO"] != "bar" {
+			t.Fatal("ProfileInfo.Env must be a copy; mutating it must not touch settings")
+		}
+	})
+}

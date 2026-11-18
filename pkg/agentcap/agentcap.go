@@ -125,6 +125,21 @@ Observing And Navigating The UI (read-only except structure changes)
                               layout leaf order). Do not treat layout-queued as "on screen".
 - wsh tab list|create|activate [--wait] --json -> tab management. --wait polls the backend
   Workspace.ActiveTabId, never a frontend claim.
+
+Launching Agent Blocks And Sending Text
+- wsh agent launch --profile pi --model deepseek/deepseek-v4-flash [--tab new|<tabid>] [--cwd <dir>]
+  [--split right] [--no-focus] [--wait] --json
+                              -> create a TUI agent block (a normal, visible block) from the agent
+  catalog. Profile and model MUST come from 'wsh agent list --json'; there is no way to inject a raw
+  command, args or env. --send "<text>" additionally delivers the text to the new TUI.
+- wsh agent send --block <id|this> --text "<text>" [--no-submit] [--no-wait] --json
+                              -> deliver text to an existing term/agent block: one bracketed paste
+  (multi-line safe) plus a real Enter, after the TUI goes quiet. Paste without submit means the agent
+  never receives the text. --text accepts newlines; use --stdin for larger payloads.
+- The block is visible in its tab by default; --no-focus / a non-active tab keeps it in the
+  background without hiding it.
+- Errors: E_PROFILE_UNKNOWN / E_MODEL_NOT_IN_CATALOG (nothing is created), E_BLOCK_NOT_READY
+  (no live pty), E_AGENT_NOT_READY (TUI never went quiet; the block stays, retry with agent send).
 - Errors use stable codes: E_USAGE / E_NOT_FOUND / E_CONFLICT / E_FORBIDDEN / E_UNSUPPORTED /
   E_NO_ROUTE / E_TIMEOUT / E_INTERNAL. Branch on the code, not on the message.
 

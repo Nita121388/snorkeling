@@ -56,6 +56,12 @@ func AgentCardSetCommand(w *wshutil.WshRpc, data wshrpc.AgentCardSetRequest, opt
 	return resp, err
 }
 
+// command "agentlaunch", wshserver.AgentLaunchCommand
+func AgentLaunchCommand(w *wshutil.WshRpc, data wshrpc.AgentLaunchRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentLaunchResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentLaunchResult](w, "agentlaunch", data, opts)
+	return resp, err
+}
+
 // command "agentmcpconfig", wshserver.AgentMCPConfigCommand
 func AgentMCPConfigCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) (*wshrpc.AgentMCPConfigResult, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentMCPConfigResult](w, "agentmcpconfig", data, opts)
@@ -65,6 +71,12 @@ func AgentMCPConfigCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts)
 // command "agentprofilelist", wshserver.AgentProfileListCommand
 func AgentProfileListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]agentcatalog.ProfileInfo, error) {
 	resp, err := sendRpcRequestCallHelper[[]agentcatalog.ProfileInfo](w, "agentprofilelist", nil, opts)
+	return resp, err
+}
+
+// command "agentsend", wshserver.AgentSendCommand
+func AgentSendCommand(w *wshutil.WshRpc, data wshrpc.AgentSendRequest, opts *wshrpc.RpcOpts) (*wshrpc.AgentSendResult, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.AgentSendResult](w, "agentsend", data, opts)
 	return resp, err
 }
 

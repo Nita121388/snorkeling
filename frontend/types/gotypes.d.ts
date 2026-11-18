@@ -809,6 +809,40 @@ declare global {
         hasset?: boolean;
     };
 
+    // wshrpc.AgentLaunchRequest
+    type AgentLaunchRequest = {
+        profile: string;
+        model?: string;
+        tab?: string;
+        workspaceid?: string;
+        split?: string;
+        cwd?: string;
+        connection?: string;
+        magnified?: boolean;
+        nofocus?: boolean;
+        wait?: boolean;
+        waitms?: number;
+        send?: AgentSendRequest;
+    };
+
+    // wshrpc.AgentLaunchResult
+    type AgentLaunchResult = {
+        version: number;
+        ok: boolean;
+        tabid?: string;
+        blockid?: string;
+        profile: string;
+        model?: string;
+        cmd: string;
+        args?: string[];
+        isolationmode: string;
+        syncstate?: string;
+        waitedms?: number;
+        meta?: {[key: string]: any};
+        warnings?: string[];
+        send?: AgentSendResult;
+    };
+
     // wshrpc.AgentMCPConfigResult
     type AgentMCPConfigResult = {
         config: string;
@@ -851,6 +885,32 @@ declare global {
         aiManaged?: boolean;
         aiInstruction?: string;
         scope?: string;
+    };
+
+    // wshrpc.AgentSendRequest
+    type AgentSendRequest = {
+        blockid?: string;
+        text?: string;
+        text64?: string;
+        submit?: boolean;
+        wait?: boolean;
+        waitms?: number;
+        quietms?: number;
+        submitdelayms?: number;
+    };
+
+    // wshrpc.AgentSendResult
+    type AgentSendResult = {
+        version: number;
+        ok: boolean;
+        blockid: string;
+        view: string;
+        injected: boolean;
+        submitted: boolean;
+        waitedms?: number;
+        quietms: number;
+        submitdelayms: number;
+        warnings?: string[];
     };
 
     // wshrpc.AgentSkillInstallResult

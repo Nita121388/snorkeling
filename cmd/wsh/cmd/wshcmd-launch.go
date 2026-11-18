@@ -26,12 +26,57 @@ func init() {
 	rootCmd.AddCommand(launchCmd)
 }
 
+// DefaultAgentWidgetId is the built-in agent widget id. It lives here (CLI
+// layer) because the backend catalog owns profiles, not widget ids.
+const DefaultAgentWidgetId = "defwidget@agent"
+
+// launchDefaultAgentWidget resolves the catalog's default profile and launches
+// it exactly the way `wsh agent launch --profile <default>` would.
+func launchDefaultAgentWidget(cmd *cobra.Command, args []string) (rtnErr error) {
+	defer func() {
+		sendActivity("launch", rtnErr == nil)
+	}()
+
+	profiles, err := wshclient.AgentProfileListCommand(RpcClient, &wshrpc.RpcOpts{Timeout: 5000})
+	if err != nil {
+		return fmt.Errorf("listing agent profiles: %w", err)
+	}
+	defaultProfile := ""
+	for _, p := range profiles {
+		if p.Default {
+			defaultProfile = p.Name
+			break
+		}
+	}
+	if defaultProfile == "" {
+		return fmt.Errorf("agent catalog has no default profile (agent:defaultprofile)")
+	}
+	oref, err := wshclient.AgentLaunchCommand(RpcClient, wshrpc.AgentLaunchRequest{
+		Profile:   defaultProfile,
+		Tab:       getTabIdFromEnv(),
+		Magnified: magnifyBlock,
+	}, &wshrpc.RpcOpts{Timeout: 30000})
+	if err != nil {
+		return err
+	}
+	WriteStdout("launched agent %q: %s\n", defaultProfile, oref.BlockId)
+	return nil
+}
+
 func launchRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() {
 		sendActivity("launch", rtnErr == nil)
 	}()
 
 	widgetId := args[0]
+
+	// defwidget@agent historically produced a bare `codex` block (the default
+	// widget's hard-coded blockdef). Route it through the catalog-constrained
+	// agent launch instead: same path as `wsh agent launch`, default profile
+	// resolved from the catalog (no agent name is hard-coded here).
+	if widgetId == DefaultAgentWidgetId {
+		return launchDefaultAgentWidget(cmd, args)
+	}
 
 	// Get the full configuration
 	config, err := wshclient.GetFullConfigCommand(RpcClient, &wshrpc.RpcOpts{Timeout: 2000})

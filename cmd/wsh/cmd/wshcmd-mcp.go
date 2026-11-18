@@ -127,6 +127,14 @@ func (b rpcBackend) SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnot
 	return wshclient.SessionAnnotateCommand(RpcClient, req, b.opts())
 }
 
+func (b rpcBackend) AgentLaunch(ctx context.Context, req wshrpc.AgentLaunchRequest) (*wshrpc.AgentLaunchResult, error) {
+	return wshclient.AgentLaunchCommand(RpcClient, req, b.opts())
+}
+
+func (b rpcBackend) AgentSend(ctx context.Context, req wshrpc.AgentSendRequest) (*wshrpc.AgentSendResult, error) {
+	return wshclient.AgentSendCommand(RpcClient, req, b.opts())
+}
+
 func mcpServeRun(cmd *cobra.Command, args []string) (rtnErr error) {
 	defer func() { sendActivity("mcp serve", rtnErr == nil) }()
 

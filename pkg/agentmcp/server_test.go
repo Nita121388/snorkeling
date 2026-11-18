@@ -23,6 +23,11 @@ type fakeBackend struct {
 	blockOpenErr    error
 	lastCardReq     wshrpc.AgentCardSetRequest
 	lastAnnotateReq wshrpc.SessionAnnotateRequest
+
+	launchCalls   int
+	lastLaunchReq wshrpc.AgentLaunchRequest
+	sendCalls     int
+	lastSendReq   wshrpc.AgentSendRequest
 }
 
 func (f *fakeBackend) SessionLive(ctx context.Context, req wshrpc.SessionLiveRequest) (*wshrpc.SessionLiveResult, error) {
@@ -74,16 +79,27 @@ func (f *fakeBackend) TabActivate(ctx context.Context, req wshrpc.TabActivateReq
 func (f *fakeBackend) AgentCardGet(ctx context.Context, req wshrpc.AgentCardGetRequest) (*wshrpc.AgentCardResult, error) {
 	return &wshrpc.AgentCardResult{Version: 1, SessionKey: req.Identifier}, nil
 }
+func (f *fakeBackend) AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error) {
+	f.cardSetCalls++
+	f.lastCardReq = req
+	return &wshrpc.AgentCardSetResult{DryRun: true, Changed: false}, nil
+}
 func (f *fakeBackend) SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error) {
 	f.annotateCalls++
 	f.lastAnnotateReq = req
 	return &wshrpc.SessionAnnotateResult{DryRun: !req.Yes, Written: req.Yes}, nil
 }
 
-func (f *fakeBackend) AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error) {
-	f.cardSetCalls++
-	f.lastCardReq = req
-	return &wshrpc.AgentCardSetResult{DryRun: true, Changed: false}, nil
+func (f *fakeBackend) AgentLaunch(ctx context.Context, req wshrpc.AgentLaunchRequest) (*wshrpc.AgentLaunchResult, error) {
+	f.launchCalls++
+	f.lastLaunchReq = req
+	return &wshrpc.AgentLaunchResult{Version: 1, Ok: true, BlockId: "blk-test", Profile: req.Profile}, nil
+}
+
+func (f *fakeBackend) AgentSend(ctx context.Context, req wshrpc.AgentSendRequest) (*wshrpc.AgentSendResult, error) {
+	f.sendCalls++
+	f.lastSendReq = req
+	return &wshrpc.AgentSendResult{Version: 1, Ok: true, BlockId: req.BlockId, Injected: true, Submitted: true}, nil
 }
 
 func newServer(scopes []string) (*Server, *bytes.Buffer) {
@@ -139,8 +155,8 @@ func TestToolsListShapeAndScopes(t *testing.T) {
 	s, _ := newServer(nil)
 	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`))
 	tools, _ := res["tools"].([]any)
-	if len(tools) != 17 {
-		t.Fatalf("expected 17 tools, got %d", len(tools))
+	if len(tools) != 19 {
+		t.Fatalf("expected 19 tools, got %d", len(tools))
 	}
 	seen := map[string]bool{}
 	for _, raw := range tools {
@@ -371,5 +387,108 @@ func TestSessionReadToolCalls(t *testing.T) {
 	first, _ = content[0].(map[string]any)
 	if !strings.Contains(first["text"].(string), `"turn":1`) {
 		t.Fatalf("unexpected turns content: %v", first)
+	}
+}
+
+func TestAgentCreateToolLaunchScopeGated(t *testing.T) {
+	// data alone must NOT launch an agent: launch creates a real process
+	s, _ := newServer([]string{ScopeData})
+	be := s.Backend.(*fakeBackend)
+	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"snorkeling_agent_create","arguments":{"profile":"pi"}}}`))
+	if res["isError"] != true {
+		t.Fatalf("data scope must not launch agents, got %v", res)
+	}
+	if be.launchCalls != 0 {
+		t.Fatal("backend must not be called when the launch scope is missing")
+	}
+
+	// launch scope passes and reaches the backend
+	s2, _ := newServer([]string{ScopeLaunch})
+	be2 := s2.Backend.(*fakeBackend)
+	res2 := resultMap(t, mustHandle(t, s2, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"snorkeling_agent_create","arguments":{"profile":"pi","message":"hi there"}}}`))
+	content, _ := res2["content"].([]any)
+	if len(content) == 0 || !strings.Contains(content[0].(map[string]any)["text"].(string), `"profile":"pi"`) {
+		t.Fatalf("expected a successful launch result, got %v", res2)
+	}
+	if be2.launchCalls != 1 {
+		t.Fatal("backend must be called once")
+	}
+	if be2.lastLaunchReq.Send == nil || be2.lastLaunchReq.Send.Text64 == "" {
+		t.Fatal("message must be expanded into the embedded send request")
+	}
+}
+
+func TestAgentSendToolLaunchScopeGated(t *testing.T) {
+	s, _ := newServer([]string{ScopeData})
+	be := s.Backend.(*fakeBackend)
+	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"snorkeling_agent_send","arguments":{"blockid":"blk1","text":"x"}}}`))
+	if res["isError"] != true {
+		t.Fatalf("data scope must not send text, got %v", res)
+	}
+	if be.sendCalls != 0 {
+		t.Fatal("backend must not be called when the launch scope is missing")
+	}
+}
+
+// AC5: the annotate tool is a data-scope write with CLI-equivalent parameters,
+// dry-run by default, and `confirm` maps to the CLI's --yes.
+func TestSessionAnnotateToolSchemaAndConfirm(t *testing.T) {
+	var spec *toolSpec
+	specs := toolSpecs()
+	for i := range specs {
+		if specs[i].Name == "snorkeling_session_annotate" {
+			spec = &specs[i]
+			break
+		}
+	}
+	if spec == nil {
+		t.Fatal("snorkeling_session_annotate tool is missing")
+	}
+	if spec.Scope != ScopeData {
+		t.Fatalf("annotate must be data scope, got %q", spec.Scope)
+	}
+	if spec.Annotations == nil || !spec.Annotations.DestructiveHint || spec.Annotations.ReadOnlyHint {
+		t.Fatalf("annotate must be destructive and not readOnly: %+v", spec.Annotations)
+	}
+	required, _ := spec.Schema["required"].([]string)
+	have := map[string]bool{}
+	for _, field := range required {
+		have[field] = true
+	}
+	if !have["identifier"] || !have["anchor"] {
+		t.Fatalf("annotate must require identifier+anchor, got %v", required)
+	}
+	props, _ := spec.Schema["properties"].(map[string]any)
+	for _, field := range []string{"identifier", "anchor", "kind", "title", "body", "tags", "status", "force", "expectedhash", "confirm", "dryrun"} {
+		if _, ok := props[field]; !ok {
+			t.Fatalf("annotate schema is missing %q", field)
+		}
+	}
+
+	// default: no confirm => dry-run
+	s, _ := newServer([]string{ScopeObserve, ScopeData})
+	be := s.Backend.(*fakeBackend)
+	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"snorkeling_session_annotate","arguments":{"identifier":"pi:abc","anchor":"tail","body":"x"}}}`))
+	if res["isError"] == true {
+		t.Fatalf("unexpected error: %v", res)
+	}
+	if be.annotateCalls != 1 || be.lastAnnotateReq.Yes {
+		t.Fatalf("default call must be a dry-run: %+v", be.lastAnnotateReq)
+	}
+	mustHandle(t, s, `{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"snorkeling_session_annotate","arguments":{"identifier":"pi:abc","anchor":"tail","body":"x","confirm":true,"expectedhash":"h"}}}`)
+	if !be.lastAnnotateReq.Yes || be.lastAnnotateReq.ExpectedHash != "h" {
+		t.Fatalf("confirm/expectedhash must map to the request: %+v", be.lastAnnotateReq)
+	}
+}
+
+func TestSessionAnnotateToolScopeGated(t *testing.T) {
+	s, _ := newServer([]string{ScopeObserve})
+	be := s.Backend.(*fakeBackend)
+	res := resultMap(t, mustHandle(t, s, `{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"snorkeling_session_annotate","arguments":{"identifier":"pi:abc","anchor":"tail"}}}`))
+	if res["isError"] != true {
+		t.Fatalf("observe scope must not annotate, got %v", res)
+	}
+	if be.annotateCalls != 0 {
+		t.Fatal("backend must not be called when the data scope is missing")
 	}
 }

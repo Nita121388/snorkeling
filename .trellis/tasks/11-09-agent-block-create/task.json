@@ -3,7 +3,7 @@
   "name": "agent-block-create",
   "title": "Agent Block 程序化创建：wsh agent launch + MCP 工具",
   "description": "让外部 agent / 脚本能按 profile+model 在指定 tab 创建 claude/codex/pi/opencode 的 TUI agent block（term block + agent:* meta），复用 agent catalog 校验，新增 launch scope 与 MCP 工具 snorkeling_agent_create。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": "snorkeling-docs",
@@ -12,7 +12,7 @@
   "assignee": "nita",
   "createdAt": "2026-11-09",
   "completedAt": null,
-  "branch": null,
+  "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
   "commit": null,
@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "2026-11-18 实现完成（catalog env 透传 / launch scope / DTO / agentlaunch.go / CLI wsh agent launch / MCP snorkeling_agent_create / defwidget@agent 改走 catalog 默认 / waveobj meta getter 补 typed slice+map / 模型 provider 展开）。真机验证（dev 实例 verify-agent-launch）：launch pi → blockid 返回、meta 完整、--send 注入后 pi 回复 OK；bad model/profile 均报错且块数不变（12→12）。",
   "meta": {}
 }

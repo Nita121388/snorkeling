@@ -115,6 +115,9 @@ type WshRpcInterface interface {
 	TabListCommand(ctx context.Context, data TabListRequest) (*TabListResult, error)
 	TabCreateCommand(ctx context.Context, data TabCreateRequest) (*TabCreateResult, error)
 	TabActivateCommand(ctx context.Context, data TabActivateRequest) (*TabActivateResult, error)
+	// agent block launch + text injection (programmatic agent-block creation)
+	AgentLaunchCommand(ctx context.Context, data AgentLaunchRequest) (*AgentLaunchResult, error)
+	AgentSendCommand(ctx context.Context, data AgentSendRequest) (*AgentSendResult, error)
 	// external agent access: mint a scoped token (in-app only)
 	AgentAuthGrantCommand(ctx context.Context, data AgentAuthGrantRequest) (*AgentAuthGrantResult, error)
 	AgentAuthListCommand(ctx context.Context) (*AgentAuthListResult, error)
@@ -1119,10 +1122,88 @@ type BlockOpenResult struct {
 	Warnings  []string `json:"warnings,omitempty"`
 }
 
+// AgentLaunchRequest is the programmatic agent-block creation surface. It
+// mirrors what the GUI's "New Agent" flow produces (frontend agent-launch.ts
+// createAgentBlockDef), constrained to the agent catalog: the caller picks a
+// profile and optionally a model, never a raw command.
+type AgentLaunchRequest struct {
+	Profile     string `json:"profile"`               // required, must exist in the catalog
+	Model       string `json:"model,omitempty"`       // "id" or "provider/id"; empty = profile default
+	Tab         string `json:"tab,omitempty"`         // active (default) | new | <tabid>
+	WorkspaceId string `json:"workspaceid,omitempty"` // only for --tab new
+	Split       string `json:"split,omitempty"`       // right|down|left|up
+	Cwd         string `json:"cwd,omitempty"`         // block cwd (meta cmd:cwd)
+	Connection  string `json:"connection,omitempty"`  // empty = local; non-local is rejected for now
+	Magnified   bool   `json:"magnified,omitempty"`
+	NoFocus     bool   `json:"nofocus,omitempty"`
+	Wait        bool   `json:"wait,omitempty"` // wait for the frontend to apply the layout
+	WaitMs      int    `json:"waitms,omitempty"`
+	// Send, when non-nil, makes launch a one-shot "create + deliver": after the
+	// block is created the text is injected into the agent TUI (bracketed paste
+	// + enter submit). See AgentSendRequest.
+	Send *AgentSendRequest `json:"send,omitempty"`
+}
+
+// AgentLaunchResult reports the created block with the meta the caller can
+// assert on (view=term, controller=cmd, agent:* keys). SyncState semantics are
+// identical to BlockOpenResult.
+type AgentLaunchResult struct {
+	Version   int            `json:"version"`
+	Ok        bool           `json:"ok"`
+	TabId     string         `json:"tabid,omitempty"`
+	BlockId   string         `json:"blockid,omitempty"`
+	Profile   string         `json:"profile"`
+	Model     string         `json:"model,omitempty"` // the model actually used (provider/id form kept)
+	Cmd       string         `json:"cmd"`
+	Args      []string       `json:"args,omitempty"`
+	Isolation string         `json:"isolationmode"` // always "system" in v1
+	SyncState string         `json:"syncstate,omitempty"`
+	WaitedMs  int            `json:"waitedms,omitempty"`
+	Meta      map[string]any `json:"meta,omitempty"` // the agent-relevant meta written to the block
+	Warnings  []string       `json:"warnings,omitempty"`
+	// Send carries the text-delivery outcome when AgentLaunchRequest.Send was set.
+	Send *AgentSendResult `json:"send,omitempty"`
+}
+
+// AgentSendRequest injects text into an existing term/agent block's PTY via the
+// single write path (blockcontroller.SendInput). This is the backend twin of
+// the frontend CommonText pending-input chain; it never touches the frontend
+// pending-input store, so the two paths cannot double-inject.
+type AgentSendRequest struct {
+	BlockId string `json:"blockid,omitempty"` // block id or "this"
+	// Text is plain text; Text64 is base64. Exactly one must be set (Text64 wins).
+	Text   string `json:"text,omitempty"`
+	Text64 string `json:"text64,omitempty"`
+	// Submit sends a real Enter after the paste (default true). Paste without
+	// submit means the agent never receives the text (measured, see
+	// commontext-insert.ts SubmitAfterPasteDelayMs). Pointer so an explicit
+	// false is distinguishable from "unset".
+	Submit *bool `json:"submit,omitempty"`
+	// Wait waits for the TUI to be quiet before injecting (default true).
+	Wait    *bool `json:"wait,omitempty"`
+	WaitMs  int   `json:"waitms,omitempty"`  // readiness deadline, default 30000, max 120000
+	QuietMs int   `json:"quietms,omitempty"` // output-quiet threshold, default 400, range [100,5000]
+	// SubmitDelayMs is the paste→enter delay, default 150, range [0,2000].
+	SubmitDelayMs int `json:"submitdelayms,omitempty"`
+}
+
+// AgentSendResult reports what actually happened to the text.
+type AgentSendResult struct {
+	Version       int      `json:"version"`
+	Ok            bool     `json:"ok"`
+	BlockId       string   `json:"blockid"`
+	View          string   `json:"view"`
+	Injected      bool     `json:"injected"`
+	Submitted     bool     `json:"submitted"`
+	WaitedMs      int      `json:"waitedms,omitempty"`
+	QuietMs       int      `json:"quietms"`
+	SubmitDelayMs int      `json:"submitdelayms"`
+	Warnings      []string `json:"warnings,omitempty"`
+}
+
 type TabListRequest struct {
 	WorkspaceId string `json:"workspaceid,omitempty"`
 }
-
 type TabListResult struct {
 	Version     int          `json:"version"`
 	GeneratedAt int64        `json:"generatedat"`

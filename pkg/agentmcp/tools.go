@@ -5,8 +5,10 @@ package agentmcp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/wavetermdev/waveterm/pkg/agentscope"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -40,6 +42,8 @@ type Backend interface {
 	TabCreate(ctx context.Context, req wshrpc.TabCreateRequest) (*wshrpc.TabCreateResult, error)
 	TabActivate(ctx context.Context, req wshrpc.TabActivateRequest) (*wshrpc.TabActivateResult, error)
 	AgentCardGet(ctx context.Context, req wshrpc.AgentCardGetRequest) (*wshrpc.AgentCardResult, error)
+	AgentLaunch(ctx context.Context, req wshrpc.AgentLaunchRequest) (*wshrpc.AgentLaunchResult, error)
+	AgentSend(ctx context.Context, req wshrpc.AgentSendRequest) (*wshrpc.AgentSendResult, error)
 	AgentCardSet(ctx context.Context, req wshrpc.AgentCardSetRequest) (*wshrpc.AgentCardSetResult, error)
 	SessionAnnotate(ctx context.Context, req wshrpc.SessionAnnotateRequest) (*wshrpc.SessionAnnotateResult, error)
 }
@@ -432,7 +436,90 @@ func toolSpecs() []toolSpec {
 				})
 			},
 		},
+		{
+			Name:        "snorkeling_agent_create",
+			Description: "Launch a TUI agent block from the agent catalog (profile + optional model). The block is a normal, visible block in the target tab. Optional message delivers text to the new TUI after it goes quiet.",
+			Scope:       ScopeLaunch,
+			Annotations: &Annotations{Title: "Agent: create block", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"profile":     str("agent profile from the catalog (required)"),
+				"model":       str("model id or provider/id (default: profile default)"),
+				"tab":         str("active|new|<tabid>"),
+				"workspaceid": str("workspace id (only with tab=new)"),
+				"split":       str("right|down|left|up"),
+				"cwd":         str("block working directory"),
+				"magnified":   boolean("open the block magnified"),
+				"nofocus":     boolean("do not focus the new block"),
+				"wait":        boolean("wait until the frontend applied the layout"),
+				"waitms":      num("layout wait budget (default 5000)"),
+				"message":     str("text to deliver to the new TUI (bracketed paste + enter)"),
+			}, "profile"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[agentCreateArgs](args)
+				if err != nil {
+					return nil, err
+				}
+				launchReq := wshrpc.AgentLaunchRequest{
+					Profile:     req.Profile,
+					Model:       req.Model,
+					Tab:         req.Tab,
+					WorkspaceId: req.WorkspaceId,
+					Split:       req.Split,
+					Cwd:         req.Cwd,
+					Magnified:   req.Magnified,
+					NoFocus:     req.NoFocus,
+					Wait:        req.Wait,
+					WaitMs:      req.WaitMs,
+				}
+				if strings.TrimSpace(req.Message) != "" {
+					launchReq.Send = &wshrpc.AgentSendRequest{
+						Text64: base64.StdEncoding.EncodeToString([]byte(req.Message)),
+					}
+				}
+				return be.AgentLaunch(ctx, launchReq)
+			},
+		},
+		{
+			Name:        "snorkeling_agent_send",
+			Description: "Send text to an existing term/agent block: one bracketed paste (multi-line safe) plus a real Enter, after the TUI goes quiet. Check injected/submitted in the result.",
+			Scope:       ScopeLaunch,
+			Annotations: &Annotations{Title: "Agent: send text", DestructiveHint: true},
+			Schema: obj(map[string]any{
+				"blockid":       str("block id, or 'this' for the calling block"),
+				"text":          str("plain text to send (newlines preserved)"),
+				"text64":        str("base64 of the text (wins over text)"),
+				"submit":        boolean("press Enter after the paste (default true)"),
+				"wait":          boolean("wait for the TUI to be quiet first (default true)"),
+				"waitms":        num("readiness deadline (default 30000, max 120000)"),
+				"quietms":       num("TUI silence window (default 400, range 100-5000)"),
+				"submitdelayms": num("paste to enter delay (default 150)"),
+			}, "blockid"),
+			Invoke: func(ctx context.Context, be Backend, args json.RawMessage) (any, error) {
+				req, err := decode[wshrpc.AgentSendRequest](args)
+				if err != nil {
+					return nil, err
+				}
+				return be.AgentSend(ctx, req)
+			},
+		},
 	}
+}
+
+// agentCreateArgs is snorkeling_agent_create's wire shape: identical to
+// AgentLaunchRequest except the message parameter, which is expanded into the
+// embedded send request before reaching the backend.
+type agentCreateArgs struct {
+	Profile     string `json:"profile"`
+	Model       string `json:"model,omitempty"`
+	Tab         string `json:"tab,omitempty"`
+	WorkspaceId string `json:"workspaceid,omitempty"`
+	Split       string `json:"split,omitempty"`
+	Cwd         string `json:"cwd,omitempty"`
+	Magnified   bool   `json:"magnified,omitempty"`
+	NoFocus     bool   `json:"nofocus,omitempty"`
+	Wait        bool   `json:"wait,omitempty"`
+	WaitMs      int    `json:"waitms,omitempty"`
+	Message     string `json:"message,omitempty"`
 }
 
 // sessionAnnotateArgs is the MCP-side shape. `confirm` is the tool-facing name

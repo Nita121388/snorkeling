@@ -104,8 +104,17 @@ func (m MetaMapType) GetFloat(key string, def float64) float64 {
 
 func (m MetaMapType) GetMap(key string) MetaMapType {
 	if v, ok := m[key]; ok {
-		if mval, ok := v.(map[string]any); ok {
+		switch mval := v.(type) {
+		case map[string]any:
 			return MetaMapType(mval)
+		case map[string]string:
+			// In-process builders store typed maps; treat them like their
+			// JSON-decoded sibling (see GetArray's []string branch).
+			rtn := make(map[string]any, len(mval))
+			for k, s := range mval {
+				rtn[k] = s
+			}
+			return rtn
 		}
 	}
 	return nil
@@ -113,8 +122,19 @@ func (m MetaMapType) GetMap(key string) MetaMapType {
 
 func (m MetaMapType) GetArray(key string) []any {
 	if v, ok := m[key]; ok {
-		if aval, ok := v.([]any); ok {
+		switch aval := v.(type) {
+		case []any:
 			return aval
+		case []string:
+			// In-process builders (e.g. agent launch) construct typed slices;
+			// a JSON round-trip would produce []any. Both shapes must read back
+			// the same, otherwise a block built in Go behaves differently from
+			// the same block after a restart.
+			rtn := make([]any, len(aval))
+			for i, s := range aval {
+				rtn[i] = s
+			}
+			return rtn
 		}
 	}
 	return nil

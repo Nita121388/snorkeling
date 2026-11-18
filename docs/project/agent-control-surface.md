@@ -285,6 +285,56 @@ requirement, not a nicety.
 `wsh blocks list` and `wsh ui state` share `wcore.ListBlocksScoped` — the same walk
 feeds both, so they cannot drift.
 
+## Agent block launch + text delivery (P0.4)
+
+```
+wsh agent launch --profile <p> [--model <id|provider/id>] [--tab active|new|<tabid>]
+                 [--workspace <id>] [--split right|down|left|up] [--cwd <dir>]
+                 [--magnified] [--no-focus] [--wait] [--wait-ms N]
+                 [--send <text> | --send-stdin] [--json]
+wsh agent send --block <id|this> [--text <s> | --stdin]
+               [--no-submit] [--no-wait] [--wait-ms N] [--quiet-ms N]
+               [--submit-delay-ms N] [--json]
+```
+
+Two halves of one capability:
+
+| Half | Contract |
+|---|---|
+| create | catalog-constrained: `--profile` must exist in `agentcatalog` (`E_PROFILE_UNKNOWN`), `--model` must match `models[]` by exact `id` or `provider/id` (`E_MODEL_NOT_IN_CATALOG`). Failing validation creates **nothing**. The block is a normal term block + `agent:*` meta written through `CreateBlockCommand`, i.e. the same path the GUI "New Agent" flow uses. |
+| deliver | one bracketed paste (`ESC[200~ … ESC[201~`) + a real `CR` through `blockcontroller.SendInput` — the single PTY write path. It does **not** go through the frontend pending-input chain, so the two paths cannot double-inject. |
+
+Key semantics:
+
+- **Visible block**: `--no-focus` / `--tab new` keep it in the background; they never hide it.
+  The block is an ordinary Tab member and shows up in AISessions/Overview like any other.
+- **No command injection**: callers cannot pass `cmd` / `cmd:env` / arbitrary meta. Command,
+  args and env come from the catalog profile only.
+- **Model canonicalization**: when the catalog entry carries a provider, a bare model id is
+  expanded to `provider/id` before the flag is built. pi refuses a bare id that is ambiguous
+  across its authenticated providers (`Model "deepseek-v4.1-flash" is ambiguous across
+  providers …`), and the catalog already knows the provider. Claude/Codex catalog entries carry
+  no provider, so their bare model names are untouched.
+- **Headless start**: a term block only has a PTY once its controller runs. `agent send` starts
+  it (`blockcontroller.ResyncController`) when needed, so a block in a background tab can be
+  addressed without the user ever looking at it.
+- **Readiness is a backend fact**, not a frontend claim: the handler polls the block's
+  `term` output file (`filestore.WFS.Stat`) until it stops growing for `--quiet-ms`
+  (default 400ms), bounded by `--wait-ms` (default 30s). Timeout is `E_AGENT_NOT_READY`
+  and the block is kept — retry with `wsh agent send`.
+- **Submit matters**: paste without `CR` means the agent never receives the text (measured:
+  text lands in the TUI input box and stays there). `--submit-delay-ms` (default 150ms)
+  is the paste→enter gap; `--no-submit` is the explicit "fill the draft" mode.
+- **Input-channel race**: `ShellController` reports `running` before its input channel exists,
+  so the first write can fail with `no shell input chan`; the handler retries that one error
+  for up to 3s instead of failing a freshly launched block.
+- **Input sanitation**: C0 control characters and ESC are stripped (tab/newline kept), so an
+  injected payload cannot smuggle terminal escape sequences; 64KB cap → `E_USAGE`.
+- **Remote blocks** are refused (`E_UNSUPPORTED`) until the remote PTY route is verified.
+- Scope: `launch` (between `data` and `destructive`) covers both `agentlaunch` and `agentsend`.
+- MCP: `snorkeling_agent_create` (`message` delivers text in the same call) and
+  `snorkeling_agent_send`.
+
 ## Cross-surface acceptance script
 
 The two P0 surfaces are only useful together: discover a live session, read its

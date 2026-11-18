@@ -7,10 +7,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
-	"github.com/wavetermdev/waveterm/pkg/wcore"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
 )
@@ -29,7 +27,7 @@ func (ws *WshServer) BlockOpenCommand(ctx context.Context, data wshrpc.BlockOpen
 	}
 
 	// 1. Resolve target tab.
-	tabId, err := resolveOpenTabId(ctx, data)
+	tabId, err := resolveTabTarget(ctx, data.Tab, data.WorkspaceId)
 	if err != nil {
 		return nil, err
 	}
@@ -97,25 +95,7 @@ func (ws *WshServer) BlockOpenCommand(ctx context.Context, data wshrpc.BlockOpen
 	// backend writes it); we also need the queue drained and the leaf order to
 	// contain the block, otherwise `layout-applied` would be a lie.
 	if data.Wait {
-		waitMs := data.WaitMs
-		if waitMs <= 0 {
-			waitMs = 5000
-		}
-		start := time.Now()
-		deadline := start.Add(time.Duration(waitMs) * time.Millisecond)
-		for time.Now().Before(deadline) {
-			if wcore.LayoutAppliedToFrontend(ctx, tabId, oref.OID) {
-				rtn.SyncState = BlockSyncStateLayoutApplied
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		rtn.WaitedMs = int(time.Since(start).Milliseconds())
-		if rtn.SyncState != BlockSyncStateLayoutApplied {
-			// The write succeeded; only the frontend has not caught up yet.
-			rtn.SyncState = BlockSyncStateLayoutQueued
-			rtn.Warnings = append(rtn.Warnings, "layout-not-applied")
-		}
+		rtn.SyncState, rtn.WaitedMs, rtn.Warnings = waitForLayoutApplied(ctx, tabId, oref.OID, data.WaitMs, rtn.Warnings)
 	}
 	return rtn, nil
 }
@@ -152,56 +132,6 @@ func splitTargetAction(split, replace string) (targetBlockId, targetAction strin
 		return "", "splitup", nil
 	default:
 		return "", "", fmt.Errorf("E_USAGE: invalid --split %q (right|down|left|up)", split)
-	}
-}
-
-func resolveOpenTabId(ctx context.Context, data wshrpc.BlockOpenRequest) (string, error) {
-	switch data.Tab {
-	case "", "active":
-		// Active tab of the current workspace (same resolution as `blocks list`).
-		client, err := wstore.DBGetSingleton[*waveobj.Client](ctx)
-		if err != nil {
-			return "", fmt.Errorf("E_NO_ROUTE: no active window")
-		}
-		if len(client.WindowIds) == 0 {
-			return "", fmt.Errorf("E_NO_ROUTE: no active window")
-		}
-		win, err := wcore.GetWindow(ctx, client.WindowIds[0])
-		if err != nil {
-			return "", err
-		}
-		wsObj, err := wcore.GetWorkspace(ctx, win.WorkspaceId)
-		if err != nil {
-			return "", err
-		}
-		if wsObj.ActiveTabId == "" {
-			return "", fmt.Errorf("E_NO_ROUTE: no active tab")
-		}
-		return wsObj.ActiveTabId, nil
-	case "new":
-		wsId := data.WorkspaceId
-		if wsId == "" {
-			client, err := wstore.DBGetSingleton[*waveobj.Client](ctx)
-			if err != nil || len(client.WindowIds) == 0 {
-				return "", fmt.Errorf("E_NO_ROUTE: no active window for --tab new")
-			}
-			win, err := wcore.GetWindow(ctx, client.WindowIds[0])
-			if err != nil {
-				return "", err
-			}
-			wsId = win.WorkspaceId
-		}
-		newTabId, err := wcore.CreateTab(ctx, wsId, "", true, false)
-		if err != nil {
-			return "", err
-		}
-		return newTabId, nil
-	default:
-		// explicit tab id: verify it exists
-		if _, err := wstore.DBMustGet[*waveobj.Tab](ctx, data.Tab); err != nil {
-			return "", fmt.Errorf("E_NOT_FOUND: tab %q not found", data.Tab)
-		}
-		return data.Tab, nil
 	}
 }
 
