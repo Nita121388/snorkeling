@@ -1399,25 +1399,22 @@
 }
 
 .session-overview-group-select {
-    height: 22px;
-    border: none;
-    appearance: none;
-    background: transparent;
-    color: var(--main-text-color);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 10px;
+    /* 2026-11-18 起这里包的是 AppSelect 组件根（bare 变体）：
+       视觉由 `.session-overview-group-picker` 外壳负责，这里只定字号字重颜色。 */
+    font-size: 11px;
     font-weight: 600;
+    color: var(--main-text-color);
 
-    &:focus-visible {
-        outline: 2px solid var(--accent-color);
-        outline-offset: 1px;
+    /* 焦点环画在外壳上：bare 触发器自身无框，focus-visible 交给 picker */
+    &:focus-within {
+        outline: none;
     }
+}
 
-    option {
-        background: var(--block-bg-color);
-        color: var(--main-text-color);
-    }
+/* 触发器拿到键盘焦点时，把焦点环画到外壳上（否则 bare 变体无任何视觉反馈） */
+.session-overview-group-picker:has(.app-select__trigger:focus-visible) {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
 }
 
 /* 看板永远是「一行多列」，窄面板横向 snap 滑列 —— 不再按宽度退回纵向堆叠

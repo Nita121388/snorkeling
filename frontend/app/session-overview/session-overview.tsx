@@ -15,6 +15,7 @@ import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { isAgentStatusUnread } from "@/app/agent-status/agent-status-unread";
 import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
+import { AppSelect } from "@/app/element/select";
 import { Tooltip } from "@/app/element/tooltip";
 import { getBadgeAtom, getTabBadgeAtom } from "@/app/store/badge";
 import { FocusManager } from "@/app/store/focusManager";
@@ -2750,30 +2751,30 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                             </button>
                         ) : null}
                         {OVERVIEW_BOARD_ENABLED && viewMode === "timeline" ? (
-                            <label
+                            <div
                                 className="session-overview-group-picker"
                                 title={t("session-overview:panel.timelineWindow")}
                             >
                                 <i className={makeIconClass("clock", false)} />
-                                <select
+                                <AppSelect
                                     className="session-overview-group-select"
-                                    data-overview-range
-                                    value={timelineRange}
-                                    aria-label={t("session-overview:panel.timelineRange")}
-                                    onChange={(event) =>
+                                    data-overview-range=""
+                                    variant="bare"
+                                    size="sm"
+                                    value={String(timelineRange)}
+                                    ariaLabel={t("session-overview:panel.timelineRange")}
+                                    options={OverviewTimelineRanges.map((range) => ({
+                                        value: String(range),
+                                        label: formatTimelineRangeLabel(range),
+                                    }))}
+                                    onChange={(next) =>
                                         globalStore.set(
                                             overviewTimelineRangeAtom,
-                                            Number(event.target.value) as OverviewTimelineRange
+                                            Number(next) as OverviewTimelineRange
                                         )
                                     }
-                                >
-                                    {OverviewTimelineRanges.map((range) => (
-                                        <option key={range} value={range}>
-                                            {formatTimelineRangeLabel(range)}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
+                                />
+                            </div>
                         ) : null}
                         {OVERVIEW_BOARD_ENABLED ? (
                             <div
@@ -2805,30 +2806,30 @@ function SessionOverviewPanel({ blockId, model }: ViewComponentProps<SessionOver
                             </div>
                         ) : null}
                         {OVERVIEW_BOARD_ENABLED && viewMode === "board" ? (
-                            <label
+                            <div
                                 className="session-overview-group-picker"
                                 title={t("session-overview:panel.boardGrouping")}
                             >
                                 <i className={makeIconClass("layer-group", false)} />
-                                <select
+                                <AppSelect
                                     className="session-overview-group-select"
-                                    data-overview-group
+                                    data-overview-group=""
+                                    variant="bare"
+                                    size="sm"
                                     value={boardGroup}
-                                    aria-label={t("session-overview:panel.boardGrouping")}
-                                    onChange={(event) =>
-                                        globalStore.set(
-                                            overviewBoardGroupAtom,
-                                            event.target.value as OverviewBoardGroup
-                                        )
+                                    ariaLabel={t("session-overview:panel.boardGrouping")}
+                                    options={[
+                                        { value: "status", label: t("session-overview:panel.groupStatus") },
+                                        { value: "tab", label: t("session-overview:panel.groupTab") },
+                                        { value: "provider", label: t("session-overview:panel.groupProvider") },
+                                        { value: "project", label: t("session-overview:panel.groupProject") },
+                                        { value: "tags", label: t("session-overview:panel.groupTags") },
+                                    ]}
+                                    onChange={(next) =>
+                                        globalStore.set(overviewBoardGroupAtom, next as OverviewBoardGroup)
                                     }
-                                >
-                                    <option value="status">{t("session-overview:panel.groupStatus")}</option>
-                                    <option value="tab">{t("session-overview:panel.groupTab")}</option>
-                                    <option value="provider">{t("session-overview:panel.groupProvider")}</option>
-                                    <option value="project">{t("session-overview:panel.groupProject")}</option>
-                                    <option value="tags">{t("session-overview:panel.groupTags")}</option>
-                                </select>
-                            </label>
+                                />
+                            </div>
                         ) : null}
                         <div className="session-overview-filter-group" aria-label={t("session-overview:panel.filters")}>
                             <button

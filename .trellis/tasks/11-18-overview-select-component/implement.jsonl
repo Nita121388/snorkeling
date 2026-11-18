@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/snorkeling-docs/frontend/component-guidelines.md", "reason": "组件层规范：浮层 FloatingPortal、卡片内浮层约束"}
+{"file": ".trellis/spec/snorkeling-docs/frontend/quality-guidelines.md", "reason": "前端硬约束：列表型下拉菜单交互、验证台出口码"}
+{"file": "docs/design-system.md", "reason": "语义令牌、选中态三件套、禁纯色义"}
