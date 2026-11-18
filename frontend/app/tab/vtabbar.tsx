@@ -26,7 +26,7 @@ import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { collapsedTabIdsAtom, collapseTabIds } from "./tab-collapse-state";
-import { selectBarVisibleTabIds } from "./tab-more-model";
+import { pickCollapseSwitchTarget, selectBarVisibleTabIds } from "./tab-more-model";
 import { TabMoreMenu } from "./tab-more-menu";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import {
@@ -133,6 +133,8 @@ interface VTabWrapperProps {
     onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
     onDragEnd: () => void;
     onHoverChanged: (isHovered: boolean) => void;
+    /** 收起本 (激活) Tab 时应先切到的 Tab；由 VTabBar 解析后下传。 */
+    collapseSwitchTarget?: string | null;
 }
 
 function VTabWrapper({
@@ -150,6 +152,7 @@ function VTabWrapper({
     onDrop,
     onDragEnd,
     onHoverChanged,
+    collapseSwitchTarget,
 }: VTabWrapperProps) {
     const env = useWaveEnv<VTabBarEnv>();
     const [tabData] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", tabId));
@@ -198,10 +201,11 @@ function VTabWrapper({
             const menu = buildTabContextMenu(tabId, renameRef, () => onClose(), env, {
                 active,
                 hasUnreadDot: unreadTabIds.has(tabId),
+                switchTargetTabId: collapseSwitchTarget,
             });
             env.showContextMenu(menu, e);
         },
-        [tabId, onClose, env, active, unreadTabIds]
+        [tabId, onClose, env, active, unreadTabIds, collapseSwitchTarget]
     );
 
     return (
@@ -428,6 +432,12 @@ export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarPro
         return selectBarVisibleTabIds(orderedTabIds, visibilityCtx);
     }, [orderedTabIds, visibilityCtx]);
 
+    // 「收起激活 Tab」= 收起并切走: 按物理顺序解析切换目标 (右邻优先), 仅对激活 Tab 生效.
+    const collapseSwitchTarget = useMemo(
+        () => (activeTabId != null ? pickCollapseSwitchTarget(orderedTabIds, activeTabId, visibilityCtx) : null),
+        [orderedTabIds, activeTabId, visibilityCtx]
+    );
+
     // FLIP: 当 renderOrderedTabIds / 悬停状态变化导致布局重排后, 把每个 tab 从它的
     // 上—个 top 位置平滑滑动到新位置. 只在非拖拽时启用, 首次挂载不播动画.
     useLayoutEffect(() => {
@@ -602,6 +612,7 @@ export function VTabBar({ workspace, className, onHoveredTabChange }: VTabBarPro
                                 }}
                                 onDragEnd={clearDragState}
                                 onHoverChanged={(isHovered) => setHoveredTabId(isHovered ? tabId : null)}
+                                collapseSwitchTarget={isActive ? collapseSwitchTarget : undefined}
                             />
                         </div>
                     );

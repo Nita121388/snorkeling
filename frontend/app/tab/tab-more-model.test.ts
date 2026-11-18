@@ -9,6 +9,7 @@ import {
     countHiddenRows,
     filterTabMoreRows,
     isTabHiddenFromBar,
+    pickCollapseSwitchTarget,
     selectBarVisibleTabIds,
     shouldShowTabMoreSearch,
     TabMoreMeta,
@@ -60,6 +61,31 @@ describe("isTabHiddenFromBar", () => {
     it("manual collapse still yields to unread dots", () => {
         const ctx = makeCtx({ collapsedTabIds: new Set(["t2"]), unreadTabIds: new Set(["t2"]) });
         expect(isTabHiddenFromBar("t2", ctx)).toBe(false);
+    });
+});
+
+describe("pickCollapseSwitchTarget", () => {
+    it("右邻优先: 收起 t1 切到 t2", () => {
+        expect(pickCollapseSwitchTarget(TabIds, "t1", makeCtx())).toBe("t2");
+    });
+
+    it("右邻隐藏 (已收起) 时跳过它取更右侧", () => {
+        const ctx = makeCtx({ openedThisLaunch: new Set(["t1", "t2", "t3", "t4"]), collapsedTabIds: new Set(["t2"]) });
+        expect(pickCollapseSwitchTarget(TabIds, "t1", ctx)).toBe("t3");
+    });
+
+    it("右邻隐藏时回退左邻", () => {
+        const ctx = makeCtx({ activeTabId: "t2", collapsedTabIds: new Set(["t3"]), openedThisLaunch: new Set(["t1", "t2"]) });
+        expect(pickCollapseSwitchTarget(TabIds, "t2", ctx)).toBe("t1");
+    });
+
+    it("两侧全隐藏 (仅剩目标可见) 返回 null", () => {
+        const ctx = makeCtx({ activeTabId: "t2", openedThisLaunch: new Set(["t2"]) });
+        expect(pickCollapseSwitchTarget(TabIds, "t2", ctx)).toBe(null);
+    });
+
+    it("目标不在列表里返回 null", () => {
+        expect(pickCollapseSwitchTarget(TabIds, "tx", makeCtx())).toBe(null);
     });
 });
 

@@ -85,6 +85,37 @@ export function isTabHiddenFromBar(tabId: string, ctx: TabMoreVisibilityContext)
 }
 
 /**
+ * 收起**激活** Tab 时应切到哪个 Tab (没有则 null).
+ *
+ * 语义: 「收起到更多」对激活 Tab = 收起并切走 —— 先把激活态交给相邻 Tab, 再收起原 Tab,
+ * 否则 `isTabHiddenFromBar` 的「激活 > 收起」优先级会把刚收起的 Tab 立刻放回主栏.
+ *
+ * 规则: 右邻优先, 无可用右邻则取左邻; 跳过主栏不可见的 Tab (收进去会更困惑).
+ */
+export function pickCollapseSwitchTarget(
+    tabIds: readonly string[],
+    targetTabId: string,
+    ctx: TabMoreVisibilityContext
+): string | null {
+    const targetIndex = tabIds.indexOf(targetTabId);
+    if (targetIndex === -1) {
+        return null;
+    }
+    const usable = (tabId: string) => tabId !== targetTabId && !isTabHiddenFromBar(tabId, ctx);
+    for (let i = targetIndex + 1; i < tabIds.length; i++) {
+        if (usable(tabIds[i])) {
+            return tabIds[i];
+        }
+    }
+    for (let i = targetIndex - 1; i >= 0; i--) {
+        if (usable(tabIds[i])) {
+            return tabIds[i];
+        }
+    }
+    return null;
+}
+
+/**
  * 主栏 (水平 TabBar / 垂直 VTabBar) 实际应渲染的 tabId.
  *
  * 隐藏的 Tab (默认折叠 / 手动收起) 只存在于「更多」下拉里, 不再因为 hover /

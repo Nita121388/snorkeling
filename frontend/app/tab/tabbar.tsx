@@ -39,7 +39,7 @@ import {
     shouldEngageDrag,
 } from "./tab-drag-model";
 import { TabMoreMenu } from "./tab-more-menu";
-import { selectBarVisibleTabIds, TabMoreVisibilityContext } from "./tab-more-model";
+import { pickCollapseSwitchTarget, selectBarVisibleTabIds, TabMoreVisibilityContext } from "./tab-more-model";
 import { markTabOpenedThisLaunch, openedThisLaunchTabIdsAtom, wasTabOpenedThisLaunch } from "./tab-open-state";
 import {
     clearOptimisticActiveTab,
@@ -266,6 +266,11 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
     );
     const visibleTabIds = useMemo(() => selectBarVisibleTabIds(tabIds, visibilityCtx), [tabIds, visibilityCtx]);
 
+    // 「收起激活 Tab」= 收起并切走: 按物理顺序解析切换目标 (右邻优先), 仅对激活 Tab 生效.
+    const collapseSwitchTarget = useMemo(
+        () => (activeTabId != null ? pickCollapseSwitchTarget(tabIds, activeTabId, visibilityCtx) : null),
+        [tabIds, activeTabId, visibilityCtx]
+    );
     // RenderedTabIds: tab-only ids, used for drag/reorder.
     const renderedTabIds = useMemo(() => visibleTabIds, [visibleTabIds]);
 
@@ -990,6 +995,7 @@ const TabBar = memo(({ workspace, noTabs, onHeaderHoverChange }: TabBarProps) =>
                                     isDragging={draggingTab === tabId}
                                     tabWidth={tabWidthRef.current}
                                     isNew={tabId === newTabId}
+                                    collapseSwitchTarget={isActive ? collapseSwitchTarget : undefined}
                                 />
                             );
                         })}

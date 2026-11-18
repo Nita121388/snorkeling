@@ -27,6 +27,8 @@ export type TabEnv = WaveEnvSubset<{
     electron: {
         moveTabToNewWindow: WaveEnv["electron"]["moveTabToNewWindow"];
         moveTabBack: WaveEnv["electron"]["moveTabBack"];
+        /** 收起激活 Tab 时先把激活态切给相邻 Tab (见 pickCollapseSwitchTarget). */
+        setActiveTab: WaveEnv["electron"]["setActiveTab"];
     };
     rpc: {
         ActivityCommand: WaveEnv["rpc"]["ActivityCommand"];
@@ -261,10 +263,12 @@ interface TabProps {
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
     onDragStart: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
     onLoaded: () => void;
+    /** 收起本 (激活) Tab 时应先切到的 Tab；由 TabBar 按物理顺序解析后下传。 */
+    collapseSwitchTarget?: string | null;
 }
 
 const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
-    const { id, active, showDivider, isDragging, tabWidth, isNew, hidden: isHidden, workspaceId, onLoaded, onSelect, onClose, onDragStart } = props;
+    const { id, active, showDivider, isDragging, tabWidth, isNew, hidden: isHidden, workspaceId, onLoaded, onSelect, onClose, onDragStart, collapseSwitchTarget } = props;
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
@@ -317,10 +321,11 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             const menu = buildTabContextMenu(id, renameRef, onClose, env, {
                 active,
                 hasUnreadDot: unreadTabIds.has(id),
+                switchTargetTabId: collapseSwitchTarget,
             });
             env.showContextMenu(menu, e);
         },
-        [id, onClose, env, active, unreadTabIds]
+        [id, onClose, env, active, unreadTabIds, collapseSwitchTarget]
     );
 
     const handleRename = useCallback(

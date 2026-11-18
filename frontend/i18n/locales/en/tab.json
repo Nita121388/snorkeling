@@ -114,7 +114,7 @@
         "top": "Top",
         "left": "Left",
         "collapseToMore": "Collapse to More",
-        "collapseToMoreActiveDisabled": "The active tab can't be collapsed",
+        "collapseToMoreLastTabDisabled": "At least one tab must stay open",
         "collapseToMoreUnreadDisabled": "Tabs with unread status can't be collapsed",
         "moveTabToNewWindow": "Move Tab to New Window",
         "moveTabBack": "Move Tab Back",

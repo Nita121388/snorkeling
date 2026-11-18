@@ -1,21 +1,23 @@
 // Copyright 2026, Command Line Inc.
-// SPDX-License-Identifier: Apache-2.0
 
-// Tab 右键菜单「收起到更多」契约测试.
+// Tab 右键菜单「收起到更多」契约测试 (F-1118: 收起激活 Tab = 收起并切走).
 //
-// 锁定三件事:
+// 锁定四件事:
 // 1. 菜单项存在, 且点击后把该 tabId 交给 collapseTabIds (与「更多」下拉共用同一状态).
-// 2. 激活 Tab / 有未阅点的 Tab 必须置灰 (enabled=false) —— 收起会被
-//    isTabHiddenFromBar 的优先级覆盖, 允许点击等于"点了没反应".
-// 3. 非激活且无未阅时保持可点.
+// 2. 激活 Tab 不再置灰: 点击时先 setActiveTab(相邻目标) 再 collapseTabIds —— 顺序必须
+//    先切后收, 否则 isTabHiddenFromBar 会因「激活 > 收起」把 Tab 放回主栏 (视觉没收起).
+// 3. 有未阅点的 Tab 必须置灰 (未读优先于收起, 收了用户就发现不了新结果);
+//    激活但无可切目标 (仅剩一个 Tab) 也置灰, 禁用说明为「至少保留一个 Tab」.
+// 4. 非激活且无未阅时保持可点且不触发切换; 未传 visibility 的旧调用点保持可点.
 //
 // Run: npx vitest run frontend/app/tab/tabcontextmenu.test.ts
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCollapseTabIds, mockRecordTEvent } = vi.hoisted(() => ({
+const { mockCollapseTabIds, mockRecordTEvent, mockSetActiveTab } = vi.hoisted(() => ({
     mockCollapseTabIds: vi.fn(),
     mockRecordTEvent: vi.fn(),
+    mockSetActiveTab: vi.fn(),
 }));
 
 vi.mock("@/app/store/global", () => ({
@@ -40,13 +42,17 @@ const env = {
     },
     atoms: { fullConfigAtom: {} },
     getSettingsKeyAtom: () => ({}),
-    electron: { moveTabToNewWindow: async () => {}, moveTabBack: async () => {} },
+    electron: {
+        moveTabToNewWindow: async () => {},
+        moveTabBack: async () => {},
+        setActiveTab: mockSetActiveTab,
+    },
 } as never;
 
 const renameRef = { current: null } as never;
 const onClose = () => {};
 
-function findCollapseItem(visibility?: { active?: boolean; hasUnreadDot?: boolean }) {
+function findCollapseItem(visibility?: { active?: boolean; hasUnreadDot?: boolean; switchTargetTabId?: string | null }) {
     const menu = buildTabContextMenu("t1", renameRef, onClose, env, visibility);
     return menu.find((item) => item.label === i18n.t("tab:contextMenu.collapseToMore"));
 }
@@ -59,6 +65,7 @@ describe("buildTabContextMenu — 收起到更多", () => {
     beforeEach(() => {
         mockCollapseTabIds.mockClear();
         mockRecordTEvent.mockClear();
+        mockSetActiveTab.mockClear();
     });
 
     it("普通 Tab: 菜单项存在且可点", () => {
@@ -68,22 +75,38 @@ describe("buildTabContextMenu — 收起到更多", () => {
         expect(item?.sublabel).toBeUndefined();
     });
 
-    it("点击后把单个 tabId 交给 collapseTabIds 并埋点", () => {
+    it("点击后把单个 tabId 交给 collapseTabIds 并埋点, 不触发切换", () => {
         const item = findCollapseItem({ active: false, hasUnreadDot: false });
         item?.click?.();
         expect(mockCollapseTabIds).toHaveBeenCalledTimes(1);
         expect(mockCollapseTabIds).toHaveBeenCalledWith(["t1"]);
         expect(mockRecordTEvent).toHaveBeenCalledWith("action:collapsetab");
+        expect(mockSetActiveTab).not.toHaveBeenCalled();
     });
 
-    it("激活 Tab: 置灰, 带禁用说明", () => {
-        const item = findCollapseItem({ active: true, hasUnreadDot: false });
+    it("激活 Tab + 有切换目标: 可点, 先切走再收起 (顺序锁定)", () => {
+        const item = findCollapseItem({ active: true, hasUnreadDot: false, switchTargetTabId: "t2" });
+        expect(item?.enabled).toBe(true);
+        expect(item?.sublabel).toBeUndefined();
+        item?.click?.();
+        expect(mockSetActiveTab).toHaveBeenCalledTimes(1);
+        expect(mockSetActiveTab).toHaveBeenCalledWith("t2");
+        expect(mockCollapseTabIds).toHaveBeenCalledTimes(1);
+        expect(mockCollapseTabIds).toHaveBeenCalledWith(["t1"]);
+        // 顺序不变量: 先切走激活态, 再收起 —— 反了会出现「激活 Tab 不在栏上」/被放回的中间帧.
+        expect(mockSetActiveTab.mock.invocationCallOrder[0]).toBeLessThan(
+            mockCollapseTabIds.mock.invocationCallOrder[0]
+        );
+    });
+
+    it("激活 Tab + 无可切目标 (仅剩一个 Tab): 置灰, 带禁用说明", () => {
+        const item = findCollapseItem({ active: true, hasUnreadDot: false, switchTargetTabId: null });
         expect(item?.enabled).toBe(false);
-        expect(item?.sublabel).toBe(i18n.t("tab:contextMenu.collapseToMoreActiveDisabled"));
+        expect(item?.sublabel).toBe(i18n.t("tab:contextMenu.collapseToMoreLastTabDisabled"));
     });
 
-    it("有未阅状态点: 置灰, 带禁用说明", () => {
-        const item = findCollapseItem({ active: false, hasUnreadDot: true });
+    it("有未阅状态点: 置灰优先 (未阅 > 激活可收), 带禁用说明", () => {
+        const item = findCollapseItem({ active: true, hasUnreadDot: true, switchTargetTabId: "t2" });
         expect(item?.enabled).toBe(false);
         expect(item?.sublabel).toBe(i18n.t("tab:contextMenu.collapseToMoreUnreadDisabled"));
     });

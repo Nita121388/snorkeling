@@ -114,7 +114,7 @@
         "top": "顶部",
         "left": "左侧",
         "collapseToMore": "收起到更多",
-        "collapseToMoreActiveDisabled": "当前 Tab 不可收起",
+        "collapseToMoreLastTabDisabled": "至少保留一个 Tab",
         "collapseToMoreUnreadDisabled": "有未阅状态，无法收起",
         "moveTabToNewWindow": "将 Tab 移到新窗口",
         "moveTabBack": "将 Tab 移回",

@@ -42,10 +42,15 @@ export function buildTabBarContextMenu(env: TabEnv): ContextMenuItem[] {
 
 /** `buildTabContextMenu` 的可见性判定入参 (由调用方组件注入, 不读 atom). */
 export interface TabContextMenuVisibility {
-    /** 该 Tab 是否为当前激活 Tab. 激活 Tab 永远在主栏可见, 收起无效 → 菜单项置灰. */
+    /** 该 Tab 是否为当前激活 Tab. 仍需要: 决定收起时要不要先切走激活态. */
     active?: boolean;
     /** 该 Tab 是否有未阅 agent 状态点. 未读优先于手动收起 (见 isTabHiddenFromBar) → 菜单项置灰. */
     hasUnreadDot?: boolean;
+    /**
+     * 收起激活 Tab 后应切到的 Tab (由调用方按物理顺序用 `pickCollapseSwitchTarget` 解析).
+     * null/undefined 表示无可切目标 (仅剩一个 Tab) → 菜单项置灰.
+     */
+    switchTargetTabId?: string | null;
 }
 
 export function buildTabContextMenu(
@@ -131,18 +136,25 @@ export function buildTabContextMenu(
     menu.push(...buildTabBarContextMenu(env), { type: "separator" });
     // 「收起到更多」: 与「更多」下拉共用 collapsedTabIdsAtom, 收起后该 Tab 只存在于下拉里且置灰
     // (dimmed 语义见 tab-more-menu.tsx 的 TabMoreRowItem).
-    // 激活 Tab / 有未阅点的 Tab 收起会被 isTabHiddenFromBar 的优先级覆盖 (点了也不生效), 故置灰.
+    // 有未阅点的 Tab 收起会被 isTabHiddenFromBar 的优先级覆盖 (点了也不生效), 故置灰.
+    // 激活 Tab 不再置灰: 改为「收起并切走」—— 先激活相邻 Tab 再收起, 优先级冲突自然消解.
+    const switchTarget = visibility?.switchTargetTabId;
     const collapseDisabledHint =
-        visibility?.active === true
-            ? i18n.t("tab:contextMenu.collapseToMoreActiveDisabled")
-            : visibility?.hasUnreadDot === true
-              ? i18n.t("tab:contextMenu.collapseToMoreUnreadDisabled")
+        visibility?.hasUnreadDot === true
+            ? i18n.t("tab:contextMenu.collapseToMoreUnreadDisabled")
+            : visibility?.active === true && (switchTarget == null || switchTarget === "")
+              ? i18n.t("tab:contextMenu.collapseToMoreLastTabDisabled")
               : null;
     menu.push({
         label: i18n.t("tab:contextMenu.collapseToMore"),
         enabled: collapseDisabledHint == null,
         sublabel: collapseDisabledHint ?? undefined,
         click: () => {
+            // 顺序不变量: 先切走激活态, 再收起。反了会出现「激活 Tab 被收起但仍 active」的中间帧,
+            // isTabHiddenFromBar 会因「激活 > 收起」把它立刻放回主栏 (视觉上像没收起).
+            if (visibility?.active === true && switchTarget != null && switchTarget !== "") {
+                env.electron.setActiveTab(switchTarget);
+            }
             collapseTabIds([id]);
             recordTEvent("action:collapsetab");
         },
