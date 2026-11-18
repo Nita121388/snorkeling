@@ -1,6 +1,6 @@
 {
-  "lastAttemptAt": "2026-11-18T04:38:04.417Z",
-  "lastOkAt": "2026-11-18T04:38:04.417Z",
+  "lastAttemptAt": "2026-11-18T08:27:28.959Z",
+  "lastOkAt": "2026-11-18T08:27:28.959Z",
   "failures": 0,
   "error": null,
   "lastOkManifest": [
@@ -16,8 +16,8 @@
     },
     {
       "path": "LEDGER-2026-11.jsonl",
-      "sha256": "d228fff044dd26da5223d9162b2e1963a5341c358c811a6165bca5108cda6ef0",
-      "size": 102789
+      "sha256": "af2ac86e261e5dc42f068049c5f8843dce3cb80a6a913adb2fbe0990ff9cbee1",
+      "size": 111103
     },
     {
       "path": "README.md",
@@ -330,13 +330,28 @@
       "size": 114
     },
     {
+      "path": "gates/N-1118-detail-scope-threading.json",
+      "sha256": "7b654d1f67a2d4b570ff15875828428bd646a79371b2d66e8fbf89b9b71c4144",
+      "size": 245
+    },
+    {
+      "path": "gates/N-1118-header-note-origin.json",
+      "sha256": "3fc0e8e95e4378861262a2988af191de74501e9ac12b113daaeeb07ab960f236",
+      "size": 298
+    },
+    {
+      "path": "gates/N-1118-resolve-exact-id.json",
+      "sha256": "673a06dd854157f5787c1c5613dad3387f89d4acc2ee8846f38df927c61a99f9",
+      "size": 243
+    },
+    {
       "path": "gates/_dropped.jsonl",
       "sha256": "98ab9adc902c7b65972a5c7e870fae24e0fbce0c2a38103b2b6c7ec35ad2e74f",
       "size": 3136
     },
     {
       "path": "gates/_meta.json",
-      "sha256": "52381603a85a19c338cb6c97a049bd38074ca45633359de252df35efd62544d1",
+      "sha256": "1d14a351e5245f4f7ace0e59e21fded949cbf4208abba0b8c6184382ed39a5a0",
       "size": 85
     },
     {
@@ -553,6 +568,21 @@
       "path": "items/N-1117-tab-collapse-to-more.md",
       "sha256": "4d1ad0e05081c7192f4bc20c729e36e9e36c9aa2abf4e71f9b867e9083080790",
       "size": 2581
+    },
+    {
+      "path": "items/N-1118-detail-scope-threading.md",
+      "sha256": "b07d91817108443b2d2995657e695473b7a3df40a19897019ecb1e9b735db665",
+      "size": 1645
+    },
+    {
+      "path": "items/N-1118-header-note-origin.md",
+      "sha256": "f6b2cf44925e8ce638e8f19d56ffda6b69016e1bc8602479f058a2cdba67302d",
+      "size": 1737
+    },
+    {
+      "path": "items/N-1118-resolve-exact-id.md",
+      "sha256": "aefa15f38057e7412684780cb6d581e0a4e4e89a914bab86b6eadeec4c7ac111",
+      "size": 1487
     },
     {
       "path": "items/archive/2026-11/F-1112-persona-aisessions.md",
