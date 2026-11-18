@@ -1596,7 +1596,7 @@ func (m *Manager) resolveSession(ctx context.Context, identifier string, refresh
 		if ctx.Err() != nil {
 			return SessionSummary{}, ctx.Err()
 		}
-		if summary.Key == identifier || summary.ID == identifier || strings.HasPrefix(summary.ID, identifier) {
+		if summary.Key == identifier || summary.ID == identifier {
 			matches = append(matches, summary)
 		}
 	}

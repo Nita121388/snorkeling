@@ -1865,31 +1865,11 @@ func (idx *SQLiteIndex) GetSession(ctx context.Context, identifier string) (Sess
 		return SessionSummary{}, err
 	}
 
-	// 3) id 前缀命中（保留旧的宽松行为）。多候选时报歧义，不猜。
-	var rows []sqliteSessionRow
-	if err := idx.db.SelectContext(ctx, &rows, `SELECT `+sessionSummaryColumns+` FROM ai_sessions WHERE missing = 0 AND id LIKE ? ESCAPE '\' ORDER BY updated_at DESC`, escapeLikePrefix(identifier)); err != nil {
-		return SessionSummary{}, err
-	}
-	if len(rows) == 0 {
-		return SessionSummary{}, fmt.Errorf("session not found: %s", identifier)
-	}
-	if len(rows) > 1 {
-		return SessionSummary{}, fmt.Errorf("ambiguous session id prefix %q (%d matches)", identifier, len(rows))
-	}
-	summary := rows[0].summary()
-	if err := idx.ApplyMeta(ctx, &summary); err != nil {
-		return SessionSummary{}, err
-	}
-	return summary, nil
+	// 3) 没有前缀兜底：截断的 id 绝不能静默命中另一个会话。
+	return SessionSummary{}, fmt.Errorf("session not found: %s", identifier)
 }
 
 const sessionSummaryColumns = `key, id, source, title, title_source, project_path, created_at, updated_at, message_count, file_path, vendor_id, config_dir, snippet, mtime, size, missing, parent_key, kind`
-
-// escapeLikePrefix 把 LIKE 前匹配的通配符转义，避免 identifier 里的 % / _ 被当成通配符。
-func escapeLikePrefix(prefix string) string {
-	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return replacer.Replace(prefix) + "%"
-}
 
 type sqliteSessionRow struct {
 	Key          string `db:"key"`

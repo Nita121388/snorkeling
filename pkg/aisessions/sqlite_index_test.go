@@ -1053,9 +1053,9 @@ func TestSQLiteGetSessionResolvesByIdAndKey(t *testing.T) {
 		t.Fatal("expected not-found error for unknown identifier")
 	}
 
-	// 前缀命中仍保留旧的宽松行为，但多候选必须报歧义而不是猜。
-	if _, err := idx.GetSession(context.Background(), "a"); err != nil {
-		t.Fatalf("expected single prefix match for %q, got err: %v", "a", err)
+	// 前缀不再命中：截断 id 必须报 not found，不能静默跳到别的会话。
+	if _, err := idx.GetSession(context.Background(), "a"); err == nil {
+		t.Fatalf("expected not-found for truncated id %q, got nil", "a")
 	}
 
 	dupA := SessionSummary{Key: "codex:aa2:/tmp/aa2.jsonl", ID: "aa2", Source: SourceCodex, FilePath: "/tmp/aa2.jsonl", MTime: 3, Size: 5}
@@ -1064,7 +1064,7 @@ func TestSQLiteGetSessionResolvesByIdAndKey(t *testing.T) {
 		t.Fatalf("unexpected save errors: %v", errs)
 	}
 	if _, err := idx.GetSession(context.Background(), "aa"); err == nil {
-		t.Fatal("expected ambiguous prefix error, got nil")
+		t.Fatal("expected not-found for truncated id sharing a prefix, got nil")
 	}
 
 	// LIKE 通配符必须被转义，不能变成“匹配任意会话”。

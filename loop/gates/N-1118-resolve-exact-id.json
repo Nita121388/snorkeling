@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "go test ./pkg/aisessions -run TestManagerLoadRejectsTruncatedID -count=1 → FAIL: expected error for truncated id, got nil (silent prefix match) @ manager_exact_id_test.go",
+    "at": "2026-11-18T05:27:18Z"
+  }
+}
