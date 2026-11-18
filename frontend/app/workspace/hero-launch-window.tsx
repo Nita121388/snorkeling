@@ -382,7 +382,9 @@ export const HeroLaunchFloatingWindow = memo(function HeroLaunchFloatingWindow({
                                             isSelected && "bg-accent/10 text-foreground",
                                             idx > 0 && "border-t border-border/40"
                                         )}
-                                        onMouseEnter={() => setSelectedIdx(idx)}
+                                        // 选中只由点击/键盘提交：悬浮划过绝不改选中。
+                                        // 否则鼠标移向下方「确定」按钮时必然扫过其他行，
+                                        // 选中被一路改成最后一行，导致无法确定所选 hero。
                                         onClick={() => setSelectedIdx(idx)}
                                         onDoubleClick={launch}
                                         title={hero.role || hero.id}
