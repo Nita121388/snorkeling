@@ -32,6 +32,15 @@ export const HeroWidgetId = "defwidget@hero";
  */
 export const AgentHeroIdMetaKey = "hero";
 
+/**
+ * Block meta key holding the hero's display label (emoji + name, falling back
+ * to the id). The home-base directory name is a disk invariant (`hero-<hash8>`
+ * for CJK-named heroes — pkg/hero ValidateID: dir name == id), so header-ish
+ * surfaces (Agent Block header title, Tab, Overview card) read this instead of
+ * `basename(cmd:cwd)`.
+ */
+export const AgentHeroNameMetaKey = "hero:name";
+
 /** Block meta key recording the injected main work directory (diagnostics / future providers). */
 export const AgentHeroInjectWorkdirMetaKey = "hero:injectworkdir";
 
@@ -160,6 +169,15 @@ export function buildHeroLaunchBlockDef(params: BuildHeroLaunchBlockDefParams): 
     const heroEmoji = typeof hero.emoji === "string" ? hero.emoji.trim() : "";
     if (heroEmoji !== "") {
         meta[AgentEmojiMetaKey] = heroEmoji;
+    }
+    // Hero identity for display: `hero:name` feeds the Agent Block header / Tab
+    // title, `display:name` feeds the generic title fallback chains (Overview
+    // card, block sidebar, minimized float). Both are one-shot launch stamps —
+    // `frame:title` still wins wherever the user renames the block manually.
+    const heroLabel = heroRosterLabel(hero);
+    if (!isBlank(heroLabel)) {
+        meta[AgentHeroNameMetaKey] = heroLabel;
+        meta["display:name"] = heroLabel;
     }
 
     let injectionApplied = false;

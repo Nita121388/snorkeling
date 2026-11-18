@@ -11,6 +11,7 @@ import { AgentStatusStore } from "@/app/agent-status/agent-status-store";
 import type { AgentStatus } from "@/app/agent-status/agent-status-types";
 import { BlockInfoCard } from "@/app/block/block-info-card";
 import { isChatBlockMeta, isSessionDetailBlockMeta } from "@/app/block/block-info-card-meta";
+import { heroHeaderName } from "@/app/block/block-title";
 import {
     BlockComponentModel2,
     BlockProps,
@@ -54,7 +55,7 @@ import {
 } from "@/store/global";
 import { makeORef } from "@/store/wos";
 import { focusedBlockId, getElemAsStr } from "@/util/focusutil";
-import { isBlank, makeIconClass, useAtomValueSafe } from "@/util/util";
+import { displayPath, isBlank, makeIconClass, useAtomValueSafe } from "@/util/util";
 import clsx from "clsx";
 import type { Atom } from "jotai";
 import { atom, useAtomValue } from "jotai";
@@ -302,6 +303,13 @@ const InlineTabLabel = memo(
             // agent 类 Block: 显示项目文件夹最后一段名(本地); 远端拼 connection
             const agentMeta = isAgentTerminalMeta(blockData?.meta) ? blockData?.meta : null;
             if (agentMeta != null) {
+                // Hero 登场块优先显示身份（hero:name = emoji + name）：据点目录名是磁盘
+                // 不变量（目录名 == id，中文名 Hero 必然 hero-<hash8>），basename 会显示
+                // 哈希目录名。用户手动 frame:title 改名仍在本函数之前、最高优先。
+                const heroName = heroHeaderName(agentMeta);
+                if (!isBlank(heroName)) {
+                    return isBlank(connection) ? heroName : `${heroName} · ${connection}`;
+                }
                 const cwd = typeof agentMeta?.["cmd:cwd"] === "string" ? agentMeta["cmd:cwd"] : "";
                 const folderName = basename(cwd);
                 if (!isBlank(folderName)) {
@@ -351,7 +359,11 @@ const InlineTabLabel = memo(
             const agentMeta = isAgentTerminalMeta(blockData?.meta) ? blockData?.meta : null;
             if (agentMeta != null) {
                 const cwd = typeof agentMeta?.["cmd:cwd"] === "string" ? agentMeta["cmd:cwd"] : "";
-                return isBlank(cwd) ? "" : isBlank(connection) ? cwd : `${cwd} · ${connection}`;
+                // 本地块展示用平台化分隔符（消掉 E:\root/id 混合斜杠）；
+                // 远端 cwd 是 posix 路径，不能转，保持原样拼 connection。
+                if (isBlank(cwd)) return "";
+                if (isBlank(connection)) return displayPath(cwd);
+                return `${cwd} · ${connection}`;
             }
             if (blockView === "preview" && !isBlank(filePath)) {
                 return isBlank(connection) ? filePath : `${filePath} · ${connection}`;

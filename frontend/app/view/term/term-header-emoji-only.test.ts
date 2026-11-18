@@ -101,6 +101,19 @@ describe("buildCmdCwdHeaderElem", () => {
         expect(buildCmdCwdHeaderElem("", false)).toBe(null);
         expect(buildCmdCwdHeaderElem(undefined, false)).toBe(null);
     });
+
+    // Hero 登场块：据点目录名是 hero-<hash8>（磁盘不变量，目录名 == id），显示身份
+    // （hero:name）而非哈希目录名；点击复制与 tooltip 仍是完整据点路径。
+    it("shows the hero identity instead of the home-base directory hash", () => {
+        const homeBase = String.raw`E:\primary\heros` + "/hero-feaa3f86";
+        const elem = buildCmdCwdHeaderElem(homeBase, false, "🦸 状态维护Hero");
+        expect(elem).toMatchObject({ elemtype: "copytext", text: homeBase, displayText: "🦸 状态维护Hero" });
+    });
+
+    it("falls back to the directory basename when no hero identity is given", () => {
+        const elem = buildCmdCwdHeaderElem(Cwd, false, "");
+        expect(elem).toMatchObject({ text: Cwd, displayText: "snorkeling" });
+    });
 });
 
 describe("viewText wiring", () => {
@@ -108,7 +121,7 @@ describe("viewText wiring", () => {
         // 接线断言：把 `get(this.emojiOnlyHeaderAtom)` 从 viewText 里删掉会让上面两个
         // 测试仍然通过，但界面会退回「路径照旧显示」。源码锚点锁住这一点。
         const source = readFileSync(path.resolve(__dirname, "term-model.ts"), "utf8");
-        expect(source).toContain("buildCmdCwdHeaderElem(cmdCwd, get(this.emojiOnlyHeaderAtom))");
+        expect(source).toContain("buildCmdCwdHeaderElem(cmdCwd, get(this.emojiOnlyHeaderAtom), heroName)");
         // 且 emojiOnlyHeaderAtom 必须由会话感知的工厂产出（不是直接恒 false / 全局设置）。
         expect(source).toContain("makeAgentHeaderEmojiOnlyAtom(this.blockAtom, this.agentStatusAtom)");
     });

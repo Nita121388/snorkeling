@@ -145,18 +145,26 @@ export function makeAgentHeaderEmojiOnlyAtom(
  *
  * 「仅显示 Emoji」（会话级，见 tab-display-store）开启时返回 null —— 头部只留图标与
  * 状态徽章，不再显示项目路径；否则返回可点击复制完整路径的 copytext 元素。
+ *
+ * Hero 登场块传 heroName：据点目录名是磁盘不变量（目录名 == id，中文名 Hero 必然
+ * hero-<hash8>），displayText 用身份而非哈希目录名；复制内容与 tooltip 仍是完整路径。
  */
-export function buildCmdCwdHeaderElem(cmdCwd: unknown, emojiOnly: boolean): HeaderElem | null {
+export function buildCmdCwdHeaderElem(
+    cmdCwd: unknown,
+    emojiOnly: boolean,
+    heroName?: string
+): HeaderElem | null {
     if (emojiOnly) {
         return null;
     }
     if (typeof cmdCwd !== "string" || cmdCwd.trim().length === 0) {
         return null;
     }
+    const trimmedHeroName = typeof heroName === "string" ? heroName.trim() : "";
     return {
         elemtype: "copytext",
         text: cmdCwd,
-        displayText: basename(cmdCwd),
+        displayText: trimmedHeroName !== "" ? trimmedHeroName : basename(cmdCwd),
         title: "Click to copy full path",
         className: "text-muted",
     };
@@ -364,7 +372,10 @@ export class TermViewModel implements ViewModel {
                 });
                 // 「仅显示 Emoji」开启时头部不显示项目路径（仅留图标与状态）。
                 // 该开关是会话级的，非 Agent 会话（无 sessionId）永远为 false，不受影响。
-                const cwdElem = buildCmdCwdHeaderElem(cmdCwd, get(this.emojiOnlyHeaderAtom));
+                // Hero 登场块显示身份（hero:name）而非据点哈希目录名。
+                const heroName =
+                    typeof blockMeta?.["hero:name"] === "string" ? (blockMeta["hero:name"] as string) : "";
+                const cwdElem = buildCmdCwdHeaderElem(cmdCwd, get(this.emojiOnlyHeaderAtom), heroName);
                 if (cwdElem != null) {
                     rtn.push(cwdElem);
                 }

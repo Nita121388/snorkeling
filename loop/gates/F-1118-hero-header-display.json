@@ -1,0 +1,6 @@
+{
+  "g2": {
+    "redProof": "npx vitest run hero-launch/term-header-emoji-only/block-title/util-displaypath → 4 files failed · 7 tests failed（红：hero:name 未写入 2、header 未接身份 3、block-title 模块缺失、displayPath 未实现 3）@ pre-fix",
+    "at": "2026-11-18T03:57:05Z"
+  }
+}

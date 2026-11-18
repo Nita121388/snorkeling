@@ -6,6 +6,7 @@ import clsx, { type ClassValue } from "clsx";
 import { Atom, atom, Getter, SetStateAction, Setter, useAtomValue } from "jotai";
 import { twMerge } from "tailwind-merge";
 import { debounce, throttle } from "throttle-debounce";
+import { isWindows } from "./platformutil";
 const prevValueCache = new WeakMap<any, any>(); // stores a previous value for a deep equal comparison (used with the deepCompareReturnPrev function)
 
 function isBlank(str: string): boolean {
@@ -58,6 +59,18 @@ function basename(path: string): string {
     if (normalized === "") return "/";
     const idx = normalized.lastIndexOf("/");
     return idx >= 0 ? normalized.slice(idx + 1) : normalized;
+}
+
+/**
+ * 平台化展示路径：Windows 上把 `/` 统一为 `\`，消掉 `E:\root/id` 这类
+ * 混合分隔符（如 makeHeroHomeBase 用 `/` 拼接 Windows 盘符路径）。
+ * **只用于展示**（tooltip / 界面文本）：复制与传给后端的路径一律用原值，
+ * 两种分隔符在 Windows 均合法，不动 `cmd:cwd` meta 以免影响已有块。
+ * 远端（ssh/wsl）块不要用 —— posix 路径会被误转为反斜杠。
+ */
+function displayPath(path: string, windows: boolean = isWindows()): string {
+    if (path == null || path === "") return path;
+    return windows ? path.replace(/\//g, "\\") : path;
 }
 
 function base64ToArrayBuffer(b64: string): ArrayBuffer {
@@ -572,6 +585,7 @@ export {
     cn,
     countGraphemes,
     deepCompareReturnPrev,
+    displayPath,
     escapeBytes,
     fireAndForget,
     formatCompactDuration,

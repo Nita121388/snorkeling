@@ -812,3 +812,26 @@ effect 首次运行 `peek == null` 直接 return，之后**不会再有第二次
 落到别的元素上，`waitForProbe` 超时后脚本**不检查返回值**继续跑 → 后续断言全红且看不出根因。
 规则：`caretPoint` 这类坐标每次点击前 `evaluate` 重算；`waitForProbe` 的返回值必须断言，
 不要"调用即认为成功"。
+
+## 测试误红排查：先确认被收集的测试文件真的是仓库代码（L-0007）
+
+vitest 按目录跑时会把项目里所有匹配 glob 的文件当测试收集，**包括 gitignored 的本地缓存副本**
+（实测：`.cache/tmp/wt-head/` 是 10 月的旧 worktree 快照，整棵 frontend/ 被重复收集，
+旧代码上的 pre-existing 失败把新改动"染红"）。症状：同一测试文件跑了两遍、其中一份红，
+且失败文件路径不在 `frontend/` 前缀下。
+
+规则：
+
+- 目录级 vitest 出现莫名红，先看失败文件的**完整路径**；不是 `frontend/` 前缀的先删缓存副本再复跑。
+- 判"我这单是不是引入的"，用 `git stash push -- <触达文件>` 跑同一条命令取基线，不要凭直觉。
+- 重模块图的单测（如 `blockregistry.test.ts` 拉整个 view registry，冷启动 2–3s）在整目录并行时
+  会超默认 5s 阈值误红：给该用例显式放宽 timeout，而不是删测试。
+
+## Hero / Persona 类"身份"显示：显示层用身份字段，绝不显示据点目录名
+
+据点目录名是**磁盘不变量**（`pkg/hero` `ValidateID`：目录名 == id；中文名 id 必然
+`hero-<hash8>`）。任何 UI 面显示身份时读启动时写入的块 meta（`hero:name` = emoji + name，
+`display:name` 同值供标题回退链），**不要** `basename(cmd:cwd)`（会显示哈希目录名）；
+完整路径只降级到 tooltip / 点击复制（复制用原值，`displayPath()` 仅展示用、且远端块禁用）。
+参照实现：`buildHeroLaunchBlockDef`（写入）→ `heroHeaderName`（读取）→
+`block.tsx defaultTitle` / `buildCmdCwdHeaderElem`（接线）。

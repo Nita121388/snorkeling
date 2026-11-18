@@ -1,6 +1,6 @@
 {
-  "lastAttemptAt": "2026-11-18T02:54:13.301Z",
-  "lastOkAt": "2026-11-18T02:54:13.301Z",
+  "lastAttemptAt": "2026-11-18T04:35:46.006Z",
+  "lastOkAt": "2026-11-18T04:35:46.006Z",
   "failures": 0,
   "error": null,
   "lastOkManifest": [
@@ -16,8 +16,8 @@
     },
     {
       "path": "LEDGER-2026-11.jsonl",
-      "sha256": "b321d10c2a7c2629945c236bb580312b0dc50ccbfc1706d2ea2519e1bf989803",
-      "size": 100178
+      "sha256": "43e62f809279a0c0697148668c9f01615705575aa97cb0accd6d89b617a80dad",
+      "size": 102570
     },
     {
       "path": "README.md",
@@ -210,6 +210,11 @@
       "size": 423
     },
     {
+      "path": "gates/F-1118-hero-header-display.json",
+      "sha256": "6cb07f9c23073d2934aba10e93d81cbf0daffe255bdfac5f586a70a9d3fc390a",
+      "size": 305
+    },
+    {
       "path": "gates/F-1118-tab-collapse-active.json",
       "sha256": "9682b0e389e006f9ba81a2434965d46401eeaa8a2cec3b5a302e0698fca789a9",
       "size": 457
@@ -331,7 +336,7 @@
     },
     {
       "path": "gates/_meta.json",
-      "sha256": "4868e70240d05a602ad3f0eed285ea4da1875d8fd79f1046271e80f92e915182",
+      "sha256": "52381603a85a19c338cb6c97a049bd38074ca45633359de252df35efd62544d1",
       "size": 85
     },
     {
@@ -418,6 +423,11 @@
       "path": "items/F-1117-overview-card-props.md",
       "sha256": "07b93883feec94fe17338826b5e45c748fde393e6a962b95989a0934adab0638",
       "size": 3258
+    },
+    {
+      "path": "items/F-1118-hero-header-display.md",
+      "sha256": "514cefe7f460cd7d9e8238f1e007d913b6f2140e8303190776cc2120651b5749",
+      "size": 1802
     },
     {
       "path": "items/F-1118-tab-collapse-active.md",

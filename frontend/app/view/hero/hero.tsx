@@ -21,7 +21,7 @@ import { buildHeroLaunchBlockDef } from "@/app/workspace/hero-launch";
 import { i18n } from "@/i18n/config";
 import { localeTextAtom } from "@/i18n/i18nmodel";
 import { copyText } from "@/util/clipboard";
-import { fireAndForget, isBlank } from "@/util/util";
+import { displayPath, fireAndForget, isBlank } from "@/util/util";
 import clsx from "clsx";
 import * as jotai from "jotai";
 import * as React from "react";
@@ -237,6 +237,8 @@ function HeroDetail({
 }) {
     const storage = row.storage;
     const homeBase = heroHomeBaseHint(root, row.id);
+    // 展示用平台化路径（`E:\heros\hero-x`），打开/复制仍用原值。
+    const homeBaseDisplay = displayPath(homeBase);
     const charter = isBlank(row.charter) ? "" : row.charter;
     return (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -250,8 +252,8 @@ function HeroDetail({
                     <div className="mt-0.5 truncate text-[11px] text-secondary">{row.providerModel}</div>
                     {homeBase !== "" && (
                         <div className="mt-0.5 flex items-center gap-1">
-                            <div className="truncate font-mono text-[10px] text-secondary" title={homeBase}>
-                                {homeBase}
+                            <div className="truncate font-mono text-[10px] text-secondary" title={homeBaseDisplay}>
+                                {homeBaseDisplay}
                             </div>
                             <button
                                 type="button"

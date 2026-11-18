@@ -89,6 +89,28 @@ describe("buildHeroLaunchBlockDef", () => {
         expect(meta["cmd"]).toBe("pi");
     });
 
+    // Hero 据点的目录名是磁盘不变量（pkg/hero ValidateID: 目录名 == id），中文名 Hero
+    // 的 id 必然是 hero-<hash8>。Header / Tab / Overview 要显示身份而不是哈希目录名，
+    // 所以启动时把 roster label 写进块 meta（header 读 hero:name，其余面读 display:name）。
+    it("stamps the hero identity (hero:name / display:name) for header display", () => {
+        const { blockDef } = buildHeroLaunchBlockDef({
+            hero: { ...hero, id: "hero-feaa3f86", name: "状态维护Hero", emoji: "🦸" },
+            root: "C:/heroes",
+        });
+        const meta = blockDef.meta as Record<string, unknown>;
+        expect(meta["hero:name"]).toBe("🦸 状态维护Hero");
+        expect(meta["display:name"]).toBe("🦸 状态维护Hero");
+    });
+
+    it("falls back to the id when the hero declares no name", () => {
+        const { blockDef } = buildHeroLaunchBlockDef({
+            hero: { id: "hero-feaa3f86", name: "" },
+            root: "C:/heroes",
+        });
+        const meta = blockDef.meta as Record<string, unknown>;
+        expect(meta["hero:name"]).toBe("hero-feaa3f86");
+    });
+
     it("applies the hero model as a per-launch override via cmd:args", () => {
         const { blockDef } = buildHeroLaunchBlockDef({
             hero,
